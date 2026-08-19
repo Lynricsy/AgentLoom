@@ -66,7 +66,9 @@ async function loadStdioEntrypoint() {
   await import('./acp-stdio.js');
 }
 
-describe('ACP stdio bootstrap', () => {
+// 每个用例都会 resetModules 后重新 import 整个 Nest 入口模块图，
+// 冷缓存下单次 bootstrap 的 transform 时间远超 vitest 默认 5s testTimeout。
+describe('ACP stdio bootstrap', { timeout: 30_000 }, () => {
   let readline: FakeReadline;
   let writes: string[];
   let signalHandlers: Record<string, () => void>;

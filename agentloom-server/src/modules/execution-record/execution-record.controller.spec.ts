@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { DECORATORS } from '@nestjs/swagger/dist/constants';
+import { DECORATORS } from '@nestjs/swagger';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';

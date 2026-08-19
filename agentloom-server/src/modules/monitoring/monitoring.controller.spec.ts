@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DECORATORS } from '@nestjs/swagger/dist/constants';
+import { DECORATORS } from '@nestjs/swagger';
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { MonitoringController } from './monitoring.controller';
 import type { MonitoringService } from './monitoring.service';

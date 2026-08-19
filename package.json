@@ -1,5 +1,13 @@
 {
+	"name": "agentloom",
+	"private": true,
 	"license": "GPL-3.0-only",
+	"scripts": {
+		"test:all": "pnpm -r run test",
+		"typecheck:all": "pnpm -r run typecheck",
+		"build:all": "pnpm -r run build",
+		"contracts:regen": "pnpm --filter agentloom-server run sdk:generate:ts && pnpm --filter @agentloom/api-client run sync && pnpm --filter @agentloom/api-client run build"
+	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.27.1"
 	}

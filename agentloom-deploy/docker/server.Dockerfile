@@ -1,7 +1,5 @@
-# PREREQUISITE: Run agentloom-deploy/scripts/prepare-pi-tarballs.sh first.
-# The script defaults to cloning badlogic/pi-mono from GitHub at a pinned ref
-# and publishes the tarballs into agentloom-deploy/docker/.pi-tarballs.
 # Build context: project root (-f agentloom-deploy/docker/server.Dockerfile .)
+# 依赖安装在仓库根的 pnpm workspace 上完成，再用 --filter 只装 server 子图。
 
 # ── Stage 1: deps ─────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS deps
@@ -14,24 +12,22 @@ RUN corepack enable
 
 WORKDIR /build
 
-COPY agentloom-plugin-sdk/ ./plugin-sdk/
-WORKDIR /build/plugin-sdk
-RUN pnpm install --frozen-lockfile --config.node-linker=hoisted && pnpm build
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY agentloom-contracts/package.json   ./agentloom-contracts/
+COPY agentloom-api-client/package.json  ./agentloom-api-client/
+COPY agentloom-plugin-sdk/package.json  ./agentloom-plugin-sdk/
+COPY agentloom-server/package.json      ./agentloom-server/
 
-WORKDIR /build/server
+RUN pnpm install --frozen-lockfile --config.node-linker=hoisted \
+    --filter agentloom-server... --filter agentloom-server^...
 
-COPY agentloom-deploy/docker/.pi-tarballs/pi-agent-core.tgz ./.pi-tarballs/
-COPY agentloom-deploy/docker/.pi-tarballs/pi-ai.tgz          ./.pi-tarballs/
+COPY agentloom-contracts/  ./agentloom-contracts/
+COPY agentloom-api-client/ ./agentloom-api-client/
+COPY agentloom-plugin-sdk/ ./agentloom-plugin-sdk/
 
-COPY agentloom-server/package.json agentloom-server/pnpm-lock.yaml agentloom-server/pnpm-workspace.yaml ./
+RUN pnpm --filter @agentloom/contracts --filter @agentloom/api-client --filter @agentloom/plugin-sdk run build
 
-RUN sed -i \
-    -e 's|"file:../agentloom-plugin-sdk"|"file:../plugin-sdk"|' \
-    -e 's|"file:../../../GitHub/pi-mono/packages/agent"|"file:./.pi-tarballs/pi-agent-core.tgz"|' \
-    -e 's|"file:../../../GitHub/pi-mono/packages/ai"|"file:./.pi-tarballs/pi-ai.tgz"|' \
-    package.json
-
-RUN pnpm install --no-frozen-lockfile --config.node-linker=hoisted
+WORKDIR /build/agentloom-server
 
 # ── Stage 2: builder ──────────────────────────────────────────────
 FROM deps AS builder
@@ -50,7 +46,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=${PNPM_HOME}:${PATH}
 ENV COREPACK_ENABLE_AUTO_INSTALL=1
 
-WORKDIR /build/server
+WORKDIR /build/agentloom-server
 CMD ["pnpm", "db:migrate"]
 
 # ── Stage 3: production (pruned, no devDeps) ─────────────────────
@@ -67,11 +63,11 @@ RUN corepack enable
 
 WORKDIR /app
 
-COPY --from=builder-pruned /build/server/dist/        ./dist/
-COPY --from=builder-pruned /build/server/drizzle/     ./drizzle/
-COPY --from=builder-pruned /build/server/scripts/     ./scripts/
-COPY --from=builder-pruned /build/server/node_modules/ ./node_modules/
-COPY --from=builder-pruned /build/server/package.json  ./
+# workspace 布局整体搬运：contracts / api-client / plugin-sdk 由根 node_modules 的
+# 符号链接指向各自源目录，拆分复制会断链，因此保留同一相对结构。
+COPY --from=builder-pruned /build/ ./
+
+WORKDIR /app/agentloom-server
 
 USER node
 
