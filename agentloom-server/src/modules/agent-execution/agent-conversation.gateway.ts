@@ -10,8 +10,6 @@ import {
   Logger,
   UseGuards,
   OnModuleDestroy,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -119,7 +117,6 @@ export class AgentConversationGateway
   constructor(
     private readonly configService: ConfigService,
     private readonly throttleService: ThrottleService,
-    @Inject(forwardRef(() => EventBridgeService))
     private readonly eventBridgeService: EventBridgeService,
     private readonly tokenBlacklistService: TokenBlacklistService,
     private readonly agentExecutionService: AgentExecutionService,

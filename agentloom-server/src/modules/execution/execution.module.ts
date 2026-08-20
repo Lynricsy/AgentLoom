@@ -30,7 +30,25 @@ import { ExecutionGateway } from './execution.gateway';
 import { StepStateMachineService } from './step-state-machine.service';
 import { DagResolverService } from './dag-resolver.service';
 import { NodeSchedulerService } from './node-scheduler.service';
+import { NodeDispatcherService } from './node-dispatcher.service';
+import { NodeExecutionFailurePolicy } from './node-execution-failure-policy';
+import { CompoundExecutionService } from './compound-execution.service';
+import { CodeNodeExecutor } from './node-executors/code-node.executor';
+import { CompoundNodeExecutor } from './node-executors/compound-node.executor';
+import { ConditionalNodeExecutor } from './node-executors/conditional-node.executor';
+import { DataTransformNodeExecutor } from './node-executors/data-transform-node.executor';
+import { DeprecatedNodeExecutor } from './node-executors/deprecated-node.executor';
+import { ExtensionNodeExecutor } from './node-executors/extension-node.executor';
+import { HttpNodeExecutor } from './node-executors/http-node.executor';
+import { ResourceNodeExecutor } from './node-executors/resource-node.executor';
+import { SmartRoutingNodeExecutor } from './node-executors/smart-routing-node.executor';
+import { SubAgentNodeExecutor } from './node-executors/sub-agent-node.executor';
+import { TriggerNodeExecutor } from './node-executors/trigger-node.executor';
+import { ValueNodeExecutor } from './node-executors/value-node.executor';
+import { WorkflowAgentNodeExecutor } from './node-executors/workflow-agent-node.executor';
 import { AgentTaskWorker } from './agent-task.worker';
+import { AgentTaskWorkerSupportService } from './agent-task-worker-support.service';
+import { AgentTaskWorkerRuntimeService } from './agent-task-worker-runtime.service';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import { ExecutionWorkspaceRealtimeBridgeService } from './services/execution-workspace-realtime-bridge.service';
@@ -79,6 +97,24 @@ import {
     StepStateMachineService,
     DagResolverService,
     NodeSchedulerService,
+    NodeDispatcherService,
+    NodeExecutionFailurePolicy,
+    CompoundExecutionService,
+    CodeNodeExecutor,
+    CompoundNodeExecutor,
+    ConditionalNodeExecutor,
+    DataTransformNodeExecutor,
+    DeprecatedNodeExecutor,
+    ExtensionNodeExecutor,
+    HttpNodeExecutor,
+    ResourceNodeExecutor,
+    SmartRoutingNodeExecutor,
+    SubAgentNodeExecutor,
+    TriggerNodeExecutor,
+    ValueNodeExecutor,
+    WorkflowAgentNodeExecutor,
+    AgentTaskWorkerSupportService,
+    AgentTaskWorkerRuntimeService,
     AgentTaskWorker,
     CheckpointService,
     EventBridgeService,

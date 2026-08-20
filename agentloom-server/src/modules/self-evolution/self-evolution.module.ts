@@ -11,6 +11,10 @@ import { WorkspaceModule } from '../workspace/workspace.module';
 import { SelfEvolutionPermissionService } from './self-evolution-permission.service';
 import { SelfEvolutionService } from './self-evolution.service';
 import { SelfEvolutionToolsProvider } from './self-evolution-tools.provider';
+import { SelfEvolutionReadService } from './self-evolution-read.service';
+import { SelfEvolutionMutationService } from './self-evolution-mutation.service';
+import { SelfEvolutionPermissionPolicy } from './self-evolution-permission-policy';
+import { SelfEvolutionGraphPatch } from './self-evolution-graph-patch';
 
 @Module({
   imports: [
@@ -27,6 +31,10 @@ import { SelfEvolutionToolsProvider } from './self-evolution-tools.provider';
     SelfEvolutionPermissionService,
     SelfEvolutionService,
     SelfEvolutionToolsProvider,
+    SelfEvolutionReadService,
+    SelfEvolutionMutationService,
+    SelfEvolutionPermissionPolicy,
+    SelfEvolutionGraphPatch,
   ],
   exports: [
     SelfEvolutionPermissionService,

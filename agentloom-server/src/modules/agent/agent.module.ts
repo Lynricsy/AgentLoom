@@ -20,6 +20,10 @@ import { InProcessAgentAdapter } from './in-process-agent.adapter';
 import { OutputFormatService } from './output-format.service';
 import { AGENT_RUNTIME } from './ports/agent-runtime.port';
 import { SandboxAgentAdapter } from './sandbox-agent.adapter';
+import { SandboxModelConfigService } from './sandbox-model-config.service';
+import { SandboxPtyService } from './sandbox-pty.service';
+import { SandboxSessionRuntimeService } from './sandbox-session-runtime.service';
+import { SandboxToolRegistryService } from './sandbox-tool-registry.service';
 import { AgentSessionFactory } from '../execution/services/agent-session-factory.service';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 
@@ -43,6 +47,10 @@ import { SessionPersistenceService } from '../execution/services/session-persist
     SessionPersistenceService,
     InProcessAgentAdapter,
     SandboxAgentAdapter,
+    SandboxSessionRuntimeService,
+    SandboxModelConfigService,
+    SandboxToolRegistryService,
+    SandboxPtyService,
     { provide: AGENT_RUNTIME, useClass: InProcessAgentAdapter },
     { provide: AGENT_RUNTIME_FACTORY, useClass: AgentAdapterFactory },
   ],

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SelfEvolutionService } from './self-evolution.service';
+import { SelfEvolutionGraphPatch } from './self-evolution-graph-patch';
+import { SelfEvolutionMutationService } from './self-evolution-mutation.service';
+import { SelfEvolutionPermissionPolicy } from './self-evolution-permission-policy';
+import { SelfEvolutionReadService } from './self-evolution-read.service';
 import { AgentCanvasInvalidMcpToolBindingException } from '../agent-definition/agent-definition.exceptions';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import type { SelfEvolutionSessionContext } from './self-evolution.types';
@@ -235,17 +239,75 @@ describe('SelfEvolutionService', () => {
       cloneRememberedPolicies: vi.fn().mockResolvedValue(undefined),
     };
 
+    const permissionPolicy = new SelfEvolutionPermissionPolicy();
+    const graphPatch = new SelfEvolutionGraphPatch(
+      mockMcpService as unknown as ConstructorParameters<
+        typeof SelfEvolutionGraphPatch
+      >[0],
+    );
+    const readService = new SelfEvolutionReadService(
+      mockAgentDefinitionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionReadService
+      >[0],
+      mockSkillService as unknown as ConstructorParameters<
+        typeof SelfEvolutionReadService
+      >[1],
+      mockLlmService as unknown as ConstructorParameters<
+        typeof SelfEvolutionReadService
+      >[2],
+      mockMcpService as unknown as ConstructorParameters<
+        typeof SelfEvolutionReadService
+      >[3],
+      mockWorkspaceService as unknown as ConstructorParameters<
+        typeof SelfEvolutionReadService
+      >[4],
+      mockWorkflowVersionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionReadService
+      >[5],
+      permissionPolicy,
+      graphPatch,
+    );
+    const mutationService = new SelfEvolutionMutationService(
+      mockAgentDefinitionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[0],
+      mockSkillService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[1],
+      mockLlmService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[2],
+      mockLlmProviderService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[3],
+      mockMcpService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[4],
+      mockWorkspaceService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[5],
+      mockWorkflowVersionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionMutationService
+      >[6],
+      permissionPolicy,
+      graphPatch,
+      readService,
+    );
     service = new SelfEvolutionService(
-      mockTenantDb as never,
-      mockAgentDefinitionService as never,
-      mockSkillService as never,
-      mockLlmService as never,
-      mockLlmProviderService as never,
-      mockMcpService as never,
-      mockWorkspaceService as never,
-      mockWorkflowVersionService as never,
-      mockPermissionService as never,
-      mockSandboxService as never,
+      mockTenantDb as unknown as ConstructorParameters<typeof SelfEvolutionService>[0],
+      mockAgentDefinitionService as unknown as ConstructorParameters<typeof SelfEvolutionService>[1],
+      mockSkillService as unknown as ConstructorParameters<typeof SelfEvolutionService>[2],
+      mockLlmService as unknown as ConstructorParameters<typeof SelfEvolutionService>[3],
+      mockLlmProviderService as unknown as ConstructorParameters<typeof SelfEvolutionService>[4],
+      mockMcpService as unknown as ConstructorParameters<typeof SelfEvolutionService>[5],
+      mockWorkspaceService as unknown as ConstructorParameters<typeof SelfEvolutionService>[6],
+      mockWorkflowVersionService as unknown as ConstructorParameters<typeof SelfEvolutionService>[7],
+      mockPermissionService as unknown as ConstructorParameters<typeof SelfEvolutionService>[8],
+      mockSandboxService as unknown as ConstructorParameters<typeof SelfEvolutionService>[9],
+      readService,
+      mutationService,
+      permissionPolicy,
+      graphPatch,
     );
   });
 
@@ -253,7 +315,7 @@ describe('SelfEvolutionService', () => {
     const context = makeContext();
     vi.spyOn(service as any, 'buildSessionContext').mockResolvedValue(context);
     const applyChangeSpy = vi
-      .spyOn(service as any, 'applyChange')
+      .spyOn(service.mutationService, 'applyChange')
       .mockResolvedValue({
         success: true,
         data: {
@@ -303,7 +365,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('proposeChange 应识别仅按 nodeId 局部更新的 sandbox 节点为高风险审批', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-1',
       label: '当前 Agent',
@@ -326,7 +388,7 @@ describe('SelfEvolutionService', () => {
       viewport: null,
     });
 
-    const result = await (service as any).proposeChange(makeContext(), {
+    const result = await service.readService.proposeChange(makeContext(), {
       targetKind: 'self',
       nodeOperations: [
         {
@@ -352,7 +414,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('proposeChange 应识别仅按 edgeId 删除的 workspace 绑定为审批类变更', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-1',
       label: '当前 Agent',
@@ -386,7 +448,7 @@ describe('SelfEvolutionService', () => {
       viewport: null,
     });
 
-    const result = await (service as any).proposeChange(makeContext(), {
+    const result = await service.readService.proposeChange(makeContext(), {
       targetKind: 'self',
       edgeOperations: [
         {
@@ -436,7 +498,7 @@ describe('SelfEvolutionService', () => {
       },
     ]);
 
-    const result = await (service as any).queryResourcePool(makeContext(), {
+    const result = await service.readService.queryResourcePool(makeContext(), {
       resourceType: 'mcp_tool',
     });
 
@@ -541,7 +603,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('applyChange 应把半残的 mcp-tool 节点补全为 canonical MCP 配置', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-1',
       label: '当前 Agent',
@@ -583,7 +645,7 @@ describe('SelfEvolutionService', () => {
       detail: { summary: '已保存', version: 13 },
     });
 
-    await (service as any).applyChange(makeContext(), {
+    await service.mutationService.applyChange(makeContext(), {
       proposal: {
         domain: 'self_evolution',
         targetKind: 'self',
@@ -658,7 +720,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('applyChange 遇到 Agent 画布 MCP 校验失败时应返回结构化 Problem Details', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-1',
       label: '当前 Agent',
@@ -679,7 +741,7 @@ describe('SelfEvolutionService', () => {
       ]),
     );
 
-    const result = await (service as any).applyChange(makeContext(), {
+    const result = await service.mutationService.applyChange(makeContext(), {
       proposal: {
         domain: 'self_evolution',
         targetKind: 'self',
@@ -733,7 +795,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('applyChange 在 publishedVersionId 未变化时不应返回 restartSuggestion', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-1',
       label: '当前 Agent',
@@ -749,7 +811,7 @@ describe('SelfEvolutionService', () => {
       detail: { summary: '未产生新发布版本', version: 12 },
     });
 
-    const result = await (service as any).applyChange(makeContext(), {
+    const result = await service.mutationService.applyChange(makeContext(), {
       proposal: {
         domain: 'self_evolution',
         targetKind: 'self',
@@ -788,7 +850,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('applyChange 在产生新 publishedVersionId 时应返回 restartSuggestion', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-1',
       label: '当前 Agent',
@@ -804,7 +866,7 @@ describe('SelfEvolutionService', () => {
       detail: { summary: '已生成新发布版本', version: 18 },
     });
 
-    const result = await (service as any).applyChange(makeContext(), {
+    const result = await service.mutationService.applyChange(makeContext(), {
       proposal: {
         domain: 'self_evolution',
         targetKind: 'self',
@@ -846,7 +908,7 @@ describe('SelfEvolutionService', () => {
   });
 
   it('applyChange 对外部 draft Agent 且 publishTarget=true 时应请求保存后直接发布', async () => {
-    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+    vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
       kind: 'agent',
       id: 'agent-2',
       label: '外部 Agent',
@@ -862,7 +924,7 @@ describe('SelfEvolutionService', () => {
       detail: { summary: '已发布外部 Agent', version: 3, status: 'published' },
     });
 
-    const result = await (service as any).applyChange(makeContext(), {
+    const result = await service.mutationService.applyChange(makeContext(), {
       proposal: {
         domain: 'self_evolution',
         targetKind: 'agent',
@@ -1031,14 +1093,14 @@ describe('SelfEvolutionService', () => {
       );
 
       await expect(
-        (service as any).queryState(makeContext(), {}),
+        service.readService.queryState(makeContext(), {}),
       ).resolves.toMatchObject({
         scope: 'self',
         currentConversationId: 'conversation-1',
         target: { id: 'agent-1' },
       });
       await expect(
-        (service as any).queryState(makeContext(), {
+        service.readService.queryState(makeContext(), {
           scope: 'agent',
           targetId: ' agent-2 ',
         }),
@@ -1047,7 +1109,7 @@ describe('SelfEvolutionService', () => {
         target: { id: 'agent-2', name: '外部 Agent' },
       });
       await expect(
-        (service as any).queryState(makeContext(), {
+        service.readService.queryState(makeContext(), {
           scope: 'workflow',
           targetId: 'workflow-1',
         }),
@@ -1056,10 +1118,10 @@ describe('SelfEvolutionService', () => {
         target: { id: 'workflow-1', name: '外部 Workflow' },
       });
       await expect(
-        (service as any).queryState(makeContext(), { scope: 'agent' }),
+        service.readService.queryState(makeContext(), { scope: 'agent' }),
       ).rejects.toThrow('必须提供 targetId');
       await expect(
-        (service as any).queryState(
+        service.readService.queryState(
           makeContext({
             selfEvolutionPolicy: {
               enabled: true,
@@ -1072,7 +1134,7 @@ describe('SelfEvolutionService', () => {
         ),
       ).rejects.toThrow('未启用外部编辑');
       await expect(
-        (service as any).queryState(makeContext(), {
+        service.readService.queryState(makeContext(), {
           scope: 'organization',
           targetId: 'target-1',
         }),
@@ -1178,7 +1240,7 @@ describe('SelfEvolutionService', () => {
         ],
       });
 
-      const result = await (service as any).queryResourcePool(makeContext(), {
+      const result = await service.readService.queryResourcePool(makeContext(), {
         search: 'Search',
         limit: 150,
       });
@@ -1199,7 +1261,7 @@ describe('SelfEvolutionService', () => {
         workspaces: [{ id: 'workspace-1' }],
       });
       await expect(
-        (service as any).queryResourcePool(makeContext(), {
+        service.readService.queryResourcePool(makeContext(), {
           resourceType: 'unknown',
           limit: 0,
         }),
@@ -1271,7 +1333,7 @@ describe('SelfEvolutionService', () => {
 
   describe('proposal classification and graph validation', () => {
     it('proposeChange 应应用节点/连线 CRUD、深合并 viewport 并保留 OCC baseVersion', async () => {
-      vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
         kind: 'agent',
         id: 'agent-1',
         label: '当前 Agent',
@@ -1297,7 +1359,7 @@ describe('SelfEvolutionService', () => {
         viewport: { x: 1, y: 2, zoom: 1 },
       });
 
-      const result = await (service as any).proposeChange(makeContext(), {
+      const result = await service.readService.proposeChange(makeContext(), {
         targetKind: 'self',
         nodeOperations: [
           {
@@ -1352,25 +1414,29 @@ describe('SelfEvolutionService', () => {
         ],
         viewport: { x: 10, y: 20, zoom: 0.8 },
       });
-      expect(result.proposal.diffPreview).toMatchObject({
-        nextNodeCount: 2,
-        nextEdgeCount: 2,
-        addedNodes: [{ id: 'added', nodeType: 'text' }],
-        updatedNodes: [{ id: 'keep' }],
-        removedNodes: [{ id: 'remove' }],
-        addedEdges: [{ id: 'edge-added' }],
-        updatedEdges: [{ id: 'edge-update' }],
-        removedEdges: [{ id: 'edge-remove' }],
+      expect(result).toMatchObject({
+        proposal: {
+          diffPreview: {
+            nextNodeCount: 2,
+            nextEdgeCount: 2,
+            addedNodes: [{ id: 'added', nodeType: 'text' }],
+            updatedNodes: [{ id: 'keep' }],
+            removedNodes: [{ id: 'remove' }],
+            addedEdges: [{ id: 'edge-added' }],
+            updatedEdges: [{ id: 'edge-update' }],
+            removedEdges: [{ id: 'edge-remove' }],
+          },
+        },
       });
     });
 
     it.each([
-      ['workflow', { kind: 'workflow', id: 'workflow-1' }, 'workflow_edit'],
-      ['agent', { kind: 'agent', id: 'agent-2' }, 'agent_external_edit'],
+      ['workflow', { kind: 'workflow' as const, id: 'workflow-1' }, 'workflow_edit'],
+      ['agent', { kind: 'agent' as const, id: 'agent-2' }, 'agent_external_edit'],
     ])(
       'proposeChange 应将外部 %s 变更分类为强制审批',
       async (targetKind, targetIdentity, category) => {
-        vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+        vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
           ...targetIdentity,
           label: '外部目标',
           version: 2,
@@ -1380,7 +1446,7 @@ describe('SelfEvolutionService', () => {
           viewport: null,
         });
 
-        const result = await (service as any).proposeChange(makeContext(), {
+        const result = await service.readService.proposeChange(makeContext(), {
           targetKind,
           targetId: targetIdentity.id,
         });
@@ -1397,7 +1463,7 @@ describe('SelfEvolutionService', () => {
 
     it('proposeChange 应按 sandbox 与 workspace 优先级分类并执行子能力授权', async () => {
       const target = {
-        kind: 'agent',
+        kind: 'agent' as const,
         id: 'agent-1',
         label: '当前 Agent',
         version: 1,
@@ -1406,12 +1472,12 @@ describe('SelfEvolutionService', () => {
         edges: [],
         viewport: null,
       };
-      vi.spyOn(service as any, 'loadGraphTarget')
+      vi.spyOn(service.readService, 'loadGraphTarget')
         .mockResolvedValueOnce(target)
         .mockResolvedValueOnce(target)
         .mockResolvedValueOnce(target);
 
-      const sandbox = await (service as any).proposeChange(makeContext(), {
+      const sandbox = await service.readService.proposeChange(makeContext(), {
         targetKind: 'self',
         nodeOperations: [
           {
@@ -1429,7 +1495,7 @@ describe('SelfEvolutionService', () => {
         riskLevel: 'high',
       });
 
-      const workspace = await (service as any).proposeChange(makeContext(), {
+      const workspace = await service.readService.proposeChange(makeContext(), {
         targetKind: 'self',
         edgeOperations: [
           {
@@ -1448,7 +1514,7 @@ describe('SelfEvolutionService', () => {
       });
 
       await expect(
-        (service as any).proposeChange(
+        service.readService.proposeChange(
           makeContext({
             selfEvolutionPolicy: {
               enabled: true,
@@ -1478,7 +1544,7 @@ describe('SelfEvolutionService', () => {
       [{ op: 'remove' }, '删除节点时必须提供 nodeId'],
       [{ op: 'replace' }, '必须是 add / update / remove'],
     ])('应拒绝非法节点操作 %#', async (operation, message) => {
-      vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
         kind: 'agent',
         id: 'agent-1',
         label: '当前 Agent',
@@ -1487,7 +1553,7 @@ describe('SelfEvolutionService', () => {
         edges: [],
       });
       await expect(
-        (service as any).proposeChange(makeContext(), {
+        service.readService.proposeChange(makeContext(), {
           targetKind: 'self',
           nodeOperations: [operation],
         }),
@@ -1501,7 +1567,7 @@ describe('SelfEvolutionService', () => {
       [{ op: 'update', edgeId: 'existing' }, '必须提供 edgeId 与 patch'],
       [{ op: 'remove' }, '删除连线时必须提供 edgeId'],
     ])('应拒绝非法连线操作 %#', async (operation, message) => {
-      vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
         kind: 'agent',
         id: 'agent-1',
         label: '当前 Agent',
@@ -1510,7 +1576,7 @@ describe('SelfEvolutionService', () => {
         edges: [{ id: 'existing', source: 'a', target: 'b' }],
       });
       await expect(
-        (service as any).proposeChange(makeContext(), {
+        service.readService.proposeChange(makeContext(), {
           targetKind: 'self',
           edgeOperations: [operation],
         }),
@@ -1571,7 +1637,7 @@ describe('SelfEvolutionService', () => {
         makeContext(),
       );
       const applySpy = vi
-        .spyOn(service as any, 'applyChange')
+        .spyOn(service.mutationService, 'applyChange')
         .mockResolvedValue({ success: true, data: { applied: true } });
       const proposal = makeProposal({
         category: 'workflow_edit',
@@ -1618,7 +1684,7 @@ describe('SelfEvolutionService', () => {
         makeContext(),
       );
       const applySpy = vi
-        .spyOn(service as any, 'applyChange')
+        .spyOn(service.mutationService, 'applyChange')
         .mockResolvedValue({ success: true, data: { applied: true } });
       const proposal = makeProposal({
         category: 'sandbox_spec_adjustment',
@@ -1671,7 +1737,7 @@ describe('SelfEvolutionService', () => {
         makeContext(),
       );
       const createSpy = vi
-        .spyOn(service as any, 'createResource')
+        .spyOn(service.mutationService, 'createResource')
         .mockResolvedValue({ success: true, data: { resourceType: 'model' } });
       const input = {
         resourceType: 'model',
@@ -1780,7 +1846,7 @@ describe('SelfEvolutionService', () => {
         makeContext(),
       );
       const createSpy = vi
-        .spyOn(service as any, 'createResource')
+        .spyOn(service.mutationService, 'createResource')
         .mockResolvedValue({
           success: true,
           data: { resourceType: 'workspace', resource: { id: 'workspace-1' } },
@@ -1817,7 +1883,7 @@ describe('SelfEvolutionService', () => {
 
   describe('apply and resource mutation contracts', () => {
     it('workflow apply 应传递目标当前 version 做 OCC，并按 publishTarget 发布', async () => {
-      vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
         kind: 'workflow',
         id: 'workflow-1',
         label: '审批流',
@@ -1836,7 +1902,7 @@ describe('SelfEvolutionService', () => {
         version: 12,
       });
 
-      const result = await (service as any).applyChange(makeContext(), {
+      const result = await service.mutationService.applyChange(makeContext(), {
         proposal: makeProposal({
           targetKind: 'workflow',
           targetId: 'workflow-1',
@@ -1886,7 +1952,7 @@ describe('SelfEvolutionService', () => {
     });
 
     it('agent apply 应透传 expectedVersion，未发布时回退草稿版本展示且不建议重启', async () => {
-      vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
         kind: 'agent',
         id: 'agent-2',
         label: '外部 Agent',
@@ -1900,7 +1966,7 @@ describe('SelfEvolutionService', () => {
         detail: { id: 'agent-2', version: 6 },
       });
 
-      const result = await (service as any).applyChange(makeContext(), {
+      const result = await service.mutationService.applyChange(makeContext(), {
         proposal: makeProposal({
           targetKind: 'agent',
           targetId: 'agent-2',
@@ -1934,7 +2000,7 @@ describe('SelfEvolutionService', () => {
     });
 
     it('applyChange 应保留底层 OCC 错误，并拒绝伪造 proposal', async () => {
-      vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      vi.spyOn(service.readService, 'loadGraphTarget').mockResolvedValueOnce({
         kind: 'agent',
         id: 'agent-1',
         label: '当前 Agent',
@@ -1947,7 +2013,7 @@ describe('SelfEvolutionService', () => {
       );
 
       await expect(
-        (service as any).applyChange(makeContext(), {
+        service.mutationService.applyChange(makeContext(), {
           proposal: makeProposal({ baseVersion: 3 }),
         }),
       ).resolves.toEqual({
@@ -1956,7 +2022,7 @@ describe('SelfEvolutionService', () => {
         error: '版本冲突：expectedVersion=3 currentVersion=4',
       });
       await expect(
-        (service as any).applyChange(makeContext(), {
+        service.mutationService.applyChange(makeContext(), {
           proposal: { ...makeProposal(), category: 'not-a-category' },
         }),
       ).resolves.toEqual({
@@ -1979,7 +2045,7 @@ describe('SelfEvolutionService', () => {
         id: 'workflow-1',
       });
 
-      const skill = await (service as any).createResource(makeContext(), {
+      const skill = await service.mutationService.createResource(makeContext(), {
         resourceType: 'skill',
         spec: {
           name: 'Skill',
@@ -2004,7 +2070,7 @@ describe('SelfEvolutionService', () => {
         ],
       );
 
-      await (service as any).createResource(makeContext(), {
+      await service.mutationService.createResource(makeContext(), {
         resourceType: 'workspace',
         spec: { name: 'Workspace', description: ' workspace ' },
       });
@@ -2016,7 +2082,7 @@ describe('SelfEvolutionService', () => {
         'workspace',
       );
 
-      await (service as any).createResource(makeContext(), {
+      await service.mutationService.createResource(makeContext(), {
         resourceType: 'agent',
         spec: { name: 'Agent', description: 'desc', icon: 'robot' },
       });
@@ -2025,7 +2091,7 @@ describe('SelfEvolutionService', () => {
         'user-1',
       );
 
-      await (service as any).createResource(makeContext(), {
+      await service.mutationService.createResource(makeContext(), {
         resourceType: 'workflow',
         spec: { name: 'Workflow', description: 'desc', icon: 'flow' },
       });
@@ -2040,7 +2106,7 @@ describe('SelfEvolutionService', () => {
       mockMcpService.importTools.mockResolvedValueOnce({ imported: 2 });
       mockSkillService.create.mockResolvedValueOnce({ id: 'skill-content' });
 
-      const mcp = await (service as any).createResource(makeContext(), {
+      const mcp = await service.mutationService.createResource(makeContext(), {
         resourceType: 'mcp',
         spec: {
           serverName: 'Web MCP',
@@ -2066,7 +2132,7 @@ describe('SelfEvolutionService', () => {
         data: { resourceType: 'mcp', resource: { imported: 2 } },
       });
 
-      await (service as any).createResource(makeContext(), {
+      await service.mutationService.createResource(makeContext(), {
         resourceType: 'skill',
         spec: { name: 'Inline Skill', content: '# inline' },
       });
@@ -2084,7 +2150,7 @@ describe('SelfEvolutionService', () => {
         id: 'provider-inline',
       });
 
-      await (service as any).createResource(makeContext(), {
+      await service.mutationService.createResource(makeContext(), {
         resourceType: 'model',
         spec: {
           name: 'Embedding',
@@ -2115,7 +2181,7 @@ describe('SelfEvolutionService', () => {
         'user-1',
       );
 
-      await (service as any).createResource(makeContext(), {
+      await service.mutationService.createResource(makeContext(), {
         resourceType: 'model',
         spec: {
           name: 'Chat',
@@ -2174,7 +2240,7 @@ describe('SelfEvolutionService', () => {
       'createResource 应将无效资源参数转换为失败结果 %#',
       async (input, error) => {
         await expect(
-          (service as any).createResource(makeContext(), input),
+          service.mutationService.createResource(makeContext(), input),
         ).resolves.toEqual({ success: false, data: null, error });
       },
     );

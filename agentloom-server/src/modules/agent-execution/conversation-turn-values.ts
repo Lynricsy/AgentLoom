@@ -12,7 +12,10 @@ import {
   type PendingConversationPromptMessage,
 } from './conversation-prompt-blocks';
 import type { PersistedSubAgentStreamRecord } from './subagent';
-import { readStringValue } from './conversation-execution-metadata';
+export {
+  extractAgentThinkingContent as extractThinkingEventContent,
+  mergeAgentToolCallEvent as mergeToolCallEvent,
+} from '../agent/shared/agent-turn-event-accumulator';
 
 export type ConversationTurnResult = {
   assistantText: string;
@@ -50,11 +53,12 @@ export function buildConversationTurnResult(
   assistantText: string,
   decision: DecisionEvent | undefined,
   stopReason: StopReason,
-  toolCalls: Map<string, ToolCallEvent>,
+  toolCalls: Iterable<ToolCallEvent> | Map<string, ToolCallEvent>,
   segments: ConversationMessageSegmentRecord[],
   subAgentStreams: Record<string, PersistedSubAgentStreamRecord>,
 ): ConversationTurnResult {
-  const toolCallList = [...toolCalls.values()];
+  const toolCallList =
+    toolCalls instanceof Map ? [...toolCalls.values()] : [...toolCalls];
   const toolResults = toolCallList
     .filter((call) => call.result !== undefined || call.error !== undefined)
     .map((call) => ({
@@ -90,66 +94,3 @@ export function turnResultHasPersistableOutput(
   );
 }
 
-export function mergeToolCallEvent(
-  previous: ToolCallEvent | undefined,
-  next: ToolCallEvent,
-): ToolCallEvent {
-  return {
-    ...next,
-    tool:
-      hasConcreteToolName(next.tool) || !previous ? next.tool : previous.tool,
-    args:
-      hasConcreteToolArgs(next.args) || !previous ? next.args : previous.args,
-    ...(next.transitions
-      ? { transitions: next.transitions }
-      : previous?.transitions
-        ? { transitions: previous.transitions }
-        : {}),
-    ...(next.result !== undefined
-      ? { result: next.result }
-      : previous?.result !== undefined
-        ? { result: previous.result }
-        : {}),
-    ...(next.error !== undefined
-      ? { error: next.error }
-      : previous?.error !== undefined
-        ? { error: previous.error }
-        : {}),
-    ...(next.permissionRequest
-      ? { permissionRequest: next.permissionRequest }
-      : previous?.permissionRequest
-        ? { permissionRequest: previous.permissionRequest }
-        : {}),
-  };
-}
-
-function hasConcreteToolName(tool: string | undefined): boolean {
-  return typeof tool === 'string' && tool.length > 0 && tool !== 'unknown_tool';
-}
-
-function hasConcreteToolArgs(
-  args: Record<string, unknown> | undefined,
-): boolean {
-  return !!args && Object.keys(args).length > 0;
-}
-
-export function extractThinkingEventContent(event: {
-  type?: unknown;
-  content?: unknown;
-  rationale?: unknown;
-  suggestedContent?: unknown;
-}): string | undefined {
-  switch (event.type) {
-    case 'thinking':
-    case 'plan':
-      return readStringValue(event.content);
-    case 'decision': {
-      const rationale = readStringValue(event.rationale);
-      const suggestedContent = readStringValue(event.suggestedContent);
-      const parts = [rationale, suggestedContent].filter(Boolean);
-      return parts.length > 0 ? parts.join('\n\n') : undefined;
-    }
-    default:
-      return undefined;
-  }
-}

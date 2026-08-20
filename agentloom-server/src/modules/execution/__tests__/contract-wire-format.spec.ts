@@ -14,8 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
-import { ExecutionGateway } from '../execution.gateway';
-import { EventBridgeService } from '../services/event-bridge.service';
+import {
+  EventBridgeService,
+  ExecutionBroadcastIntent,
+} from '../services/event-bridge.service';
 import { StateReplayService } from '../services/state-replay.service';
 import { ThrottleService } from '../services/throttle.service';
 import { ExecutionEventName } from '../types/execution-event.types';
@@ -150,8 +152,7 @@ const EMIT_CASES: ReadonlyArray<{
 
 describe('执行事件 wire 契约', () => {
   let service: EventBridgeService;
-  let broadcastTypedEvent: Mock;
-  let broadcastTypedEventImmediately: Mock;
+  let emitIntent: Mock;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -159,20 +160,14 @@ describe('执行事件 wire 契约', () => {
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
 
-    broadcastTypedEvent = vi.fn();
-    broadcastTypedEventImmediately = vi.fn();
+    emitIntent = vi.fn();
 
     const module = await Test.createTestingModule({
       providers: [
         EventBridgeService,
         {
-          provide: ExecutionGateway,
-          useValue: {
-            broadcastTypedEvent,
-            broadcastTypedEventImmediately,
-            flushExecutionQueue: vi.fn(),
-            clearExecutionQueue: vi.fn(),
-          },
+          provide: EventEmitter2,
+          useValue: { emit: emitIntent },
         },
         {
           provide: ThrottleService,
@@ -181,7 +176,6 @@ describe('执行事件 wire 契约', () => {
             clearExecution: vi.fn(),
           },
         },
-        { provide: EventEmitter2, useValue: { emit: vi.fn() } },
       ],
     }).compile();
 
@@ -279,11 +273,14 @@ describe('执行事件 wire 契约', () => {
       maxAttempts: 3,
     });
 
-    expect(broadcastTypedEvent).toHaveBeenCalledWith(
-      TENANT,
-      EXEC,
-      envelope.event,
-      envelope,
+    expect(emitIntent).toHaveBeenCalledWith(
+      ExecutionBroadcastIntent.BROADCAST,
+      {
+        tenantId: TENANT,
+        executionId: EXEC,
+        event: envelope.event,
+        data: envelope,
+      },
     );
   });
 });

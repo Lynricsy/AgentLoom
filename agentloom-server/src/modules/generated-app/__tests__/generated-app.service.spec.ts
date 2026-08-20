@@ -57,6 +57,12 @@ import { buildPublishCandidatePlan } from '../plan-builders/publish-candidate-pl
 import { GeneratedAppGate7PublishCandidateRunner } from '../generated-app.publish-candidate-runner';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
+import { GeneratedAppRepository } from '../generated-app.repository';
+import { GeneratedAppArtifactService } from '../generated-app-artifact.service';
+import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
+import { GeneratedAppGenerationRepairService } from '../generated-app-generation-repair.service';
+import { GeneratedAppGenerationOrchestratorService } from '../generated-app-generation-orchestrator.service';
+import { GeneratedAppPublicRuntimeService } from '../generated-app-public-runtime.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import type { ExecutionService } from '../../execution/execution.service';
 import type { StorageService } from '../../../infrastructure/storage/storage.service';
@@ -659,6 +665,59 @@ function createStorageServiceMock(
     ...overrides,
   } as unknown as StorageService;
 }
+function createRuntimeBindingServiceForTest(
+  pluginService?: PluginService,
+  configService = createConfigService(),
+  storageService = createStorageServiceMock(),
+): GeneratedAppRuntimeBindingService {
+  const repository = new GeneratedAppRepository(
+    mockTenantDb as unknown as DrizzleDB,
+    configService,
+  );
+  const artifactService = new GeneratedAppArtifactService(
+    repository,
+    configService,
+    storageService,
+  );
+  return new GeneratedAppRuntimeBindingService(
+    repository,
+    artifactService,
+    pluginService,
+  );
+}
+function createRepairServiceForTest(): GeneratedAppGenerationRepairService {
+  return new GeneratedAppGenerationRepairService(
+    new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+    ),
+  );
+}
+
+function createPublicRuntimeServiceForTest(
+  executionService?: ExecutionService,
+): GeneratedAppPublicRuntimeService {
+  const configService = createConfigService();
+  const repository = new GeneratedAppRepository(
+    mockTenantDb as unknown as DrizzleDB,
+    configService,
+  );
+  const artifactService = new GeneratedAppArtifactService(
+    repository,
+    configService,
+  );
+  const runtimeBindingService = new GeneratedAppRuntimeBindingService(
+    repository,
+    artifactService,
+  );
+  return new GeneratedAppPublicRuntimeService(
+    repository,
+    artifactService,
+    runtimeBindingService,
+    executionService,
+  );
+}
+
 
 function createGeneratedAppGateRun(
   overrides: Partial<GeneratedAppGateRun> = {},
@@ -924,13 +983,45 @@ function createGeneratedAppWithGate3Workspace(
 
 describe('GeneratedAppService', () => {
   let service: GeneratedAppService;
+  let repository: GeneratedAppRepository;
+  let artifactService: GeneratedAppArtifactService;
+  let runtimeBindingService: GeneratedAppRuntimeBindingService;
+  let repairService: GeneratedAppGenerationRepairService;
+  let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
 
     const configService = createConfigService();
-
+    const pluginService = createGeneratedPrivatePluginServiceMock();
+    const storageService = createStorageServiceMock();
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    artifactService = new GeneratedAppArtifactService(
+      repository,
+      configService,
+      storageService,
+    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(
+      repository,
+      artifactService,
+      pluginService,
+    );
+    repairService = new GeneratedAppGenerationRepairService(repository);
+    const orchestrator = new GeneratedAppGenerationOrchestratorService(
+      repository,
+      repairService,
+      runtimeBindingService,
+      configService,
+    );
+    publicRuntimeService = new GeneratedAppPublicRuntimeService(
+      repository,
+      artifactService,
+      runtimeBindingService,
+    );
     service = new GeneratedAppService(
       mockTenantDb as unknown as DrizzleDB,
       configService,
@@ -939,9 +1030,15 @@ describe('GeneratedAppService', () => {
       undefined,
       undefined,
       undefined,
-      createGeneratedPrivatePluginServiceMock(),
+      pluginService,
       undefined,
-      createStorageServiceMock(),
+      storageService,
+      repository,
+      artifactService,
+      runtimeBindingService,
+      repairService,
+      orchestrator,
+      publicRuntimeService,
     );
   });
 
@@ -1135,7 +1232,7 @@ describe('GeneratedAppService', () => {
       repairInstructions:
         '修复 publicShareToken、pluginIds、workflowSnapshots、rawToolData、/root/preview 和 sk-secret 后重新运行。',
     });
-    const internals = service as unknown as {
+    const internals = createRepairServiceForTest() as unknown as {
       buildFailedGateRepairPlan(
         failedGateRun: GeneratedAppGateRun,
         now: Date,
@@ -4249,13 +4346,26 @@ describe('GeneratedAppService', () => {
       undefined,
       storageService,
     );
-    const internals = serviceWithStorage as unknown as {
-      ensureGeneratedPrivatePluginBindings(
-        tenantId: string,
-        userId: string,
-        app: GeneratedAppResponseDto,
-      ): Promise<GeneratedAppResponseDto>;
-      toResponseDto(app: GeneratedApp): GeneratedAppResponseDto;
+    const storageRepository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    const storageArtifactService = new GeneratedAppArtifactService(
+      storageRepository,
+      configService,
+      storageService,
+    );
+    const storageBindingService = new GeneratedAppRuntimeBindingService(
+      storageRepository,
+      storageArtifactService,
+      pluginService,
+    );
+    const internals = {
+      ensureGeneratedPrivatePluginBindings:
+        storageBindingService.ensureGeneratedPrivatePluginBindings.bind(
+          storageBindingService,
+        ),
+      toResponseDto: storageRepository.toResponseDto.bind(storageRepository),
     };
     const generationPlan = buildGenerationPlan(app.appSpec);
     const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
@@ -4458,13 +4568,26 @@ describe('GeneratedAppService', () => {
       undefined,
       storageService,
     );
-    const internals = serviceWithStorage as unknown as {
-      ensureGeneratedPrivatePluginBindings(
-        tenantId: string,
-        userId: string,
-        app: GeneratedAppResponseDto,
-      ): Promise<GeneratedAppResponseDto>;
-      toResponseDto(app: GeneratedApp): GeneratedAppResponseDto;
+    const storageRepository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    const storageArtifactService = new GeneratedAppArtifactService(
+      storageRepository,
+      configService,
+      storageService,
+    );
+    const storageBindingService = new GeneratedAppRuntimeBindingService(
+      storageRepository,
+      storageArtifactService,
+      pluginService,
+    );
+    const internals = {
+      ensureGeneratedPrivatePluginBindings:
+        storageBindingService.ensureGeneratedPrivatePluginBindings.bind(
+          storageBindingService,
+        ),
+      toResponseDto: storageRepository.toResponseDto.bind(storageRepository),
     };
     const generationPlan = buildGenerationPlan(app.appSpec);
     const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
@@ -4836,7 +4959,7 @@ describe('GeneratedAppService', () => {
     mockTenantDb.update.mockReturnValueOnce(updateAppWorkflowBindingChain);
 
     const response = await (
-      service as unknown as {
+      createRuntimeBindingServiceForTest() as unknown as {
         ensureGeneratedWorkflowRuntimeBinding(
           tenantId: string,
           userId: string,
@@ -4889,7 +5012,7 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(updateAppWorkflowBindingChain);
 
     const response = await (
-      service as unknown as {
+      createRuntimeBindingServiceForTest() as unknown as {
         ensureGeneratedWorkflowRuntimeBinding(
           tenantId: string,
           userId: string,
@@ -4949,7 +5072,7 @@ describe('GeneratedAppService', () => {
     );
 
     const workflowId = await (
-      service as unknown as {
+      createRuntimeBindingServiceForTest() as unknown as {
         createGeneratedWorkflowRuntimeBinding(
           tenantId: string,
           userId: string,
@@ -12767,7 +12890,8 @@ describe('GeneratedAppService coverage branches', () => {
         },
       },
     });
-    const pluginBindingInternals = pluginServiceInstance as unknown as {
+    const pluginBindingInternals =
+      createRuntimeBindingServiceForTest(pluginService) as unknown as {
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -12802,7 +12926,8 @@ describe('GeneratedAppService coverage branches', () => {
     const app = createGeneratedApp({
       generationPlan: buildGenerationPlan(createGeneratedApp().appSpec),
     });
-    const pluginBindingInternals = serviceWithoutPlugin as unknown as {
+    const pluginBindingInternals =
+      createRuntimeBindingServiceForTest() as unknown as {
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -12833,7 +12958,8 @@ describe('GeneratedAppService coverage branches', () => {
       undefined,
       pluginService,
     );
-    const pluginBindingInternals = pluginServiceInstance as unknown as {
+    const pluginBindingInternals =
+      createRuntimeBindingServiceForTest(pluginService) as unknown as {
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -12905,7 +13031,7 @@ describe('GeneratedAppService coverage branches', () => {
     mockTenantDb.update
       .mockReturnValueOnce(failedUpdateChain)
       .mockReturnValueOnce(missingUpdateChain);
-    const repairInternals = service as unknown as {
+    const repairInternals = createRepairServiceForTest() as unknown as {
       completeGate3RepairAttempt(params: {
         tenantId: string;
         appId: string;
@@ -12972,7 +13098,8 @@ describe('GeneratedAppService coverage branches', () => {
       wasmBundleUrl,
       metadata,
     };
-    const pluginInternals = service as unknown as {
+    const pluginInternals =
+      createRuntimeBindingServiceForTest() as unknown as {
       mustRefreshGeneratedPrivatePluginRegistration(
         app: GeneratedApp,
         toolId: string,
@@ -13113,7 +13240,7 @@ describe('GeneratedAppService coverage branches', () => {
       });
       const insertChain = createInsertReturningChain([returnedAttempt]);
       mockTenantDb.insert.mockReturnValueOnce(insertChain);
-      const repairInternals = service as unknown as {
+      const repairInternals = createRepairServiceForTest() as unknown as {
         recordAutomaticRepairAttemptForFailedRun(params: {
           tenantId: string;
           userId: string;
@@ -13171,7 +13298,7 @@ describe('GeneratedAppService coverage branches', () => {
       }),
       appId: APP_ID,
     };
-    const repairInternals = service as unknown as {
+    const repairInternals = createRepairServiceForTest() as unknown as {
       recordAutomaticRepairAttemptForFailedRun(params: {
         tenantId: string;
         userId: string;
@@ -13366,7 +13493,7 @@ describe('GeneratedAppService focused branch contracts', () => {
   });
 
   it('workflow handoff 刷新策略应区分全部运行态与终态', () => {
-    const internals = service as unknown as {
+    const internals = createPublicRuntimeServiceForTest() as unknown as {
       shouldRefreshSubmissionWorkflowHandoff(
         submission: GeneratedAppSubmission,
       ): boolean;
@@ -13406,7 +13533,7 @@ describe('GeneratedAppService focused branch contracts', () => {
   });
 
   it('workflow handoff 应拒绝非法 execution 与 workflow 标识', () => {
-    const internals = service as unknown as {
+    const internals = createPublicRuntimeServiceForTest() as unknown as {
       extractPublicWorkflowExecutionHandoffFromPayload(
         payload: Record<string, unknown>,
       ): {
@@ -13431,7 +13558,7 @@ describe('GeneratedAppService focused branch contracts', () => {
   });
 
   it('workflow 运行中 handoff 应仅在存在步骤总数时公开进度', () => {
-    const internals = service as unknown as {
+    const internals = createPublicRuntimeServiceForTest() as unknown as {
       buildRefreshedWorkflowExecutionHandoff(params: {
         workflowDefinitionId: string;
         executionId: string;
@@ -13530,7 +13657,7 @@ describe('GeneratedAppService focused branch contracts', () => {
       },
     ];
     mockTenantDb.select.mockReturnValueOnce(createSelectManyChain(steps));
-    const internals = service as unknown as {
+    const internals = createPublicRuntimeServiceForTest() as unknown as {
       buildPublicWorkflowExecutionSummary(
         executionId: string,
         tenantId: string,
