@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { type z } from 'zod';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -31,6 +32,12 @@ import {
   ListAgentDefinitionsQuerySchema,
   type ListAgentDefinitionsQueryDto,
 } from './dto';
+import {
+  AgentDefinitionDetailResponseSwaggerDto,
+  AgentDefinitionDetailEnvelopeSwaggerSchema,
+  AgentDefinitionListResponseSwaggerDto,
+  AgentDefinitionListResponseSwaggerSchema,
+} from './dto/agent-definition-response.dto';
 
 @ApiTags('Agent Definitions')
 @Controller('agent-definitions')
@@ -56,11 +63,15 @@ export class AgentDefinitionController {
   @Get()
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取 Agent 定义列表' })
-  @ApiResponse({ status: 200, description: 'Agent 定义列表' })
+  @ApiResponse({
+    status: 200,
+    description: 'Agent 定义列表',
+    type: AgentDefinitionListResponseSwaggerDto,
+  })
   async findAll(
     @Query(new ZodValidationPipe(ListAgentDefinitionsQuerySchema))
     query: ListAgentDefinitionsQueryDto,
-  ) {
+  ): Promise<z.infer<typeof AgentDefinitionListResponseSwaggerSchema>> {
     return this.agentDefinitionService.findAll(query);
   }
 
@@ -68,9 +79,15 @@ export class AgentDefinitionController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取 Agent 定义详情' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
-  @ApiResponse({ status: 200, description: 'Agent 定义详情' })
+  @ApiResponse({
+    status: 200,
+    description: 'Agent 定义详情',
+    type: AgentDefinitionDetailResponseSwaggerDto,
+  })
   @ApiResponse({ status: 404, description: 'Agent 不存在' })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<z.infer<typeof AgentDefinitionDetailEnvelopeSwaggerSchema>> {
     const data = await this.agentDefinitionService.findDetailById(id);
     return { data };
   }

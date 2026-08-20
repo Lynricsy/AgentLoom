@@ -14,6 +14,12 @@ export type {
 } from './agent-definition-response.dto';
 
 export {
+  AgentDefinitionResponseSwaggerSchema,
+  AgentDefinitionDetailResponseSwaggerSchema,
+  AgentDefinitionListResponseSwaggerSchema,
+  AgentDefinitionDetailEnvelopeSwaggerSchema,
+  AgentDefinitionListResponseSwaggerDto,
+  AgentDefinitionDetailResponseSwaggerDto,
   serializeAgentDefinition,
   serializeAgentDefinitionDetail,
 } from './agent-definition-response.dto';
