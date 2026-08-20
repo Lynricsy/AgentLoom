@@ -70,6 +70,23 @@ Map<String, dynamic>? coerceSocketJsonMap(Object? value) {
   return null;
 }
 
+/// Socket 事件解析失败的可观测记录。
+class SocketParseFailure {
+  const SocketParseFailure({
+    required this.eventName,
+    required this.reason,
+    this.payloadKeys = const <String>[],
+  });
+
+  final String eventName;
+  final String reason;
+  final List<String> payloadKeys;
+
+  @override
+  String toString() =>
+      'SocketParseFailure(event: $eventName, reason: $reason, keys: $payloadKeys)';
+}
+
 /// 执行监控 Socket.IO 服务
 ///
 /// 管理与服务端 /execution namespace 的 WebSocket 连接，
@@ -139,6 +156,15 @@ class ExecutionSocketService {
   /// 是否已连接
   bool get isConnected => _socket?.connected ?? false;
 
+  int _parseFailureCount = 0;
+  SocketParseFailure? _lastParseFailure;
+
+  /// 累计事件解析失败次数。非 0 说明服务端 wire 格式与本端模型已漂移。
+  int get parseFailureCount => _parseFailureCount;
+
+  /// 最近一次解析失败的详情，供诊断使用。
+  SocketParseFailure? get lastParseFailure => _lastParseFailure;
+
   /// 连接到服务端 /execution namespace
   void connect() {
     if (_socket != null) return;
@@ -173,126 +199,122 @@ class ExecutionSocketService {
     });
 
     // 业务事件
-    socket.on('execution.status.changed', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _executionStatusChanged.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.status-changed', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _nodeStatusChanged.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.agent-event', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _stepAgentEvent.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.retrying', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _stepRetrying.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.output-chunk', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _outputChunk.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.intervention-required', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _interventionRequired.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.intervention-resolved', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _interventionResolved.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.tool-call-status', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _toolCallStatusChanged.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.tool-permission-required', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _toolPermissionRequired.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
-
-    socket.on('execution.node.tool-permission-resolved', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _toolPermissionResolved.add(ExecutionEventEnvelope.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
-    });
+    _bindEnvelopeEvent(
+      socket,
+      'execution.status.changed',
+      _executionStatusChanged,
+    );
+    _bindEnvelopeEvent(socket, 'execution.node.status-changed', _nodeStatusChanged);
+    _bindEnvelopeEvent(socket, 'execution.node.agent-event', _stepAgentEvent);
+    _bindEnvelopeEvent(socket, 'execution.node.retrying', _stepRetrying);
+    _bindEnvelopeEvent(socket, 'execution.node.output-chunk', _outputChunk);
+    _bindEnvelopeEvent(
+      socket,
+      'execution.node.intervention-required',
+      _interventionRequired,
+    );
+    _bindEnvelopeEvent(
+      socket,
+      'execution.node.intervention-resolved',
+      _interventionResolved,
+    );
+    _bindEnvelopeEvent(
+      socket,
+      'execution.node.tool-call-status',
+      _toolCallStatusChanged,
+    );
+    _bindEnvelopeEvent(
+      socket,
+      'execution.node.tool-permission-required',
+      _toolPermissionRequired,
+    );
+    _bindEnvelopeEvent(
+      socket,
+      'execution.node.tool-permission-resolved',
+      _toolPermissionResolved,
+    );
 
     socket.on('execution.state.snapshot', (data) {
-      final payload = coerceSocketJsonMap(data);
-      if (payload != null) {
-        try {
-          _stateSnapshot.add(ExecutionStateSnapshot.fromJson(payload));
-        } catch (_) {
-          // 解析失败则忽略
-        }
-      }
+      _decodeAndEmit(
+        eventName: 'execution.state.snapshot',
+        data: data,
+        decode: ExecutionStateSnapshot.fromJson,
+        sink: _stateSnapshot,
+      );
     });
+  }
+
+  /// 把一个 camelCase 事件信封绑定到对应的流。
+  void _bindEnvelopeEvent(
+    io.Socket socket,
+    String eventName,
+    StreamController<ExecutionEventEnvelope> sink,
+  ) {
+    socket.on(eventName, (data) {
+      _decodeAndEmit(
+        eventName: eventName,
+        data: data,
+        decode: ExecutionEventEnvelope.fromJson,
+        sink: sink,
+      );
+    });
+  }
+
+  /// 解析并投递事件载荷。
+  ///
+  /// 解析失败不再静默丢弃：累加 [parseFailureCount]、记录最近一次失败详情，
+  /// 并在 debug 构建下打印结构化错误，便于定位契约漂移。
+  void _decodeAndEmit<T>({
+    required String eventName,
+    required Object? data,
+    required T Function(Map<String, dynamic>) decode,
+    required StreamController<T> sink,
+  }) {
+    final payload = coerceSocketJsonMap(data);
+
+    if (payload == null) {
+      _recordParseFailure(
+        eventName,
+        'payload 不是 JSON 对象：${data.runtimeType}',
+      );
+      return;
+    }
+
+    try {
+      sink.add(decode(payload));
+    } catch (error, stackTrace) {
+      _recordParseFailure(
+        eventName,
+        error.toString(),
+        keys: payload.keys.toList(growable: false),
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  void _recordParseFailure(
+    String eventName,
+    String reason, {
+    List<String>? keys,
+    StackTrace? stackTrace,
+  }) {
+    _parseFailureCount += 1;
+    _lastParseFailure = SocketParseFailure(
+      eventName: eventName,
+      reason: reason,
+      payloadKeys: keys ?? const <String>[],
+    );
+
+    assert(() {
+      debugPrint(
+        '[ExecutionSocketService] 事件 $eventName 解析失败（累计 $_parseFailureCount 次）：'
+        '$reason；载荷键=${keys ?? const <String>[]}',
+      );
+      if (stackTrace != null) {
+        debugPrintStack(stackTrace: stackTrace, maxFrames: 8);
+      }
+      return true;
+    }());
   }
 
   /// 订阅执行事件，返回 SubscribeAck

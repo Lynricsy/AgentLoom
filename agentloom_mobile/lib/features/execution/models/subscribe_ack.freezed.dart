@@ -289,8 +289,7 @@ extension SubscribeAckPatterns on SubscribeAck {
 }
 
 /// @nodoc
-
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class _SubscribeAck implements SubscribeAck {
   const _SubscribeAck({required this.status, this.currentState, this.error});
   factory _SubscribeAck.fromJson(Map<String, dynamic> json) =>

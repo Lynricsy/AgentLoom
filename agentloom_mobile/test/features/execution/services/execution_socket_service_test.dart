@@ -177,16 +177,16 @@ void main() {
     // 测试事件模型的序列化/反序列化（间接测试事件处理逻辑）
     test('ExecutionEventEnvelope 从服务端 JSON 正确反序列化', () {
       final json = {
-        'event_id': 42,
+        'eventId': 42,
         'event': 'execution.status.changed',
         'timestamp': '2026-01-01T00:00:00.000Z',
-        'execution_id': 'exec-1',
-        'tenant_id': 'tenant-1',
+        'executionId': 'exec-1',
+        'tenantId': 'tenant-1',
         'data': {
-          'execution_id': 'exec-1',
+          'executionId': 'exec-1',
           'status': 'running',
-          'completed_steps': 1,
-          'total_steps': 5,
+          'completedSteps': 1,
+          'totalSteps': 5,
         },
       };
 
@@ -207,8 +207,8 @@ void main() {
 
     test('NodeStatusChangedData 从服务端 JSON 正确反序列化', () {
       final json = {
-        'step_id': 'step-1',
-        'node_id': 'node-1',
+        'stepId': 'step-1',
+        'nodeId': 'node-1',
         'from': 'pending',
         'to': 'running',
       };
@@ -222,27 +222,27 @@ void main() {
 
     test('ExecutionStateSnapshot 从服务端 JSON 正确反序列化', () {
       final json = {
-        'execution_id': 'exec-1',
+        'executionId': 'exec-1',
         'status': 'running',
-        'completed_steps': 2,
-        'total_steps': 5,
+        'completedSteps': 2,
+        'totalSteps': 5,
         'steps': [
           {
-            'step_id': 'step-1',
-            'node_id': 'node-1',
+            'stepId': 'step-1',
+            'nodeId': 'node-1',
             'status': 'completed',
-            'started_at': '2026-01-01T10:00:00.000Z',
-            'completed_at': '2026-01-01T10:01:00.000Z',
+            'startedAt': '2026-01-01T10:00:00.000Z',
+            'completedAt': '2026-01-01T10:01:00.000Z',
           },
           {
-            'step_id': 'step-2',
-            'node_id': 'node-2',
+            'stepId': 'step-2',
+            'nodeId': 'node-2',
             'status': 'running',
-            'started_at': '2026-01-01T10:01:00.000Z',
+            'startedAt': '2026-01-01T10:01:00.000Z',
           },
         ],
-        'snapshot_at': '2026-01-01T10:01:30.000Z',
-        'last_event_id': 15,
+        'snapshotAt': '2026-01-01T10:01:30.000Z',
+        'lastEventId': 15,
       };
 
       final snapshot = ExecutionStateSnapshot.fromJson(json);
@@ -265,13 +265,13 @@ void main() {
     test('SubscribeAck subscribed 响应正确反序列化', () {
       final json = {
         'status': 'subscribed',
-        'current_state': {
-          'execution_id': 'exec-1',
+        'currentState': {
+          'executionId': 'exec-1',
           'status': 'running',
-          'completed_steps': 0,
-          'total_steps': 3,
+          'completedSteps': 0,
+          'totalSteps': 3,
           'steps': [],
-          'snapshot_at': '2026-01-01T10:00:00.000Z',
+          'snapshotAt': '2026-01-01T10:00:00.000Z',
         },
       };
 
@@ -320,14 +320,14 @@ void main() {
       final payload = coerceSocketJsonMap(
         {
               'status': 'subscribed',
-              'current_state': {'execution_id': 'exec-1'},
+              'currentState': {'executionId': 'exec-1'},
             }
             as Map<Object?, Object?>,
       );
 
       expect(payload, isNotNull);
       expect(payload!['status'], 'subscribed');
-      expect(payload['current_state'], isA<Map<Object?, Object?>>());
+      expect(payload['currentState'], isA<Map<Object?, Object?>>());
     });
 
     test('returns null for non-map payloads', () {

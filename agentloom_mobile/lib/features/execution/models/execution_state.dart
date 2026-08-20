@@ -9,7 +9,8 @@ part 'execution_state.g.dart';
 /// 步骤快照，与服务端 ExecutionStateSnapshot.steps[] 对齐
 @freezed
 abstract class StepSnapshot with _$StepSnapshot {
-  @JsonSerializable(fieldRename: FieldRename.snake)
+  // server 的 Socket 信封与载荷是 camelCase（见 agentloom-contracts），
+  // 不能声明 FieldRename.snake，否则生成的解析代码会去读 event_id 之类的键。
   const factory StepSnapshot({
     required String stepId,
     required String nodeId,
@@ -31,7 +32,8 @@ abstract class StepSnapshot with _$StepSnapshot {
 /// 执行状态快照，subscribe ACK 或 state.snapshot 事件返回
 @freezed
 abstract class ExecutionStateSnapshot with _$ExecutionStateSnapshot {
-  @JsonSerializable(fieldRename: FieldRename.snake)
+  // server 的 Socket 信封与载荷是 camelCase（见 agentloom-contracts），
+  // 不能声明 FieldRename.snake，否则生成的解析代码会去读 event_id 之类的键。
   const factory ExecutionStateSnapshot({
     required String executionId,
     required String status,

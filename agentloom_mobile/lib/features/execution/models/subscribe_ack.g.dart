@@ -9,10 +9,10 @@ part of 'subscribe_ack.dart';
 _SubscribeAck _$SubscribeAckFromJson(Map<String, dynamic> json) =>
     _SubscribeAck(
       status: json['status'] as String,
-      currentState: json['current_state'] == null
+      currentState: json['currentState'] == null
           ? null
           : ExecutionStateSnapshot.fromJson(
-              json['current_state'] as Map<String, dynamic>,
+              json['currentState'] as Map<String, dynamic>,
             ),
       error: json['error'] as String?,
     );
@@ -20,6 +20,6 @@ _SubscribeAck _$SubscribeAckFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$SubscribeAckToJson(_SubscribeAck instance) =>
     <String, dynamic>{
       'status': instance.status,
-      'current_state': instance.currentState?.toJson(),
+      'currentState': instance.currentState?.toJson(),
       'error': instance.error,
     };

@@ -7,17 +7,17 @@ void main() {
     test('fromJson 解析成功订阅响应', () {
       final json = {
         'status': 'subscribed',
-        'current_state': {
-          'execution_id': 'exec-001',
+        'currentState': {
+          'executionId': 'exec-001',
           'status': 'running',
-          'completed_steps': 2,
-          'total_steps': 5,
+          'completedSteps': 2,
+          'totalSteps': 5,
           'steps': [
-            {'step_id': 'step-1', 'node_id': 'node-a', 'status': 'completed'},
-            {'step_id': 'step-2', 'node_id': 'node-b', 'status': 'running'},
+            {'stepId': 'step-1', 'nodeId': 'node-a', 'status': 'completed'},
+            {'stepId': 'step-2', 'nodeId': 'node-b', 'status': 'running'},
           ],
-          'snapshot_at': '2026-01-01T10:00:00.000Z',
-          'last_event_id': 10,
+          'snapshotAt': '2026-01-01T10:00:00.000Z',
+          'lastEventId': 10,
         },
         'error': null,
       };
@@ -34,7 +34,7 @@ void main() {
     test('fromJson 解析错误响应', () {
       final json = {
         'status': 'error',
-        'current_state': null,
+        'currentState': null,
         'error': 'FORBIDDEN',
       };
       final ack = SubscribeAck.fromJson(json);
@@ -52,7 +52,7 @@ void main() {
       expect(ack.error, 'NOT_FOUND');
     });
 
-    test('toJson 输出 snake_case', () {
+    test('toJson 输出 camelCase wire 键名', () {
       const ack = SubscribeAck(
         status: 'subscribed',
         currentState: ExecutionStateSnapshot(
@@ -63,8 +63,8 @@ void main() {
       );
       final json = ack.toJson();
       expect(json['status'], 'subscribed');
-      expect(json['current_state'], isNotNull);
-      expect((json['current_state'] as Map)['execution_id'], 'exec-001');
+      expect(json['currentState'], isNotNull);
+      expect((json['currentState'] as Map)['executionId'], 'exec-001');
     });
 
     test('equality 基于值', () {
