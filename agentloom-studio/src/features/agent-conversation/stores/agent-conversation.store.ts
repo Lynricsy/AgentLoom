@@ -822,14 +822,13 @@ export const useAgentConversationStore = create<
                 try {
                   const response = await apiClient
                     .get(`agent-conversations/${conversationId}`)
-                    .json<Partial<ConversationDetailResponseSwaggerDto>>();
+                    .json<ConversationDetailResponseSwaggerDto>();
 
-                  const messageResponse = response.data?.messages;
-                  const normalizedMessages = (messageResponse?.data ?? []).map(
+                  const normalizedMessages = response.data.messages.data.map(
                     (message) => normalizeConversationHistoryMessage(message),
                   );
                   const executionSnapshot = normalizeConversationExecutionSnapshot(
-                    response.data?.metadata,
+                    response.data.metadata,
                   );
 
                   set((s) => {
