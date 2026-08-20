@@ -1,4 +1,4 @@
-use crate::types::{PortDataType, PortDefinition, ScalarTypeSchema, TypeSchema};
+use crate::types::{PortDataType, PortDefinition, PortDirection, ScalarTypeSchema, TypeSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -66,8 +66,24 @@ struct ComparisonState {
     transform_used: bool,
 }
 
-pub fn check_compatibility(source: &PortDefinition, target: &PortDefinition) -> CompatibilityResult {
+pub fn check_compatibility(
+    source: &PortDefinition,
+    target: &PortDefinition,
+) -> CompatibilityResult {
     CompatibilityChecker::default().check(source, target)
+}
+pub fn check_port_connection(
+    source: &PortDefinition,
+    target: &PortDefinition,
+    source_connection_count: u32,
+    target_connection_count: u32,
+) -> CompatibilityResult {
+    CompatibilityChecker::default().check_port_connection(
+        source,
+        target,
+        source_connection_count,
+        target_connection_count,
+    )
 }
 
 pub fn check_schema_compatibility(source: &TypeSchema, target: &TypeSchema) -> CompatibilityResult {
@@ -103,26 +119,66 @@ impl Default for CompatibilityChecker {
 
 impl CompatibilityChecker {
     pub fn check(&self, source: &PortDefinition, target: &PortDefinition) -> CompatibilityResult {
-        let source_schema = source
-            .schema
-            .clone()
-            .unwrap_or_else(|| scalar_schema(source.data_type, source.description.clone(), !source.required));
-        let target_schema = target
-            .schema
-            .clone()
-            .unwrap_or_else(|| scalar_schema(target.data_type, target.description.clone(), !target.required));
+        let source_schema = source.schema.clone().unwrap_or_else(|| {
+            scalar_schema(
+                source.data_type,
+                source.description.clone(),
+                !source.required,
+            )
+        });
+        let target_schema = target.schema.clone().unwrap_or_else(|| {
+            scalar_schema(
+                target.data_type,
+                target.description.clone(),
+                !target.required,
+            )
+        });
 
         self.check_schemas(&source_schema, &target_schema)
+    }
+    pub fn check_port_connection(
+        &self,
+        source: &PortDefinition,
+        target: &PortDefinition,
+        source_connection_count: u32,
+        target_connection_count: u32,
+    ) -> CompatibilityResult {
+        if source.direction != PortDirection::Output {
+            return connection_incompatible("source_direction_must_be_output");
+        }
+        if target.direction != PortDirection::Input {
+            return connection_incompatible("target_direction_must_be_input");
+        }
+        if !source.required && target.required {
+            return connection_incompatible("optional_source_to_required_target");
+        }
+        if connection_limit(source).is_some_and(|limit| source_connection_count >= limit) {
+            return connection_incompatible("source_connection_limit_reached");
+        }
+        if connection_limit(target).is_some_and(|limit| target_connection_count >= limit) {
+            return connection_incompatible("target_connection_limit_reached");
+        }
+
+        self.check(source, target)
     }
 
     pub fn check_schemas(&self, source: &TypeSchema, target: &TypeSchema) -> CompatibilityResult {
         self.compare_schema(source, target, "").into_result()
     }
 
-    fn compare_schema(&self, source: &TypeSchema, target: &TypeSchema, path: &str) -> ComparisonState {
+    fn compare_schema(
+        &self,
+        source: &TypeSchema,
+        target: &TypeSchema,
+        path: &str,
+    ) -> ComparisonState {
         if source.kind() != target.kind() {
             if let Some(rule) = self.find_transform_rule(source.kind(), target.kind()) {
-                return ComparisonState::transform(rule.reason_key, rule.transform_fn, count_units(target));
+                return ComparisonState::transform(
+                    rule.reason_key,
+                    rule.transform_fn,
+                    count_units(target),
+                );
             }
 
             return ComparisonState::incompatible(
@@ -188,7 +244,8 @@ impl CompatibilityChecker {
 
         if !state.missing_fields.is_empty() {
             let source_paths = collect_source_paths(&TypeSchema::Object(source.clone()), path);
-            state.candidate_mappings = self.build_candidate_mappings(&source_paths, &state.missing_fields);
+            state.candidate_mappings =
+                self.build_candidate_mappings(&source_paths, &state.missing_fields);
         }
 
         state
@@ -220,7 +277,11 @@ impl CompatibilityChecker {
             );
         }
 
-        self.compare_schema(source.items.as_ref(), target.items.as_ref(), &join_array_path(path))
+        self.compare_schema(
+            source.items.as_ref(),
+            target.items.as_ref(),
+            &join_array_path(path),
+        )
     }
 
     fn build_candidate_mappings(
@@ -257,10 +318,14 @@ impl CompatibilityChecker {
         candidates
     }
 
-    fn find_transform_rule(&self, source_kind: PortDataType, target_kind: PortDataType) -> Option<&TransformRule> {
-        self.transform_rules.iter().find(|rule| {
-            rule.source_kind == source_kind && rule.target_kind == target_kind
-        })
+    fn find_transform_rule(
+        &self,
+        source_kind: PortDataType,
+        target_kind: PortDataType,
+    ) -> Option<&TransformRule> {
+        self.transform_rules
+            .iter()
+            .find(|rule| rule.source_kind == source_kind && rule.target_kind == target_kind)
     }
 }
 
@@ -368,7 +433,9 @@ impl ComparisonState {
         if self.matched_units == 0 && self.missing_fields.is_empty() {
             return CompatibilityResult {
                 level: CompatibilityLevel::Incompatible,
-                reason: self.reason.or_else(|| Some("type_mismatch_no_transform".to_string())),
+                reason: self
+                    .reason
+                    .or_else(|| Some("type_mismatch_no_transform".to_string())),
                 missing_fields: Vec::new(),
                 candidate_mappings: Vec::new(),
                 conflict_path: self.conflict_path,
@@ -378,7 +445,10 @@ impl ComparisonState {
         }
 
         metadata.insert("matchedRatio".to_string(), json!(matched_ratio));
-        metadata.insert("matchedRequiredCount".to_string(), json!(self.matched_units));
+        metadata.insert(
+            "matchedRequiredCount".to_string(),
+            json!(self.matched_units),
+        );
         metadata.insert("totalRequiredCount".to_string(), json!(total_units));
         metadata.insert("unmappedRequiredCount".to_string(), json!(unmatched_units));
 
@@ -404,6 +474,18 @@ impl ComparisonState {
     }
 }
 
+fn connection_limit(port: &PortDefinition) -> Option<u32> {
+    if port.multiple {
+        port.max_connections
+    } else {
+        Some(1)
+    }
+}
+
+fn connection_incompatible(reason: &str) -> CompatibilityResult {
+    ComparisonState::incompatible(reason, None, 1).into_result()
+}
+
 fn scalar_schema(kind: PortDataType, description: Option<String>, nullable: bool) -> TypeSchema {
     TypeSchema::Scalar(ScalarTypeSchema {
         kind,
@@ -422,7 +504,12 @@ fn count_units(schema: &TypeSchema) -> usize {
             if object_schema.properties.is_empty() {
                 1
             } else {
-                object_schema.properties.values().map(count_units).sum::<usize>().max(1)
+                object_schema
+                    .properties
+                    .values()
+                    .map(count_units)
+                    .sum::<usize>()
+                    .max(1)
             }
         }
         TypeSchema::Array(array_schema) => count_units(array_schema.items.as_ref()).max(1),
@@ -474,7 +561,9 @@ fn field_similarity(source_path: &str, target_path: &str) -> f64 {
     if normalized_source == normalized_target {
         return 0.95;
     }
-    if normalized_source.contains(&normalized_target) || normalized_target.contains(&normalized_source) {
+    if normalized_source.contains(&normalized_target)
+        || normalized_target.contains(&normalized_source)
+    {
         return 0.8;
     }
 

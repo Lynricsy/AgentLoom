@@ -89,12 +89,9 @@ export async function buildPluginArchive(
 
   mkdirSync(outputDir, { recursive: true });
 
-  let nodeDefinitions: Array<Record<string, unknown>> = [];
-  try {
-    nodeDefinitions = serializeNodes((await loadPlugin(cwd)).nodes);
-  } catch {
-    nodeDefinitions = [];
-  }
+  const nodeDefinitions = options.wasm
+    ? []
+    : serializeNodes((await loadPlugin(cwd)).nodes);
 
   const resultManifest: PluginManifest = options.wasm
     ? { ...manifest, wasmEntry: 'dist/plugin.wasm' }

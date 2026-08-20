@@ -81,10 +81,12 @@ fn nested_schema_depth_limit_is_enforced() {
     let result = validate_schema(&schema);
 
     assert!(!result.valid);
-    assert!(result
-        .errors
-        .iter()
-        .any(|error| error.code == "MAX_DEPTH_EXCEEDED"));
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|error| error.code == "MAX_DEPTH_EXCEEDED")
+    );
 }
 
 fn scalar_schema(kind: PortDataType) -> TypeSchema {

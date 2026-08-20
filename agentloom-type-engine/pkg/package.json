@@ -3,7 +3,7 @@
   "type": "module",
   "description": "AgentLoom Type Engine - WASM-powered type compatibility checker",
   "version": "0.1.0",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "files": [
     "agentloom_type_engine_bg.wasm",
     "agentloom_type_engine.js",

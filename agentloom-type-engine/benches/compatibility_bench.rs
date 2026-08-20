@@ -2,7 +2,7 @@ use agentloom_type_engine::checker::check_compatibility;
 use agentloom_type_engine::types::{
     ObjectTypeSchema, PortDataType, PortDefinition, PortDirection, ScalarTypeSchema, TypeSchema,
 };
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::collections::HashMap;
 
 fn benchmark_object_compatibility(criterion: &mut Criterion) {

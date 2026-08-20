@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { type Server } from 'node:http';
 import { resolve } from 'node:path';
 
@@ -7,7 +8,12 @@ import express, { type Express } from 'express';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
 
 import { loadManifest } from '../utils/manifest';
-import { loadPlugin, serializeNodes, type RuntimeNodeDefinition } from '../utils/plugin';
+import {
+  loadPlugin,
+  serializeNodes,
+  type RuntimeNodeDefinition,
+  type RuntimePlugin,
+} from '../utils/plugin';
 
 export interface DevCommandLogger {
   info(message: string): void;
@@ -53,19 +59,22 @@ function createExecutionLogger(logger: DevCommandLogger) {
   };
 }
 
-function normalizeExecutionContext(
+function createExecutionContext(
   value: unknown,
   logger: DevCommandLogger,
 ): Record<string, unknown> {
-  const context = isRecord(value) ? { ...value } : {};
+  const body = isRecord(value) ? value : {};
 
-  context.inputs = isRecord(context.inputs) ? context.inputs : {};
-  context.config = isRecord(context.config) ? context.config : {};
-  context.logger = isRecord(context.logger)
-    ? context.logger
-    : createExecutionLogger(logger);
-
-  return context;
+  return {
+    inputs: isRecord(body.inputs) ? body.inputs : {},
+    config: isRecord(body.config) ? body.config : {},
+    logger: createExecutionLogger(logger),
+    metadata: {
+      executionId: randomUUID(),
+      stepId: randomUUID(),
+      nodeId: randomUUID(),
+    },
+  };
 }
 
 export async function startDevServer(
@@ -75,25 +84,48 @@ export async function startDevServer(
   const logger = options.logger ?? console;
   const manifest = loadManifest(cwd);
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '100kb' }));
 
-  let nodes: RuntimeNodeDefinition[] = (await loadPlugin(cwd)).nodes;
+  let activePlugin: RuntimePlugin = await loadPlugin(cwd);
+  await activePlugin.activate();
 
-  const reloadNodes = async (): Promise<void> => {
-    nodes = (await loadPlugin(cwd)).nodes;
-    logger.info(`检测到变更，已重新加载插件，共 ${nodes.length} 个节点。`);
+  const reloadPlugin = async (): Promise<void> => {
+    const previousPlugin = activePlugin;
+    await previousPlugin.deactivate();
+
+    try {
+      const candidatePlugin = await loadPlugin(cwd);
+      try {
+        await candidatePlugin.activate();
+      } catch (error) {
+        await candidatePlugin.deactivate().catch(() => undefined);
+        throw error;
+      }
+      activePlugin = candidatePlugin;
+      logger.info(`检测到变更，已重新加载插件，共 ${candidatePlugin.nodes.length} 个节点。`);
+    } catch (error) {
+      try {
+        await previousPlugin.activate();
+      } catch (rollbackError) {
+        const message = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+        throw new Error(`插件重载失败，且旧插件恢复失败：${message}`, { cause: error });
+      }
+      throw error;
+    }
   };
+
+  let reloadQueue = Promise.resolve();
 
   app.get('/manifest', (_request, response) => {
     response.json(manifest);
   });
 
   app.get('/nodes', (_request, response) => {
-    response.json(serializeNodes(nodes));
+    response.json(serializeNodes(activePlugin.nodes));
   });
 
   app.post('/nodes/:type/execute', async (request, response) => {
-    const node = nodes.find((candidate) => candidate.type === request.params.type);
+    const node = activePlugin.nodes.find((candidate) => candidate.type === request.params.type);
 
     if (!node || typeof node.execute !== 'function') {
       response.status(404).json({ error: `未找到节点类型：${request.params.type}` });
@@ -101,7 +133,7 @@ export async function startDevServer(
     }
 
     try {
-      const result = await node.execute(normalizeExecutionContext(request.body, logger));
+      const result = await node.execute(createExecutionContext(request.body, logger));
       response.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : '节点执行失败。';
@@ -113,14 +145,13 @@ export async function startDevServer(
     ignoreInitial: true,
   });
 
-  watcher.on('all', async (eventName, changedPath) => {
+  watcher.on('all', (eventName, changedPath) => {
     logger.info(`检测到 ${eventName}: ${changedPath}`);
-
-    try {
-      await reloadNodes();
-    } catch (error) {
-      logger.error(error instanceof Error ? error.message : '插件重载失败。');
-    }
+    reloadQueue = reloadQueue
+      .then(reloadPlugin)
+      .catch((error: unknown) => {
+        logger.error(error instanceof Error ? error.message : '插件重载失败。');
+      });
   });
 
   const server = await new Promise<Server>((resolveServer, rejectServer) => {
@@ -135,8 +166,14 @@ export async function startDevServer(
   const resolvedPort = typeof address === 'object' && address ? address.port : options.port ?? 4400;
 
   let signalHandlersRegistered = false;
+  let stopped = false;
 
   const stop = async (): Promise<void> => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+
     if (signalHandlersRegistered) {
       process.off('SIGINT', signalHandler);
       process.off('SIGTERM', signalHandler);
@@ -144,6 +181,7 @@ export async function startDevServer(
     }
 
     await watcher.close();
+    await reloadQueue;
 
     await new Promise<void>((resolveClose, rejectClose) => {
       server.close((error) => {
@@ -155,6 +193,7 @@ export async function startDevServer(
         resolveClose();
       });
     });
+    await activePlugin.deactivate();
   };
 
   const signalHandler = async (): Promise<void> => {

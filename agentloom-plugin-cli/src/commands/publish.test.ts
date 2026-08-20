@@ -103,7 +103,25 @@ beforeEach(() => {
 
     if (command === 'npx tsc') {
       mkdirSync(join(cwd, 'dist'), { recursive: true });
-      writeFileSync(join(cwd, 'dist', 'index.js'), 'export default { nodes: [] };\n', 'utf8');
+      writeFileSync(
+        join(cwd, 'dist', 'index.js'),
+        `export default {
+  manifest: {
+    id: 'com.agentloom.publish-test',
+    name: 'Publish Test',
+    version: '1.0.0',
+    author: 'Test Author',
+    description: 'Test plugin for publish',
+    license: 'MIT',
+    minPlatformVersion: '1.0.0',
+    permissions: [],
+  },
+  nodes: [],
+  activate: async () => {},
+  deactivate: async () => {},
+};\n`,
+        'utf8',
+      );
       return Buffer.alloc(0);
     }
 

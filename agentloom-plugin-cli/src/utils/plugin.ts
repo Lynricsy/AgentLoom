@@ -2,20 +2,28 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import {
+  CustomNodeDefinitionSchema,
+  PluginManifestSchema,
+  type PluginManifest,
+} from '@agentloom/plugin-sdk';
 export interface RuntimeNodeDefinition {
   type: string;
-  label?: string;
-  category?: string;
-  description?: string;
-  inputPorts?: unknown[];
-  outputPorts?: unknown[];
-  configSchema?: unknown;
-  execute?: (context: Record<string, unknown>) => Promise<unknown> | unknown;
+  label: string;
+  category: string;
+  description: string;
+  inputPorts: unknown[];
+  outputPorts: unknown[];
+  configSchema?: Record<string, unknown>;
+  execute: (context: Record<string, unknown>) => Promise<unknown> | unknown;
   [key: string]: unknown;
 }
 
 export interface RuntimePlugin {
+  manifest: PluginManifest;
   nodes: RuntimeNodeDefinition[];
+  activate(): Promise<void>;
+  deactivate(): Promise<void>;
 }
 
 interface PackageJsonLike {
@@ -68,30 +76,66 @@ function extractPluginCandidate(moduleValue: Record<string, unknown>): unknown {
   return moduleValue;
 }
 
-function isRuntimeNodeDefinition(value: unknown): value is RuntimeNodeDefinition {
-  return isRecord(value) && typeof value.type === 'string';
+function describeNode(value: unknown, index: number): string {
+  const type = isRecord(value) && typeof value.type === 'string' ? value.type : '<unknown>';
+  return `节点 index=${index}, type=${type}`;
 }
+
+let importRevision = 0;
 
 export async function loadPlugin(cwd: string): Promise<RuntimePlugin> {
   const entryPath = resolvePluginEntry(cwd);
   const entryUrl = pathToFileURL(entryPath);
-  entryUrl.searchParams.set('t', Date.now().toString());
+  entryUrl.searchParams.set('revision', String(++importRevision));
 
   const importedModule = (await import(entryUrl.href)) as Record<string, unknown>;
   const pluginCandidate = extractPluginCandidate(importedModule);
 
   if (!isRecord(pluginCandidate) || !Array.isArray(pluginCandidate.nodes)) {
-    throw new Error('插件入口必须默认导出包含 nodes 数组的插件对象。');
+    throw new Error('插件入口必须默认导出包含 manifest、nodes 与生命周期钩子的插件对象。');
   }
 
-  const nodes = pluginCandidate.nodes;
-
-  if (!nodes.every(isRuntimeNodeDefinition)) {
-    throw new Error('插件 nodes 数组中存在无效节点定义，必须至少包含 type 字段。');
+  const manifestResult = PluginManifestSchema.safeParse(pluginCandidate.manifest);
+  if (!manifestResult.success) {
+    throw new Error(`插件 manifest 无效：${manifestResult.error.message}`);
+  }
+  if (
+    typeof pluginCandidate.activate !== 'function' ||
+    typeof pluginCandidate.deactivate !== 'function'
+  ) {
+    throw new Error('插件必须提供 activate 与 deactivate 生命周期钩子。');
   }
 
-  return { nodes };
+  const nodes: RuntimeNodeDefinition[] = [];
+  const seenTypes = new Set<string>();
+  for (const [index, candidate] of pluginCandidate.nodes.entries()) {
+    const descriptor = describeNode(candidate, index);
+    if (!isRecord(candidate) || typeof candidate.execute !== 'function') {
+      throw new Error(`${descriptor} 无效：execute 必须是函数。`);
+    }
+
+    const { execute: candidateExecute, ...serializableDefinition } = candidate;
+    const execute = candidateExecute as RuntimeNodeDefinition['execute'];
+    const result = CustomNodeDefinitionSchema.safeParse(serializableDefinition);
+    if (!result.success) {
+      throw new Error(`${descriptor} 校验失败：${result.error.message}`);
+    }
+    if (seenTypes.has(result.data.type)) {
+      throw new Error(`${descriptor} 与更早的节点定义使用了重复 type。`);
+    }
+
+    seenTypes.add(result.data.type);
+    nodes.push({ ...result.data, execute });
+  }
+
+  return {
+    manifest: manifestResult.data,
+    nodes,
+    activate: pluginCandidate.activate.bind(pluginCandidate) as () => Promise<void>,
+    deactivate: pluginCandidate.deactivate.bind(pluginCandidate) as () => Promise<void>,
+  };
 }
+
 
 export function serializeNodes(nodes: RuntimeNodeDefinition[]): Array<Record<string, unknown>> {
   return nodes.map(({ execute: _execute, ...node }) => node);

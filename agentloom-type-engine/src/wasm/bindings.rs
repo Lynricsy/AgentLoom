@@ -4,7 +4,7 @@ use crate::validator;
 use crate::wasm::error::WasmError;
 use serde::Serialize;
 use serde_json::json;
-use wasm_bindgen::{prelude::wasm_bindgen, JsError, JsValue};
+use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
 
 #[wasm_bindgen(js_name = checkCompatibility)]
 pub fn check_compatibility(source: JsValue, target: JsValue) -> Result<JsValue, JsError> {
