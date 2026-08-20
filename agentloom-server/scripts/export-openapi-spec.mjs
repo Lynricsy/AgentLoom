@@ -110,6 +110,48 @@ function normalizeWildcardPathParameters(document) {
   return document;
 }
 
+/**
+ * Zod 的 `z.tuple([...])` 会被渲染成 JSON Schema 2020-12 的 `prefixItems`，
+ * 而 OpenAPI 3.0 完全没有定长元组这个概念，`prefixItems` 属于未知关键字、
+ * 同时又缺少必需的 `items`，openapi-generator 的 spec 校验会直接失败。
+ *
+ * 这里按 OpenAPI 3.0 能表达的最接近形式降级：`items` 取各位置 schema
+ * （形状一致时取其一，否则用 anyOf），并用 minItems/maxItems 保留长度约束。
+ * 元组的"第 N 位是什么类型"信息在 3.0 里无法表达，只能丢失。
+ */
+function downgradeTupleSchemas(node) {
+  if (Array.isArray(node)) {
+    for (const item of node) downgradeTupleSchemas(item);
+    return node;
+  }
+
+  if (!node || typeof node !== 'object') return node;
+
+  for (const value of Object.values(node)) downgradeTupleSchemas(value);
+
+  const prefixItems = node.prefixItems;
+  if (!Array.isArray(prefixItems)) return node;
+
+  delete node.prefixItems;
+
+  if (node.items === undefined) {
+    const serialized = prefixItems.map((item) => JSON.stringify(item));
+    const uniqueIndexes = serialized
+      .map((item, index) => (serialized.indexOf(item) === index ? index : -1))
+      .filter((index) => index >= 0);
+
+    node.items =
+      uniqueIndexes.length === 1
+        ? prefixItems[uniqueIndexes[0]]
+        : { anyOf: uniqueIndexes.map((index) => prefixItems[index]) };
+  }
+
+  node.minItems ??= prefixItems.length;
+  node.maxItems ??= prefixItems.length;
+
+  return node;
+}
+
 async function exportSpec() {
   applyExportEnvDefaults();
 
@@ -127,8 +169,8 @@ async function exportSpec() {
 
   app.setGlobalPrefix(API_GLOBAL_PREFIX);
 
-  const document = normalizeWildcardPathParameters(
-    createSwaggerDocument(app),
+  const document = downgradeTupleSchemas(
+    normalizeWildcardPathParameters(createSwaggerDocument(app)),
   );
   const outputDir = join(projectRoot, 'sdk');
   const outputPath = join(outputDir, 'openapi.json');
