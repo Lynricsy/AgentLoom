@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/models/paginated_response.dart';
 import '../api/resources_api.dart';
 import '../models/resource_dtos.dart';
+import '../providers/sandbox_provider.dart';
 import '../widgets/resource_shared.dart';
 
 const _liveSandboxStatuses = {'ready', 'busy'};
@@ -20,13 +20,7 @@ class SandboxesScreen extends ConsumerStatefulWidget {
 class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
   final _searchController = TextEditingController();
   String _bindingType = 'resource';
-  late Future<PaginatedResponse<SandboxSessionDto>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
+  String? _search;
 
   @override
   void dispose() {
@@ -34,32 +28,32 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
     super.dispose();
   }
 
-  Future<PaginatedResponse<SandboxSessionDto>> _load() {
-    return ref
-        .read(resourcesApiProvider)
-        .listSandboxes(
-          search: _searchController.text.trim().isEmpty
-              ? null
-              : _searchController.text.trim(),
-          bindingType: _bindingType.isEmpty ? null : _bindingType,
-        );
+  SandboxListQuery get _query => SandboxListQuery(
+    search: _search,
+    bindingType: _bindingType.isEmpty ? null : _bindingType,
+  );
+
+  void _submitSearch() {
+    final value = _searchController.text.trim();
+    setState(() => _search = value.isEmpty ? null : value);
   }
 
-  Future<void> _reload() async {
-    setState(() {
-      _future = _load();
-    });
-    await _future;
+  Future<void> _refresh(SandboxListQuery query) async {
+    final provider = sandboxListProvider(query);
+    ref.invalidate(provider);
+    await ref.read(provider.future);
   }
 
   @override
   Widget build(BuildContext context) {
+    final query = _query;
+    final sandboxes = ref.watch(sandboxListProvider(query));
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sandbox'),
         actions: [
           IconButton(
-            onPressed: () => unawaited(_reload()),
+            onPressed: () => unawaited(_refresh(query)),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -81,12 +75,12 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                 IconButton(
                   onPressed: () {
                     _searchController.clear();
-                    unawaited(_reload());
+                    _submitSearch();
                   },
                   icon: const Icon(Icons.close),
                 ),
               ],
-              onSubmitted: (_) => unawaited(_reload()),
+              onSubmitted: (_) => _submitSearch(),
             ),
           ),
           Padding(
@@ -100,40 +94,28 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                     label: const Text('资源'),
                     selected: _bindingType == 'resource',
                     onSelected: (_) {
-                      setState(() {
-                        _bindingType = 'resource';
-                        _future = _load();
-                      });
+                      setState(() => _bindingType = 'resource');
                     },
                   ),
                   ChoiceChip(
                     label: const Text('全部'),
                     selected: _bindingType.isEmpty,
                     onSelected: (_) {
-                      setState(() {
-                        _bindingType = '';
-                        _future = _load();
-                      });
+                      setState(() => _bindingType = '');
                     },
                   ),
                   ChoiceChip(
                     label: const Text('对话'),
                     selected: _bindingType == 'conversation',
                     onSelected: (_) {
-                      setState(() {
-                        _bindingType = 'conversation';
-                        _future = _load();
-                      });
+                      setState(() => _bindingType = 'conversation');
                     },
                   ),
                   ChoiceChip(
                     label: const Text('执行'),
                     selected: _bindingType == 'execution',
                     onSelected: (_) {
-                      setState(() {
-                        _bindingType = 'execution';
-                        _future = _load();
-                      });
+                      setState(() => _bindingType = 'execution');
                     },
                   ),
                 ],
@@ -141,24 +123,18 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
             ),
           ),
           Expanded(
-            child: FutureBuilder<PaginatedResponse<SandboxSessionDto>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return ResourceErrorState(
-                    message: '加载沙箱失败：${snapshot.error}',
-                    onRetry: () => unawaited(_reload()),
-                  );
-                }
-
-                final items =
-                    snapshot.data?.data ?? const <SandboxSessionDto>[];
+            child: sandboxes.when(
+              skipLoadingOnRefresh: false,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => ResourceErrorState(
+                message: '加载沙箱失败：$error',
+                onRetry: () => unawaited(_refresh(query)),
+              ),
+              data: (response) {
+                final items = response.data;
                 if (items.isEmpty) {
                   return RefreshIndicator(
-                    onRefresh: _reload,
+                    onRefresh: () => _refresh(query),
                     child: ListView(
                       children: [
                         const SizedBox(height: 80),
@@ -175,7 +151,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                 }
 
                 return RefreshIndicator(
-                  onRefresh: _reload,
+                  onRefresh: () => _refresh(query),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                     itemCount: items.length,
@@ -314,7 +290,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
 
   Future<void> _executeAction(Future<void> Function() action) async {
     await action();
-    await _reload();
+    await _refresh(_query);
   }
 
   Future<void> _showCreateDialog() async {
@@ -384,7 +360,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
       );
 
       if (created == true) {
-        await _reload();
+        await _refresh(_query);
       }
     } finally {
       nameController.dispose();
@@ -399,107 +375,146 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (context) {
-        return FutureBuilder<(SandboxStatsDto?, List<SandboxLogDto>)>(
-          future: () async {
-            final api = ref.read(resourcesApiProvider);
-            final shouldLoadStats = _liveSandboxStatuses.contains(
-              sandbox.status,
-            );
-            final stats = shouldLoadStats
-                ? await api.getSandboxStats(sandbox.id)
-                : null;
-            final logs = await api.getSandboxLogs(sandbox.id);
-            return (stats, logs);
-          }(),
-          builder: (context, snapshot) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  Text(
-                    sandbox.config.name ?? sandbox.id,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 16),
-                  ResourceMetadataRow(label: '绑定', value: sandbox.bindingLabel),
-                  ResourceMetadataRow(label: '状态', value: sandbox.status),
-                  ResourceMetadataRow(
-                    label: '生命周期',
-                    value: sandbox.config.lifecycleMode,
-                  ),
-                  ResourceMetadataRow(
-                    label: '工作区',
-                    value: sandbox.workspacePath ?? '未挂载',
-                  ),
-                  ResourceMetadataRow(
-                    label: '创建时间',
-                    value: formatDateTime(sandbox.createdAt),
-                  ),
-                  if (snapshot.connectionState != ConnectionState.done)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (snapshot.hasData) ...[
-                    if (snapshot.data!.$1 != null) ...[
-                      const SizedBox(height: 16),
-                      _MetricChipRow(stats: snapshot.data!.$1!),
-                    ] else ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        '实时资源统计仅在运行中的沙箱可用。',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    JsonCodePanel(
-                      label: '沙箱配置',
-                      data: {
-                        'cpu': sandbox.config.cpu,
-                        'memory': sandbox.config.memory,
-                        'disk': sandbox.config.disk,
-                        'timeout': sandbox.config.timeout,
-                        'timeoutSeconds': sandbox.config.timeoutSeconds,
-                        'lifecycleMode': sandbox.config.lifecycleMode,
-                        'restoreWorkspaceId': sandbox.config.restoreWorkspaceId,
-                      },
-                    ),
-                    if (snapshot.data!.$2.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        '最近日志',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 10),
-                      for (final log in snapshot.data!.$2.take(10)) ...[
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: SelectableText(
-                              '[${log.level}] ${log.message}',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(fontFamily: 'monospace'),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                    ],
-                  ],
-                ],
-              ),
-            );
+      builder: (context) => _SandboxDetailSheet(sandbox: sandbox),
+    );
+  }
+}
+
+class _SandboxDetailSheet extends ConsumerWidget {
+  const _SandboxDetailSheet({required this.sandbox});
+
+  final SandboxSessionDto sandbox;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final logs = ref.watch(sandboxLogsProvider(sandbox.id));
+    final shouldLoadStats = _liveSandboxStatuses.contains(sandbox.status);
+
+    Widget runtimeContent(List<SandboxLogDto> loadedLogs) {
+      if (!shouldLoadStats) {
+        return _SandboxRuntimeContent(sandbox: sandbox, logs: loadedLogs);
+      }
+      return ref
+          .watch(sandboxStatsProvider(sandbox.id))
+          .when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => ResourceErrorState(
+              message: '加载沙箱统计失败：$error',
+              onRetry: () => ref.invalidate(sandboxStatsProvider(sandbox.id)),
+            ),
+            data: (stats) => _SandboxRuntimeContent(
+              sandbox: sandbox,
+              stats: stats,
+              logs: loadedLogs,
+            ),
+          );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Text(
+            sandbox.config.name ?? sandbox.id,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 16),
+          ResourceMetadataRow(label: '绑定', value: sandbox.bindingLabel),
+          ResourceMetadataRow(label: '状态', value: sandbox.status),
+          ResourceMetadataRow(
+            label: '生命周期',
+            value: sandbox.config.lifecycleMode,
+          ),
+          ResourceMetadataRow(
+            label: '工作区',
+            value: sandbox.workspacePath ?? '未挂载',
+          ),
+          ResourceMetadataRow(
+            label: '创建时间',
+            value: formatDateTime(sandbox.createdAt),
+          ),
+          logs.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, _) => ResourceErrorState(
+              message: '加载沙箱日志失败：$error',
+              onRetry: () => ref.invalidate(sandboxLogsProvider(sandbox.id)),
+            ),
+            data: runtimeContent,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SandboxRuntimeContent extends StatelessWidget {
+  const _SandboxRuntimeContent({
+    required this.sandbox,
+    required this.logs,
+    this.stats,
+  });
+
+  final SandboxSessionDto sandbox;
+  final SandboxStatsDto? stats;
+  final List<SandboxLogDto> logs;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentStats = stats;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (currentStats != null) ...[
+          const SizedBox(height: 16),
+          _MetricChipRow(stats: currentStats),
+        ] else ...[
+          const SizedBox(height: 16),
+          Text(
+            '实时资源统计仅在运行中的沙箱可用。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        const SizedBox(height: 16),
+        JsonCodePanel(
+          label: '沙箱配置',
+          data: {
+            'cpu': sandbox.config.cpu,
+            'memory': sandbox.config.memory,
+            'disk': sandbox.config.disk,
+            'timeout': sandbox.config.timeout,
+            'timeoutSeconds': sandbox.config.timeoutSeconds,
+            'lifecycleMode': sandbox.config.lifecycleMode,
+            'restoreWorkspaceId': sandbox.config.restoreWorkspaceId,
           },
-        );
-      },
+        ),
+        if (logs.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text('最近日志', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 10),
+          for (final log in logs.take(10)) ...[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: SelectableText(
+                  '[${log.level}] ${log.message}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ],
     );
   }
 }

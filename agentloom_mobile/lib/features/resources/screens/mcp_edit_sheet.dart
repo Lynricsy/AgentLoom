@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/resources_api.dart';
 import '../models/resource_dtos.dart';
+import '../providers/mcp_provider.dart';
 import '../widgets/resource_shared.dart';
 import 'mcp_form_models.dart';
 
@@ -133,10 +134,12 @@ class _McpEditSheetState extends ConsumerState<McpEditSheet> {
             status: _status,
             connection: _replaceConnection ? _buildConnection() : null,
           );
+      ref.invalidate(mcpServerListProvider);
+      ref.invalidate(mcpServerDetailProvider(widget.detail.id));
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) {
         return;

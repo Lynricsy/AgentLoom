@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/resources_api.dart';
 import '../models/resource_dtos.dart';
+import '../providers/mcp_provider.dart';
 import '../widgets/resource_shared.dart';
 import 'mcp_form_models.dart';
 
@@ -200,6 +201,11 @@ class _McpDiscoverySheetState extends ConsumerState<McpDiscoverySheet> {
               toolNames: _selectedToolNames.toList(growable: false),
               conflictStrategy: _conflictStrategy,
             );
+      ref.invalidate(mcpServerListProvider);
+      final existing = widget.existingDetail;
+      if (existing != null) {
+        ref.invalidate(mcpServerDetailProvider(existing.id));
+      }
 
       if (!mounted) {
         return;
@@ -211,7 +217,7 @@ class _McpDiscoverySheetState extends ConsumerState<McpDiscoverySheet> {
           ),
         ),
       );
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) {
         return;

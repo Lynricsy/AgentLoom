@@ -15,22 +15,37 @@ void main() {
       data: [],
       meta: PaginationMeta(total: 0, page: 1, pageSize: 20, totalPages: 0),
     );
-    when(() => api.listMcpServerConfigs(
-      search: 'git',
-      status: 'active',
-      transportType: 'stdio',
-      sourceKind: 'manual',
-    )).thenAnswer((_) async => result);
-    final container = ProviderContainer(overrides: [resourcesApiProvider.overrideWithValue(api)]);
+    when(
+      () => api.listMcpServerConfigs(
+        search: 'git',
+        status: 'active',
+        transportType: 'stdio',
+        sourceKind: 'manual',
+      ),
+    ).thenAnswer((_) async => result);
+    final container = ProviderContainer(
+      overrides: [resourcesApiProvider.overrideWithValue(api)],
+    );
     addTearDown(container.dispose);
 
-    final value = await container.read(mcpServerListProvider((search: 'git', status: 'active', transportType: 'stdio', sourceKind: 'manual')).future);
+    final value = await container.read(
+      mcpServerListProvider(
+        const McpServerListQuery(
+          search: 'git',
+          status: 'active',
+          transportType: 'stdio',
+          sourceKind: 'manual',
+        ),
+      ).future,
+    );
     expect(value.data, isEmpty);
-    verify(() => api.listMcpServerConfigs(
-      search: 'git',
-      status: 'active',
-      transportType: 'stdio',
-      sourceKind: 'manual',
-    )).called(1);
+    verify(
+      () => api.listMcpServerConfigs(
+        search: 'git',
+        status: 'active',
+        transportType: 'stdio',
+        sourceKind: 'manual',
+      ),
+    ).called(1);
   });
 }

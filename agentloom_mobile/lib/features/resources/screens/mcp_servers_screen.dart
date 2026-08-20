@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/models/paginated_response.dart';
 import '../../../shared/widgets/resource_source_chip.dart';
 import '../models/resource_dtos.dart';
 import '../widgets/resource_shared.dart';
@@ -23,13 +22,7 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
   String? _statusFilter;
   String? _transportFilter;
   String? _sourceKindFilter;
-  late Future<PaginatedResponse<McpServerConfigSummaryDto>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
+  String? _search;
 
   @override
   void dispose() {
@@ -37,74 +30,62 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
     super.dispose();
   }
 
-  McpServerListParams get _params => (
-    search: _searchController.text.trim().isEmpty
-        ? null
-        : _searchController.text.trim(),
+  McpServerListQuery get _query => McpServerListQuery(
+    search: _search,
     status: _statusFilter,
     transportType: _transportFilter,
     sourceKind: _sourceKindFilter,
   );
 
-  Future<PaginatedResponse<McpServerConfigSummaryDto>> _load() =>
-      ref.read(mcpServerListProvider(_params).future);
+  void _submitSearch() {
+    final value = _searchController.text.trim();
+    setState(() => _search = value.isEmpty ? null : value);
+  }
 
-  Future<void> _reload() async {
-    ref.invalidate(mcpServerListProvider);
-    setState(() => _future = _load());
-    await _future;
+  Future<void> _refresh(McpServerListQuery query) async {
+    final provider = mcpServerListProvider(query);
+    ref.invalidate(provider);
+    await ref.read(provider.future);
   }
 
   Future<void> _openImportSheet() async {
-    final imported = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => const McpDiscoverySheet(),
     );
-
-    if (imported == true) {
-      await _reload();
-    }
   }
 
   Future<void> _openDetailSheet(McpServerConfigSummaryDto summary) async {
-    final changed = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => McpServerDetailSheet(summary: summary),
     );
-
-    if (changed == true) {
-      await _reload();
-    }
   }
 
   void _applyStatusFilter(String? value) {
-    setState(() {
-      _statusFilter = value;
-      _future = _load();
-    });
+    setState(() => _statusFilter = value);
   }
 
   void _applyTransportFilter(String? value) {
-    setState(() {
-      _transportFilter = value;
-      _future = _load();
-    });
+    setState(() => _transportFilter = value);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final query = _query;
+    final servers = ref.watch(mcpServerListProvider(query));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('MCP 服务'),
         actions: [
           IconButton(
-            onPressed: () => unawaited(_reload()),
+            onPressed: () => unawaited(_refresh(query)),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -126,12 +107,12 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                 IconButton(
                   onPressed: () {
                     _searchController.clear();
-                    unawaited(_reload());
+                    _submitSearch();
                   },
                   icon: const Icon(Icons.close),
                 ),
               ],
-              onSubmitted: (_) => unawaited(_reload()),
+              onSubmitted: (_) => _submitSearch(),
             ),
           ),
           Padding(
@@ -189,30 +170,21 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                       label: '全部',
                       selected: _sourceKindFilter == null,
                       onSelected: () {
-                        setState(() {
-                          _sourceKindFilter = null;
-                          _future = _load();
-                        });
+                        setState(() => _sourceKindFilter = null);
                       },
                     ),
                     _FilterChip(
                       label: '自己创建',
                       selected: _sourceKindFilter == 'manual',
                       onSelected: () {
-                        setState(() {
-                          _sourceKindFilter = 'manual';
-                          _future = _load();
-                        });
+                        setState(() => _sourceKindFilter = 'manual');
                       },
                     ),
                     _FilterChip(
                       label: '分享导入',
                       selected: _sourceKindFilter == 'share_imported',
                       onSelected: () {
-                        setState(() {
-                          _sourceKindFilter = 'share_imported';
-                          _future = _load();
-                        });
+                        setState(() => _sourceKindFilter = 'share_imported');
                       },
                     ),
                   ],
@@ -221,25 +193,18 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
             ),
           ),
           Expanded(
-            child: FutureBuilder<PaginatedResponse<McpServerConfigSummaryDto>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return ResourceErrorState(
-                    message:
-                        '加载 MCP 配置失败：${describeResourceError(snapshot.error!)}',
-                    onRetry: () => unawaited(_reload()),
-                  );
-                }
-
-                final items =
-                    snapshot.data?.data ?? const <McpServerConfigSummaryDto>[];
+            child: servers.when(
+              skipLoadingOnRefresh: false,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => ResourceErrorState(
+                message: '加载 MCP 配置失败：${describeResourceError(error)}',
+                onRetry: () => unawaited(_refresh(query)),
+              ),
+              data: (response) {
+                final items = response.data;
                 if (items.isEmpty) {
                   return RefreshIndicator(
-                    onRefresh: _reload,
+                    onRefresh: () => _refresh(query),
                     child: ListView(
                       children: const [
                         SizedBox(height: 80),
@@ -254,13 +219,14 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                 }
 
                 return RefreshIndicator(
-                  onRefresh: _reload,
+                  onRefresh: () => _refresh(query),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final config = items[index];
+                      final lastTestedAt = config.lastTestedAt;
                       return Card(
                         child: ListTile(
                           contentPadding: const EdgeInsets.all(16),
@@ -292,10 +258,10 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                                     sourceKind: config.sourceKind,
                                     compact: true,
                                   ),
-                                  if (config.lastTestedAt != null)
+                                  if (lastTestedAt != null)
                                     Chip(
                                       label: Text(
-                                        '已测 ${formatDateTime(config.lastTestedAt!)}',
+                                        '已测 ${formatDateTime(lastTestedAt)}',
                                       ),
                                       visualDensity: VisualDensity.compact,
                                     ),
@@ -319,9 +285,6 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
   }
 }
 
-
-
-
 class _FilterChip extends StatelessWidget {
   const _FilterChip({
     required this.label,
@@ -342,7 +305,6 @@ class _FilterChip extends StatelessWidget {
     );
   }
 }
-
 
 String _mcpStatusLabel(String status) {
   return switch (status) {

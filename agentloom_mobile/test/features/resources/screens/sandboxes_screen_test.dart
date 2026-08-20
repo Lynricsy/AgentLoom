@@ -138,5 +138,54 @@ void main() {
       verify(() => mockResourcesApi.getSandboxStats(readySandbox.id)).called(1);
       verify(() => mockResourcesApi.getSandboxLogs(readySandbox.id)).called(1);
     });
+
+    testWidgets('binding filter switches to a new provider key', (
+      tester,
+    ) async {
+      await tester.pumpWidget(createTestWidget(stoppedSandbox));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('对话'));
+      await tester.pumpAndSettle();
+
+      verify(
+        () => mockResourcesApi.listSandboxes(
+          page: 1,
+          pageSize: 20,
+          search: null,
+          status: null,
+          lifecycleMode: null,
+          bindingType: 'conversation',
+        ),
+      ).called(1);
+    });
+
+    testWidgets('successful sandbox mutation invalidates the active list key', (
+      tester,
+    ) async {
+      when(
+        () => mockResourcesApi.startSandbox(stoppedSandbox.id),
+      ).thenAnswer((_) async {});
+
+      await tester.pumpWidget(createTestWidget(stoppedSandbox));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Show menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('启动'));
+      await tester.pumpAndSettle();
+
+      verify(() => mockResourcesApi.startSandbox(stoppedSandbox.id)).called(1);
+      verify(
+        () => mockResourcesApi.listSandboxes(
+          page: 1,
+          pageSize: 20,
+          search: null,
+          status: null,
+          lifecycleMode: null,
+          bindingType: 'resource',
+        ),
+      ).called(2);
+    });
   });
 }
