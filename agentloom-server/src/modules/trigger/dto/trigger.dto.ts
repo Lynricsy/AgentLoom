@@ -29,6 +29,15 @@ export const WebhookConfigCreateSchema = z
   })
   .strict();
 
+export const WebhookConfigUpdateSchema = z
+  .object({
+    authMode: WebhookAuthModeSchema.optional(),
+    ipWhitelist: z
+      .array(z.string().ip({ message: '无效的 IP 地址' }))
+      .optional(),
+  })
+  .strict();
+
 export const WebhookConfigSchema = z
   .object({
     authMode: WebhookAuthModeSchema.optional(),
@@ -43,6 +52,8 @@ export const ApiEventConfigSchema = z
     eventSource: z.string().min(1, { message: '事件来源不能为空' }),
     eventType: z.string().min(1, { message: '事件类型不能为空' }),
     filterExpression: z.string().optional(),
+    // 事件源验签密钥（如 GitHub webhook 的 HMAC-SHA256 secret），仅需验签的事件源使用
+    secret: z.string().min(1).optional(),
   })
   .strict();
 
@@ -121,7 +132,7 @@ export const UpdateTriggerSchema = z
     config: z
       .union([
         CronConfigSchema,
-        WebhookConfigCreateSchema,
+        WebhookConfigUpdateSchema,
         ApiEventConfigSchema,
       ])
       .optional(),
@@ -158,6 +169,7 @@ export type TriggerHistoryStatus = z.infer<typeof TriggerHistoryStatusSchema>;
 export type CronConfig = z.infer<typeof CronConfigSchema>;
 export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
 export type WebhookConfigCreate = z.infer<typeof WebhookConfigCreateSchema>;
+export type WebhookConfigUpdate = z.infer<typeof WebhookConfigUpdateSchema>;
 export type ApiEventConfig = z.infer<typeof ApiEventConfigSchema>;
 export type CreateTriggerInput = z.infer<typeof CreateTriggerSchema>;
 export type UpdateTriggerInput = z.infer<typeof UpdateTriggerSchema>;

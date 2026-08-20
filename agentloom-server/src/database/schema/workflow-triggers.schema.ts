@@ -38,6 +38,8 @@ export interface ApiEventTriggerConfig {
   eventSource: string;
   eventType: string;
   filterExpression?: string;
+  /** 事件源验签密钥（如 GitHub webhook 的 HMAC-SHA256 secret） */
+  secret?: string;
 }
 
 export type TriggerConfig =
