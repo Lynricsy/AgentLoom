@@ -132,6 +132,8 @@ Agent 与 Workflow 为并行顶层概念:
 
 **类型共享**：`@agentloom/contracts` 是 server、studio、mobile 的 wire 契约唯一来源；`@agentloom/api-client` 是 Studio REST DTO 的 OpenAPI 生成类型来源。Studio 的全局 ky hook 负责 REST snake_case ↔ camelCase；Socket wire 保持 camelCase。
 
+**响应契约**：`agent-definition` / `workflow-definition` / `execution` / `agent-conversation` 的 list/detail 响应由 Zod schema（`...SwaggerSchema` + `createZodDto` 的 `...SwaggerDto`）单一定义，原手写响应类型改为 `z.infer` 导出且保持导出名不变，因此 `nest build` 是 schema↔serializer 的一致性闸门；日期字段建模为 `z.string()` 并在 serializer 显式 `toISOString()`，状态字段用 `z.enum` 精确建模以保持生成类型为字面量联合。`agentloom-server/scripts/export-openapi-spec.mjs` 在导出时把 `z.tuple` 产生的 JSON Schema 2020-12 `prefixItems` 降级为 `items` + `minItems`/`maxItems`（OpenAPI 3.0 无定长元组概念）。Studio 侧 wire 类型一律取自生成产物；画布编辑态（`CanvasNode` / `CanvasEdge` / `WorkflowInputSchema`）保持 Studio 领域类型，`WorkflowDefinition` 用 `Omit` 摘掉图字段后再拼接——生成模型在 React Flow 动态字典与 extent 元组处会退化为 `{}`/`any`，不能反向充当编辑态模型。
+
 ## 关键约定
 
 - **生产部署地址**: `https://agentloom.ling.plus/` — Studio 前端访问地址，Flutter 移动端配置的后端基础地址也是此 URL（客户端自行拼接 `/api/v1/` 等路径）
@@ -263,6 +265,8 @@ docker compose logs -f studio                         # 跟踪日志
 - **执行触发**: VersionToolbar Run → `useStartExecution` → `POST /workflow-definitions/:id/run` → `executionStore.initExecution(id)`。Studio 编辑器内的 Run 固定带 `launchSource='web-studio'`，服务端据此执行当前 `workflow_definitions` 草稿快照；编辑器外 / mobile / API / trigger 仍使用已发布版本快照。WorkflowStatusBar 显示 6 状态 + 进度
 - **通知模块**: `NotificationModule` 提供 REST + BullMQ queue + Socket.IO `/notification` namespace。fan-out 创建 `completed` / `failed` / `intervention_required` 通知。支持 `in_app` / `email` / `push` 三通道
 - **Trigger 系统**: 支持 `cron` / `webhook` / `api_event` 三种类型。Webhook 签名验证失败记录 `signature_failed` 历史。`api_event` 通过 `POST /api/v1/api-events` 接收外部事件，由 `EventSourceAdapterRegistry` 分发到注册的适配器（`GithubWebhookAdapter` HMAC-SHA256 验签、`GenericEventAdapter` 通用透传），匹配 enabled `api_event` trigger 后 fan-out 触发工作流执行。执行创建在租户事务提交后才入队
+- **Trigger 更新语义**: webhook 的 update 走 `WebhookConfigUpdateSchema`（全可选、无 default），`buildUpdatedConfig()` 对 `authMode` 与 `ipWhitelist` 采用“省略即保留”；create 仍由 `WebhookConfigCreateSchema` 注入 `authMode` 默认 `'simple'`。运行时对 `authMode === undefined` 的 legacy trigger 按 signed 处理，Studio 编辑表单据此回填 `config.authMode ?? 'signed'`。`sanitizeTrigger()` 隐藏 secret 但保留 `authMode`（非机密，前端回填必需）
+- **api_event 匹配链**: `ingestEvent()` 依次执行 eventSource 门（大小写不敏感）→ `adapter.validateEvent` → `adapter.matchesTrigger` → `filterExpression` 求值，任一不通过计入 `skippedCount`。`resolveAdapter()` 先把 source 归一化为小写再查注册表（注册表按小写适配器名索引，不归一化会让 `GitHub` 回退 generic 从而绕过 HMAC 验签）。`filter-expression.util.ts` 在 `node:vm` 隔离上下文按 JS 真值求值（1s timeout），变量为 `payload`/`source`/`type`，求值异常 fail-closed 视为不匹配并记 `api_event_filter_error`。`ApiEventTriggerConfig.secret` 为事件源验签密钥（GitHub adapter 读取），响应原样透出、Studio 仅展示“已配置”
 - **Intervention Policy**: `intervention_policies` 表驱动介入策略，支持 approve/reject/escalate timeout 动作，`MAX_ESCALATION_ATTEMPTS = 3`
 - **工作流输入参数**: `input_schema` JSONB 列存储 `WorkflowInputSchema`，支持 `form|conversation|hybrid` 三种 `collectionMode`。`RunWorkflowDto` 支持 `launchSource`；其中 `launchSource='web-studio'` 时，输入校验与 execution snapshot 都以当前草稿定义为准，而非 published version snapshot
 - **工作流版本语义**: `workflow_definitions.version` 仅作为草稿修订号 / OCC 版本，供自动保存与冲突检测使用；用户可见的工作流版本号来自发布快照上的 `workflow_versions.snapshot.metadata.releaseNumber`，只在快照首次发布时分配。列表/详情接口暴露 `publishedReleaseNumber`，未发布保存项应视为“快照”而不是“版本”。
