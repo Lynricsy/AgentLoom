@@ -63,7 +63,7 @@ import { useAgentList } from "../api/agentQueries";
 import { useDeleteAgent } from "../api/agentMutations";
 import { useAgentStore } from "../stores/agentStore";
 import { CreateOrchestrationDialog } from "./CreateOrchestrationDialog";
-import type { AgentDefinition, AgentStatus } from "../types";
+import type { AgentDefinitionSummary, AgentStatus } from "../types";
 
 type ViewMode = "grid" | "list";
 
@@ -105,7 +105,7 @@ function getStatusLabel(status: AgentStatus): string {
 }
 
 /** 已发布 Agent 展示发布版本号；未发布只有草稿快照 */
-function getAgentReleaseLabel(agent: AgentDefinition): string {
+function getAgentReleaseLabel(agent: AgentDefinitionSummary): string {
   if (agent.status !== "published") {
     return "快照";
   }
@@ -114,10 +114,10 @@ function getAgentReleaseLabel(agent: AgentDefinition): string {
 }
 
 interface AgentRowActionsProps {
-  agent: AgentDefinition;
-  onEdit: (agent: AgentDefinition) => void;
-  onDelete: (agent: AgentDefinition) => void;
-  onConvertSource: (agent: AgentDefinition) => void;
+  agent: AgentDefinitionSummary;
+  onEdit: (agent: AgentDefinitionSummary) => void;
+  onDelete: (agent: AgentDefinitionSummary) => void;
+  onConvertSource: (agent: AgentDefinitionSummary) => void;
 }
 
 /** hover 快捷操作：编排编辑常驻按钮 + 低频项收进菜单 */
@@ -185,14 +185,14 @@ const AgentRowActions = memo(function AgentRowActions({
 });
 
 interface AgentCardProps {
-  agent: AgentDefinition;
+  agent: AgentDefinitionSummary;
   selected: boolean;
   batchMode: boolean;
   onSelect: (id: string) => void;
-  onClick: (agent: AgentDefinition) => void;
-  onEdit: (agent: AgentDefinition) => void;
-  onDelete: (agent: AgentDefinition) => void;
-  onConvertSource: (agent: AgentDefinition) => void;
+  onClick: (agent: AgentDefinitionSummary) => void;
+  onEdit: (agent: AgentDefinitionSummary) => void;
+  onDelete: (agent: AgentDefinitionSummary) => void;
+  onConvertSource: (agent: AgentDefinitionSummary) => void;
 }
 
 const AgentCard = memo(function AgentCard({
@@ -407,7 +407,7 @@ export function AgentListPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [searchInput, setSearchInput] = useState(filters.search);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<AgentDefinition | null>(
+  const [deleteTarget, setDeleteTarget] = useState<AgentDefinitionSummary | null>(
     null,
   );
 
@@ -458,7 +458,7 @@ export function AgentListPage() {
   );
 
   const handleAgentClick = useCallback(
-    (agent: AgentDefinition) => {
+    (agent: AgentDefinitionSummary) => {
       navigate({
         to: "/agents/$agentId/conversations/new",
         params: { agentId: agent.id },
@@ -468,18 +468,18 @@ export function AgentListPage() {
   );
 
   const handleEdit = useCallback(
-    (agent: AgentDefinition) => {
+    (agent: AgentDefinitionSummary) => {
       navigate({ to: "/agents/$agentId", params: { agentId: agent.id } });
     },
     [navigate],
   );
 
-  const handleDelete = useCallback((agent: AgentDefinition) => {
+  const handleDelete = useCallback((agent: AgentDefinitionSummary) => {
     setDeleteTarget(agent);
   }, []);
 
   const handleConvertSource = useCallback(
-    async (agent: AgentDefinition) => {
+    async (agent: AgentDefinitionSummary) => {
       try {
         await convertResourceSourceToManual("agent_definition", agent.id);
         notify({ description: "已转为自己创建", variant: "success" });

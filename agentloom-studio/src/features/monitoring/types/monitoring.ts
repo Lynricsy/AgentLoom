@@ -1,115 +1,89 @@
-export type MonitoringWindow = '15m' | '1h' | '24h'
+/**
+ * 监控看板类型：全部来自 `@agentloom/api-client` 生成模型
+ * （server OpenAPI `MonitoringDashboardEnvelopeDto`），本文件只做本地命名。
+ * 生成模型手改无效，字段/枚举变更请改 server DTO 后重新生成。
+ */
+import type {
+  MonitoringDashboardEnvelopeDtoData,
+  MonitoringDashboardEnvelopeDtoDataAlertsInner,
+  MonitoringDashboardEnvelopeDtoDataAlertsInnerCategoryEnum,
+  MonitoringDashboardEnvelopeDtoDataAlertsInnerLinkTargetAnyOf,
+  MonitoringDashboardEnvelopeDtoDataAlertsInnerLinkTargetAnyOf1,
+  MonitoringDashboardEnvelopeDtoDataAlertsInnerSeverityEnum,
+  MonitoringDashboardEnvelopeDtoDataAlertsInnerSourceEnum,
+  MonitoringDashboardEnvelopeDtoDataHotspotsInner,
+  MonitoringDashboardEnvelopeDtoDataHotspotsInnerKindEnum,
+  MonitoringDashboardEnvelopeDtoDataHotspotsInnerStatusEnum,
+  MonitoringDashboardEnvelopeDtoDataRiskSummary,
+  MonitoringDashboardEnvelopeDtoDataRiskSummaryLevelEnum,
+  MonitoringDashboardEnvelopeDtoDataSummary,
+  MonitoringDashboardEnvelopeDtoDataSummaryMetricSources,
+  MonitoringDashboardEnvelopeDtoDataSummaryMetricSourcesExecutionEnum,
+  MonitoringDashboardEnvelopeDtoDataSummaryScopeEnum,
+  MonitoringDashboardEnvelopeDtoDataSummaryWindowEnum,
+  MonitoringDashboardEnvelopeDtoDataTrendInner,
+} from '@agentloom/api-client'
 
-export type MonitoringScope = 'organization'
+export type MonitoringWindow = MonitoringDashboardEnvelopeDtoDataSummaryWindowEnum
+
+export type MonitoringScope = MonitoringDashboardEnvelopeDtoDataSummaryScopeEnum
 
 export type MonitoringMetricSource =
-  | 'execution-records'
-  | 'workflow-executions'
-  | 'resource-governance'
-  | 'notifications'
-  | 'audit-logs'
-  | 'execution-queue'
-  | 'derived'
+  MonitoringDashboardEnvelopeDtoDataSummaryMetricSourcesExecutionEnum
 
-export interface MonitoringMetricSources {
-  execution: MonitoringMetricSource[]
-  governance: MonitoringMetricSource[]
-  alerts: MonitoringMetricSource[]
-  queueDepth: MonitoringMetricSource[]
-}
+export type MonitoringMetricSources = MonitoringDashboardEnvelopeDtoDataSummaryMetricSources
 
-export interface MonitoringDashboardSummary {
-  scope: MonitoringScope
-  window: MonitoringWindow
-  lastUpdatedAt: string
-  executionCount: number
-  successRate: number
-  failureRate: number
-  averageDurationMs: number | null
-  queueDepth: number
-  governanceBlocks: number
-  activeAlerts: number
-  metricSources: MonitoringMetricSources
-}
+export type MonitoringDashboardSummary = MonitoringDashboardEnvelopeDtoDataSummary
 
-export interface MonitoringTrendPoint {
-  bucketStart: string
-  bucketLabel: string
-  executionCount: number
-  successRate: number
-  failureRate: number
-  averageDurationMs: number | null
-  queueDepth: number | null
-  governanceBlocks: number
-  activeAlerts: number
-}
+export type MonitoringTrendPoint = MonitoringDashboardEnvelopeDtoDataTrendInner
 
+/**
+ * 跳转目标保持判别联合：生成器把 server 的 anyOf 摊平成了
+ * `{ type: 'resource-governance' | 'execution'; href: string }`，
+ * 摊平结果会放过 `type: 'execution' + 治理配额 href` 这类非法组合。
+ * 这里直接组合两个 AnyOf 分支，既用生成类型也保留判别能力。
+ */
 export type MonitoringLinkTarget =
-  | {
-      type: 'resource-governance'
-      href: '/settings/resource-quotas'
-    }
-  | {
-      type: 'execution'
-      href: `/executions/${string}`
-    }
+  | MonitoringDashboardEnvelopeDtoDataAlertsInnerLinkTargetAnyOf
+  | MonitoringDashboardEnvelopeDtoDataAlertsInnerLinkTargetAnyOf1
 
-export type MonitoringAlertSeverity = 'info' | 'warning' | 'critical'
+export type MonitoringAlertSeverity = MonitoringDashboardEnvelopeDtoDataAlertsInnerSeverityEnum
 
-export type MonitoringAlertCategory =
-  | 'error-rate'
-  | 'queue-depth'
-  | 'governance-block'
-  | 'anomalous-execution'
+export type MonitoringAlertCategory = MonitoringDashboardEnvelopeDtoDataAlertsInnerCategoryEnum
 
-export interface MonitoringAlertSummary {
-  id: string
-  severity: MonitoringAlertSeverity
-  category: MonitoringAlertCategory
-  title: string
-  reason: string
-  detectedAt: string
-  affectedSummary: string
-  source: MonitoringMetricSource
+export type MonitoringAlertSource = MonitoringDashboardEnvelopeDtoDataAlertsInnerSourceEnum
+
+export type MonitoringAlertSummary = Omit<
+  MonitoringDashboardEnvelopeDtoDataAlertsInner,
+  'linkTarget'
+> & {
   linkTarget?: MonitoringLinkTarget
 }
 
-export type MonitoringHotspotKind = 'workflow' | 'execution'
+export type MonitoringHotspotKind = MonitoringDashboardEnvelopeDtoDataHotspotsInnerKindEnum
 
-export type MonitoringHotspotStatus =
-  | 'healthy'
-  | 'running'
-  | 'failed'
-  | 'paused'
-  | 'governance-paused'
-  | 'blocked'
+export type MonitoringHotspotStatus = MonitoringDashboardEnvelopeDtoDataHotspotsInnerStatusEnum
 
-export interface MonitoringHotspot {
-  id: string
-  kind: MonitoringHotspotKind
-  label: string
-  impactSummary: string
-  executionCount: number
-  failureRate: number | null
-  queueDepth: number | null
-  status: MonitoringHotspotStatus
-  lastSeenAt: string
+export type MonitoringHotspot = Omit<
+  MonitoringDashboardEnvelopeDtoDataHotspotsInner,
+  'linkTarget'
+> & {
   linkTarget?: MonitoringLinkTarget
 }
 
-export type MonitoringRiskLevel = 'stable' | 'warning' | 'critical'
+export type MonitoringRiskLevel = MonitoringDashboardEnvelopeDtoDataRiskSummaryLevelEnum
 
-export interface MonitoringRiskSummary {
-  level: MonitoringRiskLevel
-  title: string
-  summary: string
-  explanation: string
-  governancePauseActive: boolean
-  lastEvaluatedAt: string
+export type MonitoringRiskSummary = Omit<
+  MonitoringDashboardEnvelopeDtoDataRiskSummary,
+  'primaryLinkTarget'
+> & {
   primaryLinkTarget?: MonitoringLinkTarget
 }
 
-export interface MonitoringDashboard {
+export type MonitoringDashboard = Omit<
+  MonitoringDashboardEnvelopeDtoData,
+  'summary' | 'trend' | 'alerts' | 'hotspots' | 'riskSummary'
+> & {
   summary: MonitoringDashboardSummary
   trend: MonitoringTrendPoint[]
   alerts: MonitoringAlertSummary[]

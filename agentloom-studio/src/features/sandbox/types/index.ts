@@ -1,3 +1,5 @@
+import type { CreateSandboxDto } from '@agentloom/api-client'
+
 export interface SandboxSessionConfig {
   name?: string;
   cpu: number;
@@ -58,10 +60,9 @@ export interface SandboxListResponse {
   meta: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
-export interface CreateSandboxPayload {
-  name: string;
-  cpu: number;
-  memory: number;
-  disk: number;
-  conversationIdleAutoEndMinutes: number;
-}
+/**
+ * POST /sandboxes 请求体（生成模型）。
+ * `cpu` / `memory` / `disk` / `conversationIdleAutoEndMinutes` 在 server 侧带
+ * `.default()`，客户端可以省略；原手写类型把四者标成必需，属于过度收紧。
+ */
+export type CreateSandboxPayload = CreateSandboxDto

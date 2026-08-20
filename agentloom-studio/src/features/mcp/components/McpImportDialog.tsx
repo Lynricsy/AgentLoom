@@ -447,8 +447,10 @@ export function McpImportDialog({
 
   function renderConnectionSummary() {
     if (isImportMode) {
+      // 按 connectionPayload 自身的 transportType 判别：connectionForm 是表单态，
+      // 判别它不会让 TS 收窄联合类型的 connectionPayload。
       const auxiliaryValue =
-        connectionForm.transportType === "stdio"
+        connectionPayload.transportType === "stdio"
           ? `命令 ${connectionForm.command.trim() || "未填写"}${connectionPayload.args?.length ? ` · 参数 ${connectionPayload.args.length} 个` : ""}${connectionPayload.env ? ` · 环境变量 ${Object.keys(connectionPayload.env).length} 项` : ""}`
           : `地址 ${connectionForm.url.trim() || "未填写"}${connectionPayload.headers ? ` · 请求头 ${Object.keys(connectionPayload.headers).length} 项` : ""}`;
 

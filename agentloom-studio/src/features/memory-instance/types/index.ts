@@ -1,3 +1,8 @@
+import type {
+  CreateMemoryInstanceDto,
+  UpdateMemoryInstanceDto,
+} from '@agentloom/api-client'
+
 export interface MemoryInstance {
   id: string
   name: string
@@ -32,23 +37,21 @@ export interface MemoryInstanceListParams {
   status?: string
 }
 
-export interface CreateMemoryInstancePayload {
-  name: string
-  description?: string
+/**
+ * POST /memory-instances 请求体（生成模型）。
+ * `config` 收窄为 `Record<string, unknown>`：生成产物在这里是无约束索引签名。
+ */
+export type CreateMemoryInstancePayload = Omit<CreateMemoryInstanceDto, 'config'> & {
   config?: Record<string, unknown>
-  systemPromptOverride?: string
-  validDomains?: string[]
-  coreMemoryUris?: string[]
 }
 
-export interface UpdateMemoryInstancePayload {
-  name?: string
-  description?: string | null
-  config?: Record<string, unknown> | null
-  systemPromptOverride?: string | null
-  validDomains?: string[]
-  coreMemoryUris?: string[]
-  status?: 'active' | 'archived' | 'deleted'
+/**
+ * PATCH /memory-instances/:id 请求体（生成模型）。
+ * `status` 只接受 `active` / `archived` —— server 的 update schema 里没有
+ * `deleted`（那是实体状态、不是可提交值），原手写类型多给了一个 server 会拒绝的取值。
+ */
+export type UpdateMemoryInstancePayload = Omit<UpdateMemoryInstanceDto, 'config'> & {
+  config?: Record<string, unknown>
 }
 
 // --- Browser types ---

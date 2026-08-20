@@ -1,91 +1,35 @@
 import type { Viewport } from "@xyflow/react";
+import type {
+  AgentRuntimeConfig,
+  SandboxConfig,
+} from "@agentloom/contracts";
 import type { CanvasEdge, CanvasNode } from "@/features/canvas/types";
 import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 import type { AgentRuntimeMode } from "./agentRuntimeMode";
 
 export type AgentStatus = "draft" | "published" | "archived";
 
-export interface AgentGlobalSandboxConfig {
-  enabled?: boolean;
-  cpu?: number;
-  cpuLimit?: number;
-  memory?: number;
-  memoryLimitMb?: number;
-  disk?: number;
-  timeout?: number;
-  timeoutSeconds?: number;
-  conversationIdleAutoEndMinutes?: number;
-  persistencePath?: string;
-  restoreWorkspaceId?: string;
-  lifecycleMode?: "session" | "persistent";
-  persistenceExpiryHours?: number;
-  allowedEnvKeys?: string[];
-  extra?: Record<string, unknown>;
-}
+/**
+ * Agent runtime 配置类型的唯一来源是 `@agentloom/contracts`（三端共享 wire 契约）。
+ * 这里按 studio 既有名称原样 re-export，调用方 import 路径保持不变。
+ */
+export type {
+  AgentModelConfig,
+  AgentToolBinding,
+  AgentKnowledgeBinding,
+  AgentSubAgentRef,
+  AgentInputPreprocessor,
+  AgentRoutingConfig,
+  AgentNativeToolPolicy,
+  AgentSelfEvolutionPolicy,
+  AgentRuntimeConfig,
+} from "@agentloom/contracts";
 
-export interface AgentModelConfig {
-  modelId?: string;
-  provider?: string;
-  temperature?: number;
-  maxTokens?: number;
-  extra?: Record<string, unknown>;
-}
-
-export interface AgentToolBinding {
-  toolId: string;
-  mcpToolDefinitionId?: string;
-  alias?: string;
-  enabled: boolean;
-}
-
-export interface AgentKnowledgeBinding {
-  knowledgeBaseId: string;
-  topK?: number;
-  scoreThreshold?: number;
-}
-
-export interface AgentSubAgentRef {
-  agentDefinitionId: string;
-  agentVersionId: string | null;
-  alias?: string;
-}
-
-export interface AgentInputPreprocessor {
-  type: string;
-  config?: Record<string, unknown>;
-}
-
-export interface AgentRoutingConfig {
-  strategy?: string;
-  fallbackChain?: string[];
-}
-
-export interface AgentNativeToolPolicy {
-  readEnabled: boolean;
-  writeEnabled: boolean;
-  editEnabled: boolean;
-  terminalEnabled: boolean;
-}
-
-export interface AgentSelfEvolutionPolicy {
-  enabled: boolean;
-  resourceManagement: boolean;
-  externalEditing: boolean;
-  sandboxManagement: boolean;
-}
-
-export interface AgentRuntimeConfig {
-  runtimeMode?: AgentRuntimeMode;
-  modelConfig?: AgentModelConfig;
-  tools?: AgentToolBinding[];
-  knowledgeBindings?: AgentKnowledgeBinding[];
-  subAgents?: AgentSubAgentRef[];
-  inputPreprocessors?: AgentInputPreprocessor[];
-  sandboxConfig?: AgentGlobalSandboxConfig;
-  routingConfig?: AgentRoutingConfig;
-  nativeToolPolicy?: AgentNativeToolPolicy;
-  selfEvolutionPolicy?: AgentSelfEvolutionPolicy;
-}
+/**
+ * Agent 全局沙箱配置即 contracts 的 canonical `SandboxConfig`
+ * （`cpu` / `memory` / `disk` / `timeout` 必需，不接受任何旧别名）。
+ */
+export type AgentGlobalSandboxConfig = SandboxConfig;
 
 export interface AgentVersionSnapshot {
   runtimeMode?: AgentRuntimeMode;
@@ -123,7 +67,11 @@ export interface AgentCanvasData {
   viewport: Viewport | null;
 }
 
-export interface AgentDefinition {
+/**
+ * Agent 列表项载荷，对应 server `AgentDefinitionResponseDto`。
+ * 列表接口不返回画布与沙箱明细，因此这些字段只存在于 `AgentDefinition`。
+ */
+export interface AgentDefinitionSummary {
   id: string;
   tenantId: string;
   name: string;
@@ -131,21 +79,28 @@ export interface AgentDefinition {
   description: string | null;
   icon: string | null;
   runtimeMode: AgentRuntimeMode;
+  status: AgentStatus;
+  version: number;
+  publishedVersionId: string | null;
+  createdBy: string;
+  updatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  resourceSourceKind: ResourceSourceKind;
+}
+
+/**
+ * Agent 详情载荷，对应 server `AgentDefinitionDetailResponseDto`。
+ * 详情接口始终返回下列字段（无值时为 `null`），故一律必需。
+ */
+export interface AgentDefinition extends AgentDefinitionSummary {
   systemPrompt: string | null;
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   viewport: Viewport | null;
   sandboxConfig: AgentGlobalSandboxConfig | null;
   workspaceSnapshotId: string | null;
-  inputSchema?: Record<string, unknown> | null;
-  memoryInstanceIds?: string[] | null;
-  sandboxLifecycle?: "session" | "persistent" | null;
-  resourceSourceKind?: ResourceSourceKind;
-  version: number;
-  status: AgentStatus;
-  publishedVersionId: string | null;
-  createdBy: string;
-  updatedBy: string;
-  createdAt: string;
-  updatedAt: string;
+  inputSchema: Record<string, unknown> | null;
+  memoryInstanceIds: string[] | null;
+  sandboxLifecycle: "session" | "persistent" | null;
 }

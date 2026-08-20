@@ -117,10 +117,15 @@ interface AgentCanvasActions {
   };
 }
 
+/**
+ * contracts `SandboxConfig` 的 canonical 默认值，与 server
+ * `extractSandboxConfig` 的兜底值保持一致（cpu 1 核 / 内存 512MB / 磁盘 1GB / 不限时）。
+ */
 const DEFAULT_SANDBOX_CONFIG: AgentGlobalSandboxConfig = {
-  enabled: true,
-  cpuLimit: 1,
-  memoryLimitMb: 512,
+  cpu: 1,
+  memory: 512,
+  disk: 1,
+  timeout: 0,
   timeoutSeconds: 0,
   conversationIdleAutoEndMinutes:
     DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES,

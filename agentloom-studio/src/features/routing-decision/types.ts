@@ -1,14 +1,16 @@
-/** Smart Routing 提供商熔断状态，与服务端 PROVIDER_HEALTH_STATUS_STATES 一致 */
-export type ProviderHealthState = 'healthy' | 'degraded' | 'open'
+import type {
+  ProviderHealthStatusesResponseDtoDataInner,
+  ProviderHealthStatusesResponseDtoDataInnerStatusEnum,
+} from '@agentloom/api-client'
 
-export interface ProviderHealthStatus {
-  providerName: string
-  /** 按模型维度熔断时才有值；为 null 表示整个提供商维度 */
-  modelId: string | null
-  status: ProviderHealthState
-  failureCount: number
-  lastFailureAt: string | null
-}
+/** Smart Routing 提供商熔断状态取值（生成模型枚举，与服务端 PROVIDER_HEALTH_STATUS_STATES 一致） */
+export type ProviderHealthState = ProviderHealthStatusesResponseDtoDataInnerStatusEnum
+
+/**
+ * GET /smart-routing/health 的单条返回（生成模型）。
+ * `modelId` 为 null 表示整个提供商维度熔断，非 null 表示按模型维度熔断。
+ */
+export type ProviderHealthStatus = ProviderHealthStatusesResponseDtoDataInner
 
 /** 单次决策里被评估过的候选模型（服务端 jsonb 原样透传） */
 export interface RoutingModelEvaluation {

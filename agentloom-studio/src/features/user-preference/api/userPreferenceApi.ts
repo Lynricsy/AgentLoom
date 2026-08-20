@@ -1,3 +1,4 @@
+import type { UpdateUserPreferenceDto } from '@agentloom/api-client'
 import { apiClient } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
 
@@ -11,8 +12,13 @@ export interface UserPreference {
   updatedAt: string
 }
 
-export interface UpdateUserPreferenceInput {
-  titleModelConfigId?: string | null
+/**
+ * PATCH /user-preferences 请求体（生成模型）。
+ * 原手写类型漏掉了 server 也接受的 `preferences`；
+ * 这里把它收窄为 `Record<string, unknown>`（生成产物是无约束索引签名）。
+ */
+export type UpdateUserPreferenceInput = Omit<UpdateUserPreferenceDto, 'preferences'> & {
+  preferences?: Record<string, unknown>
 }
 
 export async function fetchUserPreference(): Promise<UserPreference> {

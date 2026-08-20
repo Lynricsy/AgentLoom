@@ -1,21 +1,32 @@
 import type {
+  ImportMcpToolsDtoConflictStrategyEnum,
+  TestMcpConnectionDtoConnection,
+  TestMcpConnectionDtoConnectionOneOf1TransportTypeEnum,
+  TestMcpConnectionDtoConnectionOneOf2TransportTypeEnum,
+  TestMcpConnectionDtoConnectionOneOfTransportTypeEnum,
+} from "@agentloom/api-client";
+import type {
   BackendPortMappingMetadata,
   McpToolDefinition as CanvasMcpToolDefinition,
 } from "@/features/canvas/types/mcpToolMapping";
 import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 
-export type McpImportConflictStrategy = "skip" | "overwrite";
+export type McpImportConflictStrategy = ImportMcpToolsDtoConflictStrategyEnum;
 
-export type McpTransportType = "stdio" | "sse" | "streamable_http";
+export type McpTransportType =
+  | TestMcpConnectionDtoConnectionOneOfTransportTypeEnum
+  | TestMcpConnectionDtoConnectionOneOf1TransportTypeEnum
+  | TestMcpConnectionDtoConnectionOneOf2TransportTypeEnum;
 
-export interface McpConnectionConfig {
-  transportType: McpTransportType;
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  url?: string;
-  headers?: Record<string, string>;
-}
+/**
+ * MCP 连接配置（生成模型的 oneOf 判别联合）。
+ *
+ * 原手写类型把 `command` / `url` 都标成可选的平铺结构，
+ * 允许 `{ transportType: 'stdio' }` 这种 server 必然拒绝的形状。
+ * 生成模型按 `transportType` 判别：stdio 要求 `command`，
+ * sse / streamable_http 要求 `url`。
+ */
+export type McpConnectionConfig = TestMcpConnectionDtoConnection;
 
 export interface McpServerInfo {
   name: string;

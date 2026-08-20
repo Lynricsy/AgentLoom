@@ -417,6 +417,12 @@ importers:
 
   agentloom-studio:
     dependencies:
+      '@agentloom/api-client':
+        specifier: workspace:*
+        version: link:../agentloom-api-client
+      '@agentloom/contracts':
+        specifier: workspace:*
+        version: link:../agentloom-contracts
       '@dagrejs/dagre':
         specifier: ^2.0.4
         version: 2.0.4

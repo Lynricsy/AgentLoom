@@ -1,12 +1,12 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { Bot, Search, Check, X } from 'lucide-react'
 import { useAgentList } from '@/features/agent/api/agentQueries'
-import type { AgentDefinition } from '@/features/agent/types'
+import type { AgentDefinitionSummary } from '@/features/agent/types'
 
 interface AgentSearchPickerProps {
   selectedAgentId: string
   excludeAgentId?: string | null
-  onSelect: (agent: AgentDefinition) => void
+  onSelect: (agent: AgentDefinitionSummary) => void
   onClear: () => void
   selectedAgentName?: string
   selectedAgentDescription?: string
@@ -37,7 +37,7 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
   }, [agentsResponse, excludeAgentId])
 
   const handleSelect = useCallback(
-    (agent: AgentDefinition) => {
+    (agent: AgentDefinitionSummary) => {
       onSelect(agent)
       setSearchQuery('')
     },

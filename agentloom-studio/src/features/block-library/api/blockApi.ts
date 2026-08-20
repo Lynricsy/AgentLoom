@@ -1,9 +1,12 @@
 import { apiClient, toSnakeBody } from '@/shared/api/client';
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 import type {
+  CreateReusableBlockDto,
+  UpdateReusableBlockDto,
+} from '@agentloom/api-client';
+import type {
   BlockCategory,
   BlockDefinition,
-  BlockMetadata,
   ReusableBlockDetail,
   ReusableBlockListItem,
 } from '../types';
@@ -15,25 +18,22 @@ export interface ListBlocksParams {
   pageSize?: number;
 }
 
-export interface CreateBlockData {
-  name: string;
-  description?: string;
-  category?: BlockCategory;
-  tags?: string[];
+/**
+ * POST /reusable-blocks 请求体（生成模型 + 无 any 的 definition）。
+ * 生成产物里 `definition.nodes` / `.edges` 带无约束索引签名，这里换成
+ * `BlockDefinition` 的 `Record<string, unknown>` 变体，保留 id/source/target 约束。
+ */
+export type CreateBlockData = Omit<CreateReusableBlockDto, 'definition'> & {
   definition: BlockDefinition;
-  metadata?: BlockMetadata;
-}
+};
 
-export interface UpdateBlockData {
-  name?: string;
-  description?: string;
-  category?: BlockCategory;
-  tags?: string[];
+/**
+ * PATCH /reusable-blocks/:id 请求体（生成模型）。
+ * `description` / `category` / `metadata` 允许显式 null 清空 —— 原手写类型漏了 null。
+ */
+export type UpdateBlockData = Omit<UpdateReusableBlockDto, 'definition'> & {
   definition?: BlockDefinition;
-  metadata?: BlockMetadata;
-  isPublished?: boolean;
-  version: number;
-}
+};
 
 function unwrapBlockDetail(
   response: ApiResponse<ReusableBlockDetail> | ReusableBlockDetail,

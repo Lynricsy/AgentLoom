@@ -1,3 +1,9 @@
+import type {
+  InviteMemberDto,
+  InviteMemberDtoRoleEnum,
+  UpdateMemberRoleDto,
+} from '@agentloom/api-client'
+
 /** 组织角色，与服务端 `org_role` 枚举一一对应 */
 export const ORGANIZATION_ROLES = [
   'owner',
@@ -7,7 +13,7 @@ export const ORGANIZATION_ROLES = [
   'viewer',
 ] as const
 
-export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number]
+export type OrganizationRole = InviteMemberDtoRoleEnum
 
 /** 角色中文名，列表与下拉共用，避免两处各写一份 */
 export const ORGANIZATION_ROLE_LABELS: Record<OrganizationRole, string> = {
@@ -63,14 +69,16 @@ export interface OrganizationInvitation {
   createdAt: string
 }
 
-export interface InviteMemberInput {
-  email: string
-  role: OrganizationRole
-}
+/**
+ * POST /organizations/:id/invitations 请求体（生成模型）。
+ * `role` 在 server 侧带 `.default('viewer')`，客户端可省略；
+ * 原手写类型标成必需，属于过度收紧。
+ */
+export type InviteMemberInput = InviteMemberDto
 
-export interface UpdateMemberRoleInput {
+/** PATCH /organizations/:id/members/:userId 请求体（生成模型 + 路径参数） */
+export type UpdateMemberRoleInput = UpdateMemberRoleDto & {
   userId: string
-  role: OrganizationRole
 }
 
 /** 接受邀请后服务端回传加入的组织与成员记录 */

@@ -1,30 +1,24 @@
+import type {
+  TenantKeyDetailResponseDto,
+  TenantKeyResponseDto,
+  TenantKeyResponseDtoStatusEnum,
+  UploadPublicKeyDto,
+} from '@agentloom/api-client'
+
 export const ENCRYPTION_KEY_STATUSES = [
   'active',
   'rotating',
   'revoked',
 ] as const
 
-export type EncryptionKeyStatus = (typeof ENCRYPTION_KEY_STATUSES)[number]
+export type EncryptionKeyStatus = TenantKeyResponseDtoStatusEnum
 
-export interface TenantKeyResponse {
-  id: string
-  orgId: string
-  keyFingerprint: string
-  status: EncryptionKeyStatus
-  activatedAt: string | null
-  rotatedAt: string | null
-  revokedAt: string | null
-  createdAt: string
-  updatedAt: string
-}
+export type TenantKeyResponse = TenantKeyResponseDto
 
-export interface TenantKeyDetailResponse extends TenantKeyResponse {
-  publicKey: string
-}
+export type TenantKeyDetailResponse = TenantKeyDetailResponseDto
 
-export interface UploadPublicKeyPayload {
-  publicKey: string
-}
+/** POST /tenant-keys 与 /tenant-keys/:id/rotate 请求体（生成模型） */
+export type UploadPublicKeyPayload = UploadPublicKeyDto
 
 export interface EncryptedPayload {
   ciphertext: string

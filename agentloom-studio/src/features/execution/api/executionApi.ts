@@ -1,8 +1,14 @@
+import type {
+  InterveneStepDto,
+  ResolveToolPermissionDto,
+  RunWorkflowDto,
+  RunWorkflowDtoLaunchSourceEnum,
+} from '@agentloom/api-client'
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type { ExecutionStatus, TypeMismatchInfo } from '../types'
 
-export type ExecutionLaunchSource = 'web-studio' | 'mobile' | 'api'
+export type ExecutionLaunchSource = RunWorkflowDtoLaunchSourceEnum
 
 export interface ExecutionStepAttemptResponse {
   attempt: number
@@ -93,11 +99,8 @@ export interface ListExecutionsParams {
   status?: string
 }
 
-export interface InterventionResolveRequest {
-  action: 'approve' | 'modify' | 'reject'
-  feedback?: string
-  modifiedContent?: string
-}
+/** POST /executions/:id/steps/:stepId/intervene 请求体（生成模型） */
+export type InterventionResolveRequest = InterveneStepDto
 
 export interface InterventionResolveResponse {
   executionId: string
@@ -105,10 +108,13 @@ export interface InterventionResolveResponse {
   status: 'intervention_accepted'
 }
 
-export interface RunWorkflowRequest {
+/**
+ * POST /workflow-definitions/:id/run 请求体（生成模型）。
+ * `inputParams` 收窄为 `Record<string, unknown>`：生成产物在这里是无约束索引签名，
+ * 而调用方只需要能写入任意值，`unknown` 足够且不放弃类型检查。
+ */
+export type RunWorkflowRequest = Omit<RunWorkflowDto, 'inputParams'> & {
   inputParams?: Record<string, unknown>
-  schemaVersion?: number
-  launchSource?: ExecutionLaunchSource
 }
 
 /** 启动工作流执行 — POST /workflow-definitions/:workflowId/run → 202 */
@@ -170,10 +176,8 @@ export async function resolveIntervention(
     .json<ApiResponse<InterventionResolveResponse>>()
 }
 
-export interface ToolPermissionResolveRequest {
-  action: 'approve' | 'deny'
-  rememberScope?: 'none' | 'conversation_category'
-}
+/** POST /executions/:id/steps/:stepId/tool-calls/:toolCallId/permission 请求体（生成模型） */
+export type ToolPermissionResolveRequest = ResolveToolPermissionDto
 
 export interface ExecutionWorkspaceFileNode {
   name: string

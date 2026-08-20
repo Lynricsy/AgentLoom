@@ -1,14 +1,20 @@
+import type {
+  CreateLlmModelConfigDto,
+  CreateLlmModelConfigDtoCapabilities,
+  CreateLlmModelConfigDtoPricing,
+  CreateLlmModelConfigDtoPricingTiersInner,
+  CreateLlmProviderDto,
+  CreateLlmProviderDtoApiProtocolEnum,
+  UpdateLlmModelConfigDto,
+  UpdateLlmProviderDto,
+} from "@agentloom/api-client";
+
 // ============================================================================
 // 新 Provider / Model 实体类型 (对应服务端两级结构)
 // ============================================================================
 
-/** API 协议类型 */
-export type ApiProtocol =
-  | "openai_chat"
-  | "openai_responses"
-  | "anthropic"
-  | "google"
-  | "cohere";
+/** API 协议类型（生成模型枚举） */
+export type ApiProtocol = CreateLlmProviderDtoApiProtocolEnum;
 
 export const API_PROTOCOL_VALUES: readonly ApiProtocol[] = [
   "openai_chat",
@@ -18,31 +24,14 @@ export const API_PROTOCOL_VALUES: readonly ApiProtocol[] = [
   "cohere",
 ];
 
-/** 模型能力 */
-export interface ModelCapabilities {
-  vision?: boolean;
-  functionCalling?: boolean;
-  reasoning?: boolean;
-  structuredOutput?: boolean;
-}
+/** 模型能力（生成模型） */
+export type ModelCapabilities = CreateLlmModelConfigDtoCapabilities;
 
-/** 分级定价 */
-export interface PricingTier {
-  aboveTokens: number;
-  inputPer1MTokens: number;
-  outputPer1MTokens: number;
-  cachedReadPer1MTokens?: number;
-  cachedWritePer1MTokens?: number;
-}
+/** 分级定价（生成模型） */
+export type PricingTier = CreateLlmModelConfigDtoPricingTiersInner;
 
-/** 模型定价 */
-export interface ModelPricing {
-  inputPer1MTokens: number;
-  outputPer1MTokens: number;
-  cachedReadPer1MTokens?: number;
-  cachedWritePer1MTokens?: number;
-  tiers?: PricingTier[];
-}
+/** 模型定价（生成模型） */
+export type ModelPricing = CreateLlmModelConfigDtoPricing;
 
 /** 服务端 LLM Provider 实体 */
 export interface LlmProviderEntity {
@@ -91,56 +80,36 @@ export interface LlmModelConfigEntity {
 // Provider CRUD DTO
 // ============================================================================
 
-/** 创建 Provider 请求体 */
-export interface CreateLlmProviderInput {
-  name: string;
-  slug?: string;
-  baseUrl: string;
-  apiProtocol?: ApiProtocol;
-  apiKeyId?: string;
-  apiKey?: string;
-  clearApiKey?: boolean;
-  iconUrl?: string;
-  sortOrder?: number;
-  isEnabled?: boolean;
-}
+/**
+ * 创建 Provider 请求体（生成模型）。
+ * 原手写类型多了一个 `clearApiKey` —— server 的 create schema 里没有这个字段
+ * （只有 update 有），传了会被静默丢弃。
+ */
+export type CreateLlmProviderInput = CreateLlmProviderDto;
 
-/** 更新 Provider 请求体 */
-export type UpdateLlmProviderInput = Partial<
-  Omit<
-    CreateLlmProviderInput,
-    "baseUrl" | "apiKeyId" | "apiKey" | "clearApiKey"
-  >
-> & {
-  baseUrl?: string | null;
-  apiKeyId?: string | null;
-  apiKey?: string;
-  clearApiKey?: boolean;
-};
+/** 更新 Provider 请求体（生成模型） */
+export type UpdateLlmProviderInput = UpdateLlmProviderDto;
 
 // ============================================================================
 // Model CRUD DTO (新结构)
 // ============================================================================
 
-/** 创建模型配置请求体 */
-export interface CreateLlmModelInput {
-  name: string;
-  providerId: string;
-  modelId: string;
-  modelType?: "chat" | "embedding";
-  isDefault?: boolean;
-  isEnabled?: boolean;
-  capabilities?: ModelCapabilities;
-  contextWindow?: number | null;
-  maxOutputTokens?: number | null;
-  pricing?: ModelPricing | null;
+/**
+ * 创建模型配置请求体（生成模型）。
+ * `parameters` 收窄为 `Record<string, unknown>`：生成产物在这里是无约束索引签名。
+ */
+export type CreateLlmModelInput = Omit<CreateLlmModelConfigDto, "parameters"> & {
   parameters?: Record<string, unknown>;
-  timeoutMs?: number;
-  embeddingDimensions?: number;
-}
+};
 
-/** 更新模型配置请求体 */
-export type UpdateLlmModelInput = Partial<CreateLlmModelInput>;
+/**
+ * 更新模型配置请求体（生成模型）。
+ * 注意不是 `Partial<CreateLlmModelInput>`：server 的 update schema 里
+ * `timeoutMs` / `embeddingDimensions` 是 nullable（可显式清空），create 里不是。
+ */
+export type UpdateLlmModelInput = Omit<UpdateLlmModelConfigDto, "parameters"> & {
+  parameters?: Record<string, unknown>;
+};
 
 // ============================================================================
 // 发现 / 连接测试类型

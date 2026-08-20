@@ -139,18 +139,33 @@ interface StubConfigProps {
   onConfigChange: (config: Record<string, unknown>) => void;
 }
 
+const ROUTING_STRATEGIES = [
+  'TOKEN_OPTIMIZED',
+  'COST_OPTIMIZED',
+  'QUALITY_FIRST',
+  'LATENCY_FIRST',
+  'HISTORICAL_BEST',
+  'FALLBACK_CHAIN',
+] as const;
+
+/**
+ * contracts `AgentRoutingConfig.strategy` 为必需字段；未配置时与 server
+ * `extractRoutingConfig` 的兜底值保持一致。
+ */
+const DEFAULT_ROUTING_STRATEGY: (typeof ROUTING_STRATEGIES)[number] =
+  'FALLBACK_CHAIN';
+
+function readRoutingStrategy(config: Record<string, unknown>): string {
+  return typeof config.strategy === 'string' && config.strategy.length > 0
+    ? config.strategy
+    : DEFAULT_ROUTING_STRATEGY;
+}
+
 const SmartRoutingConfigStub = memo(function SmartRoutingConfigStub({
   config,
   onConfigChange,
 }: StubConfigProps) {
-  const strategies = [
-    'TOKEN_OPTIMIZED',
-    'COST_OPTIMIZED',
-    'QUALITY_FIRST',
-    'LATENCY_FIRST',
-    'HISTORICAL_BEST',
-    'FALLBACK_CHAIN',
-  ] as const;
+  const strategy = readRoutingStrategy(config);
 
   return (
     <div className="flex flex-col gap-3">
@@ -162,9 +177,9 @@ const SmartRoutingConfigStub = memo(function SmartRoutingConfigStub({
           路由策略
         </label>
         <Select
-          value={(config.strategy as string) ?? 'FALLBACK_CHAIN'}
-          onValueChange={(strategy) => {
-            onConfigChange({ ...config, strategy });
+          value={strategy}
+          onValueChange={(nextStrategy) => {
+            onConfigChange({ ...config, strategy: nextStrategy });
           }}
         >
           <SelectTrigger
@@ -175,9 +190,9 @@ const SmartRoutingConfigStub = memo(function SmartRoutingConfigStub({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {strategies.map((strategy) => (
-              <SelectItem key={strategy} value={strategy} className="text-xs">
-                {strategy.replace(/_/g, ' ')}
+            {ROUTING_STRATEGIES.map((option) => (
+              <SelectItem key={option} value={option} className="text-xs">
+                {option.replace(/_/g, ' ')}
               </SelectItem>
             ))}
           </SelectContent>

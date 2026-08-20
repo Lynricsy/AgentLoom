@@ -1,3 +1,7 @@
+import type {
+  StartConversationDto,
+  UpdateConversationDto,
+} from "@agentloom/api-client";
 import { apiClient, toSnakeBody } from "@/shared/api/client";
 import type { PaginatedResponse } from "@/shared/types/api";
 import type { SandboxProcess, SandboxStats } from "@/features/sandbox/types";
@@ -18,12 +22,18 @@ export interface ListConversationsParams {
   status?: string;
 }
 
-export interface StartConversationPayload {
-  title?: string;
-  content: string;
-  contentType?: "text" | "image" | "file";
+/**
+ * POST /agent-definitions/:id/conversations/start 请求体（生成模型）。
+ * `metadata` 收窄为 `Record<string, unknown>`：生成产物在这里是无约束索引签名。
+ */
+export type StartConversationPayload = Omit<StartConversationDto, "metadata"> & {
   metadata?: Record<string, unknown>;
-}
+};
+
+/** PATCH /agent-conversations/:id 请求体（生成模型） */
+export type UpdateConversationPayload = Omit<UpdateConversationDto, "metadata"> & {
+  metadata?: Record<string, unknown>;
+};
 
 export async function listConversations(
   agentId: string,
@@ -62,7 +72,7 @@ export async function generateConversationTitle(
 
 export async function updateConversation(
   conversationId: string,
-  payload: { title?: string; metadata?: Record<string, unknown> },
+  payload: UpdateConversationPayload,
 ): Promise<{ data: ConversationListItem }> {
   return apiClient
     .patch(`agent-conversations/${conversationId}`, {

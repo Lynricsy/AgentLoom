@@ -1,4 +1,6 @@
-export type PluginStatus = 'registered' | 'active' | 'disabled' | 'error'
+import type { UpdatePluginStatusDtoStatusEnum } from '@agentloom/api-client'
+
+export type PluginStatus = UpdatePluginStatusDtoStatusEnum
 
 export interface PluginNodeDefinition {
   type: string

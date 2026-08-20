@@ -13,12 +13,12 @@ import {
 } from 'lucide-react'
 import type { SmartRoutingNodeData } from '../../types'
 import {
-  STRATEGY_META,
   STRATEGY_CATEGORY_COLORS,
   STRATEGY_CATEGORY_BG,
+  getStrategyMeta,
   useHealthStatus,
 } from '@/features/smart-routing'
-import type { StrategyName, ProviderHealthStatus } from '@/features/smart-routing'
+import type { ProviderHealthStatus } from '@/features/smart-routing'
 import { cn } from '@/shared/lib/utils'
 import { usePreviewMode } from '../PreviewModeContext'
 
@@ -50,7 +50,7 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
   data,
   connectedModelCount,
 }: SmartRoutingNodeBodyProps) {
-  const meta = STRATEGY_META[data.strategy as StrategyName]
+  const meta = getStrategyMeta(data.strategy)
   const strategyLabel = meta?.displayName ?? data.strategy ?? '未配置'
   const modelCount = connectedModelCount ?? data.modelConfigIds?.length ?? 0
   const category = meta?.category ?? 'simple'
