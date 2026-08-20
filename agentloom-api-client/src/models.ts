@@ -16,6 +16,476 @@ export interface AddGlossaryKeywordDto {
 /**
  * 
  * @export
+ * @interface AgentDefinitionDetailResponseSwaggerDto
+ */
+export interface AgentDefinitionDetailResponseSwaggerDto {
+    /**
+     * 
+     * @type {AgentDefinitionDetailResponseSwaggerDtoData}
+     * @memberof AgentDefinitionDetailResponseSwaggerDto
+     */
+    data: AgentDefinitionDetailResponseSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface AgentDefinitionDetailResponseSwaggerDtoData
+ */
+export interface AgentDefinitionDetailResponseSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    tenantId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    slug: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    description: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    icon: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    runtimeMode: AgentDefinitionDetailResponseSwaggerDtoDataRuntimeModeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    status: AgentDefinitionDetailResponseSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    version: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    publishedVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    updatedBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    resourceSourceKind: AgentDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    systemPrompt: string | null;
+    /**
+     * 
+     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner>}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    nodes: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner>;
+    /**
+     * 
+     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner>}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    edges: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner>;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataViewport}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    viewport: WorkflowDefinitionDetailResponseSwaggerDtoDataViewport | null;
+    /**
+     * 
+     * @type {AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    sandboxConfig: AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    workspaceSnapshotId: string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    inputSchema: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    memoryInstanceIds: Array<string> | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoData
+     */
+    sandboxLifecycle: AgentDefinitionDetailResponseSwaggerDtoDataSandboxLifecycleEnum | null;
+}
+
+
+/**
+ * @export
+ */
+export const AgentDefinitionDetailResponseSwaggerDtoDataRuntimeModeEnum = {
+    Sandbox: 'sandbox',
+    NoSandbox: 'no_sandbox'
+} as const;
+export type AgentDefinitionDetailResponseSwaggerDtoDataRuntimeModeEnum = typeof AgentDefinitionDetailResponseSwaggerDtoDataRuntimeModeEnum[keyof typeof AgentDefinitionDetailResponseSwaggerDtoDataRuntimeModeEnum];
+
+/**
+ * @export
+ */
+export const AgentDefinitionDetailResponseSwaggerDtoDataStatusEnum = {
+    Draft: 'draft',
+    Published: 'published',
+    Archived: 'archived'
+} as const;
+export type AgentDefinitionDetailResponseSwaggerDtoDataStatusEnum = typeof AgentDefinitionDetailResponseSwaggerDtoDataStatusEnum[keyof typeof AgentDefinitionDetailResponseSwaggerDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const AgentDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum = {
+    Manual: 'manual',
+    ShareImported: 'share_imported'
+} as const;
+export type AgentDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum = typeof AgentDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum[keyof typeof AgentDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum];
+
+/**
+ * @export
+ */
+export const AgentDefinitionDetailResponseSwaggerDtoDataSandboxLifecycleEnum = {
+    Session: 'session',
+    Persistent: 'persistent'
+} as const;
+export type AgentDefinitionDetailResponseSwaggerDtoDataSandboxLifecycleEnum = typeof AgentDefinitionDetailResponseSwaggerDtoDataSandboxLifecycleEnum[keyof typeof AgentDefinitionDetailResponseSwaggerDtoDataSandboxLifecycleEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+ */
+export interface AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig {
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    cpu: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    memory: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    disk: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    persistencePath?: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    timeout: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    timeoutSeconds?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    conversationIdleAutoEndMinutes?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    restoreWorkspaceId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    lifecycleMode?: AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigLifecycleModeEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    persistenceExpiryHours?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    name?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    persistentSandboxId?: string;
+    /**
+     * 
+     * @type {Array<AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner>}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfig
+     */
+    activeBindings?: Array<AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner>;
+}
+
+
+/**
+ * @export
+ */
+export const AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigLifecycleModeEnum = {
+    Session: 'session',
+    Persistent: 'persistent'
+} as const;
+export type AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigLifecycleModeEnum = typeof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigLifecycleModeEnum[keyof typeof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigLifecycleModeEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner
+ */
+export interface AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner
+     */
+    executionId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner
+     */
+    agentConversationId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionDetailResponseSwaggerDtoDataSandboxConfigActiveBindingsInner
+     */
+    sandboxNodeId?: string;
+}
+/**
+ * 
+ * @export
+ * @interface AgentDefinitionListResponseSwaggerDto
+ */
+export interface AgentDefinitionListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<AgentDefinitionListResponseSwaggerDtoDataInner>}
+     * @memberof AgentDefinitionListResponseSwaggerDto
+     */
+    data: Array<AgentDefinitionListResponseSwaggerDtoDataInner>;
+    /**
+     * 
+     * @type {WorkflowDefinitionListResponseSwaggerDtoMeta}
+     * @memberof AgentDefinitionListResponseSwaggerDto
+     */
+    meta: WorkflowDefinitionListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface AgentDefinitionListResponseSwaggerDtoDataInner
+ */
+export interface AgentDefinitionListResponseSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    tenantId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    slug: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    description: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    icon: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    runtimeMode: AgentDefinitionListResponseSwaggerDtoDataInnerRuntimeModeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    status: AgentDefinitionListResponseSwaggerDtoDataInnerStatusEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    version: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    publishedVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    updatedBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentDefinitionListResponseSwaggerDtoDataInner
+     */
+    resourceSourceKind: AgentDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum;
+}
+
+
+/**
+ * @export
+ */
+export const AgentDefinitionListResponseSwaggerDtoDataInnerRuntimeModeEnum = {
+    Sandbox: 'sandbox',
+    NoSandbox: 'no_sandbox'
+} as const;
+export type AgentDefinitionListResponseSwaggerDtoDataInnerRuntimeModeEnum = typeof AgentDefinitionListResponseSwaggerDtoDataInnerRuntimeModeEnum[keyof typeof AgentDefinitionListResponseSwaggerDtoDataInnerRuntimeModeEnum];
+
+/**
+ * @export
+ */
+export const AgentDefinitionListResponseSwaggerDtoDataInnerStatusEnum = {
+    Draft: 'draft',
+    Published: 'published',
+    Archived: 'archived'
+} as const;
+export type AgentDefinitionListResponseSwaggerDtoDataInnerStatusEnum = typeof AgentDefinitionListResponseSwaggerDtoDataInnerStatusEnum[keyof typeof AgentDefinitionListResponseSwaggerDtoDataInnerStatusEnum];
+
+/**
+ * @export
+ */
+export const AgentDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum = {
+    Manual: 'manual',
+    ShareImported: 'share_imported'
+} as const;
+export type AgentDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum = typeof AgentDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum[keyof typeof AgentDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum];
+
+/**
+ * 
+ * @export
  * @interface ChangePasswordDto
  */
 export interface ChangePasswordDto {
@@ -31,6 +501,599 @@ export interface ChangePasswordDto {
      * @memberof ChangePasswordDto
      */
     newPassword: string;
+}
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDto
+ */
+export interface ConversationDetailResponseSwaggerDto {
+    /**
+     * 
+     * @type {ConversationDetailResponseSwaggerDtoData}
+     * @memberof ConversationDetailResponseSwaggerDto
+     */
+    data: ConversationDetailResponseSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoData
+ */
+export interface ConversationDetailResponseSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    agentDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    title: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    status: ConversationDetailResponseSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    metadata: { [key: string]: any; };
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {ConversationDetailResponseSwaggerDtoDataMessages}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    messages: ConversationDetailResponseSwaggerDtoDataMessages;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataStatusEnum = {
+    Active: 'active',
+    Paused: 'paused',
+    Ended: 'ended',
+    Failed: 'failed'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataStatusEnum = typeof ConversationDetailResponseSwaggerDtoDataStatusEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoDataMessages
+ */
+export interface ConversationDetailResponseSwaggerDtoDataMessages {
+    /**
+     * 
+     * @type {Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInner>}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessages
+     */
+    data: Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInner>;
+    /**
+     * 
+     * @type {ConversationListResponseSwaggerDtoMeta}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessages
+     */
+    meta: ConversationListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+ */
+export interface ConversationDetailResponseSwaggerDtoDataMessagesDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    conversationId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    role: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerRoleEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    contentType: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerContentTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    content: string;
+    /**
+     * 
+     * @type {Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner>}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    toolCalls: Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner> | null;
+    /**
+     * 
+     * @type {Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner>}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    toolResults: Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner> | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    metadata: { [key: string]: any; };
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInner
+     */
+    createdAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerRoleEnum = {
+    User: 'user',
+    Assistant: 'assistant',
+    System: 'system',
+    Tool: 'tool'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerRoleEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerRoleEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerRoleEnum];
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerContentTypeEnum = {
+    Text: 'text',
+    Image: 'image',
+    File: 'file',
+    ToolCall: 'tool_call',
+    ToolResult: 'tool_result',
+    System: 'system'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerContentTypeEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerContentTypeEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerContentTypeEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+ */
+export interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    tool: string;
+    /**
+     * 
+     * @type {any}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    args?: any | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    status: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerStatusEnum;
+    /**
+     * 
+     * @type {any}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    result?: any | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    error?: string;
+    /**
+     * 
+     * @type {Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner>}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    transitions?: Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner>;
+    /**
+     * 
+     * @type {ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInner
+     */
+    permissionRequest?: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerStatusEnum = {
+    Pending: 'pending',
+    AwaitingPermission: 'awaiting_permission',
+    Denied: 'denied',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerStatusEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerStatusEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+ */
+export interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    description: string;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    resourcePaths?: Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    domain?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    category?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    riskLevel?: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequestRiskLevelEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    sourceLabel?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    targetType?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    targetLabel?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    approveEffect?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    denyEffect?: string;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    diffPreview?: { [key: string]: any; };
+    /**
+     * 
+     * @type {boolean}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequest
+     */
+    rememberable?: boolean;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequestRiskLevelEnum = {
+    Low: 'low',
+    Medium: 'medium',
+    High: 'high'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequestRiskLevelEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequestRiskLevelEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerPermissionRequestRiskLevelEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner
+ */
+export interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner
+     */
+    from?: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerFromEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner
+     */
+    to: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerToEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner
+     */
+    timestamp: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInner
+     */
+    source: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerSourceEnum;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerFromEnum = {
+    Pending: 'pending',
+    AwaitingPermission: 'awaiting_permission',
+    Denied: 'denied',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerFromEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerFromEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerFromEnum];
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerToEnum = {
+    Pending: 'pending',
+    AwaitingPermission: 'awaiting_permission',
+    Denied: 'denied',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerToEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerToEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerToEnum];
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerSourceEnum = {
+    Runtime: 'runtime',
+    Worker: 'worker',
+    User: 'user'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerSourceEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerSourceEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolCallsInnerTransitionsInnerSourceEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner
+ */
+export interface ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner
+     */
+    toolCallId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner
+     */
+    tool?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner
+     */
+    status?: ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInnerStatusEnum;
+    /**
+     * 
+     * @type {any}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner
+     */
+    result?: any | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInner
+     */
+    error?: string;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInnerStatusEnum = {
+    Pending: 'pending',
+    AwaitingPermission: 'awaiting_permission',
+    Denied: 'denied',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInnerStatusEnum = typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInnerStatusEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataMessagesDataInnerToolResultsInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationListResponseSwaggerDto
+ */
+export interface ConversationListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<ConversationListResponseSwaggerDtoDataInner>}
+     * @memberof ConversationListResponseSwaggerDto
+     */
+    data: Array<ConversationListResponseSwaggerDtoDataInner>;
+    /**
+     * 
+     * @type {ConversationListResponseSwaggerDtoMeta}
+     * @memberof ConversationListResponseSwaggerDto
+     */
+    meta: ConversationListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface ConversationListResponseSwaggerDtoDataInner
+ */
+export interface ConversationListResponseSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    agentDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    title: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    status: ConversationListResponseSwaggerDtoDataInnerStatusEnum;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    metadata: { [key: string]: any; };
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    updatedAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const ConversationListResponseSwaggerDtoDataInnerStatusEnum = {
+    Active: 'active',
+    Paused: 'paused',
+    Ended: 'ended',
+    Failed: 'failed'
+} as const;
+export type ConversationListResponseSwaggerDtoDataInnerStatusEnum = typeof ConversationListResponseSwaggerDtoDataInnerStatusEnum[keyof typeof ConversationListResponseSwaggerDtoDataInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ConversationListResponseSwaggerDtoMeta
+ */
+export interface ConversationListResponseSwaggerDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof ConversationListResponseSwaggerDtoMeta
+     */
+    total: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ConversationListResponseSwaggerDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ConversationListResponseSwaggerDtoMeta
+     */
+    pageSize: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ConversationListResponseSwaggerDtoMeta
+     */
+    totalPages: number;
 }
 /**
  * 
@@ -1797,6 +2860,12 @@ export interface CreateTriggerDtoConfig {
      * @memberof CreateTriggerDtoConfig
      */
     filterExpression?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateTriggerDtoConfig
+     */
+    secret?: string;
 }
 
 
@@ -1882,6 +2951,12 @@ export interface CreateTriggerDtoConfigAnyOf2 {
      * @memberof CreateTriggerDtoConfigAnyOf2
      */
     filterExpression?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateTriggerDtoConfigAnyOf2
+     */
+    secret?: string;
 }
 /**
  * 
@@ -1969,13 +3044,13 @@ export interface DeveloperKeyResponseDto {
      * @type {string}
      * @memberof DeveloperKeyResponseDto
      */
-    label?: string;
+    id: string;
     /**
      * 
      * @type {string}
      * @memberof DeveloperKeyResponseDto
      */
-    id: string;
+    label: string | null;
     /**
      * 
      * @type {string}
@@ -2030,6 +3105,508 @@ export interface DiscoverMcpToolsDto {
      * @memberof DiscoverMcpToolsDto
      */
     connection: TestMcpConnectionDtoConnection;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDto
+ */
+export interface ExecutionEnvelopeResponseSwaggerDto {
+    /**
+     * 
+     * @type {ExecutionEnvelopeResponseSwaggerDtoData}
+     * @memberof ExecutionEnvelopeResponseSwaggerDto
+     */
+    data: ExecutionEnvelopeResponseSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDtoData
+ */
+export interface ExecutionEnvelopeResponseSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    workflowId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    workflowDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    workflowVersionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    tenantId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    status: ExecutionEnvelopeResponseSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    triggerType: ExecutionEnvelopeResponseSwaggerDtoDataTriggerTypeEnum;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    inputParams: { [key: string]: any; };
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    definitionSnapshot: { [key: string]: any; };
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    startedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    completedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    failedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    cancelledAt: string | null;
+    /**
+     * 
+     * @type {ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    errorMessage: ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    totalSteps: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    completedSteps: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {Array<ExecutionEnvelopeResponseSwaggerDtoDataStepsInner>}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    steps?: Array<ExecutionEnvelopeResponseSwaggerDtoDataStepsInner>;
+}
+
+
+/**
+ * @export
+ */
+export const ExecutionEnvelopeResponseSwaggerDtoDataStatusEnum = {
+    Pending: 'pending',
+    Running: 'running',
+    Paused: 'paused',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled'
+} as const;
+export type ExecutionEnvelopeResponseSwaggerDtoDataStatusEnum = typeof ExecutionEnvelopeResponseSwaggerDtoDataStatusEnum[keyof typeof ExecutionEnvelopeResponseSwaggerDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const ExecutionEnvelopeResponseSwaggerDtoDataTriggerTypeEnum = {
+    Manual: 'manual',
+    Api: 'api',
+    Webhook: 'webhook',
+    System: 'system'
+} as const;
+export type ExecutionEnvelopeResponseSwaggerDtoDataTriggerTypeEnum = typeof ExecutionEnvelopeResponseSwaggerDtoDataTriggerTypeEnum[keyof typeof ExecutionEnvelopeResponseSwaggerDtoDataTriggerTypeEnum];
+
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+ */
+export interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage {
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    message?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    title?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    detail?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    type?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    nodeId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    stack?: string;
+    /**
+     * 
+     * @type {Array<ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner>}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    attempts?: Array<ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner>;
+    /**
+     * 
+     * @type {Array<ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageErrorsInner>}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    errors?: Array<ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageErrorsInner>;
+    /**
+     * 
+     * @type {ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+     */
+    typeMismatch?: ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner
+ */
+export interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner {
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner
+     */
+    attempt: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner
+     */
+    error: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner
+     */
+    timestamp: string;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageErrorsInner
+ */
+export interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageErrorsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageErrorsInner
+     */
+    field: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageErrorsInner
+     */
+    message: string;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+ */
+export interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch {
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    sourcePortId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    targetPortId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    sourceType: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    targetType: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    sourceNodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    targetNodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
+     */
+    edgeId?: string;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+ */
+export interface ExecutionEnvelopeResponseSwaggerDtoDataStepsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    executionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    nodeId: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    stepOrder: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    status: ExecutionEnvelopeResponseSwaggerDtoDataStepsInnerStatusEnum;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    input: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    nodeType: string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    nodeData: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    result: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    checkpointData: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    attemptCount: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    isEncrypted: boolean;
+    /**
+     * 
+     * @type {ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    errorMessage: ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    startedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    completedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
+     */
+    updatedAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const ExecutionEnvelopeResponseSwaggerDtoDataStepsInnerStatusEnum = {
+    Pending: 'pending',
+    Queued: 'queued',
+    Running: 'running',
+    WaitingIntervention: 'waiting_intervention',
+    Completed: 'completed',
+    Failed: 'failed',
+    Skipped: 'skipped',
+    Cancelled: 'cancelled'
+} as const;
+export type ExecutionEnvelopeResponseSwaggerDtoDataStepsInnerStatusEnum = typeof ExecutionEnvelopeResponseSwaggerDtoDataStepsInnerStatusEnum[keyof typeof ExecutionEnvelopeResponseSwaggerDtoDataStepsInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ExecutionListResponseSwaggerDto
+ */
+export interface ExecutionListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<ExecutionEnvelopeResponseSwaggerDtoData>}
+     * @memberof ExecutionListResponseSwaggerDto
+     */
+    data: Array<ExecutionEnvelopeResponseSwaggerDtoData>;
+    /**
+     * 
+     * @type {ExecutionListResponseSwaggerDtoMeta}
+     * @memberof ExecutionListResponseSwaggerDto
+     */
+    meta: ExecutionListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface ExecutionListResponseSwaggerDtoMeta
+ */
+export interface ExecutionListResponseSwaggerDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionListResponseSwaggerDtoMeta
+     */
+    total: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionListResponseSwaggerDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionListResponseSwaggerDtoMeta
+     */
+    limit: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionListResponseSwaggerDtoMeta
+     */
+    pageSize: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ExecutionListResponseSwaggerDtoMeta
+     */
+    totalPages: number;
 }
 /**
  * 
@@ -2186,6 +3763,25 @@ export interface LoginDto {
      * @memberof LoginDto
      */
     password: string;
+}
+/**
+ * 
+ * @export
+ * @interface MessageListResponseSwaggerDto
+ */
+export interface MessageListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInner>}
+     * @memberof MessageListResponseSwaggerDto
+     */
+    data: Array<ConversationDetailResponseSwaggerDtoDataMessagesDataInner>;
+    /**
+     * 
+     * @type {ConversationListResponseSwaggerDtoMeta}
+     * @memberof MessageListResponseSwaggerDto
+     */
+    meta: ConversationListResponseSwaggerDtoMeta;
 }
 /**
  * 
@@ -5443,10 +7039,10 @@ export interface UpdateTriggerDto {
     description?: string | null;
     /**
      * 
-     * @type {CreateTriggerDtoConfig}
+     * @type {UpdateTriggerDtoConfig}
      * @memberof UpdateTriggerDto
      */
-    config?: CreateTriggerDtoConfig;
+    config?: UpdateTriggerDtoConfig;
     /**
      * 
      * @type {boolean}
@@ -5454,6 +7050,102 @@ export interface UpdateTriggerDto {
      */
     isEnabled?: boolean;
 }
+/**
+ * 
+ * @export
+ * @interface UpdateTriggerDtoConfig
+ */
+export interface UpdateTriggerDtoConfig {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    expression: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    timezone?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    authMode?: UpdateTriggerDtoConfigAuthModeEnum;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    ipWhitelist?: Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    eventSource: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    eventType: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    filterExpression?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfig
+     */
+    secret?: string;
+}
+
+
+/**
+ * @export
+ */
+export const UpdateTriggerDtoConfigAuthModeEnum = {
+    Simple: 'simple',
+    Signed: 'signed'
+} as const;
+export type UpdateTriggerDtoConfigAuthModeEnum = typeof UpdateTriggerDtoConfigAuthModeEnum[keyof typeof UpdateTriggerDtoConfigAuthModeEnum];
+
+/**
+ * 
+ * @export
+ * @interface UpdateTriggerDtoConfigAnyOf
+ */
+export interface UpdateTriggerDtoConfigAnyOf {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateTriggerDtoConfigAnyOf
+     */
+    authMode?: UpdateTriggerDtoConfigAnyOfAuthModeEnum;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof UpdateTriggerDtoConfigAnyOf
+     */
+    ipWhitelist?: Array<string>;
+}
+
+
+/**
+ * @export
+ */
+export const UpdateTriggerDtoConfigAnyOfAuthModeEnum = {
+    Simple: 'simple',
+    Signed: 'signed'
+} as const;
+export type UpdateTriggerDtoConfigAnyOfAuthModeEnum = typeof UpdateTriggerDtoConfigAnyOfAuthModeEnum[keyof typeof UpdateTriggerDtoConfigAnyOfAuthModeEnum];
+
 /**
  * 
  * @export
@@ -5511,10 +7203,10 @@ export interface UpdateWorkflowDefinitionDto {
     edges?: Array<{ [key: string]: any; }>;
     /**
      * 
-     * @type {UpdateWorkflowDefinitionDtoViewport}
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataViewport}
      * @memberof UpdateWorkflowDefinitionDto
      */
-    viewport?: UpdateWorkflowDefinitionDtoViewport | null;
+    viewport?: WorkflowDefinitionDetailResponseSwaggerDtoDataViewport | null;
     /**
      * 
      * @type {UpdateWorkflowDefinitionDtoInputSchema}
@@ -5548,16 +7240,16 @@ export interface UpdateWorkflowDefinitionDtoInputSchema {
     collectionMode?: UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum;
     /**
      * 
-     * @type {Array<UpdateWorkflowDefinitionDtoInputSchemaFieldsInner>}
+     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>}
      * @memberof UpdateWorkflowDefinitionDtoInputSchema
      */
-    fields?: Array<UpdateWorkflowDefinitionDtoInputSchemaFieldsInner>;
+    fields?: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>;
     /**
      * 
-     * @type {UpdateWorkflowDefinitionDtoInputSchemaConversationPlan}
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan}
      * @memberof UpdateWorkflowDefinitionDtoInputSchema
      */
-    conversationPlan?: UpdateWorkflowDefinitionDtoInputSchemaConversationPlan;
+    conversationPlan?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan;
 }
 
 
@@ -5571,187 +7263,6 @@ export const UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum = {
 } as const;
 export type UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum = typeof UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum[keyof typeof UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum];
 
-/**
- * 
- * @export
- * @interface UpdateWorkflowDefinitionDtoInputSchemaConversationPlan
- */
-export interface UpdateWorkflowDefinitionDtoInputSchemaConversationPlan {
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaConversationPlan
-     */
-    systemPrompt: string;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaConversationPlan
-     */
-    maxTurns: number;
-}
-/**
- * 
- * @export
- * @interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
- */
-export interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInner {
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    id: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    type: UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum;
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    label: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    description?: string;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    required?: boolean;
-    /**
-     * 
-     * @type {UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    validation?: UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation;
-    /**
-     * 
-     * @type {Array<string>}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    options?: Array<string>;
-    /**
-     * 
-     * @type {any}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    _default?: any | null;
-    /**
-     * 
-     * @type {UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    visibility?: UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility;
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
-     */
-    collectionHint?: string;
-}
-
-
-/**
- * @export
- */
-export const UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum = {
-    Text: 'text',
-    Number: 'number',
-    SingleSelect: 'single_select',
-    MultiSelect: 'multi_select'
-} as const;
-export type UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum = typeof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum[keyof typeof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum];
-
-/**
- * 
- * @export
- * @interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation
- */
-export interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation {
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation
-     */
-    minLength?: number;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation
-     */
-    maxLength?: number;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation
-     */
-    min?: number;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerValidation
-     */
-    max?: number;
-}
-/**
- * 
- * @export
- * @interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility
- */
-export interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility {
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility
-     */
-    fieldId: string;
-    /**
-     * 
-     * @type {UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibilityEquals}
-     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility
-     */
-    equals: UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibilityEquals;
-}
-/**
- * 
- * @export
- * @interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibilityEquals
- */
-export interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibilityEquals {
-}
-/**
- * 
- * @export
- * @interface UpdateWorkflowDefinitionDtoViewport
- */
-export interface UpdateWorkflowDefinitionDtoViewport {
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoViewport
-     */
-    x: number;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoViewport
-     */
-    y: number;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdateWorkflowDefinitionDtoViewport
-     */
-    zoom: number;
-}
 /**
  * 
  * @export
@@ -5964,4 +7475,844 @@ export interface UpsertTenantQuotaRequestDto {
      * @memberof UpsertTenantQuotaRequestDto
      */
     maxSandboxMemoryMb?: number | null;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDto
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDto {
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoData}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDto
+     */
+    data: WorkflowDefinitionDetailResponseSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoData
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    tenantId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    slug: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    description: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    icon: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    status: WorkflowDefinitionDetailResponseSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    version: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    publishedVersionId: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    publishedReleaseNumber: number | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    metadata: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    updatedBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    resourceSourceKind: WorkflowDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum;
+    /**
+     * 
+     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner>}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    nodes: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner>;
+    /**
+     * 
+     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner>}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    edges: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner>;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataViewport}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    viewport: WorkflowDefinitionDetailResponseSwaggerDtoDataViewport | null;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoData
+     */
+    inputSchema: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema | null;
+}
+
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionDetailResponseSwaggerDtoDataStatusEnum = {
+    Draft: 'draft',
+    Published: 'published',
+    Archived: 'archived'
+} as const;
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataStatusEnum = typeof WorkflowDefinitionDetailResponseSwaggerDtoDataStatusEnum[keyof typeof WorkflowDefinitionDetailResponseSwaggerDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum = {
+    Manual: 'manual',
+    ShareImported: 'share_imported'
+} as const;
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum = typeof WorkflowDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum[keyof typeof WorkflowDefinitionDetailResponseSwaggerDtoDataResourceSourceKindEnum];
+
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    source: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    target: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    sourceHandle?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    targetHandle?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    type?: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    animated?: boolean;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    data?: { [key: string]: any; };
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    selected?: boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    hidden?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    label?: string;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    labelStyle?: { [key: string]: any; };
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    labelBgStyle?: { [key: string]: any; };
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    style?: { [key: string]: any; };
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    className?: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    zIndex?: number;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInnerMarkerStart}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    markerStart?: WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInnerMarkerStart;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInnerMarkerStart}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInner
+     */
+    markerEnd?: WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInnerMarkerStart;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInnerMarkerStart
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataEdgesInnerMarkerStart {
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
+     */
+    version?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
+     */
+    collectionMode?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum;
+    /**
+     * 
+     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
+     */
+    fields?: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
+     */
+    conversationPlan?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan;
+}
+
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum = {
+    Form: 'form',
+    Conversation: 'conversation',
+    Hybrid: 'hybrid'
+} as const;
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum = typeof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum[keyof typeof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum];
+
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan
+     */
+    systemPrompt: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan
+     */
+    maxTurns: number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    type: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    label: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    description?: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    required?: boolean;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    validation?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    options?: Array<string>;
+    /**
+     * 
+     * @type {any}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    _default?: any | null;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    visibility?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
+     */
+    collectionHint?: string;
+}
+
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerTypeEnum = {
+    Text: 'text',
+    Number: 'number',
+    SingleSelect: 'single_select',
+    MultiSelect: 'multi_select'
+} as const;
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerTypeEnum = typeof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerTypeEnum[keyof typeof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerTypeEnum];
+
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation
+     */
+    minLength?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation
+     */
+    maxLength?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation
+     */
+    min?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation
+     */
+    max?: number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility
+     */
+    fieldId: string;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility
+     */
+    equals: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals {
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    type?: string;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerPosition}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    position: WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerPosition;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    data: { [key: string]: any; };
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    width?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    height?: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    selected?: boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    dragging?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    parentId?: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    expandParent?: boolean;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerExtent}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    extent?: WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerExtent;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    sourcePosition?: WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerSourcePositionEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    targetPosition?: WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerTargetPositionEnum;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    hidden?: boolean;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    zIndex?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    className?: string;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInner
+     */
+    style?: { [key: string]: any; };
+}
+
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerSourcePositionEnum = {
+    Top: 'top',
+    Right: 'right',
+    Bottom: 'bottom',
+    Left: 'left'
+} as const;
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerSourcePositionEnum = typeof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerSourcePositionEnum[keyof typeof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerSourcePositionEnum];
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerTargetPositionEnum = {
+    Top: 'top',
+    Right: 'right',
+    Bottom: 'bottom',
+    Left: 'left'
+} as const;
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerTargetPositionEnum = typeof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerTargetPositionEnum[keyof typeof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerTargetPositionEnum];
+
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerExtent
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerExtent {
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerPosition
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerPosition {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerPosition
+     */
+    x: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataNodesInnerPosition
+     */
+    y: number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataViewport
+ */
+export interface WorkflowDefinitionDetailResponseSwaggerDtoDataViewport {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataViewport
+     */
+    x: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataViewport
+     */
+    y: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataViewport
+     */
+    zoom: number;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionListResponseSwaggerDto
+ */
+export interface WorkflowDefinitionListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<WorkflowDefinitionListResponseSwaggerDtoDataInner>}
+     * @memberof WorkflowDefinitionListResponseSwaggerDto
+     */
+    data: Array<WorkflowDefinitionListResponseSwaggerDtoDataInner>;
+    /**
+     * 
+     * @type {WorkflowDefinitionListResponseSwaggerDtoMeta}
+     * @memberof WorkflowDefinitionListResponseSwaggerDto
+     */
+    meta: WorkflowDefinitionListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionListResponseSwaggerDtoDataInner
+ */
+export interface WorkflowDefinitionListResponseSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    tenantId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    slug: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    description: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    icon: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    status: WorkflowDefinitionListResponseSwaggerDtoDataInnerStatusEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    version: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    publishedVersionId: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    publishedReleaseNumber: number | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    metadata: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    createdBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    updatedBy: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoDataInner
+     */
+    resourceSourceKind: WorkflowDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum;
+}
+
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionListResponseSwaggerDtoDataInnerStatusEnum = {
+    Draft: 'draft',
+    Published: 'published',
+    Archived: 'archived'
+} as const;
+export type WorkflowDefinitionListResponseSwaggerDtoDataInnerStatusEnum = typeof WorkflowDefinitionListResponseSwaggerDtoDataInnerStatusEnum[keyof typeof WorkflowDefinitionListResponseSwaggerDtoDataInnerStatusEnum];
+
+/**
+ * @export
+ */
+export const WorkflowDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum = {
+    Manual: 'manual',
+    ShareImported: 'share_imported'
+} as const;
+export type WorkflowDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum = typeof WorkflowDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum[keyof typeof WorkflowDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum];
+
+/**
+ * 
+ * @export
+ * @interface WorkflowDefinitionListResponseSwaggerDtoMeta
+ */
+export interface WorkflowDefinitionListResponseSwaggerDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoMeta
+     */
+    total: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoMeta
+     */
+    pageSize: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof WorkflowDefinitionListResponseSwaggerDtoMeta
+     */
+    totalPages: number;
 }
