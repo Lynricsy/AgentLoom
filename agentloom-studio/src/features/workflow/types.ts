@@ -61,19 +61,19 @@ export type WorkflowDefinitionSummary =
 /**
  * 详情 wire 类型上的 Studio 图编辑视图。
  *
- * 标量字段全部来自生成的详情 wire 类型（单一事实源）；nodes/edges/viewport/
- * inputSchema 用 Omit 摘掉后换成画布领域类型——OpenAPI 3.0 无法无损表达
+ * 除 nodes/edges/viewport 外全部来自生成的详情 wire 类型（单一事实源）。
+ * 这三个图字段用 Omit 摘掉后换成画布领域类型——OpenAPI 3.0 无法无损表达
  * React Flow 的动态 data/style 字典与 extent 元组，生成模型在这些位置退化为
- * `{}`/`any`，不能反向充当画布的编辑态模型。
+ * `{}`/`any`，不能反向充当画布的编辑态模型。inputSchema 结构可精确建模，
+ * 因此直接使用生成类型。
  */
 export type WorkflowDefinition = Omit<
   WorkflowDefinitionDetailResponseSwaggerDtoData,
-  'nodes' | 'edges' | 'viewport' | 'inputSchema'
+  'nodes' | 'edges' | 'viewport'
 > & {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport: WorkflowGraphViewport | null
-  inputSchema: WorkflowInputSchema | null
 }
 
 export interface UpdateWorkflowPayload {

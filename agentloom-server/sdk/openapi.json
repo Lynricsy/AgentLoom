@@ -13402,14 +13402,12 @@
                 "type": "object",
                 "properties": {
                   "version": {
-                    "default": 1,
                     "type": "integer",
                     "exclusiveMinimum": true,
                     "maximum": 9007199254740991,
                     "minimum": 0
                   },
                   "collectionMode": {
-                    "default": "form",
                     "type": "string",
                     "enum": [
                       "form",
@@ -13418,14 +13416,12 @@
                     ]
                   },
                   "fields": {
-                    "default": [],
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
                         "id": {
-                          "type": "string",
-                          "minLength": 1
+                          "type": "string"
                         },
                         "type": {
                           "type": "string",
@@ -13437,14 +13433,12 @@
                           ]
                         },
                         "label": {
-                          "type": "string",
-                          "minLength": 1
+                          "type": "string"
                         },
                         "description": {
                           "type": "string"
                         },
                         "required": {
-                          "default": false,
                           "type": "boolean"
                         },
                         "validation": {
@@ -13480,11 +13474,10 @@
                           "type": "object",
                           "properties": {
                             "fieldId": {
-                              "type": "string",
-                              "minLength": 1
+                              "type": "string"
                             },
                             "equals": {
-                              "anyOf": [
+                              "oneOf": [
                                 {
                                   "type": "string"
                                 },
@@ -13506,7 +13499,8 @@
                       "required": [
                         "id",
                         "type",
-                        "label"
+                        "label",
+                        "required"
                       ]
                     }
                   },
@@ -13514,8 +13508,7 @@
                     "type": "object",
                     "properties": {
                       "systemPrompt": {
-                        "type": "string",
-                        "minLength": 1
+                        "type": "string"
                       },
                       "maxTurns": {
                         "type": "integer",
@@ -13530,6 +13523,11 @@
                     ]
                   }
                 },
+                "required": [
+                  "version",
+                  "collectionMode",
+                  "fields"
+                ],
                 "nullable": true
               }
             },
@@ -13734,7 +13732,7 @@
                           "minLength": 1
                         },
                         "equals": {
-                          "anyOf": [
+                          "oneOf": [
                             {
                               "type": "string"
                             },
@@ -20550,7 +20548,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-08-20T10:32:07.245Z",
+                  "default": "2026-08-20T10:57:30.098Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
