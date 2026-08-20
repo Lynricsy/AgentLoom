@@ -78,12 +78,11 @@ import {
   makeNode,
   makeEdge,
   makeSnapshot,
-  makeExecution,
   createSelectChain,
   createUpdateChainVoid
 } from './node-scheduler-test-support';
 
-describe('dispatcher migrated scenarios', () => {
+describe('http migrated scenarios', () => {
   let service: NodeSchedulerService;
   let nodeDispatcher: NodeDispatcherService;
   let compoundExecution: CompoundExecutionService;
@@ -334,283 +333,184 @@ describe('dispatcher migrated scenarios', () => {
     compoundExecution = module.get(CompoundExecutionService);
   });
 
-  const inlineDispatchCases = [
-    ['llm-model', 'executeLlmModelNode', false],
-    ['knowledge-base', 'executeKnowledgeNode', false],
-    ['condition', 'executeConditional', true],
-    ['conditional', 'executeConditional', true],
-    ['loop', 'executeLoopNode', true],
-    ['iteration', 'executeIterationNode', true],
-    ['loop-start', 'executeLoopStartNode', false],
-    ['iteration-start', 'executeIterationStartNode', false],
-    ['loop-state', 'executeLoopStateNode', true],
-    ['result', 'executeResultNode', true],
-    ['break', 'executeBreakNode', true],
-    ['continue', 'executeContinueNode', true],
-    ['merge', 'executeMerge', true],
-    ['text-output', 'executeOutputNode', true],
-    ['json-output', 'executeOutputNode', true],
-    ['skill', 'executeSkillNode', true],
-  ] as const;
-
   describe('scheduleNode migrated', () => {
-    it('最新步骤状态已非 pending 时不应重复调度', async () => {
+    it('http-tool 节点应同步执行 HTTP 请求并直接完成', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('A'), makeNode('B')],
-        [makeEdge('A', 'B')],
+        [makeNode('P'), makeNode('H', 'http-tool')],
+        [makeEdge('P', 'H', undefined, 'request-in')],
       );
-      const staleSteps = [
+      const steps = [
         makeStep({
-          id: 'step-a',
-          nodeId: 'A',
+          id: 'step-p',
+          nodeId: 'P',
           status: 'completed',
-          result: { answer: 'hello' },
+          result: {
+            query: { q: 'workflow' },
+            headers: { 'X-Dynamic': 'dynamic-header' },
+            body: { dynamic: true },
+          },
         }),
         makeStep({
-          id: 'step-b',
-          nodeId: 'B',
+          id: 'step-h',
+          nodeId: 'H',
           status: 'pending',
-          nodeType: 'agent',
-          nodeData: { agentId: 'agent-b' },
+          nodeType: 'http-tool',
+          nodeData: {
+            config: {
+              url: 'https://example.com/search',
+              method: 'POST',
+              headers: [{ key: 'X-Static', value: 'static-header' }],
+              queryParams: [{ key: 'lang', value: 'zh-CN' }],
+              body: '{"static":true}',
+              authType: 'api-key',
+              authConfig: {
+                keyName: 'X-API-Key',
+                keyValue: 'secret-token',
+                location: 'header',
+              },
+              timeout: 15,
+            },
+          },
         }),
       ];
 
-      db.select
-        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
-        .mockReturnValueOnce(
-          createSelectChain([
-            makeStep({
-              id: 'step-b',
-              nodeId: 'B',
-              status: 'cancelled',
-              nodeType: 'agent',
-              nodeData: { agentId: 'agent-b' },
-            }),
-          ]),
-        );
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://example.com/search?lang=zh-CN&q=workflow',
+        headers: {
+          entries: () =>
+            Object.entries({
+              'content-type': 'application/json',
+            })[Symbol.iterator](),
+          get: (key: string) =>
+            key === 'content-type' ? 'application/json' : null,
+        },
+        json: vi.fn().mockResolvedValue({ answer: 'ok' }),
+      } as unknown as Response);
 
-      await service.scheduleNode(
-        EXECUTION_ID,
-        'B',
-        TENANT_ID,
-        snapshot,
-        staleSteps,
-      );
-
-      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
-      expect(mockQueue.add).not.toHaveBeenCalled();
-    });
-  });
-
-
-
-
-  describe('scheduleNode migrated', () => {
-    it.each(inlineDispatchCases)(
-      '%s 节点应分派给公开 executor，并保持标准调度上下文',
-
-      async (nodeType) => {
-        const step = makeStep({
-          id: `step-${nodeType}`,
-          nodeId: `node-${nodeType}`,
-          nodeType,
-          nodeData: {},
-        });
-        const snapshot = makeSnapshot([makeNode(step.nodeId, nodeType)], []);
-        const executor = nodeDispatcher.find(nodeType)!;
-        const execute = vi.fn().mockResolvedValue(undefined);
-        vi.spyOn(nodeDispatcher, 'find').mockReturnValue({ execute });
-        await nodeDispatcher.dispatch({
-          executionId: EXECUTION_ID,
-          tenantId: TENANT_ID,
-          step,
-          input: {},
-          snapshot,
-          steps: [step],
-          memorySessionIds: [],
-          runtime: service,
-        });
-
-        expect(execute).toHaveBeenCalledTimes(1);
-        expect(execute).toHaveBeenCalledWith(
-          expect.objectContaining({
-            step,
-            input: {},
-            tenantId: TENANT_ID,
-            executionId: EXECUTION_ID,
-            runtime: service,
-          }),
-        );
-        expect(mockQueue.add).not.toHaveBeenCalled();
-      },
-    );
-  });
-
-  describe('scheduleNode migrated', () => {
-    it('未知节点类型应显式失败，不再降级到 agent 队列', async () => {
-      const step = makeStep({
-        id: 'step-future-custom-node',
-        nodeId: 'node-future-custom-node',
-        nodeType: 'future-custom-node',
-        nodeData: {},
-      });
-      const snapshot = makeSnapshot(
-        [makeNode(step.nodeId, 'future-custom-node')],
-        [],
-      );
       db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
 
-      await service.scheduleNode(
-        EXECUTION_ID,
-        step.nodeId,
-        TENANT_ID,
-        snapshot,
-        [step],
-        { skipLatestState: true },
-      );
+      await service.scheduleNode(EXECUTION_ID, 'H', TENANT_ID, snapshot, [
+        ...steps,
+      ]);
 
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        step.id,
-        'failed',
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://example.com/search?lang=zh-CN&q=workflow'),
         expect.objectContaining({
-          errorMessage: expect.objectContaining({
-            message: expect.stringContaining('不支持的节点类型'),
+          method: 'POST',
+          headers: {
+            'X-Static': 'static-header',
+            'X-API-Key': 'secret-token',
+            'X-Dynamic': 'dynamic-header',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            dynamic: true,
           }),
+          signal: expect.any(AbortSignal),
         }),
       );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-h',
+        'completed',
+        {
+          result: {
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            url: 'https://example.com/search?lang=zh-CN&q=workflow',
+            response: {
+              ok: true,
+              status: 200,
+              statusText: 'OK',
+              url: 'https://example.com/search?lang=zh-CN&q=workflow',
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: { answer: 'ok' },
+            },
+            'response-out': { answer: 'ok' },
+            'exec-out': {
+              triggered: true,
+              success: true,
+              status: 200,
+            },
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
   });
-});
 
-/**
- * 节点分派器规格：验证完整 nodeType 注册表与公开执行器分派行为。
- */
-import { describe, expect, it, vi } from 'vitest';
-import type { ExecutionStep } from '../../../database/schema';
-import { NodeDispatcherService } from '../node-dispatcher.service';
-import { CodeNodeExecutor } from '../node-executors/code-node.executor';
-import { CompoundNodeExecutor } from '../node-executors/compound-node.executor';
-import { ConditionalNodeExecutor } from '../node-executors/conditional-node.executor';
-import { DataTransformNodeExecutor } from '../node-executors/data-transform-node.executor';
-import { DeprecatedNodeExecutor } from '../node-executors/deprecated-node.executor';
-import { ExtensionNodeExecutor } from '../node-executors/extension-node.executor';
-import { HttpNodeExecutor } from '../node-executors/http-node.executor';
-import { ResourceNodeExecutor } from '../node-executors/resource-node.executor';
-import { SmartRoutingNodeExecutor } from '../node-executors/smart-routing-node.executor';
-import { SubAgentNodeExecutor } from '../node-executors/sub-agent-node.executor';
-import { TriggerNodeExecutor } from '../node-executors/trigger-node.executor';
-import { ValueNodeExecutor } from '../node-executors/value-node.executor';
-import { WorkflowAgentNodeExecutor } from '../node-executors/workflow-agent-node.executor';
-import type { NodeSchedulerService } from '../node-scheduler.service';
+  describe('scheduleNode migrated', () => {
+    it('http-tool 节点应兼容 snake_case query_params 配置', async () => {
+      const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);
+      const steps = [
+        makeStep({
+          id: 'step-h',
+          nodeId: 'H',
+          status: 'pending',
+          nodeType: 'http-tool',
+          nodeData: {
+            config: {
+              url: 'https://example.com/search',
+              method: 'GET',
+              query_params: [
+                { key: 'q', value: 'OpenAI news' },
+                { key: 'hl', value: 'en-US' },
+              ],
+            },
+          },
+        }),
+      ];
 
-function stubExecutor<T>(): T {
-  return { execute: vi.fn() } as unknown as T;
-}
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://example.com/search?q=OpenAI+news&hl=en-US',
+        headers: {
+          entries: () =>
+            Object.entries({
+              'content-type': 'application/json',
+            })[Symbol.iterator](),
+          get: (key: string) =>
+            key === 'content-type' ? 'application/json' : null,
+        },
+        json: vi.fn().mockResolvedValue({ ok: true }),
+      } as unknown as Response);
 
-function createDispatcher(
-  http: HttpNodeExecutor = stubExecutor<HttpNodeExecutor>(),
-): NodeDispatcherService {
-  return new NodeDispatcherService(
-    stubExecutor<WorkflowAgentNodeExecutor>(),
-    stubExecutor<TriggerNodeExecutor>(),
-    stubExecutor<ResourceNodeExecutor>(),
-    stubExecutor<DataTransformNodeExecutor>(),
-    http,
-    stubExecutor<CodeNodeExecutor>(),
-    stubExecutor<ConditionalNodeExecutor>(),
-    stubExecutor<CompoundNodeExecutor>(),
-    stubExecutor<ValueNodeExecutor>(),
-    stubExecutor<SmartRoutingNodeExecutor>(),
-    stubExecutor<ExtensionNodeExecutor>(),
-    stubExecutor<SubAgentNodeExecutor>(),
-    stubExecutor<DeprecatedNodeExecutor>(),
-  );
-}
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
 
-function makeStep(nodeType: string): ExecutionStep {
-  return {
-    id: 'step-1',
-    executionId: 'execution-1',
-    nodeId: 'node-1',
-    stepOrder: 0,
-    status: 'pending',
-    nodeType,
-    nodeData: {},
-    input: null,
-    result: null,
-    checkpointData: null,
-    errorMessage: null,
-    startedAt: null,
-    completedAt: null,
-    createdAt: new Date(0),
-    updatedAt: new Date(0),
-  } as ExecutionStep;
-}
+      await service.scheduleNode(EXECUTION_ID, 'H', TENANT_ID, snapshot, [
+        ...steps,
+      ]);
 
-describe('NodeDispatcherService', () => {
-  it('注册 scheduleNode 的全部存量 nodeType', () => {
-    const dispatcher = createDispatcher();
-    const nodeTypes = [
-      'agent', 'chat-agent', 'llm-agent',
-      'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger',
-      'llm-model', 'sandbox', 'workspace', 'memory', 'knowledge-base',
-      'data_transform', 'input-preprocessor', 'http-tool', 'code-tool',
-      'condition', 'conditional', 'loop', 'iteration', 'loop-start',
-      'iteration-start', 'loop-state', 'result', 'break', 'continue',
-      'merge', 'text', 'text-output', 'json-output', 'smart-routing',
-      'plugin', 'skill', 'mcp-tool', 'sub-agent',
-    ];
-
-    for (const nodeType of nodeTypes) {
-      expect(dispatcher.find(nodeType), nodeType).toBeDefined();
-    }
-  });
-
-  it('通过公开 executor 契约把 http-tool 上下文原样交给 HTTP 执行路径', async () => {
-    const execute = vi.fn().mockResolvedValue(undefined);
-    const http = { execute } as unknown as HttpNodeExecutor;
-    const dispatcher = createDispatcher(http);
-    const runtime = {} as NodeSchedulerService;
-    const step = makeStep('http-tool');
-    const input = { request: { query: 'workflow' } };
-
-    await expect(dispatcher.dispatch({
-      executionId: 'execution-1',
-      tenantId: 'tenant-1',
-      step,
-      input,
-      snapshot: { nodes: [], edges: [] },
-      steps: [step],
-      memorySessionIds: [],
-      runtime,
-    })).resolves.toBe(true);
-
-    expect(execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        step,
-        input,
-        tenantId: 'tenant-1',
-        executionId: 'execution-1',
-        runtime,
-      }),
-    );
-  });
-
-  it('未知 nodeType 不执行任何 fallback executor', async () => {
-    const dispatcher = createDispatcher();
-    const step = makeStep('future-node');
-
-    await expect(dispatcher.dispatch({
-      executionId: 'execution-1',
-      tenantId: 'tenant-1',
-      step,
-      input: {},
-      snapshot: { nodes: [], edges: [] },
-      steps: [step],
-      memorySessionIds: [],
-      runtime: {} as NodeSchedulerService,
-    })).resolves.toBe(false);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://example.com/search?q=OpenAI+news&hl=en-US'),
+        expect.objectContaining({
+          method: 'GET',
+        }),
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
+    });
   });
 });

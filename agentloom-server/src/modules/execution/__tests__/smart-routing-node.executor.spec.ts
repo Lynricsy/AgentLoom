@@ -83,7 +83,7 @@ import {
   createUpdateChainVoid
 } from './node-scheduler-test-support';
 
-describe('dispatcher migrated scenarios', () => {
+describe('smart migrated scenarios', () => {
   let service: NodeSchedulerService;
   let nodeDispatcher: NodeDispatcherService;
   let compoundExecution: CompoundExecutionService;
@@ -334,283 +334,277 @@ describe('dispatcher migrated scenarios', () => {
     compoundExecution = module.get(CompoundExecutionService);
   });
 
-  const inlineDispatchCases = [
-    ['llm-model', 'executeLlmModelNode', false],
-    ['knowledge-base', 'executeKnowledgeNode', false],
-    ['condition', 'executeConditional', true],
-    ['conditional', 'executeConditional', true],
-    ['loop', 'executeLoopNode', true],
-    ['iteration', 'executeIterationNode', true],
-    ['loop-start', 'executeLoopStartNode', false],
-    ['iteration-start', 'executeIterationStartNode', false],
-    ['loop-state', 'executeLoopStateNode', true],
-    ['result', 'executeResultNode', true],
-    ['break', 'executeBreakNode', true],
-    ['continue', 'executeContinueNode', true],
-    ['merge', 'executeMerge', true],
-    ['text-output', 'executeOutputNode', true],
-    ['json-output', 'executeOutputNode', true],
-    ['skill', 'executeSkillNode', true],
-  ] as const;
-
   describe('scheduleNode migrated', () => {
-    it('最新步骤状态已非 pending 时不应重复调度', async () => {
+    it('smart-routing 节点会默认使用 FALLBACK_CHAIN，并产出完整运行时 metadata', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('A'), makeNode('B')],
-        [makeEdge('A', 'B')],
+        [
+          makeNode('A', 'llm-model'),
+          makeNode('B', 'llm-model'),
+          makeNode('R', 'smart-routing'),
+        ],
+        [
+          makeEdge('A', 'R', undefined, 'primary'),
+          makeEdge('B', 'R', undefined, 'secondary'),
+        ],
       );
-      const staleSteps = [
+      const steps = [
         makeStep({
           id: 'step-a',
           nodeId: 'A',
           status: 'completed',
-          result: { answer: 'hello' },
+          result: { llmModelConfigId: 'model-1' },
         }),
         makeStep({
           id: 'step-b',
           nodeId: 'B',
+          status: 'completed',
+          result: { llmModelConfigId: 'model-2' },
+        }),
+        makeStep({
+          id: 'step-r',
+          nodeId: 'R',
           status: 'pending',
-          nodeType: 'agent',
-          nodeData: { agentId: 'agent-b' },
+          nodeType: 'smart-routing',
+          nodeData: {},
         }),
       ];
-
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const route = vi.fn().mockResolvedValue({
+        selectedModelId: 'model-2',
+        scores: [
+          {
+            modelId: 'model-2',
+            modelName: 'claude-sonnet-4-20250514',
+            provider: 'anthropic',
+            score: 100,
+            reasoning: 'fallback #1',
+          },
+          {
+            modelId: 'model-1',
+            modelName: 'gpt-4o',
+            provider: 'openai',
+            score: 90,
+            reasoning: 'fallback #2',
+          },
+        ],
+        reasoning: 'mock smart routing decision',
+        routerType: 'fallback_chain',
+        latencyMs: 7,
+      });
+      mockRouterRegistry.get.mockReturnValueOnce({
+        requiresEmbedding: true,
+        route,
+      });
       db.select
         .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
+        .mockReturnValueOnce(createSelectChain(steps))
         .mockReturnValueOnce(
           createSelectChain([
-            makeStep({
-              id: 'step-b',
-              nodeId: 'B',
-              status: 'cancelled',
-              nodeType: 'agent',
-              nodeData: { agentId: 'agent-b' },
-            }),
+            {
+              id: 'model-1',
+              name: 'gpt-4o',
+              provider: 'openai',
+              modelName: 'gpt-4o',
+            },
+            {
+              id: 'model-2',
+              name: 'claude-sonnet-4-20250514',
+              provider: 'anthropic',
+              modelName: 'claude-sonnet-4-20250514',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              modelConfigId: 'model-1',
+              providerName: 'openai',
+              routingMeta: {
+                contextWindow: 128000,
+                costs: { inputPer1kTokens: 0.01, outputPer1kTokens: 0.03 },
+                qualityRank: 88,
+                avgLatencyMs: 600,
+                maxInputTokens: 128000,
+              },
+              eloRating: 1200,
+            },
+            {
+              modelConfigId: 'model-2',
+              providerName: 'anthropic',
+              routingMeta: {
+                contextWindow: 200000,
+                costs: { inputPer1kTokens: 0.02, outputPer1kTokens: 0.04 },
+                qualityRank: 92,
+                avgLatencyMs: 900,
+                maxInputTokens: 200000,
+              },
+              eloRating: 1300,
+            },
           ]),
         );
 
-      await service.scheduleNode(
-        EXECUTION_ID,
-        'B',
+      await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
+
+      expect(mockRouterRegistry.get).toHaveBeenCalledWith('fallback_chain');
+      expect(
+        mockHealthMonitorService.filterHealthyCandidates,
+      ).toHaveBeenCalledWith(
         TENANT_ID,
-        snapshot,
-        staleSteps,
+        expect.arrayContaining([
+          expect.objectContaining({ modelConfigId: 'model-1' }),
+          expect.objectContaining({ modelConfigId: 'model-2' }),
+        ]),
       );
-
-      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
-      expect(mockQueue.add).not.toHaveBeenCalled();
-    });
-  });
-
-
-
-
-  describe('scheduleNode migrated', () => {
-    it.each(inlineDispatchCases)(
-      '%s 节点应分派给公开 executor，并保持标准调度上下文',
-
-      async (nodeType) => {
-        const step = makeStep({
-          id: `step-${nodeType}`,
-          nodeId: `node-${nodeType}`,
-          nodeType,
-          nodeData: {},
-        });
-        const snapshot = makeSnapshot([makeNode(step.nodeId, nodeType)], []);
-        const executor = nodeDispatcher.find(nodeType)!;
-        const execute = vi.fn().mockResolvedValue(undefined);
-        vi.spyOn(nodeDispatcher, 'find').mockReturnValue({ execute });
-        await nodeDispatcher.dispatch({
-          executionId: EXECUTION_ID,
-          tenantId: TENANT_ID,
-          step,
-          input: {},
-          snapshot,
-          steps: [step],
-          memorySessionIds: [],
-          runtime: service,
-        });
-
-        expect(execute).toHaveBeenCalledTimes(1);
-        expect(execute).toHaveBeenCalledWith(
-          expect.objectContaining({
-            step,
-            input: {},
-            tenantId: TENANT_ID,
-            executionId: EXECUTION_ID,
-            runtime: service,
-          }),
-        );
-        expect(mockQueue.add).not.toHaveBeenCalled();
-      },
-    );
-  });
-
-  describe('scheduleNode migrated', () => {
-    it('未知节点类型应显式失败，不再降级到 agent 队列', async () => {
-      const step = makeStep({
-        id: 'step-future-custom-node',
-        nodeId: 'node-future-custom-node',
-        nodeType: 'future-custom-node',
-        nodeData: {},
-      });
-      const snapshot = makeSnapshot(
-        [makeNode(step.nodeId, 'future-custom-node')],
-        [],
-      );
-      db.update.mockReturnValueOnce(createUpdateChainVoid());
-
-      await service.scheduleNode(
-        EXECUTION_ID,
-        step.nodeId,
+      expect(mockEmbeddingService.generateEmbedding).toHaveBeenCalledWith(
+        expect.any(String),
         TENANT_ID,
-        snapshot,
-        [step],
-        { skipLatestState: true },
       );
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        step.id,
-        'failed',
+      expect(route).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ modelConfigId: 'model-1' }),
+          expect.objectContaining({ modelConfigId: 'model-2' }),
+        ]),
         expect.objectContaining({
-          errorMessage: expect.objectContaining({
-            message: expect.stringContaining('不支持的节点类型'),
-          }),
+          inputTokenCount: expect.any(Number),
+          tenantId: TENANT_ID,
         }),
       );
-      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
+        'step-r',
+        TENANT_ID,
+        'R',
+        expect.objectContaining({
+          selectedModelId: 'model-2',
+          strategy: 'fallback_chain',
+          routerType: 'fallback_chain',
+        }),
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-r',
+        'completed',
+        {
+          result: expect.objectContaining({
+            selectedModelId: 'model-2',
+            llmModelConfigId: 'model-2',
+            routingStepId: 'step-r',
+            routingNodeId: 'R',
+            candidateModelIds: ['model-2', 'model-1'],
+            currentModelIndex: 0,
+            routerType: 'fallback_chain',
+            routingDecisionId: 'routing-decision-1',
+            tokenThreshold: 4096,
+            inputTokenCount: expect.any(Number),
+          }),
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-r',
+        TENANT_ID,
+      );
     });
   });
-});
 
-/**
- * 节点分派器规格：验证完整 nodeType 注册表与公开执行器分派行为。
- */
-import { describe, expect, it, vi } from 'vitest';
-import type { ExecutionStep } from '../../../database/schema';
-import { NodeDispatcherService } from '../node-dispatcher.service';
-import { CodeNodeExecutor } from '../node-executors/code-node.executor';
-import { CompoundNodeExecutor } from '../node-executors/compound-node.executor';
-import { ConditionalNodeExecutor } from '../node-executors/conditional-node.executor';
-import { DataTransformNodeExecutor } from '../node-executors/data-transform-node.executor';
-import { DeprecatedNodeExecutor } from '../node-executors/deprecated-node.executor';
-import { ExtensionNodeExecutor } from '../node-executors/extension-node.executor';
-import { HttpNodeExecutor } from '../node-executors/http-node.executor';
-import { ResourceNodeExecutor } from '../node-executors/resource-node.executor';
-import { SmartRoutingNodeExecutor } from '../node-executors/smart-routing-node.executor';
-import { SubAgentNodeExecutor } from '../node-executors/sub-agent-node.executor';
-import { TriggerNodeExecutor } from '../node-executors/trigger-node.executor';
-import { ValueNodeExecutor } from '../node-executors/value-node.executor';
-import { WorkflowAgentNodeExecutor } from '../node-executors/workflow-agent-node.executor';
-import type { NodeSchedulerService } from '../node-scheduler.service';
+  describe('scheduleNode migrated', () => {
+    it('HISTORICAL_BEST 会在调度前注入近 30 天历史指标', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('A', 'llm-model'), makeNode('R', 'smart-routing')],
+        [makeEdge('A', 'R', undefined, 'primary')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { llmModelConfigId: 'model-1' },
+        }),
+        makeStep({
+          id: 'step-r',
+          nodeId: 'R',
+          status: 'pending',
+          nodeType: 'smart-routing',
+          nodeData: {
+            strategy: 'HISTORICAL_BEST',
+            modelConfigIds: ['model-1', 'model-2'],
+            tokenThreshold: 8192,
+          },
+        }),
+      ];
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+      const route = vi.fn().mockResolvedValue({
+        selectedModelId: 'model-1',
+        scores: [
+          {
+            modelId: 'model-1',
+            modelName: 'gpt-4o',
+            provider: 'openai',
+            score: 99,
+            reasoning: 'historical best',
+          },
+        ],
+        reasoning: 'historical best',
+        routerType: 'historical_best',
+        latencyMs: 5,
+      });
+      mockRouterRegistry.get.mockReturnValueOnce({
+        requiresEmbedding: false,
+        route,
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
+        .mockReturnValueOnce(createSelectChain(steps))
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: 'model-1',
+              name: 'gpt-4o',
+              provider: 'openai',
+              modelName: 'gpt-4o',
+            },
+            {
+              id: 'model-2',
+              name: 'claude-sonnet-4-20250514',
+              provider: 'anthropic',
+              modelName: 'claude-sonnet-4-20250514',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([]));
+      mockSmartRoutingService.getHistoricalMetrics.mockResolvedValueOnce({
+        'model-1': {
+          successRate: 0.9,
+          avgLatencyMs: 120,
+          avgTokenUsage: 0,
+          lastUsedAt: '2024-12-31T00:00:00.000Z',
+        },
+      });
 
-function stubExecutor<T>(): T {
-  return { execute: vi.fn() } as unknown as T;
-}
+      await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
 
-function createDispatcher(
-  http: HttpNodeExecutor = stubExecutor<HttpNodeExecutor>(),
-): NodeDispatcherService {
-  return new NodeDispatcherService(
-    stubExecutor<WorkflowAgentNodeExecutor>(),
-    stubExecutor<TriggerNodeExecutor>(),
-    stubExecutor<ResourceNodeExecutor>(),
-    stubExecutor<DataTransformNodeExecutor>(),
-    http,
-    stubExecutor<CodeNodeExecutor>(),
-    stubExecutor<ConditionalNodeExecutor>(),
-    stubExecutor<CompoundNodeExecutor>(),
-    stubExecutor<ValueNodeExecutor>(),
-    stubExecutor<SmartRoutingNodeExecutor>(),
-    stubExecutor<ExtensionNodeExecutor>(),
-    stubExecutor<SubAgentNodeExecutor>(),
-    stubExecutor<DeprecatedNodeExecutor>(),
-  );
-}
-
-function makeStep(nodeType: string): ExecutionStep {
-  return {
-    id: 'step-1',
-    executionId: 'execution-1',
-    nodeId: 'node-1',
-    stepOrder: 0,
-    status: 'pending',
-    nodeType,
-    nodeData: {},
-    input: null,
-    result: null,
-    checkpointData: null,
-    errorMessage: null,
-    startedAt: null,
-    completedAt: null,
-    createdAt: new Date(0),
-    updatedAt: new Date(0),
-  } as ExecutionStep;
-}
-
-describe('NodeDispatcherService', () => {
-  it('注册 scheduleNode 的全部存量 nodeType', () => {
-    const dispatcher = createDispatcher();
-    const nodeTypes = [
-      'agent', 'chat-agent', 'llm-agent',
-      'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger',
-      'llm-model', 'sandbox', 'workspace', 'memory', 'knowledge-base',
-      'data_transform', 'input-preprocessor', 'http-tool', 'code-tool',
-      'condition', 'conditional', 'loop', 'iteration', 'loop-start',
-      'iteration-start', 'loop-state', 'result', 'break', 'continue',
-      'merge', 'text', 'text-output', 'json-output', 'smart-routing',
-      'plugin', 'skill', 'mcp-tool', 'sub-agent',
-    ];
-
-    for (const nodeType of nodeTypes) {
-      expect(dispatcher.find(nodeType), nodeType).toBeDefined();
-    }
-  });
-
-  it('通过公开 executor 契约把 http-tool 上下文原样交给 HTTP 执行路径', async () => {
-    const execute = vi.fn().mockResolvedValue(undefined);
-    const http = { execute } as unknown as HttpNodeExecutor;
-    const dispatcher = createDispatcher(http);
-    const runtime = {} as NodeSchedulerService;
-    const step = makeStep('http-tool');
-    const input = { request: { query: 'workflow' } };
-
-    await expect(dispatcher.dispatch({
-      executionId: 'execution-1',
-      tenantId: 'tenant-1',
-      step,
-      input,
-      snapshot: { nodes: [], edges: [] },
-      steps: [step],
-      memorySessionIds: [],
-      runtime,
-    })).resolves.toBe(true);
-
-    expect(execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        step,
-        input,
-        tenantId: 'tenant-1',
-        executionId: 'execution-1',
-        runtime,
-      }),
-    );
-  });
-
-  it('未知 nodeType 不执行任何 fallback executor', async () => {
-    const dispatcher = createDispatcher();
-    const step = makeStep('future-node');
-
-    await expect(dispatcher.dispatch({
-      executionId: 'execution-1',
-      tenantId: 'tenant-1',
-      step,
-      input: {},
-      snapshot: { nodes: [], edges: [] },
-      steps: [step],
-      memorySessionIds: [],
-      runtime: {} as NodeSchedulerService,
-    })).resolves.toBe(false);
+      expect(mockSmartRoutingService.getHistoricalMetrics).toHaveBeenCalledWith(
+        TENANT_ID,
+        'R',
+      );
+      expect(mockRouterRegistry.get).toHaveBeenCalledWith('historical_best');
+      expect(route).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          historicalMetrics: {
+            'model-1': {
+              successRate: 0.9,
+              avgLatencyMs: 120,
+              avgTokenUsage: 0,
+              lastUsedAt: '2024-12-31T00:00:00.000Z',
+            },
+          },
+          tenantId: TENANT_ID,
+        }),
+      );
+    });
   });
 });
