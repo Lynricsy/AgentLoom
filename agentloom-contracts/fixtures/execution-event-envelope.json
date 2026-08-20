@@ -1,0 +1,16 @@
+{
+  "eventId": 7,
+  "event": "execution.status.changed",
+  "timestamp": "2026-03-24T09:15:42.318Z",
+  "executionId": "0195c3a1-8f2e-7c41-9b3d-2e6f4a7c9d01",
+  "tenantId": "0195c3a1-4b7d-7e22-8a15-6c3b9f2e4d88",
+  "data": {
+    "executionId": "0195c3a1-8f2e-7c41-9b3d-2e6f4a7c9d01",
+    "status": "running",
+    "executionType": "workflow",
+    "completedSteps": 2,
+    "totalSteps": 5,
+    "phase": "running",
+    "sandboxReused": false
+  }
+}

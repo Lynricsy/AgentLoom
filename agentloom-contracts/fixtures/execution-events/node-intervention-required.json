@@ -1,0 +1,19 @@
+{
+  "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+  "nodeId": "agent-main",
+  "nodeName": "主 Agent",
+  "executionType": "workflow",
+  "decision": {
+    "suggestedContent": "建议直接发布",
+    "autonomyMode": "suggest",
+    "selectedAction": "publish",
+    "alternatives": [
+      "publish",
+      "hold"
+    ],
+    "confidence": 0.82,
+    "rationale": "测试全部通过"
+  },
+  "partialContent": "已完成 4/5 步",
+  "requestedAt": "2026-03-24T09:15:41.900Z"
+}

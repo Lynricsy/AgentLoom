@@ -12,18 +12,16 @@ RUN corepack enable
 
 WORKDIR /build
 
+# workspace 内部包必须在 install 之前完整落盘：它们声明了 prepare 脚本，
+# pnpm 会在 workspace install 期间执行，只有 package.json 时会因缺少源码而失败。
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY agentloom-contracts/package.json   ./agentloom-contracts/
-COPY agentloom-api-client/package.json  ./agentloom-api-client/
-COPY agentloom-plugin-sdk/package.json  ./agentloom-plugin-sdk/
-COPY agentloom-server/package.json      ./agentloom-server/
-
-RUN pnpm install --frozen-lockfile --config.node-linker=hoisted \
-    --filter agentloom-server... --filter agentloom-server^...
-
 COPY agentloom-contracts/  ./agentloom-contracts/
 COPY agentloom-api-client/ ./agentloom-api-client/
 COPY agentloom-plugin-sdk/ ./agentloom-plugin-sdk/
+COPY agentloom-server/package.json ./agentloom-server/
+
+RUN pnpm install --frozen-lockfile --config.node-linker=hoisted \
+    --filter agentloom-server... --filter agentloom-server^...
 
 RUN pnpm --filter @agentloom/contracts --filter @agentloom/api-client --filter @agentloom/plugin-sdk run build
 

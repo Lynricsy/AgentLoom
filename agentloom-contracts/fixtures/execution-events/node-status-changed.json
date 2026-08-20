@@ -1,0 +1,9 @@
+{
+  "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+  "nodeId": "agent-main",
+  "from": "pending",
+  "to": "running",
+  "executionType": "workflow",
+  "result": null,
+  "checkpointData": null
+}

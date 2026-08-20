@@ -1,0 +1,52 @@
+{
+  "executionId": "0195c3a1-8f2e-7c41-9b3d-2e6f4a7c9d01",
+  "status": "running",
+  "completedSteps": 1,
+  "totalSteps": 3,
+  "steps": [
+    {
+      "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b21",
+      "nodeId": "input-1",
+      "status": "completed",
+      "startedAt": "2026-03-24T09:15:40.001Z",
+      "completedAt": "2026-03-24T09:15:40.512Z",
+      "result": { "text": "hello" },
+      "checkpointData": null
+    },
+    {
+      "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+      "nodeId": "agent-main",
+      "status": "running",
+      "startedAt": "2026-03-24T09:15:40.640Z",
+      "completedAt": null,
+      "result": null,
+      "checkpointData": { "session": { "turn": 1 } }
+    },
+    {
+      "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b23",
+      "nodeId": "output-1",
+      "status": "failed",
+      "startedAt": "2026-03-24T09:15:41.100Z",
+      "completedAt": "2026-03-24T09:15:41.180Z",
+      "errorMessage": "端口类型不兼容",
+      "errorDetail": {
+        "message": "端口类型不兼容",
+        "type": "TYPE_MISMATCH",
+        "nodeId": "output-1",
+        "typeMismatch": {
+          "sourcePortId": "text-out",
+          "targetPortId": "json-in",
+          "sourceType": "text",
+          "targetType": "json",
+          "sourceNodeId": "agent-main",
+          "targetNodeId": "output-1",
+          "edgeId": "edge-2"
+        }
+      },
+      "result": null,
+      "checkpointData": null
+    }
+  ],
+  "snapshotAt": "2026-03-24T09:15:42.318Z",
+  "lastEventId": 7
+}

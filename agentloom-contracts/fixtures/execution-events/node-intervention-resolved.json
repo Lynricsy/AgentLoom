@@ -1,0 +1,10 @@
+{
+  "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+  "nodeId": "agent-main",
+  "executionType": "workflow",
+  "action": "approve",
+  "feedback": "同意发布",
+  "resolvedBy": "0195c3a1-2d55-7a90-9f31-4b8e6c1d7a02",
+  "resolvedAt": "2026-03-24T09:15:42.100Z",
+  "timeout": false
+}

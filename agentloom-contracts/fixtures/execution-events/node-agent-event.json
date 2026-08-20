@@ -1,0 +1,14 @@
+{
+  "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+  "executionType": "conversation",
+  "event": {
+    "type": "message_chunk",
+    "content": "正在分析仓库结构"
+  },
+  "subagent": {
+    "handle": "sa_9f2c41ab77de",
+    "alias": "reviewer",
+    "depth": 1,
+    "parentToolCallId": "call_7yq2"
+  }
+}

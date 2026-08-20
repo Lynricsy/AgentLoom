@@ -1,0 +1,113 @@
+{
+  "runtimeMode": "sandbox",
+  "modelConfig": {
+    "modelId": "0195c3a1-6e11-7b30-8d42-9a1c5f3e7b04",
+    "provider": "anthropic",
+    "apiProtocol": "anthropic",
+    "modelName": "claude-sonnet-4",
+    "apiKeyId": "0195c3a1-6e11-7b30-8d42-9a1c5f3e7b05",
+    "endpointUrl": null,
+    "authMethod": "api_key",
+    "authConfig": null,
+    "temperature": 0.3,
+    "maxTokens": 8192,
+    "topP": 0.95,
+    "customParameters": { "thinking": "enabled" }
+  },
+  "tools": [
+    {
+      "toolId": "0195c3a1-7001-7c40-9e11-3b7d2a6f8c01",
+      "name": "search_docs",
+      "description": "检索项目文档",
+      "enabled": true,
+      "toolType": "mcp",
+      "mcpToolDefinitionId": "0195c3a1-7001-7c40-9e11-3b7d2a6f8c02",
+      "mcpServerConfigId": "0195c3a1-7001-7c40-9e11-3b7d2a6f8c03",
+      "toolName": "search_docs",
+      "inputSchema": { "type": "object", "properties": { "q": { "type": "string" } } }
+    },
+    {
+      "toolId": "0195c3a1-7001-7c40-9e11-3b7d2a6f8c04",
+      "name": "notify_webhook",
+      "enabled": true,
+      "toolType": "http",
+      "url": "https://hooks.example.com/agentloom",
+      "method": "POST"
+    },
+    {
+      "toolId": "0195c3a1-7001-7c40-9e11-3b7d2a6f8c05",
+      "name": "format_json",
+      "enabled": false,
+      "toolType": "code",
+      "language": "typescript",
+      "code": "export default (input: string) => JSON.parse(input);",
+      "timeout": 30
+    }
+  ],
+  "knowledgeBindings": [
+    {
+      "knowledgeBaseId": "0195c3a1-7101-7d50-a012-4c8e3b7f9d01",
+      "topK": 5,
+      "similarityThreshold": 0.75,
+      "enabled": true
+    }
+  ],
+  "subAgents": [
+    {
+      "agentDefinitionId": "0195c3a1-7201-7e60-b123-5d9f4c8a1e01",
+      "agentVersionId": "0195c3a1-7201-7e60-b123-5d9f4c8a1e02",
+      "alias": "reviewer",
+      "maxTimeoutMs": 300000,
+      "description": "代码审查子代理",
+      "overrides": {
+        "systemPrompt": "只做审查，不改代码",
+        "routingConfig": {
+          "strategy": "FALLBACK_CHAIN",
+          "candidateModelIds": ["0195c3a1-6e11-7b30-8d42-9a1c5f3e7b04"],
+          "fallbackModelId": "0195c3a1-6e11-7b30-8d42-9a1c5f3e7b06"
+        }
+      },
+      "extensions": {
+        "skillIds": ["0195c3a1-7301-7f70-c234-6e1a5d9b2f01"],
+        "memoryInstanceIds": ["0195c3a1-7401-7081-d345-7f2b6e1c3a01"]
+      }
+    }
+  ],
+  "inputPreprocessors": [{ "type": "trim_whitespace" }],
+  "sandboxConfig": {
+    "cpu": 2,
+    "memory": 2048,
+    "disk": 5,
+    "timeout": 4,
+    "timeoutSeconds": 900,
+    "conversationIdleAutoEndMinutes": 30,
+    "lifecycleMode": "persistent",
+    "persistenceExpiryHours": 12,
+    "name": "dev-box",
+    "activeBindings": [
+      {
+        "executionId": "0195c3a1-8f2e-7c41-9b3d-2e6f4a7c9d01",
+        "sandboxNodeId": "sandbox-1"
+      }
+    ]
+  },
+  "routingConfig": {
+    "strategy": "FALLBACK_CHAIN",
+    "candidateModelIds": ["0195c3a1-6e11-7b30-8d42-9a1c5f3e7b04"],
+    "fallbackModelId": "0195c3a1-6e11-7b30-8d42-9a1c5f3e7b06"
+  },
+  "memoryInstanceIds": ["0195c3a1-7401-7081-d345-7f2b6e1c3a01"],
+  "skillIds": ["0195c3a1-7301-7f70-c234-6e1a5d9b2f01"],
+  "nativeToolPolicy": {
+    "readEnabled": true,
+    "writeEnabled": true,
+    "editEnabled": true,
+    "terminalEnabled": false
+  },
+  "selfEvolutionPolicy": {
+    "enabled": true,
+    "resourceManagement": true,
+    "externalEditing": false,
+    "sandboxManagement": false
+  }
+}

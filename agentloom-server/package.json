@@ -28,11 +28,13 @@
     "openapi:export": "pnpm build && node scripts/export-openapi-spec.mjs",
     "sdk:export-spec": "pnpm openapi:export",
     "sdk:generate:ts": "openapi-generator-cli generate --generator-key typescript && node scripts/postprocess-typescript-sdk.mjs",
+    "sdk:generate:models": "openapi-generator-cli generate --generator-key typescriptModels",
     "sdk:generate:py": "openapi-generator-cli generate --generator-key python && node scripts/postprocess-python-sdk.mjs",
     "sdk:generate": "pnpm openapi:export && pnpm sdk:generate:ts && pnpm sdk:generate:py",
     "sdk:build:ts": "tsc --noEmit -p sdk/typescript/tsconfig.json"
   },
   "dependencies": {
+    "@agentloom/contracts": "workspace:*",
     "@agentloom/plugin-sdk": "workspace:*",
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/google": "^3.0.43",
@@ -57,7 +59,7 @@
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.16",
-    "@qdrant/js-client-rest": "^1.17.0",
+    "@qdrant/js-client-rest": "1.17.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@supabase/supabase-js": "^2.98.0",
     "@types/jmespath": "^0.15.2",

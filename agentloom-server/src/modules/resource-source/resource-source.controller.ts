@@ -6,7 +6,12 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
@@ -15,6 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   ConvertResourceSourceParamsSchema,
+  resourceSourceResourceTypeValues,
   type ConvertResourceSourceParamsDto,
 } from './dto/convert-resource-source.dto';
 import { ResourceSourceService } from './resource-source.service';
@@ -34,6 +40,12 @@ export class ResourceSourceController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '将分享导入资源归类为自己创建' })
   @ApiResponse({ status: 200, description: '资源分类更新成功' })
+  @ApiParam({
+    name: 'resourceType',
+    enum: resourceSourceResourceTypeValues,
+    description: '资源类型',
+  })
+  @ApiParam({ name: 'resourceId', format: 'uuid', description: '资源 ID' })
   async convertToManual(
     @Param(new ZodValidationPipe(ConvertResourceSourceParamsSchema))
     params: ConvertResourceSourceParamsDto,

@@ -8,18 +8,17 @@ RUN corepack enable
 
 WORKDIR /workspace
 
-# 先复制依赖清单（利用 Docker 层缓存）
+# 先复制依赖清单（利用 Docker 层缓存）。
+# contracts / api-client 声明了 prepare 脚本，必须在 install 之前完整落盘。
 COPY agentloom-type-engine/pkg ./agentloom-type-engine/pkg
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY agentloom-contracts/package.json  ./agentloom-contracts/
-COPY agentloom-api-client/package.json ./agentloom-api-client/
-COPY agentloom-studio/package.json     ./agentloom-studio/
+COPY agentloom-contracts/  ./agentloom-contracts/
+COPY agentloom-api-client/ ./agentloom-api-client/
+COPY agentloom-studio/package.json ./agentloom-studio/
 
 RUN pnpm install --frozen-lockfile --config.node-linker=hoisted \
     --filter agentloom-studio... --filter agentloom-studio^...
 
-COPY agentloom-contracts/  ./agentloom-contracts/
-COPY agentloom-api-client/ ./agentloom-api-client/
 RUN pnpm --filter @agentloom/contracts --filter @agentloom/api-client run build
 
 WORKDIR /workspace/agentloom-studio

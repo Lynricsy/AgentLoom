@@ -30,6 +30,14 @@ allowBuilds:
 overrides:
   '@radix-ui/react-dialog': '^1.1.23'
 
+  # server 直接钉 fastify 5.7.4，而 @fastify/multipart 会拉入 5.11.3；
+  # 两份 FastifyInstance 类型互不兼容，plugin 注册在类型层直接失败。
+  fastify: 5.7.4
+
+  # server 与 @llamaindex/qdrant 各自解析 qdrant client 会装成两份；
+  # 1.17.0 是 server 代码实际适配的版本（1.19 移除了 search API）。
+  '@qdrant/js-client-rest': 1.17.0
+
 # 跨包统一版本。
 # 例外：agentloom-plugin-sdk 的 zod 保持 3.x（面向插件生态兼容），不引用 catalog。
 catalog:
