@@ -1,10 +1,32 @@
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
+import { cn } from '@/shared/lib/utils'
 import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
 import { Switch } from '@/shared/ui/switch'
-import { isWebhookConfig, type Trigger } from '../types'
+import { isWebhookConfig, type Trigger, type WebhookAuthMode } from '../types'
 import { buildWebhookUrl } from './WebhookSecretDisplay'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
+
+const authModeOptions: Array<{
+  value: WebhookAuthMode
+  id: string
+  title: string
+  description: string
+}> = [
+  {
+    value: 'simple',
+    id: 'webhook-auth-mode-simple',
+    title: 'Simple：仅校验 Token 与 IP 白名单',
+    description: '调用方携带正确的 Token 即可触发，适合内网或已受信的来源系统。',
+  },
+  {
+    value: 'signed',
+    id: 'webhook-auth-mode-signed',
+    title: 'Signed：额外要求 HMAC-SHA256 签名与时间戳校验',
+    description: '调用方需用 secret 对请求体签名并携带时间戳，可防篡改与重放，更安全。',
+  },
+]
 
 interface WebhookConfigFormProps {
   register: UseFormRegister<TriggerDialogFormValues>
@@ -22,6 +44,7 @@ export function WebhookConfigForm({
   trigger,
 }: WebhookConfigFormProps) {
   const isEnabled = watch('isEnabled')
+  const authMode = watch('webhook.authMode')
   const webhookConfig =
     trigger?.type === 'webhook' && isWebhookConfig(trigger.config) ? trigger.config : null
 
@@ -67,6 +90,44 @@ export function WebhookConfigForm({
           <p className="text-xs text-error">{errors.description.message}</p>
         )}
       </label>
+
+      <fieldset>
+        <legend id="webhook-auth-mode-label" className="mb-2 text-sm font-medium text-foreground">
+          验证模式
+        </legend>
+        <RadioGroup
+          aria-labelledby="webhook-auth-mode-label"
+          value={authMode}
+          onValueChange={(value) =>
+            setValue('webhook.authMode', value === 'signed' ? 'signed' : 'simple', {
+              shouldDirty: true,
+              shouldValidate: true,
+            })
+          }
+          className="gap-3 md:grid-cols-2"
+        >
+          {authModeOptions.map((option) => (
+            <label
+              key={option.value}
+              htmlFor={option.id}
+              className={cn(
+                'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
+                authMode === option.value
+                  ? 'border-violet-400/50 bg-violet-500/10'
+                  : 'border-border/60 bg-background/60 hover:border-border',
+              )}
+            >
+              <RadioGroupItem id={option.id} value={option.value} className="mt-0.5" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-foreground">{option.title}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+      </fieldset>
 
       <label htmlFor="webhook-ip-whitelist" className="block space-y-2">
         <Label>IP 白名单</Label>

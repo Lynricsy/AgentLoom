@@ -50,6 +50,8 @@ export interface ApiEventTriggerConfig {
   eventSource: string
   eventType: string
   filterExpression?: string
+  /** HMAC-SHA256 验签密钥，仅 github 等需要验签的事件源使用 */
+  secret?: string
 }
 
 export type TriggerConfig =
