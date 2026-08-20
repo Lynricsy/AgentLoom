@@ -22,8 +22,13 @@ export class QueryDeveloperKeysDto extends createZodDto(
   QueryDeveloperKeysSchema,
 ) {}
 
-export const DeveloperKeyResponseSchema = RegisterDeveloperKeySchema.extend({
+// 响应形状不能直接继承请求 schema 的 label：控制器返回的是原始 drizzle 行，
+// plugin_developer_keys.label 是可空 varchar，wire 上实际会出现 null。
+export const DeveloperKeyResponseSchema = RegisterDeveloperKeySchema.omit({
+  label: true,
+}).extend({
   id: z.uuid(),
+  label: z.string().max(255).nullable(),
   keyFingerprint: z.string(),
   status: DeveloperKeyStatusSchema,
   createdAt: z.string().datetime({ offset: true }),
