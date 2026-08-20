@@ -1,12 +1,19 @@
 import {
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiResponse,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -27,6 +34,10 @@ export class OptimizationSuggestionController {
   ) {}
 
   @Get()
+  @ApiResponse({
+    status: 200,
+    description: '返回当前组织的优化建议列表',
+  })
   async list(@Query() query: QuerySuggestionsDto) {
     if (query.workflowDefinitionId && query.nodeId) {
       return {
@@ -44,6 +55,10 @@ export class OptimizationSuggestionController {
   }
 
   @Get('stats')
+  @ApiResponse({
+    status: 200,
+    description: '返回当前组织的优化建议统计信息',
+  })
   async getStats(@Query() query: QueryStatsDto) {
     return {
       data: await this.optimizationSuggestionService.getAdoptionStats(
@@ -53,6 +68,11 @@ export class OptimizationSuggestionController {
   }
 
   @Post(':id/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiResponse({
+    status: 200,
+    description: '应用指定的优化建议',
+  })
   async apply(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('sub') userId: string,
@@ -66,6 +86,11 @@ export class OptimizationSuggestionController {
   }
 
   @Post(':id/dismiss')
+  @HttpCode(HttpStatus.OK)
+  @ApiResponse({
+    status: 200,
+    description: '忽略指定的优化建议',
+  })
   async dismiss(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('sub') userId: string,
