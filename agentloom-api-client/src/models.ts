@@ -3283,7 +3283,7 @@ export interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage {
      * @type {string}
      * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
      */
-    message?: string;
+    message: string;
     /**
      * 
      * @type {string}
@@ -3388,13 +3388,13 @@ export interface ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
      * @type {string}
      * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
      */
-    sourcePortId?: string;
+    sourcePortId: string;
     /**
      * 
      * @type {string}
      * @memberof ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageTypeMismatch
      */
-    targetPortId?: string;
+    targetPortId: string;
     /**
      * 
      * @type {string}

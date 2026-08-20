@@ -38,9 +38,19 @@ function toErrorDetail(
   }
 
   const attempts = toRetryHistory(value.attempts)
+  // 契约（REST 与 /execution socket 两侧）都把 message 定为必填；
+  // 落到 title / detail 是为了兼容历史脏数据，且保持既有展示优先级不变
+  const message =
+    typeof value.message === 'string'
+      ? value.message
+      : typeof value.title === 'string'
+        ? value.title
+        : typeof value.detail === 'string'
+          ? value.detail
+          : '未知错误'
 
   return {
-    ...(typeof value.message === 'string' ? { message: value.message } : {}),
+    message,
     ...(typeof value.title === 'string' ? { title: value.title } : {}),
     ...(typeof value.detail === 'string' ? { detail: value.detail } : {}),
     ...(typeof value.type === 'string' ? { type: value.type } : {}),
@@ -64,12 +74,16 @@ function toErrorDetail(
       : undefined,
     typeMismatch: isRecord(value.typeMismatch)
       ? {
-          ...(typeof value.typeMismatch.sourcePortId === 'string'
-            ? { sourcePortId: value.typeMismatch.sourcePortId }
-            : {}),
-          ...(typeof value.typeMismatch.targetPortId === 'string'
-            ? { targetPortId: value.typeMismatch.targetPortId }
-            : {}),
+          // 契约里两个端口 id 是必填，缺失只可能是历史脏数据，
+          // 与下方 nodeId/type 一致落到 'unknown'
+          sourcePortId:
+            typeof value.typeMismatch.sourcePortId === 'string'
+              ? value.typeMismatch.sourcePortId
+              : 'unknown',
+          targetPortId:
+            typeof value.typeMismatch.targetPortId === 'string'
+              ? value.typeMismatch.targetPortId
+              : 'unknown',
           ...(typeof value.typeMismatch.edgeId === 'string'
             ? { edgeId: value.typeMismatch.edgeId }
             : {}),
