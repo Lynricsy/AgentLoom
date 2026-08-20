@@ -106,6 +106,16 @@ export const TriggerCard = memo(function TriggerCard({
 
     return buildWebhookUrl(trigger.config.token)
   }, [trigger])
+  const webhookAuthModeLabel = useMemo(() => {
+    if (trigger.type !== 'webhook' || !isWebhookConfig(trigger.config)) {
+      return null
+    }
+
+    // 历史触发器缺省 authMode 时服务端按 signed 处理，卡片展示口径保持一致
+    return (trigger.config.authMode ?? 'signed') === 'signed'
+      ? 'Signed（HMAC-SHA256 签名 + 时间戳校验）'
+      : 'Simple（仅校验 Token 与 IP 白名单）'
+  }, [trigger])
 
   return (
     <article
@@ -172,6 +182,14 @@ export const TriggerCard = memo(function TriggerCard({
                 <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-violet-200" />
                 <code className="break-all text-xs text-foreground/90">{webhookUrl}</code>
               </div>
+              {webhookAuthModeLabel ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  验证模式：
+                  <code className="ml-1 rounded bg-black/20 px-1.5 py-0.5 text-foreground/90">
+                    {webhookAuthModeLabel}
+                  </code>
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -188,6 +206,11 @@ export const TriggerCard = memo(function TriggerCard({
                   <code className="ml-1 rounded bg-black/20 px-1.5 py-0.5 text-foreground/90">
                     {trigger.config.filterExpression}
                   </code>
+                </p>
+              ) : null}
+              {trigger.config.secret ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  已配置签名密钥（服务端做 HMAC-SHA256 验签）
                 </p>
               ) : null}
             </div>

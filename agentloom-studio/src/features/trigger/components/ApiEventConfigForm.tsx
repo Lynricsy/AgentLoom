@@ -84,8 +84,29 @@ export function ApiEventConfigForm({
             placeholder={'例如：payload.region == "cn"'}
             {...register('apiEvent.filterExpression')}
           />
+          <p className="text-xs text-muted-foreground">
+            留空表示不过滤。表达式在服务端沙箱中按 JS 真值判定，可用变量 payload（事件 data）、source、type；
+            求值异常按不匹配处理。示例：
+            <code className="ml-1 rounded bg-black/20 px-1.5 py-0.5 text-foreground/90">
+              payload.region == &quot;cn&quot;
+            </code>
+          </p>
         </label>
       </div>
+
+      <label htmlFor="api-event-secret" className="block space-y-2">
+        <Label>签名密钥</Label>
+        <Input
+          id="api-event-secret"
+          type="password"
+          autoComplete="off"
+          placeholder="仅需验签的事件源填写"
+          {...register('apiEvent.secret')}
+        />
+        <p className="text-xs text-muted-foreground">
+          可选。仅 github 等要求验签的事件源需要填写，服务端据此做 HMAC-SHA256 校验，签名不匹配的事件会被丢弃。
+        </p>
+      </label>
 
       <label htmlFor="api-event-trigger-description" className="block space-y-2">
         <Label>描述</Label>

@@ -167,6 +167,7 @@ describe('TriggerCreateDialog', () => {
         description: '用于验证 Webhook UI 提交。',
         isEnabled: true,
         config: {
+          authMode: 'simple',
           ipWhitelist: [],
         },
       })
@@ -209,6 +210,93 @@ describe('TriggerCreateDialog', () => {
           eventSource: 'order-service',
           eventType: 'order.completed',
           filterExpression: undefined,
+        },
+      })
+    })
+  })
+
+  it('编辑 signed Webhook 时仅改名不会降级 authMode', async () => {
+    const signedTrigger: Trigger = {
+      ...makeTrigger('webhook'),
+      config: {
+        token: 'token-1',
+        secret: 'secret-1',
+        ipWhitelist: ['1.2.3.4'],
+        authMode: 'signed',
+      },
+    }
+    updateMutateAsyncMock.mockResolvedValue({ ...signedTrigger, name: 'QA Renamed Webhook' })
+
+    render(
+      <TriggerCreateDialog
+        workflowId="workflow-1"
+        open={true}
+        onOpenChange={vi.fn()}
+        trigger={signedTrigger}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('触发器名称'), {
+      target: { value: 'QA Renamed Webhook' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存更改' }))
+
+    await waitFor(() => {
+      expect(updateMutateAsyncMock).toHaveBeenCalledWith({
+        triggerId: 'trigger-1',
+        data: {
+          name: 'QA Renamed Webhook',
+          description: null,
+          isEnabled: true,
+          config: {
+            authMode: 'signed',
+            ipWhitelist: ['1.2.3.4'],
+          },
+        },
+      })
+    })
+  })
+
+  it('创建 API Event 时把签名密钥写入 payload', async () => {
+    createMutateAsyncMock.mockResolvedValue(makeTrigger('api_event'))
+
+    render(
+      <TriggerCreateDialog
+        workflowId="workflow-1"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /API Event/ }))
+    fireEvent.change(screen.getByLabelText('触发器名称'), {
+      target: { value: 'QA GitHub Trigger' },
+    })
+    fireEvent.change(screen.getByLabelText('事件源'), {
+      target: { value: 'github' },
+    })
+    fireEvent.change(screen.getByLabelText('事件类型'), {
+      target: { value: 'push' },
+    })
+    fireEvent.change(screen.getByLabelText(/签名密钥/), {
+      target: { value: 'gh-webhook-secret' },
+    })
+    fireEvent.change(screen.getByLabelText('描述'), {
+      target: { value: '用于验证签名密钥提交。' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '创建触发器' }))
+
+    await waitFor(() => {
+      expect(createMutateAsyncMock).toHaveBeenCalledWith({
+        type: 'api_event',
+        name: 'QA GitHub Trigger',
+        description: '用于验证签名密钥提交。',
+        isEnabled: true,
+        config: {
+          eventSource: 'github',
+          eventType: 'push',
+          filterExpression: undefined,
+          secret: 'gh-webhook-secret',
         },
       })
     })

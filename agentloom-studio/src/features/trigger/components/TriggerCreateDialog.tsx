@@ -71,12 +71,14 @@ const formSchema = z
       timezone: z.string(),
     }),
     webhook: z.object({
+      authMode: z.enum(['simple', 'signed']),
       ipWhitelist: z.string(),
     }),
     apiEvent: z.object({
       eventSource: z.string(),
       eventType: z.string(),
       filterExpression: z.string(),
+      secret: z.string(),
     }),
   })
   .superRefine((values, ctx) => {
@@ -176,12 +178,14 @@ function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
       timezone: 'UTC',
     },
     webhook: {
+      authMode: 'simple',
       ipWhitelist: '',
     },
     apiEvent: {
       eventSource: '',
       eventType: '',
       filterExpression: '',
+      secret: '',
     },
   }
 
@@ -206,6 +210,8 @@ function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
 
   if (trigger.type === 'webhook' && isWebhookConfig(trigger.config)) {
     nextValues.webhook = {
+      // 历史触发器可能没有 authMode，服务端对该情况按 signed 处理，回填须保持一致
+      authMode: trigger.config.authMode ?? 'signed',
       ipWhitelist: trigger.config.ipWhitelist.join(', '),
     }
   }
@@ -215,6 +221,7 @@ function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
       eventSource: trigger.config.eventSource,
       eventType: trigger.config.eventType,
       filterExpression: trigger.config.filterExpression ?? '',
+      secret: trigger.config.secret ?? '',
     }
   }
 
@@ -259,6 +266,7 @@ function buildConfigByType(
 
   if (type === 'webhook') {
     return {
+      authMode: values.webhook.authMode,
       ipWhitelist: parseIpWhitelist(values.webhook.ipWhitelist),
     }
   }
@@ -267,6 +275,7 @@ function buildConfigByType(
     eventSource: values.apiEvent.eventSource.trim(),
     eventType: values.apiEvent.eventType.trim(),
     filterExpression: values.apiEvent.filterExpression.trim() || undefined,
+    secret: values.apiEvent.secret.trim() || undefined,
   }
 }
 
