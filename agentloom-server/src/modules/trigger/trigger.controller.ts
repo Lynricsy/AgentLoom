@@ -245,9 +245,11 @@ export class TriggerController {
       };
     }
 
+    // authMode 不是机密，Studio 需要它回填编辑表单；漏掉会导致编辑时误改验证模式
     return {
       ...trigger,
       config: {
+        authMode: webhookConfig.authMode,
         token: webhookConfig.token,
         ipWhitelist: webhookConfig.ipWhitelist,
       },
