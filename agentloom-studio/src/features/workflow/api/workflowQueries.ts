@@ -1,3 +1,4 @@
+import type { WorkflowDefinitionDetailResponseSwaggerDto } from '@agentloom/api-client'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
@@ -26,9 +27,14 @@ export function useWorkflow(id: string) {
     queryFn: async (): Promise<WorkflowDefinition> => {
       // 图字段按画布领域类型解读：生成的 wire 模型在 nodes/edges/extent 等位置
       // 被 OpenAPI 3.0 退化，无法直接充当画布编辑态类型（见 types.ts 的说明）
+      // envelope 形状取自生成的详情 DTO，只把图字段覆盖成画布领域类型
       const response = await apiClient
         .get(`workflow-definitions/${id}`)
-        .json<ApiResponse<WorkflowDefinition>>()
+        .json<
+          Omit<WorkflowDefinitionDetailResponseSwaggerDto, 'data'> & {
+            data: WorkflowDefinition
+          }
+        >()
       return response.data
     },
     enabled: !!id && UUID_RE.test(id),

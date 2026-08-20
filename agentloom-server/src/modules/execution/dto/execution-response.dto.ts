@@ -13,8 +13,8 @@ const executionFieldErrorSchema = z.object({
 });
 
 const executionTypeMismatchSchema = z.object({
-  sourcePortId: z.string().optional(),
-  targetPortId: z.string().optional(),
+  sourcePortId: z.string(),
+  targetPortId: z.string(),
   sourceType: z.string(),
   targetType: z.string(),
   sourceNodeId: z.string(),
@@ -24,7 +24,7 @@ const executionTypeMismatchSchema = z.object({
 
 const executionStructuredErrorSchema = z
   .object({
-    message: z.string().optional(),
+    message: z.string(),
     title: z.string().optional(),
     detail: z.string().optional(),
     type: z.string().optional(),
