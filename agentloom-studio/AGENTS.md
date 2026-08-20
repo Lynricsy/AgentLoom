@@ -51,6 +51,8 @@ src/
 - `@agentloom/api-client` 提供 server OpenAPI 生成的 interface；没有 fetch runtime。Studio 保留 `src/shared/api/client.ts` 的 ky transport。
 - `@agentloom/api-client` 的生成模型不手改；字段变化先修改 server DTO/OpenAPI，再从仓库根运行 `pnpm contracts:regen`。
 - `src/shared/types/api.ts` 只保留 OpenAPI models 未表达的 envelope 类型。
+- `agent-definition` / `workflow-definition` / `execution` / `agent-conversation` 的 list/detail 响应类型一律取自 `@agentloom/api-client`；`AgentListResponse` / `WorkflowListResponse` / `ExecutionResponse` / `ConversationListItem` 等导出名保留为生成类型别名，不得平行手写。
+- 唯一例外是画布编辑态：`WorkflowDefinition` 用 `Omit` 摘掉 `nodes` / `edges` / `viewport` 换成 `CanvasNode` / `CanvasEdge` / `WorkflowGraphViewport`——OpenAPI 3.0 无法无损表达 React Flow 的动态 data/style 字典与 extent 元组，生成模型在这些位置退化为 `{}`/`any`。其余字段（含 `inputSchema`）直接使用生成类型；本地 `WorkflowInputSchema` 只服务编辑器与请求侧。若发现生成类型过宽，修 server schema 后 regen，不在 Studio 强转。
 - REST 统一经过 ky hook 做 snake_case/camelCase 转换；Socket wire 按 server 的 camelCase 事件模型消费。
 - `src/features/execution/types/contract-fixtures.test.ts` 消费 contracts fixtures，约束执行事件与快照形状。
 
