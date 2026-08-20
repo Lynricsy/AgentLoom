@@ -1,3 +1,10 @@
+import type {
+  InstallMarketplaceListingDto,
+  SubmitMarketplaceListingDto,
+  SubmitMarketplaceListingDtoCategoryEnum,
+  SubmitReviewDto,
+} from "@agentloom/api-client";
+
 export const MARKETPLACE_LISTING_STATUSES = [
   'pending_review',
   'review_failed',
@@ -84,13 +91,11 @@ export interface MyMarketplaceListingItem extends MarketplaceListing {
   pluginAuthor: string | null;
 }
 
-export interface SubmitMarketplaceListingRequest {
-  workflowVersionId: string;
-  title: string;
-  summary: string;
-  tags: string[];
-  coverImageUrl?: string;
-}
+/**
+ * POST /marketplace/listings 请求体（生成模型）。
+ * 原手写类型漏掉了 server 接受的 `category`。
+ */
+export type SubmitMarketplaceListingRequest = SubmitMarketplaceListingDto
 
 export interface MarketplaceListingListResponse {
   data: MyMarketplaceListingItem[];
@@ -118,12 +123,7 @@ export interface MyListingsFilters {
   listingType?: MarketplaceListingType;
 }
 
-export type MarketplaceCategory =
-  | 'analysis'
-  | 'content'
-  | 'development'
-  | 'automation'
-  | 'reporting';
+export type MarketplaceCategory = SubmitMarketplaceListingDtoCategoryEnum
 
 export type MarketplaceSortOption = 'popular' | 'rating' | 'newest';
 
@@ -229,10 +229,7 @@ export interface PublicListingsResponse {
   meta: MarketplacePaginationMeta;
 }
 
-export interface InstallMarketplaceListingRequest {
-  name?: string;
-  description?: string;
-}
+export type InstallMarketplaceListingRequest = InstallMarketplaceListingDto
 
 export interface InstallWorkflowListingResponse {
   workflowDefinitionId: string;
@@ -251,10 +248,7 @@ export type InstallMarketplaceListingResponse =
   | InstallWorkflowListingResponse
   | InstallPluginListingResponse;
 
-export interface SubmitReviewRequest {
-  rating: number;
-  content?: string;
-}
+export type SubmitReviewRequest = SubmitReviewDto
 
 export interface SubmittedMarketplaceReview {
   id: string;

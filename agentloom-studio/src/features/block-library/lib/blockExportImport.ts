@@ -2,6 +2,8 @@ import {
   BLOCK_CATEGORIES,
   type BlockCategory,
   type BlockDefinition,
+  type BlockDefinitionEdge,
+  type BlockDefinitionNode,
   type BlockMetadata,
   type BlockPort,
   type ReusableBlockDetail,
@@ -388,8 +390,8 @@ export function validateImportFile(content: string): ImportValidationResult {
   }
 
   const rawDefinition = rawBlock.definition;
-  const nodes: Array<Record<string, unknown>> = [];
-  const edges: Array<Record<string, unknown>> = [];
+  const nodes: BlockDefinitionNode[] = [];
+  const edges: BlockDefinitionEdge[] = [];
   const nodeIds = new Set<string>();
 
   if (!Array.isArray(rawDefinition.nodes) || rawDefinition.nodes.length === 0) {
@@ -412,7 +414,7 @@ export function validateImportFile(content: string): ImportValidationResult {
       }
 
       nodeIds.add(node.id);
-      nodes.push(node);
+      nodes.push({ ...node, id: node.id });
     });
   }
 
@@ -425,6 +427,11 @@ export function validateImportFile(content: string): ImportValidationResult {
         return;
       }
 
+      // id 是 server `CreateReusableBlockDto` 对每条边的硬要求，缺失必须报错
+      if (!isNonEmptyString(edge.id)) {
+        errors.push(`block.definition.edges[${index}].id 不能为空。`);
+      }
+
       if (!isNonEmptyString(edge.source)) {
         errors.push(`block.definition.edges[${index}].source 不能为空。`);
       }
@@ -433,19 +440,32 @@ export function validateImportFile(content: string): ImportValidationResult {
         errors.push(`block.definition.edges[${index}].target 不能为空。`);
       }
 
-      if (isNonEmptyString(edge.source) && !nodeIds.has(edge.source)) {
+      if (
+        !isNonEmptyString(edge.id) ||
+        !isNonEmptyString(edge.source) ||
+        !isNonEmptyString(edge.target)
+      ) {
+        return;
+      }
+
+      if (!nodeIds.has(edge.source)) {
         errors.push(
           `block.definition.edges[${index}].source 未指向已存在节点。`,
         );
       }
 
-      if (isNonEmptyString(edge.target) && !nodeIds.has(edge.target)) {
+      if (!nodeIds.has(edge.target)) {
         errors.push(
           `block.definition.edges[${index}].target 未指向已存在节点。`,
         );
       }
 
-      edges.push(edge);
+      edges.push({
+        ...edge,
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      });
     });
   }
 

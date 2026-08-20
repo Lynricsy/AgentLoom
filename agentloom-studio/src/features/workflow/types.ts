@@ -1,4 +1,9 @@
-import type { Viewport } from '@xyflow/react'
+import type {
+  CreateVersionDto,
+  CreateWorkflowDefinitionDto,
+  PublishWorkflowDto,
+} from '@agentloom/api-client'
+import type { WorkflowGraphViewport } from '@agentloom/contracts'
 import type { CanvasEdge, CanvasNode } from '@/features/canvas/types'
 import type { ResourceSourceKind } from '@/shared/lib/resourceSource'
 import type { PaginatedResponse } from '@/shared/types/api'
@@ -46,26 +51,36 @@ export interface WorkflowInputSchema {
   fields: WorkflowInputFieldDefinition[]
 }
 
-export interface WorkflowDefinition {
+/**
+ * 列表行（server `WorkflowDefinitionResponseDto`）。
+ * server 的列表序列化刻意排除 nodes/edges/viewport/inputSchema 大字段，
+ * 因此列表行**没有**图结构 —— 需要图结构的请求详情接口拿 `WorkflowDefinition`。
+ */
+export interface WorkflowDefinitionSummary {
   id: string
   tenantId: string
   name: string
   slug: string
   description: string | null
   icon: string | null
-  nodes: CanvasNode[]
-  edges: CanvasEdge[]
-  viewport: Viewport | null
-  inputSchema: WorkflowInputSchema | null
   version: number
   status: WorkflowStatus
   publishedVersionId: string | null
-  publishedReleaseNumber?: number | null
+  publishedReleaseNumber: number | null
+  metadata: Record<string, unknown> | null
   createdBy: string
   updatedBy: string
   createdAt: string
   updatedAt: string
-  resourceSourceKind?: ResourceSourceKind
+  resourceSourceKind: ResourceSourceKind
+}
+
+/** 详情（server `WorkflowDefinitionDetailResponseDto`），在列表行之上带图结构 */
+export interface WorkflowDefinition extends WorkflowDefinitionSummary {
+  nodes: CanvasNode[]
+  edges: CanvasEdge[]
+  viewport: WorkflowGraphViewport | null
+  inputSchema: WorkflowInputSchema | null
 }
 
 export interface UpdateWorkflowPayload {
@@ -75,14 +90,14 @@ export interface UpdateWorkflowPayload {
   icon?: string | null
   nodes?: CanvasNode[]
   edges?: CanvasEdge[]
-  viewport?: Viewport | null
+  viewport?: WorkflowGraphViewport | null
   inputSchema?: WorkflowInputSchema
 }
 
 export interface WorkflowVersionSnapshot {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
-  viewport: Viewport | null
+  viewport: WorkflowGraphViewport | null
   inputSchema?: WorkflowInputSchema | null
   metadata: {
     nodeCount: number
@@ -106,15 +121,11 @@ export interface WorkflowVersion {
   createdAt: string
 }
 
-export interface CreateVersionPayload {
-  label?: string
-}
+/** POST /workflow-definitions/:id/versions 请求体（生成模型） */
+export type CreateVersionPayload = CreateVersionDto
 
-export interface PublishWorkflowPayload {
-  label?: string
-  releaseNotes?: string
-  versionId?: string
-}
+/** POST /workflow-definitions/:id/publish 请求体（生成模型） */
+export type PublishWorkflowPayload = PublishWorkflowDto
 
 export interface PublishWarningPort {
   name: string
@@ -130,13 +141,13 @@ export interface PublishWarning {
   message: string
 }
 
-export interface CreateWorkflowPayload {
-  name: string
-  description?: string
-  icon?: string | null
-  templateSlug?: string
-  shareToken?: string
-}
+/**
+ * POST /workflow-definitions 请求体（生成模型）。
+ * 相比原手写类型：补回了漏掉的 `marketplaceListingId`，
+ * 并把 `icon` 收紧为 `string | undefined`（server 是 `z.string().optional()`，不接受 null）。
+ * 请求发出前由 `toSnakeBody` 转成 server 期望的 snake_case。
+ */
+export type CreateWorkflowPayload = CreateWorkflowDefinitionDto
 
 export type VersionListResponse = PaginatedResponse<WorkflowVersion>
 
@@ -200,4 +211,4 @@ export interface ListWorkflowsParams {
   sourceKind?: ResourceSourceKind
 }
 
-export type WorkflowListResponse = PaginatedResponse<WorkflowDefinition>
+export type WorkflowListResponse = PaginatedResponse<WorkflowDefinitionSummary>

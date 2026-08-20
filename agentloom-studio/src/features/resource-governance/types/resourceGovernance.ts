@@ -1,3 +1,11 @@
+import type {
+  TerminateExecutionRequestDto,
+  UpsertExecutionGovernanceControlsRequestDto,
+  UpsertExecutionGovernanceControlsRequestDtoTenantControl,
+  UpsertExecutionGovernanceControlsRequestDtoWorkflowControlsInner,
+  UpsertTenantQuotaRequestDto,
+} from '@agentloom/api-client'
+
 export type ExecutionGovernanceState = 'active' | 'paused'
 export type GovernancePauseScope = 'tenant' | 'workflow'
 
@@ -41,36 +49,22 @@ export interface ResourceGovernanceState {
   governance: ExecutionGovernanceControls
 }
 
-export interface UpdateTenantQuotaInput {
-  apiRateLimitPerMinute?: number
-  maxConcurrentExecutions?: number | null
-  dailyExecutionLimit?: number | null
-  dailyApiCallLimit?: number | null
-  storageQuotaMb?: number | null
-  maxSandboxCpuPercent?: number | null
-  maxSandboxMemoryMb?: number | null
-}
+/** PUT /resource-governance/quota 请求体（生成模型） */
+export type UpdateTenantQuotaInput = UpsertTenantQuotaRequestDto
 
-export interface TenantExecutionGovernanceControlInput {
-  status: ExecutionGovernanceState
-  reason: string | null
-}
+/** PUT /resource-governance/execution-controls 请求体各段（生成模型） */
+export type TenantExecutionGovernanceControlInput =
+  UpsertExecutionGovernanceControlsRequestDtoTenantControl
 
-export interface WorkflowExecutionGovernanceControlInput {
-  scope: 'workflow'
-  targetId: string
-  status: ExecutionGovernanceState
-  reason: string | null
-}
+export type WorkflowExecutionGovernanceControlInput =
+  UpsertExecutionGovernanceControlsRequestDtoWorkflowControlsInner
 
-export interface UpdateExecutionGovernanceControlsInput {
-  tenantControl?: TenantExecutionGovernanceControlInput
-  workflowControls?: WorkflowExecutionGovernanceControlInput[]
-}
+export type UpdateExecutionGovernanceControlsInput =
+  UpsertExecutionGovernanceControlsRequestDto
 
-export interface TerminateGovernedExecutionInput {
+/** POST /resource-governance/executions/:id/terminate 请求体（生成模型 + 路径参数） */
+export type TerminateGovernedExecutionInput = TerminateExecutionRequestDto & {
   executionId: string
-  reason: string
 }
 
 export type ResourceGovernanceActionType =

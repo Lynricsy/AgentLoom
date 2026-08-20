@@ -1,5 +1,6 @@
+import type { ProviderHealthStatusesResponseDto } from '@agentloom/api-client'
 import { apiClient } from '@/shared/api/client'
-import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
+import type { PaginatedResponse } from '@/shared/types/api'
 import type {
   ProviderHealthStatus,
   RoutingDecision,
@@ -12,7 +13,7 @@ export const ROUTING_DECISION_PAGE_SIZE = 20
 export async function fetchProviderHealth(): Promise<ProviderHealthStatus[]> {
   const response = await apiClient
     .get('smart-routing/health')
-    .json<ApiResponse<ProviderHealthStatus[]>>()
+    .json<ProviderHealthStatusesResponseDto>()
 
   return response.data
 }

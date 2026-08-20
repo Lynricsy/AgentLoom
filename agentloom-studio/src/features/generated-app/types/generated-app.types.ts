@@ -1,3 +1,7 @@
+import type {
+  CreateGeneratedAppGateRunDtoEvidenceInnerKindEnum,
+  RecordGeneratedAppGateResultsDto,
+} from '@agentloom/api-client'
 import type { PaginatedResponse } from '@/shared/types/api'
 
 export type GeneratedAppStatus =
@@ -104,14 +108,7 @@ export interface GeneratedAppPublicWorkflowExecutionHandoff {
 }
 
 export type GeneratedAppGateEvidenceKind =
-  | 'app_spec'
-  | 'plan'
-  | 'static_check'
-  | 'build'
-  | 'test'
-  | 'browser'
-  | 'verifier'
-  | 'manual'
+  CreateGeneratedAppGateRunDtoEvidenceInnerKindEnum
 
 export interface GeneratedAppAcceptanceScenario {
   id: string
@@ -157,6 +154,11 @@ export interface GeneratedAppGateEvidence {
   kind: GeneratedAppGateEvidenceKind
   url: string | null
   summary: string
+  /**
+   * server `CreateGeneratedAppGateRunDto.evidence[].details` 的自由载荷。
+   * 原手写类型漏掉了这个字段；生成产物里它是无约束类型，这里用 `unknown` 承接。
+   */
+  details?: unknown
 }
 
 export interface GeneratedAppGateResult {
@@ -465,10 +467,17 @@ export interface StartGeneratedAppGenerationRunResponse {
   app: GeneratedApp
 }
 
-export interface RecordGeneratedAppGateResultsPayload {
-  gateResults: GeneratedAppGateResult[]
+/**
+ * PATCH /generated-apps/:id/gates 请求体（生成模型）。
+ * 提交侧比响应实体宽松：server 对 `order` / `blocking` / `evidence` / `updatedAt`
+ * 都允许省略并自行补默认值，响应里这些字段一定有值。
+ * `generationPlan` 收窄为 `Record<string, unknown>`（生成产物是无约束索引签名）。
+ */
+export type RecordGeneratedAppGateResultsPayload = Omit<
+  RecordGeneratedAppGateResultsDto,
+  'generationPlan'
+> & {
   generationPlan?: Record<string, unknown> | null
-  preview?: GeneratedAppPreview
 }
 
 export type GeneratedAppListResponse = PaginatedResponse<GeneratedApp>

@@ -26,6 +26,7 @@ import {
   STRATEGY_CATEGORY_COLORS,
   STRATEGY_CATEGORY_BG,
   STRATEGY_CATEGORY_LABELS,
+  getStrategyMeta,
 } from '@/features/smart-routing'
 import type {
   StrategyName,
@@ -217,8 +218,10 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 
   const { data: strategies, isLoading: isStrategiesLoading } = useStrategies()
 
-  const strategyNamesByCategory: Record<StrategyCategory, StrategyName[]> = useMemo(() => {
-    const groups: Record<StrategyCategory, StrategyName[]> = {
+  // server 的策略名是自由字符串（插件可注册新策略），分组按 string 收集，
+  // 显示时用 getStrategyMeta 查已知元数据、未知则回落到原始名。
+  const strategyNamesByCategory: Record<StrategyCategory, string[]> = useMemo(() => {
+    const groups: Record<StrategyCategory, string[]> = {
       simple: [],
       ml: [],
       rag: [],
@@ -241,7 +244,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
     ? node.data.strategy
     : 'random'
   const strategyConfig = (node.data.strategyConfig as Record<string, unknown>) ?? {}
-  const meta = STRATEGY_META[strategy as StrategyName]
+  const meta = getStrategyMeta(strategy)
 
   const modelInputPorts = useMemo(
     () => (node.data.inputPorts ?? []).filter((p) => p.dataType === 'model'),
@@ -374,7 +377,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                 <SelectGroup key={cat} data-testid={`strategy-group-${cat}`}>
                   <SelectLabel>{STRATEGY_CATEGORY_LABELS[cat]}</SelectLabel>
                   {names.map((name) => {
-                    const m = STRATEGY_META[name]
+                    const m = getStrategyMeta(name)
                     return (
                       <SelectItem key={name} value={name}>
                         {m?.displayName ?? name}

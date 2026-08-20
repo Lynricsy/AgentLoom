@@ -1,5 +1,6 @@
 export type {
   WorkflowDefinition,
+  WorkflowDefinitionSummary,
   UpdateWorkflowPayload,
   CreateWorkflowPayload,
   WorkflowStatus,

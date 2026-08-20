@@ -1,3 +1,7 @@
+import type {
+  CreateEvidenceExportJobBodyDto,
+  CreateEvidenceExportJobBodyDtoActorTypeEnum,
+} from '@agentloom/api-client'
 import type { EncryptedPayload, EncryptionMetadata } from '@/features/tenant-key/types'
 
 export type EvidenceSourceType =
@@ -196,21 +200,10 @@ export interface EvidenceQueryParams {
   includeChunkContent?: boolean;
 }
 
-export type EvidenceExportActorType = 'user' | 'system' | 'service';
+export type EvidenceExportActorType = CreateEvidenceExportJobBodyDtoActorTypeEnum;
 
-export interface EvidenceExportRequest {
-  workflowId?: string;
-  executionId?: string;
-  executionIds?: string[];
-  eventType?: string;
-  resourceType?: string;
-  resourceId?: string;
-  actorType?: EvidenceExportActorType;
-  actorId?: string;
-  includeAuditMetadata?: boolean;
-  from?: string;
-  to?: string;
-}
+/** POST /evidence/exports 请求体（生成模型） */
+export type EvidenceExportRequest = CreateEvidenceExportJobBodyDto;
 
 export interface EvidenceExportFilters {
   workflowId?: string;

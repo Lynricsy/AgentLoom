@@ -1,3 +1,7 @@
+import type {
+  CreateKnowledgeBaseDto,
+  UpdateKnowledgeBaseSettingsDto,
+} from '@agentloom/api-client';
 import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
 
 export const KNOWLEDGE_BASE_VISIBILITIES = ['private', 'organization'] as const;
@@ -118,26 +122,19 @@ export interface KnowledgeBaseDocument {
   updatedAt: string;
 }
 
-export interface CreateKnowledgeBaseInput {
-  name: string;
-  description?: string;
-  visibility?: KnowledgeBaseVisibility;
-  embeddingModel?: string;
-  embeddingModelConfigId?: string | null;
-  chunkingStrategy?: KnowledgeChunkingStrategy;
-  retrievalStrategy?: KnowledgeRetrievalStrategy;
-  rerankingStrategy?: KnowledgeRerankingStrategy;
-  queryOrchestration?: KnowledgeQueryOrchestration;
-}
+/**
+ * POST /knowledge-bases 请求体（生成模型）。
+ *
+ * 注意与响应侧的 `KnowledgeChunkingStrategy` / `KnowledgeRetrievalStrategy`
+ * 有意不同：server 的输入 schema 对 `chunkSize` / `chunkOverlap` /
+ * `topK` / `similarityThreshold` 都是 optional，再由 `.transform()` 补默认值；
+ * 响应里这些字段一定有值。请求类型必须用输入侧的宽松形状，
+ * 否则前端会被迫填写 server 本就会兜底的参数。
+ */
+export type CreateKnowledgeBaseInput = CreateKnowledgeBaseDto
 
-export interface UpdateKnowledgeBaseSettingsInput {
-  embeddingModel?: string;
-  embeddingModelConfigId?: string | null;
-  chunkingStrategy?: KnowledgeChunkingStrategy;
-  retrievalStrategy?: KnowledgeRetrievalStrategy;
-  rerankingStrategy?: KnowledgeRerankingStrategy;
-  queryOrchestration?: KnowledgeQueryOrchestration;
-}
+/** PATCH /knowledge-bases/:id/settings 请求体（生成模型） */
+export type UpdateKnowledgeBaseSettingsInput = UpdateKnowledgeBaseSettingsDto
 
 export interface KnowledgeBaseNodeConfig extends Record<string, unknown> {
   knowledgeBaseId: string;

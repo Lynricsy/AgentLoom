@@ -6,6 +6,18 @@ import { Input } from "@/shared/ui/input";
 import { normalizeSandboxConversationIdleAutoEndMinutes } from "@/shared/lib/sandboxConversationIdleAutoEnd";
 import type { AgentGlobalSandboxConfig } from "@/features/agent/types";
 
+/**
+ * 沙箱节点的画布配置：canonical `SandboxConfig` 的可编辑子集，
+ * 外加节点级开关 `enabled`（server `extractSandboxConfig` 用它决定是否产出沙箱配置，
+ * 该开关本身不属于 `SandboxConfig`）。
+ */
+type SandboxNodeConfig = { enabled: boolean } & Required<
+  Pick<
+    AgentGlobalSandboxConfig,
+    "cpu" | "memory" | "timeoutSeconds" | "conversationIdleAutoEndMinutes"
+  >
+>;
+
 interface SandboxNodeConfigPanelProps {
   config: Record<string, unknown>;
   onApply: (config: Record<string, unknown>) => void;
@@ -31,23 +43,11 @@ function formatTimeoutSeconds(timeoutSeconds: number): string {
   return timeoutSeconds > 0 ? `${timeoutSeconds}s` : "不超时";
 }
 
-function parseSandboxConfig(
-  raw: Record<string, unknown>,
-): Required<
-  Pick<
-    AgentGlobalSandboxConfig,
-    | "enabled"
-    | "cpuLimit"
-    | "memoryLimitMb"
-    | "timeoutSeconds"
-    | "conversationIdleAutoEndMinutes"
-  >
-> {
+function parseSandboxConfig(raw: Record<string, unknown>): SandboxNodeConfig {
   return {
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
-    cpuLimit: typeof raw.cpuLimit === "number" ? raw.cpuLimit : 1,
-    memoryLimitMb:
-      typeof raw.memoryLimitMb === "number" ? raw.memoryLimitMb : 512,
+    cpu: typeof raw.cpu === "number" ? raw.cpu : 1,
+    memory: typeof raw.memory === "number" ? raw.memory : 512,
     timeoutSeconds: normalizeTimeoutSeconds(raw.timeoutSeconds),
     conversationIdleAutoEndMinutes:
       normalizeSandboxConversationIdleAutoEndMinutes(
@@ -101,8 +101,12 @@ export const SandboxNodeConfigPanel = memo(function SandboxNodeConfigPanel({
 }: SandboxNodeConfigPanelProps) {
   const sandbox = parseSandboxConfig(config);
 
+  /** 只允许写入 contracts 定义的 canonical 键，避免再次引入旧别名。 */
   const patchField = useCallback(
-    (field: string, value: unknown) => {
+    <K extends keyof SandboxNodeConfig>(
+      field: K,
+      value: SandboxNodeConfig[K],
+    ) => {
       onApply({ ...config, [field]: value });
     },
     [config, onApply],
@@ -127,18 +131,18 @@ export const SandboxNodeConfigPanel = memo(function SandboxNodeConfigPanel({
         <>
           <ConfigSlider
             label="CPU"
-            value={sandbox.cpuLimit}
+            value={sandbox.cpu}
             {...CPU_LIMITS}
             unit=" cores"
-            onChange={(v) => patchField("cpuLimit", v)}
+            onChange={(v) => patchField("cpu", v)}
           />
 
           <ConfigSlider
             label="内存"
-            value={sandbox.memoryLimitMb}
+            value={sandbox.memory}
             {...MEMORY_LIMITS}
             unit=" MB"
-            onChange={(v) => patchField("memoryLimitMb", v)}
+            onChange={(v) => patchField("memory", v)}
           />
 
           <div className="flex flex-col gap-1.5">
@@ -194,7 +198,7 @@ export const SandboxNodeConfigPanel = memo(function SandboxNodeConfigPanel({
 
           <div className="rounded border border-neutral-700 bg-neutral-800/50 px-2.5 py-2 text-xs text-neutral-400">
             <span className="text-neutral-300 font-medium">当前配置：</span>
-            {sandbox.cpuLimit} 核 · {sandbox.memoryLimitMb} MB ·{" "}
+            {sandbox.cpu} 核 · {sandbox.memory} MB ·{" "}
             {formatTimeoutSeconds(sandbox.timeoutSeconds)} · 空闲{" "}
             {sandbox.conversationIdleAutoEndMinutes} 分钟自动结束
           </div>

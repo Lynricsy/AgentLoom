@@ -1,4 +1,14 @@
-export type TriggerType = 'cron' | 'webhook' | 'api_event'
+import type {
+  CreateTriggerDto,
+  CreateTriggerDtoConfigAnyOf,
+  CreateTriggerDtoConfigAnyOf1,
+  CreateTriggerDtoConfigAnyOf1AuthModeEnum,
+  CreateTriggerDtoConfigAnyOf2,
+  CreateTriggerDtoTypeEnum,
+  UpdateTriggerDto,
+} from '@agentloom/api-client'
+
+export type TriggerType = CreateTriggerDtoTypeEnum
 
 export type TriggerHistoryStatus = 'success' | 'failed' | 'skipped' | 'signature_failed'
 
@@ -7,7 +17,7 @@ export interface CronTriggerConfig {
   timezone: string
 }
 
-export type WebhookAuthMode = 'simple' | 'signed'
+export type WebhookAuthMode = CreateTriggerDtoConfigAnyOf1AuthModeEnum
 
 export interface WebhookTriggerConfig {
   token: string
@@ -16,10 +26,25 @@ export interface WebhookTriggerConfig {
   authMode?: WebhookAuthMode
 }
 
-export interface WebhookTriggerConfigInput {
-  ipWhitelist: string[]
-  authMode?: WebhookAuthMode
-}
+/**
+ * 提交侧的触发器配置（生成模型 anyOf 各分支）。
+ *
+ * 与响应侧刻意不同：server 输入 schema 对 `timezone`（default 'UTC'）、
+ * `authMode`（default 'simple'）、`ipWhitelist`（default []）都允许省略，
+ * 由 zod `.default()` 兜底；响应里这些字段一定有值。
+ * 生成产物里合并后的 `CreateTriggerDtoConfig` 把三种 anyOf 摊平成了
+ * 「同时要求 expression 和 eventSource」的非法形状，因此这里直接用各分支。
+ */
+export type CronTriggerConfigInput = CreateTriggerDtoConfigAnyOf
+
+export type WebhookTriggerConfigInput = CreateTriggerDtoConfigAnyOf1
+
+export type ApiEventTriggerConfigInput = CreateTriggerDtoConfigAnyOf2
+
+export type TriggerConfigInput =
+  | CronTriggerConfigInput
+  | WebhookTriggerConfigInput
+  | ApiEventTriggerConfigInput
 
 export interface ApiEventTriggerConfig {
   eventSource: string
@@ -91,19 +116,14 @@ export interface TriggerHistoryParams {
   status?: TriggerHistoryStatus
 }
 
-export interface CreateTriggerData {
-  name: string
-  type: TriggerType
-  config: CronTriggerConfig | WebhookTriggerConfigInput | ApiEventTriggerConfig
-  description?: string
-  isEnabled?: boolean
+/** POST /workflow-definitions/:id/triggers 请求体（生成模型 + 可用的 config 联合） */
+export type CreateTriggerData = Omit<CreateTriggerDto, 'config'> & {
+  config: TriggerConfigInput
 }
 
-export interface UpdateTriggerData {
-  name?: string
-  description?: string | null
-  config?: CronTriggerConfig | WebhookTriggerConfigInput | ApiEventTriggerConfig
-  isEnabled?: boolean
+/** PATCH /triggers/:id 请求体（生成模型 + 可用的 config 联合） */
+export type UpdateTriggerData = Omit<UpdateTriggerDto, 'config'> & {
+  config?: TriggerConfigInput
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

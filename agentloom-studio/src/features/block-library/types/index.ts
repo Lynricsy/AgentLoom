@@ -1,3 +1,10 @@
+import type {
+  CreateReusableBlockDtoCategoryEnum,
+  CreateReusableBlockDtoDefinitionInputPortsInner,
+  CreateReusableBlockDtoDefinitionViewport,
+  CreateReusableBlockDtoMetadata,
+} from '@agentloom/api-client';
+
 export const BLOCK_CATEGORIES = [
   'analysis',
   'content',
@@ -6,39 +13,35 @@ export const BLOCK_CATEGORIES = [
   'reporting',
 ] as const;
 
-export type BlockCategory = (typeof BLOCK_CATEGORIES)[number];
+export type BlockCategory = CreateReusableBlockDtoCategoryEnum;
 
-export interface BlockPort {
+/**
+ * 复用块端口（生成模型）。
+ * `dataType` 直接用生成枚举：原手写联合只列了 8 个值，
+ * 漏掉了 server 也接受的 `skill` / `memory`。
+ */
+export type BlockPort = CreateReusableBlockDtoDefinitionInputPortsInner;
+
+/** 生成模型要求每个节点带 `id`，每条边带 `id` / `source` / `target` */
+export interface BlockDefinitionNode extends Record<string, unknown> {
   id: string;
-  label: string;
-  dataType:
-    | 'model'
-    | 'text'
-    | 'json'
-    | 'image'
-    | 'audio'
-    | 'tool'
-    | 'sandbox'
-    | 'knowledge';
-  sourceNodeId?: string;
-  sourcePortId?: string;
+}
+
+export interface BlockDefinitionEdge extends Record<string, unknown> {
+  id: string;
+  source: string;
+  target: string;
 }
 
 export interface BlockDefinition {
-  nodes: Array<Record<string, unknown>>;
-  edges: Array<Record<string, unknown>>;
+  nodes: BlockDefinitionNode[];
+  edges: BlockDefinitionEdge[];
   inputPorts: BlockPort[];
   outputPorts: BlockPort[];
-  viewport?: { x: number; y: number; zoom: number };
+  viewport?: CreateReusableBlockDtoDefinitionViewport;
 }
 
-export interface BlockMetadata {
-  nodeCount: number;
-  author?: string;
-  version: number;
-  createdFromWorkflowId?: string;
-  exportedAt?: string;
-}
+export type BlockMetadata = CreateReusableBlockDtoMetadata;
 
 export interface ReusableBlockListItem {
   id: string;

@@ -1,8 +1,20 @@
+import type {
+  UpdatePrivateDeploymentSettingsRequestDto,
+  UpdatePrivateDeploymentSettingsRequestDtoCertificates,
+  UpdatePrivateDeploymentSettingsRequestDtoCertificatesSourceEnum,
+  UpdatePrivateDeploymentSettingsRequestDtoLicense,
+  UpdatePrivateDeploymentSettingsRequestDtoLlmProxy,
+  UpdatePrivateDeploymentSettingsRequestDtoLlmProxyModeEnum,
+  UpdatePrivateDeploymentSettingsRequestDtoSmtp,
+} from '@agentloom/api-client'
+
 export type DeploymentMode = 'saas' | 'private'
 
-export type PrivateDeploymentLlmProxyMode = 'direct' | 'private_cloud' | 'enterprise_proxy'
+export type PrivateDeploymentLlmProxyMode =
+  UpdatePrivateDeploymentSettingsRequestDtoLlmProxyModeEnum
 
-export type PrivateDeploymentCertificateSource = 'uploaded' | 'secretRef' | 'ingress-managed'
+export type PrivateDeploymentCertificateSource =
+  UpdatePrivateDeploymentSettingsRequestDtoCertificatesSourceEnum
 
 export type PrivateDeploymentLicenseStatus = 'missing' | 'valid' | 'invalid' | 'expired'
 
@@ -50,39 +62,18 @@ export interface PrivateDeploymentSettings {
   updatedAt?: string | null
 }
 
-export interface UpdatePrivateDeploymentSmtpInput {
-  host: string | null
-  port: number | null
-  username: string | null
-  passwordSecretRef?: string | null
-  fromEmail: string | null
-  useTls: boolean
-  password?: string | null
-}
+/** PUT /private-deployment/settings 请求体各段（生成模型） */
+export type UpdatePrivateDeploymentSmtpInput =
+  UpdatePrivateDeploymentSettingsRequestDtoSmtp
 
-export interface UpdatePrivateDeploymentLlmProxyInput {
-  mode: PrivateDeploymentLlmProxyMode
-  baseUrl: string | null
-  apiKeySecretRef?: string | null
-  allowExternalEgress: boolean
-  apiKey?: string | null
-}
+export type UpdatePrivateDeploymentLlmProxyInput =
+  UpdatePrivateDeploymentSettingsRequestDtoLlmProxy
 
-export interface UpdatePrivateDeploymentCertificatesInput {
-  source: PrivateDeploymentCertificateSource
-  tlsSecretRef: string | null
-  expiresAt: string | null
-  certificatePem?: string | null
-  privateKeyPem?: string | null
-}
+export type UpdatePrivateDeploymentCertificatesInput =
+  UpdatePrivateDeploymentSettingsRequestDtoCertificates
 
-export interface UpdatePrivateDeploymentLicenseInput {
-  licenseKey: string | null
-}
+export type UpdatePrivateDeploymentLicenseInput =
+  UpdatePrivateDeploymentSettingsRequestDtoLicense
 
-export interface UpdatePrivateDeploymentSettingsInput {
-  smtp?: UpdatePrivateDeploymentSmtpInput
-  llmProxy?: UpdatePrivateDeploymentLlmProxyInput
-  certificates?: UpdatePrivateDeploymentCertificatesInput
-  license?: UpdatePrivateDeploymentLicenseInput
-}
+export type UpdatePrivateDeploymentSettingsInput =
+  UpdatePrivateDeploymentSettingsRequestDto

@@ -1,30 +1,26 @@
-/** 平台 API Token 的前端类型定义，字段与服务端 `PlatformApiTokenResponse` 对齐 */
+/**
+ * 平台 API Token 前端类型：实体与请求体全部取自 `@agentloom/api-client`
+ * 生成模型（server OpenAPI 的 `PlatformApiToken*SwaggerDto`）。
+ */
+import type {
+  CreatePlatformApiTokenSwaggerDto,
+  PlatformApiTokenCreateEnvelopeSwaggerDtoData,
+  PlatformApiTokenListResponseSwaggerDtoDataInner,
+  PlatformApiTokenListResponseSwaggerDtoMeta,
+} from '@agentloom/api-client'
 
-/** 列表筛选状态；服务端默认 `active` */
+/**
+ * 列表筛选状态；服务端默认 `active`。
+ * 这是 query 参数取值，不是实体字段 —— 生成模型里没有对应枚举。
+ */
 export type PlatformApiTokenStatus = 'active' | 'revoked' | 'all'
 
-export interface PlatformApiToken {
-  id: string
-  name: string
-  /** `al_` + 8 位十六进制，用于在列表中辨认 token */
-  tokenPrefix: string
-  scopes: string | null
-  lastUsedAt: string | null
-  expiresAt: string | null
-  isRevoked: boolean
-  createdAt: string
-}
+export type PlatformApiToken = PlatformApiTokenListResponseSwaggerDtoDataInner
 
 /** 创建响应额外携带明文 token，且**仅此一次**返回 */
-export interface CreatedPlatformApiToken extends PlatformApiToken {
-  token: string
-}
+export type CreatedPlatformApiToken = PlatformApiTokenCreateEnvelopeSwaggerDtoData
 
-export interface PlatformApiTokenListMeta {
-  page: number
-  pageSize: number
-  total: number
-}
+export type PlatformApiTokenListMeta = PlatformApiTokenListResponseSwaggerDtoMeta
 
 export interface PlatformApiTokenListResult {
   data: PlatformApiToken[]
@@ -37,9 +33,4 @@ export interface ListPlatformApiTokensParams {
   status?: PlatformApiTokenStatus
 }
 
-export interface CreatePlatformApiTokenInput {
-  name: string
-  scopes?: string
-  /** ISO 8601 字符串；省略表示永不过期 */
-  expiresAt?: string
-}
+export type CreatePlatformApiTokenInput = CreatePlatformApiTokenSwaggerDto

@@ -1,6 +1,7 @@
 export type {
   AgentStatus,
   AgentDefinition,
+  AgentDefinitionSummary,
   AgentVersion,
   AgentVersionSnapshot,
   AgentCanvasData,

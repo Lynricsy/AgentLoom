@@ -378,10 +378,10 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         type: "object",
         properties: {
           enabled: createConfigField("boolean", "启用沙箱", { default: true }),
-          cpuLimit: createConfigField("number", "CPU 限制（核）", {
+          cpu: createConfigField("number", "CPU 限制（核）", {
             default: 1,
           }),
-          memoryLimitMb: createConfigField("number", "内存限制（MB）", {
+          memory: createConfigField("number", "内存限制（MB）", {
             default: 512,
           }),
           timeoutSeconds: createConfigField("number", "超时时间（秒）", {

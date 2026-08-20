@@ -108,3 +108,15 @@ export const STRATEGY_NAMES_BY_CATEGORY: Record<StrategyCategory, StrategyName[]
   rag: ['memory_bank'],
   plugin: ['wasm_plugin'],
 }
+
+/**
+ * 按任意策略名查 UI 元数据。
+ *
+ * server 的策略名是自由字符串（插件可注册新策略），因此查表天然是部分函数：
+ * 未知策略返回 undefined，调用方回落到显示原始名。
+ */
+export function getStrategyMeta(name: string): StrategyMeta | undefined {
+  return Object.hasOwn(STRATEGY_META, name)
+    ? STRATEGY_META[name as StrategyName]
+    : undefined
+}

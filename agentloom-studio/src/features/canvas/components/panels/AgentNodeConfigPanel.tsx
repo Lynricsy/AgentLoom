@@ -9,7 +9,7 @@ import {
 } from '@/shared/ui/select'
 import { useToast } from '@/shared/ui/toast'
 import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
-import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
+import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent/types'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
 import { OptimizationSuggestionsPanel } from '@/features/optimization-suggestion'
 import { useCanvasStore } from '../../stores/canvasStore'
@@ -109,7 +109,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
     }
   }, [legacyInline.systemPrompt, notify])
 
-  const [agents, setAgents] = useState<AgentDefinition[]>([])
+  const [agents, setAgents] = useState<AgentDefinitionSummary[]>([])
   const [versions, setVersions] = useState<AgentVersion[]>([])
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [loadingVersions, setLoadingVersions] = useState(false)
@@ -163,7 +163,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   }, [agentConfig.selectedAgentId])
 
   const handleSelectAgent = useCallback(
-    (agent: AgentDefinition) => {
+    (agent: AgentDefinitionSummary) => {
       const latestVersion = agent.publishedVersionId
       const inputPorts = getWorkflowAgentInputPorts(agent.runtimeMode)
       onApply({

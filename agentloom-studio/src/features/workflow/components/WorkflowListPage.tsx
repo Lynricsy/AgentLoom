@@ -56,7 +56,7 @@ import { downloadWorkflowExport } from "../lib/workflowExportImport";
 import { useWorkflowStore } from "../stores/workflowStore";
 import { CreateWorkflowDialog } from "./CreateWorkflowDialog";
 import { ArchiveDialog } from "./ArchiveDialog";
-import type { WorkflowDefinition, WorkflowStatus } from "../types";
+import type { WorkflowDefinitionSummary, WorkflowStatus } from "../types";
 
 type ViewMode = "grid" | "list";
 
@@ -98,7 +98,7 @@ function getStatusLabel(status: WorkflowStatus): string {
 }
 
 /** 已发布工作流展示发布版本号；未发布只有草稿快照 */
-function getWorkflowReleaseLabel(workflow: WorkflowDefinition): string {
+function getWorkflowReleaseLabel(workflow: WorkflowDefinitionSummary): string {
   if (workflow.status !== "published") {
     return "快照";
   }
@@ -107,11 +107,11 @@ function getWorkflowReleaseLabel(workflow: WorkflowDefinition): string {
 }
 
 interface WorkflowRowActionsProps {
-  workflow: WorkflowDefinition;
-  onEdit: (workflow: WorkflowDefinition) => void;
-  onExport: (workflow: WorkflowDefinition) => void;
-  onArchive: (workflow: WorkflowDefinition) => void;
-  onConvertSource: (workflow: WorkflowDefinition) => void;
+  workflow: WorkflowDefinitionSummary;
+  onEdit: (workflow: WorkflowDefinitionSummary) => void;
+  onExport: (workflow: WorkflowDefinitionSummary) => void;
+  onArchive: (workflow: WorkflowDefinitionSummary) => void;
+  onConvertSource: (workflow: WorkflowDefinitionSummary) => void;
 }
 
 /** hover 快捷操作：编辑 / 导出常驻按钮 + 低频项收进菜单 */
@@ -122,7 +122,7 @@ const WorkflowRowActions = memo(function WorkflowRowActions({
   onArchive,
   onConvertSource,
 }: WorkflowRowActionsProps) {
-  const sourceKind = workflow.resourceSourceKind ?? "manual";
+  const sourceKind = workflow.resourceSourceKind;
 
   return (
     <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
@@ -191,15 +191,15 @@ const WorkflowRowActions = memo(function WorkflowRowActions({
 });
 
 interface WorkflowCardProps {
-  workflow: WorkflowDefinition;
+  workflow: WorkflowDefinitionSummary;
   selected: boolean;
   batchMode: boolean;
   onSelect: (id: string) => void;
-  onClick: (workflow: WorkflowDefinition) => void;
-  onEdit: (workflow: WorkflowDefinition) => void;
-  onExport: (workflow: WorkflowDefinition) => void;
-  onArchive: (workflow: WorkflowDefinition) => void;
-  onConvertSource: (workflow: WorkflowDefinition) => void;
+  onClick: (workflow: WorkflowDefinitionSummary) => void;
+  onEdit: (workflow: WorkflowDefinitionSummary) => void;
+  onExport: (workflow: WorkflowDefinitionSummary) => void;
+  onArchive: (workflow: WorkflowDefinitionSummary) => void;
+  onConvertSource: (workflow: WorkflowDefinitionSummary) => void;
 }
 
 const WorkflowCard = memo(function WorkflowCard({
@@ -418,7 +418,7 @@ export function WorkflowListPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [searchInput, setSearchInput] = useState(filters.search);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [archiveTarget, setArchiveTarget] = useState<WorkflowDefinition | null>(
+  const [archiveTarget, setArchiveTarget] = useState<WorkflowDefinitionSummary | null>(
     null,
   );
 
@@ -469,7 +469,7 @@ export function WorkflowListPage() {
   );
 
   const handleWorkflowClick = useCallback(
-    (workflow: WorkflowDefinition) => {
+    (workflow: WorkflowDefinitionSummary) => {
       navigate({
         to: "/workflows/$workflowId",
         params: { workflowId: workflow.id },
@@ -479,7 +479,7 @@ export function WorkflowListPage() {
   );
 
   const handleEdit = useCallback(
-    (workflow: WorkflowDefinition) => {
+    (workflow: WorkflowDefinitionSummary) => {
       navigate({
         to: "/workflows/$workflowId",
         params: { workflowId: workflow.id },
@@ -489,7 +489,7 @@ export function WorkflowListPage() {
   );
 
   const handleExport = useCallback(
-    async (workflow: WorkflowDefinition) => {
+    async (workflow: WorkflowDefinitionSummary) => {
       try {
         const data = await exportWorkflow.mutateAsync(workflow.id);
         downloadWorkflowExport(data, workflow.slug);
@@ -505,12 +505,12 @@ export function WorkflowListPage() {
     [exportWorkflow, notify],
   );
 
-  const handleArchive = useCallback((workflow: WorkflowDefinition) => {
+  const handleArchive = useCallback((workflow: WorkflowDefinitionSummary) => {
     setArchiveTarget(workflow);
   }, []);
 
   const handleConvertSource = useCallback(
-    async (workflow: WorkflowDefinition) => {
+    async (workflow: WorkflowDefinitionSummary) => {
       try {
         await convertResourceSourceToManual("workflow_definition", workflow.id);
         await refetch();

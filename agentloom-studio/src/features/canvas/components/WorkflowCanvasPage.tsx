@@ -294,8 +294,8 @@ export function WorkflowCanvasPage() {
     skippedSnapshotRef.current = null;
 
     applyServerSnapshot({
-      nodes: workflow.nodes ?? [],
-      edges: workflow.edges ?? [],
+      nodes: workflow.nodes,
+      edges: workflow.edges,
       viewport: workflow.viewport ?? undefined,
       workflowId: workflow.id,
       version: workflow.version,
@@ -410,7 +410,7 @@ export function WorkflowCanvasPage() {
                     onOpenVersionHistory={handleOpenVersionHistory}
                     onExport={handleExportWorkflow}
                     isExporting={exportMutation.isPending}
-                    hasNodes={(workflow.nodes ?? []).length > 0}
+                    hasNodes={workflow.nodes.length > 0}
                   />
                 ) : (
                   <VersionToolbar
@@ -447,7 +447,7 @@ export function WorkflowCanvasPage() {
                     isTriggersOpen={activeSettingsTab === "triggers"}
                     isRunning={isStarting || isExecutionActive}
                     isExporting={exportMutation.isPending}
-                    hasNodes={(workflow.nodes ?? []).length > 0}
+                    hasNodes={workflow.nodes.length > 0}
                   />
                 )}
               </div>
@@ -485,7 +485,7 @@ export function WorkflowCanvasPage() {
                     workflowId={workflow.id}
                     workflowName={workflow.name}
                     workflowVersion={workflow.version}
-                    nodes={workflow.nodes ?? []}
+                    nodes={workflow.nodes}
                     inputSchema={workflow.inputSchema}
                     isInputSchemaReadOnly={isInputSchemaReadOnly}
                     isPublished={workflow.status === "published"}

@@ -54,9 +54,10 @@ describe("agentCanvasStore", () => {
   it("sends the canvas payload shape expected by the backend and reads the nested version response", async () => {
     const canvasViewport = { x: 12, y: 24, zoom: 0.85 };
     const globalSandboxConfig = {
-      enabled: true,
-      cpuLimit: 2,
-      memoryLimitMb: 1024,
+      cpu: 2,
+      memory: 1024,
+      disk: 1,
+      timeout: 1,
       timeoutSeconds: 300,
     };
     const inputSchema = {

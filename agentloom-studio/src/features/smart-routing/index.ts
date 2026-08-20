@@ -28,5 +28,6 @@ export {
   STRATEGY_CATEGORY_BG,
   STRATEGY_CATEGORY_LABELS,
   STRATEGY_NAMES_BY_CATEGORY,
+  getStrategyMeta,
   type StrategyMeta,
 } from './strategy-meta'

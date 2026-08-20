@@ -1,11 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
+import type {
+  AgentDefinitionSummary,
+  AgentVersion,
+} from '@/features/agent/types'
 import { SubAgentConfigPanel } from './SubAgentConfigPanel'
 
 const mocks = vi.hoisted(() => {
-  const selectedAgent = {
+  const selectedAgent: AgentDefinitionSummary = {
     id: 'agent-2',
     tenantId: 'tenant-1',
     name: 'Review Agent',
@@ -13,15 +16,7 @@ const mocks = vi.hoisted(() => {
     description: '负责代码审查',
     icon: null,
     runtimeMode: 'sandbox' as const,
-    systemPrompt: null,
-    nodes: [],
-    edges: [],
-    viewport: null,
-    sandboxConfig: null,
-    workspaceSnapshotId: null,
-    inputSchema: null,
-    memoryInstanceIds: null,
-    sandboxLifecycle: null,
+    resourceSourceKind: 'manual',
     version: 1,
     status: 'published' as const,
     publishedVersionId: 'version-2',
@@ -54,7 +49,7 @@ vi.mock('../AgentSearchPicker', () => ({
     onSelect,
     onClear,
   }: {
-    onSelect: (agent: AgentDefinition) => void
+    onSelect: (agent: AgentDefinitionSummary) => void
     onClear: () => void
   }) => (
     <div>
@@ -113,12 +108,13 @@ describe('SubAgentConfigPanel', () => {
 
     expect(onApply).toHaveBeenCalledWith({
       agentDefinitionId: 'agent-2',
-      agentVersionId: null,
       alias: 'review-agent',
       _agentName: 'Review Agent',
       _agentDescription: '负责代码审查',
       _versionLabel: '',
     })
+    // contracts 的 agentVersionId 是可选字段，"最新发布版" 必须是键缺失而非 null
+    expect(onApply.mock.calls[0]?.[0]).not.toHaveProperty('agentVersionId')
     expect(screen.getByDisplayValue('review-agent')).toBeInTheDocument()
   })
 
@@ -185,7 +181,7 @@ describe('SubAgentConfigPanel', () => {
     })
   })
 
-  it('选回最新发布版时清空版本 id 与展示标签', async () => {
+  it('选回最新发布版时移除版本 id 与展示标签', async () => {
     const user = userEvent.setup()
     const onApply = vi.fn()
 
@@ -219,8 +215,8 @@ describe('SubAgentConfigPanel', () => {
       agentDefinitionId: 'agent-2',
       alias: 'review-agent',
       _agentName: 'Review Agent',
-      agentVersionId: null,
       _versionLabel: '',
     })
+    expect(onApply.mock.calls[0]?.[0]).not.toHaveProperty('agentVersionId')
   })
 })

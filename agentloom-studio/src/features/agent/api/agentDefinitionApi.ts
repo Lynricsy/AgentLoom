@@ -1,6 +1,11 @@
 import { apiClient, toSnakeBody } from "../../../shared/api/client";
 import type { ApiResponse, PaginatedResponse } from "../../../shared/types/api";
-import type { AgentDefinition, AgentRuntimeMode, AgentVersion } from "../types";
+import type {
+  AgentDefinition,
+  AgentDefinitionSummary,
+  AgentRuntimeMode,
+  AgentVersion,
+} from "../types";
 
 export interface CreateAgentPayload {
   name: string;
@@ -36,7 +41,8 @@ export interface ListAgentsParams {
   sourceKind?: "manual" | "share_imported";
 }
 
-export type AgentListResponse = PaginatedResponse<AgentDefinition>;
+/** 列表接口只返回 summary 形状；详情字段（画布 / 沙箱）需单独取详情。 */
+export type AgentListResponse = PaginatedResponse<AgentDefinitionSummary>;
 export type AgentVersionListResponse = PaginatedResponse<AgentVersion>;
 
 export async function listAgents(params: ListAgentsParams = {}) {

@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { Bot, Clock, AlertCircle } from 'lucide-react'
 import { useAgentVersions } from '@/features/agent/api/agentQueries'
-import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
+import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent/types'
 import {
   Select,
   SelectContent,
@@ -44,6 +44,18 @@ function parseSubAgentConfig(config: Record<string, unknown>) {
   }
 }
 
+/**
+ * contracts 的 `AgentSubAgentRef.agentVersionId` 是可选字段而非可空字段，
+ * “最新发布版”必须表达为键缺失，写入 `null` 会让 server 端 schema 校验失败。
+ */
+function withLatestVersion(
+  config: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const { agentVersionId: _omitted, ...rest } = config
+  return { ...rest, ...patch }
+}
+
 function generateAlias(name: string): string {
   return name
     .trim()
@@ -57,7 +69,7 @@ function generateAlias(name: string): string {
 const ALIAS_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/
 
 /**
- * “最新发布版”在语义上是一个真实可选项（对应 agentVersionId = null），
+ * “最新发布版”在语义上是一个真实可选项（对应 agentVersionId 键缺失），
  * 但 Radix Select 不接受 value=""，因此用哨兵值承载。
  */
 const LATEST_VERSION_VALUE = '__latest__'
@@ -106,39 +118,39 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
   )
 
   const handleAgentSelect = useCallback(
-    (agent: AgentDefinition) => {
+    (agent: AgentDefinitionSummary) => {
       const newAlias = generateAlias(agent.name)
       setAliasInput(newAlias)
-      onApply({
-        ...config,
-        agentDefinitionId: agent.id,
-        agentVersionId: null,
-        alias: newAlias,
-        _agentName: agent.name,
-        _agentDescription: agent.description ?? '',
-        _versionLabel: '',
-      })
+      onApply(
+        withLatestVersion(config, {
+          agentDefinitionId: agent.id,
+          alias: newAlias,
+          _agentName: agent.name,
+          _agentDescription: agent.description ?? '',
+          _versionLabel: '',
+        }),
+      )
     },
     [config, onApply],
   )
 
   const handleAgentClear = useCallback(() => {
     setAliasInput('')
-    onApply({
-      ...config,
-      agentDefinitionId: '',
-      agentVersionId: null,
-      alias: '',
-      _agentName: '',
-      _agentDescription: '',
-      _versionLabel: '',
-    })
+    onApply(
+      withLatestVersion(config, {
+        agentDefinitionId: '',
+        alias: '',
+        _agentName: '',
+        _agentDescription: '',
+        _versionLabel: '',
+      }),
+    )
   }, [config, onApply])
 
   const handleVersionChange = useCallback(
     (value: string) => {
       if (value === LATEST_VERSION_VALUE) {
-        onApply({ ...config, agentVersionId: null, _versionLabel: '' })
+        onApply(withLatestVersion(config, { _versionLabel: '' }))
         return
       }
       const ver = versions.find((v: AgentVersion) => v.id === value)
