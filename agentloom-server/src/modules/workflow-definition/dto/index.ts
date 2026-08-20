@@ -30,6 +30,12 @@ export type {
   WorkflowDefinitionListResponseDto,
 } from './workflow-definition-response.dto';
 export {
+  WorkflowDefinitionResponseSwaggerSchema,
+  WorkflowDefinitionDetailResponseSwaggerSchema,
+  WorkflowDefinitionListResponseSwaggerSchema,
+  WorkflowDefinitionDetailEnvelopeSwaggerSchema,
+  WorkflowDefinitionListResponseSwaggerDto,
+  WorkflowDefinitionDetailResponseSwaggerDto,
   serializeWorkflowDefinition,
   serializeWorkflowDefinitionDetail,
 } from './workflow-definition-response.dto';

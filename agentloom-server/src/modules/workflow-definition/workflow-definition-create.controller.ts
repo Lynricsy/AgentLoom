@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { type z } from 'zod';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -30,9 +31,12 @@ import {
 import { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import { UpdateWorkflowDefinitionDto } from './dto/update-workflow-definition.dto';
 import type { WorkflowExportDto } from './dto/workflow-export.dto';
-import type {
-  WorkflowDefinitionDetailResponseDto,
-  WorkflowDefinitionListResponseDto,
+import type { WorkflowDefinitionDetailResponseDto } from './dto/workflow-definition-response.dto';
+import {
+  WorkflowDefinitionDetailResponseSwaggerDto,
+  WorkflowDefinitionDetailEnvelopeSwaggerSchema,
+  WorkflowDefinitionListResponseSwaggerDto,
+  WorkflowDefinitionListResponseSwaggerSchema,
 } from './dto/workflow-definition-response.dto';
 import type { ImportValidationResult } from './utils/validate-import.utils';
 import { validateImportFile } from './utils/validate-import.utils';
@@ -54,23 +58,31 @@ export class WorkflowDefinitionCreateController {
   @Get()
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '查询工作流定义列表' })
-  @ApiResponse({ status: 200, description: '工作流定义列表' })
+  @ApiResponse({
+    status: 200,
+    description: '工作流定义列表',
+    type: WorkflowDefinitionListResponseSwaggerDto,
+  })
   async findAll(
     @Query() query: ListWorkflowDefinitionsQueryDto,
     @CurrentTenant() _tenantId: string,
-  ): Promise<WorkflowDefinitionListResponseDto> {
+  ): Promise<z.infer<typeof WorkflowDefinitionListResponseSwaggerSchema>> {
     return this.workflowVersionService.findAllDefinitions(query);
   }
 
   @Get(':id')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '查询工作流定义详情' })
-  @ApiResponse({ status: 200, description: '工作流定义详情' })
+  @ApiResponse({
+    status: 200,
+    description: '工作流定义详情',
+    type: WorkflowDefinitionDetailResponseSwaggerDto,
+  })
   @ApiResponse({ status: 404, description: '工作流定义不存在' })
   async findById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() _tenantId: string,
-  ): Promise<{ data: WorkflowDefinitionDetailResponseDto }> {
+  ): Promise<z.infer<typeof WorkflowDefinitionDetailEnvelopeSwaggerSchema>> {
     const data = await this.workflowVersionService.findDefinitionDetailById(id);
     return { data };
   }

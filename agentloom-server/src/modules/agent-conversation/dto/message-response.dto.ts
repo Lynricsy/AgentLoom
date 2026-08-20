@@ -1,40 +1,106 @@
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
 import type { AgentMessage } from '../../../database/schema/agent-conversations.schema';
-import type {
-  ToolCallStatus,
-  ToolCallTransitionRecord,
-  ToolPermissionRequest,
-} from '../../agent/types/tool-call-event.types';
+import type { ToolCallStatus } from '../../agent/types/tool-call-event.types';
 
-export interface MessageToolCallDto {
-  id: string;
-  tool: string;
-  args?: unknown;
-  status: ToolCallStatus;
-  result?: unknown;
-  error?: string;
-  transitions?: ToolCallTransitionRecord[];
-  permissionRequest?: ToolPermissionRequest;
-}
+const MessageToolCallStatusSwaggerSchema = z.enum([
+  'pending',
+  'awaiting_permission',
+  'denied',
+  'in_progress',
+  'completed',
+  'failed',
+]);
 
-export interface MessageToolResultDto {
-  toolCallId?: string;
-  tool?: string;
-  status?: ToolCallStatus;
-  result?: unknown;
-  error?: string;
-}
+const MessageToolCallTransitionSwaggerSchema = z.object({
+  from: MessageToolCallStatusSwaggerSchema.optional(),
+  to: MessageToolCallStatusSwaggerSchema,
+  timestamp: z.string(),
+  source: z.enum(['runtime', 'worker', 'user']),
+});
 
-export interface MessageResponseDto {
-  id: string;
-  conversationId: string;
-  role: string;
-  contentType: AgentMessage['contentType'];
-  content: string;
-  toolCalls: MessageToolCallDto[] | null;
-  toolResults: MessageToolResultDto[] | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-}
+const MessageToolPermissionRequestSwaggerSchema = z.object({
+  description: z.string(),
+  resourcePaths: z.array(z.string()).optional(),
+  domain: z.string().optional(),
+  category: z.string().optional(),
+  riskLevel: z.enum(['low', 'medium', 'high']).optional(),
+  sourceLabel: z.string().optional(),
+  targetType: z.string().optional(),
+  targetLabel: z.string().optional(),
+  approveEffect: z.string().optional(),
+  denyEffect: z.string().optional(),
+  // 工具权限请求的差异预览来自动态 JSONB。
+  diffPreview: z.record(z.string(), z.unknown()).optional(),
+  rememberable: z.boolean().optional(),
+});
+
+export const MessageToolCallSwaggerSchema = z.object({
+  id: z.string(),
+  tool: z.string(),
+  // 工具参数与执行结果来自动态 JSONB，结构由具体工具决定。
+  args: z.unknown().optional(),
+  status: MessageToolCallStatusSwaggerSchema,
+  result: z.unknown().optional(),
+  error: z.string().optional(),
+  transitions: z.array(MessageToolCallTransitionSwaggerSchema).optional(),
+  permissionRequest: MessageToolPermissionRequestSwaggerSchema.optional(),
+});
+
+export const MessageToolResultSwaggerSchema = z.object({
+  toolCallId: z.string().optional(),
+  tool: z.string().optional(),
+  status: MessageToolCallStatusSwaggerSchema.optional(),
+  // 工具执行结果来自动态 JSONB，结构由具体工具决定。
+  result: z.unknown().optional(),
+  error: z.string().optional(),
+});
+
+export const MessageResponseSwaggerSchema = z.object({
+  id: z.string().uuid(),
+  conversationId: z.string().uuid(),
+  role: z.enum(['user', 'assistant', 'system', 'tool']),
+  contentType: z.enum([
+    'text',
+    'image',
+    'file',
+    'tool_call',
+    'tool_result',
+    'system',
+  ]),
+  content: z.string(),
+  toolCalls: z.array(MessageToolCallSwaggerSchema).nullable(),
+  toolResults: z.array(MessageToolResultSwaggerSchema).nullable(),
+  // 消息元数据来自动态 JSONB，键和值由消息生产方决定。
+  metadata: z.record(z.string(), z.unknown()),
+  createdAt: z.string(),
+});
+
+export const MessageListMetaSwaggerSchema = z.object({
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  totalPages: z.number().int().min(0),
+});
+
+export const MessageListResponseSwaggerSchema = z.object({
+  data: z.array(MessageResponseSwaggerSchema),
+  meta: MessageListMetaSwaggerSchema,
+});
+
+export class MessageListResponseSwaggerDto extends createZodDto(
+  MessageListResponseSwaggerSchema,
+) {}
+
+export type MessageToolCallDto = z.infer<typeof MessageToolCallSwaggerSchema>;
+export type MessageToolResultDto = z.infer<
+  typeof MessageToolResultSwaggerSchema
+>;
+export type MessageResponseDto = z.infer<typeof MessageResponseSwaggerSchema>;
+export type MessageListResponseDto = z.infer<
+  typeof MessageListResponseSwaggerSchema
+>;
 
 export function serializeMessage(row: AgentMessage): MessageResponseDto {
   return {
@@ -127,7 +193,7 @@ function serializeToolResults(
 
 function serializeTransitions(
   value: unknown,
-): ToolCallTransitionRecord[] | undefined {
+): MessageToolCallDto['transitions'] {
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -157,7 +223,7 @@ function serializeTransitions(
         to,
         timestamp,
         source,
-      } satisfies ToolCallTransitionRecord,
+      } satisfies NonNullable<MessageToolCallDto['transitions']>[number],
     ];
   });
 
@@ -166,7 +232,7 @@ function serializeTransitions(
 
 function serializePermissionRequest(
   value: unknown,
-): ToolPermissionRequest | undefined {
+): MessageToolCallDto['permissionRequest'] {
   if (!isRecord(value)) {
     return undefined;
   }

@@ -1,3 +1,4 @@
+import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 const executionStepAttemptErrorSchema = z.object({
@@ -39,7 +40,7 @@ const executionStepErrorMessageSchema = executionStructuredErrorSchema;
 
 const executionErrorMessageSchema = executionStructuredErrorSchema;
 
-export const executionStepSchema = z.object({
+export const ExecutionStepResponseSwaggerSchema = z.object({
   id: z.string().uuid(),
   executionId: z.string().uuid(),
   nodeId: z.string(),
@@ -54,6 +55,7 @@ export const executionStepSchema = z.object({
     'skipped',
     'cancelled',
   ]),
+  // 步骤输入、节点数据、结果与检查点均来自动态 JSONB。
   input: z.record(z.string(), z.unknown()).nullable(),
   nodeType: z.string().nullable(),
   nodeData: z.record(z.string(), z.unknown()).nullable(),
@@ -66,7 +68,7 @@ export const executionStepSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const executionResponseSchema = z.object({
+export const ExecutionResponseSwaggerSchema = z.object({
   id: z.string().uuid(),
   workflowId: z.string().uuid(),
   workflowDefinitionId: z.string().uuid(),
@@ -81,6 +83,7 @@ export const executionResponseSchema = z.object({
     'cancelled',
   ]),
   triggerType: z.enum(['manual', 'api', 'webhook', 'system']),
+  // 执行参数与定义快照来自动态 JSONB。
   inputParams: z.record(z.string(), z.unknown()),
   definitionSnapshot: z.record(z.string(), z.unknown()),
   startedAt: z.string().nullable(),
@@ -93,11 +96,49 @@ export const executionResponseSchema = z.object({
   createdBy: z.string().uuid(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  steps: z.array(executionStepSchema).optional(),
+  steps: z.array(ExecutionStepResponseSwaggerSchema).optional(),
 });
 
-export type ExecutionResponseDto = z.infer<typeof executionResponseSchema>;
-export type ExecutionStepResponseDto = z.infer<typeof executionStepSchema>;
+export const ExecutionEnvelopeResponseSwaggerSchema = z.object({
+  data: ExecutionResponseSwaggerSchema,
+});
+
+export const ExecutionListMetaSwaggerSchema = z.object({
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  limit: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  totalPages: z.number().int().min(0),
+});
+
+export const ExecutionListResponseSwaggerSchema = z.object({
+  data: z.array(ExecutionResponseSwaggerSchema),
+  meta: ExecutionListMetaSwaggerSchema,
+});
+
+export class ExecutionEnvelopeResponseSwaggerDto extends createZodDto(
+  ExecutionEnvelopeResponseSwaggerSchema,
+) {}
+
+export class ExecutionListResponseSwaggerDto extends createZodDto(
+  ExecutionListResponseSwaggerSchema,
+) {}
+
+export const executionStepSchema = ExecutionStepResponseSwaggerSchema;
+export const executionResponseSchema = ExecutionResponseSwaggerSchema;
+
+export type ExecutionResponseDto = z.infer<
+  typeof ExecutionResponseSwaggerSchema
+>;
+export type ExecutionStepResponseDto = z.infer<
+  typeof ExecutionStepResponseSwaggerSchema
+>;
 export type ExecutionStepErrorResponseDto = z.infer<
   typeof executionStepErrorMessageSchema
+>;
+export type ExecutionEnvelopeResponseDto = z.infer<
+  typeof ExecutionEnvelopeResponseSwaggerSchema
+>;
+export type ExecutionListResponseDto = z.infer<
+  typeof ExecutionListResponseSwaggerSchema
 >;

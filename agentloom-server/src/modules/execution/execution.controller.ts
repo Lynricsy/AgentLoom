@@ -18,6 +18,8 @@ import type { FastifyReply } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { ExecutionStep } from '../../database/schema/execution-steps.schema';
+import type { WorkflowExecution } from '../../database/schema/workflow-executions.schema';
 import {
   CaptureAuditLog,
   auditLogCaptureConfigs,
@@ -29,6 +31,13 @@ import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
 import { ResumeExecutionDto } from './dto/resume-execution.dto';
+import {
+  ExecutionEnvelopeResponseSwaggerDto,
+  ExecutionListResponseSwaggerDto,
+  type ExecutionEnvelopeResponseDto,
+  type ExecutionListResponseDto,
+  type ExecutionResponseDto,
+} from './dto/execution-response.dto';
 import {
   InterveneStepDto,
   interveneStepSchema,
@@ -62,14 +71,18 @@ export class ExecutionController {
   @HttpCode(HttpStatus.ACCEPTED)
   @Roles('owner', 'admin', 'creator', 'operator')
   @ApiOperation({ summary: '启动工作流执行' })
-  @ApiResponse({ status: 202, description: '执行已创建' })
+  @ApiResponse({
+    status: 202,
+    description: '执行已创建',
+    type: ExecutionEnvelopeResponseSwaggerDto,
+  })
   @ApiResponse({ status: 409, description: '工作流未发布' })
   async runWorkflow(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Body() dto: RunWorkflowDto,
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
-  ) {
+  ): Promise<ExecutionEnvelopeResponseDto> {
     const execution = await this.executionService.runWorkflow(
       workflowId,
       dto,
@@ -83,9 +96,15 @@ export class ExecutionController {
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取执行详情' })
-  @ApiResponse({ status: 200, description: '执行详情' })
+  @ApiResponse({
+    status: 200,
+    description: '执行详情',
+    type: ExecutionEnvelopeResponseSwaggerDto,
+  })
   @ApiResponse({ status: 404, description: '执行不存在' })
-  async getExecution(@Param('executionId', ParseUUIDPipe) executionId: string) {
+  async getExecution(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+  ): Promise<ExecutionEnvelopeResponseDto> {
     const execution = await this.executionService.getExecution(executionId);
     return { data: this.serializeExecution(execution) };
   }
@@ -97,11 +116,15 @@ export class ExecutionController {
   @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取工作流执行历史' })
-  @ApiResponse({ status: 200, description: '执行列表' })
+  @ApiResponse({
+    status: 200,
+    description: '执行列表',
+    type: ExecutionListResponseSwaggerDto,
+  })
   async listExecutions(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Query() query: ListExecutionsQueryDto,
-  ) {
+  ): Promise<ExecutionListResponseDto> {
     const result = await this.executionService.listExecutions(
       workflowId,
       query.page,
@@ -406,15 +429,33 @@ export class ExecutionController {
     );
   }
 
-  private serializeExecution<
-    T extends {
-      workflowDefinitionId: string;
-      steps?: Array<Record<string, unknown>>;
-    },
-  >(execution: T): T & { workflowId: string } {
+  private serializeExecution(
+    execution: WorkflowExecution & { steps?: ExecutionStep[] },
+  ): ExecutionResponseDto {
+    // 先摘出 steps，避免 rest spread 把 Date 类型的原始 step 行带进 wire 类型
+    const { steps, ...rest } = execution;
+
     return {
-      ...execution,
+      ...rest,
       workflowId: execution.workflowDefinitionId,
+      definitionSnapshot: { ...execution.definitionSnapshot },
+      startedAt: execution.startedAt?.toISOString() ?? null,
+      completedAt: execution.completedAt?.toISOString() ?? null,
+      failedAt: execution.failedAt?.toISOString() ?? null,
+      cancelledAt: execution.cancelledAt?.toISOString() ?? null,
+      createdAt: execution.createdAt.toISOString(),
+      updatedAt: execution.updatedAt.toISOString(),
+      ...(steps
+        ? {
+            steps: steps.map((step) => ({
+              ...step,
+              startedAt: step.startedAt?.toISOString() ?? null,
+              completedAt: step.completedAt?.toISOString() ?? null,
+              createdAt: step.createdAt.toISOString(),
+              updatedAt: step.updatedAt.toISOString(),
+            })),
+          }
+        : {}),
     };
   }
 }

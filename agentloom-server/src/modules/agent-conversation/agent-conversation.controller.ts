@@ -38,6 +38,16 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
 import { ToolPermissionCallbackDto } from './dto/tool-permission-callback.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import {
+  ConversationDetailResponseSwaggerDto,
+  ConversationListResponseSwaggerDto,
+  type ConversationDetailResponseDto,
+  type ConversationListResponseDto,
+} from './dto/conversation-response.dto';
+import {
+  MessageListResponseSwaggerDto,
+  type MessageListResponseDto,
+} from './dto/message-response.dto';
 
 @ApiTags('Agent Conversations')
 @Controller()
@@ -92,11 +102,15 @@ export class AgentConversationController {
   @Get('agent-definitions/:agentId/conversations')
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: 'List conversations for an agent' })
-  @ApiResponse({ status: 200, description: 'Paginated conversation list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated conversation list',
+    type: ConversationListResponseSwaggerDto,
+  })
   async list(
     @Param('agentId', ParseUUIDPipe) agentId: string,
     @Query() query: ListConversationsQueryDto,
-  ) {
+  ): Promise<ConversationListResponseDto> {
     return this.conversationService.listByAgent(agentId, query);
   }
 
@@ -106,12 +120,13 @@ export class AgentConversationController {
   @ApiResponse({
     status: 200,
     description: 'Conversation detail with messages',
+    type: ConversationDetailResponseSwaggerDto,
   })
   async getDetail(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-  ) {
+  ): Promise<ConversationDetailResponseDto> {
     return this.conversationService.getDetail(
       id,
       page ? parseInt(page, 10) : undefined,
@@ -122,12 +137,16 @@ export class AgentConversationController {
   @Get('agent-conversations/:id/messages')
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: 'List messages for a conversation' })
-  @ApiResponse({ status: 200, description: 'Paginated message list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated message list',
+    type: MessageListResponseSwaggerDto,
+  })
   async listMessages(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-  ) {
+  ): Promise<MessageListResponseDto> {
     return this.conversationService.listMessages(
       id,
       page ? parseInt(page, 10) : undefined,

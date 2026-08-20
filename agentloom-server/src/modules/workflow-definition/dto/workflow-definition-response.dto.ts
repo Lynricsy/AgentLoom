@@ -1,57 +1,136 @@
-import type {
-  ReactFlowEdge,
-  ReactFlowNode,
-  ReactFlowViewport,
-  WorkflowDefinition,
-} from '../../../database/schema/workflow-definitions.schema';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+import type { WorkflowDefinition } from '../../../database/schema/workflow-definitions.schema';
 import type { ResourceSourceKind } from '../../../database/schema';
-import type { WorkflowInputSchema } from '../../workflow/dto/workflow-input-schema.dto';
+import { workflowInputSchemaSchema } from '../../workflow/dto/workflow-input-schema.dto';
 import { normalizeWorkflowNodesAndEdges } from '../utils/normalize-workflow-graph.utils';
 
-/**
- * 工作流定义响应 DTO（排除 nodes/edges/viewport 大字段）
- */
-export interface WorkflowDefinitionResponseDto {
-  id: string;
-  tenantId: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  icon: string | null;
-  status: string;
-  version: number;
-  publishedVersionId: string | null;
-  publishedReleaseNumber: number | null;
-  metadata: Record<string, unknown> | null;
-  createdBy: string;
-  updatedBy: string;
-  createdAt: string;
-  updatedAt: string;
-  resourceSourceKind: ResourceSourceKind;
-}
+const ResourceSourceKindSwaggerSchema = z.enum(['manual', 'share_imported']);
 
-/**
- * 工作流定义详情响应 DTO（包含 nodes/edges/viewport）
- */
-export interface WorkflowDefinitionDetailResponseDto extends WorkflowDefinitionResponseDto {
-  nodes: ReactFlowNode[];
-  edges: ReactFlowEdge[];
-  viewport: ReactFlowViewport | null;
-  inputSchema: WorkflowInputSchema | null;
-}
+const ReactFlowPositionSwaggerSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
 
-/**
- * 分页列表响应
- */
-export interface WorkflowDefinitionListResponseDto {
-  data: WorkflowDefinitionResponseDto[];
-  meta: {
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-  };
-}
+const ReactFlowNodeSwaggerSchema = z.object({
+  id: z.string(),
+  type: z.string().optional(),
+  position: ReactFlowPositionSwaggerSchema,
+  // React Flow 节点 data/style 来自用户画布 JSONB，键集合无法预先枚举。
+  data: z.record(z.string(), z.unknown()),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  selected: z.boolean().optional(),
+  dragging: z.boolean().optional(),
+  parentId: z.string().optional(),
+  expandParent: z.boolean().optional(),
+  extent: z
+    .union([
+      z.literal('parent'),
+      z.tuple([ReactFlowPositionSwaggerSchema, ReactFlowPositionSwaggerSchema]),
+    ])
+    .optional(),
+  sourcePosition: z.enum(['top', 'right', 'bottom', 'left']).optional(),
+  targetPosition: z.enum(['top', 'right', 'bottom', 'left']).optional(),
+  hidden: z.boolean().optional(),
+  zIndex: z.number().optional(),
+  className: z.string().optional(),
+  // React Flow style 来自用户画布 JSONB，CSS 属性集合为动态键。
+  style: z.record(z.string(), z.unknown()).optional(),
+});
+
+const ReactFlowMarkerSwaggerSchema = z.union([
+  z.string(),
+  // React Flow marker 配置来自用户画布 JSONB，具体键由前端版本决定。
+  z.record(z.string(), z.unknown()),
+]);
+
+const ReactFlowEdgeSwaggerSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  target: z.string(),
+  sourceHandle: z.string().nullable().optional(),
+  targetHandle: z.string().nullable().optional(),
+  type: z.string().optional(),
+  animated: z.boolean().optional(),
+  // React Flow 边 data/style 来自用户画布 JSONB，键集合无法预先枚举。
+  data: z.record(z.string(), z.unknown()).optional(),
+  selected: z.boolean().optional(),
+  hidden: z.boolean().optional(),
+  label: z.string().optional(),
+  labelStyle: z.record(z.string(), z.unknown()).optional(),
+  labelBgStyle: z.record(z.string(), z.unknown()).optional(),
+  style: z.record(z.string(), z.unknown()).optional(),
+  className: z.string().optional(),
+  zIndex: z.number().optional(),
+  markerStart: ReactFlowMarkerSwaggerSchema.optional(),
+  markerEnd: ReactFlowMarkerSwaggerSchema.optional(),
+});
+
+const ReactFlowViewportSwaggerSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  zoom: z.number(),
+});
+
+export const WorkflowDefinitionResponseSwaggerSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  description: z.string().nullable(),
+  icon: z.string().nullable(),
+  status: z.enum(['draft', 'published', 'archived']),
+  version: z.number().int(),
+  publishedVersionId: z.string().nullable(),
+  publishedReleaseNumber: z.number().int().nullable(),
+  // metadata 是工作流定义的动态 JSONB 扩展字段。
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+  createdBy: z.string(),
+  updatedBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  resourceSourceKind: ResourceSourceKindSwaggerSchema,
+});
+
+export const WorkflowDefinitionDetailResponseSwaggerSchema =
+  WorkflowDefinitionResponseSwaggerSchema.extend({
+    nodes: z.array(ReactFlowNodeSwaggerSchema),
+    edges: z.array(ReactFlowEdgeSwaggerSchema),
+    viewport: ReactFlowViewportSwaggerSchema.nullable(),
+    inputSchema: workflowInputSchemaSchema.nullable(),
+  });
+
+export const WorkflowDefinitionListResponseSwaggerSchema = z.object({
+  data: z.array(WorkflowDefinitionResponseSwaggerSchema),
+  meta: z.object({
+    total: z.number().int().nonnegative(),
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    totalPages: z.number().int().nonnegative(),
+  }),
+});
+
+export const WorkflowDefinitionDetailEnvelopeSwaggerSchema = z.object({
+  data: WorkflowDefinitionDetailResponseSwaggerSchema,
+});
+
+export class WorkflowDefinitionListResponseSwaggerDto extends createZodDto(
+  WorkflowDefinitionListResponseSwaggerSchema,
+) {}
+export class WorkflowDefinitionDetailResponseSwaggerDto extends createZodDto(
+  WorkflowDefinitionDetailEnvelopeSwaggerSchema,
+) {}
+
+export type WorkflowDefinitionResponseDto = z.infer<
+  typeof WorkflowDefinitionResponseSwaggerSchema
+>;
+export type WorkflowDefinitionDetailResponseDto = z.infer<
+  typeof WorkflowDefinitionDetailResponseSwaggerSchema
+>;
+export type WorkflowDefinitionListResponseDto = z.infer<
+  typeof WorkflowDefinitionListResponseSwaggerSchema
+>;
 
 /**
  * 将 Drizzle 行序列化为响应 DTO（排除 nodes/edges/viewport）

@@ -17,6 +17,8 @@ const WORKFLOW_ID = '019391d4-c000-7000-0000-000000000003';
 const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
 const STEP_ID = '019391d4-f000-7000-0000-000000000006';
 const TOOL_CALL_ID = '019391d4-a100-7000-0000-000000000007';
+const CREATED_AT = new Date('2026-01-01T00:00:00.000Z');
+const UPDATED_AT = new Date('2026-01-01T00:05:00.000Z');
 
 const mockExecution = {
   id: EXECUTION_ID,
@@ -33,8 +35,20 @@ const mockExecution = {
     metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
   },
   createdBy: USER_ID,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: CREATED_AT,
+  updatedAt: UPDATED_AT,
+};
+
+// 控制器输出的 wire 形状：日期一律 ISO 字符串，未发生的时间点显式为 null
+const mockExecutionWire = {
+  ...mockExecution,
+  workflowId: WORKFLOW_ID,
+  startedAt: null,
+  completedAt: null,
+  failedAt: null,
+  cancelledAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:05:00.000Z',
 };
 
 const mockService: Record<string, ReturnType<typeof vi.fn>> = {
@@ -124,9 +138,7 @@ describe('ExecutionController', () => {
         USER_ID,
       );
 
-      expect(result).toEqual({
-        data: { ...mockExecution, workflowId: WORKFLOW_ID },
-      });
+      expect(result).toEqual({ data: mockExecutionWire });
       expect(mockService.runWorkflow).toHaveBeenCalledWith(
         WORKFLOW_ID,
         dto,
@@ -144,7 +156,7 @@ describe('ExecutionController', () => {
       const result = await controller.getExecution(EXECUTION_ID);
 
       expect(result).toEqual({
-        data: { ...executionWithSteps, workflowId: WORKFLOW_ID },
+        data: { ...mockExecutionWire, steps: [] },
       });
       expect(mockService.getExecution).toHaveBeenCalledWith(EXECUTION_ID);
     });
@@ -166,7 +178,7 @@ describe('ExecutionController', () => {
 
       expect(result).toEqual({
         ...paginatedResult,
-        data: [{ ...mockExecution, workflowId: WORKFLOW_ID }],
+        data: [mockExecutionWire],
       });
       expect(mockService.listExecutions).toHaveBeenCalledWith(
         WORKFLOW_ID,
@@ -191,9 +203,7 @@ describe('ExecutionController', () => {
 
       expect(result).toEqual({
         ...paginatedResult,
-        data: [
-          { ...mockExecution, status: 'running', workflowId: WORKFLOW_ID },
-        ],
+        data: [{ ...mockExecutionWire, status: 'running' }],
       });
       expect(mockService.listExecutions).toHaveBeenCalledWith(
         WORKFLOW_ID,
@@ -215,7 +225,7 @@ describe('ExecutionController', () => {
       const result = await controller.cancelExecution(EXECUTION_ID, TENANT_ID);
 
       expect(result).toEqual({
-        data: { ...cancelledExecution, workflowId: WORKFLOW_ID },
+        data: { ...mockExecutionWire, status: 'cancelled' },
       });
       expect(mockService.cancelExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
@@ -240,7 +250,7 @@ describe('ExecutionController', () => {
       );
 
       expect(result).toEqual({
-        data: { ...resumedExecution, workflowId: WORKFLOW_ID },
+        data: { ...mockExecutionWire, status: 'running' },
       });
       expect(mockCheckpointService.resumeExecution).toHaveBeenCalledWith(
         TENANT_ID,
@@ -268,7 +278,7 @@ describe('ExecutionController', () => {
       );
 
       expect(result).toEqual({
-        data: { ...resumedExecution, workflowId: WORKFLOW_ID },
+        data: { ...mockExecutionWire, status: 'running' },
       });
       expect(mockCheckpointService.resumeExecution).toHaveBeenCalledWith(
         TENANT_ID,
