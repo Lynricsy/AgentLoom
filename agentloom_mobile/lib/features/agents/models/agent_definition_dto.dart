@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import '../../../shared/utils/json_key_normalizer.dart';
 
 part 'agent_definition_dto.freezed.dart';
 part 'agent_definition_dto.g.dart';
@@ -66,16 +67,11 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
     @JsonKey(fromJson: _nullableStringListFromJson)
     List<String>? memoryInstanceIds,
     String? sandboxLifecycle,
-    String? organizationId,
-    String? modelId,
-    String? autonomyMode,
-    int? maxIterations,
-    int? timeoutSeconds,
     @Default('manual') String resourceSourceKind,
   }) = _AgentDefinitionDto;
 
   factory AgentDefinitionDto.fromJson(Map<String, dynamic> json) =>
-      _$AgentDefinitionDtoFromJson(json);
+      _$AgentDefinitionDtoFromJson(normalizeJsonMap(json));
 
   const AgentDefinitionDto._();
 

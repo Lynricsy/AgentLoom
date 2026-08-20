@@ -1,6 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-import 'json_compat.dart';
+import '../../../shared/utils/json_key_normalizer.dart';
 
 part 'conversation_plan.freezed.dart';
 part 'conversation_plan.g.dart';
@@ -13,13 +13,5 @@ abstract class ConversationPlan with _$ConversationPlan {
   }) = _ConversationPlan;
 
   factory ConversationPlan.fromJson(Map<String, dynamic> json) =>
-      _$ConversationPlanFromJson(
-        normalizeJsonAliases(
-          json,
-          aliases: const {
-            'systemPrompt': ['system_prompt'],
-            'maxTurns': ['max_turns'],
-          },
-        ),
-      );
+      _$ConversationPlanFromJson(normalizeJsonMap(json));
 }

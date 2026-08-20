@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../../shared/utils/json_key_normalizer.dart';
 
 /// 输入字段显示条件
 class InputFieldVisibility {
@@ -8,10 +9,10 @@ class InputFieldVisibility {
   final Object? equals;
 
   factory InputFieldVisibility.fromJson(Map<String, dynamic> json) {
-    final fieldId = json['fieldId'] ?? json['field_id'];
+    final normalized = normalizeJsonMap(json);
     return InputFieldVisibility(
-      fieldId: fieldId as String,
-      equals: json['equals'],
+      fieldId: normalized['fieldId'] as String,
+      equals: normalized['equals'],
     );
   }
 
@@ -44,17 +45,18 @@ class InputFieldValidation {
   final double? max;
 
   factory InputFieldValidation.fromJson(Map<String, dynamic> json) {
+    final normalized = normalizeJsonMap(json);
     return InputFieldValidation(
-      minLength: json['min_length'] as int?,
-      maxLength: json['max_length'] as int?,
-      min: _toDouble(json['min']),
-      max: _toDouble(json['max']),
+      minLength: normalized['minLength'] as int?,
+      maxLength: normalized['maxLength'] as int?,
+      min: _toDouble(normalized['min']),
+      max: _toDouble(normalized['max']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'min_length': minLength,
-    'max_length': maxLength,
+    'minLength': minLength,
+    'maxLength': maxLength,
     'min': min,
     'max': max,
   };
@@ -100,31 +102,27 @@ class InputFieldDefinition {
   final InputFieldVisibility? visibility;
 
   factory InputFieldDefinition.fromJson(Map<String, dynamic> json) {
-    final validation = json['validation'];
-    final options = json['options'];
-    final visibility = json['visibility'];
+    final normalized = normalizeJsonMap(json);
+    final validation = normalized['validation'];
+    final options = normalized['options'];
+    final visibility = normalized['visibility'];
 
     return InputFieldDefinition(
-      id: json['id'] as String,
-      type: json['type'] as String,
-      label: json['label'] as String,
-      description: json['description'] as String?,
-      required: json['required'] as bool? ?? false,
+      id: normalized['id'] as String,
+      type: normalized['type'] as String,
+      label: normalized['label'] as String,
+      description: normalized['description'] as String?,
+      required: normalized['required'] as bool? ?? false,
       validation: validation is Map<String, dynamic>
           ? InputFieldValidation.fromJson(validation)
-          : validation is Map
-          ? InputFieldValidation.fromJson(validation.cast<String, dynamic>())
           : null,
       options: options is List
           ? options.map((option) => '$option').toList()
           : null,
-      defaultValue: json['default'],
-      collectionHint:
-          (json['collectionHint'] ?? json['collection_hint']) as String?,
+      defaultValue: normalized['default'],
+      collectionHint: normalized['collectionHint'] as String?,
       visibility: visibility is Map<String, dynamic>
           ? InputFieldVisibility.fromJson(visibility)
-          : visibility is Map
-          ? InputFieldVisibility.fromJson(visibility.cast<String, dynamic>())
           : null,
     );
   }
@@ -138,7 +136,7 @@ class InputFieldDefinition {
     'validation': validation?.toJson(),
     'options': options,
     'default': defaultValue,
-    if (collectionHint != null) 'collection_hint': collectionHint,
+    if (collectionHint != null) 'collectionHint': collectionHint,
     'visibility': visibility?.toJson(),
   };
 

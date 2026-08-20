@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../agents/models/conversation_message_dto.dart';
 import '../../../shared/models/paginated_response.dart';
 import '../../../shared/providers/api_client_provider.dart';
+import '../../../shared/utils/json_key_normalizer.dart';
 import '../models/execution_summary_dto.dart';
 import '../models/workflow_definition_dto.dart';
 import '../models/workflow_input_schema.dart';
@@ -78,7 +79,7 @@ class WorkflowApi {
     );
     final body = response.data as Map<String, dynamic>;
     final data = body['data'] as Map<String, dynamic>;
-    return WorkflowInputSchema.fromJson(_normalizeInputSchema(data));
+    return WorkflowInputSchema.fromJson(normalizeJsonMap(data));
   }
 
   /// 触发执行工作流
@@ -145,71 +146,6 @@ class WorkflowApi {
     return WorkspaceFileContent.fromJson(body);
   }
 
-  Map<String, dynamic> _normalizeInputSchema(Map<String, dynamic> payload) {
-    final normalized = Map<String, dynamic>.from(payload);
-
-    final collectionMode =
-        normalized['collection_mode'] ?? normalized['collectionMode'];
-    if (collectionMode != null) {
-      normalized['collection_mode'] = collectionMode;
-    }
-
-    final fields = normalized['fields'];
-    if (fields is List) {
-      normalized['fields'] = fields.map((field) {
-        if (field is! Map) {
-          return field;
-        }
-
-        final normalizedField = Map<String, dynamic>.from(
-          field.cast<String, dynamic>(),
-        );
-        final validation = normalizedField['validation'];
-
-        if (validation is Map) {
-          final normalizedValidation = Map<String, dynamic>.from(
-            validation.cast<String, dynamic>(),
-          );
-
-          final minLength =
-              normalizedValidation['min_length'] ??
-              normalizedValidation['minLength'];
-          final maxLength =
-              normalizedValidation['max_length'] ??
-              normalizedValidation['maxLength'];
-
-          if (minLength != null) {
-            normalizedValidation['min_length'] = minLength;
-          }
-          if (maxLength != null) {
-            normalizedValidation['max_length'] = maxLength;
-          }
-
-          normalizedField['validation'] = normalizedValidation;
-        }
-
-        final visibility = normalizedField['visibility'];
-        if (visibility is Map) {
-          final normalizedVisibility = Map<String, dynamic>.from(
-            visibility.cast<String, dynamic>(),
-          );
-          final fieldId =
-              normalizedVisibility['fieldId'] ??
-              normalizedVisibility['field_id'];
-
-          if (fieldId != null) {
-            normalizedVisibility['fieldId'] = fieldId;
-          }
-
-          normalizedField['visibility'] = normalizedVisibility;
-        }
-
-        return normalizedField;
-      }).toList();
-    }
-
-    return normalized;
-  }
 }
 
 /// 工作流 API Provider

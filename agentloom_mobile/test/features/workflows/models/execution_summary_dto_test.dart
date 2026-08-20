@@ -50,18 +50,18 @@ void main() {
       expect(dto.failedAt, isNull);
     });
 
-    test('toJson 输出 snake_case 键', () {
+    test('toJson 输出 canonical camelCase 键', () {
       final dto = ExecutionSummaryDto.fromJson(sampleJson);
       final json = dto.toJson();
 
-      expect(json.containsKey('workflow_id'), isTrue);
-      expect(json.containsKey('trigger_type'), isTrue);
-      expect(json.containsKey('total_steps'), isTrue);
-      expect(json.containsKey('completed_steps'), isTrue);
-      expect(json.containsKey('started_at'), isTrue);
-      expect(json.containsKey('completed_at'), isTrue);
-      expect(json.containsKey('failed_at'), isTrue);
-      expect(json.containsKey('workflowId'), isFalse);
+      expect(json.containsKey('workflowId'), isTrue);
+      expect(json.containsKey('triggerType'), isTrue);
+      expect(json.containsKey('totalSteps'), isTrue);
+      expect(json.containsKey('completedSteps'), isTrue);
+      expect(json.containsKey('startedAt'), isTrue);
+      expect(json.containsKey('completedAt'), isTrue);
+      expect(json.containsKey('failedAt'), isTrue);
+      expect(json.containsKey('workflow_id'), isFalse);
     });
 
     test('toJson → fromJson 往返一致', () {

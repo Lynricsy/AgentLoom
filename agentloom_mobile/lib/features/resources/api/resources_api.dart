@@ -74,9 +74,9 @@ class ResourcesApi {
       '/api/v1/workspaces',
       queryParameters: {
         'page': page,
-        'page_size': pageSize,
+        'pageSize': pageSize,
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-        'include_auto_archived': includeAutoArchived,
+        'includeAutoArchived': includeAutoArchived,
       },
     );
     return PaginatedResponse.fromJson(
@@ -121,13 +121,13 @@ class ResourcesApi {
       '/api/v1/sandboxes',
       queryParameters: {
         'page': page,
-        'page_size': pageSize,
+        'pageSize': pageSize,
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
         if (status != null && status.isNotEmpty) 'status': status,
         if (lifecycleMode != null && lifecycleMode.isNotEmpty)
-          'lifecycle_mode': lifecycleMode,
+          'lifecycleMode': lifecycleMode,
         if (bindingType != null && bindingType.isNotEmpty)
-          'binding_type': bindingType,
+          'bindingType': bindingType,
       },
     );
     return PaginatedResponse.fromJson(
@@ -182,7 +182,7 @@ class ResourcesApi {
       '/api/v1/knowledge-bases',
       queryParameters: {
         'page': page,
-        'page_size': pageSize,
+        'pageSize': pageSize,
         if (sourceKind != null && sourceKind.isNotEmpty)
           'sourceKind': sourceKind,
       },
@@ -225,7 +225,7 @@ class ResourcesApi {
       '/api/v1/knowledge-bases/$knowledgeBaseId/documents',
       queryParameters: {
         'page': page,
-        'page_size': pageSize,
+        'pageSize': pageSize,
         if (status != null && status.isNotEmpty) 'status': status,
       },
     );

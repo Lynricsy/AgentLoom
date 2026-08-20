@@ -344,7 +344,6 @@ PaginatedResponse<ExecutionSummaryDto> createTestExecutionList({
 /// 测试用 AgentDefinitionDto 工厂
 AgentDefinitionDto createTestAgent({
   String id = 'agent-test-001',
-  String organizationId = 'org-001',
   String? tenantId,
   String name = 'Test Agent',
   String? slug,
@@ -352,10 +351,6 @@ AgentDefinitionDto createTestAgent({
   String status = 'published',
   String runtimeMode = 'sandbox',
   String? systemPrompt,
-  String? modelId = 'gpt-4',
-  String? autonomyMode = 'semi_autonomous',
-  int? maxIterations = 10,
-  int? timeoutSeconds = 300,
   int? version = 1,
   String? workspaceSnapshotId,
   Map<String, dynamic>? sandboxConfig,
@@ -365,7 +360,6 @@ AgentDefinitionDto createTestAgent({
 }) {
   return AgentDefinitionDto(
     id: id,
-    organizationId: organizationId,
     tenantId: tenantId,
     name: name,
     slug: slug ?? name.toLowerCase().replaceAll(' ', '-'),
@@ -373,10 +367,6 @@ AgentDefinitionDto createTestAgent({
     status: status,
     runtimeMode: runtimeMode,
     systemPrompt: systemPrompt,
-    modelId: modelId,
-    autonomyMode: autonomyMode,
-    maxIterations: maxIterations,
-    timeoutSeconds: timeoutSeconds,
     version: version,
     sandboxConfig: sandboxConfig,
     workspaceSnapshotId: workspaceSnapshotId,

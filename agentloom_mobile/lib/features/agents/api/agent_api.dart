@@ -60,7 +60,7 @@ class AgentApi {
     String? search,
     String? sourceKind,
   }) async {
-    final queryParams = <String, dynamic>{'page': page, 'page_size': pageSize};
+    final queryParams = <String, dynamic>{'page': page, 'pageSize': pageSize};
     if (status != null) queryParams['status'] = status;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
     if (sourceKind != null && sourceKind.isNotEmpty) {

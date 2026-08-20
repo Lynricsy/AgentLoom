@@ -1,6 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-import 'json_compat.dart';
+import '../../../shared/utils/json_key_normalizer.dart';
 
 part 'workflow_definition_dto.freezed.dart';
 part 'workflow_definition_dto.g.dart';
@@ -26,32 +26,9 @@ abstract class WorkflowDefinitionDto with _$WorkflowDefinitionDto {
   }) = _WorkflowDefinitionDto;
 
   factory WorkflowDefinitionDto.fromJson(Map<String, dynamic> json) =>
-      _$WorkflowDefinitionDtoFromJson(_normalizeWorkflowDefinitionJson(json));
+      _$WorkflowDefinitionDtoFromJson(normalizeJsonMap(json));
 
   const WorkflowDefinitionDto._();
 
   bool get isShareImported => resourceSourceKind == 'share_imported';
-}
-
-Map<String, dynamic> _normalizeWorkflowDefinitionJson(
-  Map<String, dynamic> json,
-) {
-  final normalized = normalizeJsonAliases(
-    json,
-    aliases: const {
-      'publishedReleaseNumber': ['published_release_number'],
-      'createdBy': ['created_by'],
-      'updatedBy': ['updated_by'],
-      'createdAt': ['created_at'],
-      'updatedAt': ['updated_at'],
-      'resourceSourceKind': ['resource_source_kind'],
-    },
-  );
-
-  final metadata = asStringKeyedMap(normalized['metadata']);
-  if (metadata != null) {
-    normalized['metadata'] = metadata;
-  }
-
-  return normalized;
 }
