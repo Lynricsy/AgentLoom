@@ -1,88 +1,63 @@
 # AGENTLOOM TYPE ENGINE 知识库
 
-Rust WASM 端口兼容性检查器。判断工作流画布中两个节点的端口是否可连接。
+Rust/WASM 端口与 schema 兼容性检查器。
 
-## 模块结构
+## 模块
 
-```
+```text
 src/
-├── lib.rs              # 入口, pub mod 声明, #![deny(clippy::unwrap_used)]
+├── lib.rs
 ├── types/
-│   ├── port.rs         # PortDataType (10 variants), PortDirection, PortDefinition
-│   ├── schema.rs       # TypeSchema = Scalar|Object|Array (custom serde)
-│   └── constraint.rs   # TypeConstraint (6 variants) — 已定义但未在 checker 中强制执行
+│   ├── port.rs          # PortDataType、PortDirection、PortDefinition
+│   └── schema.rs        # Scalar/Object/Array schema
 ├── checker/
-│   └── compatibility.rs  # 核心: CompatibilityChecker (563L)
+│   └── compatibility.rs # schema 与端口连接检查
 ├── validator/
-│   └── schema_validator.rs  # TypeSchema 校验 (depth limit 12)
+│   └── schema_validator.rs
 └── wasm/
-    ├── bindings.rs     # 3 个 WASM 导出函数
-    └── error.rs        # WasmError → TypeEngineError JS class
+    ├── bindings.rs
+    └── error.rs
 ```
 
-## WASM 导出
+仓库没有 `constraint` 模块。性能测量归属 `benches/compatibility_bench.rs`，正确性测试不使用 wall-clock 阈值。
 
-| 函数 | 输入 | 输出 | 用途 |
-|------|------|------|------|
-| `checkCompatibility` | source: JsValue, target: JsValue | CompatibilityResult | 端口间完整兼容性检查 |
-| `checkSchemaCompatibility` | source: JsValue, target: JsValue | SchemaCompatibilityResult | Schema 级别兼容性 |
-| `validateSchema` | input: JsValue | ValidationResult | 单个 Schema 校验 |
+## PortDataType
 
-## 兼容性算法
+`PortDataType` 包含 14 个 serde lowercase 变体：
 
-**4 级结果**: `EXACT > TRANSFORM > PARTIAL > INCOMPATIBLE`
+`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
 
-- **EXACT**: 类型完全匹配
-- **TRANSFORM**: 可安全转换 (e.g., Text ↔ Json)
-- **PARTIAL**: 部分字段匹配 (字段相似度阈值 0.55/0.85，最多 6 候选)
-- **INCOMPATIBLE**: 无法连接
+canonical 全集定义在 `@agentloom/contracts` 的 `PORT_DATA_TYPES`。Rust 镜像位于 `src/types/port.rs`；`agentloom-contracts/src/port-data-type.test.ts` 读取 Rust、plugin SDK、Studio、server 源文件，检查各端是 contracts 子集且各端并集等于 canonical 全集。
 
-`ComparisonState` 防循环引用。`PortDataType` 10 种: model/text/json/image/audio/tool/sandbox/knowledge/skill/agent。
+## 检查语义
 
-## 构建
+`CompatibilityChecker::check()` 只做 data type/schema 兼容性，返回 `EXACT | TRANSFORM | PARTIAL | INCOMPATIBLE`，不判断端口拓扑。
+
+`check_port_connection()` 在 schema 检查前验证连接上下文：
+
+1. source direction 必须是 `Output`。
+2. target direction 必须是 `Input`。
+3. optional source（`required=false`）不能连接 required target。
+4. `multiple=false` 的端口容量固定为 1。
+5. `multiple=true` 且设置 `max_connections` 时使用该上限；达到 source 或 target 容量均拒绝连接。
+6. 上述条件满足后再执行纯 schema 兼容性检查。
+
+调用方必须传入 source/target 的已有连接数；不能用 `check()` 替代连接级验证。
+
+## WASM API
+
+- `checkCompatibility`
+- `checkSchemaCompatibility`
+- `validateSchema`
+
+`pkg/` 是 wasm-pack 输出，包含 WASM、JS bindings 与类型声明。
+
+## 命令
 
 ```bash
-# 测试
 cargo test
-
-# 基准测试
-cargo bench                       # criterion, compatibility_bench
-
-# 构建 WASM (产物在 pkg/)
+cargo bench
 wasm-pack build --target bundler --release
-
-# Release 优化: opt-level=z + LTO (最小 WASM 体积)
 ```
 
-**pkg/ 已提交到 git** — 包含 .wasm + .js bindings + .d.ts
-
-## 测试
-
-- `tests/` — 13 checker + 7 validator + 5 WASM browser tests
-- `benches/` — criterion 基准测试 (compatibility_bench)
-- WASM 测试: `wasm-bindgen-test`
-
-## 约定
-
-- `#![deny(clippy::unwrap_used)]` — 禁止 unwrap，使用 Result/Option 处理
-- Rust Edition 2024，`crate-type = ["cdylib", "rlib"]`（同时输出 WASM 动态库和 Rust 静态库供测试链接）
-- Serde 用于 JSON 序列化 (serde-wasm-bindgen 跨 WASM 边界)
-- `TypeConstraint` 已定义但为死代码（未在 checker 中使用）
-- 集成测试含 inline timing assert（`elapsed().as_millis() < 100`），确保兼容性检查不退化
-
-## 对齐约束
-
-4 级兼容性结果与 10 种 PortDataType 为 canonical 定义，在以下 4 处独立维护，存在漂移风险：
-
-1. **Rust type-engine** — `src/types/port.rs`
-2. **Server schema** — Drizzle enum + Zod
-3. **Studio mcpToolMapping** — `features/canvas/types/typeSchema.ts`（含 legacy `number`/`boolean → json` 回退）
-4. **Plugin SDK** — `src/types/port.ts`
-
-修改任一处后需同步其余三处。
-
-## 与 Studio 的关系
-
-Studio 在 `features/canvas/types/typeSchema.ts` 中手动镜像了 Rust 类型。
-Studio 通过 `TypeEngineService → TypeEngineRuntime → runtime.worker.ts` 接入 WASM，主线程保留同步 guard/cache 读取，慢检查走单例 worker + cache + 受控 fallback（`connectionCompatibility.ts`）。
-修改 Rust 类型后需同步更新 Studio 的 TypeScript 镜像。
+Rust Edition 2024，crate 同时输出 `cdylib` 与 `rlib`。crate 根使用 `#![deny(clippy::unwrap_used)]`，错误路径用 Result/Option 表达。

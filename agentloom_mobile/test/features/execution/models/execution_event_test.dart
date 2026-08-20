@@ -26,7 +26,7 @@ void main() {
       expect(envelope.data['status'], 'running');
     });
 
-    test('fromJson 处理无 tenantId', () {
+    test('fromJson 缺少必需的 tenantId 时抛出', () {
       final json = {
         'eventId': 2,
         'event': 'execution.node.status-changed',
@@ -39,8 +39,30 @@ void main() {
           'to': 'running',
         },
       };
+
+      // 契约层信封声明 tenantId 必需，server 恒写入该字段；
+      // 缺失说明 wire 契约已漂移，必须暴露而不是静默接受。
+      expect(() => ExecutionEventEnvelope.fromJson(json), throwsA(anything));
+    });
+
+    test('fromJson 解析含 tenantId 的节点状态事件', () {
+      final json = {
+        'eventId': 2,
+        'event': 'execution.node.status-changed',
+        'timestamp': '2026-01-01T10:01:00.000Z',
+        'executionId': 'exec-001',
+        'tenantId': 'tenant-001',
+        'data': {
+          'stepId': 'step-1',
+          'nodeId': 'node-a',
+          'from': 'pending',
+          'to': 'running',
+        },
+      };
+
       final envelope = ExecutionEventEnvelope.fromJson(json);
-      expect(envelope.tenantId, isNull);
+
+      expect(envelope.tenantId, 'tenant-001');
       expect(envelope.data['stepId'], 'step-1');
     });
 
@@ -50,6 +72,7 @@ void main() {
         event: 'execution.status.changed',
         timestamp: '2026-01-01T10:00:00.000Z',
         executionId: 'exec-001',
+        tenantId: 'tenant-001',
         data: {'status': 'running'},
       );
       final json = envelope.toJson();
@@ -64,6 +87,7 @@ void main() {
         event: 'test',
         timestamp: 'ts',
         executionId: 'exec-001',
+        tenantId: 'tenant-001',
         data: data,
       );
       final b = ExecutionEventEnvelope(
@@ -71,6 +95,7 @@ void main() {
         event: 'test',
         timestamp: 'ts',
         executionId: 'exec-001',
+        tenantId: 'tenant-001',
         data: data,
       );
       expect(a, equals(b));

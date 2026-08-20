@@ -20,22 +20,25 @@ The project combines a visual DAG workflow canvas, standalone agent conversation
 
 ## Repository Layout
 
-This is a non-standard monorepo. There is no `pnpm-workspace.yaml`; each package owns its own dependency lockfile and commands.
+The TypeScript packages are managed by the root pnpm workspace. `agentloom-docs` and `agentloom-user-docs` remain independent projects with their own lockfiles.
 
 ```text
 AgentLoom/
-├── agentloom-server/          # NestJS 11 + Fastify 5 backend
-├── agentloom-studio/          # React 19 + Vite 7 web Studio
-├── agentloom-docs/            # VitePress 2 documentation site
+├── agentloom-server/          # NestJS 11 + Fastify 5 backend (workspace)
+├── agentloom-studio/          # React 19 + Vite 7 web Studio (workspace)
+├── agentloom-contracts/       # Zod 4 cross-client wire contracts (workspace)
+├── agentloom-api-client/      # OpenAPI-generated REST interfaces (workspace)
+├── agentloom-plugin-sdk/      # TypeScript plugin SDK, Zod 3 (workspace)
+├── agentloom-plugin-cli/      # Plugin CLI (workspace)
+├── agentloom-plugin-template/ # Example plugin (workspace)
+├── agentloom-docs/            # Independent VitePress documentation site
+├── agentloom-user-docs/       # Independent user documentation site
 ├── agentloom-deploy/          # Docker Compose, Helm, env templates, ops scripts
 ├── agentloom-type-engine/     # Rust/WASM port compatibility engine
-├── agentloom-plugin-sdk/      # TypeScript plugin SDK
-├── agentloom-plugin-cli/      # Plugin scaffolding/build/publish CLI
-├── agentloom-plugin-template/ # Example plugin template
+├── agentloom-firecracker-runtime/ # Go runtime manager and guest daemon
 ├── agentloom_mobile/          # Flutter mobile application
-├── Logo/                      # Source brand assets
-├── docker-compose.dev.yml     # Development Qdrant only
-└── package.json               # Root utility dependency only
+├── pnpm-workspace.yaml        # Workspace members, catalog, overrides, allowBuilds
+└── package.json               # Workspace orchestration scripts
 ```
 
 ## Architecture Overview
@@ -43,21 +46,27 @@ AgentLoom/
 Studio and Mobile call the server through REST under `/api/v1` and through Socket.IO namespaces for real-time execution, notifications, knowledge, memory, and agent conversation updates.
 
 ```text
-agentloom-studio  ─┐
+                         @agentloom/contracts
+                      (canonical wire schemas)
+                           ▲       ▲
+                           │       │
+agentloom-studio  ─┐       │       └── agentloom-server
                    ├─ REST /api/v1 + Socket.IO ─► agentloom-server
 agentloom_mobile  ─┘
+
+server OpenAPI spec ─► @agentloom/api-client ─► Studio ky payload types
 
 agentloom-server ─► PostgreSQL/Supabase  # tenancy, definitions, execution records
                  ├► Redis/BullMQ         # queues, schedulers, workers
                  ├► Qdrant               # vector search
                  ├► MinIO                # artifacts, documents, plugin archives
-                 ├► agentloom/sandbox    # sandbox agent/runtime workspaces
+                 ├► Firecracker runtime  # sandbox agent/runtime workspaces
                  └► Extism WASM sandbox  # plugin execution
 ```
 
-At runtime, the server is the authority for authentication, tenancy, workflow and agent definitions, execution orchestration, plugin registration, generated-app readiness gates, public runtime boundaries, evidence, audit, and governance. Studio and Mobile are clients over those contracts rather than separate backend runtimes.
+The server is authoritative for authentication, tenancy, definitions, execution orchestration, plugins, generated-app readiness, public runtime boundaries, evidence, audit, and governance. `@agentloom/contracts` is the single source for execution events, agent runtime configuration, workflow graph wire shapes, agent events, and the 14-value port data-type set. `@agentloom/api-client` contains generated interfaces only; Studio retains ky as its HTTP runtime.
 
-Within the server, side-effectful orchestration remains in NestJS services and workers. Generated-app gate plans, workflow node value/condition/runtime-input handling, and agent-conversation metadata/config/prompt normalization live in sibling pure helper modules so they can evolve independently of database, queue, and runtime coordination.
+Server orchestration uses constructor-injected services rather than service inheritance. Generated apps, workflow import/publish, node scheduling, sandbox agents, agent worker lifecycle support, and self-evolution are split into focused facades, repositories, policies, executors, and pure helpers.
 
 ## Tech Stack
 
@@ -65,6 +74,8 @@ Within the server, side-effectful orchestration remains in NestJS services and w
 | --- | --- |
 | `agentloom-server` | NestJS 11, Fastify 5, TypeScript, Drizzle ORM, PostgreSQL/Supabase, Redis, BullMQ, Socket.IO, Qdrant, MinIO, Vercel AI SDK, Extism, Vitest |
 | `agentloom-studio` | React 19, Vite 7, TypeScript 5.9, TanStack Router, TanStack Query, Zustand, Tailwind CSS v4, Radix UI, React Flow, ky, Socket.IO client, Vitest |
+| `agentloom-contracts` | TypeScript, Zod 4, tsup dual ESM/CJS output, Vitest, shared JSON fixtures |
+| `agentloom-api-client` | OpenAPI-generated TypeScript interfaces, tsup dual ESM/CJS output, no fetch runtime |
 | `agentloom-docs` | VitePress 2, OpenAPI rendering, Mermaid, bilingual documentation content |
 | `agentloom-deploy` | Docker Compose, Nginx, Helm, environment templates, PostgreSQL and MinIO backup/restore scripts |
 | `agentloom-type-engine` | Rust 2024, wasm-bindgen, serde, Criterion, WASM package artifacts |
@@ -75,7 +86,17 @@ Within the server, side-effectful orchestration remains in NestJS services and w
 
 ## Development Quick Start
 
-Use the package directory that matches the surface you are changing. The repository root is not a workspace orchestrator.
+Install workspace dependencies and run cross-package checks from the repository root:
+
+```bash
+pnpm install
+pnpm test:all
+pnpm typecheck:all
+pnpm build:all
+pnpm contracts:regen
+```
+
+`pnpm contracts:regen` exports the server OpenAPI specification, generates type-only models, synchronizes `agentloom-api-client/src/models.ts`, and builds `@agentloom/api-client`. Redis must be reachable during OpenAPI export.
 
 ### Shared Services
 
@@ -121,6 +142,23 @@ Useful checks:
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm build
+```
+
+### Contracts
+
+```bash
+cd agentloom-contracts
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+### REST API Types
+
+```bash
+cd agentloom-api-client
+pnpm typecheck
 pnpm build
 ```
 
@@ -191,6 +229,8 @@ Start with [`agentloom-deploy/README.md`](agentloom-deploy/README.md) for Docker
 
 - Product and platform docs: `agentloom-docs/`
 - Backend details and API generation: `agentloom-server/README.md`
+- Cross-client wire contracts: `agentloom-contracts/README.md`
+- Generated REST interfaces: `agentloom-api-client/README.md`
 - Web Studio details: `agentloom-studio/README.md`
 - Mobile app details: `agentloom_mobile/README.md`
 - Deployment operations: `agentloom-deploy/README.md`

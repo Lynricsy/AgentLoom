@@ -16,7 +16,8 @@ abstract class ExecutionEventEnvelope with _$ExecutionEventEnvelope {
     required String event,
     required String timestamp,
     required String executionId,
-    String? tenantId,
+    // 契约层信封声明 tenantId 必需，server 的 createEnvelope 恒写入该字段。
+    required String tenantId,
     required Map<String, dynamic> data,
   }) = _ExecutionEventEnvelope;
 

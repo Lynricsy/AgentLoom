@@ -1,129 +1,69 @@
 # AGENTLOOM PLUGIN SDK 知识库
 
-TypeScript 插件开发 SDK。提供插件 manifest 类型、节点执行接口、Zod 3 校验器、端口/节点辅助函数与 RSA-PSS 签名工具。
+`@agentloom/plugin-sdk` 是插件生态的 TypeScript 公共边界，提供 manifest、节点执行接口、Zod 校验、端口 helper 与 RSA-PSS 签名工具。
 
-## 模块结构
+## 模块
 
-```
+```text
 src/
-├── index.ts                  # 根 barrel，统一导出 types/validation/helpers/signing
+├── index.ts
 ├── types/
-│   ├── port.ts               # canonical 8 PortDataType + PortDefinition
-│   ├── manifest.ts           # PluginManifest / PluginPermission / NodeCategory
-│   ├── execution.ts          # NodeExecutionContext / NodeExecutionResult / PluginLogger
-│   ├── node.ts               # CustomNodeDefinition
-│   ├── plugin.ts             # AgentLoomPlugin 生命周期接口
-│   └── index.ts              # types barrel
+│   ├── port.ts
+│   ├── manifest.ts
+│   ├── execution.ts
+│   ├── node.ts
+│   └── plugin.ts
 ├── validation/
-│   ├── manifest-schema.ts    # PluginManifestSchema + reverse-domain / semver 校验
-│   ├── node-schema.ts        # PortDefinitionSchema + CustomNodeDefinitionSchema
-│   ├── validate-manifest.ts  # safeParse 包装，返回 ValidationResult
-│   ├── *.test.ts             # manifest / node schema 校验测试
-│   └── index.ts              # validation barrel
+│   ├── manifest-schema.ts
+│   ├── node-schema.ts
+│   └── validate-manifest.ts
 ├── helpers/
-│   ├── port-helpers.ts       # defineInputPort / defineOutputPort / defineNode
-│   ├── type-guards.ts        # isPortDataType / isValidPermission / isPluginManifest
-│   ├── *.test.ts             # helper 与 type guard Vitest 单测
-│   └── index.ts              # helpers barrel
 └── signing/
-    ├── archive.ts            # canonical archive payload / manifest 读写 / key fingerprint
-    ├── sign.ts               # 基于 canonical archive payload 计算 contentHash + RSA-PSS 签名
-    ├── verify.ts             # 基于 canonical archive payload 验签 (失败时返回 false 而非抛异常)
-    ├── signing.test.ts       # sign/verify Vitest 单测
-    └── index.ts              # signing barrel
 ```
 
-## 构建产物
+根 `index.ts` 是 public barrel。公开接口使用 `unknown` 与具体类型，不暴露 `any`。
 
-- `dist/index.js` — ESM 入口
-- `dist/index.cjs` — CJS 入口
-- `dist/index.d.ts` — ESM 类型声明
-- `dist/index.d.cts` — CJS 类型声明
+## PortDataType
 
-`package.json` 仅发布 `dist/`，由 `tsup` 从 `src/index.ts` 统一构建。本地 `file:` 依赖通过 `prepare` / `prepack` 自动生成 `dist/`，供 sibling packages 直接解析包入口。
+`src/types/port.ts` 暴露 14 值 `PortDataType` 与 `PORT_DATA_TYPES`：
 
-## 在哪找什么
+`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
 
-| 任务 | 位置 | 备注 |
-|------|------|------|
-| 调整插件 manifest 字段或权限 | `src/types/manifest.ts` + `src/validation/manifest-schema.ts` | 权限枚举与 Zod 规则需同步 |
-| 修改端口 canonical 类型 | `src/types/port.ts` | 必须保持 `model|text|json|image|audio|tool|sandbox|knowledge` |
-| 增加节点接口或执行上下文 | `src/types/node.ts` / `src/types/execution.ts` | public API 只暴露 `unknown`，不暴露 `any` |
-| 扩展校验返回结构 | `src/validation/validate-manifest.ts` + `src/validation/validate-manifest.test.ts` | `validateManifest()` 输出 `ValidationResult`，direct test 验证 safeParse 包装 |
-| 添加开发者辅助函数 | `src/helpers/` | 同步补 Vitest 覆盖 |
-| 补充 SDK 单测 | `src/validation/*.test.ts` + `src/helpers/*.test.ts` | 使用 Vitest，覆盖 schema / helper / type guard |
-| 签名/验证插件归档 | `src/signing/archive.ts` + `src/signing/sign.ts` + `src/signing/verify.ts` | 基于 canonical unsigned archive payload 的 SHA-256 / RSA-PSS；使用 `jszip` 读取/改写 `manifest.json` |
+canonical 全集定义在 `@agentloom/contracts`。SDK 保留本地字面量镜像以避免插件运行时依赖 contracts；`agentloom-contracts/src/port-data-type.test.ts` 机械读取 SDK、Rust、Studio 与 server 源文件执行同步检查。新增端口值先进入 contracts，再同步生态镜像。
 
-## 签名链路
+## 校验
 
-10 步完整签名流程：
+- SDK 固定使用 Zod 3.x，面向外部插件生态，不引用 workspace 的 Zod 4 catalog。
+- `PluginManifestSchema` 校验 reverse-domain id、semver、permissions、WASM 入口和签名 metadata。
+- `CustomNodeDefinitionSchema` 校验节点定义和端口；CLI 的 `loadPlugin()` 逐节点消费该 schema。
+- object schema strip 未知字段；`validateManifest()` 使用 safeParse 返回结构化 `ValidationResult`。
+- `defineNode()` 执行 identity + `Object.freeze()`，不做深冻结。
 
-1. `keys generate` — 生成 RSA 密钥对
-2. `keys` 注册公钥到 Server `plugin_developer_keys`
-3. `build` — 构建无签名 `.alp` 归档
-4. canonical payload — 从归档读取 manifest，剥离 `SIGNING_METADATA_KEYS`（signature/contentHash/developerKeyFingerprint），对 JSON deep-sort key，对每个文件计算 SHA-256
-5. sign — RSA-PSS SHA-256, `saltLength: DIGEST`
-6. contentHash — canonical unsigned payload 的 SHA-256 hex
-7. 注入 `signature` / `contentHash` / `developerKeyFingerprint` 到 manifest.json
-8. 覆写归档
-9. CLI self-verify（读取归档重新计算 canonical payload 并验签）
-10. Server re-verify（上传时以相同逻辑再次验签）
+## 生命周期与执行接口
 
-verify 端使用 `saltLength: AUTO`（兼容 Web Crypto 规范，可正确校验 `DIGEST` 生成的签名）。
+`AgentLoomPlugin` 提供 manifest、nodes、`activate()` 与 `deactivate()`。`NodeExecutionContext` 中的 logger 与 execution metadata 由宿主注入，插件节点只消费上下文。
 
-## `.alp` 归档格式
+## 签名
 
-- ZIP DEFLATE-9 压缩
-- 必含：`manifest.json` + `dist/` + `package.json`
-- 可选：`README.md`
-- WASM 入口：`dist/plugin.wasm`
-- 最大 50MB
+`src/signing/` 使用 canonical unsigned archive payload：
 
-## Zod 校验模式
+1. 读取 ZIP 与 manifest。
+2. 剥离 signature、contentHash、developerKeyFingerprint。
+3. deep-sort JSON keys，并对文件计算 SHA-256。
+4. 使用 RSA-PSS SHA-256 签名。
+5. 将签名 metadata 写回 manifest。
+6. verify 重新计算相同 payload。
 
-SDK 中使用的 8 种 canonical Zod 校验模式：
+`.alp` 是 ZIP 归档，包含 `manifest.json`、`dist/`、`package.json`，可包含 `README.md`。
 
-1. reverse-domain regex (`/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/`)
-2. `semver.valid()` refine
-3. const-array enum 派生（`z.enum(ARRAY as [string, ...string[]])`）
-4. hex digest regex（64 字符 hex）
-5. 所有 object schema 使用 `.strip()` 丢弃未知字段
-6. `safeParse` → `ValidationResult { valid, errors[] }` 包装
-7. `.wasm` 后缀 refine
-8. 权限枚举校验
+## Workspace 与构建
 
-## 约定
-
-- 使用 **Zod 3.x**（有意区别于 Server 端的 Zod 4，确保插件生态的广泛兼容性），不要引入 Zod 4 API
-- `PluginManifest.id` 使用 reverse-domain 格式，如 `com.example.my-plugin`
-- `version` 与 `minPlatformVersion` 通过 `semver.valid()` 校验
-- `permissions` 默认空数组；未知 manifest 字段由 Zod object 默认 strip
-- `PluginManifest` 可选签名字段：`signature`（RSA-PSS base64）、`contentHash`（canonical unsigned archive payload 的 SHA-256 hex 64字符）、`developerKeyFingerprint`（SHA-256 hex 64字符）、`wasmEntry`、`sandbox`
-- `wasmEntry` 必须匹配 `.wasm` 后缀；SDK 签名 helper 会在 canonical payload 中剥离 `signature` / `contentHash` / `developerKeyFingerprint` 后再计算哈希与签名
-- `defineNode()` 只做 identity + `Object.freeze()`，不做深冻结
-- 公开接口与类型守卫避免暴露 `any`
-
-## 测试与命令
+SDK 是根 pnpm workspace 成员。server 与 plugin-cli 通过 `workspace:*` 依赖它。`prepare` / `prepack` 运行 `pnpm build`，因此容器或 workspace install 必须在安装前提供完整 SDK 源码。
 
 ```bash
-pnpm install
-pnpm build
-pnpm test
-pnpm typecheck
+pnpm --filter @agentloom/plugin-sdk build
+pnpm --filter @agentloom/plugin-sdk typecheck
+pnpm --filter @agentloom/plugin-sdk test
 ```
 
-Vitest 测试位于 `src/**/*.test.ts`。`tsconfig.json` 开启 `strict`，`moduleResolution` 为 `Bundler`，运行时产物由 `tsup` 负责输出到 `dist/`。
-
-## 对齐约束
-
-- PortDataType 与主仓 server/studio/type-engine 的 canonical 8 值保持一致
-- 该包是 standalone npm package，拥有独立 `node_modules/` 与 `pnpm-lock.yaml`
-- 不依赖其他 AgentLoom 包；通过导出类型与运行时校验作为插件生态边界
-
-## 跨包流转
-
-```
-SDK → CLI (file: dep) → Template (file: dep) → Server (file: dep) → Studio (HTTP API)
-```
-
-CLI、Template 通过 `file:` 引用 SDK。SDK `package.json` 包含 `"prepare": "pnpm build"` 和 `"prepack": "pnpm build"` hook，当 CLI/Template 执行 `pnpm install` 时自动重建 SDK `dist/`。
+产物为 ESM/CJS 双输出和对应类型声明，发布内容只包含 `dist/`。

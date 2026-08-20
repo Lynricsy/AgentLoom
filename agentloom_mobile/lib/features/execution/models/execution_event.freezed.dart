@@ -16,8 +16,8 @@ mixin _$ExecutionEventEnvelope {
   int get eventId;
   String get event;
   String get timestamp;
-  String get executionId;
-  String? get tenantId;
+  String get executionId; // 契约层信封声明 tenantId 必需，server 的 createEnvelope 恒写入该字段。
+  String get tenantId;
   Map<String, dynamic> get data;
 
   /// Create a copy of ExecutionEventEnvelope
@@ -79,7 +79,7 @@ abstract mixin class $ExecutionEventEnvelopeCopyWith<$Res> {
     String event,
     String timestamp,
     String executionId,
-    String? tenantId,
+    String tenantId,
     Map<String, dynamic> data,
   });
 }
@@ -101,7 +101,7 @@ class _$ExecutionEventEnvelopeCopyWithImpl<$Res>
     Object? event = null,
     Object? timestamp = null,
     Object? executionId = null,
-    Object? tenantId = freezed,
+    Object? tenantId = null,
     Object? data = null,
   }) {
     return _then(
@@ -122,10 +122,10 @@ class _$ExecutionEventEnvelopeCopyWithImpl<$Res>
             ? _self.executionId
             : executionId // ignore: cast_nullable_to_non_nullable
                   as String,
-        tenantId: freezed == tenantId
+        tenantId: null == tenantId
             ? _self.tenantId
             : tenantId // ignore: cast_nullable_to_non_nullable
-                  as String?,
+                  as String,
         data: null == data
             ? _self.data
             : data // ignore: cast_nullable_to_non_nullable
@@ -233,7 +233,7 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
       String event,
       String timestamp,
       String executionId,
-      String? tenantId,
+      String tenantId,
       Map<String, dynamic> data,
     )?
     $default, {
@@ -275,7 +275,7 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
       String event,
       String timestamp,
       String executionId,
-      String? tenantId,
+      String tenantId,
       Map<String, dynamic> data,
     )
     $default,
@@ -315,7 +315,7 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
       String event,
       String timestamp,
       String executionId,
-      String? tenantId,
+      String tenantId,
       Map<String, dynamic> data,
     )?
     $default,
@@ -345,7 +345,7 @@ class _ExecutionEventEnvelope implements ExecutionEventEnvelope {
     required this.event,
     required this.timestamp,
     required this.executionId,
-    this.tenantId,
+    required this.tenantId,
     required final Map<String, dynamic> data,
   }) : _data = data;
   factory _ExecutionEventEnvelope.fromJson(Map<String, dynamic> json) =>
@@ -359,8 +359,9 @@ class _ExecutionEventEnvelope implements ExecutionEventEnvelope {
   final String timestamp;
   @override
   final String executionId;
+  // 契约层信封声明 tenantId 必需，server 的 createEnvelope 恒写入该字段。
   @override
-  final String? tenantId;
+  final String tenantId;
   final Map<String, dynamic> _data;
   @override
   Map<String, dynamic> get data {
@@ -433,7 +434,7 @@ abstract mixin class _$ExecutionEventEnvelopeCopyWith<$Res>
     String event,
     String timestamp,
     String executionId,
-    String? tenantId,
+    String tenantId,
     Map<String, dynamic> data,
   });
 }
@@ -455,7 +456,7 @@ class __$ExecutionEventEnvelopeCopyWithImpl<$Res>
     Object? event = null,
     Object? timestamp = null,
     Object? executionId = null,
-    Object? tenantId = freezed,
+    Object? tenantId = null,
     Object? data = null,
   }) {
     return _then(
@@ -476,10 +477,10 @@ class __$ExecutionEventEnvelopeCopyWithImpl<$Res>
             ? _self.executionId
             : executionId // ignore: cast_nullable_to_non_nullable
                   as String,
-        tenantId: freezed == tenantId
+        tenantId: null == tenantId
             ? _self.tenantId
             : tenantId // ignore: cast_nullable_to_non_nullable
-                  as String?,
+                  as String,
         data: null == data
             ? _self._data
             : data // ignore: cast_nullable_to_non_nullable

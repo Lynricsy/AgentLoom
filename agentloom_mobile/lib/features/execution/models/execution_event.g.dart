@@ -13,7 +13,7 @@ _ExecutionEventEnvelope _$ExecutionEventEnvelopeFromJson(
   event: json['event'] as String,
   timestamp: json['timestamp'] as String,
   executionId: json['executionId'] as String,
-  tenantId: json['tenantId'] as String?,
+  tenantId: json['tenantId'] as String,
   data: json['data'] as Map<String, dynamic>,
 );
 

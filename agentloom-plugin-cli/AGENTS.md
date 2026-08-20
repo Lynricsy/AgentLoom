@@ -1,57 +1,62 @@
 # agentloom-plugin-cli 知识库
 
-`@agentloom/plugin-cli` — AgentLoom 插件开发 CLI 工具。Commander.js 驱动，5 个子命令覆盖插件全生命周期。
+`@agentloom/plugin-cli` 提供插件创建、开发、构建、密钥管理和发布命令。
 
-## 目录结构
+## 目录
 
+```text
+src/
+├── cli.ts
+├── index.ts
+├── commands/
+│   ├── create.ts
+│   ├── dev.ts
+│   ├── build.ts
+│   ├── keys.ts
+│   └── publish.ts
+└── utils/
+    ├── manifest.ts
+    └── plugin.ts
 ```
-agentloom-plugin-cli/
-├── src/
-│   ├── cli.ts              # 入口：Commander program 注册 5 个子命令
-│   ├── index.ts            # 公共 API barrel export
-│   ├── commands/
-│   │   ├── create.ts       # `create` — 交互式脚手架（prompts），从模板目录生成新插件项目
-│   │   ├── dev.ts          # `dev` — Express 开发服务器 (:4400)，chokidar 文件监听 + 热重载
-│   │   ├── build.ts        # `build` — 打包插件为 `.alp` 归档（archiver），含 manifest 校验
-│   │   ├── keys.ts         # `keys` — RSA 密钥对管理（生成/列表），用于插件签名
-│   │   └── publish.ts      # `publish` — 签名 + 上传 `.alp` 到 AgentLoom 服务端注册
-│   └── utils/
-│       ├── manifest.ts     # 插件 manifest 解析与校验
-│       └── plugin.ts       # 插件目录操作工具函数
-├── tsup.config.ts          # tsup 构建配置
-└── vitest.config.ts        # Vitest 测试配置
-```
+
+CLI 是根 pnpm workspace 成员，通过 `workspace:*` 依赖 `@agentloom/plugin-sdk`。
+
+## 插件加载
+
+`src/utils/plugin.ts` 的 `loadPlugin()`：
+
+- 校验 package/manifest，并保留完整 manifest。
+- 每个节点先剥离不可序列化的 `execute`，再用 SDK `CustomNodeDefinitionSchema.safeParse()` 校验其余定义。
+- 校验错误包含节点 index 与 type，便于定位。
+- 拒绝缺失 `execute` 的节点。
+- 拒绝同一插件内重复 node type。
+- 返回包含 manifest、nodes、`activate()`、`deactivate()` 的 `RuntimePlugin`。
+
+`build` 依赖该加载链；加载或节点校验错误直接使构建失败，并保留原始 cause，不用空 nodeDefinitions 继续打包。
+
+## Dev server
+
+`src/commands/dev.ts` 使用 Express，默认端口 4400：
+
+- JSON body 上限 100kb。
+- execute 请求体只读取 `inputs` 与 `config`。
+- logger 由 dev server 注入。
+- `executionId`、`stepId`、`nodeId` metadata 使用服务端生成的 UUID；客户端同名字段不可信也不透传。
+- 启动时调用插件 `activate()`，停止时调用 `deactivate()`。
+- reload 顺序为旧插件 deactivate → 加载候选 → 候选 activate。
+- 候选加载或 activate 失败时重新 activate 旧插件并保留旧节点；旧插件恢复也失败时报告组合错误。
+- 文件监听 reload 串行化，避免并发替换 active plugin。
+
+## 归档与签名
+
+`build` 生成 `.alp` ZIP；`keys` 管理 RSA 密钥；`publish` 使用 SDK canonical payload/RSA-PSS helper 签名并上传。归档中的 manifest、dist 和 package metadata 必须通过 SDK 校验。
 
 ## 命令
 
-| CLI 子命令 | 说明 |
-|-----------|------|
-| `create` | 交互式创建新插件项目（prompts 问答驱动） |
-| `dev` | 启动 Express 开发服务器 (:4400) + chokidar 文件监听热重载 |
-| `build` | 校验 manifest → 打包为 `.alp` 归档 (archiver) |
-| `keys` | RSA 密钥对管理（generate/list），用于 `.alp` 签名 |
-| `publish` | 使用 RSA-PSS 签名 `.alp` → 上传到服务端 `/plugins` 注册 |
+```bash
+pnpm --filter @agentloom/plugin-cli build
+pnpm --filter @agentloom/plugin-cli typecheck
+pnpm --filter @agentloom/plugin-cli test
+```
 
-可执行入口：`bin.agentloom-plugin` → `dist/cli.js`
-
-## 技术栈
-
-- **Commander.js** ^12 — CLI 框架
-- **prompts** — 交互式问答
-- **archiver** ^7 — `.alp` 归档打包
-- **chokidar** ^3 — 文件监听（dev 模式）
-- **Express** ^4 — 开发服务器
-- **chalk** ^5 — 终端彩色输出
-- **@agentloom/plugin-sdk** — 本地 file: 依赖，提供签名工具函数
-- **tsup** ^8 + **Vitest** ^2 — 构建与测试
-
-## 测试
-
-每个命令一个 `.test.ts`（与源码同目录），manifest 工具也有测试。共 5 个测试文件。
-
-## 注意事项
-
-- ESM 模式（`"type": "module"`）
-- 依赖 `@agentloom/plugin-sdk` 通过 `file:../agentloom-plugin-sdk` 本地链接
-- 签名使用 SDK 的 `signing/` 模块提供的 RSA-PSS 工具函数
-- `.alp` 格式为 archiver 生成的归档，包含插件 WASM bundle + manifest + 签名
+CLI 子命令：`create`、`dev`、`build`、`keys`、`publish`。可执行入口为 `agentloom-plugin`。
