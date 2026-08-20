@@ -1,8 +1,12 @@
+import type {
+  AgentDefinitionDetailResponseSwaggerDto,
+  AgentDefinitionListResponseSwaggerDto,
+} from "@agentloom/api-client";
 import { apiClient, toSnakeBody } from "../../../shared/api/client";
 import type { ApiResponse, PaginatedResponse } from "../../../shared/types/api";
+import type { CanvasEdge, CanvasNode } from "../../canvas";
 import type {
   AgentDefinition,
-  AgentDefinitionSummary,
   AgentRuntimeMode,
   AgentVersion,
 } from "../types";
@@ -34,8 +38,8 @@ export interface PublishAgentPayload {
 }
 
 export interface SaveAgentCanvasPayload {
-  canvasNodes: AgentDefinition["nodes"];
-  canvasEdges: AgentDefinition["edges"];
+  canvasNodes: CanvasNode[];
+  canvasEdges: CanvasEdge[];
   canvasViewport: AgentDefinition["viewport"];
   inputSchema: AgentDefinition["inputSchema"];
   memoryInstanceIds: AgentDefinition["memoryInstanceIds"];
@@ -52,8 +56,8 @@ export interface ListAgentsParams {
   sourceKind?: "manual" | "share_imported";
 }
 
-/** 列表接口只返回 summary 形状；详情字段（画布 / 沙箱）需单独取详情。 */
-export type AgentListResponse = PaginatedResponse<AgentDefinitionSummary>;
+/** Agent 列表响应直接复用 OpenAPI 生成类型。 */
+export type AgentListResponse = AgentDefinitionListResponseSwaggerDto;
 export type AgentVersionListResponse = PaginatedResponse<AgentVersion>;
 
 export async function listAgents(params: ListAgentsParams = {}) {
@@ -66,13 +70,13 @@ export async function listAgents(params: ListAgentsParams = {}) {
 
   return apiClient
     .get("agent-definitions", { searchParams })
-    .json<AgentListResponse>();
+    .json<AgentDefinitionListResponseSwaggerDto>();
 }
 
 export async function getAgent(agentId: string) {
   const response = await apiClient
     .get(`agent-definitions/${agentId}`)
-    .json<ApiResponse<AgentDefinition>>();
+    .json<AgentDefinitionDetailResponseSwaggerDto>();
 
   return response.data;
 }

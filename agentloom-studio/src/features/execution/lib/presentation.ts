@@ -166,9 +166,9 @@ export function formatTriggerSource(
   switch (triggerType) {
     case 'api':
       return 'API'
-    case 'scheduled':
-      return '定时'
     case 'system':
+      // cron 触发的执行由 trigger-scheduler 以 triggerType: 'system' 记录，
+      // DB 枚举中没有 'scheduled'
       return '系统'
     case 'webhook':
       return 'Webhook'

@@ -1,13 +1,17 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
-import type { ListWorkflowsParams, WorkflowDefinition, WorkflowInputSchema } from '../types'
+import type {
+  ListWorkflowsParams,
+  WorkflowDefinition,
+  WorkflowInputSchema,
+} from '../types'
 import { listWorkflows } from './workflowApi'
 import { workflowKeys } from './workflowKeys'
 
 export function useWorkflowList(params: ListWorkflowsParams = {}) {
   return useQuery({
-    queryKey: workflowKeys.list(params as Record<string, unknown>),
+    queryKey: workflowKeys.list(params),
     queryFn: () => listWorkflows(params),
     placeholderData: keepPreviousData,
   })
@@ -19,7 +23,9 @@ const UUID_RE =
 export function useWorkflow(id: string) {
   return useQuery({
     queryKey: workflowKeys.detail(id),
-    queryFn: async () => {
+    queryFn: async (): Promise<WorkflowDefinition> => {
+      // 图字段按画布领域类型解读：生成的 wire 模型在 nodes/edges/extent 等位置
+      // 被 OpenAPI 3.0 退化，无法直接充当画布编辑态类型（见 types.ts 的说明）
       const response = await apiClient
         .get(`workflow-definitions/${id}`)
         .json<ApiResponse<WorkflowDefinition>>()

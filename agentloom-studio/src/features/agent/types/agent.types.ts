@@ -1,13 +1,17 @@
 import type { Viewport } from "@xyflow/react";
 import type {
+  AgentDefinitionDetailResponseSwaggerDtoData,
+  AgentDefinitionListResponseSwaggerDtoDataInner,
+} from "@agentloom/api-client";
+import type {
   AgentRuntimeConfig,
   SandboxConfig,
 } from "@agentloom/contracts";
 import type { CanvasEdge, CanvasNode } from "@/features/canvas";
-import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 import type { AgentRuntimeMode } from "./agentRuntimeMode";
 
-export type AgentStatus = "draft" | "published" | "archived";
+export type AgentStatus =
+  AgentDefinitionListResponseSwaggerDtoDataInner["status"];
 
 /**
  * Agent runtime 配置类型的唯一来源是 `@agentloom/contracts`（三端共享 wire 契约）。
@@ -68,39 +72,12 @@ export interface AgentCanvasData {
 }
 
 /**
- * Agent 列表项载荷，对应 server `AgentDefinitionResponseDto`。
- * 列表接口不返回画布与沙箱明细，因此这些字段只存在于 `AgentDefinition`。
+ * Agent 列表项直接复用 OpenAPI 生成的 wire 类型。
  */
-export interface AgentDefinitionSummary {
-  id: string;
-  tenantId: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  icon: string | null;
-  runtimeMode: AgentRuntimeMode;
-  status: AgentStatus;
-  version: number;
-  publishedVersionId: string | null;
-  createdBy: string;
-  updatedBy: string;
-  createdAt: string;
-  updatedAt: string;
-  resourceSourceKind: ResourceSourceKind;
-}
+export type AgentDefinitionSummary =
+  AgentDefinitionListResponseSwaggerDtoDataInner;
 
 /**
- * Agent 详情载荷，对应 server `AgentDefinitionDetailResponseDto`。
- * 详情接口始终返回下列字段（无值时为 `null`），故一律必需。
+ * Agent 详情直接复用 OpenAPI 生成的 wire 类型。
  */
-export interface AgentDefinition extends AgentDefinitionSummary {
-  systemPrompt: string | null;
-  nodes: CanvasNode[];
-  edges: CanvasEdge[];
-  viewport: Viewport | null;
-  sandboxConfig: AgentGlobalSandboxConfig | null;
-  workspaceSnapshotId: string | null;
-  inputSchema: Record<string, unknown> | null;
-  memoryInstanceIds: string[] | null;
-  sandboxLifecycle: "session" | "persistent" | null;
-}
+export type AgentDefinition = AgentDefinitionDetailResponseSwaggerDtoData;

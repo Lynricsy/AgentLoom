@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { executionKeys } from '../api/executionKeys'
 import { useExecution, useExecutionList } from './useExecutionList'
+import type { ExecutionResponse } from '../api/executionApi'
 
 const mocks = vi.hoisted(() => ({
   getExecutionMock: vi.fn(),
@@ -28,18 +29,24 @@ function createWrapper() {
   )
 }
 
-function createExecutionResponse() {
+function createExecutionResponse(): ExecutionResponse {
   return {
     id: 'exec-001',
     tenantId: 'tenant-1',
     workflowDefinitionId: 'wf-001',
+    workflowId: 'workflow-001',
     workflowVersionId: 'ver-001',
-    status: 'completed' as const,
-    inputParams: null,
-    result: null,
+    status: 'completed',
+    triggerType: 'manual',
+    inputParams: {},
     startedAt: '2026-03-10T10:00:00.000Z',
     completedAt: '2026-03-10T10:01:00.000Z',
+    failedAt: null,
+    cancelledAt: null,
     errorMessage: null,
+    totalSteps: 1,
+    completedSteps: 0,
+    createdBy: 'user-001',
     createdAt: '2026-03-10T10:00:00.000Z',
     updatedAt: '2026-03-10T10:01:00.000Z',
     definitionSnapshot: {
@@ -58,9 +65,13 @@ function createExecutionResponse() {
         id: 'step-1',
         executionId: 'exec-001',
         nodeId: 'node-1',
+        stepOrder: 0,
+        input: {},
         nodeType: 'agent',
         nodeData: { prompt: 'hello' },
         result: { text: 'world' },
+        attemptCount: 1,
+        isEncrypted: false,
         checkpointData: {
           attempts: [
             {
@@ -73,7 +84,9 @@ function createExecutionResponse() {
         errorMessage: { message: 'ignored because completed' },
         startedAt: '2026-03-10T10:00:00.000Z',
         completedAt: '2026-03-10T10:01:00.000Z',
-        status: 'waiting_intervention' as const,
+        createdAt: '2026-03-10T10:00:00.000Z',
+        updatedAt: '2026-03-10T10:01:00.000Z',
+        status: 'waiting_intervention',
       },
     ],
   }
@@ -135,16 +148,17 @@ describe('useExecutionList', () => {
     )
   })
 
-  it('兼容旧的 API envelope detail cache，并在 selector 中归一化', async () => {
+  it('归一化已缓存的生成响应数据', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
         mutations: { retry: false },
       },
     })
-    queryClient.setQueryData(executionKeys.detail('exec-001'), {
-      data: createExecutionResponse(),
-    })
+    queryClient.setQueryData(
+      executionKeys.detail('exec-001'),
+      createExecutionResponse(),
+    )
 
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

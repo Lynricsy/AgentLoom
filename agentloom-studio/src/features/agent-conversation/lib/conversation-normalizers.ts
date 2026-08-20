@@ -1,4 +1,7 @@
 import type {
+  ConversationDetailResponseSwaggerDtoDataMessagesDataInner,
+} from "@agentloom/api-client";
+import type {
   AgentDonePayload,
   ConversationAttachment,
   ConversationMessage,
@@ -412,9 +415,11 @@ export function buildOptimisticUserMessage(
 }
 
 export function normalizeConversationHistoryMessage(
-  raw: unknown,
+  raw: ConversationDetailResponseSwaggerDtoDataMessagesDataInner,
 ): ConversationMessage {
-  const record = isRecord(raw) ? raw : {};
+  // 保留运行时防御：历史接口异常时单条消息可能不是对象
+  const record: Partial<ConversationDetailResponseSwaggerDtoDataMessagesDataInner> =
+    isRecord(raw) ? raw : {}
   const metadata = normalizeMessageMetadata(record.metadata);
   const contentType =
     normalizeConversationMessageContentType(record.contentType) ??

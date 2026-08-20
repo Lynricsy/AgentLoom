@@ -227,7 +227,7 @@ function resolveStructuredError(
       typeMismatch: errorDetail.typeMismatch ?? undefined,
       attempts: errorDetail.attempts?.map((attempt) => ({
         attempt: attempt.attempt,
-        message: attempt.message ?? attempt.error ?? '未知错误',
+        message: attempt.error,
         timestamp: attempt.timestamp,
       })),
     }

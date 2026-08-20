@@ -1,9 +1,9 @@
+import type { ExecutionEnvelopeResponseSwaggerDto } from '@agentloom/api-client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   runWorkflow,
   cancelExecution,
   type ExecutionLaunchSource,
-  type ExecutionResponse,
 } from './executionApi'
 import { executionKeys } from './executionKeys'
 
@@ -22,7 +22,7 @@ export function useRunWorkflow() {
   const queryClient = useQueryClient()
 
   return useMutation<
-    { data: ExecutionResponse },
+    ExecutionEnvelopeResponseSwaggerDto,
     Error,
     RunWorkflowParams
   >({
@@ -46,7 +46,7 @@ export function useCancelExecution() {
   const queryClient = useQueryClient()
 
   return useMutation<
-    { data: ExecutionResponse },
+    ExecutionEnvelopeResponseSwaggerDto,
     Error,
     CancelExecutionParams
   >({

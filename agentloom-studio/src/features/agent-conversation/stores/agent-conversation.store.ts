@@ -1,3 +1,6 @@
+import type {
+  ConversationDetailResponseSwaggerDto,
+} from "@agentloom/api-client";
 import { create } from "zustand";
 import { devtools, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -6,7 +9,6 @@ import { io } from "socket.io-client";
 import { apiClient, toSnakeBody } from "@/shared/api/client";
 import { useAuthStore } from "@/features/auth";
 import { fetchWorkspaceFileTree } from "@/features/workspace";
-import type { PaginatedResponse } from "@/shared/types/api";
 import type {
   ConversationMessage,
   ConversationStatus,
@@ -148,13 +150,6 @@ interface AgentConversationActions {
     popAgentView: () => void;
     navigateToAgentView: (index: number) => void;
     reset: () => void;
-  };
-}
-
-interface ConversationDetailResponse {
-  data?: {
-    metadata?: Record<string, unknown>;
-    messages?: PaginatedResponse<unknown>;
   };
 }
 
@@ -827,7 +822,7 @@ export const useAgentConversationStore = create<
                 try {
                   const response = await apiClient
                     .get(`agent-conversations/${conversationId}`)
-                    .json<ConversationDetailResponse>();
+                    .json<Partial<ConversationDetailResponseSwaggerDto>>();
 
                   const messageResponse = response.data?.messages;
                   const normalizedMessages = (messageResponse?.data ?? []).map(
