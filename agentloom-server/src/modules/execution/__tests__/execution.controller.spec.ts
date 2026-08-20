@@ -160,6 +160,57 @@ describe('ExecutionController', () => {
       });
       expect(mockService.getExecution).toHaveBeenCalledWith(EXECUTION_ID);
     });
+
+    it('应把 step 的日期 ISO 化并原样透出计数与加密标记', async () => {
+      mockService.getExecution.mockResolvedValue({
+        ...mockExecution,
+        steps: [
+          {
+            id: STEP_ID,
+            executionId: EXECUTION_ID,
+            nodeId: 'node-1',
+            stepOrder: 0,
+            status: 'completed' as const,
+            nodeType: 'agent',
+            nodeData: null,
+            input: null,
+            result: null,
+            attemptCount: 2,
+            checkpointData: null,
+            errorMessage: null,
+            isEncrypted: true,
+            startedAt: CREATED_AT,
+            completedAt: UPDATED_AT,
+            createdAt: CREATED_AT,
+            updatedAt: UPDATED_AT,
+          },
+        ],
+      });
+
+      const result = await controller.getExecution(EXECUTION_ID);
+
+      expect(result.data.steps).toEqual([
+        {
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          nodeId: 'node-1',
+          stepOrder: 0,
+          status: 'completed',
+          nodeType: 'agent',
+          nodeData: null,
+          input: null,
+          result: null,
+          attemptCount: 2,
+          checkpointData: null,
+          errorMessage: null,
+          isEncrypted: true,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          completedAt: '2026-01-01T00:05:00.000Z',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:05:00.000Z',
+        },
+      ]);
+    });
   });
 
   describe('listExecutions', () => {
