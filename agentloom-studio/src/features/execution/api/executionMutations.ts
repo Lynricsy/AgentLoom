@@ -34,10 +34,9 @@ export function useRunWorkflow() {
         launchSource,
       }),
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        executionKeys.detail(data.data.id),
-        data.data,
-      )
+      void queryClient.invalidateQueries({
+        queryKey: executionKeys.detail(data.data.id),
+      })
     },
     gcTime: 0,
   })
@@ -54,10 +53,9 @@ export function useCancelExecution() {
     mutationKey: ['execution', 'cancel'],
     mutationFn: ({ executionId }) => cancelExecution(executionId),
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        executionKeys.detail(data.data.id),
-        data.data,
-      )
+      void queryClient.invalidateQueries({
+        queryKey: executionKeys.detail(data.data.id),
+      })
     },
     gcTime: 0,
   })

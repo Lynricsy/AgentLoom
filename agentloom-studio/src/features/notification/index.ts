@@ -47,8 +47,6 @@ export { NotificationPreferencesPage } from './components/NotificationPreference
 
 export {
   useNotificationActions,
-  useNotificationCount,
-  useNotificationList,
   useIsDropdownOpen,
   useNotificationStore,
 } from './stores/notificationStore'

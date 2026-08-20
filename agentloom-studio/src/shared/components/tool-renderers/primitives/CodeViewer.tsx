@@ -10,8 +10,20 @@ import "highlight.js/styles/github-dark.css";
 export { detectLanguage };
 
 // Register common languages lazily
+type HighlightLanguageDefinition = Parameters<typeof hljs.registerLanguage>[1];
+
+interface HighlightApi {
+  registerLanguage(languageName: string, language: HighlightLanguageDefinition): void;
+  highlight(code: string, options: { language: string }): { value: string };
+}
+
+const highlighter: HighlightApi = hljs;
+
+interface HighlightLanguageModule {
+  default: HighlightLanguageDefinition;
+}
 const REGISTERED_LANGUAGES = new Set<string>();
-const LANGUAGE_IMPORTS: Record<string, () => Promise<{ default: unknown }>> = {
+const LANGUAGE_IMPORTS: Record<string, () => Promise<HighlightLanguageModule>> = {
   javascript: () => import("highlight.js/lib/languages/javascript"),
   typescript: () => import("highlight.js/lib/languages/typescript"),
   python: () => import("highlight.js/lib/languages/python"),
@@ -46,7 +58,7 @@ async function ensureLanguage(lang: string): Promise<boolean> {
 
   try {
     const mod = await importFn();
-    hljs.registerLanguage(lang, mod.default as any);
+    highlighter.registerLanguage(lang, mod.default);
     REGISTERED_LANGUAGES.add(lang);
     return true;
   } catch {
@@ -88,7 +100,7 @@ export const CodeViewer = memo(function CodeViewer({
     // If already registered, highlight synchronously
     if (REGISTERED_LANGUAGES.has(resolvedLanguage)) {
       try {
-        const result = hljs.highlight(code, { language: resolvedLanguage });
+        const result = highlighter.highlight(code, { language: resolvedLanguage });
         setHighlightedHtml(result.value);
       } catch {
         setHighlightedHtml(null);
@@ -102,7 +114,7 @@ export const CodeViewer = memo(function CodeViewer({
       if (cancelled) return;
       if (ok) {
         try {
-          const result = hljs.highlight(code, { language: resolvedLanguage });
+          const result = highlighter.highlight(code, { language: resolvedLanguage });
           setHighlightedHtml(result.value);
         } catch {
           setHighlightedHtml(null);

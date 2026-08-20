@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
 import { useAuthToken } from './useAuthToken'
 import { useExecution } from './useExecutionList'
@@ -113,10 +113,11 @@ export function useLiveExecutionDetail(executionId: string) {
   const authToken = useAuthToken()
   const tenantId = useAuthStore((state) => state.tenantId ?? undefined)
   const { data: execution, ...query } = useExecution(executionId)
-  const { initExecution, applySnapshot, reset } = useExecutionActions()
+  const { initExecution, initFromSnapshot, reset } = useExecutionActions()
   const nodeStates = useAllNodeStates()
   const storeStatus = useExecutionStatus()
   const { completedSteps, totalSteps } = useExecutionProgress()
+  const initializedExecutionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     initExecution(executionId)
@@ -126,14 +127,13 @@ export function useLiveExecutionDetail(executionId: string) {
   }, [executionId, initExecution, reset])
 
   useEffect(() => {
-    if (!execution) {
+    if (!execution || initializedExecutionIdRef.current === executionId) {
       return
     }
 
-    if (Object.keys(nodeStates).length === 0) {
-      applySnapshot(toSnapshot(execution))
-    }
-  }, [applySnapshot, execution, nodeStates])
+    initFromSnapshot(toSnapshot(execution))
+    initializedExecutionIdRef.current = executionId
+  }, [execution, executionId, initFromSnapshot])
 
   const monitor = useExecutionMonitor({
     tenantId,

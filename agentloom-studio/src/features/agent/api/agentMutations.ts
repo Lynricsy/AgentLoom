@@ -1,15 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  compileAgentConfig,
   createAgent,
   createAgentVersion,
   deleteAgent,
   publishAgent,
+  saveAgentCanvas,
   updateAgent,
 } from "./agentDefinitionApi";
 import type {
   CreateAgentPayload,
   CreateAgentVersionPayload,
   PublishAgentPayload,
+  SaveAgentCanvasPayload,
   UpdateAgentPayload,
 } from "./agentDefinitionApi";
 import { agentKeys, agentVersionKeys } from "./agentKeys";
@@ -40,6 +43,31 @@ export function useUpdateAgent(agentId: string) {
     gcTime: 0,
   });
 }
+export function useSaveAgentCanvas(agentId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: ["agent", "saveCanvas", agentId],
+    mutationFn: (payload: SaveAgentCanvasPayload) =>
+      saveAgentCanvas(agentId, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: agentKeys.detail(agentId) }),
+        queryClient.invalidateQueries({ queryKey: agentKeys.lists() }),
+      ]);
+    },
+    gcTime: 0,
+  });
+}
+
+export function useCompileAgentConfig(agentId: string) {
+  return useMutation({
+    mutationKey: ["agent", "compile", agentId],
+    mutationFn: () => compileAgentConfig(agentId),
+    gcTime: 0,
+  });
+}
+
 
 export function useDeleteAgent() {
   const queryClient = useQueryClient();

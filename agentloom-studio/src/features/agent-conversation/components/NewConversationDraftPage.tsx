@@ -11,7 +11,7 @@ import { fetchWorkspaceFileTree } from "@/features/workspace/api/workspaceApi";
 import { useStartConversation } from "../api/conversationMutations";
 import type { FileTreeNode, OutgoingConversationMessage } from "../types";
 import { resolveConversationWorkspacePreviewId } from "../workspacePreview";
-import { ConversationComposer } from "./AgentConversationPage";
+import { ConversationComposer } from "./ConversationComposer";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 

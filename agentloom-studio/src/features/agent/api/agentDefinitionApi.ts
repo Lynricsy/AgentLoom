@@ -33,6 +33,17 @@ export interface PublishAgentPayload {
   versionId?: string;
 }
 
+export interface SaveAgentCanvasPayload {
+  canvasNodes: AgentDefinition["nodes"];
+  canvasEdges: AgentDefinition["edges"];
+  canvasViewport: AgentDefinition["viewport"];
+  inputSchema: AgentDefinition["inputSchema"];
+  memoryInstanceIds: AgentDefinition["memoryInstanceIds"];
+  globalSandboxConfig?: AgentDefinition["sandboxConfig"];
+  sandboxLifecycle?: AgentDefinition["sandboxLifecycle"];
+  workspaceSnapshotId?: string | null;
+}
+
 export interface ListAgentsParams {
   page?: number;
   pageSize?: number;
@@ -88,6 +99,23 @@ export async function updateAgent(
 
   return response.data;
 }
+export async function saveAgentCanvas(
+  agentId: string,
+  payload: SaveAgentCanvasPayload,
+) {
+  const response = await apiClient
+    .put(`agent-definitions/${agentId}/canvas`, {
+      json: toSnakeBody(payload),
+    })
+    .json<ApiResponse<Pick<AgentDefinition, "version">>>();
+
+  return response.data;
+}
+
+export async function compileAgentConfig(agentId: string): Promise<void> {
+  await apiClient.post(`agent-definitions/${agentId}/compile`, { json: {} });
+}
+
 
 export async function deleteAgent(agentId: string) {
   await apiClient.delete(`agent-definitions/${agentId}`);

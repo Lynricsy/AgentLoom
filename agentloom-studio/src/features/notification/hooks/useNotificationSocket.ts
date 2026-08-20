@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
 import { io } from 'socket.io-client'
 import { useToast } from '@/shared/ui/toast'
-import { useNotificationActions } from '../stores/notificationStore'
+import { notificationKeys } from '../api/notificationKeys'
 import type { NotificationType, NotificationTypeEnum } from '../types'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/api/v1').replace(
@@ -101,18 +102,29 @@ export function useNotificationSocket(
   const [connectionStatus, setConnectionStatus] =
     useState<NotificationConnectionStatus>('disconnected')
   const [error, setError] = useState<string | null>(null)
-
-  const { addNotification, setUnreadCount } = useNotificationActions()
+  const queryClient = useQueryClient()
   const { notify } = useToast()
 
   const callbacksRef = useRef({
-    addNotification,
-    setUnreadCount,
+    invalidateNotifications: () => {
+      void queryClient.invalidateQueries({
+        queryKey: notificationKeys.lists(),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: notificationKeys.unreadCount(),
+      })
+    },
     notify,
   })
   callbacksRef.current = {
-    addNotification,
-    setUnreadCount,
+    invalidateNotifications: () => {
+      void queryClient.invalidateQueries({
+        queryKey: notificationKeys.lists(),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: notificationKeys.unreadCount(),
+      })
+    },
     notify,
   }
 
@@ -152,7 +164,7 @@ export function useNotificationSocket(
     }
 
     const handleNotification = (notification: NotificationType) => {
-      callbacksRef.current.addNotification(notification)
+      callbacksRef.current.invalidateNotifications()
       callbacksRef.current.notify({
         title: '新通知',
         description: notification.title,
@@ -160,8 +172,8 @@ export function useNotificationSocket(
       })
     }
 
-    const handleUnreadCount = (payload: NotificationUnreadCountEvent) => {
-      callbacksRef.current.setUnreadCount(payload.count)
+    const handleUnreadCount = (_payload: NotificationUnreadCountEvent) => {
+      callbacksRef.current.invalidateNotifications()
     }
 
     socket.on('connect', handleConnect)

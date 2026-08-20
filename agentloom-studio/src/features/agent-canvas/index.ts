@@ -13,4 +13,6 @@ export {
   useAgentWorkspaceId,
   canAddNodeType,
 } from './stores/agent-canvas.store';
+export { useAgentCanvasPersistence } from './hooks/useAgentCanvasPersistence';
+export { useAgentCanvasHydration } from './hooks/useAgentCanvasHydration';
 export type { AgentInputSchema } from './stores/agent-canvas.store';

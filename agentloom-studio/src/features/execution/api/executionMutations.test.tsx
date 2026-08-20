@@ -57,9 +57,10 @@ describe('executionMutations', () => {
   })
 
   describe('useRunWorkflow', () => {
-    it('调用 runWorkflow 并缓存原始执行详情结果', async () => {
+    it('调用 runWorkflow 并使执行详情缓存失效而不直接写入', async () => {
       mockRunWorkflow.mockResolvedValue(mockExecutionResponse)
       const { queryClient, wrapper } = createWrapper()
+      queryClient.setQueryData(executionKeys.detail('exec-001'), { status: 'old' })
       const { result } = renderHook(() => useRunWorkflow(), { wrapper })
 
       await act(async () => {
@@ -78,7 +79,10 @@ describe('executionMutations', () => {
       })
 
       const cached = queryClient.getQueryData(executionKeys.detail('exec-001'))
-      expect(cached).toEqual(mockExecutionResponse.data)
+      expect(cached).toEqual({ status: 'old' })
+      expect(
+        queryClient.getQueryState(executionKeys.detail('exec-001'))?.isInvalidated,
+      ).toBe(true)
     })
 
     it('mutation 失败时设置 error', async () => {
@@ -98,9 +102,10 @@ describe('executionMutations', () => {
   })
 
   describe('useCancelExecution', () => {
-    it('调用 cancelExecution 并缓存原始执行详情结果', async () => {
+    it('调用 cancelExecution 并使执行详情缓存失效而不直接写入', async () => {
       mockCancelExecution.mockResolvedValue(mockExecutionResponse)
       const { queryClient, wrapper } = createWrapper()
+      queryClient.setQueryData(executionKeys.detail('exec-001'), { status: 'running' })
       const { result } = renderHook(() => useCancelExecution(), { wrapper })
 
       await act(async () => {
@@ -110,7 +115,10 @@ describe('executionMutations', () => {
       expect(mockCancelExecution).toHaveBeenCalledWith('exec-001')
 
       const cached = queryClient.getQueryData(executionKeys.detail('exec-001'))
-      expect(cached).toEqual(mockExecutionResponse.data)
+      expect(cached).toEqual({ status: 'running' })
+      expect(
+        queryClient.getQueryState(executionKeys.detail('exec-001'))?.isInvalidated,
+      ).toBe(true)
     })
   })
 })

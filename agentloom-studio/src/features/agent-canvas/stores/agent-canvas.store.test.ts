@@ -44,6 +44,12 @@ function createDetailResponse(
     ...overrides,
   };
 }
+async function hydrateAgentFromMock(agentId: string): Promise<void> {
+  const request = getMock(`agent-definitions/${agentId}`);
+  const response = await request.json();
+  useAgentCanvasStore.getState().actions.hydrateAgent(agentId, response.data);
+}
+
 
 describe("agentCanvasStore", () => {
   beforeEach(() => {
@@ -51,83 +57,26 @@ describe("agentCanvasStore", () => {
     useAgentCanvasStore.getState().actions.reset();
   });
 
-  it("sends the canvas payload shape expected by the backend and reads the nested version response", async () => {
-    const canvasViewport = { x: 12, y: 24, zoom: 0.85 };
-    const globalSandboxConfig = {
-      cpu: 2,
-      memory: 1024,
-      disk: 1,
-      timeout: 1,
-      timeoutSeconds: 300,
-    };
-    const inputSchema = {
-      type: "object" as const,
-      properties: {
-        topic: { type: "string" },
-      },
-      required: ["topic"],
-    };
-
+  it("applies save acknowledgements without owning the server request", () => {
     useAgentCanvasStore.setState({
       agentId: "agent-1",
-      nodes: [
-        {
-          id: "agent-main",
-          type: "agent",
-          position: { x: 0, y: 0 },
-          data: {
-            label: "Main Agent",
-            nodeType: "agent-main" as unknown as "agent",
-            category: "agent",
-            config: {},
-            inputPorts: [],
-            outputPorts: [],
-          },
-        },
-      ],
-      edges: [],
-      viewport: canvasViewport,
-      globalSandboxConfig,
-      inputSchema,
-      memoryInstanceIds: ["019d2a7c-c19c-7a9c-8233-db2b87a23de2"],
-      sandboxLifecycle: "persistent",
       isDirty: true,
+      isSaving: false,
       version: 3,
     });
 
-    putMock.mockReturnValue({
-      json: vi.fn().mockResolvedValue({ data: { version: 4 } }),
-    });
+    const { actions } = useAgentCanvasStore.getState();
+    actions.beginSaving();
+    expect(useAgentCanvasStore.getState().isSaving).toBe(true);
 
-    await useAgentCanvasStore.getState().actions.saveCanvas();
-
-    expect(putMock).toHaveBeenCalledTimes(1);
-    expect(putMock).toHaveBeenCalledWith("agent-definitions/agent-1/canvas", {
-      json: {
-        canvasNodes: expect.any(Array),
-        canvasEdges: [],
-        canvasViewport,
-        globalSandboxConfig,
-        inputSchema,
-        memoryInstanceIds: ["019d2a7c-c19c-7a9c-8233-db2b87a23de2"],
-        sandboxLifecycle: "persistent",
-        workspaceSnapshotId: null,
-      },
-    });
-
-    const requestBody = putMock.mock.calls[0]?.[1]?.json as Record<
-      string,
-      unknown
-    >;
-    expect(requestBody.nodes).toBeUndefined();
-    expect(requestBody.edges).toBeUndefined();
-    expect(requestBody.viewport).toBeUndefined();
+    actions.acknowledgeSaved(4);
 
     const state = useAgentCanvasStore.getState();
     expect(state.version).toBe(4);
     expect(state.isDirty).toBe(false);
     expect(state.isSaving).toBe(false);
     expect(state.lastSavedAt).not.toBeNull();
+    expect(putMock).not.toHaveBeenCalled();
   });
 
   it("hydrates input schema, memory bindings, and sandbox lifecycle from the detail response", async () => {
@@ -179,7 +128,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-1");
+    await hydrateAgentFromMock("agent-1");
 
     const state = useAgentCanvasStore.getState();
     expect(state.agentId).toBe("agent-1");
@@ -256,7 +205,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-1");
+    await hydrateAgentFromMock("agent-1");
 
     const state = useAgentCanvasStore.getState();
     const mcpNode = state.nodes.find((node) => node.id === "mcp-1");
@@ -307,7 +256,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-2");
+    await hydrateAgentFromMock("agent-2");
 
     const node = useAgentCanvasStore
       .getState()
@@ -362,7 +311,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-text");
+    await hydrateAgentFromMock("agent-text");
 
     const node = useAgentCanvasStore
       .getState()
@@ -422,9 +371,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await expect(
-      useAgentCanvasStore.getState().actions.loadAgent("agent-self-evo"),
-    ).resolves.toBeUndefined();
+    await expect(hydrateAgentFromMock("agent-self-evo")).resolves.toBeUndefined();
 
     const state = useAgentCanvasStore.getState();
     const routingNode = state.nodes.find((item) => item.id === "router-1");
@@ -500,7 +447,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-3");
+    await hydrateAgentFromMock("agent-3");
 
     const agentMainNodes = useAgentCanvasStore
       .getState()
@@ -574,7 +521,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-4");
+    await hydrateAgentFromMock("agent-4");
 
     const state = useAgentCanvasStore.getState();
     const agentMainNodes = state.nodes.filter(
@@ -624,7 +571,7 @@ describe("agentCanvasStore", () => {
       }),
     });
 
-    await useAgentCanvasStore.getState().actions.loadAgent("agent-5");
+    await hydrateAgentFromMock("agent-5");
 
     const agentMainNode = useAgentCanvasStore
       .getState()

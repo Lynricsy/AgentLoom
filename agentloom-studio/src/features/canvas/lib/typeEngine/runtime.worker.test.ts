@@ -3,6 +3,7 @@ import type {
   SerializedPortDefinition,
   TypeEngineBindings,
   TypeEngineCompatibilityResult,
+  TypeEngineWorkerRequest,
   TypeEngineWorkerResponse,
 } from './contracts'
 import {
@@ -31,6 +32,10 @@ function createPort(id: string, dataType: SerializedPortDefinition['dataType']):
             kind: dataType,
           },
   }
+}
+
+function createWorkerMessage(data: TypeEngineWorkerRequest): MessageEvent<TypeEngineWorkerRequest> {
+  return new MessageEvent('message', { data })
 }
 
 class MockExternRefTable {
@@ -140,15 +145,13 @@ describe('runtime.worker', () => {
       },
     })
 
-    await handler({ data: { kind: 'init', requestId: 'init-1' } } as MessageEvent<any>)
-    await handler({
-      data: {
-        kind: 'checkCompatibility',
-        requestId: 'compat-1',
-        source: createPort('source', 'json'),
-        target: createPort('target', 'json'),
-      },
-    } as MessageEvent<any>)
+    await handler(createWorkerMessage({ kind: 'init', requestId: 'init-1' }))
+    await handler(createWorkerMessage({
+      kind: 'checkCompatibility',
+      requestId: 'compat-1',
+      source: createPort('source', 'json'),
+      target: createPort('target', 'json'),
+    }))
 
     expect(responses).toEqual([
       {
@@ -186,14 +189,12 @@ describe('runtime.worker', () => {
       },
     })
 
-    await handler({
-      data: {
-        kind: 'checkCompatibility',
-        requestId: 'compat-2',
-        source: createPort('source', 'text'),
-        target: createPort('target', 'json'),
-      },
-    } as MessageEvent<any>)
+    await handler(createWorkerMessage({
+      kind: 'checkCompatibility',
+      requestId: 'compat-2',
+      source: createPort('source', 'text'),
+      target: createPort('target', 'json'),
+    }))
 
     expect(responses[0]).toEqual({
       kind: 'checkCompatibility',

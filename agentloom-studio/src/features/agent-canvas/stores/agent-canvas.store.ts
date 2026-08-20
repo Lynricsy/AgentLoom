@@ -1,7 +1,5 @@
 import { enableMapSet } from "immer";
 import type {
-  Edge,
-  Node,
   NodeChange,
   EdgeChange,
   Viewport,
@@ -12,15 +10,17 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { devtools, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
-import { apiClient } from "@/shared/api/client";
-import type { ApiResponse } from "@/shared/types/api";
 import { DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES } from "@/shared/lib/sandboxConversationIdleAutoEnd";
 import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
 } from "@/features/agent/types";
 import type { AgentRuntimeMode } from "@/features/agent/types";
-import type { CanvasNodeData, CanvasEdgeData } from "@/features/canvas/types";
+import type {
+  CanvasNode,
+  CanvasEdge,
+  CanvasNodeData,
+} from "@/features/canvas/types";
 import type { AgentCanvasNodeType } from "@/features/canvas/registry/agent-canvas-registry";
 import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-canvas-registry";
 import { arePortDataTypesCompatible } from "@/features/canvas/lib/connectionCompatibility";
@@ -35,10 +35,10 @@ import {
 
 enableMapSet();
 
-type AgentCanvasNode = Node<CanvasNodeData>;
-type AgentCanvasEdge = Edge<CanvasEdgeData>;
+type AgentCanvasNode = CanvasNode;
+type AgentCanvasEdge = CanvasEdge;
 
-export interface AgentInputSchema {
+export interface AgentInputSchema extends Record<string, unknown> {
   type: "object";
   properties: Record<
     string,
@@ -93,7 +93,23 @@ interface AgentCanvasActions {
     setWorkspaceId: (workspaceId: string | null) => void;
     setMemoryInstanceIds: (ids: string[]) => void;
 
-    loadAgent: (agentId: string) => Promise<void>;
+    hydrateAgent: (
+      agentId: string,
+      data: Pick<
+        AgentDefinition,
+        | "nodes"
+        | "edges"
+        | "viewport"
+        | "sandboxConfig"
+        | "workspaceSnapshotId"
+        | "inputSchema"
+        | "memoryInstanceIds"
+        | "sandboxLifecycle"
+        | "version"
+        | "name"
+        | "runtimeMode"
+      >,
+    ) => void;
     applyServerSnapshot: (
       data: Pick<
         AgentDefinition,
@@ -110,8 +126,12 @@ interface AgentCanvasActions {
         | "runtimeMode"
       >,
     ) => void;
-    saveCanvas: () => Promise<void>;
-    compileConfig: () => Promise<void>;
+    beginSaving: () => void;
+    acknowledgeSaved: (version: number) => void;
+    failSaving: () => void;
+    beginCompiling: () => void;
+    acknowledgeCompiled: () => void;
+    failCompiling: () => void;
     markSaved: () => void;
     reset: () => void;
   };
@@ -138,8 +158,6 @@ const DEFAULT_INPUT_SCHEMA: AgentInputSchema = {
   required: [],
 };
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizeInputSchema(
   inputSchema: AgentDefinition["inputSchema"],
@@ -170,15 +188,6 @@ function normalizeInputSchema(
   };
 }
 
-function normalizeWorkspaceSnapshotId(
-  workspaceId: string | null,
-): string | null | undefined {
-  if (workspaceId === null) {
-    return null;
-  }
-
-  return UUID_PATTERN.test(workspaceId) ? workspaceId : undefined;
-}
 
 function createInitialState(): AgentCanvasState {
   return {
@@ -784,32 +793,11 @@ export const useAgentCanvasStore = create<
             });
           },
 
-          loadAgent: async (agentId) => {
-            try {
-              const response = await apiClient
-                .get(`agent-definitions/${agentId}`)
-                .json<ApiResponse<AgentDefinition>>();
-              const agent = response.data;
-              get().actions.applyServerSnapshot({
-                nodes: agent.nodes,
-                edges: agent.edges,
-                viewport: agent.viewport,
-                sandboxConfig: agent.sandboxConfig,
-                workspaceSnapshotId: agent.workspaceSnapshotId,
-                inputSchema: agent.inputSchema,
-                memoryInstanceIds: agent.memoryInstanceIds,
-                sandboxLifecycle: agent.sandboxLifecycle,
-                version: agent.version,
-                name: agent.name,
-                runtimeMode: agent.runtimeMode,
-              });
-              set((state) => {
-                state.agentId = agentId;
-              });
-            } catch (error) {
-              console.error("[AgentCanvasStore] 加载 Agent 失败:", error);
-              throw error;
-            }
+          hydrateAgent: (agentId, data) => {
+            get().actions.applyServerSnapshot(data);
+            set((state) => {
+              state.agentId = agentId;
+            });
           },
 
           applyServerSnapshot: (data) => {
@@ -859,98 +847,43 @@ export const useAgentCanvasStore = create<
             });
           },
 
-          saveCanvas: async () => {
-            const {
-              agentId,
-              nodes,
-              edges,
-              viewport,
-              globalSandboxConfig,
-              runtimeMode,
-              inputSchema,
-              memoryInstanceIds,
-              sandboxLifecycle,
-              workspaceId,
-            } = get();
-            if (!agentId) return;
-
-            const workspaceSnapshotId =
-              normalizeWorkspaceSnapshotId(workspaceId);
-
+          beginSaving: () => {
             set((state) => {
               state.isSaving = true;
             });
-
-            try {
-              const response = await apiClient
-                .put(`agent-definitions/${agentId}/canvas`, {
-                  json: {
-                    canvasNodes: nodes,
-                    canvasEdges: edges,
-                    canvasViewport: viewport,
-                    inputSchema,
-                    memoryInstanceIds,
-                    ...(runtimeMode === "sandbox"
-                      ? {
-                          globalSandboxConfig,
-                          sandboxLifecycle,
-                          ...(workspaceSnapshotId === undefined
-                            ? {}
-                            : { workspaceSnapshotId }),
-                        }
-                      : { workspaceSnapshotId: null }),
-                  },
-                })
-                .json<ApiResponse<Pick<AgentDefinition, "version">>>();
-
-              set((state) => {
-                state.version = response.data.version;
-                state.isDirty = false;
-                state.isSaving = false;
-                state.lastSavedAt = Date.now();
-              });
-
-              // 保存成功后自动编译（不阻塞保存流程）
-              get()
-                .actions.compileConfig()
-                .catch((compileError) => {
-                  console.warn(
-                    "[AgentCanvasStore] 自动编译失败（保存已成功）:",
-                    compileError,
-                  );
-                });
-            } catch (error) {
-              set((state) => {
-                state.isSaving = false;
-              });
-              console.error("[AgentCanvasStore] 保存画布失败:", error);
-              throw error;
-            }
           },
 
-          compileConfig: async () => {
-            const { agentId } = get();
-            if (!agentId) return;
+          acknowledgeSaved: (version) => {
+            set((state) => {
+              state.version = version;
+              state.isDirty = false;
+              state.isSaving = false;
+              state.lastSavedAt = Date.now();
+            });
+          },
 
+          failSaving: () => {
+            set((state) => {
+              state.isSaving = false;
+            });
+          },
+
+          beginCompiling: () => {
             set((state) => {
               state.isCompiling = true;
             });
+          },
 
-            try {
-              await apiClient
-                .post(`agent-definitions/${agentId}/compile`, { json: {} })
-                .json();
+          acknowledgeCompiled: () => {
+            set((state) => {
+              state.isCompiling = false;
+            });
+          },
 
-              set((state) => {
-                state.isCompiling = false;
-              });
-            } catch (error) {
-              set((state) => {
-                state.isCompiling = false;
-              });
-              console.error("[AgentCanvasStore] 编译配置失败:", error);
-              throw error;
-            }
+          failCompiling: () => {
+            set((state) => {
+              state.isCompiling = false;
+            });
           },
 
           markSaved: () => {
