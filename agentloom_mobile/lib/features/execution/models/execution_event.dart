@@ -9,7 +9,8 @@ part 'execution_event.g.dart';
 /// 所有 Socket.IO 事件均包裹在此信封中（除 execution.state.snapshot）
 @freezed
 abstract class ExecutionEventEnvelope with _$ExecutionEventEnvelope {
-  @JsonSerializable(fieldRename: FieldRename.snake)
+  // server 的 Socket 信封与载荷是 camelCase（见 agentloom-contracts），
+  // 不能声明 FieldRename.snake，否则生成的解析代码会去读 event_id 之类的键。
   const factory ExecutionEventEnvelope({
     required int eventId,
     required String event,
@@ -26,7 +27,8 @@ abstract class ExecutionEventEnvelope with _$ExecutionEventEnvelope {
 /// execution.status.changed 事件的 data 部分
 @freezed
 abstract class ExecutionStatusChangedData with _$ExecutionStatusChangedData {
-  @JsonSerializable(fieldRename: FieldRename.snake)
+  // server 的 Socket 信封与载荷是 camelCase（见 agentloom-contracts），
+  // 不能声明 FieldRename.snake，否则生成的解析代码会去读 event_id 之类的键。
   const factory ExecutionStatusChangedData({
     required String executionId,
     required String status,
@@ -42,7 +44,8 @@ abstract class ExecutionStatusChangedData with _$ExecutionStatusChangedData {
 /// execution.node.status-changed 事件的 data 部分
 @freezed
 abstract class NodeStatusChangedData with _$NodeStatusChangedData {
-  @JsonSerializable(fieldRename: FieldRename.snake)
+  // server 的 Socket 信封与载荷是 camelCase（见 agentloom-contracts），
+  // 不能声明 FieldRename.snake，否则生成的解析代码会去读 event_id 之类的键。
   const factory NodeStatusChangedData({
     required String stepId,
     required String nodeId,

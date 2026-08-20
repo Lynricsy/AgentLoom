@@ -338,8 +338,7 @@ extension ExecutionEventEnvelopePatterns on ExecutionEventEnvelope {
 }
 
 /// @nodoc
-
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class _ExecutionEventEnvelope implements ExecutionEventEnvelope {
   const _ExecutionEventEnvelope({
     required this.eventId,
@@ -804,8 +803,7 @@ extension ExecutionStatusChangedDataPatterns on ExecutionStatusChangedData {
 }
 
 /// @nodoc
-
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class _ExecutionStatusChangedData implements ExecutionStatusChangedData {
   const _ExecutionStatusChangedData({
     required this.executionId,
@@ -1334,8 +1332,7 @@ extension NodeStatusChangedDataPatterns on NodeStatusChangedData {
 }
 
 /// @nodoc
-
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class _NodeStatusChangedData implements NodeStatusChangedData {
   const _NodeStatusChangedData({
     required this.stepId,

@@ -420,8 +420,7 @@ extension StepSnapshotPatterns on StepSnapshot {
 }
 
 /// @nodoc
-
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class _StepSnapshot implements StepSnapshot {
   const _StepSnapshot({
     required this.stepId,
@@ -996,8 +995,7 @@ extension ExecutionStateSnapshotPatterns on ExecutionStateSnapshot {
 }
 
 /// @nodoc
-
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class _ExecutionStateSnapshot implements ExecutionStateSnapshot {
   const _ExecutionStateSnapshot({
     required this.executionId,

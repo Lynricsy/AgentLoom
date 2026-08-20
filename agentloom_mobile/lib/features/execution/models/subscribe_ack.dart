@@ -9,7 +9,8 @@ part 'subscribe_ack.g.dart';
 /// execution:subscribe ACK 响应
 @freezed
 abstract class SubscribeAck with _$SubscribeAck {
-  @JsonSerializable(fieldRename: FieldRename.snake)
+  // server 的 Socket 信封与载荷是 camelCase（见 agentloom-contracts），
+  // 不能声明 FieldRename.snake，否则生成的解析代码会去读 event_id 之类的键。
   const factory SubscribeAck({
     required String status,
     ExecutionStateSnapshot? currentState,

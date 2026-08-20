@@ -598,10 +598,10 @@ void main() {
             eventId: 11,
             event: 'execution.status.changed',
             data: {
-              'execution_id': 'exec-1',
+              'executionId': 'exec-1',
               'status': 'running',
-              'completed_steps': 2,
-              'total_steps': 3,
+              'completedSteps': 2,
+              'totalSteps': 3,
             },
           ),
         );
@@ -634,10 +634,10 @@ void main() {
             eventId: 11,
             event: 'execution.status.changed',
             data: {
-              'execution_id': 'exec-1',
+              'executionId': 'exec-1',
               'status': 'completed',
-              'completed_steps': 3,
-              'total_steps': 3,
+              'completedSteps': 3,
+              'totalSteps': 3,
             },
           ),
         );
@@ -755,10 +755,10 @@ void main() {
             eventId: 11,
             event: 'execution.status.changed',
             data: {
-              'execution_id': 'exec-1',
+              'executionId': 'exec-1',
               'status': 'completed',
-              'completed_steps': 3,
-              'total_steps': 3,
+              'completedSteps': 3,
+              'totalSteps': 3,
             },
           ),
         );
@@ -797,8 +797,8 @@ void main() {
             eventId: 11,
             event: 'execution.node.status-changed',
             data: {
-              'step_id': 'step-2',
-              'node_id': 'node-2',
+              'stepId': 'step-2',
+              'nodeId': 'node-2',
               'from': 'running',
               'to': 'completed',
             },
@@ -1228,40 +1228,40 @@ void main() {
 
         final initialAck = createTestSubscribeAck(
           currentState: ExecutionStateSnapshot.fromJson({
-            'execution_id': 'exec-1',
+            'executionId': 'exec-1',
             'status': 'running',
-            'completed_steps': 0,
-            'total_steps': 1,
+            'completedSteps': 0,
+            'totalSteps': 1,
             'steps': [
               {
-                'step_id': 'step-1',
-                'node_id': 'node-1',
+                'stepId': 'step-1',
+                'nodeId': 'node-1',
                 'status': 'running',
-                'started_at': '2026-01-01T10:00:00.000Z',
+                'startedAt': '2026-01-01T10:00:00.000Z',
               },
             ],
-            'snapshot_at': '2026-01-01T10:00:00.000Z',
-            'last_event_id': 10,
+            'snapshotAt': '2026-01-01T10:00:00.000Z',
+            'lastEventId': 10,
           }),
         );
 
         final reconnectAck = createTestSubscribeAck(
           currentState: ExecutionStateSnapshot.fromJson({
-            'execution_id': 'exec-1',
+            'executionId': 'exec-1',
             'status': 'running',
-            'completed_steps': 1,
-            'total_steps': 1,
+            'completedSteps': 1,
+            'totalSteps': 1,
             'steps': [
               {
-                'step_id': 'step-1',
-                'node_id': 'node-1',
+                'stepId': 'step-1',
+                'nodeId': 'node-1',
                 'status': 'completed',
-                'started_at': '2026-01-01T10:00:00.000Z',
-                'completed_at': '2026-01-01T10:01:00.000Z',
+                'startedAt': '2026-01-01T10:00:00.000Z',
+                'completedAt': '2026-01-01T10:01:00.000Z',
               },
             ],
-            'snapshot_at': '2026-01-01T10:01:00.000Z',
-            'last_event_id': 15,
+            'snapshotAt': '2026-01-01T10:01:00.000Z',
+            'lastEventId': 15,
           }),
         );
 
@@ -1384,20 +1384,20 @@ void main() {
         ).thenAnswer((_) async => execution);
 
         final ackSnapshot = ExecutionStateSnapshot.fromJson({
-          'execution_id': 'exec-1',
+          'executionId': 'exec-1',
           'status': 'running',
-          'completed_steps': 0,
-          'total_steps': 1,
+          'completedSteps': 0,
+          'totalSteps': 1,
           'steps': [
             {
-              'step_id': 'step-1',
-              'node_id': 'node-1',
+              'stepId': 'step-1',
+              'nodeId': 'node-1',
               'status': 'running',
-              'started_at': '2026-01-01T10:00:00.000Z',
+              'startedAt': '2026-01-01T10:00:00.000Z',
             },
           ],
-          'snapshot_at': '2026-01-01T10:00:00.000Z',
-          'last_event_id': 42,
+          'snapshotAt': '2026-01-01T10:00:00.000Z',
+          'lastEventId': 42,
         });
         when(
           () => mockSocket.subscribe(
@@ -1459,40 +1459,40 @@ void main() {
         ).thenAnswer((_) async => execution);
 
         final ackSnapshot = ExecutionStateSnapshot.fromJson({
-          'execution_id': 'exec-1',
+          'executionId': 'exec-1',
           'status': 'running',
-          'completed_steps': 0,
-          'total_steps': 1,
+          'completedSteps': 0,
+          'totalSteps': 1,
           'steps': [
             {
-              'step_id': 'step-1',
-              'node_id': 'node-1',
+              'stepId': 'step-1',
+              'nodeId': 'node-1',
               'status': 'running',
-              'started_at': '2026-01-01T10:00:00.000Z',
-              'checkpoint_data': {
-                'partial_content': '第一段第二段',
+              'startedAt': '2026-01-01T10:00:00.000Z',
+              'checkpointData': {
+                'partialContent': '第一段第二段',
                 'decision': {'rationale': '先整理上下文'},
-                'tool_calls': [
+                'toolCalls': [
                   {
                     'id': 'tool-1',
                     'tool': 'search_web',
                     'status': 'awaiting_permission',
-                    'permission_request': {
+                    'permissionRequest': {
                       'description': '读取外部网页',
-                      'resource_paths': ['https://example.com'],
+                      'resourcePaths': ['https://example.com'],
                     },
                   },
                 ],
                 'segments': [
                   {'type': 'text', 'content': '第一段'},
-                  {'type': 'tool_call', 'tool_call_id': 'tool-1'},
+                  {'type': 'tool_call', 'toolCallId': 'tool-1'},
                   {'type': 'text', 'content': '第二段'},
                 ],
               },
             },
           ],
-          'snapshot_at': '2026-01-01T10:00:00.000Z',
-          'last_event_id': 42,
+          'snapshotAt': '2026-01-01T10:00:00.000Z',
+          'lastEventId': 42,
         });
         when(
           () => mockSocket.subscribe(

@@ -4,15 +4,15 @@ import 'package:agentloom_mobile/features/execution/models/execution_status.dart
 
 void main() {
   group('StepSnapshot', () {
-    test('fromJson 正确解析 snake_case 字段', () {
+    test('fromJson 正确解析 camelCase wire 字段', () {
       final json = {
-        'step_id': 'step-001',
-        'node_id': 'node-abc',
+        'stepId': 'step-001',
+        'nodeId': 'node-abc',
         'status': 'running',
-        'started_at': '2026-01-01T10:00:00.000Z',
-        'completed_at': null,
-        'error_message': null,
-        'error_detail': null,
+        'startedAt': '2026-01-01T10:00:00.000Z',
+        'completedAt': null,
+        'errorMessage': null,
+        'errorDetail': null,
         'result': null,
       };
       final step = StepSnapshot.fromJson(json);
@@ -26,13 +26,13 @@ void main() {
 
     test('fromJson 解析含错误详情', () {
       final json = {
-        'step_id': 'step-002',
-        'node_id': 'node-xyz',
+        'stepId': 'step-002',
+        'nodeId': 'node-xyz',
         'status': 'failed',
-        'started_at': '2026-01-01T10:00:00.000Z',
-        'completed_at': '2026-01-01T10:01:00.000Z',
-        'error_message': 'Connection timeout',
-        'error_detail': {'type': 'timeout', 'code': 504},
+        'startedAt': '2026-01-01T10:00:00.000Z',
+        'completedAt': '2026-01-01T10:01:00.000Z',
+        'errorMessage': 'Connection timeout',
+        'errorDetail': {'type': 'timeout', 'code': 504},
         'result': null,
       };
       final step = StepSnapshot.fromJson(json);
@@ -41,7 +41,7 @@ void main() {
       expect(step.errorDetail?['type'], 'timeout');
     });
 
-    test('toJson 输出 snake_case', () {
+    test('toJson 输出 camelCase wire 键名', () {
       const step = StepSnapshot(
         stepId: 'step-001',
         nodeId: 'node-abc',
@@ -49,9 +49,9 @@ void main() {
         startedAt: '2026-01-01T10:00:00.000Z',
       );
       final json = step.toJson();
-      expect(json['step_id'], 'step-001');
-      expect(json['node_id'], 'node-abc');
-      expect(json['started_at'], '2026-01-01T10:00:00.000Z');
+      expect(json['stepId'], 'step-001');
+      expect(json['nodeId'], 'node-abc');
+      expect(json['startedAt'], '2026-01-01T10:00:00.000Z');
     });
 
     test('copyWith 正确复制', () {
@@ -83,27 +83,27 @@ void main() {
   group('ExecutionStateSnapshot', () {
     test('fromJson 正确解析完整快照', () {
       final json = {
-        'execution_id': 'exec-001',
+        'executionId': 'exec-001',
         'status': 'running',
-        'completed_steps': 2,
-        'total_steps': 5,
+        'completedSteps': 2,
+        'totalSteps': 5,
         'steps': [
           {
-            'step_id': 'step-1',
-            'node_id': 'node-a',
+            'stepId': 'step-1',
+            'nodeId': 'node-a',
             'status': 'completed',
-            'started_at': '2026-01-01T10:00:00.000Z',
-            'completed_at': '2026-01-01T10:01:00.000Z',
+            'startedAt': '2026-01-01T10:00:00.000Z',
+            'completedAt': '2026-01-01T10:01:00.000Z',
           },
           {
-            'step_id': 'step-2',
-            'node_id': 'node-b',
+            'stepId': 'step-2',
+            'nodeId': 'node-b',
             'status': 'running',
-            'started_at': '2026-01-01T10:01:00.000Z',
+            'startedAt': '2026-01-01T10:01:00.000Z',
           },
         ],
-        'snapshot_at': '2026-01-01T10:01:30.000Z',
-        'last_event_id': 42,
+        'snapshotAt': '2026-01-01T10:01:30.000Z',
+        'lastEventId': 42,
       };
       final snapshot = ExecutionStateSnapshot.fromJson(json);
       expect(snapshot.executionId, 'exec-001');
@@ -119,20 +119,20 @@ void main() {
 
     test('fromJson 处理空步骤列表', () {
       final json = {
-        'execution_id': 'exec-002',
+        'executionId': 'exec-002',
         'status': 'pending',
-        'completed_steps': 0,
-        'total_steps': 3,
+        'completedSteps': 0,
+        'totalSteps': 3,
         'steps': <Map<String, dynamic>>[],
-        'snapshot_at': null,
-        'last_event_id': null,
+        'snapshotAt': null,
+        'lastEventId': null,
       };
       final snapshot = ExecutionStateSnapshot.fromJson(json);
       expect(snapshot.steps, isEmpty);
       expect(snapshot.lastEventId, isNull);
     });
 
-    test('toJson 输出 snake_case', () {
+    test('toJson 输出 camelCase wire 键名', () {
       const snapshot = ExecutionStateSnapshot(
         executionId: 'exec-001',
         status: 'running',
@@ -145,12 +145,12 @@ void main() {
         lastEventId: 10,
       );
       final json = snapshot.toJson();
-      expect(json['execution_id'], 'exec-001');
-      expect(json['completed_steps'], 1);
-      expect(json['total_steps'], 3);
-      expect(json['snapshot_at'], '2026-01-01T10:00:00.000Z');
-      expect(json['last_event_id'], 10);
-      expect((json['steps'] as List).first['step_id'], 'step-1');
+      expect(json['executionId'], 'exec-001');
+      expect(json['completedSteps'], 1);
+      expect(json['totalSteps'], 3);
+      expect(json['snapshotAt'], '2026-01-01T10:00:00.000Z');
+      expect(json['lastEventId'], 10);
+      expect((json['steps'] as List).first['stepId'], 'step-1');
     });
 
     test('equality 基于值', () {

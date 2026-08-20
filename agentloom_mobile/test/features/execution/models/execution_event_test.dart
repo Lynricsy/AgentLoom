@@ -5,16 +5,16 @@ void main() {
   group('ExecutionEventEnvelope', () {
     test('fromJson 正确解析事件信封', () {
       final json = {
-        'event_id': 1,
+        'eventId': 1,
         'event': 'execution.status.changed',
         'timestamp': '2026-01-01T10:00:00.000Z',
-        'execution_id': 'exec-001',
-        'tenant_id': 'tenant-001',
+        'executionId': 'exec-001',
+        'tenantId': 'tenant-001',
         'data': {
-          'execution_id': 'exec-001',
+          'executionId': 'exec-001',
           'status': 'running',
-          'completed_steps': 1,
-          'total_steps': 5,
+          'completedSteps': 1,
+          'totalSteps': 5,
         },
       };
       final envelope = ExecutionEventEnvelope.fromJson(json);
@@ -26,25 +26,25 @@ void main() {
       expect(envelope.data['status'], 'running');
     });
 
-    test('fromJson 处理无 tenant_id', () {
+    test('fromJson 处理无 tenantId', () {
       final json = {
-        'event_id': 2,
+        'eventId': 2,
         'event': 'execution.node.status-changed',
         'timestamp': '2026-01-01T10:01:00.000Z',
-        'execution_id': 'exec-001',
+        'executionId': 'exec-001',
         'data': {
-          'step_id': 'step-1',
-          'node_id': 'node-a',
+          'stepId': 'step-1',
+          'nodeId': 'node-a',
           'from': 'pending',
           'to': 'running',
         },
       };
       final envelope = ExecutionEventEnvelope.fromJson(json);
       expect(envelope.tenantId, isNull);
-      expect(envelope.data['step_id'], 'step-1');
+      expect(envelope.data['stepId'], 'step-1');
     });
 
-    test('toJson 输出 snake_case', () {
+    test('toJson 输出 camelCase wire 键名', () {
       const envelope = ExecutionEventEnvelope(
         eventId: 1,
         event: 'execution.status.changed',
@@ -53,8 +53,8 @@ void main() {
         data: {'status': 'running'},
       );
       final json = envelope.toJson();
-      expect(json['event_id'], 1);
-      expect(json['execution_id'], 'exec-001');
+      expect(json['eventId'], 1);
+      expect(json['executionId'], 'exec-001');
     });
 
     test('equality 基于值', () {
@@ -80,11 +80,11 @@ void main() {
   group('ExecutionStatusChangedData', () {
     test('fromJson 正确解析', () {
       final json = {
-        'execution_id': 'exec-001',
+        'executionId': 'exec-001',
         'status': 'completed',
-        'completed_steps': 5,
-        'total_steps': 5,
-        'error_message': null,
+        'completedSteps': 5,
+        'totalSteps': 5,
+        'errorMessage': null,
       };
       final data = ExecutionStatusChangedData.fromJson(json);
       expect(data.executionId, 'exec-001');
@@ -96,18 +96,18 @@ void main() {
 
     test('fromJson 解析含错误消息', () {
       final json = {
-        'execution_id': 'exec-002',
+        'executionId': 'exec-002',
         'status': 'failed',
-        'completed_steps': 2,
-        'total_steps': 5,
-        'error_message': 'Node timeout exceeded',
+        'completedSteps': 2,
+        'totalSteps': 5,
+        'errorMessage': 'Node timeout exceeded',
       };
       final data = ExecutionStatusChangedData.fromJson(json);
       expect(data.status, 'failed');
       expect(data.errorMessage, 'Node timeout exceeded');
     });
 
-    test('toJson 输出 snake_case', () {
+    test('toJson 输出 camelCase wire 键名', () {
       const data = ExecutionStatusChangedData(
         executionId: 'exec-001',
         status: 'running',
@@ -115,21 +115,21 @@ void main() {
         totalSteps: 3,
       );
       final json = data.toJson();
-      expect(json['execution_id'], 'exec-001');
-      expect(json['completed_steps'], 1);
-      expect(json['total_steps'], 3);
+      expect(json['executionId'], 'exec-001');
+      expect(json['completedSteps'], 1);
+      expect(json['totalSteps'], 3);
     });
   });
 
   group('NodeStatusChangedData', () {
     test('fromJson 正确解析', () {
       final json = {
-        'step_id': 'step-001',
-        'node_id': 'node-abc',
+        'stepId': 'step-001',
+        'nodeId': 'node-abc',
         'from': 'pending',
         'to': 'running',
-        'error_detail': null,
-        'error_message': null,
+        'errorDetail': null,
+        'errorMessage': null,
       };
       final data = NodeStatusChangedData.fromJson(json);
       expect(data.stepId, 'step-001');
@@ -141,16 +141,16 @@ void main() {
 
     test('fromJson 解析含错误详情', () {
       final json = {
-        'step_id': 'step-002',
-        'node_id': 'node-xyz',
+        'stepId': 'step-002',
+        'nodeId': 'node-xyz',
         'from': 'running',
         'to': 'failed',
-        'error_detail': {
+        'errorDetail': {
           'type': 'https://api.agentloom.io/errors/timeout',
           'title': 'Execution Timeout',
           'status': 504,
         },
-        'error_message': 'Execution timed out',
+        'errorMessage': 'Execution timed out',
       };
       final data = NodeStatusChangedData.fromJson(json);
       expect(data.to, 'failed');
@@ -161,7 +161,7 @@ void main() {
       expect(data.errorMessage, 'Execution timed out');
     });
 
-    test('toJson 输出 snake_case', () {
+    test('toJson 输出 camelCase wire 键名', () {
       const data = NodeStatusChangedData(
         stepId: 'step-001',
         nodeId: 'node-abc',
@@ -169,8 +169,8 @@ void main() {
         to: 'running',
       );
       final json = data.toJson();
-      expect(json['step_id'], 'step-001');
-      expect(json['node_id'], 'node-abc');
+      expect(json['stepId'], 'step-001');
+      expect(json['nodeId'], 'node-abc');
     });
   });
 }
