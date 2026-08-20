@@ -1,4 +1,4 @@
-import 'package:agentloom_mobile/features/resources/models/resource_entities.dart';
+import 'package:agentloom_mobile/features/resources/models/resource_dtos.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

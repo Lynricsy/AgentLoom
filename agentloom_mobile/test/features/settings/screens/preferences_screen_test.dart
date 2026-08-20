@@ -1,5 +1,5 @@
 import 'package:agentloom_mobile/features/resources/api/resources_api.dart';
-import 'package:agentloom_mobile/features/resources/models/resource_entities.dart';
+import 'package:agentloom_mobile/features/resources/models/resource_dtos.dart';
 import 'package:agentloom_mobile/features/settings/api/settings_api.dart';
 import 'package:agentloom_mobile/features/settings/screens/preferences_screen.dart';
 import 'package:flutter/material.dart';

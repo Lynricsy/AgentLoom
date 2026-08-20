@@ -20,7 +20,7 @@ class _MemoryAuditScreenState extends ConsumerState<MemoryAuditScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final auditState = ref.watch(memoryAuditProvider);
+    final auditState = ref.watch(memoryAuditProvider(widget.instanceId));
 
     return Scaffold(
       appBar: AppBar(title: const Text('审计日志')),
@@ -36,14 +36,12 @@ class _MemoryAuditScreenState extends ConsumerState<MemoryAuditScreen> {
                 color: theme.colorScheme.error,
               ),
               const SizedBox(height: 16),
-              Text(
-                '加载审计日志失败',
-                style: theme.textTheme.titleMedium,
-              ),
+              Text('加载审计日志失败', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               TextButton(
-                onPressed: () =>
-                    ref.read(memoryAuditProvider.notifier).refresh(),
+                onPressed: () => ref
+                    .read(memoryAuditProvider(widget.instanceId).notifier)
+                    .refresh(),
                 child: const Text('重试'),
               ),
             ],
@@ -75,19 +73,48 @@ class _MemoryAuditScreenState extends ConsumerState<MemoryAuditScreen> {
           }
 
           return RefreshIndicator(
-            onRefresh: () => ref.read(memoryAuditProvider.notifier).refresh(),
+            onRefresh: () => ref
+                .read(memoryAuditProvider(widget.instanceId).notifier)
+                .refresh(),
             child: NotificationListener<ScrollNotification>(
               onNotification: (scrollInfo) {
                 if (scrollInfo.metrics.pixels >=
                     scrollInfo.metrics.maxScrollExtent - 200) {
-                  ref.read(memoryAuditProvider.notifier).loadMore();
+                  ref
+                      .read(memoryAuditProvider(widget.instanceId).notifier)
+                      .loadMore();
                 }
                 return false;
               },
               child: ListView.builder(
-                itemCount: state.entries.length + (state.isLoadingMore ? 1 : 0),
+                itemCount:
+                    state.entries.length +
+                    (state.isLoadingMore || state.loadMoreError != null
+                        ? 1
+                        : 0),
                 itemBuilder: (context, index) {
                   if (index == state.entries.length) {
+                    if (state.loadMoreError != null) {
+                      return Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('加载更多失败'),
+                            TextButton(
+                              onPressed: () => ref
+                                  .read(
+                                    memoryAuditProvider(
+                                      widget.instanceId,
+                                    ).notifier,
+                                  )
+                                  .loadMore(),
+                              child: const Text('重试'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),

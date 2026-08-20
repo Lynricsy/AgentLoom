@@ -206,9 +206,29 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
                     child: ListView.builder(
                       padding: const EdgeInsets.only(bottom: 16),
                       itemCount:
-                          state.skills.length + (state.isLoadingMore ? 1 : 0),
+                          state.skills.length +
+                          (state.isLoadingMore || state.loadMoreError != null
+                              ? 1
+                              : 0),
                       itemBuilder: (context, index) {
                         if (index == state.skills.length) {
+                          if (state.loadMoreError != null) {
+                            return Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text('加载更多失败'),
+                                  TextButton(
+                                    onPressed: () => ref
+                                        .read(skillListProvider.notifier)
+                                        .loadMore(),
+                                    child: const Text('重试'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
                           return const Center(
                             child: Padding(
                               padding: EdgeInsets.all(16),

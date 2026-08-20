@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/resources_api.dart';
-import '../../models/resource_entities.dart';
+import '../../models/resource_dtos.dart';
 import '../../widgets/resource_shared.dart';
 import 'pricing_chips.dart';
 

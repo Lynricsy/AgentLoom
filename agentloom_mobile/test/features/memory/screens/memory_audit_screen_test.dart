@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:agentloom_mobile/features/memory/api/memory_api.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_audit_entry.dart';
-import 'package:agentloom_mobile/features/memory/providers/memory_providers.dart';
 import 'package:agentloom_mobile/features/memory/screens/memory_audit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,10 +19,7 @@ void main() {
 
   Widget createTestWidget({String instanceId = 'mem-inst-1'}) {
     return ProviderScope(
-      overrides: [
-        memoryApiProvider.overrideWithValue(mockApi),
-        memoryAuditInstanceIdProvider.overrideWithValue(instanceId),
-      ],
+      overrides: [memoryApiProvider.overrideWithValue(mockApi)],
       child: MaterialApp(home: MemoryAuditScreen(instanceId: instanceId)),
     );
   }

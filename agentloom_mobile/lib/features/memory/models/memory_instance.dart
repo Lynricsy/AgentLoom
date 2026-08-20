@@ -30,6 +30,7 @@ class MemoryListState {
   final bool hasMore;
   final String? sourceKindFilter;
   final bool isLoadingMore;
+  final Object? loadMoreError;
 
   const MemoryListState({
     this.instances = const [],
@@ -37,6 +38,7 @@ class MemoryListState {
     this.hasMore = true,
     this.sourceKindFilter,
     this.isLoadingMore = false,
+    this.loadMoreError,
   });
 
   MemoryListState copyWith({
@@ -45,6 +47,8 @@ class MemoryListState {
     bool? hasMore,
     String? sourceKindFilter,
     bool? isLoadingMore,
+    Object? loadMoreError,
+    bool clearLoadMoreError = false,
   }) {
     return MemoryListState(
       instances: instances ?? this.instances,
@@ -52,6 +56,9 @@ class MemoryListState {
       hasMore: hasMore ?? this.hasMore,
       sourceKindFilter: sourceKindFilter ?? this.sourceKindFilter,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError
+          ? null
+          : (loadMoreError ?? this.loadMoreError),
     );
   }
 }

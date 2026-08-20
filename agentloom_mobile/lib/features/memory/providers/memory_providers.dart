@@ -35,13 +35,17 @@ class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
   Future<void> setSourceKindFilter(String? sourceKind) async {
     _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchInstances());
+    final nextState = await AsyncValue.guard(() => _fetchInstances());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 刷新列表
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchInstances());
+    final nextState = await AsyncValue.guard(() => _fetchInstances());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 加载更多
@@ -50,7 +54,9 @@ class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
     if (currentState == null || currentState.isLoadingMore) return;
     if (!currentState.hasMore) return;
 
-    state = AsyncValue.data(currentState.copyWith(isLoadingMore: true));
+    state = AsyncValue.data(
+      currentState.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
 
     try {
       final api = ref.read(memoryApiProvider);
@@ -70,10 +76,11 @@ class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
           sourceKindFilter: _sourceKindFilter,
         ),
       );
-    } catch (e, st) {
+    } catch (e) {
       if (!ref.mounted) return;
-      state = AsyncValue.data(currentState.copyWith(isLoadingMore: false));
-      state = AsyncValue.error(e, st);
+      state = AsyncValue.data(
+        currentState.copyWith(isLoadingMore: false, loadMoreError: e),
+      );
     }
   }
 }
@@ -143,6 +150,7 @@ class MemoryAuditState {
   final bool hasMore;
   final bool isLoadingMore;
   final int total;
+  final Object? loadMoreError;
 
   const MemoryAuditState({
     this.entries = const [],
@@ -150,6 +158,7 @@ class MemoryAuditState {
     this.hasMore = true,
     this.isLoadingMore = false,
     this.total = 0,
+    this.loadMoreError,
   });
 
   MemoryAuditState copyWith({
@@ -158,6 +167,8 @@ class MemoryAuditState {
     bool? hasMore,
     bool? isLoadingMore,
     int? total,
+    Object? loadMoreError,
+    bool clearLoadMoreError = false,
   }) {
     return MemoryAuditState(
       entries: entries ?? this.entries,
@@ -165,20 +176,21 @@ class MemoryAuditState {
       hasMore: hasMore ?? this.hasMore,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       total: total ?? this.total,
+      loadMoreError: clearLoadMoreError
+          ? null
+          : (loadMoreError ?? this.loadMoreError),
     );
   }
 }
 
 /// Memory 审计日志 Notifier（按实例 ID）
-///
-/// 使用 AsyncNotifier + instanceId 通过 [memoryAuditInstanceIdProvider] 传入，
-/// 因为 Riverpod 3.x 手写模式不支持 FamilyAsyncNotifier。
 class MemoryAuditNotifier extends AsyncNotifier<MemoryAuditState> {
+  MemoryAuditNotifier(this.instanceId);
+
+  final String instanceId;
+
   @override
-  Future<MemoryAuditState> build() async {
-    final instanceId = ref.watch(memoryAuditInstanceIdProvider);
-    return _fetchAuditLog(instanceId);
-  }
+  Future<MemoryAuditState> build() => _fetchAuditLog(instanceId);
 
   Future<MemoryAuditState> _fetchAuditLog(
     String instanceId, {
@@ -194,11 +206,11 @@ class MemoryAuditNotifier extends AsyncNotifier<MemoryAuditState> {
     );
   }
 
-  /// 刷新审计日志
   Future<void> refresh() async {
-    final instanceId = ref.read(memoryAuditInstanceIdProvider);
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchAuditLog(instanceId));
+    final nextState = await AsyncValue.guard(() => _fetchAuditLog(instanceId));
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 加载更多
@@ -207,10 +219,11 @@ class MemoryAuditNotifier extends AsyncNotifier<MemoryAuditState> {
     if (currentState == null || currentState.isLoadingMore) return;
     if (!currentState.hasMore) return;
 
-    state = AsyncValue.data(currentState.copyWith(isLoadingMore: true));
+    state = AsyncValue.data(
+      currentState.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
 
     try {
-      final instanceId = ref.read(memoryAuditInstanceIdProvider);
       final api = ref.read(memoryApiProvider);
       final nextPage = currentState.currentPage + 1;
       final result = await api.getAuditLog(instanceId, page: nextPage);
@@ -225,24 +238,18 @@ class MemoryAuditNotifier extends AsyncNotifier<MemoryAuditState> {
           total: result.total,
         ),
       );
-    } catch (e, st) {
+    } catch (e) {
       if (!ref.mounted) return;
-      state = AsyncValue.data(currentState.copyWith(isLoadingMore: false));
-      state = AsyncValue.error(e, st);
+      state = AsyncValue.data(
+        currentState.copyWith(isLoadingMore: false, loadMoreError: e),
+      );
     }
   }
 }
 
-/// 审计日志关联的实例 ID（由 ProviderScope.overrides 注入）
-final memoryAuditInstanceIdProvider = Provider<String>(
-  (_) => throw UnimplementedError(
-    'memoryAuditInstanceIdProvider must be overridden',
-  ),
-);
-
-/// Memory 审计日志 Provider
+/// Memory 审计日志 Provider（按实例 ID）
 final memoryAuditProvider =
-    AsyncNotifierProvider<MemoryAuditNotifier, MemoryAuditState>(
+    AsyncNotifierProvider.family<MemoryAuditNotifier, MemoryAuditState, String>(
       MemoryAuditNotifier.new,
     );
 

@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/models/paginated_response.dart';
 import '../../../shared/widgets/resource_source_chip.dart';
 import '../api/resources_api.dart';
-import '../models/resource_entities.dart';
+import '../models/resource_dtos.dart';
 import '../widgets/resource_shared.dart';
 
 class KnowledgeBasesScreen extends ConsumerStatefulWidget {

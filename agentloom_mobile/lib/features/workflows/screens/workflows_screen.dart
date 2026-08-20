@@ -199,10 +199,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                       color: theme.colorScheme.error,
                     ),
                     const SizedBox(height: 16),
-                    Text(
-                      '加载工作流失败',
-                      style: theme.textTheme.titleMedium,
-                    ),
+                    Text('加载工作流失败', style: theme.textTheme.titleMedium),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () =>
@@ -245,8 +242,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                       final crossAxisCount = _crossAxisCount(
                         constraints.maxWidth,
                       );
-                      final childAspectRatio =
-                          crossAxisCount == 1 ? 2.0 : 0.88;
+                      final childAspectRatio = crossAxisCount == 1 ? 2.0 : 0.88;
 
                       return NotificationListener<ScrollNotification>(
                         onNotification: (scrollInfo) {
@@ -305,8 +301,25 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                                 }, childCount: state.workflows.length),
                               ),
                             ),
-                            // 加载更多指示器
-                            if (state.isLoadingMore)
+                            if (state.loadMoreError != null)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Text('加载更多失败'),
+                                      TextButton(
+                                        onPressed: () => ref
+                                            .read(workflowListProvider.notifier)
+                                            .loadMore(),
+                                        child: const Text('重试'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else if (state.isLoadingMore)
                               const SliverToBoxAdapter(
                                 child: Center(
                                   child: Padding(
