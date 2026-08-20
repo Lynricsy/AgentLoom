@@ -61,6 +61,8 @@ export const ExecutionStepResponseSwaggerSchema = z.object({
   nodeData: z.record(z.string(), z.unknown()).nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   checkpointData: z.record(z.string(), z.unknown()).nullable(),
+  attemptCount: z.number().int(),
+  isEncrypted: z.boolean(),
   errorMessage: executionStepErrorMessageSchema,
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
