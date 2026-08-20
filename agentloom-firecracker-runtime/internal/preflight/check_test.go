@@ -97,6 +97,55 @@ func TestVerifyArtifactsRejectsNonELFVmlinuxWithValidChecksum(t *testing.T) {
 	}
 }
 
+func TestVerifyArtifactsRejectsTraversalSymlinkAndNonRegularFiles(t *testing.T) {
+	tests := []struct {
+		name  string
+		path  string
+		setUp func(*testing.T, string)
+	}{
+		{name: "traversal", path: "../outside", setUp: func(t *testing.T, root string) {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(root), "outside"), []byte("artifact"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "symlink", path: "link", setUp: func(t *testing.T, root string) {
+			target := filepath.Join(t.TempDir(), "target")
+			if err := os.WriteFile(target, []byte("artifact"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, filepath.Join(root, "link")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "directory", path: "directory", setUp: func(t *testing.T, root string) {
+			if err := os.Mkdir(filepath.Join(root, "directory"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			test.setUp(t, root)
+			manifest := ArtifactManifest{
+				SchemaVersion: 1, GuestAPIVersion: "v1", ArtifactDigest: "digest",
+				Files: []ArtifactFile{{Path: test.path, SHA256: strings.Repeat("0", 64)}},
+			}
+			encoded, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			manifestPath := filepath.Join(root, "manifest.json")
+			if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := verifyArtifacts(root, manifestPath); err == nil {
+				t.Fatalf("expected %s rejection", test.name)
+			}
+		})
+	}
+}
+
 func TestCIDRCollisionValidation(t *testing.T) {
 	t.Parallel()
 	if err := checkCIDRCollision("not-a-cidr"); err == nil {

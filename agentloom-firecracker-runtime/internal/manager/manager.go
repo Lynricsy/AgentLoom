@@ -45,6 +45,7 @@ type Manager struct {
 	tokenRecoverer TokenRecoverer
 	logger         *slog.Logger
 	live           map[string]liveVM
+	operations     map[string]string
 	acceptCreates  bool
 	now            func() time.Time
 }
@@ -60,7 +61,8 @@ func New(config Config) (*Manager, error) {
 	return &Manager{
 		store: config.Store, capacity: config.Capacity, disks: config.Disks, artifacts: config.Artifacts,
 		network: config.Network, launcher: config.Launcher, guestChecker: config.GuestChecker,
-		tokenRecoverer: config.TokenRecoverer, logger: config.Logger, live: make(map[string]liveVM),
+		tokenRecoverer: config.TokenRecoverer, logger: config.Logger,
+		live: make(map[string]liveVM), operations: make(map[string]string),
 		acceptCreates: true, now: time.Now,
 	}, nil
 }
@@ -84,15 +86,34 @@ func resourcesFromRequest(request CreateRequest) (Resources, error) {
 	return Resources{CPU: request.CPU, VCPUs: int64(math.Ceil(request.CPU)), MemoryMiB: request.MemoryMiB, DiskGiB: request.DiskGiB}, nil
 }
 
-func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Metadata, error) {
-	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
-	if !manager.acceptCreates {
-		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "create", Err: errors.New("manager is draining")}
+func (manager *Manager) beginOperationLocked(id, operation string) error {
+	if current, ok := manager.operations[id]; ok {
+		return &OperationError{Kind: ErrConflict, Op: operation, Err: fmt.Errorf("runtime operation %s is in progress", current)}
 	}
+	manager.operations[id] = operation
+	return nil
+}
+
+func (manager *Manager) endOperation(id string) {
+	manager.mutex.Lock()
+	delete(manager.operations, id)
+	manager.mutex.Unlock()
+}
+
+func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Metadata, error) {
 	resources, err := resourcesFromRequest(request)
 	if err != nil {
 		return Metadata{}, err
+	}
+	manager.mutex.Lock()
+	if err := manager.beginOperationLocked(request.ID, "create"); err != nil {
+		manager.mutex.Unlock()
+		return Metadata{}, err
+	}
+	defer manager.endOperation(request.ID)
+	if !manager.acceptCreates {
+		manager.mutex.Unlock()
+		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "create", Err: errors.New("manager is draining")}
 	}
 	workspaceID := request.WorkspaceID
 	if workspaceID == "" {
@@ -101,15 +122,20 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 	if existing, readErr := manager.store.Read(request.ID); readErr == nil {
 		if existing.Resources != resources || existing.LifecycleMode != request.LifecycleMode ||
 			existing.WorkspaceID != workspaceID {
+			manager.mutex.Unlock()
 			return Metadata{}, &OperationError{Kind: ErrConflict, Op: "create", Err: errors.New("immutable runtime configuration differs")}
 		}
+		manager.mutex.Unlock()
 		return existing, nil
 	} else if !errors.Is(readErr, ErrNotFound) {
+		manager.mutex.Unlock()
 		return Metadata{}, readErr
 	}
 	if conflict, conflictErr := manager.workspaceConflict(request.ID, workspaceID); conflictErr != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, conflictErr
 	} else if conflict != "" {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{
 			Kind: ErrConflict,
 			Op:   "create",
@@ -119,9 +145,11 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 
 	artifacts := manager.artifacts.Current()
 	if artifacts.GuestAPI != "v1" {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "create", Err: errors.New("guest API version mismatch")}
 	}
 	if err := manager.capacity.Reserve(request.ID, resources, true); err != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: err, Op: "reserve capacity", Err: err}
 	}
 	now := manager.now().UTC()
@@ -129,8 +157,10 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 		LifecycleMode: request.LifecycleMode, WorkspaceID: workspaceID, State: StateCreating, CreatedAt: now, UpdatedAt: now}
 	if err := manager.store.Write(metadata); err != nil {
 		manager.capacity.Delete(request.ID)
+		manager.mutex.Unlock()
 		return Metadata{}, err
 	}
+	manager.mutex.Unlock()
 
 	diskCreated := false
 	var allocation NetworkAllocation
@@ -200,7 +230,9 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 	if err := manager.store.Write(metadata); err != nil {
 		return rollback(err)
 	}
+	manager.mutex.Lock()
 	manager.live[request.ID] = liveVM{instance: instance, token: token}
+	manager.mutex.Unlock()
 	return metadata, nil
 }
 
@@ -229,8 +261,6 @@ func (manager *Manager) workspaceConflict(sessionID, workspaceID string) (string
 }
 
 func (manager *Manager) Inspect(id string) (Metadata, error) {
-	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
 	return manager.store.Read(id)
 }
 
@@ -240,50 +270,61 @@ func (manager *Manager) Capacity() CapacitySnapshot {
 
 func (manager *Manager) Start(ctx context.Context, id string) (Metadata, error) {
 	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
+	if err := manager.beginOperationLocked(id, "start"); err != nil {
+		manager.mutex.Unlock()
+		return Metadata{}, err
+	}
+	defer manager.endOperation(id)
 	if !manager.acceptCreates {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "start", Err: errors.New("manager is draining")}
 	}
 	metadata, err := manager.store.Read(id)
 	if err != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, err
 	}
 	if metadata.State == StateRunning {
+		manager.mutex.Unlock()
 		return metadata, nil
 	}
 	if metadata.State != StateStopped {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: ErrConflict, Op: "start", Err: fmt.Errorf("state is %s", metadata.State)}
 	}
 	if conflict, conflictErr := manager.workspaceConflict(id, metadata.WorkspaceID); conflictErr != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, conflictErr
 	} else if conflict != "" {
-		return Metadata{}, &OperationError{
-			Kind: ErrConflict,
-			Op:   "start",
-			Err:  fmt.Errorf("workspace is active in runtime %s", conflict),
-		}
+		manager.mutex.Unlock()
+		return Metadata{}, &OperationError{Kind: ErrConflict, Op: "start", Err: fmt.Errorf("workspace is active in runtime %s", conflict)}
 	}
 	if err := manager.capacity.Reserve(id, metadata.Resources, true); err != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: err, Op: "reserve capacity", Err: err}
 	}
+	metadata.State, metadata.Failure = StateCreating, ""
+	metadata.UpdatedAt = manager.now().UTC()
+	if err := manager.store.Write(metadata); err != nil {
+		manager.capacity.Deactivate(id)
+		manager.mutex.Unlock()
+		return Metadata{}, err
+	}
+	manager.mutex.Unlock()
+
 	artifacts, err := manager.artifacts.Resolve(metadata.ArtifactDigest)
 	if err != nil {
-		manager.capacity.Deactivate(id)
-		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "resolve pinned artifacts", Err: err}
+		return manager.failStart(metadata, nil, err)
 	}
 	if err := manager.disks.Check(ctx, metadata.DiskPath); err != nil {
-		manager.capacity.Deactivate(id)
-		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "check mutable disk", Err: err}
+		return manager.failStart(metadata, nil, err)
 	}
 	allocation, err := manager.network.Provision(ctx, id)
 	if err != nil {
-		manager.capacity.Deactivate(id)
-		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "provision network", Err: err}
+		return manager.failStart(metadata, nil, err)
 	}
-	metadata.State, metadata.Failure = StateCreating, ""
 	metadata.GuestIP, metadata.GuestMAC = allocation.GuestIP, allocation.MAC
 	metadata.TapName, metadata.NetNSPath = allocation.TapName, allocation.NetNSPath
-	metadata.UpdatedAt = manager.now().UTC()
 	if err := manager.store.Write(metadata); err != nil {
 		manager.capacity.Deactivate(id)
 		_ = manager.network.Release(context.Background(), metadata)
@@ -305,7 +346,9 @@ func (manager *Manager) Start(ctx context.Context, id string) (Metadata, error) 
 	if err := manager.store.Write(metadata); err != nil {
 		return manager.failStart(metadata, instance, err)
 	}
+	manager.mutex.Lock()
 	manager.live[id] = liveVM{instance: instance, token: token}
+	manager.mutex.Unlock()
 	return metadata, nil
 }
 
@@ -316,7 +359,9 @@ func (manager *Manager) failStart(metadata Metadata, instance Instance, cause er
 		cleanupErrors = append(cleanupErrors, instance.Kill(cleanupContext))
 		cancel()
 	}
-	cleanupErrors = append(cleanupErrors, manager.network.Release(context.Background(), metadata))
+	if metadata.TapName != "" {
+		cleanupErrors = append(cleanupErrors, manager.network.Release(context.Background(), metadata))
+	}
 	manager.capacity.Deactivate(metadata.SessionID)
 	metadata.State, metadata.Failure = StateFailed, cause.Error()
 	metadata.UpdatedAt = manager.now().UTC()
@@ -326,29 +371,35 @@ func (manager *Manager) failStart(metadata Metadata, instance Instance, cause er
 
 func (manager *Manager) Stop(ctx context.Context, id string) (Metadata, error) {
 	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
-	return manager.stopLocked(ctx, id)
-}
-
-func (manager *Manager) stopLocked(ctx context.Context, id string) (Metadata, error) {
+	if err := manager.beginOperationLocked(id, "stop"); err != nil {
+		manager.mutex.Unlock()
+		return Metadata{}, err
+	}
+	defer manager.endOperation(id)
 	metadata, err := manager.store.Read(id)
 	if err != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, err
 	}
 	if metadata.State == StateStopped {
+		manager.mutex.Unlock()
 		return metadata, nil
 	}
 	if metadata.State != StateRunning {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: ErrConflict, Op: "stop", Err: fmt.Errorf("state is %s", metadata.State)}
 	}
 	live, ok := manager.live[id]
 	if !ok {
+		manager.mutex.Unlock()
 		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "stop", Err: errors.New("running instance is not attached")}
 	}
 	metadata.State, metadata.UpdatedAt = StateStopping, manager.now().UTC()
 	if err := manager.store.Write(metadata); err != nil {
+		manager.mutex.Unlock()
 		return Metadata{}, err
 	}
+	manager.mutex.Unlock()
 
 	gracefulContext, cancelGraceful := context.WithTimeout(ctx, 10*time.Second)
 	shutdownErr := live.instance.Shutdown(gracefulContext)
@@ -365,17 +416,25 @@ func (manager *Manager) stopLocked(ctx context.Context, id string) (Metadata, er
 		}
 	}
 	releaseErr := manager.network.Release(context.Background(), metadata)
+	manager.mutex.Lock()
 	delete(manager.live, id)
 	manager.capacity.Deactivate(id)
-	metadata.State, metadata.PID, metadata.APISocketPath = StateStopped, 0, ""
-	metadata.GuestIP, metadata.GuestMAC, metadata.TapName, metadata.NetNSPath = "", "", "", ""
-	if forced {
-		metadata.Failure = "graceful shutdown timed out; process was killed"
+	if releaseErr != nil {
+		metadata.State = StateFailed
+		metadata.Failure = errors.Join(errors.New("runtime stopped but network cleanup failed"), releaseErr).Error()
 	} else {
-		metadata.Failure = ""
+		metadata.State = StateStopped
+		clearRuntimeCleanupHandles(&metadata)
+		if forced {
+			metadata.Failure = "graceful shutdown timed out; process was killed"
+		} else {
+			metadata.Failure = ""
+		}
 	}
 	metadata.UpdatedAt = manager.now().UTC()
-	if writeErr := manager.store.Write(metadata); writeErr != nil {
+	writeErr := manager.store.Write(metadata)
+	manager.mutex.Unlock()
+	if writeErr != nil {
 		return Metadata{}, errors.Join(releaseErr, writeErr)
 	}
 	if releaseErr != nil {
@@ -385,39 +444,51 @@ func (manager *Manager) stopLocked(ctx context.Context, id string) (Metadata, er
 }
 
 func (manager *Manager) Delete(ctx context.Context, id string, deleteDisk bool) error {
-	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
 	metadata, err := manager.store.Read(id)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil
-		}
 		return err
 	}
 	if metadata.State == StateRunning {
-		metadata, err = manager.stopLocked(ctx, id)
-		if err != nil {
+		if _, err := manager.Stop(ctx, id); err != nil {
 			return err
 		}
 	}
-	if metadata.State == StateCreating || metadata.State == StateStopping {
+	manager.mutex.Lock()
+	if err := manager.beginOperationLocked(id, "delete"); err != nil {
+		manager.mutex.Unlock()
+		return err
+	}
+	defer manager.endOperation(id)
+	metadata, err = manager.store.Read(id)
+	if err != nil {
+		manager.mutex.Unlock()
+		return err
+	}
+	if metadata.State == StateCreating || metadata.State == StateStopping || metadata.State == StateRunning {
+		manager.mutex.Unlock()
 		return &OperationError{Kind: ErrConflict, Op: "delete", Err: fmt.Errorf("state is %s", metadata.State)}
 	}
 	if !deleteDisk {
+		manager.mutex.Unlock()
 		return nil
 	}
+	manager.mutex.Unlock()
 	if metadata.DiskPath != "" {
 		if err := manager.disks.Delete(ctx, metadata.DiskPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return &OperationError{Kind: ErrUnavailable, Op: "delete disk", Err: err}
 		}
 	}
+	manager.mutex.Lock()
 	manager.capacity.Delete(id)
-	return manager.store.Remove(id)
+	err = manager.store.Remove(id)
+	manager.mutex.Unlock()
+	return err
 }
 
 func (manager *Manager) Recover(ctx context.Context) error {
-	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
 	all, err := manager.store.ReadAll()
 	if err != nil {
 		return err
@@ -486,7 +557,9 @@ func (manager *Manager) Recover(ctx context.Context) error {
 				}
 				continue
 			}
+			manager.mutex.Lock()
 			manager.live[metadata.SessionID] = liveVM{instance: instance, token: token}
+			manager.mutex.Unlock()
 		default:
 			return fmt.Errorf("unknown persisted state %q for %s", metadata.State, metadata.SessionID)
 		}
@@ -580,15 +653,15 @@ func (manager *Manager) GuestAccess(id string) (Metadata, string, error) {
 
 func (manager *Manager) Shutdown(ctx context.Context) error {
 	manager.mutex.Lock()
-	defer manager.mutex.Unlock()
 	manager.acceptCreates = false
-	var result error
 	ids := make([]string, 0, len(manager.live))
 	for id := range manager.live {
 		ids = append(ids, id)
 	}
+	manager.mutex.Unlock()
+	var result error
 	for _, id := range ids {
-		if _, err := manager.stopLocked(ctx, id); err != nil {
+		if _, err := manager.Stop(ctx, id); err != nil {
 			result = errors.Join(result, err)
 		}
 	}

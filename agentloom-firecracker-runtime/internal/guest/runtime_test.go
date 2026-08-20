@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRuntimeExecCapturesOutputAndExit(t *testing.T) {
@@ -50,6 +52,93 @@ func TestRuntimeExecCapturesOutputAndExit(t *testing.T) {
 	runtimeAPI.ServeHTTP(wait, httptest.NewRequest(http.MethodGet, "/v1/runtime/exec/"+execID+"/wait", nil))
 	if !strings.Contains(wait.Body.String(), `"exitCode":0`) {
 		t.Fatalf("unexpected wait response: %s", wait.Body.String())
+	}
+}
+
+func TestExecRegistrySchedulesTTLReaping(t *testing.T) {
+	finished := time.Now()
+	runtimeAPI := newRuntimeAPI(time.Second, 2, 2)
+	runtimeAPI.now = func() time.Time { return finished.Add(time.Second) }
+	scheduled := make(chan func(), 1)
+	runtimeAPI.schedule = func(delay time.Duration, callback func()) {
+		if delay != time.Second {
+			t.Errorf("unexpected reaper delay %s", delay)
+		}
+		scheduled <- callback
+	}
+	done := make(chan struct{})
+	close(done)
+	runtimeAPI.execs["finished"] = &execRecord{finished: finished, done: done}
+	runtimeAPI.scheduleReap()
+	callback := <-scheduled
+	callback()
+	response := httptest.NewRecorder()
+	runtimeAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/runtime/exec/finished/wait", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("TTL reaper left expired exec: status=%d", response.Code)
+	}
+}
+
+func TestExecRegistryReapsExpiredRecordsDuringConcurrentReads(t *testing.T) {
+	runtimeAPI := newRuntimeAPI(time.Second, 2, 2)
+	done := make(chan struct{})
+	close(done)
+	finished := time.Now()
+	runtimeAPI.execs["expired"] = &execRecord{
+		started: finished.Add(-time.Second), finished: finished,
+		done: done, exitCode: 0, pid: 42,
+		output: []execOutput{{Level: "stdout", Data: base64.StdEncoding.EncodeToString([]byte("done"))}},
+	}
+	var readers sync.WaitGroup
+	for range 20 {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			for range 20 {
+				output := httptest.NewRecorder()
+				runtimeAPI.ServeHTTP(output, httptest.NewRequest(http.MethodGet, "/v1/runtime/exec/expired/output", nil))
+				if output.Code != http.StatusOK && output.Code != http.StatusNotFound {
+					t.Errorf("unexpected concurrent output status %d", output.Code)
+				}
+				wait := httptest.NewRecorder()
+				runtimeAPI.ServeHTTP(wait, httptest.NewRequest(http.MethodGet, "/v1/runtime/exec/expired/wait", nil))
+				if wait.Code != http.StatusOK && wait.Code != http.StatusNotFound {
+					t.Errorf("unexpected concurrent wait status %d", wait.Code)
+				}
+			}
+		}()
+	}
+	runtimeAPI.reapExecs(finished.Add(time.Second))
+	readers.Wait()
+	response := httptest.NewRecorder()
+	runtimeAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/runtime/exec/expired/wait", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expired exec was not reaped: status=%d", response.Code)
+	}
+}
+
+func TestExecRegistryEnforcesActiveAndCompletedLimits(t *testing.T) {
+	runtimeAPI := newRuntimeAPI(time.Hour, 1, 1)
+	activeDone := make(chan struct{})
+	runtimeAPI.execs["active"] = &execRecord{done: activeDone, exitCode: -1}
+	response := httptest.NewRecorder()
+	runtimeAPI.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/runtime/exec", strings.NewReader(`{"command":"/bin/sh","args":["-c","true"],"cwd":"/tmp"}`)))
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("active limit status=%d body=%s", response.Code, response.Body.String())
+	}
+	delete(runtimeAPI.execs, "active")
+	now := time.Now()
+	for index, id := range []string{"old", "new"} {
+		done := make(chan struct{})
+		close(done)
+		runtimeAPI.execs[id] = &execRecord{done: done, finished: now.Add(time.Duration(index) * time.Second)}
+	}
+	runtimeAPI.reapExecs(now.Add(2 * time.Second))
+	if _, ok := runtimeAPI.execs["old"]; ok {
+		t.Fatal("oldest completed exec was not evicted")
+	}
+	if _, ok := runtimeAPI.execs["new"]; !ok {
+		t.Fatal("newest completed exec was evicted")
 	}
 }
 

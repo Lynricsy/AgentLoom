@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/agentloom/agentloom-firecracker-runtime/internal/artifactpath"
 )
 
 type ArtifactFile struct {
@@ -232,21 +234,16 @@ func verifyArtifacts(root, manifestPath string) (ArtifactManifest, error) {
 		if artifact.Path == "" || len(artifact.SHA256) != 64 {
 			return ArtifactManifest{}, errors.New("artifact manifest contains an invalid file entry")
 		}
-		path := filepath.Join(root, filepath.Clean(artifact.Path))
-		resolved, err := filepath.EvalSymlinks(path)
+		path, err := artifactpath.Validate(root, artifact.Path)
 		if err != nil {
-			return ArtifactManifest{}, fmt.Errorf("resolve artifact %s: %w", artifact.Path, err)
-		}
-		rootWithSeparator := filepath.Clean(root) + string(os.PathSeparator)
-		if !strings.HasPrefix(resolved, rootWithSeparator) {
-			return ArtifactManifest{}, fmt.Errorf("artifact path escapes root: %s", artifact.Path)
+			return ArtifactManifest{}, fmt.Errorf("validate artifact %s: %w", artifact.Path, err)
 		}
 		if filepath.Base(artifact.Path) == "vmlinux" {
-			if err := verifyKernelELF(resolved); err != nil {
+			if err := verifyKernelELF(path); err != nil {
 				return ArtifactManifest{}, err
 			}
 		}
-		file, err := os.Open(resolved)
+		file, err := os.Open(path)
 		if err != nil {
 			return ArtifactManifest{}, err
 		}

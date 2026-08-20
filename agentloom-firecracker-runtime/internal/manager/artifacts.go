@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/agentloom/agentloom-firecracker-runtime/internal/artifactpath"
 )
 
 type artifactManifest struct {
@@ -37,6 +39,11 @@ func MaterializeArtifacts(bundleRoot, stateRoot string) (*FilesystemArtifactRegi
 	if err != nil {
 		return nil, err
 	}
+	for _, artifact := range manifest.Files {
+		if _, err := artifactpath.Validate(bundleRoot, artifact.Path); err != nil {
+			return nil, fmt.Errorf("validate artifact %s: %w", artifact.Path, err)
+		}
+	}
 	artifactBase := filepath.Join(stateRoot, "artifacts")
 	if err := os.MkdirAll(artifactBase, 0o700); err != nil {
 		return nil, err
@@ -49,8 +56,12 @@ func MaterializeArtifacts(bundleRoot, stateRoot string) (*FilesystemArtifactRegi
 		}
 		defer os.RemoveAll(temporary)
 		for _, artifact := range manifest.Files {
+			source, err := artifactpath.Validate(bundleRoot, artifact.Path)
+			if err != nil {
+				return nil, fmt.Errorf("validate artifact %s: %w", artifact.Path, err)
+			}
 			if err := copyVerifiedArtifact(
-				filepath.Join(bundleRoot, artifact.Path),
+				source,
 				filepath.Join(temporary, artifact.Path),
 				artifact.SHA256,
 				artifact.Size,
@@ -104,10 +115,11 @@ func (registry *FilesystemArtifactRegistry) Resolve(digest string) (ArtifactSet,
 	}
 	if !registry.verified[digest] {
 		for _, artifact := range manifest.Files {
-			if filepath.Base(artifact.Path) != artifact.Path {
-				return ArtifactSet{}, fmt.Errorf("artifact manifest path is unsafe")
+			path, err := artifactpath.Validate(root, artifact.Path)
+			if err != nil {
+				return ArtifactSet{}, fmt.Errorf("validate artifact %s: %w", artifact.Path, err)
 			}
-			if err := verifyArtifact(filepath.Join(root, artifact.Path), artifact.SHA256, artifact.Size); err != nil {
+			if err := verifyArtifact(path, artifact.SHA256, artifact.Size); err != nil {
 				return ArtifactSet{}, err
 			}
 		}
