@@ -1,7 +1,12 @@
 import { useCallback, type MutableRefObject } from 'react';
 import type { ReactFlowInstance } from '@xyflow/react';
 import { DRAG_TRANSFER_TYPE } from '@/features/canvas/components/NodePalette';
-import type { PaletteNodeItem, CanvasNodeData } from '@/features/canvas/types';
+import type {
+  CanvasEdge,
+  CanvasNode,
+  CanvasNodeData,
+  PaletteNodeItem,
+} from '@/features/canvas/types';
 import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
 import {
   useAgentCanvasActions,
@@ -13,7 +18,10 @@ function generateNodeId(): string {
   return crypto?.randomUUID?.() ?? `node-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function useAgentCanvasDrop(reactFlowRef: MutableRefObject<ReactFlowInstance<any, any> | null>) {
+
+export function useAgentCanvasDrop(
+  reactFlowRef: MutableRefObject<ReactFlowInstance<CanvasNode, CanvasEdge> | null>,
+) {
   const { addNode } = useAgentCanvasActions();
 
   const onDragOver = useCallback((event: React.DragEvent) => {

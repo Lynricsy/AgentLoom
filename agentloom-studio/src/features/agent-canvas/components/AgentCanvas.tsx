@@ -1,11 +1,10 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useRef } from 'react';
 import {
   ReactFlow,
   Background,
   Controls,
   type Edge,
   type Connection,
-  type Node,
   type ReactFlowInstance,
 } from '@xyflow/react';
 import { cn } from '@/shared/lib/utils';
@@ -16,7 +15,10 @@ import { AgentNodePalette } from '@/features/canvas/components/AgentNodePalette'
 import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
 import { useConnectionPreview } from '@/features/canvas/hooks/useConnectionPreview';
 import { ReadOnlyNodeSheet } from '@/features/canvas/components/readonly/ReadOnlyNodeSheet';
-import type { CanvasEdgeData, CanvasNodeData } from '@/features/canvas/types';
+import type {
+  CanvasEdgeData,
+  CanvasNode,
+} from '@/features/canvas/types';
 import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,
@@ -25,10 +27,10 @@ import {
   useAgentCanvasSelectedNodeId,
   type AgentCanvasEdge,
 } from '../stores/agent-canvas.store';
+import { useAgentCanvasHydration } from '../hooks/useAgentCanvasHydration';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
 import { AgentNodeConfigPanel } from './panels/AgentNodeConfigPanel';
-
-type AgentCanvasNode = Node<CanvasNodeData>;
+type AgentCanvasNode = CanvasNode;
 type AgentCanvasReactFlowInstance = ReactFlowInstance<
   AgentCanvasNode,
   Edge<CanvasEdgeData>
@@ -70,21 +72,14 @@ export const AgentCanvas = memo(function AgentCanvas({
     selectNode,
     selectEdge,
     setViewport,
-    loadAgent,
-    reset,
   } = useAgentCanvasActions();
+  useAgentCanvasHydration(agentId);
 
   const reactFlowRef = useRef<AgentCanvasReactFlowInstance | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { onDragOver, onDrop } = useAgentCanvasDrop(reactFlowRef);
   const { onConnectStart, onConnectEnd } = useConnectionPreview({ containerRef });
 
-  useEffect(() => {
-    void loadAgent(agentId);
-    return () => {
-      reset();
-    };
-  }, [agentId, loadAgent, reset]);
 
   const onInit = useCallback((instance: AgentCanvasReactFlowInstance) => {
     reactFlowRef.current = instance;

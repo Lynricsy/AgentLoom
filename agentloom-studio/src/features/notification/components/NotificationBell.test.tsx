@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useNotificationStore } from '../stores/notificationStore'
@@ -30,13 +30,11 @@ describe('NotificationBell', () => {
     })
   })
 
-  it('显示未读数量徽标并同步到 store', async () => {
+  it('directly renders the unread count from Query data', async () => {
     render(<NotificationBell />)
 
     expect(await screen.findByTestId('notification-badge')).toHaveTextContent('3')
-    await waitFor(() => {
-      expect(useNotificationStore.getState().unreadCount).toBe(3)
-    })
+    expect('unreadCount' in useNotificationStore.getState()).toBe(false)
   })
 
   it('点击铃铛会切换下拉面板', async () => {

@@ -48,6 +48,8 @@ import type { OnMount } from '@monaco-editor/react';
 /** Monaco editor instance — extracted from @monaco-editor/react OnMount callback */
 type IStandaloneCodeEditor = Parameters<OnMount>[0];
 
+const frontmatterDecorationIds = new WeakMap<IStandaloneCodeEditor, string[]>();
+
 /** 5 MB per file */
 const SKILL_FILE_MAX_SIZE = 5_242_880;
 /** 50 MB total */
@@ -398,9 +400,9 @@ function applyFrontmatterDecorations(
   const match = text.match(/^---\r?\n[\s\S]*?\r?\n---/);
   if (!match) {
     editorInstance.removeDecorations(
-      (editorInstance as any).__frontmatterDecorationIds ?? [],
+      frontmatterDecorationIds.get(editorInstance) ?? [],
     );
-    (editorInstance as any).__frontmatterDecorationIds = [];
+    frontmatterDecorationIds.set(editorInstance, []);
     return;
   }
 
@@ -424,11 +426,13 @@ function applyFrontmatterDecorations(
     },
   ];
 
-  (editorInstance as any).__frontmatterDecorationIds =
+  frontmatterDecorationIds.set(
+    editorInstance,
     editorInstance.deltaDecorations(
-      (editorInstance as any).__frontmatterDecorationIds ?? [],
+      frontmatterDecorationIds.get(editorInstance) ?? [],
       newDecorations,
-    );
+    ),
+  );
 }
 
 interface CreateSkillDialogProps {

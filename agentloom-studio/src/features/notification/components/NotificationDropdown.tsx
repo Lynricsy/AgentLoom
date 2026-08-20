@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
@@ -8,10 +8,7 @@ import {
   useMarkAsRead,
 } from '../api/notificationMutations'
 import { useNotifications } from '../api/notificationQueries'
-import {
-  useNotificationActions,
-  useNotificationList,
-} from '../stores/notificationStore'
+import { useNotificationActions } from '../stores/notificationStore'
 import type { NotificationType } from '../types'
 import { NotificationItem } from './NotificationItem'
 
@@ -20,9 +17,7 @@ function getTimelineUrl(body: Record<string, unknown> | null): string | null {
 }
 
 export function NotificationDropdown() {
-  const notifications = useNotificationList()
-  const { syncNotifications, markAsRead, markAllAsRead, setDropdownOpen } =
-    useNotificationActions()
+  const { setDropdownOpen } = useNotificationActions()
   const {
     data,
     isLoading,
@@ -31,15 +26,9 @@ export function NotificationDropdown() {
   const markAsReadMutation = useMarkAsRead()
   const markAllAsReadMutation = useMarkAllAsRead()
 
-  useEffect(() => {
-    if (data?.data) {
-      syncNotifications(data.data.slice(0, 20))
-    }
-  }, [data?.data, syncNotifications])
-
   const visibleNotifications = useMemo(
-    () => notifications.slice(0, 20),
-    [notifications],
+    () => (data?.data ?? []).slice(0, 20),
+    [data?.data],
   )
   const unreadCount = useMemo(
     () => visibleNotifications.filter((item) => !item.isRead).length,
@@ -49,12 +38,9 @@ export function NotificationDropdown() {
   const handleSelect = useCallback(
     async (notification: NotificationType) => {
       if (!notification.isRead) {
-        markAsRead(notification.id)
-
         try {
           await markAsReadMutation.mutateAsync(notification.id)
         } catch {
-          syncNotifications(data?.data ?? [])
           return
         }
       }
@@ -66,7 +52,7 @@ export function NotificationDropdown() {
         globalThis.location.assign(timelineUrl)
       }
     },
-    [data?.data, markAsRead, markAsReadMutation, setDropdownOpen, syncNotifications],
+    [markAsReadMutation, setDropdownOpen],
   )
 
   const handleMarkAllAsRead = useCallback(async () => {
@@ -74,14 +60,8 @@ export function NotificationDropdown() {
       return
     }
 
-    markAllAsRead()
-
-    try {
-      await markAllAsReadMutation.mutateAsync()
-    } catch {
-      syncNotifications(data?.data ?? [])
-    }
-  }, [data?.data, markAllAsRead, markAllAsReadMutation, syncNotifications, unreadCount])
+    await markAllAsReadMutation.mutateAsync().catch(() => undefined)
+  }, [markAllAsReadMutation, unreadCount])
 
   return (
     <div

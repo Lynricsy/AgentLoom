@@ -145,3 +145,29 @@ export function collectLeafPaths(nodes: NestedFieldNode[]): string[] {
   }
   return paths
 }
+
+/**
+ * 按路径索引嵌套树的全部叶子节点（用于按 path 反查 schema / required）。
+ */
+export function buildLeafNodeMap(
+  nodes: NestedFieldNode[],
+): Map<string, NestedFieldNode> {
+  const map = new Map<string, NestedFieldNode>()
+
+  function walk(node: NestedFieldNode): void {
+    if (node.isLeaf) {
+      map.set(node.path, node)
+      return
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        walk(child)
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    walk(node)
+  }
+  return map
+}

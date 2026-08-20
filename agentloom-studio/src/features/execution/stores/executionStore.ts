@@ -124,6 +124,7 @@ export interface ExecutionStoreActions {
       rememberScope?: 'none' | 'conversation_category',
     ) => Promise<void>
     applySnapshot: (snapshot: ExecutionStateSnapshot) => void
+    initFromSnapshot: (snapshot: ExecutionStateSnapshot) => void
     initExecution: (executionId: string) => void
     reset: () => void
   }
@@ -735,6 +736,13 @@ export const useExecutionStore = create<
               }
             })
           },
+          initFromSnapshot: (snapshot: ExecutionStateSnapshot) => {
+            if (get().recentEvents.length > 0) {
+              return
+            }
+            get().actions.applySnapshot(snapshot)
+          },
+
 
           initExecution: (executionId: string) => {
             set((state) => {

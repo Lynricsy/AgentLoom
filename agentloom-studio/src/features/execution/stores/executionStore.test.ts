@@ -1307,4 +1307,46 @@ describe('executionStore', () => {
       })
     })
   })
+  it('keeps live events authoritative after the initial Query snapshot', () => {
+    const { actions } = useExecutionStore.getState()
+    actions.initExecution('exec-1')
+    actions.initFromSnapshot({
+      executionId: 'exec-1',
+      status: 'pending',
+      completedSteps: 0,
+      totalSteps: 1,
+      snapshotAt: '2026-08-20T00:00:00.000Z',
+      steps: [
+        {
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          status: 'pending',
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    })
+
+    actions.updateNodeStatus(makeStepStatusEvent({ to: 'running' }))
+    actions.initFromSnapshot({
+      executionId: 'exec-1',
+      status: 'pending',
+      completedSteps: 0,
+      totalSteps: 1,
+      snapshotAt: '2026-08-20T00:00:01.000Z',
+      steps: [
+        {
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          status: 'pending',
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    })
+
+    expect(getNode('node-1').status).toBe('running')
+    expect(useExecutionStore.getState().recentEvents).toHaveLength(1)
+  })
+
 })

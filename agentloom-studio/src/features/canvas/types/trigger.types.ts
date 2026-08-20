@@ -11,8 +11,38 @@ export interface ManualTriggerOutputField {
   type: 'text' | 'number' | 'single_select' | 'multi_select'
 }
 
+const MANUAL_TRIGGER_OUTPUT_FIELD_TYPES: readonly ManualTriggerOutputField['type'][] = [
+  'text',
+  'number',
+  'single_select',
+  'multi_select',
+]
+
+interface ManualTriggerOutputFieldPayload {
+  id: string
+  label: string
+  type?: unknown
+}
+
+export function isManualTriggerOutputFieldPayload(
+  value: unknown,
+): value is ManualTriggerOutputFieldPayload {
+  return typeof value === 'object'
+    && value !== null
+    && 'id' in value
+    && typeof value.id === 'string'
+    && 'label' in value
+    && typeof value.label === 'string'
+}
+
 function fieldTypeToPortDataType(fieldType: string): 'text' | 'json' {
   return fieldType === 'text' ? 'text' : 'json'
+}
+
+function isManualTriggerOutputFieldType(
+  value: unknown,
+): value is ManualTriggerOutputField['type'] {
+  return MANUAL_TRIGGER_OUTPUT_FIELD_TYPES.some((type) => type === value)
 }
 
 /**
@@ -70,19 +100,11 @@ export function parseManualTriggerConfig(
   }
 
   const outputFields = raw
-    .filter(
-      (item): item is { id: string; label: string; type: string } =>
-        typeof item === 'object'
-        && item !== null
-        && typeof (item as any).id === 'string'
-        && typeof (item as any).label === 'string',
-    )
+    .filter(isManualTriggerOutputFieldPayload)
     .map((item) => ({
       id: item.id,
       label: item.label,
-      type: (['text', 'number', 'single_select', 'multi_select'].includes(item.type)
-        ? item.type
-        : 'text') as ManualTriggerOutputField['type'],
+      type: isManualTriggerOutputFieldType(item.type) ? item.type : 'text',
     }))
 
   return { outputFields }

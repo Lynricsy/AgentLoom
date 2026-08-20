@@ -1,54 +1,22 @@
-import {
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  useMemo,
-  type ChangeEvent,
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  Send,
-  Square,
-  Paperclip,
-  ArrowLeft,
-  Loader2,
-  AlertCircle,
-  ImagePlus,
-  ImageIcon,
-  FileText,
-  X,
-} from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
-import { Textarea } from "@/shared/ui/textarea";
 import { useToast } from "@/shared/ui/toast";
 import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { SubAgentNavContext } from "@/shared/components/tool-renderers/renderers/SubAgentRenderer";
 import { resolveSubAgentView } from "../subAgentView";
 import { resolveConversationWorkspacePreviewId } from "../workspacePreview";
+import { useConversationWorkspaceSync } from "../hooks/useConversationWorkspaceSync";
+import { ConversationComposer } from "./ConversationComposer";
+import { ConversationLayout } from "./ConversationLayout";
 import { MessageList } from "./MessageList";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
-import type {
-  ConversationAttachment,
-  OutgoingConversationMessage,
-} from "../types";
-import {
-  describeConversationAttachmentsSummary,
-  inferConversationAttachmentContentType,
-  getConversationAttachmentTotalBytes,
-  MAX_CONVERSATION_ATTACHMENT_BYTES,
-  MAX_CONVERSATION_ATTACHMENT_TOTAL_BYTES,
-  MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES,
-  TEXT_ATTACHMENT_EXTENSIONS,
-} from "../attachmentUtils";
 import type { ToolCallData } from "@/shared/components/tool-renderers/types";
 import {
   useConversationMessages,
@@ -73,469 +41,6 @@ interface AgentConversationPageProps {
   agentId: string;
   conversationId: string;
   onBack?: () => void;
-}
-
-const MIN_LEFT_WIDTH = 360;
-const MIN_RIGHT_WIDTH = 280;
-const DEFAULT_LEFT_RATIO = 0.6;
-const EXECUTING_HISTORY_SYNC_INTERVAL_MS = 3_000;
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("文件读取结果无效"));
-        return;
-      }
-      resolve(reader.result);
-    };
-    reader.onerror = () => {
-      reject(reader.error ?? new Error("文件读取失败"));
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function extractBase64Payload(dataUrl: string): string {
-  const separatorIndex = dataUrl.indexOf(",");
-  return separatorIndex >= 0 ? dataUrl.slice(separatorIndex + 1) : dataUrl;
-}
-
-function isLikelyTextAttachment(file: File): boolean {
-  const mimeType = file.type.toLowerCase();
-  if (mimeType.startsWith("text/")) {
-    return true;
-  }
-
-  if (
-    mimeType === "application/json" ||
-    mimeType === "application/xml" ||
-    mimeType === "application/javascript" ||
-    mimeType === "application/typescript" ||
-    mimeType === "application/x-sh" ||
-    mimeType.endsWith("+json") ||
-    mimeType.endsWith("+xml")
-  ) {
-    return true;
-  }
-
-  const extension = file.name.split(".").pop()?.toLowerCase();
-  return extension ? TEXT_ATTACHMENT_EXTENSIONS.has(extension) : false;
-}
-
-async function buildImageConversationAttachment(
-  file: File,
-): Promise<ConversationAttachment> {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("请选择有效的图片文件");
-  }
-
-  if (file.size > MAX_CONVERSATION_ATTACHMENT_BYTES) {
-    throw new Error("图片大小不能超过 1.5 MB");
-  }
-
-  const dataUrl = await readFileAsDataUrl(file);
-
-  return {
-    kind: "image",
-    fileName: file.name,
-    mimeType: file.type || "image/png",
-    sizeBytes: file.size,
-    dataBase64: extractBase64Payload(dataUrl),
-  };
-}
-
-async function buildFileConversationAttachment(
-  file: File,
-): Promise<ConversationAttachment> {
-  if (file.size > MAX_CONVERSATION_ATTACHMENT_BYTES) {
-    throw new Error("文件大小不能超过 1.5 MB");
-  }
-
-  const mimeType = file.type || "application/octet-stream";
-
-  if (isLikelyTextAttachment(file)) {
-    const textContent = await file.text();
-    const textBytes = new TextEncoder().encode(textContent).byteLength;
-
-    if (textBytes <= MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES) {
-      return {
-        kind: "file",
-        fileName: file.name,
-        mimeType,
-        sizeBytes: file.size,
-        textContent,
-      };
-    }
-  }
-
-  const dataUrl = await readFileAsDataUrl(file);
-  return {
-    kind: "file",
-    fileName: file.name,
-    mimeType,
-    sizeBytes: file.size,
-    dataBase64: extractBase64Payload(dataUrl),
-  };
-}
-
-function buildAttachmentConversationMessage(
-  content: string,
-  attachments: ConversationAttachment[],
-): OutgoingConversationMessage {
-  const contentType = inferConversationAttachmentContentType(attachments);
-
-  return {
-    content,
-    contentType,
-    metadata: {
-      contentType,
-      attachments,
-      ...(attachments.length === 1 ? { attachment: attachments[0] } : {}),
-    },
-  };
-}
-
-function ResizableDivider({
-  onResize,
-  direction,
-  className,
-}: {
-  onResize: (delta: number) => void;
-  direction: "horizontal" | "vertical";
-  className?: string;
-}) {
-  const startPosRef = useRef(0);
-  const isDraggingRef = useRef(false);
-
-  const handlePointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      isDraggingRef.current = true;
-      startPosRef.current = direction === "horizontal" ? e.clientX : e.clientY;
-      (e.target as HTMLDivElement).setPointerCapture(e.pointerId);
-    },
-    [direction],
-  );
-
-  const handlePointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (!isDraggingRef.current) return;
-      const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
-      const delta = currentPos - startPosRef.current;
-      startPosRef.current = currentPos;
-      onResize(delta);
-    },
-    [direction, onResize],
-  );
-
-  const handlePointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      isDraggingRef.current = false;
-      (e.target as HTMLDivElement).releasePointerCapture(e.pointerId);
-    },
-    [],
-  );
-
-  return (
-    <div
-      className={cn(
-        "shrink-0 bg-border/40 transition-colors hover:bg-primary/40 active:bg-primary/60",
-        direction === "horizontal"
-          ? "w-1 cursor-col-resize hover:w-1.5"
-          : "h-1 cursor-row-resize hover:h-1.5",
-        className,
-      )}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-    />
-  );
-}
-
-export function ConversationComposer({
-  onSend,
-  isBusy,
-  onCancel,
-  idlePlaceholder,
-  busyPlaceholder,
-  busyActionLabel,
-}: {
-  onSend: (
-    message: string | OutgoingConversationMessage,
-  ) => void | Promise<void>;
-  isBusy: boolean;
-  onCancel?: () => void;
-  idlePlaceholder?: string;
-  busyPlaceholder?: string;
-  busyActionLabel?: string;
-}) {
-  const [draft, setDraft] = useState("");
-  const [pendingAttachments, setPendingAttachments] = useState<
-    ConversationAttachment[]
-  >([]);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const { notify } = useToast();
-
-  const handleSend = useCallback(async () => {
-    const trimmed = draft.trim();
-    if (trimmed.length === 0 && pendingAttachments.length === 0) return;
-    try {
-      if (pendingAttachments.length === 0) {
-        await Promise.resolve(onSend(trimmed));
-      } else {
-        const content =
-          trimmed || describeConversationAttachmentsSummary(pendingAttachments);
-        await Promise.resolve(
-          onSend(
-            buildAttachmentConversationMessage(content, pendingAttachments),
-          ),
-        );
-      }
-      setDraft("");
-      setPendingAttachments([]);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
-    } catch {
-      // 父组件负责展示错误，composer 只保留输入内容。
-    }
-  }, [draft, onSend, pendingAttachments]);
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-        e.preventDefault();
-        void handleSend();
-      }
-    },
-    [handleSend],
-  );
-
-  const handleInput = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, []);
-
-  const handleAttachmentSelected = useCallback(
-    async (files: FileList | null, kind: "file" | "image") => {
-      if (!files || files.length === 0) {
-        return;
-      }
-
-      try {
-        const nextAttachments = await Promise.all(
-          Array.from(files).map((file) =>
-            kind === "image"
-              ? buildImageConversationAttachment(file)
-              : buildFileConversationAttachment(file),
-          ),
-        );
-        const mergedAttachments = [
-          ...pendingAttachments,
-          ...nextAttachments,
-        ] satisfies ConversationAttachment[];
-        if (
-          getConversationAttachmentTotalBytes(mergedAttachments) >
-          MAX_CONVERSATION_ATTACHMENT_TOTAL_BYTES
-        ) {
-          throw new Error("单条消息附件总大小不能超过 10 MB");
-        }
-
-        setPendingAttachments(mergedAttachments);
-      } catch (error) {
-        notify({
-          title: "上传失败",
-          description:
-            error instanceof Error ? error.message : "文件读取失败，请重试",
-          variant: "error",
-        });
-      }
-    },
-    [notify, pendingAttachments],
-  );
-
-  const handleFileChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      void handleAttachmentSelected(event.target.files, "file");
-      event.target.value = "";
-    },
-    [handleAttachmentSelected],
-  );
-
-  const handleImageChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      void handleAttachmentSelected(event.target.files, "image");
-      event.target.value = "";
-    },
-    [handleAttachmentSelected],
-  );
-
-  const handleRemoveAttachment = useCallback((index: number) => {
-    setPendingAttachments((current) =>
-      current.filter((_, attachmentIndex) => attachmentIndex !== index),
-    );
-  }, []);
-
-  const handleFileClick = useCallback(() => {
-    if (!isBusy) {
-      fileInputRef.current?.click();
-    }
-  }, [isBusy]);
-
-  const handleImageClick = useCallback(() => {
-    if (!isBusy) {
-      imageInputRef.current?.click();
-    }
-  }, [isBusy]);
-
-  return (
-    <div className="shrink-0 px-4 pt-2 pb-4">
-      <div className="mx-auto w-full max-w-3xl rounded-panel border border-border bg-surface shadow-popover">
-        {pendingAttachments.length > 0 ? (
-          <div
-            className="flex flex-wrap gap-2 border-b border-border px-3 py-3"
-            data-testid="attachment-draft-list"
-          >
-            {pendingAttachments.map((attachment, index) => (
-              <div
-                key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
-                className="flex min-w-0 max-w-full items-start gap-2 rounded-card border border-border bg-surface-elevated px-3 py-2"
-              >
-                <div className="mt-0.5 rounded-md bg-surface p-2 text-muted-foreground">
-                  {attachment.kind === "image" ? (
-                    <ImageIcon className="h-4 w-4" />
-                  ) : (
-                    <FileText className="h-4 w-4" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {attachment.fileName}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {attachment.mimeType} ·{" "}
-                    {attachment.sizeBytes < 1024 * 1024
-                      ? `${(attachment.sizeBytes / 1024).toFixed(1)} KB`
-                      : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => handleRemoveAttachment(index)}
-                  disabled={isBusy}
-                  className="ml-1 h-6 w-6 shrink-0 text-muted-foreground"
-                  aria-label={`移除附件 ${attachment.fileName}`}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          data-testid="conversation-file-input"
-          onChange={handleFileChange}
-        />
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          data-testid="conversation-image-input"
-          onChange={handleImageChange}
-        />
-
-        <Textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          placeholder={
-            isBusy
-              ? (busyPlaceholder ?? "Agent 正在思考中...")
-              : (idlePlaceholder ?? "输入消息，Enter 发送，Shift+Enter 换行")
-          }
-          className={cn(
-            "max-h-[160px] min-h-[44px] resize-none rounded-none border-0 bg-transparent px-4 py-3",
-            "focus-visible:ring-0",
-          )}
-          rows={1}
-          disabled={isBusy}
-        />
-
-        <div className="flex items-center gap-1 px-2 pb-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleFileClick}
-            disabled={isBusy}
-            className="text-muted-foreground"
-            title="上传文件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleImageClick}
-            disabled={isBusy}
-            className="text-muted-foreground"
-            title="上传图片"
-          >
-            <ImagePlus className="h-4 w-4" />
-          </Button>
-
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden text-[11px] text-muted-foreground sm:inline">
-              Enter 发送 · Shift+Enter 换行
-            </span>
-
-            {isBusy && onCancel ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onCancel}
-                className="border-error/40 text-error hover:border-error/60 hover:bg-error/10"
-              >
-                <Square className="h-3.5 w-3.5" />
-                停止
-              </Button>
-            ) : isBusy ? (
-              <Button size="sm" disabled>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {busyActionLabel ?? "发送中"}
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => void handleSend()}
-                disabled={
-                  draft.trim().length === 0 && pendingAttachments.length === 0
-                }
-              >
-                <Send className="h-3.5 w-3.5" />
-                发送
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function ConnectionError({ error }: { error: string }) {
@@ -593,123 +98,23 @@ export function AgentConversationPage({
         ? "无沙箱"
         : "加载中";
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [leftWidth, setLeftWidth] = useState<number | null>(null);
-  const [rightTopHeight, setRightTopHeight] = useState<number | null>(null);
   const [isRestartingConversation, setIsRestartingConversation] =
     useState(false);
 
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
-  const authTokenRef = useRef(authToken);
-  authTokenRef.current = authToken;
-
-  useEffect(() => {
-    if (!agentQuery.data) {
-      return;
-    }
-
-    const a = actionsRef.current;
-    const token = authTokenRef.current;
-    a.connect({
-      conversationId,
-      agentId,
-      agentName: "",
-      runtimeMode: agentQuery.data.runtimeMode,
-      authToken: token,
-    });
-    if (hasSandbox) {
-      if (workspacePreviewId) {
-        void a.loadWorkspacePreview(conversationId, workspacePreviewId);
-      }
-      void a.loadWorkspaceTree(conversationId);
-    }
-    void a.loadHistory(conversationId).finally(() => {
-      if (hasSandbox) {
-        void a.loadWorkspaceTree(conversationId);
-      }
-    });
-
-    return () => {
-      a.disconnect();
-    };
-  }, [
+  useConversationWorkspaceSync({
     agentId,
-    agentQuery.data,
     conversationId,
+    agent: agentQuery.data,
     hasSandbox,
     workspacePreviewId,
-  ]);
-
-  useEffect(() => {
-    if (status !== "executing" || isRestartingConversation) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      const a = actionsRef.current;
-      void a.loadHistory(conversationId);
-      if (hasSandbox) {
-        void a.loadWorkspaceTree(conversationId);
-      }
-    }, EXECUTING_HISTORY_SYNC_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [conversationId, hasSandbox, isRestartingConversation, status]);
-
-  useEffect(() => {
-    if (
-      !hasSandbox ||
-      sandboxStatus !== "running" ||
-      isRestartingConversation
-    ) {
-      return;
-    }
-
-    void actionsRef.current.loadWorkspaceTree(conversationId);
-  }, [conversationId, hasSandbox, isRestartingConversation, sandboxStatus]);
-
-  const initLeftWidth = useCallback(() => {
-    if (leftWidth !== null) return leftWidth;
-    const container = containerRef.current;
-    if (!container) return MIN_LEFT_WIDTH;
-    return container.offsetWidth * DEFAULT_LEFT_RATIO;
-  }, [leftWidth]);
-
-  const handleHorizontalResize = useCallback(
-    (delta: number) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const totalW = container.offsetWidth;
-      const current = leftWidth ?? totalW * DEFAULT_LEFT_RATIO;
-      const next = Math.max(
-        MIN_LEFT_WIDTH,
-        Math.min(totalW - MIN_RIGHT_WIDTH, current + delta),
-      );
-      setLeftWidth(next);
-    },
-    [leftWidth],
-  );
-
-  const handleVerticalResize = useCallback(
-    (delta: number) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const rightColumn = container.querySelector("[data-right-column]");
-      if (!rightColumn) return;
-      const totalH = rightColumn.clientHeight;
-      const minH = 120;
-      const current = rightTopHeight ?? totalH * 0.6;
-      const next = Math.max(minH, Math.min(totalH - minH, current + delta));
-      setRightTopHeight(next);
-    },
-    [rightTopHeight],
-  );
+    status,
+    sandboxStatus,
+    isRestartingConversation,
+    authToken,
+    actions,
+  });
 
   const isExecuting = status === "executing";
-  const currentLeftWidth = leftWidth ?? initLeftWidth();
 
   const isSubAgentView = agentViewStack.length > 0;
   const currentHandle = isSubAgentView
@@ -931,102 +336,60 @@ export function AgentConversationPage({
           <RuntimeError error={executionError} />
         ) : null}
 
-        <div ref={containerRef} className="flex flex-1 overflow-hidden">
-          <div
-            className={cn(
-              "flex min-w-0 flex-col overflow-hidden",
-              hasSandbox
-                ? "w-full lg:w-[var(--conversation-left-width)] lg:min-w-[360px] lg:shrink-0"
-                : "flex-1",
-            )}
-            style={
-              hasSandbox
-                ? ({
-                    "--conversation-left-width": `${currentLeftWidth}px`,
-                  } as CSSProperties)
-                : undefined
-            }
-          >
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <MessageList
-                messages={displayMessages}
-                isExecuting={isExecuting && !isSubAgentView}
-                runtimeMode={
-                  runtimeMode === "no_sandbox" ? "no_sandbox" : "sandbox"
-                }
-                loadedPublishedVersionId={loadedPublishedVersionId}
-                onRestartConversation={handleRestartConversation}
-              />
-            </div>
-            {!isSubAgentView && (
+        <ConversationLayout
+          hasSandbox={hasSandbox}
+          messages={
+            <MessageList
+              messages={displayMessages}
+              isExecuting={isExecuting && !isSubAgentView}
+              runtimeMode={runtimeMode === "no_sandbox" ? "no_sandbox" : "sandbox"}
+              loadedPublishedVersionId={loadedPublishedVersionId}
+              onRestartConversation={handleRestartConversation}
+            />
+          }
+          composer={
+            !isSubAgentView ? (
               <ConversationComposer
                 onSend={actions.sendMessage}
                 isBusy={isExecuting}
                 onCancel={actions.cancelExecution}
               />
-            )}
-          </div>
-
-          {hasSandbox ? (
+            ) : null
+          }
+          computerPanel={
+            <SandboxComputerPanel
+              conversationId={conversationId}
+              agentName={agentName || "Agent"}
+              terminalEntries={terminalEntries}
+              fileChanges={fileChanges}
+              sandboxStatus={sandboxStatus}
+              isExecuting={isExecuting}
+              suspendPolling={isRestartingConversation}
+              activeToolCall={activeToolCall}
+            />
+          }
+          workspacePanel={
             <>
-              <ResizableDivider
-                className="hidden lg:flex"
-                onResize={handleHorizontalResize}
-                direction="horizontal"
-              />
-
-              <div
-                data-right-column
-                data-testid="agent-conversation-context-pane"
-                className="hidden flex-1 flex-col overflow-hidden lg:flex"
-                style={{ minWidth: MIN_RIGHT_WIDTH }}
-              >
+              {workspaceSource === "snapshot_preview" ? (
                 <div
-                  className="overflow-hidden"
-                  style={{
-                    height: rightTopHeight ? `${rightTopHeight}px` : "60%",
-                  }}
+                  data-testid="workspace-snapshot-preview-hint"
+                  className="rounded-card border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
                 >
-                  <SandboxComputerPanel
-                    conversationId={conversationId}
-                    agentName={agentName || "Agent"}
-                    terminalEntries={terminalEntries}
-                    fileChanges={fileChanges}
-                    sandboxStatus={sandboxStatus}
-                    isExecuting={isExecuting}
-                    suspendPolling={isRestartingConversation}
-                    activeToolCall={activeToolCall}
-                  />
+                  当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
                 </div>
+              ) : null}
 
-                <ResizableDivider
-                  onResize={handleVerticalResize}
-                  direction="vertical"
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <WorkspaceFileTree
+                  tree={fileTree}
+                  selectedPath={selectedFilePath}
+                  onSelectFile={actions.selectFile}
+                  isLoading={workspaceTreeLoading}
                 />
-
-                <div className="flex flex-1 flex-col gap-2 overflow-hidden p-2 pt-0">
-                  {workspaceSource === "snapshot_preview" ? (
-                    <div
-                      data-testid="workspace-snapshot-preview-hint"
-                      className="rounded-card border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
-                    >
-                      当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
-                    </div>
-                  ) : null}
-
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <WorkspaceFileTree
-                      tree={fileTree}
-                      selectedPath={selectedFilePath}
-                      onSelectFile={actions.selectFile}
-                      isLoading={workspaceTreeLoading}
-                    />
-                  </div>
-                </div>
               </div>
             </>
-          ) : null}
-        </div>
+          }
+        />
       </div>
     </SubAgentNavContext.Provider>
   );

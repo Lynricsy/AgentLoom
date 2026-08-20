@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { cva } from 'class-variance-authority'
 import { Bell } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
@@ -6,7 +6,6 @@ import { useUnreadCount } from '../api/notificationQueries'
 import {
   useIsDropdownOpen,
   useNotificationActions,
-  useNotificationCount,
 } from '../stores/notificationStore'
 import { NotificationDropdown } from './NotificationDropdown'
 
@@ -28,18 +27,9 @@ function formatCount(count: number): string {
 
 export function NotificationBell() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [hasSyncedCount, setHasSyncedCount] = useState(false)
-  const unreadCount = useNotificationCount()
   const isDropdownOpen = useIsDropdownOpen()
-  const { setDropdownOpen, setUnreadCount } = useNotificationActions()
+  const { setDropdownOpen } = useNotificationActions()
   const { data } = useUnreadCount()
-
-  useEffect(() => {
-    if (data?.data.count != null) {
-      setUnreadCount(data.data.count)
-      setHasSyncedCount(true)
-    }
-  }, [data?.data.count, setUnreadCount])
 
   useEffect(() => {
     if (!isDropdownOpen) {
@@ -67,7 +57,7 @@ export function NotificationBell() {
     }
   }, [isDropdownOpen, setDropdownOpen])
 
-  const displayCount = hasSyncedCount ? unreadCount : (data?.data.count ?? 0)
+  const displayCount = data?.data.count ?? 0
 
   return (
     <div className="relative" ref={containerRef}>

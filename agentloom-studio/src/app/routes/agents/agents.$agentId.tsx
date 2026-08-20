@@ -6,10 +6,10 @@ import { useCallback, useRef, useState } from "react";
 
 import {
   AgentCanvas,
-  useAgentCanvasActions,
   useAgentCanvasSaveStatus,
   useAgentCanvasStore,
 } from "@/features/agent-canvas";
+import { useAgentCanvasPersistence } from "@/features/agent-canvas";
 import { ReadOnlyCanvasBanner } from "@/features/canvas/components/readonly/ReadOnlyCanvasBanner";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { AgentCreateVersionDialog } from "@/features/agent/components/AgentCreateVersionDialog";
@@ -69,8 +69,8 @@ function AgentCanvasPage() {
   const { agentId } = agentDetailRoute.useParams();
   const agentName = useAgentCanvasStore((state) => state.agentName);
   const { isDirty, isSaving } = useAgentCanvasSaveStatus();
-  const { saveCanvas } = useAgentCanvasActions();
   const { data: agent } = useAgent(agentId);
+  const { saveCanvas } = useAgentCanvasPersistence(agentId);
   const { notify } = useToast();
   /** 小屏（<lg）画布只读浏览，工具条同步收起写操作入口 */
   const isMobileReadOnly = !useMediaQuery(LG_QUERY);

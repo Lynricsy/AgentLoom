@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   RouterProvider,
@@ -102,7 +102,7 @@ describe('NotificationDropdown', () => {
     ).toHaveTextContent('执行失败')
   })
 
-  it('点击通知会调用 markAsRead 并更新本地已读状态', async () => {
+  it('点击通知只调用 markAsRead mutation，不写入本地实体缓存', async () => {
     const markAsReadMutate = vi.fn().mockResolvedValue({ data: undefined })
 
     useMarkAsReadMock.mockReturnValue({
@@ -129,13 +129,7 @@ describe('NotificationDropdown', () => {
     await user.click(await screen.findByTestId('notification-item-notification-1'))
 
     expect(markAsReadMutate).toHaveBeenCalledWith('notification-1')
-    await waitFor(() => {
-      expect(
-        useNotificationStore.getState().notifications.find(
-          (item) => item.id === 'notification-1',
-        )?.isRead,
-      ).toBe(true)
-    })
+    expect('notifications' in useNotificationStore.getState()).toBe(false)
   })
 
   it('空列表时显示空状态', async () => {
@@ -160,7 +154,7 @@ describe('NotificationDropdown', () => {
     )
   })
 
-  it('点击全部标记已读会调用批量 mutation 并清零未读数', async () => {
+  it('点击全部标记已读只调用批量 mutation', async () => {
     const markAllAsReadMutate = vi.fn().mockResolvedValue({ data: undefined })
 
     useMarkAllAsReadMock.mockReturnValue({
@@ -184,20 +178,13 @@ describe('NotificationDropdown', () => {
       error: null,
     })
 
-    useNotificationStore.getState().actions.setUnreadCount(2)
-
     const user = userEvent.setup()
     renderDropdown()
 
     await user.click(await screen.findByTestId('mark-all-read'))
 
     expect(markAllAsReadMutate).toHaveBeenCalled()
-    await waitFor(() => {
-      expect(useNotificationStore.getState().unreadCount).toBe(0)
-      expect(
-        useNotificationStore.getState().notifications.every((item) => item.isRead),
-      ).toBe(true)
-    })
+    expect('unreadCount' in useNotificationStore.getState()).toBe(false)
   })
 
   it('底部「查看全部通知」指向通知中心', async () => {

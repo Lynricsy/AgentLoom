@@ -57,6 +57,7 @@ import { useWorkflowStore } from "../stores/workflowStore";
 import { CreateWorkflowDialog } from "./CreateWorkflowDialog";
 import { ArchiveDialog } from "./ArchiveDialog";
 import type { WorkflowDefinitionSummary, WorkflowStatus } from "../types";
+import type { WorkflowListSearch } from "../lib/workflowListSearch";
 
 type ViewMode = "grid" | "list";
 
@@ -404,12 +405,19 @@ function WorkflowCardSkeleton() {
   );
 }
 
-export function WorkflowListPage() {
+interface WorkflowListPageProps {
+  filters: WorkflowListSearch;
+  onFiltersChange: (filters: Partial<WorkflowListSearch>) => void;
+  onPageChange: (page: number) => void;
+}
+
+export function WorkflowListPage({
+  filters,
+  onFiltersChange,
+  onPageChange,
+}: WorkflowListPageProps) {
   const navigate = useNavigate();
   const { notify } = useToast();
-  const filters = useWorkflowStore((s) => s.filters);
-  const setFilters = useWorkflowStore((s) => s.setFilters);
-  const setPage = useWorkflowStore((s) => s.setPage);
   const selectedWorkflowIds = useWorkflowStore((s) => s.selectedWorkflowIds);
   const toggleSelection = useWorkflowStore((s) => s.toggleSelection);
   const selectAll = useWorkflowStore((s) => s.selectAll);
@@ -423,6 +431,10 @@ export function WorkflowListPage() {
   );
 
   const exportWorkflow = useExportWorkflow();
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
+
 
   const { data, isLoading, isError, refetch } = useWorkflowList({
     page: filters.page,
@@ -449,23 +461,23 @@ export function WorkflowListPage() {
   const handleSearch = useCallback(
     (value: string) => {
       setSearchInput(value);
-      setFilters({ search: value });
+      onFiltersChange({ search: value });
     },
-    [setFilters],
+    [onFiltersChange],
   );
 
   const handleStatusFilter = useCallback(
     (value: string) => {
-      setFilters({ status: value === ANY_STATUS ? "" : value });
+      onFiltersChange({ status: value === ANY_STATUS ? "" : value });
     },
-    [setFilters],
+    [onFiltersChange],
   );
 
   const handleSourceKindChange = useCallback(
     (value: ResourceSourceKind) => {
-      setFilters({ sourceKind: value });
+      onFiltersChange({ sourceKind: value });
     },
-    [setFilters],
+    [onFiltersChange],
   );
 
   const handleWorkflowClick = useCallback(
@@ -536,15 +548,15 @@ export function WorkflowListPage() {
 
   const handlePrevPage = useCallback(() => {
     if (filters.page > 1) {
-      setPage(filters.page - 1);
+      onPageChange(filters.page - 1);
     }
-  }, [filters.page, setPage]);
+  }, [filters.page, onPageChange]);
 
   const handleNextPage = useCallback(() => {
     if (meta && filters.page < meta.totalPages) {
-      setPage(filters.page + 1);
+      onPageChange(filters.page + 1);
     }
-  }, [filters.page, meta, setPage]);
+  }, [filters.page, meta, onPageChange]);
 
   const isFiltered = Boolean(filters.search || filters.status);
 

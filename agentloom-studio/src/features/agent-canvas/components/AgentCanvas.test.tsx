@@ -43,8 +43,7 @@ const mocks = vi.hoisted(() => ({
   selectNode: vi.fn(),
   selectEdge: vi.fn(),
   setViewport: vi.fn(),
-  loadAgent: vi.fn(),
-  reset: vi.fn(),
+  hydrateCanvas: vi.fn(),
   onDragOver: vi.fn(),
   onDrop: vi.fn(),
 }));
@@ -80,6 +79,10 @@ vi.mock('../hooks/useAgentCanvasDrop', () => ({
     onDrop: mocks.onDrop,
   }),
 }));
+vi.mock('../hooks/useAgentCanvasHydration', () => ({
+  useAgentCanvasHydration: (agentId: string) => mocks.hydrateCanvas(agentId),
+}));
+
 
 vi.mock('../stores/agent-canvas.store', () => ({
   useAgentCanvasNodes: () => mocks.nodes,
@@ -93,8 +96,6 @@ vi.mock('../stores/agent-canvas.store', () => ({
     selectNode: mocks.selectNode,
     selectEdge: mocks.selectEdge,
     setViewport: mocks.setViewport,
-    loadAgent: mocks.loadAgent,
-    reset: mocks.reset,
   }),
 }));
 
@@ -138,8 +139,7 @@ describe('AgentCanvas', () => {
     mocks.selectNode.mockReset();
     mocks.selectEdge.mockReset();
     mocks.setViewport.mockReset();
-    mocks.loadAgent.mockReset();
-    mocks.reset.mockReset();
+    mocks.hydrateCanvas.mockReset();
   });
 
   afterEach(() => {
@@ -151,7 +151,7 @@ describe('AgentCanvas', () => {
 
     const isValidConnection = mocks.lastReactFlowProps?.isValidConnection;
 
-    expect(mocks.loadAgent).toHaveBeenCalledWith('agent-1');
+    expect(mocks.hydrateCanvas).toHaveBeenCalledWith('agent-1');
     expect(Object.keys(mocks.lastReactFlowProps?.nodeTypes ?? {})).toEqual(
       expect.arrayContaining(['memory', 'output']),
     );

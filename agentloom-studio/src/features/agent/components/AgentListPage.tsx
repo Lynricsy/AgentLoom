@@ -64,6 +64,7 @@ import { useDeleteAgent } from "../api/agentMutations";
 import { useAgentStore } from "../stores/agentStore";
 import { CreateOrchestrationDialog } from "./CreateOrchestrationDialog";
 import type { AgentDefinitionSummary, AgentStatus } from "../types";
+import type { AgentListSearch } from "../lib/agentListSearch";
 
 type ViewMode = "grid" | "list";
 
@@ -393,12 +394,19 @@ function AgentCardSkeleton() {
   );
 }
 
-export function AgentListPage() {
+interface AgentListPageProps {
+  filters: AgentListSearch;
+  onFiltersChange: (filters: Partial<AgentListSearch>) => void;
+  onPageChange: (page: number) => void;
+}
+
+export function AgentListPage({
+  filters,
+  onFiltersChange,
+  onPageChange,
+}: AgentListPageProps) {
   const navigate = useNavigate();
   const { notify } = useToast();
-  const filters = useAgentStore((s) => s.filters);
-  const setFilters = useAgentStore((s) => s.setFilters);
-  const setPage = useAgentStore((s) => s.setPage);
   const selectedAgentIds = useAgentStore((s) => s.selectedAgentIds);
   const toggleAgentSelection = useAgentStore((s) => s.toggleAgentSelection);
   const selectAllAgents = useAgentStore((s) => s.selectAllAgents);
@@ -410,6 +418,10 @@ export function AgentListPage() {
   const [deleteTarget, setDeleteTarget] = useState<AgentDefinitionSummary | null>(
     null,
   );
+
+  useEffect(() => {
+    setSearchInput(filters.search);
+  }, [filters.search]);
 
   const deleteAgent = useDeleteAgent();
 
@@ -438,23 +450,23 @@ export function AgentListPage() {
   const handleSearch = useCallback(
     (value: string) => {
       setSearchInput(value);
-      setFilters({ search: value });
+      onFiltersChange({ search: value });
     },
-    [setFilters],
+    [onFiltersChange],
   );
 
   const handleStatusFilter = useCallback(
     (value: string) => {
-      setFilters({ status: value === ANY_STATUS ? "" : value });
+      onFiltersChange({ status: value === ANY_STATUS ? "" : value });
     },
-    [setFilters],
+    [onFiltersChange],
   );
 
   const handleSourceKindChange = useCallback(
     (value: ResourceSourceKind) => {
-      setFilters({ sourceKind: value });
+      onFiltersChange({ sourceKind: value });
     },
-    [setFilters],
+    [onFiltersChange],
   );
 
   const handleAgentClick = useCallback(
@@ -520,15 +532,15 @@ export function AgentListPage() {
 
   const handlePrevPage = useCallback(() => {
     if (filters.page > 1) {
-      setPage(filters.page - 1);
+      onPageChange(filters.page - 1);
     }
-  }, [filters.page, setPage]);
+  }, [filters.page, onPageChange]);
 
   const handleNextPage = useCallback(() => {
     if (meta && filters.page < meta.totalPages) {
-      setPage(filters.page + 1);
+      onPageChange(filters.page + 1);
     }
-  }, [filters.page, meta, setPage]);
+  }, [filters.page, meta, onPageChange]);
 
   const isFiltered = Boolean(filters.search || filters.status);
 
