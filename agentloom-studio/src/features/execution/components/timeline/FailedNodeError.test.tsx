@@ -68,7 +68,7 @@ describe('FailedNodeError', () => {
           attempts: [
             {
               attempt: 2,
-              message: '第二次重试仍失败',
+              error: '第二次重试仍失败',
               timestamp: '2026-03-10T10:05:00.000Z',
             },
           ],

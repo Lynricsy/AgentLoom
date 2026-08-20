@@ -1,3 +1,4 @@
+import type { WorkflowDefinitionListResponseSwaggerDto } from '@agentloom/api-client'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
 import type {
@@ -9,10 +10,11 @@ import type {
   WorkflowExportEnvelope,
   WorkflowImportFileContent,
   WorkflowImportPayload,
-  WorkflowListResponse,
 } from '../types'
 
-export async function listWorkflows(params: ListWorkflowsParams = {}) {
+export async function listWorkflows(
+  params: ListWorkflowsParams = {},
+): Promise<WorkflowDefinitionListResponseSwaggerDto> {
   const searchParams: Record<string, string> = {}
   if (params.page) searchParams.page = String(params.page)
   if (params.pageSize) searchParams.pageSize = String(params.pageSize)
@@ -22,7 +24,7 @@ export async function listWorkflows(params: ListWorkflowsParams = {}) {
 
   return apiClient
     .get('workflow-definitions', { searchParams })
-    .json<WorkflowListResponse>()
+    .json<WorkflowDefinitionListResponseSwaggerDto>()
 }
 
 export async function createWorkflow(payload: CreateWorkflowPayload) {

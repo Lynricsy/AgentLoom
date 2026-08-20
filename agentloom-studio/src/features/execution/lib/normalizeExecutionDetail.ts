@@ -1,4 +1,7 @@
-import type { ExecutionResponse } from '../api/executionApi'
+import type {
+  ExecutionResponse,
+  ExecutionStepResponse,
+} from '../api/executionApi'
 import type {
   ExecutionDetail,
   ExecutionStep,
@@ -6,57 +9,6 @@ import type {
   ExecutionStepErrorDetail,
   ExecutionStepStatus,
 } from '../types'
-
-interface RawExecutionStep {
-  id: string
-  executionId: string
-  nodeId: string
-  input?: Record<string, unknown> | null
-  nodeType?: string | null
-  nodeData?: Record<string, unknown> | null
-  result?: Record<string, unknown> | null
-  checkpointData?: Record<string, unknown> | null
-  errorMessage?: string | ExecutionStepErrorDetail | null
-  startedAt?: string | null
-  completedAt?: string | null
-  stepOrder?: number
-  status:
-    | 'pending'
-    | 'queued'
-    | 'running'
-    | 'waiting_intervention'
-    | 'waiting_for_intervention'
-    | 'completed'
-    | 'failed'
-    | 'skipped'
-    | 'cancelled'
-}
-
-type RawExecutionDetail = Omit<ExecutionResponse, 'definitionSnapshot'> & {
-  definitionSnapshot?: {
-    nodes?: unknown[]
-    edges?: unknown[]
-  } | null
-  workflowVersion?: {
-    id?: string
-    graph?: {
-      nodes?: unknown[]
-      edges?: unknown[]
-    }
-  } | null
-  steps?: RawExecutionStep[]
-}
-
-interface GraphNodeData {
-  label?: string
-  nodeType?: string
-}
-
-interface GraphNode {
-  id?: string
-  data?: GraphNodeData
-  type?: string
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -66,11 +18,9 @@ function toRecordOrNull(value: unknown): Record<string, unknown> | null {
   return isRecord(value) ? value : null
 }
 
-function toErrorMessage(value: RawExecutionStep['errorMessage']): string | null {
-  if (typeof value === 'string') {
-    return value
-  }
-
+function toErrorMessage(
+  value: ExecutionStepResponse['errorMessage'],
+): string | null {
   const detail = toErrorDetail(value)
 
   if (detail) {
@@ -81,7 +31,7 @@ function toErrorMessage(value: RawExecutionStep['errorMessage']): string | null 
 }
 
 function toErrorDetail(
-  value: RawExecutionStep['errorMessage'],
+  value: ExecutionStepResponse['errorMessage'],
 ): ExecutionStepErrorDetail | null {
   if (!isRecord(value)) {
     return null
@@ -90,12 +40,12 @@ function toErrorDetail(
   const attempts = toRetryHistory(value.attempts)
 
   return {
-    message: typeof value.message === 'string' ? value.message : null,
-    title: typeof value.title === 'string' ? value.title : null,
-    detail: typeof value.detail === 'string' ? value.detail : null,
-    type: typeof value.type === 'string' ? value.type : null,
-    nodeId: typeof value.nodeId === 'string' ? value.nodeId : null,
-    stack: typeof value.stack === 'string' ? value.stack : undefined,
+    ...(typeof value.message === 'string' ? { message: value.message } : {}),
+    ...(typeof value.title === 'string' ? { title: value.title } : {}),
+    ...(typeof value.detail === 'string' ? { detail: value.detail } : {}),
+    ...(typeof value.type === 'string' ? { type: value.type } : {}),
+    ...(typeof value.nodeId === 'string' ? { nodeId: value.nodeId } : {}),
+    ...(typeof value.stack === 'string' ? { stack: value.stack } : {}),
     errors: Array.isArray(value.errors)
       ? value.errors.flatMap((entry) => {
           if (!isRecord(entry)) {
@@ -145,7 +95,9 @@ function toErrorDetail(
   }
 }
 
-function toStepStatus(status: RawExecutionStep['status']): ExecutionStepStatus {
+function toStepStatus(
+  status: ExecutionStepResponse['status'],
+): ExecutionStepStatus {
   return status === 'waiting_intervention' ? 'waiting_for_intervention' : status
 }
 
@@ -176,33 +128,42 @@ function toRetryHistory(value: unknown): ExecutionStepAttempt[] {
   })
 }
 
-function readNodeMeta(rawStep: RawExecutionStep, graphNodes: GraphNode[]): {
+function readNodeMeta(
+  rawStep: ExecutionStepResponse,
+  graphNodes: Record<string, unknown>[],
+): {
   nodeName: string
   nodeType: string
 } {
   const graphNode = graphNodes.find((node) => node.id === rawStep.nodeId)
   const graphData = isRecord(graphNode?.data) ? graphNode.data : undefined
-  const rawNodeData = rawStep.nodeData
+  const rawNodeData = isRecord(rawStep.nodeData) ? rawStep.nodeData : undefined
 
   const nodeName =
     (typeof graphData?.label === 'string' && graphData.label) ||
     (typeof rawNodeData?.label === 'string' && rawNodeData.label) ||
     rawStep.nodeId
 
+  const graphNodeType =
+    typeof graphNode?.type === 'string' ? graphNode.type : undefined
   const nodeType =
     (typeof graphData?.nodeType === 'string' && graphData.nodeType) ||
     (typeof rawNodeData?.nodeType === 'string' && rawNodeData.nodeType) ||
     rawStep.nodeType ||
-    graphNode?.type ||
+    graphNodeType ||
     'unknown'
 
   return { nodeName, nodeType }
 }
 
-function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): ExecutionStep {
+function normalizeStep(
+  rawStep: ExecutionStepResponse,
+  graphNodes: Record<string, unknown>[],
+): ExecutionStep {
   const { nodeName, nodeType } = readNodeMeta(rawStep, graphNodes)
   const errorDetail = toErrorDetail(rawStep.errorMessage)
-  const checkpointRetries = toRetryHistory(rawStep.checkpointData?.attempts)
+  const checkpointData = toRecordOrNull(rawStep.checkpointData)
+  const checkpointRetries = toRetryHistory(checkpointData?.attempts)
   const retryHistory =
     checkpointRetries.length > 0 ? checkpointRetries : toRetryHistory(errorDetail?.attempts)
 
@@ -222,7 +183,7 @@ function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): Exec
     completedAt: rawStep.completedAt ?? null,
     retryCount: retryHistory.length,
     retryHistory,
-    checkpointData: rawStep.checkpointData ?? null,
+    checkpointData,
     stepOrder: rawStep.stepOrder,
   }
 }
@@ -230,24 +191,28 @@ function normalizeStep(rawStep: RawExecutionStep, graphNodes: GraphNode[]): Exec
 export function normalizeExecutionDetail(
   execution: ExecutionResponse,
 ): ExecutionDetail {
-  const rawExecution = execution as RawExecutionDetail
-  const fallbackGraph = {
-    nodes: rawExecution.definitionSnapshot?.nodes ?? [],
-    edges: rawExecution.definitionSnapshot?.edges ?? [],
-  }
-  const workflowGraph = rawExecution.workflowVersion?.graph ?? fallbackGraph
-  const graphNodes = Array.isArray(workflowGraph.nodes)
-    ? workflowGraph.nodes.filter(isRecord) as GraphNode[]
+  const definitionSnapshot = isRecord(execution.definitionSnapshot)
+    ? execution.definitionSnapshot
+    : {}
+  const graphNodes = Array.isArray(definitionSnapshot.nodes)
+    ? definitionSnapshot.nodes.filter(isRecord)
+    : []
+  const graphEdges = Array.isArray(definitionSnapshot.edges)
+    ? definitionSnapshot.edges
     : []
 
   return {
     ...execution,
-    steps: (rawExecution.steps ?? []).map((step) => normalizeStep(step, graphNodes)),
+    steps: (execution.steps ?? []).map((step) =>
+      normalizeStep(step, graphNodes),
+    ),
     workflowVersion: {
-      id: rawExecution.workflowVersion?.id ?? execution.workflowVersionId ?? 'unknown-workflow-version',
+      id: execution.workflowVersionId,
       graph: {
-        nodes: Array.isArray(workflowGraph.nodes) ? workflowGraph.nodes : [],
-        edges: Array.isArray(workflowGraph.edges) ? workflowGraph.edges : [],
+        nodes: Array.isArray(definitionSnapshot.nodes)
+          ? definitionSnapshot.nodes
+          : [],
+        edges: graphEdges,
       },
     },
   }

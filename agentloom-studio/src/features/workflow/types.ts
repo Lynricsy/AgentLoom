@@ -2,6 +2,9 @@ import type {
   CreateVersionDto,
   CreateWorkflowDefinitionDto,
   PublishWorkflowDto,
+  WorkflowDefinitionDetailResponseSwaggerDtoData,
+  WorkflowDefinitionListResponseSwaggerDto,
+  WorkflowDefinitionListResponseSwaggerDtoDataInner,
 } from '@agentloom/api-client'
 import type { WorkflowGraphViewport } from '@agentloom/contracts'
 import type { CanvasEdge, CanvasNode } from '@/features/canvas'
@@ -51,32 +54,22 @@ export interface WorkflowInputSchema {
   fields: WorkflowInputFieldDefinition[]
 }
 
-/**
- * 列表行（server `WorkflowDefinitionResponseDto`）。
- * server 的列表序列化刻意排除 nodes/edges/viewport/inputSchema 大字段，
- * 因此列表行**没有**图结构 —— 需要图结构的请求详情接口拿 `WorkflowDefinition`。
- */
-export interface WorkflowDefinitionSummary {
-  id: string
-  tenantId: string
-  name: string
-  slug: string
-  description: string | null
-  icon: string | null
-  version: number
-  status: WorkflowStatus
-  publishedVersionId: string | null
-  publishedReleaseNumber: number | null
-  metadata: Record<string, unknown> | null
-  createdBy: string
-  updatedBy: string
-  createdAt: string
-  updatedAt: string
-  resourceSourceKind: ResourceSourceKind
-}
+/** 列表接口的 wire 行类型；图结构只存在于详情响应。 */
+export type WorkflowDefinitionSummary =
+  WorkflowDefinitionListResponseSwaggerDtoDataInner
 
-/** 详情（server `WorkflowDefinitionDetailResponseDto`），在列表行之上带图结构 */
-export interface WorkflowDefinition extends WorkflowDefinitionSummary {
+/**
+ * 详情 wire 类型上的 Studio 图编辑视图。
+ *
+ * 标量字段全部来自生成的详情 wire 类型（单一事实源）；nodes/edges/viewport/
+ * inputSchema 用 Omit 摘掉后换成画布领域类型——OpenAPI 3.0 无法无损表达
+ * React Flow 的动态 data/style 字典与 extent 元组，生成模型在这些位置退化为
+ * `{}`/`any`，不能反向充当画布的编辑态模型。
+ */
+export type WorkflowDefinition = Omit<
+  WorkflowDefinitionDetailResponseSwaggerDtoData,
+  'nodes' | 'edges' | 'viewport' | 'inputSchema'
+> & {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport: WorkflowGraphViewport | null
@@ -211,4 +204,4 @@ export interface ListWorkflowsParams {
   sourceKind?: ResourceSourceKind
 }
 
-export type WorkflowListResponse = PaginatedResponse<WorkflowDefinitionSummary>
+export type WorkflowListResponse = WorkflowDefinitionListResponseSwaggerDto

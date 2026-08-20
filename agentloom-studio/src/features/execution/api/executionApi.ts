@@ -1,97 +1,32 @@
 import type {
+  ExecutionEnvelopeResponseSwaggerDto,
+  ExecutionEnvelopeResponseSwaggerDtoData,
+  ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage,
+  ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner,
+  ExecutionEnvelopeResponseSwaggerDtoDataStepsInner,
+  ExecutionListResponseSwaggerDto,
   InterveneStepDto,
   ResolveToolPermissionDto,
   RunWorkflowDto,
   RunWorkflowDtoLaunchSourceEnum,
 } from '@agentloom/api-client'
-import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
+import type { ApiResponse } from '@/shared/types/api'
 import { apiClient, toSnakeBody } from '@/shared/api/client'
-import type { ExecutionStatus, TypeMismatchInfo } from '../types'
 
 export type ExecutionLaunchSource = RunWorkflowDtoLaunchSourceEnum
 
-export interface ExecutionStepAttemptResponse {
-  attempt: number
-  error?: string
-  message?: string
-  timestamp: string
-}
+export type ExecutionStepAttemptResponse =
+  ExecutionEnvelopeResponseSwaggerDtoDataErrorMessageAttemptsInner
 
-export interface ExecutionStepErrorResponse {
-  message?: string | null
-  title?: string | null
-  detail?: string | null
-  type?: string | null
-  nodeId?: string | null
-  stack?: string
-  errors?: Array<{ field: string; message: string }>
-  typeMismatch?: TypeMismatchInfo
-  attempts?: ExecutionStepAttemptResponse[]
-}
+export type ExecutionStepErrorResponse =
+  ExecutionEnvelopeResponseSwaggerDtoDataErrorMessage
+
+/** 服务端执行步骤响应（经 snake→camel 自动转换后） */
+export type ExecutionStepResponse =
+  ExecutionEnvelopeResponseSwaggerDtoDataStepsInner
 
 /** 服务端执行记录响应（经 snake→camel 自动转换后） */
-export interface ExecutionStepResponse {
-  id: string
-  executionId: string
-  nodeId: string
-  stepOrder: number
-  status:
-    | 'pending'
-    | 'queued'
-    | 'running'
-    | 'waiting_intervention'
-    | 'waiting_for_intervention'
-    | 'completed'
-    | 'failed'
-    | 'skipped'
-    | 'cancelled'
-  input?: Record<string, unknown> | null
-  nodeType?: string | null
-  nodeData?: Record<string, unknown> | null
-  result?: Record<string, unknown> | null
-  checkpointData?: Record<string, unknown> | null
-  errorMessage?: string | ExecutionStepErrorResponse | null
-  startedAt?: string | null
-  completedAt?: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface ExecutionResponse {
-  id: string
-  tenantId: string
-  workflowDefinitionId: string
-  workflowId?: string
-  workflowVersionId: string | null
-  status: ExecutionStatus
-  triggerType?: 'manual' | 'api' | 'webhook' | 'system' | 'scheduled'
-  inputParams: Record<string, unknown> | null
-  result: Record<string, unknown> | null
-  definitionSnapshot?: {
-    nodes: unknown[]
-    edges: unknown[]
-    viewport?: unknown | null
-    metadata?: Record<string, unknown>
-  } | null
-  workflowVersion?: {
-    id?: string
-    graph?: {
-      nodes?: unknown[]
-      edges?: unknown[]
-    }
-  } | null
-  startedAt: string | null
-  completedAt: string | null
-  failedAt?: string | null
-  cancelledAt?: string | null
-  errorMessage: string | null
-  totalSteps?: number
-  completedSteps?: number
-  createdBy?: string
-  createdAt: string
-  updatedAt: string
-  steps?: ExecutionStepResponse[]
-}
+export type ExecutionResponse = ExecutionEnvelopeResponseSwaggerDtoData
 
 export interface ListExecutionsParams {
   page?: number
@@ -131,20 +66,20 @@ export async function runWorkflow(
     .post(`workflow-definitions/${workflowId}/run`, {
       json: hasPayload ? toSnakeBody(payload) : undefined,
     })
-    .json<ApiResponse<ExecutionResponse>>()
+    .json<ExecutionEnvelopeResponseSwaggerDto>()
 }
 
 /** 获取执行详情 — GET /executions/:id */
 export async function getExecution(executionId: string) {
   return apiClient
     .get(`executions/${executionId}`)
-    .json<ApiResponse<ExecutionResponse>>()
+    .json<ExecutionEnvelopeResponseSwaggerDto>()
 }
 
 export async function listExecutions(
   workflowDefinitionId: string,
   params?: ListExecutionsParams,
-): Promise<PaginatedResponse<ExecutionResponse>> {
+): Promise<ExecutionListResponseSwaggerDto> {
   return apiClient
     .get(`workflow-definitions/${workflowDefinitionId}/executions`, {
       searchParams: params
@@ -153,14 +88,14 @@ export async function listExecutions(
           )
         : undefined,
     })
-    .json()
+    .json<ExecutionListResponseSwaggerDto>()
 }
 
 /** 取消执行 — POST /executions/:id/cancel */
 export async function cancelExecution(executionId: string) {
   return apiClient
     .post(`executions/${executionId}/cancel`)
-    .json<ApiResponse<ExecutionResponse>>()
+    .json<ExecutionEnvelopeResponseSwaggerDto>()
 }
 
 /** 人工干预处理 — POST /executions/:id/steps/:stepId/intervene → 202 */

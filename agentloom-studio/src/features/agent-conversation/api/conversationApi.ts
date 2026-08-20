@@ -1,20 +1,14 @@
 import type {
+  ConversationListResponseSwaggerDto,
+  ConversationListResponseSwaggerDtoDataInner,
   StartConversationDto,
   UpdateConversationDto,
 } from "@agentloom/api-client";
 import { apiClient, toSnakeBody } from "@/shared/api/client";
-import type { PaginatedResponse } from "@/shared/types/api";
 import type { SandboxProcess, SandboxStats } from "@/features/sandbox";
 
-export interface ConversationListItem {
-  id: string;
-  agentDefinitionId: string;
-  title: string | null;
-  status: "active" | "paused" | "ended" | "failed";
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type ConversationListItem =
+  ConversationListResponseSwaggerDtoDataInner;
 
 export interface ListConversationsParams {
   page?: number;
@@ -38,7 +32,7 @@ export type UpdateConversationPayload = Omit<UpdateConversationDto, "metadata"> 
 export async function listConversations(
   agentId: string,
   params: ListConversationsParams = {},
-): Promise<PaginatedResponse<ConversationListItem>> {
+): Promise<ConversationListResponseSwaggerDto> {
   const searchParams: Record<string, string> = {};
   if (params.page) searchParams.page = String(params.page);
   if (params.limit) searchParams.limit = String(params.limit);
@@ -46,7 +40,7 @@ export async function listConversations(
 
   return apiClient
     .get(`agent-definitions/${agentId}/conversations`, { searchParams })
-    .json<PaginatedResponse<ConversationListItem>>();
+    .json<ConversationListResponseSwaggerDto>();
 }
 
 export async function startConversation(
@@ -57,7 +51,7 @@ export async function startConversation(
     .post(`agent-definitions/${agentId}/conversations/start`, {
       json: payload,
     })
-    .json<{ data: ConversationListItem }>();
+    .json<{ data: ConversationListResponseSwaggerDtoDataInner }>();
 
   return response.data;
 }
@@ -73,12 +67,12 @@ export async function generateConversationTitle(
 export async function updateConversation(
   conversationId: string,
   payload: UpdateConversationPayload,
-): Promise<{ data: ConversationListItem }> {
+): Promise<{ data: ConversationListResponseSwaggerDtoDataInner }> {
   return apiClient
     .patch(`agent-conversations/${conversationId}`, {
       json: toSnakeBody(payload),
     })
-    .json<{ data: ConversationListItem }>();
+    .json<{ data: ConversationListResponseSwaggerDtoDataInner }>();
 }
 
 export async function deleteConversation(
