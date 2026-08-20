@@ -66,7 +66,7 @@ resources/
 ```
 
 - DTO 按资源类型拆分，使用 Freezed/json_serializable；`resource_dtos.dart` 是统一 barrel。
-- 每类资源的 Riverpod provider 归属 `providers/`，屏幕通过 provider 读取、mutation 和 invalidate，不用 FutureBuilder 复制服务端实体缓存。
+- 每类资源的 Riverpod provider 归属 `providers/`，**只承担查询**：屏幕经 provider 读取列表与详情，不用 FutureBuilder 复制服务端实体缓存。create/update/delete 仍由屏幕直接调用 `ResourcesApi`，成功后 invalidate 对应 family key。
 - 列表 provider 是 `AsyncNotifierProvider.family`，family key 为各资源的 `XxxListQuery`（`@immutable` + 逐字段 `==`/`hashCode`）。屏幕本地 state 只存筛选原始值并由其构造 key。**key 必须是值相等语义**，否则每次 build 都产生新 key 会导致无限重取；`resource_list_query_test.dart` 守住这条。
 - `resource_envelope_decoder.dart` 定义 `ApiContractException`。`resources_api.dart` 严格解包 object/list/pagination envelope；缺少 `data`、元素不是对象、必需字段错误等契约问题抛异常，不返回空列表或空字符串伪造成功。
 - MCP 凭据输入使用遮罩；Provider API key 由服务端加密托管。
