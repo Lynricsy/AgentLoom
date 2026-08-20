@@ -328,6 +328,70 @@ describe('TriggerService', () => {
       );
     });
 
+    it('更新 webhook 时省略 authMode 应保留 signed 而非降级为 simple', async () => {
+      const webhookTrigger = {
+        ...baseTrigger,
+        type: 'webhook' as const,
+        config: {
+          authMode: 'signed' as const,
+          token: 'persisted-token',
+          secret: 'persisted-secret',
+          ipWhitelist: ['1.2.3.4'],
+        },
+      };
+
+      db.select.mockReturnValue(createSelectWhereResolved([webhookTrigger]));
+      const updateChain = createUpdateReturning([webhookTrigger]);
+      db.update.mockReturnValue(updateChain.chain);
+
+      await service.update(TENANT_ID, TRIGGER_ID, {
+        config: { ipWhitelist: ['10.0.0.2'] },
+      });
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: {
+            authMode: 'signed',
+            token: 'persisted-token',
+            secret: 'persisted-secret',
+            ipWhitelist: ['10.0.0.2'],
+          },
+        }),
+      );
+    });
+
+    it('更新 webhook 时传空 config 应同时保留 authMode 与 IP 白名单', async () => {
+      const webhookTrigger = {
+        ...baseTrigger,
+        type: 'webhook' as const,
+        config: {
+          authMode: 'signed' as const,
+          token: 'persisted-token',
+          secret: 'persisted-secret',
+          ipWhitelist: ['1.2.3.4'],
+        },
+      };
+
+      db.select.mockReturnValue(createSelectWhereResolved([webhookTrigger]));
+      const updateChain = createUpdateReturning([webhookTrigger]);
+      db.update.mockReturnValue(updateChain.chain);
+
+      await service.update(TENANT_ID, TRIGGER_ID, {
+        config: {},
+      });
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: {
+            authMode: 'signed',
+            token: 'persisted-token',
+            secret: 'persisted-secret',
+            ipWhitelist: ['1.2.3.4'],
+          },
+        }),
+      );
+    });
+
     it('应更新 api_event 触发器配置', async () => {
       db.select.mockReturnValue(createSelectWhereResolved([apiEventTrigger]));
       const updatedTrigger = {

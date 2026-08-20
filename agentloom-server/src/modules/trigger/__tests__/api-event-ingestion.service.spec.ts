@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -57,6 +58,13 @@ const baseTrigger = {
   createdAt: NOW,
   updatedAt: NOW,
 };
+
+function createTriggerWithFilter(filterExpression: string) {
+  return {
+    ...baseTrigger,
+    config: { ...baseTrigger.config, filterExpression },
+  };
+}
 
 const mockAdapter = {
   name: 'github',
@@ -196,11 +204,15 @@ describe('ApiEventIngestionService', () => {
       expect(executionService.runWorkflow).not.toHaveBeenCalled();
     });
 
-    it('source 不匹配时应回退到 generic 适配器', async () => {
+    it('source 未注册专用适配器时应回退到 generic 适配器', async () => {
       const genericAdapter = { ...mockAdapter, name: 'generic' };
+      const unknownSourceTrigger = {
+        ...baseTrigger,
+        config: { ...baseTrigger.config, eventSource: 'unknown-source' },
+      };
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([baseTrigger]),
+          where: vi.fn().mockResolvedValue([unknownSourceTrigger]),
         }),
       });
       adapterRegistry.getAdapter
@@ -283,6 +295,130 @@ describe('ApiEventIngestionService', () => {
 
       expect(result.triggeredCount).toBe(1);
       expect(result.skippedCount).toBe(1);
+    });
+
+    it('配置的 eventSource 与事件 source 不一致时应跳过且不解析适配器', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([baseTrigger]),
+        }),
+      });
+      adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
+
+      const result = await service.ingestEvent(TENANT_ID, {
+        source: 'gitlab',
+        type: 'push',
+        data: {},
+      });
+
+      expect(result).toEqual({
+        triggeredCount: 0,
+        executions: [],
+        skippedCount: 1,
+      });
+      expect(adapterRegistry.getAdapter).not.toHaveBeenCalled();
+      expect(executionService.runWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('eventSource 大小写不同仍应匹配', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([baseTrigger]),
+        }),
+      });
+      adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
+      executionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
+      historyService.record.mockResolvedValue(undefined);
+      triggerService.markTriggered.mockResolvedValue(undefined);
+
+      const result = await service.ingestEvent(TENANT_ID, {
+        source: 'GitHub',
+        type: 'push',
+        data: {},
+      });
+
+      expect(result.triggeredCount).toBe(1);
+    });
+
+    it('filterExpression 求值为真时应触发工作流', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi
+            .fn()
+            .mockResolvedValue([
+              createTriggerWithFilter('payload.region == "cn"'),
+            ]),
+        }),
+      });
+      adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
+      executionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
+      historyService.record.mockResolvedValue(undefined);
+      triggerService.markTriggered.mockResolvedValue(undefined);
+
+      const result = await service.ingestEvent(TENANT_ID, {
+        source: 'github',
+        type: 'push',
+        data: { region: 'cn' },
+      });
+
+      expect(result.triggeredCount).toBe(1);
+      expect(result.skippedCount).toBe(0);
+      expect(executionService.runWorkflow).toHaveBeenCalledTimes(1);
+    });
+
+    it('filterExpression 求值为假时应跳过且不触发工作流', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi
+            .fn()
+            .mockResolvedValue([
+              createTriggerWithFilter('payload.region == "cn"'),
+            ]),
+        }),
+      });
+      adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
+
+      const result = await service.ingestEvent(TENANT_ID, {
+        source: 'github',
+        type: 'push',
+        data: { region: 'us' },
+      });
+
+      expect(result).toEqual({
+        triggeredCount: 0,
+        executions: [],
+        skippedCount: 1,
+      });
+      expect(executionService.runWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('filterExpression 求值抛错时应 fail-closed 并记录告警', async () => {
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi
+            .fn()
+            .mockResolvedValue([createTriggerWithFilter('payload.a.b.c')]),
+        }),
+      });
+      adapterRegistry.getAdapter.mockReturnValue(mockAdapter);
+
+      const result = await service.ingestEvent(TENANT_ID, {
+        source: 'github',
+        type: 'push',
+        data: {},
+      });
+
+      expect(result.triggeredCount).toBe(0);
+      expect(result.skippedCount).toBe(1);
+      expect(executionService.runWorkflow).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('api_event_filter_error'),
+      );
+
+      warnSpy.mockRestore();
     });
   });
 });

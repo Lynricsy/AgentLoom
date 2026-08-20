@@ -17,6 +17,7 @@ import {
   UpdateTriggerSchema,
   WebhookConfigCreateSchema,
   WebhookConfigSchema,
+  WebhookConfigUpdateSchema,
   type CreateTriggerDto,
   type QueryTriggerDto,
   type UpdateTriggerDto,
@@ -354,13 +355,15 @@ export class TriggerService {
         const currentWebhookConfig = WebhookConfigSchema.parse(
           currentTrigger.config,
         );
-        const parsedConfig = WebhookConfigCreateSchema.parse(nextConfig);
+        const parsedConfig = WebhookConfigUpdateSchema.parse(nextConfig);
 
+        // 省略即保留：避免编辑触发器时把 signed 静默降级为 simple、或清空 IP 白名单
         return {
-          authMode: parsedConfig.authMode,
+          authMode: parsedConfig.authMode ?? currentWebhookConfig.authMode,
           token: currentWebhookConfig.token,
           secret: currentWebhookConfig.secret,
-          ipWhitelist: parsedConfig.ipWhitelist,
+          ipWhitelist:
+            parsedConfig.ipWhitelist ?? currentWebhookConfig.ipWhitelist,
         };
       }
       case 'api_event':

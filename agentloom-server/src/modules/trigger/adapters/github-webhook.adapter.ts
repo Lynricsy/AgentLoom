@@ -31,10 +31,7 @@ export class GithubWebhookAdapter implements EventSourceAdapter {
       return false;
     }
 
-    // secret 来自 ApiEventTriggerConfig，复用 filterExpression 存储
-    const secret = (config as Record<string, unknown> | undefined)?.[
-      'secret'
-    ] as string | undefined;
+    const secret = config?.secret;
     if (!secret) {
       this.logger.warn('GitHub adapter 未配置 secret');
       return false;

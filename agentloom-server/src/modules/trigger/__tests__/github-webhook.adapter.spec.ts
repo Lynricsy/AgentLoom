@@ -32,7 +32,7 @@ describe('GithubWebhookAdapter', () => {
     };
   }
 
-  const config: ApiEventTriggerConfig & { secret: string } = {
+  const config: ApiEventTriggerConfig = {
     eventSource: 'github',
     eventType: 'push',
     secret,

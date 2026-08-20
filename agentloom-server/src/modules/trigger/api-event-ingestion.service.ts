@@ -9,6 +9,7 @@ import type { ApiEventTriggerConfig } from '../../database/schema/workflow-trigg
 import { ExecutionService } from '../execution/execution.service';
 import { EventSourceAdapterRegistry } from './adapters/event-source-adapter.registry';
 import type { EventPayload } from './adapters/event-source.adapter';
+import { evaluateFilterExpression } from './filter-expression.util';
 import { TriggerHistoryService } from './trigger-history.service';
 import { TriggerService } from './trigger.service';
 import { SYSTEM_TRIGGER_USER_ID } from './trigger.constants';
@@ -64,6 +65,12 @@ export class ApiEventIngestionService {
     for (const trigger of candidates) {
       const config = trigger.config as ApiEventTriggerConfig;
 
+      // 配置的事件源必须与事件 payload 的 source 一致（大小写不敏感，与 eventType 比对口径一致）
+      if (config.eventSource.toLowerCase() !== parsed.source.toLowerCase()) {
+        skippedCount++;
+        continue;
+      }
+
       const adapter = this.resolveAdapter(parsed.source);
 
       if (!adapter.validateEvent(payload, config)) {
@@ -83,6 +90,31 @@ export class ApiEventIngestionService {
       if (!adapter.matchesTrigger(payload, config)) {
         skippedCount++;
         continue;
+      }
+
+      const filterExpression = config.filterExpression?.trim();
+
+      if (filterExpression) {
+        // fail-closed：表达式求值异常一律视为不匹配，避免坏表达式导致误触发
+        let filterMatched = false;
+
+        try {
+          filterMatched = evaluateFilterExpression(filterExpression, payload);
+        } catch (error) {
+          this.logger.warn(
+            JSON.stringify({
+              action: 'api_event_filter_error',
+              triggerId: trigger.id,
+              tenantId,
+              error: this.getErrorMessage(error),
+            }),
+          );
+        }
+
+        if (!filterMatched) {
+          skippedCount++;
+          continue;
+        }
       }
 
       let executionId: string | undefined;
