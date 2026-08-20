@@ -99,13 +99,20 @@ export async function updateAgent(
 
   return response.data;
 }
+/**
+ * 保存 Agent 画布。
+ *
+ * 该端点的 server DTO（`save-agent-canvas.dto.ts`）声明的是 camelCase 字段
+ * （`canvasNodes` / `canvasEdges` / `canvasViewport` …），**不接受 snake_case**。
+ * 因此这里不能套 `toSnakeBody()`，必须原样发送 camelCase。
+ */
 export async function saveAgentCanvas(
   agentId: string,
   payload: SaveAgentCanvasPayload,
 ) {
   const response = await apiClient
     .put(`agent-definitions/${agentId}/canvas`, {
-      json: toSnakeBody(payload),
+      json: payload,
     })
     .json<ApiResponse<Pick<AgentDefinition, "version">>>();
 

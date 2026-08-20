@@ -16,7 +16,7 @@ AgentLoom Flutter 客户端，面向移动设备并兼容桌面与 Web。应用�
 - REST 分页 query key 使用 `pageSize`。
 - Socket 事件按 server 的 camelCase wire 解析。
 - 资源 DTO 位于 `lib/features/resources/models/`，按 workspace、sandbox、knowledge base、MCP、LLM 拆分。
-- 资源 provider 位于 `lib/features/resources/providers/`，按资源类型持有 Query/mutation 状态。
+- 资源 provider 位于 `lib/features/resources/providers/`，只持有查询状态（列表与详情的 `AsyncNotifier`）；create/update/delete 由屏幕直接调用 `ResourcesApi`，成功后 invalidate 对应 family key。
 - `ResourcesApi` 严格解包响应；契约错误抛出 `ApiContractException`。
 - 追加分页失败通过 `loadMoreError` 呈现并保留已加载条目。
 - `memoryAuditProvider(instanceId)` 直接使用 family 参数。
