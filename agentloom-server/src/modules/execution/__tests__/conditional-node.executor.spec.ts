@@ -75,15 +75,10 @@ import {
   TENANT_ID,
   NOW,
   makeStep,
-  makeNode,
-  makeEdge,
-  makeSnapshot,
-  makeExecution,
-  createSelectChain,
-  createUpdateChainVoid
+  createSelectChain
 } from './node-scheduler-test-support';
 
-describe('dispatcher migrated scenarios', () => {
+describe('conditional migrated scenarios', () => {
   let service: NodeSchedulerService;
   let nodeDispatcher: NodeDispatcherService;
   let compoundExecution: CompoundExecutionService;
@@ -334,283 +329,122 @@ describe('dispatcher migrated scenarios', () => {
     compoundExecution = module.get(CompoundExecutionService);
   });
 
-  const inlineDispatchCases = [
-    ['llm-model', 'executeLlmModelNode', false],
-    ['knowledge-base', 'executeKnowledgeNode', false],
-    ['condition', 'executeConditional', true],
-    ['conditional', 'executeConditional', true],
-    ['loop', 'executeLoopNode', true],
-    ['iteration', 'executeIterationNode', true],
-    ['loop-start', 'executeLoopStartNode', false],
-    ['iteration-start', 'executeIterationStartNode', false],
-    ['loop-state', 'executeLoopStateNode', true],
-    ['result', 'executeResultNode', true],
-    ['break', 'executeBreakNode', true],
-    ['continue', 'executeContinueNode', true],
-    ['merge', 'executeMerge', true],
-    ['text-output', 'executeOutputNode', true],
-    ['json-output', 'executeOutputNode', true],
-    ['skill', 'executeSkillNode', true],
-  ] as const;
-
-  describe('scheduleNode migrated', () => {
-    it('最新步骤状态已非 pending 时不应重复调度', async () => {
-      const snapshot = makeSnapshot(
-        [makeNode('A'), makeNode('B')],
-        [makeEdge('A', 'B')],
-      );
-      const staleSteps = [
-        makeStep({
-          id: 'step-a',
-          nodeId: 'A',
-          status: 'completed',
-          result: { answer: 'hello' },
-        }),
-        makeStep({
-          id: 'step-b',
-          nodeId: 'B',
-          status: 'pending',
-          nodeType: 'agent',
-          nodeData: { agentId: 'agent-b' },
-        }),
-      ];
-
-      db.select
-        .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
-        .mockReturnValueOnce(
-          createSelectChain([
-            makeStep({
-              id: 'step-b',
-              nodeId: 'B',
-              status: 'cancelled',
-              nodeType: 'agent',
-              nodeData: { agentId: 'agent-b' },
-            }),
-          ]),
-        );
-
-      await service.scheduleNode(
-        EXECUTION_ID,
-        'B',
-        TENANT_ID,
-        snapshot,
-        staleSteps,
-      );
-
-      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
-      expect(mockQueue.add).not.toHaveBeenCalled();
-    });
-  });
-
-
-
-
-  describe('scheduleNode migrated', () => {
-    it.each(inlineDispatchCases)(
-      '%s 节点应分派给公开 executor，并保持标准调度上下文',
-
-      async (nodeType) => {
-        const step = makeStep({
-          id: `step-${nodeType}`,
-          nodeId: `node-${nodeType}`,
-          nodeType,
-          nodeData: {},
-        });
-        const snapshot = makeSnapshot([makeNode(step.nodeId, nodeType)], []);
-        const executor = nodeDispatcher.find(nodeType)!;
-        const execute = vi.fn().mockResolvedValue(undefined);
-        vi.spyOn(nodeDispatcher, 'find').mockReturnValue({ execute });
-        await nodeDispatcher.dispatch({
-          executionId: EXECUTION_ID,
-          tenantId: TENANT_ID,
-          step,
-          input: {},
-          snapshot,
-          steps: [step],
-          memorySessionIds: [],
-          runtime: service,
-        });
-
-        expect(execute).toHaveBeenCalledTimes(1);
-        expect(execute).toHaveBeenCalledWith(
-          expect.objectContaining({
-            step,
-            input: {},
-            tenantId: TENANT_ID,
-            executionId: EXECUTION_ID,
-            runtime: service,
-          }),
-        );
-        expect(mockQueue.add).not.toHaveBeenCalled();
-      },
-    );
-  });
-
-  describe('scheduleNode migrated', () => {
-    it('未知节点类型应显式失败，不再降级到 agent 队列', async () => {
+  describe('executeConditional', () => {
+    it('优先执行 expression 决定分支', async () => {
       const step = makeStep({
-        id: 'step-future-custom-node',
-        nodeId: 'node-future-custom-node',
-        nodeType: 'future-custom-node',
-        nodeData: {},
+        id: 'step-conditional',
+        nodeId: 'C',
+        nodeType: 'conditional',
+        nodeData: {
+          expression: 'input.A.score >= 80',
+        },
       });
-      const snapshot = makeSnapshot(
-        [makeNode(step.nodeId, 'future-custom-node')],
-        [],
-      );
-      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
 
-      await service.scheduleNode(
-        EXECUTION_ID,
-        step.nodeId,
-        TENANT_ID,
-        snapshot,
-        [step],
-        { skipLatestState: true },
-      );
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        step.id,
-        'failed',
-        expect.objectContaining({
-          errorMessage: expect.objectContaining({
-            message: expect.stringContaining('不支持的节点类型'),
-          }),
-        }),
-      );
-      expect(mockQueue.add).not.toHaveBeenCalled();
-    });
-  });
-});
-
-/**
- * 节点分派器规格：验证完整 nodeType 注册表与公开执行器分派行为。
- */
-import { describe, expect, it, vi } from 'vitest';
-import type { ExecutionStep } from '../../../database/schema';
-import { NodeDispatcherService } from '../node-dispatcher.service';
-import { CodeNodeExecutor } from '../node-executors/code-node.executor';
-import { CompoundNodeExecutor } from '../node-executors/compound-node.executor';
-import { ConditionalNodeExecutor } from '../node-executors/conditional-node.executor';
-import { DataTransformNodeExecutor } from '../node-executors/data-transform-node.executor';
-import { DeprecatedNodeExecutor } from '../node-executors/deprecated-node.executor';
-import { ExtensionNodeExecutor } from '../node-executors/extension-node.executor';
-import { HttpNodeExecutor } from '../node-executors/http-node.executor';
-import { ResourceNodeExecutor } from '../node-executors/resource-node.executor';
-import { SmartRoutingNodeExecutor } from '../node-executors/smart-routing-node.executor';
-import { SubAgentNodeExecutor } from '../node-executors/sub-agent-node.executor';
-import { TriggerNodeExecutor } from '../node-executors/trigger-node.executor';
-import { ValueNodeExecutor } from '../node-executors/value-node.executor';
-import { WorkflowAgentNodeExecutor } from '../node-executors/workflow-agent-node.executor';
-import type { NodeSchedulerService } from '../node-scheduler.service';
-
-function stubExecutor<T>(): T {
-  return { execute: vi.fn() } as unknown as T;
-}
-
-function createDispatcher(
-  http: HttpNodeExecutor = stubExecutor<HttpNodeExecutor>(),
-): NodeDispatcherService {
-  return new NodeDispatcherService(
-    stubExecutor<WorkflowAgentNodeExecutor>(),
-    stubExecutor<TriggerNodeExecutor>(),
-    stubExecutor<ResourceNodeExecutor>(),
-    stubExecutor<DataTransformNodeExecutor>(),
-    http,
-    stubExecutor<CodeNodeExecutor>(),
-    stubExecutor<ConditionalNodeExecutor>(),
-    stubExecutor<CompoundNodeExecutor>(),
-    stubExecutor<ValueNodeExecutor>(),
-    stubExecutor<SmartRoutingNodeExecutor>(),
-    stubExecutor<ExtensionNodeExecutor>(),
-    stubExecutor<SubAgentNodeExecutor>(),
-    stubExecutor<DeprecatedNodeExecutor>(),
-  );
-}
-
-function makeStep(nodeType: string): ExecutionStep {
-  return {
-    id: 'step-1',
-    executionId: 'execution-1',
-    nodeId: 'node-1',
-    stepOrder: 0,
-    status: 'pending',
-    nodeType,
-    nodeData: {},
-    input: null,
-    result: null,
-    checkpointData: null,
-    errorMessage: null,
-    startedAt: null,
-    completedAt: null,
-    createdAt: new Date(0),
-    updatedAt: new Date(0),
-  } as ExecutionStep;
-}
-
-describe('NodeDispatcherService', () => {
-  it('注册 scheduleNode 的全部存量 nodeType', () => {
-    const dispatcher = createDispatcher();
-    const nodeTypes = [
-      'agent', 'chat-agent', 'llm-agent',
-      'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger',
-      'llm-model', 'sandbox', 'workspace', 'memory', 'knowledge-base',
-      'data_transform', 'input-preprocessor', 'http-tool', 'code-tool',
-      'condition', 'conditional', 'loop', 'iteration', 'loop-start',
-      'iteration-start', 'loop-state', 'result', 'break', 'continue',
-      'merge', 'text', 'text-output', 'json-output', 'smart-routing',
-      'plugin', 'skill', 'mcp-tool', 'sub-agent',
-    ];
-
-    for (const nodeType of nodeTypes) {
-      expect(dispatcher.find(nodeType), nodeType).toBeDefined();
-    }
-  });
-
-  it('通过公开 executor 契约把 http-tool 上下文原样交给 HTTP 执行路径', async () => {
-    const execute = vi.fn().mockResolvedValue(undefined);
-    const http = { execute } as unknown as HttpNodeExecutor;
-    const dispatcher = createDispatcher(http);
-    const runtime = {} as NodeSchedulerService;
-    const step = makeStep('http-tool');
-    const input = { request: { query: 'workflow' } };
-
-    await expect(dispatcher.dispatch({
-      executionId: 'execution-1',
-      tenantId: 'tenant-1',
-      step,
-      input,
-      snapshot: { nodes: [], edges: [] },
-      steps: [step],
-      memorySessionIds: [],
-      runtime,
-    })).resolves.toBe(true);
-
-    expect(execute).toHaveBeenCalledWith(
-      expect.objectContaining({
+      await service.executeConditional(
         step,
-        input,
-        tenantId: 'tenant-1',
-        executionId: 'execution-1',
-        runtime,
-      }),
-    );
-  });
+        { A: { score: 92 } },
+        TENANT_ID,
+        EXECUTION_ID,
+      );
 
-  it('未知 nodeType 不执行任何 fallback executor', async () => {
-    const dispatcher = createDispatcher();
-    const step = makeStep('future-node');
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        1,
+        TENANT_ID,
+        'step-conditional',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        'step-conditional',
+        'completed',
+        {
+          result: {
+            branch: 'branch-0',
+            'branch-0': { A: { score: 92 } },
+            else: null,
+            'matched-out': { A: { score: 92 } },
+            'unmatched-out': null,
+            matched: { A: { score: 92 } },
+            unmatched: null,
+            true: { A: { score: 92 } },
+            false: null,
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-conditional',
+        TENANT_ID,
+      );
+    });
 
-    await expect(dispatcher.dispatch({
-      executionId: 'execution-1',
-      tenantId: 'tenant-1',
-      step,
-      input: {},
-      snapshot: { nodes: [], edges: [] },
-      steps: [step],
-      memorySessionIds: [],
-      runtime: {} as NodeSchedulerService,
-    })).resolves.toBe(false);
+    it('兼容 snake_case 条件字段配置并正确走 unmatched 分支', async () => {
+      const step = makeStep({
+        id: 'step-conditional',
+        nodeId: 'C',
+        nodeType: 'condition',
+        nodeData: {
+          config: {
+            condition_field: 'route',
+            expected_value: 'match',
+          },
+          condition_field: 'route',
+          expected_value: 'match',
+        },
+      });
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.executeConditional(
+        step,
+        { input: { route: 'skip', topic: '验证 skip 分支' } },
+        TENANT_ID,
+        EXECUTION_ID,
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        1,
+        TENANT_ID,
+        'step-conditional',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        'step-conditional',
+        'completed',
+        {
+          result: {
+            branch: 'else',
+            'branch-0': null,
+            else: {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
+            'matched-out': null,
+            'unmatched-out': {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
+            matched: null,
+            unmatched: {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
+            true: null,
+            false: {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
+          },
+        },
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-conditional',
+        TENANT_ID,
+      );
+    });
   });
 });
