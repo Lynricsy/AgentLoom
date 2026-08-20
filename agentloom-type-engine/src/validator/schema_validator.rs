@@ -89,7 +89,11 @@ impl SchemaValidator {
         };
 
         if raw_value.is_null() {
-            return ValidationResult::single_error("$", "NULL_SCHEMA", "Schema input cannot be null.");
+            return ValidationResult::single_error(
+                "$",
+                "NULL_SCHEMA",
+                "Schema input cannot be null.",
+            );
         }
 
         let schema: TypeSchema = match serde_json::from_value(raw_value) {
@@ -174,7 +178,8 @@ impl SchemaValidator {
                     });
                 }
 
-                if let (Some(min_items), Some(max_items)) = (array_schema.min_items, array_schema.max_items)
+                if let (Some(min_items), Some(max_items)) =
+                    (array_schema.min_items, array_schema.max_items)
                     && min_items > max_items
                 {
                     errors.push(ValidationError {

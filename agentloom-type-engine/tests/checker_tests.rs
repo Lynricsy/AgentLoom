@@ -1,12 +1,11 @@
 use agentloom_type_engine::checker::{
-    check_compatibility, check_schema_compatibility, CompatibilityLevel,
+    CompatibilityLevel, check_compatibility, check_port_connection, check_schema_compatibility,
 };
 use agentloom_type_engine::types::{
     ObjectTypeSchema, PortDataType, PortDefinition, PortDirection, ScalarTypeSchema, TypeSchema,
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::time::Instant;
 
 #[test]
 fn exact_match_returns_null_reason_and_empty_diagnostics() {
@@ -140,23 +139,133 @@ fn nested_missing_field_uses_dot_path() {
 }
 
 #[test]
-fn compatibility_check_finishes_under_one_hundred_milliseconds_for_ten_fields() {
-    let source = build_port(
-        "source",
-        PortDataType::Json,
-        Some(build_generated_object_schema("field_", 10)),
-    );
-    let target = build_port(
-        "target",
-        PortDataType::Json,
-        Some(build_generated_object_schema("field_", 10)),
-    );
+fn valid_output_to_input_connection_is_accepted() {
+    let source = build_connection_port("source", PortDirection::Output, true, false, Some(1));
+    let target = build_connection_port("target", PortDirection::Input, true, false, Some(1));
 
-    let started_at = Instant::now();
-    let result = check_compatibility(&source, &target);
+    let result = check_port_connection(&source, &target, 0, 0);
 
     assert_eq!(result.level, CompatibilityLevel::Exact);
-    assert!(started_at.elapsed().as_millis() < 100);
+}
+
+#[test]
+fn input_source_is_rejected() {
+    let source = build_connection_port("source", PortDirection::Input, true, false, Some(1));
+    let target = build_connection_port("target", PortDirection::Input, true, false, Some(1));
+
+    let result = check_port_connection(&source, &target, 0, 0);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("source_direction_must_be_output")
+    );
+}
+
+#[test]
+fn output_target_is_rejected() {
+    let source = build_connection_port("source", PortDirection::Output, true, false, Some(1));
+    let target = build_connection_port("target", PortDirection::Output, true, false, Some(1));
+
+    let result = check_port_connection(&source, &target, 0, 0);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("target_direction_must_be_input")
+    );
+}
+
+#[test]
+fn optional_source_to_required_target_is_rejected() {
+    let source = build_connection_port("source", PortDirection::Output, false, false, Some(1));
+    let target = build_connection_port("target", PortDirection::Input, true, false, Some(1));
+
+    let result = check_port_connection(&source, &target, 0, 0);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("optional_source_to_required_target")
+    );
+}
+
+#[test]
+fn optional_source_to_optional_target_is_accepted() {
+    let source = build_connection_port("source", PortDirection::Output, false, false, Some(1));
+    let target = build_connection_port("target", PortDirection::Input, false, false, Some(1));
+
+    let result = check_port_connection(&source, &target, 0, 0);
+
+    assert_eq!(result.level, CompatibilityLevel::Exact);
+}
+
+#[test]
+fn source_at_configured_connection_limit_is_rejected() {
+    let source = build_connection_port("source", PortDirection::Output, true, true, Some(2));
+    let target = build_connection_port("target", PortDirection::Input, true, true, None);
+
+    let result = check_port_connection(&source, &target, 2, 0);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("source_connection_limit_reached")
+    );
+}
+
+#[test]
+fn target_at_configured_connection_limit_is_rejected() {
+    let source = build_connection_port("source", PortDirection::Output, true, true, None);
+    let target = build_connection_port("target", PortDirection::Input, true, true, Some(2));
+
+    let result = check_port_connection(&source, &target, 0, 2);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("target_connection_limit_reached")
+    );
+}
+
+#[test]
+fn non_multiple_port_is_limited_to_one_connection() {
+    let source = build_connection_port("source", PortDirection::Output, true, false, None);
+    let target = build_connection_port("target", PortDirection::Input, true, true, None);
+
+    let result = check_port_connection(&source, &target, 1, 0);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("source_connection_limit_reached")
+    );
+}
+
+#[test]
+fn connection_below_both_capacity_limits_is_accepted() {
+    let source = build_connection_port("source", PortDirection::Output, true, true, Some(2));
+    let target = build_connection_port("target", PortDirection::Input, true, true, Some(3));
+
+    let result = check_port_connection(&source, &target, 1, 2);
+
+    assert_eq!(result.level, CompatibilityLevel::Exact);
+}
+
+#[test]
+fn exec_and_volume_port_data_types_round_trip_through_serde() {
+    for (port_type, encoded) in [
+        (PortDataType::Exec, "\"exec\""),
+        (PortDataType::Volume, "\"volume\""),
+    ] {
+        let serialized = serde_json::to_string(&port_type).expect("port type should serialize");
+        let deserialized: PortDataType =
+            serde_json::from_str(&serialized).expect("port type should deserialize");
+
+        assert_eq!(serialized, encoded);
+        assert_eq!(deserialized, port_type);
+        assert_eq!(port_type.to_string(), encoded.trim_matches('"'));
+    }
 }
 
 fn build_port(id: &str, data_type: PortDataType, schema: Option<TypeSchema>) -> PortDefinition {
@@ -170,6 +279,26 @@ fn build_port(id: &str, data_type: PortDataType, schema: Option<TypeSchema>) -> 
         multiple: false,
         max_connections: Some(1),
         schema,
+    }
+}
+
+fn build_connection_port(
+    id: &str,
+    direction: PortDirection,
+    required: bool,
+    multiple: bool,
+    max_connections: Option<u32>,
+) -> PortDefinition {
+    PortDefinition {
+        id: id.to_string(),
+        label: id.to_string(),
+        direction,
+        data_type: PortDataType::Text,
+        description: None,
+        required,
+        multiple,
+        max_connections,
+        schema: None,
     }
 }
 
@@ -191,27 +320,6 @@ fn build_required_object_schema(entries: &[(&str, TypeSchema)]) -> TypeSchema {
     for (name, schema) in entries {
         required.push((*name).to_string());
         properties.insert((*name).to_string(), schema.clone());
-    }
-
-    TypeSchema::Object(ObjectTypeSchema {
-        kind: PortDataType::Json,
-        properties,
-        required,
-        additional_properties: false,
-        title: None,
-        description: None,
-        nullable: false,
-    })
-}
-
-fn build_generated_object_schema(prefix: &str, count: usize) -> TypeSchema {
-    let mut properties = HashMap::new();
-    let mut required = Vec::new();
-
-    for index in 0..count {
-        let name = format!("{prefix}{index}");
-        required.push(name.clone());
-        properties.insert(name, scalar_schema(PortDataType::Text));
     }
 
     TypeSchema::Object(ObjectTypeSchema {

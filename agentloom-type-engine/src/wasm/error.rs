@@ -1,4 +1,4 @@
-use js_sys::{Reflect, JSON};
+use js_sys::{JSON, Reflect};
 use serde_json::Value;
 use wasm_bindgen::{JsError, JsValue};
 

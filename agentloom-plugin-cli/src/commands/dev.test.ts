@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { startDevServer, type StartedDevServer } from './dev';
 
@@ -57,19 +57,37 @@ function createDevFixture(root: string): void {
   writeFileSync(
     join(root, 'dist', 'index.js'),
     `const plugin = {
+  manifest: {
+    id: 'com.agentloom.dev-fixture',
+    name: 'Dev Fixture',
+    version: '1.0.0',
+    author: 'AgentLoom Team',
+    description: 'Fixture used in dev command tests',
+    license: 'MIT',
+    minPlatformVersion: '1.0.0',
+    permissions: [],
+  },
   nodes: [
     {
       type: 'text-to-uppercase',
       label: 'Text to Uppercase',
+      category: 'transform',
+      description: 'Converts text to uppercase',
       inputPorts: [{ id: 'text-in', label: 'Text Input', dataType: 'text', required: true }],
       outputPorts: [{ id: 'text-out', label: 'Text Output', dataType: 'text' }],
       async execute(context) {
         const input = String(context.inputs?.['text-in'] ?? '');
         const prefix = String(context.config?.prefix ?? '');
-        return { outputs: { 'text-out': prefix + input.toUpperCase() } };
+        return {
+          outputs: { 'text-out': prefix + input.toUpperCase() },
+          receivedMetadata: context.metadata,
+          hasInjectedLogger: typeof context.logger?.info === 'function',
+        };
       },
     },
   ],
+  async activate() {},
+  async deactivate() {},
 };
 
 export default plugin;
@@ -78,22 +96,27 @@ export default plugin;
   );
 }
 
-async function startFixtureServer(): Promise<{ root: string; server: StartedDevServer }> {
+async function startFixtureServer(): Promise<{
+  root: string;
+  server: StartedDevServer;
+  logger: { info: Mock; error: Mock };
+}> {
   const root = createTempRoot();
   createDevFixture(root);
+  const logger = {
+    info: vi.fn(),
+    error: vi.fn(),
+  };
 
   const server = await startDevServer({
     cwd: root,
     port: 0,
     handleSignals: false,
-    logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-    },
+    logger,
   });
 
   runningServers.push(server);
-  return { root, server };
+  return { root, server, logger };
 }
 
 afterEach(async () => {
@@ -181,5 +204,103 @@ describe('startDevServer', () => {
 
     expect(response.status).toBe(200);
     expect(payload.outputs['text-out']).toBe('>HELLO');
+  });
+
+  it('只接收 inputs/config，并由服务端注入 logger 与执行 metadata', async () => {
+    const { server } = await startFixtureServer();
+
+    const response = await fetch(
+      `http://127.0.0.1:${server.port}/nodes/text-to-uppercase/execute`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          inputs: { 'text-in': 'safe' },
+          config: {},
+          logger: { info: 'client logger' },
+          metadata: {
+            executionId: 'client-execution',
+            stepId: 'client-step',
+            nodeId: 'client-node',
+          },
+          ignored: true,
+        }),
+      },
+    );
+    const payload = (await response.json()) as {
+      receivedMetadata: Record<string, string>;
+      hasInjectedLogger: boolean;
+    };
+
+    expect(payload.hasInjectedLogger).toBe(true);
+    expect(payload.receivedMetadata.executionId).not.toBe('client-execution');
+    expect(payload.receivedMetadata.stepId).not.toBe('client-step');
+    expect(payload.receivedMetadata.nodeId).not.toBe('client-node');
+    expect(payload.receivedMetadata.executionId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('拒绝超过 JSON body 大小限制的执行请求', async () => {
+    const { server } = await startFixtureServer();
+
+    const response = await fetch(
+      `http://127.0.0.1:${server.port}/nodes/text-to-uppercase/execute`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ inputs: { value: 'x'.repeat(110 * 1024) } }),
+      },
+    );
+
+    expect(response.status).toBe(413);
+  });
+
+  it('新插件 activate 失败时报告错误并恢复旧插件节点', async () => {
+    const { root, server, logger } = await startFixtureServer();
+    writeFileSync(
+      join(root, 'dist', 'index.js'),
+      `export default {
+  manifest: {
+    id: 'com.agentloom.dev-fixture',
+    name: 'Dev Fixture',
+    version: '1.0.0',
+    author: 'AgentLoom Team',
+    description: 'Fixture used in dev command tests',
+    license: 'MIT',
+    minPlatformVersion: '1.0.0',
+    permissions: [],
+  },
+  nodes: [{
+    type: 'replacement-node',
+    label: 'Replacement Node',
+    category: 'utility',
+    description: 'Replacement node',
+    inputPorts: [],
+    outputPorts: [],
+    execute: async () => ({ outputs: {} }),
+  }],
+  activate: async () => { throw new Error('replacement activation failed'); },
+  deactivate: async () => {},
+};\n`,
+      'utf8',
+    );
+
+    server.watcher.emit('all', 'change', join(root, 'src', 'index.ts'));
+    await vi.waitFor(() => {
+      expect(logger.error).toHaveBeenCalledWith('replacement activation failed');
+    });
+
+    const nodesResponse = await fetch(`http://127.0.0.1:${server.port}/nodes`);
+    const nodes = (await nodesResponse.json()) as Array<{ type: string }>;
+    expect(nodes).toEqual([expect.objectContaining({ type: 'text-to-uppercase' })]);
+
+    const oldNodeResponse = await fetch(
+      `http://127.0.0.1:${server.port}/nodes/text-to-uppercase/execute`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ inputs: { 'text-in': 'still active' } }),
+      },
+    );
+    expect(oldNodeResponse.status).toBe(200);
   });
 });

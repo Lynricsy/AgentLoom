@@ -150,7 +150,29 @@ beforeEach(() => {
       mkdirSync(join(cwd, 'dist'), { recursive: true });
       writeFileSync(
         join(cwd, 'dist', 'index.js'),
-        'export default { nodes: [{ type: "archive-node" }] };\n',
+        `export default {
+  manifest: {
+    id: 'com.agentloom.archive-fixture',
+    name: 'Archive Fixture',
+    version: '1.2.3',
+    author: 'AgentLoom Team',
+    description: 'Fixture used in build command tests',
+    license: 'MIT',
+    minPlatformVersion: '1.0.0',
+    permissions: [],
+  },
+  nodes: [{
+    type: 'archive-node',
+    label: 'Archive Node',
+    category: 'utility',
+    description: 'Archive fixture node',
+    inputPorts: [],
+    outputPorts: [],
+    execute: async () => ({ outputs: {} }),
+  }],
+  activate: async () => {},
+  deactivate: async () => {},
+};\n`,
         'utf8',
       );
       return Buffer.alloc(0);
@@ -204,6 +226,11 @@ describe('buildPluginArchive', () => {
     expect(nodeDefinitions).toEqual([
       {
         type: 'archive-node',
+        label: 'Archive Node',
+        category: 'utility',
+        description: 'Archive fixture node',
+        inputPorts: [],
+        outputPorts: [],
       },
     ]);
   });
@@ -216,6 +243,22 @@ describe('buildPluginArchive', () => {
     const entries = listArchiveEntries(result.archivePath);
 
     expect(entries).toContain('README.md');
+  });
+
+  it('插件入口加载失败时保留原始错误并中止构建', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root);
+    mocks.execSync.mockImplementationOnce((_command, options) => {
+      const cwd = (options as { cwd?: string } | undefined)?.cwd;
+      if (!cwd) {
+        throw new Error('缺少 cwd');
+      }
+      mkdirSync(join(cwd, 'dist'), { recursive: true });
+      writeFileSync(join(cwd, 'dist', 'index.js'), 'throw new Error("fixture load exploded");\n');
+      return Buffer.alloc(0);
+    });
+
+    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow('fixture load exploded');
   });
 
   it('build --wasm 应将 pkg 中的 .wasm 复制到 dist/plugin.wasm 并写回 manifest.wasmEntry', async () => {
