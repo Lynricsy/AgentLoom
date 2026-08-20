@@ -26,6 +26,27 @@ void main() {
   }
 
   group('AgentApi', () {
+    test('listAgents 使用 server canonical pageSize 查询参数', () async {
+      when(
+        () =>
+            mockDio.get(any(), queryParameters: any(named: 'queryParameters')),
+      ).thenAnswer(
+        (_) async => okResponse({
+          'data': <dynamic>[],
+          'meta': {'total': 0, 'page': 2, 'pageSize': 10, 'totalPages': 0},
+        }),
+      );
+
+      await api.listAgents(page: 2, pageSize: 10);
+
+      verify(
+        () => mockDio.get(
+          '/api/v1/agent-definitions',
+          queryParameters: {'page': 2, 'pageSize': 10},
+        ),
+      ).called(1);
+    });
+
     test('cancelConversation 应发送空 JSON body', () async {
       when(() => mockDio.post(any(), data: any(named: 'data'))).thenAnswer(
         (_) async =>

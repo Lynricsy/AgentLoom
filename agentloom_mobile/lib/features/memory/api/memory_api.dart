@@ -23,7 +23,7 @@ class MemoryApi {
       '/api/v1/memory-instances',
       queryParameters: {
         'page': page,
-        'page_size': pageSize,
+        'pageSize': pageSize,
         if (sourceKind != null && sourceKind.isNotEmpty)
           'sourceKind': sourceKind,
       },
@@ -104,7 +104,7 @@ class MemoryApi {
   getAuditLog(String instanceId, {int page = 1, int pageSize = 20}) async {
     final response = await _dio.get(
       '/api/v1/memory-instances/$instanceId/audit',
-      queryParameters: {'page': page, 'page_size': pageSize},
+      queryParameters: {'page': page, 'pageSize': pageSize},
     );
     final data = response.data;
     if (data is List) {

@@ -1,22 +1,32 @@
+import '../../../shared/utils/json_key_normalizer.dart';
 import 'agent_definition_dto.dart';
 
 Map<String, dynamic>? _asMap(Object? value) {
-  if (value is Map<String, dynamic>) {
-    return value;
+  if (value is! Map) {
+    return null;
   }
-  if (value is Map<Object?, Object?>) {
-    return value.map((key, item) => MapEntry('$key', item));
+  return normalizeJsonMap(value);
+}
+
+List<Map<String, dynamic>> _asMapList(Object? value) {
+  if (value is! List) {
+    return const [];
   }
-  return null;
+  return value
+      .whereType<Map<Object?, Object?>>()
+      .map(normalizeJsonMap)
+      .toList(growable: false);
+}
+
+List<String> _asStringList(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+  return value.whereType<String>().toList(growable: false);
 }
 
 bool _hasAnyBoolean(Iterable<Object?> values) {
-  for (final value in values) {
-    if (value is bool) {
-      return true;
-    }
-  }
-  return false;
+  return values.any((value) => value is bool);
 }
 
 class AgentNativeToolPolicyView {
@@ -51,12 +61,28 @@ class AgentSelfEvolutionPolicyView {
   final bool sandboxManagement;
 }
 
-class AgentMainConfigView {
-  const AgentMainConfigView({
+class AgentSubAgentConfigView {
+  const AgentSubAgentConfigView({required this.alias});
+
+  final String alias;
+}
+
+class AgentRuntimeConfigView {
+  const AgentRuntimeConfigView({
+    required this.modelId,
+    required this.similarityThreshold,
+    required this.fallbackModelId,
+    required this.candidateModelIds,
+    required this.subAgents,
     required this.nativeToolPolicy,
     required this.selfEvolutionPolicy,
   });
 
+  final String? modelId;
+  final double? similarityThreshold;
+  final String? fallbackModelId;
+  final List<String> candidateModelIds;
+  final List<AgentSubAgentConfigView> subAgents;
   final AgentNativeToolPolicyView nativeToolPolicy;
   final AgentSelfEvolutionPolicyView selfEvolutionPolicy;
 
@@ -64,54 +90,72 @@ class AgentMainConfigView {
       nativeToolPolicy.isConfigured || selfEvolutionPolicy.isConfigured;
 }
 
-AgentMainConfigView parseAgentMainConfig(List<Map<String, dynamic>> nodes) {
-  Map<String, dynamic>? agentMainData;
+typedef AgentMainConfigView = AgentRuntimeConfigView;
 
-  for (final node in nodes) {
-    final data = _asMap(node['data']);
-    if (data?['nodeType'] == 'agent-main') {
-      agentMainData = data;
-      break;
-    }
-  }
+/// 集中解析 agent runtime config；输入可来自 REST 的 snake_case 或 camelCase。
+AgentRuntimeConfigView parseAgentRuntimeConfig(Map<Object?, Object?> json) {
+  final config = normalizeJsonMap(json);
+  final modelConfig = _asMap(config['modelConfig']);
+  final knowledgeBindings = _asMapList(config['knowledgeBindings']);
+  final routingConfig = _asMap(config['routingConfig']);
+  final nativeToolPolicy = _asMap(config['nativeToolPolicy']);
+  final selfEvolutionPolicy = _asMap(config['selfEvolutionPolicy']);
 
-  final config = _asMap(agentMainData?['config']);
-  final nativeToolPolicyMap = _asMap(config?['nativeToolPolicy']);
-  final selfEvolutionPolicyMap = _asMap(config?['selfEvolutionPolicy']);
+  final nativeValues = [
+    nativeToolPolicy?['readEnabled'],
+    nativeToolPolicy?['writeEnabled'],
+    nativeToolPolicy?['editEnabled'],
+    nativeToolPolicy?['terminalEnabled'],
+  ];
+  final selfEvolutionValues = [
+    selfEvolutionPolicy?['enabled'],
+    selfEvolutionPolicy?['resourceManagement'],
+    selfEvolutionPolicy?['externalEditing'],
+    selfEvolutionPolicy?['sandboxManagement'],
+  ];
 
-  final hasNativeToolPolicy = _hasAnyBoolean([
-    nativeToolPolicyMap?['readEnabled'],
-    nativeToolPolicyMap?['writeEnabled'],
-    nativeToolPolicyMap?['editEnabled'],
-    nativeToolPolicyMap?['terminalEnabled'],
-  ]);
-  final hasSelfEvolutionPolicy = _hasAnyBoolean([
-    selfEvolutionPolicyMap?['enabled'],
-    selfEvolutionPolicyMap?['resourceManagement'],
-    selfEvolutionPolicyMap?['externalEditing'],
-    selfEvolutionPolicyMap?['sandboxManagement'],
-  ]);
-
-  return AgentMainConfigView(
+  return AgentRuntimeConfigView(
+    modelId: modelConfig?['modelId'] as String?,
+    similarityThreshold:
+        (knowledgeBindings.firstOrNull?['similarityThreshold'] as num?)
+            ?.toDouble(),
+    fallbackModelId: routingConfig?['fallbackModelId'] as String?,
+    candidateModelIds: _asStringList(routingConfig?['candidateModelIds']),
+    subAgents: _asMapList(config['subAgents'])
+        .map(
+          (subAgent) =>
+              AgentSubAgentConfigView(alias: subAgent['alias'] as String),
+        )
+        .toList(growable: false),
     nativeToolPolicy: AgentNativeToolPolicyView(
-      isConfigured: hasNativeToolPolicy,
-      readEnabled: nativeToolPolicyMap?['readEnabled'] as bool? ?? true,
-      writeEnabled: nativeToolPolicyMap?['writeEnabled'] as bool? ?? true,
-      editEnabled: nativeToolPolicyMap?['editEnabled'] as bool? ?? true,
-      terminalEnabled:
-          nativeToolPolicyMap?['terminalEnabled'] as bool? ?? true,
+      isConfigured: _hasAnyBoolean(nativeValues),
+      readEnabled: nativeToolPolicy?['readEnabled'] as bool? ?? true,
+      writeEnabled: nativeToolPolicy?['writeEnabled'] as bool? ?? true,
+      editEnabled: nativeToolPolicy?['editEnabled'] as bool? ?? true,
+      terminalEnabled: nativeToolPolicy?['terminalEnabled'] as bool? ?? true,
     ),
     selfEvolutionPolicy: AgentSelfEvolutionPolicyView(
-      isConfigured: hasSelfEvolutionPolicy,
-      enabled: selfEvolutionPolicyMap?['enabled'] as bool? ?? false,
+      isConfigured: _hasAnyBoolean(selfEvolutionValues),
+      enabled: selfEvolutionPolicy?['enabled'] as bool? ?? false,
       resourceManagement:
-          selfEvolutionPolicyMap?['resourceManagement'] as bool? ?? false,
+          selfEvolutionPolicy?['resourceManagement'] as bool? ?? false,
       externalEditing:
-          selfEvolutionPolicyMap?['externalEditing'] as bool? ?? false,
+          selfEvolutionPolicy?['externalEditing'] as bool? ?? false,
       sandboxManagement:
-          selfEvolutionPolicyMap?['sandboxManagement'] as bool? ?? false,
+          selfEvolutionPolicy?['sandboxManagement'] as bool? ?? false,
     ),
   );
+}
+
+AgentMainConfigView parseAgentMainConfig(List<Map<String, dynamic>> nodes) {
+  for (final node in nodes) {
+    final data = _asMap(node['data']);
+    if (data?['nodeType'] != 'agent-main') {
+      continue;
+    }
+    return parseAgentRuntimeConfig(_asMap(data?['config']) ?? const {});
+  }
+  return parseAgentRuntimeConfig(const {});
 }
 
 extension AgentDefinitionMainConfigX on AgentDefinitionDto {

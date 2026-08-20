@@ -50,10 +50,7 @@ class AgentDetailScreen extends ConsumerWidget {
                     color: theme.colorScheme.error,
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    '加载智能体失败',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  Text('加载智能体失败', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () =>
@@ -144,20 +141,6 @@ class AgentDetailScreen extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            if (agent.modelId != null) ...[
-                              _MetadataRow(
-                                label: '模型',
-                                value: agent.modelId!,
-                              ),
-                              const SizedBox(height: 4),
-                            ],
-                            if (agent.autonomyMode != null) ...[
-                              _MetadataRow(
-                                label: '自主性',
-                                value: agent.autonomyMode!,
-                              ),
-                              const SizedBox(height: 4),
-                            ],
                             _MetadataRow(
                               label: '更新时间',
                               value: _formatDate(agent.updatedAt),
@@ -252,64 +235,60 @@ class AgentDetailScreen extends ConsumerWidget {
                             clipBehavior: Clip.antiAlias,
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
-                              children: List.generate(
-                                conversations.length,
-                                (index) {
-                                  final conv = conversations[index];
-                                  final emoji =
-                                      extractLeadingEmoji(conv.title);
-                                  final iconWidget = emoji != null
-                                      ? EntityIcon(
-                                          icon: emojiToCodepoint(emoji),
-                                          fallbackIcon:
-                                              Icons.chat_bubble_outline,
-                                          size: 24,
-                                        )
-                                      : const Icon(Icons.chat_bubble_outline);
-                                  return Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ListTile(
-                                        leading: iconWidget,
-                                        title: Text(
-                                          extractTextAfterEmoji(
-                                            conv.title,
-                                            fallback: '对话 ${index + 1}',
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        subtitle: Text(
-                                          _formatDate(conv.createdAt),
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                            color: theme
-                                                .colorScheme.onSurfaceVariant,
-                                          ),
-                                        ),
-                                        trailing:
-                                            const Icon(Icons.chevron_right),
-                                        onTap: () => context.pushNamed(
-                                          RouteNames.agentConversation,
-                                          pathParameters: {
-                                            'agentId': agentId,
-                                            'conversationId': conv.id,
-                                          },
-                                        ),
-                                        onLongPress: () =>
-                                            _showConversationMenu(
-                                          context,
-                                          ref,
-                                          conv.id,
+                              children: List.generate(conversations.length, (
+                                index,
+                              ) {
+                                final conv = conversations[index];
+                                final emoji = extractLeadingEmoji(conv.title);
+                                final iconWidget = emoji != null
+                                    ? EntityIcon(
+                                        icon: emojiToCodepoint(emoji),
+                                        fallbackIcon: Icons.chat_bubble_outline,
+                                        size: 24,
+                                      )
+                                    : const Icon(Icons.chat_bubble_outline);
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: iconWidget,
+                                      title: Text(
+                                        extractTextAfterEmoji(
                                           conv.title,
+                                          fallback: '对话 ${index + 1}',
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      if (index < conversations.length - 1)
-                                        const Divider(height: 1),
-                                    ],
-                                  );
-                                },
-                              ),
+                                      subtitle: Text(
+                                        _formatDate(conv.createdAt),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                      trailing: const Icon(Icons.chevron_right),
+                                      onTap: () => context.pushNamed(
+                                        RouteNames.agentConversation,
+                                        pathParameters: {
+                                          'agentId': agentId,
+                                          'conversationId': conv.id,
+                                        },
+                                      ),
+                                      onLongPress: () => _showConversationMenu(
+                                        context,
+                                        ref,
+                                        conv.id,
+                                        conv.title,
+                                      ),
+                                    ),
+                                    if (index < conversations.length - 1)
+                                      const Divider(height: 1),
+                                  ],
+                                );
+                              }),
                             ),
                           ),
                         ),
@@ -402,13 +381,7 @@ class AgentDetailScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ref.invalidate(agentConversationsProvider(agentId));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            title != null
-                ? '标题已更新: $title'
-                : '无法生成标题',
-          ),
-        ),
+        SnackBar(content: Text(title != null ? '标题已更新: $title' : '无法生成标题')),
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -456,9 +429,9 @@ class AgentDetailScreen extends ConsumerWidget {
       ).showSnackBar(const SnackBar(content: Text('对话已删除')));
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('删除对话失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除对话失败: $e')));
     }
   }
 }

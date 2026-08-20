@@ -36,8 +36,8 @@ void main() {
       expect(validation.min, 1);
       expect(validation.max, 10.5);
       expect(validation.toJson(), {
-        'min_length': 2,
-        'max_length': 20,
+        'minLength': 2,
+        'maxLength': 20,
         'min': 1,
         'max': 10.5,
       });
@@ -74,8 +74,8 @@ void main() {
         'description': '仅在高级模式下显示',
         'required': false,
         'validation': {
-          'min_length': 3,
-          'max_length': 100,
+          'minLength': 3,
+          'maxLength': 100,
           'min': null,
           'max': null,
         },
@@ -158,7 +158,7 @@ void main() {
         collectionHint: '请描述期望成果。',
       );
 
-      expect(field.toJson()['collection_hint'], '请描述期望成果。');
+      expect(field.toJson()['collectionHint'], '请描述期望成果。');
     });
 
     test('should include collectionHint in equality', () {
