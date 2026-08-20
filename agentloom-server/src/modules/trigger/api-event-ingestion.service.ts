@@ -188,8 +188,12 @@ export class ApiEventIngestionService {
   }
 
   private resolveAdapter(source: string) {
+    // 注册表按小写适配器名索引；不归一化会让 `GitHub` 回退到 generic，
+    // 从而绕过 GitHub 的 HMAC 验签
+    const normalizedSource = source.toLowerCase();
+
     try {
-      return this.adapterRegistry.getAdapter(source);
+      return this.adapterRegistry.getAdapter(normalizedSource);
     } catch {
       return this.adapterRegistry.getAdapter('generic');
     }

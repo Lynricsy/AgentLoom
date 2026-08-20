@@ -139,6 +139,26 @@ describe('TriggerController', () => {
     });
   });
 
+  it('应在隐藏 secret 的同时保留 authMode', async () => {
+    triggerService.findById.mockResolvedValue({
+      ...webhookTrigger,
+      config: { ...webhookTrigger.config, authMode: 'signed' as const },
+    });
+
+    await expect(
+      controller.findById(WORKFLOW_ID, TRIGGER_ID, TENANT_ID),
+    ).resolves.toEqual({
+      data: {
+        ...webhookTrigger,
+        config: {
+          authMode: 'signed',
+          token: 'webhook-token',
+          ipWhitelist: [],
+        },
+      },
+    });
+  });
+
   it('应在更新 cron 触发器后重建调度任务', async () => {
     triggerService.findById.mockResolvedValue(cronTrigger);
     triggerService.update.mockResolvedValue({

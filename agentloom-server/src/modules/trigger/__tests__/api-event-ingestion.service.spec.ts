@@ -320,7 +320,7 @@ describe('ApiEventIngestionService', () => {
       expect(executionService.runWorkflow).not.toHaveBeenCalled();
     });
 
-    it('eventSource 大小写不同仍应匹配', async () => {
+    it('eventSource 大小写不同仍应匹配，且适配器按小写名查找', async () => {
       db.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           where: vi.fn().mockResolvedValue([baseTrigger]),
@@ -338,6 +338,9 @@ describe('ApiEventIngestionService', () => {
       });
 
       expect(result.triggeredCount).toBe(1);
+      // 若按原始 `GitHub` 查找会落到 generic 适配器，从而绕过 HMAC 验签
+      expect(adapterRegistry.getAdapter).toHaveBeenCalledWith('github');
+      expect(adapterRegistry.getAdapter).not.toHaveBeenCalledWith('generic');
     });
 
     it('filterExpression 求值为真时应触发工作流', async () => {
