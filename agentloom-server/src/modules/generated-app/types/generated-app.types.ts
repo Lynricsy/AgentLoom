@@ -1,0 +1,1056 @@
+// 本文件集中定义 Generated App 的领域契约；不得包含数据库表或持久化实现。
+
+import type { GeneratedAppRepairAttemptStatus } from '../../../database/schema/generated-apps.schema';
+export type GeneratedAppReadinessState =
+  | 'preview'
+  | 'trial'
+  | 'publish_candidate'
+  | 'blocked';
+
+export type GeneratedAppGateStatus =
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'warning'
+  | 'skipped';
+
+export interface GeneratedAppAcceptanceScenario {
+  id: string;
+  title: string;
+  requirementIds: string[];
+  given: string[];
+  when: string[];
+  then: string[];
+}
+
+export interface GeneratedAppSpec {
+  version: 1;
+  appName: string;
+  summary: string;
+  userGoal: string;
+  actors: string[];
+  coreRequirements: Array<{
+    id: string;
+    text: string;
+  }>;
+  pages: Array<{
+    id: string;
+    name: string;
+    purpose: string;
+  }>;
+  dataPolicy: {
+    publicSubmissionsPersisted: boolean;
+    creatorCanDeleteSubmissions: boolean;
+    endUserLoginRequired: boolean;
+  };
+  nonGoals: string[];
+  acceptanceScenarios: GeneratedAppAcceptanceScenario[];
+  traceability: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    evidenceIds: string[];
+  }>;
+}
+
+export interface GeneratedAppGateEvidence {
+  id: string;
+  label: string;
+  kind:
+    | 'app_spec'
+    | 'plan'
+    | 'static_check'
+    | 'build'
+    | 'test'
+    | 'browser'
+    | 'verifier'
+    | 'manual';
+  url: string | null;
+  summary: string;
+  details?: unknown;
+}
+
+export interface GeneratedAppGenerationPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  repairContext?: GeneratedAppGenerationRepairContext;
+  frontend: {
+    stack: 'react-vite-agentloom-runtime';
+    runtimeSurface: {
+      kind: 'generated-app';
+      publicAccess: 'private-token-after-gates';
+      dataUseNoticeRequired: boolean;
+    };
+    pages: Array<{
+      pageId: string;
+      name: string;
+      purpose: string;
+      route: string;
+      requirementIds: string[];
+      scenarioIds: string[];
+    }>;
+  };
+  orchestration: {
+    target: 'workflow';
+    strategy: 'generated-workflow-with-agent-capability';
+    inputContract: {
+      source: 'public-runtime-submission';
+      requiredFields: string[];
+      scenarioIds: string[];
+    };
+    outputContract: {
+      destinations: string[];
+      reportRequired: boolean;
+    };
+    steps: Array<{
+      stepId: string;
+      label: string;
+      purpose: string;
+      requirementIds: string[];
+      scenarioIds: string[];
+    }>;
+  };
+  pluginTools: {
+    tools: Array<{
+      toolId: string;
+      purpose: string;
+      requirementIds: string[];
+      permissionNotes: string[];
+      activationPolicy?: {
+        scope: 'tenant-private';
+        autoActivateAfterHardGates: boolean;
+        requiredHardGates: Array<
+          | 'manifest-validation'
+          | 'build'
+          | 'signature-verification'
+          | 'permission-policy'
+          | 'sandbox-smoke'
+          | 'generation-safety-scan'
+        >;
+      };
+    }>;
+    emptyReason: string | null;
+    permissionPolicy: string[];
+  };
+  dataPersistence: {
+    publicSubmissionsPersisted: boolean;
+    creatorCanDeleteSubmissions: boolean;
+    endUserLoginRequired: boolean;
+    tenantScoped: boolean;
+    tokenSnapshotRequired: boolean;
+    softDeleteRequired: boolean;
+  };
+  testGates: {
+    blockingGateIds: string[];
+    gatePlan: Array<{
+      gateId: string;
+      purpose: string;
+      evidenceKind: GeneratedAppGateEvidence['kind'];
+    }>;
+    acceptanceScenarioIds: string[];
+  };
+  traceability: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    pageIds: string[];
+    orchestrationStepIds: string[];
+    planEvidenceIds: string[];
+  }>;
+  staticContracts?: GeneratedAppStaticContracts;
+  buildUnitPlan?: GeneratedAppBuildUnitPlan;
+  integrationPlan?: GeneratedAppIntegrationPlan;
+  browserAcceptancePlan?: GeneratedAppBrowserAcceptancePlan;
+  independentVerificationPlan?: GeneratedAppIndependentVerificationPlan;
+  publishCandidatePlan?: GeneratedAppPublishCandidatePlan;
+}
+
+export interface GeneratedAppGenerationRepairContext {
+  source: 'previous-failed-repair-attempt';
+  sourceGenerationRunId: string;
+  sourceRepairAttemptId: string;
+  targetGateId: string;
+  attemptNumber: number;
+  status: GeneratedAppRepairAttemptStatus;
+  failureSummary: string;
+  changeSummary: string | null;
+  verificationSummary: string | null;
+  repairPlan: GeneratedAppRepairPlan | null;
+  reverificationPlan: GeneratedAppReverificationPlan | null;
+  capturedAt: string;
+}
+
+export interface GeneratedAppRepairPlan {
+  planVersion: 1;
+  source: 'automatic-failed-gate-work-order' | 'manual-repair-work-order';
+  targetGateId: string;
+  targetGateName: string;
+  failureCode: string | null;
+  failureSummary: string;
+  repairInstructions: string | null;
+  evidenceIds: string[];
+  evidenceSummaries: string[];
+  allowedChangeScopes: Array<
+    | 'app-spec'
+    | 'generation-plan'
+    | 'static-contracts'
+    | 'frontend-workspace'
+    | 'workflow-orchestration'
+    | 'plugin-tools'
+    | 'test-contracts'
+    | 'publish-contract'
+  >;
+  forbiddenChangeScopes: Array<
+    | 'tenant-boundary'
+    | 'public-share-token'
+    | 'host-absolute-path'
+    | 'production-credentials'
+    | 'external-network-without-permission'
+    | 'unrelated-gate-rewrite'
+  >;
+  patchTargets: string[];
+  requiredTraceability: string[];
+  browserRepairTargets?: Array<{
+    targetId: string;
+    path: string;
+    reason: string;
+  }>;
+  e2eRunnerContract?: {
+    mode: 'real-browser-e2e';
+    command: string;
+    journey: string;
+    allowedEndpointPrefixes: string[];
+    forbiddenEndpointPatterns: string[];
+    requiredFailureEvidence: string[];
+    forbiddenEvidenceFields: string[];
+  };
+  generatedAt: string;
+}
+
+export interface GeneratedAppReverificationPlan {
+  planVersion: 1;
+  targetGateId: string;
+  requiredGateIds: string[];
+  requiredCommandIds: string[];
+  requiredEvidenceIds: string[];
+  successCriteria: string[];
+  blockedUntilPatchApplied: boolean;
+  generatedAt: string;
+}
+
+export interface GeneratedAppStaticContracts {
+  contractVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  publicRuntime: {
+    input: {
+      source: 'public-runtime-submission';
+      requiredFields: string[];
+      scenarioIds: string[];
+      dataUseNoticeRequired: boolean;
+      anonymousSessionRequired: boolean;
+      endUserLoginRequired: boolean;
+    };
+    output: {
+      destinations: string[];
+      reportRequired: boolean;
+      errorStateRequired: boolean;
+    };
+  };
+  frontendRoutes: Array<{
+    pageId: string;
+    name: string;
+    route: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+  }>;
+  orchestration: {
+    target: 'workflow';
+    strategy: 'generated-workflow-with-agent-capability';
+    inputContract: GeneratedAppGenerationPlan['orchestration']['inputContract'];
+    outputContract: GeneratedAppGenerationPlan['orchestration']['outputContract'];
+    nodes: Array<{
+      nodeId: string;
+      stepId: string;
+      label: string;
+      requirementIds: string[];
+      scenarioIds: string[];
+      inputHandle: string;
+      outputHandle: string;
+    }>;
+    edges: Array<{
+      fromNodeId: string;
+      toNodeId: string;
+    }>;
+  };
+  pluginToolPermissions: {
+    tools: Array<{
+      toolId: string;
+      purpose: string;
+      requirementIds: string[];
+      permissions: string[];
+      manifestRequired: boolean;
+      sandboxSmokeTestRequired: boolean;
+    }>;
+    emptyReason: string | null;
+    permissionPolicy: string[];
+    implicitPermissionsAllowed: false;
+  };
+  submissionPersistence: {
+    publicSubmissionsPersisted: boolean;
+    creatorCanDeleteSubmissions: boolean;
+    endUserLoginRequired: boolean;
+    tenantScoped: boolean;
+    tokenSnapshotRequired: boolean;
+    softDeleteRequired: boolean;
+    fields: string[];
+  };
+  testEntry: {
+    staticCheckCommand: string;
+    buildGateCommand: string;
+    unitGateCommand: string;
+    integrationGateCommand: string;
+    browserGateCommand: string;
+    verifierGateCommand: string;
+    publishCandidateGateCommand: string;
+    acceptanceScenarioIds: string[];
+    blockingGateIds: string[];
+  };
+  traceability: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    pageIds: string[];
+    orchestrationNodeIds: string[];
+    staticContractIds: string[];
+  }>;
+}
+
+export interface GeneratedAppBuildUnitPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  executionLevel:
+    | 'contract-skeleton'
+    | 'real-local-command-plan'
+    | 'fixture-execution'
+    | 'disabled-execution';
+  generationWorkspace?: {
+    contractVersion: 1;
+    workspaceId: string;
+    storageKind: 'server-controlled-local-workspace';
+    rootLabel: 'generated-app-workspaces';
+    relativePath: string;
+    scaffold: 'react-vite-typescript';
+    materializedFrom: {
+      appSpecVersion: number;
+      staticContractsVersion: number;
+    };
+    writePolicy: {
+      arbitraryPathWriteAllowed: false;
+      traversalGuard: 'resolve-inside-workspace-root';
+      exposesAbsoluteHostPath: false;
+    };
+    files: Array<{
+      path: string;
+      kind:
+        | 'package'
+        | 'config'
+        | 'html'
+        | 'source'
+        | 'test'
+        | 'script'
+        | 'manifest';
+      derivedFrom:
+        | 'AppSpec'
+        | 'generationPlan.staticContracts'
+        | 'generated-app-scaffold';
+      required: boolean;
+    }>;
+    artifactPaths: {
+      sourceManifest: string;
+      sourceArchive: string;
+      buildOutput: string;
+      buildManifest: string;
+      unitReport: string;
+      componentGoldenReport: string;
+      coverageSummary: string;
+    };
+  };
+  commandPlan?: Array<{
+    commandId: string;
+    command: string;
+    workingDirectory: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+    producesArtifactIds: string[];
+  }>;
+  frontendBuild: {
+    command: string;
+    workingDirectory: string;
+    routeIds: string[];
+    requirementIds: string[];
+    scenarioIds: string[];
+    expectedArtifacts: string[];
+  };
+  typecheck: {
+    command: string;
+    tsconfigPath: string;
+    requirementIds: string[];
+  };
+  unitTests: {
+    command: string;
+    entry: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+  };
+  componentGoldenTests: {
+    command: string;
+    entry: string;
+    scenarioIds: string[];
+    goldenArtifactPath: string;
+  };
+  artifactExpectations: Array<{
+    artifactId: string;
+    kind:
+      | 'frontend_build'
+      | 'unit_test_report'
+      | 'component_golden_report'
+      | 'coverage_report'
+      | 'plugin_bundle';
+    path: string;
+    required: boolean;
+  }>;
+  staticContractsCoverage: Array<{
+    staticContractId: string;
+    coveredBy: string[];
+  }>;
+  acceptanceScenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    coveredBy: string[];
+  }>;
+  pluginBuildExpectations: {
+    tools: Array<{
+      toolId: string;
+      command: string;
+      manifestPath: string;
+      nodeDefinitionsPath?: string;
+      sourcePath?: string;
+      smokeFixturePath?: string;
+      buildReportPath?: string;
+      artifactPath: string;
+      goldenTestCommand: string;
+      requirementIds: string[];
+      activationPolicy?: {
+        scope: 'tenant-private';
+        autoActivateAfterHardGates: boolean;
+        requiredHardGates: string[];
+      };
+    }>;
+    emptyReason: string | null;
+  };
+  failureCaptureFields: string[];
+}
+
+export interface GeneratedAppIntegrationPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  executionLevel:
+    | 'integration-skeleton'
+    | 'real-local-integration'
+    | 'fixture-integration'
+    | 'disabled-integration';
+  skeletonDisclaimer: string;
+  testTenant: {
+    tenantKind: 'synthetic';
+    tenantAlias: string;
+    authMode: 'tenant-scoped-synthetic-no-real-token';
+    usesRealTokens: false;
+    noProductionResources: true;
+  };
+  testResources: {
+    resourceIsolation: 'ephemeral-test-resources-only';
+    usesRealTokens: false;
+    generatedAppWorkspacePath: string;
+    fixtureDirectory: string;
+    requiredScenarioIds: string[];
+  };
+  publicRuntimeApiChecks: Array<{
+    checkId: string;
+    kind:
+      | 'public_runtime_read'
+      | 'public_runtime_submit'
+      | 'public_submission_detail';
+    method: 'GET' | 'POST';
+    pathTemplate: string;
+    staticContractIds: string[];
+    requirementIds: string[];
+    scenarioIds: string[];
+    expectedStatus: number;
+    payloadContractRefs: string[];
+  }>;
+  creatorManagementApiChecks: Array<{
+    checkId: string;
+    kind:
+      | 'creator_generation_run_query'
+      | 'creator_gate_run_query'
+      | 'creator_submission_query';
+    method: 'GET';
+    pathTemplate: string;
+    staticContractIds: string[];
+    requirementIds: string[];
+    expectedStatus: number;
+  }>;
+  agentWorkflowDryRunExpectations: {
+    expectationLevel:
+      | 'dry-run-fixture-skeleton'
+      | 'controlled-local-trace-fixture';
+    orchestrationNodeIds: string[];
+    orchestrationEdgeRefs: string[];
+    fixtures: Array<{
+      fixtureId: string;
+      scenarioId: string;
+      requirementIds: string[];
+      orchestrationNodeIds: string[];
+      orchestrationEdgeRefs: string[];
+      inputMapping: {
+        staticContractId: string;
+        requiredFields: string[];
+      };
+      outputMapping: {
+        staticContractId: string;
+        destinations: string[];
+      };
+      traceArtifactIds: string[];
+    }>;
+  };
+  pluginSandboxSmokeExpectations: {
+    tools: Array<{
+      toolId: string;
+      smokeCheckId: string;
+      artifactId: string;
+      fixturePath: string;
+      expectedTraceArtifactId: string;
+      requirementIds: string[];
+      sandboxRuntime: 'wasm-extism';
+    }>;
+    emptyReason: string | null;
+  };
+  dependencyArtifacts: Array<{
+    artifactId: string;
+    kind:
+      | 'frontend_build'
+      | 'unit_test_report'
+      | 'component_golden_report'
+      | 'coverage_report'
+      | 'plugin_bundle';
+    sourceGateId: 'gate-3';
+    path: string;
+    required: boolean;
+  }>;
+  acceptanceScenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    coveredByCheckIds: string[];
+    fixtureIds: string[];
+  }>;
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    coveredByCheckIds: string[];
+    dependencyArtifactIds: string[];
+  }>;
+  orchestrationCoverage: Array<{
+    nodeId: string;
+    edgeRefs: string[];
+    coveredByFixtureIds: string[];
+    coveredByCheckIds: string[];
+  }>;
+  traceArtifacts: Array<{
+    artifactId: string;
+    kind:
+      | 'public_runtime_api_trace'
+      | 'creator_management_api_trace'
+      | 'agent_workflow_dry_run_trace'
+      | 'plugin_sandbox_smoke_trace';
+    path: string;
+    producedByCheckIds: string[];
+  }>;
+  failureCaptureFields: string[];
+}
+
+export interface GeneratedAppBrowserAcceptancePlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  integrationPlanVersion: number;
+  executionLevel:
+    | 'browser-acceptance-skeleton'
+    | 'real-local-browser-contract'
+    | 'real-browser-e2e'
+    | 'fixture-browser-acceptance'
+    | 'disabled-browser-acceptance';
+  skeletonDisclaimer: string;
+  browserToolPlan: {
+    runner: 'playwright' | 'local-browser-contract';
+    command: string;
+    testEntry: string;
+    workingDirectory: string;
+    baseUrlShape: string;
+    publicShareAccessPlaceholder: string;
+    usesRealTokens: false;
+    scenarioIds: string[];
+    runnerMode?: 'real' | 'real-browser-e2e' | 'fixture' | 'disabled';
+    serverControlled?: boolean;
+    requiredEnvironment?: string[];
+    allowedPublicEndpoints?: string[];
+    forbiddenEndpointPatterns?: string[];
+    artifactPolicy?: {
+      root: 'generated-run';
+      allowHostAbsolutePaths: false;
+      allowCreatorApis: false;
+      allowInternalArtifacts: false;
+      redactSensitiveValues: true;
+    };
+  };
+  viewportMatrix: Array<{
+    viewportId: string;
+    category: 'desktop' | 'mobile';
+    deviceLabel: string;
+    width: number;
+    height: number;
+    scenarioIds: string[];
+    requirementIds: string[];
+  }>;
+  publicRuntimeJourneys: Array<{
+    journeyId: string;
+    kind:
+      | 'public_runtime_open'
+      | 'public_runtime_interaction_submit'
+      | 'public_build_preview_submit'
+      | 'public_submission_result_detail';
+    title: string;
+    steps: string[];
+    viewportIds: string[];
+    scenarioIds: string[];
+    requirementIds: string[];
+    publicRuntimeApiCheckIds: string[];
+    staticContractIds: string[];
+  }>;
+  creatorManagementJourneys: Array<{
+    journeyId: string;
+    kind:
+      | 'creator_generation_run_review'
+      | 'creator_gate_run_review'
+      | 'creator_submission_review';
+    title: string;
+    steps: string[];
+    viewportIds: string[];
+    scenarioIds: string[];
+    requirementIds: string[];
+    creatorManagementApiCheckIds: string[];
+    staticContractIds: string[];
+  }>;
+  consoleAssertions: Array<{
+    assertionId: string;
+    kind: 'no_unhandled_console_error' | 'allowed_warning_policy';
+    journeyIds: string[];
+    viewportIds: string[];
+    allowedWarnings: string[];
+    emptyAllowedWarningsReason: string | null;
+  }>;
+  networkAssertions: Array<{
+    assertionId: string;
+    kind:
+      | 'core_requests_2xx'
+      | 'public_journey_forbids_creator_internal_endpoints'
+      | 'no_token_or_secret_leak';
+    journeyIds: string[];
+    apiCheckIds: string[];
+    staticContractIds: string[];
+    forbiddenEndpointPatterns: string[];
+    expectedStatusRange: '2xx';
+  }>;
+  accessibilityInteractionAssertions: Array<{
+    assertionId: string;
+    kind:
+      | 'critical_inputs_reachable'
+      | 'critical_buttons_clickable'
+      | 'main_content_not_occluded';
+    journeyIds: string[];
+    viewportIds: string[];
+    staticContractIds: string[];
+  }>;
+  responsiveLayoutAssertions: Array<{
+    assertionId: string;
+    kind:
+      | 'desktop_no_critical_overflow'
+      | 'mobile_no_critical_overflow'
+      | 'viewport_content_not_occluded';
+    journeyIds: string[];
+    viewportIds: string[];
+    staticContractIds: string[];
+  }>;
+  artifactExpectations: Array<{
+    artifactId: string;
+    kind:
+      | 'screenshot'
+      | 'video'
+      | 'playwright_trace'
+      | 'console_log'
+      | 'network_log'
+      | 'failure_summary';
+    path: string;
+    required: boolean;
+    producedByJourneyIds: string[];
+    producedByAssertionIds: string[];
+    referencesGate4TraceArtifactIds: string[];
+  }>;
+  acceptanceScenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    journeyIds: string[];
+    viewportIds: string[];
+    assertionIds: string[];
+    artifactIds: string[];
+  }>;
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    journeyIds: string[];
+    assertionIds: string[];
+    artifactIds: string[];
+    staticContractIds: string[];
+    gate4ApiCheckIds: string[];
+  }>;
+  journeyCoverage: Array<{
+    journeyId: string;
+    kind: string;
+    scenarioIds: string[];
+    requirementIds: string[];
+    viewportIds: string[];
+    assertionIds: string[];
+    artifactIds: string[];
+  }>;
+  failureCaptureFields: string[];
+}
+
+export type GeneratedAppIndependentVerificationRubricCategory =
+  | 'requirement_coverage'
+  | 'scenario_coverage'
+  | 'ui_runtime_usability'
+  | 'agent_workflow_behavior'
+  | 'plugin_permission_safety'
+  | 'security_privacy'
+  | 'data_persistence'
+  | 'public_runtime_boundary'
+  | 'failure_error_states'
+  | 'publish_blockers';
+
+export interface GeneratedAppIndependentVerificationPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  integrationPlanVersion: number;
+  browserAcceptancePlanVersion: number;
+  executionLevel:
+    | 'independent-verifier-skeleton'
+    | 'real-local-independent-verifier'
+    | 'fixture-independent-verifier'
+    | 'disabled-independent-verifier';
+  skeletonDisclaimer: string;
+  verifierRunner: {
+    runner: 'local-independent-rules-verifier';
+    command: 'agentloom generated-app gate-6 local-independent-verifier';
+    workingDirectory: 'generated-run';
+    usesExternalNetwork: false;
+    usesExternalModel: false;
+    usesHumanReviewer: false;
+    usesGenerationTranscript: false;
+    inputBundleId: string;
+    verdictArtifactPath: string;
+  };
+  verifierIsolationPolicy: {
+    verifierContext: 'fresh-independent-context';
+    reuseGenerationContext: false;
+    acceptsGeneratorSelfAttestation: false;
+    readsPublicShareToken: false;
+    readsRealSecrets: false;
+    inputMaterialPolicy: 'redacted-evidence-bundle-only';
+    requiredControls: string[];
+  };
+  evidenceBundle: {
+    bundleId: string;
+    redactionLevel: 'redacted-no-public-token-or-secret';
+    referencedGateIds: string[];
+    gateEvidenceRefs: Array<{
+      gateId: string;
+      evidenceIds: string[];
+    }>;
+    staticContractIds: string[];
+    buildUnitArtifactIds: string[];
+    integrationTraceArtifactIds: string[];
+    browserArtifactIds: string[];
+    coverageMatrixRefs: Array<{
+      matrixId:
+        | 'requirementCoverage'
+        | 'scenarioCoverage'
+        | 'evidenceCoverage'
+        | 'gateCoverage';
+      sourcePlan:
+        | 'generationPlan'
+        | 'staticContracts'
+        | 'buildUnitPlan'
+        | 'integrationPlan'
+        | 'browserAcceptancePlan'
+        | 'independentVerificationPlan';
+      requirementIds: string[];
+      scenarioIds: string[];
+      gateIds: string[];
+    }>;
+    forbiddenSensitiveFields: string[];
+  };
+  rubric: Array<{
+    category: GeneratedAppIndependentVerificationRubricCategory;
+    label: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+    evidenceIds: string[];
+    blocking: boolean;
+  }>;
+  verdictSchema: {
+    requiredFields: string[];
+    findingSeverities: string[];
+    decisionValues: string[];
+    requiresEvidenceIds: true;
+    requiresRepairSuggestions: true;
+    residualRiskSummaryRequired: true;
+  };
+  verdictArtifact: {
+    artifactId: 'independent-verifier-verdict';
+    kind: 'verifier_report';
+    path: 'artifacts/gate-6/independent-verifier-verdict.json';
+    required: true;
+    materialized: boolean;
+    containsSecrets: false;
+  };
+  independenceChecks: Array<{
+    checkId: string;
+    kind:
+      | 'reviewer_identity_context_isolation'
+      | 'input_material_redaction'
+      | 'reject_generator_self_attestation'
+      | 'evidence_id_citation_required';
+    required: boolean;
+    gateIds: string[];
+    evidenceIds: string[];
+  }>;
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    rubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+    evidenceIds: string[];
+    gateIds: string[];
+    staticContractIds: string[];
+    browserArtifactIds: string[];
+  }>;
+  scenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    rubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+    evidenceIds: string[];
+    gateIds: string[];
+    browserArtifactIds: string[];
+  }>;
+  evidenceCoverage: Array<{
+    evidenceId: string;
+    gateId: string;
+    usedByRubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+    requirementIds: string[];
+    scenarioIds: string[];
+  }>;
+  gateCoverage: Array<{
+    gateId: string;
+    evidenceIds: string[];
+    required: boolean;
+    coveredByRubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+  }>;
+  failureCaptureFields: string[];
+}
+
+export type GeneratedAppPublishCandidateArtifactKind =
+  | 'frontend_artifact'
+  | 'plugin_bundle_artifact'
+  | 'test_report'
+  | 'integration_trace'
+  | 'browser_artifact'
+  | 'verifier_report'
+  | 'source_artifact_placeholder';
+
+export type GeneratedAppPublishCandidateBlockerCategory =
+  | 'skeleton_only_upstream_gate'
+  | 'missing_real_execution_artifact'
+  | 'missing_real_independent_verifier_verdict'
+  | 'unresolved_warning_or_blocking_finding'
+  | 'stale_public_token_requirement';
+
+export interface GeneratedAppPublishCandidatePlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  integrationPlanVersion: number;
+  browserAcceptancePlanVersion: number;
+  independentVerificationPlanVersion: number;
+  executionLevel:
+    | 'publish-candidate-guard-skeleton'
+    | 'real-local-publish-candidate-contract'
+    | 'fixture-publish-candidate-contract'
+    | 'disabled-publish-candidate-contract';
+  skeletonDisclaimer: string;
+  publishReadinessInputs: {
+    requiredGateIds: string[];
+    upstreamGateIds: string[];
+    upstreamEvidenceRefs: Array<{
+      gateId: string;
+      evidenceIds: string[];
+    }>;
+    readinessPreconditions: string[];
+    requiredNonSkeletonEvidenceClasses: string[];
+  };
+  artifactReleaseManifest: Array<{
+    artifactId: string;
+    kind: GeneratedAppPublishCandidateArtifactKind;
+    sourceGateId: string;
+    sourcePlan: string;
+    path: string;
+    required: boolean;
+    placeholder: boolean;
+    containsSecrets: false;
+    evidenceIds: string[];
+    checksum?: {
+      algorithm: 'sha256';
+      value: string;
+      placeholder: true;
+      materialized: false;
+    };
+    archiveMaterialized?: false;
+    signature?: {
+      status: 'not-signed';
+      signatureArtifactId: null;
+      reason: string;
+    };
+    signoffStatus?: 'contract-accepted' | 'fixture-only' | 'not-executed';
+  }>;
+  publicationBlockers: Array<{
+    blockerId: string;
+    category: GeneratedAppPublishCandidateBlockerCategory;
+    gateIds: string[];
+    evidenceIds: string[];
+    artifactIds: string[];
+    message: string;
+    blocking: true;
+  }>;
+  rollbackShareControls: {
+    publicTokenCreation:
+      | 'disabled-while-guard-fails'
+      | 'deferred-until-enable-public-share';
+    publicShareEnabledWhileGuardFails: false;
+    createdPublicShareToken: null;
+    stalePublicTokenRequiredAction:
+      | 'clear-before-publish-candidate'
+      | 'clear-before-enable-public-share';
+    closeShareControl: 'DELETE /generated-apps/:appId/public-share';
+    enableShareControl?: 'POST /generated-apps/:appId/public-share';
+    regenerateShareControl: 'POST /generated-apps/:appId/public-share/regenerate';
+    existingPublicShareControlsReferenced: true;
+    publicShareSignoff?: 'deferred-until-enable-public-share';
+    createsPublicShareToken?: false;
+  };
+  finalVerdict: {
+    publishCandidateAllowed: boolean;
+    blockingReasons: string[];
+    warningReasons: string[];
+    requiredRealGateRunnerIds: string[];
+    requiredGate5RealRunnerId: string;
+    evidenceIds: string[];
+    repairSuggestions: string[];
+  };
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    gateIds: string[];
+    evidenceIds: string[];
+    artifactIds: string[];
+    blockerIds: string[];
+  }>;
+  gateCoverage: Array<{
+    gateId: string;
+    evidenceIds: string[];
+    required: boolean;
+    executionLevel: string;
+    skeletonOnly: boolean;
+    requiredRealGateRunnerId: string;
+  }>;
+  artifactCoverage: Array<{
+    artifactId: string;
+    kind: GeneratedAppPublishCandidateArtifactKind;
+    sourceGateId: string;
+    evidenceIds: string[];
+    requirementIds: string[];
+    scenarioIds: string[];
+    required: boolean;
+  }>;
+  failureCaptureFields: string[];
+}
+
+export interface GeneratedAppGateResult {
+  gateId: string;
+  order: number;
+  name: string;
+  blocking: boolean;
+  status: GeneratedAppGateStatus;
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  updatedAt: string;
+}
+
+export interface GeneratedAppGateRunFailure {
+  code?: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface GeneratedAppReadiness {
+  state: GeneratedAppReadinessState;
+  canCreatePublicShare: boolean;
+  blockingIssueCount: number;
+  warningCount: number;
+  summary: string;
+  blockers: Array<{
+    gateId: string;
+    name: string;
+    status: GeneratedAppGateStatus;
+    summary: string;
+  }>;
+  warnings: Array<{
+    gateId: string;
+    name: string;
+    status: GeneratedAppGateStatus;
+    summary: string;
+  }>;
+}
+
+export interface GeneratedAppPreview {
+  previewUrl: string | null;
+  sourceArtifactUrl: string | null;
+  testReportUrl: string | null;
+}

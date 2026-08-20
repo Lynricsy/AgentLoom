@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { Logger } from '@nestjs/common';
 
 import { AgentExecutionWorker } from '../agent-execution.worker';
 import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
@@ -22,6 +23,7 @@ const {
   mockSkillResolverService,
   mockMcpService,
   mockSelfEvolutionToolsProvider,
+  mockConversationTitleService,
   mockSmartRoutingService,
 } = vi.hoisted(() => ({
   mockDbSelectChain: {
@@ -99,6 +101,9 @@ const {
   },
   mockMcpService: {
     resolveRuntimeConnection: vi.fn(),
+  },
+  mockConversationTitleService: {
+    generateTitle: vi.fn(),
   },
   mockSelfEvolutionToolsProvider: {
     createSessionToolProvider: vi.fn(),
@@ -385,6 +390,9 @@ describe('AgentExecutionWorker', () => {
     mockSkillResolverService.resolveSkillsForAgent.mockReset();
     mockSkillResolverService.buildSkillAugmentedPrompt.mockReset();
     mockMcpService.resolveRuntimeConnection.mockReset();
+    mockConversationTitleService.generateTitle
+      .mockReset()
+      .mockResolvedValue('自动标题');
     mockSelfEvolutionToolsProvider.createSessionToolProvider.mockReset();
     mockSmartRoutingService.evaluate.mockReset();
 
@@ -404,7 +412,7 @@ describe('AgentExecutionWorker', () => {
       mockSkillResolverService as never,
       undefined,
       mockMcpService as never,
-      undefined,
+      mockConversationTitleService as never,
       mockSelfEvolutionToolsProvider as never,
       mockSmartRoutingService as never,
     );
@@ -890,6 +898,44 @@ describe('AgentExecutionWorker', () => {
         expect.objectContaining({ status: 'cancelled' }),
       );
     });
+    it('标题生成失败时记录携带 conversationId 的 warn 日志', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [{ id: 'message-1', content: '你好', createdAt: new Date() }],
+          [],
+        ],
+        persistResult: {
+          sessionId: 'session-1',
+          lastProcessedMessageId: 'message-1',
+          lastAssistantMessageId: 'assistant-1',
+          lastStopReason: 'end_turn',
+          runningState: 'running',
+        },
+      });
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([
+          { type: 'message_chunk', content: '你好' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+      mockConversationTitleService.generateTitle.mockRejectedValueOnce(
+        new Error('title model unavailable'),
+      );
+
+      await worker.executeAgentLoop('conversation-title', 'tenant-1');
+      await vi.waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(
+          'Failed to generate conversation title: title model unavailable',
+          { conversationId: 'conversation-title' },
+        );
+      });
+    });
+
   });
 
   describe('executeAgentLoop() — sandbox adapter selection', () => {

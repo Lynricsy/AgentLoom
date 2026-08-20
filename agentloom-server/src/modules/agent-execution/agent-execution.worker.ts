@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
@@ -59,12 +59,8 @@ import {
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
-import {
-  appendTextConversationMessageSegment,
-  appendThinkingConversationMessageSegment,
-  ensureToolCallConversationMessageSegment,
-  type ConversationMessageSegmentRecord,
-} from '../agent-conversation/message-segments';
+import { AgentTurnEventAccumulator } from '../agent/shared/agent-turn-event-accumulator';
+import { bindMemoryToolSession } from '../agent/shared/memory-tool-session-binder';
 import {
   buildConversationPromptBlocks,
   formatLatestPendingMessages,
@@ -123,8 +119,6 @@ import {
   buildConversationTurnResult,
   buildPromptBlocks as buildConversationWorkerPromptBlocks,
   type ConversationTurnResult,
-  extractThinkingEventContent,
-  mergeToolCallEvent,
   turnResultHasPersistableOutput,
 } from './conversation-turn-values';
 
@@ -184,26 +178,387 @@ const DEFAULT_MEMORY_BOOT_URIS = [
   'system://glossary',
 ];
 
-class ConversationTurnFailedError extends Error {
-  constructor(
-    cause: unknown,
-    readonly turnResult: ConversationTurnResult,
-  ) {
-    super(
-      cause instanceof Error ? cause.message : 'Agent conversation turn failed',
-    );
-    this.name = 'ConversationTurnFailedError';
-    if (cause instanceof Error && cause.stack) {
-      this.stack = cause.stack;
-    }
-    this.cause = cause;
-  }
-}
+import { ConversationTurnFailedError } from './conversation-turn-failed.error';
+import { AgentExecutionWorkerPersistenceService } from './agent-execution-worker-persistence.service';
+import { AgentExecutionWorkerRuntimeService } from './agent-execution-worker-runtime.service';
 
 @Injectable()
 @Processor(AGENT_CONVERSATION_EXECUTION_QUEUE)
 export class AgentExecutionWorker extends WorkerHost {
+  private readonly delegatedOverrides = new Map<string, Function>();
+
+  public get persistConversationTurn(): AgentExecutionWorkerPersistenceService['persistConversationTurn'] {
+    return (this.delegatedOverrides.get('persistConversationTurn') as AgentExecutionWorkerPersistenceService['persistConversationTurn'] | undefined) ?? this.persistenceService.persistConversationTurn.bind(this.persistenceService);
+  }
+
+  public set persistConversationTurn(value: AgentExecutionWorkerPersistenceService['persistConversationTurn']) {
+    this.delegatedOverrides.set('persistConversationTurn', value);
+    this.persistenceService.persistConversationTurn = value;
+  }
+
+  public get updateExecutionMetadata(): AgentExecutionWorkerPersistenceService['updateExecutionMetadata'] {
+    return (this.delegatedOverrides.get('updateExecutionMetadata') as AgentExecutionWorkerPersistenceService['updateExecutionMetadata'] | undefined) ?? this.persistenceService.updateExecutionMetadata.bind(this.persistenceService);
+  }
+
+  public set updateExecutionMetadata(value: AgentExecutionWorkerPersistenceService['updateExecutionMetadata']) {
+    this.delegatedOverrides.set('updateExecutionMetadata', value);
+    this.persistenceService.updateExecutionMetadata = value;
+  }
+
+  public get safeUpdateExecutionMetadata(): AgentExecutionWorkerPersistenceService['safeUpdateExecutionMetadata'] {
+    return (this.delegatedOverrides.get('safeUpdateExecutionMetadata') as AgentExecutionWorkerPersistenceService['safeUpdateExecutionMetadata'] | undefined) ?? this.persistenceService.safeUpdateExecutionMetadata.bind(this.persistenceService);
+  }
+
+  public set safeUpdateExecutionMetadata(value: AgentExecutionWorkerPersistenceService['safeUpdateExecutionMetadata']) {
+    this.delegatedOverrides.set('safeUpdateExecutionMetadata', value);
+    this.persistenceService.safeUpdateExecutionMetadata = value;
+  }
+
+  public get loadConversationMetadata(): AgentExecutionWorkerPersistenceService['loadConversationMetadata'] {
+    return (this.delegatedOverrides.get('loadConversationMetadata') as AgentExecutionWorkerPersistenceService['loadConversationMetadata'] | undefined) ?? this.persistenceService.loadConversationMetadata.bind(this.persistenceService);
+  }
+
+  public set loadConversationMetadata(value: AgentExecutionWorkerPersistenceService['loadConversationMetadata']) {
+    this.delegatedOverrides.set('loadConversationMetadata', value);
+    this.persistenceService.loadConversationMetadata = value;
+  }
+
+  public get materializePendingMessagesForRuntime(): AgentExecutionWorkerPersistenceService['materializePendingMessagesForRuntime'] {
+    return (this.delegatedOverrides.get('materializePendingMessagesForRuntime') as AgentExecutionWorkerPersistenceService['materializePendingMessagesForRuntime'] | undefined) ?? this.persistenceService.materializePendingMessagesForRuntime.bind(this.persistenceService);
+  }
+
+  public set materializePendingMessagesForRuntime(value: AgentExecutionWorkerPersistenceService['materializePendingMessagesForRuntime']) {
+    this.delegatedOverrides.set('materializePendingMessagesForRuntime', value);
+    this.persistenceService.materializePendingMessagesForRuntime = value;
+  }
+
+  public get buildPromptBlocks(): AgentExecutionWorkerPersistenceService['buildPromptBlocks'] {
+    return (this.delegatedOverrides.get('buildPromptBlocks') as AgentExecutionWorkerPersistenceService['buildPromptBlocks'] | undefined) ?? this.persistenceService.buildPromptBlocks.bind(this.persistenceService);
+  }
+
+  public set buildPromptBlocks(value: AgentExecutionWorkerPersistenceService['buildPromptBlocks']) {
+    this.delegatedOverrides.set('buildPromptBlocks', value);
+    this.persistenceService.buildPromptBlocks = value;
+  }
+
+  public get resolveDefaultMemoryInstanceIds(): AgentExecutionWorkerPersistenceService['resolveDefaultMemoryInstanceIds'] {
+    return (this.delegatedOverrides.get('resolveDefaultMemoryInstanceIds') as AgentExecutionWorkerPersistenceService['resolveDefaultMemoryInstanceIds'] | undefined) ?? this.persistenceService.resolveDefaultMemoryInstanceIds.bind(this.persistenceService);
+  }
+
+  public set resolveDefaultMemoryInstanceIds(value: AgentExecutionWorkerPersistenceService['resolveDefaultMemoryInstanceIds']) {
+    this.delegatedOverrides.set('resolveDefaultMemoryInstanceIds', value);
+    this.persistenceService.resolveDefaultMemoryInstanceIds = value;
+  }
+
+  public get ensureConversationMemorySessions(): AgentExecutionWorkerPersistenceService['ensureConversationMemorySessions'] {
+    return (this.delegatedOverrides.get('ensureConversationMemorySessions') as AgentExecutionWorkerPersistenceService['ensureConversationMemorySessions'] | undefined) ?? this.persistenceService.ensureConversationMemorySessions.bind(this.persistenceService);
+  }
+
+  public set ensureConversationMemorySessions(value: AgentExecutionWorkerPersistenceService['ensureConversationMemorySessions']) {
+    this.delegatedOverrides.set('ensureConversationMemorySessions', value);
+    this.persistenceService.ensureConversationMemorySessions = value;
+  }
+
+  public get ensureAttachedMemorySessions(): AgentExecutionWorkerPersistenceService['ensureAttachedMemorySessions'] {
+    return (this.delegatedOverrides.get('ensureAttachedMemorySessions') as AgentExecutionWorkerPersistenceService['ensureAttachedMemorySessions'] | undefined) ?? this.persistenceService.ensureAttachedMemorySessions.bind(this.persistenceService);
+  }
+
+  public set ensureAttachedMemorySessions(value: AgentExecutionWorkerPersistenceService['ensureAttachedMemorySessions']) {
+    this.delegatedOverrides.set('ensureAttachedMemorySessions', value);
+    this.persistenceService.ensureAttachedMemorySessions = value;
+  }
+
+  public get resolveConversationSystemPrompt(): AgentExecutionWorkerPersistenceService['resolveConversationSystemPrompt'] {
+    return (this.delegatedOverrides.get('resolveConversationSystemPrompt') as AgentExecutionWorkerPersistenceService['resolveConversationSystemPrompt'] | undefined) ?? this.persistenceService.resolveConversationSystemPrompt.bind(this.persistenceService);
+  }
+
+  public set resolveConversationSystemPrompt(value: AgentExecutionWorkerPersistenceService['resolveConversationSystemPrompt']) {
+    this.delegatedOverrides.set('resolveConversationSystemPrompt', value);
+    this.persistenceService.resolveConversationSystemPrompt = value;
+  }
+
+  public get resolveConversationSkillPrompt(): AgentExecutionWorkerPersistenceService['resolveConversationSkillPrompt'] {
+    return (this.delegatedOverrides.get('resolveConversationSkillPrompt') as AgentExecutionWorkerPersistenceService['resolveConversationSkillPrompt'] | undefined) ?? this.persistenceService.resolveConversationSkillPrompt.bind(this.persistenceService);
+  }
+
+  public set resolveConversationSkillPrompt(value: AgentExecutionWorkerPersistenceService['resolveConversationSkillPrompt']) {
+    this.delegatedOverrides.set('resolveConversationSkillPrompt', value);
+    this.persistenceService.resolveConversationSkillPrompt = value;
+  }
+
+  public get resolveSkillPayloads(): AgentExecutionWorkerPersistenceService['resolveSkillPayloads'] {
+    return (this.delegatedOverrides.get('resolveSkillPayloads') as AgentExecutionWorkerPersistenceService['resolveSkillPayloads'] | undefined) ?? this.persistenceService.resolveSkillPayloads.bind(this.persistenceService);
+  }
+
+  public set resolveSkillPayloads(value: AgentExecutionWorkerPersistenceService['resolveSkillPayloads']) {
+    this.delegatedOverrides.set('resolveSkillPayloads', value);
+    this.persistenceService.resolveSkillPayloads = value;
+  }
+
+  public get resolveConfiguredSkillIds(): AgentExecutionWorkerPersistenceService['resolveConfiguredSkillIds'] {
+    return (this.delegatedOverrides.get('resolveConfiguredSkillIds') as AgentExecutionWorkerPersistenceService['resolveConfiguredSkillIds'] | undefined) ?? this.persistenceService.resolveConfiguredSkillIds.bind(this.persistenceService);
+  }
+
+  public set resolveConfiguredSkillIds(value: AgentExecutionWorkerPersistenceService['resolveConfiguredSkillIds']) {
+    this.delegatedOverrides.set('resolveConfiguredSkillIds', value);
+    this.persistenceService.resolveConfiguredSkillIds = value;
+  }
+
+  public get resolveAgentRuntimeMode(): AgentExecutionWorkerPersistenceService['resolveAgentRuntimeMode'] {
+    return (this.delegatedOverrides.get('resolveAgentRuntimeMode') as AgentExecutionWorkerPersistenceService['resolveAgentRuntimeMode'] | undefined) ?? this.persistenceService.resolveAgentRuntimeMode.bind(this.persistenceService);
+  }
+
+  public set resolveAgentRuntimeMode(value: AgentExecutionWorkerPersistenceService['resolveAgentRuntimeMode']) {
+    this.delegatedOverrides.set('resolveAgentRuntimeMode', value);
+    this.persistenceService.resolveAgentRuntimeMode = value;
+  }
+
+  public get buildReadOnlyNativeToolPolicy(): AgentExecutionWorkerPersistenceService['buildReadOnlyNativeToolPolicy'] {
+    return (this.delegatedOverrides.get('buildReadOnlyNativeToolPolicy') as AgentExecutionWorkerPersistenceService['buildReadOnlyNativeToolPolicy'] | undefined) ?? this.persistenceService.buildReadOnlyNativeToolPolicy.bind(this.persistenceService);
+  }
+
+  public set buildReadOnlyNativeToolPolicy(value: AgentExecutionWorkerPersistenceService['buildReadOnlyNativeToolPolicy']) {
+    this.delegatedOverrides.set('buildReadOnlyNativeToolPolicy', value);
+    this.persistenceService.buildReadOnlyNativeToolPolicy = value;
+  }
+
+  public get registerSubAgentToolsProvider(): AgentExecutionWorkerPersistenceService['registerSubAgentToolsProvider'] {
+    return (this.delegatedOverrides.get('registerSubAgentToolsProvider') as AgentExecutionWorkerPersistenceService['registerSubAgentToolsProvider'] | undefined) ?? this.persistenceService.registerSubAgentToolsProvider.bind(this.persistenceService);
+  }
+
+  public set registerSubAgentToolsProvider(value: AgentExecutionWorkerPersistenceService['registerSubAgentToolsProvider']) {
+    this.delegatedOverrides.set('registerSubAgentToolsProvider', value);
+    this.persistenceService.registerSubAgentToolsProvider = value;
+  }
+
+  public get registerSelfEvolutionToolsProvider(): AgentExecutionWorkerPersistenceService['registerSelfEvolutionToolsProvider'] {
+    return (this.delegatedOverrides.get('registerSelfEvolutionToolsProvider') as AgentExecutionWorkerPersistenceService['registerSelfEvolutionToolsProvider'] | undefined) ?? this.persistenceService.registerSelfEvolutionToolsProvider.bind(this.persistenceService);
+  }
+
+  public set registerSelfEvolutionToolsProvider(value: AgentExecutionWorkerPersistenceService['registerSelfEvolutionToolsProvider']) {
+    this.delegatedOverrides.set('registerSelfEvolutionToolsProvider', value);
+    this.persistenceService.registerSelfEvolutionToolsProvider = value;
+  }
+
+  public get executeSubAgent(): AgentExecutionWorkerPersistenceService['executeSubAgent'] {
+    return (this.delegatedOverrides.get('executeSubAgent') as AgentExecutionWorkerPersistenceService['executeSubAgent'] | undefined) ?? this.persistenceService.executeSubAgent.bind(this.persistenceService);
+  }
+
+  public set executeSubAgent(value: AgentExecutionWorkerPersistenceService['executeSubAgent']) {
+    this.delegatedOverrides.set('executeSubAgent', value);
+    this.persistenceService.executeSubAgent = value;
+  }
+
+  public get runSubAgentPrompt(): AgentExecutionWorkerPersistenceService['runSubAgentPrompt'] {
+    return (this.delegatedOverrides.get('runSubAgentPrompt') as AgentExecutionWorkerPersistenceService['runSubAgentPrompt'] | undefined) ?? this.persistenceService.runSubAgentPrompt.bind(this.persistenceService);
+  }
+
+  public set runSubAgentPrompt(value: AgentExecutionWorkerPersistenceService['runSubAgentPrompt']) {
+    this.delegatedOverrides.set('runSubAgentPrompt', value);
+    this.persistenceService.runSubAgentPrompt = value;
+  }
+
+  public get buildSubAgentPrompt(): AgentExecutionWorkerPersistenceService['buildSubAgentPrompt'] {
+    return (this.delegatedOverrides.get('buildSubAgentPrompt') as AgentExecutionWorkerPersistenceService['buildSubAgentPrompt'] | undefined) ?? this.persistenceService.buildSubAgentPrompt.bind(this.persistenceService);
+  }
+
+  public set buildSubAgentPrompt(value: AgentExecutionWorkerPersistenceService['buildSubAgentPrompt']) {
+    this.delegatedOverrides.set('buildSubAgentPrompt', value);
+    this.persistenceService.buildSubAgentPrompt = value;
+  }
+
+  public get abortTrackedSubAgents(): AgentExecutionWorkerPersistenceService['abortTrackedSubAgents'] {
+    return (this.delegatedOverrides.get('abortTrackedSubAgents') as AgentExecutionWorkerPersistenceService['abortTrackedSubAgents'] | undefined) ?? this.persistenceService.abortTrackedSubAgents.bind(this.persistenceService);
+  }
+
+  public set abortTrackedSubAgents(value: AgentExecutionWorkerPersistenceService['abortTrackedSubAgents']) {
+    this.delegatedOverrides.set('abortTrackedSubAgents', value);
+    this.persistenceService.abortTrackedSubAgents = value;
+  }
+
+  public get combineAbortSignals(): AgentExecutionWorkerPersistenceService['combineAbortSignals'] {
+    return (this.delegatedOverrides.get('combineAbortSignals') as AgentExecutionWorkerPersistenceService['combineAbortSignals'] | undefined) ?? this.persistenceService.combineAbortSignals.bind(this.persistenceService);
+  }
+
+  public set combineAbortSignals(value: AgentExecutionWorkerPersistenceService['combineAbortSignals']) {
+    this.delegatedOverrides.set('combineAbortSignals', value);
+    this.persistenceService.combineAbortSignals = value;
+  }
+
+  public get injectSubAgentCompletionNotice(): AgentExecutionWorkerPersistenceService['injectSubAgentCompletionNotice'] {
+    return (this.delegatedOverrides.get('injectSubAgentCompletionNotice') as AgentExecutionWorkerPersistenceService['injectSubAgentCompletionNotice'] | undefined) ?? this.persistenceService.injectSubAgentCompletionNotice.bind(this.persistenceService);
+  }
+
+  public set injectSubAgentCompletionNotice(value: AgentExecutionWorkerPersistenceService['injectSubAgentCompletionNotice']) {
+    this.delegatedOverrides.set('injectSubAgentCompletionNotice', value);
+    this.persistenceService.injectSubAgentCompletionNotice = value;
+  }
+
+  public get summarizeSubAgentText(): AgentExecutionWorkerPersistenceService['summarizeSubAgentText'] {
+    return (this.delegatedOverrides.get('summarizeSubAgentText') as AgentExecutionWorkerPersistenceService['summarizeSubAgentText'] | undefined) ?? this.persistenceService.summarizeSubAgentText.bind(this.persistenceService);
+  }
+
+  public set summarizeSubAgentText(value: AgentExecutionWorkerPersistenceService['summarizeSubAgentText']) {
+    this.delegatedOverrides.set('summarizeSubAgentText', value);
+    this.persistenceService.summarizeSubAgentText = value;
+  }
+
+  public get registerMemoryToolsProvider(): AgentExecutionWorkerPersistenceService['registerMemoryToolsProvider'] {
+    return (this.delegatedOverrides.get('registerMemoryToolsProvider') as AgentExecutionWorkerPersistenceService['registerMemoryToolsProvider'] | undefined) ?? this.persistenceService.registerMemoryToolsProvider.bind(this.persistenceService);
+  }
+
+  public set registerMemoryToolsProvider(value: AgentExecutionWorkerPersistenceService['registerMemoryToolsProvider']) {
+    this.delegatedOverrides.set('registerMemoryToolsProvider', value);
+    this.persistenceService.registerMemoryToolsProvider = value;
+  }
+
+  public get cleanupConversationMemorySessions(): AgentExecutionWorkerPersistenceService['cleanupConversationMemorySessions'] {
+    return (this.delegatedOverrides.get('cleanupConversationMemorySessions') as AgentExecutionWorkerPersistenceService['cleanupConversationMemorySessions'] | undefined) ?? this.persistenceService.cleanupConversationMemorySessions.bind(this.persistenceService);
+  }
+
+  public set cleanupConversationMemorySessions(value: AgentExecutionWorkerPersistenceService['cleanupConversationMemorySessions']) {
+    this.delegatedOverrides.set('cleanupConversationMemorySessions', value);
+    this.persistenceService.cleanupConversationMemorySessions = value;
+  }
+
+  public get toMemoryResourceInstance(): AgentExecutionWorkerPersistenceService['toMemoryResourceInstance'] {
+    return (this.delegatedOverrides.get('toMemoryResourceInstance') as AgentExecutionWorkerPersistenceService['toMemoryResourceInstance'] | undefined) ?? this.persistenceService.toMemoryResourceInstance.bind(this.persistenceService);
+  }
+
+  public set toMemoryResourceInstance(value: AgentExecutionWorkerPersistenceService['toMemoryResourceInstance']) {
+    this.delegatedOverrides.set('toMemoryResourceInstance', value);
+    this.persistenceService.toMemoryResourceInstance = value;
+  }
+
+  public get emitPreparationPhase(): AgentExecutionWorkerPersistenceService['emitPreparationPhase'] {
+    return (this.delegatedOverrides.get('emitPreparationPhase') as AgentExecutionWorkerPersistenceService['emitPreparationPhase'] | undefined) ?? this.persistenceService.emitPreparationPhase.bind(this.persistenceService);
+  }
+
+  public set emitPreparationPhase(value: AgentExecutionWorkerPersistenceService['emitPreparationPhase']) {
+    this.delegatedOverrides.set('emitPreparationPhase', value);
+    this.persistenceService.emitPreparationPhase = value;
+  }
+
+  public get loadConversationExecutionContext(): AgentExecutionWorkerRuntimeService['loadConversationExecutionContext'] {
+    return (this.delegatedOverrides.get('loadConversationExecutionContext') as AgentExecutionWorkerRuntimeService['loadConversationExecutionContext'] | undefined) ?? this.runtimeService.loadConversationExecutionContext.bind(this.runtimeService);
+  }
+
+  public set loadConversationExecutionContext(value: AgentExecutionWorkerRuntimeService['loadConversationExecutionContext']) {
+    this.delegatedOverrides.set('loadConversationExecutionContext', value);
+    this.runtimeService.loadConversationExecutionContext = value;
+  }
+
+  public get resolveConversationStartupRuntimeConfig(): AgentExecutionWorkerRuntimeService['resolveConversationStartupRuntimeConfig'] {
+    return (this.delegatedOverrides.get('resolveConversationStartupRuntimeConfig') as AgentExecutionWorkerRuntimeService['resolveConversationStartupRuntimeConfig'] | undefined) ?? this.runtimeService.resolveConversationStartupRuntimeConfig.bind(this.runtimeService);
+  }
+
+  public set resolveConversationStartupRuntimeConfig(value: AgentExecutionWorkerRuntimeService['resolveConversationStartupRuntimeConfig']) {
+    this.delegatedOverrides.set('resolveConversationStartupRuntimeConfig', value);
+    this.runtimeService.resolveConversationStartupRuntimeConfig = value;
+  }
+
+  public get selectConversationRoutingModelId(): AgentExecutionWorkerRuntimeService['selectConversationRoutingModelId'] {
+    return (this.delegatedOverrides.get('selectConversationRoutingModelId') as AgentExecutionWorkerRuntimeService['selectConversationRoutingModelId'] | undefined) ?? this.runtimeService.selectConversationRoutingModelId.bind(this.runtimeService);
+  }
+
+  public set selectConversationRoutingModelId(value: AgentExecutionWorkerRuntimeService['selectConversationRoutingModelId']) {
+    this.delegatedOverrides.set('selectConversationRoutingModelId', value);
+    this.runtimeService.selectConversationRoutingModelId = value;
+  }
+
+  public get prepareRuntimeSession(): AgentExecutionWorkerRuntimeService['prepareRuntimeSession'] {
+    return (this.delegatedOverrides.get('prepareRuntimeSession') as AgentExecutionWorkerRuntimeService['prepareRuntimeSession'] | undefined) ?? this.runtimeService.prepareRuntimeSession.bind(this.runtimeService);
+  }
+
+  public set prepareRuntimeSession(value: AgentExecutionWorkerRuntimeService['prepareRuntimeSession']) {
+    this.delegatedOverrides.set('prepareRuntimeSession', value);
+    this.runtimeService.prepareRuntimeSession = value;
+  }
+
+  public get resolveConversationRuntime(): AgentExecutionWorkerRuntimeService['resolveConversationRuntime'] {
+    return (this.delegatedOverrides.get('resolveConversationRuntime') as AgentExecutionWorkerRuntimeService['resolveConversationRuntime'] | undefined) ?? this.runtimeService.resolveConversationRuntime.bind(this.runtimeService);
+  }
+
+  public set resolveConversationRuntime(value: AgentExecutionWorkerRuntimeService['resolveConversationRuntime']) {
+    this.delegatedOverrides.set('resolveConversationRuntime', value);
+    this.runtimeService.resolveConversationRuntime = value;
+  }
+
+  public get startConversationWorkspaceWatcher(): AgentExecutionWorkerRuntimeService['startConversationWorkspaceWatcher'] {
+    return (this.delegatedOverrides.get('startConversationWorkspaceWatcher') as AgentExecutionWorkerRuntimeService['startConversationWorkspaceWatcher'] | undefined) ?? this.runtimeService.startConversationWorkspaceWatcher.bind(this.runtimeService);
+  }
+
+  public set startConversationWorkspaceWatcher(value: AgentExecutionWorkerRuntimeService['startConversationWorkspaceWatcher']) {
+    this.delegatedOverrides.set('startConversationWorkspaceWatcher', value);
+    this.runtimeService.startConversationWorkspaceWatcher = value;
+  }
+
+  public get loadPendingUserMessages(): AgentExecutionWorkerRuntimeService['loadPendingUserMessages'] {
+    return (this.delegatedOverrides.get('loadPendingUserMessages') as AgentExecutionWorkerRuntimeService['loadPendingUserMessages'] | undefined) ?? this.runtimeService.loadPendingUserMessages.bind(this.runtimeService);
+  }
+
+  public set loadPendingUserMessages(value: AgentExecutionWorkerRuntimeService['loadPendingUserMessages']) {
+    this.delegatedOverrides.set('loadPendingUserMessages', value);
+    this.runtimeService.loadPendingUserMessages = value;
+  }
+
+  public get loadConversationHistoryMessages(): AgentExecutionWorkerRuntimeService['loadConversationHistoryMessages'] {
+    return (this.delegatedOverrides.get('loadConversationHistoryMessages') as AgentExecutionWorkerRuntimeService['loadConversationHistoryMessages'] | undefined) ?? this.runtimeService.loadConversationHistoryMessages.bind(this.runtimeService);
+  }
+
+  public set loadConversationHistoryMessages(value: AgentExecutionWorkerRuntimeService['loadConversationHistoryMessages']) {
+    this.delegatedOverrides.set('loadConversationHistoryMessages', value);
+    this.runtimeService.loadConversationHistoryMessages = value;
+  }
+
+  public get runConversationTurn(): AgentExecutionWorkerRuntimeService['runConversationTurn'] {
+    return (this.delegatedOverrides.get('runConversationTurn') as AgentExecutionWorkerRuntimeService['runConversationTurn'] | undefined) ?? this.runtimeService.runConversationTurn.bind(this.runtimeService);
+  }
+
+  public set runConversationTurn(value: AgentExecutionWorkerRuntimeService['runConversationTurn']) {
+    this.delegatedOverrides.set('runConversationTurn', value);
+    this.runtimeService.runConversationTurn = value;
+  }
+
+  public get describeConversationExecutionError(): AgentExecutionWorkerRuntimeService['describeConversationExecutionError'] {
+    return (this.delegatedOverrides.get('describeConversationExecutionError') as AgentExecutionWorkerRuntimeService['describeConversationExecutionError'] | undefined) ?? this.runtimeService.describeConversationExecutionError.bind(this.runtimeService);
+  }
+
+  public set describeConversationExecutionError(value: AgentExecutionWorkerRuntimeService['describeConversationExecutionError']) {
+    this.delegatedOverrides.set('describeConversationExecutionError', value);
+    this.runtimeService.describeConversationExecutionError = value;
+  }
+
+  public get formatConversationExecutionErrorMessage(): AgentExecutionWorkerRuntimeService['formatConversationExecutionErrorMessage'] {
+    return (this.delegatedOverrides.get('formatConversationExecutionErrorMessage') as AgentExecutionWorkerRuntimeService['formatConversationExecutionErrorMessage'] | undefined) ?? this.runtimeService.formatConversationExecutionErrorMessage.bind(this.runtimeService);
+  }
+
+  public set formatConversationExecutionErrorMessage(value: AgentExecutionWorkerRuntimeService['formatConversationExecutionErrorMessage']) {
+    this.delegatedOverrides.set('formatConversationExecutionErrorMessage', value);
+    this.runtimeService.formatConversationExecutionErrorMessage = value;
+  }
+
+  public get isUpstreamModelStreamAbort(): AgentExecutionWorkerRuntimeService['isUpstreamModelStreamAbort'] {
+    return (this.delegatedOverrides.get('isUpstreamModelStreamAbort') as AgentExecutionWorkerRuntimeService['isUpstreamModelStreamAbort'] | undefined) ?? this.runtimeService.isUpstreamModelStreamAbort.bind(this.runtimeService);
+  }
+
+  public set isUpstreamModelStreamAbort(value: AgentExecutionWorkerRuntimeService['isUpstreamModelStreamAbort']) {
+    this.delegatedOverrides.set('isUpstreamModelStreamAbort', value);
+    this.runtimeService.isUpstreamModelStreamAbort = value;
+  }
+
+  public get readErrorCode(): AgentExecutionWorkerRuntimeService['readErrorCode'] {
+    return (this.delegatedOverrides.get('readErrorCode') as AgentExecutionWorkerRuntimeService['readErrorCode'] | undefined) ?? this.runtimeService.readErrorCode.bind(this.runtimeService);
+  }
+
+  public set readErrorCode(value: AgentExecutionWorkerRuntimeService['readErrorCode']) {
+    this.delegatedOverrides.set('readErrorCode', value);
+    this.runtimeService.readErrorCode = value;
+  }
+
   private readonly logger = new Logger(AgentExecutionWorker.name);
+  private readonly persistenceService: AgentExecutionWorkerPersistenceService;
+  private readonly runtimeService: AgentExecutionWorkerRuntimeService;
   private readonly inputPreprocessorHandler =
     new InputPreprocessorHandlerImpl();
 
@@ -226,8 +581,18 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly conversationTitleService?: ConversationTitleService,
     private readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     private readonly smartRoutingService?: SmartRoutingService,
+    @Optional()
+    injectedPersistenceService?: AgentExecutionWorkerPersistenceService,
+    @Optional()
+    injectedRuntimeService?: AgentExecutionWorkerRuntimeService,
   ) {
     super();
+    this.persistenceService =
+      injectedPersistenceService ??
+      new AgentExecutionWorkerPersistenceService(db, agentRuntime, adapterFactory, executionService, eventBridge, sandboxService, workspaceIntegrationService, agentDefinitionService, llmService, memoryToolsService, memoryFusionService, memoryResourceProvider, skillResolverService, subAgentToolsProvider, mcpService, conversationTitleService, selfEvolutionToolsProvider, smartRoutingService);
+    this.runtimeService =
+      injectedRuntimeService ??
+      new AgentExecutionWorkerRuntimeService(this.persistenceService, db, agentRuntime, adapterFactory, executionService, eventBridge, sandboxService, workspaceIntegrationService, agentDefinitionService, llmService, memoryToolsService, memoryFusionService, memoryResourceProvider, skillResolverService, subAgentToolsProvider, mcpService, conversationTitleService, selfEvolutionToolsProvider, smartRoutingService);
   }
 
   async process(job: Job<AgentConversationExecutionJobData>): Promise<void> {
@@ -286,13 +651,13 @@ export class AgentExecutionWorker extends WorkerHost {
 
     try {
       // Phase 1: queued — worker has picked up the job
-      this.emitPreparationPhase(tenantId, conversationId, 'queued');
+      this.persistenceService.emitPreparationPhase(tenantId, conversationId, 'queued');
 
       // Phase 2: preparing — loading conversation execution context
       currentPhase = 'preparing';
-      this.emitPreparationPhase(tenantId, conversationId, 'preparing');
+      this.persistenceService.emitPreparationPhase(tenantId, conversationId, 'preparing');
 
-      const context = await this.loadConversationExecutionContext(
+      const context = await this.runtimeService.loadConversationExecutionContext(
         conversationId,
         tenantId,
       );
@@ -309,7 +674,7 @@ export class AgentExecutionWorker extends WorkerHost {
       if (context.conversation.status !== 'active') {
         terminalStatus =
           context.conversation.status === 'failed' ? 'failed' : 'cancelled';
-        await this.cleanupConversationMemorySessions(
+        await this.persistenceService.cleanupConversationMemorySessions(
           tenantId,
           executionMetadata.memorySessionIds,
         );
@@ -326,7 +691,7 @@ export class AgentExecutionWorker extends WorkerHost {
           `Conversation ${conversationId} detected published version drift, recreating runtime session with latest published config`,
         );
 
-        await this.cleanupConversationMemorySessions(
+        await this.persistenceService.cleanupConversationMemorySessions(
           tenantId,
           executionMetadata.memorySessionIds,
         );
@@ -346,7 +711,7 @@ export class AgentExecutionWorker extends WorkerHost {
           }
         }
 
-        executionMetadata = await this.safeUpdateExecutionMetadata(
+        executionMetadata = await this.persistenceService.safeUpdateExecutionMetadata(
           tenantId,
           conversationId,
           buildExecutionMetadataForPublishedVersionRefresh(
@@ -368,7 +733,7 @@ export class AgentExecutionWorker extends WorkerHost {
           context.runtimeConfig.routingConfig?.candidateModelIds,
         ).length > 0
       ) {
-        seededPendingMessages = await this.loadPendingUserMessages(
+        seededPendingMessages = await this.runtimeService.loadPendingUserMessages(
           conversationId,
           tenantId,
           executionMetadata.lastProcessedMessageId,
@@ -379,7 +744,7 @@ export class AgentExecutionWorker extends WorkerHost {
       currentPhase = context.hasSandbox
         ? 'sandbox_creating'
         : 'agent_initializing';
-      const runtimeSessionContext = await this.prepareRuntimeSession(
+      const runtimeSessionContext = await this.runtimeService.prepareRuntimeSession(
         context,
         conversationId,
         tenantId,
@@ -411,7 +776,7 @@ export class AgentExecutionWorker extends WorkerHost {
       };
 
       const cancelSubAgents = () => {
-        this.abortTrackedSubAgents(subAgentTracker, abort.signal.reason);
+        this.persistenceService.abortTrackedSubAgents(subAgentTracker, abort.signal.reason);
       };
 
       abort.signal.addEventListener(
@@ -423,7 +788,7 @@ export class AgentExecutionWorker extends WorkerHost {
         { once: true },
       );
 
-      executionMetadata = await this.updateExecutionMetadata(
+      executionMetadata = await this.persistenceService.updateExecutionMetadata(
         tenantId,
         conversationId,
         {
@@ -446,7 +811,7 @@ export class AgentExecutionWorker extends WorkerHost {
 
       // Phase 5: running — agent loop is starting
       currentPhase = 'running';
-      this.emitPreparationPhase(tenantId, conversationId, 'running', {
+      this.persistenceService.emitPreparationPhase(tenantId, conversationId, 'running', {
         sandboxReused: runtimeSessionContext.sandboxReused,
       });
 
@@ -454,7 +819,7 @@ export class AgentExecutionWorker extends WorkerHost {
         currentPendingMessages =
           seededPendingMessages.length > 0
             ? seededPendingMessages
-            : await this.loadPendingUserMessages(
+            : await this.runtimeService.loadPendingUserMessages(
                 conversationId,
                 tenantId,
                 executionMetadata.lastProcessedMessageId,
@@ -481,14 +846,14 @@ export class AgentExecutionWorker extends WorkerHost {
 
         const historyMessages =
           executionMetadata.lastProcessedMessageId && shouldRebuildHistoryOnce
-            ? await this.loadConversationHistoryMessages(
+            ? await this.runtimeService.loadConversationHistoryMessages(
                 conversationId,
                 tenantId,
                 currentPendingMessages[0]?.id,
               )
             : [];
 
-        const turnResult = await this.runConversationTurn(
+        const turnResult = await this.runtimeService.runConversationTurn(
           runtime,
           session,
           conversationId,
@@ -501,7 +866,7 @@ export class AgentExecutionWorker extends WorkerHost {
 
         const hadPriorAssistant = !!executionMetadata.lastAssistantMessageId;
 
-        executionMetadata = await this.persistConversationTurn(
+        executionMetadata = await this.persistenceService.persistConversationTurn(
           conversationId,
           tenantId,
           currentPendingMessages,
@@ -526,9 +891,14 @@ export class AgentExecutionWorker extends WorkerHost {
           executionMetadata.lastAssistantMessageId &&
           this.conversationTitleService
         ) {
-          this.conversationTitleService
+          void this.conversationTitleService
             .generateTitle(conversationId, tenantId)
-            .catch(() => {});
+            .catch((error: unknown) => {
+              this.logger.warn(
+                `Failed to generate conversation title: ${error instanceof Error ? error.message : String(error)}`,
+                { conversationId },
+              );
+            });
         }
 
         if (turnResult.stopReason === 'cancelled') {
@@ -540,7 +910,7 @@ export class AgentExecutionWorker extends WorkerHost {
       }
     } catch (error) {
       terminalStatus = abort.signal.aborted ? 'cancelled' : 'failed';
-      const errorSummary = this.describeConversationExecutionError(error);
+      const errorSummary = this.runtimeService.describeConversationExecutionError(error);
       const errorMessage = errorSummary.errorMessage;
 
       if (
@@ -550,7 +920,7 @@ export class AgentExecutionWorker extends WorkerHost {
         turnResultHasPersistableOutput(error.turnResult)
       ) {
         try {
-          executionMetadata = await this.persistConversationTurn(
+          executionMetadata = await this.persistenceService.persistConversationTurn(
             conversationId,
             tenantId,
             currentPendingMessages,
@@ -589,7 +959,7 @@ export class AgentExecutionWorker extends WorkerHost {
         }
       }
 
-      await this.safeUpdateExecutionMetadata(tenantId, conversationId, {
+      await this.persistenceService.safeUpdateExecutionMetadata(tenantId, conversationId, {
         ...executionMetadata,
         runningState: terminalStatus,
         errorMessage: terminalStatus === 'failed' ? errorMessage : null,
@@ -606,7 +976,7 @@ export class AgentExecutionWorker extends WorkerHost {
       });
 
       if (terminalStatus === 'failed') {
-        await this.cleanupConversationMemorySessions(
+        await this.persistenceService.cleanupConversationMemorySessions(
           tenantId,
           executionMetadata.memorySessionIds ?? memorySessionIds,
         );
@@ -652,7 +1022,7 @@ export class AgentExecutionWorker extends WorkerHost {
       this.executionService.clearActiveRun(conversationId, abort);
     }
 
-    await this.safeUpdateExecutionMetadata(tenantId, conversationId, {
+    await this.persistenceService.safeUpdateExecutionMetadata(tenantId, conversationId, {
       ...executionMetadata,
       runningState: terminalStatus === 'completed' ? 'idle' : terminalStatus,
       errorMessage: null,
@@ -673,7 +1043,7 @@ export class AgentExecutionWorker extends WorkerHost {
     }
 
     if (conversationStatus !== 'active') {
-      await this.cleanupConversationMemorySessions(
+      await this.persistenceService.cleanupConversationMemorySessions(
         tenantId,
         executionMetadata.memorySessionIds ?? memorySessionIds,
       );
@@ -686,1792 +1056,5 @@ export class AgentExecutionWorker extends WorkerHost {
     });
   }
 
-  private async loadConversationExecutionContext(
-    conversationId: string,
-    tenantId: string,
-  ): Promise<ConversationExecutionContext | null> {
-    return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const [conversation] = await dbClient
-        .select({
-          id: agentConversations.id,
-          agentDefinitionId: agentConversations.agentDefinitionId,
-          tenantId: agentConversations.tenantId,
-          status: agentConversations.status,
-          metadata: agentConversations.metadata,
-        })
-        .from(agentConversations)
-        .where(eq(agentConversations.id, conversationId))
-        .limit(1);
 
-      if (!conversation) {
-        return null;
-      }
-
-      const [definition] = await dbClient
-        .select({
-          id: agentDefinitions.id,
-          publishedVersionId: agentDefinitions.publishedVersionId,
-          runtimeMode: agentDefinitions.runtimeMode,
-          systemPrompt: agentDefinitions.systemPrompt,
-          nodes: agentDefinitions.nodes,
-          edges: agentDefinitions.edges,
-          sandboxConfig: agentDefinitions.sandboxConfig,
-          metadata: agentDefinitions.metadata,
-        })
-        .from(agentDefinitions)
-        .where(eq(agentDefinitions.id, conversation.agentDefinitionId))
-        .limit(1);
-
-      if (!definition) {
-        return null;
-      }
-
-      let runtimeConfig: AgentRuntimeConfig;
-      const definitionSystemPrompt =
-        this.agentDefinitionService.resolveSystemPromptFromNodes?.(
-          definition.nodes ?? [],
-          definition.edges ?? [],
-        ) ??
-        definition.systemPrompt ??
-        undefined;
-      let systemPrompt = definitionSystemPrompt;
-      let snapshot: AgentVersionSnapshot | null = null;
-      let resolvedSandboxConfig: AgentRuntimeConfig['sandboxConfig'] | null;
-      const normalizedDefinitionSandboxConfig =
-        deriveAgentSandboxConfigFromCanvas(
-          definition.nodes,
-          definition.edges,
-          definition.sandboxConfig,
-        );
-
-      if (definition.publishedVersionId) {
-        const [version] = await dbClient
-          .select({ snapshot: agentVersions.snapshot })
-          .from(agentVersions)
-          .where(
-            and(
-              eq(agentVersions.id, definition.publishedVersionId),
-              eq(agentVersions.agentDefinitionId, definition.id),
-            ),
-          )
-          .limit(1);
-        snapshot = version?.snapshot ?? null;
-      }
-
-      if (snapshot) {
-        const snapshotRuntimeMode = this.resolveAgentRuntimeMode(
-          definition.runtimeMode,
-          snapshot.runtimeMode,
-        );
-        const normalizedSnapshotSandboxConfig =
-          deriveAgentSandboxConfigFromCanvas(
-            snapshot.nodes,
-            snapshot.edges,
-            snapshot.sandboxConfig ?? null,
-          );
-        runtimeConfig = this.agentDefinitionService.buildRuntimeConfigFromNodes(
-          snapshot.nodes,
-          snapshot.edges,
-          undefined,
-          snapshotRuntimeMode,
-        );
-        runtimeConfig.runtimeMode ??= snapshotRuntimeMode;
-        resolvedSandboxConfig =
-          mergeSandboxConfigCandidates(
-            runtimeConfig.sandboxConfig ?? null,
-            normalizedSnapshotSandboxConfig,
-          ) ?? normalizedDefinitionSandboxConfig;
-        systemPrompt =
-          this.agentDefinitionService.resolveSystemPromptFromNodes?.(
-            snapshot.nodes,
-            snapshot.edges,
-          ) ??
-          snapshot.systemPrompt ??
-          definitionSystemPrompt;
-      } else {
-        runtimeConfig = await this.agentDefinitionService.compileCanvas(
-          definition.id,
-        );
-        runtimeConfig.runtimeMode ??= this.resolveAgentRuntimeMode(
-          definition.runtimeMode,
-          undefined,
-        );
-        resolvedSandboxConfig =
-          mergeSandboxConfigCandidates(
-            runtimeConfig.sandboxConfig ?? null,
-            normalizedDefinitionSandboxConfig,
-          ) ?? null;
-      }
-
-      if (runtimeConfig.runtimeMode === 'sandbox' && !resolvedSandboxConfig) {
-        throw new AgentSandboxNotConnectedException(definition.id);
-      }
-      runtimeConfig.sandboxConfig =
-        runtimeConfig.runtimeMode === 'sandbox' && resolvedSandboxConfig
-          ? resolveAgentRuntimeSandboxConfig(resolvedSandboxConfig)
-          : undefined;
-
-      const compiledMemoryInstanceIds = extractStringArray(
-        runtimeConfig.memoryInstanceIds,
-      );
-      const memoryInstanceIds = compiledMemoryInstanceIds.length
-        ? compiledMemoryInstanceIds
-        : this.resolveDefaultMemoryInstanceIds(
-            definition.metadata,
-            snapshot?.metadata,
-          );
-      runtimeConfig.memoryInstanceIds = memoryInstanceIds;
-
-      return {
-        conversation,
-        runtimeConfig,
-        systemPrompt,
-        canvasNodes: snapshot?.nodes ?? definition.nodes ?? [],
-        canvasEdges: snapshot?.edges ?? definition.edges ?? [],
-        hasSandbox: runtimeConfig.runtimeMode === 'sandbox',
-        memoryInstanceIds,
-        publishedVersionId: normalizeOptionalString(
-          definition.publishedVersionId,
-        ),
-        executionMetadata: readExecutionMetadata(conversation.metadata),
-      };
-    });
-  }
-
-  private async resolveConversationStartupRuntimeConfig(
-    runtimeConfig: AgentRuntimeConfig,
-    tenantId: string,
-    pendingMessages: PendingMessage[],
-  ): Promise<AgentRuntimeConfig> {
-    const routingConfig = runtimeConfig.routingConfig;
-    const candidateModelIds = extractStringArray(
-      routingConfig?.candidateModelIds,
-    );
-
-    if (!routingConfig || candidateModelIds.length === 0) {
-      return runtimeConfig;
-    }
-
-    const selectedModelId = await this.selectConversationRoutingModelId({
-      tenantId,
-      routingConfig,
-      candidateModelIds,
-      pendingMessages,
-    });
-
-    if (!selectedModelId) {
-      return runtimeConfig;
-    }
-
-    return {
-      ...runtimeConfig,
-      modelConfig: {
-        ...(runtimeConfig.modelConfig ?? {}),
-        modelId: selectedModelId,
-      },
-      routingConfig: {
-        ...routingConfig,
-        candidateModelIds,
-      },
-    };
-  }
-
-  private async selectConversationRoutingModelId(params: {
-    tenantId: string;
-    routingConfig: NonNullable<AgentRuntimeConfig['routingConfig']>;
-    candidateModelIds: string[];
-    pendingMessages: PendingMessage[];
-  }): Promise<string | undefined> {
-    if (params.candidateModelIds.length === 1) {
-      return params.candidateModelIds[0];
-    }
-
-    const strategy = normalizeConversationRoutingStrategy(
-      params.routingConfig.strategy,
-    );
-    if (!strategy || !this.smartRoutingService) {
-      return params.candidateModelIds[0];
-    }
-
-    const latestPrompt = formatLatestPendingMessages(
-      params.pendingMessages as PendingConversationPromptMessage[],
-    );
-
-    try {
-      const decision = await this.smartRoutingService.evaluate(
-        params.candidateModelIds,
-        {
-          inputTokenCount: estimateConversationTokenCount(latestPrompt),
-          taskType: 'agent_conversation',
-        },
-        strategy,
-        params.tenantId,
-      );
-      return decision.selectedModelId;
-    } catch (error) {
-      this.logger.warn(
-        `Conversation smart routing failed, falling back to first candidate: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return params.candidateModelIds[0];
-    }
-  }
-
-  private async prepareRuntimeSession(
-    context: ConversationExecutionContext,
-    conversationId: string,
-    tenantId: string,
-    parentAbortSignal: AbortSignal,
-    subAgentTracker: SubAgentExecutionTracker,
-    currentAgentDefinitionId: string,
-    initialPendingMessages: PendingMessage[] = [],
-  ): Promise<RuntimeSessionContext> {
-    context.runtimeConfig = await this.resolveConversationStartupRuntimeConfig(
-      context.runtimeConfig,
-      tenantId,
-      initialPendingMessages,
-    );
-    const hasSandboxRuntime =
-      context.hasSandbox && Boolean(context.runtimeConfig.sandboxConfig);
-    const runtime = this.resolveConversationRuntime(context);
-    const memorySessionIds = await this.ensureConversationMemorySessions(
-      context,
-      conversationId,
-      tenantId,
-    );
-
-    let sandboxReused = false;
-    if (hasSandboxRuntime) {
-      const skillPayloads = await this.resolveSkillPayloads(context);
-      const piConfigInput = await buildPiConfigInput(
-        {
-          tenantId,
-          runtimeConfig: context.runtimeConfig,
-          systemPrompt: context.systemPrompt,
-          skillPayloads,
-        },
-        this.llmService,
-        this.mcpService,
-        this.db,
-        this.logger,
-      );
-
-      const existingSession = await this.sandboxService.findByConversationId(
-        conversationId,
-        tenantId,
-      );
-      sandboxReused = existingSession != null;
-
-      if (!sandboxReused) {
-        this.emitPreparationPhase(tenantId, conversationId, 'sandbox_creating');
-      }
-
-      await this.sandboxService.createSandboxSession({
-        sandboxNodeId: null,
-        config: context.runtimeConfig.sandboxConfig!,
-        tenantId,
-        agentConversationId: conversationId,
-        piConfigInput,
-      });
-    }
-
-    // Phase 4: agent_initializing — sandbox ready, creating agent runtime session
-    this.emitPreparationPhase(tenantId, conversationId, 'agent_initializing', {
-      sandboxReused,
-    });
-
-    const sessionId = context.executionMetadata.sessionId;
-    if (sessionId) {
-      try {
-        const session = await runtime.loadSession(sessionId);
-        this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
-        await this.registerSelfEvolutionToolsProvider({
-          runtime,
-          sessionId: session.id,
-          runtimeConfig: context.runtimeConfig,
-          conversationId,
-          tenantId,
-          currentAgentDefinitionId,
-        });
-        this.registerSubAgentToolsProvider({
-          runtime,
-          sessionId: session.id,
-          runtimeConfig: context.runtimeConfig,
-          conversationId,
-          tenantId,
-          parentAbortSignal,
-          currentAgentDefinitionId,
-          currentDepth: 0,
-          parentUsesSandboxRuntime: hasSandboxRuntime,
-          subAgentTracker,
-        });
-        if (hasSandboxRuntime) {
-          await this.startConversationWorkspaceWatcher(
-            conversationId,
-            tenantId,
-          );
-        }
-        return {
-          runtime,
-          session,
-          memorySessionIds,
-          restoredExistingSession: true,
-          sandboxReused,
-          lastPhase: 'agent_initializing',
-        };
-      } catch (error) {
-        this.logger.debug(
-          `Failed to resume conversation session ${sessionId}, creating a new one: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
-
-    // For sandbox path, skills are passed as independent files via piConfigInput
-    // so the system prompt should not include skill content.
-    // For non-sandbox path, embed skills into the system prompt as before.
-    const baseSystemPrompt = appendOutputSchemaToSystemPrompt(
-      hasSandboxRuntime
-        ? context.systemPrompt
-        : await this.resolveConversationSkillPrompt(context),
-      context.runtimeConfig.outputSchema,
-    );
-
-    const systemPrompt = await this.resolveConversationSystemPrompt(
-      memorySessionIds,
-      baseSystemPrompt,
-    );
-
-    const nextSessionId = randomUUID();
-    this.registerMemoryToolsProvider(runtime, nextSessionId, memorySessionIds);
-    await this.registerSelfEvolutionToolsProvider({
-      runtime,
-      sessionId: nextSessionId,
-      runtimeConfig: context.runtimeConfig,
-      conversationId,
-      tenantId,
-      currentAgentDefinitionId,
-    });
-    this.registerSubAgentToolsProvider({
-      runtime,
-      sessionId: nextSessionId,
-      runtimeConfig: context.runtimeConfig,
-      conversationId,
-      tenantId,
-      parentAbortSignal,
-      currentAgentDefinitionId,
-      currentDepth: 0,
-      parentUsesSandboxRuntime: hasSandboxRuntime,
-      subAgentTracker,
-    });
-
-    let session: AgentSession;
-    try {
-      session = await runtime.createSession({
-        sessionId: nextSessionId,
-        agentId: context.conversation.agentDefinitionId,
-        mode: 'conversation',
-        tenantId,
-        llmModelConfigId: context.runtimeConfig.modelConfig?.modelId,
-        systemPrompt,
-        runtimeConfig: context.runtimeConfig,
-        ...(hasSandboxRuntime
-          ? { serverSandbox: { agentConversationId: conversationId } }
-          : {}),
-        context: {
-          tenantId,
-          agentConversationId: conversationId,
-          ...(hasSandboxRuntime
-            ? { serverSandbox: { agentConversationId: conversationId } }
-            : {}),
-          ...(memorySessionIds.length ? { memorySessionIds } : {}),
-        },
-      });
-    } catch (error) {
-      runtime.unregisterSessionToolProvider?.(nextSessionId);
-      throw error;
-    }
-
-    if (hasSandboxRuntime) {
-      await this.startConversationWorkspaceWatcher(conversationId, tenantId);
-    }
-
-    return {
-      runtime,
-      session,
-      memorySessionIds,
-      restoredExistingSession: false,
-      sandboxReused,
-      lastPhase: 'agent_initializing',
-    };
-  }
-
-  private resolveConversationRuntime(
-    context: ConversationExecutionContext,
-  ): IAgentRuntime {
-    return this.adapterFactory.selectAdapter(context.hasSandbox);
-  }
-
-  private async startConversationWorkspaceWatcher(
-    conversationId: string,
-    tenantId: string,
-  ): Promise<void> {
-    const sandboxSession = await this.sandboxService.findByConversationId(
-      conversationId,
-      tenantId,
-    );
-
-    if (!sandboxSession?.runtimeHandle) {
-      return;
-    }
-
-    this.workspaceIntegrationService.startFileWatcher(
-      conversationId,
-      tenantId,
-      sandboxSession.runtimeHandle,
-    );
-  }
-
-  private async loadPendingUserMessages(
-    conversationId: string,
-    tenantId: string,
-    lastProcessedMessageId?: string,
-  ): Promise<PendingMessage[]> {
-    return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const messages = await dbClient
-        .select({
-          id: agentMessages.id,
-          content: agentMessages.content,
-          contentType: agentMessages.contentType,
-          metadata: agentMessages.metadata,
-          createdAt: agentMessages.createdAt,
-        })
-        .from(agentMessages)
-        .where(
-          and(
-            eq(agentMessages.conversationId, conversationId),
-            eq(agentMessages.role, 'user'),
-          ),
-        )
-        .orderBy(asc(agentMessages.createdAt), asc(agentMessages.id));
-
-      if (!lastProcessedMessageId) {
-        return messages;
-      }
-
-      const lastProcessedIndex = messages.findIndex(
-        (message) => message.id === lastProcessedMessageId,
-      );
-
-      if (lastProcessedIndex < 0) {
-        return messages;
-      }
-
-      return messages.slice(lastProcessedIndex + 1);
-    });
-  }
-
-  private async loadConversationHistoryMessages(
-    conversationId: string,
-    tenantId: string,
-    beforeMessageId?: string,
-  ): Promise<ConversationHistoryMessage[]> {
-    return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const messages = await dbClient
-        .select({
-          id: agentMessages.id,
-          role: agentMessages.role,
-          content: agentMessages.content,
-          contentType: agentMessages.contentType,
-          toolCalls: agentMessages.toolCalls,
-          metadata: agentMessages.metadata,
-          createdAt: agentMessages.createdAt,
-        })
-        .from(agentMessages)
-        .where(eq(agentMessages.conversationId, conversationId))
-        .orderBy(asc(agentMessages.createdAt), asc(agentMessages.id));
-
-      if (!beforeMessageId) {
-        return messages;
-      }
-
-      const boundaryIndex = messages.findIndex(
-        (message) => message.id === beforeMessageId,
-      );
-
-      return boundaryIndex >= 0 ? messages.slice(0, boundaryIndex) : messages;
-    });
-  }
-
-  private async runConversationTurn(
-    runtime: IAgentRuntime,
-    session: AgentSession,
-    conversationId: string,
-    tenantId: string,
-    pendingMessages: PendingMessage[],
-    hasPriorTurns: boolean,
-    historyMessages: ConversationHistoryMessage[] = [],
-    conversationMetadata: Record<string, unknown> = {},
-  ): Promise<ConversationTurnResult> {
-    const toolCalls = new Map<string, ToolCallEvent>();
-    const subAgentCaptureToken =
-      this.eventBridge.beginSubAgentConversationCapture(conversationId);
-    let assistantText = '';
-    let decision: DecisionEvent | undefined;
-    let lastStopReason: StopReason = 'end_turn';
-    let chunkIndex = 0;
-    let segments: ConversationMessageSegmentRecord[] = [];
-    try {
-      const runtimePendingMessages =
-        await this.materializePendingMessagesForRuntime(
-          pendingMessages,
-          conversationId,
-          tenantId,
-          session.runtimeConfig?.runtimeMode,
-        );
-      const latestPromptText = await applyConversationInputPreprocessors(
-        formatLatestPendingMessages(
-          runtimePendingMessages as PendingConversationPromptMessage[],
-        ),
-        session.runtimeConfig,
-        this.inputPreprocessorHandler,
-      );
-      let promptBlocks = buildConversationPromptBlocks({
-        pendingMessages:
-          runtimePendingMessages as PendingConversationPromptMessage[],
-        hasPriorTurns,
-        historyMessages: historyMessages as HistoryConversationPromptMessage[],
-        latestPromptOverride: latestPromptText,
-        conversationMetadata,
-      });
-
-      while (true) {
-        try {
-          for await (const event of runtime.prompt(session.id, promptBlocks)) {
-            if (event.type === 'message_chunk') {
-              assistantText += event.content;
-              segments = appendTextConversationMessageSegment(
-                segments,
-                event.content,
-              );
-              this.eventBridge.emitOutputChunk(tenantId, conversationId, {
-                stepId: conversationId,
-                chunk: event.content,
-                index: chunkIndex,
-                executionType: 'conversation',
-              });
-              chunkIndex += 1;
-              continue;
-            }
-
-            const thinkingContent = extractThinkingEventContent(event);
-            if (thinkingContent) {
-              segments = appendThinkingConversationMessageSegment(
-                segments,
-                thinkingContent,
-              );
-            }
-
-            this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
-              stepId: conversationId,
-              executionType: 'conversation',
-              event,
-            });
-
-            if (event.type === 'tool_call') {
-              const nextCall = mergeToolCallEvent(
-                toolCalls.get(event.call.id),
-                event.call,
-              );
-              toolCalls.set(nextCall.id, nextCall);
-              segments = ensureToolCallConversationMessageSegment(
-                segments,
-                nextCall.id,
-              );
-              this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
-                stepId: conversationId,
-                nodeId: conversationId,
-                toolCallId: nextCall.id,
-                tool: nextCall.tool,
-                executionType: 'conversation',
-                status: nextCall.status,
-                args: nextCall.args,
-                result: nextCall.result,
-                error: nextCall.error,
-                permissionRequest: nextCall.permissionRequest,
-                transitions: nextCall.transitions
-                  ? [...nextCall.transitions]
-                  : undefined,
-              });
-              continue;
-            }
-
-            if (event.type === 'decision') {
-              decision = event;
-              continue;
-            }
-
-            if (event.type === 'done') {
-              lastStopReason = event.stopReason;
-            }
-          }
-        } catch (error) {
-          throw new ConversationTurnFailedError(
-            error,
-            buildConversationTurnResult(
-              assistantText,
-              decision,
-              lastStopReason,
-              toolCalls,
-              segments,
-              this.eventBridge.consumeSubAgentConversationCapture(
-                conversationId,
-                subAgentCaptureToken,
-              ),
-            ),
-          );
-        }
-
-        if (lastStopReason !== 'tool_use') {
-          break;
-        }
-
-        promptBlocks = [];
-      }
-
-      return buildConversationTurnResult(
-        assistantText,
-        decision,
-        lastStopReason,
-        toolCalls,
-        segments,
-        this.eventBridge.consumeSubAgentConversationCapture(
-          conversationId,
-          subAgentCaptureToken,
-        ),
-      );
-    } finally {
-      this.eventBridge.clearSubAgentConversationCapture(
-        conversationId,
-        subAgentCaptureToken,
-      );
-    }
-  }
-
-  private describeConversationExecutionError(error: unknown): {
-    errorMessage: string;
-    errorCode?: string;
-    rawErrorMessage?: string;
-  } {
-    const target =
-      error instanceof ConversationTurnFailedError && error.cause
-        ? error.cause
-        : error;
-
-    if (!(target instanceof Error)) {
-      return {
-        errorMessage:
-          error instanceof Error
-            ? error.message
-            : 'Agent conversation execution failed',
-      };
-    }
-
-    const errorCode = this.readErrorCode(target);
-    const rawErrorMessage =
-      readStringValue(isRecord(target) ? target['rawMessage'] : undefined) ??
-      target.message;
-
-    return {
-      errorMessage: this.formatConversationExecutionErrorMessage(
-        errorCode,
-        rawErrorMessage,
-      ),
-      ...(errorCode ? { errorCode } : {}),
-      ...(rawErrorMessage ? { rawErrorMessage } : {}),
-    };
-  }
-
-  private formatConversationExecutionErrorMessage(
-    errorCode: string | undefined,
-    rawErrorMessage: string,
-  ): string {
-    if (errorCode === 'MODEL_PROVIDER_ERROR') {
-      const label = this.isUpstreamModelStreamAbort(rawErrorMessage)
-        ? '上游模型流中断'
-        : '模型提供方错误';
-      return `${label}（${errorCode}: ${rawErrorMessage}）`;
-    }
-
-    if (this.isUpstreamModelStreamAbort(rawErrorMessage)) {
-      return `上游模型流中断（${rawErrorMessage}）`;
-    }
-
-    return rawErrorMessage;
-  }
-
-  private isUpstreamModelStreamAbort(message: string): boolean {
-    return isRecoverableAgentRuntimeErrorMessage(message);
-  }
-
-  private readErrorCode(error: Error): string | undefined {
-    if (!isRecord(error)) {
-      return undefined;
-    }
-
-    return readStringValue(error['code']);
-  }
-
-  private async persistConversationTurn(
-    conversationId: string,
-    tenantId: string,
-    pendingMessages: PendingMessage[],
-    turnResult: ConversationTurnResult,
-    sessionId: string,
-    options?: {
-      incomplete?: boolean;
-      errorMessage?: string;
-      errorCode?: string;
-      rawErrorMessage?: string;
-    },
-  ): Promise<ConversationExecutionMetadata> {
-    return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const currentMetadata = await this.loadConversationMetadata(
-        dbClient,
-        conversationId,
-      );
-      let lastAssistantMessageId: string | undefined;
-      const isEmptyTurn =
-        turnResult.assistantText.length === 0 &&
-        turnResult.toolCalls.length === 0 &&
-        !turnResult.decision;
-
-      if (pendingMessages.length > 0 && turnResult.stopReason !== 'cancelled') {
-        const [assistantMessage] = await dbClient
-          .insert(agentMessages)
-          .values({
-            conversationId,
-            tenantId,
-            role: 'assistant',
-            content: turnResult.assistantText,
-            toolCalls:
-              turnResult.toolCalls.length > 0
-                ? turnResult.toolCalls.map((call) => ({
-                    id: call.id,
-                    tool: call.tool,
-                    args: call.args,
-                    status: call.status,
-                    ...(call.transitions
-                      ? { transitions: [...call.transitions] }
-                      : {}),
-                    ...(call.result !== undefined
-                      ? { result: call.result }
-                      : {}),
-                    ...(call.error !== undefined ? { error: call.error } : {}),
-                    ...(call.permissionRequest
-                      ? { permissionRequest: call.permissionRequest }
-                      : {}),
-                  }))
-                : null,
-            toolResults:
-              turnResult.toolResults.length > 0 ? turnResult.toolResults : null,
-            metadata: {
-              ...(turnResult.decision ? { decision: turnResult.decision } : {}),
-              stopReason: turnResult.stopReason,
-              ...(turnResult.segments.length > 0
-                ? { segments: turnResult.segments }
-                : {}),
-              ...(turnResult.subAgentStreams &&
-              Object.keys(turnResult.subAgentStreams).length > 0
-                ? { subAgentStreams: turnResult.subAgentStreams }
-                : {}),
-              ...(isEmptyTurn ? { emptyTurn: true } : {}),
-              ...(options?.incomplete ? { incomplete: true } : {}),
-              ...(options?.errorMessage
-                ? { errorMessage: options.errorMessage }
-                : {}),
-              ...(options?.errorCode ? { errorCode: options.errorCode } : {}),
-              ...(options?.rawErrorMessage
-                ? { rawErrorMessage: options.rawErrorMessage }
-                : {}),
-            },
-          })
-          .returning({ id: agentMessages.id });
-
-        lastAssistantMessageId = assistantMessage.id;
-      }
-
-      const lastProcessedMessageId = pendingMessages.at(-1)?.id;
-      const executionMetadata = mergeExecutionMetadata(currentMetadata, {
-        sessionId,
-        lastProcessedMessageId,
-        lastAssistantMessageId,
-        lastStopReason: turnResult.stopReason,
-        runningState: 'running',
-      });
-
-      await dbClient
-        .update(agentConversations)
-        .set({
-          metadata: writeExecutionMetadata(currentMetadata, executionMetadata),
-          updatedAt: new Date(),
-        })
-        .where(eq(agentConversations.id, conversationId));
-
-      return executionMetadata;
-    });
-  }
-
-  private async updateExecutionMetadata(
-    tenantId: string,
-    conversationId: string,
-    patch: Partial<ConversationExecutionMetadata>,
-  ): Promise<ConversationExecutionMetadata> {
-    return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const currentMetadata = await this.loadConversationMetadata(
-        dbClient,
-        conversationId,
-      );
-      const nextExecutionMetadata = mergeExecutionMetadata(
-        currentMetadata,
-        patch,
-      );
-      await dbClient
-        .update(agentConversations)
-        .set({
-          metadata: writeExecutionMetadata(
-            currentMetadata,
-            nextExecutionMetadata,
-          ),
-          updatedAt: new Date(),
-        })
-        .where(eq(agentConversations.id, conversationId));
-
-      return nextExecutionMetadata;
-    });
-  }
-
-  private async safeUpdateExecutionMetadata(
-    tenantId: string,
-    conversationId: string,
-    metadata: ConversationExecutionMetadata,
-  ): Promise<ConversationExecutionMetadata> {
-    try {
-      return await runInTenantTransaction(
-        this.db,
-        tenantId,
-        async (dbClient) => {
-          const currentMetadata = await this.loadConversationMetadata(
-            dbClient,
-            conversationId,
-          );
-          const nextMetadata = writeExecutionMetadata(
-            currentMetadata,
-            metadata,
-          );
-
-          await dbClient
-            .update(agentConversations)
-            .set({ metadata: nextMetadata, updatedAt: new Date() })
-            .where(eq(agentConversations.id, conversationId));
-
-          return readExecutionMetadata(nextMetadata);
-        },
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to update conversation ${conversationId} metadata: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return metadata;
-    }
-  }
-
-  private async loadConversationMetadata(
-    dbClient: DrizzleDB,
-    conversationId: string,
-  ): Promise<Record<string, unknown>> {
-    const [conversation] = await dbClient
-      .select({ metadata: agentConversations.metadata })
-      .from(agentConversations)
-      .where(eq(agentConversations.id, conversationId))
-      .limit(1);
-
-    return conversation?.metadata ?? {};
-  }
-
-  private async materializePendingMessagesForRuntime(
-    pendingMessages: PendingMessage[],
-    conversationId: string,
-    tenantId: string,
-    runtimeMode: AgentRuntimeMode | undefined,
-  ): Promise<PendingMessage[]> {
-    if (runtimeMode !== 'sandbox' || pendingMessages.length === 0) {
-      return pendingMessages;
-    }
-
-    const nextMessages: PendingMessage[] = [];
-
-    for (const message of pendingMessages) {
-      const attachments = readConversationAttachmentMetadataList(
-        message.metadata,
-      );
-
-      if (attachments.length === 0) {
-        nextMessages.push(message);
-        continue;
-      }
-
-      try {
-        const sandboxPaths: Array<string | undefined> = [];
-        for (const attachment of attachments) {
-          const sandboxPath =
-            await this.workspaceIntegrationService.stageConversationAttachment(
-              conversationId,
-              tenantId,
-              { attachment },
-            );
-          sandboxPaths.push(sandboxPath ?? undefined);
-        }
-
-        if (sandboxPaths.every((sandboxPath) => !sandboxPath)) {
-          nextMessages.push(message);
-          continue;
-        }
-
-        nextMessages.push({
-          ...message,
-          metadata: withConversationAttachmentSandboxPaths(
-            message.metadata,
-            sandboxPaths,
-          ),
-        });
-      } catch (error) {
-        this.logger.warn(
-          `Failed to materialize conversation attachment for ${conversationId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        nextMessages.push(message);
-      }
-    }
-
-    return nextMessages;
-  }
-  private buildPromptBlocks(
-    pendingMessages: PendingMessage[],
-    hasPriorTurns: boolean,
-    historyMessages: ConversationHistoryMessage[] = [],
-    latestPromptOverride?: string,
-    conversationMetadata: Record<string, unknown> = {},
-  ): ContentBlock[] {
-    return buildConversationWorkerPromptBlocks(
-      pendingMessages,
-      hasPriorTurns,
-      historyMessages,
-      latestPromptOverride,
-      conversationMetadata,
-    );
-  }
-
-  private resolveDefaultMemoryInstanceIds(
-    definitionMetadata: Record<string, unknown>,
-    snapshotMetadata?: Record<string, unknown>,
-  ): string[] {
-    const snapshotMemoryInstanceIds = extractStringArray(
-      snapshotMetadata?.memoryInstanceIds,
-    );
-
-    if (snapshotMemoryInstanceIds.length) {
-      return snapshotMemoryInstanceIds;
-    }
-
-    return extractStringArray(definitionMetadata['memoryInstanceIds']);
-  }
-
-  private async ensureConversationMemorySessions(
-    context: ConversationExecutionContext,
-    conversationId: string,
-    tenantId: string,
-  ): Promise<string[]> {
-    const existingSessionIds = context.executionMetadata.memorySessionIds ?? [];
-    if (existingSessionIds.length || !context.memoryInstanceIds.length) {
-      return existingSessionIds;
-    }
-
-    return this.ensureAttachedMemorySessions(
-      context.memoryInstanceIds,
-      conversationId,
-      tenantId,
-    );
-  }
-
-  private async ensureAttachedMemorySessions(
-    memoryInstanceIds: string[],
-    conversationId: string,
-    tenantId: string,
-  ): Promise<string[]> {
-    if (!memoryInstanceIds.length || !this.memoryResourceProvider) {
-      return [];
-    }
-
-    const createdSessions: string[] = [];
-    for (const [index, memoryInstanceId] of memoryInstanceIds.entries()) {
-      const instance = await this.memoryResourceProvider.create({
-        memoryInstanceId,
-        role: index === 0 ? 'primary' : 'readonly',
-        bootUris: DEFAULT_MEMORY_BOOT_URIS,
-        fusionPriority: index + 1,
-        tenantId,
-        agentConversationId: conversationId,
-      });
-      createdSessions.push(instance.sessionId);
-    }
-
-    return createdSessions;
-  }
-
-  private async resolveConversationSystemPrompt(
-    memorySessionIds: string[],
-    baseSystemPrompt?: string,
-  ): Promise<string | undefined> {
-    if (!memorySessionIds.length || !this.memoryFusionService) {
-      return baseSystemPrompt;
-    }
-
-    try {
-      const bootSequence =
-        await this.memoryFusionService.bootAll(memorySessionIds);
-      const memoryPrompt = buildMemoryBootPrompt(bootSequence);
-      return prependSystemPrompt(memoryPrompt, baseSystemPrompt);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to load conversation memory boot context: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return baseSystemPrompt;
-    }
-  }
-
-  private async resolveConversationSkillPrompt(
-    context: ConversationExecutionContext,
-  ): Promise<string | undefined> {
-    return resolveSkillAugmentedPrompt(
-      {
-        tenantId: context.conversation.tenantId,
-        agentDefinitionId: context.conversation.agentDefinitionId,
-        skillIds: context.runtimeConfig.skillIds,
-        nodes: context.canvasNodes,
-        edges: context.canvasEdges,
-        baseSystemPrompt: context.systemPrompt,
-      },
-      this.skillResolverService,
-      this.logger,
-    );
-  }
-
-  /**
-   * Resolve skill payloads as structured data without embedding into prompt.
-   * Used by the sandbox code path to produce independent skill files.
-   */
-  private async resolveSkillPayloads(
-    context: ConversationExecutionContext,
-  ): Promise<import('../skill/skill.types').SkillPromptPayload[]> {
-    return resolveSkillPayloadsForGraph(
-      {
-        tenantId: context.conversation.tenantId,
-        agentDefinitionId: context.conversation.agentDefinitionId,
-        skillIds: context.runtimeConfig.skillIds,
-        nodes: context.canvasNodes,
-        edges: context.canvasEdges,
-      },
-      this.skillResolverService,
-      this.logger,
-    );
-  }
-
-  private resolveConfiguredSkillIds(
-    runtimeSkillIds: string[] | undefined,
-    nodes: AgentVersionSnapshot['nodes'],
-    edges: AgentVersionSnapshot['edges'],
-  ): string[] {
-    return resolveConfiguredSkillIdsForConversation(
-      runtimeSkillIds,
-      nodes,
-      edges,
-    );
-  }
-
-  private resolveAgentRuntimeMode(
-    definitionRuntimeMode: unknown,
-    snapshotRuntimeMode: unknown,
-  ): AgentRuntimeMode {
-    if (
-      snapshotRuntimeMode === 'sandbox' ||
-      snapshotRuntimeMode === 'no_sandbox'
-    ) {
-      return snapshotRuntimeMode;
-    }
-
-    return definitionRuntimeMode === 'no_sandbox' ? 'no_sandbox' : 'sandbox';
-  }
-
-  private buildReadOnlyNativeToolPolicy() {
-    return {
-      readEnabled: true,
-      writeEnabled: false,
-      editEnabled: false,
-      terminalEnabled: false,
-    } as const;
-  }
-
-  private registerSubAgentToolsProvider(params: {
-    runtime: IAgentRuntime;
-    sessionId: string;
-    runtimeConfig: AgentRuntimeConfig;
-    conversationId: string;
-    tenantId: string;
-    parentAbortSignal: AbortSignal;
-    currentAgentDefinitionId: string;
-    currentDepth: number;
-    parentUsesSandboxRuntime: boolean;
-    visitedAgentIds?: Set<string>;
-    subAgentTracker: SubAgentExecutionTracker;
-  }): void {
-    if (
-      !params.runtimeConfig.subAgents?.length ||
-      !this.subAgentToolsProvider ||
-      !params.runtime.registerSessionToolProvider
-    ) {
-      return;
-    }
-
-    params.runtime.registerSessionToolProvider(
-      params.sessionId,
-      this.subAgentToolsProvider.createSessionToolProvider(
-        params.runtimeConfig.subAgents,
-        {
-          conversationId: params.conversationId,
-          depth: params.currentDepth,
-          tenantId: params.tenantId,
-          parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
-          parentAbortSignal: params.parentAbortSignal,
-          visitedAgentIds: new Set([
-            ...(params.visitedAgentIds ?? []),
-            params.currentAgentDefinitionId,
-          ]),
-        },
-        (subAgentParams) =>
-          this.executeSubAgent(subAgentParams, params.subAgentTracker),
-      ),
-    );
-  }
-
-  private async registerSelfEvolutionToolsProvider(params: {
-    runtime: IAgentRuntime;
-    sessionId: string;
-    runtimeConfig: AgentRuntimeConfig;
-    conversationId: string;
-    tenantId: string;
-    currentAgentDefinitionId: string;
-  }): Promise<void> {
-    if (
-      !params.runtimeConfig.selfEvolutionPolicy?.enabled ||
-      !this.selfEvolutionToolsProvider ||
-      !params.runtime.registerSessionToolProvider
-    ) {
-      return;
-    }
-
-    const context = await runInTenantTransaction(
-      this.db,
-      params.tenantId,
-      async (dbClient) => {
-        const [[conversation], [agent]] = await Promise.all([
-          dbClient
-            .select({
-              createdBy: agentConversations.createdBy,
-            })
-            .from(agentConversations)
-            .where(eq(agentConversations.id, params.conversationId))
-            .limit(1),
-          dbClient
-            .select({
-              name: agentDefinitions.name,
-            })
-            .from(agentDefinitions)
-            .where(eq(agentDefinitions.id, params.currentAgentDefinitionId))
-            .limit(1),
-        ]);
-
-        if (!conversation) {
-          throw new Error(
-            `Conversation ${params.conversationId} not found for self-evolution provider`,
-          );
-        }
-
-        if (!agent) {
-          throw new Error(
-            `Agent ${params.currentAgentDefinitionId} not found for self-evolution provider`,
-          );
-        }
-
-        return {
-          actorUserId: conversation.createdBy,
-          currentAgentName: agent.name,
-        };
-      },
-    );
-
-    params.runtime.registerSessionToolProvider(
-      params.sessionId,
-      this.selfEvolutionToolsProvider.createSessionToolProvider({
-        sessionId: params.sessionId,
-        conversationId: params.conversationId,
-        tenantId: params.tenantId,
-        currentAgentDefinitionId: params.currentAgentDefinitionId,
-        runtimeConfig: params.runtimeConfig,
-        actorUserId: context.actorUserId,
-        currentAgentName: context.currentAgentName,
-      }),
-    );
-  }
-
-  private async executeSubAgent(
-    params: ExecuteSubAgentParams,
-    subAgentTracker: SubAgentExecutionTracker,
-  ): Promise<SubAgentResult> {
-    const trackedAbort = new AbortController();
-    subAgentTracker.abortControllers.set(params.handle, trackedAbort);
-    const conversationId = params.parentContext.conversationId;
-
-    if (!conversationId) {
-      throw new Error('对话子代理执行缺少 conversationId');
-    }
-
-    const linkedAbort = this.combineAbortSignals([
-      params.abortSignal,
-      trackedAbort.signal,
-    ]);
-
-    let runtime: IAgentRuntime | null = null;
-    let session: AgentSession | null = null;
-
-    try {
-      const versionSnapshot = params.versionSnapshot?.snapshot;
-      const runtimeMode = this.resolveAgentRuntimeMode(
-        params.agentDefinition.runtimeMode,
-        versionSnapshot?.runtimeMode,
-      );
-      const normalizedDefinitionSandboxConfig =
-        deriveAgentSandboxConfigFromCanvas(
-          params.agentDefinition.nodes,
-          params.agentDefinition.edges,
-          params.agentDefinition.sandboxConfig,
-        );
-      const normalizedVersionSandboxConfig = versionSnapshot
-        ? deriveAgentSandboxConfigFromCanvas(
-            versionSnapshot.nodes,
-            versionSnapshot.edges,
-            versionSnapshot.sandboxConfig ?? null,
-          )
-        : null;
-      const graphSystemPrompt =
-        this.agentDefinitionService.resolveSystemPromptFromNodes?.(
-          versionSnapshot?.nodes ?? params.agentDefinition.nodes,
-          versionSnapshot?.edges ?? params.agentDefinition.edges,
-        ) ??
-        versionSnapshot?.systemPrompt ??
-        params.agentDefinition.systemPrompt ??
-        undefined;
-      const compiledRuntimeConfig = versionSnapshot
-        ? this.agentDefinitionService.buildRuntimeConfigFromNodes(
-            versionSnapshot.nodes,
-            versionSnapshot.edges,
-            params.agentDefinition.id,
-            runtimeMode,
-          )
-        : await this.agentDefinitionService.compileCanvas(
-            params.agentDefinition.id,
-          );
-      const runtimeConfig = mergeRuntimeConfigWithSubAgentRef(
-        compiledRuntimeConfig,
-        params.subAgentRef,
-      );
-      runtimeConfig.runtimeMode ??= runtimeMode;
-      const usesSandboxRuntime =
-        runtimeConfig.runtimeMode === 'sandbox' ||
-        (runtimeConfig.runtimeMode === 'no_sandbox' &&
-          params.parentContext.parentUsesSandboxRuntime);
-
-      if (
-        runtimeConfig.runtimeMode === 'sandbox' &&
-        !params.parentContext.parentUsesSandboxRuntime
-      ) {
-        throw new Error('无 sandbox Agent 不支持调用有 sandbox 的子 Agent');
-      }
-
-      if (runtimeConfig.runtimeMode === 'sandbox') {
-        const sandboxConfig =
-          mergeSandboxConfigCandidates(
-            runtimeConfig.sandboxConfig ?? null,
-            normalizedVersionSandboxConfig,
-          ) ??
-          normalizedDefinitionSandboxConfig ??
-          params.agentDefinition.sandboxConfig;
-
-        if (!sandboxConfig) {
-          throw new AgentSandboxNotConnectedException(
-            params.agentDefinition.id,
-          );
-        }
-
-        runtimeConfig.sandboxConfig =
-          resolveAgentRuntimeSandboxConfig(sandboxConfig);
-      } else {
-        runtimeConfig.sandboxConfig = undefined;
-        if (usesSandboxRuntime) {
-          runtimeConfig.nativeToolPolicy = this.buildReadOnlyNativeToolPolicy();
-        }
-      }
-
-      const memoryInstanceIds = runtimeConfig.memoryInstanceIds ?? [];
-      const memorySessionIds = await this.ensureAttachedMemorySessions(
-        memoryInstanceIds,
-        conversationId,
-        params.parentContext.tenantId,
-      );
-
-      runtime = this.adapterFactory.selectAdapter(usesSandboxRuntime);
-
-      if (runtimeConfig.runtimeMode === 'sandbox') {
-        const skillPayloads = await resolveSkillPayloadsForGraph(
-          {
-            tenantId: params.parentContext.tenantId,
-            agentDefinitionId: params.agentDefinition.id,
-            skillIds: runtimeConfig.skillIds,
-            nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
-            edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
-          },
-          this.skillResolverService,
-          this.logger,
-        );
-        const piConfigInput = await buildPiConfigInput(
-          {
-            tenantId: params.parentContext.tenantId,
-            runtimeConfig,
-            systemPrompt: appendOutputSchemaToSystemPrompt(
-              resolveSubAgentSystemPrompt(
-                graphSystemPrompt,
-                params.subAgentRef,
-              ),
-              runtimeConfig.outputSchema,
-            ),
-            skillPayloads,
-          },
-          this.llmService,
-          this.mcpService,
-          this.db,
-          this.logger,
-        );
-        await this.sandboxService.createSandboxSession({
-          sandboxNodeId: null,
-          config: runtimeConfig.sandboxConfig!,
-          tenantId: params.parentContext.tenantId,
-          agentConversationId: conversationId,
-          piConfigInput,
-        });
-      }
-
-      const baseSystemPrompt = await resolveSkillAugmentedPrompt(
-        {
-          tenantId: params.parentContext.tenantId,
-          agentDefinitionId: params.agentDefinition.id,
-          skillIds: runtimeConfig.skillIds,
-          nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
-          edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
-          baseSystemPrompt: appendOutputSchemaToSystemPrompt(
-            resolveSubAgentSystemPrompt(graphSystemPrompt, params.subAgentRef),
-            runtimeConfig.outputSchema,
-          ),
-        },
-        this.skillResolverService,
-        this.logger,
-      );
-      const systemPrompt = await this.resolveConversationSystemPrompt(
-        memorySessionIds,
-        baseSystemPrompt,
-      );
-
-      const nextSessionId = randomUUID();
-      this.registerMemoryToolsProvider(
-        runtime,
-        nextSessionId,
-        memorySessionIds,
-      );
-      await this.registerSelfEvolutionToolsProvider({
-        runtime,
-        sessionId: nextSessionId,
-        runtimeConfig,
-        conversationId,
-        tenantId: params.parentContext.tenantId,
-        currentAgentDefinitionId: params.agentDefinition.id,
-      });
-      this.registerSubAgentToolsProvider({
-        runtime,
-        sessionId: nextSessionId,
-        runtimeConfig,
-        conversationId,
-        tenantId: params.parentContext.tenantId,
-        parentAbortSignal: linkedAbort.signal,
-        currentAgentDefinitionId: params.agentDefinition.id,
-        currentDepth: params.depth,
-        parentUsesSandboxRuntime: usesSandboxRuntime,
-        visitedAgentIds: params.parentContext.visitedAgentIds,
-        subAgentTracker,
-      });
-
-      try {
-        session = await runtime.createSession({
-          sessionId: nextSessionId,
-          agentId: params.agentDefinition.id,
-          mode: 'conversation',
-          tenantId: params.parentContext.tenantId,
-          llmModelConfigId: runtimeConfig.modelConfig?.modelId,
-          systemPrompt,
-          runtimeConfig,
-          ...(usesSandboxRuntime
-            ? {
-                serverSandbox: {
-                  agentConversationId: conversationId,
-                },
-              }
-            : {}),
-          context: {
-            tenantId: params.parentContext.tenantId,
-            agentConversationId: conversationId,
-            ...(usesSandboxRuntime
-              ? {
-                  serverSandbox: {
-                    agentConversationId: conversationId,
-                  },
-                }
-              : {}),
-            ...(memorySessionIds.length ? { memorySessionIds } : {}),
-          },
-        });
-      } catch (error) {
-        runtime.unregisterSessionToolProvider?.(nextSessionId);
-        throw error;
-      }
-
-      const activeSession: AgentSession = session;
-
-      linkedAbort.signal.addEventListener(
-        'abort',
-        () => {
-          if (runtime && activeSession) {
-            void runtime.cancel(activeSession.id).catch((error) => {
-              this.logger.warn(
-                `Failed to cancel sub-agent session ${activeSession.id}: ${error instanceof Error ? error.message : String(error)}`,
-              );
-            });
-          }
-        },
-        { once: true },
-      );
-
-      const result = await this.runSubAgentPrompt(
-        runtime,
-        session,
-        params.task,
-        params.context,
-        params.eventProxy,
-      );
-
-      if (params.invocationMode === 'spawn') {
-        void this.injectSubAgentCompletionNotice(
-          conversationId,
-          params.agentDefinition.name,
-          params.handle,
-          params.alias,
-          'completed',
-          result,
-        );
-      }
-
-      return result;
-    } catch (error) {
-      if (params.invocationMode === 'spawn' && !linkedAbort.signal.aborted) {
-        void this.injectSubAgentCompletionNotice(
-          conversationId,
-          params.agentDefinition.name,
-          params.handle,
-          params.alias,
-          'failed',
-          undefined,
-          error,
-        );
-      }
-      throw error;
-    } finally {
-      linkedAbort.cleanup();
-      subAgentTracker.abortControllers.delete(params.handle);
-    }
-  }
-
-  private async runSubAgentPrompt(
-    runtime: IAgentRuntime,
-    session: AgentSession,
-    task: string,
-    context: string | undefined,
-    eventProxy?: ExecuteSubAgentParams['eventProxy'],
-  ): Promise<SubAgentResult> {
-    let assistantText = '';
-    let decision: DecisionEvent | undefined;
-    let stopReason: StopReason = 'end_turn';
-    let promptBlocks: ContentBlock[] = [
-      {
-        type: 'text',
-        text: this.buildSubAgentPrompt(task, context),
-      } satisfies TextContentBlock,
-    ];
-
-    while (true) {
-      for await (const event of runtime.prompt(session.id, promptBlocks)) {
-        eventProxy?.emitEvent(event);
-
-        if (event.type === 'message_chunk') {
-          assistantText += event.content;
-          continue;
-        }
-
-        if (event.type === 'decision') {
-          decision = event;
-          continue;
-        }
-
-        if (event.type === 'done') {
-          stopReason = event.stopReason;
-        }
-      }
-
-      if (stopReason !== 'tool_use') {
-        break;
-      }
-
-      promptBlocks = [];
-    }
-
-    return {
-      content: assistantText,
-      stopReason,
-      ...(decision ? { decision: { ...decision } } : {}),
-    };
-  }
-
-  private buildSubAgentPrompt(task: string, context?: string): string {
-    if (!context?.trim()) {
-      return task;
-    }
-
-    return ['任务：', task.trim(), '', '额外上下文：', context.trim()].join(
-      '\n',
-    );
-  }
-
-  private abortTrackedSubAgents(
-    subAgentTracker: SubAgentExecutionTracker,
-    reason?: unknown,
-  ): void {
-    for (const abortController of subAgentTracker.abortControllers.values()) {
-      if (!abortController.signal.aborted) {
-        abortController.abort(reason);
-      }
-    }
-  }
-
-  private combineAbortSignals(signals: Array<AbortSignal | undefined>): {
-    signal: AbortSignal;
-    cleanup: () => void;
-  } {
-    const controller = new AbortController();
-    const listeners = new Map<AbortSignal, () => void>();
-
-    const abortWith = (signal: AbortSignal) => {
-      if (!controller.signal.aborted) {
-        controller.abort(signal.reason);
-      }
-    };
-
-    for (const signal of signals) {
-      if (!signal) {
-        continue;
-      }
-
-      if (signal.aborted) {
-        abortWith(signal);
-        break;
-      }
-
-      const listener = () => abortWith(signal);
-      listeners.set(signal, listener);
-      signal.addEventListener('abort', listener, { once: true });
-    }
-
-    return {
-      signal: controller.signal,
-      cleanup: () => {
-        for (const [signal, listener] of listeners) {
-          signal.removeEventListener('abort', listener);
-        }
-      },
-    };
-  }
-
-  private async injectSubAgentCompletionNotice(
-    conversationId: string,
-    agentName: string,
-    handle: SubAgentHandle,
-    alias: string,
-    status: 'completed' | 'failed',
-    result?: SubAgentResult,
-    error?: unknown,
-  ): Promise<void> {
-    const summary =
-      status === 'completed'
-        ? this.summarizeSubAgentText(result?.content)
-        : this.summarizeSubAgentText(
-            error instanceof Error
-              ? error.message
-              : String(error ?? 'unknown error'),
-          );
-    const notice: SubAgentCompletionNotice = {
-      type: 'subagent_completion_notice',
-      handle,
-      alias,
-      status:
-        status === 'completed'
-          ? SubAgentRunStatus.COMPLETED
-          : SubAgentRunStatus.FAILED,
-      ...(status === 'failed' && summary ? { error: summary } : {}),
-    };
-
-    try {
-      await this.executionService.injectMessage(conversationId, {
-        role: 'user',
-        contentType: 'text',
-        content: `[Sub-Agent: ${agentName}] Completed: ${summary}`,
-        metadata: {
-          type: 'subagent_completion_notice' as const,
-          handle,
-          alias,
-          status: notice.status,
-          ...(notice.error ? { error: notice.error } : {}),
-        },
-      });
-    } catch (injectError) {
-      this.logger.warn(
-        `Failed to inject sub-agent completion notice for ${handle}: ${injectError instanceof Error ? injectError.message : String(injectError)}`,
-      );
-    }
-  }
-
-  private summarizeSubAgentText(content: string | undefined): string {
-    const normalized = (content ?? '').replace(/\s+/g, ' ').trim();
-    if (!normalized) {
-      return 'No summary available';
-    }
-
-    return normalized.length > 160
-      ? `${normalized.slice(0, 157).trimEnd()}...`
-      : normalized;
-  }
-
-  private registerMemoryToolsProvider(
-    runtime: IAgentRuntime,
-    sessionId: string,
-    memorySessionIds: string[],
-  ): void {
-    if (
-      !memorySessionIds.length ||
-      !this.memoryToolsService ||
-      !runtime.registerSessionToolProvider
-    ) {
-      return;
-    }
-
-    runtime.registerSessionToolProvider(
-      sessionId,
-      this.memoryToolsService.createSessionToolProvider(memorySessionIds),
-    );
-  }
-
-  private async cleanupConversationMemorySessions(
-    tenantId: string,
-    memorySessionIds: string[] | undefined,
-  ): Promise<void> {
-    if (!memorySessionIds?.length || !this.memoryResourceProvider) {
-      return;
-    }
-
-    try {
-      const sessions = await runInTenantTransaction(
-        this.db,
-        tenantId,
-        async (dbClient) =>
-          dbClient
-            .select()
-            .from(memorySessions)
-            .where(and(eq(memorySessions.tenantId, tenantId))),
-      );
-      const instances = sessions
-        .filter((session) => memorySessionIds.includes(session.id))
-        .map((session) => this.toMemoryResourceInstance(session, tenantId));
-
-      for (const instance of instances) {
-        await this.memoryResourceProvider.destroy(instance);
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to cleanup conversation memory sessions: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  private toMemoryResourceInstance(
-    session: MemorySession,
-    tenantId: string,
-  ): MemoryResourceInstance {
-    return {
-      sessionId: session.id,
-      session,
-      memoryInstanceId: session.memoryInstanceId,
-      tenantId,
-    };
-  }
-
-  /**
-   * Emit a preparation phase event for agent conversation startup.
-   * Uses the existing `conversation.status.changed` channel with optional
-   * `phase` / `sandboxReused` fields so old clients can safely ignore them.
-   */
-  private emitPreparationPhase(
-    tenantId: string,
-    conversationId: string,
-    phase: PreparationPhase,
-    extra?: {
-      sandboxReused?: boolean;
-      failedPhase?: PreparationPhase;
-      error?: string;
-    },
-  ): void {
-    this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
-      executionId: conversationId,
-      status: phase === 'running' ? 'running' : 'preparing',
-      executionType: 'conversation',
-      phase,
-      ...(extra?.sandboxReused != null
-        ? { sandboxReused: extra.sandboxReused }
-        : {}),
-      ...(extra?.failedPhase ? { failedPhase: extra.failedPhase } : {}),
-      ...(extra?.error ? { error: extra.error } : {}),
-    });
-  }
 }

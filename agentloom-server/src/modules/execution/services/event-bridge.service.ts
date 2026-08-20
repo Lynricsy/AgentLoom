@@ -1,14 +1,6 @@
-import {
-  Optional,
-  Injectable,
-  Logger,
-  Inject,
-  forwardRef,
-  type OnModuleDestroy,
-} from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ExecutionGateway } from '../execution.gateway';
 import { ThrottleService } from './throttle.service';
 import {
   ExecutionEventName,
@@ -42,6 +34,21 @@ import {
   normalizeSubAgentEventForPersistence,
   pushPersistedSubAgentEvent,
 } from '../../agent-execution/subagent/persisted-subagent-stream.utils';
+
+/** ExecutionGateway 消费的广播意图事件名。 */
+export const ExecutionBroadcastIntent = {
+  BROADCAST: 'execution.gateway.broadcast',
+  BROADCAST_IMMEDIATELY: 'execution.gateway.broadcast_immediately',
+  FLUSH_QUEUE: 'execution.gateway.flush_queue',
+  CLEAR_QUEUE: 'execution.gateway.clear_queue',
+} as const;
+
+export interface ExecutionBroadcastIntentPayload {
+  tenantId: string;
+  executionId: string;
+  event?: ExecutionEventName;
+  data?: Record<string, unknown>;
+}
 
 const EVENT_BUFFER_CAPACITY = 500;
 const TERMINAL_EVENT_RETENTION_MS = 30_000;
@@ -89,10 +96,8 @@ export class EventBridgeService implements OnModuleDestroy {
   >();
 
   constructor(
-    @Inject(forwardRef(() => ExecutionGateway))
-    private readonly executionGateway: ExecutionGateway,
     private readonly throttleService: ThrottleService,
-    @Optional() private readonly eventEmitter?: EventEmitter2,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   emitStepStatusChanged(
@@ -110,7 +115,7 @@ export class EventBridgeService implements OnModuleDestroy {
 
     // 将失败和完成事件传播到 NestJS EventEmitter 供证据模块、执行记录模块等监听
     if (payload.to === 'failed' || payload.to === 'completed') {
-      this.eventEmitter?.emit(ExecutionEventName.STEP_STATUS_CHANGED, {
+      this.eventEmitter.emit(ExecutionEventName.STEP_STATUS_CHANGED, {
         tenantId,
         executionId,
         ...payload,
@@ -140,13 +145,16 @@ export class EventBridgeService implements OnModuleDestroy {
     if (isTerminal) {
       this.broadcastImmediately(tenantId, executionId, envelope);
       this.throttleService.clearExecution(executionId, tenantId);
-      this.executionGateway.clearExecutionQueue(tenantId, executionId);
+      this.eventEmitter.emit(ExecutionBroadcastIntent.CLEAR_QUEUE, {
+        tenantId,
+        executionId,
+      } satisfies ExecutionBroadcastIntentPayload);
       this.scheduleTerminalCleanup(executionId);
     } else {
       this.broadcast(tenantId, executionId, envelope);
     }
 
-    this.eventEmitter?.emit('execution.status.changed', {
+    this.eventEmitter.emit('execution.status.changed', {
       tenantId,
       ...payload,
     });
@@ -166,7 +174,7 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
-    this.eventEmitter?.emit(ExecutionEventName.STEP_AGENT_EVENT, {
+    this.eventEmitter.emit(ExecutionEventName.STEP_AGENT_EVENT, {
       tenantId,
       executionId,
       ...payload,
@@ -201,7 +209,7 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
-    this.eventEmitter?.emit(ExecutionEventName.OUTPUT_CHUNK, {
+    this.eventEmitter.emit(ExecutionEventName.OUTPUT_CHUNK, {
       tenantId,
       executionId,
       ...payload,
@@ -221,7 +229,7 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
-    this.eventEmitter?.emit(ExecutionEventName.NODE_INTERVENTION_REQUIRED, {
+    this.eventEmitter.emit(ExecutionEventName.NODE_INTERVENTION_REQUIRED, {
       tenantId,
       executionId,
       ...payload,
@@ -241,7 +249,7 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
-    this.eventEmitter?.emit(ExecutionEventName.NODE_INTERVENTION_RESOLVED, {
+    this.eventEmitter.emit(ExecutionEventName.NODE_INTERVENTION_RESOLVED, {
       tenantId,
       executionId,
       ...payload,
@@ -261,7 +269,7 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
-    this.eventEmitter?.emit(ExecutionEventName.NODE_TOOL_CALL_STATUS, {
+    this.eventEmitter.emit(ExecutionEventName.NODE_TOOL_CALL_STATUS, {
       tenantId,
       executionId,
       ...payload,
@@ -382,7 +390,7 @@ export class EventBridgeService implements OnModuleDestroy {
     envelope: SubAgentEventEnvelope,
   ): void {
     this.recordSubAgentConversationEvent(conversationId, event, envelope);
-    this.eventEmitter?.emit('conversation.subagent.event', {
+    this.eventEmitter.emit('conversation.subagent.event', {
       conversationId,
       tenantId,
       event,
@@ -406,7 +414,7 @@ export class EventBridgeService implements OnModuleDestroy {
       completePersistedSubAgentStream(stream, status, error);
     }
 
-    this.eventEmitter?.emit('conversation.subagent.status', {
+    this.eventEmitter.emit('conversation.subagent.status', {
       conversationId,
       tenantId,
       subagent: envelope,
@@ -547,12 +555,12 @@ export class EventBridgeService implements OnModuleDestroy {
     envelope: ExecutionEvent<T>,
   ): void {
     this.bufferEvent(executionId, envelope);
-    this.executionGateway.broadcastTypedEvent(
+    this.eventEmitter.emit(ExecutionBroadcastIntent.BROADCAST, {
       tenantId,
       executionId,
-      envelope.event,
-      envelope as unknown as Record<string, unknown>,
-    );
+      event: envelope.event,
+      data: envelope as unknown as Record<string, unknown>,
+    } satisfies ExecutionBroadcastIntentPayload);
   }
 
   private broadcastImmediately<T extends ExecutionEventName>(
@@ -561,12 +569,12 @@ export class EventBridgeService implements OnModuleDestroy {
     envelope: ExecutionEvent<T>,
   ): void {
     this.bufferEvent(executionId, envelope);
-    this.executionGateway.broadcastTypedEventImmediately(
+    this.eventEmitter.emit(ExecutionBroadcastIntent.BROADCAST_IMMEDIATELY, {
       tenantId,
       executionId,
-      envelope.event,
-      envelope as unknown as Record<string, unknown>,
-    );
+      event: envelope.event,
+      data: envelope as unknown as Record<string, unknown>,
+    } satisfies ExecutionBroadcastIntentPayload);
   }
 
   private bufferEvent(executionId: string, envelope: ExecutionEvent): void {
@@ -585,7 +593,10 @@ export class EventBridgeService implements OnModuleDestroy {
     tenantId: string,
     executionId: string,
   ): void {
-    this.executionGateway.flushExecutionQueue(tenantId, executionId);
+    this.eventEmitter.emit(ExecutionBroadcastIntent.FLUSH_QUEUE, {
+      tenantId,
+      executionId,
+    } satisfies ExecutionBroadcastIntentPayload);
 
     const mergedChunks = this.throttleService.forceFlush(
       this.buildScopedExecutionId(tenantId, executionId),

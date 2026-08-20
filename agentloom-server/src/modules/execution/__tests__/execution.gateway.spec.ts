@@ -11,7 +11,10 @@ import { Logger } from '@nestjs/common';
 import { ExecutionGateway } from '../execution.gateway';
 import type { StateReplayService } from '../services/state-replay.service';
 import type { ThrottleService } from '../services/throttle.service';
-import type { EventBridgeService } from '../services/event-bridge.service';
+import {
+  type EventBridgeService,
+  ExecutionBroadcastIntent,
+} from '../services/event-bridge.service';
 import type { ConfigService } from '@nestjs/config';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import type { ExecutionStateSnapshot } from '../types/execution-event.types';
@@ -752,6 +755,29 @@ describe('ExecutionGateway', () => {
 
       expect(mockServer.to).toHaveBeenCalledWith('execution:t1:e1');
       expect(emitFn).toHaveBeenCalledWith('test-event', { key: 'val' });
+    });
+  });
+
+  describe('EventEmitter 广播意图', () => {
+    it('订阅常规广播意图并保留 gateway 背压路径', () => {
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+
+      gateway.handleBroadcastIntent({
+        tenantId: 't1',
+        executionId: 'e1',
+        event: 'execution.node.status-changed',
+        data: { status: 'running' },
+      });
+
+      expect(mockThrottle.tryConsume).toHaveBeenCalledWith('e1');
+      expect(emitFn).toHaveBeenCalledWith(
+        'execution.node.status-changed',
+        { status: 'running' },
+      );
+      expect(ExecutionBroadcastIntent.BROADCAST).toBe(
+        'execution.gateway.broadcast',
+      );
     });
   });
 

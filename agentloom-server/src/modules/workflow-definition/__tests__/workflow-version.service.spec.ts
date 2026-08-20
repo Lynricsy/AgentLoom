@@ -19,6 +19,9 @@ import { MarketplaceListingNotFoundException } from '../../marketplace/marketpla
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
 import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 import { WorkflowVersionService } from '../workflow-version.service';
+import { WorkflowImportService } from '../workflow-import.service';
+import { WorkflowImportSourceResolverService } from '../workflow-import-source-resolver.service';
+import { WorkflowPublishService } from '../workflow-publish.service';
 import {
   WorkflowArchivedException,
   WorkflowPublishAutonomyCapException,
@@ -362,6 +365,9 @@ describe('WorkflowVersionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkflowVersionService,
+        WorkflowImportService,
+        WorkflowImportSourceResolverService,
+        WorkflowPublishService,
         { provide: DRIZZLE, useValue: db },
         { provide: RedisCacheService, useValue: redis },
         { provide: TemplateService, useValue: templateService },

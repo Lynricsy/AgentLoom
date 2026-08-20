@@ -91,8 +91,8 @@ describe('SelfEvolutionPermissionService', () => {
     mockTenantDb.select.mockReturnValue(selectChain);
     mockTenantDb.update.mockReturnValue(updateChain);
     service = new SelfEvolutionPermissionService(
-      mockTenantDb as never,
-      mockRedisCacheService as never,
+      mockTenantDb as unknown as ConstructorParameters<typeof SelfEvolutionPermissionService>[0],
+      mockRedisCacheService as unknown as ConstructorParameters<typeof SelfEvolutionPermissionService>[1],
     );
   });
 
@@ -176,12 +176,12 @@ describe('SelfEvolutionPermissionService', () => {
 
     try {
       const workerService = new SelfEvolutionPermissionService(
-        mockTenantDb as never,
-        mockRedisCacheService as never,
+        mockTenantDb as unknown as ConstructorParameters<typeof SelfEvolutionPermissionService>[0],
+        mockRedisCacheService as unknown as ConstructorParameters<typeof SelfEvolutionPermissionService>[1],
       );
       const apiService = new SelfEvolutionPermissionService(
-        mockTenantDb as never,
-        mockRedisCacheService as never,
+        mockTenantDb as unknown as ConstructorParameters<typeof SelfEvolutionPermissionService>[0],
+        mockRedisCacheService as unknown as ConstructorParameters<typeof SelfEvolutionPermissionService>[1],
       );
 
       await workerService.registerPendingRequest({

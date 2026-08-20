@@ -13,12 +13,24 @@ import { GeneratedAppGate6IndependentVerifierRunner } from './generated-app.inde
 import { GeneratedAppGate4IntegrationRunner } from './generated-app.integration-runner';
 import { GeneratedAppGate7PublishCandidateRunner } from './generated-app.publish-candidate-runner';
 import { GeneratedAppGate3WorkspaceRunner } from './generated-app.workspace';
+import { GeneratedAppRepository } from './generated-app.repository';
+import { GeneratedAppGenerationOrchestratorService } from './generated-app-generation-orchestrator.service';
+import { GeneratedAppGenerationRepairService } from './generated-app-generation-repair.service';
+import { GeneratedAppArtifactService } from './generated-app-artifact.service';
+import { GeneratedAppPublicRuntimeService } from './generated-app-public-runtime.service';
+import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
 
 @Module({
   imports: [ConfigModule, ExecutionModule, PluginModule],
   controllers: [GeneratedAppController, GeneratedAppPublicController],
   providers: [
     GeneratedAppService,
+    GeneratedAppRepository,
+    GeneratedAppGenerationOrchestratorService,
+    GeneratedAppGenerationRepairService,
+    GeneratedAppArtifactService,
+    GeneratedAppPublicRuntimeService,
+    GeneratedAppRuntimeBindingService,
     GeneratedAppGate3WorkspaceRunner,
     GeneratedAppGate4IntegrationRunner,
     GeneratedAppGate5BrowserAcceptanceRunner,

@@ -75,12 +75,23 @@ import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import {
-  appendTextConversationMessageSegment,
-  appendThinkingConversationMessageSegment,
   ensureToolCallConversationMessageSegment,
   normalizeConversationMessageSegments,
   type ConversationMessageSegmentRecord,
 } from '../agent-conversation/message-segments';
+import {
+  AgentTurnEventAccumulator,
+  extractAgentThinkingContent,
+} from '../agent/shared/agent-turn-event-accumulator';
+import {
+  bindMemoryToolSession,
+  unbindMemoryToolSession,
+} from '../agent/shared/memory-tool-session-binder';
+import {
+  decideAgentTaskFailure,
+  getAgentTaskMaxAttempts,
+  getNextAgentTaskSmartRouting,
+} from './agent-task-failure-policy';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 import { isSelfEvolutionMutationToolName } from '../self-evolution/self-evolution.types';
 
@@ -98,9 +109,406 @@ const isExecutionStepAttemptError = (
   'timestamp' in value &&
   typeof value.timestamp === 'string';
 
+import { AgentTaskWorkerSupportService } from './agent-task-worker-support.service';
+import { AgentTaskWorkerRuntimeService } from './agent-task-worker-runtime.service';
+
 @Processor(AGENT_TASK_QUEUE, { concurrency: 10 })
 export class AgentTaskWorker extends WorkerHost {
+  public get handleIntervention(): AgentTaskWorkerSupportService['handleIntervention'] {
+    return this.supportService.handleIntervention.bind(this.supportService);
+  }
+
+  public set handleIntervention(value: AgentTaskWorkerSupportService['handleIntervention']) {
+    this.supportService.handleIntervention = value;
+  }
+
+  public get resolveWorkflowSandboxNodeId(): AgentTaskWorkerSupportService['resolveWorkflowSandboxNodeId'] {
+    return this.supportService.resolveWorkflowSandboxNodeId.bind(this.supportService);
+  }
+
+  public set resolveWorkflowSandboxNodeId(value: AgentTaskWorkerSupportService['resolveWorkflowSandboxNodeId']) {
+    this.supportService.resolveWorkflowSandboxNodeId = value;
+  }
+
+  public get isRecord(): AgentTaskWorkerSupportService['isRecord'] {
+    return this.supportService.isRecord.bind(this.supportService);
+  }
+
+  public set isRecord(value: AgentTaskWorkerSupportService['isRecord']) {
+    this.supportService.isRecord = value;
+  }
+
+  public get startStepWorkspaceWatcher(): AgentTaskWorkerSupportService['startStepWorkspaceWatcher'] {
+    return this.supportService.startStepWorkspaceWatcher.bind(this.supportService);
+  }
+
+  public set startStepWorkspaceWatcher(value: AgentTaskWorkerSupportService['startStepWorkspaceWatcher']) {
+    this.supportService.startStepWorkspaceWatcher = value;
+  }
+
+  public get resolveInterventionRecord(): AgentTaskWorkerSupportService['resolveInterventionRecord'] {
+    return this.supportService.resolveInterventionRecord.bind(this.supportService);
+  }
+
+  public set resolveInterventionRecord(value: AgentTaskWorkerSupportService['resolveInterventionRecord']) {
+    this.supportService.resolveInterventionRecord = value;
+  }
+
+  public get resolveInterventionContent(): AgentTaskWorkerSupportService['resolveInterventionContent'] {
+    return this.supportService.resolveInterventionContent.bind(this.supportService);
+  }
+
+  public set resolveInterventionContent(value: AgentTaskWorkerSupportService['resolveInterventionContent']) {
+    this.supportService.resolveInterventionContent = value;
+  }
+
+  public get buildContentBlocks(): AgentTaskWorkerSupportService['buildContentBlocks'] {
+    return this.supportService.buildContentBlocks.bind(this.supportService);
+  }
+
+  public set buildContentBlocks(value: AgentTaskWorkerSupportService['buildContentBlocks']) {
+    this.supportService.buildContentBlocks = value;
+  }
+
+  public get extractUpstreamSkills(): AgentTaskWorkerSupportService['extractUpstreamSkills'] {
+    return this.supportService.extractUpstreamSkills.bind(this.supportService);
+  }
+
+  public set extractUpstreamSkills(value: AgentTaskWorkerSupportService['extractUpstreamSkills']) {
+    this.supportService.extractUpstreamSkills = value;
+  }
+
+  public get resolveMemorySessionIds(): AgentTaskWorkerSupportService['resolveMemorySessionIds'] {
+    return this.supportService.resolveMemorySessionIds.bind(this.supportService);
+  }
+
+  public set resolveMemorySessionIds(value: AgentTaskWorkerSupportService['resolveMemorySessionIds']) {
+    this.supportService.resolveMemorySessionIds = value;
+  }
+
+  public get resolveWorkflowSystemPrompt(): AgentTaskWorkerSupportService['resolveWorkflowSystemPrompt'] {
+    return this.supportService.resolveWorkflowSystemPrompt.bind(this.supportService);
+  }
+
+  public set resolveWorkflowSystemPrompt(value: AgentTaskWorkerSupportService['resolveWorkflowSystemPrompt']) {
+    this.supportService.resolveWorkflowSystemPrompt = value;
+  }
+
+  public get buildMemoryBootPrompt(): AgentTaskWorkerSupportService['buildMemoryBootPrompt'] {
+    return this.supportService.buildMemoryBootPrompt.bind(this.supportService);
+  }
+
+  public set buildMemoryBootPrompt(value: AgentTaskWorkerSupportService['buildMemoryBootPrompt']) {
+    this.supportService.buildMemoryBootPrompt = value;
+  }
+
+  public get buildMemoryNavigationSummary(): AgentTaskWorkerSupportService['buildMemoryNavigationSummary'] {
+    return this.supportService.buildMemoryNavigationSummary.bind(this.supportService);
+  }
+
+  public set buildMemoryNavigationSummary(value: AgentTaskWorkerSupportService['buildMemoryNavigationSummary']) {
+    this.supportService.buildMemoryNavigationSummary = value;
+  }
+
+  public get prependSystemPrompt(): AgentTaskWorkerSupportService['prependSystemPrompt'] {
+    return this.supportService.prependSystemPrompt.bind(this.supportService);
+  }
+
+  public set prependSystemPrompt(value: AgentTaskWorkerSupportService['prependSystemPrompt']) {
+    this.supportService.prependSystemPrompt = value;
+  }
+
+  public get registerMemoryToolsProvider(): AgentTaskWorkerSupportService['registerMemoryToolsProvider'] {
+    return this.supportService.registerMemoryToolsProvider.bind(this.supportService);
+  }
+
+  public set registerMemoryToolsProvider(value: AgentTaskWorkerSupportService['registerMemoryToolsProvider']) {
+    this.supportService.registerMemoryToolsProvider = value;
+  }
+
+  public get cleanupMemoryToolsProvider(): AgentTaskWorkerSupportService['cleanupMemoryToolsProvider'] {
+    return this.supportService.cleanupMemoryToolsProvider.bind(this.supportService);
+  }
+
+  public set cleanupMemoryToolsProvider(value: AgentTaskWorkerSupportService['cleanupMemoryToolsProvider']) {
+    this.supportService.cleanupMemoryToolsProvider = value;
+  }
+
+  public get resolveSessionMcpServers(): AgentTaskWorkerSupportService['resolveSessionMcpServers'] {
+    return this.supportService.resolveSessionMcpServers.bind(this.supportService);
+  }
+
+  public set resolveSessionMcpServers(value: AgentTaskWorkerSupportService['resolveSessionMcpServers']) {
+    this.supportService.resolveSessionMcpServers = value;
+  }
+
+  public get getCheckpointData(): AgentTaskWorkerSupportService['getCheckpointData'] {
+    return this.supportService.getCheckpointData.bind(this.supportService);
+  }
+
+  public set getCheckpointData(value: AgentTaskWorkerSupportService['getCheckpointData']) {
+    this.supportService.getCheckpointData = value;
+  }
+
+  public get archiveStepWorkspaceSnapshot(): AgentTaskWorkerSupportService['archiveStepWorkspaceSnapshot'] {
+    return this.supportService.archiveStepWorkspaceSnapshot.bind(this.supportService);
+  }
+
+  public set archiveStepWorkspaceSnapshot(value: AgentTaskWorkerSupportService['archiveStepWorkspaceSnapshot']) {
+    this.supportService.archiveStepWorkspaceSnapshot = value;
+  }
+
+  public get loadToolLoopStateFromCheckpoint(): AgentTaskWorkerSupportService['loadToolLoopStateFromCheckpoint'] {
+    return this.supportService.loadToolLoopStateFromCheckpoint.bind(this.supportService);
+  }
+
+  public set loadToolLoopStateFromCheckpoint(value: AgentTaskWorkerSupportService['loadToolLoopStateFromCheckpoint']) {
+    this.supportService.loadToolLoopStateFromCheckpoint = value;
+  }
+
+  public get mergeCheckpointData(): AgentTaskWorkerSupportService['mergeCheckpointData'] {
+    return this.supportService.mergeCheckpointData.bind(this.supportService);
+  }
+
+  public set mergeCheckpointData(value: AgentTaskWorkerSupportService['mergeCheckpointData']) {
+    this.supportService.mergeCheckpointData = value;
+  }
+
+  public get saveToolLoopCheckpoint(): AgentTaskWorkerSupportService['saveToolLoopCheckpoint'] {
+    return this.supportService.saveToolLoopCheckpoint.bind(this.supportService);
+  }
+
+  public set saveToolLoopCheckpoint(value: AgentTaskWorkerSupportService['saveToolLoopCheckpoint']) {
+    this.supportService.saveToolLoopCheckpoint = value;
+  }
+
+  public get mergeToolCall(): AgentTaskWorkerSupportService['mergeToolCall'] {
+    return this.supportService.mergeToolCall.bind(this.supportService);
+  }
+
+  public set mergeToolCall(value: AgentTaskWorkerSupportService['mergeToolCall']) {
+    this.supportService.mergeToolCall = value;
+  }
+
+  public get emitToolCallStatus(): AgentTaskWorkerSupportService['emitToolCallStatus'] {
+    return this.supportService.emitToolCallStatus.bind(this.supportService);
+  }
+
+  public set emitToolCallStatus(value: AgentTaskWorkerSupportService['emitToolCallStatus']) {
+    this.supportService.emitToolCallStatus = value;
+  }
+
+  public get appendToolCallTransition(): AgentTaskWorkerSupportService['appendToolCallTransition'] {
+    return this.supportService.appendToolCallTransition.bind(this.supportService);
+  }
+
+  public set appendToolCallTransition(value: AgentTaskWorkerSupportService['appendToolCallTransition']) {
+    this.supportService.appendToolCallTransition = value;
+  }
+
+  public get applyToolCallUpdate(): AgentTaskWorkerSupportService['applyToolCallUpdate'] {
+    return this.supportService.applyToolCallUpdate.bind(this.supportService);
+  }
+
+  public set applyToolCallUpdate(value: AgentTaskWorkerSupportService['applyToolCallUpdate']) {
+    this.supportService.applyToolCallUpdate = value;
+  }
+
+  public get resolveToolCallTransitions(): AgentTaskWorkerSupportService['resolveToolCallTransitions'] {
+    return this.supportService.resolveToolCallTransitions.bind(this.supportService);
+  }
+
+  public set resolveToolCallTransitions(value: AgentTaskWorkerSupportService['resolveToolCallTransitions']) {
+    this.supportService.resolveToolCallTransitions = value;
+  }
+
+  public get resolveToolPermissionAndBuildBlocks(): AgentTaskWorkerSupportService['resolveToolPermissionAndBuildBlocks'] {
+    return this.supportService.resolveToolPermissionAndBuildBlocks.bind(this.supportService);
+  }
+
+  public set resolveToolPermissionAndBuildBlocks(value: AgentTaskWorkerSupportService['resolveToolPermissionAndBuildBlocks']) {
+    this.supportService.resolveToolPermissionAndBuildBlocks = value;
+  }
+
+  public get executeMultiTurnLoop(): AgentTaskWorkerRuntimeService['executeMultiTurnLoop'] {
+    return this.runtimeService.executeMultiTurnLoop.bind(this.runtimeService);
+  }
+
+  public set executeMultiTurnLoop(value: AgentTaskWorkerRuntimeService['executeMultiTurnLoop']) {
+    this.runtimeService.executeMultiTurnLoop = value;
+  }
+
+  public get extractThinkingEventContent(): AgentTaskWorkerRuntimeService['extractThinkingEventContent'] {
+    return this.runtimeService.extractThinkingEventContent.bind(this.runtimeService);
+  }
+
+  public set extractThinkingEventContent(value: AgentTaskWorkerRuntimeService['extractThinkingEventContent']) {
+    this.runtimeService.extractThinkingEventContent = value;
+  }
+
+  public get shouldRequireToolPermission(): AgentTaskWorkerRuntimeService['shouldRequireToolPermission'] {
+    return this.runtimeService.shouldRequireToolPermission.bind(this.runtimeService);
+  }
+
+  public set shouldRequireToolPermission(value: AgentTaskWorkerRuntimeService['shouldRequireToolPermission']) {
+    this.runtimeService.shouldRequireToolPermission = value;
+  }
+
+  public get resolveEffectiveAutonomyMode(): AgentTaskWorkerRuntimeService['resolveEffectiveAutonomyMode'] {
+    return this.runtimeService.resolveEffectiveAutonomyMode.bind(this.runtimeService);
+  }
+
+  public set resolveEffectiveAutonomyMode(value: AgentTaskWorkerRuntimeService['resolveEffectiveAutonomyMode']) {
+    this.runtimeService.resolveEffectiveAutonomyMode = value;
+  }
+
+  public get resolveRawAutonomyMode(): AgentTaskWorkerRuntimeService['resolveRawAutonomyMode'] {
+    return this.runtimeService.resolveRawAutonomyMode.bind(this.runtimeService);
+  }
+
+  public set resolveRawAutonomyMode(value: AgentTaskWorkerRuntimeService['resolveRawAutonomyMode']) {
+    this.runtimeService.resolveRawAutonomyMode = value;
+  }
+
+  public get asRecord(): AgentTaskWorkerRuntimeService['asRecord'] {
+    return this.runtimeService.asRecord.bind(this.runtimeService);
+  }
+
+  public set asRecord(value: AgentTaskWorkerRuntimeService['asRecord']) {
+    this.runtimeService.asRecord = value;
+  }
+
+  public get readString(): AgentTaskWorkerRuntimeService['readString'] {
+    return this.runtimeService.readString.bind(this.runtimeService);
+  }
+
+  public set readString(value: AgentTaskWorkerRuntimeService['readString']) {
+    this.runtimeService.readString = value;
+  }
+
+  public get resolveNodeName(): AgentTaskWorkerRuntimeService['resolveNodeName'] {
+    return this.runtimeService.resolveNodeName.bind(this.runtimeService);
+  }
+
+  public set resolveNodeName(value: AgentTaskWorkerRuntimeService['resolveNodeName']) {
+    this.runtimeService.resolveNodeName = value;
+  }
+
+  public get handleInterventionTimeout(): AgentTaskWorkerRuntimeService['handleInterventionTimeout'] {
+    return this.runtimeService.handleInterventionTimeout.bind(this.runtimeService);
+  }
+
+  public set handleInterventionTimeout(value: AgentTaskWorkerRuntimeService['handleInterventionTimeout']) {
+    this.runtimeService.handleInterventionTimeout = value;
+  }
+
+  public get loadInterventionTimeoutContext(): AgentTaskWorkerRuntimeService['loadInterventionTimeoutContext'] {
+    return this.runtimeService.loadInterventionTimeoutContext.bind(this.runtimeService);
+  }
+
+  public set loadInterventionTimeoutContext(value: AgentTaskWorkerRuntimeService['loadInterventionTimeoutContext']) {
+    this.runtimeService.loadInterventionTimeoutContext = value;
+  }
+
+  public get loadEscalationRecipientIds(): AgentTaskWorkerRuntimeService['loadEscalationRecipientIds'] {
+    return this.runtimeService.loadEscalationRecipientIds.bind(this.runtimeService);
+  }
+
+  public set loadEscalationRecipientIds(value: AgentTaskWorkerRuntimeService['loadEscalationRecipientIds']) {
+    this.runtimeService.loadEscalationRecipientIds = value;
+  }
+
+  public get isOrgRole(): AgentTaskWorkerRuntimeService['isOrgRole'] {
+    return this.runtimeService.isOrgRole.bind(this.runtimeService);
+  }
+
+  public set isOrgRole(value: AgentTaskWorkerRuntimeService['isOrgRole']) {
+    this.runtimeService.isOrgRole = value;
+  }
+
+  public get isAuthenticationFailure(): AgentTaskWorkerRuntimeService['isAuthenticationFailure'] {
+    return this.runtimeService.isAuthenticationFailure.bind(this.runtimeService);
+  }
+
+  public set isAuthenticationFailure(value: AgentTaskWorkerRuntimeService['isAuthenticationFailure']) {
+    this.runtimeService.isAuthenticationFailure = value;
+  }
+
+  public get getNextSmartRoutingContext(): AgentTaskWorkerRuntimeService['getNextSmartRoutingContext'] {
+    return this.runtimeService.getNextSmartRoutingContext.bind(this.runtimeService);
+  }
+
+  public set getNextSmartRoutingContext(value: AgentTaskWorkerRuntimeService['getNextSmartRoutingContext']) {
+    this.runtimeService.getNextSmartRoutingContext = value;
+  }
+
+  public get buildFallbackRoutingDecision(): AgentTaskWorkerRuntimeService['buildFallbackRoutingDecision'] {
+    return this.runtimeService.buildFallbackRoutingDecision.bind(this.runtimeService);
+  }
+
+  public set buildFallbackRoutingDecision(value: AgentTaskWorkerRuntimeService['buildFallbackRoutingDecision']) {
+    this.runtimeService.buildFallbackRoutingDecision = value;
+  }
+
+  public get reportSmartRoutingOutcome(): AgentTaskWorkerRuntimeService['reportSmartRoutingOutcome'] {
+    return this.runtimeService.reportSmartRoutingOutcome.bind(this.runtimeService);
+  }
+
+  public set reportSmartRoutingOutcome(value: AgentTaskWorkerRuntimeService['reportSmartRoutingOutcome']) {
+    this.runtimeService.reportSmartRoutingOutcome = value;
+  }
+
+  public get resolveSmartRoutingModelInfo(): AgentTaskWorkerRuntimeService['resolveSmartRoutingModelInfo'] {
+    return this.runtimeService.resolveSmartRoutingModelInfo.bind(this.runtimeService);
+  }
+
+  public set resolveSmartRoutingModelInfo(value: AgentTaskWorkerRuntimeService['resolveSmartRoutingModelInfo']) {
+    this.runtimeService.resolveSmartRoutingModelInfo = value;
+  }
+
+  public get estimateTokenCount(): AgentTaskWorkerRuntimeService['estimateTokenCount'] {
+    return this.runtimeService.estimateTokenCount.bind(this.runtimeService);
+  }
+
+  public set estimateTokenCount(value: AgentTaskWorkerRuntimeService['estimateTokenCount']) {
+    this.runtimeService.estimateTokenCount = value;
+  }
+
+  public get shouldRetry(): AgentTaskWorkerRuntimeService['shouldRetry'] {
+    return this.runtimeService.shouldRetry.bind(this.runtimeService);
+  }
+
+  public set shouldRetry(value: AgentTaskWorkerRuntimeService['shouldRetry']) {
+    this.runtimeService.shouldRetry = value;
+  }
+
+  public get getMaxAttempts(): AgentTaskWorkerRuntimeService['getMaxAttempts'] {
+    return this.runtimeService.getMaxAttempts.bind(this.runtimeService);
+  }
+
+  public set getMaxAttempts(value: AgentTaskWorkerRuntimeService['getMaxAttempts']) {
+    this.runtimeService.getMaxAttempts = value;
+  }
+
+  public get resolveOrgId(): AgentTaskWorkerRuntimeService['resolveOrgId'] {
+    return this.runtimeService.resolveOrgId.bind(this.runtimeService);
+  }
+
+  public set resolveOrgId(value: AgentTaskWorkerRuntimeService['resolveOrgId']) {
+    this.runtimeService.resolveOrgId = value;
+  }
+
+  public get withTenantContext(): AgentTaskWorkerRuntimeService['withTenantContext'] {
+    return this.runtimeService.withTenantContext.bind(this.runtimeService);
+  }
+
+  public set withTenantContext(value: AgentTaskWorkerRuntimeService['withTenantContext']) {
+    this.runtimeService.withTenantContext = value;
+  }
+
   private readonly logger = new Logger(AgentTaskWorker.name);
+  private readonly supportService: AgentTaskWorkerSupportService;
+  private readonly runtimeService: AgentTaskWorkerRuntimeService;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -132,9 +540,19 @@ export class AgentTaskWorker extends WorkerHost {
     @Optional()
     @Inject(SkillResolverService)
     private readonly skillResolverService?: SkillResolverService,
+    @Optional()
+    injectedSupportService?: AgentTaskWorkerSupportService,
+    @Optional()
+    injectedRuntimeService?: AgentTaskWorkerRuntimeService,
   ) {
     super();
     void throttleService;
+    this.supportService =
+      injectedSupportService ??
+      new AgentTaskWorkerSupportService(db, agentRuntime, adapterFactory, stepStateMachine, nodeScheduler, throttleService, eventBridge, toolCallStateMachine, sessionPersistence, interventionPolicyService, notificationService, llmEncryptionService, smartRoutingService, organizationAutonomyPolicyService, workspaceIntegrationService, agentTaskQueue, circuitBreakerService, routingLearningProducer, memoryToolsService, memoryFusionService, skillResolverService);
+    this.runtimeService =
+      injectedRuntimeService ??
+      new AgentTaskWorkerRuntimeService(this.supportService, db, agentRuntime, adapterFactory, stepStateMachine, nodeScheduler, throttleService, eventBridge, toolCallStateMachine, sessionPersistence, interventionPolicyService, notificationService, llmEncryptionService, smartRoutingService, organizationAutonomyPolicyService, workspaceIntegrationService, agentTaskQueue, circuitBreakerService, routingLearningProducer, memoryToolsService, memoryFusionService, skillResolverService);
   }
 
   private get tenantDb(): DrizzleDB {
@@ -143,7 +561,7 @@ export class AgentTaskWorker extends WorkerHost {
 
   async process(job: Job<AgentTaskJobData>): Promise<void> {
     if (job.name === 'intervention-timeout') {
-      await this.handleInterventionTimeout(job);
+      await this.runtimeService.handleInterventionTimeout(job);
       return;
     }
 
@@ -160,7 +578,7 @@ export class AgentTaskWorker extends WorkerHost {
       `Processing agent task: ${JSON.stringify({ executionId, stepId, resume: !!resumeSessionId })}`,
     );
 
-    const [step] = await this.withTenantContext(tenantId, () =>
+    const [step] = await this.runtimeService.withTenantContext(tenantId, () =>
       this.tenantDb
         .select()
         .from(schema.executionSteps)
@@ -184,7 +602,7 @@ export class AgentTaskWorker extends WorkerHost {
     const nodeData = job.data.nodeData ?? step.nodeData ?? {};
     const input = job.data.input ?? step.input ?? {};
     const workflowContextExtras = job.data.workflowContext ?? {};
-    const mcpServers = this.resolveSessionMcpServers(
+    const mcpServers = this.supportService.resolveSessionMcpServers(
       workflowContextExtras.mcpServers,
     );
     const workflowContext = {
@@ -196,10 +614,10 @@ export class AgentTaskWorker extends WorkerHost {
       tenantId,
       ...workflowContextExtras,
     };
-    const sandboxNodeId = this.resolveWorkflowSandboxNodeId(
+    const sandboxNodeId = this.supportService.resolveWorkflowSandboxNodeId(
       workflowContextExtras,
     );
-    const memorySessionIds = this.resolveMemorySessionIds(
+    const memorySessionIds = this.supportService.resolveMemorySessionIds(
       workflowContextExtras.memorySessionIds,
     );
     let sessionId = resumeSessionId;
@@ -209,7 +627,7 @@ export class AgentTaskWorker extends WorkerHost {
     let chunkIndex = 0;
     let toolCalls: ToolCallEvent[] = [];
     let segments: ConversationMessageSegmentRecord[] = [];
-    const effectiveAutonomyMode = await this.resolveEffectiveAutonomyMode(
+    const effectiveAutonomyMode = await this.runtimeService.resolveEffectiveAutonomyMode(
       tenantId,
       nodeData,
     );
@@ -217,8 +635,8 @@ export class AgentTaskWorker extends WorkerHost {
 
     try {
       if (intervention) {
-        await this.withTenantContext(tenantId, async () => {
-          await this.handleIntervention({
+        await this.runtimeService.withTenantContext(tenantId, async () => {
+          await this.supportService.handleIntervention({
             executionId,
             stepId,
             tenantId,
@@ -231,21 +649,21 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (toolPermission) {
         runtime.registerSessionMetadata?.(sessionId!, tenantId, stepId);
-        this.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
-        const toolLoopState = this.loadToolLoopStateFromCheckpoint(step);
+        this.supportService.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+        const toolLoopState = this.supportService.loadToolLoopStateFromCheckpoint(step);
         accumulatedContent = toolLoopState.partialContent;
         decision = toolLoopState.decision;
         chunkIndex = toolLoopState.chunkIndex;
         toolCalls = toolLoopState.toolCalls;
         segments = toolLoopState.segments;
-        await this.startStepWorkspaceWatcher({
+        await this.supportService.startStepWorkspaceWatcher({
           executionId,
           stepId,
           tenantId,
           sandboxNodeId,
           enabled: Boolean(hasSandbox),
         });
-        const contentBlocks = await this.resolveToolPermissionAndBuildBlocks({
+        const contentBlocks = await this.supportService.resolveToolPermissionAndBuildBlocks({
           executionId,
           stepId,
           tenantId,
@@ -253,8 +671,8 @@ export class AgentTaskWorker extends WorkerHost {
           toolPermission,
           nodeId: step.nodeId,
         });
-        const resumedToolLoopState = this.loadToolLoopStateFromCheckpoint(step);
-        const loopResult = await this.executeMultiTurnLoop({
+        const resumedToolLoopState = this.supportService.loadToolLoopStateFromCheckpoint(step);
+        const loopResult = await this.runtimeService.executeMultiTurnLoop({
           runtime,
           step,
           sessionId: sessionId!,
@@ -286,7 +704,7 @@ export class AgentTaskWorker extends WorkerHost {
         toolCalls = loopResult.toolCalls;
         segments = loopResult.segments;
       } else {
-        await this.withTenantContext(tenantId, async () => {
+        await this.runtimeService.withTenantContext(tenantId, async () => {
           await this.stepStateMachine.updateStepStatus(
             tenantId,
             stepId,
@@ -296,7 +714,7 @@ export class AgentTaskWorker extends WorkerHost {
 
         const isExistingSession = Boolean(sessionId);
         if (!sessionId) {
-          const upstreamSkills = this.extractUpstreamSkills(input);
+          const upstreamSkills = this.supportService.extractUpstreamSkills(input);
           let enrichedBasePrompt =
             typeof nodeData.systemPrompt === 'string'
               ? nodeData.systemPrompt
@@ -316,12 +734,12 @@ export class AgentTaskWorker extends WorkerHost {
             }
           }
 
-          const systemPrompt = await this.resolveWorkflowSystemPrompt(
+          const systemPrompt = await this.supportService.resolveWorkflowSystemPrompt(
             memorySessionIds,
             enrichedBasePrompt,
           );
           const nextSessionId = randomUUID();
-          this.registerMemoryToolsProvider(
+          this.supportService.registerMemoryToolsProvider(
             runtime,
             nextSessionId,
             memorySessionIds,
@@ -348,7 +766,7 @@ export class AgentTaskWorker extends WorkerHost {
           }
           sessionId = session.id;
           step.checkpointData = {
-            ...this.getCheckpointData(step),
+            ...this.supportService.getCheckpointData(step),
             session: this.sessionPersistence.serializeSession(session),
           };
           await this.sessionPersistence.saveToCheckpoint(
@@ -359,14 +777,14 @@ export class AgentTaskWorker extends WorkerHost {
         }
 
         if (isExistingSession) {
-          this.registerMemoryToolsProvider(
+          this.supportService.registerMemoryToolsProvider(
             runtime,
             sessionId,
             memorySessionIds,
           );
         }
 
-        await this.startStepWorkspaceWatcher({
+        await this.supportService.startStepWorkspaceWatcher({
           executionId,
           stepId,
           tenantId,
@@ -374,8 +792,8 @@ export class AgentTaskWorker extends WorkerHost {
           enabled: Boolean(hasSandbox),
         });
 
-        const initialContentBlocks = this.buildContentBlocks(input);
-        const loopResult = await this.executeMultiTurnLoop({
+        const initialContentBlocks = this.supportService.buildContentBlocks(input);
+        const loopResult = await this.runtimeService.executeMultiTurnLoop({
           runtime,
           step,
           sessionId: sessionId,
@@ -390,8 +808,8 @@ export class AgentTaskWorker extends WorkerHost {
           chunkIndex,
           startRound: 0,
           existingToolCalls:
-            this.loadToolLoopStateFromCheckpoint(step).toolCalls,
-          existingSegments: this.loadToolLoopStateFromCheckpoint(step).segments,
+            this.supportService.loadToolLoopStateFromCheckpoint(step).toolCalls,
+          existingSegments: this.supportService.loadToolLoopStateFromCheckpoint(step).segments,
           effectiveAutonomyMode,
         });
 
@@ -411,8 +829,8 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (lastStopReason === 'intervention_required') {
         const requestedAt = new Date().toISOString();
-        const nodeName = this.resolveNodeName(step);
-        await this.withTenantContext(tenantId, async () => {
+        const nodeName = this.runtimeService.resolveNodeName(step);
+        await this.runtimeService.withTenantContext(tenantId, async () => {
           await this.stepStateMachine.updateStepStatus(
             tenantId,
             stepId,
@@ -475,7 +893,7 @@ export class AgentTaskWorker extends WorkerHost {
       // E2EE: 加密 LLM 输出（如租户已配置加密密钥）
       let isEncrypted = false;
       try {
-        const orgId = await this.resolveOrgId(tenantId);
+        const orgId = await this.runtimeService.resolveOrgId(tenantId);
         if (
           orgId &&
           (await this.llmEncryptionService.isE2EEEnabled(tenantId, orgId))
@@ -509,14 +927,14 @@ export class AgentTaskWorker extends WorkerHost {
         result.encryptionFailed = true;
       }
 
-      await this.archiveStepWorkspaceSnapshot({
+      await this.supportService.archiveStepWorkspaceSnapshot({
         executionId,
         stepId,
         tenantId,
         step,
       });
 
-      await this.withTenantContext(tenantId, async () => {
+      await this.runtimeService.withTenantContext(tenantId, async () => {
         await this.stepStateMachine.updateStepStatus(
           tenantId,
           stepId,
@@ -524,7 +942,7 @@ export class AgentTaskWorker extends WorkerHost {
           {
             result,
             checkpointData: {
-              ...this.getCheckpointData(step),
+              ...this.supportService.getCheckpointData(step),
               ...(sessionId ? { sessionId } : {}),
               partialContent: accumulatedContent,
               ...(toolCalls.length > 0 ? { toolCalls } : {}),
@@ -539,19 +957,19 @@ export class AgentTaskWorker extends WorkerHost {
         executionId,
         stepId,
       );
-      await this.withTenantContext(tenantId, async () => {
+      await this.runtimeService.withTenantContext(tenantId, async () => {
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
       });
-      this.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+      this.supportService.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
 
-      await this.reportSmartRoutingOutcome({
+      await this.runtimeService.reportSmartRoutingOutcome({
         tenantId,
         stepId,
         nodeData,
         smartRouting: job.data.smartRouting,
         success: true,
         latencyMs: Date.now() - llmCallStartedAt,
-        tokenCount: this.estimateTokenCount(accumulatedContent),
+        tokenCount: this.runtimeService.estimateTokenCount(accumulatedContent),
       });
 
       this.logger.log(
@@ -588,28 +1006,33 @@ export class AgentTaskWorker extends WorkerHost {
         ...(decision ? { decision } : {}),
         attempts: allAttempts,
       };
-      const shouldRetry = this.shouldRetry(job);
       const smartRouting = job.data.smartRouting;
-      const authenticationFailed = this.isAuthenticationFailure(err);
+      const authenticationFailed = this.runtimeService.isAuthenticationFailure(err);
+      const failureDecision = decideAgentTaskFailure({
+        attemptsMade: job.attemptsMade,
+        configuredAttempts: job.opts.attempts,
+        accumulatedAttemptCount: allAttempts.length,
+        authenticationFailed,
+        recoverableRuntimeFailure: isRecoverableAgentRuntimeError(err),
+        maxRecoverableRuntimeFailureAttempts:
+          MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
+        smartRouting,
+      });
 
-      await this.reportSmartRoutingOutcome({
+      await this.runtimeService.reportSmartRoutingOutcome({
         tenantId,
         stepId,
         nodeData,
         smartRouting,
         success: false,
         latencyMs: Date.now() - llmCallStartedAt,
-        tokenCount: this.estimateTokenCount(finalAccumulatedContent),
+        tokenCount: this.runtimeService.estimateTokenCount(finalAccumulatedContent),
         error: err,
       });
 
-      const nextSmartRouting =
-        !shouldRetry && !authenticationFailed
-          ? this.getNextSmartRoutingContext(smartRouting)
-          : undefined;
 
-      if (shouldRetry) {
-        await this.withTenantContext(tenantId, async () => {
+      if (failureDecision.kind === 'retry') {
+        await this.runtimeService.withTenantContext(tenantId, async () => {
           await this.tenantDb
             .update(schema.executionSteps)
             .set({ attemptCount: job.attemptsMade + 1 })
@@ -643,17 +1066,18 @@ export class AgentTaskWorker extends WorkerHost {
           stepId,
           {
             attempt: job.attemptsMade + 1,
-            maxAttempts: this.getMaxAttempts(job),
+            maxAttempts: failureDecision.maxAttempts,
             errorMessage: err.message,
           },
         );
         throw err;
       }
 
-      if (nextSmartRouting && smartRouting) {
+      if (failureDecision.kind === 'fallback' && smartRouting) {
         const nextAttempt = allAttempts.length;
+        const nextSmartRouting = failureDecision.nextSmartRouting;
         const fallbackMessage = `模型 ${smartRouting.selectedModelId} 调用失败，已切换到备用模型 ${nextSmartRouting.selectedModelId}。`;
-        const fallbackDecision = this.buildFallbackRoutingDecision(
+        const fallbackDecision = this.runtimeService.buildFallbackRoutingDecision(
           smartRouting,
           nextSmartRouting,
           allAttempts,
@@ -661,7 +1085,7 @@ export class AgentTaskWorker extends WorkerHost {
         );
         let nextRoutingDecisionId: string | undefined;
 
-        await this.withTenantContext(tenantId, async () => {
+        await this.runtimeService.withTenantContext(tenantId, async () => {
           nextRoutingDecisionId = await this.smartRoutingService.recordDecision(
             smartRouting.routingStepId,
             tenantId,
@@ -757,13 +1181,10 @@ export class AgentTaskWorker extends WorkerHost {
         return;
       }
 
-      if (
-        this.isRecoverableRuntimeFailure(err) &&
-        allAttempts.length < MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS
-      ) {
+      if (failureDecision.kind === 'requeue_recoverable') {
         const recoveryMessage = '检测到运行时链路中断，系统将自动恢复执行。';
 
-        await this.withTenantContext(tenantId, async () => {
+        await this.runtimeService.withTenantContext(tenantId, async () => {
           await this.tenantDb
             .update(schema.executionSteps)
             .set({ attemptCount: allAttempts.length })
@@ -822,14 +1243,13 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       const finalError =
-        this.isFallbackChainStrategy(smartRouting?.strategy) &&
-        !authenticationFailed
+        failureDecision.kind === 'fail' && failureDecision.fallbackExhausted
           ? new AllModelsFallbackExhaustedException(
               smartRouting?.routingNodeId ?? step.nodeId,
             )
           : err;
 
-      await this.archiveStepWorkspaceSnapshot({
+      await this.supportService.archiveStepWorkspaceSnapshot({
         executionId,
         stepId,
         tenantId,
@@ -846,7 +1266,7 @@ export class AgentTaskWorker extends WorkerHost {
           : {}),
       };
 
-      await this.withTenantContext(tenantId, async () => {
+      await this.runtimeService.withTenantContext(tenantId, async () => {
         await this.tenantDb
           .update(schema.executionSteps)
           .set({ attemptCount: allAttempts.length })
@@ -885,10 +1305,10 @@ export class AgentTaskWorker extends WorkerHost {
         executionId,
         stepId,
       );
-      await this.withTenantContext(tenantId, async () => {
+      await this.runtimeService.withTenantContext(tenantId, async () => {
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       });
-      this.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+      this.supportService.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
       throw finalError;
     } finally {
       this.workspaceIntegrationService.stopExecutionStepFileWatcher(
@@ -910,1587 +1330,9 @@ export class AgentTaskWorker extends WorkerHost {
 
     const { executionId, stepId, tenantId } = job.data;
     this.logger.error(
-      `Agent task failed: ${JSON.stringify({ stepId, executionId, tenantId, attempt: job.attemptsMade + 1, maxAttempts: this.getMaxAttempts(job), error: error.message })}`,
+      `Agent task failed: ${JSON.stringify({ stepId, executionId, tenantId, attempt: job.attemptsMade + 1, maxAttempts: this.runtimeService.getMaxAttempts(job), error: error.message })}`,
     );
   }
 
-  private async handleIntervention(params: {
-    executionId: string;
-    stepId: string;
-    tenantId: string;
-    step: typeof schema.executionSteps.$inferSelect;
-    intervention: InterventionResolution;
-  }): Promise<void> {
-    const { executionId, stepId, tenantId, step, intervention } = params;
-    await this.archiveStepWorkspaceSnapshot({
-      executionId,
-      stepId,
-      tenantId,
-      step,
-    });
 
-    const checkpointData = step.checkpointData ?? {};
-    const interventionRecord = this.resolveInterventionRecord(
-      checkpointData,
-      intervention,
-    );
-    const resolvedContent = this.resolveInterventionContent(
-      intervention,
-      checkpointData,
-    );
-
-    if (intervention.action === 'reject') {
-      await this.stepStateMachine.updateStepStatus(tenantId, stepId, 'failed', {
-        errorMessage: {
-          message: intervention.feedback?.trim() || '人工干预拒绝了该步骤输出',
-          type: 'urn:agentloom:execution:intervention-rejected',
-          title: '人工干预拒绝',
-          nodeId: step.nodeId,
-        },
-        checkpointData: {
-          ...checkpointData,
-          intervention: interventionRecord,
-        },
-      });
-      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
-        executionId,
-        stepId,
-      );
-      await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
-      return;
-    }
-
-    const result: Record<string, unknown> = {
-      content: resolvedContent,
-      intervention: {
-        action: intervention.action,
-        ...(intervention.feedback ? { feedback: intervention.feedback } : {}),
-        ...(intervention.action === 'modify'
-          ? { modifiedContent: intervention.modifiedContent }
-          : {}),
-      },
-      'exec-out': { triggered: true },
-    };
-
-    const stopReason = checkpointData.stopReason;
-    if (typeof stopReason === 'string' && stopReason !== 'end_turn') {
-      result.stopReason = stopReason;
-    }
-
-    const decision = checkpointData.decision;
-    if (decision && typeof decision === 'object') {
-      result.decision = decision;
-    }
-
-    await this.stepStateMachine.updateStepStatus(
-      tenantId,
-      stepId,
-      'completed',
-      {
-        result,
-        checkpointData: {
-          ...checkpointData,
-          intervention: interventionRecord,
-        },
-      },
-    );
-    this.workspaceIntegrationService.stopExecutionStepFileWatcher(
-      executionId,
-      stepId,
-    );
-    await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
-    this.cleanupMemoryToolsProvider(
-      this.agentRuntime,
-      typeof checkpointData.sessionId === 'string'
-        ? checkpointData.sessionId
-        : null,
-      [],
-    );
-  }
-
-  private resolveWorkflowSandboxNodeId(
-    workflowContext: Record<string, unknown>,
-  ): string | undefined {
-    const nestedSandbox =
-      this.isRecord(workflowContext.serverSandbox) &&
-      typeof workflowContext.serverSandbox.sandboxNodeId === 'string'
-        ? workflowContext.serverSandbox.sandboxNodeId
-        : undefined;
-
-    if (
-      typeof workflowContext.sandboxNodeId === 'string' &&
-      workflowContext.sandboxNodeId.trim().length > 0
-    ) {
-      return workflowContext.sandboxNodeId.trim();
-    }
-
-    if (nestedSandbox && nestedSandbox.trim().length > 0) {
-      return nestedSandbox.trim();
-    }
-
-    return undefined;
-  }
-
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
-  }
-
-  private async startStepWorkspaceWatcher(params: {
-    executionId: string;
-    stepId: string;
-    tenantId: string;
-    sandboxNodeId?: string;
-    enabled: boolean;
-  }): Promise<void> {
-    if (!params.enabled) {
-      return;
-    }
-
-    await this.workspaceIntegrationService.startExecutionStepFileWatcher({
-      executionId: params.executionId,
-      stepId: params.stepId,
-      tenantId: params.tenantId,
-      ...(params.sandboxNodeId ? { sandboxNodeId: params.sandboxNodeId } : {}),
-    });
-  }
-
-  private resolveInterventionRecord(
-    checkpointData: Record<string, unknown>,
-    intervention: InterventionResolution,
-  ): InterventionCheckpointRecord {
-    const existing = checkpointData.intervention;
-    if (
-      existing &&
-      typeof existing === 'object' &&
-      typeof (existing as { requested_at?: unknown }).requested_at ===
-        'string' &&
-      typeof (existing as { resolved_at?: unknown }).resolved_at === 'string' &&
-      typeof (existing as { action?: unknown }).action === 'string' &&
-      typeof (existing as { resolved_by_user_id?: unknown })
-        .resolved_by_user_id === 'string'
-    ) {
-      return {
-        ...(existing as InterventionCheckpointRecord),
-        ...(intervention.timeout ? { timeout: true } : {}),
-      };
-    }
-
-    const requestedAt =
-      intervention.requestedAt ??
-      (typeof checkpointData.interventionRequestedAt === 'string'
-        ? checkpointData.interventionRequestedAt
-        : new Date().toISOString());
-    const resolvedAt = intervention.resolvedAt ?? new Date().toISOString();
-    const instruction =
-      intervention.modifiedContent ?? intervention.feedback ?? null;
-
-    return {
-      requested_at: requestedAt,
-      resolved_at: resolvedAt,
-      action: intervention.action,
-      instruction,
-      resolved_by_user_id:
-        intervention.resolvedByUserId ?? SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
-      ...(intervention.timeout ? { timeout: true } : {}),
-    };
-  }
-
-  private resolveInterventionContent(
-    intervention: InterventionResolution,
-    checkpointData: Record<string, unknown>,
-  ): unknown {
-    if (intervention.action === 'modify') {
-      return intervention.modifiedContent ?? '';
-    }
-
-    const decision = checkpointData.decision;
-    if (
-      decision &&
-      typeof decision === 'object' &&
-      'suggestedContent' in decision
-    ) {
-      return decision.suggestedContent;
-    }
-
-    const partialContent = checkpointData.partialContent;
-    if (typeof partialContent === 'string') {
-      return partialContent;
-    }
-
-    return '';
-  }
-
-  private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
-    return buildAgentPromptContentBlocks({ input });
-  }
-
-  private extractUpstreamSkills(
-    input: Record<string, unknown>,
-  ): SkillPromptPayload[] {
-    const skills: SkillPromptPayload[] = [];
-
-    for (const value of Object.values(input)) {
-      const record = this.asRecord(value);
-      if (record && Array.isArray(record.skills)) {
-        for (const skill of record.skills) {
-          const skillRecord = this.asRecord(skill);
-          if (
-            skillRecord &&
-            typeof skillRecord.id === 'string' &&
-            typeof skillRecord.name === 'string'
-          ) {
-            skills.push({
-              id: skillRecord.id,
-              name: skillRecord.name,
-              description:
-                typeof skillRecord.description === 'string'
-                  ? skillRecord.description
-                  : '',
-              content:
-                typeof skillRecord.content === 'string'
-                  ? skillRecord.content
-                  : null,
-            });
-          }
-        }
-      }
-    }
-
-    return skills;
-  }
-
-  private resolveMemorySessionIds(value: unknown): string[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-
-    return value.filter((item): item is string => typeof item === 'string');
-  }
-
-  private async resolveWorkflowSystemPrompt(
-    memorySessionIds: string[],
-    baseSystemPrompt?: string,
-  ): Promise<string | undefined> {
-    if (!memorySessionIds.length || !this.memoryFusionService) {
-      return baseSystemPrompt;
-    }
-
-    try {
-      const bootSequence =
-        await this.memoryFusionService.bootAll(memorySessionIds);
-      const memoryPrompt = this.buildMemoryBootPrompt(bootSequence);
-      return this.prependSystemPrompt(memoryPrompt, baseSystemPrompt);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to load memory boot context: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return baseSystemPrompt;
-    }
-  }
-
-  private buildMemoryBootPrompt(
-    bootSequence: MemoryBootSequenceResult,
-  ): string | undefined {
-    const sections = [bootSequence.systemPrompt.trim()];
-
-    if (typeof bootSequence.boot === 'string' && bootSequence.boot.trim()) {
-      sections.push(`## Memory Boot\n${bootSequence.boot.trim()}`);
-    }
-
-    const navigationSummary = this.buildMemoryNavigationSummary(bootSequence);
-    if (navigationSummary) {
-      sections.push(navigationSummary);
-    }
-
-    return sections.filter(Boolean).join('\n\n') || undefined;
-  }
-
-  private buildMemoryNavigationSummary(
-    bootSequence: MemoryBootSequenceResult,
-  ): string | undefined {
-    const sections: string[] = [];
-
-    if (bootSequence.index.length) {
-      sections.push(
-        [
-          '## Memory Index',
-          ...bootSequence.index.map(
-            (path) => `- ${path.domain}://${path.pathString}`,
-          ),
-        ].join('\n'),
-      );
-    }
-
-    if (bootSequence.glossary.length) {
-      sections.push(
-        [
-          '## Memory Glossary',
-          ...bootSequence.glossary.map(
-            (entry) => `- ${entry.keyword} -> node:${entry.nodeId}`,
-          ),
-        ].join('\n'),
-      );
-    }
-
-    return sections.join('\n\n') || undefined;
-  }
-
-  private prependSystemPrompt(
-    memoryPrompt?: string,
-    baseSystemPrompt?: string,
-  ): string | undefined {
-    const sections = [memoryPrompt?.trim(), baseSystemPrompt?.trim()].filter(
-      (value): value is string => Boolean(value),
-    );
-
-    return sections.length ? sections.join('\n\n') : undefined;
-  }
-
-  private registerMemoryToolsProvider(
-    runtime: IAgentRuntime,
-    sessionId: string | null | undefined,
-    memorySessionIds: string[],
-  ): void {
-    if (
-      !sessionId ||
-      !memorySessionIds.length ||
-      !this.memoryToolsService ||
-      !runtime.registerSessionToolProvider
-    ) {
-      return;
-    }
-
-    runtime.registerSessionToolProvider(
-      sessionId,
-      this.memoryToolsService.createSessionToolProvider(memorySessionIds),
-    );
-  }
-
-  private cleanupMemoryToolsProvider(
-    runtime: IAgentRuntime,
-    sessionId: string | null | undefined,
-    memorySessionIds: string[],
-  ): void {
-    if (
-      !sessionId ||
-      !memorySessionIds.length ||
-      !this.memoryToolsService ||
-      !runtime.unregisterSessionToolProvider
-    ) {
-      return;
-    }
-
-    try {
-      runtime.unregisterSessionToolProvider(sessionId);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to unregister memory tool provider: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  private resolveSessionMcpServers(
-    value: unknown,
-  ): CreateSessionParams['mcpServers'] {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as CreateSessionParams['mcpServers'])
-      : undefined;
-  }
-
-  private getCheckpointData(
-    step: typeof schema.executionSteps.$inferSelect,
-  ): Record<string, unknown> {
-    return step.checkpointData ?? {};
-  }
-
-  private async archiveStepWorkspaceSnapshot(params: {
-    executionId: string;
-    stepId: string;
-    tenantId: string;
-    step: typeof schema.executionSteps.$inferSelect;
-  }): Promise<void> {
-    const snapshotId =
-      await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
-        params.executionId,
-        params.stepId,
-        params.tenantId,
-      );
-
-    if (!snapshotId) {
-      return;
-    }
-
-    await this.mergeCheckpointData(params.tenantId, params.step, {
-      workspaceSnapshotId: snapshotId,
-    });
-  }
-
-  private loadToolLoopStateFromCheckpoint(
-    step: typeof schema.executionSteps.$inferSelect,
-  ): {
-    partialContent: string;
-    chunkIndex: number;
-    round: number;
-    decision?: Record<string, unknown>;
-    toolCalls: ToolCallEvent[];
-    segments: ConversationMessageSegmentRecord[];
-  } {
-    const checkpointData = this.getCheckpointData(step);
-
-    return {
-      partialContent:
-        typeof checkpointData.partialContent === 'string'
-          ? checkpointData.partialContent
-          : '',
-      chunkIndex:
-        typeof checkpointData.chunkIndex === 'number'
-          ? checkpointData.chunkIndex
-          : 0,
-      round:
-        typeof checkpointData.round === 'number' ? checkpointData.round : 0,
-      decision:
-        typeof checkpointData.decision === 'object' &&
-        checkpointData.decision !== null &&
-        !Array.isArray(checkpointData.decision)
-          ? (checkpointData.decision as Record<string, unknown>)
-          : undefined,
-      toolCalls: Array.isArray(checkpointData.toolCalls)
-        ? (checkpointData.toolCalls as ToolCallEvent[])
-        : [],
-      segments: normalizeConversationMessageSegments(checkpointData.segments),
-    };
-  }
-
-  private async mergeCheckpointData(
-    tenantId: string,
-    step: typeof schema.executionSteps.$inferSelect,
-    patch: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const checkpointData = {
-      ...this.getCheckpointData(step),
-      ...patch,
-    };
-
-    await this.withTenantContext(tenantId, async () => {
-      await this.tenantDb
-        .update(schema.executionSteps)
-        .set({ checkpointData })
-        .where(eq(schema.executionSteps.id, step.id));
-    });
-
-    step.checkpointData = checkpointData;
-    return checkpointData;
-  }
-
-  private async saveToolLoopCheckpoint(params: {
-    tenantId: string;
-    step: typeof schema.executionSteps.$inferSelect;
-    sessionId: string;
-    partialContent: string;
-    toolCalls: ToolCallEvent[];
-    segments: ConversationMessageSegmentRecord[];
-    round: number;
-    chunkIndex: number;
-    decision?: Record<string, unknown>;
-  }): Promise<Record<string, unknown>> {
-    const {
-      tenantId,
-      step,
-      sessionId,
-      partialContent,
-      toolCalls,
-      segments,
-      round,
-      chunkIndex,
-      decision,
-    } = params;
-
-    return this.mergeCheckpointData(tenantId, step, {
-      sessionId,
-      partialContent,
-      toolCalls,
-      segments,
-      round,
-      chunkIndex,
-      ...(decision ? { decision } : {}),
-    });
-  }
-
-  private mergeToolCall(
-    toolCalls: ToolCallEvent[],
-    toolCall: ToolCallEvent,
-  ): ToolCallEvent[] {
-    const index = toolCalls.findIndex((current) => current.id === toolCall.id);
-    if (index === -1) {
-      return [...toolCalls, toolCall];
-    }
-
-    const current = toolCalls[index];
-    const merged: ToolCallEvent = {
-      ...current,
-      ...toolCall,
-      transitions: toolCall.transitions ?? current.transitions,
-      args: toolCall.args ?? current.args,
-      result: toolCall.result ?? current.result,
-      error: toolCall.error ?? current.error,
-      permissionRequest:
-        toolCall.permissionRequest ?? current.permissionRequest,
-    };
-
-    return toolCalls.map((item, itemIndex) =>
-      itemIndex === index ? merged : item,
-    );
-  }
-
-  private emitToolCallStatus(params: {
-    tenantId: string;
-    executionId: string;
-    stepId: string;
-    nodeId: string;
-    toolCall: ToolCallEvent;
-  }): void {
-    const { tenantId, executionId, stepId, nodeId, toolCall } = params;
-    this.eventBridge.emitToolCallStatus(tenantId, executionId, {
-      stepId,
-      nodeId,
-      toolCallId: toolCall.id,
-      tool: toolCall.tool,
-      status: toolCall.status,
-      args: toolCall.args,
-      result: toolCall.result,
-      error: toolCall.error,
-      permissionRequest: toolCall.permissionRequest,
-      transitions: toolCall.transitions?.map((transition) => ({
-        ...(transition.from ? { from: transition.from } : {}),
-        to: transition.to,
-        source: transition.source,
-        timestamp: transition.timestamp,
-      })),
-    });
-  }
-
-  private appendToolCallTransition(
-    toolCall: ToolCallEvent,
-    source: ToolCallTransitionSource,
-    to: ToolCallStatus,
-    from?: ToolCallStatus,
-  ): ToolCallEvent {
-    return {
-      ...toolCall,
-      status: to,
-      transitions: [
-        ...(toolCall.transitions ?? []),
-        {
-          ...(from ? { from } : {}),
-          to,
-          source,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    };
-  }
-
-  private async applyToolCallUpdate(params: {
-    tenantId: string;
-    executionId: string;
-    stepId: string;
-    nodeId: string;
-    step: typeof schema.executionSteps.$inferSelect;
-    sessionId: string;
-    partialContent: string;
-    toolCalls: ToolCallEvent[];
-    segments: ConversationMessageSegmentRecord[];
-    toolCall: ToolCallEvent;
-    source: ToolCallTransitionSource;
-    round: number;
-    chunkIndex: number;
-    decision?: Record<string, unknown>;
-  }): Promise<{
-    toolCalls: ToolCallEvent[];
-    segments: ConversationMessageSegmentRecord[];
-  }> {
-    const {
-      tenantId,
-      executionId,
-      stepId,
-      nodeId,
-      step,
-      sessionId,
-      partialContent,
-      source,
-      round,
-      chunkIndex,
-      decision,
-    } = params;
-    let toolCalls = [...params.toolCalls];
-    const segments = ensureToolCallConversationMessageSegment(
-      params.segments,
-      params.toolCall.id,
-    );
-    let current = toolCalls.find((item) => item.id === params.toolCall.id);
-
-    if (!current) {
-      current = this.appendToolCallTransition(
-        {
-          ...params.toolCall,
-          status: 'pending',
-        },
-        source,
-        'pending',
-      );
-      toolCalls = this.mergeToolCall(toolCalls, current);
-      this.emitToolCallStatus({
-        tenantId,
-        executionId,
-        stepId,
-        nodeId,
-        toolCall: current,
-      });
-    }
-
-    let updatedToolCall: ToolCallEvent = {
-      ...current,
-      ...params.toolCall,
-      status: current.status,
-      transitions: params.toolCall.transitions ?? current.transitions,
-    };
-    toolCalls = this.mergeToolCall(toolCalls, updatedToolCall);
-
-    const nextTransitions = this.resolveToolCallTransitions(
-      current.status,
-      params.toolCall.status,
-      source,
-    );
-
-    for (const nextTransition of nextTransitions) {
-      const fromStatus = updatedToolCall.status;
-      updatedToolCall = this.appendToolCallTransition(
-        {
-          ...updatedToolCall,
-          ...params.toolCall,
-          status: fromStatus,
-        },
-        nextTransition.source,
-        this.toolCallStateMachine.transition(fromStatus, nextTransition.to),
-        fromStatus,
-      );
-      toolCalls = this.mergeToolCall(toolCalls, updatedToolCall);
-      this.emitToolCallStatus({
-        tenantId,
-        executionId,
-        stepId,
-        nodeId,
-        toolCall: updatedToolCall,
-      });
-    }
-
-    await this.saveToolLoopCheckpoint({
-      tenantId,
-      step,
-      sessionId,
-      partialContent,
-      toolCalls,
-      segments,
-      round,
-      chunkIndex,
-      decision,
-    });
-
-    return {
-      toolCalls,
-      segments,
-    };
-  }
-
-  private resolveToolCallTransitions(
-    currentStatus: ToolCallStatus,
-    targetStatus: ToolCallStatus,
-    source: ToolCallTransitionSource,
-  ): Array<{ to: ToolCallStatus; source: ToolCallTransitionSource }> {
-    if (currentStatus === targetStatus) {
-      return [];
-    }
-
-    if (
-      currentStatus === 'pending' &&
-      (targetStatus === 'completed' || targetStatus === 'failed')
-    ) {
-      return [
-        { to: 'in_progress', source: 'worker' },
-        { to: targetStatus, source },
-      ];
-    }
-
-    return [{ to: targetStatus, source }];
-  }
-
-  private async resolveToolPermissionAndBuildBlocks(params: {
-    executionId: string;
-    stepId: string;
-    tenantId: string;
-    step: typeof schema.executionSteps.$inferSelect;
-    toolPermission: ToolPermissionResolution;
-    nodeId: string;
-  }): Promise<ContentBlock[]> {
-    const { executionId, stepId, tenantId, step, toolPermission, nodeId } =
-      params;
-    const checkpointData = this.getCheckpointData(step);
-    const toolCalls = Array.isArray(checkpointData.toolCalls)
-      ? (checkpointData.toolCalls as ToolCallEvent[])
-      : [];
-
-    const toolCall = toolCalls.find(
-      (tc) => tc.id === toolPermission.toolCallId,
-    );
-    if (!toolCall) {
-      throw new ToolCallNotFoundException(toolPermission.toolCallId);
-    }
-
-    if (toolCall.status !== 'awaiting_permission') {
-      throw new ToolPermissionResolutionNotAllowedException(
-        toolPermission.toolCallId,
-        toolCall.status,
-      );
-    }
-
-    const newStatus =
-      toolPermission.action === 'approve' ? 'in_progress' : 'denied';
-    const resolvedStatus = this.toolCallStateMachine.transition(
-      toolCall.status,
-      newStatus,
-    );
-    const updatedToolCall = this.appendToolCallTransition(
-      { ...toolCall },
-      'user',
-      resolvedStatus,
-      toolCall.status,
-    );
-    const updatedToolCalls = toolCalls.map((tc) =>
-      tc.id === toolPermission.toolCallId ? updatedToolCall : tc,
-    );
-
-    await this.mergeCheckpointData(tenantId, step, {
-      toolCalls: updatedToolCalls,
-    });
-
-    this.emitToolCallStatus({
-      tenantId,
-      executionId,
-      stepId,
-      nodeId,
-      toolCall: updatedToolCall,
-    });
-
-    this.eventBridge.emitToolPermissionResolved(tenantId, executionId, {
-      stepId,
-      nodeId,
-      toolCallId: toolPermission.toolCallId,
-      action: toolPermission.action,
-    });
-
-    if (toolPermission.action === 'deny') {
-      return [
-        {
-          type: 'text' as const,
-          text: `Tool call "${toolCall.tool}" (ID: ${toolCall.id}) was denied by the user.`,
-        },
-      ];
-    }
-
-    // Approve returns empty — runtime continues tool execution internally
-    return [];
-  }
-
-  private async executeMultiTurnLoop(params: {
-    runtime: IAgentRuntime;
-    step: typeof schema.executionSteps.$inferSelect;
-    sessionId: string;
-    initialContentBlocks: ContentBlock[];
-    executionId: string;
-    stepId: string;
-    tenantId: string;
-    nodeId: string;
-    nodeData: Record<string, unknown>;
-    accumulatedContent: string;
-    decision?: Record<string, unknown>;
-    chunkIndex: number;
-    startRound: number;
-    existingToolCalls: ToolCallEvent[];
-    existingSegments: ConversationMessageSegmentRecord[];
-    effectiveAutonomyMode: string;
-  }): Promise<{
-    waitingPermission: boolean;
-    accumulatedContent: string;
-    lastStopReason?: string;
-    decision?: Record<string, unknown>;
-    toolCalls: ToolCallEvent[];
-    segments: ConversationMessageSegmentRecord[];
-  }> {
-    let { accumulatedContent, decision, chunkIndex } = params;
-    let contentBlocks = params.initialContentBlocks;
-    let lastStopReason: string | undefined;
-    let toolCalls = [...params.existingToolCalls];
-    let segments = [...params.existingSegments];
-
-    for (let round = params.startRound; round < MAX_TOOL_CALL_ROUNDS; round++) {
-      const roundToolCallIds = new Set<string>();
-      lastStopReason = undefined;
-
-      try {
-        for await (const event of params.runtime.prompt(
-          params.sessionId,
-          contentBlocks,
-        )) {
-          if (event.type !== 'message_chunk') {
-            this.stepStateMachine.broadcastAgentEvent(
-              params.tenantId,
-              params.executionId,
-              params.stepId,
-              event,
-            );
-          }
-
-          if (event.type === 'message_chunk') {
-            accumulatedContent += event.content;
-            segments = appendTextConversationMessageSegment(
-              segments,
-              event.content,
-            );
-            chunkIndex++;
-            this.eventBridge.emitOutputChunk(
-              params.tenantId,
-              params.executionId,
-              {
-                stepId: params.stepId,
-                chunk: event.content,
-                index: chunkIndex,
-                executionType: 'workflow',
-              },
-            );
-            continue;
-          }
-
-          const thinkingContent = this.extractThinkingEventContent(event);
-          if (thinkingContent) {
-            segments = appendThinkingConversationMessageSegment(
-              segments,
-              thinkingContent,
-            );
-          }
-
-          if (event.type === 'tool_call') {
-            const updatedToolLoop = await this.applyToolCallUpdate({
-              tenantId: params.tenantId,
-              executionId: params.executionId,
-              stepId: params.stepId,
-              nodeId: params.nodeId,
-              step: params.step,
-              sessionId: params.sessionId,
-              partialContent: accumulatedContent,
-              toolCalls,
-              segments,
-              toolCall: event.call,
-              source: 'runtime',
-              round,
-              chunkIndex,
-              decision,
-            });
-            toolCalls = updatedToolLoop.toolCalls;
-            segments = updatedToolLoop.segments;
-            roundToolCallIds.add(event.call.id);
-            continue;
-          }
-
-          if (event.type === 'decision') {
-            decision = {
-              suggestedContent: event.suggestedContent,
-              ...(event.autonomyMode
-                ? { autonomyMode: event.autonomyMode }
-                : {}),
-              ...(event.selectedAction
-                ? { selectedAction: event.selectedAction }
-                : {}),
-              ...(event.alternatives
-                ? { alternatives: [...event.alternatives] }
-                : {}),
-              confidence: event.confidence,
-              ...(event.rationale ? { rationale: event.rationale } : {}),
-            };
-            continue;
-          }
-
-          if (event.type === 'done') {
-            lastStopReason = event.stopReason;
-          }
-        }
-      } catch (loopError) {
-        const err =
-          loopError instanceof Error ? loopError : new Error(String(loopError));
-        (err as unknown as Record<string, unknown>).partialContent =
-          accumulatedContent;
-        throw err;
-      }
-
-      if (lastStopReason !== 'tool_use' || roundToolCallIds.size === 0) {
-        break;
-      }
-
-      const pendingRoundToolCallIds = [...roundToolCallIds].filter(
-        (toolCallId) => {
-          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
-          return currentToolCall?.status === 'pending';
-        },
-      );
-      const permissionRequiredToolCallIds = pendingRoundToolCallIds.filter(
-        (toolCallId) => {
-          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
-          return (
-            currentToolCall !== undefined &&
-            this.shouldRequireToolPermission(currentToolCall)
-          );
-        },
-      );
-
-      if (permissionRequiredToolCallIds.length === 0) {
-        for (const toolCallId of roundToolCallIds) {
-          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
-          if (!currentToolCall || currentToolCall.status !== 'pending') {
-            continue;
-          }
-
-          const updatedToolCall: ToolCallEvent = {
-            ...currentToolCall,
-          };
-          const inProgressStatus = this.toolCallStateMachine.transition(
-            currentToolCall.status,
-            'in_progress',
-          );
-          const transitionedToolCall = this.appendToolCallTransition(
-            updatedToolCall,
-            'worker',
-            inProgressStatus,
-            currentToolCall.status,
-          );
-          toolCalls = this.mergeToolCall(toolCalls, transitionedToolCall);
-          this.emitToolCallStatus({
-            tenantId: params.tenantId,
-            executionId: params.executionId,
-            stepId: params.stepId,
-            nodeId: params.nodeId,
-            toolCall: transitionedToolCall,
-          });
-        }
-
-        await this.saveToolLoopCheckpoint({
-          tenantId: params.tenantId,
-          step: params.step,
-          sessionId: params.sessionId,
-          partialContent: accumulatedContent,
-          toolCalls,
-          segments,
-          round: round + 1,
-          chunkIndex,
-          decision,
-        });
-        contentBlocks = [];
-      } else {
-        const requestedAt = new Date().toISOString();
-
-        for (const toolCallId of permissionRequiredToolCallIds) {
-          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
-          if (!currentToolCall || currentToolCall.status !== 'pending') {
-            continue;
-          }
-
-          const awaitingPermissionStatus = this.toolCallStateMachine.transition(
-            currentToolCall.status,
-            'awaiting_permission',
-          );
-          const updatedToolCall = this.appendToolCallTransition(
-            { ...currentToolCall },
-            'worker',
-            awaitingPermissionStatus,
-            currentToolCall.status,
-          );
-          toolCalls = this.mergeToolCall(toolCalls, updatedToolCall);
-          this.emitToolCallStatus({
-            tenantId: params.tenantId,
-            executionId: params.executionId,
-            stepId: params.stepId,
-            nodeId: params.nodeId,
-            toolCall: updatedToolCall,
-          });
-          this.eventBridge.emitToolPermissionRequired(
-            params.tenantId,
-            params.executionId,
-            {
-              stepId: params.stepId,
-              nodeId: params.nodeId,
-              toolCallId: updatedToolCall.id,
-              tool: updatedToolCall.tool,
-              args: updatedToolCall.args,
-              requestedAt,
-              ...(updatedToolCall.permissionRequest
-                ? { permissionRequest: updatedToolCall.permissionRequest }
-                : {}),
-            },
-          );
-        }
-
-        await this.saveToolLoopCheckpoint({
-          tenantId: params.tenantId,
-          step: params.step,
-          sessionId: params.sessionId,
-          partialContent: accumulatedContent,
-          toolCalls,
-          segments,
-          round: round + 1,
-          chunkIndex,
-          decision,
-        });
-
-        return {
-          waitingPermission: true,
-          accumulatedContent,
-          lastStopReason,
-          decision,
-          toolCalls,
-          segments,
-        };
-      }
-    }
-
-    return {
-      waitingPermission: false,
-      accumulatedContent,
-      lastStopReason,
-      decision,
-      toolCalls,
-      segments,
-    };
-  }
-
-  private extractThinkingEventContent(event: {
-    type?: unknown;
-    content?: unknown;
-    rationale?: unknown;
-    suggestedContent?: unknown;
-  }): string | undefined {
-    switch (event.type) {
-      case 'thinking':
-      case 'plan':
-        return this.readString(event.content) ?? undefined;
-      case 'decision': {
-        const rationale = this.readString(event.rationale);
-        const suggestedContent = this.readString(event.suggestedContent);
-        const parts = [rationale, suggestedContent].filter(Boolean);
-        return parts.length > 0 ? parts.join('\n\n') : undefined;
-      }
-      default:
-        return undefined;
-    }
-  }
-
-  private shouldRequireToolPermission(toolCall: ToolCallEvent): boolean {
-    return isSelfEvolutionMutationToolName(toolCall.tool);
-  }
-
-  private async resolveEffectiveAutonomyMode(
-    tenantId: string,
-    nodeData: Record<string, unknown>,
-  ): Promise<string> {
-    const rawAutonomyMode = this.resolveRawAutonomyMode(nodeData);
-    const resolvedAutonomyCap =
-      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(
-        tenantId,
-      );
-    const autonomyCap = this.readString(resolvedAutonomyCap) ?? 'LLM_SUGGEST';
-
-    return clampAutonomyModeToCap(rawAutonomyMode, autonomyCap).effectiveMode;
-  }
-
-  private resolveRawAutonomyMode(nodeData: Record<string, unknown>): string {
-    const normalizedNodeData = this.asRecord(nodeData) ?? {};
-    const config = this.asRecord(normalizedNodeData.config) ?? {};
-    const settings = this.asRecord(normalizedNodeData.settings) ?? {};
-    const autonomyConfig =
-      this.asRecord(normalizedNodeData.autonomyConfig) ?? {};
-
-    return (
-      this.readString(
-        normalizedNodeData.autonomyMode,
-        autonomyConfig.mode,
-        settings.autonomyMode,
-        config.autonomyMode,
-      ) ?? 'FULL_AUTO'
-    );
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    return typeof value === 'object' && value !== null
-      ? (value as Record<string, unknown>)
-      : null;
-  }
-
-  private readString(...values: unknown[]): string | null {
-    for (const value of values) {
-      if (typeof value === 'string' && value.length > 0) {
-        return value;
-      }
-    }
-
-    return null;
-  }
-
-  private resolveNodeName(
-    step: typeof schema.executionSteps.$inferSelect,
-  ): string {
-    const nodeData = step.nodeData;
-    if (
-      nodeData &&
-      typeof nodeData.label === 'string' &&
-      nodeData.label.trim()
-    ) {
-      return nodeData.label.trim();
-    }
-
-    return step.nodeId;
-  }
-
-  private async handleInterventionTimeout(
-    job: Job<AgentTaskJobData>,
-  ): Promise<void> {
-    const { executionId, stepId, tenantId } = job.data;
-    this.logger.log(
-      `Processing intervention timeout: ${JSON.stringify({ executionId, stepId })}`,
-    );
-
-    const [step] = await this.withTenantContext(tenantId, () =>
-      this.tenantDb
-        .select()
-        .from(schema.executionSteps)
-        .where(eq(schema.executionSteps.id, stepId)),
-    );
-
-    if (!step || step.status !== 'waiting_intervention') {
-      this.logger.log(
-        `Intervention timeout skipped (status: ${step?.status ?? 'not-found'}): ${JSON.stringify({ executionId, stepId })}`,
-      );
-      return;
-    }
-
-    try {
-      const timeoutAction = await this.withTenantContext(tenantId, async () => {
-        const context = await this.loadInterventionTimeoutContext(executionId);
-        const resolvedPolicy =
-          await this.interventionPolicyService.resolvePolicy(
-            tenantId,
-            context.workflowDefinitionId,
-            step.nodeId,
-          );
-        const escalationCount = job.data.escalationCount ?? 0;
-
-        if (resolvedPolicy.timeoutAction === 'approve') {
-          await this.nodeScheduler.resolveIntervention(
-            executionId,
-            stepId,
-            tenantId,
-            SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
-            {
-              action: 'approve',
-              feedback: '干预超时，系统自动批准',
-              timeout: true,
-            },
-          );
-          return 'approve';
-        }
-
-        if (
-          resolvedPolicy.timeoutAction === 'escalate' &&
-          resolvedPolicy.escalateToRole &&
-          this.isOrgRole(resolvedPolicy.escalateToRole) &&
-          escalationCount < MAX_ESCALATION_ATTEMPTS
-        ) {
-          const nextEscalationCount = escalationCount + 1;
-          const recipientIds = await this.loadEscalationRecipientIds(
-            tenantId,
-            resolvedPolicy.escalateToRole,
-          );
-          const body = {
-            workflowId: context.workflowDefinitionId,
-            workflowName: context.workflowName,
-            executionId,
-            nodeId: step.nodeId,
-            nodeName: this.resolveNodeName(step),
-            timelineUrl: `/executions/${executionId}`,
-            notifyChannels: resolvedPolicy.notifyChannels,
-            escalationCount: nextEscalationCount,
-          };
-
-          for (const userId of recipientIds) {
-            await this.notificationService.create(tenantId, {
-              userId,
-              type: 'system',
-              title: '节点人工干预已升级',
-              body,
-            });
-          }
-
-          await this.nodeScheduler.enqueueInterventionTimeout(
-            executionId,
-            stepId,
-            tenantId,
-            {
-              escalated: true,
-              escalationCount: nextEscalationCount,
-            },
-          );
-
-          return 'escalate';
-        }
-
-        await this.nodeScheduler.resolveIntervention(
-          executionId,
-          stepId,
-          tenantId,
-          SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
-          {
-            action: 'reject',
-            feedback:
-              resolvedPolicy.timeoutAction === 'escalate'
-                ? '干预升级达到上限，系统自动拒绝'
-                : '干预超时，系统自动拒绝',
-            timeout: true,
-          },
-        );
-
-        return 'reject';
-      });
-
-      this.logger.log(
-        `Intervention timeout handled with action=${timeoutAction}: ${JSON.stringify({ executionId, stepId })}`,
-      );
-    } catch (error) {
-      if (error instanceof InterventionNotAllowedException) {
-        this.logger.warn(
-          `Intervention timeout skipped because step already resumed: ${JSON.stringify({ executionId, stepId })}`,
-        );
-        return;
-      }
-
-      throw error;
-    }
-  }
-
-  private async loadInterventionTimeoutContext(executionId: string): Promise<{
-    workflowDefinitionId: string;
-    workflowName: string;
-  }> {
-    const [context] = await this.tenantDb
-      .select({
-        workflowDefinitionId: schema.workflowExecutions.workflowDefinitionId,
-        workflowName: schema.workflowDefinitions.name,
-      })
-      .from(schema.workflowExecutions)
-      .innerJoin(
-        schema.workflowDefinitions,
-        eq(
-          schema.workflowDefinitions.id,
-          schema.workflowExecutions.workflowDefinitionId,
-        ),
-      )
-      .where(eq(schema.workflowExecutions.id, executionId))
-      .limit(1);
-
-    if (!context) {
-      throw new AgentExecutionException(`执行 ${executionId} 不存在`);
-    }
-
-    return context;
-  }
-
-  private async loadEscalationRecipientIds(
-    tenantId: string,
-    role: OrgRole,
-  ): Promise<string[]> {
-    const recipients = await this.tenantDb
-      .select({ userId: schema.organizationMembers.userId })
-      .from(schema.organizationMembers)
-      .innerJoin(
-        schema.organizations,
-        eq(schema.organizations.id, schema.organizationMembers.organizationId),
-      )
-      .where(
-        and(
-          eq(schema.organizations.tenantId, tenantId),
-          eq(schema.organizationMembers.role, role),
-        ),
-      );
-
-    return [...new Set(recipients.map((recipient) => recipient.userId))];
-  }
-
-  private isOrgRole(value: string): value is OrgRole {
-    return ['owner', 'admin', 'creator', 'operator', 'viewer'].includes(value);
-  }
-
-  private isAuthenticationFailure(error: unknown): boolean {
-    return (
-      error instanceof LlmProviderException &&
-      error.extensions?.authenticationFailed === true
-    );
-  }
-
-  private getNextSmartRoutingContext(
-    smartRouting?: SmartRoutingRuntimeContext,
-  ): SmartRoutingRuntimeContext | undefined {
-    if (!smartRouting || !this.isFallbackChainStrategy(smartRouting.strategy)) {
-      return undefined;
-    }
-
-    const nextIndex = smartRouting.currentModelIndex + 1;
-    const nextModelId = smartRouting.candidateModelIds[nextIndex];
-    if (!nextModelId) {
-      return undefined;
-    }
-
-    return {
-      ...smartRouting,
-      currentModelIndex: nextIndex,
-      selectedModelId: nextModelId,
-    };
-  }
-
-  private buildFallbackRoutingDecision(
-    currentSmartRouting: SmartRoutingRuntimeContext | undefined,
-    nextSmartRouting: SmartRoutingRuntimeContext,
-    attempts: schema.ExecutionStepAttemptError[],
-    error: Error,
-  ) {
-    const orderedCandidateIds = [
-      ...nextSmartRouting.candidateModelIds.slice(
-        nextSmartRouting.currentModelIndex,
-      ),
-      ...nextSmartRouting.candidateModelIds.slice(
-        0,
-        nextSmartRouting.currentModelIndex,
-      ),
-    ];
-    const evaluatedModelsById = new Map(
-      (nextSmartRouting.evaluatedModels ?? []).map((model) => [
-        model.modelId,
-        model,
-      ]),
-    );
-    const attemptsSummary = attempts
-      .map((attempt) => `第 ${attempt.attempt} 次：${attempt.error}`)
-      .join('；');
-
-    return {
-      selectedModelId: nextSmartRouting.selectedModelId,
-      strategy: currentSmartRouting?.strategy ?? nextSmartRouting.strategy,
-      reasoning: `FALLBACK_CHAIN：模型 ${currentSmartRouting?.selectedModelId ?? nextSmartRouting.selectedModelId} 调用失败（${error.message}），已切换到备用模型 ${nextSmartRouting.selectedModelId}。前序失败记录：${attemptsSummary}`,
-      evaluatedModels: orderedCandidateIds.map((modelId, index) => {
-        const existing = evaluatedModelsById.get(modelId);
-        if (existing) {
-          return {
-            ...existing,
-            score: Math.max(100 - index * 10, 0),
-            reasoning:
-              modelId === nextSmartRouting.selectedModelId
-                ? '上一候选失败后切换到当前模型'
-                : existing.reasoning,
-          };
-        }
-
-        return {
-          modelId,
-          modelName: modelId,
-          provider: 'fallback',
-          score: Math.max(100 - index * 10, 0),
-          reasoning:
-            modelId === nextSmartRouting.selectedModelId
-              ? '上一候选失败后切换到当前模型'
-              : '回退链候选模型',
-        };
-      }),
-      latencyMs: 0,
-      routerType: currentSmartRouting?.routerType ?? 'fallback_chain',
-    };
-  }
-
-  private isFallbackChainStrategy(strategy?: string): boolean {
-    return strategy === 'FALLBACK_CHAIN' || strategy === 'fallback_chain';
-  }
-
-  private async reportSmartRoutingOutcome(params: {
-    tenantId: string;
-    stepId: string;
-    nodeData: Record<string, unknown>;
-    smartRouting?: SmartRoutingRuntimeContext;
-    success: boolean;
-    latencyMs: number;
-    tokenCount: number;
-    error?: Error;
-  }): Promise<void> {
-    const {
-      tenantId,
-      stepId,
-      nodeData,
-      smartRouting,
-      success,
-      latencyMs,
-      tokenCount,
-      error,
-    } = params;
-
-    if (!smartRouting) {
-      return;
-    }
-
-    const selectedModel = await this.resolveSmartRoutingModelInfo(
-      tenantId,
-      nodeData,
-      smartRouting,
-    );
-
-    if (!selectedModel) {
-      return;
-    }
-
-    if (!this.circuitBreakerService) {
-      return;
-    }
-
-    try {
-      if (success) {
-        await this.circuitBreakerService.recordSuccess(
-          tenantId,
-          selectedModel.provider,
-          selectedModel.modelId,
-        );
-      } else {
-        await this.circuitBreakerService.recordFailure(
-          tenantId,
-          selectedModel.provider,
-          selectedModel.modelId,
-        );
-      }
-    } catch (circuitBreakerError) {
-      this.logger.warn(
-        `Smart routing circuit breaker outcome skipped: ${circuitBreakerError instanceof Error ? circuitBreakerError.message : String(circuitBreakerError)}`,
-        { tenantId, stepId, modelId: selectedModel.modelId },
-      );
-    }
-
-    if (!smartRouting.routingDecisionId || !this.routingLearningProducer) {
-      return;
-    }
-
-    void this.routingLearningProducer
-      .enqueueLearningJob({
-        tenantId,
-        executionStepId: stepId,
-        routingDecisionId: smartRouting.routingDecisionId,
-        selectedModelId: selectedModel.modelId,
-        queryText: smartRouting.queryText ?? '',
-        ...(smartRouting.taskCategory
-          ? { taskCategory: smartRouting.taskCategory }
-          : {}),
-        actualPerformance: {
-          success,
-          latencyMs,
-          tokenCount,
-          ...(error ? { errorType: error.name || 'Error' } : {}),
-        },
-      })
-      .catch((learningError: unknown) => {
-        this.logger.warn(
-          `Smart routing learning enqueue skipped: ${learningError instanceof Error ? learningError.message : String(learningError)}`,
-          {
-            tenantId,
-            stepId,
-            routingDecisionId: smartRouting.routingDecisionId,
-          },
-        );
-      });
-  }
-
-  private async resolveSmartRoutingModelInfo(
-    tenantId: string,
-    nodeData: Record<string, unknown>,
-    smartRouting: SmartRoutingRuntimeContext,
-  ): Promise<{ modelId: string; provider: string } | null> {
-    const selectedModelId =
-      smartRouting.selectedModelId ||
-      (typeof nodeData.llmModelConfigId === 'string'
-        ? nodeData.llmModelConfigId
-        : null);
-
-    if (!selectedModelId) {
-      return null;
-    }
-
-    const evaluatedModel = smartRouting.evaluatedModels?.find(
-      (model) => model.modelId === selectedModelId,
-    );
-
-    if (evaluatedModel) {
-      return { modelId: selectedModelId, provider: evaluatedModel.provider };
-    }
-
-    const modelRows = await this.tenantDb
-      .select({ providerSlug: schema.llmProviders.slug })
-      .from(schema.llmModelConfigs)
-      .innerJoin(
-        schema.llmProviders,
-        eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
-      )
-      .where(
-        and(
-          eq(schema.llmModelConfigs.tenantId, tenantId),
-          eq(schema.llmModelConfigs.id, selectedModelId),
-        ),
-      )
-      .limit(1);
-
-    const provider = modelRows[0]?.providerSlug;
-    return provider ? { modelId: selectedModelId, provider } : null;
-  }
-
-  private estimateTokenCount(value: unknown): number {
-    const serialized =
-      typeof value === 'string' ? value : JSON.stringify(value ?? {});
-    return Math.max(0, Math.ceil(serialized.length / 4));
-  }
-
-  private shouldRetry(job: Job<AgentTaskJobData>): boolean {
-    return job.attemptsMade + 1 < this.getMaxAttempts(job);
-  }
-
-  private getMaxAttempts(job: Job<AgentTaskJobData>): number {
-    return typeof job.opts.attempts === 'number' && job.opts.attempts > 0
-      ? job.opts.attempts
-      : 1;
-  }
-
-  private isRecoverableRuntimeFailure(error: unknown): boolean {
-    return isRecoverableAgentRuntimeError(error);
-  }
-
-  private async resolveOrgId(tenantId: string): Promise<string | null> {
-    const result = await this.tenantDb
-      .select({ id: schema.organizations.id })
-      .from(schema.organizations)
-      .where(eq(schema.organizations.tenantId, tenantId))
-      .limit(1);
-    return result[0]?.id ?? null;
-  }
-
-  private async withTenantContext<T>(
-    tenantId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    return runInTenantTransaction(this.db, tenantId, async () => operation());
-  }
 }

@@ -1305,7 +1305,7 @@ describe('SandboxAgentAdapter', () => {
   });
 
   describe('session tool callback bridge', () => {
-    it('应在租户事务中执行 session-local tool 并返回结果', async () => {
+    it('应在事务外执行 session-local tool 并返回结果', async () => {
       const execute = vi.fn().mockResolvedValue({
         items: ['memory-a'],
       });
@@ -1359,7 +1359,7 @@ describe('SandboxAgentAdapter', () => {
       });
 
       expect(mockDb.transaction.mock.calls.length).toBe(
-        transactionCallCountBeforeCallback + 1,
+        transactionCallCountBeforeCallback,
       );
       expect(execute).toHaveBeenCalledWith(
         { query: 'redis' },
@@ -1378,20 +1378,20 @@ describe('SandboxAgentAdapter', () => {
           description: '主人授权后，Agent 将修改自身编排',
         },
       });
-      vi.spyOn(
-        adapter as any,
-        'assertValidSessionToolCallbackToken',
-      ).mockImplementation(() => undefined);
-      vi.spyOn(adapter as any, 'loadSession').mockResolvedValue({
-        id: 'session-self-1',
-        agentId: 'agent-001',
+      adapter.registerSessionToolProvider('session-self-1', () => ({
+        apply_change: tool({
+          inputSchema: jsonSchema({ type: 'object' }),
+          execute: vi.fn(),
+        }),
+      }));
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-self-1',
         mode: 'conversation',
-        context: {},
-        status: 'active',
-        tenantId: 'tenant-001',
-        createdAt: new Date(),
-        updatedAt: new Date(),
       });
+      const initPayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+      ) as { remoteToolExecution: { callbackToken: string } };
 
       const result = await adapter.executeSessionToolCallback(
         'session-self-1',
@@ -1402,6 +1402,7 @@ describe('SandboxAgentAdapter', () => {
           input: { proposal: { summary: '修改自身编排' } },
           phase: 'preflight',
         },
+        initPayload.remoteToolExecution.callbackToken,
       );
 
       expect(
@@ -1432,20 +1433,20 @@ describe('SandboxAgentAdapter', () => {
           },
         },
       });
-      vi.spyOn(
-        adapter as any,
-        'assertValidSessionToolCallbackToken',
-      ).mockImplementation(() => undefined);
-      vi.spyOn(adapter as any, 'loadSession').mockResolvedValue({
-        id: 'session-self-2',
-        agentId: 'agent-001',
+      adapter.registerSessionToolProvider('session-self-2', () => ({
+        apply_change: tool({
+          inputSchema: jsonSchema({ type: 'object' }),
+          execute: vi.fn(),
+        }),
+      }));
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-self-2',
         mode: 'conversation',
-        context: {},
-        status: 'active',
-        tenantId: 'tenant-001',
-        createdAt: new Date(),
-        updatedAt: new Date(),
       });
+      const initPayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+      ) as { remoteToolExecution: { callbackToken: string } };
 
       const result = await adapter.executeSessionToolCallback(
         'session-self-2',
@@ -1456,6 +1457,7 @@ describe('SandboxAgentAdapter', () => {
           input: { proposal: { summary: '修改自身编排' } },
           phase: 'execute',
         },
+        initPayload.remoteToolExecution.callbackToken,
       );
 
       expect(
@@ -2123,199 +2125,6 @@ describe('SandboxAgentAdapter', () => {
     });
   });
 
-  describe('PTY proxy 方法', () => {
-    async function setupSandboxProxy() {
-      const session = await adapter.createSession(defaultParams);
-      mockSandboxService.getSandboxSession.mockResolvedValue({
-        id: 'sandbox-001',
-        status: 'ready',
-        runtimeHandle: 'abc123def456',
-      });
-      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
-      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
-        'http://127.0.0.1:49123/v1/prompt',
-      );
-      return session;
-    }
-
-    it('listPtySessions 代理 GET 到容器', async () => {
-      await setupSandboxProxy();
-      const mockResult = [{ id: 'pty-001', status: 'running' }];
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockResult),
-      } as unknown as Response);
-
-      const result = await adapter.listPtySessions(
-        { executionId: 'exec-001' },
-        'tenant-001',
-      );
-
-      expect(result).toEqual(mockResult);
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49123/v1/pty/sessions',
-        expect.objectContaining({ method: 'GET' }),
-      );
-    });
-
-    it('listPtySessions 容器返回非 ok 时抛出错误', async () => {
-      await setupSandboxProxy();
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-      } as unknown as Response);
-
-      await expect(
-        adapter.listPtySessions({ executionId: 'exec-001' }, 'tenant-001'),
-      ).rejects.toThrow('PTY sessions 查询失败');
-    });
-
-    it('ptyBufferDump 代理 POST 到容器', async () => {
-      await setupSandboxProxy();
-      const mockResult = {
-        lines: [{ lineNo: 1, text: 'hello' }],
-        totalLines: 1,
-      };
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(mockResult),
-      } as unknown as Response);
-
-      const result = await adapter.ptyBufferDump(
-        { executionId: 'exec-001' },
-        'tenant-001',
-        'pty-001',
-        { offset: 0, limit: 100 },
-      );
-
-      expect(result).toEqual(mockResult);
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49123/v1/pty/buffer-dump',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ sessionId: 'pty-001', offset: 0, limit: 100 }),
-        }),
-      );
-    });
-
-    it('ptyBufferDump 含 pattern 选项', async () => {
-      await setupSandboxProxy();
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue({ lines: [], totalLines: 0 }),
-      } as unknown as Response);
-
-      await adapter.ptyBufferDump(
-        { executionId: 'exec-001' },
-        'tenant-001',
-        'pty-001',
-        { pattern: 'error' },
-      );
-
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49123/v1/pty/buffer-dump',
-        expect.objectContaining({
-          body: JSON.stringify({ sessionId: 'pty-001', pattern: 'error' }),
-        }),
-      );
-    });
-
-    it('ptyBufferDump 容器返回非 ok 时抛出错误', async () => {
-      await setupSandboxProxy();
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-      } as unknown as Response);
-
-      await expect(
-        adapter.ptyBufferDump(
-          { executionId: 'exec-001' },
-          'tenant-001',
-          'pty-001',
-        ),
-      ).rejects.toThrow('PTY buffer-dump 失败');
-    });
-
-    it('ptyWrite 代理 POST 到容器', async () => {
-      await setupSandboxProxy();
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue({ success: true }),
-      } as unknown as Response);
-
-      const result = await adapter.ptyWrite(
-        { executionId: 'exec-001' },
-        'tenant-001',
-        'pty-001',
-        'ls -la\n',
-      );
-
-      expect(result).toEqual({ success: true });
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49123/v1/pty/write',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ sessionId: 'pty-001', data: 'ls -la\n' }),
-        }),
-      );
-    });
-
-    it('ptyWrite 容器返回非 ok 时抛出错误', async () => {
-      await setupSandboxProxy();
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-      } as unknown as Response);
-
-      await expect(
-        adapter.ptyWrite(
-          { executionId: 'exec-001' },
-          'tenant-001',
-          'pty-001',
-          'x',
-        ),
-      ).rejects.toThrow('PTY write 失败');
-    });
-
-    it('ptyWrite 使用 agentConversationId 绑定', async () => {
-      await adapter.createSession({
-        ...defaultParams,
-        mode: 'conversation',
-        context: { agentConversationId: 'conv-001' },
-      });
-      mockSandboxService.findByConversationId.mockResolvedValue({
-        id: 'sandbox-conv',
-        status: 'ready',
-        runtimeHandle: 'conv-container',
-      });
-      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
-      globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue({ success: true }),
-      } as unknown as Response);
-
-      await adapter.ptyWrite(
-        { agentConversationId: 'conv-001' },
-        'tenant-001',
-        'pty-conv',
-        'echo hi\n',
-      );
-
-      expect(mockRuntimeDriver.requestGuest).toHaveBeenCalledWith(
-        'conv-container',
-        '/v1/pty/write',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ sessionId: 'pty-conv', data: 'echo hi\n' }),
-        }),
-      );
-    });
-  });
 
   describe('readSandboxBinding nested serverSandbox', () => {
     it('reads executionId from nested serverSandbox', async () => {
@@ -2819,14 +2628,11 @@ describe('SandboxAgentAdapter', () => {
       const session = await adapter.createSession({
         ...defaultParams,
         sessionId: 'session-no-tenant',
-        tenantId: undefined,
       });
-      const adapterInternals = adapter as unknown as {
-        sessionToolCallbackTokens: Map<string, string>;
-      };
-      const callbackToken = adapterInternals.sessionToolCallbackTokens.get(
-        session.id,
-      );
+      const initPayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+      ) as { remoteToolExecution: { callbackToken: string } };
+      session.tenantId = undefined;
 
       await expect(
         adapter.executeSessionToolCallback(
@@ -2837,7 +2643,7 @@ describe('SandboxAgentAdapter', () => {
             toolName: 'local_tool',
             input: 'not-an-object',
           },
-          callbackToken,
+          initPayload.remoteToolExecution.callbackToken,
         ),
       ).rejects.toThrow('is missing tenantId');
     });

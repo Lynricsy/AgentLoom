@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EventBridgeService } from '../services/event-bridge.service';
-import { ExecutionGateway } from '../execution.gateway';
+import {
+  EventBridgeService,
+  ExecutionBroadcastIntent,
+} from '../services/event-bridge.service';
 import { ThrottleService } from '../services/throttle.service';
 import { ExecutionEventName } from '../types/execution-event.types';
 import { SubAgentRunStatus } from '../../agent-execution/subagent';
@@ -51,13 +53,44 @@ describe('EventBridgeService', () => {
       clearExecution: vi.fn(),
     };
     eventEmitter = {
-      emit: vi.fn(),
+      emit: vi.fn(
+        (
+          event: string,
+          payload: {
+            tenantId: string;
+            executionId: string;
+            event?: string;
+            data?: Record<string, unknown>;
+          },
+        ) => {
+          if (event === ExecutionBroadcastIntent.BROADCAST) {
+            gateway.broadcastTypedEvent(
+              payload.tenantId,
+              payload.executionId,
+              payload.event,
+              payload.data,
+            );
+          } else if (
+            event === ExecutionBroadcastIntent.BROADCAST_IMMEDIATELY
+          ) {
+            gateway.broadcastTypedEventImmediately(
+              payload.tenantId,
+              payload.executionId,
+              payload.event,
+              payload.data,
+            );
+          } else if (event === ExecutionBroadcastIntent.FLUSH_QUEUE) {
+            gateway.flushExecutionQueue(payload.tenantId, payload.executionId);
+          } else if (event === ExecutionBroadcastIntent.CLEAR_QUEUE) {
+            gateway.clearExecutionQueue(payload.tenantId, payload.executionId);
+          }
+        },
+      ),
     };
 
     const module = await Test.createTestingModule({
       providers: [
         EventBridgeService,
-        { provide: ExecutionGateway, useValue: gateway },
         { provide: ThrottleService, useValue: throttle },
         { provide: EventEmitter2, useValue: eventEmitter },
       ],
@@ -96,6 +129,15 @@ describe('EventBridgeService', () => {
         EXEC,
         ExecutionEventName.STEP_STATUS_CHANGED,
         expect.objectContaining({ eventId: 1 }),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ExecutionBroadcastIntent.BROADCAST,
+        expect.objectContaining({
+          tenantId: TENANT,
+          executionId: EXEC,
+          event: ExecutionEventName.STEP_STATUS_CHANGED,
+          data: expect.objectContaining({ eventId: 1 }),
+        }),
       );
     });
 
@@ -154,50 +196,21 @@ describe('EventBridgeService', () => {
 
         service.emitStepStatusChanged(TENANT, EXEC, payload);
 
-        expect(eventEmitter.emit).not.toHaveBeenCalled();
+        expect(eventEmitter.emit).not.toHaveBeenCalledWith(
+          ExecutionEventName.STEP_STATUS_CHANGED,
+          expect.anything(),
+        );
       });
 
-      it('未注入可选 EventEmitter 时也不应抛错', async () => {
-        const gatewayWithoutEmitter = {
-          broadcastTypedEvent: vi.fn(),
-          broadcastTypedEventImmediately: vi.fn(),
-          flushExecutionQueue: vi.fn(),
-          clearExecutionQueue: vi.fn(),
-        };
-        const throttleWithoutEmitter = {
-          forceFlush: vi.fn().mockReturnValue([]),
-          clearExecution: vi.fn(),
-        };
-        const module = await Test.createTestingModule({
-          providers: [
-            EventBridgeService,
-            { provide: ExecutionGateway, useValue: gatewayWithoutEmitter },
-            { provide: ThrottleService, useValue: throttleWithoutEmitter },
-          ],
-        }).compile();
-        const serviceWithoutEmitter = module.get(EventBridgeService);
-
-        expect(() =>
-          serviceWithoutEmitter.emitStepStatusChanged(TENANT, EXEC, {
-            stepId: 's1',
-            nodeId: 'n1',
-            from: 'running',
-            to: 'failed',
-            errorDetail: {
-              message: 'boom',
-            },
-          }),
-        ).not.toThrow();
-        expect(gatewayWithoutEmitter.broadcastTypedEvent).toHaveBeenCalledWith(
-          TENANT,
-          EXEC,
-          ExecutionEventName.STEP_STATUS_CHANGED,
-          expect.objectContaining({
-            data: expect.objectContaining({ to: 'failed' }),
-          }),
-        );
-
-        serviceWithoutEmitter.onModuleDestroy();
+      it('未注入 EventEmitter 时模块编译失败', async () => {
+        await expect(
+          Test.createTestingModule({
+            providers: [
+              EventBridgeService,
+              { provide: ThrottleService, useValue: throttle },
+            ],
+          }).compile(),
+        ).rejects.toThrow();
       });
     });
   });

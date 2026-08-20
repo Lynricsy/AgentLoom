@@ -8,6 +8,11 @@ import { TemplateModule } from '../template/template.module';
 import { WorkflowDefinitionCreateController } from './workflow-definition-create.controller';
 import { WorkflowVersionController } from './workflow-version.controller';
 import { WorkflowVersionService } from './workflow-version.service';
+import { WorkflowDefinitionRepository } from './workflow-definition.repository';
+import { WorkflowImportService } from './workflow-import.service';
+import { WorkflowImportSourceResolverService } from './workflow-import-source-resolver.service';
+import { WorkflowPublishService } from './workflow-publish.service';
+import { WorkflowVersionRepository } from './workflow-version.repository';
 
 @Module({
   imports: [
@@ -18,7 +23,14 @@ import { WorkflowVersionService } from './workflow-version.service';
     ResourceSourceModule,
   ],
   controllers: [WorkflowDefinitionCreateController, WorkflowVersionController],
-  providers: [WorkflowVersionService],
+  providers: [
+    WorkflowDefinitionRepository,
+    WorkflowVersionRepository,
+    WorkflowImportSourceResolverService,
+    WorkflowImportService,
+    WorkflowPublishService,
+    WorkflowVersionService,
+  ],
   exports: [WorkflowVersionService],
 })
 export class WorkflowDefinitionModule {}

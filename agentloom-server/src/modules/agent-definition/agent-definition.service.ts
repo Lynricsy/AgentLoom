@@ -79,6 +79,10 @@ import {
   resolveMcpPortMapping,
   resolveMcpServerConfigId,
 } from './mcp-tool-descriptor.utils';
+import {
+  normalizeAgentCanvasRuntimeConfigAliases,
+  normalizeAgentRuntimeConfig,
+} from './agent-runtime-config-normalize.util';
 
 type AgentDbClient = Pick<
   DrizzleDB,
@@ -330,9 +334,15 @@ export class AgentDefinitionService {
       [row.id],
     );
 
-    return serializeAgentDefinitionDetail(row, {
-      resourceSourceKind: sourceKindMap.get(row.id) ?? 'manual',
-    });
+    return serializeAgentDefinitionDetail(
+      {
+        ...row,
+        nodes: normalizeAgentCanvasRuntimeConfigAliases(row.nodes ?? []),
+      },
+      {
+        resourceSourceKind: sourceKindMap.get(row.id) ?? 'manual',
+      },
+    );
   }
 
   async update(
@@ -441,7 +451,9 @@ export class AgentDefinitionService {
       }
 
       const migratedCanvas = migrateAgentCanvasGraph({
-        nodes: dto.canvasNodes as unknown as schema.ReactFlowNode[],
+        nodes: normalizeAgentCanvasRuntimeConfigAliases(
+          dto.canvasNodes as unknown as schema.ReactFlowNode[],
+        ),
         edges: dto.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
       this.assertSupportedCanvasNodeTypes(migratedCanvas.nodes);
@@ -533,7 +545,9 @@ export class AgentDefinitionService {
       }
 
       const migratedCanvas = migrateAgentCanvasGraph({
-        nodes: options.canvasNodes as unknown as schema.ReactFlowNode[],
+        nodes: normalizeAgentCanvasRuntimeConfigAliases(
+          options.canvasNodes as unknown as schema.ReactFlowNode[],
+        ),
         edges: options.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
       this.assertSupportedCanvasNodeTypes(migratedCanvas.nodes);
@@ -674,6 +688,7 @@ export class AgentDefinitionService {
     agentDefinitionId?: string,
     runtimeMode: AgentRuntimeMode = 'sandbox',
   ): AgentRuntimeConfig {
+    nodes = normalizeAgentCanvasRuntimeConfigAliases(nodes);
     this.assertSupportedCanvasNodeTypes(nodes as schema.ReactFlowNode[]);
     this.assertExecutableMcpToolNodes(nodes as schema.ReactFlowNode[]);
 
@@ -866,7 +881,7 @@ export class AgentDefinitionService {
       }
     }
 
-    return config;
+    return normalizeAgentRuntimeConfig(config);
   }
 
   resolveSystemPromptFromNodes(
@@ -1103,6 +1118,9 @@ export class AgentDefinitionService {
             label: normalizedLabel ?? existingVersion.label,
             snapshot: {
               ...existingVersion.snapshot,
+              nodes: normalizeAgentCanvasRuntimeConfigAliases(
+                existingVersion.snapshot.nodes ?? [],
+              ),
               metadata: {
                 ...existingVersion.snapshot.metadata,
                 releaseNotes:
@@ -1208,18 +1226,21 @@ export class AgentDefinitionService {
     agent: typeof schema.agentDefinitions.$inferSelect,
     releaseNotes?: string,
   ): AgentVersionSnapshot {
-    this.assertSupportedCanvasNodeTypes(agent.nodes ?? []);
-    this.assertExecutableMcpToolNodes(agent.nodes ?? []);
+    const normalizedNodes = normalizeAgentCanvasRuntimeConfigAliases(
+      agent.nodes ?? [],
+    );
+    this.assertSupportedCanvasNodeTypes(normalizedNodes);
+    this.assertExecutableMcpToolNodes(normalizedNodes);
     const canvasMetadata = this.extractCanvasMetadata(agent.metadata);
 
     return {
       runtimeMode: agent.runtimeMode,
-      nodes: agent.nodes,
+      nodes: normalizedNodes,
       edges: agent.edges,
       viewport: agent.viewport,
       systemPrompt: agent.systemPrompt,
       sandboxConfig: this.derivePersistedSandboxConfig(
-        agent.nodes ?? [],
+        normalizedNodes,
         agent.edges ?? [],
         agent.sandboxConfig,
         agent.runtimeMode,
@@ -2084,8 +2105,8 @@ export class AgentDefinitionService {
       resolveSandboxConversationIdleAutoEndMinutes(data);
 
     return {
-      cpu: data.cpu ?? data.cpuLimit ?? 1,
-      memory: data.memory ?? data.memoryLimitMb ?? 512,
+      cpu: data.cpu ?? 1,
+      memory: data.memory ?? 512,
       disk: data.disk ?? data.diskLimitGb ?? 1,
       timeout:
         hasTimeoutHours && !hasTimeoutSeconds

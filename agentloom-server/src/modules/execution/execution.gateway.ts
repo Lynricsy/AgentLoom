@@ -11,17 +11,20 @@ import {
   UseGuards,
   OnModuleInit,
   OnModuleDestroy,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
 import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
 import { StateReplayService } from './services/state-replay.service';
 import { ThrottleService } from './services/throttle.service';
-import { EventBridgeService } from './services/event-bridge.service';
+import {
+  EventBridgeService,
+  ExecutionBroadcastIntent,
+  type ExecutionBroadcastIntentPayload,
+} from './services/event-bridge.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { ExecutionEventName } from './types/execution-event.types';
 import type {
@@ -103,7 +106,6 @@ export class ExecutionGateway
     private readonly configService: ConfigService,
     private readonly stateReplayService: StateReplayService,
     private readonly throttleService: ThrottleService,
-    @Inject(forwardRef(() => EventBridgeService))
     private readonly eventBridgeService: EventBridgeService,
     private readonly tokenBlacklistService: TokenBlacklistService,
   ) {}
@@ -122,6 +124,40 @@ export class ExecutionGateway
         });
       }
     });
+  }
+
+  @OnEvent(ExecutionBroadcastIntent.BROADCAST)
+  handleBroadcastIntent(payload: ExecutionBroadcastIntentPayload): void {
+    if (!payload.event || !payload.data) return;
+    this.broadcastTypedEvent(
+      payload.tenantId,
+      payload.executionId,
+      payload.event,
+      payload.data,
+    );
+  }
+
+  @OnEvent(ExecutionBroadcastIntent.BROADCAST_IMMEDIATELY)
+  handleImmediateBroadcastIntent(
+    payload: ExecutionBroadcastIntentPayload,
+  ): void {
+    if (!payload.event || !payload.data) return;
+    this.broadcastTypedEventImmediately(
+      payload.tenantId,
+      payload.executionId,
+      payload.event,
+      payload.data,
+    );
+  }
+
+  @OnEvent(ExecutionBroadcastIntent.FLUSH_QUEUE)
+  handleFlushQueueIntent(payload: ExecutionBroadcastIntentPayload): void {
+    this.flushExecutionQueue(payload.tenantId, payload.executionId);
+  }
+
+  @OnEvent(ExecutionBroadcastIntent.CLEAR_QUEUE)
+  handleClearQueueIntent(payload: ExecutionBroadcastIntentPayload): void {
+    this.clearExecutionQueue(payload.tenantId, payload.executionId);
   }
 
   onModuleDestroy(): void {

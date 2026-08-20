@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { jsonSchema, tool, type ToolSet } from 'ai';
+import { tool, type ToolSet } from 'ai';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { WorkflowGraphViewportSchema } from '@agentloom/contracts';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -20,12 +22,18 @@ import {
   type ApplyAgentCanvasSnapshotOptions,
 } from '../agent-definition/agent-definition.service';
 import { resolveMcpServerConfigId } from '../agent-definition/mcp-tool-descriptor.utils';
+import { ListAgentDefinitionsQuerySchema } from '../agent-definition/dto/list-agent-definitions-query.dto';
 import { LlmProviderService } from '../llm/llm-provider.service';
 import { LlmService } from '../llm/llm.service';
 import { McpService } from '../mcp/mcp.service';
+import { McpServerConfigQuerySchema } from '../mcp/dto/mcp-server-config-query.dto';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SkillService, type SkillUploadFile } from '../skill/skill.service';
+import { SkillQuerySchema } from '../skill/dto/skill-query.dto';
 import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
+import { CreateWorkflowDefinitionSchema } from '../workflow-definition/dto/create-workflow-definition.dto';
+import { ListWorkflowDefinitionsQuerySchema } from '../workflow-definition/dto/list-workflow-definitions-query.dto';
+import { UpdateWorkflowDefinitionSchema } from '../workflow-definition/dto/update-workflow-definition.dto';
 import { WorkspaceService } from '../workspace/workspace.service';
 import type {
   SelfEvolutionCategory,
@@ -44,184 +52,54 @@ import {
   SELF_EVOLUTION_TOOL_NAMES,
 } from './self-evolution.types';
 import { SelfEvolutionPermissionService } from './self-evolution-permission.service';
+import { SelfEvolutionReadService } from './self-evolution-read.service';
+import { SelfEvolutionMutationService } from './self-evolution-mutation.service';
+import { SelfEvolutionPermissionPolicy } from './self-evolution-permission-policy';
+import {
+  SelfEvolutionGraphPatch,
+  type GraphPatchOperation,
+} from './self-evolution-graph-patch';
+import {
+  AgentCreateDtoSchema,
+  AgentGraphEdgeArraySchema,
+  AgentGraphNodeArraySchema,
+  ApplyChangeSchema,
+  CreateResourceSchema,
+  GenericRecordSchema,
+  McpImportDtoSchema,
+  ModelCreateDtoSchema,
+  ProposeChangeSchema,
+  ProviderCreateDtoSchema,
+  QueryResourcePoolSchema,
+  QueryStateSchema,
+  SkillCreateDtoSchema,
+} from './self-evolution.schemas';
 
 type GenericRecord = Record<string, unknown>;
 
-const QUERY_STATE_SCHEMA = {
-  type: 'object',
-  properties: {
-    scope: {
-      type: 'string',
-      enum: ['self', 'agent', 'workflow'],
-      description: '查询自身状态、外部 Agent 状态或外部 Workflow 状态。',
-    },
-    targetId: {
-      type: 'string',
-      description: '查询外部 Agent / Workflow 时的目标 ID。',
-    },
-  },
-  additionalProperties: false,
-} as const;
-
-const QUERY_RESOURCE_POOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    resourceType: {
-      type: 'string',
-      enum: [
-        'skill',
-        'mcp_server',
-        'mcp_tool',
-        'model',
-        'agent',
-        'workflow',
-        'workspace',
-      ],
-      description: '限定查询的资源类型；省略时返回所有资源分组。',
-    },
-    search: {
-      type: 'string',
-      description: '可选搜索关键词。',
-    },
-    limit: {
-      type: 'integer',
-      minimum: 1,
-      maximum: 100,
-      description: '单组返回数量上限，默认 20。',
-    },
-  },
-  additionalProperties: false,
-} as const;
-
-const NODE_OPERATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    op: {
-      type: 'string',
-      enum: ['add', 'update', 'remove'],
-    },
-    nodeId: { type: 'string' },
-    node: {
-      type: 'object',
-      additionalProperties: true,
-    },
-    patch: {
-      type: 'object',
-      additionalProperties: true,
-    },
-  },
-  required: ['op'],
-  additionalProperties: false,
-} as const;
-
-const EDGE_OPERATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    op: {
-      type: 'string',
-      enum: ['add', 'update', 'remove'],
-    },
-    edgeId: { type: 'string' },
-    edge: {
-      type: 'object',
-      additionalProperties: true,
-    },
-    patch: {
-      type: 'object',
-      additionalProperties: true,
-    },
-  },
-  required: ['op'],
-  additionalProperties: false,
-} as const;
-
-const PROPOSE_CHANGE_SCHEMA = {
-  type: 'object',
-  properties: {
-    targetKind: {
-      type: 'string',
-      enum: ['self', 'agent', 'workflow'],
-      description: '修改自身、外部 Agent、或 Workflow。',
-    },
-    targetId: {
-      type: 'string',
-      description: 'targetKind 为 agent/workflow 时的目标 ID。',
-    },
-    nodeOperations: {
-      type: 'array',
-      items: NODE_OPERATION_SCHEMA,
-    },
-    edgeOperations: {
-      type: 'array',
-      items: EDGE_OPERATION_SCHEMA,
-    },
-    viewport: {
-      type: 'object',
-      additionalProperties: true,
-    },
-    metadataPatch: {
-      type: 'object',
-      additionalProperties: true,
-      description: '允许修改名称/描述/icon 等顶层元数据。',
-    },
-    publishTarget: {
-      type: 'boolean',
-      description: '修改完成后是否立即发布目标编排。',
-    },
-  },
-  required: ['targetKind'],
-  additionalProperties: false,
-} as const;
-
-const APPLY_CHANGE_SCHEMA = {
-  type: 'object',
-  properties: {
-    proposal: {
-      type: 'object',
-      additionalProperties: true,
-      description: '必须传入 propose_change 返回的 proposal。',
-    },
-  },
-  required: ['proposal'],
-  additionalProperties: false,
-} as const;
-
-const CREATE_RESOURCE_SCHEMA = {
-  type: 'object',
-  properties: {
-    resourceType: {
-      type: 'string',
-      enum: ['skill', 'workspace', 'agent', 'workflow', 'mcp', 'model'],
-      description: '要创建的资源类型。',
-    },
-    spec: {
-      type: 'object',
-      additionalProperties: true,
-      description: '资源创建参数。字段取决于 resourceType。',
-    },
-  },
-  required: ['resourceType', 'spec'],
-  additionalProperties: false,
-} as const;
 
 @Injectable()
 export class SelfEvolutionService {
-  private readonly logger = new Logger(SelfEvolutionService.name);
+  readonly logger = new Logger(SelfEvolutionService.name);
 
   constructor(
-    @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    private readonly agentDefinitionService: AgentDefinitionService,
-    private readonly skillService: SkillService,
-    private readonly llmService: LlmService,
-    private readonly llmProviderService: LlmProviderService,
-    private readonly mcpService: McpService,
-    private readonly workspaceService: WorkspaceService,
-    private readonly workflowVersionService: WorkflowVersionService,
-    private readonly permissionService: SelfEvolutionPermissionService,
-    private readonly sandboxService: SandboxService,
+    @Inject(DRIZZLE) public readonly db: DrizzleDB,
+    public readonly agentDefinitionService: AgentDefinitionService,
+    public readonly skillService: SkillService,
+    public readonly llmService: LlmService,
+    public readonly llmProviderService: LlmProviderService,
+    public readonly mcpService: McpService,
+    public readonly workspaceService: WorkspaceService,
+    public readonly workflowVersionService: WorkflowVersionService,
+    public readonly permissionService: SelfEvolutionPermissionService,
+    public readonly sandboxService: SandboxService,
+    public readonly readService: SelfEvolutionReadService,
+    public readonly mutationService: SelfEvolutionMutationService,
+    public readonly permissionPolicy: SelfEvolutionPermissionPolicy,
+    public readonly graphPatch: SelfEvolutionGraphPatch,
   ) {}
 
-  private get tenantDb(): DrizzleDB {
+  get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
   }
 
@@ -236,52 +114,52 @@ export class SelfEvolutionService {
       query_state: tool({
         description:
           '查询当前 Agent 自身编排状态，或在权限允许时查询外部 Agent / Workflow 状态。',
-        inputSchema: jsonSchema(QUERY_STATE_SCHEMA as never),
+        inputSchema: QueryStateSchema,
         execute: async (input) =>
-          this.executeReadTool('query_state', context, input as GenericRecord),
+          this.executeReadTool('query_state', context, QueryStateSchema.parse(input)),
       }),
       query_resource_pool: tool({
         description:
           '查询当前租户已存在的技能、MCP、模型、Agent、Workflow、Workspace 资源池。',
-        inputSchema: jsonSchema(QUERY_RESOURCE_POOL_SCHEMA as never),
+        inputSchema: QueryResourcePoolSchema,
         execute: async (input) =>
           this.executeReadTool(
             'query_resource_pool',
             context,
-            input as GenericRecord,
+            QueryResourcePoolSchema.parse(input),
           ),
       }),
       propose_change: tool({
         description:
           '基于节点/连线级操作生成自进化编排变更提案，并返回 diff/风险/是否需要审批。',
-        inputSchema: jsonSchema(PROPOSE_CHANGE_SCHEMA as never),
+        inputSchema: ProposeChangeSchema,
         execute: async (input) =>
           this.executeReadTool(
             'propose_change',
             context,
-            input as GenericRecord,
+            ProposeChangeSchema.parse(input),
           ),
       }),
       apply_change: tool({
         description:
           '应用 propose_change 返回的 proposal。已发布的自身 Agent 会直接生成新 published version；结果里的 publishedVersionNumber 才是用户可见发布版号，detail.version 仅是草稿修订号。',
-        inputSchema: jsonSchema(APPLY_CHANGE_SCHEMA as never),
+        inputSchema: ApplyChangeSchema,
         execute: async (input) =>
           this.executeMutationDirect(
             'apply_change',
             context,
-            input as GenericRecord,
+            ApplyChangeSchema.parse(input),
           ),
       }),
       create_resource: tool({
         description:
           '在权限允许时创建新 Skill、MCP、Model、Workspace、Agent、Workflow 资源。',
-        inputSchema: jsonSchema(CREATE_RESOURCE_SCHEMA as never),
+        inputSchema: CreateResourceSchema,
         execute: async (input) =>
           this.executeMutationDirect(
             'create_resource',
             context,
-            input as GenericRecord,
+            CreateResourceSchema.parse(input),
           ),
       }),
     });
@@ -398,7 +276,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private async executeReadTool(
+  async executeReadTool(
     toolName: Extract<
       SelfEvolutionToolName,
       'query_state' | 'query_resource_pool' | 'propose_change'
@@ -406,30 +284,15 @@ export class SelfEvolutionService {
     context: SelfEvolutionSessionContext,
     input: GenericRecord,
   ): Promise<SelfEvolutionToolResult> {
-    try {
-      switch (toolName) {
-        case 'query_state':
-          return {
-            success: true,
-            data: await this.queryState(context, input),
-          };
-        case 'query_resource_pool':
-          return {
-            success: true,
-            data: await this.queryResourcePool(context, input),
-          };
-        case 'propose_change':
-          return {
-            success: true,
-            data: await this.proposeChange(context, input),
-          };
-      }
-    } catch (error) {
-      return this.toFailureResult(error);
-    }
+    return this.readService.execute(toolName, {
+      query_state: () => this.readService.queryState(context, input),
+      query_resource_pool: () =>
+        this.readService.queryResourcePool(context, input),
+      propose_change: () => this.readService.proposeChange(context, input),
+    });
   }
 
-  private async executeMutationDirect(
+  async executeMutationDirect(
     toolName: Extract<
       SelfEvolutionToolName,
       'apply_change' | 'create_resource'
@@ -437,19 +300,14 @@ export class SelfEvolutionService {
     context: SelfEvolutionSessionContext,
     input: GenericRecord,
   ): Promise<SelfEvolutionToolResult> {
-    try {
-      switch (toolName) {
-        case 'apply_change':
-          return await this.applyChange(context, input);
-        case 'create_resource':
-          return await this.createResource(context, input);
-      }
-    } catch (error) {
-      return this.toFailureResult(error);
-    }
+    return this.mutationService.execute(() =>
+      toolName === 'apply_change'
+        ? this.mutationService.applyChange(context, input)
+        : this.mutationService.createResource(context, input),
+    );
   }
 
-  private async preflightApplyChange(
+  async preflightApplyChange(
     context: SelfEvolutionSessionContext,
     toolCallId: string,
     input: GenericRecord,
@@ -468,11 +326,14 @@ export class SelfEvolutionService {
 
     if (!proposal.requiresConfirmation || remembered === 'approve') {
       return {
-        result: await this.applyChange(context, input),
+        result: await this.mutationService.applyChange(context, input),
       };
     }
 
-    const permissionRequest = this.buildPermissionRequest(context, proposal);
+    const permissionRequest = this.permissionPolicy.buildPermissionRequest(
+      context,
+      proposal,
+    );
     if (remembered === 'deny') {
       return this.toDeniedOutcome(
         permissionRequest,
@@ -494,7 +355,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private async executeApplyChangeAfterApproval(
+  async executeApplyChangeAfterApproval(
     context: SelfEvolutionSessionContext,
     toolCallId: string,
     input: GenericRecord,
@@ -506,7 +367,10 @@ export class SelfEvolutionService {
       };
     }
 
-    const permissionRequest = this.buildPermissionRequest(context, proposal);
+    const permissionRequest = this.permissionPolicy.buildPermissionRequest(
+      context,
+      proposal,
+    );
     const action = await this.permissionService.waitForResolution(
       context.sessionId,
       toolCallId,
@@ -520,19 +384,20 @@ export class SelfEvolutionService {
     }
 
     return {
-      result: await this.applyChange(context, input),
+      result: await this.mutationService.applyChange(context, input),
     };
   }
 
-  private async preflightCreateResource(
+  async preflightCreateResource(
     context: SelfEvolutionSessionContext,
     toolCallId: string,
     input: GenericRecord,
   ): Promise<SelfEvolutionRemoteToolOutcome> {
-    const permissionProfile = this.buildCreateResourcePermissionProfile(
-      context,
-      input,
-    );
+    const permissionProfile =
+      this.permissionPolicy.buildCreateResourcePermissionProfile(
+        context,
+        input,
+      );
 
     const remembered = await this.permissionService.getRememberedDecision(
       context.conversationId,
@@ -541,7 +406,7 @@ export class SelfEvolutionService {
 
     if (remembered === 'approve') {
       return {
-        result: await this.createResource(context, input),
+        result: await this.mutationService.createResource(context, input),
       };
     }
 
@@ -566,15 +431,16 @@ export class SelfEvolutionService {
     };
   }
 
-  private async executeCreateResourceAfterApproval(
+  async executeCreateResourceAfterApproval(
     context: SelfEvolutionSessionContext,
     toolCallId: string,
     input: GenericRecord,
   ): Promise<SelfEvolutionRemoteToolOutcome> {
-    const permissionProfile = this.buildCreateResourcePermissionProfile(
-      context,
-      input,
-    );
+    const permissionProfile =
+      this.permissionPolicy.buildCreateResourcePermissionProfile(
+        context,
+        input,
+      );
     const action = await this.permissionService.waitForResolution(
       context.sessionId,
       toolCallId,
@@ -588,596 +454,16 @@ export class SelfEvolutionService {
     }
 
     return {
-      result: await this.createResource(context, input),
+      result: await this.mutationService.createResource(context, input),
     };
   }
 
-  private async queryState(
-    context: SelfEvolutionSessionContext,
-    input: GenericRecord,
-  ): Promise<GenericRecord> {
-    const scope = this.readString(input.scope) ?? 'self';
 
-    if (scope === 'self') {
-      const detail = await this.agentDefinitionService.findDetailById(
-        context.currentAgentDefinitionId,
-      );
-      return {
-        scope: 'self',
-        currentConversationId: context.conversationId,
-        selfEvolutionPolicy: context.selfEvolutionPolicy,
-        runtimeConfig: context.runtimeConfig ?? {},
-        target: detail,
-      };
-    }
 
-    const targetId = this.readString(input.targetId);
-    if (!targetId) {
-      throw new Error('查询外部 Agent / Workflow 时必须提供 targetId');
-    }
-    this.ensureExternalEditingEnabled(context);
 
-    if (scope === 'agent') {
-      return {
-        scope,
-        target: await this.agentDefinitionService.findDetailById(targetId),
-      };
-    }
 
-    if (scope === 'workflow') {
-      return {
-        scope,
-        target:
-          await this.workflowVersionService.findDefinitionDetailById(targetId),
-      };
-    }
 
-    throw new Error(`不支持的 scope: ${scope}`);
-  }
-
-  private async queryResourcePool(
-    context: SelfEvolutionSessionContext,
-    input: GenericRecord,
-  ): Promise<GenericRecord> {
-    const limit = this.readPositiveInt(input.limit, 20, 100);
-    const search = this.readString(input.search);
-    const resourceType = this.readString(input.resourceType);
-
-    const shouldInclude = (type: string) =>
-      !resourceType || resourceType === type;
-
-    const result: GenericRecord = {};
-
-    if (shouldInclude('skill')) {
-      const skills = await this.skillService.findAll({
-        page: 1,
-        pageSize: limit,
-        search,
-        status: 'active',
-      } as never);
-      result.skills = skills.data.map((skill) => ({
-        id: skill.id,
-        name: skill.name,
-        slug: skill.slug,
-        description: skill.description,
-        isBuiltin: skill.isBuiltin,
-        fileCount: skill.fileCount,
-      }));
-    }
-
-    if (shouldInclude('mcp_server')) {
-      const configs = await this.mcpService.findAllConfigs(context.tenantId, {
-        page: 1,
-        pageSize: limit,
-        ...(search ? { search } : {}),
-      } as never);
-      result.mcpServers = configs.data.map((config) => ({
-        id: config.id,
-        name: config.name,
-        description: config.description,
-        transportType: config.transportType,
-        toolCount: config.toolCount,
-      }));
-    }
-
-    if (shouldInclude('mcp_tool')) {
-      const tools = await this.mcpService.listTools(context.tenantId, 'mcp');
-      result.mcpTools = tools
-        .filter(
-          (tool) =>
-            tool.isActive &&
-            (!search ||
-              tool.name.includes(search) ||
-              (tool.title ?? '').includes(search) ||
-              (tool.description ?? '').includes(search)),
-        )
-        .slice(0, limit)
-        .map((tool) => ({
-          id: tool.id,
-          name: tool.name,
-          title: tool.title,
-          description: tool.description,
-          mcpServerConfigId: tool.mcpServerConfigId,
-          isActive: tool.isActive,
-          inputSchema: tool.inputSchema,
-          outputSchema: tool.outputSchema,
-          portMappingMetadata: tool.portMappingMetadata,
-          source: tool.source,
-          annotations: tool.annotations,
-        }));
-    }
-
-    if (shouldInclude('model')) {
-      const models = await this.llmService.findAll(context.tenantId);
-      result.models = models
-        .filter(
-          (model) =>
-            !search ||
-            model.name.includes(search) ||
-            model.modelId.includes(search) ||
-            model.provider.name.includes(search),
-        )
-        .slice(0, limit)
-        .map((model) => ({
-          id: model.id,
-          name: model.name,
-          modelId: model.modelId,
-          providerId: model.providerId,
-          providerName: model.provider.name,
-          modelType: model.modelType,
-          isDefault: model.isDefault,
-        }));
-    }
-
-    if (shouldInclude('agent')) {
-      const agents = await this.agentDefinitionService.findAll({
-        page: 1,
-        pageSize: limit,
-        ...(search ? { search } : {}),
-      } as never);
-      result.agents = agents.data.map((agent) => ({
-        id: agent.id,
-        name: agent.name,
-        status: agent.status,
-        publishedVersionId: agent.publishedVersionId,
-      }));
-    }
-
-    if (shouldInclude('workflow')) {
-      const workflows = await this.workflowVersionService.findAllDefinitions({
-        page: 1,
-        pageSize: limit,
-        ...(search ? { search } : {}),
-      } as never);
-      result.workflows = workflows.data.map((workflow) => ({
-        id: workflow.id,
-        name: workflow.name,
-        status: workflow.status,
-        publishedVersionId: workflow.publishedVersionId,
-      }));
-    }
-
-    if (shouldInclude('workspace')) {
-      const workspaces = await this.workspaceService.findAll(context.tenantId, {
-        page: 1,
-        pageSize: limit,
-        ...(search ? { search } : {}),
-      });
-      result.workspaces = workspaces.data.map((workspace) => ({
-        id: workspace.id,
-        name: workspace.name,
-        description: workspace.description,
-        status: workspace.status,
-      }));
-    }
-
-    return result;
-  }
-
-  private async proposeChange(
-    context: SelfEvolutionSessionContext,
-    input: GenericRecord,
-  ): Promise<GenericRecord> {
-    const target = await this.loadGraphTarget(
-      context,
-      this.readTargetKind(input.targetKind),
-      this.readString(input.targetId),
-    );
-    const nodeOperations = this.readNodeOperations(input.nodeOperations);
-    const edgeOperations = this.readEdgeOperations(input.edgeOperations);
-    const viewport = this.readRecord(input.viewport);
-    const metadataPatch = this.readRecord(input.metadataPatch);
-
-    const nextNodes = await this.normalizeMcpToolNodes(
-      context.tenantId,
-      this.applyNodeOperations(target.nodes, nodeOperations),
-    );
-    const nextEdges = this.applyEdgeOperations(target.edges, edgeOperations);
-    const nextViewport = viewport ?? target.viewport ?? null;
-
-    const permissionProfile = this.determineGraphChangePermissionProfile({
-      context,
-      target,
-      currentNodes: target.nodes,
-      currentEdges: target.edges,
-      nodeOperations,
-      edgeOperations,
-      nextNodes,
-      nextEdges,
-    });
-
-    const publishTarget =
-      typeof input.publishTarget === 'boolean'
-        ? input.publishTarget
-        : target.kind === 'agent' &&
-            target.id === context.currentAgentDefinitionId
-          ? Boolean(target.publishedVersionId)
-          : false;
-
-    const diffPreview = this.buildDiffPreview({
-      targetLabel: target.label,
-      nodeOperations,
-      edgeOperations,
-      nextNodes,
-      nextEdges,
-      nextViewport,
-      publishTarget,
-    });
-
-    const proposal: SelfEvolutionGraphProposal = {
-      domain: SELF_EVOLUTION_DOMAIN,
-      targetKind:
-        target.kind === 'agent' &&
-        target.id === context.currentAgentDefinitionId
-          ? 'self'
-          : target.kind,
-      targetId: target.id,
-      targetLabel: target.label,
-      baseVersion: target.version,
-      publishTarget,
-      nodeOperations,
-      edgeOperations,
-      ...(nextViewport ? { viewport: nextViewport } : {}),
-      ...(metadataPatch ? { metadataPatch } : {}),
-      summary: String(diffPreview.summary ?? `${target.label} 编排变更提案`),
-      category: permissionProfile.category,
-      riskLevel: permissionProfile.riskLevel,
-      requiresConfirmation: permissionProfile.requiresConfirmation,
-      diffPreview,
-    };
-
-    return {
-      proposal,
-      target: {
-        kind: target.kind,
-        id: target.id,
-        label: target.label,
-        version: target.version,
-        publishedVersionId: target.publishedVersionId,
-      },
-      preview: {
-        nodes: nextNodes,
-        edges: nextEdges,
-        ...(nextViewport ? { viewport: nextViewport } : {}),
-      },
-    };
-  }
-
-  private async applyChange(
-    context: SelfEvolutionSessionContext,
-    input: GenericRecord,
-  ): Promise<SelfEvolutionToolResult> {
-    try {
-      const proposal = this.readProposal(input.proposal);
-      if (!proposal) {
-        throw new Error('proposal 缺失或格式非法');
-      }
-
-      const target = await this.loadGraphTarget(
-        context,
-        proposal.targetKind,
-        proposal.targetId,
-      );
-
-      const nextNodes = await this.normalizeMcpToolNodes(
-        context.tenantId,
-        this.applyNodeOperations(target.nodes, proposal.nodeOperations ?? []),
-      );
-      const nextEdges = this.applyEdgeOperations(
-        target.edges,
-        proposal.edgeOperations ?? [],
-      );
-
-      if (target.kind === 'agent') {
-        const agentOptions: ApplyAgentCanvasSnapshotOptions = {
-          canvasNodes: nextNodes as never,
-          canvasEdges: nextEdges as never,
-          expectedVersion: proposal.baseVersion,
-          publishAfterSave: proposal.publishTarget,
-          ...(proposal.viewport
-            ? { canvasViewport: proposal.viewport as never }
-            : {}),
-        };
-
-        const result = await this.agentDefinitionService.applyCanvasSnapshot(
-          target.id,
-          agentOptions,
-          context.actorUserId,
-        );
-        const detailRecord = this.readRecord(result.detail);
-        const detailVersion = this.readOptionalNumber(detailRecord?.version);
-
-        return {
-          success: true,
-          data: {
-            targetType: 'agent',
-            targetId: target.id,
-            targetLabel: target.label,
-            applied: true,
-            publishedVersionId: result.publishedVersionId,
-            publishedVersionNumber: result.publishedVersionNumber,
-            versionInfo: {
-              ...(detailVersion === undefined
-                ? {}
-                : {
-                    draftVersion: detailVersion,
-                  }),
-              ...(typeof result.publishedVersionNumber === 'number'
-                ? {
-                    publishedVersionNumber: result.publishedVersionNumber,
-                    userVisibleVersionNumber: result.publishedVersionNumber,
-                    note: 'publishedVersionNumber 才是用户可见的发布版号；detail.version 是当前草稿修订号，可能比发布版号更大。',
-                  }
-                : detailVersion === undefined
-                  ? {}
-                  : {
-                      userVisibleVersionNumber: detailVersion,
-                      note: '当前操作未生成新的发布版号；如需对外展示版本，请优先使用 publishedVersionNumber，缺失时再回退到 detail.version。',
-                    }),
-            },
-            restartSuggestion:
-              target.id === context.currentAgentDefinitionId &&
-              this.hasNewPublishedVersion(
-                target.publishedVersionId,
-                result.publishedVersionId,
-              )
-                ? {
-                    available: true,
-                    currentConversationId: context.conversationId,
-                    publishedVersionId: result.publishedVersionId,
-                    publishedVersionNumber: result.publishedVersionNumber,
-                  }
-                : undefined,
-            detail: result.detail,
-          },
-        };
-      }
-
-      const workflowVersion = target.version;
-      const updatedWorkflow =
-        await this.workflowVersionService.updateDefinition(
-          target.id,
-          context.actorUserId,
-          {
-            version: workflowVersion,
-            nodes: nextNodes,
-            edges: nextEdges,
-            ...(proposal.viewport ? { viewport: proposal.viewport } : {}),
-            ...(proposal.metadataPatch ? proposal.metadataPatch : {}),
-          } as never,
-        );
-
-      const published = proposal.publishTarget
-        ? await this.workflowVersionService.publish(
-            target.id,
-            {} as never,
-            context.actorUserId,
-          )
-        : null;
-
-      return {
-        success: true,
-        data: {
-          targetType: 'workflow',
-          targetId: target.id,
-          targetLabel: target.label,
-          applied: true,
-          detail: updatedWorkflow,
-          ...(published ? { publish: published } : {}),
-        },
-      };
-    } catch (error) {
-      return this.toFailureResult(error);
-    }
-  }
-
-  private async createResource(
-    context: SelfEvolutionSessionContext,
-    input: GenericRecord,
-  ): Promise<SelfEvolutionToolResult> {
-    try {
-      const resourceType = this.readString(input.resourceType);
-      const spec = this.readRecord(input.spec);
-
-      if (!resourceType || !spec) {
-        throw new Error('resourceType 与 spec 都是必填项');
-      }
-
-      switch (resourceType) {
-        case 'skill': {
-          this.ensureResourceManagementEnabled(context);
-          const files = this.buildSkillFiles(spec.files, spec.content);
-          const skill = await this.skillService.create(
-            context.tenantId,
-            context.actorUserId,
-            {
-              name: this.readRequiredString(spec.name, 'spec.name'),
-              description: this.readString(spec.description) ?? '',
-              ...(this.readString(spec.content)
-                ? { content: this.readString(spec.content) }
-                : {}),
-            } as never,
-            files,
-          );
-          return { success: true, data: { resourceType, resource: skill } };
-        }
-        case 'workspace': {
-          this.ensureResourceManagementEnabled(context);
-          const organizationId =
-            await this.workspaceService.resolveOrganizationId(context.tenantId);
-          const workspace = await this.workspaceService.createEmpty(
-            context.tenantId,
-            organizationId,
-            context.actorUserId,
-            this.readRequiredString(spec.name, 'spec.name'),
-            this.readString(spec.description),
-          );
-          return { success: true, data: { resourceType, resource: workspace } };
-        }
-        case 'agent': {
-          this.ensureExternalEditingEnabled(context);
-          const agent = await this.agentDefinitionService.create(
-            {
-              name: this.readRequiredString(spec.name, 'spec.name'),
-              ...(this.readString(spec.description)
-                ? { description: this.readString(spec.description) }
-                : {}),
-              ...(this.readString(spec.icon)
-                ? { icon: this.readString(spec.icon) }
-                : {}),
-            } as never,
-            context.actorUserId,
-          );
-          return { success: true, data: { resourceType, resource: agent } };
-        }
-        case 'workflow': {
-          this.ensureExternalEditingEnabled(context);
-          const workflow = await this.workflowVersionService.create(
-            context.tenantId,
-            context.actorUserId,
-            {
-              name: this.readRequiredString(spec.name, 'spec.name'),
-              ...(this.readString(spec.description)
-                ? { description: this.readString(spec.description) }
-                : {}),
-              ...(this.readString(spec.icon)
-                ? { icon: this.readString(spec.icon) }
-                : {}),
-            } as never,
-          );
-          return { success: true, data: { resourceType, resource: workflow } };
-        }
-        case 'mcp': {
-          this.ensureResourceManagementEnabled(context);
-          const mcp = await this.mcpService.importTools(
-            {
-              serverName: this.readRequiredString(
-                spec.serverName,
-                'spec.serverName',
-              ),
-              ...(this.readString(spec.serverDescription)
-                ? { serverDescription: this.readString(spec.serverDescription) }
-                : {}),
-              connection: this.readRequiredRecord(
-                spec.connection,
-                'spec.connection',
-              ),
-              toolNames: this.readRequiredStringArray(
-                spec.toolNames,
-                'spec.toolNames',
-              ),
-              conflictStrategy:
-                this.readString(spec.conflictStrategy) === 'overwrite'
-                  ? 'overwrite'
-                  : 'skip',
-            } as never,
-            context.actorUserId,
-            context.tenantId,
-          );
-          return { success: true, data: { resourceType, resource: mcp } };
-        }
-        case 'model': {
-          this.ensureResourceManagementEnabled(context);
-          const providerSpec = this.readRecord(spec.provider);
-          let providerId = this.readString(spec.providerId);
-          if (!providerId && providerSpec) {
-            const provider = await this.llmProviderService.create(
-              {
-                name: this.readRequiredString(
-                  providerSpec.name,
-                  'spec.provider.name',
-                ),
-                baseUrl: this.readRequiredString(
-                  providerSpec.baseUrl,
-                  'spec.provider.baseUrl',
-                ),
-                ...(this.readString(providerSpec.slug)
-                  ? { slug: this.readString(providerSpec.slug) }
-                  : {}),
-                ...(this.readString(providerSpec.apiProtocol)
-                  ? { apiProtocol: this.readString(providerSpec.apiProtocol) }
-                  : {}),
-                ...(this.readString(providerSpec.apiKey)
-                  ? { apiKey: this.readString(providerSpec.apiKey) }
-                  : {}),
-                ...(this.readString(providerSpec.iconUrl)
-                  ? { iconUrl: this.readString(providerSpec.iconUrl) }
-                  : {}),
-              } as never,
-              context.tenantId,
-              context.actorUserId,
-            );
-            providerId = provider.id;
-          }
-
-          if (!providerId) {
-            throw new Error('创建模型时必须提供 providerId 或 provider 配置');
-          }
-
-          const model = await this.llmService.create(
-            {
-              name: this.readRequiredString(spec.name, 'spec.name'),
-              providerId,
-              modelId: this.readRequiredString(spec.modelId, 'spec.modelId'),
-              modelType:
-                this.readString(spec.modelType) === 'embedding'
-                  ? 'embedding'
-                  : 'chat',
-              ...(this.readRecord(spec.parameters)
-                ? { parameters: this.readRecord(spec.parameters) }
-                : {}),
-              ...(this.readRecord(spec.capabilities)
-                ? { capabilities: this.readRecord(spec.capabilities) }
-                : {}),
-              ...(this.readOptionalNumber(spec.contextWindow)
-                ? { contextWindow: this.readOptionalNumber(spec.contextWindow) }
-                : {}),
-              ...(this.readOptionalNumber(spec.maxOutputTokens)
-                ? {
-                    maxOutputTokens: this.readOptionalNumber(
-                      spec.maxOutputTokens,
-                    ),
-                  }
-                : {}),
-              ...(this.readOptionalNumber(spec.timeoutMs)
-                ? { timeoutMs: this.readOptionalNumber(spec.timeoutMs) }
-                : {}),
-            } as never,
-            context.tenantId,
-            context.actorUserId,
-          );
-
-          return { success: true, data: { resourceType, resource: model } };
-        }
-        default:
-          throw new Error(`不支持的 resourceType: ${resourceType}`);
-      }
-    } catch (error) {
-      return this.toFailureResult(error);
-    }
-  }
-
-  private async buildSessionContext(
+  async buildSessionContext(
     session: AgentSession,
   ): Promise<SelfEvolutionSessionContext> {
     const conversationId =
@@ -1234,7 +520,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private async loadGraphTarget(
+  async loadGraphTarget(
     context: SelfEvolutionSessionContext,
     targetKind: SelfEvolutionTargetKind,
     targetId?: string,
@@ -1299,637 +585,15 @@ export class SelfEvolutionService {
     };
   }
 
-  private determineGraphChangePermissionProfile(params: {
-    context: SelfEvolutionSessionContext;
-    target: {
-      kind: 'agent' | 'workflow';
-      id: string;
-    };
-    currentNodes: GenericRecord[];
-    currentEdges: GenericRecord[];
-    nodeOperations: Array<{
-      op: string;
-      nodeId?: string;
-      node?: GenericRecord;
-      patch?: GenericRecord;
-    }>;
-    edgeOperations: Array<{
-      op: string;
-      edgeId?: string;
-      edge?: GenericRecord;
-      patch?: GenericRecord;
-    }>;
-    nextNodes: GenericRecord[];
-    nextEdges: GenericRecord[];
-  }): {
-    category: SelfEvolutionCategory;
-    riskLevel: SelfEvolutionRiskLevel;
-    requiresConfirmation: boolean;
-  } {
-    if (params.target.kind === 'workflow') {
-      this.ensureExternalEditingEnabled(params.context);
-      return {
-        category: 'workflow_edit',
-        riskLevel: 'high',
-        requiresConfirmation: true,
-      };
-    }
 
-    const isSelfAgent =
-      params.target.id === params.context.currentAgentDefinitionId;
 
-    if (!isSelfAgent) {
-      this.ensureExternalEditingEnabled(params.context);
-      return {
-        category: 'agent_external_edit',
-        riskLevel: 'high',
-        requiresConfirmation: true,
-      };
-    }
 
-    const touchedNodeTypes = new Set<string>();
-    for (const operation of params.nodeOperations) {
-      const nodeType =
-        this.readNodeType(operation.node) ??
-        this.readNodeType(operation.patch) ??
-        this.readNodeType(
-          this.findNodeById(params.currentNodes, operation.nodeId) ??
-            this.findNodeById(params.nextNodes, operation.nodeId),
-        );
-      if (nodeType) {
-        touchedNodeTypes.add(nodeType);
-      }
-    }
 
-    const touchesWorkspace = touchedNodeTypes.has('workspace');
-    const touchesSandbox = touchedNodeTypes.has('sandbox');
-    const touchesWorkspaceBinding = params.edgeOperations.some((operation) => {
-      const edge =
-        operation.edge ??
-        operation.patch ??
-        this.findEdgeById(params.currentEdges, operation.edgeId) ??
-        this.findEdgeById(params.nextEdges, operation.edgeId);
-      if (!edge || typeof edge !== 'object') {
-        return false;
-      }
-      return (
-        this.readString((edge as GenericRecord).sourceHandle) ===
-          'volume-out' ||
-        this.readString((edge as GenericRecord).targetHandle) === 'volume-in'
-      );
-    });
 
-    if (touchesSandbox) {
-      this.ensureSandboxManagementEnabled(params.context);
-      return {
-        category: 'sandbox_spec_adjustment',
-        riskLevel: 'high',
-        requiresConfirmation: true,
-      };
-    }
 
-    if (touchesWorkspace || touchesWorkspaceBinding) {
-      this.ensureSandboxManagementEnabled(params.context);
-      return {
-        category: 'workspace_sandbox_binding_adjustment',
-        riskLevel: 'medium',
-        requiresConfirmation: true,
-      };
-    }
 
-    return {
-      category: 'agent_self_canvas_edit',
-      riskLevel: 'low',
-      requiresConfirmation: false,
-    };
-  }
 
-  private buildCreateResourcePermissionProfile(
-    context: SelfEvolutionSessionContext,
-    input: GenericRecord,
-  ): {
-    category: SelfEvolutionCategory;
-    request: SelfEvolutionPermissionRequest;
-  } {
-    const resourceType = this.readRequiredString(
-      input.resourceType,
-      'resourceType',
-    );
-    const spec = this.readRequiredRecord(input.spec, 'spec');
-    const sourceLabel = context.currentAgentName;
-
-    switch (resourceType) {
-      case 'skill':
-        this.ensureResourceManagementEnabled(context);
-        return {
-          category: 'skill_resource_management',
-          request: {
-            description: `主人授权后，Agent 将创建新的 Skill 资源。`,
-            domain: SELF_EVOLUTION_DOMAIN,
-            category: 'skill_resource_management',
-            riskLevel: 'high',
-            sourceLabel,
-            targetType: 'skill',
-            targetLabel: this.readRequiredString(spec.name, 'spec.name'),
-            approveEffect: '创建新的 Skill 资源，并立即返回新资源 ID。',
-            denyEffect: '不会创建 Skill，也不会修改现有资源。',
-            diffPreview: {
-              resourceType,
-              name: this.readString(spec.name),
-              fileNames: Object.keys(this.readRecord(spec.files) ?? {}),
-            },
-            rememberable: true,
-            resourcePaths: ['resource:skill'],
-          },
-        };
-      case 'mcp':
-        this.ensureResourceManagementEnabled(context);
-        return {
-          category: 'mcp_resource_management',
-          request: {
-            description: `主人授权后，Agent 将导入新的 MCP 服务器及工具定义。`,
-            domain: SELF_EVOLUTION_DOMAIN,
-            category: 'mcp_resource_management',
-            riskLevel: 'high',
-            sourceLabel,
-            targetType: 'mcp',
-            targetLabel: this.readRequiredString(
-              spec.serverName,
-              'spec.serverName',
-            ),
-            approveEffect: '创建 MCP 配置并导入选定工具。',
-            denyEffect: '不会连接或导入新的 MCP 资源。',
-            diffPreview: {
-              resourceType,
-              toolNames: this.readStringArray(spec.toolNames),
-              connection: this.readRecord(spec.connection),
-            },
-            rememberable: true,
-            resourcePaths: ['resource:mcp'],
-          },
-        };
-      case 'model':
-        this.ensureResourceManagementEnabled(context);
-        return {
-          category: 'model_resource_management',
-          request: {
-            description: `主人授权后，Agent 将创建新的模型配置资源。`,
-            domain: SELF_EVOLUTION_DOMAIN,
-            category: 'model_resource_management',
-            riskLevel: 'high',
-            sourceLabel,
-            targetType: 'model',
-            targetLabel:
-              this.readString(spec.name) ??
-              this.readString(this.readRecord(spec.provider)?.name) ??
-              '新模型',
-            approveEffect:
-              '创建 Provider（如有）与 Model Config，并返回新模型 ID。',
-            denyEffect: '不会创建新的模型相关资源。',
-            diffPreview: {
-              resourceType,
-              providerId: this.readString(spec.providerId),
-              provider: this.readRecord(spec.provider),
-              modelId: this.readString(spec.modelId),
-            },
-            rememberable: true,
-            resourcePaths: ['resource:model'],
-          },
-        };
-      case 'workspace':
-        this.ensureResourceManagementEnabled(context);
-        return {
-          category: 'workspace_resource_management',
-          request: {
-            description: `主人授权后，Agent 将创建新的 Workspace 资源。`,
-            domain: SELF_EVOLUTION_DOMAIN,
-            category: 'workspace_resource_management',
-            riskLevel: 'high',
-            sourceLabel,
-            targetType: 'workspace',
-            targetLabel: this.readRequiredString(spec.name, 'spec.name'),
-            approveEffect: '创建新的空工作区快照。',
-            denyEffect: '不会创建新的工作区资源。',
-            diffPreview: {
-              resourceType,
-              name: this.readString(spec.name),
-              description: this.readString(spec.description),
-            },
-            rememberable: true,
-            resourcePaths: ['resource:workspace'],
-          },
-        };
-      case 'agent':
-        this.ensureExternalEditingEnabled(context);
-        return {
-          category: 'agent_external_edit',
-          request: {
-            description: `主人授权后，Agent 将创建新的外部 Agent 编排。`,
-            domain: SELF_EVOLUTION_DOMAIN,
-            category: 'agent_external_edit',
-            riskLevel: 'high',
-            sourceLabel,
-            targetType: 'agent',
-            targetLabel: this.readRequiredString(spec.name, 'spec.name'),
-            approveEffect: '创建新的 Agent 定义。',
-            denyEffect: '不会创建新的 Agent。',
-            diffPreview: {
-              resourceType,
-              name: this.readString(spec.name),
-              description: this.readString(spec.description),
-            },
-            rememberable: true,
-            resourcePaths: ['resource:agent'],
-          },
-        };
-      case 'workflow':
-        this.ensureExternalEditingEnabled(context);
-        return {
-          category: 'workflow_edit',
-          request: {
-            description: `主人授权后，Agent 将创建新的外部 Workflow 编排。`,
-            domain: SELF_EVOLUTION_DOMAIN,
-            category: 'workflow_edit',
-            riskLevel: 'high',
-            sourceLabel,
-            targetType: 'workflow',
-            targetLabel: this.readRequiredString(spec.name, 'spec.name'),
-            approveEffect: '创建新的 Workflow 定义。',
-            denyEffect: '不会创建新的 Workflow。',
-            diffPreview: {
-              resourceType,
-              name: this.readString(spec.name),
-              description: this.readString(spec.description),
-            },
-            rememberable: true,
-            resourcePaths: ['resource:workflow'],
-          },
-        };
-      default:
-        throw new Error(`不支持的 resourceType: ${resourceType}`);
-    }
-  }
-
-  private buildPermissionRequest(
-    context: SelfEvolutionSessionContext,
-    proposal: SelfEvolutionGraphProposal,
-  ): SelfEvolutionPermissionRequest {
-    return {
-      description: `主人授权后，Agent 将应用编排变更：${proposal.summary}`,
-      domain: SELF_EVOLUTION_DOMAIN,
-      category: proposal.category,
-      riskLevel: proposal.riskLevel,
-      sourceLabel: context.currentAgentName,
-      targetType: proposal.targetKind === 'workflow' ? 'workflow' : 'agent',
-      targetLabel: proposal.targetLabel,
-      approveEffect: proposal.publishTarget
-        ? '应用变更并立即让目标编排切换到最新发布版本。'
-        : '应用变更到目标编排。',
-      denyEffect: '不会应用任何编排变更。',
-      diffPreview: proposal.diffPreview,
-      rememberable: true,
-      resourcePaths: [
-        `${proposal.targetKind === 'workflow' ? 'workflow' : 'agent'}:${proposal.targetId}`,
-      ],
-    };
-  }
-
-  private buildDiffPreview(params: {
-    targetLabel: string;
-    nodeOperations: Array<{
-      op: string;
-      nodeId?: string;
-      node?: GenericRecord;
-      patch?: GenericRecord;
-    }>;
-    edgeOperations: Array<{
-      op: string;
-      edgeId?: string;
-      edge?: GenericRecord;
-      patch?: GenericRecord;
-    }>;
-    nextNodes: GenericRecord[];
-    nextEdges: GenericRecord[];
-    nextViewport?: GenericRecord | null;
-    publishTarget: boolean;
-  }): Record<string, unknown> {
-    const addedNodes = params.nodeOperations
-      .filter((operation) => operation.op === 'add')
-      .map((operation) => ({
-        id: this.readString(operation.node?.id) ?? 'unknown-node',
-        nodeType: this.readNodeType(operation.node) ?? 'unknown',
-      }));
-    const updatedNodes = params.nodeOperations
-      .filter((operation) => operation.op === 'update')
-      .map((operation) => ({
-        id: operation.nodeId ?? 'unknown-node',
-      }));
-    const removedNodes = params.nodeOperations
-      .filter((operation) => operation.op === 'remove')
-      .map((operation) => ({
-        id: operation.nodeId ?? 'unknown-node',
-      }));
-
-    const addedEdges = params.edgeOperations
-      .filter((operation) => operation.op === 'add')
-      .map((operation) => ({
-        id: this.readString(operation.edge?.id) ?? 'unknown-edge',
-      }));
-    const updatedEdges = params.edgeOperations
-      .filter((operation) => operation.op === 'update')
-      .map((operation) => ({
-        id: operation.edgeId ?? 'unknown-edge',
-      }));
-    const removedEdges = params.edgeOperations
-      .filter((operation) => operation.op === 'remove')
-      .map((operation) => ({
-        id: operation.edgeId ?? 'unknown-edge',
-      }));
-
-    return {
-      summary: [
-        `${params.targetLabel}：节点 +${addedNodes.length}/~${updatedNodes.length}/-${removedNodes.length}`,
-        `连线 +${addedEdges.length}/~${updatedEdges.length}/-${removedEdges.length}`,
-        params.publishTarget ? '完成后立即发布' : '仅更新目标编排',
-      ].join('，'),
-      addedNodes,
-      updatedNodes,
-      removedNodes,
-      addedEdges,
-      updatedEdges,
-      removedEdges,
-      nextNodeCount: params.nextNodes.length,
-      nextEdgeCount: params.nextEdges.length,
-      ...(params.nextViewport ? { viewport: params.nextViewport } : {}),
-    };
-  }
-
-  private applyNodeOperations(
-    nodes: GenericRecord[],
-    operations: Array<{
-      op: string;
-      nodeId?: string;
-      node?: GenericRecord;
-      patch?: GenericRecord;
-    }>,
-  ): GenericRecord[] {
-    let nextNodes = this.cloneJsonArray(nodes);
-
-    for (const operation of operations) {
-      switch (operation.op) {
-        case 'add': {
-          const node = operation.node;
-          const nodeId = this.readString(node?.id);
-          if (!node || !nodeId) {
-            throw new Error('新增节点时必须提供 node 且包含合法 id');
-          }
-          if (nextNodes.some((item) => this.readString(item.id) === nodeId)) {
-            throw new Error(`节点 ${nodeId} 已存在，不能重复新增`);
-          }
-          nextNodes.push(this.cloneJsonRecord(node));
-          break;
-        }
-        case 'update': {
-          const nodeId = operation.nodeId;
-          if (!nodeId || !operation.patch) {
-            throw new Error('更新节点时必须提供 nodeId 与 patch');
-          }
-          const index = nextNodes.findIndex(
-            (item) => this.readString(item.id) === nodeId,
-          );
-          if (index < 0) {
-            throw new Error(`待更新节点不存在: ${nodeId}`);
-          }
-          nextNodes[index] = this.mergeRecords(
-            nextNodes[index],
-            operation.patch,
-          );
-          break;
-        }
-        case 'remove': {
-          const nodeId = operation.nodeId;
-          if (!nodeId) {
-            throw new Error('删除节点时必须提供 nodeId');
-          }
-          nextNodes = nextNodes.filter(
-            (item) => this.readString(item.id) !== nodeId,
-          );
-          break;
-        }
-        default:
-          throw new Error(`不支持的节点操作: ${operation.op}`);
-      }
-    }
-
-    return nextNodes;
-  }
-
-  private applyEdgeOperations(
-    edges: GenericRecord[],
-    operations: Array<{
-      op: string;
-      edgeId?: string;
-      edge?: GenericRecord;
-      patch?: GenericRecord;
-    }>,
-  ): GenericRecord[] {
-    let nextEdges = this.cloneJsonArray(edges);
-
-    for (const operation of operations) {
-      switch (operation.op) {
-        case 'add': {
-          const edge = operation.edge;
-          const edgeId = this.readString(edge?.id);
-          if (!edge || !edgeId) {
-            throw new Error('新增连线时必须提供 edge 且包含合法 id');
-          }
-          if (nextEdges.some((item) => this.readString(item.id) === edgeId)) {
-            throw new Error(`连线 ${edgeId} 已存在，不能重复新增`);
-          }
-          nextEdges.push(this.cloneJsonRecord(edge));
-          break;
-        }
-        case 'update': {
-          const edgeId = operation.edgeId;
-          if (!edgeId || !operation.patch) {
-            throw new Error('更新连线时必须提供 edgeId 与 patch');
-          }
-          const index = nextEdges.findIndex(
-            (item) => this.readString(item.id) === edgeId,
-          );
-          if (index < 0) {
-            throw new Error(`待更新连线不存在: ${edgeId}`);
-          }
-          nextEdges[index] = this.mergeRecords(
-            nextEdges[index],
-            operation.patch,
-          );
-          break;
-        }
-        case 'remove': {
-          const edgeId = operation.edgeId;
-          if (!edgeId) {
-            throw new Error('删除连线时必须提供 edgeId');
-          }
-          nextEdges = nextEdges.filter(
-            (item) => this.readString(item.id) !== edgeId,
-          );
-          break;
-        }
-        default:
-          throw new Error(`不支持的连线操作: ${operation.op}`);
-      }
-    }
-
-    return nextEdges;
-  }
-
-  private async normalizeMcpToolNodes(
-    tenantId: string,
-    nodes: GenericRecord[],
-  ): Promise<GenericRecord[]> {
-    const hasMcpToolNode = nodes.some((node) => {
-      const data = this.readRecord(node.data);
-      const nodeType = this.readString(data?.nodeType);
-      return nodeType === 'mcp-tool' || nodeType === 'mcp';
-    });
-    if (!hasMcpToolNode) {
-      return nodes;
-    }
-
-    const activeToolsByConfigId = new Map<string, GenericRecord[]>();
-    const tools = await this.mcpService.listTools(tenantId, 'mcp');
-    for (const tool of tools) {
-      if (!tool.isActive || typeof tool.mcpServerConfigId !== 'string') {
-        continue;
-      }
-
-      const normalizedTool = {
-        id: tool.id,
-        name: tool.name,
-        title: tool.title ?? null,
-        description: tool.description ?? null,
-        inputSchema: tool.inputSchema ?? null,
-        outputSchema: tool.outputSchema ?? null,
-        portMappingMetadata: tool.portMappingMetadata ?? null,
-        source: tool.source,
-        mcpServerConfigId: tool.mcpServerConfigId,
-        isActive: tool.isActive,
-        annotations: tool.annotations ?? null,
-      } satisfies GenericRecord;
-
-      const bucket = activeToolsByConfigId.get(tool.mcpServerConfigId) ?? [];
-      bucket.push(normalizedTool);
-      activeToolsByConfigId.set(tool.mcpServerConfigId, bucket);
-    }
-
-    return nodes.map((node) =>
-      this.normalizeMcpToolNode(node, activeToolsByConfigId),
-    );
-  }
-
-  private normalizeMcpToolNode(
-    node: GenericRecord,
-    activeToolsByConfigId: Map<string, GenericRecord[]>,
-  ): GenericRecord {
-    const data = this.readRecord(node.data);
-    if (!data) {
-      return node;
-    }
-
-    const nodeType = this.readString(data.nodeType);
-    if (nodeType !== 'mcp-tool' && nodeType !== 'mcp') {
-      return node;
-    }
-
-    const config = this.readRecord(data.config) ?? {};
-    const merged = { ...config, ...data };
-    const mcpServerConfigId = resolveMcpServerConfigId(merged);
-    if (!mcpServerConfigId) {
-      return node;
-    }
-
-    const activeTools = activeToolsByConfigId.get(mcpServerConfigId) ?? [];
-    const availableToolIds = new Set(
-      activeTools
-        .map((tool) => this.readString(tool.id))
-        .filter((value): value is string => Boolean(value)),
-    );
-    const configuredToolIds = [
-      ...this.readStringArray(config.enabledToolIds),
-      ...this.readStringArray(config.enabled_tool_ids),
-      ...this.readStringArray(data.enabledToolIds),
-      ...this.readStringArray(data.enabled_tool_ids),
-    ].filter((toolId, index, array) => array.indexOf(toolId) === index);
-    const normalizedEnabledToolIds = configuredToolIds.filter((toolId) =>
-      availableToolIds.has(toolId),
-    );
-    const enabledToolIds =
-      normalizedEnabledToolIds.length > 0
-        ? normalizedEnabledToolIds
-        : [...availableToolIds];
-    const mcpServerName =
-      this.readString(config.mcpServerName) ??
-      this.readString(data.mcpServerName) ??
-      this.readString(data.label);
-    const {
-      mcpServerId: _configServerId,
-      mcp_server_id: _configServerIdSnake,
-      mcpServerConfigId: _existingConfigId,
-      mcp_server_config_id: _existingConfigIdSnake,
-      enabled_tool_ids: _configEnabledToolIdsSnake,
-      ...configRest
-    } = config;
-    const {
-      mcpServerId: _dataServerId,
-      mcp_server_id: _dataServerIdSnake,
-      mcpServerConfigId: _existingDataConfigId,
-      mcp_server_config_id: _existingDataConfigIdSnake,
-      enabledToolIds: _existingDataEnabledToolIds,
-      enabled_tool_ids: _existingDataEnabledToolIdsSnake,
-      mcpServerName: _existingDataServerName,
-      ...dataRest
-    } = data;
-
-    return {
-      ...node,
-      type: 'tool',
-      data: {
-        ...dataRest,
-        nodeType: 'mcp-tool',
-        category: 'tool',
-        ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
-        ...(mcpServerName ? { mcpServerName } : {}),
-        config: {
-          ...configRest,
-          ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
-          ...(mcpServerName ? { mcpServerName } : {}),
-          enabledToolIds,
-          tools: activeTools.map((tool) => this.cloneJsonRecord(tool)),
-        },
-        inputPorts: Array.isArray(data.inputPorts)
-          ? this.cloneJsonValue(data.inputPorts)
-          : [],
-        outputPorts:
-          Array.isArray(data.outputPorts) && data.outputPorts.length > 0
-            ? this.cloneJsonValue(data.outputPorts)
-            : [
-                {
-                  id: 'tool-out',
-                  label: '工具',
-                  direction: 'output',
-                  dataType: 'tool',
-                  required: false,
-                  multiple: true,
-                  maxConnections: null,
-                  schema: { kind: 'tool', title: '工具' },
-                },
-              ],
-      },
-    };
-  }
-
-  private toFailureResult(error: unknown): SelfEvolutionToolResult {
+  toFailureResult(error: unknown): SelfEvolutionToolResult {
     if (error instanceof DomainException) {
       return {
         success: false,
@@ -1954,7 +618,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private toDeniedOutcome(
+  toDeniedOutcome(
     permissionRequest: ToolPermissionRequest,
     message: string,
   ): SelfEvolutionRemoteToolOutcome {
@@ -1975,7 +639,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private readTargetKind(value: unknown): SelfEvolutionTargetKind {
+  readTargetKind(value: unknown): SelfEvolutionTargetKind {
     switch (value) {
       case 'self':
       case 'agent':
@@ -1986,7 +650,7 @@ export class SelfEvolutionService {
     }
   }
 
-  private readProposal(value: unknown): SelfEvolutionGraphProposal | null {
+  readProposal(value: unknown): SelfEvolutionGraphProposal | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
     }
@@ -2050,7 +714,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private readNodeOperations(
+  readNodeOperations(
     value: unknown,
   ): import('./self-evolution.types').GraphNodeOperation[] {
     if (!Array.isArray(value)) {
@@ -2075,7 +739,7 @@ export class SelfEvolutionService {
     });
   }
 
-  private readEdgeOperations(
+  readEdgeOperations(
     value: unknown,
   ): import('./self-evolution.types').GraphEdgeOperation[] {
     if (!Array.isArray(value)) {
@@ -2100,7 +764,7 @@ export class SelfEvolutionService {
     });
   }
 
-  private readGraphOperation(
+  readGraphOperation(
     value: unknown,
     fieldName: string,
   ): 'add' | 'update' | 'remove' {
@@ -2114,7 +778,7 @@ export class SelfEvolutionService {
     }
   }
 
-  private buildSkillFiles(
+  buildSkillFiles(
     filesValue: unknown,
     contentValue: unknown,
   ): SkillUploadFile[] | undefined {
@@ -2145,7 +809,7 @@ export class SelfEvolutionService {
     }));
   }
 
-  private mergeRecords(
+  mergeRecords(
     base: GenericRecord,
     patch: GenericRecord,
   ): GenericRecord {
@@ -2173,7 +837,7 @@ export class SelfEvolutionService {
     return result;
   }
 
-  private cloneJsonArray(value: unknown): GenericRecord[] {
+  cloneJsonArray(value: unknown): GenericRecord[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -2181,7 +845,7 @@ export class SelfEvolutionService {
     return value.map((entry) => this.cloneJsonRecord(entry));
   }
 
-  private cloneJsonRecord(value: unknown): GenericRecord {
+  cloneJsonRecord(value: unknown): GenericRecord {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return {};
     }
@@ -2189,41 +853,35 @@ export class SelfEvolutionService {
     return JSON.parse(JSON.stringify(value)) as GenericRecord;
   }
 
-  private cloneJsonValue<T>(value: T): T {
+  cloneJsonValue<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
   }
 
-  private ensureResourceManagementEnabled(
+  ensureResourceManagementEnabled(
     context: SelfEvolutionSessionContext,
   ): void {
-    if (!context.selfEvolutionPolicy.resourceManagement) {
-      throw new Error('当前 Agent 未启用资源管理子能力');
-    }
+    this.permissionPolicy.requireResourceManagement(context);
   }
 
-  private ensureExternalEditingEnabled(
+  ensureExternalEditingEnabled(
     context: SelfEvolutionSessionContext,
   ): void {
-    if (!context.selfEvolutionPolicy.externalEditing) {
-      throw new Error('当前 Agent 未启用外部编辑子能力');
-    }
+    this.permissionPolicy.requireExternalEditing(context);
   }
 
-  private ensureSandboxManagementEnabled(
+  ensureSandboxManagementEnabled(
     context: SelfEvolutionSessionContext,
   ): void {
-    if (!context.selfEvolutionPolicy.sandboxManagement) {
-      throw new Error('当前 Agent 未启用沙箱管理子能力');
-    }
+    this.permissionPolicy.requireSandboxManagement(context);
   }
 
-  private readString(value: unknown): string | undefined {
+  readString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim().length > 0
       ? value.trim()
       : undefined;
   }
 
-  private readStringArray(value: unknown): string[] {
+  readStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -2234,7 +892,7 @@ export class SelfEvolutionService {
     );
   }
 
-  private readPositiveInt(
+  readPositiveInt(
     value: unknown,
     fallback: number,
     max: number,
@@ -2251,13 +909,13 @@ export class SelfEvolutionService {
     return Math.min(normalized, max);
   }
 
-  private readOptionalNumber(value: unknown): number | undefined {
+  readOptionalNumber(value: unknown): number | undefined {
     return typeof value === 'number' && Number.isFinite(value)
       ? value
       : undefined;
   }
 
-  private hasNewPublishedVersion(
+  hasNewPublishedVersion(
     previousPublishedVersionId: string | null | undefined,
     nextPublishedVersionId: string | null | undefined,
   ): nextPublishedVersionId is string {
@@ -2268,7 +926,7 @@ export class SelfEvolutionService {
     );
   }
 
-  private buildRestartConversationMetadata(
+  buildRestartConversationMetadata(
     baseMetadata: Record<string, unknown>,
     params: {
       targetPublishedVersionId: string;
@@ -2294,7 +952,7 @@ export class SelfEvolutionService {
     };
   }
 
-  private readRecord(value: unknown): GenericRecord | null {
+  readRecord(value: unknown): GenericRecord | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
     }
@@ -2302,7 +960,7 @@ export class SelfEvolutionService {
     return value as GenericRecord;
   }
 
-  private readRequiredString(value: unknown, fieldName: string): string {
+  readRequiredString(value: unknown, fieldName: string): string {
     const normalized = this.readString(value);
     if (!normalized) {
       throw new Error(`${fieldName} 是必填字符串`);
@@ -2311,7 +969,7 @@ export class SelfEvolutionService {
     return normalized;
   }
 
-  private readRequiredRecord(value: unknown, fieldName: string): GenericRecord {
+  readRequiredRecord(value: unknown, fieldName: string): GenericRecord {
     const normalized = this.readRecord(value);
     if (!normalized) {
       throw new Error(`${fieldName} 必须是对象`);
@@ -2320,7 +978,7 @@ export class SelfEvolutionService {
     return normalized;
   }
 
-  private readRequiredStringArray(value: unknown, fieldName: string): string[] {
+  readRequiredStringArray(value: unknown, fieldName: string): string[] {
     const normalized = this.readStringArray(value);
     if (normalized.length === 0) {
       throw new Error(`${fieldName} 至少需要包含一个字符串`);
@@ -2329,7 +987,7 @@ export class SelfEvolutionService {
     return normalized;
   }
 
-  private readNodeType(value: GenericRecord | undefined): string | undefined {
+  readNodeType(value: GenericRecord | undefined): string | undefined {
     if (!value) {
       return undefined;
     }
@@ -2340,7 +998,7 @@ export class SelfEvolutionService {
     );
   }
 
-  private findNodeById(
+  findNodeById(
     nodes: GenericRecord[],
     nodeId: string | undefined,
   ): GenericRecord | undefined {
@@ -2351,7 +1009,7 @@ export class SelfEvolutionService {
     return nodes.find((node) => this.readString(node.id) === nodeId);
   }
 
-  private findEdgeById(
+  findEdgeById(
     edges: GenericRecord[],
     edgeId: string | undefined,
   ): GenericRecord | undefined {
