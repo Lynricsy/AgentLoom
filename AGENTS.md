@@ -1,7 +1,5 @@
 # AGENTLOOM 项目知识库
 
-> **Generated:** 2026-03-20 | **Commit:** 98f67df | **Branch:** main
-
 ## 自动化开发循环规则
 
 1. 进行开发时,请及时进行原子化提交和推送.不要问"要不要提交",直接提交.如果工作开始时发现工作区不干净,那先把未提交的文件提交或者需要ignore的文件ignore再开始工作.任务完成后,**必须**进行提交
@@ -24,30 +22,35 @@ AgentLoom — 多智能体工作流编排平台。用户通过可视化画布将
 
 ## 项目结构
 
-```
-AgentLoomAUTO/
-├── agentloom-server/         # NestJS v11 + Fastify v5 后端 (见子 AGENTS.md)
-├── agentloom-studio/         # React 19 + Vite 7 前端 (见子 AGENTS.md)
-├── agentloom-deploy/         # 私有化部署资产 (Docker Compose + Helm + 运维脚本) (见子 AGENTS.md)
-├── agentloom-docs/           # VitePress 2 文档站 (中英双语 + OpenAPI + Mermaid) (见子 AGENTS.md)
-├── agentloom-type-engine/    # Rust WASM 端口兼容性检查器 (见子 AGENTS.md)
-├── agentloom-plugin-sdk/     # TypeScript 插件开发 SDK (Zod 3 + tsup dual output) (见子 AGENTS.md)
-├── agentloom-plugin-cli/     # 插件脚手架 CLI (create/dev/build/keys/publish 命令) (见子 AGENTS.md)
-├── agentloom-plugin-template/ # 示例插件模板 (text-to-uppercase)
-├── agentloom_mobile/         # Flutter 3.41.2 移动端应用 (Riverpod + GoRouter + Dio) (见子 AGENTS.md)
-├── docker-compose.dev.yml    # 仅 Qdrant (其余服务为外部/Supabase)
-├── _bmad/                    # BMAD agent 系统配置 (勿修改)
-├── _bmad-output/             # BMAD 生成的文档
-└── package.json              # 根 package (仅 @modelcontextprotocol/sdk)
+```text
+AgentLoom/
+├── agentloom-server/          # NestJS 11 + Fastify 5 后端（workspace）
+├── agentloom-studio/          # React 19 + Vite 7 Web Studio（workspace）
+├── agentloom-contracts/       # Zod 4 跨端 wire 契约（workspace）
+├── agentloom-api-client/      # OpenAPI 生成的 REST interface（workspace）
+├── agentloom-plugin-sdk/      # TypeScript 插件 SDK，Zod 3（workspace）
+├── agentloom-plugin-cli/      # 插件 CLI（workspace）
+├── agentloom-plugin-template/ # 示例插件模板（workspace）
+├── agentloom-docs/            # VitePress 2 文档站（独立 lockfile）
+├── agentloom-user-docs/       # 用户文档站（独立 lockfile）
+├── agentloom-deploy/          # Docker Compose、Helm 与运维脚本
+├── agentloom-type-engine/     # Rust/WASM 端口兼容性引擎
+├── agentloom-firecracker-runtime/ # Go runtime manager 与 guestd
+├── agentloom_mobile/          # Flutter 移动端
+├── pnpm-workspace.yaml        # workspace、catalog、overrides、allowBuilds
+├── pnpm-lock.yaml             # workspace 统一 lockfile
+└── package.json               # workspace 编排脚本
 ```
 
-**非标准 monorepo**: 无 pnpm-workspace.yaml，各包各自独立管理依赖和 lockfile。
+根 `pnpm-workspace.yaml` 管理 `agentloom-server`、`agentloom-studio`、`agentloom-contracts`、`agentloom-api-client`、`agentloom-plugin-sdk`、`agentloom-plugin-cli`、`agentloom-plugin-template`。catalog 固定 `typescript ~5.9.3`、`vitest ^4.0.18`、`@types/node ^22.10.7`、`zod ^4.3.6`；`agentloom-plugin-sdk` 为插件生态兼容保留 Zod 3.x，不引用 zod catalog。根 overrides 保证 `@radix-ui/react-dialog`、`fastify 5.7.4`、`@qdrant/js-client-rest 1.17.0` 单实例。`agentloom-docs` 与 `agentloom-user-docs` 不属于 workspace，各自保留 lockfile。
 
 ## 在哪找什么
 
 | 任务                               | 位置                                                                                                                                               | 备注                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 添加后端 API 端点                  | `agentloom-server/src/modules/`                                                                                                                    | NestJS 模块，每模块有 controller/service/dto                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 修改跨端 wire 契约                | `agentloom-contracts/src/`                                                                                                                         | Zod schema、类型与 parser 的唯一来源；共享 fixture 位于 `agentloom-contracts/fixtures/` |
+| 修改 Studio REST 载荷类型          | `agentloom-api-client/src/models.ts`                                                                                                               | OpenAPI 生成产物，禁止手改；通过根命令 `pnpm contracts:regen` 再生成 |
 | 添加数据库表                       | `agentloom-server/src/database/schema/`                                                                                                            | Drizzle ORM，需 `pnpm db:generate`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 修改全局中间件/守卫                | `agentloom-server/src/common/`                                                                                                                     | guards/interceptors/middleware/filters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 管理 ACP stdio server 与协议适配层 | `agentloom-server/src/modules/acp-gateway/` + `agentloom-server/src/acp-stdio.ts`                                                                  | initialize/authenticate、`session/new` / `session/prompt` / `session/cancel` / `session/load` / `session/update`、真实 `fs/read_text_file` / `fs/write_text_file` client-proxy + server-sandbox surface、真实 `terminal/create` / `terminal/output` / `terminal/wait_for_exit` / `terminal/kill` / `terminal/release` server-sandbox surface、canonical `readTextFile` / `writeTextFile` 与仅在 client 同时启用 `terminal.create` / `terminal.output` 时暴露的 `terminal: { create: true }` capability negotiation（兼容 initialize legacy alias）、写入前官方 `session/request_permission` request/response、基于 `sandbox_sessions` 的 ACP-local sandbox workspace 解析、`/workspace/` 边界 + `realpath` / symlink / traversal / oversize / binary guardrails、session-bound terminal registry + durable continuity metadata、默认 1MB ring buffer / 5 并发 / 300s lifetime timeout kill、spawn 前危险 command/pattern/path/cwd 拒绝与正式审计、per-request `outputByteLimit` bounded retrieval、exited/killed terminal output stable error、manual kill 与 cleanup kill 审计、`session/cancel` 与 stdio 连接关闭 cleanup、cold-recovery `session/load` fail-closed、conversation-session 级工具权限恢复、JSON-RPC 2.0 错误映射、连接状态、独立 stdio 入口 |
@@ -95,7 +98,15 @@ AgentLoomAUTO/
 
 ## 跨包架构
 
-```
+```text
+agentloom-contracts (Zod 4)
+  ├── server：执行事件、Agent runtime config、workflow graph 类型
+  ├── studio：wire 类型与 schema
+  └── mobile：消费 fixtures 校验相同 wire 形状
+
+agentloom-api-client
+  └── server OpenAPI spec → 纯 TypeScript interface → studio 的 ky 载荷类型
+
 type-engine (Rust/WASM)
   └── studio（TypeEngineService + Web Worker/WASM runtime + 受控 fallback）
 
@@ -103,30 +114,23 @@ studio (React) ──HTTP REST──→ server (/api/v1)
               ──Socket.IO──→ server (/execution, /agent-conversation, /knowledge, /notification, /memory)
 
 mobile (Flutter) ──HTTP REST──→ server (/api/v1)
-              ──Socket.IO──→ server (/execution, /agent-conversation namespace, JWT auth)
+                 ──Socket.IO──→ server (/execution, /agent-conversation namespace, JWT auth)
 
 server (NestJS) → PostgreSQL (Supabase/Drizzle) + Redis (BullMQ) + Qdrant + MinIO
 
-pi-mono (外部仓库，提供两个核心包):
-  pi-coding-agent: 完整编码 Agent 运行时，运行在 Firecracker guest rootfs 内
-  pi-agent-core:   Agent 生命周期管理库，InProcessAgentAdapter 通过 PiAgentCoreAdapter 委托
+pi-mono:
+  pi-coding-agent: Firecracker guest rootfs 内的编码 Agent runtime
+  pi-agent-core:   PiAgentCoreAdapter 使用的进程内 Agent 生命周期库
   sandbox guest:   Firecracker microVM (pi-coding-agent + Fastify HTTP + agentloom-guestd)
-                   暴露 session/prompt SSE/abort、workspace、PTY 与 exec，仅由 manager mTLS proxy 访问
-  服务端集成:      SandboxRuntimeDriver -> FirecrackerRuntimeService -> singleton runtime manager
-                   server/worker 无 Docker socket/KVM；runtime manager 独占 jailer、CNI/nft、cgroup 与 mutable disk
-                   PiConfigGeneratorService 从 Agent 定义生成 guest runtime 配置
-                   tool-schema-converter.ts 在 Zod ↔ TypeBox 集成边界做双向转换
+  服务端集成:      SandboxRuntimeDriver → FirecrackerRuntimeService → runtime manager
 
-Agent 与 Workflow 为两个并行顶层概念:
-  Workflow: DAG 编排 → /execution namespace → workflow_executions/execution_steps
-  Agent:    独立配置 → /agent-conversation namespace → agent_conversations/agent_messages
-  桥接:     WorkflowAgentAdapter 允许 Agent 作为工作流 `agent` 节点执行
-  沙箱共享: sandbox_sessions 双 FK (execution_id OR agent_conversation_id, CHECK 至少一个非空)
-  Skill 注入: SkillResolverService 生成 <available_skills> XML，在 agent 对话与 workflow 执行启动时注入系统提示
+Agent 与 Workflow 为并行顶层概念:
+  Workflow: DAG 编排 → /execution → workflow_executions/execution_steps
+  Agent:    独立配置 → /agent-conversation → agent_conversations/agent_messages
+  桥接:     WorkflowAgentAdapter 允许 Agent 作为 workflow `agent` 节点执行
 ```
 
-**类型共享**: 无共享包。通过约定/手动镜像同步（有漂移风险）。
-**大小写转换**: Studio 全局 ky hook 自动 snake_case ↔ camelCase。
+**类型共享**：`@agentloom/contracts` 是 server、studio、mobile 的 wire 契约唯一来源；`@agentloom/api-client` 是 Studio REST DTO 的 OpenAPI 生成类型来源。Studio 的全局 ky hook 负责 REST snake_case ↔ camelCase；Socket wire 保持 camelCase。
 
 ## 关键约定
 
@@ -144,6 +148,13 @@ Agent 与 Workflow 为两个并行顶层概念:
 ## 命令
 
 ```bash
+# Workspace 根目录
+pnpm install                       # 安装 7 个 workspace 成员
+pnpm test:all                      # 递归运行有 test 脚本的成员
+pnpm typecheck:all                 # 递归类型检查
+pnpm build:all                     # 递归构建
+pnpm contracts:regen               # 导出 OpenAPI、生成/同步 REST models 并构建 api-client
+
 # Server
 cd agentloom-server
 pnpm install && pnpm start:dev    # 开发 (watch mode)
@@ -158,6 +169,18 @@ pnpm db:studio                    # Drizzle Studio UI
 pnpm openapi:export               # 导出 OpenAPI 3.0 spec 到 sdk/openapi.json
 pnpm sdk:generate                 # 顺序执行 spec 导出 + TS/Python SDK 生成
 pnpm sdk:build:ts                # 校验 TypeScript SDK 类型
+# Contracts
+cd ../agentloom-contracts
+pnpm test                          # fixture 与机械同步契约测试
+pnpm typecheck
+pnpm build                         # tsup dual ESM/CJS
+
+# OpenAPI API Client
+cd ../agentloom-api-client
+pnpm typecheck
+pnpm build                         # tsup dual ESM/CJS
+pnpm sync                          # 从 server 生成目录同步 models.ts；通常使用根 contracts:regen
+
 
 # Studio
 cd agentloom-studio
@@ -230,9 +253,9 @@ docker compose logs -f studio                         # 跟踪日志
 
 - **E2EE**: `TenantKeyModule` 管理 RSA-4096 公钥，`LlmEncryptionService` 执行 hybrid RSA-OAEP + AES-256-GCM 加密。`AgentTaskWorker` 在完成路径加密 LLM 输出，`EvidenceService` 加密 `agent_decision`/`tool_output` 证据。`tenant_encryption_keys` 为 append-only 历史模型（`organization_id + key_fingerprint` 唯一 + 单 active partial unique index）。Studio 私钥以 PKCS8 二进制存入 IndexedDB，解密时导入 non-extractable CryptoKey
 - **Smart Routing**: `SmartRoutingModule` 提供 6 种服务端策略纯函数（TOKEN_OPTIMIZED / COST_OPTIMIZED / QUALITY_FIRST / LATENCY_FIRST / HISTORICAL_BEST / FALLBACK_CHAIN）+ `learning/` 子模块（MLP 在线训练 / Elo rating / KNN）。Studio 端 `RoutingStrategy` type 定义 10 种 UI 选项（含 random / round_robin / rules / llm_as_router / knn / mlp / elo / memory_bank / wasm_plugin / fallback_chain）。`FALLBACK_CHAIN` 支持非认证失败时自动切换模型重试。`routing_decisions.selected_model_id` 为 nullable。Studio 端 `smart-routing` 节点 canonical 端口为 `model-in-0` / `model-in-1` / `model-out`，默认策略为 `FALLBACK_CHAIN`
-- **PortDataType**: Rust / Studio / Server 统一使用 canonical 10 值 `model|text|json|image|audio|tool|sandbox|knowledge|skill|agent`，Studio `mcpToolMapping` 兼容 legacy `number`/`boolean -> json` 回退
-- **SkillModule**: `SkillModule` 提供 Skill CRUD REST API（`/skills`）、`SkillStorageService`（SKILL.md 上传/下载/MinIO 存储 + YAML frontmatter 解析）和 `SkillResolverService`（按 tenant 查询 enabled skills 并生成 `<available_skills>` XML 片段注入 agent 对话系统提示与工作流执行系统提示，同时向 sandbox runtime 传递 `SkillPromptPayload.files` 多文件内容）。6 个内置 Skill（`code-review` / `documentation` / `test-generation` / `refactoring` / `debugging` / `self-evolution`）由 `pnpm db:seed` 通过 `seedSkills()` upsert 到 `skills` 表（slug-based 幂等），sentinel UUID `00000000-0000-0000-0000-000000000000` 标记系统内置记录，`isBuiltin=true` 不可删除。`skill` 画布节点在 `node-scheduler` 中有 `case 'skill':` 分支，Agent 执行前通过 `SkillResolverService` 注入上游 skill 内容
-- **Socket.IO `/execution` 协议**: typed `ExecutionEvent<T>` 信封（含 monotonic eventId），`execution:subscribe`/`execution:unsubscribe` + ACK，事件名 `execution.node.*` + `execution.status.changed`。Gateway 含背压队列（500 cap, 100ms drain），断线重连支持 `lastEventId` 增量回放。`/knowledge` namespace 仍为隐式契约
+- **PortDataType**: `@agentloom/contracts` 定义 14 值全集 `model|text|json|array|image|audio|tool|sandbox|knowledge|skill|agent|memory|exec|volume`。`agentloom-contracts/src/port-data-type.test.ts` 对 Rust、plugin-sdk、Studio、server 源码做集合机械校验：各端集合是全集子集，所有端的并集等于全集
+- **Socket.IO `/execution` 协议**: `agentloom-contracts/src/execution-events.ts` 定义 10 个事件名、camelCase 信封、10 个 payload schema、回放快照与 `parseExecutionEvent()`。`EventBridgeService` 通过 `EventEmitter2` 发出广播意图；`ExecutionGateway` 与 `AgentConversationGateway` 使用 `@OnEvent` 订阅，gateway 侧维护 500 cap / 100ms drain 背压队列。server 的 `src/` 不使用 `forwardRef`；断线重连使用 `lastEventId` 增量回放
+- **Agent runtime config**: `agentloom-contracts/src/agent-runtime-config.ts` 定义 canonical 字段。检索阈值使用 `similarityThreshold`；模型回退使用 `candidateModelIds` 与 `fallbackModelId`；sandbox 资源使用 `cpu` 与 `memory`。`agentloom-server/src/modules/agent-definition/agent-runtime-config-normalize.util.ts` 在 server 读入边界接受 `scoreThreshold`、`fallbackChain`、`cpuLimit`、`memoryLimitMb` alias，持久化输出只含 canonical 字段
 - **Workflow Session**: 持久化到 `execution_steps.checkpointData.session`；工具权限端点 `/executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve`；`awaiting_permission` 是 tool-level 状态且 step 保持 `running`，当前仅用于自进化写工具（`apply_change` / `create_resource`）
 - **ShareModule**: 管理端同时提供 `/workflow-shares` 与 `/agent-shares`；公开只读 `/s/:token` 按 `resourceType=workflow|agent` 返回 preview data。workflow 继续通过 `share_token` 克隆导入，agent 走 `/agent-shares/:token/import` 返回 `summary + report[]` 导入回执；公开读取继续从已发布 snapshot 返回 `nodes/edges/viewport`，并原子递增 `view_count/copy_count`
 - **ResourceSourceModule**: `resource_source_records` 统一记录分享导入来源；workflow / agent 列表详情暴露 `resourceSourceKind`，knowledge / memory / mcp / skill 暴露 `sourceKind`；`POST /resource-sources/:resourceType/:resourceId/convert-to-manual` 只切换当前分类为 `manual`，不复制新资源

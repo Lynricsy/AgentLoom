@@ -19,7 +19,16 @@ camelCase，字段值真实合法）。路径稳定，供 Dart 侧以相对路�
 
 ## 约定
 
-- wire casing 不做转换：Socket 信封为 camelCase，REST 保持 server 现状。
-- server 是 canonical 来源；本包不新增 server 没有的字段。
-- `src/port-data-type.test.ts` 读取 Rust 与 plugin-sdk 源文件文本做机械同步校验，
-  任何一端新增端口类型必须先加入本包。
+- wire casing 不做转换：Socket 信封为 camelCase，REST 保持 server 输出形状。
+- server、Studio 与 mobile 的同名 wire 类型都从本包消费，不在各端重复声明。
+- `PORT_DATA_TYPES` 为 14 值全集：`model|text|json|array|image|audio|tool|sandbox|knowledge|skill|agent|memory|exec|volume`。
+- `src/port-data-type.test.ts` 读取 Rust、plugin-sdk、Studio 与 server 源文件，断言各端集合是全集子集且各端并集等于全集。
+- Agent runtime config 写出 canonical 字段 `similarityThreshold`、`candidateModelIds`、`fallbackModelId`、`cpu`、`memory`；旧 alias 由 server 读入边界归一。
+
+## 命令
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```

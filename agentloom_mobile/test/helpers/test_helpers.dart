@@ -174,7 +174,7 @@ ExecutionEventEnvelope createTestEventEnvelope({
   String event = 'execution.status.changed',
   String timestamp = '2026-01-01T10:00:00.000Z',
   String executionId = 'exec-test-001',
-  String? tenantId = 'tenant-1',
+  String tenantId = 'tenant-1',
   Map<String, dynamic>? data,
 }) {
   return ExecutionEventEnvelope(
