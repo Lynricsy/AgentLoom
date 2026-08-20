@@ -70,10 +70,7 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
                       color: theme.colorScheme.error,
                     ),
                     const SizedBox(height: 16),
-                    Text(
-                      '加载记忆实例失败',
-                      style: theme.textTheme.titleMedium,
-                    ),
+                    Text('加载记忆实例失败', style: theme.textTheme.titleMedium),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () =>
@@ -122,9 +119,28 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
                     child: ListView.builder(
                       itemCount:
                           state.instances.length +
-                          (state.isLoadingMore ? 1 : 0),
+                          (state.isLoadingMore || state.loadMoreError != null
+                              ? 1
+                              : 0),
                       itemBuilder: (context, index) {
                         if (index == state.instances.length) {
+                          if (state.loadMoreError != null) {
+                            return Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text('加载更多失败'),
+                                  TextButton(
+                                    onPressed: () => ref
+                                        .read(memoryListProvider.notifier)
+                                        .loadMore(),
+                                    child: const Text('重试'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
                           return const Center(
                             child: Padding(
                               padding: EdgeInsets.all(16),

@@ -241,6 +241,45 @@ void main() {
       expect(state?.skills[1].name, 'Skill Two');
     });
 
+    test('loadMore failure preserves loaded skills', () async {
+      final page1Response = PaginatedResponse<SkillDto>(
+        data: [sampleSkill],
+        meta: const PaginationMeta(
+          total: 2,
+          page: 1,
+          pageSize: 1,
+          totalPages: 2,
+        ),
+      );
+      var callCount = 0;
+      when(
+        () => mockApi.listSkills(
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+          status: any(named: 'status'),
+          isBuiltin: any(named: 'isBuiltin'),
+          search: any(named: 'search'),
+        ),
+      ).thenAnswer((_) async {
+        callCount++;
+        if (callCount == 1) return page1Response;
+        throw Exception('load more failed');
+      });
+      container = ProviderContainer(
+        overrides: [skillApiProvider.overrideWithValue(mockApi)],
+      );
+
+      await container.read(skillListProvider.future);
+      await container.read(skillListProvider.notifier).loadMore();
+
+      final asyncState = container.read(skillListProvider);
+      expect(asyncState.hasValue, isTrue);
+      expect(asyncState.hasError, isFalse);
+      expect(asyncState.value!.skills, [sampleSkill]);
+      expect(asyncState.value!.isLoadingMore, isFalse);
+      expect(asyncState.value!.loadMoreError, isA<Exception>());
+    });
+
     test('loadMore does nothing on last page', () async {
       when(
         () => mockApi.listSkills(

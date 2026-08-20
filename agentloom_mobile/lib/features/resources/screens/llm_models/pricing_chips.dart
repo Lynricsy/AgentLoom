@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/resource_entities.dart';
+import '../../models/resource_dtos.dart';
 
 String _formatPriceLabel(double value) {
   return '\$${value.toStringAsFixed(2)} / 1M';

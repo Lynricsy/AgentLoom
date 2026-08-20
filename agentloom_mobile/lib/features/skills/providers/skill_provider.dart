@@ -15,6 +15,7 @@ class SkillListState {
   final String? sourceKindFilter;
   final String? searchQuery;
   final bool isLoadingMore;
+  final Object? loadMoreError;
 
   const SkillListState({
     this.skills = const [],
@@ -24,6 +25,7 @@ class SkillListState {
     this.sourceKindFilter,
     this.searchQuery,
     this.isLoadingMore = false,
+    this.loadMoreError,
   });
 
   SkillListState copyWith({
@@ -34,9 +36,11 @@ class SkillListState {
     String? sourceKindFilter,
     String? searchQuery,
     bool? isLoadingMore,
+    Object? loadMoreError,
     bool clearStatusFilter = false,
     bool clearIsBuiltinFilter = false,
     bool clearSearchQuery = false,
+    bool clearLoadMoreError = false,
   }) {
     return SkillListState(
       skills: skills ?? this.skills,
@@ -50,6 +54,9 @@ class SkillListState {
       sourceKindFilter: sourceKindFilter ?? this.sourceKindFilter,
       searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError
+          ? null
+          : (loadMoreError ?? this.loadMoreError),
     );
   }
 }
@@ -90,33 +97,43 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
   Future<void> setStatusFilter(String? status) async {
     _statusFilter = status;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchSkills());
+    final nextState = await AsyncValue.guard(() => _fetchSkills());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 设置内置/自定义过滤器并重新加载
   Future<void> setIsBuiltinFilter(bool? isBuiltin) async {
     _isBuiltinFilter = isBuiltin;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchSkills());
+    final nextState = await AsyncValue.guard(() => _fetchSkills());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   Future<void> setSourceKindFilter(String? sourceKind) async {
     _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchSkills());
+    final nextState = await AsyncValue.guard(() => _fetchSkills());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 设置搜索关键词并重新加载
   Future<void> setSearchQuery(String? query) async {
     _searchQuery = (query != null && query.isEmpty) ? null : query;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchSkills());
+    final nextState = await AsyncValue.guard(() => _fetchSkills());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 刷新列表
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchSkills());
+    final nextState = await AsyncValue.guard(() => _fetchSkills());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 加载更多（下一页）
@@ -127,7 +144,9 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
     final meta = currentState.meta;
     if (meta == null || meta.page >= meta.totalPages) return;
 
-    state = AsyncValue.data(currentState.copyWith(isLoadingMore: true));
+    state = AsyncValue.data(
+      currentState.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
 
     try {
       final api = ref.read(skillApiProvider);
@@ -151,10 +170,11 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
           searchQuery: _searchQuery,
         ),
       );
-    } catch (e, st) {
+    } catch (e) {
       if (!ref.mounted) return;
-      state = AsyncValue.data(currentState.copyWith(isLoadingMore: false));
-      state = AsyncValue.error(e, st);
+      state = AsyncValue.data(
+        currentState.copyWith(isLoadingMore: false, loadMoreError: e),
+      );
     }
   }
 }

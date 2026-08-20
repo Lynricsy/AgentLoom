@@ -4,59 +4,50 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../agents/models/conversation_message_dto.dart';
 import '../../../shared/models/paginated_response.dart';
 import '../../../shared/providers/api_client_provider.dart';
-import '../models/resource_entities.dart';
+import '../models/resource_dtos.dart';
 
 const _emptyJsonBody = <String, dynamic>{};
 
 Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
-  final body = response.data as Map<String, dynamic>;
-  final data = body['data'];
-  if (data is Map<String, dynamic>) {
-    return data;
+  final body = decodeResourceObject(response.data, path: 'response');
+  if (!body.containsKey('data')) {
+    throw const ApiContractException('response 缺少 data 字段');
   }
-  if (data is Map<Object?, Object?>) {
-    return data.map((key, value) => MapEntry('$key', value));
-  }
-  return body;
+  return decodeResourceObject(body['data'], path: 'response.data');
 }
 
 List<Map<String, dynamic>> _unwrapListEnvelope(Response<dynamic> response) {
-  final body = response.data;
-  final data = body is Map<String, dynamic> ? body['data'] : body;
-  if (data is! List) {
-    return const <Map<String, dynamic>>[];
-  }
+  return decodeResourceList(response.data, path: 'response');
+}
 
-  return data
-      .map((item) {
-        if (item is Map<String, dynamic>) {
-          return item;
-        }
-        if (item is Map<Object?, Object?>) {
-          return item.map((key, value) => MapEntry('$key', value));
-        }
-        return <String, dynamic>{};
-      })
-      .toList(growable: false);
+PaginatedResponse<T> _decodePaginated<T>(
+  Response<dynamic> response,
+  T Function(Map<String, dynamic>) decode,
+) {
+  try {
+    final body = decodeResourceObject(response.data, path: 'response');
+    decodeResourceList(body, path: 'response');
+    return PaginatedResponse.fromJson(body, (json) {
+      if (json is! Map<String, dynamic>) {
+        throw ApiContractException(
+          'response.data 元素应为对象，实际为 ${json.runtimeType}',
+        );
+      }
+      return decode(json);
+    });
+  } on ApiContractException {
+    rethrow;
+  } catch (error) {
+    throw ApiContractException('分页响应不符合契约', cause: error);
+  }
 }
 
 List<WorkspaceFileNode> _unwrapWorkspaceTreeEnvelope(
   Response<dynamic> response,
 ) {
-  final body = response.data;
-  final data = body is Map<String, dynamic> ? body['data'] : body;
-  if (data is! List) {
-    return const <WorkspaceFileNode>[];
-  }
-
-  return data
-      .whereType<Map<Object?, Object?>>()
-      .map(
-        (item) => WorkspaceFileNode.fromJson(
-          item.map((key, value) => MapEntry('$key', value)),
-        ),
-      )
-      .toList(growable: false);
+  return _unwrapListEnvelope(
+    response,
+  ).map(WorkspaceFileNode.fromJson).toList(growable: false);
 }
 
 class ResourcesApi {
@@ -79,10 +70,7 @@ class ResourcesApi {
         'includeAutoArchived': includeAutoArchived,
       },
     );
-    return PaginatedResponse.fromJson(
-      response.data as Map<String, dynamic>,
-      (json) => WorkspaceDto.fromJson(json! as Map<String, dynamic>),
-    );
+    return _decodePaginated(response, WorkspaceDto.fromJson);
   }
 
   Future<WorkspaceDto> createWorkspace({
@@ -130,10 +118,7 @@ class ResourcesApi {
           'bindingType': bindingType,
       },
     );
-    return PaginatedResponse.fromJson(
-      response.data as Map<String, dynamic>,
-      (json) => SandboxSessionDto.fromJson(json! as Map<String, dynamic>),
-    );
+    return _decodePaginated(response, SandboxSessionDto.fromJson);
   }
 
   Future<SandboxSessionDto> createSandbox({
@@ -187,10 +172,7 @@ class ResourcesApi {
           'sourceKind': sourceKind,
       },
     );
-    return PaginatedResponse.fromJson(
-      response.data as Map<String, dynamic>,
-      (json) => KnowledgeBaseDto.fromJson(json! as Map<String, dynamic>),
-    );
+    return _decodePaginated(response, KnowledgeBaseDto.fromJson);
   }
 
   Future<KnowledgeBaseDto> createKnowledgeBase({
@@ -229,10 +211,7 @@ class ResourcesApi {
         if (status != null && status.isNotEmpty) 'status': status,
       },
     );
-    return PaginatedResponse.fromJson(
-      response.data as Map<String, dynamic>,
-      (json) => KnowledgeDocumentDto.fromJson(json! as Map<String, dynamic>),
-    );
+    return _decodePaginated(response, KnowledgeDocumentDto.fromJson);
   }
 
   Future<void> rebuildKnowledgeBase(String knowledgeBaseId) async {
@@ -276,11 +255,7 @@ class ResourcesApi {
           'sourceKind': sourceKind,
       },
     );
-    return PaginatedResponse.fromJson(
-      response.data as Map<String, dynamic>,
-      (json) =>
-          McpServerConfigSummaryDto.fromJson(json! as Map<String, dynamic>),
-    );
+    return _decodePaginated(response, McpServerConfigSummaryDto.fromJson);
   }
 
   Future<McpServerConfigDetailDto> getMcpServerConfig(String configId) async {

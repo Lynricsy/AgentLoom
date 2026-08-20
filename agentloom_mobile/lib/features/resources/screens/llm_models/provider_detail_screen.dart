@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/resources_api.dart';
-import '../../models/resource_entities.dart';
+import '../../models/resource_dtos.dart';
+import '../../providers/llm_provider.dart';
 import '../../widgets/llm_provider_icon.dart';
 import '../../widgets/resource_shared.dart';
 import 'edit_provider_sheet.dart';
@@ -22,7 +23,6 @@ class ProviderDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
-  late Future<_ProviderDetailData> _future;
   bool _isTesting = false;
   bool _isDiscovering = false;
   String? _connectionMessage;
@@ -30,37 +30,10 @@ class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
       const <PrivateCloudModelInfoDto>[];
   bool _changed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<_ProviderDetailData> _load() async {
-    final api = ref.read(resourcesApiProvider);
-    final providerFuture = api.getLlmProviderEntity(widget.providerId);
-    final modelsFuture = api.listLlmModelConfigs();
-    List<ApiKeyInfoDto> apiKeys = const <ApiKeyInfoDto>[];
-    try {
-      apiKeys = await api.listApiKeys();
-    } catch (_) {}
-    final provider = await providerFuture;
-    final allModels = await modelsFuture;
-    final models = allModels
-        .where((m) => m.providerId == provider.id)
-        .toList(growable: false);
-    return _ProviderDetailData(
-      provider: provider,
-      models: models,
-      apiKeys: apiKeys,
-    );
-  }
 
   Future<void> _reload() async {
-    setState(() {
-      _future = _load();
-    });
-    await _future;
+    ref.invalidate(providerDetailProvider(widget.providerId));
+    await ref.read(providerDetailProvider(widget.providerId).future);
   }
 
   void _markChanged() {
@@ -260,6 +233,8 @@ class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final detail = ref.watch(providerDetailProvider(widget.providerId));
+    final providerName = detail.value?.provider.name ?? '提供商详情';
 
     return PopScope(
       canPop: true,
@@ -268,57 +243,50 @@ class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
           Navigator.of(context).pop(true);
         }
       },
-      child: FutureBuilder<_ProviderDetailData>(
-        future: _future,
-        builder: (context, snapshot) {
-          final providerName = snapshot.data?.provider.name ?? '提供商详情';
-
-          return Scaffold(
-            appBar: AppBar(
-              title: Text(providerName),
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(_changed),
-              ),
-              actions: [
-                IconButton(
-                  onPressed: () => unawaited(_reload()),
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(providerName),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(_changed),
+          ),
+          actions: [
+            IconButton(
+              onPressed: () => unawaited(_reload()),
+              icon: const Icon(Icons.refresh),
             ),
-            body: _buildBody(theme, snapshot),
-            floatingActionButton: snapshot.hasData
-                ? FloatingActionButton.extended(
-                    onPressed: () => _openModelEditor(
-                      snapshot.data!.provider,
-                      snapshot.data!.apiKeys,
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('添加模型'),
-                  )
-                : null,
-          );
-        },
+          ],
+        ),
+        body: _buildBody(theme, detail),
+        floatingActionButton: detail.hasValue
+            ? FloatingActionButton.extended(
+                onPressed: () => _openModelEditor(
+                  detail.requireValue.provider,
+                  detail.requireValue.apiKeys,
+                ),
+                icon: const Icon(Icons.add),
+                label: const Text('添加模型'),
+              )
+            : null,
       ),
     );
   }
 
   Widget _buildBody(
     ThemeData theme,
-    AsyncSnapshot<_ProviderDetailData> snapshot,
+    AsyncValue<ProviderDetailData> detail,
   ) {
-    if (snapshot.connectionState != ConnectionState.done) {
+    if (detail.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (snapshot.hasError) {
+    if (detail.hasError) {
       return ResourceErrorState(
-        message: '加载提供商详情失败: ${describeResourceError(snapshot.error!)}',
+        message: '加载提供商详情失败: ${describeResourceError(detail.error!)}',
         onRetry: () => unawaited(_reload()),
       );
     }
 
-    final data = snapshot.data!;
+    final data = detail.requireValue;
     final provider = data.provider;
     final models = data.models;
 
@@ -619,14 +587,3 @@ class _ProviderDetailScreenState extends ConsumerState<ProviderDetailScreen> {
   }
 }
 
-class _ProviderDetailData {
-  const _ProviderDetailData({
-    required this.provider,
-    required this.models,
-    required this.apiKeys,
-  });
-
-  final LlmProviderEntityDto provider;
-  final List<LlmModelConfigDto> models;
-  final List<ApiKeyInfoDto> apiKeys;
-}

@@ -19,7 +19,6 @@ import '../features/execution/screens/execution_monitor_screen.dart';
 import '../features/execution/screens/workflow_agent_viewer_screen.dart';
 import '../features/execution/screens/workflow_output_viewer_screen.dart';
 import '../features/memory/models/memory_audit_entry.dart';
-import '../features/memory/providers/memory_providers.dart';
 import '../features/memory/screens/memory_audit_detail_screen.dart';
 import '../features/memory/screens/memory_audit_screen.dart';
 import '../features/memory/screens/memory_detail_screen.dart';
@@ -323,13 +322,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                             name: RouteNames.memoryAudit,
                             builder: (context, state) {
                               final id = state.pathParameters['id']!;
-                              return ProviderScope(
-                                overrides: [
-                                  memoryAuditInstanceIdProvider
-                                      .overrideWithValue(id),
-                                ],
-                                child: MemoryAuditScreen(instanceId: id),
-                              );
+                              return MemoryAuditScreen(instanceId: id);
                             },
                             routes: [
                               GoRoute(

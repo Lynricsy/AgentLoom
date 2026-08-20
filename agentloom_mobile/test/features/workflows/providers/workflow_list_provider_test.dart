@@ -128,6 +128,40 @@ void main() {
       ).called(2);
     });
 
+    test('loadMore failure preserves loaded workflows', () async {
+      var callCount = 0;
+      when(
+        () => mockApi.listWorkflows(
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+          status: any(named: 'status'),
+          search: any(named: 'search'),
+        ),
+      ).thenAnswer((_) async {
+        callCount++;
+        if (callCount == 1) {
+          return createTestWorkflowList(
+            workflows: [createTestWorkflow(id: 'workflow-1')],
+            total: 2,
+            page: 1,
+            pageSize: 1,
+            totalPages: 2,
+          );
+        }
+        throw Exception('load more failed');
+      });
+
+      await container.read(workflowListProvider.future);
+      await container.read(workflowListProvider.notifier).loadMore();
+
+      final asyncState = container.read(workflowListProvider);
+      expect(asyncState.hasValue, isTrue);
+      expect(asyncState.hasError, isFalse);
+      expect(asyncState.value!.workflows.single.id, 'workflow-1');
+      expect(asyncState.value!.isLoadingMore, isFalse);
+      expect(asyncState.value!.loadMoreError, isA<Exception>());
+    });
+
     test('handles API error gracefully', () async {
       when(
         () => mockApi.listWorkflows(

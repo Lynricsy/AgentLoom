@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../resources/api/resources_api.dart';
-import '../../resources/models/resource_entities.dart';
+import '../../resources/models/resource_dtos.dart';
 import '../../resources/widgets/llm_provider_icon.dart';
 import '../api/settings_api.dart';
 

@@ -94,6 +94,7 @@ class AgentListState {
     this.sourceKindFilter,
     this.searchQuery,
     this.isLoadingMore = false,
+    this.loadMoreError,
   });
 
   final List<AgentDefinitionDto> agents;
@@ -103,6 +104,7 @@ class AgentListState {
   final String? sourceKindFilter;
   final String? searchQuery;
   final bool isLoadingMore;
+  final Object? loadMoreError;
 
   AgentListState copyWith({
     List<AgentDefinitionDto>? agents,
@@ -112,6 +114,8 @@ class AgentListState {
     String? sourceKindFilter,
     String? searchQuery,
     bool? isLoadingMore,
+    Object? loadMoreError,
+    bool clearLoadMoreError = false,
   }) {
     return AgentListState(
       agents: agents ?? this.agents,
@@ -121,6 +125,9 @@ class AgentListState {
       sourceKindFilter: sourceKindFilter ?? this.sourceKindFilter,
       searchQuery: searchQuery ?? this.searchQuery,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError
+          ? null
+          : (loadMoreError ?? this.loadMoreError),
     );
   }
 }

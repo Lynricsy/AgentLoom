@@ -39,26 +39,34 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
   Future<void> setStatusFilter(String? status) async {
     _statusFilter = status;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchAgents());
+    final nextState = await AsyncValue.guard(() => _fetchAgents());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   Future<void> setSourceKindFilter(String? sourceKind) async {
     _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchAgents());
+    final nextState = await AsyncValue.guard(() => _fetchAgents());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 设置搜索关键词并重新加载
   Future<void> setSearchQuery(String? query) async {
     _searchQuery = (query != null && query.isEmpty) ? null : query;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchAgents());
+    final nextState = await AsyncValue.guard(() => _fetchAgents());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 刷新列表
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchAgents());
+    final nextState = await AsyncValue.guard(() => _fetchAgents());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 加载更多（下一页）
@@ -67,7 +75,9 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
     if (currentState == null || currentState.isLoadingMore) return;
     if (!currentState.hasMore) return;
 
-    state = AsyncValue.data(currentState.copyWith(isLoadingMore: true));
+    state = AsyncValue.data(
+      currentState.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
 
     try {
       final api = ref.read(agentApiProvider);
@@ -90,10 +100,11 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
           searchQuery: _searchQuery,
         ),
       );
-    } catch (e, st) {
+    } catch (e) {
       if (!ref.mounted) return;
-      state = AsyncValue.data(currentState.copyWith(isLoadingMore: false));
-      state = AsyncValue.error(e, st);
+      state = AsyncValue.data(
+        currentState.copyWith(isLoadingMore: false, loadMoreError: e),
+      );
     }
   }
 }

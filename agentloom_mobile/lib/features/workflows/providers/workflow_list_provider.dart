@@ -14,6 +14,7 @@ class WorkflowListState {
   final String? sourceKindFilter;
   final String? searchQuery;
   final bool isLoadingMore;
+  final Object? loadMoreError;
 
   const WorkflowListState({
     this.workflows = const [],
@@ -22,6 +23,7 @@ class WorkflowListState {
     this.sourceKindFilter,
     this.searchQuery,
     this.isLoadingMore = false,
+    this.loadMoreError,
   });
 
   WorkflowListState copyWith({
@@ -31,9 +33,11 @@ class WorkflowListState {
     String? sourceKindFilter,
     String? searchQuery,
     bool? isLoadingMore,
+    Object? loadMoreError,
     bool clearStatusFilter = false,
     bool clearSourceKindFilter = false,
     bool clearSearchQuery = false,
+    bool clearLoadMoreError = false,
   }) {
     return WorkflowListState(
       workflows: workflows ?? this.workflows,
@@ -46,6 +50,9 @@ class WorkflowListState {
           : (sourceKindFilter ?? this.sourceKindFilter),
       searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError
+          ? null
+          : (loadMoreError ?? this.loadMoreError),
     );
   }
 }
@@ -83,26 +90,34 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
   Future<void> setStatusFilter(String? status) async {
     _statusFilter = status;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchWorkflows());
+    final nextState = await AsyncValue.guard(() => _fetchWorkflows());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   Future<void> setSourceKindFilter(String? sourceKind) async {
     _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchWorkflows());
+    final nextState = await AsyncValue.guard(() => _fetchWorkflows());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 设置搜索关键词并重新加载
   Future<void> setSearchQuery(String? query) async {
     _searchQuery = (query != null && query.isEmpty) ? null : query;
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchWorkflows());
+    final nextState = await AsyncValue.guard(() => _fetchWorkflows());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 刷新列表
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _fetchWorkflows());
+    final nextState = await AsyncValue.guard(() => _fetchWorkflows());
+    if (!ref.mounted) return;
+    state = nextState;
   }
 
   /// 加载更多（下一页）
@@ -113,7 +128,9 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
     final meta = currentState.meta;
     if (meta == null || meta.page >= meta.totalPages) return;
 
-    state = AsyncValue.data(currentState.copyWith(isLoadingMore: true));
+    state = AsyncValue.data(
+      currentState.copyWith(isLoadingMore: true, clearLoadMoreError: true),
+    );
 
     try {
       final api = ref.read(workflowApiProvider);
@@ -123,6 +140,7 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
         sourceKind: _sourceKindFilter,
         search: _searchQuery,
       );
+      if (!ref.mounted) return;
 
       state = AsyncValue.data(
         WorkflowListState(
@@ -133,10 +151,11 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
           searchQuery: _searchQuery,
         ),
       );
-    } catch (e, st) {
-      state = AsyncValue.data(currentState.copyWith(isLoadingMore: false));
-      // 让上层处理错误
-      state = AsyncValue.error(e, st);
+    } catch (e) {
+      if (!ref.mounted) return;
+      state = AsyncValue.data(
+        currentState.copyWith(isLoadingMore: false, loadMoreError: e),
+      );
     }
   }
 }
