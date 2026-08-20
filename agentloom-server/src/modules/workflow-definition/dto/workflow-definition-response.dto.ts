@@ -2,7 +2,6 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import type { WorkflowDefinition } from '../../../database/schema/workflow-definitions.schema';
 import type { ResourceSourceKind } from '../../../database/schema';
-import { workflowInputSchemaSchema } from '../../workflow/dto/workflow-input-schema.dto';
 import { normalizeWorkflowNodesAndEdges } from '../utils/normalize-workflow-graph.utils';
 
 const ResourceSourceKindSwaggerSchema = z.enum(['manual', 'share_imported']);
@@ -73,6 +72,48 @@ const ReactFlowViewportSwaggerSchema = z.object({
   zoom: z.number(),
 });
 
+// 响应侧专用的 inputSchema 建模。不能复用 workflow-input-schema.dto 的请求 schema：
+// 那里的 version / collectionMode / fields / required 带 .default()，OpenAPI 按输入
+// 语义把它们标成 not-required，而这些字段在 z.infer 的输出与 DB 行里恒存在，
+// 生成客户端会错误放宽真实 wire。
+const WorkflowInputFieldValidationSwaggerSchema = z.object({
+  minLength: z.number().int().nonnegative().optional(),
+  maxLength: z.number().int().positive().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
+const WorkflowInputFieldVisibilitySwaggerSchema = z.object({
+  fieldId: z.string(),
+  equals: z.union([z.string(), z.number()]),
+});
+
+const WorkflowInputFieldSwaggerSchema = z.object({
+  id: z.string(),
+  type: z.enum(['text', 'number', 'single_select', 'multi_select']),
+  label: z.string(),
+  description: z.string().optional(),
+  required: z.boolean(),
+  validation: WorkflowInputFieldValidationSwaggerSchema.optional(),
+  options: z.array(z.string()).optional(),
+  // 字段默认值由字段类型决定，无法进一步收窄
+  default: z.unknown().optional(),
+  visibility: WorkflowInputFieldVisibilitySwaggerSchema.optional(),
+  collectionHint: z.string().optional(),
+});
+
+const WorkflowConversationPlanSwaggerSchema = z.object({
+  systemPrompt: z.string(),
+  maxTurns: z.number().int().positive(),
+});
+
+export const WorkflowInputSchemaResponseSwaggerSchema = z.object({
+  version: z.number().int().positive(),
+  collectionMode: z.enum(['form', 'conversation', 'hybrid']),
+  fields: z.array(WorkflowInputFieldSwaggerSchema),
+  conversationPlan: WorkflowConversationPlanSwaggerSchema.optional(),
+});
+
 export const WorkflowDefinitionResponseSwaggerSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -98,7 +139,7 @@ export const WorkflowDefinitionDetailResponseSwaggerSchema =
     nodes: z.array(ReactFlowNodeSwaggerSchema),
     edges: z.array(ReactFlowEdgeSwaggerSchema),
     viewport: ReactFlowViewportSwaggerSchema.nullable(),
-    inputSchema: workflowInputSchemaSchema.nullable(),
+    inputSchema: WorkflowInputSchemaResponseSwaggerSchema.nullable(),
   });
 
 export const WorkflowDefinitionListResponseSwaggerSchema = z.object({

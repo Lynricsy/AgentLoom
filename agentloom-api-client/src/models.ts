@@ -7240,16 +7240,16 @@ export interface UpdateWorkflowDefinitionDtoInputSchema {
     collectionMode?: UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum;
     /**
      * 
-     * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>}
+     * @type {Array<UpdateWorkflowDefinitionDtoInputSchemaFieldsInner>}
      * @memberof UpdateWorkflowDefinitionDtoInputSchema
      */
-    fields?: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>;
+    fields?: Array<UpdateWorkflowDefinitionDtoInputSchemaFieldsInner>;
     /**
      * 
-     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan}
+     * @type {UpdateWorkflowDefinitionDtoInputSchemaConversationPlan}
      * @memberof UpdateWorkflowDefinitionDtoInputSchema
      */
-    conversationPlan?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan;
+    conversationPlan?: UpdateWorkflowDefinitionDtoInputSchemaConversationPlan;
 }
 
 
@@ -7263,6 +7263,124 @@ export const UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum = {
 } as const;
 export type UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum = typeof UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum[keyof typeof UpdateWorkflowDefinitionDtoInputSchemaCollectionModeEnum];
 
+/**
+ * 
+ * @export
+ * @interface UpdateWorkflowDefinitionDtoInputSchemaConversationPlan
+ */
+export interface UpdateWorkflowDefinitionDtoInputSchemaConversationPlan {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaConversationPlan
+     */
+    systemPrompt: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaConversationPlan
+     */
+    maxTurns: number;
+}
+/**
+ * 
+ * @export
+ * @interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+ */
+export interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    type: UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    label: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    description?: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    required?: boolean;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    validation?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    options?: Array<string>;
+    /**
+     * 
+     * @type {any}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    default?: any | null;
+    /**
+     * 
+     * @type {UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    visibility?: UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInner
+     */
+    collectionHint?: string;
+}
+
+
+/**
+ * @export
+ */
+export const UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum = {
+    Text: 'text',
+    Number: 'number',
+    SingleSelect: 'single_select',
+    MultiSelect: 'multi_select'
+} as const;
+export type UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum = typeof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum[keyof typeof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerTypeEnum];
+
+/**
+ * 
+ * @export
+ * @interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility
+ */
+export interface UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility
+     */
+    fieldId: string;
+    /**
+     * 
+     * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals}
+     * @memberof UpdateWorkflowDefinitionDtoInputSchemaFieldsInnerVisibility
+     */
+    equals: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals;
+}
 /**
  * 
  * @export
@@ -7770,19 +7888,19 @@ export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema {
      * @type {number}
      * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
      */
-    version?: number;
+    version: number;
     /**
      * 
      * @type {string}
      * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
      */
-    collectionMode?: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum;
+    collectionMode: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaCollectionModeEnum;
     /**
      * 
      * @type {Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>}
      * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchema
      */
-    fields?: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>;
+    fields: Array<WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner>;
     /**
      * 
      * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaConversationPlan}
@@ -7856,7 +7974,7 @@ export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFields
      * @type {boolean}
      * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
      */
-    required?: boolean;
+    required: boolean;
     /**
      * 
      * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerValidation}
@@ -7874,7 +7992,7 @@ export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFields
      * @type {any}
      * @memberof WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInner
      */
-    _default?: any | null;
+    default?: any | null;
     /**
      * 
      * @type {WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibility}
@@ -7952,12 +8070,11 @@ export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFields
     equals: WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals;
 }
 /**
+ * @type WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals
  * 
  * @export
- * @interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals
  */
-export interface WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals {
-}
+export type WorkflowDefinitionDetailResponseSwaggerDtoDataInputSchemaFieldsInnerVisibilityEquals = number | string;
 /**
  * 
  * @export

@@ -152,6 +152,58 @@ function downgradeTupleSchemas(node) {
   return node;
 }
 
+const PRIMITIVE_UNION_TYPES = new Set([
+  'string',
+  'number',
+  'integer',
+  'boolean',
+]);
+
+function isPlainPrimitiveSchema(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return false;
+  }
+
+  return (
+    PRIMITIVE_UNION_TYPES.has(schema.type) &&
+    Object.keys(schema).every((key) => key === 'type' || key === 'format')
+  );
+}
+
+/**
+ * `z.union([z.string(), z.number()])` 渲染为 `anyOf` 的标量并集。
+ * openapi-generator 的 typescript 系列把 `anyOf` 一律物化成具名 model，
+ * 标量并集因此变成**空 interface**（`{}`），下游拿不到 `string | number`。
+ * 同一形状写成 `oneOf` 时生成器会输出联合类型别名。
+ *
+ * 对互斥的标量类型来说 anyOf 与 oneOf 的校验语义等价，所以只重写
+ * 「成员全是纯标量」的 anyOf；带 $ref、properties、enum 或 nullable 的
+ * 并集一律保留原样，避免改变语义。
+ */
+function normalizePrimitiveUnions(node) {
+  if (Array.isArray(node)) {
+    for (const item of node) normalizePrimitiveUnions(item);
+    return node;
+  }
+
+  if (!node || typeof node !== 'object') return node;
+
+  for (const value of Object.values(node)) normalizePrimitiveUnions(value);
+
+  const anyOf = node.anyOf;
+  if (
+    Array.isArray(anyOf) &&
+    anyOf.length > 1 &&
+    node.oneOf === undefined &&
+    anyOf.every(isPlainPrimitiveSchema)
+  ) {
+    delete node.anyOf;
+    node.oneOf = anyOf;
+  }
+
+  return node;
+}
+
 async function exportSpec() {
   applyExportEnvDefaults();
 
@@ -169,8 +221,10 @@ async function exportSpec() {
 
   app.setGlobalPrefix(API_GLOBAL_PREFIX);
 
-  const document = downgradeTupleSchemas(
-    normalizeWildcardPathParameters(createSwaggerDocument(app)),
+  const document = normalizePrimitiveUnions(
+    downgradeTupleSchemas(
+      normalizeWildcardPathParameters(createSwaggerDocument(app)),
+    ),
   );
   const outputDir = join(projectRoot, 'sdk');
   const outputPath = join(outputDir, 'openapi.json');
