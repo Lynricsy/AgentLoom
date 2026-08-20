@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -25,6 +26,7 @@ func (value fakeArtifacts) Resolve(digest string) (ArtifactSet, error) {
 }
 
 type fakeDisk struct {
+	mutex        sync.Mutex
 	path         string
 	created      bool
 	ensureErr    error
@@ -35,14 +37,28 @@ type fakeDisk struct {
 }
 
 func (disk *fakeDisk) Ensure(_ context.Context, id string, sizeGiB int64) (string, bool, error) {
+	disk.mutex.Lock()
+	defer disk.mutex.Unlock()
 	disk.ensuredIDs = append(disk.ensuredIDs, id)
 	disk.ensuredSizes = append(disk.ensuredSizes, sizeGiB)
 	return disk.path, disk.created, disk.ensureErr
 }
-func (disk *fakeDisk) Check(context.Context, string) error  { return disk.checkErr }
-func (disk *fakeDisk) Delete(context.Context, string) error { disk.deleted++; return nil }
+
+func (disk *fakeDisk) Check(context.Context, string) error {
+	disk.mutex.Lock()
+	defer disk.mutex.Unlock()
+	return disk.checkErr
+}
+
+func (disk *fakeDisk) Delete(context.Context, string) error {
+	disk.mutex.Lock()
+	defer disk.mutex.Unlock()
+	disk.deleted++
+	return nil
+}
 
 type fakeNetwork struct {
+	mutex        sync.Mutex
 	allocation   NetworkAllocation
 	provisionErr error
 	releaseErr   error
@@ -50,9 +66,13 @@ type fakeNetwork struct {
 }
 
 func (network *fakeNetwork) Provision(context.Context, string) (NetworkAllocation, error) {
+	network.mutex.Lock()
+	defer network.mutex.Unlock()
 	return network.allocation, network.provisionErr
 }
 func (network *fakeNetwork) Release(context.Context, Metadata) error {
+	network.mutex.Lock()
+	defer network.mutex.Unlock()
 	network.released++
 	return network.releaseErr
 }
@@ -83,16 +103,29 @@ func (instance *fakeInstance) Wait(ctx context.Context) error {
 }
 
 type fakeLauncher struct {
+	mutex      sync.Mutex
 	instance   *fakeInstance
 	err        error
 	launches   int
 	cleanups   int
 	cleanupErr error
+	launching  chan struct{}
+	continueCh chan struct{}
 }
 
 func (launcher *fakeLauncher) Launch(context.Context, LaunchSpec) (Instance, error) {
+	launcher.mutex.Lock()
 	launcher.launches++
-	return launcher.instance, launcher.err
+	instance, err := launcher.instance, launcher.err
+	launching, continueCh := launcher.launching, launcher.continueCh
+	launcher.mutex.Unlock()
+	if launching != nil {
+		close(launching)
+	}
+	if continueCh != nil {
+		<-continueCh
+	}
+	return instance, err
 }
 func (launcher *fakeLauncher) Reattach(context.Context, Metadata, string) (Instance, error) {
 	return launcher.instance, launcher.err
@@ -100,6 +133,25 @@ func (launcher *fakeLauncher) Reattach(context.Context, Metadata, string) (Insta
 func (launcher *fakeLauncher) Cleanup(context.Context, Metadata) error {
 	launcher.cleanups++
 	return launcher.cleanupErr
+}
+
+type concurrentLauncher struct {
+	launched chan string
+	gates    map[string]chan struct{}
+}
+
+func (launcher *concurrentLauncher) Launch(_ context.Context, spec LaunchSpec) (Instance, error) {
+	launcher.launched <- spec.Metadata.SessionID
+	<-launcher.gates[spec.Metadata.SessionID]
+	return &fakeInstance{}, nil
+}
+
+func (launcher *concurrentLauncher) Reattach(context.Context, Metadata, string) (Instance, error) {
+	return nil, errors.New("not used")
+}
+
+func (launcher *concurrentLauncher) Cleanup(context.Context, Metadata) error {
+	return nil
 }
 
 type fakeChecker struct{ err error }
@@ -231,6 +283,82 @@ func TestDeleteWithoutDiskRetainsTrackedMetadataAndCapacity(t *testing.T) {
 	}
 	if snapshot := fixture.manager.Capacity(); snapshot.DiskGiBUsed != 2 {
 		t.Fatalf("preserved disk lost capacity accounting: %+v", snapshot)
+	}
+}
+
+func TestConcurrentCreateInspectAndStopUsePerSessionLease(t *testing.T) {
+	fixture := newFixture(t, nil)
+	fixture.launcher.launching = make(chan struct{})
+	fixture.launcher.continueCh = make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		_, err := fixture.manager.Create(context.Background(), validRequest())
+		result <- err
+	}()
+	select {
+	case <-fixture.launcher.launching:
+	case <-time.After(time.Second):
+		t.Fatal("create did not reach launcher")
+	}
+	metadata, err := fixture.manager.Inspect(testID)
+	if err != nil || metadata.State != StateCreating {
+		t.Fatalf("inspect during create = %#v, %v", metadata, err)
+	}
+	if _, err := fixture.manager.Create(context.Background(), validRequest()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("concurrent create must be rejected, got %v", err)
+	}
+	if _, err := fixture.manager.Stop(context.Background(), testID); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stop during create must be rejected, got %v", err)
+	}
+	close(fixture.launcher.continueCh)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreatesForDifferentSessionsRunSlowOperationsConcurrently(t *testing.T) {
+	fixture := newFixture(t, nil)
+	secondID := "22222222-2222-4222-8222-222222222222"
+	launcher := &concurrentLauncher{
+		launched: make(chan string, 2),
+		gates: map[string]chan struct{}{
+			testID:   make(chan struct{}),
+			secondID: make(chan struct{}),
+		},
+	}
+	fixture.manager.launcher = launcher
+	results := make(chan error, 2)
+	for _, id := range []string{testID, secondID} {
+		request := validRequest()
+		request.ID = id
+		go func() {
+			_, err := fixture.manager.Create(context.Background(), request)
+			results <- err
+		}()
+	}
+	launched := map[string]bool{}
+	for range 2 {
+		select {
+		case id := <-launcher.launched:
+			launched[id] = true
+		case <-time.After(time.Second):
+			t.Fatal("slow create operation remained under the global lock")
+		}
+	}
+	for _, id := range []string{testID, secondID} {
+		if !launched[id] {
+			t.Fatalf("session %s did not launch concurrently", id)
+		}
+		metadata, err := fixture.manager.Inspect(id)
+		if err != nil || metadata.State != StateCreating {
+			t.Fatalf("inspect %s during create = %#v, %v", id, metadata, err)
+		}
+		close(launcher.gates[id])
+	}
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

@@ -33,10 +33,18 @@ type LauncherConfig struct {
 	GuestServerName string
 }
 
+type machineLifecycle interface {
+	Start(context.Context) error
+	Shutdown(context.Context) error
+}
+
+type machineFactory func(context.Context, firecracker.Config, []byte, *logrus.Entry) (machineLifecycle, error)
+
 type FirecrackerLauncher struct {
-	config LauncherConfig
-	issuer *guestIdentityIssuer
-	logger *logrus.Entry
+	config         LauncherConfig
+	issuer         *guestIdentityIssuer
+	logger         *logrus.Entry
+	machineFactory machineFactory
 }
 
 func NewFirecrackerLauncher(config LauncherConfig) (*FirecrackerLauncher, error) {
@@ -54,7 +62,11 @@ func NewFirecrackerLauncher(config LauncherConfig) (*FirecrackerLauncher, error)
 	if err != nil {
 		return nil, err
 	}
-	return &FirecrackerLauncher{config: config, issuer: issuer, logger: logrus.New().WithField("component", "firecracker-launcher")}, nil
+	return &FirecrackerLauncher{
+		config: config, issuer: issuer,
+		logger:         logrus.New().WithField("component", "firecracker-launcher"),
+		machineFactory: newSDKMachine,
+	}, nil
 }
 
 func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.LaunchSpec) (manager.Instance, error) {
@@ -171,12 +183,7 @@ func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.La
 			},
 		},
 	}
-	machineContext := context.Background()
-	machine, err := firecracker.NewMachine(
-		machineContext,
-		machineConfig,
-		firecracker.WithLogger(launcher.logger),
-	)
+	machine, err := launcher.newMachine(ctx, machineConfig, guestMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -184,15 +191,14 @@ func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.La
 		return nil, fmt.Errorf("verify VM cgroup before jailer: %w", err)
 	}
 	launcher.logger.WithField("cgroup", vmCgroupPath).Info("verified VM cgroup before jailer")
-	machine.Handlers.FcInit = machine.Handlers.FcInit.Append(firecracker.NewSetMetadataHandler(map[string]any{
-		"latest": map[string]any{"meta-data": map[string]any{"agentloom": string(guestMetadata)}},
-	}))
-	if err := machine.Start(machineContext); err != nil {
+	if err := startMachine(ctx, machine); err != nil {
 		return nil, err
 	}
 	pid, err := waitForPIDFile(ctx, pidPath)
 	if err != nil {
-		_ = machine.Shutdown(context.Background())
+		cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = machine.Shutdown(cleanupContext)
+		cancelCleanup()
 		return nil, err
 	}
 	jailRoot := filepath.Join(jailDir, "root")
@@ -203,6 +209,31 @@ func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.La
 		cgroupPath: vmCgroupPath, jailDir: jailDir,
 		machine: machine, client: firecracker.NewClient(socketPath, launcher.logger, false),
 	}, nil
+}
+
+func (launcher *FirecrackerLauncher) newMachine(ctx context.Context, config firecracker.Config, metadata []byte) (machineLifecycle, error) {
+	return launcher.machineFactory(ctx, config, metadata, launcher.logger)
+}
+
+func startMachine(ctx context.Context, machine machineLifecycle) error {
+	if err := machine.Start(ctx); err != nil {
+		cleanupContext, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
+		cleanupErr := machine.Shutdown(cleanupContext)
+		cancelCleanup()
+		return errors.Join(err, cleanupErr)
+	}
+	return nil
+}
+
+func newSDKMachine(ctx context.Context, config firecracker.Config, metadata []byte, logger *logrus.Entry) (machineLifecycle, error) {
+	machine, err := firecracker.NewMachine(ctx, config, firecracker.WithLogger(logger))
+	if err != nil {
+		return nil, err
+	}
+	machine.Handlers.FcInit = machine.Handlers.FcInit.Append(firecracker.NewSetMetadataHandler(map[string]any{
+		"latest": map[string]any{"meta-data": map[string]any{"agentloom": string(metadata)}},
+	}))
+	return machine, nil
 }
 
 func (launcher *FirecrackerLauncher) Reattach(_ context.Context, metadata manager.Metadata, _ string) (manager.Instance, error) {
@@ -362,7 +393,7 @@ type firecrackerInstance struct {
 	socketPath   string
 	cgroupPath   string
 	jailDir      string
-	machine      *firecracker.Machine
+	machine      machineLifecycle
 	pidPath      string
 	client       *firecracker.Client
 	shutdownOnce sync.Once

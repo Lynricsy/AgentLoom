@@ -21,18 +21,32 @@ import (
 	"time"
 )
 
-const execOutputLimit = 1024 * 1024
+const (
+	execOutputLimit      = 1024 * 1024
+	defaultExecTTL       = 5 * time.Minute
+	defaultActiveExecMax = 64
+	defaultCompletedMax  = 256
+)
 
 type RuntimeAPI struct {
-	mutex sync.Mutex
-	execs map[string]*execRecord
-	mux   *http.ServeMux
+	// 锁序：需要同时持锁时始终先 mutex（注册表），再 execRecord.mutex。
+	// output/wait 只在释放注册表锁后获取记录锁，reaper 不得反向取锁。
+	mutex        sync.Mutex
+	execs        map[string]*execRecord
+	mux          *http.ServeMux
+	execTTL      time.Duration
+	activeMax    int
+	completedMax int
+	pending      int
+	now          func() time.Time
+	schedule     func(time.Duration, func())
 }
 
 type execRecord struct {
 	mutex    sync.Mutex
 	command  *exec.Cmd
 	started  time.Time
+	finished time.Time
 	done     chan struct{}
 	exitCode int
 	pid      int
@@ -52,7 +66,15 @@ type execRequest struct {
 }
 
 func NewRuntimeAPI() *RuntimeAPI {
-	runtimeAPI := &RuntimeAPI{execs: make(map[string]*execRecord), mux: http.NewServeMux()}
+	return newRuntimeAPI(defaultExecTTL, defaultActiveExecMax, defaultCompletedMax)
+}
+
+func newRuntimeAPI(ttl time.Duration, activeMax, completedMax int) *RuntimeAPI {
+	runtimeAPI := &RuntimeAPI{
+		execs: make(map[string]*execRecord), mux: http.NewServeMux(),
+		execTTL: ttl, activeMax: activeMax, completedMax: completedMax, now: time.Now,
+		schedule: func(delay time.Duration, callback func()) { time.AfterFunc(delay, callback) },
+	}
 	runtimeAPI.mux.HandleFunc("GET /v1/runtime/archive", runtimeAPI.getArchive)
 	runtimeAPI.mux.HandleFunc("PUT /v1/runtime/archive", runtimeAPI.putArchive)
 	runtimeAPI.mux.HandleFunc("GET /v1/runtime/files", runtimeAPI.readTextFile)
@@ -188,12 +210,26 @@ func (runtimeAPI *RuntimeAPI) createExec(response http.ResponseWriter, request *
 		http.Error(response, "unable to attach stderr", http.StatusInternalServerError)
 		return
 	}
+	record := &execRecord{command: command, started: runtimeAPI.now(), done: make(chan struct{}), exitCode: -1}
+	runtimeAPI.mutex.Lock()
+	runtimeAPI.reapExecsLocked(runtimeAPI.now())
+	if runtimeAPI.activeExecCountLocked()+runtimeAPI.pending >= runtimeAPI.activeMax {
+		runtimeAPI.mutex.Unlock()
+		http.Error(response, "active exec capacity exhausted", http.StatusTooManyRequests)
+		return
+	}
+	runtimeAPI.pending++
+	runtimeAPI.mutex.Unlock()
 	if err := command.Start(); err != nil {
+		runtimeAPI.mutex.Lock()
+		runtimeAPI.pending--
+		runtimeAPI.mutex.Unlock()
 		http.Error(response, "unable to start process", http.StatusBadGateway)
 		return
 	}
-	record := &execRecord{command: command, started: time.Now(), done: make(chan struct{}), exitCode: -1, pid: command.Process.Pid}
+	record.pid = command.Process.Pid
 	runtimeAPI.mutex.Lock()
+	runtimeAPI.pending--
 	runtimeAPI.execs[identifier] = record
 	runtimeAPI.mutex.Unlock()
 	var readers sync.WaitGroup
@@ -211,8 +247,13 @@ func (runtimeAPI *RuntimeAPI) createExec(response http.ResponseWriter, request *
 		} else {
 			record.exitCode = 255
 		}
+		record.finished = runtimeAPI.now()
 		record.mutex.Unlock()
 		close(record.done)
+		runtimeAPI.mutex.Lock()
+		runtimeAPI.reapExecsLocked(runtimeAPI.now())
+		runtimeAPI.mutex.Unlock()
+		runtimeAPI.scheduleReap()
 	}()
 	writeRuntimeJSON(response, http.StatusCreated, map[string]string{"execId": identifier})
 }
@@ -279,6 +320,64 @@ func validateExecRequest(input execRequest) error {
 		}
 	}
 	return nil
+}
+
+func (runtimeAPI *RuntimeAPI) scheduleReap() {
+	if runtimeAPI.execTTL <= 0 {
+		return
+	}
+	runtimeAPI.schedule(runtimeAPI.execTTL, func() {
+		runtimeAPI.reapExecs(runtimeAPI.now())
+	})
+}
+
+func (runtimeAPI *RuntimeAPI) activeExecCountLocked() int {
+	active := 0
+	for _, record := range runtimeAPI.execs {
+		record.mutex.Lock()
+		if record.finished.IsZero() {
+			active++
+		}
+		record.mutex.Unlock()
+	}
+	return active
+}
+
+func (runtimeAPI *RuntimeAPI) reapExecs(now time.Time) {
+	runtimeAPI.mutex.Lock()
+	defer runtimeAPI.mutex.Unlock()
+	runtimeAPI.reapExecsLocked(now)
+}
+
+func (runtimeAPI *RuntimeAPI) reapExecsLocked(now time.Time) {
+	type completedExec struct {
+		id       string
+		finished time.Time
+	}
+	completed := make([]completedExec, 0)
+	for id, record := range runtimeAPI.execs {
+		record.mutex.Lock()
+		finished := record.finished
+		record.mutex.Unlock()
+		if finished.IsZero() {
+			continue
+		}
+		if runtimeAPI.execTTL <= 0 || !now.Before(finished.Add(runtimeAPI.execTTL)) {
+			delete(runtimeAPI.execs, id)
+			continue
+		}
+		completed = append(completed, completedExec{id: id, finished: finished})
+	}
+	for len(completed) > runtimeAPI.completedMax {
+		oldest := 0
+		for index := 1; index < len(completed); index++ {
+			if completed[index].finished.Before(completed[oldest].finished) {
+				oldest = index
+			}
+		}
+		delete(runtimeAPI.execs, completed[oldest].id)
+		completed = append(completed[:oldest], completed[oldest+1:]...)
+	}
 }
 
 func (runtimeAPI *RuntimeAPI) getExec(id string) (*execRecord, bool) {
