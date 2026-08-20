@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/models/paginated_response.dart';
 import '../../../shared/widgets/resource_source_chip.dart';
 import '../api/resources_api.dart';
 import '../models/resource_dtos.dart';
+import '../providers/knowledge_base_provider.dart';
 import '../widgets/resource_shared.dart';
 
 class KnowledgeBasesScreen extends ConsumerStatefulWidget {
@@ -19,35 +19,26 @@ class KnowledgeBasesScreen extends ConsumerStatefulWidget {
 
 class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
   String? _sourceKindFilter;
-  late Future<PaginatedResponse<KnowledgeBaseDto>> _future;
 
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
+  KnowledgeBaseListQuery get _query =>
+      KnowledgeBaseListQuery(sourceKind: _sourceKindFilter);
 
-  Future<PaginatedResponse<KnowledgeBaseDto>> _load() {
-    return ref
-        .read(resourcesApiProvider)
-        .listKnowledgeBases(sourceKind: _sourceKindFilter);
-  }
-
-  Future<void> _reload() async {
-    setState(() {
-      _future = _load();
-    });
-    await _future;
+  Future<void> _refresh(KnowledgeBaseListQuery query) async {
+    final provider = knowledgeBaseListProvider(query);
+    ref.invalidate(provider);
+    await ref.read(provider.future);
   }
 
   @override
   Widget build(BuildContext context) {
+    final query = _query;
+    final knowledgeBases = ref.watch(knowledgeBaseListProvider(query));
     return Scaffold(
       appBar: AppBar(
         title: const Text('知识库'),
         actions: [
           IconButton(
-            onPressed: () => unawaited(_reload()),
+            onPressed: () => unawaited(_refresh(query)),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -57,23 +48,18 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
         icon: const Icon(Icons.add),
         label: const Text('新建'),
       ),
-      body: FutureBuilder<PaginatedResponse<KnowledgeBaseDto>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return ResourceErrorState(
-              message: '加载知识库失败：${snapshot.error}',
-              onRetry: () => unawaited(_reload()),
-            );
-          }
-
-          final items = snapshot.data?.data ?? const <KnowledgeBaseDto>[];
+      body: knowledgeBases.when(
+        skipLoadingOnRefresh: false,
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => ResourceErrorState(
+          message: '加载知识库失败：$error',
+          onRetry: () => unawaited(_refresh(query)),
+        ),
+        data: (response) {
+          final items = response.data;
           if (items.isEmpty) {
             return RefreshIndicator(
-              onRefresh: _reload,
+              onRefresh: () => _refresh(query),
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                 children: [
@@ -85,30 +71,21 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
                         label: '全部来源',
                         selected: _sourceKindFilter == null,
                         onSelected: () {
-                          setState(() {
-                            _sourceKindFilter = null;
-                            _future = _load();
-                          });
+                          setState(() => _sourceKindFilter = null);
                         },
                       ),
                       _FilterChip(
                         label: '自己创建',
                         selected: _sourceKindFilter == 'manual',
                         onSelected: () {
-                          setState(() {
-                            _sourceKindFilter = 'manual';
-                            _future = _load();
-                          });
+                          setState(() => _sourceKindFilter = 'manual');
                         },
                       ),
                       _FilterChip(
                         label: '分享导入',
                         selected: _sourceKindFilter == 'share_imported',
                         onSelected: () {
-                          setState(() {
-                            _sourceKindFilter = 'share_imported';
-                            _future = _load();
-                          });
+                          setState(() => _sourceKindFilter = 'share_imported');
                         },
                       ),
                     ],
@@ -125,7 +102,7 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
           }
 
           return RefreshIndicator(
-            onRefresh: _reload,
+            onRefresh: () => _refresh(query),
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
               children: [
@@ -137,30 +114,21 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
                       label: '全部来源',
                       selected: _sourceKindFilter == null,
                       onSelected: () {
-                        setState(() {
-                          _sourceKindFilter = null;
-                          _future = _load();
-                        });
+                        setState(() => _sourceKindFilter = null);
                       },
                     ),
                     _FilterChip(
                       label: '自己创建',
                       selected: _sourceKindFilter == 'manual',
                       onSelected: () {
-                        setState(() {
-                          _sourceKindFilter = 'manual';
-                          _future = _load();
-                        });
+                        setState(() => _sourceKindFilter = 'manual');
                       },
                     ),
                     _FilterChip(
                       label: '分享导入',
                       selected: _sourceKindFilter == 'share_imported',
                       onSelected: () {
-                        setState(() {
-                          _sourceKindFilter = 'share_imported';
-                          _future = _load();
-                        });
+                        setState(() => _sourceKindFilter = 'share_imported');
                       },
                     ),
                   ],
@@ -257,10 +225,7 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
                       initialValue: visibility,
                       decoration: const InputDecoration(labelText: '可见性'),
                       items: const [
-                        DropdownMenuItem(
-                          value: 'private',
-                          child: Text('私密'),
-                        ),
+                        DropdownMenuItem(value: 'private', child: Text('私密')),
                         DropdownMenuItem(
                           value: 'organization',
                           child: Text('组织'),
@@ -301,7 +266,7 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
       );
 
       if (created == true) {
-        await _reload();
+        await _refresh(_query);
       }
     } finally {
       nameController.dispose();
@@ -314,144 +279,164 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (context) {
-        return FutureBuilder<PaginatedResponse<KnowledgeDocumentDto>>(
-          future: ref
-              .read(resourcesApiProvider)
-              .listKnowledgeDocuments(knowledgeBase.id),
-          builder: (context, snapshot) {
-            final documents =
-                snapshot.data?.data ?? const <KnowledgeDocumentDto>[];
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  Text(
-                    knowledgeBase.name,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  if (knowledgeBase.description != null &&
-                      knowledgeBase.description!.isNotEmpty)
-                    Text(knowledgeBase.description!),
-                  const SizedBox(height: 16),
-                  ResourceMetadataRow(label: '状态', value: knowledgeBase.status),
-                  ResourceMetadataRow(
-                    label: '可见性',
-                    value: knowledgeBase.visibility,
-                  ),
-                  ResourceMetadataRow(
-                    label: 'Embedding',
-                    value: knowledgeBase.embeddingModel,
-                  ),
-                  ResourceMetadataRow(
-                    label: '文档数',
-                    value: '${knowledgeBase.documentCount}',
-                  ),
-                  ResourceMetadataRow(
-                    label: 'Chunk 数',
-                    value: '${knowledgeBase.chunkCount}',
-                  ),
-                  ResourceMetadataRow(
-                    label: '来源',
-                    value: getResourceSourceLabel(knowledgeBase.sourceKind),
-                  ),
-                  ResourceMetadataRow(
-                    label: '更新时间',
-                    value: formatDateTime(knowledgeBase.updatedAt),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: knowledgeBase.sourceKind == 'share_imported'
-                            ? OutlinedButton.icon(
-                                onPressed: () async {
-                                  final messenger = ScaffoldMessenger.of(
-                                    context,
-                                  );
-                                  await ref
-                                      .read(resourcesApiProvider)
-                                      .convertKnowledgeBaseSourceToManual(
-                                        knowledgeBase.id,
-                                      );
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  Navigator.of(context).pop();
-                                  messenger.showSnackBar(
-                                    const SnackBar(content: Text('已转为自己创建')),
-                                  );
-                                  await _reload();
-                                },
-                                icon: const Icon(
-                                  Icons.drive_file_rename_outline,
-                                ),
-                                label: const Text('转为自己创建'),
-                              )
-                            : FilledButton.tonalIcon(
-                                onPressed: () async {
-                                  await ref
-                                      .read(resourcesApiProvider)
-                                      .rebuildKnowledgeBase(knowledgeBase.id);
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  Navigator.of(context).pop();
-                                  await _reload();
-                                },
-                                icon: const Icon(Icons.restart_alt),
-                                label: const Text('重建'),
-                              ),
+      builder: (context) => _KnowledgeBaseDetailSheet(
+        knowledgeBase: knowledgeBase,
+        listQuery: _query,
+      ),
+    );
+  }
+}
+
+class _KnowledgeBaseDetailSheet extends ConsumerWidget {
+  const _KnowledgeBaseDetailSheet({
+    required this.knowledgeBase,
+    required this.listQuery,
+  });
+
+  final KnowledgeBaseDto knowledgeBase;
+  final KnowledgeBaseListQuery listQuery;
+
+  void _invalidate(WidgetRef ref) {
+    ref.invalidate(knowledgeBaseListProvider(listQuery));
+    ref.invalidate(knowledgeDocumentListProvider(knowledgeBase.id));
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final documents = ref.watch(
+      knowledgeDocumentListProvider(knowledgeBase.id),
+    );
+    final description = knowledgeBase.description;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Text(
+            knowledgeBase.name,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 12),
+          if (description != null && description.isNotEmpty) Text(description),
+          const SizedBox(height: 16),
+          ResourceMetadataRow(label: '状态', value: knowledgeBase.status),
+          ResourceMetadataRow(label: '可见性', value: knowledgeBase.visibility),
+          ResourceMetadataRow(
+            label: 'Embedding',
+            value: knowledgeBase.embeddingModel,
+          ),
+          ResourceMetadataRow(
+            label: '文档数',
+            value: '${knowledgeBase.documentCount}',
+          ),
+          ResourceMetadataRow(
+            label: 'Chunk 数',
+            value: '${knowledgeBase.chunkCount}',
+          ),
+          ResourceMetadataRow(
+            label: '来源',
+            value: getResourceSourceLabel(knowledgeBase.sourceKind),
+          ),
+          ResourceMetadataRow(
+            label: '更新时间',
+            value: formatDateTime(knowledgeBase.updatedAt),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: knowledgeBase.sourceKind == 'share_imported'
+                    ? OutlinedButton.icon(
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          await ref
+                              .read(resourcesApiProvider)
+                              .convertKnowledgeBaseSourceToManual(
+                                knowledgeBase.id,
+                              );
+                          if (!context.mounted) {
+                            return;
+                          }
+                          _invalidate(ref);
+                          Navigator.of(context).pop();
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('已转为自己创建')),
+                          );
+                        },
+                        icon: const Icon(Icons.drive_file_rename_outline),
+                        label: const Text('转为自己创建'),
+                      )
+                    : FilledButton.tonalIcon(
+                        onPressed: () async {
+                          await ref
+                              .read(resourcesApiProvider)
+                              .rebuildKnowledgeBase(knowledgeBase.id);
+                          if (!context.mounted) {
+                            return;
+                          }
+                          _invalidate(ref);
+                          Navigator.of(context).pop();
+                        },
+                        icon: const Icon(Icons.restart_alt),
+                        label: const Text('重建'),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await ref
-                                .read(resourcesApiProvider)
-                                .deleteKnowledgeBase(knowledgeBase.id);
-                            if (!context.mounted) {
-                              return;
-                            }
-                            Navigator.of(context).pop();
-                            await _reload();
-                          },
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('删除'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Text('文档', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  if (snapshot.connectionState != ConnectionState.done)
-                    const Center(child: CircularProgressIndicator())
-                  else if (documents.isEmpty)
-                    const Text('暂无文档')
-                  else
-                    for (final document in documents) ...[
-                      Card(
-                        child: ListTile(
-                          title: Text(document.fileName),
-                          subtitle: Text(
-                            '${document.status} · ${formatBytes(document.sizeBytes)}',
-                          ),
-                          trailing: document.errorMessage != null
-                              ? const Icon(Icons.error_outline)
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                ],
               ),
-            );
-          },
-        );
-      },
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await ref
+                        .read(resourcesApiProvider)
+                        .deleteKnowledgeBase(knowledgeBase.id);
+                    if (!context.mounted) {
+                      return;
+                    }
+                    _invalidate(ref);
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('删除'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text('文档', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          documents.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => ResourceErrorState(
+              message: '加载文档失败：$error',
+              onRetry: () => ref.invalidate(
+                knowledgeDocumentListProvider(knowledgeBase.id),
+              ),
+            ),
+            data: (response) {
+              if (response.data.isEmpty) {
+                return const Text('暂无文档');
+              }
+              return Column(
+                children: [
+                  for (final document in response.data) ...[
+                    Card(
+                      child: ListTile(
+                        title: Text(document.fileName),
+                        subtitle: Text(
+                          '${document.status} · ${formatBytes(document.sizeBytes)}',
+                        ),
+                        trailing: document.errorMessage != null
+                            ? const Icon(Icons.error_outline)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

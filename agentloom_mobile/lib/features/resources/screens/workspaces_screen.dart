@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/models/paginated_response.dart';
 import '../api/resources_api.dart';
 import '../models/resource_dtos.dart';
+import '../providers/workspace_provider.dart';
 import '../widgets/resource_shared.dart';
 
 class WorkspacesScreen extends ConsumerStatefulWidget {
@@ -18,13 +18,7 @@ class WorkspacesScreen extends ConsumerStatefulWidget {
 class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
   final _searchController = TextEditingController();
   bool _showExecutionArchives = false;
-  late Future<PaginatedResponse<WorkspaceDto>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
+  String? _search;
 
   @override
   void dispose() {
@@ -32,32 +26,32 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
     super.dispose();
   }
 
-  Future<PaginatedResponse<WorkspaceDto>> _load() {
-    return ref
-        .read(resourcesApiProvider)
-        .listWorkspaces(
-          search: _searchController.text.trim().isEmpty
-              ? null
-              : _searchController.text.trim(),
-          includeAutoArchived: _showExecutionArchives,
-        );
+  WorkspaceListQuery get _query => WorkspaceListQuery(
+    search: _search,
+    includeAutoArchived: _showExecutionArchives,
+  );
+
+  void _submitSearch() {
+    final value = _searchController.text.trim();
+    setState(() => _search = value.isEmpty ? null : value);
   }
 
-  Future<void> _reload() async {
-    setState(() {
-      _future = _load();
-    });
-    await _future;
+  Future<void> _refresh(WorkspaceListQuery query) async {
+    final provider = workspaceListProvider(query);
+    ref.invalidate(provider);
+    await ref.read(provider.future);
   }
 
   @override
   Widget build(BuildContext context) {
+    final query = _query;
+    final workspaces = ref.watch(workspaceListProvider(query));
     return Scaffold(
       appBar: AppBar(
         title: const Text('工作区'),
         actions: [
           IconButton(
-            onPressed: () => unawaited(_reload()),
+            onPressed: () => unawaited(_refresh(query)),
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -79,12 +73,12 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                 IconButton(
                   onPressed: () {
                     _searchController.clear();
-                    unawaited(_reload());
+                    _submitSearch();
                   },
                   icon: const Icon(Icons.close),
                 ),
               ],
-              onSubmitted: (_) => unawaited(_reload()),
+              onSubmitted: (_) => _submitSearch(),
             ),
           ),
           Padding(
@@ -95,32 +89,24 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                 label: const Text('显示执行归档'),
                 selected: _showExecutionArchives,
                 onSelected: (selected) {
-                  setState(() {
-                    _showExecutionArchives = selected;
-                    _future = _load();
-                  });
+                  setState(() => _showExecutionArchives = selected);
                 },
               ),
             ),
           ),
           Expanded(
-            child: FutureBuilder<PaginatedResponse<WorkspaceDto>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return ResourceErrorState(
-                    message: '加载工作区失败：${snapshot.error}',
-                    onRetry: () => unawaited(_reload()),
-                  );
-                }
-
-                final items = snapshot.data?.data ?? const <WorkspaceDto>[];
+            child: workspaces.when(
+              skipLoadingOnRefresh: false,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => ResourceErrorState(
+                message: '加载工作区失败：$error',
+                onRetry: () => unawaited(_refresh(query)),
+              ),
+              data: (response) {
+                final items = response.data;
                 if (items.isEmpty) {
                   return RefreshIndicator(
-                    onRefresh: _reload,
+                    onRefresh: () => _refresh(query),
                     child: ListView(
                       children: [
                         const SizedBox(height: 80),
@@ -137,7 +123,7 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                 }
 
                 return RefreshIndicator(
-                  onRefresh: _reload,
+                  onRefresh: () => _refresh(query),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                     itemCount: items.length,
@@ -228,7 +214,7 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
       );
 
       if (created == true) {
-        await _reload();
+        await _refresh(_query);
       }
     } finally {
       nameController.dispose();
@@ -285,7 +271,7 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                     return;
                   }
                   Navigator.of(context).pop();
-                  await _reload();
+                  await _refresh(_query);
                 },
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('删除工作区'),

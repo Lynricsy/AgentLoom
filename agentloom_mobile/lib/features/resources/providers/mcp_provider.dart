@@ -1,48 +1,83 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/models/paginated_response.dart';
 import '../api/resources_api.dart';
 import '../models/resource_dtos.dart';
 
-typedef McpServerListParams = ({String? search, String? status, String? transportType, String? sourceKind});
+@immutable
+class McpServerListQuery {
+  const McpServerListQuery({
+    this.search,
+    this.status,
+    this.transportType,
+    this.sourceKind,
+  });
 
-class McpServerListNotifier extends AsyncNotifier<PaginatedResponse<McpServerConfigSummaryDto>> {
-  McpServerListNotifier(this.params);
-  final McpServerListParams params;
+  final String? search;
+  final String? status;
+  final String? transportType;
+  final String? sourceKind;
 
   @override
-  Future<PaginatedResponse<McpServerConfigSummaryDto>> build() => ref.read(resourcesApiProvider).listMcpServerConfigs(
-    search: params.search,
-    status: params.status,
-    transportType: params.transportType,
-    sourceKind: params.sourceKind,
-  );
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is McpServerListQuery &&
+          search == other.search &&
+          status == other.status &&
+          transportType == other.transportType &&
+          sourceKind == other.sourceKind;
 
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    final next = await AsyncValue.guard(build);
-    if (ref.mounted) state = next;
+  @override
+  int get hashCode => Object.hash(search, status, transportType, sourceKind);
+}
+
+class McpServerListNotifier
+    extends AsyncNotifier<PaginatedResponse<McpServerConfigSummaryDto>> {
+  McpServerListNotifier(this.query);
+
+  final McpServerListQuery query;
+
+  @override
+  Future<PaginatedResponse<McpServerConfigSummaryDto>> build() {
+    return ref
+        .read(resourcesApiProvider)
+        .listMcpServerConfigs(
+          search: query.search,
+          status: query.status,
+          transportType: query.transportType,
+          sourceKind: query.sourceKind,
+        );
   }
 }
 
 class McpServerDetailNotifier extends AsyncNotifier<McpServerConfigDetailDto> {
   McpServerDetailNotifier(this.configId);
+
   final String configId;
 
   @override
-  Future<McpServerConfigDetailDto> build() => ref.read(resourcesApiProvider).getMcpServerConfig(configId);
-
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    final next = await AsyncValue.guard(build);
-    if (ref.mounted) state = next;
-  }
+  Future<McpServerConfigDetailDto> build() =>
+      ref.read(resourcesApiProvider).getMcpServerConfig(configId);
 }
 
-final mcpServerListProvider = AsyncNotifierProvider.family<McpServerListNotifier, PaginatedResponse<McpServerConfigSummaryDto>, McpServerListParams>(McpServerListNotifier.new);
-final mcpServerDetailProvider = AsyncNotifierProvider.family<McpServerDetailNotifier, McpServerConfigDetailDto, String>(McpServerDetailNotifier.new);
+final mcpServerListProvider =
+    AsyncNotifierProvider.family<
+      McpServerListNotifier,
+      PaginatedResponse<McpServerConfigSummaryDto>,
+      McpServerListQuery
+    >(McpServerListNotifier.new);
+
+final mcpServerDetailProvider =
+    AsyncNotifierProvider.family<
+      McpServerDetailNotifier,
+      McpServerConfigDetailDto,
+      String
+    >(McpServerDetailNotifier.new);
 
 void invalidateMcpResources(Ref ref, {String? configId}) {
   ref.invalidate(mcpServerListProvider);
-  if (configId != null) ref.invalidate(mcpServerDetailProvider(configId));
+  if (configId != null) {
+    ref.invalidate(mcpServerDetailProvider(configId));
+  }
 }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,22 +20,11 @@ class McpServerDetailSheet extends ConsumerStatefulWidget {
 }
 
 class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
-  late Future<McpServerConfigDetailDto> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<McpServerConfigDetailDto> _load() =>
-      ref.read(mcpServerDetailProvider(widget.summary.id).future);
-
-  Future<void> _reload() async {
-    ref.invalidate(mcpServerDetailProvider(widget.summary.id));
+  Future<void> _refreshDetail() async {
+    final provider = mcpServerDetailProvider(widget.summary.id);
+    ref.invalidate(provider);
     ref.invalidate(mcpServerListProvider);
-    setState(() => _future = _load());
-    await _future;
+    await ref.read(provider.future);
   }
 
   Future<void> _testSavedConnection() async {
@@ -57,7 +44,7 @@ class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
           ),
         ),
       );
-      await _reload();
+      await _refreshDetail();
     } catch (error) {
       if (!mounted) {
         return;
@@ -69,29 +56,21 @@ class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
   }
 
   Future<void> _openEditSheet(McpServerConfigDetailDto detail) async {
-    final changed = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => McpEditSheet(detail: detail),
     );
-
-    if (changed == true) {
-      await _reload();
-    }
   }
 
   Future<void> _openReimportSheet(McpServerConfigDetailDto detail) async {
-    final changed = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => McpDiscoverySheet(existingDetail: detail),
     );
-
-    if (changed == true) {
-      await _reload();
-    }
   }
 
   Future<void> _confirmDelete() async {
@@ -121,10 +100,12 @@ class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
       await ref
           .read(resourcesApiProvider)
           .deleteMcpServerConfig(widget.summary.id);
+      ref.invalidate(mcpServerListProvider);
+      ref.invalidate(mcpServerDetailProvider(widget.summary.id));
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop();
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('MCP 服务已删除')));
@@ -140,7 +121,7 @@ class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
 
   Future<void> _openToolDetail(McpToolDefinitionDto tool) async {
     final messenger = ScaffoldMessenger.of(context);
-    final changed = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -149,6 +130,8 @@ class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
           tool: tool,
           onDeactivate: () async {
             await ref.read(resourcesApiProvider).deactivateMcpTool(tool.id);
+            ref.invalidate(mcpServerDetailProvider(widget.summary.id));
+            ref.invalidate(mcpServerListProvider);
             if (!mounted) {
               return;
             }
@@ -159,184 +142,176 @@ class _McpServerDetailSheetState extends ConsumerState<McpServerDetailSheet> {
         );
       },
     );
-
-    if (changed == true) {
-      await _reload();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final detailValue = ref.watch(mcpServerDetailProvider(widget.summary.id));
 
-    return FutureBuilder<McpServerConfigDetailDto>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-            child: ResourceErrorState(
-              message: '加载详情失败：${describeResourceError(snapshot.error!)}',
-              onRetry: () => unawaited(_reload()),
+    return detailValue.when(
+      skipLoadingOnRefresh: false,
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+        child: ResourceErrorState(
+          message: '加载详情失败：${describeResourceError(error)}',
+          onRetry: () => _refreshDetail(),
+        ),
+      ),
+      data: (detail) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Text(detail.name, style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            if (detail.description != null && detail.description!.isNotEmpty)
+              Text(detail.description!),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(label: Text(detail.status)),
+                Chip(label: Text(detail.transportType)),
+                Chip(label: Text('${detail.tools.length} 工具')),
+              ],
             ),
-          );
-        }
-
-        final detail = snapshot.data!;
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              Text(detail.name, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              if (detail.description != null && detail.description!.isNotEmpty)
-                Text(detail.description!),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Chip(label: Text(detail.status)),
-                  Chip(label: Text(detail.transportType)),
-                  Chip(label: Text('${detail.tools.length} 工具')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ResourceMetadataRow(
-                label: '创建时间',
-                value: formatDateTime(detail.createdAt),
-              ),
-              ResourceMetadataRow(
-                label: '更新时间',
-                value: formatDateTime(detail.updatedAt),
-              ),
-              ResourceMetadataRow(
-                label: '最近测试',
-                value: detail.lastTestedAt == null
-                    ? '未测试'
-                    : formatDateTime(detail.lastTestedAt!),
-              ),
-              ResourceMetadataRow(
-                label: '来源',
-                value: getResourceSourceLabel(detail.sourceKind),
-              ),
-              const SizedBox(height: 16),
-              JsonCodePanel(
-                label: '连接信息',
-                data: {
-                  'transportType': detail.connection.transportType,
-                  if (detail.connection.command != null)
-                    'command': detail.connection.command,
-                  if (detail.connection.args.isNotEmpty)
-                    'args': detail.connection.args,
-                  if (detail.connection.url != null)
-                    'url': detail.connection.url,
-                  'credentialKeys': detail.credentialKeys,
-                },
-              ),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  FilledButton.tonalIcon(
-                    onPressed: _testSavedConnection,
-                    icon: const Icon(Icons.wifi_tethering_rounded),
-                    label: const Text('测试连接'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: () => _openReimportSheet(detail),
-                    icon: const Icon(Icons.download_for_offline_rounded),
-                    label: const Text('重新导入'),
-                  ),
+            const SizedBox(height: 16),
+            ResourceMetadataRow(
+              label: '创建时间',
+              value: formatDateTime(detail.createdAt),
+            ),
+            ResourceMetadataRow(
+              label: '更新时间',
+              value: formatDateTime(detail.updatedAt),
+            ),
+            ResourceMetadataRow(
+              label: '最近测试',
+              value: detail.lastTestedAt == null
+                  ? '未测试'
+                  : formatDateTime(detail.lastTestedAt!),
+            ),
+            ResourceMetadataRow(
+              label: '来源',
+              value: getResourceSourceLabel(detail.sourceKind),
+            ),
+            const SizedBox(height: 16),
+            JsonCodePanel(
+              label: '连接信息',
+              data: {
+                'transportType': detail.connection.transportType,
+                if (detail.connection.command != null)
+                  'command': detail.connection.command,
+                if (detail.connection.args.isNotEmpty)
+                  'args': detail.connection.args,
+                if (detail.connection.url != null) 'url': detail.connection.url,
+                'credentialKeys': detail.credentialKeys,
+              },
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: _testSavedConnection,
+                  icon: const Icon(Icons.wifi_tethering_rounded),
+                  label: const Text('测试连接'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => _openReimportSheet(detail),
+                  icon: const Icon(Icons.download_for_offline_rounded),
+                  label: const Text('重新导入'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _openEditSheet(detail),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('编辑'),
+                ),
+                if (detail.sourceKind == 'share_imported')
                   OutlinedButton.icon(
-                    onPressed: () => _openEditSheet(detail),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('编辑'),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final navigator = Navigator.of(context);
+                      await ref
+                          .read(resourcesApiProvider)
+                          .convertMcpServerConfigSourceToManual(detail.id);
+                      ref.invalidate(mcpServerListProvider);
+                      ref.invalidate(
+                        mcpServerDetailProvider(widget.summary.id),
+                      );
+                      if (!mounted) {
+                        return;
+                      }
+                      navigator.pop();
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('已转为自己创建')),
+                      );
+                    },
+                    icon: const Icon(Icons.drive_file_rename_outline),
+                    label: const Text('转为自己创建'),
                   ),
-                  if (detail.sourceKind == 'share_imported')
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        final navigator = Navigator.of(context);
-                        await ref
-                            .read(resourcesApiProvider)
-                            .convertMcpServerConfigSourceToManual(detail.id);
-                        if (!mounted) {
-                          return;
-                        }
-                        navigator.pop(true);
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('已转为自己创建')),
-                        );
-                      },
-                      icon: const Icon(Icons.drive_file_rename_outline),
-                      label: const Text('转为自己创建'),
-                    ),
-                  OutlinedButton.icon(
-                    onPressed: _confirmDelete,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('删除'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text('工具', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 12),
-              if (detail.tools.isEmpty)
-                const Text('当前没有活跃工具')
-              else
-                for (final tool in detail.tools) ...[
-                  Card(
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: const Icon(Icons.extension_rounded),
-                      title: Text(tool.title ?? tool.name),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(tool.description ?? '无描述'),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
+                OutlinedButton.icon(
+                  onPressed: _confirmDelete,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('删除'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text('工具', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            if (detail.tools.isEmpty)
+              const Text('当前没有活跃工具')
+            else
+              for (final tool in detail.tools) ...[
+                Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: const Icon(Icons.extension_rounded),
+                    title: Text(tool.title ?? tool.name),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(tool.description ?? '无描述'),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            Chip(
+                              label: Text(
+                                '${tool.portMappingMetadata?.inputs.length ?? 0} 输入',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            Chip(
+                              label: Text(
+                                '${tool.portMappingMetadata?.outputs.length ?? 0} 输出',
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            if (tool.importedAt != null)
                               Chip(
-                                label: Text(
-                                  '${tool.portMappingMetadata?.inputs.length ?? 0} 输入',
-                                ),
+                                label: Text(formatDateTime(tool.importedAt!)),
                                 visualDensity: VisualDensity.compact,
                               ),
-                              Chip(
-                                label: Text(
-                                  '${tool.portMappingMetadata?.outputs.length ?? 0} 输出',
-                                ),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              if (tool.importedAt != null)
-                                Chip(
-                                  label: Text(formatDateTime(tool.importedAt!)),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _openToolDetail(tool),
+                          ],
+                        ),
+                      ],
                     ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _openToolDetail(tool),
                   ),
-                  const SizedBox(height: 8),
-                ],
-            ],
-          ),
-        );
-      },
+                ),
+                const SizedBox(height: 8),
+              ],
+          ],
+        ),
+      ),
     );
   }
 }
