@@ -1,7 +1,55 @@
-import type { AgentEvent } from '../../agent/types/agent-event.types';
-import type { ToolCallStatus } from '../../agent/types/tool-call-event.types';
-import type { SubAgentEventEnvelope } from '../../agent-execution/subagent/subagent-execution.types';
+/**
+ * Socket 事件类型的唯一来源是 `@agentloom/contracts`。
+ *
+ * 本文件只做两件事：
+ * 1. 原样 re-export 契约层类型，让既有 import 路径保持不变；
+ * 2. 保留仅服务端使用的 socket 通道形状（订阅/ACK/Server-Client 事件签名）。
+ *
+ * 新增或修改 wire 字段必须先改 `agentloom-contracts`，不要在这里重新声明。
+ */
+export type {
+  ExecutionResourceType,
+  PreparationPhase,
+  StructuredErrorDetail,
+  ExecutionStatusChangedPayload,
+  StepStatusChangedPayload,
+  StepAgentEventPayload,
+  StepRetryingPayload,
+  OutputChunkPayload,
+  InterventionDecision,
+  InterventionCheckpointRecord,
+  InterventionRequiredPayload,
+  InterventionResolvedPayload,
+  ToolCallStatusPayload,
+  ToolPermissionRequiredPayload,
+  ToolPermissionResolvedPayload,
+  ExecutionEventPayloadMap,
+  ExecutionEvent,
+  StepSnapshot,
+  ExecutionStateSnapshot,
+} from '@agentloom/contracts';
 
+export {
+  EXECUTION_EVENT_NAMES,
+  EXECUTION_EVENT_PAYLOAD_SCHEMAS,
+  ExecutionEventEnvelopeSchema,
+  ExecutionEventNameSchema,
+  ExecutionStateSnapshotSchema,
+  StepSnapshotSchema,
+  parseExecutionEvent,
+} from '@agentloom/contracts';
+
+import type {
+  ExecutionEvent,
+  ExecutionEventName as ExecutionEventNameType,
+  ExecutionStateSnapshot,
+} from '@agentloom/contracts';
+
+/**
+ * 事件名常量表。契约层导出的是取值数组与 zod enum，
+ * 服务端代码大量按语义键引用（`ExecutionEventName.STEP_STATUS_CHANGED`），
+ * 因此在这里维持具名映射；取值必须与契约层一致。
+ */
 export const ExecutionEventName = {
   EXECUTION_STATUS_CHANGED: 'execution.status.changed',
   STEP_STATUS_CHANGED: 'execution.node.status-changed',
@@ -13,251 +61,10 @@ export const ExecutionEventName = {
   NODE_TOOL_CALL_STATUS: 'execution.node.tool-call-status',
   NODE_TOOL_PERMISSION_REQUIRED: 'execution.node.tool-permission-required',
   NODE_TOOL_PERMISSION_RESOLVED: 'execution.node.tool-permission-resolved',
-} as const;
+} as const satisfies Record<string, ExecutionEventNameType>;
 
 export type ExecutionEventName =
   (typeof ExecutionEventName)[keyof typeof ExecutionEventName];
-
-export type ExecutionResourceType = 'workflow' | 'conversation';
-
-/**
- * Preparation phases for agent conversation sandbox startup.
- * Clients that do not recognise the `phase` field can safely ignore it.
- */
-export type PreparationPhase =
-  | 'queued'
-  | 'preparing'
-  | 'sandbox_creating'
-  | 'agent_initializing'
-  | 'running';
-
-export interface ExecutionStatusChangedPayload {
-  readonly executionId: string;
-  readonly status: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly completedSteps?: number;
-  readonly totalSteps?: number;
-  readonly errorMessage?: string;
-
-  /** Current preparation phase during agent conversation startup. */
-  readonly phase?: PreparationPhase;
-  /** When a failure occurs, identifies which phase failed. */
-  readonly failedPhase?: PreparationPhase;
-  /** Human-readable error summary (used alongside failedPhase). */
-  readonly error?: string;
-  /** True when an existing sandbox session was reused instead of created. */
-  readonly sandboxReused?: boolean;
-}
-
-export interface StructuredErrorDetail {
-  readonly message: string;
-  readonly type?: string;
-  readonly title?: string;
-  readonly detail?: string;
-  readonly nodeId?: string;
-  readonly stack?: string;
-  readonly errors?: ReadonlyArray<{
-    readonly field: string;
-    readonly message: string;
-  }>;
-  readonly typeMismatch?: {
-    readonly sourcePortId?: string;
-    readonly targetPortId?: string;
-    readonly sourceType: string;
-    readonly targetType: string;
-    readonly sourceNodeId: string;
-    readonly targetNodeId: string;
-    readonly edgeId?: string;
-  };
-  readonly attempts?: ReadonlyArray<{
-    readonly attempt: number;
-    readonly message: string;
-    readonly timestamp: string;
-  }>;
-}
-
-export interface StepStatusChangedPayload {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly from: string;
-  readonly to: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly errorDetail?: StructuredErrorDetail;
-  readonly result?: Record<string, unknown> | null;
-  readonly checkpointData?: Record<string, unknown> | null;
-}
-
-export interface StepAgentEventPayload {
-  readonly stepId: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly event: AgentEvent;
-  readonly subagent?: SubAgentEventEnvelope;
-}
-
-export interface StepRetryingPayload {
-  readonly stepId: string;
-  readonly attempt: number;
-  readonly maxAttempts: number;
-  readonly errorMessage?: string;
-}
-
-export interface OutputChunkPayload {
-  readonly stepId: string;
-  readonly chunk: string;
-  readonly index: number;
-  readonly executionType?: 'workflow' | 'conversation';
-}
-
-export interface InterventionDecision {
-  readonly suggestedContent?: unknown;
-  readonly autonomyMode?: string;
-  readonly selectedAction?: string;
-  readonly alternatives?: readonly string[];
-  readonly confidence?: number;
-  readonly rationale?: string;
-}
-
-export interface InterventionCheckpointRecord {
-  readonly requested_at: string;
-  readonly resolved_at: string;
-  readonly action: 'approve' | 'modify' | 'reject';
-  readonly instruction: unknown | null;
-  readonly resolved_by_user_id: string;
-  readonly timeout?: boolean;
-}
-
-export interface InterventionRequiredPayload {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly nodeName: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly decision?: InterventionDecision;
-  readonly partialContent?: string;
-  readonly requestedAt: string;
-}
-
-export interface InterventionResolvedPayload {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly action: 'approve' | 'modify' | 'reject';
-  readonly feedback?: string;
-  readonly modifiedContent?: unknown;
-  readonly resolvedBy: string;
-  readonly resolvedAt: string;
-  readonly timeout?: boolean;
-}
-
-export interface ToolCallStatusPayload {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly toolCallId: string;
-  readonly tool: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly status: ToolCallStatus;
-  readonly args?: Record<string, unknown>;
-  readonly result?: unknown;
-  readonly error?: string;
-  readonly permissionRequest?: {
-    readonly description?: string;
-    readonly resourcePaths?: readonly string[];
-    readonly domain?: string;
-    readonly category?: string;
-    readonly riskLevel?: 'low' | 'medium' | 'high';
-    readonly sourceLabel?: string;
-    readonly targetType?: string;
-    readonly targetLabel?: string;
-    readonly approveEffect?: string;
-    readonly denyEffect?: string;
-    readonly diffPreview?: Record<string, unknown>;
-    readonly rememberable?: boolean;
-  };
-  readonly transitions?: Array<{
-    readonly from?: ToolCallStatus;
-    readonly to: ToolCallStatus;
-    readonly timestamp: string;
-    readonly source: 'runtime' | 'worker' | 'user';
-  }>;
-}
-
-export interface ToolPermissionRequiredPayload {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly toolCallId: string;
-  readonly tool: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly args: Record<string, unknown>;
-  readonly requestedAt: string;
-  readonly permissionRequest?: {
-    readonly description?: string;
-    readonly resourcePaths?: readonly string[];
-    readonly domain?: string;
-    readonly category?: string;
-    readonly riskLevel?: 'low' | 'medium' | 'high';
-    readonly sourceLabel?: string;
-    readonly targetType?: string;
-    readonly targetLabel?: string;
-    readonly approveEffect?: string;
-    readonly denyEffect?: string;
-    readonly diffPreview?: Record<string, unknown>;
-    readonly rememberable?: boolean;
-  };
-}
-
-export interface ToolPermissionResolvedPayload {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly toolCallId: string;
-  readonly executionType?: ExecutionResourceType;
-  readonly action: 'approve' | 'deny';
-}
-
-export interface ExecutionEventPayloadMap {
-  [ExecutionEventName.EXECUTION_STATUS_CHANGED]: ExecutionStatusChangedPayload;
-  [ExecutionEventName.STEP_STATUS_CHANGED]: StepStatusChangedPayload;
-  [ExecutionEventName.STEP_AGENT_EVENT]: StepAgentEventPayload;
-  [ExecutionEventName.STEP_RETRYING]: StepRetryingPayload;
-  [ExecutionEventName.OUTPUT_CHUNK]: OutputChunkPayload;
-  [ExecutionEventName.NODE_INTERVENTION_REQUIRED]: InterventionRequiredPayload;
-  [ExecutionEventName.NODE_INTERVENTION_RESOLVED]: InterventionResolvedPayload;
-  [ExecutionEventName.NODE_TOOL_CALL_STATUS]: ToolCallStatusPayload;
-  [ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED]: ToolPermissionRequiredPayload;
-  [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]: ToolPermissionResolvedPayload;
-}
-
-export interface ExecutionEvent<
-  T extends ExecutionEventName = ExecutionEventName,
-> {
-  /** Monotonically increasing per execution */
-  readonly eventId: number;
-  readonly event: T;
-  readonly timestamp: string;
-  readonly executionId: string;
-  readonly tenantId: string;
-  readonly data: ExecutionEventPayloadMap[T];
-}
-
-export interface StepSnapshot {
-  readonly stepId: string;
-  readonly nodeId: string;
-  readonly status: string;
-  readonly startedAt: string | null;
-  readonly completedAt: string | null;
-  readonly errorMessage?: string;
-  readonly errorDetail?: StructuredErrorDetail;
-  readonly result?: Record<string, unknown> | null;
-  readonly checkpointData?: Record<string, unknown> | null;
-}
-
-export interface ExecutionStateSnapshot {
-  readonly executionId: string;
-  readonly status: string;
-  readonly completedSteps: number;
-  readonly totalSteps: number;
-  readonly steps: StepSnapshot[];
-  readonly snapshotAt: string;
-  readonly lastEventId?: number;
-}
 
 export type LegacyEventName =
   | 'step:status-changed'
@@ -269,7 +76,10 @@ export type LegacyEventName =
   | 'execution:paused'
   | 'execution:cancelled';
 
-export const LEGACY_EVENT_MAP: Record<LegacyEventName, ExecutionEventName> = {
+export const LEGACY_EVENT_MAP: Record<
+  LegacyEventName,
+  ExecutionEventNameType
+> = {
   'step:status-changed': ExecutionEventName.STEP_STATUS_CHANGED,
   'step:agent-event': ExecutionEventName.STEP_AGENT_EVENT,
   'step:retrying': ExecutionEventName.STEP_RETRYING,

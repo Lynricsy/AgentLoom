@@ -1,0 +1,32 @@
+{
+  "name": "@agentloom/api-client",
+  "version": "0.1.0",
+  "description": "AgentLoom REST API 类型定义（由 server OpenAPI spec 生成）",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "sync": "node scripts/sync-models.mjs",
+    "build": "tsup",
+    "prepare": "pnpm build",
+    "prepack": "pnpm build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "^8.0.0",
+    "typescript": "catalog:"
+  },
+  "license": "GPL-3.0-only"
+}

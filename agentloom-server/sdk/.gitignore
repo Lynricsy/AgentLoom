@@ -1,6 +1,7 @@
 # SDK generated files
 typescript/
 python/
+typescript-models/
 
 # Keep the spec
 !openapi.json

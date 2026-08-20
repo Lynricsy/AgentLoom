@@ -1,147 +1,37 @@
-import type { SandboxConfig } from '../../database/schema/sandbox-sessions.schema';
-import type { AgentRuntimeMode } from '../../database/schema/agent-definitions.schema';
+/**
+ * Agent 运行时配置类型的唯一来源是 `@agentloom/contracts`。
+ *
+ * 本文件只做原样 re-export，让既有 import 路径保持不变。
+ * 新增或修改字段必须先改 `agentloom-contracts`，不要在这里重新声明。
+ */
+export type {
+  AgentRuntimeMode,
+  AgentModelConfig,
+  AgentToolBindingBase,
+  AgentMcpToolBinding,
+  AgentHttpToolBinding,
+  AgentCodeToolBinding,
+  LegacyAgentToolBinding,
+  AgentToolBinding,
+  AgentKnowledgeBinding,
+  AgentSubAgentOverrides,
+  AgentSubAgentExtensions,
+  AgentSubAgentRef,
+  AgentInputPreprocessor,
+  AgentRoutingConfig,
+  AgentNativeToolPolicy,
+  AgentSelfEvolutionPolicy,
+  AgentRuntimeConfig,
+} from '@agentloom/contracts';
 
-export interface AgentModelConfig {
-  modelId: string;
-  provider?: string;
-  apiProtocol?: string | null;
-  modelName?: string;
-  apiKeyId?: string | null;
-  endpointUrl?: string | null;
-  authMethod?: string | null;
-  authConfig?: Record<string, unknown> | null;
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  customParameters?: Record<string, unknown>;
-}
-
-export interface AgentToolBindingBase {
-  toolId: string;
-  name: string;
-  description?: string;
-  parameterOverrides?: Record<string, unknown>;
-  enabled: boolean;
-}
-
-export interface AgentMcpToolBinding extends AgentToolBindingBase {
-  toolType: 'mcp';
-  mcpToolDefinitionId?: string;
-  mcpServerConfigId?: string;
-  toolName?: string;
-  inputSchema?: Record<string, unknown>;
-  portMapping?: Record<string, unknown>;
-}
-
-export interface AgentHttpToolBinding extends AgentToolBindingBase {
-  toolType: 'http';
-  url: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-}
-
-export interface AgentCodeToolBinding extends AgentToolBindingBase {
-  toolType: 'code';
-  language: 'typescript' | 'javascript' | 'python' | 'bash';
-  code?: string;
-  /** 执行超时时间（秒） */
-  timeout?: number;
-}
-
-export type LegacyAgentToolBinding = AgentToolBindingBase & {
-  toolType?: undefined;
-  mcpToolDefinitionId?: string;
-  mcpServerConfigId?: string;
-  toolName?: string;
-  inputSchema?: Record<string, unknown>;
-  portMapping?: Record<string, unknown>;
-  url?: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  language?: 'typescript' | 'javascript' | 'python' | 'bash';
-  code?: string;
-};
-
-export type AgentToolBinding =
-  | AgentMcpToolBinding
-  | AgentHttpToolBinding
-  | AgentCodeToolBinding
-  | LegacyAgentToolBinding;
-
-export interface AgentKnowledgeBinding {
-  knowledgeBaseId: string;
-  topK?: number;
-  similarityThreshold?: number;
-  enabled: boolean;
-}
-
-export interface AgentSubAgentOverrides {
-  systemPrompt?: string;
-  modelConfig?: AgentModelConfig;
-  routingConfig?: AgentRoutingConfig;
-  outputSchema?: Record<string, unknown>;
-}
-
-export interface AgentSubAgentExtensions {
-  tools?: AgentToolBinding[];
-  knowledgeBindings?: AgentKnowledgeBinding[];
-  subAgents?: AgentSubAgentRef[];
-  memoryInstanceIds?: string[];
-  skillIds?: string[];
-}
-
-export interface AgentSubAgentRef {
-  agentDefinitionId: string;
-  agentVersionId?: string;
-  /** 必填唯一别名，用于工具名称中的标识 */
-  alias: string;
-  /** 画布端配置的最大超时时间 (ms)，默认 300_000 (5分钟) */
-  maxTimeoutMs?: number;
-  /** 子代理描述，用于工具 description 生成 */
-  description?: string;
-  /** 当前挂载点对被引用子代理的局部覆盖 */
-  overrides?: AgentSubAgentOverrides;
-  /** 当前挂载点对被引用子代理的局部扩展 */
-  extensions?: AgentSubAgentExtensions;
-}
-
-export interface AgentInputPreprocessor {
-  type: string;
-  config?: Record<string, unknown>;
-}
-
-export interface AgentRoutingConfig {
-  strategy: string;
-  candidateModelIds?: string[];
-  fallbackModelId?: string;
-}
-
-export interface AgentNativeToolPolicy {
-  readEnabled: boolean;
-  writeEnabled: boolean;
-  editEnabled: boolean;
-  terminalEnabled: boolean;
-}
-
-export interface AgentSelfEvolutionPolicy {
-  enabled: boolean;
-  resourceManagement: boolean;
-  externalEditing: boolean;
-  sandboxManagement: boolean;
-}
-
-export interface AgentRuntimeConfig {
-  runtimeMode?: AgentRuntimeMode;
-  modelConfig?: AgentModelConfig;
-  tools?: AgentToolBinding[];
-  knowledgeBindings?: AgentKnowledgeBinding[];
-  subAgents?: AgentSubAgentRef[];
-  inputPreprocessors?: AgentInputPreprocessor[];
-  sandboxConfig?: SandboxConfig;
-  routingConfig?: AgentRoutingConfig;
-  memoryInstanceIds?: string[];
-  skillIds?: string[];
-  outputSchema?: Record<string, unknown>;
-  nativeToolPolicy?: AgentNativeToolPolicy;
-  selfEvolutionPolicy?: AgentSelfEvolutionPolicy;
-}
+export {
+  AGENT_RUNTIME_MODES,
+  AgentRuntimeConfigSchema,
+  AgentModelConfigSchema,
+  AgentToolBindingSchema,
+  AgentKnowledgeBindingSchema,
+  AgentRoutingConfigSchema,
+  AgentSubAgentRefSchema,
+  AgentNativeToolPolicySchema,
+  AgentSelfEvolutionPolicySchema,
+} from '@agentloom/contracts';

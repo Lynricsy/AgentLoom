@@ -16,6 +16,18 @@
           "withInterfaces": true
         }
       },
+      "typescriptModels": {
+        "generatorName": "typescript-fetch",
+        "output": "#{cwd}/sdk/typescript-models",
+        "glob": "sdk/openapi.json",
+        "additionalProperties": {
+          "npmName": "@agentloom/api-client",
+          "npmVersion": "0.1.0",
+          "supportsES6": true,
+          "typescriptThreePlus": true,
+          "withoutRuntimeChecks": true
+        }
+      },
       "python": {
         "generatorName": "python",
         "output": "#{cwd}/sdk/python",

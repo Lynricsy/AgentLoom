@@ -1,0 +1,39 @@
+{
+  "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+  "nodeId": "agent-main",
+  "toolCallId": "call_7yq2",
+  "tool": "apply_change",
+  "executionType": "conversation",
+  "status": "awaiting_permission",
+  "args": {
+    "path": "src/app.ts",
+    "content": "export const a = 1;"
+  },
+  "permissionRequest": {
+    "description": "写入 workspace 文件 src/app.ts",
+    "resourcePaths": [
+      "/workspace/src/app.ts"
+    ],
+    "category": "file_write",
+    "riskLevel": "medium",
+    "sourceLabel": "self-evolution",
+    "targetType": "workspace_file",
+    "targetLabel": "src/app.ts",
+    "approveEffect": "允许写入该文件",
+    "denyEffect": "拒绝写入并向 Agent 返回错误",
+    "rememberable": true
+  },
+  "transitions": [
+    {
+      "to": "pending",
+      "timestamp": "2026-03-24T09:15:41.100Z",
+      "source": "runtime"
+    },
+    {
+      "from": "pending",
+      "to": "awaiting_permission",
+      "timestamp": "2026-03-24T09:15:41.200Z",
+      "source": "worker"
+    }
+  ]
+}
