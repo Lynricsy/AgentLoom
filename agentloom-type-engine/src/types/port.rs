@@ -2,6 +2,10 @@ use super::TypeSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// 端口数据类型。
+///
+/// canonical 定义在 `@agentloom/contracts` 的 `PORT_DATA_TYPES`；本枚举为 Rust 侧镜像，
+/// 新增取值必须先加到 contracts，由 contracts 的 `port-data-type.test.ts` 做机械同步校验。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PortDataType {

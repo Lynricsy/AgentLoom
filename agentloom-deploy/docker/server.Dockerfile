@@ -49,7 +49,9 @@ CMD ["pnpm", "db:migrate"]
 
 # ── Stage 3: production (pruned, no devDeps) ─────────────────────
 FROM builder AS builder-pruned
-RUN pnpm prune --prod --config.node-linker=hoisted
+# --ignore-scripts：prune 会重跑 workspace 包的 prepare，而此时 tsup 已随 devDeps 被移除；
+# 各包的 dist/ 已在 deps 阶段构建完成，无需再次构建。
+RUN pnpm prune --prod --config.node-linker=hoisted --ignore-scripts
 FROM node:22-bookworm-slim AS production
 
 ENV NODE_ENV=production

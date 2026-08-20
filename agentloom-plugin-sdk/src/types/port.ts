@@ -1,7 +1,24 @@
-const portDataTypes = ['model', 'text', 'json', 'array', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill', 'agent'] as const;
+const portDataTypes = [
+  'model',
+  'text',
+  'json',
+  'array',
+  'image',
+  'audio',
+  'tool',
+  'sandbox',
+  'knowledge',
+  'skill',
+  'agent',
+  'memory',
+  'exec',
+  'volume',
+] as const;
 
 /**
- * Canonical 10 个端口数据类型，必须与 server/studio/type-engine 保持同步。
+ * 端口数据类型全集。canonical 定义在 `@agentloom/contracts` 的 `PORT_DATA_TYPES`，
+ * 本处为插件生态镜像；新增取值必须先加到 contracts，
+ * 由 contracts 的 `port-data-type.test.ts` 做机械同步校验。
  */
 export type PortDataType =
   | 'model'
@@ -14,7 +31,10 @@ export type PortDataType =
   | 'sandbox'
   | 'knowledge'
   | 'skill'
-  | 'agent';
+  | 'agent'
+  | 'memory'
+  | 'exec'
+  | 'volume';
 
 /**
  * 所有合法的 {@link PortDataType} 值。
