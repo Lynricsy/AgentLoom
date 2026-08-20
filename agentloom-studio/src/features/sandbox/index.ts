@@ -34,8 +34,15 @@ export {
   getAllPresets,
   BUILTIN_PRESETS,
 } from "./stores/sandboxPresetStore";
+export { findMatchingPreset } from "./stores/sandboxPresetStore";
 
 export type { SandboxPreset } from "./stores/sandboxPresetStore";
+export {
+  formatSandboxBytes,
+  formatSandboxMegabytes,
+  getSandboxDiskPercent,
+  safeSandboxPercent,
+} from "./lib/sandboxStats";
 
 export type {
   SandboxSession,
@@ -46,3 +53,4 @@ export type {
   SandboxListParams,
   CreateSandboxPayload,
 } from "./types";
+export type { SandboxProcess } from "./types";

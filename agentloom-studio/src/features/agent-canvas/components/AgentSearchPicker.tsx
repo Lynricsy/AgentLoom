@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { Bot, Search, Check, X } from 'lucide-react'
-import { useAgentList } from '@/features/agent/api/agentQueries'
-import type { AgentDefinitionSummary } from '@/features/agent/types'
+import { useAgentList } from '@/features/agent'
+import type { AgentDefinitionSummary } from '@/features/agent'
 
 interface AgentSearchPickerProps {
   selectedAgentId: string

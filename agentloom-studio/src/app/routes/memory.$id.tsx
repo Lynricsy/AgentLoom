@@ -1,6 +1,6 @@
 import { createRoute, useParams } from '@tanstack/react-router'
 import { rootRoute } from './__root'
-import { MemoryInstanceDetailPage } from '@/features/agent-memory/components/MemoryInstanceDetailPage'
+import { MemoryInstanceDetailPage } from '@/features/agent-memory'
 
 function MemoryDetailRoute() {
   const { id } = useParams({ from: '/memory/$id' })

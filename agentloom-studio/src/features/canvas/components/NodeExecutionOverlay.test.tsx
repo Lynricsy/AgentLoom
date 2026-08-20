@@ -1,14 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NodeExecutionOverlay } from './NodeExecutionOverlay'
-import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
+import type { NodeExecutionState } from '@/features/execution'
 
 const storeMocks = vi.hoisted(() => ({
   mockNodeState: null as NodeExecutionState | null,
   mockIsActive: false,
 }))
 
-vi.mock('@/features/execution/stores/executionStore', () => ({
+vi.mock('@/features/execution', () => ({
   useNodeExecutionState: (_nodeId: string) => storeMocks.mockNodeState,
   useIsExecutionActive: () => storeMocks.mockIsActive,
 }))

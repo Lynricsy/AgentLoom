@@ -6,7 +6,7 @@ import type {
   WorkflowInputFieldDefinition,
   WorkflowInputSchema,
   WorkflowStatus,
-} from '@/features/workflow/types'
+} from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'

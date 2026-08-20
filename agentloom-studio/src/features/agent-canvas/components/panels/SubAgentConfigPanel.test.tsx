@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AgentDefinitionSummary,
   AgentVersion,
-} from '@/features/agent/types'
+} from '@/features/agent'
 import { SubAgentConfigPanel } from './SubAgentConfigPanel'
 
 const mocks = vi.hoisted(() => {
@@ -34,7 +34,7 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock('@/features/agent/api/agentQueries', () => ({
+vi.mock('@/features/agent', () => ({
   useAgentVersions: mocks.useAgentVersions,
 }))
 

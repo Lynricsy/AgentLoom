@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { useAuthStore } from '@/features/auth'
 import { useAuthToken } from './useAuthToken'
 import { useExecution } from './useExecutionList'
 import { useExecutionMonitor } from './useExecutionMonitor'

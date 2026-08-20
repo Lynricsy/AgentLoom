@@ -1,22 +1,9 @@
-import type { ProviderHealthStatusesResponseDto } from '@agentloom/api-client'
 import { apiClient } from '@/shared/api/client'
 import type { PaginatedResponse } from '@/shared/types/api'
-import type {
-  ProviderHealthStatus,
-  RoutingDecision,
-  RoutingDecisionQuery,
-} from '../types'
+import type { RoutingDecision, RoutingDecisionQuery } from '../types'
 
 export const ROUTING_DECISION_PAGE_SIZE = 20
 
-/** GET /smart-routing/health */
-export async function fetchProviderHealth(): Promise<ProviderHealthStatus[]> {
-  const response = await apiClient
-    .get('smart-routing/health')
-    .json<ProviderHealthStatusesResponseDto>()
-
-  return response.data
-}
 
 /** GET /routing-decisions —— 服务端按 createdAt 倒序分页 */
 export async function fetchRoutingDecisions(

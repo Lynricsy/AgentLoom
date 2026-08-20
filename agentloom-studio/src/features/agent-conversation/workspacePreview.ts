@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "@/features/agent/types";
+import type { AgentDefinition } from "@/features/agent";
 
 type WorkspacePreviewAgent = Pick<
   AgentDefinition,

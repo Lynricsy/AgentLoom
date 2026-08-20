@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorkflowInputSchema } from '@/features/workflow/types'
+import type { WorkflowInputSchema } from '@/features/workflow'
 import { WorkflowInputSchemaTab } from '../WorkflowInputSchemaTab'
 
 const mutateAsyncMock = vi.fn()
 const notifyMock = vi.fn()
 
-vi.mock('@/features/workflow/api/workflowMutations', () => ({
+vi.mock('@/features/workflow', () => ({
   useUpdateWorkflow: () => ({
     mutateAsync: mutateAsyncMock,
     isPending: false,

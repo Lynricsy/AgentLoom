@@ -3,12 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VersionToolbar } from '../VersionToolbar'
 
-vi.mock('@/features/workflow/components/CreateVersionDialog', () => ({
+vi.mock('@/features/workflow', () => ({
   CreateVersionDialog: ({ open }: { open: boolean }) =>
     open ? <div data-testid="mock-create-version-dialog">CreateVersionDialog</div> : null,
-}))
-
-vi.mock('@/features/workflow/components/ArchiveDialog', () => ({
   ArchiveDialog: ({ open }: { open: boolean }) =>
     open ? <div data-testid="mock-archive-dialog">ArchiveDialog</div> : null,
 }))

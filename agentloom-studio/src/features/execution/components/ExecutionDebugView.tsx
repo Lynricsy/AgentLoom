@@ -26,8 +26,8 @@ import { useToast } from '@/shared/ui/toast'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { fadeIn } from '@/shared/lib/motion'
-import { EvidenceReferencePanel } from '@/features/evidence/components/EvidenceReferencePanel'
-import { EvidenceGraphView } from '@/features/evidence/components/EvidenceGraphView'
+import { EvidenceReferencePanel } from '@/features/evidence'
+import { EvidenceGraphView } from '@/features/evidence'
 
 interface ExecutionDebugViewProps {
   executionId: string

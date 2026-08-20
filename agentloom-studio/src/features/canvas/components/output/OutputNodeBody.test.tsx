@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FileText } from 'lucide-react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
+import type { NodeExecutionState } from '@/features/execution'
 import { OutputNodeBody } from './OutputNodeBody'
 import { PreviewModeContext } from '../PreviewModeContext'
 
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   nodeState: null as NodeExecutionState | null,
 }))
 
-vi.mock('@/features/execution/stores/executionStore', () => ({
+vi.mock('@/features/execution', () => ({
   useNodeExecutionState: () => mocks.nodeState,
 }))
 

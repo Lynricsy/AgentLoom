@@ -19,7 +19,7 @@ vi.mock('@/features/execution', () => ({
   useAuthToken: mocks.useAuthToken,
 }))
 
-vi.mock('@/features/organization/api/organizationQueries', () => ({
+vi.mock('@/features/organization', () => ({
   useCurrentOrganization: mocks.useCurrentOrganization,
 }))
 

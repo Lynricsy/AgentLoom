@@ -5,7 +5,7 @@ import { DYNAMIC_ONLY_NODE_TYPES, getAllNodeTypes } from '../types/nodeTypeRegis
 import { PALETTE_GROUPS } from './nodeCategories'
 import { DRAG_TRANSFER_TYPE, NodePalette } from './NodePalette'
 
-vi.mock('@/features/block-library/components/BlockLibraryPanel', () => ({
+vi.mock('@/features/block-library', () => ({
   BlockLibraryPanel: () => <div data-testid="block-library-panel">块库面板</div>,
 }))
 

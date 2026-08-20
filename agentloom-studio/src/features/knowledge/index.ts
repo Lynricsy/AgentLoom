@@ -53,6 +53,7 @@ export {
   buildKnowledgeBaseNodeConfig,
   isKnowledgeBaseConfigured,
 } from './types';
+export { getKnowledgeNodeCountLabel } from './types';
 export type {
   KnowledgeBaseStatus,
   KnowledgeBaseVisibility,

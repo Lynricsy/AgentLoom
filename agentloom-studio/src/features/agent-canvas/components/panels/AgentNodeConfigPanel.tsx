@@ -1,14 +1,7 @@
 import { memo, useCallback, type WheelEvent } from 'react';
 import { cn } from '@/shared/lib/utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select';
-import type { CanvasNode, CanvasNodeData } from '@/features/canvas/types';
-import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas/components/panels/customPanelRegistry';
+import type { CanvasNode, CanvasNodeData } from '@/features/canvas';
+import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas';
 import { AgentMainConfigPanel } from './AgentMainConfigPanel';
 import {
   useAgentCanvasSelectedNodeId,
@@ -118,13 +111,6 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
           onApply={onConfigChange}
         />
       );
-    case 'smart-routing':
-      return (
-        <SmartRoutingConfigStub
-          config={nodeData.config}
-          onConfigChange={onConfigChange}
-        />
-      );
     default:
       return (
         <div className="text-xs text-muted">
@@ -134,70 +120,3 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
   }
 });
 
-interface StubConfigProps {
-  config: Record<string, unknown>;
-  onConfigChange: (config: Record<string, unknown>) => void;
-}
-
-const ROUTING_STRATEGIES = [
-  'TOKEN_OPTIMIZED',
-  'COST_OPTIMIZED',
-  'QUALITY_FIRST',
-  'LATENCY_FIRST',
-  'HISTORICAL_BEST',
-  'FALLBACK_CHAIN',
-] as const;
-
-/**
- * contracts `AgentRoutingConfig.strategy` 为必需字段；未配置时与 server
- * `extractRoutingConfig` 的兜底值保持一致。
- */
-const DEFAULT_ROUTING_STRATEGY: (typeof ROUTING_STRATEGIES)[number] =
-  'FALLBACK_CHAIN';
-
-function readRoutingStrategy(config: Record<string, unknown>): string {
-  return typeof config.strategy === 'string' && config.strategy.length > 0
-    ? config.strategy
-    : DEFAULT_ROUTING_STRATEGY;
-}
-
-const SmartRoutingConfigStub = memo(function SmartRoutingConfigStub({
-  config,
-  onConfigChange,
-}: StubConfigProps) {
-  const strategy = readRoutingStrategy(config);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="agent-smart-routing-strategy"
-          className="text-xs font-medium text-muted"
-        >
-          路由策略
-        </label>
-        <Select
-          value={strategy}
-          onValueChange={(nextStrategy) => {
-            onConfigChange({ ...config, strategy: nextStrategy });
-          }}
-        >
-          <SelectTrigger
-            id="agent-smart-routing-strategy"
-            aria-label="路由策略"
-            className="h-8 text-xs"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ROUTING_STRATEGIES.map((option) => (
-              <SelectItem key={option} value={option} className="text-xs">
-                {option.replace(/_/g, ' ')}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-});

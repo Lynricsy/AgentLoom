@@ -19,8 +19,8 @@ import { Badge, type BadgeProps } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import type { WorkflowStatus } from "@/features/workflow";
-import { CreateVersionDialog } from "@/features/workflow/components/CreateVersionDialog";
-import { ArchiveDialog } from "@/features/workflow/components/ArchiveDialog";
+import { CreateVersionDialog } from "@/features/workflow";
+import { ArchiveDialog } from "@/features/workflow";
 
 interface VersionToolbarProps {
   workflowId: string;

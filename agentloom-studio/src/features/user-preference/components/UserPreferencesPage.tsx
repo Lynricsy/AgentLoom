@@ -4,8 +4,8 @@ import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
-import { GlobalModelSelector } from '@/features/llm/components/GlobalModelSelector'
-import { useLlmModels } from '@/features/llm/hooks/useLlmModels'
+import { GlobalModelSelector } from '@/features/llm'
+import { useLlmModels } from '@/features/llm'
 import { useUserPreference, useUpdateUserPreference } from '../hooks/useUserPreference'
 
 export function UserPreferencesPage() {

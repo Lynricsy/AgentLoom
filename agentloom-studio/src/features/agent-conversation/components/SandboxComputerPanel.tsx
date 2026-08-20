@@ -25,8 +25,8 @@ import {
   formatSandboxMegabytes,
   getSandboxDiskPercent,
   safeSandboxPercent,
-} from "@/features/sandbox/lib/sandboxStats";
-import type { SandboxProcess } from "@/features/sandbox/types";
+} from "@/features/sandbox";
+import type { SandboxProcess } from "@/features/sandbox";
 import { getToolRenderer } from "@/shared/components/tool-renderers/registry";
 import { defaultRendererDefinition } from "@/shared/components/tool-renderers/DefaultRenderer";
 import { deriveRenderState } from "@/shared/components/tool-renderers/ToolCallCard";

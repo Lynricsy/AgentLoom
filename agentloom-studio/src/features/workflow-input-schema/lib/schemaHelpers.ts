@@ -4,7 +4,7 @@ import type {
   WorkflowInputFieldType,
   WorkflowInputFieldValidation,
   WorkflowInputSchema,
-} from '@/features/workflow/types'
+} from '@/features/workflow'
 
 export const DEFAULT_CONVERSATION_PLAN: ConversationPlan = {
   systemPrompt: '',

@@ -1,4 +1,4 @@
-import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
+import type { AgentRuntimeMode } from "@/features/agent";
 
 export type MessageRole = "user" | "assistant" | "system";
 export type ConversationMessageContentType = "text" | "image" | "file";

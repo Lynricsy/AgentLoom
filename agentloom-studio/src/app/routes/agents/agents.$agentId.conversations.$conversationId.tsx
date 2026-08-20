@@ -1,8 +1,8 @@
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useCallback } from 'react';
 import { rootRoute } from '../__root';
-import { AgentConversationPage } from '@/features/agent-conversation/components/AgentConversationPage';
-import { ConversationSidebar } from '@/features/agent-conversation/components/ConversationSidebar';
+import { AgentConversationPage } from '@/features/agent-conversation';
+import { ConversationSidebar } from '@/features/agent-conversation';
 
 function ConversationPageWrapper() {
   const { agentId, conversationId } = agentConversationRoute.useParams();

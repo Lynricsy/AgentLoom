@@ -1,5 +1,5 @@
 import { cva } from 'class-variance-authority'
-import { formatRelativeTime } from '@/features/canvas/lib/formatRelativeTime'
+import { formatRelativeTime } from '@/features/canvas'
 import { cn } from '@/shared/lib/utils'
 import {
   FALLBACK_TYPE_META,

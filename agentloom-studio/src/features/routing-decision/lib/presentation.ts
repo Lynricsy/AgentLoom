@@ -1,8 +1,5 @@
-import type {
-  ProviderHealthState,
-  RoutingDecision,
-  RoutingModelEvaluation,
-} from '../types'
+import type { ProviderHealthState } from '@/features/smart-routing'
+import type { RoutingDecision, RoutingModelEvaluation } from '../types'
 
 const dateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'medium',

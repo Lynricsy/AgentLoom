@@ -5,15 +5,9 @@ import { SandboxConfigPanel } from '../components/panels/SandboxConfigPanel'
 
 const mockUsePersistentSandboxes = vi.fn()
 
-vi.mock('@/features/sandbox/api/sandboxQueries', () => ({
+vi.mock('@/features/sandbox', () => ({
   usePersistentSandboxes: () => mockUsePersistentSandboxes(),
-}))
-
-vi.mock('@/features/sandbox/components/SandboxPresetSelector', () => ({
   SandboxPresetSelector: () => <div>Preset Selector</div>,
-}))
-
-vi.mock('@/features/sandbox/stores/sandboxPresetStore', () => ({
   useSandboxPresetStore: () => vi.fn(),
   getAllPresets: () => [],
   findMatchingPreset: () => undefined,

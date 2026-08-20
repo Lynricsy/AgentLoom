@@ -5,10 +5,10 @@ import { createRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AlertCircle } from "lucide-react";
 import { z } from "zod";
 
-import { AuthLayout } from "@/features/auth/components/AuthLayout";
-import { MfaVerifyDialog } from "@/features/auth/components/MfaVerifyDialog";
-import { OAuthButtons } from "@/features/auth/components/OAuthButtons";
-import { PasswordInput } from "@/features/auth/components/PasswordInput";
+import { AuthLayout } from "@/features/auth";
+import { MfaVerifyDialog } from "@/features/auth";
+import { OAuthButtons } from "@/features/auth";
+import { PasswordInput } from "@/features/auth";
 import { Spinner } from "@/shared/components/spinner/Spinner";
 import { supabase } from "@/shared/lib/supabase";
 import { Button } from "@/shared/ui/button";

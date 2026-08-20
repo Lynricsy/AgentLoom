@@ -22,6 +22,10 @@ export type {
 } from './types'
 export { createDefaultEdgeData } from './types'
 export type {
+  BackendPortMappingMetadata,
+  McpToolDefinition,
+} from './types/mcpToolMapping'
+export type {
   NodeConfigFieldSchema,
   NodeConfigSchema,
   NodeType,
@@ -44,8 +48,9 @@ export {
   getAllNodeTypes,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
+  getWorkflowAgentInputPorts,
 } from './types/nodeTypeRegistry'
-export { clonePortDefinitions } from './types/portSchema'
+export { clonePortDefinitions, hydratePortDefinitions } from './types/portSchema'
 export {
   useCanvasActions,
   useCanvasEdges,
@@ -62,9 +67,14 @@ export {
 } from './stores/canvasStore'
 export { buildPaletteGroups } from './components/nodeCategories'
 export { NodePalette } from './components/NodePalette'
+export { AgentNodePalette } from './components/AgentNodePalette'
+export { DRAG_TRANSFER_TYPE } from './components/NodePalette'
 export { TypedPort, type TypedPortProps } from './components/TypedPort'
 export { CanvasNodeShell } from './components/CanvasNode'
 export { SmartEdge } from './components/edges/SmartEdge'
+export { CUSTOM_PANEL_REGISTRY } from './components/panels/customPanelRegistry'
+export { ReadOnlyCanvasBanner } from './components/readonly/ReadOnlyCanvasBanner'
+export { ReadOnlyNodeSheet } from './components/readonly/ReadOnlyNodeSheet'
 export { CanvasMiniMap } from './components/navigation/CanvasMiniMap'
 export { NodeInfoCard } from './components/overlays/NodeInfoCard'
 export {
@@ -104,3 +114,5 @@ export {
   type DagValidationWarning,
 } from './lib/dagValidator'
 export { formatRelativeTime } from './lib/formatRelativeTime'
+export { arePortDataTypesCompatible } from './lib/connectionCompatibility'
+export { normalizeTextNodeConfig } from './lib/textNodeConfig'

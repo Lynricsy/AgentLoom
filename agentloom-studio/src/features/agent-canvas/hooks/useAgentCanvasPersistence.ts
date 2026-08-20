@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import {
   useCompileAgentConfig,
   useSaveAgentCanvas,
-} from "@/features/agent/api/agentMutations";
+} from "@/features/agent";
 import { useAgentCanvasStore } from "../stores/agent-canvas.store";
 
 function normalizeWorkspaceSnapshotId(

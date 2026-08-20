@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as AuthFeatureModule from "@/features/auth";
 
 const mockNavigate = vi.fn();
 const mockSignInWithPassword = vi.fn();
@@ -39,7 +40,8 @@ vi.mock("@/app/routes/__root", () => ({
   rootRoute: {},
 }));
 
-vi.mock("@/features/auth/components/MfaVerifyDialog", () => ({
+vi.mock("@/features/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof AuthFeatureModule>()),
   MfaVerifyDialog: ({
     open,
     onClose,

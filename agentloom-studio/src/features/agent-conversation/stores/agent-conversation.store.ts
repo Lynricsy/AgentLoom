@@ -4,8 +4,8 @@ import { immer } from "zustand/middleware/immer";
 import type { Socket } from "socket.io-client";
 import { io } from "socket.io-client";
 import { apiClient, toSnakeBody } from "@/shared/api/client";
-import { useAuthStore } from "@/features/auth/stores/auth.store";
-import { fetchWorkspaceFileTree } from "@/features/workspace/api/workspaceApi";
+import { useAuthStore } from "@/features/auth";
+import { fetchWorkspaceFileTree } from "@/features/workspace";
 import type { PaginatedResponse } from "@/shared/types/api";
 import type {
   ConversationMessage,

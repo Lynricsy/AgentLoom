@@ -6,7 +6,7 @@ import {
   parseWorkflowListSearch,
   resolveWorkflowListSearch,
   type WorkflowListSearch,
-} from '@/features/workflow/lib/workflowListSearch'
+} from '@/features/workflow'
 
 function WorkflowsIndexPage() {
   const search = workflowsIndexRoute.useSearch()

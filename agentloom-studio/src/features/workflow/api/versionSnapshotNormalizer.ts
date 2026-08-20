@@ -1,13 +1,13 @@
-import type { CanvasNode } from "@/features/canvas/types";
+import type { CanvasNode } from "@/features/canvas";
 import {
   getNodeTypeConfigOrNull,
   getWorkflowAgentInputPorts,
-} from "@/features/canvas/types/nodeTypeRegistry";
+} from "@/features/canvas";
 import {
   clonePortDefinitions,
   hydratePortDefinitions,
-} from "@/features/canvas/types/portSchema";
-import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
+} from "@/features/canvas";
+import type { AgentRuntimeMode } from "@/features/agent";
 
 import type { WorkflowVersion, WorkflowVersionSnapshot } from "../types";
 

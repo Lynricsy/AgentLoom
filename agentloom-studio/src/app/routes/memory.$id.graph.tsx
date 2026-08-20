@@ -1,7 +1,7 @@
 import { createRoute, useParams } from '@tanstack/react-router'
 import { ReactFlowProvider } from '@xyflow/react'
 import { rootRoute } from './__root'
-import { MemoryGraphPage } from '@/features/agent-memory/components/graph/MemoryGraphPage'
+import { MemoryGraphPage } from '@/features/agent-memory'
 
 function MemoryGraphRoute() {
   const { id } = useParams({ from: '/memory/$id/graph' })

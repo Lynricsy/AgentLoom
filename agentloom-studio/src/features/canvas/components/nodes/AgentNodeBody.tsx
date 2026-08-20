@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Brain, Braces, Container, Type } from 'lucide-react'
-import type { AgentNodeData } from '@/features/agent/types'
+import type { AgentNodeData } from '@/features/agent'
 
 interface AgentNodeBodyProps {
   data: AgentNodeData

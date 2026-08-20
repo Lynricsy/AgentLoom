@@ -1,7 +1,7 @@
 import { memo, type DragEvent } from 'react';
 import { Layers, Package2, Tag } from 'lucide-react';
 
-import { DRAG_TRANSFER_TYPE } from '@/features/canvas/components/NodePalette';
+import { DRAG_TRANSFER_TYPE } from '@/features/canvas';
 
 import type { BlockCategory, ReusableBlockListItem } from '../types';
 

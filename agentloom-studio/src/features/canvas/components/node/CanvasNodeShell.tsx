@@ -18,7 +18,7 @@ import {
   ProviderIcon,
   useLlmApiKeys,
 } from "@/features/llm";
-import { useNodeExecutionState } from "@/features/execution/stores/executionStore";
+import { useNodeExecutionState } from "@/features/execution";
 import type { CanvasNode } from "../../types";
 import { getResolvedNodeTypeConfig } from "../../types/nodeTypeRegistry";
 import { useLevelOfDetail } from "../../hooks/useLevelOfDetail";

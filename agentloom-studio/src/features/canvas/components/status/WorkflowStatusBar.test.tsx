@@ -8,7 +8,7 @@ let mockExecutionStatus: string | null = null
 let mockExecutionProgress = { completedSteps: 0, totalSteps: 0 }
 let mockIsExecutionActive = false
 
-vi.mock('@/features/execution/stores/executionStore', () => ({
+vi.mock('@/features/execution', () => ({
   useExecutionStatus: () => mockExecutionStatus,
   useExecutionProgress: () => mockExecutionProgress,
   useIsExecutionActive: () => mockIsExecutionActive,

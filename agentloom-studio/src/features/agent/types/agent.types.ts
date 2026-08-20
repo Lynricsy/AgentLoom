@@ -3,7 +3,7 @@ import type {
   AgentRuntimeConfig,
   SandboxConfig,
 } from "@agentloom/contracts";
-import type { CanvasEdge, CanvasNode } from "@/features/canvas/types";
+import type { CanvasEdge, CanvasNode } from "@/features/canvas";
 import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 import type { AgentRuntimeMode } from "./agentRuntimeMode";
 

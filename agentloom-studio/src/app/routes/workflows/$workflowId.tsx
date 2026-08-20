@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router'
 import { ReactFlowProvider } from '@xyflow/react'
-import { WorkflowCanvasPage } from '@/features/canvas/components/WorkflowCanvasPage'
+import { WorkflowCanvasPage } from '@/features/canvas'
 import { rootRoute } from '../__root'
 
 export const workflowCanvasRoute = createRoute({

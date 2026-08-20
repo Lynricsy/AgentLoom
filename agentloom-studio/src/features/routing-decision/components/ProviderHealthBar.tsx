@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { HeartPulse, RotateCw } from 'lucide-react'
-import { useProviderHealth } from '../api/routing-decision-queries'
+import { useProviderHealth } from '@/features/smart-routing'
 import {
   PROVIDER_HEALTH_META,
   formatRoutingTimestamp,

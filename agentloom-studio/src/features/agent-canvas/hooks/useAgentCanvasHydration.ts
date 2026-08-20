@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAgent } from "@/features/agent/api/agentQueries";
+import { useAgent } from "@/features/agent";
 import { useAgentCanvasActions } from "../stores/agent-canvas.store";
 
 export function useAgentCanvasHydration(agentId: string) {

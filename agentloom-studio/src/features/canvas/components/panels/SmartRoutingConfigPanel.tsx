@@ -31,11 +31,11 @@ import {
 import type {
   StrategyName,
   StrategyCategory,
-  ProviderHealth,
-  ProviderHealthStatus,
+  ProviderHealthRecord,
+  ProviderHealthState,
   JsonSchemaProperty,
 } from '@/features/smart-routing'
-import { useHealthStatus, useConfigSchema, useStrategies } from '@/features/smart-routing'
+import { useProviderHealth, useConfigSchema, useStrategies } from '@/features/smart-routing'
 import {
   Select,
   SelectContent,
@@ -81,7 +81,7 @@ function getNextModelPortIndex(portIds: string[]): number {
 }
 
 const HEALTH_STATUS_STYLES: Record<
-  ProviderHealthStatus,
+  ProviderHealthState,
   { bg: string; text: string; label: string }
 > = {
   healthy: { bg: 'bg-success/15', text: 'text-success', label: '正常' },
@@ -89,8 +89,8 @@ const HEALTH_STATUS_STYLES: Record<
   open: { bg: 'bg-error/15', text: 'text-error', label: '断路' },
 }
 
-function computeHealthSummary(healthData: ProviderHealth[]) {
-  const counts: Record<ProviderHealthStatus, number> = { healthy: 0, degraded: 0, open: 0 }
+function computeHealthSummary(healthData: ProviderHealthRecord[]) {
+  const counts: Record<ProviderHealthState, number> = { healthy: 0, degraded: 0, open: 0 }
   for (const h of healthData) {
     counts[h.status]++
   }
@@ -269,7 +269,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
     [modelInputPorts],
   )
 
-  const { data: healthData } = useHealthStatus()
+  const { data: healthData } = useProviderHealth()
   const { data: configSchema } = useConfigSchema(strategy as StrategyName)
   const healthList = healthData ?? []
   const healthSummary = useMemo(() => computeHealthSummary(healthList), [healthList])
@@ -415,7 +415,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">Provider 状态</span>
           <div className="flex items-center gap-2" data-testid="provider-health-summary">
-            {(Object.entries(healthSummary) as [ProviderHealthStatus, number][]).map(
+            {(Object.entries(healthSummary) as [ProviderHealthState, number][]).map(
               ([status, count]) =>
                 count > 0 ? (
                   <span

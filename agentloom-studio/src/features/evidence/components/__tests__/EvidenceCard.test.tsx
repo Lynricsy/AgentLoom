@@ -5,7 +5,7 @@ import type { EvidenceChainNode, EvidenceRecord } from '../../types'
 import { useEvidenceDetail, useEvidenceVerify } from '../../api/evidenceQueries'
 import { useEvidenceUiActions } from '../../stores/evidenceUiStore'
 import { EvidenceCard } from '../EvidenceCard'
-import { useDecryptContent } from '@/features/tenant-key/hooks/useDecryptContent'
+import { useDecryptContent } from '@/features/tenant-key'
 
 vi.mock('../../api/evidenceQueries', () => ({
   useEvidenceDetail: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('../../stores/evidenceUiStore', () => ({
   useEvidenceUiActions: vi.fn(),
 }))
 
-vi.mock('@/features/tenant-key/hooks/useDecryptContent', () => ({
+vi.mock('@/features/tenant-key', () => ({
   useDecryptContent: vi.fn(),
 }))
 

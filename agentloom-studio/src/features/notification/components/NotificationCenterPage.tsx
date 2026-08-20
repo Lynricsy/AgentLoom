@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bell, BellOff, CheckCheck } from 'lucide-react'
-import { formatRelativeTime } from '@/features/canvas/lib/formatRelativeTime'
+import { formatRelativeTime } from '@/features/canvas'
 import {
   DataTable,
   type DataTableColumn,

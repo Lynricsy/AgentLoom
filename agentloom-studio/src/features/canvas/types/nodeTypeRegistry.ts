@@ -8,7 +8,7 @@ import {
   createPort,
 } from "./portSchema";
 import { AGENT_CANVAS_NODE_REGISTRY } from "../registry/agent-canvas-registry";
-import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
+import type { AgentRuntimeMode } from "@/features/agent";
 
 export const NODE_TYPES = [
   "llm-model",

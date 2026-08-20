@@ -5,7 +5,7 @@ import {
   getKnowledgeNodeCountLabel,
   isKnowledgeBaseConfigured,
   type KnowledgeBaseStatus,
-} from '@/features/knowledge/types'
+} from '@/features/knowledge'
 import { NodeBadge, type NodeBadgeColor } from '../shared/NodeBadge'
 
 interface KnowledgeBaseNodeBodyProps {

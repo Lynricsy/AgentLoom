@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorkflowInputSchema } from '@/features/workflow/types'
+import type { WorkflowInputSchema } from '@/features/workflow'
 import { ExecutionLaunchDialog } from '../ExecutionLaunchDialog'
 
 vi.mock('@radix-ui/react-dialog', async () => {
@@ -100,7 +100,7 @@ const useWorkflowInputSchemaMock = vi.fn()
 const startExecutionMock = vi.fn()
 const notifyMock = vi.fn()
 
-vi.mock('@/features/workflow/api/workflowQueries', () => ({
+vi.mock('@/features/workflow', () => ({
   useWorkflowInputSchema: (...args: unknown[]) => useWorkflowInputSchemaMock(...args),
 }))
 

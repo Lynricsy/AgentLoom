@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { BookOpenText, Search, Check } from 'lucide-react'
-import { useSkills } from '@/features/skill/api/skillQueries'
-import type { SkillListItem } from '@/features/skill/types'
+import { useSkills } from '@/features/skill'
+import type { SkillListItem } from '@/features/skill'
 
 interface SkillPanelProps {
   config: Record<string, unknown>

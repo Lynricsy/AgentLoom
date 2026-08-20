@@ -8,7 +8,7 @@ import type {
 import type {
   BackendPortMappingMetadata,
   McpToolDefinition as CanvasMcpToolDefinition,
-} from "@/features/canvas/types/mcpToolMapping";
+} from "@/features/canvas";
 import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 
 export type McpImportConflictStrategy = ImportMcpToolsDtoConflictStrategyEnum;

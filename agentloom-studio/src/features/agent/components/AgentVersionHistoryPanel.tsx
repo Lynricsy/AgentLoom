@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Archive, Clock, History, Tag, Upload, X } from "lucide-react";
 
-import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { formatRelativeTime } from "@/features/canvas";
 import { cn } from "@/shared/lib/utils";
 
 import { useAgentVersions } from "../api/agentQueries";

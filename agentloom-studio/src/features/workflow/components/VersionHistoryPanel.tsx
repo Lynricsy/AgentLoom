@@ -14,7 +14,7 @@ import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { formatRelativeTime } from "@/features/canvas";
 import type { WorkflowStatus, WorkflowVersion } from "../types";
 import { useWorkflowVersions } from "../api/versionQueries";
 import { useRollbackVersion } from "../api/versionMutations";

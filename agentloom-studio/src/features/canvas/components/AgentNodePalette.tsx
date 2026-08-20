@@ -23,7 +23,7 @@ import {
   type AgentNodeTypeConfig,
 } from '../registry/agent-canvas-registry'
 import type { NodeCategory } from '../types'
-import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+import type { AgentRuntimeMode } from '@/features/agent'
 
 /** 自动创建的节点类型 — 新画布初始化时自动放置，不可从面板拖入 */
 const AUTO_CREATED_NODE_TYPES = new Set<string>(['agent-main', 'sandbox'])

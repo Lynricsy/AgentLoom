@@ -1,5 +1,5 @@
 import type { CanvasNode, PluginNodeData, SmartRoutingNodeData } from "../../types";
-import type { AgentNodeData as WorkflowAgentNodeData } from "@/features/agent/types";
+import type { AgentNodeData as WorkflowAgentNodeData } from "@/features/agent";
 import { isCompoundSpecialNodeType } from "../../types/controlFlow.types";
 import { KnowledgeBaseNodeBody } from "../nodes/KnowledgeBaseNodeBody";
 import { LlmModelNodeBody } from "../nodes/LlmModelNodeBody";

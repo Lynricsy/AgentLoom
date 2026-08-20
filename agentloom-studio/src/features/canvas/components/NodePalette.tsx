@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
 import { PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
-import { BlockLibraryPanel } from '@/features/block-library/components/BlockLibraryPanel'
+import { BlockLibraryPanel } from '@/features/block-library'
 import { useActivePlugins, type PluginNodeDefinition } from '@/features/plugin'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'

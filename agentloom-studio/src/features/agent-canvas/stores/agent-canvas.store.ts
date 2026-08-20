@@ -14,24 +14,24 @@ import { DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES } from "@/shared/lib
 import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
-} from "@/features/agent/types";
-import type { AgentRuntimeMode } from "@/features/agent/types";
+} from "@/features/agent";
+import type { AgentRuntimeMode } from "@/features/agent";
 import type {
   CanvasNode,
   CanvasEdge,
   CanvasNodeData,
-} from "@/features/canvas/types";
+} from "@/features/canvas";
 import type { AgentCanvasNodeType } from "@/features/canvas/registry/agent-canvas-registry";
 import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-canvas-registry";
-import { arePortDataTypesCompatible } from "@/features/canvas/lib/connectionCompatibility";
-import { normalizeTextNodeConfig } from "@/features/canvas/lib/textNodeConfig";
+import { arePortDataTypesCompatible } from "@/features/canvas";
+import { normalizeTextNodeConfig } from "@/features/canvas";
 import {
   getNodeTypeConfigOrNull,
-} from "@/features/canvas/types/nodeTypeRegistry";
+} from "@/features/canvas";
 import {
   clonePortDefinitions,
   hydratePortDefinitions,
-} from "@/features/canvas/types/portSchema";
+} from "@/features/canvas";
 
 enableMapSet();
 

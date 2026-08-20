@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => ({
     ],
     isLoading: false,
   }),
-  useHealthStatus: vi.fn().mockReturnValue({ data: undefined }),
+  useProviderHealth: vi.fn().mockReturnValue({ data: undefined }),
   useConfigSchema: vi.fn().mockReturnValue({ data: undefined }),
 }))
 
@@ -50,7 +50,7 @@ vi.mock('@/features/smart-routing', async (importOriginal) => {
   return {
     ...actual,
     useStrategies: mocks.useStrategies,
-    useHealthStatus: mocks.useHealthStatus,
+    useProviderHealth: mocks.useProviderHealth,
     useConfigSchema: mocks.useConfigSchema,
   }
 })
@@ -128,7 +128,7 @@ describe('SmartRoutingConfigPanel', () => {
       ],
       isLoading: false,
     })
-    mocks.useHealthStatus.mockReturnValue({ data: undefined })
+    mocks.useProviderHealth.mockReturnValue({ data: undefined })
     mocks.useConfigSchema.mockReturnValue({ data: undefined })
   })
 
@@ -416,7 +416,7 @@ describe('SmartRoutingConfigPanel', () => {
 
   describe('Provider 健康状态', () => {
     it('shows health badges when health data is available', () => {
-      mocks.useHealthStatus.mockReturnValue({
+      mocks.useProviderHealth.mockReturnValue({
         data: [
           { providerName: 'openai', modelId: 'gpt-4', status: 'healthy', failureCount: 0, lastFailureAt: null },
           { providerName: 'anthropic', modelId: 'claude-3', status: 'healthy', failureCount: 0, lastFailureAt: null },
@@ -439,7 +439,7 @@ describe('SmartRoutingConfigPanel', () => {
     })
 
     it('shows open circuit warning', () => {
-      mocks.useHealthStatus.mockReturnValue({
+      mocks.useProviderHealth.mockReturnValue({
         data: [
           { providerName: 'openai', modelId: 'gpt-4', status: 'open', failureCount: 10, lastFailureAt: '2026-01-01' },
         ],
@@ -456,7 +456,7 @@ describe('SmartRoutingConfigPanel', () => {
     })
 
     it('does not show health section when no health data', () => {
-      mocks.useHealthStatus.mockReturnValue({ data: undefined })
+      mocks.useProviderHealth.mockReturnValue({ data: undefined })
 
       render(
         <SmartRoutingConfigPanel

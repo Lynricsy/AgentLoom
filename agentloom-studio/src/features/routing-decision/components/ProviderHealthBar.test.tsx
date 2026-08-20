@@ -1,15 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProviderHealthBar } from './ProviderHealthBar'
-import type { ProviderHealthStatus } from '../types'
+import type { ProviderHealthRecord } from '@/features/smart-routing'
 
 const mocks = vi.hoisted(() => ({
   useProviderHealth: vi.fn(),
 }))
 
-vi.mock('../api/routing-decision-queries', () => ({
+vi.mock('@/features/smart-routing', () => ({
   useProviderHealth: mocks.useProviderHealth,
-  useRoutingDecisions: vi.fn(),
 }))
 
 function healthQuery(overrides: Record<string, unknown> = {}) {
@@ -24,7 +23,7 @@ function healthQuery(overrides: Record<string, unknown> = {}) {
   }
 }
 
-const statuses: ProviderHealthStatus[] = [
+const statuses: ProviderHealthRecord[] = [
   {
     providerName: 'openai',
     modelId: null,

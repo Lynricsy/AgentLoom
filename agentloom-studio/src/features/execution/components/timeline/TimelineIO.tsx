@@ -12,8 +12,8 @@ import {
 import {
   hasEvidenceRefs,
   parseEvidenceRefs,
-} from '@/features/evidence/lib/parseEvidenceRefs'
-import { InlineEvidenceRef } from '@/features/evidence/components/InlineEvidenceRef'
+} from '@/features/evidence'
+import { InlineEvidenceRef } from '@/features/evidence'
 
 interface TimelineIOProps {
   input: Record<string, unknown> | null

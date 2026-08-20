@@ -1,7 +1,7 @@
 export {
   fetchRoutingDecisions,
   fetchStrategies,
-  fetchHealthStatus,
+  fetchProviderHealth,
   fetchConfigSchema,
   type RoutingDecisionRecord,
   type RoutingDecisionsResponse,
@@ -10,15 +10,15 @@ export { routingKeys } from './api/routingKeys'
 export {
   useRoutingDecisions,
   useStrategies,
-  useHealthStatus,
+  useProviderHealth,
   useConfigSchema,
 } from './api/routingQueries'
 export {
   type StrategyName,
   type StrategyCategory,
   type StrategyInfo,
-  type ProviderHealthStatus,
-  type ProviderHealth,
+  type ProviderHealthState,
+  type ProviderHealthRecord,
   type JsonSchema,
   type JsonSchemaProperty,
 } from './types'

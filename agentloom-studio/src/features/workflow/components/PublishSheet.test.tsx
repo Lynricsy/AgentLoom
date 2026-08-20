@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { VersionListResponse, WorkflowVersion } from '@/features/workflow/types';
+import type { VersionListResponse, WorkflowVersion } from '@/features/workflow';
 
 import { PublishSheet } from './PublishSheet';
 

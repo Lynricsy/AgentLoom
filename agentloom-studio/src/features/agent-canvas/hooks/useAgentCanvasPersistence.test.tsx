@@ -8,7 +8,7 @@ const { saveMutateAsync, compileMutateAsync } = vi.hoisted(() => ({
   compileMutateAsync: vi.fn(),
 }));
 
-vi.mock("@/features/agent/api/agentMutations", () => ({
+vi.mock("@/features/agent", () => ({
   useSaveAgentCanvas: () => ({ mutateAsync: saveMutateAsync }),
   useCompileAgentConfig: () => ({ mutateAsync: compileMutateAsync }),
 }));

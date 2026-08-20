@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
-import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
+import { useCurrentOrganization } from '@/features/organization'
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'

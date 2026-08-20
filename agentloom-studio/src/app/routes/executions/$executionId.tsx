@@ -1,6 +1,6 @@
 import { createRoute, useParams } from '@tanstack/react-router'
 import { ReactFlowProvider } from '@xyflow/react'
-import { ExecutionDebugView } from '@/features/execution/components/ExecutionDebugView'
+import { ExecutionDebugView } from '@/features/execution'
 import { rootRoute } from '../__root'
 
 function ExecutionDebugRouteComponent() {

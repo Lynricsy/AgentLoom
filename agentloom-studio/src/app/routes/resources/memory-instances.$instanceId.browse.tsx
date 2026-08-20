@@ -1,5 +1,5 @@
 import { createRoute } from '@tanstack/react-router'
-import { MemoryBrowser } from '@/features/memory-instance/components/browser/MemoryBrowser'
+import { MemoryBrowser } from '@/features/memory-instance'
 import { rootRoute } from '../__root'
 
 export const memoryInstanceBrowseRoute = createRoute({

@@ -10,13 +10,13 @@ import {
   useAgentCanvasStore,
 } from "@/features/agent-canvas";
 import { useAgentCanvasPersistence } from "@/features/agent-canvas";
-import { ReadOnlyCanvasBanner } from "@/features/canvas/components/readonly/ReadOnlyCanvasBanner";
-import { useAgent } from "@/features/agent/api/agentQueries";
-import { AgentCreateVersionDialog } from "@/features/agent/components/AgentCreateVersionDialog";
-import { AgentPublishDialog } from "@/features/agent/components/AgentPublishDialog";
-import { AgentVersionHistoryPanel } from "@/features/agent/components/AgentVersionHistoryPanel";
-import { AgentVersionToolbar } from "@/features/agent/components/AgentVersionToolbar";
-import { ShareManagementDialog } from "@/features/share/components/ShareManagementDialog";
+import { ReadOnlyCanvasBanner } from "@/features/canvas";
+import { useAgent } from "@/features/agent";
+import { AgentCreateVersionDialog } from "@/features/agent";
+import { AgentPublishDialog } from "@/features/agent";
+import { AgentVersionHistoryPanel } from "@/features/agent";
+import { AgentVersionToolbar } from "@/features/agent";
+import { ShareManagementDialog } from "@/features/share";
 import type { ApiError } from "@/shared/types/api";
 import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
 import { useToast } from "@/shared/ui/toast";

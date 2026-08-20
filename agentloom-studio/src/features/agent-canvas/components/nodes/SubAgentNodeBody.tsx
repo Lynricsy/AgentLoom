@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Bot } from 'lucide-react'
-import type { CanvasNodeData } from '@/features/canvas/types'
+import type { CanvasNodeData } from '@/features/canvas'
 
 interface SubAgentNodeBodyProps {
   data: CanvasNodeData

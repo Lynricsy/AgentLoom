@@ -11,7 +11,7 @@ import {
   listConversations,
   type ListConversationsParams,
 } from './conversationApi';
-import type { SandboxProcess, SandboxStats } from '@/features/sandbox/types';
+import type { SandboxProcess, SandboxStats } from '@/features/sandbox';
 import type { SandboxStatus } from '../types';
 
 export function useConversationList(

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
+import type { NodeExecutionState } from '@/features/execution'
 import type { CanvasNode } from '../../types'
 import { getNodeTypeConfig, type NodeType } from '../../types/nodeTypeRegistry'
 import { clonePortDefinitions } from '../../types/portSchema'

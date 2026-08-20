@@ -68,10 +68,11 @@ vi.mock('./ExecutionTelemetryPanel', () => ({
   ),
 }))
 
-vi.mock('@/features/evidence/components/EvidenceReferencePanel', () => ({
+vi.mock('@/features/evidence', () => ({
   EvidenceReferencePanel: () => (
     <div data-testid="mock-evidence-reference-panel" />
   ),
+  EvidenceGraphView: () => <div data-testid="mock-evidence-graph" />,
 }))
 
 function createExecutionDetail(): ExecutionDetail {

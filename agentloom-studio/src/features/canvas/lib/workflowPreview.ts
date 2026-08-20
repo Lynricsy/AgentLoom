@@ -1,5 +1,5 @@
 import type { Edge, Node, Viewport } from '@xyflow/react'
-import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+import type { AgentRuntimeMode } from '@/features/agent'
 import type {
   CanvasEdge,
   CanvasNode,

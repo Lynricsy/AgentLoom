@@ -25,6 +25,8 @@ export { MemoryInstanceDetailPage } from './components/MemoryInstanceDetailPage'
 export { MemoryInstanceSettingsPage } from './components/MemoryInstanceSettingsPage';
 export { CreateMemoryDialog } from './components/CreateMemoryDialog';
 
+export { MemoryAuditPage } from './components/audit/MemoryAuditPage';
+export { MemoryGraphPage } from './components/graph/MemoryGraphPage';
 // Types
 export type {
   MemoryInstance,

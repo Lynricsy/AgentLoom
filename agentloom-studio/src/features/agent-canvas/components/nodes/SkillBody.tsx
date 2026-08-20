@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { BookOpenText } from 'lucide-react'
-import type { CanvasNodeData } from '@/features/canvas/types'
+import type { CanvasNodeData } from '@/features/canvas'
 
 interface SkillBodyProps {
   data: CanvasNodeData

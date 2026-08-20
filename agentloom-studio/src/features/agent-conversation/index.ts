@@ -2,6 +2,8 @@ export { AgentConversationPage } from "./components/AgentConversationPage";
 export { MessageList } from "./components/MessageList";
 export { SandboxComputerPanel } from "./components/SandboxComputerPanel";
 export { WorkspaceFileTree } from "./components/WorkspaceFileTree";
+export { ConversationSidebar } from "./components/ConversationSidebar";
+export { NewConversationDraftPage } from "./components/NewConversationDraftPage";
 export {
   SubAgentStreamView,
   SubAgentCompletionNotice,

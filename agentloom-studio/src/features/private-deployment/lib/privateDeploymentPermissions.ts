@@ -10,7 +10,7 @@ import {
   type InterventionPolicyTokenPayload,
   type InterventionRole,
   isInterventionRole,
-} from '@/features/intervention-policy/types'
+} from '@/features/intervention-policy'
 
 export interface PrivateDeploymentTokenPayload extends InterventionPolicyTokenPayload {
   tenantId?: string

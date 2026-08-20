@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy/lib/autonomyModePolicy'
+import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { SUGGESTION_TYPE_LABELS } from '../lib/suggestionPresentation'

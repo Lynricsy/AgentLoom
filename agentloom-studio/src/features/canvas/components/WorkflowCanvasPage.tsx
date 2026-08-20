@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "@tanstack/react-router";
-import { useAuthToken } from "@/features/execution/hooks/useAuthToken";
-import { CelebrationEffect } from "@/features/execution/components/CelebrationEffect";
-import { useExecutionMonitor } from "@/features/execution/hooks/useExecutionMonitor";
-import { useStartExecution } from "@/features/execution/hooks/useStartExecution";
-import { ExecutionHistoryPanel } from "@/features/execution/components/ExecutionHistoryPanel";
+import { useAuthToken } from "@/features/execution";
+import { CelebrationEffect } from "@/features/execution";
+import { useExecutionMonitor } from "@/features/execution";
+import { useStartExecution } from "@/features/execution";
+import { ExecutionHistoryPanel } from "@/features/execution";
 import {
   canManageInterventionPolicies,
   getInterventionPolicyRoleFromToken,
@@ -13,16 +13,16 @@ import {
   useExecutionId,
   useIsExecutionActive,
   useExecutionStatus,
-} from "@/features/execution/stores/executionStore";
+} from "@/features/execution";
 import { useWorkflow } from "@/features/workflow";
-import { useExportWorkflow } from "@/features/workflow/api/workflowMutations";
-import { downloadWorkflowExport } from "@/features/workflow/lib/workflowExportImport";
-import { PublishSheet } from "@/features/workflow/components/PublishSheet";
-import { VersionHistoryPanel } from "@/features/workflow/components/VersionHistoryPanel";
-import { WorkflowImportDialog } from "@/features/workflow/components/WorkflowImportDialog";
-import { ExecutionLaunchDialog } from "@/features/workflow-input-schema/components/ExecutionLaunchDialog";
+import { useExportWorkflow } from "@/features/workflow";
+import { downloadWorkflowExport } from "@/features/workflow";
+import { PublishSheet } from "@/features/workflow";
+import { VersionHistoryPanel } from "@/features/workflow";
+import { WorkflowImportDialog } from "@/features/workflow";
+import { ExecutionLaunchDialog } from "@/features/workflow-input-schema";
 import { MarketplacePublishDialog } from "@/features/marketplace";
-import { ShareManagementDialog } from "@/features/share/components/ShareManagementDialog";
+import { ShareManagementDialog } from "@/features/share";
 import { NodePalette } from "./NodePalette";
 import { ReadOnlyCanvasBanner } from "./readonly/ReadOnlyCanvasBanner";
 import { ReadOnlyNodeSheet } from "./readonly/ReadOnlyNodeSheet";

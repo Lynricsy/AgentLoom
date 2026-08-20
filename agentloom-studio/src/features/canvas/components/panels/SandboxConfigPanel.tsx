@@ -8,15 +8,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
-import { usePersistentSandboxes } from "@/features/sandbox/api/sandboxQueries";
-import type { SandboxSession } from "@/features/sandbox/types";
-import { SandboxPresetSelector } from "@/features/sandbox/components/SandboxPresetSelector";
+import { usePersistentSandboxes } from "@/features/sandbox";
+import type { SandboxSession } from "@/features/sandbox";
+import { SandboxPresetSelector } from "@/features/sandbox";
 import {
   useSandboxPresetStore,
   getAllPresets,
   findMatchingPreset,
   type SandboxPreset,
-} from "@/features/sandbox/stores/sandboxPresetStore";
+} from "@/features/sandbox";
 
 interface SandboxConfigPanelProps {
   config: Record<string, unknown>;

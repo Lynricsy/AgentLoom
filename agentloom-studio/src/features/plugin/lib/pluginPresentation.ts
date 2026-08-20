@@ -1,4 +1,4 @@
-import type { InterventionRole } from '@/features/intervention-policy/types'
+import type { InterventionRole } from '@/features/intervention-policy'
 import type { BadgeProps } from '@/shared/ui/badge'
 import type { PluginListItem, PluginOrigin, PluginStatus } from '../types'
 

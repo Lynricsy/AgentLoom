@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { useWorkflowInputSchema } from '@/features/workflow/api/workflowQueries'
-import type { WorkflowInputSchema, WorkflowStatus } from '@/features/workflow/types'
+import { useWorkflowInputSchema } from '@/features/workflow'
+import type { WorkflowInputSchema, WorkflowStatus } from '@/features/workflow'
 import { normalizeWorkflowInputSchema } from '../lib/schemaHelpers'
 
 interface UseResolvedWorkflowInputSchemaOptions {

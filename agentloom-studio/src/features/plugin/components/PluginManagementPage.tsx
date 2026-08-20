@@ -9,7 +9,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useAuthToken } from '@/features/auth'
-import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy/lib/policyPermissions'
+import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import {

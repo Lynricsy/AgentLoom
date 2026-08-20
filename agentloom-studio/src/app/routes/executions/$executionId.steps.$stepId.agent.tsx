@@ -1,5 +1,5 @@
 import { createRoute, useParams } from '@tanstack/react-router'
-import { WorkflowAgentViewer } from '@/features/execution/components/WorkflowAgentViewer'
+import { WorkflowAgentViewer } from '@/features/execution'
 import { rootRoute } from '../__root'
 
 function WorkflowAgentViewerRouteComponent() {

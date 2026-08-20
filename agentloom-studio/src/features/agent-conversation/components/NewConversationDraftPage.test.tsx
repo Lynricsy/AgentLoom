@@ -10,11 +10,11 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock("@/features/agent/api/agentQueries", () => ({
+vi.mock("@/features/agent", () => ({
   useAgent: (agentId: string) => mockUseAgent(agentId),
 }));
 
-vi.mock("@/features/workspace/api/workspaceApi", () => ({
+vi.mock("@/features/workspace", () => ({
   fetchWorkspaceFileTree: (workspaceId: string) =>
     mockFetchWorkspaceFileTree(workspaceId),
 }));

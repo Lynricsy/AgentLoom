@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowDefinition } from "@/features/workflow";
-import type { ExecutionStatus } from "@/features/execution/types";
-import type { WorkflowInputSchema } from "@/features/workflow/types";
+import type { ExecutionStatus } from "@/features/execution";
+import type { WorkflowInputSchema } from "@/features/workflow";
 import { useCanvasStore } from "../stores/canvasStore";
 import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
 import { clonePortDefinitions } from "../types/portSchema";
@@ -65,34 +65,83 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/features/workflow", () => ({
   useWorkflow: () => workflowResult,
+  WorkflowImportDialog: () => null,
+  useExportWorkflow: () => ({
+    mutate: exportWorkflowMutateMock,
+    isPending: false,
+  }),
+  useUpdateWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useCreateWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useValidateImport: () => ({ mutateAsync: vi.fn() }),
+  useImportWorkflow: () => ({ mutateAsync: vi.fn() }),
+  downloadWorkflowExport: downloadWorkflowExportMock,
+  parseImportFile: vi.fn(),
+  VersionHistoryPanel: (props: {
+    open: boolean;
+    onPublish?: (versionId: string) => void;
+    onClose: () => void;
+    workflowStatus: WorkflowDefinition["status"];
+  }) => {
+    versionHistoryPanelMock(props);
+    return (
+      <div
+        data-testid="version-history-panel-proxy"
+        data-open={String(props.open)}
+        data-status={props.workflowStatus}
+      >
+        <button
+          type="button"
+          data-testid="version-history-open-publish"
+          onClick={() => props.onPublish?.("ver-003")}
+        >
+          History publish
+        </button>
+        <button
+          type="button"
+          data-testid="version-history-close"
+          onClick={props.onClose}
+        >
+          Close history
+        </button>
+      </div>
+    );
+  },
+  PublishSheet: (props: {
+    open: boolean;
+    initialVersionId?: string | null;
+    onOpenChange: (open: boolean) => void;
+  }) => {
+    publishSheetMock(props);
+    return props.open ? (
+      <div
+        data-testid="publish-sheet"
+        data-version-id={props.initialVersionId ?? ""}
+      >
+        <button
+          type="button"
+          data-testid="publish-sheet-close"
+          onClick={() => props.onOpenChange(false)}
+        >
+          Close publish
+        </button>
+      </div>
+    ) : null;
+  },
 }));
 
 vi.mock("../hooks/useAutoSave", () => ({
   useAutoSave: (...args: unknown[]) => useAutoSaveMock(...args),
 }));
 
-vi.mock("@/features/execution/hooks/useAuthToken", () => ({
+vi.mock("@/features/execution", () => ({
   useAuthToken: () => mockAuthToken,
-}));
-
-vi.mock("@/features/execution/hooks/useExecutionMonitor", () => ({
   useExecutionMonitor: (...args: unknown[]) => useExecutionMonitorMock(...args),
-}));
-
-vi.mock("@/shared/ui/toast", () => ({
-  useToast: () => ({ notify: notifyMock }),
-}));
-
-vi.mock("@/features/execution/hooks/useStartExecution", () => ({
   useStartExecution: () => ({
     startExecution: startExecutionMock,
     isStarting: mockIsStarting,
     error: null,
     reset: vi.fn(),
   }),
-}));
-
-vi.mock("@/features/execution/stores/executionStore", () => ({
   useExecutionId: () => mockExecutionId,
   useIsExecutionActive: () => mockIsExecutionActive,
   useExecutionStatus: () => mockExecutionStatus,
@@ -101,9 +150,6 @@ vi.mock("@/features/execution/stores/executionStore", () => ({
   useExecutionActions: () => ({
     submitIntervention: submitInterventionMock,
   }),
-}));
-
-vi.mock("@/features/execution/components/CelebrationEffect", () => ({
   CelebrationEffect: (props: {
     workflowId: string;
     executionId: string | null | undefined;
@@ -114,36 +160,21 @@ vi.mock("@/features/execution/components/CelebrationEffect", () => ({
   },
 }));
 
+vi.mock("@/shared/ui/toast", () => ({
+  useToast: () => ({ notify: notifyMock }),
+}));
+
 vi.mock("@/features/marketplace", () => ({
   MarketplacePublishDialog: () => null,
 }));
 
-vi.mock("@/features/share/components/ShareManagementDialog", () => ({
+vi.mock("@/features/share", () => ({
   ShareManagementDialog: () => null,
 }));
 
-vi.mock("@/features/workflow/components/WorkflowImportDialog", () => ({
-  WorkflowImportDialog: () => null,
-}));
-
-vi.mock("@/features/workflow/api/workflowMutations", () => ({
-  useExportWorkflow: () => ({
-    mutate: exportWorkflowMutateMock,
-    isPending: false,
-  }),
-  useUpdateWorkflow: () => ({ mutateAsync: vi.fn() }),
-  useCreateWorkflow: () => ({ mutateAsync: vi.fn() }),
-  useValidateImport: () => ({ mutateAsync: vi.fn() }),
-  useImportWorkflow: () => ({ mutateAsync: vi.fn() }),
-}));
-
-vi.mock("@/features/workflow/lib/workflowExportImport", () => ({
-  downloadWorkflowExport: downloadWorkflowExportMock,
-  parseImportFile: vi.fn(),
-}));
 
 vi.mock(
-  "@/features/workflow-input-schema/components/ExecutionLaunchDialog",
+  "@/features/workflow-input-schema",
   () => ({
     ExecutionLaunchDialog: (props: {
       open: boolean;
@@ -253,62 +284,6 @@ vi.mock("./toolbar/VersionToolbar", () => ({
   },
 }));
 
-vi.mock("@/features/workflow/components/VersionHistoryPanel", () => ({
-  VersionHistoryPanel: (props: {
-    open: boolean;
-    onPublish?: (versionId: string) => void;
-    onClose: () => void;
-    workflowStatus: WorkflowDefinition["status"];
-  }) => {
-    versionHistoryPanelMock(props);
-    return (
-      <div
-        data-testid="version-history-panel-proxy"
-        data-open={String(props.open)}
-        data-status={props.workflowStatus}
-      >
-        <button
-          type="button"
-          data-testid="version-history-open-publish"
-          onClick={() => props.onPublish?.("ver-003")}
-        >
-          History publish
-        </button>
-        <button
-          type="button"
-          data-testid="version-history-close"
-          onClick={props.onClose}
-        >
-          Close history
-        </button>
-      </div>
-    );
-  },
-}));
-
-vi.mock("@/features/workflow/components/PublishSheet", () => ({
-  PublishSheet: (props: {
-    open: boolean;
-    initialVersionId?: string | null;
-    onOpenChange: (open: boolean) => void;
-  }) => {
-    publishSheetMock(props);
-    return props.open ? (
-      <div
-        data-testid="publish-sheet"
-        data-version-id={props.initialVersionId ?? ""}
-      >
-        <button
-          type="button"
-          data-testid="publish-sheet-close"
-          onClick={() => props.onOpenChange(false)}
-        >
-          Close publish
-        </button>
-      </div>
-    ) : null;
-  },
-}));
 
 const workflowOne: WorkflowDefinition = {
   id: "wf-001",
