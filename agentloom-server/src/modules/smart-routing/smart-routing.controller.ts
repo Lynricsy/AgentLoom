@@ -70,6 +70,10 @@ export class SmartRoutingController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '查询 Smart Routing 决策记录' })
+  @ApiResponse({
+    status: 200,
+    description: '返回当前组织的 Smart Routing 决策记录',
+  })
   async findRoutingDecisions(
     @CurrentTenant() tenantId: string,
     @Query(new ZodValidationPipe(QueryRoutingDecisionsSchema))
