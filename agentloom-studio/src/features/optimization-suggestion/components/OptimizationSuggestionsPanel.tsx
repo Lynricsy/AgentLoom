@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import { HTTPError } from 'ky'
-import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy/lib/autonomyModePolicy'
-import { useCanvasStore } from '@/features/canvas/stores/canvasStore'
+import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy'
+import { useCanvasStore } from '@/features/canvas'
 import type { ApiError } from '@/shared/types/api'
 import { useToast } from '@/shared/ui/toast'
 import {

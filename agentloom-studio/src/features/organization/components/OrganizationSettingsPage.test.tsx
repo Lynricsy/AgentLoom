@@ -22,7 +22,7 @@ vi.mock('@/features/execution', () => ({
   useAuthToken: () => mocks.authToken(),
 }))
 
-vi.mock('@/features/intervention-policy/lib/policyPermissions', () => ({
+vi.mock('@/features/intervention-policy', () => ({
   getInterventionPolicyRoleFromToken: () => mocks.role(),
 }))
 

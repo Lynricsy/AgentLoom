@@ -20,7 +20,7 @@ vi.mock('../../stores/canvasStore', () => ({
   }),
 }))
 
-vi.mock('@/features/execution/stores/executionStore', () => ({
+vi.mock('@/features/execution', () => ({
   useExecutionStore: (selector: (state: typeof executionState) => unknown) =>
     selector(executionState),
 }))

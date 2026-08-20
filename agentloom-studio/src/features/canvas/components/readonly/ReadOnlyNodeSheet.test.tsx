@@ -6,7 +6,7 @@ import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { clonePortDefinitions } from '../../types/portSchema'
 import { ReadOnlyNodeSheet } from './ReadOnlyNodeSheet'
 
-vi.mock('@/features/execution/stores/executionStore', () => ({
+vi.mock('@/features/execution', () => ({
   useNodeExecutionState: () => ({
     stepId: 'step-1',
     status: 'completed',

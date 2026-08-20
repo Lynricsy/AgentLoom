@@ -1,4 +1,4 @@
-import type { WorkflowInputFieldDefinition } from '@/features/workflow/types'
+import type { WorkflowInputFieldDefinition } from '@/features/workflow'
 import { type PortDefinition } from './nodeTypeRegistry'
 import { createPort } from './portSchema'
 

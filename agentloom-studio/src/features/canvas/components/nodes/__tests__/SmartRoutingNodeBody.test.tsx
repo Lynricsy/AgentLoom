@@ -5,14 +5,14 @@ import { SmartRoutingNodeBody } from '../SmartRoutingNodeBody'
 import { PreviewModeContext } from '../../PreviewModeContext'
 
 const mocks = vi.hoisted(() => ({
-  useHealthStatus: vi.fn().mockReturnValue({ data: undefined }),
+  useProviderHealth: vi.fn().mockReturnValue({ data: undefined }),
 }))
 
 vi.mock('@/features/smart-routing', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
-    useHealthStatus: mocks.useHealthStatus,
+    useProviderHealth: mocks.useProviderHealth,
   }
 })
 
@@ -67,7 +67,7 @@ function createSmartRoutingData(
 
 describe('SmartRoutingNodeBody', () => {
   beforeEach(() => {
-    mocks.useHealthStatus.mockReturnValue({ data: undefined })
+    mocks.useProviderHealth.mockReturnValue({ data: undefined })
   })
 
   describe('策略显示', () => {
@@ -157,7 +157,7 @@ describe('SmartRoutingNodeBody', () => {
 
   describe('健康状态摘要', () => {
     it('shows health summary dots when health data is available', () => {
-      mocks.useHealthStatus.mockReturnValue({
+      mocks.useProviderHealth.mockReturnValue({
         data: [
           { providerName: 'openai', modelId: 'gpt-4', status: 'healthy', failureCount: 0, lastFailureAt: null },
           { providerName: 'anthropic', modelId: 'claude-3', status: 'degraded', failureCount: 2, lastFailureAt: '2026-01-01' },
@@ -174,7 +174,7 @@ describe('SmartRoutingNodeBody', () => {
     })
 
     it('shows open badge when providers have open circuit', () => {
-      mocks.useHealthStatus.mockReturnValue({
+      mocks.useProviderHealth.mockReturnValue({
         data: [
           { providerName: 'openai', modelId: 'gpt-4', status: 'open', failureCount: 10, lastFailureAt: '2026-01-01' },
         ],
@@ -186,7 +186,7 @@ describe('SmartRoutingNodeBody', () => {
     })
 
     it('does not show health summary when no health data', () => {
-      mocks.useHealthStatus.mockReturnValue({ data: undefined })
+      mocks.useProviderHealth.mockReturnValue({ data: undefined })
 
       render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
@@ -194,7 +194,7 @@ describe('SmartRoutingNodeBody', () => {
     })
 
     it('does not show health summary when health data is empty', () => {
-      mocks.useHealthStatus.mockReturnValue({ data: [] })
+      mocks.useProviderHealth.mockReturnValue({ data: [] })
 
       render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
@@ -206,7 +206,7 @@ describe('SmartRoutingNodeBody', () => {
     it('editor 渲染时启用 health 查询', () => {
       render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
-      expect(mocks.useHealthStatus).toHaveBeenCalledWith(true)
+      expect(mocks.useProviderHealth).toHaveBeenCalledWith(true)
     })
 
     it('预览态禁用受保护的 health 查询', () => {
@@ -216,7 +216,7 @@ describe('SmartRoutingNodeBody', () => {
         </PreviewModeContext.Provider>,
       )
 
-      expect(mocks.useHealthStatus).toHaveBeenCalledWith(false)
+      expect(mocks.useProviderHealth).toHaveBeenCalledWith(false)
     })
   })
 })

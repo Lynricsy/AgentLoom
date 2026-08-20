@@ -46,7 +46,7 @@ vi.mock("@/shared/api/client", () => ({
   toSnakeBody: (value: unknown) => toSnakeBodyMock(value),
 }));
 
-vi.mock("@/features/auth/stores/auth.store", () => ({
+vi.mock("@/features/auth", () => ({
   useAuthStore: {
     getState: () => authGetStateMock(),
   },

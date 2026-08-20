@@ -20,7 +20,7 @@ import type {
   AdoptionStats,
 } from '../types/optimization-suggestion.types'
 import type { ApiResponse } from '@/shared/types/api'
-import { workflowKeys } from '@/features/workflow/api/workflowKeys'
+import { workflowKeys } from '@/features/workflow'
 
 export function useNodeSuggestions(
   workflowId: string,

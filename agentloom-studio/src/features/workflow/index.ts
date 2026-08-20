@@ -17,9 +17,17 @@ export type {
   ListWorkflowsParams,
   WorkflowListResponse,
 } from './types'
+export type { WorkflowInputSchema } from './types'
+export type {
+  ConversationPlan,
+  WorkflowInputCollectionMode,
+  WorkflowInputFieldDefinition,
+  WorkflowInputFieldType,
+  WorkflowInputFieldValidation,
+} from './types'
 export { createWorkflow, listWorkflows, exportWorkflow, validateImport, importWorkflow } from './api/workflowApi'
 export { workflowKeys } from './api/workflowKeys'
-export { useWorkflow, useWorkflowList } from './api/workflowQueries'
+export { useWorkflow, useWorkflowList, useWorkflowInputSchema } from './api/workflowQueries'
 export {
   useUpdateWorkflow,
   useCreateWorkflow,
@@ -49,3 +57,4 @@ export {
   downloadWorkflowExport,
   parseImportFile,
 } from './lib/workflowExportImport'
+export * from './lib/workflowListSearch'

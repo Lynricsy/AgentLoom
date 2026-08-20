@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { useExecutionStore } from '@/features/execution/stores/executionStore'
-import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
+import { useExecutionStore } from '@/features/execution'
+import type { NodeExecutionState } from '@/features/execution'
 
 /**
  * 依赖高亮 CSS 类名。

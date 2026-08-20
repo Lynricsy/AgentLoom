@@ -1,7 +1,7 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { useAuthToken } from "@/features/execution";
 import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
-import { useAuthStore } from "@/features/auth/stores/auth.store";
+import { useAuthStore } from "@/features/auth";
 import { useNotificationSocket } from "@/features/notification";
 import { AppSidebar, MobileTopBar } from "@/shared/components/app-sidebar";
 import { CommandPalette } from "@/shared/components/command-palette/CommandPalette";

@@ -20,9 +20,6 @@ vi.mock('@/shared/lib/supabase', () => ({
 
 vi.mock('@/features/auth', () => ({
   setAuthToken: setAuthTokenMock,
-}))
-
-vi.mock('@/features/auth/stores/auth.store', () => ({
   useAuthStore: {
     getState: () => ({ accessToken: accessToken.current, signOut: signOutMock }),
   },

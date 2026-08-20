@@ -8,9 +8,9 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { useToast } from '@/shared/ui/toast'
-import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
-import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent/types'
-import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+import { listAgents, listAgentVersions } from '@/features/agent'
+import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent'
+import type { AgentRuntimeMode } from '@/features/agent'
 import { OptimizationSuggestionsPanel } from '@/features/optimization-suggestion'
 import { useCanvasStore } from '../../stores/canvasStore'
 import type { CanvasNode } from '../../types'

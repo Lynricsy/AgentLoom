@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { WorkflowPreviewCanvas } from '@/features/canvas'
-import { useCreateWorkflow } from '@/features/workflow/api/workflowMutations'
+import { useCreateWorkflow } from '@/features/workflow'
 import { BrandMark } from '@/shared/components/brand/BrandMark'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'

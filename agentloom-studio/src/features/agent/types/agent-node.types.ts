@@ -1,4 +1,4 @@
-import type { CanvasNodeData } from '@/features/canvas/types'
+import type { CanvasNodeData } from '@/features/canvas'
 import type { AgentGlobalSandboxConfig, AgentRuntimeConfig } from './agent.types'
 
 export interface AgentNodeData extends CanvasNodeData {

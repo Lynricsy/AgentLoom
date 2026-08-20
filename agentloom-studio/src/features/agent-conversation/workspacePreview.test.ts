@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentGlobalSandboxConfig } from "@/features/agent/types";
+import type { AgentGlobalSandboxConfig } from "@/features/agent";
 
 import { resolveConversationWorkspacePreviewId } from "./workspacePreview";
 

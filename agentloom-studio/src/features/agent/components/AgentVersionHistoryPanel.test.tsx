@@ -30,7 +30,7 @@ vi.mock("../api/agentQueries", () => ({
   },
 }));
 
-vi.mock("@/features/canvas/lib/formatRelativeTime", () => ({
+vi.mock("@/features/canvas", () => ({
   formatRelativeTime: () => "1 小时前",
 }));
 

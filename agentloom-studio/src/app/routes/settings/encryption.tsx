@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router'
 
-import { TenantKeyManagement } from '@/features/tenant-key/components/TenantKeyManagement'
+import { TenantKeyManagement } from '@/features/tenant-key'
 
 import { rootRoute } from '../__root'
 

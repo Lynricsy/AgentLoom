@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import type { CanvasNodeData } from '@/features/canvas/types';
+import type { CanvasNodeData } from '@/features/canvas';
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel';
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('../../stores/agent-canvas.store', () => ({
   }),
 }));
 
-vi.mock('@/features/canvas/components/panels/customPanelRegistry', () => ({
+vi.mock('@/features/canvas', () => ({
   CUSTOM_PANEL_REGISTRY: {
     'mcp-tool': {
       render: () => <div data-testid="mock-mcp-panel">mock mcp panel</div>,

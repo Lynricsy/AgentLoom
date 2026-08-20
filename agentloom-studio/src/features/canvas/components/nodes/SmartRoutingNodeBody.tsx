@@ -16,9 +16,9 @@ import {
   STRATEGY_CATEGORY_COLORS,
   STRATEGY_CATEGORY_BG,
   getStrategyMeta,
-  useHealthStatus,
+  useProviderHealth,
 } from '@/features/smart-routing'
-import type { ProviderHealthStatus } from '@/features/smart-routing'
+import type { ProviderHealthState } from '@/features/smart-routing'
 import { cn } from '@/shared/lib/utils'
 import { usePreviewMode } from '../PreviewModeContext'
 
@@ -35,7 +35,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Puzzle,
 }
 
-const HEALTH_DOT_COLORS: Record<ProviderHealthStatus, string> = {
+const HEALTH_DOT_COLORS: Record<ProviderHealthState, string> = {
   healthy: 'bg-success',
   degraded: 'bg-warning',
   open: 'bg-error',
@@ -57,9 +57,9 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
 
   // 预览态（含匿名公开分享页）不得触发受保护的 health 查询
   const previewMode = usePreviewMode()
-  const { data: healthData } = useHealthStatus(!previewMode)
+  const { data: healthData } = useProviderHealth(!previewMode)
   const healthSummary = useMemo(() => {
-    const counts: Record<ProviderHealthStatus, number> = { healthy: 0, degraded: 0, open: 0 }
+    const counts: Record<ProviderHealthState, number> = { healthy: 0, degraded: 0, open: 0 }
     for (const h of healthData ?? []) {
       counts[h.status]++
     }
@@ -88,7 +88,7 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
         <p className="text-[11px] text-muted-foreground">{modelCount} 个模型</p>
         {healthData && healthData.length > 0 ? (
           <div className="flex items-center gap-1" data-testid="provider-health-summary">
-            {(Object.entries(healthSummary) as [ProviderHealthStatus, number][]).map(
+            {(Object.entries(healthSummary) as [ProviderHealthState, number][]).map(
               ([status, count]) =>
                 count > 0 ? (
                   <span

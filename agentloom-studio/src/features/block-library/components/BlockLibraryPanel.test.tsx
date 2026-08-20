@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DRAG_TRANSFER_TYPE } from '@/features/canvas/components/NodePalette';
+import { DRAG_TRANSFER_TYPE } from '@/features/canvas';
 
 import { BlockLibraryPanel } from './BlockLibraryPanel';
 import type { ReusableBlockListItem } from '../types';

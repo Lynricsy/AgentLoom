@@ -16,8 +16,8 @@ import ReactMarkdown from 'react-markdown'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { useDecryptContent } from '@/features/tenant-key/hooks/useDecryptContent'
-import type { EncryptedPayload } from '@/features/tenant-key/types'
+import { useDecryptContent } from '@/features/tenant-key'
+import type { EncryptedPayload } from '@/features/tenant-key'
 
 import { useEvidenceDetail, useEvidenceVerify } from '../api/evidenceQueries'
 import type {

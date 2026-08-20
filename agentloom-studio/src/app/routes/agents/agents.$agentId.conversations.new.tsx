@@ -1,7 +1,7 @@
 import { createRoute, useNavigate } from "@tanstack/react-router";
 import { rootRoute } from "../__root";
-import { ConversationSidebar } from "@/features/agent-conversation/components/ConversationSidebar";
-import { NewConversationDraftPage } from "@/features/agent-conversation/components/NewConversationDraftPage";
+import { ConversationSidebar } from "@/features/agent-conversation";
+import { NewConversationDraftPage } from "@/features/agent-conversation";
 
 function NewConversationPage() {
   const { agentId } = agentNewConversationRoute.useParams();

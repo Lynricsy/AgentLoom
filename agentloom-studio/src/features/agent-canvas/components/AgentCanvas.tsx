@@ -9,16 +9,16 @@ import {
 } from '@xyflow/react';
 import { cn } from '@/shared/lib/utils';
 import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query';
-import { CanvasNodeShell } from '@/features/canvas/components/CanvasNode';
-import { SmartEdge } from '@/features/canvas/components/edges/SmartEdge';
-import { AgentNodePalette } from '@/features/canvas/components/AgentNodePalette';
-import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
-import { useConnectionPreview } from '@/features/canvas/hooks/useConnectionPreview';
-import { ReadOnlyNodeSheet } from '@/features/canvas/components/readonly/ReadOnlyNodeSheet';
+import { CanvasNodeShell } from '@/features/canvas';
+import { SmartEdge } from '@/features/canvas';
+import { AgentNodePalette } from '@/features/canvas';
+import { arePortDataTypesCompatible } from '@/features/canvas';
+import { useConnectionPreview } from '@/features/canvas';
+import { ReadOnlyNodeSheet } from '@/features/canvas';
 import type {
   CanvasEdgeData,
   CanvasNode,
-} from '@/features/canvas/types';
+} from '@/features/canvas';
 import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,

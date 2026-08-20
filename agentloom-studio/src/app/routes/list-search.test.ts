@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   parseAgentListSearch,
   resolveAgentListSearch,
-} from "@/features/agent/lib/agentListSearch";
+} from "@/features/agent";
 import {
   parseWorkflowListSearch,
   resolveWorkflowListSearch,
-} from "@/features/workflow/lib/workflowListSearch";
+} from "@/features/workflow";
 
 describe("list route search persistence", () => {
   it("restores agent filters and pagination from a refreshed URL", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
+import type { AgentRuntimeMode } from "@/features/agent";
 import type { ConversationStatus, SandboxStatus } from "../types";
 
 const EXECUTING_HISTORY_SYNC_INTERVAL_MS = 3_000;

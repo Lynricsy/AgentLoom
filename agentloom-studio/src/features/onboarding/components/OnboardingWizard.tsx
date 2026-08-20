@@ -3,8 +3,8 @@ import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle } from 'lucide-react';
 
-import { AuthLayout } from '@/features/auth/components/AuthLayout';
-import { useAuthStore } from '@/features/auth/stores/auth.store';
+import { AuthLayout } from '@/features/auth';
+import { useAuthStore } from '@/features/auth';
 import { fadeInUp } from '@/shared/lib/motion';
 import { Progress } from '@/shared/ui/progress';
 

@@ -15,7 +15,7 @@ import { MarkdownRenderer } from "@/shared/components/markdown/MarkdownRenderer"
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { ToolCallCard } from "@/shared/components/tool-renderers";
 import type { ToolCallData } from "@/shared/components/tool-renderers";
-import type { AgentRuntimeMode } from "@/features/agent/types";
+import type { AgentRuntimeMode } from "@/features/agent";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";

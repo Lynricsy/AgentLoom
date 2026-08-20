@@ -38,7 +38,7 @@ vi.mock('../../api/shareQueries', () => ({
   usePublicShare: () => publicShareMock,
 }))
 
-vi.mock('@/features/workflow/api/workflowMutations', () => ({
+vi.mock('@/features/workflow', () => ({
   useCreateWorkflow: () => createWorkflowMock,
 }))
 

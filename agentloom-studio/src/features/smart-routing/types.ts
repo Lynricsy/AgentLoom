@@ -37,14 +37,15 @@ export type StrategyInfo = Omit<SmartRoutingStrategiesResponseDtoDataInner, 'con
   configSchema: JsonSchema
 }
 
-/** Provider 熔断状态取值（生成模型枚举） */
-export type ProviderHealthStatus = ProviderHealthStatusesResponseDtoDataInnerStatusEnum
+/** Provider 熔断状态枚举（生成模型枚举） */
+export type ProviderHealthState =
+  ProviderHealthStatusesResponseDtoDataInnerStatusEnum
 
 /**
- * 后端 GET /smart-routing/health 的单条返回。
+ * 后端 GET /smart-routing/health 的单条记录。
  * `modelId` 按 server `z.string().nullable()` 为可空：null 表示整个提供商维度熔断。
  */
-export type ProviderHealth = ProviderHealthStatusesResponseDtoDataInner
+export type ProviderHealthRecord = ProviderHealthStatusesResponseDtoDataInner
 
 /** JSON Schema 读取视图（后端使用 Zod 4 z.toJSONSchema() 生成，字段均为可选） */
 export interface JsonSchema {

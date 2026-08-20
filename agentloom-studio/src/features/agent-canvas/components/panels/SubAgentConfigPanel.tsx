@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { Bot, Clock, AlertCircle } from 'lucide-react'
-import { useAgentVersions } from '@/features/agent/api/agentQueries'
-import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent/types'
+import { useAgentVersions } from '@/features/agent'
+import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent'
 import {
   Select,
   SelectContent,

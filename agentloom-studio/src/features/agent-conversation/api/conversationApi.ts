@@ -4,7 +4,7 @@ import type {
 } from "@agentloom/api-client";
 import { apiClient, toSnakeBody } from "@/shared/api/client";
 import type { PaginatedResponse } from "@/shared/types/api";
-import type { SandboxProcess, SandboxStats } from "@/features/sandbox/types";
+import type { SandboxProcess, SandboxStats } from "@/features/sandbox";
 
 export interface ConversationListItem {
   id: string;

@@ -1,12 +1,12 @@
 import { useCallback } from 'react'
 import { createRoute } from '@tanstack/react-router'
 import { rootRoute } from '../__root'
-import { AgentListPage } from '@/features/agent/components/AgentListPage'
+import { AgentListPage } from '@/features/agent'
 import {
   parseAgentListSearch,
   resolveAgentListSearch,
   type AgentListSearch,
-} from '@/features/agent/lib/agentListSearch'
+} from '@/features/agent'
 
 function AgentsIndexPage() {
   const search = agentsIndexRoute.useSearch()

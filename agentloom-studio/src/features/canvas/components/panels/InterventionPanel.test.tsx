@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   resolveIntervention: vi.fn(),
 }))
 
-vi.mock('@/features/execution/stores/executionStore', () => ({
+vi.mock('@/features/execution', () => ({
   useNodeIntervention: () => mocks.intervention,
   useNodeExecutionState: () => mocks.nodeState,
   useExecutionId: () => mocks.executionId,

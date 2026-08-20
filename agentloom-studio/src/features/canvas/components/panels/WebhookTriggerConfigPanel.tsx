@@ -9,7 +9,7 @@ import {
 } from '@/shared/ui/select'
 import { useCanvasStore } from '../../stores/canvasStore'
 import { useTriggers, isWebhookConfig, hasWebhookSecret } from '@/features/trigger'
-import { buildWebhookUrl } from '@/features/trigger/components/WebhookSecretDisplay'
+import { buildWebhookUrl } from '@/features/trigger'
 
 type AuthMode = 'simple' | 'signed'
 

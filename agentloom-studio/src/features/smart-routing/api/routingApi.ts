@@ -4,7 +4,7 @@ import type {
   SmartRoutingStrategyConfigSchemaResponseDto,
 } from '@agentloom/api-client'
 import { apiClient } from '@/shared/api/client'
-import type { JsonSchema, ProviderHealth, StrategyInfo } from '../types'
+import type { JsonSchema, ProviderHealthRecord, StrategyInfo } from '../types'
 
 export interface RoutingDecisionRecord {
   id: string
@@ -45,7 +45,7 @@ export async function fetchStrategies(): Promise<StrategyInfo[]> {
   return res.data
 }
 
-export async function fetchHealthStatus(): Promise<ProviderHealth[]> {
+export async function fetchProviderHealth(): Promise<ProviderHealthRecord[]> {
   const res = await apiClient
     .get('smart-routing/health')
     .json<ProviderHealthStatusesResponseDto>()

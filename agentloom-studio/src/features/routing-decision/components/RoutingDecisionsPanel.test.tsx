@@ -11,8 +11,11 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../api/routing-decision-queries', () => ({
-  useProviderHealth: mocks.useProviderHealth,
   useRoutingDecisions: mocks.useRoutingDecisions,
+}))
+
+vi.mock('@/features/smart-routing', () => ({
+  useProviderHealth: mocks.useProviderHealth,
 }))
 
 function createDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecision {

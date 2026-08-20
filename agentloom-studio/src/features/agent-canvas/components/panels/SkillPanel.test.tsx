@@ -1,14 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Skill } from '@/features/skill/types'
+import type { Skill } from '@/features/skill'
 import { SkillPanel } from './SkillPanel'
 
 const mocks = vi.hoisted(() => ({
   useSkills: vi.fn(),
 }))
 
-vi.mock('@/features/skill/api/skillQueries', () => ({
+vi.mock('@/features/skill', () => ({
   useSkills: mocks.useSkills,
 }))
 

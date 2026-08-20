@@ -6,7 +6,7 @@ import {
   useExecutionStatus,
   useExecutionProgress,
   useIsExecutionActive,
-} from '@/features/execution/stores/executionStore'
+} from '@/features/execution'
 import {
   useCanvasEdges,
   useCanvasSaveStatus,

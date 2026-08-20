@@ -12,7 +12,7 @@ import type {
   AgentNativeToolPolicy,
   AgentRuntimeMode,
   AgentSelfEvolutionPolicy,
-} from '@/features/agent/types'
+} from '@/features/agent'
 import { Switch } from '@/shared/ui/switch'
 
 interface AgentMainConfigPanelProps {

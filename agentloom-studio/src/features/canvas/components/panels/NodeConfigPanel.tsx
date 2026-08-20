@@ -1,5 +1,6 @@
 import {
   memo,
+  createElement,
   useCallback,
   useEffect,
   useRef,
@@ -13,9 +14,9 @@ import {
   useExecutionId,
   useIsExecutionActive,
   useNodeExecutionState,
-} from '@/features/execution/stores/executionStore'
-import { ToolCallList } from '@/features/execution/components/ToolCallList'
-import type { StepStatus } from '@/features/execution/types'
+} from '@/features/execution'
+import { ToolCallList } from '@/features/execution'
+import type { StepStatus } from '@/features/execution'
 import { cn } from '@/shared/lib/utils'
 import { panelSlideRight } from '@/shared/lib/motion'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
@@ -331,7 +332,6 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
     nodeConfig && nodeType
       ? getNodeAccentToken(nodeType, nodeConfig.category)
       : 'var(--color-node-control)'
-  const NodeIcon = resolveNodeIcon(nodeConfig?.icon)
 
   return (
     <AnimatePresence>
@@ -378,7 +378,9 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
                 color: accentToken,
               }}
             >
-              <NodeIcon className="h-4 w-4" />
+              {createElement(resolveNodeIcon(nodeConfig.icon), {
+                className: 'h-4 w-4',
+              })}
             </span>
 
             <div className="min-w-0 flex-1">

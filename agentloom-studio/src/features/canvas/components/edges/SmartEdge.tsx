@@ -7,7 +7,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react'
 import { Shuffle, X } from 'lucide-react'
-import { useExecutionStore } from '@/features/execution/stores/executionStore'
+import { useExecutionStore } from '@/features/execution'
 import { useCanvasActions } from '../../stores/canvasStore'
 import { PORT_DATA_TYPE_META } from '../../types/nodeTypeRegistry'
 import type { PortDataType } from '../../types/typeSchema'

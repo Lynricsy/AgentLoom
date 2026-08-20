@@ -2,7 +2,7 @@ import type {
   CreateEvidenceExportJobBodyDto,
   CreateEvidenceExportJobBodyDtoActorTypeEnum,
 } from '@agentloom/api-client'
-import type { EncryptedPayload, EncryptionMetadata } from '@/features/tenant-key/types'
+import type { EncryptedPayload, EncryptionMetadata } from '@/features/tenant-key'
 
 export type EvidenceSourceType =
   | 'rag_retrieval'

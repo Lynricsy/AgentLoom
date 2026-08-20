@@ -6,7 +6,7 @@ import {
   useNodeExecutionState,
   useExecutionActions,
   useExecutionId,
-} from '@/features/execution/stores/executionStore'
+} from '@/features/execution'
 
 type InterventionMode = 'idle' | 'modifying' | 'rejecting'
 

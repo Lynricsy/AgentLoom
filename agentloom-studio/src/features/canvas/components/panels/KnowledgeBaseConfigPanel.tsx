@@ -8,8 +8,8 @@ import {
   getKnowledgeBaseStatusLabel,
   getKnowledgeNodeCountLabel,
   isKnowledgeBaseConfigured,
-} from "@/features/knowledge/types";
-import { useAllKnowledgeBases } from "@/features/knowledge/hooks/useKnowledgeBases";
+} from "@/features/knowledge";
+import { useAllKnowledgeBases } from "@/features/knowledge";
 import {
   Select,
   SelectContent,

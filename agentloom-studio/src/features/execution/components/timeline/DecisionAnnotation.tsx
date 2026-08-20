@@ -21,8 +21,8 @@ import type { EvidenceRecord } from '@/features/evidence'
 import {
   hasEvidenceRefs,
   parseEvidenceRefs,
-} from '@/features/evidence/lib/parseEvidenceRefs'
-import { InlineEvidenceRef } from '@/features/evidence/components/InlineEvidenceRef'
+} from '@/features/evidence'
+import { InlineEvidenceRef } from '@/features/evidence'
 import { cn } from '@/shared/lib/utils'
 
 const autonomyVariants = cva(

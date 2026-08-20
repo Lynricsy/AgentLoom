@@ -4,6 +4,51 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import { readdirSync } from 'node:fs'
+
+const featureNames = readdirSync(new URL('./src/features', import.meta.url), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+
+const featureBoundaryConfigs = featureNames.map((featureName) => ({
+  files: [`src/features/${featureName}/**/*.{ts,tsx}`],
+  rules: {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: featureNames
+              .filter((candidate) => candidate !== featureName)
+              .flatMap((candidate) => [
+                `@/features/${candidate}/components/**`,
+                `@/features/${candidate}/stores/**`,
+                `@/features/${candidate}/api/**`,
+                `@/features/${candidate}/lib/**`,
+                `@/features/${candidate}/hooks/**`,
+                `@/features/${candidate}/types/**`,
+                `@/features/${candidate}/components/*`,
+                `@/features/${candidate}/stores/*`,
+                `@/features/${candidate}/api/*`,
+                `@/features/${candidate}/lib/*`,
+                `@/features/${candidate}/hooks/*`,
+                `@/features/${candidate}/types/*`,
+                `@/features/${candidate}/components`,
+                `@/features/${candidate}/stores`,
+                `@/features/${candidate}/api`,
+                `@/features/${candidate}/lib`,
+                `@/features/${candidate}/hooks`,
+                `@/features/${candidate}/types`,
+              ]),
+            message: '跨 feature 依赖必须通过目标 feature 的公开 barrel。',
+          },
+        ],
+      },
+    ],
+  },
+}))
 
 export default defineConfig([
   globalIgnores(['dist']),
@@ -45,6 +90,23 @@ export default defineConfig([
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
+      ],
+    },
+  },
+  ...featureBoundaryConfigs,
+  {
+    files: ['src/app/routes/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/features/*/**'],
+              message: '路由只能通过 feature 的公开 barrel 导入。',
+            },
+          ],
+        },
       ],
     },
   },

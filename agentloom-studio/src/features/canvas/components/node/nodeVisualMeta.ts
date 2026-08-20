@@ -30,7 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getLlmConfigState } from "@/features/llm";
-import type { StepStatus } from "@/features/execution/types";
+import type { StepStatus } from "@/features/execution";
 import type { NodeCategory } from "../../types";
 
 /** 节点注册表 `icon` 字符串 → lucide 组件 */

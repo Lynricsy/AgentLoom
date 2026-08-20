@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchConfigSchema, fetchHealthStatus, fetchRoutingDecisions, fetchStrategies } from './routingApi'
+import { fetchConfigSchema, fetchProviderHealth, fetchRoutingDecisions, fetchStrategies } from './routingApi'
 import { routingKeys } from './routingKeys'
 
 export function useRoutingDecisions(params: {
@@ -27,12 +27,12 @@ export function useStrategies(enabled = true) {
   })
 }
 
-export function useHealthStatus(enabled = true) {
+export function useProviderHealth(enabled = true) {
   return useQuery({
     queryKey: routingKeys.health,
-    queryFn: fetchHealthStatus,
+    queryFn: fetchProviderHealth,
     enabled,
-    staleTime: 30 * 1000,
+    staleTime: 15_000,
   })
 }
 

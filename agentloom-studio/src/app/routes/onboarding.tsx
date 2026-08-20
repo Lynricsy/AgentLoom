@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 
-import { OnboardingWizard } from '@/features/onboarding/components';
+import { OnboardingWizard } from '@/features/onboarding';
 
 import { rootRoute } from './__root';
 

@@ -5,7 +5,7 @@ import { useCanvasStore } from "../stores/canvasStore";
 import {
   useExecutionStore,
   type NodeExecutionState,
-} from "@/features/execution/stores/executionStore";
+} from "@/features/execution";
 import { CanvasNodeShell } from "./CanvasNode";
 import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
 import { clonePortDefinitions } from "../types/portSchema";

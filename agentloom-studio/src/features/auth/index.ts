@@ -8,6 +8,9 @@ export type {
 } from './hooks/useMfa'
 export { MfaEnrollDialog } from './components/MfaEnrollDialog'
 export { MfaVerifyDialog } from './components/MfaVerifyDialog'
+export { AuthLayout } from './components/AuthLayout'
+export { OAuthButtons } from './components/OAuthButtons'
+export { PasswordInput } from './components/PasswordInput'
 export {
   useAuthStore,
   useAccessToken,

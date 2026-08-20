@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { CanvasNodeData } from '@/features/canvas/types'
+import type { CanvasNodeData } from '@/features/canvas'
 import { SkillBody } from './SkillBody'
 
 function createSkillNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeData {

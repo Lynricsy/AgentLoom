@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   workflowId: 'wf-1' as string | null,
 }))
 
-vi.mock('@/features/agent/api/agentDefinitionApi', () => ({
+vi.mock('@/features/agent', () => ({
   listAgents: mocks.listAgents,
   listAgentVersions: mocks.listAgentVersions,
 }))

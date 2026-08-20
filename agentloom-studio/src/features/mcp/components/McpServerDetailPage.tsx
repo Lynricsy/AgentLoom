@@ -11,7 +11,7 @@ import {
   Server,
   Wrench,
 } from "lucide-react";
-import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { formatRelativeTime } from "@/features/canvas";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { Badge } from "@/shared/ui/badge";

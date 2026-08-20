@@ -1,7 +1,7 @@
 import { memo, useMemo, useState, type MouseEvent, type PointerEvent } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ChevronRight, X, type LucideIcon } from 'lucide-react'
-import { useNodeExecutionState } from '@/features/execution/stores/executionStore'
+import { useNodeExecutionState } from '@/features/execution'
 import { cn } from '@/shared/lib/utils'
 import { usePreviewMode } from '../PreviewModeContext'
 import {

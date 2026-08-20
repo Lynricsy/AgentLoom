@@ -1,4 +1,4 @@
-import type { WorkflowInputSchema } from '@/features/workflow/types'
+import type { WorkflowInputSchema } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
 import { Input } from '@/shared/ui/input'
 import {

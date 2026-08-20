@@ -1,14 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildKnowledgeBaseNodeConfig, type KnowledgeBase } from '@/features/knowledge/types'
+import { buildKnowledgeBaseNodeConfig, type KnowledgeBase } from '@/features/knowledge'
+import type * as KnowledgeFeatureModule from '@/features/knowledge'
 import { KnowledgeBaseConfigPanel } from './KnowledgeBaseConfigPanel'
 
 const mocks = vi.hoisted(() => ({
   useAllKnowledgeBases: vi.fn(),
 }))
 
-vi.mock('@/features/knowledge/hooks/useKnowledgeBases', () => ({
+vi.mock('@/features/knowledge', async (importOriginal) => ({
+  ...(await importOriginal<typeof KnowledgeFeatureModule>()),
   useAllKnowledgeBases: mocks.useAllKnowledgeBases,
 }))
 

@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { CanvasNodeData } from '@/features/canvas/types'
+import type { CanvasNodeData } from '@/features/canvas'
 import { SubAgentNodeBody } from './SubAgentNodeBody'
 
 function createSubAgentNodeData(overrides: Partial<CanvasNodeData> = {}): CanvasNodeData {

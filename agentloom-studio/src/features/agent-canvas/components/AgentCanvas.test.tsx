@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
-import type { CanvasNodeData } from '@/features/canvas/types';
+import type { CanvasNodeData } from '@/features/canvas';
 import {
   DESKTOP_WIDTH,
   MOBILE_WIDTH,
@@ -57,17 +57,21 @@ vi.mock('@xyflow/react', () => ({
   Controls: () => <div data-testid="controls" />,
 }));
 
-vi.mock('@/features/canvas/components/CanvasNode', () => ({
+vi.mock('@/features/canvas', () => ({
   CanvasNodeShell: () => <div data-testid="canvas-node-shell" />,
-}));
-
-vi.mock('@/features/canvas/components/edges/SmartEdge', () => ({
   SmartEdge: () => <div data-testid="smart-edge" />,
-}));
-
-vi.mock('@/features/canvas/components/AgentNodePalette', () => ({
   AgentNodePalette: () => <div data-testid="agent-node-palette" />,
-}));
+  arePortDataTypesCompatible: () => true,
+  useConnectionPreview: () => ({
+    onConnectStart: vi.fn(),
+    onConnectEnd: vi.fn(),
+  }),
+  ReadOnlyNodeSheet: () => (
+    <div data-testid="readonly-node-sheet">
+      <div data-testid="readonly-node-config" />
+    </div>
+  ),
+}))
 
 vi.mock('./panels/AgentNodeConfigPanel', () => ({
   AgentNodeConfigPanel: () => <div data-testid="agent-node-config-panel" />,

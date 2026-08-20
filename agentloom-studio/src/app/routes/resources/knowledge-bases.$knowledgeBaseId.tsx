@@ -1,5 +1,5 @@
 import { createRoute } from '@tanstack/react-router';
-import { KnowledgeBaseDetailPage } from '@/features/knowledge/components/KnowledgeBaseDetailPage';
+import { KnowledgeBaseDetailPage } from '@/features/knowledge';
 import { rootRoute } from '../__root';
 
 export const resourceKnowledgeBaseDetailRoute = createRoute({

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
-import { useUpdateWorkflow } from '@/features/workflow/api/workflowMutations'
+import { useUpdateWorkflow } from '@/features/workflow'
 import type {
   WorkflowInputCollectionMode,
   WorkflowInputFieldDefinition,
   WorkflowInputFieldType,
   WorkflowInputSchema,
-} from '@/features/workflow/types'
+} from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'

@@ -18,7 +18,7 @@ vi.mock('../api/optimization-suggestion-queries', () => ({
   useDismissSuggestion: () => mockUseDismissSuggestion(),
 }))
 
-vi.mock('@/features/canvas/stores/canvasStore', () => ({
+vi.mock('@/features/canvas', () => ({
   useCanvasStore: (selector: (state: typeof canvasState) => unknown) =>
     selector(canvasState),
 }))

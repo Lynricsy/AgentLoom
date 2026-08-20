@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router'
 
-import { DeveloperKeysPage } from '@/features/developer-console/pages/DeveloperKeysPage'
+import { DeveloperKeysPage } from '@/features/developer-console'
 import { rootRoute } from '../__root'
 
 export const developerKeysRoute = createRoute({

@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import * as crypto from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowDefinition } from '@/features/workflow'
-import type { WorkflowInputSchema } from '@/features/workflow/types'
+import type { WorkflowInputSchema } from '@/features/workflow'
+import type * as InterventionPolicyFeatureModule from '@/features/intervention-policy'
 import { clonePortDefinitions, getNodeTypeConfig } from '@/features/canvas'
 import {
   DESKTOP_WIDTH,
@@ -95,41 +96,35 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@/features/workflow', () => ({
   useWorkflow: () => ({ data: workflow, isLoading: false, error: null }),
+  WorkflowImportDialog: () => null,
+  useExportWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useUpdateWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useCreateWorkflow: () => ({ mutateAsync: vi.fn() }),
+  useValidateImport: () => ({ mutateAsync: vi.fn() }),
+  useImportWorkflow: () => ({ mutateAsync: vi.fn() }),
+  downloadWorkflowExport: vi.fn(),
+  parseImportFile: vi.fn(),
+  PublishSheet: () => null,
+  VersionHistoryPanel: () => null,
 }))
 
-vi.mock('@/features/execution/hooks/useAuthToken', () => ({
+vi.mock('@/features/execution', () => ({
   useAuthToken: () => authToken,
-}))
-
-vi.mock('@/features/execution/hooks/useExecutionMonitor', () => ({
   useExecutionMonitor: vi.fn(),
-}))
-
-vi.mock('@/shared/ui/toast', () => ({
-  useToast: () => ({ notify: notifyMock }),
-}))
-
-vi.mock('@/features/execution/hooks/useStartExecution', () => ({
   useStartExecution: () => ({
     startExecution: vi.fn(),
     isStarting: false,
     error: null,
     reset: vi.fn(),
   }),
-}))
-
-vi.mock('@/features/execution/stores/executionStore', () => ({
   useExecutionId: () => null,
   useIsExecutionActive: () => false,
   useExecutionStatus: () => null,
-}))
-
-vi.mock('@/features/execution/components/CelebrationEffect', () => ({
   CelebrationEffect: () => null,
 }))
 
-vi.mock('@/features/execution/components/ExecutionHistoryPanel', () => ({
-  ExecutionHistoryPanel: () => <div data-testid="execution-history-panel" />,
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({ notify: notifyMock }),
 }))
 
 vi.mock('@/features/trigger', () => ({
@@ -139,7 +134,7 @@ vi.mock('@/features/trigger', () => ({
   },
 }))
 
-vi.mock('@/features/workflow-input-schema/components/WorkflowInputSchemaTab', () => ({
+vi.mock('@/features/workflow-input-schema', () => ({
   WorkflowInputSchemaTab: (props: {
     workflowId: string
     workflowVersion: number
@@ -148,6 +143,17 @@ vi.mock('@/features/workflow-input-schema/components/WorkflowInputSchemaTab', ()
   }) => {
     workflowInputSchemaTabMock(props)
     return <div data-testid="workflow-input-schema-tab" />
+  },
+  ExecutionLaunchDialog: (props: {
+    open: boolean
+    workflowId: string
+    workflowName: string
+    workflowStatus: WorkflowDefinition['status']
+    draftInputSchema: WorkflowInputSchema | null
+    preferDraftSchema?: boolean
+  }) => {
+    executionLaunchDialogMock(props)
+    return props.open ? <div data-testid="execution-launch-dialog" /> : null
   },
 }))
 
@@ -162,43 +168,13 @@ vi.mock('@/features/marketplace', () => ({
   },
 }))
 
-vi.mock('@/features/share/components/ShareManagementDialog', () => ({
+vi.mock('@/features/share', () => ({
   ShareManagementDialog: () => null,
 }))
 
-vi.mock('@/features/workflow/components/WorkflowImportDialog', () => ({
-  WorkflowImportDialog: () => null,
-}))
-
-vi.mock('@/features/workflow/api/workflowMutations', () => ({
-  useExportWorkflow: () => ({ mutateAsync: vi.fn() }),
-  useUpdateWorkflow: () => ({ mutateAsync: vi.fn() }),
-  useCreateWorkflow: () => ({ mutateAsync: vi.fn() }),
-  useValidateImport: () => ({ mutateAsync: vi.fn() }),
-  useImportWorkflow: () => ({ mutateAsync: vi.fn() }),
-}))
-
-vi.mock('@/features/workflow/lib/workflowExportImport', () => ({
-  downloadWorkflowExport: vi.fn(),
-  parseImportFile: vi.fn(),
-}))
-
-vi.mock('@/features/workflow-input-schema/components/ExecutionLaunchDialog', () => ({
-  ExecutionLaunchDialog: (props: {
-    open: boolean
-    workflowId: string
-    workflowName: string
-    workflowStatus: WorkflowDefinition['status']
-    draftInputSchema: WorkflowInputSchema | null
-    preferDraftSchema?: boolean
-  }) => {
-    executionLaunchDialogMock(props)
-    return props.open ? <div data-testid="execution-launch-dialog" /> : null
-  },
-}))
 
 vi.mock('@/features/intervention-policy', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/intervention-policy')>()
+  const actual = await importOriginal<typeof InterventionPolicyFeatureModule>()
 
   return {
     ...actual,
@@ -288,13 +264,6 @@ vi.mock('../toolbar/VersionToolbar', () => ({
   },
 }))
 
-vi.mock('@/features/workflow/components/PublishSheet', () => ({
-  PublishSheet: () => null,
-}))
-
-vi.mock('@/features/workflow/components/VersionHistoryPanel', () => ({
-  VersionHistoryPanel: () => null,
-}))
 
 vi.mock('../../hooks/useAutoSave', () => ({
   useAutoSave: vi.fn(),

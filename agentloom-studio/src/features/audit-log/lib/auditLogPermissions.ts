@@ -10,7 +10,7 @@ import {
   type InterventionPolicyTokenPayload,
   type InterventionRole,
   isInterventionRole,
-} from '@/features/intervention-policy/types'
+} from '@/features/intervention-policy'
 
 export type AuditLogAccessRole = Extract<InterventionRole, 'owner' | 'admin'>
 

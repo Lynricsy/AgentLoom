@@ -1,12 +1,12 @@
 import { useCallback, type MutableRefObject } from 'react';
 import type { ReactFlowInstance } from '@xyflow/react';
-import { DRAG_TRANSFER_TYPE } from '@/features/canvas/components/NodePalette';
+import { DRAG_TRANSFER_TYPE } from '@/features/canvas';
 import type {
   CanvasEdge,
   CanvasNode,
   CanvasNodeData,
   PaletteNodeItem,
-} from '@/features/canvas/types';
+} from '@/features/canvas';
 import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
 import {
   useAgentCanvasActions,

@@ -128,4 +128,6 @@ export {
   useRecentEvents,
   useToolCalls,
   useActiveToolCalls,
+  useExecutionStore,
 } from './stores/executionStore'
+export type { NodeExecutionState } from './stores/executionStore'

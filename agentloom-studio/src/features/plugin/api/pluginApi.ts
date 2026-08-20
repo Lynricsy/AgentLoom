@@ -1,6 +1,6 @@
 import { apiClient } from '@/shared/api/client'
 import { setAuthToken } from '@/features/auth'
-import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { useAuthStore } from '@/features/auth'
 import { supabase } from '@/shared/lib/supabase'
 import type { PaginatedResponse } from '@/shared/types/api'
 import type { PluginRecord, PluginListItem, PluginStatus } from '../types'

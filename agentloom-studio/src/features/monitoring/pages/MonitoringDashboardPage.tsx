@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Activity, AlertTriangle, RadioTower, ShieldAlert } from 'lucide-react'
 import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
-import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
+import { useCurrentOrganization } from '@/features/organization'
 import {
   canManageResourceGovernance,
   getResourceGovernanceRoleFromToken,

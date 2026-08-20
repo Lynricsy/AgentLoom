@@ -2,7 +2,7 @@ import { memo, type ReactNode } from 'react'
 import {
   useIsExecutionActive,
   useNodeExecutionState,
-} from '@/features/execution/stores/executionStore'
+} from '@/features/execution'
 import { cn } from '@/shared/lib/utils'
 import {
   Sheet,

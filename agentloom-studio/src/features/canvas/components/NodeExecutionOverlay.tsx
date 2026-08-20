@@ -12,8 +12,8 @@ import { cn } from '@/shared/lib/utils'
 import {
   useNodeExecutionState,
   useIsExecutionActive,
-} from '@/features/execution/stores/executionStore'
-import type { StepStatus } from '@/features/execution/types'
+} from '@/features/execution'
+import type { StepStatus } from '@/features/execution'
 
 /* ─── 状态 → 视觉映射 ─────────────────────────────────── */
 

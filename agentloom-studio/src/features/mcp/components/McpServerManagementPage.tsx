@@ -15,7 +15,7 @@ import {
   Zap,
   Download,
 } from "lucide-react";
-import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { formatRelativeTime } from "@/features/canvas";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
   getResourceSourceLabel,

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type MouseEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { formatRelativeTime } from "@/features/canvas";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   VersionListResponse,
   WorkflowVersion,
-} from "@/features/workflow/types";
+} from "@/features/workflow";
 
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
 
@@ -43,7 +43,7 @@ vi.mock("@/shared/ui/toast", () => ({
   useToast: () => ({ notify: notifyMock }),
 }));
 
-vi.mock("@/features/canvas/lib/formatRelativeTime", () => ({
+vi.mock("@/features/canvas", () => ({
   formatRelativeTime: () => "1 小时前",
 }));
 

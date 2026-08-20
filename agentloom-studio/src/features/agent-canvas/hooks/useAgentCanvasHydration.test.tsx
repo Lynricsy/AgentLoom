@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentDefinition } from "@/features/agent/types";
-import { agentKeys } from "@/features/agent/api/agentKeys";
+import type { AgentDefinition } from "@/features/agent";
+import { agentKeys } from "@/features/agent";
 import { useAgentCanvasStore } from "../stores/agent-canvas.store";
 import { useAgentCanvasHydration } from "./useAgentCanvasHydration";
 
