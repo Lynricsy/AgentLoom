@@ -307,7 +307,10 @@ describe('MarketplaceService', () => {
   let service: MarketplaceService;
   let reviewService: { review: ReturnType<typeof vi.fn> };
   let workflowVersionService: { create: ReturnType<typeof vi.fn> };
-  let pluginService: { cloneMarketplacePlugin: ReturnType<typeof vi.fn> };
+  let pluginService: {
+    cloneMarketplacePlugin: ReturnType<typeof vi.fn>;
+    upgradeMarketplaceClone: ReturnType<typeof vi.fn>;
+  };
   let db: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
@@ -325,6 +328,7 @@ describe('MarketplaceService', () => {
 
     pluginService = {
       cloneMarketplacePlugin: vi.fn(),
+      upgradeMarketplaceClone: vi.fn(),
     };
 
     db = {
@@ -990,6 +994,272 @@ describe('MarketplaceService', () => {
 
       expect(db.update).not.toHaveBeenCalled();
       expect(result.disabledPluginDbIds).toEqual([]);
+    });
+  });
+
+  describe('listing 升级', () => {
+    function createCloneRow(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'clone-1',
+        pluginId: PLUGIN_ID,
+        version: '1.0.0',
+        contentHash: 'sha256:old',
+        sourcePluginDbId: PLUGIN_DB_ID,
+        sourcePluginId: PLUGIN_ID,
+        ...overrides,
+      };
+    }
+
+    it('未安装时 checkListingUpgrade 返回 not_installed 且不查 listing', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result).toEqual({
+        installed: false,
+        upgradeAvailable: false,
+        installedPluginDbId: null,
+        installedVersion: null,
+        availableVersion: null,
+        reason: 'not_installed',
+      });
+      expect(db.select).toHaveBeenCalledTimes(1);
+    });
+
+    it('源版本更高时报告 upgrade_available', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow(),
+          ]),
+        );
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result).toMatchObject({
+        installed: true,
+        upgradeAvailable: true,
+        installedVersion: '1.0.0',
+        availableVersion: '1.2.3',
+        reason: 'upgrade_available',
+      });
+    });
+
+    it('版本号相同但内容哈希变化也算可升级', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([createCloneRow({ version: '1.2.3' })]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow({
+              plugin: {
+                ...createPluginInstallSourceRow().plugin,
+                contentHash: 'sha256:new',
+              },
+            }),
+          ]),
+        );
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result.upgradeAvailable).toBe(true);
+    });
+
+    it('版本与内容哈希都相同时报告 up_to_date', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createCloneRow({ version: '1.2.3', contentHash: null }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow(),
+          ]),
+        );
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result).toMatchObject({
+        upgradeAvailable: false,
+        reason: 'up_to_date',
+      });
+    });
+
+    it('listing 已下架时报告 source_unavailable 而不是抛错', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([]));
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result).toMatchObject({
+        installed: true,
+        upgradeAvailable: false,
+        availableVersion: null,
+        reason: 'source_unavailable',
+      });
+    });
+
+    it('源插件被停用时报告 source_unavailable', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow({
+              plugin: {
+                ...createPluginInstallSourceRow().plugin,
+                status: 'disabled',
+              },
+            }),
+          ]),
+        );
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result.reason).toBe('source_unavailable');
+    });
+
+    it('listing 换绑到别的插件时报告 source_replaced 且不可升级', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow({
+              plugin: {
+                ...createPluginInstallSourceRow().plugin,
+                id: '99999999-9999-4999-8999-999999999999',
+                pluginId: 'com.other.plugin',
+              },
+            }),
+          ]),
+        );
+
+      const result = await service.checkListingUpgrade(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(result).toMatchObject({
+        installed: true,
+        upgradeAvailable: false,
+        reason: 'source_replaced',
+      });
+    });
+
+    it('upgradeListing 应把副本交给 pluginService 升级并返回版本迁移结果', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow(),
+          ]),
+        );
+      pluginService.upgradeMarketplaceClone.mockResolvedValue({
+        id: 'clone-1',
+        pluginId: PLUGIN_ID,
+        version: '1.2.3',
+      });
+
+      const result = await service.upgradeListing(
+        TENANT_ID,
+        USER_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(pluginService.upgradeMarketplaceClone).toHaveBeenCalledWith({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        cloneDbId: 'clone-1',
+        source: createPluginInstallSourceRow(),
+      });
+      expect(result).toEqual({
+        pluginDbId: 'clone-1',
+        pluginId: PLUGIN_ID,
+        fromVersion: '1.0.0',
+        toVersion: '1.2.3',
+        message: '已升级到版本 1.2.3',
+      });
+    });
+
+    it('未安装时 upgradeListing 应抛 409 且不查 listing', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.upgradeListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
+    });
+
+    it('已是最新版本时 upgradeListing 应抛 409', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createCloneRow({ version: '1.2.3', contentHash: null }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow(),
+          ]),
+        );
+
+      await expect(
+        service.upgradeListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
+    });
+
+    it('listing 换绑到别的插件时 upgradeListing 应抛 409', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow({
+              plugin: {
+                ...createPluginInstallSourceRow().plugin,
+                id: '99999999-9999-4999-8999-999999999999',
+                pluginId: 'com.other.plugin',
+              },
+            }),
+          ]),
+        );
+
+      await expect(
+        service.upgradeListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
+    });
+
+    it('listing 不存在时 upgradeListing 应抛 404', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([]));
+
+      await expect(
+        service.upgradeListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+      expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
     });
   });
 

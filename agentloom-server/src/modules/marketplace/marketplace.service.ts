@@ -124,6 +124,37 @@ export interface InstalledMarketplacePluginResult {
   message: 'Plugin installed successfully';
 }
 
+type MarketplaceClonePluginRow = {
+  id: string;
+  pluginId: string;
+  version: string;
+  contentHash: string | null;
+  sourcePluginDbId: string | null;
+  sourcePluginId: string | null;
+};
+
+export interface MarketplaceListingUpgradeStatus {
+  installed: boolean;
+  upgradeAvailable: boolean;
+  installedPluginDbId: string | null;
+  installedVersion: string | null;
+  availableVersion: string | null;
+  reason:
+    | 'not_installed'
+    | 'source_unavailable'
+    | 'source_replaced'
+    | 'up_to_date'
+    | 'upgrade_available';
+}
+
+export interface UpgradedMarketplacePluginResult {
+  pluginDbId: string;
+  pluginId: string;
+  fromVersion: string;
+  toVersion: string;
+  message: string;
+}
+
 export type InstalledMarketplaceListingResult =
   InstalledMarketplaceWorkflowResult | InstalledMarketplacePluginResult;
 
@@ -837,15 +868,174 @@ export class MarketplaceService {
     };
   }
 
+  /**
+   * 查询已安装副本与 listing 当前源插件的版本差。
+   *
+   * 版本号相同但内容哈希不同也算可升级:发布方可以就地重发同版本号的产物。
+   * 源插件被下架/停用时不报错,返回 `source_unavailable` 让前端只提示不引导。
+   * listing 换绑了别的插件时返回 `source_replaced`:升级路径要求身份不变。
+   */
+  async checkListingUpgrade(
+    tenantId: string,
+    listingId: string,
+  ): Promise<MarketplaceListingUpgradeStatus> {
+    const [clone] = await this.findMarketplaceClonePlugins(tenantId, listingId);
+
+    if (!clone) {
+      return {
+        installed: false,
+        upgradeAvailable: false,
+        installedPluginDbId: null,
+        installedVersion: null,
+        availableVersion: null,
+        reason: 'not_installed',
+      };
+    }
+
+    let source: Awaited<
+      ReturnType<MarketplaceService['findPublicPluginInstallSourceOrThrow']>
+    >;
+
+    try {
+      source = await this.findPublicPluginInstallSourceOrThrow(listingId);
+    } catch (error) {
+      if (
+        error instanceof MarketplaceListingNotFoundException ||
+        error instanceof PluginInactiveException
+      ) {
+        return {
+          installed: true,
+          upgradeAvailable: false,
+          installedPluginDbId: clone.id,
+          installedVersion: clone.version,
+          availableVersion: null,
+          reason: 'source_unavailable',
+        };
+      }
+
+      throw error;
+    }
+
+    if (!this.isSameInstallSource(clone, source)) {
+      return {
+        installed: true,
+        upgradeAvailable: false,
+        installedPluginDbId: clone.id,
+        installedVersion: clone.version,
+        availableVersion: source.plugin.version,
+        reason: 'source_replaced',
+      };
+    }
+
+    const upgradeAvailable =
+      clone.version !== source.plugin.version ||
+      (clone.contentHash ?? null) !== (source.plugin.contentHash ?? null);
+
+    return {
+      installed: true,
+      upgradeAvailable,
+      installedPluginDbId: clone.id,
+      installedVersion: clone.version,
+      availableVersion: source.plugin.version,
+      reason: upgradeAvailable ? 'upgrade_available' : 'up_to_date',
+    };
+  }
+
+  /**
+   * 把已安装副本升级到 listing 当前源插件版本。
+   *
+   * 未安装 / 源已换绑 / 已是最新都是 409:升级是显式动作,静默空转会让调用方
+   * 无法区分「升过了」和「什么都没做」。
+   */
+  async upgradeListing(
+    tenantId: string,
+    userId: string,
+    listingId: string,
+  ): Promise<UpgradedMarketplacePluginResult> {
+    const [clone] = await this.findMarketplaceClonePlugins(tenantId, listingId);
+
+    if (!clone) {
+      throw new MarketplaceListingConflictException(
+        '当前租户没有来自该 listing 的已安装插件，无法升级',
+      );
+    }
+
+    const source = await this.findPublicPluginInstallSourceOrThrow(listingId);
+
+    if (!this.isSameInstallSource(clone, source)) {
+      throw new MarketplaceListingConflictException(
+        `该 listing 当前绑定的插件已换为 ${source.plugin.pluginId}，与已安装副本 ${clone.pluginId} 不是同一插件，无法升级`,
+      );
+    }
+
+    if (
+      clone.version === source.plugin.version &&
+      (clone.contentHash ?? null) === (source.plugin.contentHash ?? null)
+    ) {
+      throw new MarketplaceListingConflictException(
+        `已安装副本已是最新版本 ${clone.version}`,
+      );
+    }
+
+    const upgraded = await this.pluginService.upgradeMarketplaceClone({
+      tenantId,
+      userId,
+      cloneDbId: clone.id,
+      source,
+    });
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'marketplace_listing_upgraded',
+        listingId,
+        tenantId,
+        userId,
+        pluginDbId: upgraded.id,
+        fromVersion: clone.version,
+        toVersion: upgraded.version,
+      }),
+    );
+
+    return {
+      pluginDbId: upgraded.id,
+      pluginId: upgraded.pluginId,
+      fromVersion: clone.version,
+      toVersion: upgraded.version,
+      message: `已升级到版本 ${upgraded.version}`,
+    };
+  }
+
+  /**
+   * listing 可以被 PATCH 换绑到另一个 pluginDbId(listing id 不变),因此只比
+   * listingId 会把 B 的 manifest/WASM 写进 A 的副本。身份三要素必须全等。
+   */
+  private isSameInstallSource(
+    clone: MarketplaceClonePluginRow,
+    source: { plugin: { id: string; pluginId: string } },
+  ): boolean {
+    return (
+      clone.pluginId === source.plugin.pluginId &&
+      clone.sourcePluginId === source.plugin.pluginId &&
+      clone.sourcePluginDbId === source.plugin.id
+    );
+  }
+
   private async findMarketplaceClonePlugins(
     tenantId: string,
     listingId: string,
-  ): Promise<Array<{ id: string; pluginId: string; version: string }>> {
+  ): Promise<MarketplaceClonePluginRow[]> {
     return this.tenantDb
       .select({
         id: schema.plugins.id,
         pluginId: schema.plugins.pluginId,
         version: schema.plugins.version,
+        contentHash: schema.plugins.contentHash,
+        sourcePluginDbId: sql<
+          string | null
+        >`${schema.plugins.metadata}->'cloned_from_marketplace'->>'sourcePluginDbId'`,
+        sourcePluginId: sql<
+          string | null
+        >`${schema.plugins.metadata}->'cloned_from_marketplace'->>'sourcePluginId'`,
       })
       .from(schema.plugins)
       .where(

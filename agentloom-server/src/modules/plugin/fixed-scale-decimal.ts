@@ -5,12 +5,7 @@ const SIGNED_FIXED_SCALE_DECIMAL_REGEX = /^-?\d+(\.\d{1,8})?$/;
 export const NON_NEGATIVE_FIXED_SCALE_DECIMAL_REGEX = /^\d+(\.\d{1,8})?$/;
 
 export type FixedScaleDecimalInput =
-  | FixedScaleDecimal
-  | bigint
-  | number
-  | string
-  | null
-  | undefined;
+  FixedScaleDecimal | bigint | number | string | null | undefined;
 
 function normalizeDecimalInput(
   value: Exclude<FixedScaleDecimalInput, FixedScaleDecimal>,
