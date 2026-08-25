@@ -127,8 +127,12 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   },
   'plugin': {
     handlesValidation: true,
-    render: ({ node, onConfigChange }) => (
-      <PluginConfigPanel node={node} onConfigChange={onConfigChange} />
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <PluginConfigPanel
+        node={node}
+        onConfigChange={onConfigChange}
+        onValidationChange={onValidationChange}
+      />
     ),
   },
   'agent': {
