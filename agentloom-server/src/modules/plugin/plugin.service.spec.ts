@@ -518,6 +518,57 @@ describe('PluginService', () => {
     });
   });
 
+  describe('cloneMarketplacePlugin', () => {
+    it('应把 listing 价格与源版本写入 clone metadata 快照', async () => {
+      const sourcePlugin = createPlugin({
+        status: 'active',
+        version: '2.1.0',
+        contentHash: 'sha256:source-hash',
+        wasmBundleUrl: 'tenants/source/plugins/com.example.review/plugin.wasm',
+      });
+      const selectOrg = createSelectChainWithLimit([{ id: ORG_ID }]);
+      const selectExisting = createSelectChainWithLimit([]);
+      const insertPlugin = createInsertChain([createPlugin({ id: 'clone-id' })]);
+
+      db.select
+        .mockReturnValueOnce(selectOrg)
+        .mockReturnValueOnce(selectExisting);
+      db.insert.mockReturnValue(insertPlugin);
+
+      await service.cloneMarketplacePlugin({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        source: {
+          listingId: 'listing-9',
+          listingTitle: '收费插件 listing',
+          pricingModel: 'per_execution',
+          pricePerExecution: '1.5',
+          plugin: sourcePlugin,
+        },
+      });
+
+      expect(insertPlugin.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            cloned_from_marketplace: {
+              listingId: 'listing-9',
+              listingTitle: '收费插件 listing',
+              sourceTenantId: TENANT_ID,
+              sourceOrgId: ORG_ID,
+              sourcePluginDbId: PLUGIN_ID,
+              sourcePluginId: 'com.example.review',
+              clonedAt: NOW.toISOString(),
+              pricingModel: 'per_execution',
+              pricePerExecution: '1.50000000',
+              sourceVersion: '2.1.0',
+              sourceContentHash: 'sha256:source-hash',
+            },
+          }),
+        }),
+      );
+    });
+  });
+
   describe('resolveUsageSourceContext', () => {
     it('非 marketplace clone 的免费插件应返回 null billingAmount', async () => {
       const plugin = createPlugin({
@@ -537,7 +588,7 @@ describe('PluginService', () => {
       });
     });
 
-    it('marketplace clone 的已上架收费插件应返回按次计费金额', async () => {
+    it('旧 clone（无价格快照）的已上架收费插件应回退查询 listing 计费', async () => {
       const clonedPlugin = createPlugin({
         id: 'plugin-copy-id',
         status: 'active',
@@ -577,7 +628,7 @@ describe('PluginService', () => {
       });
     });
 
-    it('marketplace clone 的源 listing 未上架时应回退为免费且 billingAmount 为 null', async () => {
+    it('旧 clone（无价格快照）的源 listing 未上架时应回退为免费', async () => {
       const clonedPlugin = createPlugin({
         id: 'plugin-copy-id',
         status: 'active',
@@ -607,6 +658,78 @@ describe('PluginService', () => {
         billingAmount: null,
         currency: 'USD',
       });
+    });
+
+    it('含价格快照的 clone 在源 listing 下架后仍应按快照价计费', async () => {
+      const clonedPlugin = createPlugin({
+        id: 'plugin-copy-id',
+        status: 'active',
+        metadata: {
+          cloned_from_marketplace: {
+            listingId: 'listing-3',
+            listingTitle: '已下架但快照有价的 listing',
+            sourceTenantId: TENANT_ID,
+            sourceOrgId: ORG_ID,
+            sourcePluginDbId: PLUGIN_ID,
+            sourcePluginId: 'com.example.review',
+            clonedAt: NOW.toISOString(),
+            pricingModel: 'per_execution',
+            pricePerExecution: '0.75000000',
+            sourceVersion: '1.0.0',
+            sourceContentHash: 'sha256:abc',
+          },
+        },
+      });
+
+      await expect(
+        service.resolveUsageSourceContext(clonedPlugin),
+      ).resolves.toEqual({
+        sourceTenantId: TENANT_ID,
+        sourceOrgId: ORG_ID,
+        sourcePluginDbId: PLUGIN_ID,
+        sourcePluginId: 'com.example.review',
+        sourceListingId: 'listing-3',
+        pricingModel: 'per_execution',
+        billingAmount: '0.75000000',
+        currency: 'USD',
+      });
+      expect(db.select).not.toHaveBeenCalled();
+    });
+
+    it('含 free 快照的 clone 应免计费且不查询 listing', async () => {
+      const clonedPlugin = createPlugin({
+        id: 'plugin-copy-id',
+        status: 'active',
+        metadata: {
+          cloned_from_marketplace: {
+            listingId: 'listing-4',
+            listingTitle: '免费 listing',
+            sourceTenantId: TENANT_ID,
+            sourceOrgId: ORG_ID,
+            sourcePluginDbId: PLUGIN_ID,
+            sourcePluginId: 'com.example.review',
+            clonedAt: NOW.toISOString(),
+            pricingModel: 'free',
+            pricePerExecution: null,
+            sourceVersion: '1.0.0',
+            sourceContentHash: null,
+          },
+        },
+      });
+
+      await expect(
+        service.resolveUsageSourceContext(clonedPlugin),
+      ).resolves.toEqual({
+        sourceTenantId: TENANT_ID,
+        sourceOrgId: ORG_ID,
+        sourcePluginDbId: PLUGIN_ID,
+        sourcePluginId: 'com.example.review',
+        sourceListingId: 'listing-4',
+        pricingModel: 'free',
+        billingAmount: null,
+        currency: 'USD',
+      });
+      expect(db.select).not.toHaveBeenCalled();
     });
   });
 });
