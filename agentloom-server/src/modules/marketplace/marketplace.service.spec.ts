@@ -480,6 +480,22 @@ describe('MarketplaceService', () => {
 
       expect(result).toEqual(updatedListing);
     });
+
+    it('插件 listing 应拒绝走通用下架路径', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([
+          createMarketplaceListing({
+            status: 'listed',
+            listingType: 'plugin',
+          }),
+        ]),
+      );
+
+      await expect(
+        service.unlist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('relist', () => {
@@ -515,6 +531,23 @@ describe('MarketplaceService', () => {
         tags: unlistedListing.tags,
       });
       expect(result).toEqual({ listing: updatedListing, reviewResult });
+    });
+
+    it('插件 listing 应拒绝走通用重新上架路径且不改状态', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([
+          createMarketplaceListing({
+            status: 'unlisted',
+            listingType: 'plugin',
+          }),
+        ]),
+      );
+
+      await expect(
+        service.relist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(reviewService.review).not.toHaveBeenCalled();
     });
   });
 
