@@ -177,9 +177,7 @@ async function createRegisterRequest(options?: {
 }): Promise<AuthenticatedRequest> {
   const buffer = await createPluginArchiveBuffer(
     options?.manifestOverrides,
-    options?.wasmPayload === undefined
-      ? VALID_WASM_BYTES
-      : options.wasmPayload,
+    options?.wasmPayload === undefined ? VALID_WASM_BYTES : options.wasmPayload,
   );
 
   return {
@@ -897,6 +895,32 @@ describe('PluginController', () => {
       expect(storageService.delete).toHaveBeenCalledWith(
         expect.stringContaining('plugin.wasm'),
       );
+    });
+
+    it('落库成功后状态切换失败不得删除已引用的产物', async () => {
+      const request = await createRegisterRequest({
+        status: 'active',
+        manifestOverrides: {
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.register.mockResolvedValue(createPluginResponse());
+      service.updateStatus.mockRejectedValue(new Error('occ conflict'));
+
+      await expect(controller.register(request)).rejects.toThrow(
+        'occ conflict',
+      );
+      expect(service.register).toHaveBeenCalledTimes(1);
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
 
     it('空白签名字段按缺失处理', async () => {

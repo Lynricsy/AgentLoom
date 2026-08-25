@@ -30,6 +30,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { JwtPayload } from '../../common/guards/auth.guard';
+import type { PluginRecord } from '../../database/schema/plugins.schema';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import {
   QueryPluginsDto,
@@ -162,43 +163,80 @@ export class PluginController {
     const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
     const wasmBundleUrl = `tenants/${tenantId}/plugins/${pluginId}/${version}/plugin.wasm`;
 
+    // 补偿范围只覆盖“上传 + 落库”：一旦插件行已写入，
+    // 后续状态切换失败不得删除该行仍在引用的产物。
+    const created = await this.uploadAndRegisterPlugin({
+      tenantId,
+      orgId,
+      userId: req.user.sub,
+      manifest,
+      nodeDefinitions,
+      archiveBuffer: buffer,
+      wasmBuffer,
+      storageKey,
+      wasmBundleUrl,
+      signature,
+      contentHash,
+    });
+
+    const data =
+      registerOptions.status === 'registered'
+        ? created
+        : await this.pluginService.updateStatus(
+            created.id,
+            tenantId,
+            registerOptions.status,
+            created.occVersion,
+          );
+
+    return { data };
+  }
+
+  private async uploadAndRegisterPlugin(params: {
+    tenantId: string;
+    orgId: string;
+    userId: string;
+    manifest: Record<string, unknown>;
+    nodeDefinitions: Array<Record<string, unknown>>;
+    archiveBuffer: Buffer;
+    wasmBuffer: Buffer;
+    storageKey: string;
+    wasmBundleUrl: string;
+    signature: string;
+    contentHash: string;
+  }): Promise<PluginRecord> {
     try {
       await this.storageService.upload(
-        storageKey,
-        buffer,
-        buffer.length,
+        params.storageKey,
+        params.archiveBuffer,
+        params.archiveBuffer.length,
         'application/zip',
       );
       await this.storageService.upload(
-        wasmBundleUrl,
-        wasmBuffer,
-        wasmBuffer.length,
+        params.wasmBundleUrl,
+        params.wasmBuffer,
+        params.wasmBuffer.length,
         'application/wasm',
       );
 
-      const created = await this.pluginService.register(
-        tenantId,
-        orgId,
-        req.user.sub,
-        manifest,
-        nodeDefinitions,
-        storageKey,
-        { signature, contentHash, wasmBundleUrl },
+      return await this.pluginService.register(
+        params.tenantId,
+        params.orgId,
+        params.userId,
+        params.manifest,
+        params.nodeDefinitions,
+        params.storageKey,
+        {
+          signature: params.signature,
+          contentHash: params.contentHash,
+          wasmBundleUrl: params.wasmBundleUrl,
+        },
       );
-
-      const data =
-        registerOptions.status === 'registered'
-          ? created
-          : await this.pluginService.updateStatus(
-              created.id,
-              tenantId,
-              registerOptions.status,
-              created.occVersion,
-            );
-
-      return { data };
     } catch (error) {
-      await this.deleteStorageObjectsBestEffort([storageKey, wasmBundleUrl]);
+      await this.deleteStorageObjectsBestEffort([
+        params.storageKey,
+        params.wasmBundleUrl,
+      ]);
       throw error;
     }
   }
