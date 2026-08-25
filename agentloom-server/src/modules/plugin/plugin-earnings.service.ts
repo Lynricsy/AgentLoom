@@ -262,14 +262,28 @@ export class PluginEarningsService {
         : {}),
     };
 
+    // 条件更新绑定读到的状态：并发的 completed/failed 请求都能通过预读，
+    // 只有第一个写入成功，后到的请求命中 0 行并被判为迁移冲突。
     const [updated] = await this.tenantDb
       .update(pluginEarnings)
       .set(updatePayload)
-      .where(eq(pluginEarnings.id, id))
+      .where(
+        and(
+          eq(pluginEarnings.id, id),
+          eq(pluginEarnings.payoutStatus, current.payoutStatus),
+        ),
+      )
       .returning();
 
     if (!updated) {
-      throw new NotFoundException(`插件收益记录 ${id} 不存在`);
+      const latest = await this.findEarningById(id);
+
+      throw new PluginEarningsPayoutTransitionException(
+        id,
+        latest.payoutStatus,
+        nextStatus,
+        `收益记录 ${id} 的打款状态已被并发修改为 ${latest.payoutStatus}，请刷新后重试`,
+      );
     }
 
     return updated;

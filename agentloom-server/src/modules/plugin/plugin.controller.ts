@@ -41,6 +41,7 @@ import {
 } from './dto/plugin.dto';
 import { MAX_PLUGIN_FILE_SIZE } from './plugin.constants';
 import {
+  PluginAlreadyExistsException,
   PluginFileTooLargeException,
   PluginSignatureInvalidException,
   PluginSignatureMissingException,
@@ -143,50 +144,63 @@ export class PluginController {
     const signature = signingMetadata.signature;
     const contentHash = verificationResult.contentHash;
 
-    const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
-    await this.storageService.upload(
-      storageKey,
-      buffer,
-      buffer.length,
-      'application/zip',
+    // WASM 为唯一正式运行时：产物校验必须在任何上传之前完成。
+    const wasmEntry = this.requireWasmEntry(manifest);
+    const wasmBuffer = await this.extractWasmFromArchive(buffer, wasmEntry);
+
+    // 重复注册预检：避免为已存在的插件留下孤儿对象。
+    const existing = await this.pluginService.findByPluginId(
+      pluginId,
+      orgId,
+      tenantId,
     );
 
-    let wasmBundleUrl: string | undefined;
-    const wasmEntry = manifest.wasmEntry as string | undefined;
-    if (wasmEntry) {
-      const wasmBuffer = await this.extractWasmFromArchive(buffer, wasmEntry);
-      if (wasmBuffer) {
-        wasmBundleUrl = `tenants/${tenantId}/plugins/${pluginId}/${version}/plugin.wasm`;
-        await this.storageService.upload(
-          wasmBundleUrl,
-          wasmBuffer,
-          wasmBuffer.length,
-          'application/wasm',
-        );
-      }
+    if (existing) {
+      throw new PluginAlreadyExistsException(pluginId);
     }
 
-    const created = await this.pluginService.register(
-      tenantId,
-      orgId,
-      req.user.sub,
-      manifest,
-      nodeDefinitions,
-      storageKey,
-      { signature, contentHash, wasmBundleUrl },
-    );
+    const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
+    const wasmBundleUrl = `tenants/${tenantId}/plugins/${pluginId}/${version}/plugin.wasm`;
 
-    const data =
-      registerOptions.status === 'registered'
-        ? created
-        : await this.pluginService.updateStatus(
-            created.id,
-            tenantId,
-            registerOptions.status,
-            created.occVersion,
-          );
+    try {
+      await this.storageService.upload(
+        storageKey,
+        buffer,
+        buffer.length,
+        'application/zip',
+      );
+      await this.storageService.upload(
+        wasmBundleUrl,
+        wasmBuffer,
+        wasmBuffer.length,
+        'application/wasm',
+      );
 
-    return { data };
+      const created = await this.pluginService.register(
+        tenantId,
+        orgId,
+        req.user.sub,
+        manifest,
+        nodeDefinitions,
+        storageKey,
+        { signature, contentHash, wasmBundleUrl },
+      );
+
+      const data =
+        registerOptions.status === 'registered'
+          ? created
+          : await this.pluginService.updateStatus(
+              created.id,
+              tenantId,
+              registerOptions.status,
+              created.occVersion,
+            );
+
+      return { data };
+    } catch (error) {
+      await this.deleteStorageObjectsBestEffort([storageKey, wasmBundleUrl]);
+      throw error;
+    }
   }
 
   @Get()
@@ -492,23 +506,77 @@ export class PluginController {
     }
   }
 
+  /** WASM 模块魔数：`\0asm` */
+  private static readonly WASM_MAGIC_BYTES = Buffer.from([
+    0x00, 0x61, 0x73, 0x6d,
+  ]);
+
+  private requireWasmEntry(manifest: Record<string, unknown>): string {
+    const wasmEntry =
+      typeof manifest.wasmEntry === 'string' ? manifest.wasmEntry.trim() : '';
+
+    if (!wasmEntry) {
+      throw new PluginValidationException(
+        '插件缺少 wasmEntry，正式插件必须提供 WASM 产物',
+      );
+    }
+
+    if (
+      wasmEntry.startsWith('/') ||
+      wasmEntry.includes('\\') ||
+      wasmEntry.split('/').includes('..')
+    ) {
+      throw new PluginValidationException(
+        `wasmEntry 必须是归档内的安全相对路径: ${wasmEntry}`,
+      );
+    }
+
+    return wasmEntry;
+  }
+
   private async extractWasmFromArchive(
     archiveBuffer: Buffer,
     wasmEntry: string,
-  ): Promise<Buffer | null> {
-    try {
-      const zip = await JSZip.loadAsync(archiveBuffer);
-      const wasmFile = zip.file(wasmEntry);
+  ): Promise<Buffer> {
+    const zip = await JSZip.loadAsync(archiveBuffer).catch(() => {
+      throw new PluginValidationException(
+        `插件包解析失败，无法读取 wasmEntry: ${wasmEntry}`,
+      );
+    });
+    const wasmFile = zip.file(wasmEntry);
 
-      if (!wasmFile) {
-        this.logger.warn(`插件包中未找到 WASM 入口文件: ${wasmEntry}`);
-        return null;
+    if (!wasmFile) {
+      throw new PluginValidationException(
+        `插件包中未找到 wasmEntry 指向的文件: ${wasmEntry}`,
+      );
+    }
+
+    const wasmBuffer = Buffer.from(await wasmFile.async('uint8array'));
+
+    if (
+      !wasmBuffer
+        .subarray(0, PluginController.WASM_MAGIC_BYTES.length)
+        .equals(PluginController.WASM_MAGIC_BYTES)
+    ) {
+      throw new PluginValidationException(
+        `wasmEntry 指向的文件不是合法 WASM 模块: ${wasmEntry}`,
+      );
+    }
+
+    return wasmBuffer;
+  }
+
+  private async deleteStorageObjectsBestEffort(keys: string[]): Promise<void> {
+    for (const key of keys) {
+      try {
+        await this.storageService.delete(key);
+      } catch (error) {
+        this.logger.warn(
+          `注册回滚清理对象失败: ${key} (${
+            error instanceof Error ? error.message : String(error)
+          })`,
+        );
       }
-
-      return Buffer.from(await wasmFile.async('uint8array'));
-    } catch (error) {
-      this.logger.warn(`提取 WASM 文件失败: ${wasmEntry}`, error);
-      return null;
     }
   }
 }
