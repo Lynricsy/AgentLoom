@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   AlertCircle,
   Plus,
   Power,
   PowerOff,
   Puzzle,
+  Receipt,
   Search,
   Store,
   Trash2,
@@ -22,7 +24,8 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
+import { cn } from '@/shared/lib/utils'
 import { Input } from '@/shared/ui/input'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import {
@@ -235,20 +238,30 @@ export function PluginManagementPage() {
       },
     ]
 
+    // 用量对所有能看列表的角色开放（GET /plugins/:id/usage 允许 viewer）；
     // 发布到市场对 creator 开放，启停/删除仍限 owner/admin
-    if (!canAdminister && !canRegister) return base
-
     return [
       ...base,
       {
         key: 'actions',
         header: '操作',
-        className: 'w-32 text-right',
+        className: 'w-40 text-right',
         cell: (plugin) => (
           <div
             className="flex justify-end gap-1"
             onClick={(event) => event.stopPropagation()}
           >
+            <Link
+              to="/resources/plugins/$pluginId/usage"
+              params={{ pluginId: plugin.id }}
+              aria-label={`查看 ${plugin.name} 用量`}
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+              )}
+            >
+              <Receipt className="h-3.5 w-3.5" />
+            </Link>
+
             {canRegister && plugin.status === 'active' ? (
               <Button
                 variant="ghost"

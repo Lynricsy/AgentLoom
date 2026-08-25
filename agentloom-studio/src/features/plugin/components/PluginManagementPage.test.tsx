@@ -41,6 +41,30 @@ vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: mocks.notify }),
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    params,
+    children,
+    ...rest
+  }: {
+    to: string
+    params?: Record<string, string>
+    children?: React.ReactNode
+    [key: string]: unknown
+  }) => (
+    <a
+      href={Object.entries(params ?? {}).reduce(
+        (path, [key, value]) => path.replace(`$${key}`, value),
+        to,
+      )}
+      {...rest}
+    >
+      {children}
+    </a>
+  ),
+}))
+
 function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
   return {
     id: 'plugin-1',

@@ -58,6 +58,7 @@ import { workspacesRoute } from "./resources/workspaces";
 import { workspaceDetailRoute } from "./resources/workspaces.$workspaceId";
 import { sandboxesRoute } from "./resources/sandboxes";
 import { pluginsRoute } from "./resources/plugins";
+import { pluginUsageRoute } from "./resources/plugins.$pluginId.usage";
 import { memoryInstanceBrowseRoute } from "./resources/memory-instances.$instanceId.browse";
 import { organizationSettingsRoute } from "./settings/organization";
 import { acceptInvitationRoute } from "./invitations.$token";
@@ -191,6 +192,7 @@ export const routeTree = rootRoute.addChildren([
   workspaceDetailRoute,
   sandboxesRoute,
   pluginsRoute,
+  pluginUsageRoute,
   memoryInstanceBrowseRoute,
   organizationSettingsRoute,
   acceptInvitationRoute,
