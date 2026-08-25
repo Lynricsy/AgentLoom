@@ -11,7 +11,10 @@ import { NodeSchedulerService } from '../execution/node-scheduler.service';
 import { StepStateMachineService } from '../execution/step-state-machine.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { PLUGIN_EXECUTION_QUEUE } from './plugin.constants';
-import { PluginSandboxException } from './plugin.exceptions';
+import {
+  PluginSandboxException,
+  PluginUsageLedgerException,
+} from './plugin.exceptions';
 import {
   PluginSandboxService,
   type PluginExecutionResult,
@@ -139,6 +142,12 @@ export class PluginExecutionWorker extends WorkerHost {
 
       return workerResult;
     } catch (error) {
+      if (error instanceof PluginUsageLedgerException) {
+        // usage 落账失败：整个租户事务将回滚（含 step 状态写入），
+        // 必须让异常逃出事务以触发 BullMQ 重试，不能收口成 failed 结果。
+        throw error;
+      }
+
       return this.markStepFailedBestEffort(job.data, error);
     }
   }
@@ -202,13 +211,17 @@ export class PluginExecutionWorker extends WorkerHost {
       const sourceContext =
         await this.pluginService.resolveUsageSourceContext(plugin);
 
+      // usage 落账与 step completed 检查点处于同一租户事务：
+      // 落账失败必须回滚并让 job 重试，吞错会导致开发者收入漏记。
       try {
         await this.recordUsage(job.data, plugin, workerResult, sourceContext);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Failed to record plugin usage: ${message}`, {
-          jobId: job.id,
-        });
+      } catch (error) {
+        throw new PluginUsageLedgerException(
+          pluginId,
+          `插件 ${pluginId} 用量落账失败: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     }
 
