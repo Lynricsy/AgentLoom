@@ -346,7 +346,7 @@ export class PluginMarketplaceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePayoutStatusDto,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('id') userId: string,
+    @CurrentUser('sub') userId: string,
   ) {
     const parsedDto = UpdatePayoutStatusSchema.parse(dto);
     const updated = await this.pluginEarningsService.updatePayoutStatus(
