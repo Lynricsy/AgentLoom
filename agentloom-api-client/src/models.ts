@@ -5567,19 +5567,13 @@ export interface SubmitPluginListingDto {
      * @type {string}
      * @memberof SubmitPluginListingDto
      */
-    description?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof SubmitPluginListingDto
-     */
     category?: SubmitPluginListingDtoCategoryEnum;
     /**
      * 
      * @type {Array<string>}
      * @memberof SubmitPluginListingDto
      */
-    tags?: Array<string>;
+    tags: Array<string>;
     /**
      * 
      * @type {string}
@@ -6609,6 +6603,44 @@ export type UpdateOrganizationAutonomyPolicyDtoAutonomyCapEnum = typeof UpdateOr
 /**
  * 
  * @export
+ * @interface UpdatePayoutStatusDto
+ */
+export interface UpdatePayoutStatusDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdatePayoutStatusDto
+     */
+    payoutStatus: UpdatePayoutStatusDtoPayoutStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdatePayoutStatusDto
+     */
+    payoutReference?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdatePayoutStatusDto
+     */
+    payoutAt?: string;
+}
+
+
+/**
+ * @export
+ */
+export const UpdatePayoutStatusDtoPayoutStatusEnum = {
+    Pending: 'pending',
+    Processing: 'processing',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type UpdatePayoutStatusDtoPayoutStatusEnum = typeof UpdatePayoutStatusDtoPayoutStatusEnum[keyof typeof UpdatePayoutStatusDtoPayoutStatusEnum];
+
+/**
+ * 
+ * @export
  * @interface UpdatePluginListingDto
  */
 export interface UpdatePluginListingDto {
@@ -6635,12 +6667,6 @@ export interface UpdatePluginListingDto {
      * @type {string}
      * @memberof UpdatePluginListingDto
      */
-    description?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdatePluginListingDto
-     */
     category?: UpdatePluginListingDtoCategoryEnum;
     /**
      * 
@@ -6660,12 +6686,6 @@ export interface UpdatePluginListingDto {
      * @memberof UpdatePluginListingDto
      */
     pricePerExecution?: string;
-    /**
-     * 
-     * @type {number}
-     * @memberof UpdatePluginListingDto
-     */
-    occVersion?: number;
 }
 
 

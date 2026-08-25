@@ -7386,6 +7386,54 @@
         ]
       }
     },
+    "/api/v1/plugins/marketplace/earnings/{id}/payout-status": {
+      "patch": {
+        "operationId": "PluginMarketplace_updatePayoutStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePayoutStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "打款状态已更新"
+          },
+          "404": {
+            "description": "收益记录不存在"
+          },
+          "409": {
+            "description": "打款状态迁移非法"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "推进插件收益打款状态",
+        "tags": [
+          "plugin-marketplace"
+        ]
+      }
+    },
     "/api/v1/plugins/marketplace/listings/{id}": {
       "get": {
         "operationId": "PluginMarketplace_findById",
@@ -7444,7 +7492,7 @@
         },
         "responses": {
           "200": {
-            "description": "插件 listing 更新成功"
+            "description": "插件 listing 更新并完成重新审查"
           },
           "404": {
             "description": "插件或 listing 不存在"
@@ -7458,7 +7506,7 @@
             "bearer": []
           }
         ],
-        "summary": "更新插件 Marketplace listing",
+        "summary": "更新插件 Marketplace listing 并重新审查",
         "tags": [
           "plugin-marketplace"
         ]
@@ -17269,17 +17317,13 @@
           },
           "title": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 200
+            "minLength": 5,
+            "maxLength": 120
           },
           "summary": {
             "type": "string",
-            "minLength": 10,
-            "maxLength": 1000
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 10000
+            "minLength": 30,
+            "maxLength": 500
           },
           "category": {
             "type": "string",
@@ -17292,11 +17336,13 @@
             ]
           },
           "tags": {
-            "maxItems": 10,
+            "minItems": 1,
+            "maxItems": 8,
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 32
             }
           },
           "pricingModel": {
@@ -17316,7 +17362,36 @@
           "pluginDbId",
           "title",
           "summary",
+          "tags",
           "pricingModel"
+        ],
+        "additionalProperties": false
+      },
+      "UpdatePayoutStatusDto": {
+        "type": "object",
+        "properties": {
+          "payoutStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "failed"
+            ]
+          },
+          "payoutReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "payoutAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "payoutStatus"
         ],
         "additionalProperties": false
       },
@@ -17329,17 +17404,13 @@
           },
           "title": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 200
+            "minLength": 5,
+            "maxLength": 120
           },
           "summary": {
             "type": "string",
-            "minLength": 10,
-            "maxLength": 1000
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 10000
+            "minLength": 30,
+            "maxLength": 500
           },
           "category": {
             "type": "string",
@@ -17352,11 +17423,13 @@
             ]
           },
           "tags": {
-            "maxItems": 10,
+            "minItems": 1,
+            "maxItems": 8,
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 32
             }
           },
           "pricingModel": {
@@ -17370,11 +17443,6 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^\\d+(\\.\\d{1,8})?$"
-          },
-          "occVersion": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
           }
         },
         "additionalProperties": false
@@ -20548,7 +20616,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-08-20T10:57:30.098Z",
+                  "default": "2026-08-25T14:26:15.395Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
