@@ -333,6 +333,7 @@ describe('PluginMarketplaceController', () => {
             title: '收费插件示例',
             summary:
               '这是一个按次计费插件的测试摘要，其长度已满足平台审查的下限要求。',
+            tags: ['analysis'],
             pricingModel: 'per_execution',
           },
           TENANT_ID,

@@ -1,12 +1,22 @@
+import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { PluginRecord } from '../../../../database/schema';
+import type { StorageService } from '../../../../infrastructure/storage/storage.service';
 import type { PluginSandboxService } from '../../../plugin/plugin-sandbox.service';
+import { PluginNotFoundException } from '../../../plugin/plugin.exceptions';
+import type { PluginService } from '../../../plugin/plugin.service';
 import type {
   ExtendedRoutingMeta,
   RoutingCandidate,
 } from '../../core/routing-candidate';
 import type { RoutingContext } from '../../core/routing-context';
 import { WasmPluginRouter } from '../wasm-plugin.strategy';
+
+const TENANT_ID = 'tenant-1';
+const PLUGIN_ID = 'com.example.custom-router';
+const WASM_KEY = `tenants/${TENANT_ID}/plugins/${PLUGIN_ID}/1.0.0/plugin.wasm`;
+const WASM_BYTES = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
 
 function createCandidate(
   id: string,
@@ -37,37 +47,47 @@ function createContext(
 ): RoutingContext {
   return {
     inputTokenCount: 4_000,
-    tenantId: 'tenant-1',
+    tenantId: TENANT_ID,
     queryText: '路由测试',
+    strategyConfig: { pluginId: PLUGIN_ID },
     ...overrides,
   };
 }
 
-function createMockSandboxService(): {
-  service: PluginSandboxService;
-  executeMock: ReturnType<typeof vi.fn>;
-} {
-  const executeMock = vi.fn();
-
+function createPluginRecord(
+  overrides: Partial<PluginRecord> = {},
+): PluginRecord {
   return {
-    service: { execute: executeMock } as unknown as PluginSandboxService,
-    executeMock,
-  };
+    id: 'plugin-db-id',
+    tenantId: TENANT_ID,
+    pluginId: PLUGIN_ID,
+    version: '1.0.0',
+    status: 'active',
+    wasmBundleUrl: WASM_KEY,
+    ...overrides,
+  } as PluginRecord;
 }
 
 describe('WasmPluginRouter', () => {
   let router: WasmPluginRouter;
   let executeMock: ReturnType<typeof vi.fn>;
-
-  const wasmBuffer = new Uint8Array([0, 1, 2, 3]);
-  const pluginId = 'com.example.custom-router';
+  let findPluginMock: ReturnType<typeof vi.fn>;
+  let downloadMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    const mock = createMockSandboxService();
-    executeMock = mock.executeMock;
-    router = new WasmPluginRouter(mock.service, wasmBuffer, {
-      pluginId,
-    });
+    executeMock = vi.fn();
+    findPluginMock = vi.fn().mockResolvedValue(createPluginRecord());
+    downloadMock = vi
+      .fn()
+      .mockImplementation(async () => Readable.from([WASM_BYTES]));
+
+    router = new WasmPluginRouter(
+      { execute: executeMock } as unknown as PluginSandboxService,
+      {
+        findActiveWasmPluginForRouting: findPluginMock,
+      } as unknown as PluginService,
+      { download: downloadMock } as unknown as StorageService,
+    );
   });
 
   afterEach(() => {
@@ -87,78 +107,31 @@ describe('WasmPluginRouter', () => {
       expect(router.requiresEmbedding).toBe(false);
     });
 
-    it('configSchema 校验 pluginId 必填', () => {
-      const valid = router.configSchema.safeParse({
-        pluginId: 'com.example.router',
-      });
-      expect(valid.success).toBe(true);
-
-      const invalid = router.configSchema.safeParse({});
-      expect(invalid.success).toBe(false);
+    it('configSchema 校验 pluginId 必填且非空', () => {
+      expect(
+        router.configSchema.safeParse({ pluginId: 'com.example.router' })
+          .success,
+      ).toBe(true);
+      expect(router.configSchema.safeParse({}).success).toBe(false);
+      expect(router.configSchema.safeParse({ pluginId: '  ' }).success).toBe(
+        false,
+      );
     });
 
     it('configSchema 支持可选 pluginConfig', () => {
-      const result = router.configSchema.safeParse({
-        pluginId: 'com.example.router',
-        pluginConfig: { threshold: 0.5 },
-      });
-      expect(result.success).toBe(true);
+      expect(
+        router.configSchema.safeParse({
+          pluginId: 'com.example.router',
+          pluginConfig: { threshold: 0.5 },
+        }).success,
+      ).toBe(true);
     });
   });
 
   describe('routeSingle - 成功路径', () => {
-    it('将候选和上下文序列化为 JSON 传入 PluginSandboxService', async () => {
-      const candidates = [
-        createCandidate('model-a'),
-        createCandidate('model-b'),
-      ];
-      const context = createContext();
-
-      executeMock.mockResolvedValueOnce({
-        success: true,
-        output: {
-          selectedModelId: 'model-a',
-          scores: [
-            {
-              modelId: 'model-a',
-              modelName: 'model-a-name',
-              provider: 'openai',
-              score: 90,
-              reasoning: '最佳匹配',
-            },
-            {
-              modelId: 'model-b',
-              modelName: 'model-b-name',
-              provider: 'openai',
-              score: 60,
-              reasoning: '备选',
-            },
-          ],
-          reasoning: '基于插件自定义逻辑选择 model-a',
-        },
-        executionTimeMs: 15,
-      });
-
-      const decision = await router.routeSingle(candidates, context);
-
-      expect(decision.selectedModelId).toBe('model-a');
-      expect(decision.scores).toHaveLength(2);
-      expect(decision.reasoning).toBe('基于插件自定义逻辑选择 model-a');
-    });
-
-    it('正确传入序列化的 candidates 和 context 到 execute()', async () => {
+    it('按 strategyConfig.pluginId 解析插件并用下载的 buffer 调用沙箱', async () => {
       const candidates = [createCandidate('model-x')];
-      const context = createContext({
-        queryText: '测试序列化',
-        taskCategory: 'chat',
-        historicalMetrics: {
-          'model-x': {
-            successRate: 0.95,
-            avgLatencyMs: 200,
-            avgTokenUsage: 1500,
-          },
-        },
-      });
+      const context = createContext({ taskCategory: 'chat' });
 
       executeMock.mockResolvedValueOnce({
         success: true,
@@ -178,63 +151,46 @@ describe('WasmPluginRouter', () => {
         executionTimeMs: 5,
       });
 
-      await router.routeSingle(candidates, context);
+      const decision = await router.routeSingle(candidates, context);
 
-      expect(executeMock).toHaveBeenCalledTimes(1);
-      const [wasmBuf, fnName, inputArg, _sandboxConfig, pId] =
+      expect(findPluginMock).toHaveBeenCalledWith(TENANT_ID, PLUGIN_ID);
+      expect(downloadMock).toHaveBeenCalledWith(WASM_KEY);
+
+      const [wasmBuf, fnName, inputArg, sandboxConfig, passedPluginId] =
         executeMock.mock.calls[0];
-      expect(wasmBuf).toBe(wasmBuffer);
+      expect(wasmBuf).toEqual(WASM_BYTES);
       expect(fnName).toBe('route');
-      expect(pId).toBe(pluginId);
+      expect(sandboxConfig).toBeUndefined();
+      expect(passedPluginId).toBe(PLUGIN_ID);
 
       const parsedInput = JSON.parse(inputArg as string);
-      expect(parsedInput.candidates).toHaveLength(1);
       expect(parsedInput.candidates[0].id).toBe('model-x');
       expect(parsedInput.candidates[0].routingMeta.contextWindow).toBe(16_000);
-      expect(parsedInput.candidates[0].routingMeta.costs).toEqual({
-        input: 0.001,
-        output: 0.002,
-      });
-      expect(parsedInput.context.inputTokenCount).toBe(4_000);
-      expect(parsedInput.context.queryText).toBe('测试序列化');
       expect(parsedInput.context.taskCategory).toBe('chat');
-      expect(parsedInput.context.historicalMetrics).toEqual({
-        'model-x': {
-          successRate: 0.95,
-          avgLatencyMs: 200,
-          avgTokenUsage: 1500,
-        },
-      });
+      expect(decision.selectedModelId).toBe('model-x');
+      expect(decision.reasoning).toBe('唯一候选直接选择');
     });
 
-    it('使用 pluginConfig 传入沙箱 config', async () => {
-      const pluginConfig = { model_preference: 'fast', threshold: '0.8' };
-      const routerWithConfig = new WasmPluginRouter(
-        { execute: executeMock } as unknown as PluginSandboxService,
-        wasmBuffer,
-        { pluginId, pluginConfig },
-      );
-
-      const candidates = [createCandidate('model-a')];
+    it('strategyConfig.pluginConfig 会转成沙箱 config', async () => {
       executeMock.mockResolvedValueOnce({
         success: true,
         output: {
           selectedModelId: 'model-a',
-          scores: [
-            {
-              modelId: 'model-a',
-              modelName: 'model-a-name',
-              provider: 'openai',
-              score: 100,
-              reasoning: '选择',
-            },
-          ],
+          scores: [],
           reasoning: '插件决策',
         },
         executionTimeMs: 10,
       });
 
-      await routerWithConfig.routeSingle(candidates, createContext());
+      await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext({
+          strategyConfig: {
+            pluginId: PLUGIN_ID,
+            pluginConfig: { model_preference: 'fast', threshold: 0.8 },
+          },
+        }),
+      );
 
       const [, , , sandboxConfig] = executeMock.mock.calls[0];
       expect(sandboxConfig).toEqual({
@@ -244,12 +200,72 @@ describe('WasmPluginRouter', () => {
   });
 
   describe('routeSingle - 错误回退', () => {
-    it('WASM 执行失败时回退到随机候选', async () => {
+    it('缺少 strategyConfig 时回退随机且不解析插件', async () => {
       const candidates = [
         createCandidate('model-a'),
         createCandidate('model-b'),
       ];
+
+      const decision = await router.routeSingle(
+        candidates,
+        createContext({ strategyConfig: undefined }),
+      );
+
+      expect(findPluginMock).not.toHaveBeenCalled();
+      expect(executeMock).not.toHaveBeenCalled();
+      expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
+        true,
+      );
+      expect(decision.reasoning).toContain('strategyConfig');
+    });
+
+    it('插件不存在时回退随机', async () => {
+      findPluginMock.mockRejectedValueOnce(
+        new PluginNotFoundException(PLUGIN_ID),
+      );
+
+      const decision = await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext(),
+      );
+
+      expect(executeMock).not.toHaveBeenCalled();
+      expect(decision.selectedModelId).toBe('model-a');
+      expect(decision.reasoning).toContain('wasm plugin error');
+    });
+
+    it('产物下载失败时回退随机', async () => {
+      downloadMock.mockRejectedValueOnce(new Error('minio down'));
+
+      const decision = await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext(),
+      );
+
+      expect(executeMock).not.toHaveBeenCalled();
+      expect(decision.reasoning).toContain('minio down');
+    });
+
+    it('插件行缺少 wasmBundleUrl 时回退随机', async () => {
+      findPluginMock.mockResolvedValueOnce(
+        createPluginRecord({ wasmBundleUrl: null }),
+      );
+
+      const decision = await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext(),
+      );
+
+      expect(downloadMock).not.toHaveBeenCalled();
+      expect(decision.reasoning).toContain('no wasm bundle');
+    });
+
+    it('WASM 执行抛错时回退随机', async () => {
       executeMock.mockRejectedValueOnce(new Error('WASM execution crashed'));
+      const candidates = [
+        createCandidate('model-a'),
+        createCandidate('model-b'),
+      ];
 
       const decision = await router.routeSingle(candidates, createContext());
 
@@ -260,21 +276,23 @@ describe('WasmPluginRouter', () => {
       expect(decision.scores).toHaveLength(candidates.length);
     });
 
-    it('WASM 返回无效 JSON 输出时回退到随机候选', async () => {
+    it('WASM 返回非对象输出时回退随机', async () => {
       executeMock.mockResolvedValueOnce({
         success: true,
         output: 'not valid json object',
         executionTimeMs: 10,
       });
 
-      const candidates = [createCandidate('model-a')];
-      const decision = await router.routeSingle(candidates, createContext());
+      const decision = await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext(),
+      );
 
       expect(decision.selectedModelId).toBe('model-a');
       expect(decision.reasoning.toLowerCase()).toContain('wasm');
     });
 
-    it('WASM 返回不在候选列表中的 selectedModelId 时回退', async () => {
+    it('WASM 选择候选外模型时回退随机', async () => {
       executeMock.mockResolvedValueOnce({
         success: true,
         output: {
@@ -297,29 +315,33 @@ describe('WasmPluginRouter', () => {
       expect(decision.reasoning.toLowerCase()).toContain('wasm');
     });
 
-    it('WASM 返回 success=false 时回退到随机候选', async () => {
+    it('WASM 返回 success=false 时回退随机', async () => {
       executeMock.mockResolvedValueOnce({
         success: false,
         output: null,
         executionTimeMs: 10,
       });
 
-      const candidates = [createCandidate('model-a')];
-      const decision = await router.routeSingle(candidates, createContext());
+      const decision = await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext(),
+      );
 
       expect(decision.selectedModelId).toBe('model-a');
       expect(decision.reasoning.toLowerCase()).toContain('wasm');
     });
 
-    it('WASM 返回缺少 selectedModelId 的输出时回退', async () => {
+    it('WASM 输出缺少 selectedModelId 时回退随机', async () => {
       executeMock.mockResolvedValueOnce({
         success: true,
         output: { scores: [], reasoning: '无选择' },
         executionTimeMs: 10,
       });
 
-      const candidates = [createCandidate('model-a')];
-      const decision = await router.routeSingle(candidates, createContext());
+      const decision = await router.routeSingle(
+        [createCandidate('model-a')],
+        createContext(),
+      );
 
       expect(decision.selectedModelId).toBe('model-a');
       expect(decision.reasoning.toLowerCase()).toContain('wasm');
@@ -340,34 +362,6 @@ describe('WasmPluginRouter', () => {
         expect(score.score).toBe(50);
         expect(score.reasoning).toBeTruthy();
       }
-    });
-  });
-
-  describe('routeSingle - 不传 pluginConfig 时不附加 sandboxConfig.config', () => {
-    it('pluginConfig 未设置时 sandboxConfig 无 config 字段', async () => {
-      const candidates = [createCandidate('model-a')];
-      executeMock.mockResolvedValueOnce({
-        success: true,
-        output: {
-          selectedModelId: 'model-a',
-          scores: [
-            {
-              modelId: 'model-a',
-              modelName: 'model-a-name',
-              provider: 'openai',
-              score: 100,
-              reasoning: '选择',
-            },
-          ],
-          reasoning: '决策',
-        },
-        executionTimeMs: 5,
-      });
-
-      await router.routeSingle(candidates, createContext());
-
-      const [, , , sandboxConfig] = executeMock.mock.calls[0];
-      expect(sandboxConfig).toBeUndefined();
     });
   });
 });

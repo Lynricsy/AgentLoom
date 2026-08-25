@@ -450,6 +450,44 @@ export class PluginService {
     return plugin;
   }
 
+  /**
+   * Smart Routing 用的插件解析。
+   *
+   * 路由执行可能不在租户事务上下文中，因此用 raw db 并显式按 tenantId 过滤，
+   * 而不是依赖 RLS 的 tenantDb。
+   */
+  async findActiveWasmPluginForRouting(
+    tenantId: string,
+    pluginId: string,
+  ): Promise<PluginRecord> {
+    const [plugin] = await this.db
+      .select()
+      .from(schema.plugins)
+      .where(
+        and(
+          eq(schema.plugins.tenantId, tenantId),
+          eq(schema.plugins.pluginId, pluginId),
+        ),
+      )
+      .limit(1);
+
+    if (!plugin) {
+      throw new PluginNotFoundException(pluginId);
+    }
+
+    if (plugin.status !== 'active') {
+      throw new PluginInactiveException(plugin.id);
+    }
+
+    if (!plugin.wasmBundleUrl) {
+      throw new PluginValidationException(
+        `插件 ${pluginId} 缺少 WASM 产物，无法用于智能路由`,
+      );
+    }
+
+    return plugin;
+  }
+
   async resolveOrganizationId(tenantId: string): Promise<string> {
     return this.findOrganizationIdOrThrow(tenantId);
   }
