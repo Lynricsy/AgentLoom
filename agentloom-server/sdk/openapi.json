@@ -5896,6 +5896,84 @@
         ]
       }
     },
+    "/api/v1/marketplace/listings/{id}/uninstall": {
+      "post": {
+        "operationId": "Marketplace_uninstall",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已停用的插件副本列表（幂等）"
+          }
+        },
+        "summary": "卸载（停用）来自该 listing 的插件副本",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}/upgrade-check": {
+      "get": {
+        "operationId": "Marketplace_checkUpgrade",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "升级可用性"
+          }
+        },
+        "summary": "查询已安装插件副本与该 listing 源插件的版本差",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/api/v1/marketplace/listings/{id}/upgrade": {
+      "post": {
+        "operationId": "Marketplace_upgrade",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "升级完成"
+          },
+          "404": {
+            "description": "Listing 不存在"
+          },
+          "409": {
+            "description": "未安装、源已换绑或已是最新版本"
+          }
+        },
+        "summary": "把已安装插件副本升级到该 listing 当前版本",
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
     "/api/v1/marketplace/listings/{id}/reviews": {
       "post": {
         "operationId": "Marketplace_submitReview",
@@ -20773,7 +20851,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-08-25T14:41:34.293Z",
+                  "default": "2026-08-25T15:43:14.276Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

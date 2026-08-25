@@ -140,6 +140,32 @@ export class MarketplaceController {
     return this.marketplaceService.uninstallListing(tenantId, userId, id);
   }
 
+  @Get('listings/:id/upgrade-check')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @ApiOperation({ summary: '查询已安装插件副本与该 listing 源插件的版本差' })
+  @ApiResponse({ status: 200, description: '升级可用性' })
+  async checkUpgrade(
+    @CurrentTenant() tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.marketplaceService.checkListingUpgrade(tenantId, id);
+  }
+
+  @Post('listings/:id/upgrade')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '把已安装插件副本升级到该 listing 当前版本' })
+  @ApiResponse({ status: 200, description: '升级完成' })
+  @ApiResponse({ status: 404, description: 'Listing 不存在' })
+  @ApiResponse({ status: 409, description: '未安装、源已换绑或已是最新版本' })
+  async upgrade(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.marketplaceService.upgradeListing(tenantId, userId, id);
+  }
+
   @Post('listings/:id/reviews')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '提交 Marketplace listing 用户评论' })

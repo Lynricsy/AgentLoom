@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   PluginManifestSchema,
@@ -65,6 +67,8 @@ type MarketplaceCloneMetadata = {
     sourcePluginDbId: string;
     sourcePluginId: string;
     clonedAt: string;
+    /** 最近一次升级时间;从未升级为 null */
+    upgradedAt: string | null;
     /** 安装时的价格快照；旧数据缺失时为 null，回退查询当前 listing */
     pricingModel: schema.MarketplaceListing['pricingModel'] | null;
     pricePerExecution: string | null;
@@ -609,6 +613,149 @@ export class PluginService {
     }
   }
 
+  /**
+   * 把已安装副本升级到源插件当前版本。
+   *
+   * 与安装同构:先把新版本产物复制到本租户前缀,再 OCC 更新记录,最后 best-effort
+   * 删除旧版本产物(仅本租户前缀)。
+   *
+   * name/description 不跟随源插件:那是安装方给自己节点起的标签,升级不该覆盖。
+   * 价格重新快照:升级是安装方主动接受新版本,连带接受当前定价。
+   */
+  async upgradeMarketplaceClone(params: {
+    tenantId: string;
+    userId: string;
+    cloneDbId: string;
+    source: PluginMarketplaceInstallSource;
+  }): Promise<PluginRecord> {
+    const { tenantId, userId, cloneDbId, source } = params;
+    const clone = await this.findPlugin(tenantId, cloneDbId);
+
+    if (!clone) {
+      throw new PluginNotFoundException(cloneDbId);
+    }
+
+    const cloneMetadata = this.readMarketplaceCloneMetadata(clone.metadata);
+
+    if (!cloneMetadata || cloneMetadata.listingId !== source.listingId) {
+      throw new PluginValidationException(
+        `插件 ${clone.pluginId} 不是该 listing 的安装副本，无法升级`,
+      );
+    }
+
+    // listing 可被 PATCH 换绑到另一个插件（listing id 不变），只比 listingId
+    // 会把别的插件的 manifest/WASM 写进本副本，而记录上的 pluginId 还是旧的。
+    if (
+      clone.pluginId !== source.plugin.pluginId ||
+      cloneMetadata.sourcePluginId !== source.plugin.pluginId ||
+      cloneMetadata.sourcePluginDbId !== source.plugin.id
+    ) {
+      throw new PluginValidationException(
+        `该 listing 当前绑定的插件已换为 ${source.plugin.pluginId}，与已安装副本 ${clone.pluginId} 不是同一插件，无法升级`,
+      );
+    }
+
+    const sourceWasmKey = this.normalizeNullableText(
+      source.plugin.wasmBundleUrl,
+    );
+
+    if (!sourceWasmKey) {
+      throw new PluginValidationException(
+        '源插件缺少可执行 WASM 产物，无法升级',
+      );
+    }
+
+    const sourceArchiveKey = this.normalizeNullableText(
+      source.plugin.storageKey,
+    );
+    // 每次升级都写一组本次尝试独占的新 key:
+    // - 发布方可以就地重发同 version 的新二进制,沿用 `<version>/plugin.wasm`
+    //   会跳过复制却把新 contentHash 写进库,记录声明的哈希与对象字节从此不符;
+    // - 不能用 content-addressed key:并发升级会指向同一 key,OCC 失败者的
+    //   补偿删除就会删掉胜者记录正在引用的对象。
+    const targetPrefix = `tenants/${tenantId}/plugins/${source.plugin.pluginId}/${source.plugin.version}/${randomUUID()}`;
+    const targetWasmKey = `${targetPrefix}/plugin.wasm`;
+    const targetArchiveKey = sourceArchiveKey
+      ? `${targetPrefix}/archive.alp`
+      : null;
+    const copiedKeys: string[] = [];
+
+    try {
+      await this.copyStorageObject(
+        sourceWasmKey,
+        targetWasmKey,
+        'application/wasm',
+      );
+      copiedKeys.push(targetWasmKey);
+
+      if (sourceArchiveKey && targetArchiveKey) {
+        await this.copyStorageObject(
+          sourceArchiveKey,
+          targetArchiveKey,
+          'application/zip',
+        );
+        copiedKeys.push(targetArchiveKey);
+      }
+
+      const [updated] = await this.tenantDb
+        .update(schema.plugins)
+        .set({
+          version: source.plugin.version,
+          author: source.plugin.author,
+          license: this.normalizeNullableText(source.plugin.license),
+          manifest: source.plugin.manifest,
+          nodeDefinitions: source.plugin.nodeDefinitions,
+          permissions: source.plugin.permissions,
+          storageKey: targetArchiveKey,
+          signature: this.normalizeNullableText(source.plugin.signature),
+          contentHash: this.normalizeNullableText(source.plugin.contentHash),
+          wasmBundleUrl: targetWasmKey,
+          metadata: this.buildMarketplaceCloneMetadata(source, {
+            clonedAt: cloneMetadata.clonedAt || undefined,
+            upgradedAt: new Date().toISOString(),
+          }),
+          occVersion: sql`${schema.plugins.occVersion} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.plugins.id, cloneDbId),
+            eq(schema.plugins.tenantId, tenantId),
+            eq(schema.plugins.occVersion, clone.occVersion),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        throw new PluginVersionConflictException(cloneDbId, clone.occVersion);
+      }
+
+      // 记录写成功后才丢旧产物,失败时旧版本仍可执行;新 key 本次独占,
+      // 与旧 key 不可能相同,所以无需再做排除判断。
+      await this.deleteOwnedStorageObjects(tenantId, [
+        clone.wasmBundleUrl,
+        clone.storageKey,
+      ]);
+
+      this.logger.log(
+        JSON.stringify({
+          action: 'plugin_marketplace_upgraded',
+          listingId: source.listingId,
+          pluginDbId: updated.id,
+          fromVersion: clone.version,
+          toVersion: updated.version,
+          tenantId,
+          userId,
+        }),
+      );
+
+      return updated;
+    } catch (error) {
+      await this.deleteOwnedStorageObjects(tenantId, copiedKeys);
+      throw error;
+    }
+  }
+
   private async copyStorageObject(
     sourceKey: string,
     targetKey: string,
@@ -816,6 +963,7 @@ export class PluginService {
 
   private buildMarketplaceCloneMetadata(
     source: PluginMarketplaceInstallSource,
+    options?: { clonedAt?: string; upgradedAt?: string },
   ): Record<string, unknown> {
     const existingMetadata = isRecord(source.plugin.metadata)
       ? source.plugin.metadata
@@ -829,7 +977,8 @@ export class PluginService {
         sourceOrgId: source.plugin.orgId,
         sourcePluginDbId: source.plugin.id,
         sourcePluginId: source.plugin.pluginId,
-        clonedAt: new Date().toISOString(),
+        clonedAt: options?.clonedAt ?? new Date().toISOString(),
+        upgradedAt: options?.upgradedAt ?? null,
         pricingModel: source.pricingModel,
         pricePerExecution:
           source.pricingModel === 'per_execution'
@@ -882,6 +1031,10 @@ export class PluginService {
         typeof clonedFromMarketplace.clonedAt === 'string'
           ? clonedFromMarketplace.clonedAt
           : '',
+      upgradedAt:
+        typeof clonedFromMarketplace.upgradedAt === 'string'
+          ? clonedFromMarketplace.upgradedAt
+          : null,
       pricingModel:
         clonedFromMarketplace.pricingModel === 'free' ||
         clonedFromMarketplace.pricingModel === 'per_execution'

@@ -23,6 +23,8 @@ describe('MarketplaceController', () => {
     findById: vi.fn(),
     installListing: vi.fn(),
     uninstallListing: vi.fn(),
+    checkListingUpgrade: vi.fn(),
+    upgradeListing: vi.fn(),
   };
   const reviewUserService = {
     submitReview: vi.fn(),
@@ -45,6 +47,23 @@ describe('MarketplaceController', () => {
 
     it('uninstall 应要求 owner/admin/creator 角色', () => {
       expect(getRoles(controller, 'uninstall')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+      ]);
+    });
+
+    it('upgrade-check 应放开到 operator 角色', () => {
+      expect(getRoles(controller, 'checkUpgrade')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+        'operator',
+      ]);
+    });
+
+    it('upgrade 应要求 owner/admin/creator 角色', () => {
+      expect(getRoles(controller, 'upgrade')).toEqual([
         'owner',
         'admin',
         'creator',
@@ -87,13 +106,51 @@ describe('MarketplaceController', () => {
       };
       marketplaceService.uninstallListing.mockResolvedValue(mockResult);
 
-      const result = await controller.uninstall(
+      const result = await controller.uninstall(TENANT_ID, USER_ID, LISTING_ID);
+
+      expect(marketplaceService.uninstallListing).toHaveBeenCalledWith(
         TENANT_ID,
         USER_ID,
         LISTING_ID,
       );
+      expect(result).toEqual(mockResult);
+    });
+  });
 
-      expect(marketplaceService.uninstallListing).toHaveBeenCalledWith(
+  describe('upgrade', () => {
+    it('checkUpgrade 应调用 checkListingUpgrade 并直接返回状态', async () => {
+      const mockStatus = {
+        installed: true,
+        upgradeAvailable: true,
+        installedPluginDbId: 'plugin-1',
+        installedVersion: '1.0.0',
+        availableVersion: '2.0.0',
+        reason: 'upgrade_available' as const,
+      };
+      marketplaceService.checkListingUpgrade.mockResolvedValue(mockStatus);
+
+      const result = await controller.checkUpgrade(TENANT_ID, LISTING_ID);
+
+      expect(marketplaceService.checkListingUpgrade).toHaveBeenCalledWith(
+        TENANT_ID,
+        LISTING_ID,
+      );
+      expect(result).toEqual(mockStatus);
+    });
+
+    it('upgrade 应调用 upgradeListing 并直接返回升级结果', async () => {
+      const mockResult = {
+        pluginDbId: 'plugin-1',
+        pluginId: 'com.example.review',
+        fromVersion: '1.0.0',
+        toVersion: '2.0.0',
+        message: '已升级到版本 2.0.0',
+      };
+      marketplaceService.upgradeListing.mockResolvedValue(mockResult);
+
+      const result = await controller.upgrade(TENANT_ID, USER_ID, LISTING_ID);
+
+      expect(marketplaceService.upgradeListing).toHaveBeenCalledWith(
         TENANT_ID,
         USER_ID,
         LISTING_ID,

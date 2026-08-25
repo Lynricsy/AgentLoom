@@ -633,7 +633,9 @@ describe('PluginService', () => {
       });
       const selectOrg = createSelectChainWithLimit([{ id: ORG_ID }]);
       const selectExisting = createSelectChainWithLimit([]);
-      const insertPlugin = createInsertChain([createPlugin({ id: 'clone-id' })]);
+      const insertPlugin = createInsertChain([
+        createPlugin({ id: 'clone-id' }),
+      ]);
 
       db.select
         .mockReturnValueOnce(selectOrg)
@@ -666,6 +668,7 @@ describe('PluginService', () => {
               sourcePluginDbId: PLUGIN_ID,
               sourcePluginId: 'com.example.review',
               clonedAt: NOW.toISOString(),
+              upgradedAt: null,
               pricingModel: 'per_execution',
               pricePerExecution: '1.50000000',
               sourceVersion: '2.1.0',
@@ -683,7 +686,9 @@ describe('PluginService', () => {
         storageKey: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.1.0/archive.alp`,
         wasmBundleUrl: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
       });
-      const insertPlugin = createInsertChain([createPlugin({ id: 'clone-id' })]);
+      const insertPlugin = createInsertChain([
+        createPlugin({ id: 'clone-id' }),
+      ]);
 
       db.select
         .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
@@ -797,6 +802,299 @@ describe('PluginService', () => {
       expect(storageService.delete).toHaveBeenCalledWith(
         `tenants/${TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
       );
+    });
+  });
+
+  describe('upgradeMarketplaceClone', () => {
+    function createCloneRecord(overrides: Partial<PluginRecord> = {}) {
+      return createPlugin({
+        id: 'clone-id',
+        status: 'active',
+        version: '1.0.0',
+        contentHash: 'sha256:old',
+        storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
+        wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/plugin.wasm`,
+        occVersion: 3,
+        metadata: {
+          cloned_from_marketplace: {
+            listingId: 'listing-9',
+            listingTitle: '收费插件 listing',
+            sourceTenantId: SOURCE_TENANT_ID,
+            sourceOrgId: ORG_ID,
+            sourcePluginDbId: PLUGIN_ID,
+            sourcePluginId: 'com.example.review',
+            clonedAt: '2024-06-01T00:00:00.000Z',
+            upgradedAt: null,
+            pricingModel: 'free',
+            pricePerExecution: null,
+            sourceVersion: '1.0.0',
+            sourceContentHash: 'sha256:old',
+          },
+        },
+        ...overrides,
+      });
+    }
+
+    function createNewSourcePlugin(overrides: Partial<PluginRecord> = {}) {
+      return createPlugin({
+        status: 'active',
+        version: '2.0.0',
+        contentHash: 'sha256:new',
+        storageKey: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.0.0/archive.alp`,
+        wasmBundleUrl: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.0.0/plugin.wasm`,
+        ...overrides,
+      });
+    }
+
+    function createSource(plugin: PluginRecord) {
+      return {
+        listingId: 'listing-9',
+        listingTitle: '收费插件 listing',
+        pricingModel: 'per_execution' as const,
+        pricePerExecution: '2.5',
+        plugin,
+      };
+    }
+
+    it('应复制新版本产物、OCC 更新记录并清理旧产物', async () => {
+      const clone = createCloneRecord();
+      const sourcePlugin = createNewSourcePlugin();
+      const updateChain = createUpdateChain([
+        createPlugin({ id: 'clone-id', version: '2.0.0' }),
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+      db.update.mockReturnValue(updateChain);
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('artifact')]),
+      );
+
+      const result = await service.upgradeMarketplaceClone({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        cloneDbId: 'clone-id',
+        source: createSource(sourcePlugin),
+      });
+
+      const wasmKeyPattern = new RegExp(
+        `^tenants/${TENANT_ID}/plugins/com\\.example\\.review/2\\.0\\.0/[0-9a-f-]{36}/plugin\\.wasm$`,
+      );
+      const archiveKeyPattern = new RegExp(
+        `^tenants/${TENANT_ID}/plugins/com\\.example\\.review/2\\.0\\.0/[0-9a-f-]{36}/archive\\.alp$`,
+      );
+
+      expect(storageService.upload).toHaveBeenCalledWith(
+        expect.stringMatching(wasmKeyPattern),
+        Buffer.from('artifact'),
+        8,
+        'application/wasm',
+      );
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          version: '2.0.0',
+          contentHash: 'sha256:new',
+          wasmBundleUrl: expect.stringMatching(wasmKeyPattern),
+          storageKey: expect.stringMatching(archiveKeyPattern),
+        }),
+      );
+      // name/description 是安装方自己的标签，升级不覆盖
+      expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty('name');
+      expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty(
+        'description',
+      );
+      // 旧版本产物在记录写成功后才清理
+      expect(storageService.delete).toHaveBeenCalledWith(clone.wasmBundleUrl);
+      expect(storageService.delete).toHaveBeenCalledWith(clone.storageKey);
+      expect(result.version).toBe('2.0.0');
+    });
+
+    it('应保留原 clonedAt、写入 upgradedAt 并重新快照价格', async () => {
+      const clone = createCloneRecord();
+      const updateChain = createUpdateChain([
+        createPlugin({ id: 'clone-id', version: '2.0.0' }),
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+      db.update.mockReturnValue(updateChain);
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('artifact')]),
+      );
+
+      await service.upgradeMarketplaceClone({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        cloneDbId: 'clone-id',
+        source: createSource(createNewSourcePlugin()),
+      });
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            cloned_from_marketplace: expect.objectContaining({
+              clonedAt: '2024-06-01T00:00:00.000Z',
+              upgradedAt: NOW.toISOString(),
+              pricingModel: 'per_execution',
+              pricePerExecution: '2.50000000',
+              sourceVersion: '2.0.0',
+              sourceContentHash: 'sha256:new',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('listing 换绑到别的插件时应拒绝升级', async () => {
+      const clone = createCloneRecord();
+      const otherPlugin = createNewSourcePlugin({
+        id: '00000000-0000-0000-0000-000000000099',
+        pluginId: 'com.other.plugin',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+
+      await expect(
+        service.upgradeMarketplaceClone({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          cloneDbId: 'clone-id',
+          source: createSource(otherPlugin),
+        }),
+      ).rejects.toBeInstanceOf(PluginValidationException);
+      expect(storageService.download).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('源插件 db id 换掉(同 pluginId 换记录)时也应拒绝升级', async () => {
+      const clone = createCloneRecord();
+      const rebound = createNewSourcePlugin({
+        id: '00000000-0000-0000-0000-000000000098',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+
+      await expect(
+        service.upgradeMarketplaceClone({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          cloneDbId: 'clone-id',
+          source: createSource(rebound),
+        }),
+      ).rejects.toBeInstanceOf(PluginValidationException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('非 marketplace 副本应拒绝升级', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createPlugin({ id: 'clone-id' })]),
+      );
+
+      await expect(
+        service.upgradeMarketplaceClone({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          cloneDbId: 'clone-id',
+          source: createSource(createNewSourcePlugin()),
+        }),
+      ).rejects.toBeInstanceOf(PluginValidationException);
+    });
+
+    it('OCC 冲突时应回滚新复制的产物并抛 409', async () => {
+      vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const clone = createCloneRecord();
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+      db.update.mockReturnValue(createUpdateChain([]));
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('artifact')]),
+      );
+
+      await expect(
+        service.upgradeMarketplaceClone({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          cloneDbId: 'clone-id',
+          source: createSource(createNewSourcePlugin()),
+        }),
+      ).rejects.toBeInstanceOf(PluginVersionConflictException);
+
+      expect(storageService.delete).toHaveBeenCalledWith(
+        expect.stringMatching(
+          new RegExp(
+            `^tenants/${TENANT_ID}/plugins/com\\.example\\.review/2\\.0\\.0/[0-9a-f-]{36}/plugin\\.wasm$`,
+          ),
+        ),
+      );
+      // 旧产物必须留着：记录还指向它
+      expect(storageService.delete).not.toHaveBeenCalledWith(
+        clone.wasmBundleUrl,
+      );
+    });
+
+    it('同版本新内容也必须复制产物并写入新 key', async () => {
+      const clone = createCloneRecord();
+      // 发布方就地重发同 version 的新二进制：只有 contentHash 变化
+      const rebuiltSource = createNewSourcePlugin({
+        version: '1.0.0',
+        contentHash: 'sha256:rebuilt',
+        storageKey: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
+        wasmBundleUrl: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/1.0.0/plugin.wasm`,
+      });
+      const updateChain = createUpdateChain([
+        createPlugin({ id: 'clone-id', version: '1.0.0' }),
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+      db.update.mockReturnValue(updateChain);
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('rebuilt-artifact')]),
+      );
+
+      await service.upgradeMarketplaceClone({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        cloneDbId: 'clone-id',
+        source: createSource(rebuiltSource),
+      });
+
+      const uniqueKeyPattern = new RegExp(
+        `^tenants/${TENANT_ID}/plugins/com\\.example\\.review/1\\.0\\.0/[0-9a-f-]{36}/plugin\\.wasm$`,
+      );
+
+      // 复制必须真的发生：否则库里写着新 contentHash，对象里还是旧字节
+      expect(storageService.download).toHaveBeenCalledWith(
+        rebuiltSource.wasmBundleUrl,
+      );
+      expect(storageService.upload).toHaveBeenCalledWith(
+        expect.stringMatching(uniqueKeyPattern),
+        Buffer.from('rebuilt-artifact'),
+        16,
+        'application/wasm',
+      );
+
+      const updatePayload = updateChain.set.mock.calls[0][0] as {
+        wasmBundleUrl: string;
+        contentHash: string | null;
+      };
+      expect(updatePayload.wasmBundleUrl).toMatch(uniqueKeyPattern);
+      expect(updatePayload.wasmBundleUrl).not.toBe(clone.wasmBundleUrl);
+      expect(updatePayload.contentHash).toBe('sha256:rebuilt');
+      // 旧 key 在记录切换后清理，不会与新 key 冲突
+      expect(storageService.delete).toHaveBeenCalledWith(clone.wasmBundleUrl);
+    });
+
+    it('源插件缺少 WASM 产物时应拒绝升级', async () => {
+      const clone = createCloneRecord();
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+
+      await expect(
+        service.upgradeMarketplaceClone({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          cloneDbId: 'clone-id',
+          source: createSource(createNewSourcePlugin({ wasmBundleUrl: null })),
+        }),
+      ).rejects.toBeInstanceOf(PluginValidationException);
     });
   });
 
