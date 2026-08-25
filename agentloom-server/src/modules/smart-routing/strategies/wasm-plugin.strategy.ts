@@ -1,10 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 
+import type { StorageService } from '../../../infrastructure/storage/storage.service';
 import type {
   PluginSandboxService,
   SandboxConfig,
 } from '../../plugin/plugin-sandbox.service';
+import type { PluginService } from '../../plugin/plugin.service';
 import {
   BaseRouterStrategy,
   type RouterCategory,
@@ -13,17 +15,12 @@ import type { RoutingCandidate } from '../core/routing-candidate';
 import type { RoutingContext } from '../core/routing-context';
 import type { ModelScore, RoutingDecision } from '../core/routing-decision';
 
-export interface WasmPluginRouterConfig {
-  pluginId: string;
-  pluginConfig?: Record<string, unknown>;
-}
-
 export class WasmPluginRouter extends BaseRouterStrategy {
   readonly name = 'wasm-plugin';
   readonly category: RouterCategory = 'plugin';
   readonly requiresEmbedding = false;
   readonly configSchema = z.object({
-    pluginId: z.string(),
+    pluginId: z.string().trim().min(1),
     pluginConfig: z.record(z.string(), z.unknown()).optional(),
   });
 
@@ -31,8 +28,8 @@ export class WasmPluginRouter extends BaseRouterStrategy {
 
   constructor(
     private readonly pluginSandboxService: PluginSandboxService,
-    private readonly wasmBuffer: Buffer | Uint8Array,
-    private readonly config: WasmPluginRouterConfig,
+    private readonly pluginService: PluginService,
+    private readonly storageService: StorageService,
   ) {
     super();
   }
@@ -41,16 +38,42 @@ export class WasmPluginRouter extends BaseRouterStrategy {
     candidates: RoutingCandidate[],
     context: RoutingContext,
   ): Promise<RoutingDecision> {
+    const parsedConfig = this.configSchema.safeParse(
+      context.strategyConfig ?? {},
+    );
+
+    if (!parsedConfig.success) {
+      return this.fallbackToRandom(
+        candidates,
+        'missing or invalid strategyConfig.pluginId',
+      );
+    }
+
+    const { pluginId, pluginConfig } = parsedConfig.data;
+
     try {
+      const plugin = await this.pluginService.findActiveWasmPluginForRouting(
+        context.tenantId,
+        pluginId,
+      );
+      const wasmBundleUrl = plugin.wasmBundleUrl;
+
+      if (!wasmBundleUrl) {
+        return this.fallbackToRandom(
+          candidates,
+          `plugin "${pluginId}" has no wasm bundle`,
+        );
+      }
+
+      const wasmBuffer = await this.downloadWasmBuffer(wasmBundleUrl);
       const input = JSON.stringify({ candidates, context });
-      const sandboxConfig = this.buildSandboxConfigForPlugin();
 
       const result = await this.pluginSandboxService.execute(
-        this.wasmBuffer,
+        wasmBuffer,
         'route',
         input,
-        sandboxConfig,
-        this.config.pluginId,
+        this.buildSandboxConfigForPlugin(pluginConfig),
+        pluginId,
       );
 
       if (!result.success) {
@@ -63,21 +86,32 @@ export class WasmPluginRouter extends BaseRouterStrategy {
       return this.parsePluginOutput(result.output, candidates);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `WASM plugin "${this.config.pluginId}" routing failed: ${message}`,
-      );
+      this.logger.warn(`WASM plugin "${pluginId}" routing failed: ${message}`);
 
       return this.fallbackToRandom(candidates, `wasm plugin error: ${message}`);
     }
   }
 
-  private buildSandboxConfigForPlugin(): SandboxConfig | undefined {
-    if (!this.config.pluginConfig) {
+  private async downloadWasmBuffer(storageKey: string): Promise<Buffer> {
+    const readable = await this.storageService.download(storageKey);
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of readable) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks);
+  }
+
+  private buildSandboxConfigForPlugin(
+    pluginConfig: Record<string, unknown> | undefined,
+  ): SandboxConfig | undefined {
+    if (!pluginConfig) {
       return undefined;
     }
 
     const stringifiedConfig: Record<string, string> = {};
-    for (const [key, value] of Object.entries(this.config.pluginConfig)) {
+    for (const [key, value] of Object.entries(pluginConfig)) {
       stringifiedConfig[key] =
         typeof value === 'string' ? value : JSON.stringify(value);
     }

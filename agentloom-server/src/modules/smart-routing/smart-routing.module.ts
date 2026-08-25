@@ -11,6 +11,8 @@ import {
 import { LlmModule } from '../llm/llm.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { PluginSandboxService } from '../plugin/plugin-sandbox.service';
+import { PluginService } from '../plugin/plugin.service';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
 import { HealthMonitorService } from './circuit-breaker/health-monitor.service';
 import {
@@ -169,13 +171,19 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
     },
     {
       provide: WasmPluginAliasRouter,
-      useFactory: (pluginSandboxService: PluginSandboxService) =>
+      useFactory: (
+        pluginSandboxService: PluginSandboxService,
+        pluginService: PluginService,
+        storageService: StorageService,
+      ) =>
         new WasmPluginAliasRouter(
-          new WasmPluginRouter(pluginSandboxService, Buffer.alloc(0), {
-            pluginId: 'smart-routing-wasm-plugin',
-          }),
+          new WasmPluginRouter(
+            pluginSandboxService,
+            pluginService,
+            storageService,
+          ),
         ),
-      inject: [PluginSandboxService],
+      inject: [PluginSandboxService, PluginService, StorageService],
     },
     {
       provide: TokenOptimizedRouter,
