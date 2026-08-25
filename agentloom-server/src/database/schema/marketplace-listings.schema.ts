@@ -210,6 +210,10 @@ export const marketplaceListings = pgTable(
       sql`${table.pricePerExecution} IS NULL OR ${table.pricePerExecution} >= 0`,
     ),
     check(
+      'marketplace_listings_per_execution_price_required',
+      sql`${table.pricingModel} <> 'per_execution' OR ${table.pricePerExecution} IS NOT NULL`,
+    ),
+    check(
       'marketplace_listings_listing_type_binding_check',
       sql`(
         ${table.listingType} = 'workflow'
