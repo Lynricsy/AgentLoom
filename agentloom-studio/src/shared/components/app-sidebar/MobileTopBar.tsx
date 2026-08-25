@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Menu, Settings } from 'lucide-react'
+import { useAuthToken } from '@/features/auth'
+import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import { NotificationBell } from '@/features/notification'
 import { BrandMark } from '@/shared/components/brand'
 import {
@@ -19,6 +21,7 @@ export function MobileTopBar() {
   const [open, setOpen] = useState(false)
   const location = useRouterState({ select: (s) => s.location })
   const pathname = location.pathname
+  const role = getInterventionPolicyRoleFromToken(useAuthToken())
 
   // 路由变化后收起抽屉，避免返回手势后抽屉仍然覆盖内容
   useEffect(() => {
@@ -46,6 +49,7 @@ export function MobileTopBar() {
 
           <SidebarNav
             pathname={pathname}
+            role={role}
             onNavigate={() => setOpen(false)}
             indicatorScope="mobile"
           />

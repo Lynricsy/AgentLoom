@@ -1,7 +1,19 @@
 import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  role: "owner" as string | null,
+}));
+
+vi.mock("@/features/auth", () => ({
+  useAuthToken: () => "token",
+}));
+
+vi.mock("@/features/intervention-policy", () => ({
+  getInterventionPolicyRoleFromToken: () => mocks.role,
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children, ...rest }: { to: string; children: ReactNode }) => (
@@ -25,13 +37,17 @@ vi.mock("./UserMenu", () => ({
 }));
 
 import { AppSidebar } from "./AppSidebar";
-import { NAV_GROUPS } from "./navigation";
+import { filterNavGroupsByRole } from "./navigation";
 
 describe("AppSidebar", () => {
-  it("渲染全部导航分组与其条目", () => {
+  beforeEach(() => {
+    mocks.role = "owner";
+  });
+
+  it("渲染当前角色可见的全部导航分组与其条目", () => {
     render(<AppSidebar />);
 
-    for (const group of NAV_GROUPS) {
+    for (const group of filterNavGroupsByRole("owner")) {
       expect(screen.getByText(group.label)).toBeInTheDocument();
       for (const item of group.items) {
         expect(screen.getByText(item.label)).toBeInTheDocument();
@@ -39,13 +55,34 @@ describe("AppSidebar", () => {
     }
   });
 
-  it("开发者控制台入口常驻可达", () => {
+  it("owner 的开发者入口落在收益页", () => {
     render(<AppSidebar />);
 
     expect(screen.getByText("开发者").closest("a")).toHaveAttribute(
       "href",
       "/developer-console/earnings",
     );
+  });
+
+  it("creator 的开发者入口落在开发者密钥页", () => {
+    mocks.role = "creator";
+    render(<AppSidebar />);
+
+    expect(screen.getByText("开发者").closest("a")).toHaveAttribute(
+      "href",
+      "/developer-console/keys",
+    );
+  });
+
+  it("operator 与 viewer 看不到开发者入口", () => {
+    mocks.role = "operator";
+    const { unmount } = render(<AppSidebar />);
+    expect(screen.queryByText("开发者")).not.toBeInTheDocument();
+    unmount();
+
+    mocks.role = "viewer";
+    render(<AppSidebar />);
+    expect(screen.queryByText("开发者")).not.toBeInTheDocument();
   });
 
   it("折叠后隐藏文字标签，仅保留图标入口", async () => {
