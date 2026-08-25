@@ -44,6 +44,11 @@ export interface CustomNodeDefinition {
   outputPorts: PortDefinition[];
   /** 节点配置 Schema。 */
   configSchema?: Record<string, unknown>;
-  /** 节点执行函数。 */
+  /**
+   * 节点执行函数，仅用于 CLI `dev` 本地预览，不是服务端执行契约。
+   *
+   * 服务端只执行 WASM：导出 `execute`，输入 JSON envelope
+   * `{nodeType, inputs, config}`，输出为端口输出直出对象。
+   */
   execute(context: NodeExecutionContext): Promise<NodeExecutionResult>;
 }

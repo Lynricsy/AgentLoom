@@ -2,19 +2,9 @@ import { createHash, createPublicKey } from 'node:crypto';
 
 import JSZip from 'jszip';
 
-const SIGNING_METADATA_KEYS = new Set([
-  'signature',
-  'contentHash',
-  'developerKeyFingerprint',
-]);
+const SIGNING_METADATA_KEYS = new Set(['signature', 'contentHash', 'developerKeyFingerprint']);
 
-type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 interface ArchiveEntry {
   path: string;
@@ -31,9 +21,9 @@ interface CanonicalArchiveDescriptor {
   files: CanonicalArchiveFileEntry[];
 }
 
-export async function readArchiveManifest<T extends Record<string, unknown> = Record<string, unknown>>(
-  archiveData: Buffer | Uint8Array,
-): Promise<T> {
+export async function readArchiveManifest<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(archiveData: Buffer | Uint8Array): Promise<T> {
   const entries = await loadArchiveEntries(archiveData);
   const manifestEntry = entries.get('manifest.json');
 
@@ -68,7 +58,9 @@ export async function createCanonicalArchivePayload(
     throw new Error('插件包缺少 manifest.json');
   }
 
-  const manifest = sortJsonValue(stripSigningMetadata(parseArchiveManifest(manifestEntry.contents)));
+  const manifest = sortJsonValue(
+    stripSigningMetadata(parseArchiveManifest(manifestEntry.contents)),
+  );
   const files = [...entries.values()]
     .filter((entry) => entry.path !== 'manifest.json')
     .map<CanonicalArchiveFileEntry>((entry) => ({
@@ -100,22 +92,29 @@ async function loadArchiveEntries(
   archiveData: Buffer | Uint8Array,
 ): Promise<Map<string, ArchiveEntry>> {
   const archive = await JSZip.loadAsync(toBuffer(archiveData));
-  const entries = new Map<string, ArchiveEntry>();
+  const normalizedEntries = Object.values(archive.files)
+    .filter((entry) => !entry.dir)
+    .map((entry) => ({
+      entry,
+      path: normalizeArchivePath(entry.name),
+    }));
+  const seenPaths = new Set<string>();
 
-  await Promise.all(
-    Object.values(archive.files)
-      .filter((entry) => !entry.dir)
-      .map(async (entry) => {
-        const path = normalizeArchivePath(entry.name);
+  for (const { path } of normalizedEntries) {
+    if (seenPaths.has(path)) {
+      throw new Error(`插件包包含重复的归档路径: ${path}`);
+    }
 
-        if (entries.has(path)) {
-          throw new Error(`插件包包含重复的归档路径: ${path}`);
-        }
+    seenPaths.add(path);
+  }
 
-        const contents = await entry.async('nodebuffer');
-        entries.set(path, { path, contents });
-      }),
+  const loadedEntries = await Promise.all(
+    normalizedEntries.map(async ({ entry, path }): Promise<ArchiveEntry> => ({
+      path,
+      contents: await entry.async('nodebuffer'),
+    })),
   );
+  const entries = new Map(loadedEntries.map((entry) => [entry.path, entry]));
 
   return entries;
 }
@@ -175,11 +174,7 @@ function sortJsonValue(value: unknown): JsonValue {
       }, {});
   }
 
-  if (
-    typeof value === 'boolean' ||
-    typeof value === 'number' ||
-    typeof value === 'string'
-  ) {
+  if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
     return value;
   }
 

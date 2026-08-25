@@ -173,10 +173,11 @@ export class MarketplaceController {
   @ApiResponse({ status: 404, description: 'Listing 不存在' })
   @ApiResponse({ status: 409, description: '用户已评论该 listing' })
   async submitReview(
+    @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SubmitReviewDto,
   ) {
-    return this.reviewUserService.submitReview(userId, id, dto);
+    return this.reviewUserService.submitReview(tenantId, userId, id, dto);
   }
 }
