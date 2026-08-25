@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
+import { EarningsSettlementScheduler } from './earnings-settlement.scheduler';
 import { EarningsSettlementWorker } from './earnings-settlement.worker';
 import {
   EARNINGS_SETTLEMENT_QUEUE,
@@ -48,6 +49,7 @@ import { PluginSignatureService } from './plugin-signature.service';
     PluginEarningsSettlementProducer,
     PluginExecutionWorker,
     EarningsSettlementWorker,
+    EarningsSettlementScheduler,
   ],
   exports: [
     PluginService,

@@ -1,6 +1,6 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm';
 import { Job } from 'bullmq';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
@@ -8,8 +8,12 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import { FixedScaleDecimal } from './fixed-scale-decimal';
 import { PluginEarningsService } from './plugin-earnings.service';
+import { PluginEarningsSettlementProducer } from './plugin-earnings-settlement.producer';
 import { PluginUsageService } from './plugin-usage.service';
-import { EARNINGS_SETTLEMENT_QUEUE } from './plugin.constants';
+import {
+  EARNINGS_SETTLEMENT_DISPATCH_JOB_NAME,
+  EARNINGS_SETTLEMENT_QUEUE,
+} from './plugin.constants';
 
 export interface EarningsSettlementJobData {
   tenantId: string;
@@ -41,11 +45,17 @@ export class EarningsSettlementWorker extends WorkerHost {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly pluginUsageService: PluginUsageService,
     private readonly pluginEarningsService: PluginEarningsService,
+    private readonly settlementProducer: PluginEarningsSettlementProducer,
   ) {
     super();
   }
 
   async process(job: Job<EarningsSettlementJobData>): Promise<void> {
+    if (job.name === EARNINGS_SETTLEMENT_DISPATCH_JOB_NAME) {
+      await this.dispatchSettlements(new Date());
+      return;
+    }
+
     const { tenantId, orgId, periodStart, periodEnd } = job.data;
     const periodStartDate = new Date(periodStart);
     const periodEndDate = new Date(periodEnd);
@@ -140,6 +150,69 @@ export class EarningsSettlementWorker extends WorkerHost {
         attempt: job?.attemptsMade ?? null,
         error: error.message,
       })}`,
+    );
+  }
+
+  /**
+   * 派发上一个 UTC 自然月的结算任务。
+   *
+   * 周期为闭区间 [periodStart, periodEnd]，与
+   * `PluginUsageService.getUsageByPluginForPeriod` 的 gte/lte 语义一致。
+   */
+  private async dispatchSettlements(now: Date): Promise<void> {
+    const periodStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+    );
+    const periodEnd = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 1,
+    );
+
+    const sources = await this.db
+      .select({
+        sourceTenantId: schema.pluginUsageRecords.sourceTenantId,
+        sourceOrgId: schema.pluginUsageRecords.sourceOrgId,
+      })
+      .from(schema.pluginUsageRecords)
+      .where(
+        and(
+          isNotNull(schema.pluginUsageRecords.billingAmount),
+          isNotNull(schema.pluginUsageRecords.sourceTenantId),
+          isNotNull(schema.pluginUsageRecords.sourceOrgId),
+          gte(schema.pluginUsageRecords.createdAt, periodStart),
+          lte(schema.pluginUsageRecords.createdAt, periodEnd),
+        ),
+      )
+      .groupBy(
+        schema.pluginUsageRecords.sourceTenantId,
+        schema.pluginUsageRecords.sourceOrgId,
+      );
+
+    const periodStartIso = periodStart.toISOString();
+    const periodEndIso = periodEnd.toISOString();
+    let dispatchedCount = 0;
+
+    for (const source of sources) {
+      if (!source.sourceTenantId || !source.sourceOrgId) {
+        continue;
+      }
+
+      await this.settlementProducer.addSettlementJob({
+        tenantId: source.sourceTenantId,
+        orgId: source.sourceOrgId,
+        periodStart: periodStartIso,
+        periodEnd: periodEndIso,
+      });
+
+      dispatchedCount += 1;
+    }
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'plugin_earnings_settlement_dispatched',
+        periodStart: periodStartIso,
+        periodEnd: periodEndIso,
+        dispatchedCount,
+      }),
     );
   }
 
