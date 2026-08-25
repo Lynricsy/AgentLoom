@@ -1,58 +1,46 @@
-# AGENTLOOM TYPE ENGINE 知识库
+# Repository Guidelines
 
-Rust/WASM 端口与 schema 兼容性检查器。
+## Project Overview
 
-## 模块
+`agentloom-type-engine` 是 AgentLoom 的 Rust/WASM 端口类型与 schema 兼容性引擎。它既提供原生 Rust API，也通过 `wasm-bindgen` 向 Studio 暴露浏览器 API；包内只判断类型、schema 与连接上下文，不负责画布拓扑或持久化。
+
+## Architecture & Data Flow
 
 ```text
-src/
-├── lib.rs
-├── types/
-│   ├── port.rs          # PortDataType、PortDirection、PortDefinition
-│   └── schema.rs        # Scalar/Object/Array schema
-├── checker/
-│   └── compatibility.rs # schema 与端口连接检查
-├── validator/
-│   └── schema_validator.rs
-└── wasm/
-    ├── bindings.rs
-    └── error.rs
+PortDefinition / TypeSchema JSON
+  → types 反序列化
+  → checker 计算兼容性，或 validator 校验 schema
+  → CompatibilityResult / ValidationResult
+  → wasm/bindings.rs 转换为 JavaScript 对象
+  → Studio Web Worker 调用已提交的 pkg/*.wasm
 ```
 
-仓库没有 `constraint` 模块。性能测量归属 `benches/compatibility_bench.rs`，正确性测试不使用 wall-clock 阈值。
+- `CompatibilityChecker::check()` / `check_compatibility()` 只比较 data type 与 schema；缺少显式 schema 时按端口 `data_type`、描述和 required 状态生成 scalar schema。
+- `check_port_connection()` 在 schema 比较前检查连接上下文：source 必须为 `Output`、target 必须为 `Input`、optional source 不能连 required target，并依据双方已有连接数检查容量。
+- `multiple=false` 的容量固定为 1；`multiple=true` 时仅在 `max_connections` 存在时设置上限。调用方必须传入 source/target 当前连接数。
+- 上述连接级 API 当前是 Rust API；WASM 的 `checkCompatibility` 调用纯兼容性检查，不携带连接计数，不能替代 `check_port_connection()`。
 
-## PortDataType
+兼容性结果使用四个稳定等级：
 
-`PortDataType` 包含 14 个 serde lowercase 变体：
+- `EXACT`：类型及 schema 完全匹配，且不需要转换。
+- `TRANSFORM`：全部目标单元可通过已注册转换处理；当前规则含 `text→json`、`json→text`、`skill→text`。
+- `PARTIAL`：仅部分字段匹配或目标字段缺失；结果可含 `missingFields`、候选映射与匹配比例 metadata。
+- `INCOMPATIBLE`：方向、required/capacity 约束失败，或类型、shape、scalar schema、数组基数等无法兼容。
 
-`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
+## Key Directories
 
-canonical 全集定义在 `@agentloom/contracts` 的 `PORT_DATA_TYPES`。Rust 镜像位于 `src/types/port.rs`；`agentloom-contracts/src/port-data-type.test.ts` 读取 Rust、plugin SDK、Studio、server 源文件，检查各端是 contracts 子集且各端并集等于 canonical 全集。
+- `src/types/port.rs`：`PortDataType`、`PortDirection`、`PortDefinition` 及 serde wire 命名。
+- `src/types/schema.rs`：scalar/object/array schema；object 与 array 以 `kind: "json"` 配合 `shape` 区分。
+- `src/checker/compatibility.rs`：等级判定、转换规则、字段候选映射与连接级 guard。
+- `src/validator/schema_validator.rs`：原始 JSON 解析与递归校验；默认最大嵌套深度为 12。
+- `src/wasm/bindings.rs`：JavaScript 入参解析、结构化错误和返回值序列化。
+- `tests/`：checker、validator 与 WASM 集成测试。
+- `benches/compatibility_bench.rs`：Criterion 对象兼容性基准。
+- `pkg/`：提交到仓库的 `wasm-pack` bundler 产物，包括 `.wasm`、JS glue、TypeScript declarations 与 package metadata。
 
-## 检查语义
+## Development Commands
 
-`CompatibilityChecker::check()` 只做 data type/schema 兼容性，返回 `EXACT | TRANSFORM | PARTIAL | INCOMPATIBLE`，不判断端口拓扑。
-
-`check_port_connection()` 在 schema 检查前验证连接上下文：
-
-1. source direction 必须是 `Output`。
-2. target direction 必须是 `Input`。
-3. optional source（`required=false`）不能连接 required target。
-4. `multiple=false` 的端口容量固定为 1。
-5. `multiple=true` 且设置 `max_connections` 时使用该上限；达到 source 或 target 容量均拒绝连接。
-6. 上述条件满足后再执行纯 schema 兼容性检查。
-
-调用方必须传入 source/target 的已有连接数；不能用 `check()` 替代连接级验证。
-
-## WASM API
-
-- `checkCompatibility`
-- `checkSchemaCompatibility`
-- `validateSchema`
-
-`pkg/` 是 wasm-pack 输出，包含 WASM、JS bindings 与类型声明。
-
-## 命令
+在 `agentloom-type-engine/` 下执行：
 
 ```bash
 cargo test
@@ -60,4 +48,40 @@ cargo bench
 wasm-pack build --target bundler --release
 ```
 
-Rust Edition 2024，crate 同时输出 `cdylib` 与 `rlib`。crate 根使用 `#![deny(clippy::unwrap_used)]`，错误路径用 Result/Option 表达。
+`Cargo.toml` 使用 Rust edition 2024；library 同时产出 `cdylib` 与 `rlib`。Criterion bench 设置 `harness = false`，release profile 使用 `opt-level = "z"` 和 LTO。
+
+修改 Rust/WASM 边界后必须重新执行 bundler build，并将 `pkg/` 内生成的 WASM、JS 与声明文件一并保持同步；不要手改生成产物。
+
+## Code Conventions & Common Patterns
+
+- Rust 标识符使用 snake_case；wire 字段由 serde 输出 camelCase，`CompatibilityLevel` 输出 SCREAMING_SNAKE_CASE。
+- crate 根启用 `#![deny(clippy::unwrap_used)]`；错误路径使用 `Result`、`Option` 或结构化 `WasmError`，不要用 `unwrap()`。
+- `TypeSchema` 的 object/array 只允许 `json` kind；scalar 不允许 `json` kind。新增 shape 或校验规则时同步 checker、validator、serde round-trip 与测试。
+- 保持 `CompatibilityResult` 的 `reason`、`conflictPath`、`transformFn`、metadata 与 Studio `TypeEngineCompatibilityResult` 契约一致。
+- 性能验证放在 Criterion benchmark；正确性测试不得依赖 wall-clock 阈值。
+
+## Important Files
+
+- `src/lib.rs`：公开 `checker`、`types`、`validator`、`wasm` 模块，并禁止 clippy unwrap。
+- `src/wasm/bindings.rs` 导出 `checkCompatibility(source, target)`、`checkSchemaCompatibility(source, target)`、`validateSchema(input)`。
+- `Cargo.toml`：crate 类型、WASM/serde 依赖、Criterion bench 与 release profile。
+- `pkg/agentloom_type_engine_bg.wasm`：Studio 实际加载的编译产物。
+- `agentloom-studio/src/features/canvas/lib/typeEngine/runtime.worker.ts`：Web Worker 内直接实例化 WASM，优先 `instantiateStreaming`，失败时退回 `arrayBuffer`。
+- `agentloom-studio/src/features/canvas/lib/typeEngine/service.ts`：worker runtime 不可用时调用本地 TypeScript compatibility fallback。
+
+## Runtime/Tooling Preferences
+
+`PortDataType` 的 canonical 集合在 `@agentloom/contracts`，当前 14 值为：
+
+`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
+
+`src/types/port.rs` 只是 Rust 镜像。增删值必须先更新 contracts，并同步 Studio、server、plugin SDK 与 Rust；跨包同步约束及机械校验入口见根 `AGENTS.md`。
+
+Studio 通过 module Web Worker 隔离 WASM 加载和兼容性计算；runtime 管理请求超时、缓存、并发去重与 worker 重建。WASM 故障时 service 使用 `fallback.ts` 的本地实现，因此修改兼容性语义时必须同时核对 Rust 与 fallback，避免结果等级漂移。
+
+## Testing & QA
+
+- `cargo test` 覆盖连接方向、required/capacity、四级兼容性、schema validator 和 WASM 输入输出。
+- `cargo bench` 运行 `compatibility_bench`；仅用于观察性能，不承担正确性断言。
+- 改动 WASM bindings 时核对 `pkg/agentloom_type_engine.d.ts` 的三个导出及 Studio worker 的调用签名。
+- 改动 14 值端口集合时运行 contracts 的跨包集合测试；改动兼容性算法时同时覆盖 Rust checker 与 Studio fallback 的同类场景。

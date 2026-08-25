@@ -1,83 +1,88 @@
-# agentloom-docs 知识库
+# Repository Guidelines
 
-VitePress 2 文档站，提供 AgentLoom 平台的中英双语用户文档。
+## Project Overview
 
-## 技术栈
+`agentloom-docs` 是 AgentLoom 的 VitePress 2 文档站，正文以简体中文为主，同时保留英文入口。该目录拥有独立的 `pnpm-lock.yaml`，不属于根 `pnpm-workspace.yaml`；依赖安装与命令必须在本目录执行。
 
-- VitePress `2.0.0-alpha.17`
-- vitepress-openapi — OpenAPI spec 渲染（静态 JSON import）
-- vitepress-plugin-mermaid — Mermaid 图表支持
-- markdownlint-cli2 — Markdown lint
+站点部署在 `/documentation/` 子路径。修改链接、静态资源或部署配置时，必须以 `.vitepress/config.mts` 中的 `base: '/documentation/'` 为准，不要假设站点位于域名根路径。
 
-## 目录结构
+## Architecture & Data Flow
 
-```
-agentloom-docs/
-├── .vitepress/
-│   ├── config.mts           # VitePress 配置 (双语 locale: zh/en, 完整 nav/sidebar/socialLinks)
-│   └── theme/
-│       ├── index.ts         # 主题入口 (自定义品牌色 + vitepress-openapi + mermaid 注册)
-│       └── custom.css       # 品牌色变量: #7c3aed (light) / #a78bfa (dark)
-├── zh/                      # 中文文档 (36 个 Markdown 文件，内容完整)
-│   ├── api/                 # API 参考 (OpenAPI 渲染)
-│   ├── deployment/          # 部署指南
-│   ├── guide/               # 使用指南
-│   ├── mobile/              # 移动端文档
-│   ├── plugins/             # 插件开发
-│   ├── server/              # 服务端文档
-│   ├── studio/              # Studio 文档
-│   ├── type-engine/         # 类型引擎文档
-│   └── index.md             # 中文首页
-├── en/                      # 英文文档
-│   └── index.md             # 英文首页
-├── public/
-│   ├── brand/logo.png       # 文档站 favicon / 顶栏 logo / 首页 Hero 图使用的品牌图
-│   └── openapi.json         # OpenAPI 3.0 spec 静态文件 (由 prebuild 同步)
-├── scripts/
-│   └── sync-openapi.mjs     # prebuild: 从 server 同步 OpenAPI spec 到 public/openapi.json
-├── index.md                 # 站点根入口 (重定向)
-└── package.json
+```text
+agentloom-server/sdk/openapi.json
+  -> scripts/sync-openapi.mjs
+  -> public/openapi.json
+  -> .vitepress/theme/index.ts 静态导入
+  -> vitepress-openapi 的 <OASpec />
+
+zh/**/*.md + en/**/*.md
+  -> .vitepress/config.mts
+  -> VitePress 静态站点
 ```
 
-## 命令
+- `srcDir` 为包根目录，URL 使用无 `.html` 后缀的 clean URLs，并显示基于 Git 的最后更新时间。
+- 中文导航和侧边栏覆盖指南、服务端、Studio、类型引擎、插件、移动端、API 与部署章节。
+- `en/` 当前只有英文首页 stub；不要假定中文章节存在对应英文页面。
+- 本地搜索按 `zh-CN` locale 提供 CJK 内容检索和中文界面文案。
+- `withMermaid()` 包装 VitePress 配置；Markdown 中可直接使用 `mermaid` fenced code block。
+- 跨包架构和契约约束以仓库根 `AGENTS.md` 为准，本文件只描述文档站边界。
+
+## Key Directories
+
+| 路径 | 用途 |
+|---|---|
+| `.vitepress/config.mts` | locale、导航、侧边栏、搜索、Mermaid 和站点元数据 |
+| `.vitepress/theme/index.ts` | 默认主题扩展、OpenAPI 注册及静态 spec 导入 |
+| `.vitepress/theme/custom.css` | 紫色品牌变量与浅色/深色主题覆盖 |
+| `zh/guide/` | 入门、架构与核心概念 |
+| `zh/server/`、`zh/studio/` | 服务端与 Studio 专题 |
+| `zh/type-engine/`、`zh/plugins/`、`zh/mobile/` | 类型引擎、插件生态与移动端专题 |
+| `zh/api/`、`zh/deployment/` | API 参考与部署运维 |
+| `en/index.md` | 英文入口 stub |
+| `public/brand/` | favicon、顶栏和首页使用的品牌资源 |
+| `public/openapi.json` | 构建前生成的 OpenAPI 静态输入 |
+| `scripts/sync-openapi.mjs` | OpenAPI 同步与 URL 规范化脚本 |
+
+## Development Commands
+
+在 `agentloom-docs/` 中运行：
 
 ```bash
-pnpm install && pnpm dev     # 开发 (VitePress dev server)
-pnpm build                   # 生产构建 (prebuild 自动执行 sync-openapi)
-pnpm prebuild                # 仅执行 OpenAPI spec 同步
-pnpm lint:md                 # Markdown lint (仅 zh/)
+pnpm install          # 使用本目录独立 lockfile 安装依赖
+pnpm dev              # 启动 VitePress 开发服务器
+pnpm prebuild         # 单独同步 public/openapi.json
+pnpm build            # 自动先运行 prebuild，再生成生产站点
+pnpm preview          # 预览生产构建
+pnpm lint:md           # 仅检查 zh/**/*.md
 ```
 
-## 约定
+`dev`、`build`、`preview` 通过 Node 的 `--no-experimental-webstorage` 启动 VitePress；保留这一调用方式，除非运行时约束明确改变。
 
-- `srcDir: '.'` — 文档根目录为包根目录
-- `cleanUrls: true` — 无 `.html` 后缀
-- `lastUpdated: true` — 基于 git 的最后更新时间
-- 双语结构: `zh/` 和 `en/` 为平行目录
-- prebuild hook (`scripts/sync-openapi.mjs`): 构建前同步 OpenAPI spec 到 `public/openapi.json`
-- 文档站 favicon、VitePress 顶栏 logo 与中英文首页 Hero 图统一使用 `public/brand/logo.png`
-- Markdown lint 范围仅限 `zh/**/*.md`
-- 品牌色: `#7c3aed` (亮色模式) / `#a78bfa` (暗色模式)，紫罗兰/紫色主题
-- 本地搜索已启用 CJK（中日韩）分词支持
+## Code Conventions & Common Patterns
 
-## 内容概览
+- Markdown 页面沿用相邻文件的 frontmatter、标题层级、表格和代码块风格；站内链接使用 `/zh/...` 或 `/en/...` 路径。
+- 新增、移动或重命名中文页面时，同步修改 `.vitepress/config.mts` 的对应 `nav` 或 `sidebar` 项。
+- Markdown lint 允许长行和内嵌 HTML（`MD013`、`MD033` 已关闭），其余规则以 `.markdownlint-cli2.jsonc` 为准。
+- API 参考页通过 `<OASpec />` 渲染完整规范；组件来自主题注册，不要在每个页面重复初始化。
+- 主题扩展必须继续调用 `vitepress-openapi` 的 `theme.enhanceApp`，否则 OpenAPI 组件不会完成注册。
+- Mermaid 集成集中在站点配置中，不要为单个页面引入第二套渲染插件。
 
-8 个文档章节，共 36 个中文 Markdown 文件（内容完整）：
+## Important Files
 
-| 章节 | 路径 | 内容 |
-|------|------|------|
-| 使用指南 | `zh/guide/` | 快速入门、工作流概念、画布操作 |
-| 服务端 | `zh/server/` | 部署、模块架构、API 说明 |
-| Studio | `zh/studio/` | 前端界面、功能说明 |
-| 类型引擎 | `zh/type-engine/` | WASM 端口兼容性检查器 API |
-| 插件开发 | `zh/plugins/` | SDK、CLI、发布流程 |
-| 移动端 | `zh/mobile/` | Flutter 应用使用说明 |
-| API 参考 | `zh/api/` | OpenAPI 渲染，基于 vitepress-openapi |
-| 部署 | `zh/deployment/` | Docker Compose、Helm、私有化部署 |
+- `.vitepress/config.mts` — `base`、中英文 locale、中文导航/侧边栏、本地搜索和 Mermaid 的唯一配置入口。
+- `.vitepress/theme/index.ts` — 导入 `public/openapi.json`，以中文 locale、按 tag 分组注册 `vitepress-openapi`。
+- `zh/api/index.md` — 手写 API 使用说明与 `<OASpec />` 渲染入口。
+- `scripts/sync-openapi.mjs` — 从 `agentloom-server/sdk/openapi.json` 读取规范；将相对 `servers[].url` 以 `http://localhost:3000` 规范化为绝对 URL。
+- `package.json` — VitePress 2、Mermaid、OpenAPI 和 Markdown lint 的脚本与依赖定义。
 
-## 注意事项
+## Runtime/Tooling Preferences
 
-- **英文文档为 stub 状态**: `en/` 目录仅有 `index.md` 首页，其余章节均无英文内容
-- OpenAPI 同步脚本 (`scripts/sync-openapi.mjs`) 在构建前从 server 拉取最新 spec 写入 `public/openapi.json`；若 server 不可达则使用已有静态文件
-- `vitepress-openapi` 通过 `theme/index.ts` 注册，使用 `public/openapi.json` 静态导入渲染 API 参考页
-- `vitepress-plugin-mermaid` 在 `config.mts` 的 `markdown.config` 中注册，支持文档内嵌 Mermaid 图表
+- 只使用 pnpm，并在本目录独立安装；不要用根 workspace filter 管理此包。
+- OpenAPI 源文件缺失时，同步脚本会覆盖 `public/openapi.json`，写入空 `paths` 的 OpenAPI 3.0 stub；需要完整 API 文档时先在 `agentloom-server/` 运行 `pnpm openapi:export`，再回到本目录同步。
+- `public/openapi.json` 是同步产物。API 契约应在 server 源头修改，不要把手改该 JSON 当作持久修复。
+
+## Testing & QA
+
+- 内容改动至少运行 `pnpm lint:md`；注意该脚本不覆盖根入口或英文页面，修改这些文件时需人工检查 Markdown 结构。
+- 导航、主题、OpenAPI 或 Mermaid 改动应运行 `pnpm build`，确认无死链和静态导入错误；`ignoreDeadLinks` 为 `false`。
+- 构建后用 `pnpm preview` 检查 `/documentation/` 基路径、中文导航、本地搜索、Mermaid 图表与 API 参考页。
