@@ -10,6 +10,7 @@ import {
 import {
   MarketplaceListingNotFoundException,
   MarketplaceReviewConflictException,
+  MarketplaceReviewInstallRequiredException,
 } from './marketplace.exceptions';
 
 interface MarketplaceReviewAuthor {
@@ -41,6 +42,12 @@ export interface MarketplaceSubmittedReviewItem {
   createdAt: Date;
 }
 
+interface ListedMarketplaceListing {
+  id: string;
+  listingType: 'workflow' | 'plugin';
+  pluginDbId: string | null;
+}
+
 function buildReviewAuthor(params: {
   displayName: string | null;
 }): MarketplaceReviewAuthor {
@@ -54,14 +61,21 @@ export class MarketplaceReviewUserService {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   async submitReview(
+    tenantId: string,
     userId: string,
     listingId: string,
     dto: unknown,
   ): Promise<MarketplaceSubmittedReviewItem> {
     const parsedDto = SubmitReviewSchema.parse(dto);
 
-    await this.ensureListedListingExists(listingId);
+    const listing = await this.ensureListedListingExists(listingId);
 
+    if (listing.listingType === 'plugin') {
+      await this.ensurePluginInstalledByTenant(tenantId, listing.id);
+    }
+    // workflow 侧不加同等约束:resource_source_records 只记录 share_imported +
+    // sourceShareId,没有 marketplace_listing 来源类型或 listingId 关联,
+    // 无法证明这个工作流真的来自该 listing。
     try {
       const [created] = await this.db
         .insert(schema.marketplaceReviews)
@@ -178,9 +192,15 @@ export class MarketplaceReviewUserService {
       .where(eq(schema.marketplaceListings.id, listingId));
   }
 
-  private async ensureListedListingExists(listingId: string): Promise<void> {
+  private async ensureListedListingExists(
+    listingId: string,
+  ): Promise<ListedMarketplaceListing> {
     const [listing] = await this.db
-      .select({ id: schema.marketplaceListings.id })
+      .select({
+        id: schema.marketplaceListings.id,
+        listingType: schema.marketplaceListings.listingType,
+        pluginDbId: schema.marketplaceListings.pluginDbId,
+      })
       .from(schema.marketplaceListings)
       .where(
         and(
@@ -191,6 +211,34 @@ export class MarketplaceReviewUserService {
 
     if (!listing) {
       throw new MarketplaceListingNotFoundException(listingId);
+    }
+
+    return listing;
+  }
+
+  /**
+   * 按租户校验安装事实:安装时插件落在租户唯一组织下(见
+   * `PluginService.cloneMarketplacePlugin`),因此这里按 tenantId 过滤,
+   * 而不是按评价者的 `users.currentOrganizationId`——后者可能为空或指向
+   * 另一个组织,会把已安装租户的成员误判为未安装。
+   */
+  private async ensurePluginInstalledByTenant(
+    tenantId: string,
+    listingId: string,
+  ): Promise<void> {
+    const [installedPlugin] = await this.db
+      .select({ id: schema.plugins.id })
+      .from(schema.plugins)
+      .where(
+        and(
+          eq(schema.plugins.tenantId, tenantId),
+          sql`${schema.plugins.metadata}->'cloned_from_marketplace'->>'listingId' = ${listingId}`,
+        ),
+      )
+      .limit(1);
+
+    if (!installedPlugin) {
+      throw new MarketplaceReviewInstallRequiredException();
     }
   }
 

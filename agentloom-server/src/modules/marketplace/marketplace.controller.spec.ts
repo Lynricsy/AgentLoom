@@ -170,9 +170,15 @@ describe('MarketplaceController', () => {
       };
       reviewUserService.submitReview.mockResolvedValue(mockReview);
 
-      const result = await controller.submitReview(USER_ID, LISTING_ID, dto);
+      const result = await controller.submitReview(
+        TENANT_ID,
+        USER_ID,
+        LISTING_ID,
+        dto,
+      );
 
       expect(reviewUserService.submitReview).toHaveBeenCalledWith(
+        TENANT_ID,
         USER_ID,
         LISTING_ID,
         dto,

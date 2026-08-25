@@ -17,7 +17,9 @@ export async function verifyArchiveSignature(
       {
         key: publicKeyPem,
         padding: constants.RSA_PKCS1_PSS_PADDING,
-        saltLength: constants.RSA_PSS_SALTLEN_AUTO,
+        // 平台签名契约固定使用 digest 长度的 salt；AUTO 会接受任意 salt 长度。
+        // server 端复用此实现验签，固定该值可确保签名口径唯一。
+        saltLength: constants.RSA_PSS_SALTLEN_DIGEST,
       },
       Buffer.from(signatureBase64, 'base64'),
     );

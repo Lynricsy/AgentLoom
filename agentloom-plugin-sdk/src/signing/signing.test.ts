@@ -1,10 +1,11 @@
-import { generateKeyPairSync } from 'node:crypto';
+import { constants, createSign, generateKeyPairSync } from 'node:crypto';
 
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 
 import {
   computeKeyFingerprint,
+  createCanonicalArchivePayload,
   readArchiveManifest,
   updateArchiveManifest,
 } from './archive';
@@ -130,7 +131,10 @@ describe('signing utilities', () => {
         { path: 'dist/index.js', contents: 'export default { nodes: [] };\n' },
         {
           path: 'manifest.json',
-          contents: JSON.stringify({ ...baseManifest, description: 'Signing test fixture' }),
+          contents: JSON.stringify({
+            ...baseManifest,
+            description: 'Signing test fixture',
+          }),
         },
       ]);
 
@@ -152,6 +156,51 @@ describe('signing utilities', () => {
     });
   });
 
+  describe('archive entries', () => {
+    it('归一化后路径重复时应拒绝归档', async () => {
+      const archive = await createArchive([
+        {
+          path: 'manifest.json',
+          contents: `${JSON.stringify(baseManifest, null, 2)}\n`,
+        },
+        { path: 'dist/plugin.wasm', contents: 'first' },
+        { path: 'dist\\plugin.wasm', contents: 'second' },
+      ]);
+
+      await expect(createCanonicalArchivePayload(archive)).rejects.toThrow(
+        '插件包包含重复的归档路径: dist/plugin.wasm',
+      );
+    });
+
+    it('正常归档应读出全部文件条目', async () => {
+      const archive = await createArchive([
+        {
+          path: 'manifest.json',
+          contents: `${JSON.stringify(baseManifest, null, 2)}\n`,
+        },
+        {
+          path: 'dist/plugin.wasm',
+          contents: Buffer.from([0x00, 0x61, 0x73, 0x6d]),
+        },
+        { path: 'node-definitions.json', contents: '[]' },
+        { path: 'README.md', contents: '# Fixture\n' },
+      ]);
+
+      const payload = JSON.parse(
+        (await createCanonicalArchivePayload(archive)).toString('utf8'),
+      ) as {
+        files: Array<{ path: string; sha256: string }>;
+      };
+
+      expect(payload.files.map(({ path }) => path)).toEqual([
+        'dist/plugin.wasm',
+        'node-definitions.json',
+        'README.md',
+      ]);
+      expect(payload.files.every(({ sha256 }) => /^[a-f0-9]{64}$/.test(sha256))).toBe(true);
+    });
+  });
+
   describe('signArchive / verifyArchiveSignature', () => {
     it('最终归档中的签名元数据应可被验证', async () => {
       const { archiveBuffer, signature, contentHash, developerKeyFingerprint } =
@@ -167,6 +216,35 @@ describe('signing utilities', () => {
       expect(manifest.developerKeyFingerprint).toBe(developerKeyFingerprint);
     });
 
+    it('标准签名路径生成的 digest salt 签名应验证通过', async () => {
+      const unsignedArchive = await createUnsignedArchive();
+      const signature = await signArchive(unsignedArchive, privateKey as string);
+
+      expect(await verifyArchiveSignature(unsignedArchive, signature, publicKey as string)).toBe(
+        true,
+      );
+    });
+
+    it('MAX_SIGN salt 长度的签名应验证失败', async () => {
+      const unsignedArchive = await createUnsignedArchive();
+      const payload = await createCanonicalArchivePayload(unsignedArchive);
+      const signer = createSign('SHA256');
+      signer.update(payload);
+      signer.end();
+      const signature = signer.sign(
+        {
+          key: privateKey as string,
+          padding: constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: constants.RSA_PSS_SALTLEN_MAX_SIGN,
+        },
+        'base64',
+      );
+
+      expect(await verifyArchiveSignature(unsignedArchive, signature, publicKey as string)).toBe(
+        false,
+      );
+    });
+
     it('篡改 dist 内容后应验证失败', async () => {
       const { archiveBuffer, signature } = await createSignedArchive(
         privateKey as string,
@@ -178,9 +256,9 @@ describe('signing utilities', () => {
         'export default { nodes: ["tampered"] };\n',
       );
 
-      expect(
-        await verifyArchiveSignature(tamperedArchive, signature, publicKey as string),
-      ).toBe(false);
+      expect(await verifyArchiveSignature(tamperedArchive, signature, publicKey as string)).toBe(
+        false,
+      );
     });
 
     it('使用其他密钥对的签名应返回 false', async () => {
@@ -192,9 +270,9 @@ describe('signing utilities', () => {
       const unsignedArchive = await createUnsignedArchive();
       const signature = await signArchive(unsignedArchive, otherKeys.privateKey as string);
 
-      expect(
-        await verifyArchiveSignature(unsignedArchive, signature, publicKey as string),
-      ).toBe(false);
+      expect(await verifyArchiveSignature(unsignedArchive, signature, publicKey as string)).toBe(
+        false,
+      );
     });
 
     it('无效公钥应返回 false', async () => {

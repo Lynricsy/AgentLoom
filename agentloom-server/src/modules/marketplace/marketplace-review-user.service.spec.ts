@@ -5,10 +5,12 @@ import { DRIZZLE } from '../../database/database.module';
 import {
   MarketplaceListingNotFoundException,
   MarketplaceReviewConflictException,
+  MarketplaceReviewInstallRequiredException,
 } from './marketplace.exceptions';
 import { MarketplaceReviewUserService } from './marketplace-review-user.service';
 
 const LISTING_ID = '00000000-0000-0000-0000-000000000001';
+const TENANT_ID = '00000000-0000-0000-0000-000000000009';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
 const REVIEW_ID = '00000000-0000-0000-0000-000000000003';
 const NOW = new Date('2025-01-01T00:00:00.000Z');
@@ -17,6 +19,13 @@ function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
   return { from, where };
+}
+
+function createSelectChainWithLimit(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { from, where, limit };
 }
 
 function createSelectChainWithPaginatedJoin(result: unknown) {
@@ -77,12 +86,20 @@ describe('MarketplaceReviewUserService', () => {
   });
 
   describe('submitReview', () => {
-    it('应创建评论、回算评分并返回精简评论数据', async () => {
+    it('workflow listing 应保持原有行为并正常写入评论', async () => {
       const insertChain = createInsertChain([{ id: REVIEW_ID }]);
       const updateChain = createUpdateWhereChain(undefined);
 
       db.select
-        .mockReturnValueOnce(createSelectChain([{ id: LISTING_ID }]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: LISTING_ID,
+              listingType: 'workflow',
+              pluginDbId: null,
+            },
+          ]),
+        )
         .mockReturnValueOnce(
           createSelectChain([{ avgRating: '5.00', reviewCount: 1 }]),
         )
@@ -99,10 +116,15 @@ describe('MarketplaceReviewUserService', () => {
       db.insert.mockReturnValueOnce(insertChain);
       db.update.mockReturnValueOnce(updateChain);
 
-      const result = await service.submitReview(USER_ID, LISTING_ID, {
-        rating: 5,
-        content: '非常实用',
-      });
+      const result = await service.submitReview(
+        TENANT_ID,
+        USER_ID,
+        LISTING_ID,
+        {
+          rating: 5,
+          content: '非常实用',
+        },
+      );
 
       expect(insertChain.values).toHaveBeenCalledWith({
         listingId: LISTING_ID,
@@ -125,6 +147,74 @@ describe('MarketplaceReviewUserService', () => {
       });
     });
 
+    it('plugin listing 未安装时应抛出 403', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: LISTING_ID,
+              listingType: 'plugin',
+              pluginDbId: '00000000-0000-0000-0000-000000000004',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(
+        service.submitReview(TENANT_ID, USER_ID, LISTING_ID, { rating: 4 }),
+      ).rejects.toBeInstanceOf(MarketplaceReviewInstallRequiredException);
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('plugin listing 已安装时应正常写入评论', async () => {
+      const insertChain = createInsertChain([{ id: REVIEW_ID }]);
+      const updateChain = createUpdateWhereChain(undefined);
+
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: LISTING_ID,
+              listingType: 'plugin',
+              pluginDbId: '00000000-0000-0000-0000-000000000004',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([{ id: 'plugin-copy' }]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([{ avgRating: '4.00', reviewCount: 1 }]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: REVIEW_ID,
+              rating: 4,
+              content: null,
+              createdAt: NOW,
+            },
+          ]),
+        );
+      db.insert.mockReturnValueOnce(insertChain);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await expect(
+        service.submitReview(TENANT_ID, USER_ID, LISTING_ID, { rating: 4 }),
+      ).resolves.toEqual({
+        id: REVIEW_ID,
+        rating: 4,
+        content: null,
+        createdAt: NOW,
+      });
+      expect(insertChain.values).toHaveBeenCalledWith({
+        listingId: LISTING_ID,
+        userId: USER_ID,
+        rating: 4,
+        content: null,
+      });
+    });
     it('重复评论时应抛出 MarketplaceReviewConflictException', async () => {
       const uniqueViolation = Object.assign(new Error('duplicate key'), {
         code: '23505',
@@ -138,7 +228,7 @@ describe('MarketplaceReviewUserService', () => {
       });
 
       await expect(
-        service.submitReview(USER_ID, LISTING_ID, { rating: 4 }),
+        service.submitReview(TENANT_ID, USER_ID, LISTING_ID, { rating: 4 }),
       ).rejects.toBeInstanceOf(MarketplaceReviewConflictException);
       expect(db.update).not.toHaveBeenCalled();
     });

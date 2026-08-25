@@ -62,3 +62,14 @@ export class MarketplaceReviewConflictException extends DomainException {
     });
   }
 }
+
+export class MarketplaceReviewInstallRequiredException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/marketplace-review-install-required',
+      title: 'Marketplace 评价需要先安装',
+      status: HttpStatus.FORBIDDEN,
+      detail: '仅安装后可评价',
+    });
+  }
+}
