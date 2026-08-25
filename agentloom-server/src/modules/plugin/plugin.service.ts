@@ -64,6 +64,11 @@ type MarketplaceCloneMetadata = {
     sourcePluginDbId: string;
     sourcePluginId: string;
     clonedAt: string;
+    /** 安装时的价格快照；旧数据缺失时为 null，回退查询当前 listing */
+    pricingModel: schema.MarketplaceListing['pricingModel'] | null;
+    pricePerExecution: string | null;
+    sourceVersion: string | null;
+    sourceContentHash: string | null;
   };
 };
 
@@ -483,6 +488,24 @@ export class PluginService {
       };
     }
 
+    // 安装时已快照价格：下架/改价不影响已安装实例的计费口径。
+    if (cloneMetadata.pricingModel) {
+      return {
+        sourceTenantId: cloneMetadata.sourceTenantId,
+        sourceOrgId: cloneMetadata.sourceOrgId,
+        sourcePluginDbId: cloneMetadata.sourcePluginDbId,
+        sourcePluginId: cloneMetadata.sourcePluginId,
+        sourceListingId: cloneMetadata.listingId,
+        pricingModel: cloneMetadata.pricingModel,
+        billingAmount:
+          cloneMetadata.pricingModel === 'per_execution'
+            ? normalizeFixedScaleDecimal(cloneMetadata.pricePerExecution)
+            : null,
+        currency: 'USD',
+      };
+    }
+
+    // 旧 clone 无价格快照：回退查询当前 listing（下架后按 free 处理）。
     const listing = await this.findPluginMarketplaceListingById(
       cloneMetadata.listingId,
     );
@@ -647,6 +670,13 @@ export class PluginService {
         sourcePluginDbId: source.plugin.id,
         sourcePluginId: source.plugin.pluginId,
         clonedAt: new Date().toISOString(),
+        pricingModel: source.pricingModel,
+        pricePerExecution:
+          source.pricingModel === 'per_execution'
+            ? normalizeFixedScaleDecimal(source.pricePerExecution)
+            : null,
+        sourceVersion: source.plugin.version,
+        sourceContentHash: source.plugin.contentHash ?? null,
       },
     };
 
@@ -692,6 +722,23 @@ export class PluginService {
         typeof clonedFromMarketplace.clonedAt === 'string'
           ? clonedFromMarketplace.clonedAt
           : '',
+      pricingModel:
+        clonedFromMarketplace.pricingModel === 'free' ||
+        clonedFromMarketplace.pricingModel === 'per_execution'
+          ? clonedFromMarketplace.pricingModel
+          : null,
+      pricePerExecution:
+        typeof clonedFromMarketplace.pricePerExecution === 'string'
+          ? clonedFromMarketplace.pricePerExecution
+          : null,
+      sourceVersion:
+        typeof clonedFromMarketplace.sourceVersion === 'string'
+          ? clonedFromMarketplace.sourceVersion
+          : null,
+      sourceContentHash:
+        typeof clonedFromMarketplace.sourceContentHash === 'string'
+          ? clonedFromMarketplace.sourceContentHash
+          : null,
     };
   }
 }
