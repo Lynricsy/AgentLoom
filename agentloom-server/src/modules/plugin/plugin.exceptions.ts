@@ -176,3 +176,14 @@ export class PluginSandboxException extends DomainException {
     });
   }
 }
+
+export class PluginUsageLedgerException extends DomainException {
+  constructor(pluginId: string, detail?: string) {
+    super({
+      type: `${BASE_URL}/plugin-usage-ledger-error`,
+      title: 'Plugin Usage Ledger Error',
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      detail: detail ?? `插件 "${pluginId}" 的用量落账失败，执行结果已回滚。`,
+    });
+  }
+}

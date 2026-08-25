@@ -23,6 +23,7 @@ import {
   PluginPermissionDeniedException,
   PluginResourceExhaustedException,
   PluginSandboxException,
+  PluginUsageLedgerException,
 } from './plugin.exceptions';
 
 const mocks = vi.hoisted(() => ({
@@ -332,11 +333,7 @@ describe('PluginExecutionWorker', () => {
       });
     });
 
-    it('记录使用量失败时不应影响执行成功', async () => {
-      const warnSpy = vi
-        .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(() => {});
-
+    it('记录使用量失败时应让 job 失败且不写 completed 检查点', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord(),
       );
@@ -353,17 +350,19 @@ describe('PluginExecutionWorker', () => {
         new Error('usage failed'),
       );
 
-      const result = await worker.process(createJob());
+      await expect(worker.process(createJob())).rejects.toBeInstanceOf(
+        PluginUsageLedgerException,
+      );
 
-      expect(result.status).toBe('completed');
-      expect(result.outputs).toEqual({ result: 'ok' });
       expect(pluginService.resolveUsageSourceContext).toHaveBeenCalledTimes(1);
-      await vi.waitFor(() => {
-        expect(warnSpy).toHaveBeenCalledWith(
-          'Failed to record plugin usage: usage failed',
-          { jobId: 'job-1' },
-        );
-      });
+      expect(stepStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+        TENANT_ID,
+        expect.any(String),
+        'completed',
+        expect.anything(),
+      );
+      expect(nodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
+      expect(nodeScheduler.onNodeFailed).not.toHaveBeenCalled();
     });
 
     it('执行抛错时应收口为 failed 结果且不记录插件使用量', async () => {
@@ -1004,20 +1003,14 @@ describe('PluginExecutionWorker', () => {
         );
       });
 
-      it('usage 服务抛出非 Error 值也不改变已完成结果', async () => {
+      it('usage 服务抛出非 Error 值时也应让 job 失败', async () => {
         prepareSuccessfulSandbox();
-        const warnSpy = vi
-          .spyOn(Logger.prototype, 'warn')
-          .mockImplementation(() => {});
         pluginUsageService.recordUsage.mockRejectedValue('quota unavailable');
 
-        await expect(worker.process(createJob())).resolves.toMatchObject({
-          status: 'completed',
+        await expect(worker.process(createJob())).rejects.toMatchObject({
+          detail: expect.stringContaining('quota unavailable'),
         });
-        expect(warnSpy).toHaveBeenCalledWith(
-          'Failed to record plugin usage: quota unavailable',
-          { jobId: 'job-1' },
-        );
+        expect(nodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
       });
 
       it('生成插件从 payload-out 读取数组与空值信号并采用显式 mode', async () => {
