@@ -56,4 +56,27 @@ describe('marketplaceKeys', () => {
       'listing-1',
     ])
   })
+
+  it('folds pricingModel into the public list key', () => {
+    expect(
+      publicMarketplaceKeys.list({
+        pricingModel: 'per_execution',
+        sort: 'popular',
+        page: 1,
+        pageSize: 12,
+      }),
+    ).toEqual([
+      'public-marketplace',
+      'list',
+      {
+        pricingModel: 'per_execution',
+        sort: 'popular',
+        page: 1,
+        pageSize: 12,
+      },
+    ])
+    expect(
+      publicMarketplaceKeys.list({ pricingModel: 'free', page: 1 }),
+    ).not.toEqual(publicMarketplaceKeys.list({ page: 1 }))
+  })
 })

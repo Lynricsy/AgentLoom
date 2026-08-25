@@ -175,6 +175,31 @@ describe('publicMarketplaceApi', () => {
     expect(result).toEqual(response)
   })
 
+  it('forwards pricingModel to the server as a query param', async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, pageSize: 12, totalPages: 0 },
+      }),
+    })
+
+    await fetchPublicListings({
+      pricingModel: 'per_execution',
+      sort: 'popular',
+      page: 1,
+      pageSize: 12,
+    })
+
+    expect(getMock).toHaveBeenCalledWith('marketplace/browse', {
+      searchParams: {
+        pricingModel: 'per_execution',
+        sort: 'popular',
+        page: 1,
+        pageSize: 12,
+      },
+    })
+  })
+
   it('fetches public listing detail', async () => {
     const response = makeListingDetail()
     getMock.mockReturnValue({

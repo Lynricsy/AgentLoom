@@ -1,5 +1,8 @@
-import { MarketplaceBrowsePage } from '@/features/marketplace'
+import {
+  MarketplaceBrowsePage,
+  type MarketplaceBrowsePageProps,
+} from '@/features/marketplace'
 
-export function DiscoverPage() {
-  return <MarketplaceBrowsePage mode="discover" />
+export function DiscoverPage(props: Omit<MarketplaceBrowsePageProps, 'mode'>) {
+  return <MarketplaceBrowsePage mode="discover" {...props} />
 }
