@@ -20,12 +20,21 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+/**
+ * 导航项可见角色。
+ * 与 `InterventionRole` 同一套租户角色枚举，但 shared 层不反向依赖 feature，
+ * 因此在此本地声明；调用方传入的 role 由 `getInterventionPolicyRoleFromToken` 解析。
+ */
+export type NavRole = 'owner' | 'admin' | 'creator' | 'operator' | 'viewer'
+
 export interface NavItem {
   label: string
   icon: LucideIcon
   to: string
   /** 路径前缀匹配，决定 active 态 */
   matchPrefix: string
+  /** 省略即所有角色可见；给出列表时只有命中的角色才渲染该入口 */
+  roles?: readonly NavRole[]
 }
 
 export interface NavGroup {
@@ -66,11 +75,21 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/templates',
         matchPrefix: '/templates',
       },
+      // 开发者控制台按角色落到有权限的第一个 tab：
+      // owner/admin 能看收益，creator 只能管自己的签名公钥。
       {
         label: '开发者',
         icon: Code,
         to: '/developer-console/earnings',
         matchPrefix: '/developer-console',
+        roles: ['owner', 'admin'],
+      },
+      {
+        label: '开发者',
+        icon: Code,
+        to: '/developer-console/keys',
+        matchPrefix: '/developer-console',
+        roles: ['creator'],
       },
     ],
   },
@@ -154,5 +173,15 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-/** 扁平化的全部导航项，供命令面板检索 */
-export const NAV_ITEMS_FLAT: NavItem[] = NAV_GROUPS.flatMap((group) => group.items)
+/**
+ * 按当前角色裁剪导航模型 —— AppSidebar、移动端抽屉与命令面板共用同一份可见性判定。
+ * role 为 null（token 未解析出角色）时只保留无角色限制的入口。
+ */
+export function filterNavGroupsByRole(role: NavRole | null): NavGroup[] {
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => !item.roles || (role !== null && item.roles.includes(role)),
+    ),
+  })).filter((group) => group.items.length > 0)
+}

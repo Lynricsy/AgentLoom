@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Monitor, Moon, Settings, Sun } from 'lucide-react'
+import { useAuthToken } from '@/features/auth'
+import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import { useTheme, type Theme } from '@/shared/hooks/use-theme'
 import {
   CommandDialog,
@@ -12,7 +14,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from '@/shared/ui/command'
-import { NAV_ITEMS_FLAT } from '@/shared/components/app-sidebar/navigation'
+import { filterNavGroupsByRole } from '@/shared/components/app-sidebar/navigation'
 
 const THEME_OPTIONS: { theme: Theme; label: string; icon: typeof Sun }[] = [
   { theme: 'light', label: '浅色主题', icon: Sun },
@@ -28,6 +30,13 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const { setTheme } = useTheme()
+  const role = getInterventionPolicyRoleFromToken(useAuthToken())
+
+  // 命令面板与侧边栏共用同一份角色可见性判定，避免出现"搜得到但点进去 403"的入口
+  const navItems = useMemo(
+    () => filterNavGroupsByRole(role).flatMap((group) => group.items),
+    [role],
+  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -48,7 +57,7 @@ export function CommandPalette() {
         <CommandEmpty>没有匹配项</CommandEmpty>
 
         <CommandGroup heading="前往">
-          {NAV_ITEMS_FLAT.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon
             return (
               <CommandItem

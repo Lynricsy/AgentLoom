@@ -3,13 +3,19 @@ import { motion } from 'motion/react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { DUR, EASE } from '@/shared/lib/motion'
-import { NAV_GROUPS, type NavItem } from './navigation'
+import {
+  filterNavGroupsByRole,
+  type NavItem,
+  type NavRole,
+} from './navigation'
 
 /** active 指示条共享 layoutId，切换路由时在各项之间滑动 */
 const INDICATOR_LAYOUT_ID = 'app-nav-indicator'
 
 export interface SidebarNavProps {
   pathname: string
+  /** 当前租户角色，决定按角色收敛的入口是否渲染 */
+  role: NavRole | null
   /** 图标列模式：隐藏文字与分组标题 */
   collapsed?: boolean
   /** 分组折叠状态；collapsed 模式下忽略 */
@@ -23,6 +29,7 @@ export interface SidebarNavProps {
 
 export function SidebarNav({
   pathname,
+  role,
   collapsed = false,
   groupExpanded,
   onToggleGroup,
@@ -31,7 +38,7 @@ export function SidebarNav({
 }: SidebarNavProps) {
   return (
     <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 py-2">
-      {NAV_GROUPS.map((group) => {
+      {filterNavGroupsByRole(role).map((group) => {
         const groupActive = group.items.some((item) =>
           pathname.startsWith(item.matchPrefix),
         )

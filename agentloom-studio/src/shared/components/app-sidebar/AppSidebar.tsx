@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
+import { useAuthToken } from "@/features/auth";
+import { getInterventionPolicyRoleFromToken } from "@/features/intervention-policy";
 import { NotificationBell } from "@/features/notification";
 import { BrandMark } from "@/shared/components/brand";
 import { cn } from "@/shared/lib/utils";
@@ -36,6 +38,7 @@ export function AppSidebar() {
   const [groupExpanded, setGroupExpanded] = useState(getInitialGroupExpanded);
   const location = useRouterState({ select: (s) => s.location });
   const pathname = location.pathname;
+  const role = getInterventionPolicyRoleFromToken(useAuthToken());
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -108,6 +111,7 @@ export function AppSidebar() {
 
       <SidebarNav
         pathname={pathname}
+        role={role}
         collapsed={collapsed}
         groupExpanded={groupExpanded}
         onToggleGroup={toggleGroup}
