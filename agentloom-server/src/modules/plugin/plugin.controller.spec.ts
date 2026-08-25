@@ -15,6 +15,7 @@ import { QueryPluginsDto, UpdatePluginStatusDto } from './dto/plugin.dto';
 import { PluginController } from './plugin.controller';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 import {
+  PluginAlreadyExistsException,
   PluginFileTooLargeException,
   PluginSignatureInvalidException,
   PluginSignatureMissingException,
@@ -28,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     register: vi.fn(),
     findAll: vi.fn(),
     findById: vi.fn(),
+    findByPluginId: vi.fn().mockResolvedValue(null),
     updateStatus: vi.fn(),
     remove: vi.fn(),
     resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
@@ -132,8 +134,11 @@ function createPluginResponse(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const VALID_WASM_BYTES = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]);
+
 async function createPluginArchiveBuffer(
   manifestOverrides: Record<string, unknown> = {},
+  wasmPayload: Buffer | null = VALID_WASM_BYTES,
 ): Promise<Buffer> {
   const zip = new JSZip();
 
@@ -148,6 +153,7 @@ async function createPluginArchiveBuffer(
       license: 'MIT',
       minPlatformVersion: '1.0.0',
       permissions: ['network:outbound'],
+      wasmEntry: 'dist/plugin.wasm',
       ...manifestOverrides,
     }),
   );
@@ -156,6 +162,10 @@ async function createPluginArchiveBuffer(
     JSON.stringify([{ type: 'review-analyzer' }]),
   );
 
+  if (wasmPayload) {
+    zip.file('dist/plugin.wasm', wasmPayload);
+  }
+
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 
@@ -163,8 +173,14 @@ async function createRegisterRequest(options?: {
   status?: string;
   manifestOverrides?: Record<string, unknown>;
   userOverrides?: Partial<JwtPayload>;
+  wasmPayload?: Buffer | null;
 }): Promise<AuthenticatedRequest> {
-  const buffer = await createPluginArchiveBuffer(options?.manifestOverrides);
+  const buffer = await createPluginArchiveBuffer(
+    options?.manifestOverrides,
+    options?.wasmPayload === undefined
+      ? VALID_WASM_BYTES
+      : options.wasmPayload,
+  );
 
   return {
     tenantId: TENANT_ID,
@@ -650,8 +666,10 @@ describe('PluginController', () => {
           contentHash: CONTENT_HASH,
           developerKeyFingerprint: KEY_FINGERPRINT,
           nodes: [{ type: 'compat-node' }],
+          wasmEntry: 'dist/plugin.wasm',
         }),
       );
+      zip.file('dist/plugin.wasm', VALID_WASM_BYTES);
       const buffer = await zip.generateAsync({ type: 'nodebuffer' });
       const request = await createRegisterRequest({ status: 'registered' });
       const multipart = await request.file();
@@ -685,52 +703,9 @@ describe('PluginController', () => {
     });
 
     it('WASM entry 存在时上传 archive 与 wasm 两个对象', async () => {
-      const zip = new JSZip();
-      zip.file(
-        'manifest.json',
-        JSON.stringify({
-          id: 'com.example.wasm',
-          version: '1.0.0',
-          wasmEntry: 'dist/plugin.wasm',
-          signature: SIGNATURE,
-          contentHash: CONTENT_HASH,
-          developerKeyFingerprint: KEY_FINGERPRINT,
-        }),
-      );
-      zip.file('dist/plugin.wasm', Buffer.from([0, 97, 115, 109]));
-      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
-      const request = await createRegisterRequest({ status: 'registered' });
-      const multipart = await request.file();
-      vi.mocked(
-        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
-          .toBuffer,
-      ).mockResolvedValue(buffer);
-      vi.mocked(request.file).mockResolvedValue(multipart);
-      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
-        publicKey: 'pem',
-      });
-      signatureService.verifyArchiveSignature.mockResolvedValue({
-        valid: true,
-        contentHash: CONTENT_HASH,
-      });
-      service.register.mockResolvedValue(createPluginResponse());
-
-      await controller.register(request);
-
-      expect(storageService.upload).toHaveBeenCalledTimes(2);
-      expect(storageService.upload).toHaveBeenLastCalledWith(
-        expect.stringContaining('plugin.wasm'),
-        Buffer.from([0, 97, 115, 109]),
-        4,
-        'application/wasm',
-      );
-    });
-
-    it('WASM entry 缺失时仍注册 archive 且 wasmBundleUrl 为空', async () => {
       const request = await createRegisterRequest({
         status: 'registered',
         manifestOverrides: {
-          wasmEntry: 'missing.wasm',
           signature: SIGNATURE,
           contentHash: CONTENT_HASH,
           developerKeyFingerprint: KEY_FINGERPRINT,
@@ -747,7 +722,13 @@ describe('PluginController', () => {
 
       await controller.register(request);
 
-      expect(storageService.upload).toHaveBeenCalledTimes(1);
+      expect(storageService.upload).toHaveBeenCalledTimes(2);
+      expect(storageService.upload).toHaveBeenLastCalledWith(
+        expect.stringContaining('plugin.wasm'),
+        VALID_WASM_BYTES,
+        VALID_WASM_BYTES.length,
+        'application/wasm',
+      );
       expect(service.register).toHaveBeenCalledWith(
         TENANT_ID,
         ORG_ID,
@@ -755,7 +736,166 @@ describe('PluginController', () => {
         expect.any(Object),
         expect.any(Array),
         expect.any(String),
-        expect.objectContaining({ wasmBundleUrl: undefined }),
+        expect.objectContaining({
+          wasmBundleUrl: expect.stringContaining('plugin.wasm'),
+        }),
+      );
+    });
+
+    it('manifest 缺少 wasmEntry 时应拒绝且不上传任何对象', async () => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          wasmEntry: undefined,
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('wasmEntry 指向的文件不存在时应拒绝且不上传任何对象', async () => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          wasmEntry: 'dist/missing.wasm',
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['/abs/plugin.wasm'],
+      ['../escape/plugin.wasm'],
+      ['dist\\plugin.wasm'],
+    ])('wasmEntry 为非法路径 %s 时应拒绝', async (wasmEntry) => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          wasmEntry,
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(storageService.upload).not.toHaveBeenCalled();
+    });
+
+    it('wasm 产物魔数不合法时应拒绝', async () => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+        wasmPayload: Buffer.from('not a wasm module'),
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(storageService.upload).not.toHaveBeenCalled();
+    });
+
+    it('插件已存在时应在上传前拒绝，避免孤儿对象', async () => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.findByPluginId.mockResolvedValue(createPluginResponse());
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginAlreadyExistsException,
+      );
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('注册落库失败时应清理已上传的 archive 与 wasm 对象', async () => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.register.mockRejectedValue(new Error('insert failed'));
+
+      await expect(controller.register(request)).rejects.toThrow(
+        'insert failed',
+      );
+      expect(storageService.delete).toHaveBeenCalledTimes(2);
+      expect(storageService.delete).toHaveBeenCalledWith(
+        expect.stringContaining('archive.alp'),
+      );
+      expect(storageService.delete).toHaveBeenCalledWith(
+        expect.stringContaining('plugin.wasm'),
       );
     });
 
