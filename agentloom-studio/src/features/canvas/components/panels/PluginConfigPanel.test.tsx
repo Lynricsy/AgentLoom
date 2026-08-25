@@ -82,7 +82,22 @@ describe('PluginConfigPanel', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('必填字段为空时上报无效', async () => {
+  it('必填字段为空时未交互也上报无效', () => {
+    const onValidationChange = vi.fn()
+
+    render(
+      <PluginConfigPanel
+        node={makeNode({ pluginConfigSchema: SCHEMA })}
+        onConfigChange={vi.fn()}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    // 不点、不 blur:空必填配置必须当场判无效,否则节点会带空配置进入执行
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+  })
+
+  it('必填字段 blur 后仍上报无效并展示错误文案', async () => {
     const onValidationChange = vi.fn()
 
     render(
@@ -98,8 +113,26 @@ describe('PluginConfigPanel', () => {
     await userEvent.tab()
 
     await waitFor(() => {
-      expect(onValidationChange).toHaveBeenLastCalledWith(true)
+      expect(screen.getByText('此字段为必填项')).toBeInTheDocument()
     })
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+  })
+
+  it('必填字段已有值时未交互上报有效', () => {
+    const onValidationChange = vi.fn()
+
+    render(
+      <PluginConfigPanel
+        node={makeNode({
+          pluginConfigSchema: SCHEMA,
+          pluginConfig: { targetLang: 'ja' },
+        })}
+        onConfigChange={vi.fn()}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    expect(onValidationChange).toHaveBeenLastCalledWith(false)
   })
 
   it('按字段 type 渲染 number / boolean / enum 控件并回写正确的值类型', async () => {

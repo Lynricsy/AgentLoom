@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
@@ -99,12 +99,7 @@ const DynamicFormInner = memo(function DynamicFormInner({
     defaultValues,
     mode: 'onBlur',
   })
-  const {
-    reset,
-    trigger,
-    watch,
-    formState: { errors },
-  } = form
+  const { reset, trigger, watch } = form
 
   const didMountRef = useRef(false)
   useEffect(() => {
@@ -134,12 +129,20 @@ const DynamicFormInner = memo(function DynamicFormInner({
     }
   }, [watch])
 
-  const hasErrors = Object.keys(errors).length > 0
+  // 上报给上层的有效性必须与「用户是否碰过表单」无关:react-hook-form 的
+  // formState.errors 只在字段 blur/trigger 后才填充,未交互时为空,若照它上报
+  // 会让「必填项为空」的节点被判为合法并放行执行。因此上报值直接由 schema
+  // 解析当前值得出;errors 仍只负责字段级错误文案的展示时机。
+  const watchedValues = useWatch({ control: form.control })
+  const reportedHasErrors = useMemo(
+    () => !zodSchema.safeParse({ ...defaultValues, ...watchedValues }).success,
+    [defaultValues, watchedValues, zodSchema],
+  )
   const onValidationChangeRef = useRef(onValidationChange)
   onValidationChangeRef.current = onValidationChange
   useEffect(() => {
-    onValidationChangeRef.current?.(hasErrors)
-  }, [hasErrors])
+    onValidationChangeRef.current?.(reportedHasErrors)
+  }, [reportedHasErrors])
 
   // 任一字段 blur 都跑整表校验，保证多个必填字段能同时报错
   const handleFieldBlur = useCallback(() => {
