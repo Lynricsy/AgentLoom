@@ -11,6 +11,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { PluginRecord } from '../../database/schema/plugins.schema';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import { normalizeFixedScaleDecimal } from './fixed-scale-decimal';
 import {
   QueryPluginsSchema,
@@ -95,7 +96,10 @@ export interface PluginUsageSourceContext {
 export class PluginService {
   private readonly logger = new Logger(PluginService.name);
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly storageService: StorageService,
+  ) {}
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
@@ -368,6 +372,12 @@ export class PluginService {
   }
 
   async remove(id: string, tenantId: string): Promise<void> {
+    const plugin = await this.findPlugin(tenantId, id);
+
+    if (!plugin) {
+      throw new PluginNotFoundException(id);
+    }
+
     const [deleted] = await this.tenantDb
       .delete(schema.plugins)
       .where(
@@ -379,6 +389,11 @@ export class PluginService {
       throw new PluginNotFoundException(id);
     }
 
+    await this.deleteOwnedStorageObjects(tenantId, [
+      plugin.storageKey,
+      plugin.wasmBundleUrl,
+    ]);
+
     this.logger.log(
       JSON.stringify({
         action: 'plugin_deleted',
@@ -386,6 +401,35 @@ export class PluginService {
         tenantId,
       }),
     );
+  }
+
+  /**
+   * best-effort 清理本租户拥有的对象。
+   *
+   * 历史 clone 的 key 可能仍指向源租户前缀，跨租户删除会毁掉源插件产物，
+   * 因此只删 `tenants/<tenantId>/` 前缀下的对象。
+   */
+  private async deleteOwnedStorageObjects(
+    tenantId: string,
+    keys: Array<string | null>,
+  ): Promise<void> {
+    const ownedPrefix = `tenants/${tenantId}/`;
+
+    for (const key of keys) {
+      if (!key || !key.startsWith(ownedPrefix)) {
+        continue;
+      }
+
+      try {
+        await this.storageService.delete(key);
+      } catch (error) {
+        this.logger.warn(
+          `插件对象清理失败: ${key} (${
+            error instanceof Error ? error.message : String(error)
+          })`,
+        );
+      }
+    }
   }
 
   async findActiveByPluginId(
