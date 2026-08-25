@@ -474,44 +474,108 @@ export class PluginService {
       throw new PluginAlreadyExistsException(source.plugin.pluginId);
     }
 
-    const [created] = await this.tenantDb
-      .insert(schema.plugins)
-      .values({
-        tenantId,
-        orgId: targetOrgId,
-        pluginId: source.plugin.pluginId,
-        name: this.normalizeNullableText(name) ?? source.plugin.name,
-        version: source.plugin.version,
-        author: source.plugin.author,
-        description:
-          this.normalizeNullableText(description) ??
-          this.normalizeNullableText(source.plugin.description),
-        license: this.normalizeNullableText(source.plugin.license),
-        status: 'active',
-        manifest: source.plugin.manifest,
-        nodeDefinitions: source.plugin.nodeDefinitions,
-        storageKey: this.normalizeNullableText(source.plugin.storageKey),
-        signature: this.normalizeNullableText(source.plugin.signature),
-        contentHash: this.normalizeNullableText(source.plugin.contentHash),
-        wasmBundleUrl: this.normalizeNullableText(source.plugin.wasmBundleUrl),
-        permissions: source.plugin.permissions,
-        installedBy: userId,
-        metadata: this.buildMarketplaceCloneMetadata(source),
-      })
-      .returning();
-
-    this.logger.log(
-      JSON.stringify({
-        action: 'plugin_marketplace_installed',
-        listingId: source.listingId,
-        sourcePluginDbId: source.plugin.id,
-        installedPluginDbId: created.id,
-        tenantId,
-        userId,
-      }),
+    const sourceWasmKey = this.normalizeNullableText(
+      source.plugin.wasmBundleUrl,
     );
 
-    return created;
+    if (!sourceWasmKey) {
+      throw new PluginValidationException(
+        '源插件缺少可执行 WASM 产物，无法安装',
+      );
+    }
+
+    // copy-on-install：安装方持有自己租户前缀下的产物副本，
+    // 源插件被删除或源租户清理对象后已安装实例仍可执行。
+    const sourceArchiveKey = this.normalizeNullableText(
+      source.plugin.storageKey,
+    );
+    const targetPrefix = `tenants/${tenantId}/plugins/${source.plugin.pluginId}/${source.plugin.version}`;
+    const targetWasmKey = `${targetPrefix}/plugin.wasm`;
+    const targetArchiveKey = sourceArchiveKey
+      ? `${targetPrefix}/archive.alp`
+      : null;
+    const copiedKeys: string[] = [];
+
+    try {
+      await this.copyStorageObject(
+        sourceWasmKey,
+        targetWasmKey,
+        'application/wasm',
+      );
+      copiedKeys.push(targetWasmKey);
+
+      if (sourceArchiveKey && targetArchiveKey) {
+        await this.copyStorageObject(
+          sourceArchiveKey,
+          targetArchiveKey,
+          'application/zip',
+        );
+        copiedKeys.push(targetArchiveKey);
+      }
+
+      const [created] = await this.tenantDb
+        .insert(schema.plugins)
+        .values({
+          tenantId,
+          orgId: targetOrgId,
+          pluginId: source.plugin.pluginId,
+          name: this.normalizeNullableText(name) ?? source.plugin.name,
+          version: source.plugin.version,
+          author: source.plugin.author,
+          description:
+            this.normalizeNullableText(description) ??
+            this.normalizeNullableText(source.plugin.description),
+          license: this.normalizeNullableText(source.plugin.license),
+          status: 'active',
+          manifest: source.plugin.manifest,
+          nodeDefinitions: source.plugin.nodeDefinitions,
+          storageKey: targetArchiveKey,
+          signature: this.normalizeNullableText(source.plugin.signature),
+          contentHash: this.normalizeNullableText(source.plugin.contentHash),
+          wasmBundleUrl: targetWasmKey,
+          permissions: source.plugin.permissions,
+          installedBy: userId,
+          metadata: this.buildMarketplaceCloneMetadata(source),
+        })
+        .returning();
+
+      this.logger.log(
+        JSON.stringify({
+          action: 'plugin_marketplace_installed',
+          listingId: source.listingId,
+          sourcePluginDbId: source.plugin.id,
+          installedPluginDbId: created.id,
+          tenantId,
+          userId,
+        }),
+      );
+
+      return created;
+    } catch (error) {
+      await this.deleteOwnedStorageObjects(tenantId, copiedKeys);
+      throw error;
+    }
+  }
+
+  private async copyStorageObject(
+    sourceKey: string,
+    targetKey: string,
+    contentType: string,
+  ): Promise<void> {
+    const readable = await this.storageService.download(sourceKey);
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of readable) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    const buffer = Buffer.concat(chunks);
+    await this.storageService.upload(
+      targetKey,
+      buffer,
+      buffer.length,
+      contentType,
+    );
   }
 
   async resolveUsageSourceContext(

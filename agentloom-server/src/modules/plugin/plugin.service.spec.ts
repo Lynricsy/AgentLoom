@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../database/database.module';
@@ -19,6 +20,7 @@ const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const USER_ID = '00000000-0000-0000-0000-000000000002';
 const ORG_ID = '00000000-0000-0000-0000-000000000003';
 const PLUGIN_ID = '00000000-0000-0000-0000-000000000004';
+const SOURCE_TENANT_ID = '00000000-0000-0000-0000-000000000005';
 const NOW = new Date('2025-01-01T00:00:00.000Z');
 
 const VALID_MANIFEST = {
@@ -587,6 +589,9 @@ describe('PluginService', () => {
       db.select
         .mockReturnValueOnce(selectOrg)
         .mockReturnValueOnce(selectExisting);
+      storageService.download.mockResolvedValue(
+        Readable.from([Buffer.from('artifact')]),
+      );
       db.insert.mockReturnValue(insertPlugin);
 
       await service.cloneMarketplacePlugin({
@@ -619,6 +624,129 @@ describe('PluginService', () => {
             },
           }),
         }),
+      );
+    });
+
+    it('应把源产物复制到目标租户前缀并写入新 key', async () => {
+      const sourcePlugin = createPlugin({
+        status: 'active',
+        version: '2.1.0',
+        storageKey: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.1.0/archive.alp`,
+        wasmBundleUrl: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
+      });
+      const insertPlugin = createInsertChain([createPlugin({ id: 'clone-id' })]);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+      db.insert.mockReturnValue(insertPlugin);
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('artifact')]),
+      );
+
+      await service.cloneMarketplacePlugin({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        source: {
+          listingId: 'listing-9',
+          listingTitle: '收费插件 listing',
+          pricingModel: 'free',
+          pricePerExecution: null,
+          plugin: sourcePlugin,
+        },
+      });
+
+      expect(storageService.download).toHaveBeenNthCalledWith(
+        1,
+        sourcePlugin.wasmBundleUrl,
+      );
+      expect(storageService.download).toHaveBeenNthCalledWith(
+        2,
+        sourcePlugin.storageKey,
+      );
+      expect(storageService.upload).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
+        Buffer.from('artifact'),
+        8,
+        'application/wasm',
+      );
+      expect(storageService.upload).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/plugins/com.example.review/2.1.0/archive.alp`,
+        Buffer.from('artifact'),
+        8,
+        'application/zip',
+      );
+      expect(insertPlugin.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/2.1.0/archive.alp`,
+          wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
+        }),
+      );
+    });
+
+    it('源插件缺少 WASM 产物时应拒绝安装且不复制对象', async () => {
+      const sourcePlugin = createPlugin({
+        status: 'active',
+        wasmBundleUrl: null,
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(
+        service.cloneMarketplacePlugin({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          source: {
+            listingId: 'listing-9',
+            listingTitle: '无产物 listing',
+            pricingModel: 'free',
+            pricePerExecution: null,
+            plugin: sourcePlugin,
+          },
+        }),
+      ).rejects.toBeInstanceOf(PluginValidationException);
+
+      expect(storageService.download).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('落库失败时应清理已复制的目标对象', async () => {
+      vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const sourcePlugin = createPlugin({
+        status: 'active',
+        version: '2.1.0',
+        storageKey: null,
+        wasmBundleUrl: `tenants/${SOURCE_TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+      storageService.download.mockResolvedValue(
+        Readable.from([Buffer.from('artifact')]),
+      );
+      db.insert.mockImplementation(() => {
+        throw new Error('insert failed');
+      });
+
+      await expect(
+        service.cloneMarketplacePlugin({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          source: {
+            listingId: 'listing-9',
+            listingTitle: '收费插件 listing',
+            pricingModel: 'free',
+            pricePerExecution: null,
+            plugin: sourcePlugin,
+          },
+        }),
+      ).rejects.toThrow('insert failed');
+
+      expect(storageService.delete).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/plugins/com.example.review/2.1.0/plugin.wasm`,
       );
     });
   });
