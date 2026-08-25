@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../database/database.module';
 import type { PluginRecord } from '../../database/schema';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import { QueryPluginsDto } from './dto/plugin.dto';
 import {
   PluginAlreadyExistsException,
@@ -127,6 +128,11 @@ function createQueryDto(
 describe('PluginService', () => {
   let service: PluginService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
+  let storageService: {
+    upload: ReturnType<typeof vi.fn>;
+    download: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -144,8 +150,18 @@ describe('PluginService', () => {
       ),
     };
 
+    storageService = {
+      upload: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn(),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PluginService, { provide: DRIZZLE, useValue: db }],
+      providers: [
+        PluginService,
+        { provide: DRIZZLE, useValue: db },
+        { provide: StorageService, useValue: storageService },
+      ],
     }).compile();
 
     service = module.get(PluginService);
@@ -486,22 +502,60 @@ describe('PluginService', () => {
   });
 
   describe('remove', () => {
-    it('应当删除插件', async () => {
-      const deletePlugin = createDeleteChain([{ id: PLUGIN_ID }]);
-      db.delete.mockReturnValue(deletePlugin);
+    it('应删除插件并清理本租户前缀的对象', async () => {
+      const plugin = createPlugin({
+        storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
+        wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/plugin.wasm`,
+      });
+      db.select.mockReturnValue(createSelectChain([plugin]));
+      db.delete.mockReturnValue(createDeleteChain([{ id: PLUGIN_ID }]));
+
+      await expect(
+        service.remove(PLUGIN_ID, TENANT_ID),
+      ).resolves.toBeUndefined();
+
+      expect(storageService.delete).toHaveBeenCalledTimes(2);
+      expect(storageService.delete).toHaveBeenCalledWith(plugin.storageKey);
+      expect(storageService.delete).toHaveBeenCalledWith(plugin.wasmBundleUrl);
+    });
+
+    it('不得删除指向其他租户前缀的对象', async () => {
+      const plugin = createPlugin({
+        storageKey:
+          'tenants/99999999-9999-4999-8999-999999999999/plugins/com.example.review/1.0.0/archive.alp',
+        wasmBundleUrl: null,
+      });
+      db.select.mockReturnValue(createSelectChain([plugin]));
+      db.delete.mockReturnValue(createDeleteChain([{ id: PLUGIN_ID }]));
+
+      await service.remove(PLUGIN_ID, TENANT_ID);
+
+      expect(storageService.delete).not.toHaveBeenCalled();
+    });
+
+    it('对象删除失败不应影响删除结果', async () => {
+      vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const plugin = createPlugin({
+        storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
+        wasmBundleUrl: null,
+      });
+      db.select.mockReturnValue(createSelectChain([plugin]));
+      db.delete.mockReturnValue(createDeleteChain([{ id: PLUGIN_ID }]));
+      storageService.delete.mockRejectedValueOnce(new Error('minio down'));
 
       await expect(
         service.remove(PLUGIN_ID, TENANT_ID),
       ).resolves.toBeUndefined();
     });
 
-    it('删除不存在插件时应抛出 404', async () => {
-      const deletePlugin = createDeleteChain([]);
-      db.delete.mockReturnValue(deletePlugin);
+    it('删除不存在插件时应抛出 404 且不动对象', async () => {
+      db.select.mockReturnValue(createSelectChain([]));
 
       await expect(service.remove(PLUGIN_ID, TENANT_ID)).rejects.toBeInstanceOf(
         PluginNotFoundException,
       );
+      expect(db.delete).not.toHaveBeenCalled();
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
   });
 
