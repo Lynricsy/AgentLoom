@@ -1,12 +1,12 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useNavigate } from '@tanstack/react-router'
-import { Loader2 } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { CheckCircle2, Loader2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
 import {
   Dialog,
   DialogBody,
@@ -19,6 +19,7 @@ import {
 } from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { cn } from '@/shared/lib/utils'
 import { useToast } from '@/shared/ui/toast'
 import { useInstallListing } from '../api/publicMarketplaceMutations'
 import type { MarketplaceListingType } from '../types'
@@ -57,6 +58,15 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
   const installListing = useInstallListing()
   const isPlugin = listingType === 'plugin'
 
+  /** 插件安装成功后停在成功态，给出去插件管理页的去处，而不是直接关掉对话框 */
+  const [installedPluginName, setInstalledPluginName] = useState<string | null>(
+    null,
+  )
+
+  useEffect(() => {
+    if (!open) setInstalledPluginName(null)
+  }, [open])
+
   const {
     register,
     handleSubmit,
@@ -81,7 +91,6 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
           },
         })
 
-        onOpenChange(false)
         reset({
           name: listingTitle.trim(),
           description: listingSummary ?? '',
@@ -93,11 +102,15 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
         })
 
         if ('workflowDefinitionId' in result) {
+          onOpenChange(false)
           navigate({
             to: '/workflows/$workflowId',
             params: { workflowId: result.workflowDefinitionId },
           })
+          return
         }
+
+        setInstalledPluginName(result.name)
       } catch {
         notify({
           title: '安装失败',
@@ -127,63 +140,88 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <DialogBody className="space-y-4">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="install-name"
-                className="block text-sm font-medium text-foreground"
+        {installedPluginName !== null ? (
+          <DialogBody
+            className="flex flex-col items-center gap-3 py-10"
+            data-testid="plugin-install-success"
+          >
+            <CheckCircle2 className="h-12 w-12 text-success" />
+            <p className="text-lg font-medium text-foreground">安装成功</p>
+            <p className="text-center text-sm text-muted">
+              {`「${installedPluginName}」已进入插件库，启用后即可在画布中使用它的节点。`}
+            </p>
+            <div className="mt-2 flex flex-wrap justify-center gap-2">
+              <Link
+                to="/resources/plugins"
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                onClick={() => onOpenChange(false)}
               >
-                {entityLabel}名称
-              </label>
-              <Input
-                id="install-name"
-                {...register('name')}
-                placeholder={`输入${entityLabel}名称`}
-              />
-              {errors.name ? (
-                <p className="text-xs font-medium text-error">
-                  {errors.name.message}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              <label
-                htmlFor="install-description"
-                className="block text-sm font-medium text-foreground"
-              >
-                描述 <span className="font-normal text-muted">(可选)</span>
-              </label>
-              <Textarea
-                id="install-description"
-                {...register('description')}
-                rows={4}
-                placeholder={`描述这个${entityLabel}的使用场景`}
-              />
-              {errors.description ? (
-                <p className="text-xs font-medium text-error">
-                  {errors.description.message}
-                </p>
-              ) : null}
+                前往插件管理
+              </Link>
+              <Button size="sm" onClick={() => onOpenChange(false)}>
+                完成
+              </Button>
             </div>
           </DialogBody>
+        ) : (
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <DialogBody className="space-y-4">
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="install-name"
+                  className="block text-sm font-medium text-foreground"
+                >
+                  {entityLabel}名称
+                </label>
+                <Input
+                  id="install-name"
+                  {...register('name')}
+                  placeholder={`输入${entityLabel}名称`}
+                />
+                {errors.name ? (
+                  <p className="text-xs font-medium text-error">
+                    {errors.name.message}
+                  </p>
+                ) : null}
+              </div>
 
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                取消
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="install-description"
+                  className="block text-sm font-medium text-foreground"
+                >
+                  描述 <span className="font-normal text-muted">(可选)</span>
+                </label>
+                <Textarea
+                  id="install-description"
+                  {...register('description')}
+                  rows={4}
+                  placeholder={`描述这个${entityLabel}的使用场景`}
+                />
+                {errors.description ? (
+                  <p className="text-xs font-medium text-error">
+                    {errors.description.message}
+                  </p>
+                ) : null}
+              </div>
+            </DialogBody>
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  取消
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                确认安装
               </Button>
-            </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              确认安装
-            </Button>
-          </DialogFooter>
-        </form>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )
