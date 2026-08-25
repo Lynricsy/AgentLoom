@@ -139,6 +139,27 @@ export function EarningsSummaryCards({
       icon: <TrendingUpIcon />,
     },
     {
+      label: '开发者分成',
+      value: summary
+        ? currencyFormatter.format(parseFloat(summary.totalDeveloperShare))
+        : '$0.00',
+      icon: <DollarSignIcon />,
+    },
+    {
+      label: '待打款',
+      value: summary
+        ? currencyFormatter.format(parseFloat(summary.pendingPayout))
+        : '$0.00',
+      icon: <TrendingUpIcon />,
+    },
+    {
+      label: '已打款',
+      value: summary
+        ? currencyFormatter.format(parseFloat(summary.completedPayout))
+        : '$0.00',
+      icon: <DollarSignIcon />,
+    },
+    {
       label: '总使用次数',
       value: summary
         ? numberFormatter.format(summary.totalExecutions)

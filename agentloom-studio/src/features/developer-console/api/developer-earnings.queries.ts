@@ -1,12 +1,16 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   fetchEarningsSummary,
   fetchMonthlyTrends,
   fetchPluginUsageRanking,
   fetchSettlementHistory,
+  updatePayoutStatus,
 } from './developer-earnings.api'
-import type { EarningsFilters } from './developer-earnings.api'
+import type {
+  EarningsFilters,
+  UpdatePayoutStatusRequest,
+} from './developer-earnings.api'
 
 export const developerEarningsKeys = {
   all: ['developer-earnings'] as const,
@@ -47,5 +51,25 @@ export function useSettlementHistory(filters: EarningsFilters) {
     queryKey: developerEarningsKeys.settlementList(filters),
     queryFn: () => fetchSettlementHistory(filters),
     staleTime: 2 * 60 * 1000,
+  })
+}
+
+export function useUpdatePayoutStatus() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      earningId,
+      body,
+    }: {
+      earningId: string
+      body: UpdatePayoutStatusRequest
+    }) => updatePayoutStatus(earningId, body),
+    // 打款状态改变会同时挪动 summary 里的待打款/已打款分项
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: developerEarningsKeys.all,
+      })
+    },
   })
 }

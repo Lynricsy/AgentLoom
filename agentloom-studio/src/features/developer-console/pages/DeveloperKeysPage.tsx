@@ -33,7 +33,7 @@ import { DeveloperConsoleLayout } from '../components/DeveloperConsoleLayout'
 import { DeveloperKeyRegisterDialog } from '../components/DeveloperKeyRegisterDialog'
 import {
   DEVELOPER_KEY_STATUS_LABEL,
-  resolveDeveloperKeyErrorMessage,
+  resolveDeveloperConsoleErrorMessage,
   shortenFingerprint,
 } from '../lib/developerKey'
 import type { DeveloperKey, DeveloperKeyStatus } from '../types'
@@ -211,7 +211,7 @@ export function DeveloperKeysPage() {
         setKeyPendingRevoke(null)
         notify({
           title: '撤销失败',
-          description: await resolveDeveloperKeyErrorMessage(
+          description: await resolveDeveloperConsoleErrorMessage(
             error,
             '密钥撤销失败，请稍后重试。',
           ),
