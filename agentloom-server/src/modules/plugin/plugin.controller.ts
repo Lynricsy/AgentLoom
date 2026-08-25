@@ -38,6 +38,7 @@ import {
   RegisterPluginSchema,
   UpdatePluginStatusDto,
   UpdatePluginStatusSchema,
+  type RegisterPluginDtoType,
 } from './dto/plugin.dto';
 import {
   QueryPluginUsageQueryDto,
@@ -321,7 +322,10 @@ export class PluginController {
     // 先按租户校验插件存在，避免跨租户探测用量
     await this.pluginService.findById(id, tenantId);
 
-    return this.pluginUsageService.findUsageByPlugin(id, query);
+    return this.pluginUsageService.findUsageByPlugin(
+      id,
+      QueryPluginUsageSchema.parse(query),
+    );
   }
 
   @Get(':id/usage/summary')
@@ -338,12 +342,13 @@ export class PluginController {
     const tenantId = this.getTenantId(req);
     await this.pluginService.findById(id, tenantId);
 
-    const periodEnd = query.periodEnd ? new Date(query.periodEnd) : new Date();
-    const periodStart = query.periodStart
-      ? new Date(query.periodStart)
-      : new Date(
-          Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth(), 1),
-        );
+    const parsedQuery = QueryPluginUsageSummarySchema.parse(query);
+    const periodEnd = parsedQuery.periodEnd ?? new Date();
+    const periodStart =
+      parsedQuery.periodStart ??
+      new Date(
+        Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth(), 1),
+      );
 
     const data = await this.pluginUsageService.getUsageSummary(
       id,

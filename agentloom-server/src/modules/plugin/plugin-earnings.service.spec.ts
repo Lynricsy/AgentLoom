@@ -326,7 +326,9 @@ describe('PluginEarningsService', () => {
       });
     });
 
-    it('processing → completed 未显式给 payoutAt 时应写入当前时间', async () => {
+    it('processing → completed 应写入服务端当前时间', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-05-01T10:00:00.000Z'));
       db.select.mockReturnValueOnce(
         createSelectChain([
           createEarningWithPluginName('示例插件', {
@@ -345,9 +347,28 @@ describe('PluginEarningsService', () => {
       expect(updateQuery.set).toHaveBeenCalledWith(
         expect.objectContaining({
           payoutStatus: 'completed',
-          payoutAt: expect.any(Date),
+          payoutAt: new Date('2026-05-01T10:00:00.000Z'),
         }),
       );
+      vi.useRealTimers();
+    });
+
+    it('客户端传入 payoutAt 应被拒绝（结算时间归服务端所有）', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createEarningWithPluginName('示例插件', {
+            payoutStatus: 'processing',
+          }),
+        ]),
+      );
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, {
+          payoutStatus: 'completed',
+          payoutAt: '2020-01-01T00:00:00.000Z',
+        } as never),
+      ).rejects.toThrow();
+      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('processing → failed 应成功迁移并保持 payoutAt 为空', async () => {

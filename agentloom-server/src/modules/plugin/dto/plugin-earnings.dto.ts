@@ -72,7 +72,6 @@ export const UpdatePayoutStatusSchema = z
   .object({
     payoutStatus: PayoutStatusSchema,
     payoutReference: z.string().trim().min(1).max(255).optional(),
-    payoutAt: IsoDatetimeSchema.optional(),
   })
   .strict();
 
