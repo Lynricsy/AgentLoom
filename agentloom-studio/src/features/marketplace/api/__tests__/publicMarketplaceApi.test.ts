@@ -21,6 +21,7 @@ import {
   usePublicListings,
 } from '../publicMarketplaceQueries'
 import { useInstallListing, useSubmitReview } from '../publicMarketplaceMutations'
+import { pluginKeys } from '@/features/plugin'
 import type {
   MarketplaceReview,
   PublicMarketplaceListingItem,
@@ -429,6 +430,9 @@ describe('publicMarketplace mutation hooks', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: publicMarketplaceKeys.all,
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: pluginKeys.all,
       })
     })
   })

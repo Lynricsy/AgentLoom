@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
+import { pluginKeys } from '@/features/plugin'
 import {
   installMarketplaceListing,
   submitMarketplaceReview,
@@ -21,10 +22,15 @@ export function useInstallListing() {
       id: string
       body?: InstallMarketplaceListingRequest
     }) => installMarketplaceListing(id, body),
+    // 插件安装会往租户插件库里写一行：一并失效插件 feature 的缓存，
+    // NodePalette 与插件管理页无需刷新即可看到新节点。
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: publicMarketplaceKeys.all,
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: publicMarketplaceKeys.all,
+        }),
+        queryClient.invalidateQueries({ queryKey: pluginKeys.all }),
+      ])
     },
   })
 }

@@ -17,6 +17,19 @@ vi.mock('../../api/publicMarketplaceMutations', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
+  Link: ({
+    to,
+    children,
+    ...props
+  }: {
+    to: string
+    children?: React.ReactNode
+    [key: string]: unknown
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -95,7 +108,7 @@ describe('MarketplaceInstallDialog', () => {
     })
   })
 
-  it('submits install request for plugin without navigating to workflow', async () => {
+  it('plugin 安装成功后停在成功态并给出插件管理入口', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
     installListingMock.mutateAsync.mockResolvedValue({
@@ -131,7 +144,12 @@ describe('MarketplaceInstallDialog', () => {
       })
     })
 
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // 插件不跳画布：留在成功态，给用户一个「前往插件管理」的去处
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(screen.getByTestId('plugin-install-success')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: '前往插件管理' }),
+    ).toHaveAttribute('href', '/resources/plugins')
     expect(notifyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         title: '安装成功',
@@ -139,6 +157,9 @@ describe('MarketplaceInstallDialog', () => {
       }),
     )
     expect(navigateMock).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '完成' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('shows an error toast when installation fails', async () => {
