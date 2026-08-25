@@ -350,6 +350,50 @@ describe('PluginEarningsService', () => {
       );
     });
 
+    it('processing → failed 应成功迁移并保持 payoutAt 为空', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createEarningWithPluginName('示例插件', {
+            payoutStatus: 'processing',
+          }),
+        ]),
+      );
+      const updated = createEarningRecord({ payoutStatus: 'failed' });
+      const updateQuery = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateQuery.chain);
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, { payoutStatus: 'failed' }),
+      ).resolves.toEqual(updated);
+      expect(updateQuery.set).toHaveBeenCalledWith({
+        payoutStatus: 'failed',
+        updatedAt: expect.any(Date),
+      });
+    });
+
+    it('并发修改导致条件更新命中 0 行时应抛迁移冲突', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createEarningWithPluginName('示例插件', {
+              payoutStatus: 'processing',
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            createEarningWithPluginName('示例插件', {
+              payoutStatus: 'completed',
+            }),
+          ]),
+        );
+      db.update.mockReturnValueOnce(createUpdateChain([]).chain);
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, { payoutStatus: 'failed' }),
+      ).rejects.toBeInstanceOf(PluginEarningsPayoutTransitionException);
+    });
+
     it('failed → processing 应允许重试', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([
