@@ -26,6 +26,25 @@ export class QueryPluginUsageQueryDto extends createZodDto(
   QueryPluginUsageDtoSchema,
 ) {}
 
+const QueryPluginUsageSummaryDtoSchema = z.object({
+  periodStart: IsoDateTimeStringSchema.optional(),
+  periodEnd: IsoDateTimeStringSchema.optional(),
+});
+
+export const QueryPluginUsageSummarySchema =
+  QueryPluginUsageSummaryDtoSchema.extend({
+    periodStart: IsoDateCoerceSchema.optional(),
+    periodEnd: IsoDateCoerceSchema.optional(),
+  });
+
+export class QueryPluginUsageSummaryQueryDto extends createZodDto(
+  QueryPluginUsageSummaryDtoSchema,
+) {}
+
 export type QueryPluginUsageQueryDtoType = z.infer<
   typeof QueryPluginUsageSchema
+>;
+
+export type QueryPluginUsageSummaryQueryDtoType = z.infer<
+  typeof QueryPluginUsageSummarySchema
 >;

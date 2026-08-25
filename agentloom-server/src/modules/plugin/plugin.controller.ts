@@ -38,8 +38,13 @@ import {
   RegisterPluginSchema,
   UpdatePluginStatusDto,
   UpdatePluginStatusSchema,
-  type RegisterPluginDtoType,
 } from './dto/plugin.dto';
+import {
+  QueryPluginUsageQueryDto,
+  QueryPluginUsageSchema,
+  QueryPluginUsageSummaryQueryDto,
+  QueryPluginUsageSummarySchema,
+} from './dto/plugin-usage-query.dto';
 import { MAX_PLUGIN_FILE_SIZE } from './plugin.constants';
 import {
   PluginAlreadyExistsException,
@@ -50,6 +55,7 @@ import {
 } from './plugin.exceptions';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 import { PluginSignatureService } from './plugin-signature.service';
+import { PluginUsageService } from './plugin-usage.service';
 import { PluginService } from './plugin.service';
 
 type AuthenticatedRequest = FastifyRequest & {
@@ -69,6 +75,7 @@ export class PluginController {
     private readonly storageService: StorageService,
     private readonly signatureService: PluginSignatureService,
     private readonly developerKeyService: PluginDeveloperKeyService,
+    private readonly pluginUsageService: PluginUsageService,
   ) {}
 
   @Post()
@@ -297,6 +304,60 @@ export class PluginController {
   ) {
     const data = await this.pluginService.findById(id, this.getTenantId(req));
     return { data };
+  }
+
+  @Get(':id/usage')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '分页查询插件用量流水' })
+  @ApiResponse({ status: 200, description: '插件用量流水' })
+  @ApiResponse({ status: 404, description: '插件不存在' })
+  async findUsage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(QueryPluginUsageSchema))
+    query: QueryPluginUsageQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const tenantId = this.getTenantId(req);
+    // 先按租户校验插件存在，避免跨租户探测用量
+    await this.pluginService.findById(id, tenantId);
+
+    return this.pluginUsageService.findUsageByPlugin(id, query);
+  }
+
+  @Get(':id/usage/summary')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '查询插件用量汇总（默认当前 UTC 自然月）' })
+  @ApiResponse({ status: 200, description: '插件用量汇总' })
+  @ApiResponse({ status: 404, description: '插件不存在' })
+  async getUsageSummary(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(QueryPluginUsageSummarySchema))
+    query: QueryPluginUsageSummaryQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const tenantId = this.getTenantId(req);
+    await this.pluginService.findById(id, tenantId);
+
+    const periodEnd = query.periodEnd ? new Date(query.periodEnd) : new Date();
+    const periodStart = query.periodStart
+      ? new Date(query.periodStart)
+      : new Date(
+          Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth(), 1),
+        );
+
+    const data = await this.pluginUsageService.getUsageSummary(
+      id,
+      periodStart,
+      periodEnd,
+    );
+
+    return {
+      data: {
+        ...data,
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+      },
+    };
   }
 
   @Patch(':id/status')

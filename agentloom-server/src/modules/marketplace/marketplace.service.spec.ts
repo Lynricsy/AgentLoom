@@ -205,6 +205,13 @@ function createSelectChain(result: unknown) {
   return { from, where };
 }
 
+function createCountChainWithLeftJoin(result: unknown) {
+  const where = vi.fn().mockResolvedValue(result);
+  const leftJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ leftJoin });
+  return { from, leftJoin, where };
+}
+
 function createSelectChainWithDoubleLeftJoinPagination(result: unknown) {
   const offset = vi.fn().mockResolvedValue(result);
   const limit = vi.fn().mockReturnValue({ offset });
@@ -641,7 +648,7 @@ describe('MarketplaceService', () => {
         workflowRow,
         pluginRow,
       ]);
-      const selectCount = createSelectChain([{ count: 2 }]);
+      const selectCount = createCountChainWithLeftJoin([{ count: 2 }]);
 
       db.select
         .mockReturnValueOnce(selectData)
@@ -707,6 +714,25 @@ describe('MarketplaceService', () => {
           totalPages: 1,
         },
       });
+    });
+
+    it('应支持 pricingModel 筛选并对 count 查询套用同一条件', async () => {
+      const dataQuery = createSelectChainWithDoubleLeftJoinPagination([]);
+      const countQuery = createCountChainWithLeftJoin([{ count: 0 }]);
+      db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
+
+      await service.findPublicListings({
+        pricingModel: 'per_execution',
+        search: 'com.example',
+        page: 1,
+        pageSize: 20,
+      });
+
+      // 搜索会引用 plugins 列，因此 count 查询必须同样 left join
+      expect(countQuery.leftJoin).toHaveBeenCalledTimes(1);
+      const dataWhere = dataQuery.where.mock.calls[0]?.[0];
+      const countWhere = countQuery.where.mock.calls[0]?.[0];
+      expect(countWhere).toEqual(dataWhere);
     });
   });
 
@@ -1105,7 +1131,7 @@ describe('MarketplaceService', () => {
         const dataQuery = createSelectChainWithDoubleLeftJoinPagination([]);
         db.select
           .mockReturnValueOnce(dataQuery)
-          .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
+          .mockReturnValueOnce(createCountChainWithLeftJoin([{ count: 0 }]));
 
         const result = await service.findPublicListings({
           listingType: 'plugin',
@@ -1138,7 +1164,7 @@ describe('MarketplaceService', () => {
         .mockReturnValueOnce(
           createSelectChainWithDoubleLeftJoinPagination([pluginRow]),
         )
-        .mockReturnValueOnce(createSelectChain([{ count: 1 }]));
+        .mockReturnValueOnce(createCountChainWithLeftJoin([{ count: 1 }]));
 
       const result = await service.findPublicListings({});
 
@@ -1161,7 +1187,7 @@ describe('MarketplaceService', () => {
         .mockReturnValueOnce(
           createSelectChainWithDoubleLeftJoinPagination([pluginRow]),
         )
-        .mockReturnValueOnce(createSelectChain([{ count: 1 }]));
+        .mockReturnValueOnce(createCountChainWithLeftJoin([{ count: 1 }]));
 
       const result = await service.findPublicListings({});
 
