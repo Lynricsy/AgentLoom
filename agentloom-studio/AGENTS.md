@@ -1,107 +1,103 @@
-# AGENTLOOM STUDIO 知识库
+# Repository Guidelines
 
-React 19 + Vite 7 前端工作台。架构主线为 `routes → feature 公共 barrel → feature 内部 → shared`，数据访问使用 TanStack Query，编辑与实时状态使用 Zustand。
+## Project Overview
 
-## 入口与目录
+- `agentloom-studio` 是 AgentLoom 的 React 19 前端工作台，使用 Vite 7、TypeScript、Tailwind CSS 4 与 Radix UI。
+- 代码主线是 `src/app/routes → feature 公共 barrel → feature 内部 → shared`；跨包契约遵循仓库根 `AGENTS.md`。
+- `src/main.tsx` 只引入统一样式、处理 Vite 旧 chunk 预加载失败，并在 `StrictMode` 下挂载 `AppProviders`。
+- 不要在 `src/main.tsx` 重复引入第三方样式；字体和 vendor CSS 由 `src/index.css` 统一收口。
+
+## Architecture & Data Flow
+
+- `src/app/router.tsx` 创建 TanStack Router，启用 `defaultPreload: 'intent'`；路由树在 `src/app/routes/__root.tsx` 手工导入并通过 `rootRoute.addChildren(...)` 注册。
+- 路由组件负责 search 参数、认证边界和 feature 页面装配，不承载业务实现；新增路由时同时更新根路由树。
+- 根布局处理公开路由、登录跳转、onboarding、桌面/移动壳层和通知 socket；不要在 feature 页面复制这些职责。
+- `AppProviders` 的嵌套顺序为 `MotionConfig → ThemeProvider → QueryClientProvider → ToastProvider → RouterProvider`，并在启动时初始化认证 store、注册工具渲染器。
+- TanStack Query 管理服务端状态：查询、缓存、失效与 mutation 后重取。默认查询 `staleTime` 为 30 秒、重试一次、窗口聚焦不重取；mutation 不重试。
+- Zustand 管理本地编辑草稿、选择态、认证状态、socket 瞬态和其他 UI 状态；不要把服务端列表或详情复制进 store。
+- 实时执行由 execution store 接收 socket 事件；`useLiveExecutionDetail` 以 REST 查询作为初始快照，再把实时节点状态合并到展示模型。
+- URL 可表达的筛选、分页和标签放入 TanStack Router search 参数；影响结果的所有参数必须进入 Query key。
+
+## Key Directories
 
 ```text
 src/
-├── app/                 # providers、router 与 routes
-├── features/            # 按业务域组织的 feature slices
-│   ├── canvas/          # 工作流画布；细则见 src/features/canvas/AGENTS.md
-│   ├── agent-canvas/    # Agent 配置画布
-│   ├── execution/       # 执行查询、实时 store 与监控 UI
-│   ├── smart-routing/   # 智能路由 API、query keys、hooks 与类型
-│   └── ...
-├── shared/
-│   ├── api/             # ky client、QueryClient
-│   ├── components/      # 跨 feature 组合组件
-│   ├── ui/              # Radix/CVA 基础原语
-│   ├── types/           # API envelope 等跨域类型
-│   └── utils/           # case conversion 等纯工具
-└── test-setup.ts
+├── app/                  # providers、router、手工路由树与 route modules
+├── features/             # 按业务域隔离的 feature slices
+├── shared/api/           # ky transport、QueryClient 与共享请求
+├── shared/components/    # 跨 feature 的组合组件
+├── shared/ui/            # Radix/CVA 基础 UI 原语
+├── shared/hooks/         # 通用 React hooks
+├── shared/lib/           # Supabase、通用基础设施
+├── shared/types/         # 少量跨域本地类型
+├── shared/utils/         # case conversion 等纯函数
+└── test-setup.ts         # Vitest/jsdom 全局测试环境
 ```
 
-路由在 `src/app/routes/`，由 TanStack Router 手工注册。路由组件只负责 search params、权限与 feature 页面装配，不承载 feature 内部实现。
+- 核心创作域：`workflow`、`canvas`、`agent`、`agent-canvas`、`agent-conversation`、`workflow-input-schema`、`trigger`、`block-library`。
+- 执行与可观测域：`execution`、`monitoring`、`evidence`、`notification`、`audit-log`、`optimization-suggestion`、`routing-decision`、`smart-routing`。
+- 资源域：`knowledge`、`agent-memory`、`memory-instance`、`mcp`、`llm`、`skill`、`sandbox`、`workspace`。
+- 平台与分发域：`auth`、`organization`、`marketplace`、`template`、`generated-app`、`plugin`、`developer-console`、`discover`、`share`、`onboarding`。
+- 管理域：`organization-autonomy-policy`、`intervention-policy`、`resource-governance`、`private-deployment`、`platform-api-token`、`tenant-key`、`user-preference`。
+- 工作流画布有额外约束，修改前阅读 `src/features/canvas/AGENTS.md`。
 
-## 依赖边界
+## Development Commands
 
-`eslint.config.js` 根据 `src/features/` 的一级目录动态生成 `no-restricted-imports`：
-
-- feature 内禁止导入其他 feature 的 `components`、`stores`、`api`、`lib`、`hooks`、`types` 深路径，包括目录本身、一级成员与递归成员。
-- 跨 feature 依赖必须从目标 feature 的 `index.ts` 公共 barrel 导入。
-- `src/app/routes/**/*.{ts,tsx}` 禁止 `@/features/*/**` 深路径，只允许 feature 根 barrel。
-- feature barrel 使用具名导出，公开面保持最小；内部文件不因方便而加入 barrel。
-- 纯 wire 类型优先放在 `@agentloom/contracts` 或使用 `@agentloom/api-client` 生成模型；真正跨业务域且不属于 wire 的类型才进入 `src/shared/`。
-
-新增 feature 时必须提供 `index.ts`，并让路由与其他 feature 只消费该公开面。
-
-## 状态事实源
-
-- TanStack Query 是服务端实体缓存的唯一事实源。列表、详情、通知计数、Agent 与 Workflow 实体不复制到 Zustand。
-- Zustand 只保存画布编辑草稿、socket 瞬态、选择态和纯 UI 状态。
-- Agent / Workflow 列表的 filters 与分页属于 URL 状态，由 TanStack Router search params 管理；解析与默认值采用 feature 内的 search schema，例如 `src/features/agent/lib/agentListSearch.ts`。
-- `executionStore` 是执行实时状态的唯一事实源。REST execution detail 只在首屏通过 `src/features/execution/hooks/useLiveExecutionDetail.ts` 调用 `initFromSnapshot()` 注入初始快照；后续 socket 事件直接推进 store。
-- `initFromSnapshot()` 不覆盖已经收到的实时事件。mutation 通过 invalidate 促使查询重取，不向 execution detail Query cache 写入实时状态。
-- Query key 遵循 `all → lists → list(filters) → details → detail(id)` 层级；影响结果的分页、筛选和窗口参数必须进入 key。
-
-## 契约与 API 类型
-
-- `@agentloom/contracts` 是 workflow graph、execution events、Agent runtime config 与 `PortDataType` 等跨端 wire 契约的来源。
-- `@agentloom/api-client` 提供 server OpenAPI 生成的 interface；没有 fetch runtime。Studio 保留 `src/shared/api/client.ts` 的 ky transport。
-- `@agentloom/api-client` 的生成模型不手改；字段变化先修改 server DTO/OpenAPI，再从仓库根运行 `pnpm contracts:regen`。
-- `src/shared/types/api.ts` 只保留 OpenAPI models 未表达的 envelope 类型。
-- `agent-definition` / `workflow-definition` / `execution` / `agent-conversation` 的 list/detail 响应类型一律取自 `@agentloom/api-client`；`AgentListResponse` / `WorkflowListResponse` / `ExecutionResponse` / `ConversationListItem` 等导出名保留为生成类型别名，不得平行手写。
-- 唯一例外是画布编辑态：`WorkflowDefinition` 用 `Omit` 摘掉 `nodes` / `edges` / `viewport` 换成 `CanvasNode` / `CanvasEdge` / `WorkflowGraphViewport`——OpenAPI 3.0 无法无损表达 React Flow 的动态 data/style 字典与 extent 元组，生成模型在这些位置退化为 `{}`/`any`。其余字段（含 `inputSchema`）直接使用生成类型；本地 `WorkflowInputSchema` 只服务编辑器与请求侧。若发现生成类型过宽，修 server schema 后 regen，不在 Studio 强转。
-- REST 统一经过 ky hook 做 snake_case/camelCase 转换；Socket wire 按 server 的 camelCase 事件模型消费。
-- `src/features/execution/types/contract-fixtures.test.ts` 消费 contracts fixtures，约束执行事件与快照形状。
-
-## Smart Routing 命名
-
-Provider health 的公共 API 归属 `src/features/smart-routing/`：
-
-- 类型：`ProviderHealthState`、`ProviderHealthRecord`
-- fetcher：`fetchProviderHealth`
-- hook：`useProviderHealth`
-- query key：`routingKeys.health`
-
-`src/features/routing-decision/` 和 canvas 只能从 smart-routing barrel 消费这些符号，不建立第二套 health 类型、fetcher 或 key。
-
-## 组件与代码组织
-
-- `components/` 放渲染与组件组合；复杂交互和派生状态进入 `hooks/`；无 React 生命周期的纯计算、payload builder 与 normalizer 进入 `lib/`。
-- 画布连接交互分别位于 `src/features/canvas/hooks/useConnectionInteraction.ts`、`useConnectionValidation.ts`、`useCanvasKeyboardShortcuts.ts`；surface 与 overlay 由 `CanvasSurface.tsx`、`CanvasOverlayLayer.tsx` 组合。
-- 字段映射派生状态和交互位于 `useFieldMappingDerivedState.ts`、`useFieldMappingInteractions.ts`，展示拆在 `FieldMappingSummary.tsx`、`FieldMappingTreePane.tsx`、`FieldMappingList.tsx` 等组件。
-- Knowledge 页面由 `KnowledgeBaseSettingsForm.tsx`、`KnowledgeDocumentsPanel.tsx`、`KnowledgeSearchTester.tsx` 组合。
-- 私有部署页面的卡片在 `src/features/private-deployment/components/`，payload 纯函数在 `src/features/private-deployment/lib/privateDeploymentPayloads.ts`。
-- Agent 对话布局与输入分别由 `ConversationLayout.tsx`、`ConversationComposer.tsx` 承担，工作区同步位于 `src/features/agent-conversation/hooks/useConversationWorkspaceSync.ts`。
-
-## TypeScript 与表单约定
-
-- `src/` 生产代码不得使用显式 `any`；使用生成类型、具体库泛型、`unknown` + 类型守卫或最小接口表达边界。
-- 测试中的 Vitest matcher `expect.any(...)` 不属于 TypeScript `any` 类型。
-- react-hook-form + Zod 负责表单状态与校验。
-- `shared/ui/select` 是 Radix Select；`SelectItem` 不接受空字符串 value，默认/空值使用 placeholder 或哨兵映射。
-- 画布 ReactFlow 的业务节点类型读取 `node.data.nodeType`，`node.type` 只表示渲染类别。
-
-## 测试与命令
+在 `agentloom-studio/` 中运行：
 
 ```bash
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
+pnpm dev             # Vite 开发服务器，默认端口 5173
+pnpm build           # tsc -b 后生成 Vite 产物
+pnpm preview         # 预览生产构建
+pnpm typecheck       # 分别检查 app 与 node TypeScript 配置
+pnpm lint            # ESLint 全包检查
+pnpm test            # Vitest 单次运行
+pnpm test:watch      # Vitest watch 模式
+pnpm test:coverage   # V8 coverage，输出 text 与 html
+pnpm format          # Prettier 写入格式化
 ```
 
-测试与源码同级，使用 Vitest、Testing Library 与 jsdom。API/store mock 使用 `vi.hoisted()` 配合 `vi.mock()`，关键交互可使用稳定的 `data-testid`。
+## Code Conventions & Common Patterns
 
-## 环境变量
+- 使用 `@/` 导入 `src/` 内模块；Vite 与 Vitest 共用 `vite.config.ts` 中的别名。
+- 每个 feature 通过根 `index.ts` 暴露最小公共面，使用具名导出。跨 feature 只能从 `@/features/<name>` 导入，不得读取其 `components`、`stores`、`api`、`lib`、`hooks` 或 `types` 深路径。
+- `eslint.config.js` 会读取 `src/features/` 的一级目录动态生成边界规则；`src/app/routes` 也禁止任何 feature 深路径导入。
+- feature 内通常按 `api/`、`components/`、`hooks/`、`lib/`、`stores/`、`types/` 拆分：渲染放组件，生命周期与交互放 hooks，无 React 的转换和 payload builder 放 lib。
+- Query key 使用层级工厂，例如 `all → lists() → list(filters)` 与 `details() → detail(id)`；mutation 成功后失效相应层级。
+- 表单使用 React Hook Form 管理值和提交状态，Zod 定义 schema，并通过 `zodResolver(schema)` 接入；受控 Radix 组件使用 `Controller`。
+- Radix Select 的 item 不使用空字符串 `value`；空态使用 placeholder 或明确的哨兵值映射。
+- 优先复用 `shared/ui` 和现有 feature 组件，不要另建第二套基础控件或平行领域类型。
 
-- `VITE_API_BASE_URL`
-- `VITE_AUTOSAVE_DEBOUNCE_MS`
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+## API Client Pattern
 
-Vite dev proxy 将 `/api` 与 `/socket.io` 转发到 server。
+- 所有 REST 请求复用 `src/shared/api/client.ts` 的 `apiClient`，不要直接创建新的 ky 实例。
+- 默认 `prefixUrl` 是 `VITE_API_BASE_URL`，未配置时为 `/api/v1`；调用 ky 时传相对资源且不要以 `/` 开头。
+- `beforeRequest` 从 `localStorage.auth_token` 写入 Bearer token；401 最多重试一次，并通过 Supabase 刷新 session，失败时登出并跳到 `/login`。
+- `afterResponse` 仅转换 JSON 响应，通过 `snakeToCamel` 统一为前端 camelCase。
+- JSON 请求使用 ky 的 `json:` 选项；提交前用 `toSnakeBody(...)` 转为 snake_case。上传使用 `body: FormData`，不要手设 `Content-Type`，浏览器需要生成 multipart boundary。
+- API wire 类型来自 `@agentloom/api-client` 和 `@agentloom/contracts`；不要手改生成模型。OpenAPI 未表达的 envelope 才放本包共享类型。
+
+## Important Files
+
+- `vite.config.ts`：React/Tailwind 插件、`@` 别名、开发代理和内嵌 Vitest 配置。
+- `eslint.config.js`：TypeScript/React 规则及 feature barrel 边界。
+- `src/app/providers.tsx`：应用 provider 组合与认证初始化。
+- `src/app/routes/__root.tsx`：根布局、认证/onboarding 边界和手工 route tree。
+- `src/shared/api/client.ts`：认证、重试、case conversion 的 ky transport。
+- `src/shared/api/queryClient.ts`：全局 QueryClient 默认值。
+- `src/test-setup.ts`：jest-dom、浏览器 API polyfill 与全局模块 mock。
+
+## Runtime/Tooling Preferences
+
+- Vite 开发代理把 `/api` 与支持 WebSocket 的 `/socket.io` 转发到 `http://localhost:3000`；文件系统访问允许 monorepo 上一级目录。
+- 环境变量示例在 `.env.example`：`VITE_API_BASE_URL`、`VITE_AUTOSAVE_DEBOUNCE_MS`、`VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`。
+- 新依赖、跨包契约生成和 monorepo 级命令遵循根 `AGENTS.md`；本文件只约束 Studio 包内实现。
+
+## Testing & QA
+
+- Vitest 配置内嵌在 `vite.config.ts`：全局 API、`jsdom`、10 秒超时，匹配 `src/**/*.test.{ts,tsx}`，且不处理 CSS。
+- 测试与源码同级，组件使用 Testing Library 与 `user-event`，hooks 使用 `renderHook`；断言面向用户行为和状态变化。
+- `src/test-setup.ts` 每个测试恢复真实 timer，加载 jest-dom，并补齐 `ResizeObserver`、pointer capture、`scrollIntoView`。
+- 全局 setup 已 mock theme、Supabase 和 `react-pdf`；单测需要不同分支时在测试内明确覆盖并恢复。
+- Query hooks 的测试创建独立 `QueryClient` 与 `QueryClientProvider`，避免共享缓存；模块 mock 需要提升时使用 `vi.hoisted()` 配合 `vi.mock()`。
+- 修改行为后优先运行相关文件，例如 `pnpm vitest run src/features/workflow/components/PublishSheet.test.tsx`，再按需要执行包级检查。
