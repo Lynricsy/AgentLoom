@@ -22,6 +22,7 @@ describe('MarketplaceController', () => {
     findMyListings: vi.fn(),
     findById: vi.fn(),
     installListing: vi.fn(),
+    uninstallListing: vi.fn(),
   };
   const reviewUserService = {
     submitReview: vi.fn(),
@@ -39,6 +40,14 @@ describe('MarketplaceController', () => {
         'admin',
         'creator',
         'operator',
+      ]);
+    });
+
+    it('uninstall 应要求 owner/admin/creator 角色', () => {
+      expect(getRoles(controller, 'uninstall')).toEqual([
+        'owner',
+        'admin',
+        'creator',
       ]);
     });
   });
@@ -67,6 +76,29 @@ describe('MarketplaceController', () => {
         dto,
       );
       expect(result).toEqual(mockWorkflow);
+    });
+  });
+
+  describe('uninstall', () => {
+    it('应调用 marketplaceService.uninstallListing 并直接返回结果', async () => {
+      const mockResult = {
+        disabledPluginDbIds: ['plugin-1'],
+        message: '已停用 1 个来自该 listing 的插件副本',
+      };
+      marketplaceService.uninstallListing.mockResolvedValue(mockResult);
+
+      const result = await controller.uninstall(
+        TENANT_ID,
+        USER_ID,
+        LISTING_ID,
+      );
+
+      expect(marketplaceService.uninstallListing).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        LISTING_ID,
+      );
+      expect(result).toEqual(mockResult);
     });
   });
 

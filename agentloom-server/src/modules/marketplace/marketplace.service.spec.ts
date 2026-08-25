@@ -952,6 +952,47 @@ describe('MarketplaceService', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
   });
+
+  describe('uninstallListing', () => {
+    it('应把来自该 listing 的插件副本全部置为 disabled', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          { id: 'clone-1', pluginId: PLUGIN_ID, version: '1.0.0' },
+          { id: 'clone-2', pluginId: PLUGIN_ID, version: '1.0.0' },
+        ]),
+      );
+      const updateChain = createUpdateChain([
+        { id: 'clone-1' },
+        { id: 'clone-2' },
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.uninstallListing(
+        TENANT_ID,
+        USER_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'disabled', updatedAt: NOW }),
+      );
+      expect(result.disabledPluginDbIds).toEqual(['clone-1', 'clone-2']);
+    });
+
+    it('没有匹配副本时应幂等返回空列表且不写库', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      const result = await service.uninstallListing(
+        TENANT_ID,
+        USER_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(result.disabledPluginDbIds).toEqual([]);
+    });
+  });
+
   describe('状态、筛选、定价与安装补充分支', () => {
     it('pending_review listing 禁止重复提交且不查询版本', async () => {
       db.select.mockReturnValueOnce(
