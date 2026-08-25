@@ -17,12 +17,14 @@ import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 import {
   PluginAlreadyExistsException,
   PluginFileTooLargeException,
+  PluginNotFoundException,
   PluginSignatureInvalidException,
   PluginSignatureMissingException,
   PluginValidationException,
 } from './plugin.exceptions';
-import { PluginSignatureService } from './plugin-signature.service';
 import { PluginService } from './plugin.service';
+import { PluginSignatureService } from './plugin-signature.service';
+import { PluginUsageService } from './plugin-usage.service';
 
 const mocks = vi.hoisted(() => ({
   createMockPluginService: () => ({
@@ -227,6 +229,10 @@ describe('PluginController', () => {
   let developerKeyService: ReturnType<
     typeof mocks.createMockDeveloperKeyService
   >;
+  let usageService: {
+    findUsageByPlugin: ReturnType<typeof vi.fn>;
+    getUsageSummary: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -234,6 +240,10 @@ describe('PluginController', () => {
     storageService = mocks.createMockStorageService();
     signatureService = mocks.createMockSignatureService();
     developerKeyService = mocks.createMockDeveloperKeyService();
+    usageService = {
+      findUsageByPlugin: vi.fn(),
+      getUsageSummary: vi.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PluginController],
@@ -253,6 +263,10 @@ describe('PluginController', () => {
         {
           provide: PluginDeveloperKeyService,
           useValue: developerKeyService,
+        },
+        {
+          provide: PluginUsageService,
+          useValue: usageService,
         },
       ],
     }).compile();
@@ -483,6 +497,110 @@ describe('PluginController', () => {
         TENANT_ID,
       );
       expect(result).toEqual({ data: plugin });
+    });
+  });
+
+  describe('usage', () => {
+    it('应在校验插件归属后返回用量分页结果', async () => {
+      const plugin = createPluginResponse();
+      const page = {
+        data: [{ id: 'usage-1' }],
+        meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      };
+      service.findById.mockResolvedValue(plugin);
+      usageService.findUsageByPlugin.mockResolvedValue(page);
+
+      const query = { page: 1, pageSize: 20 };
+      const result = await controller.findUsage(
+        PLUGIN_RECORD_ID,
+        query as never,
+        createRequest(),
+      );
+
+      expect(getRoles(controller, 'findUsage')).toEqual([
+        'owner',
+        'admin',
+        'creator',
+        'operator',
+        'viewer',
+      ]);
+      expect(service.findById).toHaveBeenCalledWith(
+        PLUGIN_RECORD_ID,
+        TENANT_ID,
+      );
+      expect(usageService.findUsageByPlugin).toHaveBeenCalledWith(
+        PLUGIN_RECORD_ID,
+        query,
+      );
+      expect(result).toEqual(page);
+    });
+
+    it('插件不存在时不应查询用量', async () => {
+      service.findById.mockRejectedValue(
+        new PluginNotFoundException(PLUGIN_RECORD_ID),
+      );
+
+      await expect(
+        controller.findUsage(PLUGIN_RECORD_ID, {} as never, createRequest()),
+      ).rejects.toBeInstanceOf(PluginNotFoundException);
+      expect(usageService.findUsageByPlugin).not.toHaveBeenCalled();
+    });
+
+    it('汇总未传周期时默认取当前 UTC 自然月', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-03-15T08:30:00.000Z'));
+      service.findById.mockResolvedValue(createPluginResponse());
+      usageService.getUsageSummary.mockResolvedValue({
+        totalExecutions: 12,
+        totalBillingAmount: '3.00000000',
+        avgDurationMs: 120,
+      });
+
+      const result = await controller.getUsageSummary(
+        PLUGIN_RECORD_ID,
+        {} as never,
+        createRequest(),
+      );
+
+      expect(usageService.getUsageSummary).toHaveBeenCalledWith(
+        PLUGIN_RECORD_ID,
+        new Date('2026-03-01T00:00:00.000Z'),
+        new Date('2026-03-15T08:30:00.000Z'),
+      );
+      expect(result).toEqual({
+        data: {
+          totalExecutions: 12,
+          totalBillingAmount: '3.00000000',
+          avgDurationMs: 120,
+          periodStart: '2026-03-01T00:00:00.000Z',
+          periodEnd: '2026-03-15T08:30:00.000Z',
+        },
+      });
+      vi.useRealTimers();
+    });
+
+    it('汇总显式周期应原样透传', async () => {
+      service.findById.mockResolvedValue(createPluginResponse());
+      usageService.getUsageSummary.mockResolvedValue({
+        totalExecutions: 0,
+        totalBillingAmount: null,
+        avgDurationMs: null,
+      });
+
+      await controller.getUsageSummary(
+        PLUGIN_RECORD_ID,
+        {
+          periodStart: '2026-01-01T00:00:00.000Z',
+          periodEnd: '2026-01-31T23:59:59.999Z',
+        } as never,
+        createRequest(),
+      );
+
+      expect(usageService.getUsageSummary).toHaveBeenCalledWith(
+        PLUGIN_RECORD_ID,
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-01-31T23:59:59.999Z'),
+      );
     });
   });
 

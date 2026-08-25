@@ -100,8 +100,7 @@ export interface PublicMarketplacePluginListingDetail extends PublicMarketplaceL
 }
 
 export type PublicMarketplaceListingDetail =
-  | PublicMarketplaceWorkflowListingDetail
-  | PublicMarketplacePluginListingDetail;
+  PublicMarketplaceWorkflowListingDetail | PublicMarketplacePluginListingDetail;
 
 export interface InstalledMarketplaceWorkflowResult {
   workflowDefinitionId: string;
@@ -117,8 +116,7 @@ export interface InstalledMarketplacePluginResult {
 }
 
 export type InstalledMarketplaceListingResult =
-  | InstalledMarketplaceWorkflowResult
-  | InstalledMarketplacePluginResult;
+  InstalledMarketplaceWorkflowResult | InstalledMarketplacePluginResult;
 
 function buildMarketplaceAuthor(params: {
   displayName: string | null;
@@ -481,7 +479,15 @@ export class MarketplaceService {
     query: unknown,
   ): Promise<PublicMarketplaceListingsResult> {
     const parsedQuery = QueryPublicListingsSchema.parse(query);
-    const { category, search, listingType, sort, page, pageSize } = parsedQuery;
+    const {
+      category,
+      search,
+      listingType,
+      pricingModel,
+      sort,
+      page,
+      pageSize,
+    } = parsedQuery;
     const offset = (page - 1) * pageSize;
 
     const conditions = [eq(schema.marketplaceListings.status, 'listed')];
@@ -490,16 +496,26 @@ export class MarketplaceService {
       conditions.push(eq(schema.marketplaceListings.listingType, listingType));
     }
 
+    if (pricingModel) {
+      conditions.push(
+        eq(schema.marketplaceListings.pricingModel, pricingModel),
+      );
+    }
+
     if (category) {
       conditions.push(eq(schema.marketplaceListings.category, category));
     }
 
     if (search) {
       const searchTerm = `%${search}%`;
+      // 插件 listing 的可搜索标识来自 plugins 表（已 left join）
       const searchCondition = or(
         ilike(schema.marketplaceListings.title, searchTerm),
         ilike(schema.marketplaceListings.summary, searchTerm),
         sql<boolean>`array_to_string(${schema.marketplaceListings.tags}, ' ') ilike ${searchTerm}`,
+        ilike(schema.plugins.name, searchTerm),
+        ilike(schema.plugins.pluginId, searchTerm),
+        ilike(schema.plugins.author, searchTerm),
       );
 
       if (searchCondition) {
@@ -568,6 +584,10 @@ export class MarketplaceService {
       this.db
         .select({ count: sql<number>`count(*)::int` })
         .from(schema.marketplaceListings)
+        .leftJoin(
+          schema.plugins,
+          eq(schema.marketplaceListings.pluginDbId, schema.plugins.id),
+        )
         .where(whereClause),
     ]);
 
