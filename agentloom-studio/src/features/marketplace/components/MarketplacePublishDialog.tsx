@@ -2,8 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { AlertCircle, CheckCircle2, Loader2, Store, X, XCircle } from 'lucide-react'
-import { Badge } from '@/shared/ui/badge'
+import { AlertCircle, CheckCircle2, Loader2, Store, XCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -23,6 +22,7 @@ import {
   type MarketplaceReviewCheck,
   type MarketplaceReviewResult,
 } from '../types'
+import { ListingTagsInput } from './ListingTagsInput'
 
 const L = MARKETPLACE_REVIEW_LIMITS
 
@@ -107,7 +107,6 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
   const wasOpenRef = useRef(false)
 
   const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState('')
   const [tagError, setTagError] = useState<string | null>(null)
   const [dialogState, setDialogState] = useState<DialogState>({ kind: 'form' })
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -143,7 +142,6 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
     wasOpenRef.current = true
     resetForm({ title: '', summary: '', coverImageUrl: '' })
     setTags([])
-    setTagInput('')
     setTagError(null)
     setDialogState({ kind: 'form' })
     resetSubmitMutationRef.current()
@@ -156,53 +154,6 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
         successTimerRef.current = null
       }
     }
-  }, [])
-
-  const addTagsFromInput = useCallback(
-    (raw: string) => {
-      const incoming = raw
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-
-      const tooLong = incoming.find((t) => t.length > L.tagMaxLength)
-      if (tooLong) {
-        setTagError(`标签"${tooLong}"超过 ${L.tagMaxLength} 个字符`)
-        return
-      }
-
-      const merged = Array.from(new Set([...tags, ...incoming]))
-      if (merged.length > L.maxTags) {
-        setTagError(`最多添加 ${L.maxTags} 个标签`)
-        return
-      }
-
-      setTags(merged)
-      setTagInput('')
-      setTagError(null)
-    },
-    [tags],
-  )
-
-  const handleTagInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.nativeEvent.isComposing) return
-      if (e.key === 'Enter' || e.key === ',') {
-        e.preventDefault()
-        if (tagInput.trim()) {
-          addTagsFromInput(tagInput)
-        }
-      }
-      if (e.key === 'Backspace' && tagInput === '' && tags.length > 0) {
-        setTags((prev) => prev.slice(0, -1))
-      }
-    },
-    [tagInput, tags.length, addTagsFromInput],
-  )
-
-  const removeTag = useCallback((tagToRemove: string) => {
-    setTags((prev) => prev.filter((t) => t !== tagToRemove))
-    setTagError(null)
   }, [])
 
   const onSubmit = useCallback(
@@ -369,49 +320,15 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <label htmlFor="mp-tags" className="text-sm font-medium text-foreground">
-                  标签 <span className="text-error">*</span>
-                  <span className="ml-1 text-xs font-normal text-muted">
-                    ({tags.length}/{L.maxTags})
-                  </span>
-                </label>
-                {tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {tags.map((tag) => (
-                      <Badge key={tag} variant="secondary" className="pr-1 text-foreground">
-                        {tag}
-                        <button
-                          type="button"
-                          className="rounded-full p-0.5 text-muted transition-colors hover:bg-background hover:text-foreground"
-                          onClick={() => removeTag(tag)}
-                          aria-label={`移除标签 ${tag}`}
-                          disabled={isFormDisabled}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                <Input
-                  id="mp-tags"
-                  type="text"
-                  className={cn(tagError && 'border-error')}
-                  placeholder="输入标签后按 Enter 或逗号分隔"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={handleTagInputKeyDown}
-                  onBlur={() => {
-                    if (tagInput.trim()) addTagsFromInput(tagInput)
-                  }}
-                  disabled={isFormDisabled}
-                  data-testid="marketplace-tags-input"
-                />
-                {tagError && (
-                  <p className="text-xs font-medium text-error">{tagError}</p>
-                )}
-              </div>
+              <ListingTagsInput
+                id="mp-tags"
+                tags={tags}
+                onTagsChange={setTags}
+                error={tagError}
+                onErrorChange={setTagError}
+                disabled={isFormDisabled}
+                testId="marketplace-tags-input"
+              />
 
               <div className="space-y-1.5">
                 <label htmlFor="mp-cover" className="text-sm font-medium text-foreground">

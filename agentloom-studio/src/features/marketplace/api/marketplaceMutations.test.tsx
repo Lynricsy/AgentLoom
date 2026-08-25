@@ -6,20 +6,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   relistMarketplaceListing,
   submitMarketplaceListing,
+  submitPluginMarketplaceListing,
   unlistMarketplaceListing,
+  updatePluginMarketplaceListing,
 } from './marketplaceApi';
 import { marketplaceKeys } from './marketplaceKeys';
 import {
   useRelistMarketplaceListing,
   useSubmitMarketplaceListing,
+  useSubmitPluginMarketplaceListing,
   useUnlistMarketplaceListing,
+  useUpdatePluginMarketplaceListing,
 } from './marketplaceMutations';
 import type { MarketplaceListing } from '../types';
 
 vi.mock('./marketplaceApi', () => ({
   relistMarketplaceListing: vi.fn(),
   submitMarketplaceListing: vi.fn(),
+  submitPluginMarketplaceListing: vi.fn(),
   unlistMarketplaceListing: vi.fn(),
+  updatePluginMarketplaceListing: vi.fn(),
 }));
 
 function createMarketplaceListing(
@@ -152,6 +158,77 @@ describe('marketplaceMutations', () => {
 
     await act(async () => {
       await result.current.mutateAsync('listing-1');
+    });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: marketplaceKeys.lists(),
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: marketplaceKeys.detail('listing-1'),
+      });
+    });
+  });
+
+  it('submitting a plugin listing invalidates marketplace lists', async () => {
+    vi.mocked(submitPluginMarketplaceListing).mockResolvedValue({
+      data: createMarketplaceListing({ listingType: 'plugin' }),
+      reviewResult: {
+        outcome: 'passed',
+        checks: [],
+        reviewedAt: '2026-03-15T00:00:00.000Z',
+      },
+    });
+
+    const { queryClient, wrapper } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useSubmitPluginMarketplaceListing(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        pluginDbId: 'plugin-db-1',
+        title: '高质量机器翻译节点',
+        summary: '把机器翻译能力接进画布，支持二十种语言互译并保留术语表。',
+        tags: ['翻译'],
+        pricingModel: 'free',
+      });
+    });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: marketplaceKeys.lists(),
+      });
+    });
+  });
+
+  it('updating a plugin listing invalidates lists and its detail', async () => {
+    vi.mocked(updatePluginMarketplaceListing).mockResolvedValue({
+      data: createMarketplaceListing({
+        listingType: 'plugin',
+        status: 'review_failed',
+      }),
+      reviewResult: {
+        outcome: 'failed',
+        checks: [],
+        reviewedAt: '2026-03-15T00:00:00.000Z',
+      },
+    });
+
+    const { queryClient, wrapper } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useUpdatePluginMarketplaceListing(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        listingId: 'listing-1',
+        request: { title: '新的标题' },
+      });
     });
 
     await waitFor(() => {

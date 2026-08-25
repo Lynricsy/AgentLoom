@@ -6,6 +6,8 @@ import type {
   MyListingsFilters,
   SubmitMarketplaceListingRequest,
   SubmitMarketplaceListingResponse,
+  SubmitPluginListingRequest,
+  UpdatePluginListingRequest,
 } from '../types';
 
 const MARKETPLACE_LISTINGS_PATH = 'marketplace/listings';
@@ -67,6 +69,31 @@ export function relistPluginMarketplaceListing(
 ): Promise<SubmitMarketplaceListingResponse> {
   return apiClient
     .post(`${PLUGIN_MARKETPLACE_LISTINGS_PATH}/${listingId}/relist`)
+    .json<SubmitMarketplaceListingResponse>();
+}
+
+export function submitPluginMarketplaceListing(
+  request: SubmitPluginListingRequest,
+): Promise<SubmitMarketplaceListingResponse> {
+  return apiClient
+    .post(PLUGIN_MARKETPLACE_LISTINGS_PATH, {
+      json: request,
+    })
+    .json<SubmitMarketplaceListingResponse>();
+}
+
+/**
+ * 编辑已上架的插件 listing。服务端会**重新审查**，
+ * 响应里的 status 可能从 listed 掉到 review_failed。
+ */
+export function updatePluginMarketplaceListing(
+  listingId: string,
+  request: UpdatePluginListingRequest,
+): Promise<SubmitMarketplaceListingResponse> {
+  return apiClient
+    .patch(`${PLUGIN_MARKETPLACE_LISTINGS_PATH}/${listingId}`, {
+      json: request,
+    })
     .json<SubmitMarketplaceListingResponse>();
 }
 

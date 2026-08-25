@@ -2,7 +2,9 @@ import type {
   InstallMarketplaceListingDto,
   SubmitMarketplaceListingDto,
   SubmitMarketplaceListingDtoCategoryEnum,
+  SubmitPluginListingDto,
   SubmitReviewDto,
+  UpdatePluginListingDto,
 } from "@agentloom/api-client";
 
 export const MARKETPLACE_LISTING_STATUSES = [
@@ -110,6 +112,29 @@ export interface MarketplaceListingListResponse {
 export interface SubmitMarketplaceListingResponse {
   data: MarketplaceListing;
   reviewResult: MarketplaceReviewResult;
+}
+
+/**
+ * POST /plugins/marketplace/listings 请求体（生成模型，strict）。
+ * 不含 description，也不含 occVersion —— 多传字段服务端直接 422。
+ */
+export type SubmitPluginListingRequest = SubmitPluginListingDto
+
+/** PATCH /plugins/marketplace/listings/:id 请求体（生成模型，字段全可选） */
+export type UpdatePluginListingRequest = UpdatePluginListingDto
+
+/**
+ * 插件 listing 编辑态的预填值。
+ * `MyMarketplaceListingItem` 结构上满足它，编辑入口直接传行数据即可。
+ */
+export interface PluginListingEditTarget {
+  id: string;
+  title: string;
+  summary: string;
+  category?: MarketplaceCategory | null;
+  tags: string[];
+  pricingModel: MarketplacePricingModel;
+  pricePerExecution: string | null;
 }
 
 export interface MarketplaceListingResponse {

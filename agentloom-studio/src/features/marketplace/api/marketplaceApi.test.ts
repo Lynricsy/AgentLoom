@@ -5,17 +5,21 @@ import {
   fetchMyMarketplaceListings,
   relistMarketplaceListing,
   submitMarketplaceListing,
+  submitPluginMarketplaceListing,
   unlistMarketplaceListing,
+  updatePluginMarketplaceListing,
 } from './marketplaceApi';
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { getMock, patchMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
+  patchMock: vi.fn(),
   postMock: vi.fn(),
 }));
 
 vi.mock('@/shared/api/client', () => ({
   apiClient: {
     get: getMock,
+    patch: patchMock,
     post: postMock,
   },
 }));
@@ -118,6 +122,47 @@ describe('marketplaceApi', () => {
     const result = await fetchMarketplaceListingById('listing-1');
 
     expect(getMock).toHaveBeenCalledWith('marketplace/listings/listing-1');
+    expect(result).toEqual(response);
+  });
+
+  it('submits a plugin listing to the plugin marketplace path', async () => {
+    const request = {
+      pluginDbId: 'plugin-db-1',
+      title: '高质量机器翻译节点',
+      summary: '把机器翻译能力接进画布，支持二十种语言互译并保留术语表。',
+      tags: ['翻译'],
+      pricingModel: 'per_execution' as const,
+      pricePerExecution: '0.02',
+    };
+    const response = { data: { id: 'listing-1' }, reviewResult: {} };
+    postMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(response),
+    });
+
+    const result = await submitPluginMarketplaceListing(request);
+
+    expect(postMock).toHaveBeenCalledWith('plugins/marketplace/listings', {
+      json: request,
+    });
+    expect(result).toEqual(response);
+  });
+
+  it('patches a plugin listing and returns the fresh review result', async () => {
+    const request = { title: '新的标题', tags: ['翻译', 'nlp'] };
+    const response = {
+      data: { id: 'listing-1', status: 'review_failed' },
+      reviewResult: { outcome: 'failed', checks: [] },
+    };
+    patchMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(response),
+    });
+
+    const result = await updatePluginMarketplaceListing('listing-1', request);
+
+    expect(patchMock).toHaveBeenCalledWith(
+      'plugins/marketplace/listings/listing-1',
+      { json: request },
+    );
     expect(result).toEqual(response);
   });
 });

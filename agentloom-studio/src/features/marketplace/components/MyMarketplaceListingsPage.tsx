@@ -46,6 +46,7 @@ import type {
   MyMarketplaceListingItem,
 } from '../types'
 import { ListingCard } from './ListingCard'
+import { PluginPublishDialog, type PluginPublishTarget } from './PluginPublishDialog'
 
 type StatusFilter = MarketplaceListingStatus | 'all'
 
@@ -109,6 +110,7 @@ export function MyMarketplaceListingsPage() {
   const [unlistTarget, setUnlistTarget] = useState<MyMarketplaceListingItem | null>(null)
   const [reviewTarget, setReviewTarget] =
     useState<MyMarketplaceListingItem | null>(null)
+  const [editTarget, setEditTarget] = useState<PluginPublishTarget | null>(null)
 
   const { notify } = useToast()
 
@@ -220,6 +222,18 @@ export function MyMarketplaceListingsPage() {
     [],
   )
 
+  const handleEdit = useCallback((listing: MyMarketplaceListingItem) => {
+    setEditTarget({
+      mode: 'edit',
+      pluginName: listing.pluginName ?? listing.title,
+      listing,
+    })
+  }, [])
+
+  const handleEditOpenChange = useCallback((open: boolean) => {
+    if (!open) setEditTarget(null)
+  }, [])
+
   const isUnlistPending =
     unlistMutation.isPending || unlistPluginMutation.isPending
 
@@ -309,6 +323,7 @@ export function MyMarketplaceListingsPage() {
                 onUnlist={handleUnlist}
                 onRelist={handleRelist}
                 onViewReview={handleViewReview}
+                onEdit={handleEdit}
               />
             </motion.div>
           ))}
@@ -383,6 +398,11 @@ export function MyMarketplaceListingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PluginPublishDialog
+        target={editTarget}
+        onOpenChange={handleEditOpenChange}
+      />
     </div>
   )
 }
