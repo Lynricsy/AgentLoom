@@ -11,6 +11,7 @@ import {
 } from './dto/plugin-earnings.dto';
 import { FixedScaleDecimal } from './fixed-scale-decimal';
 import { PluginEarningsService } from './plugin-earnings.service';
+import { PluginEarningsPayoutTransitionException } from './plugin.exceptions';
 
 const { createMockDb } = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -301,33 +302,111 @@ describe('PluginEarningsService', () => {
   });
 
   describe('updatePayoutStatus', () => {
-    it('应更新 payout 状态并返回最新记录', async () => {
+    it('pending → processing 应写入 payoutReference 且不写 payoutAt', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([createEarningWithPluginName()]),
       );
       const updated = createEarningRecord({
-        payoutStatus: 'completed',
+        payoutStatus: 'processing',
         payoutReference: 'payout_123',
-        payoutAt: new Date('2025-02-01T00:00:00.000Z'),
       });
       const updateQuery = createUpdateChain([updated]);
       db.update.mockReturnValueOnce(updateQuery.chain);
 
       const result = await service.updatePayoutStatus(EARNING_ID, {
-        payoutStatus: 'completed',
+        payoutStatus: 'processing',
         payoutReference: 'payout_123',
-        payoutAt: '2025-02-01T00:00:00.000Z',
       });
 
       expect(result).toEqual(updated);
+      expect(updateQuery.set).toHaveBeenCalledWith({
+        payoutStatus: 'processing',
+        payoutReference: 'payout_123',
+        updatedAt: expect.any(Date),
+      });
+    });
+
+    it('processing → completed 未显式给 payoutAt 时应写入当前时间', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createEarningWithPluginName('示例插件', {
+            payoutStatus: 'processing',
+          }),
+        ]),
+      );
+      const updated = createEarningRecord({ payoutStatus: 'completed' });
+      const updateQuery = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateQuery.chain);
+
+      await service.updatePayoutStatus(EARNING_ID, {
+        payoutStatus: 'completed',
+      });
+
       expect(updateQuery.set).toHaveBeenCalledWith(
         expect.objectContaining({
           payoutStatus: 'completed',
-          payoutReference: 'payout_123',
-          payoutAt: new Date('2025-02-01T00:00:00.000Z'),
-          updatedAt: expect.any(Date),
+          payoutAt: expect.any(Date),
         }),
       );
+    });
+
+    it('failed → processing 应允许重试', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createEarningWithPluginName('示例插件', { payoutStatus: 'failed' }),
+        ]),
+      );
+      const updated = createEarningRecord({ payoutStatus: 'processing' });
+      const updateQuery = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateQuery.chain);
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, { payoutStatus: 'processing' }),
+      ).resolves.toEqual(updated);
+    });
+
+    it('pending → completed 应拒绝跨越 processing', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createEarningWithPluginName()]),
+      );
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, { payoutStatus: 'completed' }),
+      ).rejects.toBeInstanceOf(PluginEarningsPayoutTransitionException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('completed 为终态应拒绝任何迁移', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createEarningWithPluginName('示例插件', {
+            payoutStatus: 'completed',
+          }),
+        ]),
+      );
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, { payoutStatus: 'processing' }),
+      ).rejects.toBeInstanceOf(PluginEarningsPayoutTransitionException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('迁移到 failed 时不允许写 payoutReference', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createEarningWithPluginName('示例插件', {
+            payoutStatus: 'processing',
+          }),
+        ]),
+      );
+
+      await expect(
+        service.updatePayoutStatus(EARNING_ID, {
+          payoutStatus: 'failed',
+          payoutReference: 'payout_should_be_rejected',
+        }),
+      ).rejects.toBeInstanceOf(PluginEarningsPayoutTransitionException);
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 

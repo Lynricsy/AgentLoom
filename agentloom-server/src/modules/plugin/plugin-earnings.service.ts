@@ -38,12 +38,27 @@ import {
   FixedScaleDecimal,
   normalizeFixedScaleDecimal,
 } from './fixed-scale-decimal';
+import { PluginEarningsPayoutTransitionException } from './plugin.exceptions';
 
 export const REVENUE_SPLIT = {
   DEVELOPER_SHARE: '0.70000000',
   PLATFORM_SHARE: '0.30000000',
   LISTING_COMMISSION: '0.15000000',
 } as const;
+
+/**
+ * payout 人工推进的合法状态迁移；completed 为终态。
+ * processing 表示线下打款中，failed 可重新进入 processing 重试。
+ */
+const PAYOUT_STATUS_TRANSITIONS: Record<
+  PluginEarning['payoutStatus'],
+  ReadonlyArray<PluginEarning['payoutStatus']>
+> = {
+  pending: ['processing'],
+  processing: ['completed', 'failed'],
+  failed: ['processing'],
+  completed: [],
+};
 
 type PaginatedResult<T> = {
   data: T[];
@@ -206,17 +221,44 @@ export class PluginEarningsService {
     id: string,
     data: UpdatePayoutStatusDtoType,
   ): Promise<PluginEarning> {
-    await this.findEarningById(id);
+    const current = await this.findEarningById(id);
 
     const parsedData = UpdatePayoutStatusSchema.parse(data);
+    const nextStatus = parsedData.payoutStatus;
+
+    if (!PAYOUT_STATUS_TRANSITIONS[current.payoutStatus].includes(nextStatus)) {
+      throw new PluginEarningsPayoutTransitionException(
+        id,
+        current.payoutStatus,
+        nextStatus,
+      );
+    }
+
+    if (
+      parsedData.payoutReference !== undefined &&
+      nextStatus !== 'processing' &&
+      nextStatus !== 'completed'
+    ) {
+      throw new PluginEarningsPayoutTransitionException(
+        id,
+        current.payoutStatus,
+        nextStatus,
+        `payoutReference 仅可在迁移到 processing/completed 时写入`,
+      );
+    }
+
     const updatePayload: Partial<NewPluginEarning> = {
-      payoutStatus: parsedData.payoutStatus,
+      payoutStatus: nextStatus,
       updatedAt: new Date(),
       ...(parsedData.payoutReference !== undefined
         ? { payoutReference: parsedData.payoutReference }
         : {}),
-      ...(parsedData.payoutAt !== undefined
-        ? { payoutAt: new Date(parsedData.payoutAt) }
+      ...(nextStatus === 'completed'
+        ? {
+            payoutAt: parsedData.payoutAt
+              ? new Date(parsedData.payoutAt)
+              : new Date(),
+          }
         : {}),
     };
 
