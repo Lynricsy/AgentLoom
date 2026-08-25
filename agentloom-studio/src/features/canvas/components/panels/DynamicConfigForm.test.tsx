@@ -162,7 +162,7 @@ describe('DynamicConfigForm', () => {
     )
   })
 
-  it('reports validation state changes as fields become invalid and valid again', async () => {
+  it('未交互时必填项为空即上报无效,填入后转为有效', async () => {
     const onValidationChange = vi.fn()
     const user = userEvent.setup()
 
@@ -177,20 +177,29 @@ describe('DynamicConfigForm', () => {
 
     const input = screen.getByRole('textbox', { name: '名称' })
 
-    expect(onValidationChange).toHaveBeenLastCalledWith(false)
-
-    fireEvent.focus(input)
-    fireEvent.blur(input)
-
-    await waitFor(() => {
-      expect(onValidationChange).toHaveBeenLastCalledWith(true)
-    })
+    // 用户一次都没碰表单:必填项为空必须立刻上报无效,否则工作流会带空配置执行
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+    expect(screen.queryByText('此字段为必填项')).not.toBeInTheDocument()
 
     await user.type(input, '有效名称')
-    fireEvent.blur(input)
 
     await waitFor(() => {
       expect(onValidationChange).toHaveBeenLastCalledWith(false)
     })
+  })
+
+  it('必填项已有值时未交互也上报有效', () => {
+    const onValidationChange = vi.fn()
+
+    render(
+      <DynamicConfigForm
+        configSchema={sampleSchema}
+        values={{ name: '已配置节点' }}
+        onApply={vi.fn()}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    expect(onValidationChange).toHaveBeenLastCalledWith(false)
   })
 })
