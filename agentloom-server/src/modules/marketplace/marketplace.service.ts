@@ -271,6 +271,7 @@ export class MarketplaceService {
     userId: string,
   ): Promise<MarketplaceListing> {
     const listing = await this.findByIdOrThrow(tenantId, listingId);
+    this.ensureNotPluginListing(listing, 'unlist');
 
     if (listing.status !== 'listed') {
       throw new MarketplaceListingConflictException(
@@ -315,6 +316,7 @@ export class MarketplaceService {
     reviewResult: MarketplaceReviewResult;
   }> {
     const listing = await this.findByIdOrThrow(tenantId, listingId);
+    this.ensureNotPluginListing(listing, 'relist');
 
     if (listing.status !== 'unlisted') {
       throw new MarketplaceListingConflictException(
@@ -936,6 +938,24 @@ export class MarketplaceService {
     }
 
     return listing;
+  }
+
+  /**
+   * 通用 listing 生命周期只覆盖 workflow：插件 listing 的上下架必须走插件
+   * 专用端点，那里带插件权限校验与插件审查规则。
+   */
+  private ensureNotPluginListing(
+    listing: MarketplaceListing,
+    action: 'unlist' | 'relist',
+  ): void {
+    if (listing.listingType !== 'plugin') {
+      return;
+    }
+
+    throw new MarketplaceListingConflictException(
+      `插件 listing 请使用 /plugins/marketplace/listings/${listing.id}/${action}`,
+      listing.status,
+    );
   }
 
   private async findPublicListingOrThrow(listingId: string) {
