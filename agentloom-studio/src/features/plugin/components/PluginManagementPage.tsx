@@ -6,10 +6,15 @@ import {
   PowerOff,
   Puzzle,
   Search,
+  Store,
   Trash2,
 } from 'lucide-react'
 import { useAuthToken } from '@/features/auth'
 import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
+import {
+  PluginPublishDialog,
+  type PluginPublishTarget,
+} from '@/features/marketplace'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import {
@@ -85,6 +90,9 @@ export function PluginManagementPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PluginListItem | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [publishTarget, setPublishTarget] = useState<PluginPublishTarget | null>(
+    null,
+  )
 
   const params = useMemo(() => {
     const next: {
@@ -227,48 +235,74 @@ export function PluginManagementPage() {
       },
     ]
 
-    if (!canAdminister) return base
+    // 发布到市场对 creator 开放，启停/删除仍限 owner/admin
+    if (!canAdminister && !canRegister) return base
 
     return [
       ...base,
       {
         key: 'actions',
         header: '操作',
-        className: 'w-24 text-right',
+        className: 'w-32 text-right',
         cell: (plugin) => (
           <div
             className="flex justify-end gap-1"
             onClick={(event) => event.stopPropagation()}
           >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={plugin.status === 'active' ? `停用 ${plugin.name}` : `启用 ${plugin.name}`}
-              disabled={togglingId === plugin.id}
-              onClick={() => handleToggleStatus(plugin)}
-            >
-              {togglingId === plugin.id ? (
-                <Spinner size="sm" />
-              ) : plugin.status === 'active' ? (
-                <PowerOff className="h-3.5 w-3.5" />
-              ) : (
-                <Power className="h-3.5 w-3.5" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`删除 ${plugin.name}`}
-              className="text-muted hover:text-error"
-              onClick={() => setPendingDelete(plugin)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            {canRegister && plugin.status === 'active' ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`发布 ${plugin.name} 到市场`}
+                onClick={() =>
+                  setPublishTarget({
+                    mode: 'create',
+                    pluginDbId: plugin.id,
+                    pluginName: plugin.name,
+                  })
+                }
+              >
+                <Store className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+
+            {canAdminister ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={
+                    plugin.status === 'active'
+                      ? `停用 ${plugin.name}`
+                      : `启用 ${plugin.name}`
+                  }
+                  disabled={togglingId === plugin.id}
+                  onClick={() => handleToggleStatus(plugin)}
+                >
+                  {togglingId === plugin.id ? (
+                    <Spinner size="sm" />
+                  ) : plugin.status === 'active' ? (
+                    <PowerOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Power className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`删除 ${plugin.name}`}
+                  className="text-muted hover:text-error"
+                  onClick={() => setPendingDelete(plugin)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            ) : null}
           </div>
         ),
       },
     ]
-  }, [canAdminister, handleToggleStatus, togglingId])
+  }, [canAdminister, canRegister, handleToggleStatus, togglingId])
 
   const hasFilters = search.trim() !== '' || statusFilter !== ''
 
@@ -381,6 +415,13 @@ export function PluginManagementPage() {
         pluginId={detailId}
         onOpenChange={(open) => {
           if (!open) setDetailId(null)
+        }}
+      />
+
+      <PluginPublishDialog
+        target={publishTarget}
+        onOpenChange={(open) => {
+          if (!open) setPublishTarget(null)
         }}
       />
 

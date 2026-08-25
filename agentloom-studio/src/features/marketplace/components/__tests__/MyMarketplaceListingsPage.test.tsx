@@ -11,6 +11,8 @@ const {
   relistMock,
   pluginUnlistMock,
   pluginRelistMock,
+  pluginSubmitMock,
+  pluginUpdateMock,
   notifyMock,
 } = vi.hoisted(
   () => ({
@@ -37,6 +39,14 @@ const {
       mutateAsync: vi.fn(),
       isPending: false,
     },
+    pluginSubmitMock: {
+      mutateAsync: vi.fn(),
+      isPending: false,
+    },
+    pluginUpdateMock: {
+      mutateAsync: vi.fn(),
+      isPending: false,
+    },
     notifyMock: vi.fn(),
   }),
 );
@@ -50,6 +60,8 @@ vi.mock('../../api/marketplaceMutations', () => ({
   useRelistMarketplaceListing: () => relistMock,
   useUnlistPluginMarketplaceListing: () => pluginUnlistMock,
   useRelistPluginMarketplaceListing: () => pluginRelistMock,
+  useSubmitPluginMarketplaceListing: () => pluginSubmitMock,
+  useUpdatePluginMarketplaceListing: () => pluginUpdateMock,
 }));
 
 vi.mock('@/shared/ui/toast', () => ({

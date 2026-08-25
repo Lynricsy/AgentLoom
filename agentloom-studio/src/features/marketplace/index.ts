@@ -12,3 +12,5 @@ export * from './components/ReviewForm';
 export * from './components/ReviewList';
 export * from './components/MyMarketplaceListingsPage';
 export * from './components/MarketplacePublishDialog';
+export * from './components/PluginPublishDialog';
+export * from './components/ListingTagsInput';

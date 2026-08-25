@@ -4,11 +4,17 @@ import {
   relistPluginMarketplaceListing,
   relistMarketplaceListing,
   submitMarketplaceListing,
+  submitPluginMarketplaceListing,
   unlistPluginMarketplaceListing,
   unlistMarketplaceListing,
+  updatePluginMarketplaceListing,
 } from './marketplaceApi';
 import { marketplaceKeys } from './marketplaceKeys';
-import type { SubmitMarketplaceListingRequest } from '../types';
+import type {
+  SubmitMarketplaceListingRequest,
+  SubmitPluginListingRequest,
+  UpdatePluginListingRequest,
+} from '../types';
 
 export function useSubmitMarketplaceListing() {
   const queryClient = useQueryClient();
@@ -85,6 +91,44 @@ export function useRelistPluginMarketplaceListing() {
     mutationKey: [...marketplaceKeys.all, 'plugin-relist'],
     mutationFn: (listingId: string) => relistPluginMarketplaceListing(listingId),
     onSuccess: async (_data, listingId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: marketplaceKeys.lists() }),
+        queryClient.invalidateQueries({
+          queryKey: marketplaceKeys.detail(listingId),
+        }),
+      ]);
+    },
+    gcTime: 0,
+  });
+}
+
+export function useSubmitPluginMarketplaceListing() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: [...marketplaceKeys.all, 'plugin-submit'],
+    mutationFn: (request: SubmitPluginListingRequest) =>
+      submitPluginMarketplaceListing(request),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: marketplaceKeys.lists() });
+    },
+    gcTime: 0,
+  });
+}
+
+export function useUpdatePluginMarketplaceListing() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationKey: [...marketplaceKeys.all, 'plugin-update'],
+    mutationFn: ({
+      listingId,
+      request,
+    }: {
+      listingId: string;
+      request: UpdatePluginListingRequest;
+    }) => updatePluginMarketplaceListing(listingId, request),
+    onSuccess: async (_data, { listingId }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: marketplaceKeys.lists() }),
         queryClient.invalidateQueries({

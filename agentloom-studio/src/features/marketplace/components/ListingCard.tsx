@@ -1,6 +1,14 @@
 import { memo, useCallback } from 'react'
 
-import { Calendar, Eye, EyeOff, Puzzle, RefreshCw, Workflow } from 'lucide-react'
+import {
+  Calendar,
+  Eye,
+  EyeOff,
+  Pencil,
+  Puzzle,
+  RefreshCw,
+  Workflow,
+} from 'lucide-react'
 
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -18,6 +26,8 @@ interface ListingCardProps {
   onUnlist?: (listing: MyMarketplaceListingItem) => void
   onRelist?: (listing: MyMarketplaceListingItem) => void
   onViewReview?: (listing: MyMarketplaceListingItem) => void
+  /** 仅插件 listing 支持编辑（PATCH /plugins/marketplace/listings/:id） */
+  onEdit?: (listing: MyMarketplaceListingItem) => void
 }
 
 export const ListingCard = memo(function ListingCard({
@@ -25,6 +35,7 @@ export const ListingCard = memo(function ListingCard({
   onUnlist,
   onRelist,
   onViewReview,
+  onEdit,
 }: ListingCardProps) {
   const isPlugin = listing.listingType === 'plugin'
   const typeMeta = MARKETPLACE_LISTING_TYPE_META[listing.listingType]
@@ -42,7 +53,14 @@ export const ListingCard = memo(function ListingCard({
     onViewReview?.(listing)
   }, [listing, onViewReview])
 
+  const handleEdit = useCallback(() => {
+    onEdit?.(listing)
+  }, [listing, onEdit])
+
+  const canEditPlugin = isPlugin && onEdit != null && listing.status !== 'pending_review'
+
   const hasActions =
+    canEditPlugin ||
     listing.status === 'listed' ||
     listing.status === 'unlisted' ||
     listing.status === 'review_failed'
@@ -143,6 +161,13 @@ export const ListingCard = memo(function ListingCard({
                 </Button>
               )}
             </>
+          ) : null}
+
+          {canEditPlugin ? (
+            <Button variant="ghost" size="sm" onClick={handleEdit}>
+              <Pencil className="h-3.5 w-3.5" />
+              编辑
+            </Button>
           ) : null}
         </div>
       ) : null}
