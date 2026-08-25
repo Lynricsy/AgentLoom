@@ -460,6 +460,8 @@ export class PluginService {
     tenantId: string,
     pluginId: string,
   ): Promise<PluginRecord> {
+    // status 直接进 SQL：同租户可能有多个组织注册同名 pluginId，
+    // 只取首行再判状态会被 inactive 副本挡住可用插件。
     const [plugin] = await this.db
       .select()
       .from(schema.plugins)
@@ -467,16 +469,28 @@ export class PluginService {
         and(
           eq(schema.plugins.tenantId, tenantId),
           eq(schema.plugins.pluginId, pluginId),
+          eq(schema.plugins.status, 'active'),
         ),
       )
       .limit(1);
 
     if (!plugin) {
-      throw new PluginNotFoundException(pluginId);
-    }
+      const [inactivePlugin] = await this.db
+        .select({ id: schema.plugins.id })
+        .from(schema.plugins)
+        .where(
+          and(
+            eq(schema.plugins.tenantId, tenantId),
+            eq(schema.plugins.pluginId, pluginId),
+          ),
+        )
+        .limit(1);
 
-    if (plugin.status !== 'active') {
-      throw new PluginInactiveException(plugin.id);
+      if (inactivePlugin) {
+        throw new PluginInactiveException(inactivePlugin.id);
+      }
+
+      throw new PluginNotFoundException(pluginId);
     }
 
     if (!plugin.wasmBundleUrl) {

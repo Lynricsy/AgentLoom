@@ -574,6 +574,55 @@ describe('PluginService', () => {
     });
   });
 
+  describe('findActiveWasmPluginForRouting', () => {
+    it('应在 SQL 层过滤 active 状态并返回带 WASM 的插件', async () => {
+      const activePlugin = createPlugin({
+        status: 'active',
+        wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/plugin.wasm`,
+      });
+      const selectActive = createSelectChainWithLimit([activePlugin]);
+      db.select.mockReturnValueOnce(selectActive);
+
+      await expect(
+        service.findActiveWasmPluginForRouting(TENANT_ID, 'com.example.review'),
+      ).resolves.toEqual(activePlugin);
+      expect(db.select).toHaveBeenCalledTimes(1);
+      expect(selectActive.limit).toHaveBeenCalledWith(1);
+    });
+
+    it('无 active 行但存在同名插件时应抛 422 inactive', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: PLUGIN_ID }]));
+
+      await expect(
+        service.findActiveWasmPluginForRouting(TENANT_ID, 'com.example.review'),
+      ).rejects.toBeInstanceOf(PluginInactiveException);
+    });
+
+    it('插件完全不存在时应抛 404', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(
+        service.findActiveWasmPluginForRouting(TENANT_ID, 'com.example.absent'),
+      ).rejects.toBeInstanceOf(PluginNotFoundException);
+    });
+
+    it('active 插件缺少 WASM 产物时应抛 422', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([
+          createPlugin({ status: 'active', wasmBundleUrl: null }),
+        ]),
+      );
+
+      await expect(
+        service.findActiveWasmPluginForRouting(TENANT_ID, 'com.example.review'),
+      ).rejects.toBeInstanceOf(PluginValidationException);
+    });
+  });
+
   describe('cloneMarketplacePlugin', () => {
     it('应把 listing 价格与源版本写入 clone metadata 快照', async () => {
       const sourcePlugin = createPlugin({
