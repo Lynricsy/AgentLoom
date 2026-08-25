@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
 } from 'react'
@@ -32,88 +33,104 @@ import {
   MARKETPLACE_LISTING_TYPE_TABS,
   type MarketplaceListingTypeFilter,
 } from '../lib/display'
+import type {
+  BrowseCategoryFilter,
+  BrowsePricingFilter,
+  MarketplaceBrowseSearch,
+} from '../lib/browseSearch'
 import {
   MARKETPLACE_CATEGORIES,
   MARKETPLACE_SORT_OPTIONS,
-  type MarketplaceCategory,
-  type MarketplacePricingModel,
   type PublicListingsFilters,
   type MarketplaceSortOption,
 } from '../types'
 import { MarketplaceListingCard } from './MarketplaceListingCard'
 import { MarketplaceDetailDialog } from './MarketplaceDetailDialog'
 
-type BrowseCategory = MarketplaceCategory | 'all'
-type PricingFilter = MarketplacePricingModel | 'all'
-
-const CATEGORY_TABS: { value: BrowseCategory; label: string }[] = [
+const CATEGORY_TABS: { value: BrowseCategoryFilter; label: string }[] = [
   { value: 'all', label: '全部' },
   ...MARKETPLACE_CATEGORIES,
 ]
 
-const PRICING_OPTIONS: { value: PricingFilter; label: string }[] = [
+const PRICING_OPTIONS: { value: BrowsePricingFilter; label: string }[] = [
   { value: 'all', label: '全部定价' },
   { value: 'free', label: '免费' },
   { value: 'per_execution', label: '按次计费' },
 ]
 
-const DEFAULT_SORT: MarketplaceSortOption = 'popular'
 const PAGE_SIZE = 12
+
+export interface MarketplaceBrowsePageProps {
+  mode?: 'marketplace' | 'discover'
+  /** 由路由 search params 解析而来，是筛选与分页的唯一真相 */
+  filters: MarketplaceBrowseSearch
+  onFiltersChange: (updates: Partial<MarketplaceBrowseSearch>) => void
+  onPageChange: (page: number) => void
+}
 
 export function MarketplaceBrowsePage({
   mode = 'marketplace',
-}: {
-  mode?: 'marketplace' | 'discover'
-}) {
-  const [listingType, setListingType] = useState<MarketplaceListingTypeFilter>('all')
-  const [category, setCategory] = useState<BrowseCategory>('all')
-  const [pricing, setPricing] = useState<PricingFilter>('all')
-  const [sort, setSort] = useState<MarketplaceSortOption>(DEFAULT_SORT)
-  const [page, setPage] = useState(1)
-  const [searchInput, setSearchInput] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  filters,
+  onFiltersChange,
+  onPageChange,
+}: MarketplaceBrowsePageProps) {
+  const [searchInput, setSearchInput] = useState(filters.search)
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null)
 
   const { notify } = useToast()
 
+  // 已写入 URL 的搜索词；用于区分「用户正在输入」与「URL 被外部改写」
+  const committedSearchRef = useRef(filters.search)
+  const onFiltersChangeRef = useRef(onFiltersChange)
+  onFiltersChangeRef.current = onFiltersChange
+
+  // 前进/后退或清除筛选改写了 URL，把搜索框回灌成 URL 上的值
   useEffect(() => {
+    if (filters.search === committedSearchRef.current) return
+
+    committedSearchRef.current = filters.search
+    setSearchInput(filters.search)
+  }, [filters.search])
+
+  // 输入防抖 300ms 才写回 URL，避免每敲一个字符都留下一条历史记录
+  useEffect(() => {
+    const trimmed = searchInput.trim()
+    if (trimmed === committedSearchRef.current) return
+
     const timeoutId = window.setTimeout(() => {
-      setDebouncedSearch(searchInput.trim())
+      committedSearchRef.current = trimmed
+      onFiltersChangeRef.current({ search: trimmed })
     }, 300)
 
     return () => window.clearTimeout(timeoutId)
   }, [searchInput])
 
-  const filters = useMemo<PublicListingsFilters>(
+  const listFilters = useMemo<PublicListingsFilters>(
     () => ({
-      category: category === 'all' ? undefined : category,
-      listingType: listingType === 'all' ? undefined : listingType,
-      search: debouncedSearch || undefined,
-      sort,
-      page,
+      category: filters.category === 'all' ? undefined : filters.category,
+      listingType: filters.listingType === 'all' ? undefined : filters.listingType,
+      pricingModel:
+        filters.pricingModel === 'all' ? undefined : filters.pricingModel,
+      search: filters.search || undefined,
+      sort: filters.sort,
+      page: filters.page,
       pageSize: PAGE_SIZE,
     }),
-    [category, debouncedSearch, listingType, page, sort],
+    [filters],
   )
 
-  const { data, isLoading, isError, refetch } = usePublicListings(filters)
+  const { data, isLoading, isError, refetch } = usePublicListings(listFilters)
 
   const listings = data?.data ?? []
   const total = data?.meta.total ?? 0
   const totalPages = data?.meta.totalPages ?? 0
   const isDiscover = mode === 'discover'
 
-  // 后端 browse 接口不支持定价过滤，定价作为当前页的本地视图筛选
-  const visibleListings =
-    pricing === 'all'
-      ? listings
-      : listings.filter((listing) => listing.pricingModel === pricing)
-
   const hasActiveFilters =
-    listingType !== 'all' ||
-    category !== 'all' ||
-    pricing !== 'all' ||
-    debouncedSearch.length > 0
+    filters.listingType !== 'all' ||
+    filters.category !== 'all' ||
+    filters.pricingModel !== 'all' ||
+    filters.search.length > 0
 
   useEffect(() => {
     if (!isError) return
@@ -125,40 +142,50 @@ export function MarketplaceBrowsePage({
     })
   }, [isError, notify])
 
-  const handleCategoryChange = useCallback((nextCategory: string) => {
-    setCategory(nextCategory as BrowseCategory)
-    setPage(1)
-  }, [])
-
-  const handleListingTypeChange = useCallback((nextListingType: string) => {
-    setListingType(nextListingType as MarketplaceListingTypeFilter)
-    setPage(1)
-  }, [])
-
-  const handlePricingChange = useCallback((nextPricing: string) => {
-    setPricing(nextPricing as PricingFilter)
-  }, [])
-
-  const handleSortChange = useCallback((nextSort: string) => {
-    setSort(nextSort as MarketplaceSortOption)
-    setPage(1)
-  }, [])
-
-  const handleSearchChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      setSearchInput(event.target.value)
-      setPage(1)
+  const handleCategoryChange = useCallback(
+    (nextCategory: string) => {
+      onFiltersChange({ category: nextCategory as BrowseCategoryFilter })
     },
-    [],
+    [onFiltersChange],
   )
 
-  const handleResetFilters = useCallback(() => {
-    setListingType('all')
-    setCategory('all')
-    setPricing('all')
-    setSearchInput('')
-    setPage(1)
+  const handleListingTypeChange = useCallback(
+    (nextListingType: string) => {
+      onFiltersChange({
+        listingType: nextListingType as MarketplaceListingTypeFilter,
+      })
+    },
+    [onFiltersChange],
+  )
+
+  const handlePricingChange = useCallback(
+    (nextPricing: string) => {
+      onFiltersChange({ pricingModel: nextPricing as BrowsePricingFilter })
+    },
+    [onFiltersChange],
+  )
+
+  const handleSortChange = useCallback(
+    (nextSort: string) => {
+      onFiltersChange({ sort: nextSort as MarketplaceSortOption })
+    },
+    [onFiltersChange],
+  )
+
+  const handleSearchChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setSearchInput(event.target.value)
   }, [])
+
+  const handleResetFilters = useCallback(() => {
+    committedSearchRef.current = ''
+    setSearchInput('')
+    onFiltersChange({
+      listingType: 'all',
+      category: 'all',
+      pricingModel: 'all',
+      search: '',
+    })
+  }, [onFiltersChange])
 
   const handleDetailOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -212,7 +239,7 @@ export function MarketplaceBrowsePage({
           </div>
 
           <div className="flex gap-2">
-            <Select value={pricing} onValueChange={handlePricingChange}>
+            <Select value={filters.pricingModel} onValueChange={handlePricingChange}>
               <SelectTrigger
                 className="flex-1 sm:w-36 sm:flex-none"
                 aria-label="按定价筛选"
@@ -229,7 +256,7 @@ export function MarketplaceBrowsePage({
               </SelectContent>
             </Select>
 
-            <Select value={sort} onValueChange={handleSortChange}>
+            <Select value={filters.sort} onValueChange={handleSortChange}>
               <SelectTrigger
                 className="flex-1 sm:w-40 sm:flex-none"
                 aria-label="排序市场内容"
@@ -249,7 +276,7 @@ export function MarketplaceBrowsePage({
         </div>
 
         <Tabs
-          value={listingType}
+          value={filters.listingType}
           defaultValue="all"
           onValueChange={handleListingTypeChange}
         >
@@ -262,7 +289,11 @@ export function MarketplaceBrowsePage({
           </TabsList>
         </Tabs>
 
-        <Tabs value={category} defaultValue="all" onValueChange={handleCategoryChange}>
+        <Tabs
+          value={filters.category}
+          defaultValue="all"
+          onValueChange={handleCategoryChange}
+        >
           <TabsList>
             {CATEGORY_TABS.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value}>
@@ -308,7 +339,7 @@ export function MarketplaceBrowsePage({
             }
           />
         </div>
-      ) : visibleListings.length === 0 ? (
+      ) : listings.length === 0 ? (
         <div data-testid="marketplace-browse-empty">
           <EmptyState
             icon={isDiscover ? Compass : Store}
@@ -326,19 +357,15 @@ export function MarketplaceBrowsePage({
       ) : (
         <>
           <div className="flex items-center justify-between text-xs text-muted">
-            <span>
-              {pricing === 'all'
-                ? `共 ${String(total)} 个项目`
-                : `当前页 ${String(visibleListings.length)} 个匹配项目`}
-            </span>
-            <span>第 {page} 页</span>
+            <span>共 {String(total)} 个项目</span>
+            <span>第 {filters.page} 页</span>
           </div>
 
           <div
             className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
             data-testid="marketplace-browse-grid"
           >
-            {visibleListings.map((listing, index) => (
+            {listings.map((listing, index) => (
               <motion.div key={listing.id} className="h-full" {...staggerList(index)}>
                 <MarketplaceListingCard
                   listing={listing}
@@ -350,9 +377,9 @@ export function MarketplaceBrowsePage({
 
           {totalPages > 1 ? (
             <Pagination
-              page={page}
+              page={filters.page}
               totalPages={totalPages}
-              onPageChange={setPage}
+              onPageChange={onPageChange}
             />
           ) : null}
         </>

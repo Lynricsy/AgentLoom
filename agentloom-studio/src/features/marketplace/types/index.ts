@@ -213,6 +213,7 @@ export interface PublicListingsFilters {
   search?: string;
   sort?: MarketplaceSortOption;
   listingType?: MarketplaceListingType;
+  pricingModel?: MarketplacePricingModel;
   page?: number;
   pageSize?: number;
 }
