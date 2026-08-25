@@ -6,50 +6,50 @@
       <h2>这个系统里，哪一部分是「我」</h2>
     </div>
 
-    <p class="lead">这套代码的绝大部分由 AI 生成。与其含糊过去，不如把边界划清楚：<strong>设计全部是我的，代码分三档</strong>。划清楚之后，能被追问到什么深度也就一目了然。</p>
+    <p class="lead">这套代码的绝大部分由 AI 生成。与其含糊过去，不如把边界划清楚：<strong>设计全部是我的，代码按我的介入方式分三档</strong>。划清楚之后，能被追问到什么深度也就一目了然。</p>
 
     <div class="stack s">
       <div class="stackdiag">
-        <div class="hl"><b>逐行把关</b><span class="t">类型引擎 · 跨端契约 · 沙箱隔离边界</span></div>
-        <div class="dk"><b>设计我定、实现我审</b><span class="t">调度语义 · 多租户链路 · 事件协议 · 路由策略</span></div>
+        <div class="hl"><b>我主导设计与验收</b><span class="t">类型引擎 · 跨端契约 · 沙箱隔离边界</span></div>
+        <div class="dk"><b>我定语义、按行为验收</b><span class="t">调度语义 · 多租户链路 · 事件协议 · 路由策略</span></div>
         <div><b>生成为主、抽查为辅</b><span class="t">业务模块 CRUD · STUDIO 页面 · 移动端 · 市场与分账</span></div>
       </div>
-      <p class="xs">分档依据不是「写了多少行」，而是<strong>「错了会不会在测试里暴露」</strong>。第一档的三处共同特征是：它们的错误不会让任何测试变红，只会在半年后变成线上事故。所以这三处不能交给生成。</p>
+      <p class="xs">分档依据不是「写了多少行」，而是<strong>失误的影响范围</strong>。第一档三处的共同点：它们的错误不局限在某个模块内，而是跨语言、跨端、跨信任边界地扩散 —— 属于<strong>系统级边界</strong>。所以这三处的不变量必须由我定义，并以专项测试作为验收条件。</p>
     </div>
 
     <hr class="hair">
 
     <div class="g g2 gap-s">
       <div class="card card-outlined stack s">
-        <h3>为什么这样讲比宣称全手写更强</h3>
-        <p class="sm">面试官验证归属只有一个手段：<strong>顺着因果往下追问</strong>。宣称全手写，一句「<code>agent-execution</code> 的 worker 怎么做 turn 归一化」就会连带毁掉那三块你真的懂的部分。反过来，明确说出「哪里必须自己把关、为什么」，本身是更难伪造的判断力。</p>
+        <h3>为什么这样讲比宣称手写更强</h3>
+        <p class="sm">面试官验证归属只有一个手段：<strong>顺着因果往下追问</strong>。宣称手写，一句「<code>agent-execution</code> 的 worker 怎么做 turn 归一化」就会连带毁掉那三块你真的讲得清的部分。反过来，说清「哪些边界是我定的、验收标准是什么」，是更难伪造也更容易兑现的判断力。</p>
       </div>
       <div class="card card-outlined stack s">
         <h3>一句可直接用的表述</h3>
-        <p class="sm">「系统设计是我做的，代码大量由 AI 生成。但有三处是我逐行把关的——端口类型引擎、跨端契约层、沙箱隔离边界——因为这三处错了，整个系统就是错的，而且它们的错误不会在测试里暴露。」</p>
+        <p class="sm">「系统设计是我做的，代码大量由 AI 生成。有三处的边界是我主导设计并定验收标准的——端口类型引擎、跨端契约层、沙箱隔离边界——因为这三处的失误会跨端扩散，不是单模块问题。这几处的实现与测试我能讲清；具体业务模块的实现细节我会答不上来。」</p>
       </div>
     </div>
 
     <div class="note">
-      <span class="t">代价要一并说清</span>
-      生成为主的那一档，意味着你对某个具体业务模块的实现细节可能确实答不上来。<strong>提前承认这个代价，比现场被问穿代价小得多。</strong>
+      <span class="t">这句话的兑现成本</span>
+      说了「这几处我能讲清」，就必须真的讲得清 —— 面试前把这三处的实现与专项测试吃透一遍，这是可控的准备量。而<strong>生成为主那一档的实现细节，提前承认答不上来，比现场被问穿代价小得多。</strong>
     </div>
   </div>
 </section>
 
-<!-- ============ P11 三处逐行把关 ============ -->
+<!-- ============ P11 三处系统级边界 ============ -->
 <section class="page" data-sec="CORE THREE">
   <div class="body stack m">
     <div class="stack s">
       <span class="kicker">10 · 第一档细说</span>
-      <h2>三处逐行把关，各自在防什么</h2>
+      <h2>三处系统级边界，各自在防什么</h2>
     </div>
 
     <div class="def">
       <div class="term"><span class="lv">01</span>端口类型引擎（Rust → WASM）</div>
       <p class="body2"><strong>在防：</strong>用户把不该连的两个端口连上，直到运行时才炸。<strong>做法：</strong>14 值端口类型全集加一套兼容性判定，编译成 WASM 在浏览器里跑，拖线时毫秒级反馈；同一份规则服务端也能用，不出现前后端两套判断慢慢跑偏。</p>
       <p class="body2"><strong>真实教训：</strong>这个全集在 <em>Rust、插件 SDK、Studio、服务端</em> 四处各有一份镜像，曾经漂移成 Rust 12 值 / Studio 14 值 / 文档 10 值。修法不是「以后记得同步」，而是加一条<strong>集合机械校验测试</strong>：断言各端集合都是全集子集、且所有端的并集恰好等于全集。任一端漏加一个值，测试立刻红。</p>
-      <p class="xs">可复述的因果：镜像多份就一定会漂移，靠纪律防不住，只能靠测试把「漂移」变成「构建失败」。</p>
+      <p class="xs">可复述的因果：镜像多份就一定会漂移，靠纪律防不住。这条测试不是事后补的保险，<strong>它就是这处边界的验收条件本身</strong> —— 先有「镜像必然漂移」的判断，才知道该断言什么。</p>
     </div>
 
     <div class="def">
