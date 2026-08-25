@@ -1,5 +1,8 @@
 import { useState } from 'react'
 
+import { useAuthToken } from '@/features/auth'
+import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
+
 import {
   useEarningsSummary,
   useMonthlyTrends,
@@ -13,6 +16,9 @@ import { SettlementHistory } from './SettlementHistory'
 
 export function EarningsDashboard() {
   const [settlementPage, setSettlementPage] = useState(1)
+  const role = getInterventionPolicyRoleFromToken(useAuthToken())
+  // PATCH /plugins/marketplace/earnings/:id/payout-status 是 @Roles('owner','admin')
+  const canManagePayouts = role === 'owner' || role === 'admin'
 
   const summaryQuery = useEarningsSummary()
   const trendsQuery = useMonthlyTrends()
@@ -45,6 +51,7 @@ export function EarningsDashboard() {
         isLoading={settlementsQuery.isLoading}
         page={settlementPage}
         onPageChange={setSettlementPage}
+        canManagePayouts={canManagePayouts}
       />
     </div>
   )

@@ -53,7 +53,7 @@ type ApiProblemDetails = ApiError & {
 }
 
 /** 服务端以 RFC7807 返回错误，取 detail 作为 toast 文案，兜底用调用方的 fallback。 */
-export async function resolveDeveloperKeyErrorMessage(
+export async function resolveDeveloperConsoleErrorMessage(
   error: unknown,
   fallback: string,
 ): Promise<string> {

@@ -19,7 +19,7 @@ import { useToast } from '@/shared/ui/toast'
 import { useRegisterDeveloperKey } from '../api/developer-key.queries'
 import {
   PEM_PUBLIC_KEY_BEGIN,
-  resolveDeveloperKeyErrorMessage,
+  resolveDeveloperConsoleErrorMessage,
   validatePublicKeyPem,
 } from '../lib/developerKey'
 import type { DeveloperKey } from '../types'
@@ -84,7 +84,7 @@ export function DeveloperKeyRegisterDialog({
         onError: async (error) => {
           notify({
             title: '注册失败',
-            description: await resolveDeveloperKeyErrorMessage(
+            description: await resolveDeveloperConsoleErrorMessage(
               error,
               '公钥注册失败，请检查内容后重试。',
             ),
