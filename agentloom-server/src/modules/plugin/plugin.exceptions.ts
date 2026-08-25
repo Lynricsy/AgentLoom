@@ -187,3 +187,25 @@ export class PluginUsageLedgerException extends DomainException {
     });
   }
 }
+
+export class PluginEarningsPayoutTransitionException extends DomainException {
+  constructor(
+    earningId: string,
+    currentStatus: string,
+    nextStatus: string,
+    detail?: string,
+  ) {
+    super({
+      type: `${BASE_URL}/plugin-earnings-payout-transition-invalid`,
+      title: '插件收益打款状态迁移非法',
+      status: HttpStatus.CONFLICT,
+      detail:
+        detail ??
+        `收益记录 ${earningId} 无法从 ${currentStatus} 迁移到 ${nextStatus}`,
+      extensions: {
+        currentStatus,
+        nextStatus,
+      },
+    });
+  }
+}

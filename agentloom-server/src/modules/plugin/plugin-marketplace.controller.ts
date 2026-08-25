@@ -46,6 +46,8 @@ import {
   QueryPluginEarningsSummarySchema,
   QueryPluginEarningsTrendDto,
   QueryPluginEarningsTrendSchema,
+  UpdatePayoutStatusDto,
+  UpdatePayoutStatusSchema,
 } from './dto/plugin-earnings.dto';
 import {
   QueryPluginListingsDto,
@@ -254,6 +256,9 @@ export class PluginMarketplaceController {
       currentMonthRevenue: currentMonthSummary.totalRevenue,
       totalExecutions: summary.totalExecutions,
       activePlugins: summary.pluginCount,
+      totalDeveloperShare: summary.totalDeveloperShare,
+      pendingPayout: summary.pendingPayout,
+      completedPayout: summary.completedPayout,
     };
   }
 
@@ -330,6 +335,37 @@ export class PluginMarketplaceController {
     @CurrentTenant() tenantId: string,
   ) {
     return this.buildSettlementHistoryResponse(query, tenantId);
+  }
+
+  @Patch('earnings/:id/payout-status')
+  @Roles('owner', 'admin')
+  @ApiOperation({ summary: '推进插件收益打款状态' })
+  @ApiResponse({ status: 200, description: '打款状态已更新' })
+  @ApiResponse({ status: 404, description: '收益记录不存在' })
+  @ApiResponse({ status: 409, description: '打款状态迁移非法' })
+  async updatePayoutStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePayoutStatusDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    const parsedDto = UpdatePayoutStatusSchema.parse(dto);
+    const updated = await this.pluginEarningsService.updatePayoutStatus(
+      id,
+      parsedDto,
+    );
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'plugin_earnings_payout_status_updated',
+        earningId: id,
+        payoutStatus: updated.payoutStatus,
+        tenantId,
+        userId,
+      }),
+    );
+
+    return updated;
   }
 
   private async buildSettlementHistoryResponse(

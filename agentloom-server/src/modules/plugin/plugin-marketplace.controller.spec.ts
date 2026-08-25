@@ -16,6 +16,7 @@ import {
   MarketplaceListingNotFoundException,
 } from '../marketplace/marketplace.exceptions';
 import {
+  PluginEarningsPayoutTransitionException,
   PluginInactiveException,
   PluginNotFoundException,
   PluginPermissionDeniedException,
@@ -113,6 +114,7 @@ const mocks = vi.hoisted(() => {
     getDashboardTrends: vi.fn(),
     getDashboardRanking: vi.fn(),
     getDashboardHistory: vi.fn(),
+    updatePayoutStatus: vi.fn(),
   });
 
   return {
@@ -531,7 +533,7 @@ describe('PluginMarketplaceController', () => {
   });
 
   describe('earnings dashboard', () => {
-    it('应��回收益总览', async () => {
+    it('应返回收益总览', async () => {
       const summary = {
         totalRevenue: '100.00000000',
         totalDeveloperShare: '59.50000000',
@@ -583,6 +585,9 @@ describe('PluginMarketplaceController', () => {
         currentMonthRevenue: '12.50000000',
         totalExecutions: 12,
         activePlugins: 3,
+        totalDeveloperShare: '59.50000000',
+        pendingPayout: '20.00000000',
+        completedPayout: '39.50000000',
       });
     });
 
@@ -721,6 +726,51 @@ describe('PluginMarketplaceController', () => {
         ],
         meta: history.meta,
       });
+    });
+
+    it('应以 owner/admin 角色推进 payout 状态', async () => {
+      const updated = {
+        id: '99999999-9999-4999-8999-999999999999',
+        payoutStatus: 'processing',
+        payoutReference: 'payout_abc',
+      };
+      pluginEarningsService.updatePayoutStatus.mockResolvedValue(updated);
+
+      const result = await controller.updatePayoutStatus(
+        '99999999-9999-4999-8999-999999999999',
+        { payoutStatus: 'processing', payoutReference: 'payout_abc' },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(getRoles(controller, 'updatePayoutStatus')).toEqual([
+        'owner',
+        'admin',
+      ]);
+      expect(pluginEarningsService.updatePayoutStatus).toHaveBeenCalledWith(
+        '99999999-9999-4999-8999-999999999999',
+        { payoutStatus: 'processing', payoutReference: 'payout_abc' },
+      );
+      expect(result).toEqual(updated);
+    });
+
+    it('payout 状态迁移非法时应向上抛出 409', async () => {
+      pluginEarningsService.updatePayoutStatus.mockRejectedValue(
+        new PluginEarningsPayoutTransitionException(
+          '99999999-9999-4999-8999-999999999999',
+          'pending',
+          'completed',
+        ),
+      );
+
+      await expect(
+        controller.updatePayoutStatus(
+          '99999999-9999-4999-8999-999999999999',
+          { payoutStatus: 'completed' },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(PluginEarningsPayoutTransitionException);
     });
   });
 
