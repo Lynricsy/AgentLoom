@@ -6618,12 +6618,6 @@ export interface UpdatePayoutStatusDto {
      * @memberof UpdatePayoutStatusDto
      */
     payoutReference?: string;
-    /**
-     * 
-     * @type {string}
-     * @memberof UpdatePayoutStatusDto
-     */
-    payoutAt?: string;
 }
 
 

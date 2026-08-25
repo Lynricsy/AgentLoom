@@ -253,13 +253,8 @@ export class PluginEarningsService {
       ...(parsedData.payoutReference !== undefined
         ? { payoutReference: parsedData.payoutReference }
         : {}),
-      ...(nextStatus === 'completed'
-        ? {
-            payoutAt: parsedData.payoutAt
-              ? new Date(parsedData.payoutAt)
-              : new Date(),
-          }
-        : {}),
+      // payoutAt 由服务端拥有：完成时间不接受客户端传入，避免结算时间被篡改
+      ...(nextStatus === 'completed' ? { payoutAt: new Date() } : {}),
     };
 
     // 条件更新绑定读到的状态：并发的 completed/failed 请求都能通过预读，
