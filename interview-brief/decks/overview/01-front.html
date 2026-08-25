@@ -1,0 +1,69 @@
+<!-- ============ P1 封面 ============ -->
+<section class="page accent" data-nochrome>
+  <div style="position:absolute;inset:0;padding:20mm 17mm 16mm;display:flex;flex-direction:column">
+    <div class="spread" style="border-bottom:1px solid rgba(255,255,255,.28);padding-bottom:3.4mm">
+      <span class="kicker">AGENTLOOM</span>
+      <span class="kicker">通俗版 · 核心模块与技术栈</span>
+    </div>
+
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:8mm">
+      <h1 style="color:#fff">这个系统<br>由什么组成，<br>用什么造的</h1>
+      <p class="lead">一份写给非本项目成员看的速览：AgentLoom 有哪几个真正干活的模块，各自解决什么问题，背后分别押了哪些技术。不讲代码细节，只讲结构与理由。</p>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+      <div class="g g3 gap-s">
+        <div class="kpi"><span class="v" style="color:#fff">11</span><span class="k" style="color:rgba(255,255,255,.7)">代码包</span></div>
+        <div class="kpi"><span class="v" style="color:#fff">41</span><span class="k" style="color:rgba(255,255,255,.7)">后端业务模块</span></div>
+        <div class="kpi"><span class="v" style="color:#fff">5</span><span class="k" style="color:rgba(255,255,255,.7)">编程语言</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P2 一句话看懂 ============ -->
+<section class="page" data-sec="OVERVIEW">
+  <div class="body stack l">
+    <div class="stack s">
+      <span class="kicker">01 · 它是什么</span>
+      <h2>像画流程图一样，<br>把一群 AI 组装成生产线</h2>
+    </div>
+
+    <p class="lead">AgentLoom 是一个<strong>多智能体工作流编排平台</strong>。用户在网页画布上拖出若干节点、连上线，就得到一条 AI 工作流；点“运行”，后端按图的先后顺序把每个节点真正执行掉，过程实时回传到页面上。</p>
+
+    <hr class="hair">
+
+    <div class="g g3 gap-s">
+      <div class="card card-outlined stack s">
+        <h3>Studio</h3>
+        <p class="sm">网页端。画布、Agent 配置、监控与管理页面都在这里。相当于<strong>驾驶舱</strong>。</p>
+      </div>
+      <div class="card card-outlined stack s">
+        <h3>Server</h3>
+        <p class="sm">后端。存数据、排队、调度节点、跟大模型对话、推实时事件。相当于<strong>大脑与总调度</strong>。</p>
+      </div>
+      <div class="card card-outlined stack s">
+        <h3>Sandbox</h3>
+        <p class="sm">隔离的微型虚拟机。AI 真正跑命令、写文件的地方。相当于<strong>带门禁的车间</strong>。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h4>系统分层</h4>
+      <div class="stackdiag">
+        <div><b>用户端</b><span class="t">STUDIO (WEB) · FLUTTER (MOBILE) · 编辑器经 ACP 接入</span></div>
+        <div><b>接入层</b><span class="t">REST /API/V1 · SOCKET.IO 实时通道 · API KEY / JWT</span></div>
+        <div class="hl"><b>业务模块层</b><span class="t">工作流 · 智能体 · 沙箱 · 插件 · 治理（41 个模块）</span></div>
+        <div><b>运行时层</b><span class="t">BULLMQ 队列 WORKER · FIRECRACKER MICROVM · WASM 插件</span></div>
+        <div class="dk"><b>基础设施</b><span class="t">POSTGRESQL · REDIS · QDRANT · MINIO</span></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">一个关键区分</span>
+      <strong>工作流</strong>和<strong>智能体</strong>是两个平级的顶层概念，各有自己的定义、版本、执行记录；智能体也可以被塞进工作流里当一个节点用。不是“工作流里才有 AI”。
+    </div>
+  </div>
+</section>

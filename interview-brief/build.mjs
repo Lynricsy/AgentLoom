@@ -22,6 +22,7 @@ mkdirSync(outDir, { recursive: true });
 const DECKS = {
   design: { dir: 'design', title: 'AgentLoom · 系统设计与开放问题', pdf: 'AgentLoom-系统设计与开放问题.pdf' },
   implementation: { dir: 'implementation', title: 'AgentLoom · 实现细节参考册', pdf: 'AgentLoom-实现细节参考册.pdf' },
+  overview: { dir: 'overview', title: 'AgentLoom · 核心模块与技术栈', pdf: 'AgentLoom-核心模块与技术栈.pdf' },
 };
 
 const runtime = (title) => String.raw`

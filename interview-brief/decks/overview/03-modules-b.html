@@ -1,0 +1,91 @@
+<!-- ============ P5 核心模块 C：沙箱与隔离 ============ -->
+<section class="page" data-sec="MODULE C">
+  <div class="body stack m">
+    <div class="spread">
+      <div class="stack s">
+        <span class="kicker">04 · 核心模块 C</span>
+        <h2>沙箱：让 AI 动手，但只能在笼子里</h2>
+      </div>
+      <span class="bignum">C</span>
+    </div>
+
+    <p class="lead">一旦允许 AI 执行命令、装依赖、改文件，问题就从“回答得对不对”变成“它会不会把机器搞坏、会不会读到别人的数据”。这块是整个系统里安全要求最高的部分。</p>
+
+    <div class="g g-5-7 gap-s">
+      <div class="card card-ink stack s">
+        <h3>为什么不用容器</h3>
+        <p class="sm">容器共享宿主内核，跑不可信的 AI 生成代码风险偏大。这里用 <strong>Firecracker 微型虚拟机</strong>：每个沙箱是独立内核的轻量 VM，毫秒级启动，隔离强度接近传统虚拟机，开销接近容器。</p>
+      </div>
+      <div class="stack s">
+        <h4>笼子是怎么焊住的</h4>
+        <ul class="sq sm">
+          <li><strong>网络身份绑定</strong>：网卡入口同时校验分配的 IP 与 MAC，冒充别人的地址直接丢包；关掉 IPv6，默认拒绝访问内网与其他沙箱。</li>
+          <li><strong>文件边界</strong>：所有路径必须落在工作区内，解析软链接后再判一次，防目录穿越。</li>
+          <li><strong>资源上限</strong>：CPU、内存、终端并发数、单次输出大小、生命周期超时全部硬限制，超了就杀。</li>
+          <li><strong>证书不对称</strong>：沙箱内不持有应用侧证书，回调必须经受控中继回到发起它的那个进程。</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h4>顺带打通了外部编辑器</h4>
+        <p class="sm">系统实现了 <strong>ACP（Agent Client Protocol）</strong>：支持该协议的编辑器可以通过标准输入输出直接把 AgentLoom 的 Agent 接进来用，共享同一套文件读写与终端能力，并且写入前一定弹权限确认。能力是协商出来的 —— 对端不支持终端，就不暴露终端。</p>
+      </div>
+      <div class="stack s">
+        <h4>用到的技术</h4>
+        <ul class="dash sm">
+          <li>虚拟机管理：Go + Firecracker SDK</li>
+          <li>沙箱内代理：Go guestd + Fastify</li>
+          <li>网络：CNI + tc + nftables</li>
+          <li>协议：JSON-RPC 2.0 over stdio</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P6 核心模块 D：平台面 ============ -->
+<section class="page" data-sec="MODULE D">
+  <div class="body stack m">
+    <div class="spread">
+      <div class="stack s">
+        <span class="kicker">05 · 核心模块 D</span>
+        <h2>平台面：多租户、可审计、可扩展</h2>
+      </div>
+      <span class="bignum">D</span>
+    </div>
+
+    <p class="lead">前面三块决定“能不能跑”，这一块决定“敢不敢给别人用”。多个组织共用一套系统，数据不能串，行为要留痕，资源要有闸门。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill stack s">
+        <h3>数据隔离</h3>
+        <p class="sm">每个请求进来先认出它属于哪个组织，之后所有数据库操作都在带租户上下文的事务里跑，数据库层再叠一层行级安全策略。<strong>两道锁，不靠应用代码自觉。</strong></p>
+      </div>
+      <div class="card card-fill stack s">
+        <h3>端到端加密</h3>
+        <p class="sm">模型输出等敏感内容用“非对称密钥包对称密钥”的方式加密后入库，私钥只存在用户浏览器本地。<strong>数据库被整体拖走也读不出内容</strong>——但要诚实说明：它防的是静态数据泄露，不防在线进程被攻陷。</p>
+      </div>
+      <div class="card card-fill stack s">
+        <h3>审计与配额</h3>
+        <p class="sm">关键操作写只追加的审计表，旧数据自动归档，查询时热表与归档表合并回放。配额侧管住并发数、日调用量、每分钟限流，超限直接在入口拒绝并留痕。</p>
+      </div>
+      <div class="card card-fill stack s">
+        <h3>插件生态</h3>
+        <p class="sm">第三方节点以 <strong>WASM</strong> 形式上传，装包要验 RSA 签名，执行在独立沙箱里且有固定的时间与内存上限。配套市场、用量记录与收益分账。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g4 gap-s">
+      <div class="card card-top stack s"><h4>通知</h4><p class="xs">站内 / 邮件 / 推送三通道，执行完成、失败、需人工介入都会 fan-out。</p></div>
+      <div class="card card-top stack s"><h4>分享与市场</h4><p class="xs">短链分享工作流与 Agent，或上架市场供他人安装，导入时会记录来源。</p></div>
+      <div class="card card-top stack s"><h4>监控面板</h4><p class="xs">按 15 分钟 / 1 小时 / 24 小时窗口看执行、治理、通知、队列快照。</p></div>
+      <div class="card card-top stack s"><h4>私有部署</h4><p class="xs">组织级 SMTP、模型代理、证书与许可证配置，配 Compose 与 Helm 资产。</p></div>
+    </div>
+  </div>
+</section>

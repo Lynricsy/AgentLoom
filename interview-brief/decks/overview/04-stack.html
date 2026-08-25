@@ -1,0 +1,82 @@
+<!-- ============ P7 技术栈 ============ -->
+<section class="page" data-sec="TECH STACK">
+  <div class="body stack m">
+    <div class="stack s">
+      <span class="kicker">06 · 技术栈</span>
+      <h2>各层押了什么</h2>
+    </div>
+
+    <table class="tight">
+      <thead><tr><th style="width:22mm">层</th><th style="width:52mm">技术</th><th>为什么是它</th></tr></thead>
+      <tbody>
+        <tr><td>网页端</td><td>React 19 · Vite 7 · TypeScript</td><td>生态最厚，画布类库都在这一侧</td></tr>
+        <tr><td>画布</td><td>React Flow 12</td><td>节点连线、缩放、自定义节点开箱可用</td></tr>
+        <tr><td>前端状态</td><td>TanStack Router / Query · Zustand</td><td>服务端数据交给 Query 缓存，本地态才用 Zustand</td></tr>
+        <tr><td>样式</td><td>Tailwind 4 · Radix · CVA</td><td>无样式组件保证可访问性，样式自己控制</td></tr>
+        <tr><td>后端框架</td><td>NestJS 11 + Fastify 5</td><td>模块化依赖注入；HTTP 层选 Fastify 而非 Express，吞吐更高</td></tr>
+        <tr><td>数据库访问</td><td>Drizzle ORM</td><td>类型直接从表结构推导，无装饰器与运行时魔法</td></tr>
+        <tr><td>校验</td><td>Zod 4</td><td>一份 schema 同时产出类型、校验与接口文档</td></tr>
+        <tr><td>队列</td><td>BullMQ（Redis）</td><td>长任务、周期任务、重试都靠它，Web 进程不被拖死</td></tr>
+        <tr><td>实时</td><td>Socket.IO 4</td><td>执行进度与对话流式输出，断线可增量补播</td></tr>
+        <tr><td>模型接入</td><td>Vercel AI SDK</td><td>统一多家模型的流式接口</td></tr>
+        <tr><td>存储</td><td>PostgreSQL · Redis · Qdrant · MinIO</td><td>关系数据 / 队列缓存 / 向量检索 / 对象文件，各司其职</td></tr>
+        <tr><td>沙箱</td><td>Go 1.25 · Firecracker · CNI</td><td>贴近系统层的活交给 Go，隔离交给微型虚拟机</td></tr>
+        <tr><td>类型引擎</td><td>Rust + WASM</td><td>浏览器里做高频端口兼容计算，够快且可复用到服务端</td></tr>
+        <tr><td>插件运行</td><td>Extism（WASM）</td><td>跑第三方代码而不给它宿主权限</td></tr>
+        <tr><td>移动端</td><td>Flutter · Riverpod · go_router · Dio</td><td>一套代码覆盖双平台，复用同一套接口契约</td></tr>
+        <tr><td>测试</td><td>Vitest 4 · Testcontainers</td><td>与 Vite 同源；集成测试起真实 PostgreSQL 容器</td></tr>
+        <tr><td>工程</td><td>pnpm workspace · ESLint · Prettier</td><td>七个包共用一份锁文件与统一版本目录</td></tr>
+        <tr><td>部署</td><td>Docker Compose · Helm · Nginx</td><td>开发环境一键起，私有化交付有 Helm 包</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <span class="t">一条贯穿全项目的约定</span>
+      跨端传输的数据结构<strong>只允许有一个来源</strong>：契约包定义 schema，接口类型由后端导出的 OpenAPI 自动生成。网页、移动端、后端不许各自手抄一份 —— 手抄就会漂移，漂移就会在半年后变成线上事故。
+    </div>
+  </div>
+</section>
+
+<!-- ============ P8 一次运行的旅程 ============ -->
+<section class="page" data-sec="LIFECYCLE">
+  <div class="body stack m">
+    <div class="stack s">
+      <span class="kicker">07 · 串起来看</span>
+      <h2>点一次“运行”，发生了什么</h2>
+    </div>
+
+    <p class="lead">把前面的模块按时间顺序排一遍，就是这条链。每一步失败都有明确归属，不会出现“它挂了但不知道挂在哪”。</p>
+
+    <div class="stack s">
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">01</span><b>入口鉴权</b><span class="d">认出组织身份，套上租户上下文</span></div>
+        <div class="st"><span class="i">02</span><b>配额准入</b><span class="d">并发、日用量、治理暂停状态先过闸</span></div>
+        <div class="st"><span class="i">03</span><b>落库建执行</b><span class="d">写执行记录，事务提交后才入队</span></div>
+        <div class="st"><span class="i">04</span><b>队列派发</b><span class="d">Worker 领任务，Web 进程不阻塞</span></div>
+      </div>
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">05</span><b>节点调度</b><span class="d">按依赖推进，分支与循环在此展开</span></div>
+        <div class="st"><span class="i">06</span><b>动手干活</b><span class="d">调模型、查知识库、进沙箱执行命令</span></div>
+        <div class="st"><span class="i">07</span><b>实时回传</b><span class="d">每步事件推到页面，带序号可补播</span></div>
+        <div class="st"><span class="i">08</span><b>收尾</b><span class="d">加密敏感产物、写审计、发通知、回收沙箱</span></div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g3 gap-s">
+      <div class="stack s">
+        <h4>要人工点头的地方</h4>
+        <p class="xs">第 6 步里，Agent 想写文件或改配置时会挂起并请求授权；超时怎么办由策略决定（自动同意 / 拒绝 / 升级给上级），升级最多三次。</p>
+      </div>
+      <div class="stack s">
+        <h4>刷新页面不丢进度</h4>
+        <p class="xs">第 7 步的事件带递增编号，前端重连时报上“我收到第几号了”，服务端只补后面的差量，不重放全部。</p>
+      </div>
+      <div class="stack s">
+        <h4>沙箱不一定马上销毁</h4>
+        <p class="xs">会话型用完即毁；持久型只停机、保留磁盘，下次可重启接着用，工作区内容会回写成快照。</p>
+      </div>
+    </div>
+  </div>
+</section>

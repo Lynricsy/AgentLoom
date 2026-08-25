@@ -1,0 +1,67 @@
+<!-- ============ P9 取舍 ============ -->
+<section class="page" data-sec="TRADE-OFFS">
+  <div class="body stack m">
+    <div class="stack s">
+      <span class="kicker">08 · 为什么这样选</span>
+      <h2>四个不那么显然的决定</h2>
+    </div>
+
+    <div class="stack m">
+      <div class="def">
+        <div class="term"><span class="lv">01</span>用微型虚拟机，而不是容器</div>
+        <p class="body2">跑的是模型现场生成的代码，等于把不可信输入直接交给机器执行。容器共享宿主内核，一个内核漏洞就穿透了。代价是需要自己管虚拟机生命周期、网络和磁盘，比 <code>docker run</code> 复杂一个量级 —— 这部分复杂度换来的是隔离边界，值得。</p>
+      </div>
+
+      <div class="def">
+        <div class="term"><span class="lv">02</span>把端口兼容性判断写成 Rust/WASM</div>
+        <p class="body2">用户拖线时需要毫秒级反馈“这两个能不能接”，而节点多起来时判断次数会快速增长。用 Rust 编译成 WASM 放进浏览器，既快又能跟服务端共用同一份规则，避免前后端各写一套判断逻辑然后慢慢跑偏。</p>
+      </div>
+
+      <div class="def">
+        <div class="term"><span class="lv">03</span>草稿与发布分离，触发源决定跑哪份</div>
+        <p class="body2">最直觉的做法是“保存即生效”，但那意味着有人正在被这条流程服务时，另一个人的一次误保存会立刻打断线上行为。所以外部触发一律跑发布快照，只有编辑器内的手动运行跑草稿。多一层概念，换来“改和用互不干扰”。</p>
+      </div>
+
+      <div class="def">
+        <div class="term"><span class="lv">04</span>宁可让功能显式失败，也不让它假装能用</div>
+        <p class="body2">典型例子是配置优化建议：分析能生成建议，但写入位置对执行不产生实际影响，于是采纳按钮在前后端都用同一份空白名单直接禁用并给出说明，只保留“忽略”。<strong>能看见的坏掉，比看不见的没生效好。</strong></p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g3 gap-s">
+      <div class="kpi"><span class="v s acc">65</span><span class="k">数据库表结构文件</span></div>
+      <div class="kpi"><span class="v s acc">14</span><span class="k">端口数据类型</span></div>
+      <div class="kpi"><span class="v s acc">5</span><span class="k">语言：TS / Rust / Go / Dart / SQL</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P10 封底 ============ -->
+<section class="page ink" data-sec="END">
+  <div class="body stack l" style="justify-content:center">
+    <div class="stack m">
+      <span class="kicker">收束</span>
+      <h2 style="color:#fff">一句话记住这个系统</h2>
+      <p class="lead">画布负责表达意图，调度器负责把意图变成有序执行，沙箱负责让执行有边界，平台层负责让这一切敢被多个组织同时使用。</p>
+    </div>
+
+    <hr class="hair" style="border-color:rgba(255,255,255,.28)">
+
+    <div class="g g2 gap-l">
+      <div class="stack s">
+        <h4 style="color:#fff">想再往深处看</h4>
+        <ul class="dash sm" style="color:rgba(255,255,255,.8)">
+          <li>各包根目录的 <code>AGENTS.md</code>：模块级事实描述</li>
+          <li><code>agentloom-docs/</code>：中英双语文档站</li>
+          <li>同目录的《系统设计与开放问题》《实现细节参考册》</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <h4 style="color:#fff">这份文档的边界</h4>
+        <p class="xs" style="color:rgba(255,255,255,.7)">只讲结构与选型理由，不含接口签名、表字段与实现代码。数字为撰写时的仓库实测值，会随代码演进变化。</p>
+      </div>
+    </div>
+  </div>
+</section>

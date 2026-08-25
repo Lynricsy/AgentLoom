@@ -1,0 +1,109 @@
+<!-- ============ P3 核心模块 A：工作流编排 ============ -->
+<section class="page" data-sec="MODULE A">
+  <div class="body stack m">
+    <div class="spread">
+      <div class="stack s">
+        <span class="kicker">02 · 核心模块 A</span>
+        <h2>工作流编排：把图变成执行</h2>
+      </div>
+      <span class="bignum">A</span>
+    </div>
+
+    <p class="lead">画布上的图是一份数据，不是程序。真正难的是：怎么保证用户连的线是合法的，以及怎么让后端按图跑对顺序、跑挂了能说清挂在哪。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill stack s">
+        <h3>连线前：类型对不上就不让连</h3>
+        <p class="sm">每个节点的输入输出都有类型（文本、模型、工具、沙箱、记忆…共 14 种）。就像插头和插座，插不上直接拒绝，不用等到运行时才报错。这套兼容性判断用 <strong>Rust 写成、编译为 WASM</strong> 在浏览器里跑，拖动时实时给反馈。</p>
+      </div>
+      <div class="card card-fill stack s">
+        <h3>运行时：按拓扑顺序推进</h3>
+        <p class="sm">后端的节点调度器沿着图的依赖关系一个个往下推，支持条件分支、循环、子流程嵌套。每步的状态和产物都落库，断线重连能把之前的事件<strong>增量补播</strong>回来，页面不会“失忆”。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h4>触发一条工作流的四种方式</h4>
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">01</span><b>手动运行</b><span class="d">画布里点 Run，跑的是当前草稿</span></div>
+        <div class="st"><span class="i">02</span><b>定时任务</b><span class="d">cron 表达式，到点自动跑</span></div>
+        <div class="st"><span class="i">03</span><b>Webhook</b><span class="d">外部系统回调，带签名校验</span></div>
+        <div class="st"><span class="i">04</span><b>API 事件</b><span class="d">如 GitHub 事件，匹配后触发</span></div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h4>草稿与发布，是两件事</h4>
+        <p class="sm">编辑器里随手保存的是<strong>草稿快照</strong>，只有点“发布”才会生成一个带版本号的正式快照。外部触发、移动端、API 调用一律跑已发布版本；只有 Studio 里的 Run 才跑草稿。这样“边改边有人在用”不会互相打断。</p>
+      </div>
+      <div class="stack s">
+        <h4>用到的技术</h4>
+        <ul class="dash sm">
+          <li>画布：React Flow（@xyflow/react 12）</li>
+          <li>类型引擎：Rust + wasm-bindgen</li>
+          <li>调度：NestJS 模块 + BullMQ 队列</li>
+          <li>实时：Socket.IO 双命名空间</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P4 核心模块 B：智能体 ============ -->
+<section class="page" data-sec="MODULE B">
+  <div class="body stack m">
+    <div class="spread">
+      <div class="stack s">
+        <span class="kicker">03 · 核心模块 B</span>
+        <h2>智能体：有记忆、会用工具、能改自己</h2>
+      </div>
+      <span class="bignum">B</span>
+    </div>
+
+    <p class="lead">这里的 Agent 不是“一次问答”，而是一个有持久身份的东西：它有版本、有对话历史、有长期记忆、有一套被授权的工具，还能提议修改自己的配置。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-outlined stack s">
+        <h3>记忆</h3>
+        <p class="sm">对话里值得记住的结论会存成<strong>知识图谱</strong>，下次按语义召回。向量检索交给 Qdrant，页面上还能把图谱画出来看（d3-force + dagre 布局）。</p>
+      </div>
+      <div class="card card-outlined stack s">
+        <h3>技能（Skill）</h3>
+        <p class="sm">一份 Markdown 写的操作手册，存在对象存储里。运行时按需把可用技能清单注入系统提示词，用得上再取正文 —— 相当于<strong>随身带的工具书</strong>，不占平时的上下文。</p>
+      </div>
+      <div class="card card-outlined stack s">
+        <h3>工具权限</h3>
+        <p class="sm">写文件、改配置这类有后果的动作会<strong>停下来问你</strong>；你可以本次批准，也可以在这轮会话里记住选择。等待期间任务不算失败，只是挂起。</p>
+      </div>
+      <div class="card card-outlined stack s">
+        <h3>自进化</h3>
+        <p class="sm">Agent 能查看自己的状态、提出配置变更、经审批后应用。写操作一律走审批，不给它“悄悄改自己”的口子。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h4>模型不是写死的</h4>
+        <p class="sm">智能路由按策略挑模型：省 token、省钱、优先质量、优先延迟、历史表现最好，或者<strong>回退链</strong>（这个模型挂了自动换下一个重试）。默认走回退链，因为它对线上最友好。</p>
+      </div>
+      <div class="stack s">
+        <h4>两种运行形态</h4>
+        <table class="tight">
+          <thead><tr><th>形态</th><th>跑在哪</th><th>能不能执行代码</th></tr></thead>
+          <tbody>
+            <tr><td><code>sandbox</code></td><td>微型虚拟机内</td><td>可以，含终端与文件</td></tr>
+            <tr><td><code>no_sandbox</code></td><td>后端进程内</td><td>不行，只有非代码工具</td></tr>
+          </tbody>
+        </table>
+        <p class="xs">两者都支持技能、知识库、记忆与自进化；差别只在“能不能真的动手操作机器”。</p>
+      </div>
+    </div>
+  </div>
+</section>
