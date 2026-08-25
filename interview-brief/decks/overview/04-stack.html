@@ -21,7 +21,7 @@
         <tr><td>模型接入</td><td>Vercel AI SDK</td><td>统一多家模型的流式接口</td></tr>
         <tr><td>存储</td><td>PostgreSQL · Redis · Qdrant · MinIO</td><td>关系数据 / 队列缓存 / 向量检索 / 对象文件，各司其职</td></tr>
         <tr><td>沙箱</td><td>Go 1.25 · Firecracker · CNI</td><td>贴近系统层的活交给 Go，隔离交给微型虚拟机</td></tr>
-        <tr><td>类型引擎</td><td>Rust + WASM</td><td>浏览器里做高频端口兼容计算，够快且可复用到服务端</td></tr>
+        <tr><td>类型引擎</td><td>Rust + WASM</td><td>递归结构比较用枚举与模式匹配表达最清晰，产物小、可在 Web Worker 里跑不阻塞画布。<strong>当初想要的「两端共用一份规则」至今只有前端接入</strong></td></tr>
         <tr><td>插件运行</td><td>Extism（WASM）</td><td>跑第三方代码而不给它宿主权限</td></tr>
         <tr><td>移动端</td><td>Flutter · Riverpod · go_router · Dio</td><td>一套代码覆盖双平台，复用同一套接口契约</td></tr>
         <tr><td>测试</td><td>Vitest 4 · Testcontainers</td><td>与 Vite 同源；集成测试起真实 PostgreSQL 容器</td></tr>
