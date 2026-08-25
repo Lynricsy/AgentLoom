@@ -127,6 +127,19 @@ export class MarketplaceController {
     return this.marketplaceService.installListing(tenantId, userId, id, dto);
   }
 
+  @Post('listings/:id/uninstall')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '卸载（停用）来自该 listing 的插件副本' })
+  @ApiResponse({ status: 200, description: '已停用的插件副本列表（幂等）' })
+  async uninstall(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.marketplaceService.uninstallListing(tenantId, userId, id);
+  }
+
   @Post('listings/:id/reviews')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '提交 Marketplace listing 用户评论' })

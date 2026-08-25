@@ -1,5 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, getTableColumns, ilike, or, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  getTableColumns,
+  ilike,
+  inArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -117,6 +126,11 @@ export interface InstalledMarketplacePluginResult {
 
 export type InstalledMarketplaceListingResult =
   InstalledMarketplaceWorkflowResult | InstalledMarketplacePluginResult;
+
+export interface UninstalledMarketplacePluginResult {
+  disabledPluginDbIds: string[];
+  message: string;
+}
 
 function buildMarketplaceAuthor(params: {
   displayName: string | null;
@@ -767,6 +781,79 @@ export class MarketplaceService {
       name: createdWorkflow.name,
       message: 'Workflow installed successfully',
     };
+  }
+
+  /**
+   * 卸载来自某个 listing 的插件副本：置为 disabled，不删行、不动对象。
+   *
+   * 幂等：没有匹配副本时返回空列表。不回退 listing.useCount——历史安装
+   * 计数是发布方的统计事实，不应被卸载抹掉。
+   */
+  async uninstallListing(
+    tenantId: string,
+    userId: string,
+    listingId: string,
+  ): Promise<UninstalledMarketplacePluginResult> {
+    const clones = await this.findMarketplaceClonePlugins(tenantId, listingId);
+
+    if (clones.length === 0) {
+      return {
+        disabledPluginDbIds: [],
+        message: '当前租户没有来自该 listing 的已安装插件',
+      };
+    }
+
+    const disabled = await this.tenantDb
+      .update(schema.plugins)
+      .set({
+        status: 'disabled',
+        occVersion: sql`${schema.plugins.occVersion} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.plugins.tenantId, tenantId),
+          inArray(
+            schema.plugins.id,
+            clones.map((clone) => clone.id),
+          ),
+        ),
+      )
+      .returning({ id: schema.plugins.id });
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'marketplace_listing_uninstalled',
+        listingId,
+        tenantId,
+        userId,
+        disabledPluginDbIds: disabled.map((row) => row.id),
+      }),
+    );
+
+    return {
+      disabledPluginDbIds: disabled.map((row) => row.id),
+      message: `已停用 ${disabled.length} 个来自该 listing 的插件副本`,
+    };
+  }
+
+  private async findMarketplaceClonePlugins(
+    tenantId: string,
+    listingId: string,
+  ): Promise<Array<{ id: string; pluginId: string; version: string }>> {
+    return this.tenantDb
+      .select({
+        id: schema.plugins.id,
+        pluginId: schema.plugins.pluginId,
+        version: schema.plugins.version,
+      })
+      .from(schema.plugins)
+      .where(
+        and(
+          eq(schema.plugins.tenantId, tenantId),
+          sql`${schema.plugins.metadata}->'cloned_from_marketplace'->>'listingId' = ${listingId}`,
+        ),
+      );
   }
 
   private async createAndReview(
