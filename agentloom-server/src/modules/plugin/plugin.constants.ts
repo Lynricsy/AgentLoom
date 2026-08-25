@@ -1,5 +1,11 @@
 export const PLUGIN_EXECUTION_QUEUE = 'plugin-execution';
 export const EARNINGS_SETTLEMENT_QUEUE = 'earnings-settlement';
+export const EARNINGS_SETTLEMENT_DISPATCH_JOB_ID =
+  'dispatch-plugin-earnings-settlement';
+export const EARNINGS_SETTLEMENT_DISPATCH_JOB_NAME =
+  'dispatch-plugin-earnings-settlement';
+/** 每月 1 日 03:00 UTC 派发上一个自然月的结算任务 */
+export const EARNINGS_SETTLEMENT_DISPATCH_SCHEDULE = '0 3 1 * *';
 export const MAX_PLUGIN_FILE_SIZE = 50 * 1024 * 1024;
 
 export const pluginExecutionQueueDefaultJobOptions = {
