@@ -30,7 +30,6 @@ import {
   marketplaceListings,
   type MarketplaceListing,
   type MarketplaceReviewResult,
-  type NewMarketplaceListing,
   type PluginRecord,
 } from '../../database/schema';
 import {
@@ -414,8 +413,8 @@ export class PluginMarketplaceController {
   @Patch('listings/:id')
   @Roles('owner', 'admin', 'creator')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '更新插件 Marketplace listing' })
-  @ApiResponse({ status: 200, description: '插件 listing 更新成功' })
+  @ApiOperation({ summary: '更新插件 Marketplace listing 并重新审查' })
+  @ApiResponse({ status: 200, description: '插件 listing 更新并完成重新审查' })
   @ApiResponse({ status: 404, description: '插件或 listing 不存在' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -433,37 +432,37 @@ export class PluginMarketplaceController {
     );
     this.ensurePluginCanManageMarketplace(currentPlugin, userId);
 
-    if (parsedDto.pluginDbId) {
-      const targetPlugin = await this.pluginService.findById(
+    let targetPlugin = currentPlugin;
+
+    if (parsedDto.pluginDbId && parsedDto.pluginDbId !== currentPluginDbId) {
+      targetPlugin = await this.pluginService.findById(
         parsedDto.pluginDbId,
         tenantId,
       );
       this.ensurePluginCanManageMarketplace(targetPlugin, userId);
     }
 
-    const updateValues = this.buildUpdateValues(currentListing, parsedDto);
+    // 编辑后的展示内容必须重新过审：否则可以先按合规内容上架，
+    // 再 PATCH 成任意内容而绕过审查。
+    const { listing, reviewResult } = await this.reviewExistingListing(
+      tenantId,
+      userId,
+      currentListing,
+      targetPlugin,
+      {
+        title: parsedDto.title ?? currentListing.title,
+        summary: parsedDto.summary ?? currentListing.summary,
+        category: parsedDto.category ?? currentListing.category ?? undefined,
+        tags: parsedDto.tags ?? currentListing.tags,
+        pricingModel: parsedDto.pricingModel ?? currentListing.pricingModel,
+        pricePerExecution:
+          this.resolveUpdatedPricePerExecution(currentListing, parsedDto) ??
+          undefined,
+      },
+      'plugin_marketplace_listing_updated',
+    );
 
-    if (!updateValues) {
-      return { data: currentListing };
-    }
-
-    const [updated] = await this.tenantDb
-      .update(marketplaceListings)
-      .set(updateValues)
-      .where(
-        and(
-          eq(marketplaceListings.id, id),
-          eq(marketplaceListings.tenantId, tenantId),
-          eq(marketplaceListings.listingType, 'plugin'),
-        ),
-      )
-      .returning();
-
-    if (!updated) {
-      throw new MarketplaceListingNotFoundException(id);
-    }
-
-    return { data: updated };
+    return { data: listing, reviewResult };
   }
 
   @Post('listings/:id/unlist')
@@ -745,7 +744,8 @@ export class PluginMarketplaceController {
     >,
     action:
       | 'plugin_marketplace_listing_resubmitted'
-      | 'plugin_marketplace_listing_relisted',
+      | 'plugin_marketplace_listing_relisted'
+      | 'plugin_marketplace_listing_updated',
   ): Promise<{
     listing: MarketplaceListing;
     reviewResult: MarketplaceReviewResult;
@@ -796,6 +796,10 @@ export class PluginMarketplaceController {
       .where(eq(marketplaceListings.id, currentListing.id))
       .returning();
 
+    if (!updated) {
+      throw new MarketplaceListingNotFoundException(currentListing.id);
+    }
+
     this.logger.log(
       JSON.stringify({
         action,
@@ -808,52 +812,6 @@ export class PluginMarketplaceController {
     );
 
     return { listing: updated, reviewResult };
-  }
-
-  private buildUpdateValues(
-    currentListing: MarketplaceListing,
-    dto: UpdatePluginListingDtoType,
-  ): Partial<NewMarketplaceListing> | null {
-    const updateValues: Partial<NewMarketplaceListing> = {};
-
-    if (dto.pluginDbId !== undefined) {
-      updateValues.pluginDbId = dto.pluginDbId;
-    }
-
-    if (dto.title !== undefined) {
-      updateValues.title = dto.title;
-    }
-
-    if (dto.summary !== undefined) {
-      updateValues.summary = dto.summary;
-    }
-
-    if (dto.category !== undefined) {
-      updateValues.category = dto.category;
-    }
-
-    if (dto.tags !== undefined) {
-      updateValues.tags = dto.tags;
-    }
-
-    if (dto.pricingModel !== undefined) {
-      updateValues.pricingModel = dto.pricingModel;
-    }
-
-    if (dto.pricingModel !== undefined || dto.pricePerExecution !== undefined) {
-      updateValues.pricePerExecution = this.resolveUpdatedPricePerExecution(
-        currentListing,
-        dto,
-      );
-    }
-
-    if (Object.keys(updateValues).length === 0) {
-      return null;
-    }
-
-    updateValues.updatedAt = new Date();
-
-    return updateValues;
   }
 
   private resolveCreatePricePerExecution(

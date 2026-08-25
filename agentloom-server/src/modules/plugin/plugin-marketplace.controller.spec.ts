@@ -199,7 +199,8 @@ function createListing(
     pricePerExecution: null,
     tenantId: TENANT_ID,
     title: '插件上架标题',
-    summary: '这是一个用于测试的插件市场上架摘要',
+    summary:
+      '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
     tags: ['analysis', 'automation'],
     coverImageUrl: null,
     category: 'analysis',
@@ -277,8 +278,8 @@ describe('PluginMarketplaceController', () => {
         SubmitPluginListingSchema.parse({
           pluginDbId: PLUGIN_ID,
           title: '插件上架标题',
-          summary: '这是一个用于测试的插件市场上架摘要',
-          description: '更详细的插件描述',
+          summary:
+            '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
           category: 'analysis',
           tags: ['analysis', 'automation'],
           pricingModel: 'free',
@@ -296,7 +297,8 @@ describe('PluginMarketplaceController', () => {
       expect(pluginService.findById).toHaveBeenCalledWith(PLUGIN_ID, TENANT_ID);
       expect(pluginMarketplaceReviewService.review).toHaveBeenCalledWith({
         title: '插件上架标题',
-        summary: '这是一个用于测试的插件市场上架摘要',
+        summary:
+          '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
         tags: ['analysis', 'automation'],
         plugin,
       });
@@ -306,7 +308,8 @@ describe('PluginMarketplaceController', () => {
         pluginDbId: PLUGIN_ID,
         listingType: 'plugin',
         title: '插件上架标题',
-        summary: '这是一个用于测试的插件市场上架摘要',
+        summary:
+          '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
         category: 'analysis',
         tags: ['analysis', 'automation'],
         pricingModel: 'free',
@@ -327,8 +330,9 @@ describe('PluginMarketplaceController', () => {
         controller.submit(
           {
             pluginDbId: PLUGIN_ID,
-            title: '收费插件',
-            summary: '这是一个按次计费插件的测试摘要',
+            title: '收费插件示例',
+            summary:
+              '这是一个按次计费插件的测试摘要，其长度已满足平台审查的下限要求。',
             pricingModel: 'per_execution',
           },
           TENANT_ID,
@@ -347,8 +351,10 @@ describe('PluginMarketplaceController', () => {
           SubmitPluginListingSchema.parse({
             pluginDbId: PLUGIN_ID,
             title: '插件上架标题',
-            summary: '这是一个用于测试的插件市场上架摘要',
+            summary:
+              '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
             pricingModel: 'free',
+            tags: ['analysis'],
           }),
           TENANT_ID,
           USER_ID,
@@ -366,8 +372,10 @@ describe('PluginMarketplaceController', () => {
           SubmitPluginListingSchema.parse({
             pluginDbId: PLUGIN_ID,
             title: '插件上架标题',
-            summary: '这是一个用于测试的插件市场上架摘要',
+            summary:
+              '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
             pricingModel: 'free',
+            tags: ['analysis'],
           }),
           TENANT_ID,
           USER_ID,
@@ -385,8 +393,10 @@ describe('PluginMarketplaceController', () => {
           SubmitPluginListingSchema.parse({
             pluginDbId: PLUGIN_ID,
             title: '插件上架标题',
-            summary: '这是一个用于测试的插件市场上架摘要',
+            summary:
+              '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
             pricingModel: 'free',
+            tags: ['analysis'],
           }),
           TENANT_ID,
           USER_ID,
@@ -410,8 +420,10 @@ describe('PluginMarketplaceController', () => {
           SubmitPluginListingSchema.parse({
             pluginDbId: PLUGIN_ID,
             title: '插件上架标题',
-            summary: '这是一个用于测试的插件市场上架摘要',
+            summary:
+              '这是一个用于测试的插件市场上架摘要，其长度已满足平台审查的下限要求。',
             pricingModel: 'free',
+            tags: ['analysis'],
           }),
           TENANT_ID,
           USER_ID,
@@ -440,7 +452,8 @@ describe('PluginMarketplaceController', () => {
         SubmitPluginListingSchema.parse({
           pluginDbId: PLUGIN_ID,
           title: '重新提交后的插件标题',
-          summary: '这是一个用于重新提交插件市场上架的测试摘要',
+          summary:
+            '这是一个用于重新提交插件市场上架的测试摘要，补足审查长度下限。',
           pricingModel: 'per_execution',
           pricePerExecution: '0.12500000',
           tags: ['retry'],
@@ -775,21 +788,26 @@ describe('PluginMarketplaceController', () => {
   });
 
   describe('update', () => {
-    it('应更新 listing 并在切换为免费模式时清空价格', async () => {
+    it('应更新字段、清空免费价格并重新审查后回到 listed', async () => {
       const currentPlugin = createPlugin({ status: 'active' });
       const currentListing = createListing({
+        status: 'listed',
         pricingModel: 'per_execution',
         pricePerExecution: '1.50000000',
       });
+      const reviewResult = createReviewResult();
       const updatedListing = createListing({
+        status: 'listed',
         title: '更新后的插件标题',
         pluginDbId: PLUGIN_ID_2,
         pricingModel: 'free',
         pricePerExecution: null,
+        reviewResult,
       });
 
       db.__selectResults.push([currentListing]);
-      db.__updateResults.push([updatedListing]);
+      db.__updateResults.push([], [updatedListing]);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
       pluginService.findById
         .mockResolvedValueOnce(currentPlugin)
         .mockResolvedValueOnce(
@@ -806,7 +824,6 @@ describe('PluginMarketplaceController', () => {
           pluginDbId: PLUGIN_ID_2,
           title: '更新后的插件标题',
           pricingModel: 'free',
-          occVersion: 3,
         }),
         TENANT_ID,
         USER_ID,
@@ -828,14 +845,72 @@ describe('PluginMarketplaceController', () => {
         PLUGIN_ID_2,
         TENANT_ID,
       );
-      expect(db.__updateValues).toHaveLength(1);
+      // 第一次写入把 listing 打回 pending_review，第二次落审查结果
+      expect(db.__updateValues).toHaveLength(2);
       expect(db.__updateValues[0]).toMatchObject({
         pluginDbId: PLUGIN_ID_2,
         title: '更新后的插件标题',
+        summary: currentListing.summary,
+        tags: currentListing.tags,
         pricingModel: 'free',
         pricePerExecution: null,
+        status: 'pending_review',
       });
-      expect(result).toEqual({ data: updatedListing });
+      expect(db.__updateValues[1]).toMatchObject({
+        status: 'listed',
+        reviewResult,
+      });
+      expect(pluginMarketplaceReviewService.review).toHaveBeenCalledWith({
+        title: '更新后的插件标题',
+        summary: currentListing.summary,
+        tags: currentListing.tags,
+        plugin: expect.objectContaining({ id: PLUGIN_ID_2 }),
+      });
+      expect(result).toEqual({ data: updatedListing, reviewResult });
+    });
+
+    it('审查失败时应把 listing 转为 review_failed', async () => {
+      const currentListing = createListing({ status: 'listed' });
+      const reviewResult = createReviewResult({
+        outcome: 'failed',
+        checks: [
+          {
+            code: 'TITLE_INVALID',
+            status: 'failed',
+            message: '标题不合规',
+          },
+        ],
+      });
+      const updatedListing = createListing({
+        status: 'review_failed',
+        reviewResult,
+      });
+
+      db.__selectResults.push([currentListing]);
+      db.__updateResults.push([], [updatedListing]);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+
+      const result = await controller.update(
+        LISTING_ID,
+        UpdatePluginListingSchema.parse({ title: '违规标题内容' }),
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(db.__updateValues[1]).toMatchObject({
+        status: 'review_failed',
+        publishedAt: null,
+      });
+      expect(result).toEqual({ data: updatedListing, reviewResult });
+    });
+
+    it('超过审查上限的标题应被 DTO 拒绝', () => {
+      expect(() =>
+        UpdatePluginListingSchema.parse({ title: 'a'.repeat(121) }),
+      ).toThrow();
     });
 
     it('应在 listing 不存在时抛出异常', async () => {
@@ -928,19 +1003,23 @@ describe('PluginMarketplaceController', () => {
       expect(() =>
         SubmitPluginListingSchema.parse({
           pluginDbId: PLUGIN_ID,
-          title: '收费插件',
-          summary: '这是一个按次计费插件的测试摘要',
+          title: '收费插件示例',
+          summary:
+            '这是一个按次计费插件的测试摘要，其长度已满足平台审查的下限要求。',
           pricingModel: 'per_execution',
+          tags: ['analysis'],
         }),
       ).toThrow();
 
       expect(
         SubmitPluginListingSchema.parse({
           pluginDbId: PLUGIN_ID,
-          title: '收费插件',
-          summary: '这是一个按次计费插件的测试摘要',
+          title: '收费插件示例',
+          summary:
+            '这是一个按次计费插件的测试摘要，其长度已满足平台审查的下限要求。',
           pricingModel: 'per_execution',
           pricePerExecution: '0.12500000',
+          tags: ['analysis'],
         }),
       ).toMatchObject({
         pricingModel: 'per_execution',
@@ -981,8 +1060,10 @@ describe('PluginMarketplaceController', () => {
           SubmitPluginListingSchema.parse({
             pluginDbId: PLUGIN_ID,
             title: '重复提交插件',
-            summary: '这是用于验证审查中 listing 禁止重复提交的摘要内容。',
+            summary:
+              '这是用于验证审查中 listing 禁止重复提交场景的摘要内容说明。',
             pricingModel: 'free',
+            tags: ['analysis'],
           }),
           TENANT_ID,
           USER_ID,
@@ -1013,17 +1094,18 @@ describe('PluginMarketplaceController', () => {
       const result = await controller.submit(
         SubmitPluginListingSchema.parse({
           pluginDbId: PLUGIN_ID,
-          title: '收费插件',
-          summary: '这是用于验证收费 listing 审查失败状态转换的摘要内容。',
+          title: '收费插件示例',
+          summary: '这是用于验证收费 listing 审查失败状态转换场景的摘要内容。',
           pricingModel: 'per_execution',
           pricePerExecution: '0.50000000',
+          tags: ['analysis'],
         }),
         TENANT_ID,
         USER_ID,
       );
 
       expect(db.__insertValues[0]).toMatchObject({
-        tags: [],
+        tags: ['analysis'],
         pricingModel: 'per_execution',
         pricePerExecution: '0.50000000',
       });
@@ -1088,9 +1170,13 @@ describe('PluginMarketplaceController', () => {
       });
     });
 
-    it('空更新直接返回当前 listing 且不写数据库', async () => {
-      const listing = createListing();
+    it('空 patch 也应按原字段重新审查', async () => {
+      const listing = createListing({ status: 'listed' });
+      const reviewResult = createReviewResult();
+      const updated = createListing({ status: 'listed', reviewResult });
       db.__selectResults.push([listing]);
+      db.__updateResults.push([], [updated]);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
       pluginService.findById.mockResolvedValue(
         createPlugin({ status: 'active' }),
       );
@@ -1102,8 +1188,13 @@ describe('PluginMarketplaceController', () => {
         USER_ID,
       );
 
-      expect(result).toEqual({ data: listing });
-      expect(db.update).not.toHaveBeenCalled();
+      expect(pluginMarketplaceReviewService.review).toHaveBeenCalledWith({
+        title: listing.title,
+        summary: listing.summary,
+        tags: listing.tags,
+        plugin: expect.objectContaining({ status: 'active' }),
+      });
+      expect(result).toEqual({ data: updated, reviewResult });
     });
 
     it('更新全部可编辑字段且按次价格未显式传入时沿用原价格', async () => {
@@ -1111,15 +1202,17 @@ describe('PluginMarketplaceController', () => {
         pricingModel: 'per_execution',
         pricePerExecution: '0.25000000',
       });
+      const reviewResult = createReviewResult();
       const updated = createListing({
         title: '全部字段更新',
-        summary: '这是更新后的完整 listing 摘要内容',
+        summary: '这是更新后的完整 listing 摘要内容，补足审查长度下限要求。',
         category: 'automation',
         pricingModel: 'per_execution',
         pricePerExecution: '0.25000000',
       });
       db.__selectResults.push([listing]);
-      db.__updateResults.push([updated]);
+      db.__updateResults.push([], [updated]);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
       pluginService.findById.mockResolvedValue(
         createPlugin({ status: 'active' }),
       );
@@ -1128,11 +1221,9 @@ describe('PluginMarketplaceController', () => {
         LISTING_ID,
         UpdatePluginListingSchema.parse({
           title: '全部字段更新',
-          summary: '这是更新后的完整 listing 摘要内容',
+          summary: '这是更新后的完整 listing 摘要内容，补足审查长度下限要求。',
           category: 'automation',
           tags: ['updated'],
-          pricingModel: 'per_execution',
-          pricePerExecution: '0.25000000',
         }),
         TENANT_ID,
         USER_ID,
@@ -1140,18 +1231,21 @@ describe('PluginMarketplaceController', () => {
 
       expect(db.__updateValues[0]).toMatchObject({
         title: '全部字段更新',
-        summary: '这是更新后的完整 listing 摘要内容',
+        summary: '这是更新后的完整 listing 摘要内容，补足审查长度下限要求。',
         category: 'automation',
         tags: ['updated'],
         pricingModel: 'per_execution',
         pricePerExecution: '0.25000000',
       });
-      expect(result).toEqual({ data: updated });
+      expect(result).toEqual({ data: updated, reviewResult });
     });
 
     it('更新 returning 为空时报告 listing 不存在', async () => {
       db.__selectResults.push([createListing()]);
-      db.__updateResults.push([]);
+      db.__updateResults.push([], []);
+      pluginMarketplaceReviewService.review.mockReturnValue(
+        createReviewResult(),
+      );
       pluginService.findById.mockResolvedValue(
         createPlugin({ status: 'active' }),
       );

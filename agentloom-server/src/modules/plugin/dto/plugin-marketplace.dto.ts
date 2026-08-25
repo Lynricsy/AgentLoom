@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import {
+  MARKETPLACE_REVIEW_LIMITS,
   marketplaceCategoryEnum,
   marketplaceListingStatusEnum,
   marketplacePricingModelEnum,
@@ -36,14 +37,30 @@ const UuidSchema = z
     },
   );
 
+/**
+ * 文本限制与 `MARKETPLACE_REVIEW_LIMITS` 对齐，
+ * 避免 DTO 接受必然 review_failed 的内容。
+ */
 const SubmitPluginListingSchemaBase = z
   .object({
     pluginDbId: UuidSchema,
-    title: z.string().trim().min(3).max(200),
-    summary: z.string().trim().min(10).max(1000),
-    description: z.string().trim().max(10_000).optional(),
+    title: z
+      .string()
+      .trim()
+      .min(MARKETPLACE_REVIEW_LIMITS.titleMinLength)
+      .max(MARKETPLACE_REVIEW_LIMITS.titleMaxLength),
+    summary: z
+      .string()
+      .trim()
+      .min(MARKETPLACE_REVIEW_LIMITS.summaryMinLength)
+      .max(MARKETPLACE_REVIEW_LIMITS.summaryMaxLength),
     category: PluginMarketplaceCategorySchema.optional(),
-    tags: z.array(z.string().trim().min(1)).max(10).optional(),
+    tags: z
+      .array(
+        z.string().trim().min(1).max(MARKETPLACE_REVIEW_LIMITS.tagMaxLength),
+      )
+      .min(MARKETPLACE_REVIEW_LIMITS.minTags)
+      .max(MARKETPLACE_REVIEW_LIMITS.maxTags),
     pricingModel: PluginMarketplacePricingModelSchema,
     pricePerExecution: PricePerExecutionSchema.optional(),
   })
@@ -64,9 +81,6 @@ export class SubmitPluginListingDto extends createZodDto(
 ) {}
 
 export const UpdatePluginListingSchema = SubmitPluginListingSchemaBase.partial()
-  .extend({
-    occVersion: z.number().int().min(1).optional(),
-  })
   .strict()
   .refine(
     (value) =>
