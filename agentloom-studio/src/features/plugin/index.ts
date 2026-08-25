@@ -4,17 +4,25 @@ export type {
   PluginNodeDefinition,
   PluginOrigin,
   PluginStatus,
+  PluginUsageFilters,
+  PluginUsagePeriod,
+  PluginUsageRecord,
+  PluginUsageSummary,
 } from './types'
 export {
   pluginKeys,
   usePlugins,
   useActivePlugins,
   usePluginById,
+  usePluginUsage,
+  usePluginUsageSummary,
   useRegisterPlugin,
   useUpdatePluginStatus,
   useDeletePlugin,
   fetchPlugins,
   fetchPluginById,
+  fetchPluginUsage,
+  fetchPluginUsageSummary,
   registerPlugin,
   updatePluginStatus,
   deletePlugin,
@@ -29,4 +37,15 @@ export {
   canRegisterPlugins,
   getPluginOrigin,
 } from './lib/pluginPresentation'
+export {
+  parsePluginUsageSearch,
+  resolvePluginUsageSearch,
+  toPluginUsageRange,
+  type PluginUsageSearch,
+  type PluginUsageSearchParams,
+} from './lib/usageSearch'
 export { PluginManagementPage } from './components/PluginManagementPage'
+export {
+  PluginUsagePage,
+  type PluginUsagePageProps,
+} from './components/PluginUsagePage'
