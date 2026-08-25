@@ -1,0 +1,1 @@
+ALTER TABLE "marketplace_listings" ADD CONSTRAINT "marketplace_listings_per_execution_price_required" CHECK ("marketplace_listings"."pricing_model" <> 'per_execution' OR "marketplace_listings"."price_per_execution" IS NOT NULL);
