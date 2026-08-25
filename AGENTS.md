@@ -105,7 +105,9 @@ docker compose build --no-cache server && docker compose up -d server worker
 - **Mobile**：Riverpod 3 手写 `Notifier/AsyncNotifier`（无 generator），async notifier 在 `await` 后检查 `ref.mounted`；模型用 `@freezed` + json_serializable（`*_dto.dart` + 生成的 `*.freezed.dart/*.g.dart`）；契约违规抛 `ApiContractException` 而非返回假空数据。
 - **多租户**：新表必须挂 tenant RLS policy；`tenant_encryption_keys` 等 append-only 表不做 UPDATE。
 - **PortDataType**：14 值全集定义在 `agentloom-contracts/src/port-data-type.ts`；Rust/plugin-sdk/Studio/server 的镜像由 `port-data-type.test.ts` 机械校验，改动必须同步所有端。
-- **Git**：原子化提交并推送，做完一点提交一点；commit message `<type>(<scope>): <gitmoji> <subject>`。
+- **Git**：原子化提交并推送，做完一点提交一点；commit message `<type>(<scope>): <gitmoji> <subject>`，末尾附 `Co-authored-by: Wine Fox <fox@ling.plus>`；禁止设置 local git config（user.name/user.email 等一律用全局配置）。
+- **AI 工作流**：用 `record-agent-log` 记录"做了什么 + 为什么"（禁止手动创建/编辑日志文件，查历史用 `search-logs`）；前端页面开发必须用 `designer` agent；测试账号/测试模型凭据只能取自环境变量（`AGENTLOOM_TEST_EMAIL/PASSWORD`、`AGENTLOOM_TEST_MODEL_*`）或私有运维文档，禁止写入真实凭据。
+- **AGENTS.md 内容规范**：只写系统当前状态的事实性描述；禁止 Story/Epic 编号、完成状态标记、变更历史、开发过程记录。
 
 ## Important Files
 
