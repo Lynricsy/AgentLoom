@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { io } from 'socket.io-client'
+import { useAuthToken } from '@/features/auth/hooks/useAuthToken'
 import { knowledgeBaseKeys } from '../api/knowledgeBaseKeys'
 import type { DocumentStatus } from '../types'
 
@@ -73,13 +74,16 @@ export function useKnowledgeBaseSocket(
   kbId: string | undefined,
 ): UseKnowledgeBaseSocketResult {
   const queryClient = useQueryClient()
+  const authToken = useAuthToken()
   const [documentEvents, setDocumentEvents] = useState<
     Record<string, LiveDocumentStatusEvent>
   >({})
   const socketUrl = useMemo(() => resolveKnowledgeSocketUrl(API_BASE_URL), [])
 
   useEffect(() => {
-    if (!tenantId || !kbId) {
+    // 服务端 /knowledge namespace 在握手期强制校验 JWT 并由 token 推导租户房间，
+    // 未带 token 会被直接拒绝，因此没有 token 时不建连。
+    if (!tenantId || !kbId || !authToken) {
       setDocumentEvents({})
       return
     }
@@ -91,7 +95,7 @@ export function useKnowledgeBaseSocket(
 
     setDocumentEvents({})
 
-    const socket = io(socketUrl)
+    const socket = io(socketUrl, { auth: { token: authToken } })
 
     const handleConnect = () => {
       socket.emit('join', roomPayload)
@@ -135,7 +139,7 @@ export function useKnowledgeBaseSocket(
       socket.off('knowledge-base:updated', handleKnowledgeBaseUpdated)
       socket.disconnect()
     }
-  }, [kbId, queryClient, socketUrl, tenantId])
+  }, [authToken, kbId, queryClient, socketUrl, tenantId])
 
   return { documentEvents }
 }

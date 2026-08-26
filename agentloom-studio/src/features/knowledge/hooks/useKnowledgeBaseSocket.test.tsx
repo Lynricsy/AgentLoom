@@ -7,12 +7,17 @@ import {
   useKnowledgeBaseSocket,
 } from './useKnowledgeBaseSocket'
 
-const { ioMock } = vi.hoisted(() => ({
+const { ioMock, useAuthTokenMock } = vi.hoisted(() => ({
   ioMock: vi.fn(),
+  useAuthTokenMock: vi.fn<() => string | undefined>(),
 }))
 
 vi.mock('socket.io-client', () => ({
   io: ioMock,
+}))
+
+vi.mock('@/features/auth/hooks/useAuthToken', () => ({
+  useAuthToken: useAuthTokenMock,
 }))
 
 function createQueryClient() {
@@ -49,6 +54,7 @@ function createMockSocket() {
 describe('useKnowledgeBaseSocket', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useAuthTokenMock.mockReturnValue('jwt-token-123')
   })
 
   it('resolves absolute API base URLs to the knowledge namespace root', () => {
@@ -79,7 +85,9 @@ describe('useKnowledgeBaseSocket', () => {
       },
     )
 
-    expect(ioMock).toHaveBeenCalledWith(resolveKnowledgeSocketUrl('/api/v1'))
+    expect(ioMock).toHaveBeenCalledWith(resolveKnowledgeSocketUrl('/api/v1'), {
+      auth: { token: 'jwt-token-123' },
+    })
 
     act(() => {
       handlers.connect?.()
@@ -143,6 +151,17 @@ describe('useKnowledgeBaseSocket', () => {
     const queryClient = createQueryClient()
 
     renderHook(() => useKnowledgeBaseSocket(undefined, undefined), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    expect(ioMock).not.toHaveBeenCalled()
+  })
+
+  it('does not connect without an auth token', () => {
+    useAuthTokenMock.mockReturnValue(undefined)
+    const queryClient = createQueryClient()
+
+    renderHook(() => useKnowledgeBaseSocket('tenant-1', 'kb-1'), {
       wrapper: createWrapper(queryClient),
     })
 
