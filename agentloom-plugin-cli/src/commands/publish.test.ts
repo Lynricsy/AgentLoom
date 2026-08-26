@@ -1,6 +1,12 @@
 import * as childProcess from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,7 +22,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('node:child_process', async () => {
-  const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+  const actual =
+    await vi.importActual<typeof import('node:child_process')>(
+      'node:child_process',
+    );
   return {
     ...actual,
     execSync: mocks.execSync,
@@ -24,7 +33,7 @@ vi.mock('node:child_process', async () => {
 });
 
 import { buildPluginArchive } from './build';
-import { publishPlugin } from './publish';
+import { publishCommand, publishPlugin } from './publish';
 
 const tempDirs: string[] = [];
 
@@ -38,7 +47,10 @@ function writeJson(filePath: string, value: Record<string, unknown>): void {
   writeFileSync(filePath, JSON.stringify(value, null, 2) + '\n', 'utf8');
 }
 
-function createBuildableProject(root: string): { keyPath: string; publicKeyPem: string } {
+function createBuildableProject(root: string): {
+  keyPath: string;
+  publicKeyPem: string;
+} {
   mkdirSync(join(root, 'src'), { recursive: true });
 
   writeJson(join(root, 'manifest.json'), {
@@ -72,7 +84,11 @@ function createBuildableProject(root: string): { keyPath: string; publicKeyPem: 
     include: ['src/**/*.ts'],
   });
 
-  writeFileSync(join(root, 'src', 'index.ts'), 'export default { nodes: [] };\n', 'utf8');
+  writeFileSync(
+    join(root, 'src', 'index.ts'),
+    'export default { nodes: [] };\n',
+    'utf8',
+  );
 
   const { publicKey, privateKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
@@ -129,6 +145,18 @@ beforeEach(() => {
   });
 });
 
+describe('publishCommand', () => {
+  it('describes sign-only Studio upload semantics and keeps --key required', () => {
+    expect(publishCommand.description()).toBe(
+      '签名插件包，生成可注册的 .alp（上传经 Studio 插件管理页）',
+    );
+    expect(
+      publishCommand.options.find((option) => option.long === '--key')
+        ?.defaultValue,
+    ).toBeUndefined();
+  });
+});
+
 describe('publishPlugin', () => {
   it('should throw without key option', async () => {
     await expect(publishPlugin({})).rejects.toThrow('必须提供私钥路径');
@@ -163,14 +191,21 @@ describe('publishPlugin', () => {
     await buildPluginArchive({ cwd: root });
     const result = await publishPlugin({ key: keyPath, cwd: root });
     const archiveBuffer = readFileSync(result.archivePath);
-    const manifest = await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
+    const manifest =
+      await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
 
     expect(manifest.signature).toBe(result.signature);
     expect(manifest.contentHash).toBe(result.contentHash);
-    expect(manifest.developerKeyFingerprint).toBe(result.developerKeyFingerprint);
+    expect(manifest.developerKeyFingerprint).toBe(
+      result.developerKeyFingerprint,
+    );
     expect(await computeContentHash(archiveBuffer)).toBe(result.contentHash);
     expect(
-      await verifyArchiveSignature(archiveBuffer, result.signature, publicKeyPem),
+      await verifyArchiveSignature(
+        archiveBuffer,
+        result.signature,
+        publicKeyPem,
+      ),
     ).toBe(true);
   });
 });

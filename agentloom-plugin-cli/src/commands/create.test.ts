@@ -4,7 +4,11 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createPluginProject, runCreateCommand, type CreatePromptRunner } from './create';
+import {
+  createPluginProject,
+  runCreateCommand,
+  type CreatePromptRunner,
+} from './create';
 
 const tempDirs: string[] = [];
 
@@ -45,7 +49,9 @@ describe('createPluginProject', () => {
     expect(existsSync(join(result.projectDir, 'package.json'))).toBe(true);
     expect(existsSync(join(result.projectDir, 'tsconfig.json'))).toBe(true);
     expect(existsSync(join(result.projectDir, 'src', 'index.ts'))).toBe(true);
-    expect(existsSync(join(result.projectDir, 'tests', 'index.test.ts'))).toBe(true);
+    expect(existsSync(join(result.projectDir, 'tests', 'index.test.ts'))).toBe(
+      true,
+    );
   });
 
   it('generates a valid manifest with the required fields', () => {
@@ -79,7 +85,9 @@ describe('createPluginProject', () => {
       targetDir,
     });
 
-    const packageJson = readJson<Record<string, Record<string, string>>>(result.packageJsonPath);
+    const packageJson = readJson<Record<string, Record<string, string>>>(
+      result.packageJsonPath,
+    );
 
     expect(packageJson.dependencies?.['@agentloom/plugin-sdk']).toBe(
       'file:../agentloom-plugin-sdk',
@@ -124,6 +132,62 @@ describe('createPluginProject', () => {
       }),
     ).toThrow(/目标目录已存在/);
   });
+
+  it('create --wasm 生成 Rust/Extism 文件与 WASM 清单', () => {
+    const targetDir = createTempRoot();
+    const result = createPluginProject({
+      name: 'Wasm Echo',
+      author: 'AgentLoom Team',
+      description: 'WASM echo plugin',
+      license: 'MIT',
+      targetDir,
+      wasm: true,
+    });
+
+    const expectedFiles = [
+      'Cargo.toml',
+      'README.md',
+      'manifest.json',
+      'node-definitions.json',
+      'package.json',
+      join('src', 'lib.rs'),
+    ];
+    for (const relativePath of expectedFiles) {
+      expect(existsSync(join(result.projectDir, relativePath))).toBe(true);
+    }
+    expect(existsSync(join(result.projectDir, 'tsconfig.json'))).toBe(false);
+    expect(existsSync(join(result.projectDir, 'src', 'index.ts'))).toBe(false);
+
+    const manifest = readJson<Record<string, unknown>>(result.manifestPath);
+    const nodeDefinitions = readJson<Array<Record<string, unknown>>>(
+      join(result.projectDir, 'node-definitions.json'),
+    );
+    const cargoToml = readFileSync(
+      join(result.projectDir, 'Cargo.toml'),
+      'utf8',
+    );
+    const rustSource = readFileSync(
+      join(result.projectDir, 'src', 'lib.rs'),
+      'utf8',
+    );
+    const readme = readFileSync(join(result.projectDir, 'README.md'), 'utf8');
+
+    expect(manifest.wasmEntry).toBe('dist/plugin.wasm');
+    expect(nodeDefinitions).toHaveLength(1);
+    expect(nodeDefinitions[0]?.inputPorts).toEqual([
+      { id: 'text', label: '文本', dataType: 'text', required: true },
+    ]);
+    expect(cargoToml).toContain('extism-pdk = "1"');
+    expect(cargoToml).toContain('crate-type = ["cdylib"]');
+    expect(rustSource).toContain('#[plugin_fn]');
+    expect(rustSource).toContain(
+      'pub fn execute(input: String) -> FnResult<String>',
+    );
+    expect(rustSource).toContain('json!({ "result":');
+    expect(readme).toContain('agentloom-plugin build --wasm');
+    expect(readme).toContain('agentloom-plugin publish -k <key>');
+    expect(readme).toContain('Studio');
+  });
 });
 
 describe('runCreateCommand', () => {
@@ -134,9 +198,15 @@ describe('runCreateCommand', () => {
       description: 'Prompted plugin',
       license: 'Apache-2.0',
     }));
-    const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const consoleSpy = vi
+      .spyOn(console, 'info')
+      .mockImplementation(() => undefined);
 
-    const result = await runCreateCommand('Prompt Plugin', targetDir, promptRunner);
+    const result = await runCreateCommand(
+      'Prompt Plugin',
+      targetDir,
+      promptRunner,
+    );
 
     expect(promptRunner).toHaveBeenCalledTimes(1);
     expect(result.pluginId).toBe('com.agentloom.prompt-plugin');

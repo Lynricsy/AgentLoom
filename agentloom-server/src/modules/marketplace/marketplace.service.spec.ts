@@ -1006,6 +1006,7 @@ describe('MarketplaceService', () => {
         contentHash: 'sha256:old',
         sourcePluginDbId: PLUGIN_DB_ID,
         sourcePluginId: PLUGIN_ID,
+        sourceVersion: '1.0.0',
         ...overrides,
       };
     }
@@ -1022,8 +1023,8 @@ describe('MarketplaceService', () => {
         installed: false,
         upgradeAvailable: false,
         installedPluginDbId: null,
-        installedVersion: null,
-        availableVersion: null,
+        currentVersion: null,
+        latestVersion: null,
         reason: 'not_installed',
       });
       expect(db.select).toHaveBeenCalledTimes(1);
@@ -1046,8 +1047,8 @@ describe('MarketplaceService', () => {
       expect(result).toMatchObject({
         installed: true,
         upgradeAvailable: true,
-        installedVersion: '1.0.0',
-        availableVersion: '1.2.3',
+        currentVersion: '1.0.0',
+        latestVersion: '1.2.3',
         reason: 'upgrade_available',
       });
     });
@@ -1055,7 +1056,9 @@ describe('MarketplaceService', () => {
     it('版本号相同但内容哈希变化也算可升级', async () => {
       db.select
         .mockReturnValueOnce(
-          createSelectChain([createCloneRow({ version: '1.2.3' })]),
+          createSelectChain([
+            createCloneRow({ version: '1.2.3', sourceVersion: '1.2.3' }),
+          ]),
         )
         .mockReturnValueOnce(
           createSelectChainWithInnerJoinWhereLimit([
@@ -1080,7 +1083,11 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(
           createSelectChain([
-            createCloneRow({ version: '1.2.3', contentHash: null }),
+            createCloneRow({
+              version: '1.2.3',
+              sourceVersion: '1.2.3',
+              contentHash: null,
+            }),
           ]),
         )
         .mockReturnValueOnce(
@@ -1113,7 +1120,7 @@ describe('MarketplaceService', () => {
       expect(result).toMatchObject({
         installed: true,
         upgradeAvailable: false,
-        availableVersion: null,
+        latestVersion: null,
         reason: 'source_unavailable',
       });
     });
@@ -1215,7 +1222,11 @@ describe('MarketplaceService', () => {
       db.select
         .mockReturnValueOnce(
           createSelectChain([
-            createCloneRow({ version: '1.2.3', contentHash: null }),
+            createCloneRow({
+              version: '1.2.3',
+              sourceVersion: '1.2.3',
+              contentHash: null,
+            }),
           ]),
         )
         .mockReturnValueOnce(
@@ -1251,14 +1262,34 @@ describe('MarketplaceService', () => {
       expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
     });
 
-    it('listing 不存在时 upgradeListing 应抛 404', async () => {
+    it('源已下架时 upgradeListing 应抛 409(而不是透传 404)', async () => {
       db.select
         .mockReturnValueOnce(createSelectChain([createCloneRow()]))
         .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([]));
 
       await expect(
         service.upgradeListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID),
-      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
+    });
+
+    it('源插件已停用时 upgradeListing 应抛 409', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createCloneRow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoinWhereLimit([
+            createPluginInstallSourceRow({
+              plugin: {
+                ...createPluginInstallSourceRow().plugin,
+                status: 'disabled',
+              },
+            }),
+          ]),
+        );
+
+      await expect(
+        service.upgradeListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
       expect(pluginService.upgradeMarketplaceClone).not.toHaveBeenCalled();
     });
   });

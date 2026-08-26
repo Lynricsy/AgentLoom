@@ -1,5 +1,12 @@
 import * as childProcess from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,7 +18,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('node:child_process', async () => {
-  const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+  const actual =
+    await vi.importActual<typeof import('node:child_process')>(
+      'node:child_process',
+    );
   return {
     ...actual,
     execSync: mocks.execSync,
@@ -28,11 +38,14 @@ function createTempRoot(): string {
   return directory;
 }
 
-function writeJson(filePath: string, value: Record<string, unknown>): void {
+function writeJson(filePath: string, value: unknown): void {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function createBuildFixture(root: string, options?: { withReadme?: boolean; withCargo?: boolean }): void {
+function createBuildFixture(
+  root: string,
+  options?: { withReadme?: boolean; withCargo?: boolean },
+): void {
   mkdirSync(join(root, 'src'), { recursive: true });
 
   writeJson(join(root, 'manifest.json'), {
@@ -95,6 +108,20 @@ export default plugin;
       `[package]\nname = "archive_fixture"\nversion = "0.1.0"\nedition = "2021"\n`,
       'utf8',
     );
+    writeJson(join(root, 'node-definitions.json'), [
+      {
+        type: 'example.echo',
+        label: 'Echo',
+        category: 'utility',
+        description: 'Echo input text',
+        inputPorts: [
+          { id: 'text', label: 'Text', dataType: 'text', required: true },
+        ],
+        outputPorts: [
+          { id: 'result', label: 'Result', dataType: 'text', required: true },
+        ],
+      },
+    ]);
   }
 }
 
@@ -105,16 +132,17 @@ function listArchiveEntries(archivePath: string): string[] {
     '    print(json.dumps(archive.namelist()))',
   ].join('\n');
 
-  const output = childProcess.execFileSync('python3', ['-c', script, archivePath], {
-    encoding: 'utf8',
-  });
+  const output = childProcess.execFileSync(
+    'python3',
+    ['-c', script, archivePath],
+    {
+      encoding: 'utf8',
+    },
+  );
   return JSON.parse(output) as string[];
 }
 
-function readArchiveJson(
-  archivePath: string,
-  entryPath: string,
-): unknown {
+function readArchiveJson(archivePath: string, entryPath: string): unknown {
   const script = [
     'import json, sys, zipfile',
     'with zipfile.ZipFile(sys.argv[1]) as archive:',
@@ -180,7 +208,10 @@ beforeEach(() => {
 
     if (command === 'npx wasm-pack build --target bundler --release') {
       mkdirSync(join(cwd, 'pkg'), { recursive: true });
-      writeFileSync(join(cwd, 'pkg', 'archive_fixture_bg.wasm'), Buffer.from([0, 97, 115, 109]));
+      writeFileSync(
+        join(cwd, 'pkg', 'archive_fixture_bg.wasm'),
+        Buffer.from([0, 97, 115, 109]),
+      );
       return Buffer.alloc(0);
     }
 
@@ -195,14 +226,19 @@ describe('buildPluginArchive', () => {
 
     const result = await buildPluginArchive({ cwd: root });
 
-    expect(result.archivePath).toBe(join(root, 'build', 'com.agentloom.archive-fixture-1.2.3.alp'));
+    expect(result.archivePath).toBe(
+      join(root, 'build', 'com.agentloom.archive-fixture-1.2.3.alp'),
+    );
   });
 
   it('creates the output directory automatically', async () => {
     const root = createTempRoot();
     createBuildFixture(root);
 
-    const result = await buildPluginArchive({ cwd: root, outputDir: 'artifacts' });
+    const result = await buildPluginArchive({
+      cwd: root,
+      outputDir: 'artifacts',
+    });
 
     expect(readFileSync(result.archivePath).length).toBeGreaterThan(0);
     expect(result.archivePath).toContain(join(root, 'artifacts'));
@@ -254,14 +290,19 @@ describe('buildPluginArchive', () => {
         throw new Error('缺少 cwd');
       }
       mkdirSync(join(cwd, 'dist'), { recursive: true });
-      writeFileSync(join(cwd, 'dist', 'index.js'), 'throw new Error("fixture load exploded");\n');
+      writeFileSync(
+        join(cwd, 'dist', 'index.js'),
+        'throw new Error("fixture load exploded");\n',
+      );
       return Buffer.alloc(0);
     });
 
-    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow('fixture load exploded');
+    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow(
+      'fixture load exploded',
+    );
   });
 
-  it('build --wasm 应将 pkg 中的 .wasm 复制到 dist/plugin.wasm 并写回 manifest.wasmEntry', async () => {
+  it('build --wasm 将节点定义与 WASM 产物写入归档', async () => {
     const root = createTempRoot();
     createBuildFixture(root, { withCargo: true });
 
@@ -270,9 +311,47 @@ describe('buildPluginArchive', () => {
     const manifest = await readArchiveManifest<Record<string, unknown>>(
       readFileSync(result.archivePath),
     );
+    const nodeDefinitions = readArchiveJson(
+      result.archivePath,
+      'node-definitions.json',
+    ) as Array<Record<string, unknown>>;
 
     expect(entries).toContain('dist/plugin.wasm');
+    expect(entries).toContain('node-definitions.json');
     expect(manifest.wasmEntry).toBe('dist/plugin.wasm');
+    expect(result.nodeCount).toBe(1);
+    expect(nodeDefinitions[0]?.type).toBe('example.echo');
+    expect(nodeDefinitions[0]?.outputPorts).toEqual([
+      { id: 'result', label: 'Result', dataType: 'text', required: true },
+    ]);
+  });
+
+  it('build --wasm 缺少 node-definitions.json 时给出可操作错误', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root, { withCargo: true });
+    unlinkSync(join(root, 'node-definitions.json'));
+
+    await expect(buildPluginArchive({ cwd: root, wasm: true })).rejects.toThrow(
+      /node-definitions\.json.*14 值 PortDataType/,
+    );
+    expect(mocks.execSync).not.toHaveBeenCalled();
+  });
+
+  it('build --wasm 可打包预先放入 wasmEntry 路径的 cargo 产物', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root, { withCargo: true });
+    mkdirSync(join(root, 'dist'), { recursive: true });
+    writeFileSync(
+      join(root, 'dist', 'plugin.wasm'),
+      Buffer.from([0, 97, 115, 109]),
+    );
+
+    const result = await buildPluginArchive({ cwd: root, wasm: true });
+
+    expect(listArchiveEntries(result.archivePath)).toContain(
+      'dist/plugin.wasm',
+    );
+    expect(mocks.execSync).not.toHaveBeenCalled();
   });
 
   it('build --wasm 在缺少 Cargo.toml 时应抛出清晰错误', async () => {

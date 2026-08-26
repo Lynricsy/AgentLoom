@@ -32,14 +32,19 @@ export async function publishPlugin(
   options: PublishPluginOptions,
 ): Promise<PublishPluginResult> {
   if (!options.key) {
-    throw new Error('必须提供私钥路径 (--key)。使用 `agentloom-plugin keys generate` 生成密钥对。');
+    throw new Error(
+      '必须提供私钥路径 (--key)。使用 `agentloom-plugin keys generate` 生成密钥对。',
+    );
   }
 
   const cwd = resolve(options.cwd ?? process.cwd());
   const keyPath = resolve(options.key);
   const outputDir = resolve(cwd, options.outputDir ?? 'build');
   const manifest = loadManifest(cwd);
-  const archivePath = resolve(outputDir, `${manifest.id}-${manifest.version}.alp`);
+  const archivePath = resolve(
+    outputDir,
+    `${manifest.id}-${manifest.version}.alp`,
+  );
 
   if (!existsSync(archivePath)) {
     throw new Error(
@@ -49,12 +54,16 @@ export async function publishPlugin(
 
   const privateKeyPem = readFileSync(keyPath, 'utf8');
   const archiveBuffer = readFileSync(archivePath);
-  const archiveManifest = await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
+  const archiveManifest =
+    await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
   const signature = await signArchive(archiveBuffer, privateKeyPem);
   const contentHash = await computeContentHash(archiveBuffer);
 
   const publicKey = createPublicKey(privateKeyPem);
-  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }) as string;
+  const publicKeyPem = publicKey.export({
+    type: 'spki',
+    format: 'pem',
+  }) as string;
   const developerKeyFingerprint = computeKeyFingerprint(publicKeyPem);
 
   const signedArchiveBuffer = await updateArchiveManifest(archiveBuffer, {
@@ -72,7 +81,9 @@ export async function publishPlugin(
   const finalContentHash = await computeContentHash(signedArchiveBuffer);
 
   if (!valid || finalContentHash !== contentHash) {
-    throw new Error('签名后的归档自验证失败。请检查签名元数据与归档内容是否一致。');
+    throw new Error(
+      '签名后的归档自验证失败。请检查签名元数据与归档内容是否一致。',
+    );
   }
 
   writeFileSync(archivePath, signedArchiveBuffer);
@@ -86,7 +97,7 @@ export async function publishPlugin(
 }
 
 export const publishCommand = new Command('publish')
-  .description('签名并发布插件到 AgentLoom Marketplace')
+  .description('签名插件包，生成可注册的 .alp（上传经 Studio 插件管理页）')
   .option('-k, --key <path>', '签名私钥路径')
   .option('-o, --output <dir>', 'Output directory', 'build')
   .action(async (options: { key?: string; output: string }) => {
@@ -109,5 +120,7 @@ export const publishCommand = new Command('publish')
     console.info(`签名: ${result.signature.slice(0, 32)}...`);
     console.info(`内容哈希: ${result.contentHash}`);
     console.info(`密钥指纹: ${result.developerKeyFingerprint}`);
-    console.info(chalk.yellow('\n📋 V1: 请通过 Web 界面上传已签名的 .alp 文件'));
+    console.info(
+      chalk.yellow('\n请通过 Studio 插件管理页上传已签名的 .alp 文件'),
+    );
   });

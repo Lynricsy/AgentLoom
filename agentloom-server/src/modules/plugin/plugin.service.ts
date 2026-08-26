@@ -697,10 +697,36 @@ export class PluginService {
         copiedKeys.push(targetArchiveKey);
       }
 
+      // name/description:安装方改过就保留他的值,没改过(仍等于旧源值)才跟随
+      // 新源。旧源值取副本里存着的上一份 manifest —— 那正是上次安装/升级时
+      // 从源插件复制过来的原文。
+      const previousManifest = isRecord(clone.manifest) ? clone.manifest : {};
+      const previousSourceName =
+        typeof previousManifest.name === 'string'
+          ? previousManifest.name
+          : null;
+      const previousSourceDescription = this.normalizeNullableText(
+        typeof previousManifest.description === 'string'
+          ? previousManifest.description
+          : null,
+      );
+      const followSourceName = clone.name === previousSourceName;
+      const followSourceDescription =
+        this.normalizeNullableText(clone.description) ===
+        previousSourceDescription;
+
       const [updated] = await this.tenantDb
         .update(schema.plugins)
         .set({
           version: source.plugin.version,
+          ...(followSourceName ? { name: source.plugin.name } : {}),
+          ...(followSourceDescription
+            ? {
+                description: this.normalizeNullableText(
+                  source.plugin.description,
+                ),
+              }
+            : {}),
           author: source.plugin.author,
           license: this.normalizeNullableText(source.plugin.license),
           manifest: source.plugin.manifest,

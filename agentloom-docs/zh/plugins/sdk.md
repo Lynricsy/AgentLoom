@@ -41,20 +41,24 @@ SDK 通过根入口导出四个子模块：
 
 ### 端口类型 — `PortDataType`
 
-平台统一的 10 种端口数据类型：
+平台统一的 14 种端口数据类型：
 
 ```typescript
 type PortDataType =
-  | "model"
-  | "text"
-  | "json"
-  | "image"
-  | "audio"
-  | "tool"
-  | "sandbox"
-  | "knowledge"
-  | "skill"
-  | "agent";
+  | 'model'
+  | 'text'
+  | 'json'
+  | 'array'
+  | 'image'
+  | 'audio'
+  | 'tool'
+  | 'sandbox'
+  | 'knowledge'
+  | 'skill'
+  | 'agent'
+  | 'memory'
+  | 'exec'
+  | 'volume';
 ```
 
 ### 端口定义 — `PortDefinition`
@@ -104,27 +108,27 @@ interface PluginManifest {
 }
 ```
 
+正式注册时 `wasmEntry` 必须是非空的安全相对路径，且归档内对应文件必须通过
+WASM 魔数校验。该字段在 SDK 类型中保持可选，仅用于兼容 `dev` 的 TypeScript
+本地预览清单。
+
 ### 插件权限 — `PluginPermission`
 
 ```typescript
 type PluginPermission =
-  | "network:outbound"
-  | "storage:read"
-  | "storage:write"
-  | "knowledge:read"
-  | "knowledge:write"
-  | "llm:invoke";
+  | 'network:outbound'
+  | 'storage:read'
+  | 'storage:write'
+  | 'knowledge:read'
+  | 'knowledge:write'
+  | 'llm:invoke';
 ```
 
 ### 节点类别 — `CustomNodeCategory`
 
 ```typescript
 type CustomNodeCategory =
-  | "transform"
-  | "filter"
-  | "aggregator"
-  | "connector"
-  | "utility";
+  'transform' | 'filter' | 'aggregator' | 'connector' | 'utility';
 ```
 
 ### 自定义节点定义 — `CustomNodeDefinition`
@@ -180,6 +184,19 @@ interface NodeExecutionResult {
 }
 ```
 
+`NodeExecutionContext`、`NodeExecutionResult` 以及 TypeScript
+`execute(context)` 只用于 `agentloom-plugin dev` 本地预览，不是正式服务端执行
+契约。正式服务端只执行 WASM，并遵循下述 ABI。
+
+## WASM ABI
+
+- 导出函数默认为 `execute`；可由清单的 `pluginConfig.functionName` 覆盖。
+- 输入是 JSON envelope：`{"nodeType":"example.echo","inputs":{},"config":{}}`。
+- 输出必须是端口输出直出对象，例如 `{"result":"hello"}`。
+- 禁止返回 `{"outputs":{"result":"hello"}}` 包装；该结构只属于 TypeScript
+  本地预览 API。
+- 执行错误必须通过 Extism error 返回，不能伪装成成功输出。
+
 ### 日志记录器 — `PluginLogger`
 
 ```typescript
@@ -211,41 +228,41 @@ interface AgentLoomPlugin {
 ### 端口定义辅助
 
 ```typescript
-import { defineInputPort, defineOutputPort } from "@agentloom/plugin-sdk";
+import { defineInputPort, defineOutputPort } from '@agentloom/plugin-sdk';
 
 // 定义输入端口
 const textInput = defineInputPort({
-  id: "text-in",
-  label: "文本输入",
-  dataType: "text",
+  id: 'text-in',
+  label: '文本输入',
+  dataType: 'text',
   required: true,
-  description: "待处理的文本内容",
+  description: '待处理的文本内容',
 });
 
 // 定义输出端口
 const textOutput = defineOutputPort({
-  id: "text-out",
-  label: "文本输出",
-  dataType: "text",
-  description: "处理后的文本",
+  id: 'text-out',
+  label: '文本输出',
+  dataType: 'text',
+  description: '处理后的文本',
 });
 ```
 
 ### 节点定义辅助
 
 ```typescript
-import { defineNode } from "@agentloom/plugin-sdk";
+import { defineNode } from '@agentloom/plugin-sdk';
 
 const myNode = defineNode({
-  type: "my-transform",
-  label: "我的转换器",
-  category: "transform",
-  description: "自定义文本转换",
+  type: 'my-transform',
+  label: '我的转换器',
+  category: 'transform',
+  description: '自定义文本转换',
   inputPorts: [textInput],
   outputPorts: [textOutput],
   async execute(context) {
-    const text = String(context.inputs["text-in"]);
-    return { outputs: { "text-out": text.toUpperCase() } };
+    const text = String(context.inputs['text-in']);
+    return { outputs: { 'text-out': text.toUpperCase() } };
   },
 });
 ```
@@ -261,11 +278,11 @@ import {
   isPortDataType,
   isValidPermission,
   isPluginManifest,
-} from "@agentloom/plugin-sdk";
+} from '@agentloom/plugin-sdk';
 
-isPortDataType("text"); // true
-isPortDataType("unknown"); // false
-isValidPermission("llm:invoke"); // true
+isPortDataType('text'); // true
+isPortDataType('unknown'); // false
+isValidPermission('llm:invoke'); // true
 isPluginManifest(someObject); // boolean
 ```
 
@@ -276,11 +293,11 @@ isPluginManifest(someObject); // boolean
 ### 签名流程
 
 ```typescript
-import { signArchive, computeContentHash } from "@agentloom/plugin-sdk";
+import { signArchive, computeContentHash } from '@agentloom/plugin-sdk';
 
 // 读取 .alp 文件
-const alpData = fs.readFileSync("my-plugin.alp");
-const privateKey = fs.readFileSync("keys/private.pem", "utf-8");
+const alpData = fs.readFileSync('my-plugin.alp');
+const privateKey = fs.readFileSync('keys/private.pem', 'utf-8');
 
 // 计算内容哈希
 const contentHash = await computeContentHash(alpData);
@@ -292,9 +309,9 @@ const signature = await signArchive(alpData, privateKey);
 ### 验证流程
 
 ```typescript
-import { verifyArchiveSignature } from "@agentloom/plugin-sdk";
+import { verifyArchiveSignature } from '@agentloom/plugin-sdk';
 
-const publicKey = fs.readFileSync("keys/public.pem", "utf-8");
+const publicKey = fs.readFileSync('keys/public.pem', 'utf-8');
 
 const isValid = await verifyArchiveSignature(
   alpData,
@@ -313,7 +330,7 @@ import {
   createCanonicalArchivePayload,
   computeSha256Hex,
   computeKeyFingerprint,
-} from "@agentloom/plugin-sdk";
+} from '@agentloom/plugin-sdk';
 
 // 读取 .alp 内的 manifest.json
 const manifest = await readArchiveManifest(alpData);
@@ -336,6 +353,6 @@ const fingerprint = await computeKeyFingerprint(publicKeyPem);
 | 算法             | RSA-PSS                          |
 | 哈希             | SHA-256                          |
 | 签名 salt length | `DIGEST`                         |
-| 验证 salt length | `AUTO`                           |
+| 验证 salt length | `DIGEST`                         |
 | 规范化           | 深排序 JSON key + 逐文件 SHA-256 |
 | 密钥指纹         | SPKI DER 的 SHA-256 hex          |

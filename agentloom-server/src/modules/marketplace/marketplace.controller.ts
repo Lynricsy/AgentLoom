@@ -152,12 +152,14 @@ export class MarketplaceController {
   }
 
   @Post('listings/:id/upgrade')
-  @Roles('owner', 'admin', 'creator')
+  @Roles('owner', 'admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '把已安装插件副本升级到该 listing 当前版本' })
   @ApiResponse({ status: 200, description: '升级完成' })
-  @ApiResponse({ status: 404, description: 'Listing 不存在' })
-  @ApiResponse({ status: 409, description: '未安装、源已换绑或已是最新版本' })
+  @ApiResponse({
+    status: 409,
+    description: '未安装、源已下架/停用、源已换绑或已是最新版本',
+  })
   async upgrade(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,

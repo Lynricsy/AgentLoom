@@ -131,14 +131,18 @@ type MarketplaceClonePluginRow = {
   contentHash: string | null;
   sourcePluginDbId: string | null;
   sourcePluginId: string | null;
+  /** 安装/升级时记录的源版本快照;旧数据缺失时回退到 `version` 列 */
+  sourceVersion: string | null;
 };
 
 export interface MarketplaceListingUpgradeStatus {
   installed: boolean;
   upgradeAvailable: boolean;
   installedPluginDbId: string | null;
-  installedVersion: string | null;
-  availableVersion: string | null;
+  /** 已安装副本当前版本:优先 clone metadata 的 sourceVersion 快照 */
+  currentVersion: string | null;
+  /** listing 当前源插件版本;源不可用时为 null */
+  latestVersion: string | null;
   reason:
     | 'not_installed'
     | 'source_unavailable'
@@ -886,11 +890,14 @@ export class MarketplaceService {
         installed: false,
         upgradeAvailable: false,
         installedPluginDbId: null,
-        installedVersion: null,
-        availableVersion: null,
+        currentVersion: null,
+        latestVersion: null,
         reason: 'not_installed',
       };
     }
+
+    // 版本口径统一取安装/升级时写下的 sourceVersion 快照,缺失才回退行上的 version。
+    const currentVersion = clone.sourceVersion ?? clone.version;
 
     let source: Awaited<
       ReturnType<MarketplaceService['findPublicPluginInstallSourceOrThrow']>
@@ -907,8 +914,8 @@ export class MarketplaceService {
           installed: true,
           upgradeAvailable: false,
           installedPluginDbId: clone.id,
-          installedVersion: clone.version,
-          availableVersion: null,
+          currentVersion,
+          latestVersion: null,
           reason: 'source_unavailable',
         };
       }
@@ -921,22 +928,20 @@ export class MarketplaceService {
         installed: true,
         upgradeAvailable: false,
         installedPluginDbId: clone.id,
-        installedVersion: clone.version,
-        availableVersion: source.plugin.version,
+        currentVersion,
+        latestVersion: source.plugin.version,
         reason: 'source_replaced',
       };
     }
 
-    const upgradeAvailable =
-      clone.version !== source.plugin.version ||
-      (clone.contentHash ?? null) !== (source.plugin.contentHash ?? null);
+    const upgradeAvailable = this.hasNewerSourceArtifact(clone, source);
 
     return {
       installed: true,
       upgradeAvailable,
       installedPluginDbId: clone.id,
-      installedVersion: clone.version,
-      availableVersion: source.plugin.version,
+      currentVersion,
+      latestVersion: source.plugin.version,
       reason: upgradeAvailable ? 'upgrade_available' : 'up_to_date',
     };
   }
@@ -960,7 +965,26 @@ export class MarketplaceService {
       );
     }
 
-    const source = await this.findPublicPluginInstallSourceOrThrow(listingId);
+    // 源下架/失活在这里是冲突而非 404:listing 确实存在过(副本就是它装的),
+    // 只是当前不可作为升级源,调用方该看到 409 而不是「不存在」。
+    let source: Awaited<
+      ReturnType<MarketplaceService['findPublicPluginInstallSourceOrThrow']>
+    >;
+
+    try {
+      source = await this.findPublicPluginInstallSourceOrThrow(listingId);
+    } catch (error) {
+      if (
+        error instanceof MarketplaceListingNotFoundException ||
+        error instanceof PluginInactiveException
+      ) {
+        throw new MarketplaceListingConflictException(
+          '该 listing 已下架或源插件已停用，无法升级',
+        );
+      }
+
+      throw error;
+    }
 
     if (!this.isSameInstallSource(clone, source)) {
       throw new MarketplaceListingConflictException(
@@ -968,12 +992,9 @@ export class MarketplaceService {
       );
     }
 
-    if (
-      clone.version === source.plugin.version &&
-      (clone.contentHash ?? null) === (source.plugin.contentHash ?? null)
-    ) {
+    if (!this.hasNewerSourceArtifact(clone, source)) {
       throw new MarketplaceListingConflictException(
-        `已安装副本已是最新版本 ${clone.version}`,
+        `已安装副本已是最新版本 ${clone.sourceVersion ?? clone.version}`,
       );
     }
 
@@ -991,7 +1012,7 @@ export class MarketplaceService {
         tenantId,
         userId,
         pluginDbId: upgraded.id,
-        fromVersion: clone.version,
+        fromVersion: clone.sourceVersion ?? clone.version,
         toVersion: upgraded.version,
       }),
     );
@@ -999,7 +1020,7 @@ export class MarketplaceService {
     return {
       pluginDbId: upgraded.id,
       pluginId: upgraded.pluginId,
-      fromVersion: clone.version,
+      fromVersion: clone.sourceVersion ?? clone.version,
       toVersion: upgraded.version,
       message: `已升级到版本 ${upgraded.version}`,
     };
@@ -1020,6 +1041,19 @@ export class MarketplaceService {
     );
   }
 
+  /**
+   * 版本号相同但内容哈希不同也算「有新产物」:发布方可以就地重发同版本号的构建。
+   */
+  private hasNewerSourceArtifact(
+    clone: MarketplaceClonePluginRow,
+    source: { plugin: { version: string; contentHash: string | null } },
+  ): boolean {
+    return (
+      (clone.sourceVersion ?? clone.version) !== source.plugin.version ||
+      (clone.contentHash ?? null) !== (source.plugin.contentHash ?? null)
+    );
+  }
+
   private async findMarketplaceClonePlugins(
     tenantId: string,
     listingId: string,
@@ -1036,6 +1070,9 @@ export class MarketplaceService {
         sourcePluginId: sql<
           string | null
         >`${schema.plugins.metadata}->'cloned_from_marketplace'->>'sourcePluginId'`,
+        sourceVersion: sql<
+          string | null
+        >`${schema.plugins.metadata}->'cloned_from_marketplace'->>'sourceVersion'`,
       })
       .from(schema.plugins)
       .where(
