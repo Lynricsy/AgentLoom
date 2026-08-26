@@ -327,10 +327,13 @@ describe('WorkflowVersion E2E', () => {
       slug: options.slug ?? `workflow-${crypto.randomUUID().slice(0, 8)}`,
       createdBy: options.createdBy,
       updatedBy: options.createdBy,
+      // 发布规则要求 agent 节点绑定已发布的 Agent Definition
+      // （src/modules/workflow-definition/workflow-publish.service.ts:569-595）。
+      // 此 fixture 测试工作流版本而非 Agent 绑定，因此默认构造无需绑定的合法触发节点。
       nodes: options.nodes ?? [
         {
           id: 'node-start',
-          type: 'agent',
+          type: 'manual-trigger',
           position: { x: 0, y: 0 },
           data: { label: 'Start' },
         },
@@ -470,7 +473,7 @@ describe('WorkflowVersion E2E', () => {
       nodes: [
         {
           id: 'node-source',
-          type: 'agent',
+          type: 'text',
           position: { x: 0, y: 0 },
           data: {
             label: 'Source',
@@ -481,7 +484,7 @@ describe('WorkflowVersion E2E', () => {
         },
         {
           id: 'node-target',
-          type: 'agent',
+          type: 'text',
           position: { x: 240, y: 0 },
           data: {
             label: 'Target',

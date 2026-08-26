@@ -49,16 +49,17 @@ import {
 const JWT_SECRET = 'test-e2e-jwt-secret';
 const MARKETPLACE_BASE_PATH = '/api/v1/marketplace';
 const DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+// marketplace-review.service.ts:219-235 与 workflow-version.exceptions.ts:50-64 规定：
+// `agent` 节点必须绑定已发布的 Agent Definition；Marketplace 的通用 fixture 不测试 Agent 绑定，
+// 因此使用无需绑定的 manual-trigger，避免用旧版未绑定 Agent 快照伪造“可发布且可上架”的工作流。
 const DEFAULT_WORKFLOW_SNAPSHOT = {
   nodes: [
     {
-      id: 'agent-node-1',
-      type: 'agent',
+      id: 'manual-trigger-node-1',
+      type: 'manual-trigger',
       position: { x: 0, y: 0 },
       data: {
-        label: '市场分析 Agent',
-        systemPrompt: '你是一个市场工作流测试 Agent，请输出结构化结论。',
-        llmModelId: 'gpt-4o-mini',
+        label: '手动触发',
       },
     },
   ],
