@@ -42,6 +42,17 @@ file: <.alp 文件>
 
 **文件大小限制**：最大 **50 MB**。
 
+### WASM 注册门禁
+
+WASM 是唯一正式服务端运行时。验签后、写入对象存储前，注册接口还会执行：
+
+1. `manifest.wasmEntry` 必须是非空的安全相对路径，不得包含反斜杠或 `..` 路径段。
+2. `.alp` 内必须存在该路径；归档还必须包含 `manifest.json` 和
+   `node-definitions.json`。
+3. 产物前四字节必须是 WASM 魔数 `00 61 73 6d`（`\0asm`）。
+
+任一门禁失败均以 422 拒绝，TypeScript `execute(context)` 产物不能注册。
+
 ### RSA-PSS 签名验证
 
 `PluginSignatureService` 负责验证插件签名的完整性：
@@ -103,11 +114,25 @@ const plugin = await createPlugin(wasmBundle, {
 });
 ```
 
-### 平台硬限制
+### WASM ABI
 
-以下限制为平台全局固定值，**不可由插件自行修改**：
+服务端按以下 ABI 调用插件：
 
-| 限制             | 值                 | 说明             |
+- export 名默认为 `execute`，可由 `pluginConfig.functionName` 覆盖。
+- 输入为 JSON envelope：`{"nodeType":"example.echo","inputs":{},"config":{}}`。
+- 输出必须是端口输出直出对象，例如 `{"result":"hello"}`；禁止使用
+  `{"outputs":{"result":"hello"}}` 包装。
+- 插件失败必须通过 Extism error 返回。
+
+TypeScript `execute(context)` 仅用于 `agentloom-plugin dev` 本地预览，不属于此
+服务端 ABI。
+
+### 平台默认上限
+
+下列值是平台给运行时的默认安全上限。租户或插件 runtime 配置只能进一步收紧
+（例如缩短超时或降低内存），不能放宽到平台上限之外：
+
+| 限制             | 平台默认上限       | 说明             |
 | ---------------- | ------------------ | ---------------- |
 | `timeoutMs`      | **30,000** (30 秒) | 单次执行超时     |
 | `maxMemoryPages` | **4,096** (256 MB) | 最大内存页数     |
@@ -127,7 +152,7 @@ const plugin = await createPlugin(wasmBundle, {
 
 ## 使用量记录
 
-每次插件执行完成后，`PluginUsageService` 会 fire-and-forget 记录使用量：
+每次插件成功执行后，`PluginUsageService` 会在完成检查点的同一租户事务中写入使用量；写入失败会使事务回滚并触发任务重试：
 
 ### `plugin_usage_records` 表
 

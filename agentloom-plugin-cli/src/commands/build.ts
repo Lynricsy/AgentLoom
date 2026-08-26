@@ -4,6 +4,7 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -17,7 +18,11 @@ import { Command } from 'commander';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
 
 import { loadManifest } from '../utils/manifest';
-import { loadPlugin, serializeNodes } from '../utils/plugin';
+import {
+  loadPlugin,
+  serializeNodes,
+  validateNodeDefinitions,
+} from '../utils/plugin';
 
 export interface BuildPluginOptions {
   cwd?: string;
@@ -33,7 +38,45 @@ export interface BuildPluginResult {
 }
 
 function getCliBinPath(): string {
-  return resolve(fileURLToPath(new URL('../..', import.meta.url)), 'node_modules/.bin');
+  return resolve(
+    fileURLToPath(new URL('../..', import.meta.url)),
+    'node_modules/.bin',
+  );
+}
+
+const PORT_DATA_TYPES =
+  'model、text、json、array、image、audio、tool、sandbox、knowledge、skill、agent、memory、exec、volume';
+
+function loadWasmNodeDefinitions(cwd: string): Array<Record<string, unknown>> {
+  const filePath = resolve(cwd, 'node-definitions.json');
+  const guidance =
+    `请在插件根目录 ${filePath} 创建非空 JSON 数组；` +
+    '最小节点结构为 [{"type":"example.echo","label":"示例节点","category":"utility",' +
+    '"description":"示例描述","inputPorts":[],"outputPorts":[]}]。' +
+    `端口 dataType 必须取自 14 值 PortDataType：${PORT_DATA_TYPES}。`;
+
+  if (!existsSync(filePath)) {
+    throw new Error(`WASM 构建缺少 node-definitions.json。${guidance}`);
+  }
+
+  let candidates: unknown;
+  try {
+    candidates = JSON.parse(readFileSync(filePath, 'utf8')) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `node-definitions.json 不是有效 JSON：${message}。${guidance}`,
+    );
+  }
+
+  const nodeDefinitions = validateNodeDefinitions(candidates);
+  if (nodeDefinitions.length === 0) {
+    throw new Error(
+      `WASM 构建要求 node-definitions.json 至少包含一个节点。${guidance}`,
+    );
+  }
+
+  return nodeDefinitions;
 }
 
 async function createArchive(
@@ -51,7 +94,9 @@ async function createArchive(
     archive.on('error', rejectArchive);
 
     archive.pipe(output);
-    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, { name: 'manifest.json' });
+    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, {
+      name: 'manifest.json',
+    });
     if (nodeDefinitions.length > 0) {
       archive.append(`${JSON.stringify(nodeDefinitions, null, 2)}\n`, {
         name: 'node-definitions.json',
@@ -76,6 +121,14 @@ export async function buildPluginArchive(
   const outputDir = resolve(cwd, options.outputDir ?? 'build');
   const manifest = loadManifest(cwd);
 
+  if (options.wasm && !existsSync(resolve(cwd, 'Cargo.toml'))) {
+    throw new Error(
+      '未找到 Cargo.toml。使用 --wasm 构建前，请确保当前插件项目是 Rust WASM 项目。',
+    );
+  }
+  const wasmNodeDefinitions = options.wasm
+    ? loadWasmNodeDefinitions(cwd)
+    : undefined;
   if (options.wasm) {
     buildWasmBundle(cwd);
   } else {
@@ -89,15 +142,17 @@ export async function buildPluginArchive(
 
   mkdirSync(outputDir, { recursive: true });
 
-  const nodeDefinitions = options.wasm
-    ? []
-    : serializeNodes((await loadPlugin(cwd)).nodes);
+  const nodeDefinitions =
+    wasmNodeDefinitions ?? serializeNodes((await loadPlugin(cwd)).nodes);
 
   const resultManifest: PluginManifest = options.wasm
     ? { ...manifest, wasmEntry: 'dist/plugin.wasm' }
     : manifest;
 
-  const archivePath = resolve(outputDir, `${manifest.id}-${manifest.version}.alp`);
+  const archivePath = resolve(
+    outputDir,
+    `${manifest.id}-${manifest.version}.alp`,
+  );
   await createArchive(cwd, archivePath, resultManifest, nodeDefinitions);
 
   const sizeBytes = statSync(archivePath).size;
@@ -119,8 +174,9 @@ function buildTypeScriptBundle(cwd: string): void {
 }
 
 function buildWasmBundle(cwd: string): void {
-  if (!existsSync(resolve(cwd, 'Cargo.toml'))) {
-    throw new Error('未找到 Cargo.toml。使用 --wasm 构建前，请确保当前插件项目是 Rust WASM 项目。');
+  const prebuiltWasmPath = resolve(cwd, 'dist', 'plugin.wasm');
+  if (existsSync(prebuiltWasmPath)) {
+    return;
   }
 
   childProcess.execSync('npx wasm-pack build --target bundler --release', {
@@ -134,7 +190,9 @@ function buildWasmBundle(cwd: string): void {
     throw new Error('WASM 构建失败：未生成 pkg/ 目录。');
   }
 
-  const wasmFileName = readdirSync(pkgDir).find((entry) => entry.endsWith('.wasm'));
+  const wasmFileName = readdirSync(pkgDir).find((entry) =>
+    entry.endsWith('.wasm'),
+  );
   if (!wasmFileName) {
     throw new Error('WASM 构建失败：pkg/ 目录中未找到 .wasm 文件。');
   }
@@ -148,7 +206,9 @@ function buildWasmBundle(cwd: string): void {
 function buildCommandEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    PATH: [getCliBinPath(), process.env.PATH ?? ''].filter(Boolean).join(delimiter),
+    PATH: [getCliBinPath(), process.env.PATH ?? '']
+      .filter(Boolean)
+      .join(delimiter),
   };
 }
 
@@ -157,11 +217,21 @@ export const buildCommand = new Command('build')
   .option('-o, --output <dir>', 'Output directory', 'build')
   .option('--wasm', '使用 wasm-pack 构建 WASM 产物')
   .action(async (options: { output: string; wasm?: boolean }) => {
-    const result = await buildPluginArchive({ outputDir: options.output, wasm: options.wasm });
+    const result = await buildPluginArchive({
+      outputDir: options.output,
+      wasm: options.wasm,
+    });
 
     console.info(chalk.green('📦 插件构建完成'));
     console.info(`文件: ${result.archivePath}`);
     console.info(`大小: ${result.sizeBytes} bytes`);
     console.info(`版本: ${result.manifest.version}`);
     console.info(`节点数: ${result.nodeCount}`);
+    if (!options.wasm) {
+      console.warn(
+        chalk.yellow(
+          'TS 产物仅供 `agentloom-plugin dev` 本地预览，服务端注册要求 WASM（使用 --wasm）。',
+        ),
+      );
+    }
   });

@@ -1,6 +1,6 @@
 # 开发教程
 
-本教程以 `text-to-uppercase`（文本转大写）示例插件为蓝本，带你从零完成一个 AgentLoom 插件的完整开发流程。
+本教程先用 TypeScript `execute(context)` 完成本地 `dev` 预览，再说明如何切换到 Rust/Extism WASM 正式产物。TypeScript 路径不能注册到服务端。
 
 ## 前置条件
 
@@ -32,11 +32,14 @@ agentloom-plugin keys generate -b 2048
 请妥善保管 `private.pem`，不要提交到版本控制。将 `public.pem` 后续注册到 AgentLoom 平台的开发者密钥管理中。
 :::
 
-## 第二步：创建插件项目
+## 第二步：创建本地预览项目
 
 ```bash
 agentloom-plugin create text-to-uppercase
 ```
+
+该默认脚手架仅服务于 TypeScript 本地预览。正式插件应改用
+`agentloom-plugin create text-to-uppercase --wasm` 生成 Rust/Extism 项目。
 
 按照交互提示输入：
 
@@ -75,66 +78,66 @@ import type {
   AgentLoomPlugin,
   PluginManifest,
   CustomNodeDefinition,
-} from "@agentloom/plugin-sdk";
+} from '@agentloom/plugin-sdk';
 import {
   defineInputPort,
   defineOutputPort,
   defineNode,
-} from "@agentloom/plugin-sdk";
-import manifest from "../manifest.json";
+} from '@agentloom/plugin-sdk';
+import manifest from '../manifest.json';
 
 // 定义输入端口
 const textInput = defineInputPort({
-  id: "text-in",
-  label: "文本输入",
-  dataType: "text",
+  id: 'text-in',
+  label: '文本输入',
+  dataType: 'text',
   required: true,
-  description: "待转换的文本",
+  description: '待转换的文本',
 });
 
 // 定义输出端口
 const textOutput = defineOutputPort({
-  id: "text-out",
-  label: "文本输出",
-  dataType: "text",
-  description: "转换后的大写文本",
+  id: 'text-out',
+  label: '文本输出',
+  dataType: 'text',
+  description: '转换后的大写文本',
 });
 
 // 定义节点
 const uppercaseNode = defineNode({
-  type: "text-to-uppercase",
-  label: "文本转大写",
-  category: "transform",
-  description: "将输入文本转换为大写形式",
+  type: 'text-to-uppercase',
+  label: '文本转大写',
+  category: 'transform',
+  description: '将输入文本转换为大写形式',
   inputPorts: [textInput],
   outputPorts: [textOutput],
   // 配置 schema：支持前缀和后缀
   configSchema: {
-    type: "object",
+    type: 'object',
     properties: {
       prefix: {
-        type: "string",
-        description: "添加到结果前面的前缀",
+        type: 'string',
+        description: '添加到结果前面的前缀',
       },
       suffix: {
-        type: "string",
-        description: "添加到结果后面的后缀",
+        type: 'string',
+        description: '添加到结果后面的后缀',
       },
     },
   },
   // 执行函数
   async execute(context) {
-    const text = String(context.inputs["text-in"] ?? "");
+    const text = String(context.inputs['text-in'] ?? '');
     const upper = text.toUpperCase();
 
-    const prefix = String(context.config.prefix ?? "");
-    const suffix = String(context.config.suffix ?? "");
+    const prefix = String(context.config.prefix ?? '');
+    const suffix = String(context.config.suffix ?? '');
     const result = `${prefix}${upper}${suffix}`;
 
     context.logger.info(`转换完成: "${text}" → "${result}"`);
 
     return {
-      outputs: { "text-out": result },
+      outputs: { 'text-out': result },
     };
   },
 });
@@ -144,10 +147,10 @@ const plugin: AgentLoomPlugin = {
   manifest: manifest as PluginManifest,
   nodes: [uppercaseNode],
   async activate() {
-    console.log("text-to-uppercase 插件已激活");
+    console.log('text-to-uppercase 插件已激活');
   },
   async deactivate() {
-    console.log("text-to-uppercase 插件已停用");
+    console.log('text-to-uppercase 插件已停用');
   },
 };
 
@@ -165,27 +168,31 @@ export default plugin;
 | `context.config`                       | 用户在画布中配置的参数                          |
 | `context.logger`                       | 平台提供的日志记录器                            |
 
+以上 `execute(context)` 和 `{ outputs: ... }` 返回值仅属于 TypeScript `dev`
+本地预览契约。WASM ABI 接收 `{nodeType, inputs, config}` envelope，并直接返回
+端口对象（例如 `{"text-out":"HELLO"}`），禁止 `{outputs: ...}` 包装。
+
 ## 第五步：编写测试
 
 编辑 `tests/index.test.ts`：
 
 ```typescript
-import { describe, it, expect } from "vitest";
-import plugin from "../src/index";
+import { describe, it, expect } from 'vitest';
+import plugin from '../src/index';
 
-describe("text-to-uppercase", () => {
-  it("插件清单 ID 正确", () => {
-    expect(plugin.manifest.id).toBe("com.agentloom.text-to-uppercase");
+describe('text-to-uppercase', () => {
+  it('插件清单 ID 正确', () => {
+    expect(plugin.manifest.id).toBe('com.agentloom.text-to-uppercase');
   });
 
-  it("注册了 1 个节点", () => {
+  it('注册了 1 个节点', () => {
     expect(plugin.nodes).toHaveLength(1);
   });
 
-  it("基本转换", async () => {
+  it('基本转换', async () => {
     const node = plugin.nodes[0];
     const result = await node.execute({
-      inputs: { "text-in": "hello world" },
+      inputs: { 'text-in': 'hello world' },
       config: {},
       logger: {
         debug: () => {},
@@ -193,31 +200,31 @@ describe("text-to-uppercase", () => {
         warn: () => {},
         error: () => {},
       },
-      metadata: { executionId: "e1", stepId: "s1", nodeId: "n1" },
+      metadata: { executionId: 'e1', stepId: 's1', nodeId: 'n1' },
     });
-    expect(result.outputs["text-out"]).toBe("HELLO WORLD");
+    expect(result.outputs['text-out']).toBe('HELLO WORLD');
   });
 
-  it("支持前缀和后缀", async () => {
+  it('支持前缀和后缀', async () => {
     const node = plugin.nodes[0];
     const result = await node.execute({
-      inputs: { "text-in": "test" },
-      config: { prefix: "[", suffix: "]" },
+      inputs: { 'text-in': 'test' },
+      config: { prefix: '[', suffix: ']' },
       logger: {
         debug: () => {},
         info: () => {},
         warn: () => {},
         error: () => {},
       },
-      metadata: { executionId: "e1", stepId: "s1", nodeId: "n1" },
+      metadata: { executionId: 'e1', stepId: 's1', nodeId: 'n1' },
     });
-    expect(result.outputs["text-out"]).toBe("[TEST]");
+    expect(result.outputs['text-out']).toBe('[TEST]');
   });
 
-  it("处理空输入", async () => {
+  it('处理空输入', async () => {
     const node = plugin.nodes[0];
     const result = await node.execute({
-      inputs: { "text-in": "" },
+      inputs: { 'text-in': '' },
       config: {},
       logger: {
         debug: () => {},
@@ -225,9 +232,9 @@ describe("text-to-uppercase", () => {
         warn: () => {},
         error: () => {},
       },
-      metadata: { executionId: "e1", stepId: "s1", nodeId: "n1" },
+      metadata: { executionId: 'e1', stepId: 's1', nodeId: 'n1' },
     });
-    expect(result.outputs["text-out"]).toBe("");
+    expect(result.outputs['text-out']).toBe('');
   });
 });
 ```
@@ -288,26 +295,25 @@ curl -X POST http://localhost:4400/nodes/text-to-uppercase/execute \
 
 修改 `src/index.ts` 中的代码后，服务器会自动重新加载。
 
-## 第七步：构建 `.alp` 包
+## 第七步：构建正式 `.alp` 包
+
+服务端注册只接受 WASM。使用 `create --wasm` 生成的 Rust/Extism 项目，将逻辑和
+节点定义迁移到 `src/lib.rs` 与根目录 `node-definitions.json` 后执行：
 
 ```bash
-agentloom-plugin build
+agentloom-plugin build --wasm
 ```
 
-输出：
+若 `dist/plugin.wasm` 尚不存在，CLI 会运行 wasm-pack 并复制产物；随后把
+`manifest.json`、`node-definitions.json` 和 WASM 产物写入 `.alp`。
 
-```text
-📦 Building plugin...
-   Compiling TypeScript...
-   Creating archive: build/com.agentloom.text-to-uppercase-1.0.0.alp
-✅ Build complete!
-```
-
-## 第八步：签名并发布
+## 第八步：签名归档
 
 ```bash
 agentloom-plugin publish -k keys/private.pem
 ```
+
+`-k` 没有默认值，必须显式指定。`publish` 只签名并生成可注册的 `.alp`，不会上传。
 
 输出：
 
@@ -320,22 +326,15 @@ agentloom-plugin publish -k keys/private.pem
    Output: build/com.agentloom.text-to-uppercase-1.0.0.alp
 ```
 
-## 第九步：注册到平台
+## 第九步：在 Studio 注册
 
-将签名后的 `.alp` 文件上传到 AgentLoom 服务端：
+前往 AgentLoom Studio 的插件管理页，上传签名后的 `.alp`。服务端会：
 
-```bash
-curl -X POST https://your-agentloom-server/api/v1/plugins \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "file=@build/com.agentloom.text-to-uppercase-1.0.0.alp"
-```
-
-服务端会自动执行：
-
-1. 提取 `manifest.json`
-2. 使用开发者公钥验证 RSA-PSS 签名
-3. 校验内容哈希
-4. 注册插件到数据库
+1. 提取 `manifest.json` 与 `node-definitions.json`
+2. 使用开发者公钥验证 RSA-PSS 签名并校验内容哈希
+3. 要求非空且安全的 `wasmEntry`
+4. 确认归档内存在该 WASM，并校验魔数 `00 61 73 6d`
+5. 注册插件到数据库
 
 ## 完整流程图
 
@@ -347,9 +346,9 @@ flowchart TD
     D --> E["🛠️ dev\n本地调试 (端口 4400)"]
     E --> F{"调试通过?"}
     F -->|否| C
-    F -->|是| G["🔨 build\n编译 + .alp 打包"]
-    G --> H["✍️ publish\nRSA-PSS 签名"]
-    H --> I["📤 上传到平台\nPOST /plugins"]
+    F -->|是| G["🔨 build --wasm\nWASM + 节点定义打包"]
+    G --> H["✍️ publish\n仅 RSA-PSS 签名"]
+    H --> I["📤 Studio 插件管理页\n上传 .alp"]
     I --> J["🏪 市场上架"]
 
     style A fill:#e8f5e9

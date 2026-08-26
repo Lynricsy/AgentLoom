@@ -19,10 +19,10 @@ AgentLoom 插件生态提供完整的扩展能力，允许开发者创建自定�
 flowchart LR
     A["🔑 密钥生成\nkeys generate"] --> B["📦 脚手架创建\ncreate"]
     B --> C["🛠️ 本地开发\ndev (watch + :4400)"]
-    C --> D["🔨 构建打包\nbuild → .alp"]
-    D --> E["✍️ 签名发布\npublish (RSA-PSS)"]
-    E --> F["📤 注册上传\nPOST /plugins (.alp)"]
-    F --> G["✅ 服务端验签\nverify + contentHash"]
+    C --> D["🔨 WASM 构建打包\nbuild --wasm → .alp"]
+    D --> E["✍️ 签名归档\npublish (RSA-PSS)"]
+    E --> F["📤 Studio 上传\n插件管理页"]
+    F --> G["✅ 服务端验签 + WASM 门禁\nverify + contentHash + magic"]
     G --> H["🏪 市场上架\nmarketplace listing"]
     H --> I["⚡ WASM 沙箱执行\nExtism (30s / 256MB)"]
     I --> J["📊 使用量记录\nplugin_usage_records"]
@@ -43,7 +43,7 @@ flowchart LR
 
 - **清单（Manifest）** — 元数据描述：id、版本、权限、签名信息
 - **自定义节点（Custom Node）** — 画布中可使用的新节点类型，定义输入/输出端口和执行逻辑
-- **端口类型（Port Data Type）** — 平台统一的 9 种数据类型：`model | text | json | image | audio | tool | sandbox | knowledge | skill`
+- **端口类型（Port Data Type）** — 平台统一的 14 种数据类型：`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
 
 ### 权限模型
 
@@ -75,8 +75,8 @@ flowchart LR
 插件生态的安全保障贯穿全链路：
 
 1. **开发签名** — 开发者使用 RSA 私钥对 `.alp` 包进行 RSA-PSS 签名
-2. **注册验签** — 服务端使用开发者公钥验证签名和内容哈希
-3. **WASM 沙箱** — Extism 隔离执行，硬限制超时和内存
+2. **注册验签与门禁** — 服务端验证签名、内容哈希、非空 `wasmEntry`、归档路径和 WASM 魔数
+3. **WASM 沙箱** — 正式服务端唯一运行时，使用 Extism 隔离执行
 4. **权限声明** — 最小权限原则，仅授予声明的权限
 
 ## 收益模型
@@ -99,15 +99,17 @@ npm install -g @agentloom/plugin-cli
 # 2. 生成密钥对
 agentloom-plugin keys generate
 
-# 3. 创建插件项目
-agentloom-plugin create my-plugin
+# 3. 创建正式 WASM 插件项目
+agentloom-plugin create my-plugin --wasm
 
-# 4. 本地开发
-cd my-plugin && agentloom-plugin dev
+# 4. 编写 Rust 逻辑与 node-definitions.json
+cd my-plugin
 
-# 5. 构建并发布
-agentloom-plugin build
+# 5. 构建、签名；publish 不上传
+agentloom-plugin build --wasm
 agentloom-plugin publish -k keys/private.pem
+
+# 6. 前往 Studio 插件管理页上传生成的 .alp
 ```
 
 详细步骤请参阅 [开发教程](./tutorial)。

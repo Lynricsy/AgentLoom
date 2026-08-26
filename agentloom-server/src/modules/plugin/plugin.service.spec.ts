@@ -897,15 +897,78 @@ describe('PluginService', () => {
           storageKey: expect.stringMatching(archiveKeyPattern),
         }),
       );
-      // name/description 是安装方自己的标签，升级不覆盖
-      expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty('name');
-      expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty(
-        'description',
-      );
+      // 副本没被改名(name 仍等于旧源 manifest.name),跟随新源
+      expect(updateChain.set.mock.calls[0][0]).toMatchObject({
+        name: 'Review Analyzer',
+      });
       // 旧版本产物在记录写成功后才清理
       expect(storageService.delete).toHaveBeenCalledWith(clone.wasmBundleUrl);
       expect(storageService.delete).toHaveBeenCalledWith(clone.storageKey);
       expect(result.version).toBe('2.0.0');
+    });
+
+    it('副本未改名时 name/description 跟随新源', async () => {
+      const clone = createCloneRecord();
+      const renamedSource = createNewSourcePlugin({
+        name: '评论分析器 Pro',
+        description: '新版描述',
+      });
+      const updateChain = createUpdateChain([
+        createPlugin({ id: 'clone-id', version: '2.0.0' }),
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+      db.update.mockReturnValue(updateChain);
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('artifact')]),
+      );
+
+      await service.upgradeMarketplaceClone({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        cloneDbId: 'clone-id',
+        source: createSource(renamedSource),
+      });
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: '评论分析器 Pro',
+          description: '新版描述',
+        }),
+      );
+    });
+
+    it('副本被安装方改过名/描述时保留自定义值', async () => {
+      const clone = createCloneRecord({
+        name: '我们团队的评论分析器',
+        description: '内部定制说明',
+      });
+      const renamedSource = createNewSourcePlugin({
+        name: '评论分析器 Pro',
+        description: '新版描述',
+      });
+      const updateChain = createUpdateChain([
+        createPlugin({ id: 'clone-id', version: '2.0.0' }),
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChain([clone]));
+      db.update.mockReturnValue(updateChain);
+      storageService.download.mockImplementation(async () =>
+        Readable.from([Buffer.from('artifact')]),
+      );
+
+      await service.upgradeMarketplaceClone({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        cloneDbId: 'clone-id',
+        source: createSource(renamedSource),
+      });
+
+      const payload = updateChain.set.mock.calls[0][0];
+      expect(payload).not.toHaveProperty('name');
+      expect(payload).not.toHaveProperty('description');
+      // 版本与产物仍然照升
+      expect(payload).toMatchObject({ version: '2.0.0' });
     });
 
     it('应保留原 clonedAt、写入 upgradedAt 并重新快照价格', async () => {

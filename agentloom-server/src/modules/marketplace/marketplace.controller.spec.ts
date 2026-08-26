@@ -62,12 +62,8 @@ describe('MarketplaceController', () => {
       ]);
     });
 
-    it('upgrade 应要求 owner/admin/creator 角色', () => {
-      expect(getRoles(controller, 'upgrade')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-      ]);
+    it('upgrade 应仅允许 owner/admin 角色', () => {
+      expect(getRoles(controller, 'upgrade')).toEqual(['owner', 'admin']);
     });
   });
 
@@ -123,8 +119,8 @@ describe('MarketplaceController', () => {
         installed: true,
         upgradeAvailable: true,
         installedPluginDbId: 'plugin-1',
-        installedVersion: '1.0.0',
-        availableVersion: '2.0.0',
+        currentVersion: '1.0.0',
+        latestVersion: '2.0.0',
         reason: 'upgrade_available' as const,
       };
       marketplaceService.checkListingUpgrade.mockResolvedValue(mockStatus);
