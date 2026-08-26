@@ -1,4 +1,5 @@
 export type {
+  PluginMarketplaceSource,
   PluginRecord,
   PluginListItem,
   PluginNodeDefinition,
@@ -30,13 +31,19 @@ export {
   PLUGIN_PACKAGE_EXTENSION,
 } from './api'
 export {
+  PLUGIN_MARKETPLACE_ACTION_ROLES,
   PLUGIN_ORIGIN_LABEL,
   PLUGIN_STATUS_LABEL,
   PLUGIN_STATUS_VARIANT,
   canAdministerPlugins,
   canRegisterPlugins,
+  canRunPluginMarketplaceAction,
+  formatPluginTimestamp,
   getPluginOrigin,
+  readPluginMarketplaceSource,
+  type PluginMarketplaceAction,
 } from './lib/pluginPresentation'
+export { resolvePluginErrorMessage } from './lib/pluginErrors'
 export {
   parsePluginUsageSearch,
   resolvePluginUsageSearch,

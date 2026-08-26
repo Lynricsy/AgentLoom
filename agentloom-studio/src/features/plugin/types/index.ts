@@ -1,3 +1,4 @@
+import type { MarketplacePricingModel } from '@/features/marketplace'
 import type { UpdatePluginStatusDtoStatusEnum } from '@agentloom/api-client'
 
 export type PluginStatus = UpdatePluginStatusDtoStatusEnum
@@ -62,6 +63,26 @@ export interface PluginListItem {
 
 /** 插件来源：由 metadata.clonedFromMarketplace 是否存在推导 */
 export type PluginOrigin = 'marketplace' | 'upload'
+
+/**
+ * 插件的市场安装来源，安装时由服务端快照进 metadata。
+ *
+ * 服务端写入的 JSONB key 是 snake_case 的 `cloned_from_marketplace`，
+ * 全局 ky afterResponse 递归转 camelCase，前端拿到的是 `clonedFromMarketplace`；
+ * 其内部字段服务端本就是 camelCase，转换后原样保留。
+ *
+ * 计费口径是安装当时的快照：源 listing 后续改价或下架都不影响已安装副本的计费，
+ * 所以这里展示的是「安装时的口径」而不是 listing 现价。
+ * 旧版本安装的副本没有快照字段，对应值为 null。
+ */
+export interface PluginMarketplaceSource {
+  listingId: string
+  listingTitle: string | null
+  clonedAt: string | null
+  upgradedAt: string | null
+  pricingModel: MarketplacePricingModel | null
+  pricePerExecution: string | null
+}
 
 /**
  * 插件用量流水（GET /plugins/:id/usage）。

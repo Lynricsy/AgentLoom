@@ -274,6 +274,47 @@ export type InstallMarketplaceListingResponse =
   | InstallWorkflowListingResponse
   | InstallPluginListingResponse;
 
+/**
+ * POST /marketplace/listings/:id/uninstall 响应。
+ * 幂等：租户内没有该 listing 的副本时 `disabledPluginDbIds` 为空数组。
+ */
+export interface UninstallMarketplaceListingResponse {
+  disabledPluginDbIds: string[];
+  message: string;
+}
+
+/**
+ * GET /marketplace/listings/:id/upgrade-check 的判定原因。
+ * `source_unavailable`：源 listing 已下架或源插件已停用；
+ * `source_replaced`：listing 换绑到了别的插件，不能原地升级。
+ */
+export type MarketplaceUpgradeReason =
+  | 'not_installed'
+  | 'source_unavailable'
+  | 'source_replaced'
+  | 'up_to_date'
+  | 'upgrade_available';
+
+export interface MarketplaceListingUpgradeStatus {
+  installed: boolean;
+  upgradeAvailable: boolean;
+  installedPluginDbId: string | null;
+  /** 已安装副本当前版本（优先取安装/升级时的 sourceVersion 快照） */
+  currentVersion: string | null;
+  /** listing 当前源插件版本；源不可用时为 null */
+  latestVersion: string | null;
+  reason: MarketplaceUpgradeReason;
+}
+
+/** POST /marketplace/listings/:id/upgrade 响应 */
+export interface UpgradeMarketplaceListingResponse {
+  pluginDbId: string;
+  pluginId: string;
+  fromVersion: string;
+  toVersion: string;
+  message: string;
+}
+
 export type SubmitReviewRequest = SubmitReviewDto
 
 export interface SubmittedMarketplaceReview {
