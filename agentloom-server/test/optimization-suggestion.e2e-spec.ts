@@ -727,7 +727,7 @@ describe('OptimizationSuggestion E2E', () => {
   });
 
   describe('POST /api/v1/optimization-suggestions/:id/apply', () => {
-    it('应应用建议并只更新目标节点的配置', async () => {
+    it('当前无执行落点时应拒绝采纳且不改目标或非目标节点配置', async () => {
       if (!ctx) {
         throw new Error('RLS test context not initialized');
       }
@@ -752,19 +752,19 @@ describe('OptimizationSuggestion E2E', () => {
         .post(`/api/v1/optimization-suggestions/${suggestion.id}/apply`)
         .set(tenant.headers);
 
-      expect(response.status).toBe(201);
-      expect(response.body.data).toMatchObject({
-        id: suggestion.id,
-        status: 'applied',
-        appliedByUserId: tenant.user.id,
-        workflowDefinitionId: workflow.workflowDefinitionId,
-        nodeId: workflow.targetNodeId,
-        suggestedValue: { autonomyMode: 'LLM_SUGGEST' },
+      // 规则来源：optimization-suggestion.service.ts:28-39、521-532。
+      // 工作流 Agent 节点不消费这些配置字段，生产端因此有意拒绝“采纳后无效果”的建议；
+      // 旧用例期待 201 并写回画布会制造已生效的假象，409 且不写任何节点才是当前契约。
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_NOT_APPLICABLE',
+        title: '优化建议当前不可采纳',
+        status: 409,
       });
-      expect(response.body.data.appliedAt).toEqual(expect.any(String));
+      expect(response.body.detail).toContain('采纳后不会产生任何效果');
 
       const [updatedWorkflow] = await ctx.adminSql`
-        SELECT nodes, updated_by
+        SELECT nodes
         FROM workflow_definitions
         WHERE id = ${workflow.workflowDefinitionId}::uuid
       `;
@@ -784,28 +784,42 @@ describe('OptimizationSuggestion E2E', () => {
         (node) => node.id === workflow.siblingNodeId,
       );
 
-      expect(updatedWorkflow.updated_by).toBe(tenant.user.id);
-      expect(targetNode?.data?.config).toMatchObject({
-        autonomyMode: 'LLM_SUGGEST',
+      expect(targetNode?.data?.config).toEqual({
+        autonomyMode: 'MANUAL_CONFIRM',
         modelId: 'gpt-4o',
+        modelName: 'GPT-4o',
+        provider: 'openai',
         timeoutMs: 60_000,
         tools: ['web-search', 'code-runner'],
       });
       expect(targetNode?.data).toMatchObject({
-        autonomyMode: 'LLM_SUGGEST',
+        autonomyMode: 'MANUAL_CONFIRM',
         autonomyConfig: {
-          mode: 'LLM_SUGGEST',
+          mode: 'RULE_BASED',
+          confirmationThreshold: 0.75,
         },
         settings: {
-          autonomyMode: 'LLM_SUGGEST',
+          autonomyMode: 'RULE_BASED',
           section: 'advanced',
         },
       });
-      expect(siblingNode?.data?.config).toMatchObject({
+      // 即使未来重新开放某类建议，非目标节点也必须保持不变。
+      expect(siblingNode?.data?.config).toEqual({
         autonomyMode: 'RULE_BASED',
         modelId: 'claude-3-7-sonnet',
         timeoutMs: 45_000,
         tools: ['browser'],
+      });
+
+      const [unchangedSuggestion] = await ctx.adminSql`
+        SELECT status, applied_at, applied_by_user_id
+        FROM optimization_suggestions
+        WHERE id = ${suggestion.id}::uuid
+      `;
+      expect(unchangedSuggestion).toMatchObject({
+        status: 'pending',
+        applied_at: null,
+        applied_by_user_id: null,
       });
     });
 
@@ -865,13 +879,26 @@ describe('OptimizationSuggestion E2E', () => {
         .post(`/api/v1/optimization-suggestions/${suggestion.id}/dismiss`)
         .set(tenant.headers);
 
-      expect(response.status).toBe(201);
+      // 规则来源：optimization-suggestion.controller.ts:88-92。
+      // dismiss 是对既有资源的状态更新，controller 显式约定 HTTP 200；旧 201 期望是残留契约。
+      expect(response.status).toBe(200);
       expect(response.body.data).toMatchObject({
         id: suggestion.id,
         status: 'dismissed',
         dismissedByUserId: tenant.user.id,
       });
       expect(response.body.data.dismissedAt).toEqual(expect.any(String));
+
+      const [dismissedSuggestion] = await ctx!.adminSql`
+        SELECT status, dismissed_at, dismissed_by_user_id
+        FROM optimization_suggestions
+        WHERE id = ${suggestion.id}::uuid
+      `;
+      expect(dismissedSuggestion).toMatchObject({
+        status: 'dismissed',
+        dismissed_by_user_id: tenant.user.id,
+        dismissed_at: expect.any(Date),
+      });
     });
 
     it('建议已被处理时应返回 409 冲突', async () => {
