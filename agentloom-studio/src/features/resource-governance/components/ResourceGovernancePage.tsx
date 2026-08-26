@@ -162,8 +162,10 @@ interface ActionSummaryCardProps {
   action: ResourceGovernanceActionResponse | TerminateExecutionResponse
 }
 
+// 版本位放宽到 RFC 9562 的 1-8：平台主键是 UUIDv7，锁死 [1-5] 会把
+// 所有真实工作流 ID 判成非法，工作流级治理开关无法保存。
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const PAGE_DESCRIPTION =
   '管理租户的执行配额、治理暂停与异常执行终止。这里的治理暂停只会阻止新的执行进入，不等同于执行中的 paused 状态。'
