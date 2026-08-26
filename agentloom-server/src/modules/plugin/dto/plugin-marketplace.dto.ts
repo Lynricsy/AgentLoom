@@ -28,14 +28,10 @@ const PricePerExecutionSchema = z
     message: 'pricePerExecution 必须为非负数字字符串，最多 8 位小数',
   });
 
-const UuidSchema = z
-  .string()
-  .regex(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-    {
-      message: '必须是合法的 UUID',
-    },
-  );
+// 平台主键是 UUIDv7（uuid_generate_v7 / uuidv7()），版本位为 7。
+// 这里必须用与其余 DTO 一致的 z.uuid()：手写 [1-5] 版本位的正则会把
+// 所有真实 pluginDbId 判成非法 UUID，导致合法插件永远无法上架。
+const UuidSchema = z.string().uuid('必须是合法的 UUID');
 
 /**
  * 文本限制与 `MARKETPLACE_REVIEW_LIMITS` 对齐，
