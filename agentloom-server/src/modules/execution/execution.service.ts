@@ -782,6 +782,30 @@ export class ExecutionService {
     return execution;
   }
 
+  /**
+   * 投递 resume 任务。
+   *
+   * 必须走 after-commit：resume 的 execution/steps 状态更新在请求事务里，
+   * 若在事务内投递，消费者会读到提交前的 failed/cancelled 快照并静默 no-op，
+   * 执行就永久停在 running。与 runWorkflow 的投递时机保持一致。
+   */
+  async enqueueResumeJob(executionId: string, tenantId: string): Promise<void> {
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => {
+        await this.executionQueue.add('resume-execution', {
+          executionId,
+          tenantId,
+        } satisfies ExecutionJobData);
+      });
+      return;
+    }
+
+    await this.executionQueue.add('resume-execution', {
+      executionId,
+      tenantId,
+    } satisfies ExecutionJobData);
+  }
+
   private async enqueueExecutionJob(
     executionId: string,
     tenantId: string,

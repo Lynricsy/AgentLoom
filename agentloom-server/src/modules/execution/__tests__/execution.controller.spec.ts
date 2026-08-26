@@ -59,6 +59,7 @@ const mockService: Record<string, ReturnType<typeof vi.fn>> = {
   getDeadLetterJobs: vi.fn(),
   retryDeadLetterJob: vi.fn(),
   discardDeadLetterJob: vi.fn(),
+  enqueueResumeJob: vi.fn(),
 };
 
 const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
@@ -292,7 +293,7 @@ describe('ExecutionController', () => {
         status: 'running' as const,
       };
       mockCheckpointService.resumeExecution.mockResolvedValue(resumedExecution);
-      mockExecutionQueue.add.mockResolvedValue(undefined);
+      mockService.enqueueResumeJob.mockResolvedValue(undefined);
 
       const result = await controller.resumeExecution(
         EXECUTION_ID,
@@ -308,10 +309,10 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         undefined,
       );
-      expect(mockExecutionQueue.add).toHaveBeenCalledWith('resume-execution', {
-        executionId: EXECUTION_ID,
-        tenantId: TENANT_ID,
-      });
+      expect(mockService.enqueueResumeJob).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
     });
 
     it('应支持 fromNodeId 参数', async () => {
@@ -320,7 +321,7 @@ describe('ExecutionController', () => {
         status: 'running' as const,
       };
       mockCheckpointService.resumeExecution.mockResolvedValue(resumedExecution);
-      mockExecutionQueue.add.mockResolvedValue(undefined);
+      mockService.enqueueResumeJob.mockResolvedValue(undefined);
 
       const result = await controller.resumeExecution(
         EXECUTION_ID,
@@ -336,10 +337,10 @@ describe('ExecutionController', () => {
         EXECUTION_ID,
         'node-2',
       );
-      expect(mockExecutionQueue.add).toHaveBeenCalledWith('resume-execution', {
-        executionId: EXECUTION_ID,
-        tenantId: TENANT_ID,
-      });
+      expect(mockService.enqueueResumeJob).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
     });
   });
 
