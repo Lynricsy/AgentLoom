@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -293,6 +293,16 @@ export class OrganizationService {
           invitedBy: invitation.invitedBy,
         })
         .returning();
+
+      // 接受邀请后必须落地 current_organization_id：custom_access_token_hook
+      // 依赖 users.current_organization_id 推导 tenant_id/tenant_role claim，
+      // 缺失会让新成员的 JWT 恒为 tenant_id=null，被 TenantMiddleware 判定
+      // 缺少租户上下文（400 tenant-required），成员实际无法使用组织。
+      // 已选中组织的用户不覆盖，避免抢占其当前正在使用的租户。
+      await tx
+        .update(users)
+        .set({ currentOrganizationId: invitation.organizationId })
+        .where(and(eq(users.id, userId), isNull(users.currentOrganizationId)));
 
       const organization = await tx.query.organizations.findFirst({
         where: eq(organizations.id, invitation.organizationId),

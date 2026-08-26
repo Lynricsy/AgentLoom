@@ -338,13 +338,16 @@ function setupAcceptInvitationTransaction(
 ) {
   const tx = createTransactionDb();
   const invitationUpdateChain = createUpdateChain();
+  const userUpdateChain = createUpdateChain();
   const memberInsertChain = createInsertChain([member]);
 
-  tx.update.mockReturnValue(invitationUpdateChain);
+  tx.update
+    .mockReturnValueOnce(invitationUpdateChain)
+    .mockReturnValueOnce(userUpdateChain);
   tx.insert.mockReturnValue(memberInsertChain);
   setupTransaction(db, tx);
 
-  return { tx, invitationUpdateChain, memberInsertChain };
+  return { tx, invitationUpdateChain, userUpdateChain, memberInsertChain };
 }
 
 describe('OrganizationService', () => {
@@ -820,6 +823,31 @@ describe('OrganizationService', () => {
         role: 'admin',
         invitedBy: USER_ID,
       });
+    });
+
+    it('接受邀请时把 currentOrganizationId 落到尚未选择组织的用户上', async () => {
+      const invitation = createInvitationRecord({ role: 'viewer' });
+      const org = createOrganizationRecord();
+      const member = createMemberRecord({
+        userId: TARGET_USER_ID,
+        role: 'viewer',
+      });
+      const { tx, userUpdateChain } = setupAcceptInvitationTransaction(
+        db,
+        member,
+      );
+
+      db.query.organizationInvitations.findFirst.mockResolvedValue(invitation);
+      db.query.organizationMembers.findFirst.mockResolvedValue(undefined);
+      tx.query.organizations.findFirst.mockResolvedValue(org);
+
+      await service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID);
+
+      expect(tx.update).toHaveBeenCalledWith(users);
+      expect(userUpdateChain.set).toHaveBeenCalledWith({
+        currentOrganizationId: ORG_ID,
+      });
+      expect(userUpdateChain.where).toHaveBeenCalledTimes(1);
     });
 
     it('邀请不存在时抛出 InvitationNotFoundException', async () => {
