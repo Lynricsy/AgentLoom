@@ -3,12 +3,15 @@ import { apiClient, toSnakeBody } from '@/shared/api/client'
 import type {
   InstallMarketplaceListingRequest,
   InstallMarketplaceListingResponse,
+  MarketplaceListingUpgradeStatus,
   PublicListingsFilters,
   PublicListingsResponse,
   PublicMarketplaceListingDetail,
   ReviewsResponse,
   SubmittedMarketplaceReview,
   SubmitReviewRequest,
+  UninstallMarketplaceListingResponse,
+  UpgradeMarketplaceListingResponse,
 } from '../types'
 
 const MARKETPLACE_BROWSE_PATH = 'marketplace/browse'
@@ -61,6 +64,31 @@ export async function installMarketplaceListing(
       json: body ? toSnakeBody(body) : {},
     })
     .json<InstallMarketplaceListingResponse>()
+}
+
+/** 停用租户内来自该 listing 的插件副本；不删行、不删产物，可重新启用 */
+export async function uninstallMarketplaceListing(
+  id: string,
+): Promise<UninstallMarketplaceListingResponse> {
+  return apiClient
+    .post(`${MARKETPLACE_LISTINGS_PATH}/${id}/uninstall`)
+    .json<UninstallMarketplaceListingResponse>()
+}
+
+export async function checkMarketplaceListingUpgrade(
+  id: string,
+): Promise<MarketplaceListingUpgradeStatus> {
+  return apiClient
+    .get(`${MARKETPLACE_LISTINGS_PATH}/${id}/upgrade-check`)
+    .json<MarketplaceListingUpgradeStatus>()
+}
+
+export async function upgradeMarketplaceListing(
+  id: string,
+): Promise<UpgradeMarketplaceListingResponse> {
+  return apiClient
+    .post(`${MARKETPLACE_LISTINGS_PATH}/${id}/upgrade`)
+    .json<UpgradeMarketplaceListingResponse>()
 }
 
 export async function submitMarketplaceReview(

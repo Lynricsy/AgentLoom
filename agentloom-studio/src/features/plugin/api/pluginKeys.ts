@@ -10,4 +10,10 @@ export const pluginKeys = {
     [...pluginKeys.usage(id), 'list', filters] as const,
   usageSummary: (id: string, period?: unknown) =>
     [...pluginKeys.usage(id), 'summary', period] as const,
+  /**
+   * 市场升级检查也挂在插件详情层级下：卸载/升级后失效 pluginKeys.all
+   * 就能连带刷新这份判定，不必单独记住它的 key。
+   */
+  marketplaceUpgrade: (id: string, listingId: string) =>
+    [...pluginKeys.detail(id), 'marketplace-upgrade', listingId] as const,
 }
