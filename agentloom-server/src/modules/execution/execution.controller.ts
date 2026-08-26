@@ -12,8 +12,6 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { InjectQueue } from '@nestjs/bullmq';
-import type { Queue } from 'bullmq';
 import type { FastifyReply } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -46,7 +44,6 @@ import {
   ResolveToolPermissionDto,
   resolveToolPermissionSchema,
 } from './dto/resolve-tool-permission.dto';
-import { EXECUTION_QUEUE } from './execution.constants';
 import { InterventionPermissionDeniedException } from './execution.exceptions';
 import { NodeSchedulerService } from './node-scheduler.service';
 
@@ -64,7 +61,6 @@ export class ExecutionController {
     private readonly checkpointService: CheckpointService,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
-    @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
   ) {}
 
   @Post(['workflow-definitions/:workflowId/run', 'workflows/:workflowId/run'])
@@ -173,10 +169,7 @@ export class ExecutionController {
       executionId,
       dto.fromNodeId,
     );
-    await this.executionQueue.add('resume-execution', {
-      executionId,
-      tenantId,
-    });
+    await this.executionService.enqueueResumeJob(executionId, tenantId);
     return { data: this.serializeExecution(execution) };
   }
 

@@ -2062,6 +2062,35 @@ describe('ExecutionService', () => {
     });
   });
 
+  describe('enqueueResumeJob', () => {
+    it('应在租户事务中延后到提交后再入队 resume job', async () => {
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await runInTenantTransaction(db as never, TENANT_ID, async () => {
+        await service.enqueueResumeJob(EXECUTION_ID, TENANT_ID);
+
+        // 事务内不得入队：消费者会读到 resume 提交前的旧步骤状态并静默 no-op
+        expect(mockQueue.add).not.toHaveBeenCalled();
+      });
+
+      expect(mockQueue.add).toHaveBeenCalledWith('resume-execution', {
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+      });
+    });
+
+    it('无租户事务时应立即入队 resume job', async () => {
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.enqueueResumeJob(EXECUTION_ID, TENANT_ID);
+
+      expect(mockQueue.add).toHaveBeenCalledWith('resume-execution', {
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+      });
+    });
+  });
+
   describe('getExecution', () => {
     it('应返回执行详情和步骤列表', async () => {
       const mockSteps = [
