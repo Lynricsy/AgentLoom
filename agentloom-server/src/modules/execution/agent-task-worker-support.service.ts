@@ -19,6 +19,10 @@ import { and, eq } from 'drizzle-orm';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import type { OrgRole } from '../../common/types/org-role.type';
 import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
+import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../agent/ports/agent-runtime.port';
@@ -41,8 +45,6 @@ import { LlmEncryptionService } from '../llm/llm-encryption.service';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
-  ToolCallNotFoundException,
-  ToolPermissionResolutionNotAllowedException,
 } from './execution.exceptions';
 import type {
   InterventionCheckpointRecord,

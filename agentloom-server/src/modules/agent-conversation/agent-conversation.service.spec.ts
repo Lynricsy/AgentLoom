@@ -6,6 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIZZLE } from '../../database/database.module';
 import { AgentConversationService } from './agent-conversation.service';
 import type { SendMessageDto } from './dto/send-message.dto';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
+import { AGENT_RUNTIME } from '../agent/ports/agent-runtime.port';
+import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
+import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   hasActiveTenantTransaction: vi.fn(() => false),
@@ -121,6 +128,15 @@ describe('AgentConversationService', () => {
   let module: TestingModule;
   let service: AgentConversationService;
   let db: MockDb;
+  const mockSandboxAgentAdapter = {
+    hasPendingConversationToolPermission: vi.fn(() => false),
+  };
+  const mockInProcessAgentRuntime = {
+    hasPendingToolPermission: vi.fn(() => false),
+  };
+  const mockSelfEvolutionPermissionService = {
+    hasConversationRequest: vi.fn(async () => false),
+  };
   let mockEventEmitter: { emit: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
@@ -146,6 +162,15 @@ describe('AgentConversationService', () => {
         AgentConversationService,
         { provide: DRIZZLE, useValue: db },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        {
+          provide: SandboxAgentAdapter,
+          useValue: mockSandboxAgentAdapter,
+        },
+        { provide: AGENT_RUNTIME, useValue: mockInProcessAgentRuntime },
+        {
+          provide: SelfEvolutionPermissionService,
+          useValue: mockSelfEvolutionPermissionService,
+        },
       ],
     }).compile();
 
@@ -866,6 +891,129 @@ describe('AgentConversationService', () => {
       await expect(service.listMessages(CONVERSATION_ID)).rejects.toThrow(
         `Conversation ${CONVERSATION_ID} not found`,
       );
+    });
+  });
+
+  describe('validateConversationToolCallPermissionState', () => {
+    it('显式 awaiting_permission 应允许继续访问 live gate', async () => {
+      db.select.mockReturnValueOnce(
+        createCountSelectChain([
+          {
+            toolCalls: [
+              { id: 'tool-awaiting', status: 'awaiting_permission' },
+            ],
+          },
+        ]),
+      );
+
+      await expect(
+        service.validateConversationToolCallPermissionState(
+          TENANT_ID,
+          CONVERSATION_ID,
+          'tool-awaiting',
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it('未知 status 且有 error 时应按 serializer fallback 为 failed', async () => {
+      db.select.mockReturnValueOnce(
+        createCountSelectChain([
+          {
+            toolCalls: [
+              { id: 'tool-error', status: 'legacy', error: 'boom', result: {} },
+            ],
+          },
+        ]),
+      );
+
+      await expect(
+        service.validateConversationToolCallPermissionState(
+          TENANT_ID,
+          CONVERSATION_ID,
+          'tool-error',
+        ),
+      ).rejects.toMatchObject({
+        detail: expect.stringContaining('当前状态为 failed'),
+      });
+    });
+
+    it('未知 status 且仅有 result 时应按 serializer fallback 为 completed', async () => {
+      db.select.mockReturnValueOnce(
+        createCountSelectChain([
+          {
+            toolCalls: [{ toolCallId: 'tool-result', result: null }],
+          },
+        ]),
+      );
+
+      await expect(
+        service.validateConversationToolCallPermissionState(
+          TENANT_ID,
+          CONVERSATION_ID,
+          'tool-result',
+        ),
+      ).rejects.toMatchObject({
+        detail: expect.stringContaining('当前状态为 completed'),
+      });
+    });
+
+    it('未知 status 且没有 error/result 时应按 serializer fallback 为 pending', async () => {
+      db.select.mockReturnValueOnce(
+        createCountSelectChain([
+          {
+            toolCalls: [{ id: 'tool-pending' }],
+          },
+        ]),
+      );
+
+      await expect(
+        service.validateConversationToolCallPermissionState(
+          TENANT_ID,
+          CONVERSATION_ID,
+          'tool-pending',
+        ),
+      ).rejects.toBeInstanceOf(
+        ToolPermissionResolutionNotAllowedException,
+      );
+    });
+
+    it('持久历史没有该调用但 self-evolution live gate 存在时应允许继续', async () => {
+      db.select.mockReturnValueOnce(
+        createCountSelectChain([{ toolCalls: [{ id: 'another-tool' }] }]),
+      );
+      mockSelfEvolutionPermissionService.hasConversationRequest.mockResolvedValueOnce(
+        true,
+      );
+
+      await expect(
+        service.validateConversationToolCallPermissionState(
+          TENANT_ID,
+          CONVERSATION_ID,
+          'tool-live',
+        ),
+      ).resolves.toBe(false);
+    });
+
+    it('持久历史与 live gate 都没有该调用时应抛出 404', async () => {
+      const limit = vi.fn().mockResolvedValue([
+        { runtimeMode: 'sandbox', metadata: {} },
+      ]);
+      const targetWhere = vi.fn().mockReturnValue({ limit });
+      const innerJoin = vi.fn().mockReturnValue({ where: targetWhere });
+      const targetFrom = vi.fn().mockReturnValue({ innerJoin });
+      db.select
+        .mockReturnValueOnce(
+          createCountSelectChain([{ toolCalls: [{ id: 'another-tool' }] }]),
+        )
+        .mockReturnValueOnce({ from: targetFrom });
+
+      await expect(
+        service.validateConversationToolCallPermissionState(
+          TENANT_ID,
+          CONVERSATION_ID,
+          'tool-unknown',
+        ),
+      ).rejects.toBeInstanceOf(ToolCallNotFoundException);
     });
   });
 

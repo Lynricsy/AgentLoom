@@ -19,6 +19,10 @@ import { and, eq } from 'drizzle-orm';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import type { OrgRole } from '../../common/types/org-role.type';
 import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
+import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../agent/ports/agent-runtime.port';
@@ -41,8 +45,6 @@ import { LlmEncryptionService } from '../llm/llm-encryption.service';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
-  ToolCallNotFoundException,
-  ToolPermissionResolutionNotAllowedException,
 } from './execution.exceptions';
 import type {
   InterventionCheckpointRecord,
@@ -69,8 +71,10 @@ import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { CircuitBreakerService } from '../smart-routing/circuit-breaker/circuit-breaker.service';
 import { RoutingLearningProducer } from '../smart-routing/learning/routing-learning.producer';
 import { LlmProviderException } from '../llm/llm.exceptions';
-import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
-import { clampAutonomyModeToCap } from '../agent/autonomy-mode-compat';
+import {
+  OrganizationAutonomyPolicyService,
+  resolveRawAutonomyMode,
+} from '../organization/organization-autonomy-policy.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
@@ -448,31 +452,15 @@ export class AgentTaskWorkerRuntimeService {
     tenantId: string,
     nodeData: Record<string, unknown>,
   ): Promise<string> {
-    const rawAutonomyMode = this.resolveRawAutonomyMode(nodeData);
-    const resolvedAutonomyCap =
-      await this.organizationAutonomyPolicyService.resolveAutonomyCapForTenant(
-        tenantId,
-      );
-    const autonomyCap = this.readString(resolvedAutonomyCap) ?? 'LLM_SUGGEST';
-
-    return clampAutonomyModeToCap(rawAutonomyMode, autonomyCap).effectiveMode;
+    // worker 委托共享解析器，确保缺省值、字段优先级和租户上限与 Workflow Agent executor 完全一致。
+    return this.organizationAutonomyPolicyService.resolveEffectiveAutonomyMode(
+      tenantId,
+      nodeData,
+    );
   }
 
   public resolveRawAutonomyMode(nodeData: Record<string, unknown>): string {
-    const normalizedNodeData = this.asRecord(nodeData) ?? {};
-    const config = this.asRecord(normalizedNodeData.config) ?? {};
-    const settings = this.asRecord(normalizedNodeData.settings) ?? {};
-    const autonomyConfig =
-      this.asRecord(normalizedNodeData.autonomyConfig) ?? {};
-
-    return (
-      this.readString(
-        normalizedNodeData.autonomyMode,
-        autonomyConfig.mode,
-        settings.autonomyMode,
-        config.autonomyMode,
-      ) ?? 'FULL_AUTO'
-    );
+    return resolveRawAutonomyMode(nodeData);
   }
 
   public asRecord(value: unknown): Record<string, unknown> | null {

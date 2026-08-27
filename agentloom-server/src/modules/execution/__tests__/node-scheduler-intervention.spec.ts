@@ -45,9 +45,11 @@ import {
   InterventionNotAllowedException,
   NodeInputResolutionException,
   InterventionPermissionDeniedException,
-  ToolPermissionResolutionNotAllowedException,
-  ToolCallNotFoundException,
 } from '../execution.exceptions';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../../common/exceptions/tool-call.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
@@ -109,6 +111,7 @@ describe('intervention migrated scenarios', () => {
     saveCheckpoint: ReturnType<typeof vi.fn>;
   };
   let mockEventBridge: {
+    emitInterventionRequired: ReturnType<typeof vi.fn>;
     emitInterventionResolved: ReturnType<typeof vi.fn>;
     emitToolPermissionResolved: ReturnType<typeof vi.fn>;
   };
@@ -172,10 +175,12 @@ describe('intervention migrated scenarios', () => {
     db = {
       select: vi.fn(),
       insert: vi.fn(),
+      transaction: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
       execute: vi.fn(),
     };
+    db.transaction.mockImplementation(async (callback) => callback(db));
     db.select.mockReturnValue(createSelectChain([]));
 
     mockDagResolver = { resolveDag: vi.fn() };
@@ -206,6 +211,7 @@ describe('intervention migrated scenarios', () => {
       saveCheckpoint: vi.fn().mockResolvedValue(undefined),
     };
     mockEventBridge = {
+      emitInterventionRequired: vi.fn(),
       emitInterventionResolved: vi.fn(),
       emitToolPermissionResolved: vi.fn(),
     };
@@ -328,6 +334,68 @@ describe('intervention migrated scenarios', () => {
     service = module.get(NodeSchedulerService);
     nodeDispatcher = module.get(NodeDispatcherService);
     compoundExecution = module.get(CompoundExecutionService);
+  });
+
+  describe('pauseForIntervention', () => {
+    it('统一持久化 checkpoint、暂停 execution、广播 required 并安排 timeout', async () => {
+      const step = makeStep({
+        id: 'step-pause',
+        nodeId: 'node-pause',
+        nodeData: { label: '人工复核' },
+      });
+      const enqueueTimeout = vi
+        .spyOn(service, 'enqueueInterventionTimeout')
+        .mockResolvedValue(undefined);
+
+      await service.pauseForIntervention({
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+        step,
+        sessionId: 'session-pause',
+        partialContent: '待确认内容',
+        toolCalls: [{ id: 'tool-1', status: 'completed' }],
+        segments: [{ type: 'text', content: '待确认内容' }],
+        decision: { suggestedContent: '待确认内容', confidence: 0.8 },
+        executionType: 'workflow',
+      });
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        step.id,
+        'waiting_intervention',
+        expect.objectContaining({
+          checkpointData: expect.objectContaining({
+            sessionId: 'session-pause',
+            stopReason: 'intervention_required',
+            interventionNodeName: '人工复核',
+          }),
+          result: expect.objectContaining({
+            content: '待确认内容',
+            stopReason: 'intervention_required',
+          }),
+        }),
+      );
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+      );
+      expect(mockEventBridge.emitInterventionRequired).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        expect.objectContaining({
+          stepId: step.id,
+          nodeId: step.nodeId,
+          nodeName: '人工复核',
+          executionType: 'workflow',
+          partialContent: '待确认内容',
+        }),
+      );
+      expect(enqueueTimeout).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        step.id,
+        TENANT_ID,
+      );
+    });
   });
 
   describe('resolveIntervention', () => {

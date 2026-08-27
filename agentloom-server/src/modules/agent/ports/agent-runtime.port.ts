@@ -39,6 +39,8 @@ export interface IAgentRuntime {
     toolCallId: string,
     action: 'approve' | 'deny',
   ): Promise<void>;
+  // 审批前需要无副作用地确认 live gate，避免用一次决议调用充当存在性探测。
+  hasPendingToolPermission?(sessionId: string, toolCallId: string): boolean;
   registerSessionMetadata?(
     sessionId: string,
     tenantId: string,

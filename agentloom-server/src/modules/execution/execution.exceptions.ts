@@ -175,27 +175,6 @@ export class InvalidToolCallTransitionException extends DomainException {
   }
 }
 
-export class ToolCallNotFoundException extends DomainException {
-  constructor(toolCallId: string) {
-    super({
-      type: 'https://agentloom.dev/errors/tool-call-not-found',
-      title: '工具调用不存在',
-      status: HttpStatus.NOT_FOUND,
-      detail: `工具调用 ${toolCallId} 不存在`,
-    });
-  }
-}
-
-export class ToolPermissionResolutionNotAllowedException extends DomainException {
-  constructor(toolCallId: string, currentStatus: string) {
-    super({
-      type: 'https://agentloom.dev/errors/tool-permission-resolution-not-allowed',
-      title: '工具调用不在等待审批状态',
-      status: HttpStatus.CONFLICT,
-      detail: `工具调用 ${toolCallId} 当前状态为 ${currentStatus}，无法进行权限审批`,
-    });
-  }
-}
 
 export interface TypeMismatchDetail {
   readonly sourcePortId: string;

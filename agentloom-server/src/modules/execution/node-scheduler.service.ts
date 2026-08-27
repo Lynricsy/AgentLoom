@@ -4,7 +4,12 @@ import { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import * as schema from '../../database/schema';
 import type { ReactFlowEdge } from '../../database/schema';
@@ -22,15 +27,16 @@ import {
   type InterventionResolution,
   type ToolPermissionResolution,
 } from './execution.constants';
-import type { InterventionCheckpointRecord } from './types/execution-event.types';
+import type {
+  InterventionCheckpointRecord,
+  InterventionRequiredPayload,
+} from './types/execution-event.types';
 import {
   NodeInputResolutionException,
   InterventionNotAllowedException,
   AgentExecutionException,
   InterventionPermissionDeniedException,
   InvalidStepTransitionException,
-  ToolCallNotFoundException,
-  ToolPermissionResolutionNotAllowedException,
   NodeTypeMismatchException,
   isPortTypeCompatible,
 } from './execution.exceptions';
@@ -72,6 +78,18 @@ interface ScheduleNodeOptions {
 interface InterventionTimeoutOptions {
   readonly escalated?: boolean;
   readonly escalationCount?: number;
+}
+
+interface PauseForInterventionParams {
+  readonly executionId: string;
+  readonly tenantId: string;
+  readonly step: ExecutionStep;
+  readonly sessionId: string;
+  readonly partialContent: string;
+  readonly toolCalls?: readonly unknown[];
+  readonly segments?: readonly unknown[];
+  readonly decision?: Record<string, unknown>;
+  readonly executionType?: 'workflow' | 'conversation';
 }
 
 
@@ -604,6 +622,74 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       errorMessage,
     );
     await this.cleanupSandboxIfTerminal(executionId, tenantId);
+  }
+
+  async pauseForIntervention(
+    params: PauseForInterventionParams,
+  ): Promise<void> {
+    const requestedAt = new Date().toISOString();
+    const nodeName = this.resolveNodeName(params.step, {});
+
+    // 状态与 execution 的 paused 汇总必须处于同一租户事务，避免客户端看到半完成的干预状态。
+    await runInTenantTransaction(this.db, params.tenantId, async () => {
+      await this.stepStateMachine.updateStepStatus(
+        params.tenantId,
+        params.step.id,
+        'waiting_intervention',
+        {
+          checkpointData: {
+            sessionId: params.sessionId,
+            partialContent: params.partialContent,
+            stopReason: 'intervention_required',
+            interventionRequestedAt: requestedAt,
+            interventionNodeName: nodeName,
+            ...(params.toolCalls && params.toolCalls.length > 0
+              ? { toolCalls: params.toolCalls }
+              : {}),
+            ...(params.segments && params.segments.length > 0
+              ? { segments: params.segments }
+              : {}),
+            ...(params.decision ? { decision: params.decision } : {}),
+          },
+          result: {
+            content: params.partialContent,
+            stopReason: 'intervention_required',
+            ...(params.decision ? { decision: params.decision } : {}),
+          },
+        },
+      );
+      await this.stepStateMachine.updateExecutionStatus(
+        params.executionId,
+        params.tenantId,
+      );
+    });
+
+    // 只有持久状态成功后才广播和入队，避免消费者处理不存在的 waiting checkpoint。
+    this.eventBridge.emitInterventionRequired(
+      params.tenantId,
+      params.executionId,
+      {
+        stepId: params.step.id,
+        nodeId: params.step.nodeId,
+        nodeName,
+        executionType: params.executionType ?? 'workflow',
+        ...(params.decision
+          ? {
+              decision:
+                params.decision as InterventionRequiredPayload['decision'],
+            }
+          : {}),
+        ...(params.partialContent
+          ? { partialContent: params.partialContent }
+          : {}),
+        requestedAt,
+      },
+    );
+    await this.enqueueInterventionTimeout(
+      params.executionId,
+      params.step.id,
+      params.tenantId,
+    );
   }
 
   async resolveIntervention(

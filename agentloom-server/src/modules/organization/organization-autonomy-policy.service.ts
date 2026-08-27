@@ -13,6 +13,7 @@ import {
 } from '../../database/schema';
 import type { AutonomyMode } from '../agent/dto/autonomy.dto';
 import {
+  clampAutonomyModeToCap,
   compareAutonomyModes,
   explainAutonomyViolation,
   type AutonomyViolationExplanation,
@@ -72,6 +73,39 @@ interface WorkflowPolicyInspectionInput {
 interface WorkflowPolicyInspectionResult {
   autonomyCap: AutonomyMode;
   violations: OrganizationAutonomyViolationDetailDto[];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+export function resolveRawAutonomyMode(nodeData: unknown): string {
+  const normalizedNodeData = asRecord(nodeData) ?? {};
+  const config = asRecord(normalizedNodeData.config) ?? {};
+  const settings = asRecord(normalizedNodeData.settings) ?? {};
+  const autonomyConfig = asRecord(normalizedNodeData.autonomyConfig) ?? {};
+
+  // 缺省必须与实际执行保持 FULL_AUTO，否则发布期会把未配置节点误判成需人工确认。
+  return (
+    readString(
+      normalizedNodeData.autonomyMode,
+      autonomyConfig.mode,
+      settings.autonomyMode,
+      config.autonomyMode,
+    ) ?? 'FULL_AUTO'
+  );
 }
 
 @Injectable()
@@ -381,6 +415,19 @@ export class OrganizationAutonomyPolicyService {
     );
   }
 
+  async resolveEffectiveAutonomyMode(
+    tenantId: string,
+    nodeData: unknown,
+  ): Promise<string> {
+    const autonomyCap = await this.resolveAutonomyCapForTenant(tenantId);
+
+    // 在唯一入口同时解析节点优先级与租户上限，避免 worker、executor 和发布校验各自漂移。
+    return clampAutonomyModeToCap(
+      resolveRawAutonomyMode(nodeData),
+      autonomyCap,
+    ).effectiveMode;
+  }
+
   async inspectWorkflowNodesAgainstPolicy(
     input: WorkflowPolicyInspectionInput,
   ): Promise<WorkflowPolicyInspectionResult> {
@@ -559,19 +606,8 @@ export class OrganizationAutonomyPolicyService {
   }
 
   private resolveNodeAutonomyMode(node: ReactFlowNode): string {
-    const nodeData = this.asRecord(node.data) ?? {};
-    const config = this.asRecord(nodeData.config) ?? {};
-    const settings = this.asRecord(nodeData.settings) ?? {};
-    const autonomyConfig = this.asRecord(nodeData.autonomyConfig) ?? {};
-
-    return (
-      this.readString(
-        nodeData.autonomyMode,
-        autonomyConfig.mode,
-        settings.autonomyMode,
-        config.autonomyMode,
-      ) ?? 'MANUAL_CONFIRM'
-    );
+    // 发布期复用运行时的同一原始值解析规则，未配置节点因此统一按 FULL_AUTO 参与上限校验。
+    return resolveRawAutonomyMode(node.data);
   }
 
   private toViolationDetail(

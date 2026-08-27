@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   OrganizationAutonomyPolicyService,
   SYSTEM_DEFAULT_ORGANIZATION_AUTONOMY_POLICY,
+  resolveRawAutonomyMode,
 } from './organization-autonomy-policy.service';
 import type { AuditLogService } from '../evidence/audit-log.service';
 import {
@@ -164,6 +165,61 @@ describe('OrganizationAutonomyPolicyService', () => {
       >[0],
       auditLogService as unknown as AuditLogService,
     );
+  });
+
+  describe('resolveEffectiveAutonomyMode', () => {
+    it.each([
+      [
+        {
+          autonomyMode: 'MANUAL_CONFIRM',
+          autonomyConfig: { mode: 'RULE_BASED' },
+          settings: { autonomyMode: 'LLM_SUGGEST' },
+          config: { autonomyMode: 'FULL_AUTO' },
+        },
+        'MANUAL_CONFIRM',
+      ],
+      [
+        {
+          autonomyConfig: { mode: 'RULE_BASED' },
+          settings: { autonomyMode: 'LLM_SUGGEST' },
+          config: { autonomyMode: 'FULL_AUTO' },
+        },
+        'RULE_BASED',
+      ],
+      [
+        {
+          settings: { autonomyMode: 'LLM_SUGGEST' },
+          config: { autonomyMode: 'FULL_AUTO' },
+        },
+        'LLM_SUGGEST',
+      ],
+      [{ config: { autonomyMode: 'FULL_AUTO' } }, 'LLM_SUGGEST'],
+      [{}, 'LLM_SUGGEST'],
+    ])('按四级优先级解析有效 autonomy mode %#', async (nodeData, expected) => {
+      vi.spyOn(service, 'resolveAutonomyCapForTenant').mockResolvedValue(
+        'LLM_SUGGEST',
+      );
+
+      await expect(
+        service.resolveEffectiveAutonomyMode(TENANT_ID, nodeData),
+      ).resolves.toBe(expected);
+    });
+
+    it('原始配置缺失时回退 FULL_AUTO', () => {
+      expect(resolveRawAutonomyMode({})).toBe('FULL_AUTO');
+    });
+
+    it('按租户 autonomy cap clamp 节点配置', async () => {
+      vi.spyOn(service, 'resolveAutonomyCapForTenant').mockResolvedValue(
+        'RULE_BASED',
+      );
+
+      await expect(
+        service.resolveEffectiveAutonomyMode(TENANT_ID, {
+          autonomyMode: 'FULL_AUTO',
+        }),
+      ).resolves.toBe('RULE_BASED');
+    });
   });
 
   describe('getAutonomyPolicy', () => {

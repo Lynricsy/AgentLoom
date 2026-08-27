@@ -21,9 +21,11 @@ import { RoutingLearningProducer } from '../../smart-routing/learning/routing-le
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import {
   AgentExecutionException,
+} from '../execution.exceptions';
+import {
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,
-} from '../execution.exceptions';
+} from '../../../common/exceptions/tool-call.exceptions';
 import {
   AGENT_TASK_QUEUE,
   MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
@@ -182,6 +184,7 @@ describe('AgentTaskWorker', () => {
   };
 
   const mockNodeScheduler: Record<string, ReturnType<typeof vi.fn>> = {
+    pauseForIntervention: vi.fn().mockResolvedValue(undefined),
     onNodeCompleted: vi.fn().mockResolvedValue(undefined),
     onNodeFailed: vi.fn().mockResolvedValue(undefined),
     enqueueInterventionTimeout: vi.fn().mockResolvedValue(undefined),
@@ -245,6 +248,7 @@ describe('AgentTaskWorker', () => {
     registerSessionToolProvider: vi.fn(),
     unregisterSessionToolProvider: vi.fn(),
     resolveToolPermission: vi.fn(),
+    hasPendingToolPermission: vi.fn(),
     registerSessionMetadata: vi.fn(),
   };
 
@@ -259,6 +263,7 @@ describe('AgentTaskWorker', () => {
     registerSessionToolProvider: vi.fn(),
     unregisterSessionToolProvider: vi.fn(),
     resolveToolPermission: vi.fn(),
+    hasPendingToolPermission: vi.fn(),
     registerSessionMetadata: vi.fn(),
   };
 
@@ -302,6 +307,7 @@ describe('AgentTaskWorker', () => {
     ReturnType<typeof vi.fn>
   > = {
     resolveAutonomyCapForTenant: vi.fn().mockResolvedValue('LLM_SUGGEST'),
+    resolveEffectiveAutonomyMode: vi.fn().mockResolvedValue('LLM_SUGGEST'),
   };
 
   const mockLlmEncryptionService = {
@@ -338,6 +344,9 @@ describe('AgentTaskWorker', () => {
     mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant
       .mockReset()
       .mockResolvedValue('LLM_SUGGEST');
+    mockOrganizationAutonomyPolicyService.resolveEffectiveAutonomyMode
+      .mockReset()
+      .mockResolvedValue('LLM_SUGGEST');
     mockLlmEncryptionService.isE2EEEnabled.mockReset().mockResolvedValue(false);
     mockLlmEncryptionService.encryptForTenant.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
@@ -351,6 +360,9 @@ describe('AgentTaskWorker', () => {
       .mockResolvedValue(null);
     mockNodeScheduler.onNodeCompleted.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.onNodeFailed.mockReset().mockResolvedValue(undefined);
+    mockNodeScheduler.pauseForIntervention
+      .mockReset()
+      .mockResolvedValue(undefined);
     mockNodeScheduler.enqueueInterventionTimeout
       .mockReset()
       .mockResolvedValue(undefined);
@@ -727,57 +739,28 @@ describe('AgentTaskWorker', () => {
           executionType: 'workflow',
         },
       );
-      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
-        2,
-        TENANT_ID,
-        STEP_ID,
-        'waiting_intervention',
-        expect.objectContaining({
-          checkpointData: expect.objectContaining({
-            sessionId: SESSION_ID,
-            partialContent: '建议给主人展示摘要',
-            stopReason: 'intervention_required',
-            interventionRequestedAt: expect.any(String),
-            interventionNodeName: 'node-1',
-            decision: {
-              suggestedContent: '建议给主人展示摘要',
-              confidence: 0.8,
-            },
-          }),
-          result: {
-            content: '建议给主人展示摘要',
-            stopReason: 'intervention_required',
-            decision: {
-              suggestedContent: '建议给主人展示摘要',
-              confidence: 0.8,
-            },
-          },
-        }),
-      );
-      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        TENANT_ID,
-      );
-      expect(mockEventBridge.emitInterventionRequired).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        {
-          stepId: STEP_ID,
+      expect(mockNodeScheduler.pauseForIntervention).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+        step: expect.objectContaining({
+          id: STEP_ID,
           nodeId: 'node-1',
-          nodeName: 'node-1',
-          decision: {
-            suggestedContent: '建议给主人展示摘要',
-            confidence: 0.8,
-          },
-          partialContent: '建议给主人展示摘要',
-          requestedAt: expect.any(String),
+        }),
+        sessionId: SESSION_ID,
+        partialContent: '建议给主人展示摘要',
+        toolCalls: [],
+        segments: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            content: '建议给主人展示摘要',
+          }),
+        ]),
+        decision: {
+          suggestedContent: '建议给主人展示摘要',
+          confidence: 0.8,
         },
-      );
-      expect(mockNodeScheduler.enqueueInterventionTimeout).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        STEP_ID,
-        TENANT_ID,
-      );
+        executionType: 'workflow',
+      });
       expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
     });
 
@@ -2867,7 +2850,7 @@ describe('AgentTaskWorker', () => {
         mockDb.select.mockReturnValue(createSelectChain(step));
         mockDb.update.mockReturnValue(updateChain);
         mockAgentRuntime.createSession.mockResolvedValue(makeSession());
-        mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
+        mockOrganizationAutonomyPolicyService.resolveEffectiveAutonomyMode.mockResolvedValue(
           'RULE_BASED',
         );
         mockAgentRuntime.prompt
@@ -2897,8 +2880,8 @@ describe('AgentTaskWorker', () => {
         vi.useRealTimers();
 
         expect(
-          mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant,
-        ).toHaveBeenCalledWith(TENANT_ID);
+          mockOrganizationAutonomyPolicyService.resolveEffectiveAutonomyMode,
+        ).toHaveBeenCalledWith(TENANT_ID, step.nodeData);
         expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
           expect.objectContaining({
             autonomyMode: 'RULE_BASED',

@@ -7,6 +7,10 @@ import {
   registerAfterCommitHook,
 } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   agentConversations,
@@ -16,6 +20,12 @@ import {
   agentDefinitions,
   type AgentRuntimeMode,
 } from '../../database/schema/agent-definitions.schema';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../agent/ports/agent-runtime.port';
+import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
+import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
 import type { CreateConversationDto } from './dto/create-conversation.dto';
 import type { StartConversationDto } from './dto/start-conversation.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
@@ -33,10 +43,12 @@ type ConversationDbClient = Pick<DrizzleDB, 'select' | 'insert' | 'update'>;
 @Injectable()
 export class AgentConversationService {
   private readonly logger = new Logger(AgentConversationService.name);
-
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly eventEmitter: EventEmitter2,
+    private readonly sandboxAgentAdapter: SandboxAgentAdapter,
+    @Inject(AGENT_RUNTIME) private readonly inProcessAgentRuntime: IAgentRuntime,
+    private readonly selfEvolutionPermissionService: SelfEvolutionPermissionService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -383,6 +395,86 @@ export class AgentConversationService {
     };
   }
 
+  async validateConversationToolCallPermissionState(
+    tenantId: string,
+    conversationId: string,
+    toolCallId: string,
+  ): Promise<boolean> {
+    const messages = await this.tenantDb
+      .select({ toolCalls: agentMessages.toolCalls })
+      .from(agentMessages)
+      .where(
+        and(
+          eq(agentMessages.tenantId, tenantId),
+          eq(agentMessages.conversationId, conversationId),
+        ),
+      );
+
+    for (const message of messages) {
+      if (!Array.isArray(message.toolCalls)) {
+        continue;
+      }
+
+      for (const entry of message.toolCalls) {
+        if (!this.isRecord(entry)) {
+          continue;
+        }
+
+        const persistedId =
+          typeof entry.id === 'string'
+            ? entry.id
+            : typeof entry.toolCallId === 'string'
+              ? entry.toolCallId
+              : undefined;
+        if (persistedId !== toolCallId) {
+          continue;
+        }
+
+        const status = this.readPersistedToolCallStatus(entry);
+        if (status !== 'awaiting_permission') {
+          // 持久消息是完成状态的最终事实，必须优先于可能尚未清理的 Redis gate，
+          // 否则同一工具调用会在完成后再次被批准或拒绝。
+          throw new ToolPermissionResolutionNotAllowedException(
+            toolCallId,
+            status,
+          );
+        }
+
+        return true;
+      }
+    }
+    if (
+      await this.selfEvolutionPermissionService.hasConversationRequest(
+        conversationId,
+        toolCallId,
+      )
+    ) {
+      return false;
+    }
+
+    const target = await this.getPermissionResolutionTarget(conversationId);
+    const hasRuntimeGate =
+      target.runtimeMode === 'no_sandbox'
+        ? Boolean(
+            target.sessionId &&
+              this.inProcessAgentRuntime.hasPendingToolPermission?.(
+                target.sessionId,
+                toolCallId,
+              ),
+          )
+        : this.sandboxAgentAdapter.hasPendingConversationToolPermission(
+            conversationId,
+            toolCallId,
+          );
+    if (hasRuntimeGate) {
+      return false;
+    }
+
+    // 持久历史和所有 live gate 都无法证明调用存在时才返回 404，
+    // 既不会误杀尚未归档的请求，也不会让随机 ID 进入决议 adapter。
+    throw new ToolCallNotFoundException(toolCallId);
+  }
+
   async getPermissionResolutionTarget(conversationId: string): Promise<{
     runtimeMode: AgentRuntimeMode;
     sessionId?: string;
@@ -505,6 +597,31 @@ export class AgentConversationService {
     }
 
     return { data: serializeConversation(conversation) };
+  }
+
+  private readPersistedToolCallStatus(
+    entry: Record<string, unknown>,
+  ): string {
+    switch (entry.status) {
+      case 'pending':
+      case 'awaiting_permission':
+      case 'denied':
+      case 'in_progress':
+      case 'completed':
+      case 'failed':
+        return entry.status;
+      default:
+        // 必须与历史消息 serializer 保持同一优先级，避免 API 展示状态与审批守卫冲突。
+        return entry.error !== undefined
+          ? 'failed'
+          : entry.result !== undefined
+            ? 'completed'
+            : 'pending';
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private readExecutionMetadata(

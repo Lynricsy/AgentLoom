@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import { ToolPermissionResolutionNotAllowedException } from '../../common/exceptions/tool-call.exceptions';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
@@ -438,8 +439,11 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const resolvers = this.pendingPermissionResolvers.get(sessionId);
     const gate = resolvers?.get(toolCallId);
     if (!gate) {
-      throw new Error(
-        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+      // live gate 是实际可决议性的唯一依据；用领域 409 代替裸 Error，
+      // 让 HTTP 边界能区分“已不存在等待项”和服务端故障。
+      throw new ToolPermissionResolutionNotAllowedException(
+        toolCallId,
+        'not_pending',
       );
     }
     clearTimeout(gate.timer);
@@ -459,6 +463,21 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         (await this.waitForPermission(sessionId, callback.toolCallId)) ===
         'approve',
     };
+  }
+
+  hasPendingConversationToolPermission(
+    conversationId: string,
+    toolCallId: string,
+  ): boolean {
+    try {
+      const sessionId = this.resolveSessionIdForConversation(conversationId);
+      return (
+        this.pendingPermissionResolvers.get(sessionId)?.has(toolCallId) === true
+      );
+    } catch {
+      // 会话映射不存在就不可能存在本进程 live gate；查询 API 不应把“无会话”升级成 500。
+      return false;
+    }
   }
 
   async resolveConversationToolPermission(

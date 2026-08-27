@@ -117,6 +117,38 @@ describe('SelfEvolutionPermissionService', () => {
     expect(result).toBe('approve');
   });
 
+  it('应同时识别本实例与 Redis 中的对话 live gate', async () => {
+    await service.registerPendingRequest({
+      sessionId: 'session-local',
+      conversationId: 'conversation-local',
+      toolCallId: 'tool-local',
+      toolName: 'apply_change',
+      permissionRequest: makePermissionRequest(),
+    });
+
+    await expect(
+      service.hasConversationRequest('conversation-local', 'tool-local'),
+    ).resolves.toBe(true);
+
+    redisStore.set(
+      'self_evolution:pending:conversation:conversation-shared:tool-shared',
+      JSON.stringify({
+        sessionId: 'session-shared',
+        conversationId: 'conversation-shared',
+        toolCallId: 'tool-shared',
+        toolName: 'apply_change',
+        permissionRequest: makePermissionRequest(),
+      }),
+    );
+
+    await expect(
+      service.hasConversationRequest('conversation-shared', 'tool-shared'),
+    ).resolves.toBe(true);
+    await expect(
+      service.hasConversationRequest('conversation-missing', 'tool-missing'),
+    ).resolves.toBe(false);
+  });
+
   it('没有 pending 请求时 resolveConversationRequest 应返回 false', async () => {
     const result = await service.resolveConversationRequest({
       conversationId: 'conversation-1',

@@ -189,6 +189,19 @@ export class SelfEvolutionPermissionService {
     return action;
   }
 
+  async hasConversationRequest(
+    conversationId: string,
+    toolCallId: string,
+  ): Promise<boolean> {
+    if (this.pendingByConversation.get(conversationId)?.has(toolCallId)) {
+      return true;
+    }
+
+    // 跨进程的 live gate 只存在 Redis 中，审批守卫必须把它计入，
+    // 否则尚未归档到 agent_messages 的合法请求会被误判为 404。
+    return (await this.readSharedPendingRequest(conversationId, toolCallId)) !== null;
+  }
+
   async resolveConversationRequest(params: {
     conversationId: string;
     toolCallId: string;
