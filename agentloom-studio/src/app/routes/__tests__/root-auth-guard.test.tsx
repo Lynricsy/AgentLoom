@@ -5,11 +5,18 @@ const mockUseIsAuthenticated = vi.hoisted(() => vi.fn(() => false));
 const mockUseAuthLoading = vi.hoisted(() => vi.fn(() => false));
 const mockUseAuthToken = vi.hoisted(() => vi.fn<() => string | undefined>());
 const mockUseNotificationSocket = vi.hoisted(() => vi.fn());
+const mockAuthState = vi.hoisted(() => ({ needsOnboarding: false }));
+const mockUseAuthStore = vi.hoisted(() =>
+  vi.fn(
+    (selector: (state: typeof mockAuthState) => unknown) =>
+      selector(mockAuthState),
+  ),
+);
 
 vi.mock('@/features/auth', () => ({
   useIsAuthenticated: mockUseIsAuthenticated,
   useAuthLoading: mockUseAuthLoading,
-  useAuthStore: vi.fn(),
+  useAuthStore: mockUseAuthStore,
   useAccessToken: vi.fn(),
   useAuthToken: vi.fn(),
   setAuthToken: vi.fn(),
@@ -94,6 +101,7 @@ describe('RootLayout auth guard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuthState.needsOnboarding = false;
     mockUseAuthToken.mockReturnValue(undefined);
     setViewport(true);
     Object.defineProperty(window, 'location', {
@@ -207,6 +215,30 @@ describe('RootLayout auth guard', () => {
     );
     expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
   });
+  it('无租户的认证用户仍会被送进 onboarding', () => {
+    mockUseAuthLoading.mockReturnValue(false);
+    mockUseIsAuthenticated.mockReturnValue(true);
+    mockAuthState.needsOnboarding = true;
+    window.location.pathname = '/workflows/draft';
+
+    render(<RootLayout />);
+
+    expect(window.location.href).toBe('/onboarding');
+    expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+  });
+
+  it('已完成用户停留在 onboarding 时由向导决定何时离开', () => {
+    mockUseAuthLoading.mockReturnValue(false);
+    mockUseIsAuthenticated.mockReturnValue(true);
+    mockAuthState.needsOnboarding = false;
+    window.location.pathname = '/onboarding';
+
+    render(<RootLayout />);
+
+    expect(screen.getByTestId('outlet')).toBeInTheDocument();
+    expect(window.location.href).toBe('');
+  });
+
 
   it('認証済みユーザーはnavバー付きのフルレイアウトを取得', () => {
     mockUseAuthLoading.mockReturnValue(false);

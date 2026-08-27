@@ -5,7 +5,6 @@ import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
-import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SkillController } from './skill.controller';
 import { SkillService } from './skill.service';
 import { SkillStorageService } from './skill-storage.service';
@@ -25,22 +24,15 @@ const mocks = vi.hoisted(() => {
     uploadSkillFile: vi.fn().mockResolvedValue(undefined),
     downloadSkillFile: vi.fn(),
     deleteSkillFiles: vi.fn().mockResolvedValue(undefined),
+    deleteSkillFile: vi.fn().mockResolvedValue(undefined),
     listSkillFiles: vi.fn().mockResolvedValue([]),
     getSkillContent: vi.fn(),
   });
 
-  const createMockStorageService = () => ({
-    upload: vi.fn(),
-    download: vi.fn(),
-    delete: vi.fn().mockResolvedValue(undefined),
-    exists: vi.fn(),
-    getPresignedUrl: vi.fn(),
-  });
 
   return {
     createMockSkillService,
     createMockSkillStorageService,
-    createMockStorageService,
   };
 });
 
@@ -75,19 +67,16 @@ describe('SkillController', () => {
   let skillStorageService: ReturnType<
     typeof mocks.createMockSkillStorageService
   >;
-  let storageService: ReturnType<typeof mocks.createMockStorageService>;
 
   beforeEach(async () => {
     skillService = mocks.createMockSkillService();
     skillStorageService = mocks.createMockSkillStorageService();
-    storageService = mocks.createMockStorageService();
 
     const module = await Test.createTestingModule({
       controllers: [SkillController],
       providers: [
         { provide: SkillService, useValue: skillService },
         { provide: SkillStorageService, useValue: skillStorageService },
-        { provide: StorageService, useValue: storageService },
       ],
     }).compile();
 
@@ -266,19 +255,71 @@ describe('SkillController', () => {
   });
 
   describe('deleteFile', () => {
-    it('delegates to storageService.delete and refreshes meta', async () => {
-      storageService.delete.mockResolvedValue(undefined);
+    it('delegates to skillStorageService.deleteSkillFile and refreshes meta', async () => {
       skillService.refreshFileMeta.mockResolvedValue(undefined);
 
       await controller.deleteFile(makeReq(), SKILL_ID, 'test.md');
 
-      expect(storageService.delete).toHaveBeenCalledWith(
-        `tenants/${TENANT_ID}/skills/${SKILL_ID}/test.md`,
+      expect(skillStorageService.deleteSkillFile).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+        'test.md',
       );
       expect(skillService.refreshFileMeta).toHaveBeenCalledWith(
         TENANT_ID,
         SKILL_ID,
       );
+    });
+  });
+
+  describe('uploadFile', () => {
+    it('requests preserved multipart paths and rejects traversal names', async () => {
+      const parts = vi.fn().mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'file',
+            fieldname: 'file',
+            filename: '../secret.txt',
+            mimetype: 'text/plain',
+            toBuffer: vi.fn().mockResolvedValue(Buffer.from('secret')),
+          };
+        },
+      });
+      const req = makeReq({ parts });
+
+      await expect(controller.uploadFile(req, SKILL_ID)).rejects.toThrow(
+        '文件名无效',
+      );
+      expect(parts).toHaveBeenCalledWith({ preservePath: true });
+      expect(skillStorageService.uploadSkillFile).not.toHaveBeenCalled();
+    });
+
+    it('stores a safe nested multipart name by basename', async () => {
+      const parts = vi.fn().mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'file',
+            fieldname: 'file',
+            filename: 'examples/input.txt',
+            mimetype: 'text/plain',
+            toBuffer: vi.fn().mockResolvedValue(Buffer.from('example')),
+          };
+        },
+      });
+
+      const result = await controller.uploadFile(makeReq({ parts }), SKILL_ID);
+
+      expect(skillStorageService.uploadSkillFile).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+        'input.txt',
+        Buffer.from('example'),
+        'text/plain',
+      );
+      expect(result).toEqual({
+        message: '文件上传成功',
+        fileName: 'input.txt',
+      });
     });
   });
 

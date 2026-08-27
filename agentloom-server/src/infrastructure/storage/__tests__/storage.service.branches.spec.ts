@@ -159,17 +159,27 @@ describe('StorageService branch contracts', () => {
     ).rejects.toThrow('write failed');
   });
 
-  it('forwards download, delete, and incomplete-upload cleanup failures unchanged', async () => {
-    const downloadError = new Error('download failed');
+  // download 不再原样抛出：裸错误会一路冒泡成 500，客户端分不清「对象不存在」
+  // 与「存储不可用」。delete / removeIncompleteUpload 仍保持原样透传。
+  it('maps download failures and forwards delete/cleanup failures unchanged', async () => {
     const deleteError = new Error('delete failed');
     const cleanupError = new Error('cleanup failed');
-    client.getObject.mockRejectedValueOnce(downloadError);
+    client.getObject.mockRejectedValueOnce({ code: 'NoSuchKey' });
     client.removeObject.mockRejectedValueOnce(deleteError);
     client.removeIncompleteUpload.mockRejectedValueOnce(cleanupError);
-    await expect(service.download('a')).rejects.toBe(downloadError);
+    await expect(service.download('a')).rejects.toBeInstanceOf(
+      StorageObjectNotFoundException,
+    );
     await expect(service.delete('b')).rejects.toBe(deleteError);
     await expect(service.removeIncompleteUpload('c')).rejects.toBe(
       cleanupError,
+    );
+  });
+
+  it('maps a non-not-found download failure to storage unavailable', async () => {
+    client.getObject.mockRejectedValueOnce(new Error('download failed'));
+    await expect(service.download('a')).rejects.toBeInstanceOf(
+      StorageUnavailableException,
     );
   });
 

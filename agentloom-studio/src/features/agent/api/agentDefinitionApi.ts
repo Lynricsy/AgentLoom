@@ -18,12 +18,13 @@ export interface CreateAgentPayload {
   runtimeMode: AgentRuntimeMode;
 }
 
+// server 的 strict 更新 DTO 决定可发送字段；不支持的字段不得暴露，icon 的 null 由调用层转为 undefined。
 export interface UpdateAgentPayload {
   version: number;
   name?: string;
   description?: string | null;
-  icon?: string | null;
-  systemPrompt?: string | null;
+  icon?: string;
+  globalSandboxConfig?: Record<string, unknown>;
 }
 
 export interface CreateAgentVersionPayload {
@@ -95,9 +96,10 @@ export async function updateAgent(
   agentId: string,
   payload: UpdateAgentPayload,
 ) {
+  // 更新端点使用 PUT 且 strict DTO 只接受 camelCase，避免方法或键名不匹配导致请求失效。
   const response = await apiClient
-    .patch(`agent-definitions/${agentId}`, {
-      json: toSnakeBody(payload),
+    .put(`agent-definitions/${agentId}`, {
+      json: payload,
     })
     .json<ApiResponse<AgentDefinition>>();
 

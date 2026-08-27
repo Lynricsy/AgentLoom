@@ -191,6 +191,8 @@ describe('EvidenceExportService', () => {
         artifactFormat: EVIDENCE_EXPORT_ARTIFACT_FORMAT,
       }),
     );
+    // 这是 BullMQ 5 jobId 契约的回归断言，修正的是曾导致生产 500 的错误冒号格式。
+    expect(exportQueue.add.mock.calls[0]?.[2]?.jobId).not.toContain(':');
     expect(exportQueue.add).toHaveBeenCalledWith(
       expect.stringContaining('evidence-export'),
       expect.objectContaining({
@@ -198,7 +200,7 @@ describe('EvidenceExportService', () => {
         exportId: 'export-1',
       }),
       expect.objectContaining({
-        jobId: 'evidence-export:export-1',
+        jobId: 'evidence-export-export-1',
       }),
     );
     expect(auditLogService.record).toHaveBeenCalledWith(

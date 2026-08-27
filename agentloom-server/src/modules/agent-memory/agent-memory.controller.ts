@@ -34,6 +34,7 @@ import {
   memoryNodes,
   memoryPaths,
   memoryVersions,
+  users,
 } from '../../database/schema';
 import { AuditLogService } from '../evidence/audit-log.service';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
@@ -45,6 +46,7 @@ import {
   CreateMemoryPathDto,
   CreateMemoryVersionDto,
   ListAuditLogQueryDto,
+  MemoryAuditListResponseSwaggerDto,
   ListMemoryEdgesQueryDto,
   ListMemoryInstancesQueryDto,
   ListMemoryNodesQueryDto,
@@ -55,6 +57,8 @@ import {
   ResolveUriQueryDto,
   ReviewVersionDto,
   RollbackVersionDto,
+  serializeMemoryAuditEntry,
+  type MemoryAuditQueryRow,
   UpdateMemoryInstanceDto,
   BrowseQueryDto,
   AddGlossaryKeywordDto,
@@ -958,7 +962,11 @@ export class AgentMemoryController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '查询记忆实例变更审计日志' })
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
-  @ApiResponse({ status: 200, description: '查询成功' })
+  @ApiResponse({
+    status: 200,
+    description: '查询成功',
+    type: MemoryAuditListResponseSwaggerDto,
+  })
   async listAuditLogs(
     @CurrentTenant() tenantId: string,
     @Param('id') id: string,
@@ -969,20 +977,38 @@ export class AgentMemoryController {
     const pageSize = query.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
 
-    // 查询版本变更记录作为审计条目
-    const conditions = [
-      sql`${memoryVersions.nodeId} IN (
-        SELECT ${memoryNodes.id} FROM ${memoryNodes}
-        WHERE ${memoryNodes.instanceId} = ${id}
-      )`,
-    ];
+    // 直接联结节点和用户，才能把版本存储行序列化为 Studio 实际消费的审计契约。
+    const auditPredicate = eq(memoryNodes.instanceId, id);
 
-    const auditPredicate = and(...conditions);
-
-    const [data, [countRow]] = await Promise.all([
+    const [rows, [countRow]] = await Promise.all([
       tenantDb
-        .select()
+        .select({
+          id: memoryVersions.id,
+          instanceId: memoryNodes.instanceId,
+          nodeId: memoryVersions.nodeId,
+          nodeName: sql<string>`coalesce(nullif(${memoryNodes.metadata}->>'name', ''), ${memoryNodes.id}::text)`,
+          version: memoryVersions.version,
+          content: memoryVersions.content,
+          reviewStatus: memoryVersions.reviewStatus,
+          patchSummary: memoryVersions.patchSummary,
+          createdBy: memoryVersions.createdBy,
+          createdAt: memoryVersions.createdAt,
+          actor: sql<string | null>`coalesce(${users.displayName}, ${users.email})`,
+          // 前一版本内容必须由数据库事实产生，不能用当前内容伪造 diff。
+          previousValue: sql<string | null>`(
+            SELECT previous.content
+            FROM memory_versions AS previous
+            WHERE previous.node_id = ${memoryVersions.nodeId}
+              AND previous.version = ${memoryVersions.version} - 1
+            LIMIT 1
+          )`,
+        })
         .from(memoryVersions)
+        .innerJoin(memoryNodes, eq(memoryVersions.nodeId, memoryNodes.id))
+        .leftJoin(
+          users,
+          eq(users.supabaseUserId, memoryVersions.createdBy),
+        )
         .where(auditPredicate)
         .orderBy(desc(memoryVersions.createdAt))
         .limit(pageSize)
@@ -990,13 +1016,14 @@ export class AgentMemoryController {
       tenantDb
         .select({ total: count() })
         .from(memoryVersions)
+        .innerJoin(memoryNodes, eq(memoryVersions.nodeId, memoryNodes.id))
         .where(auditPredicate),
     ]);
 
     const total = countRow?.total ?? 0;
 
     return {
-      data,
+      data: (rows as MemoryAuditQueryRow[]).map(serializeMemoryAuditEntry),
       meta: {
         page,
         pageSize,

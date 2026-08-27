@@ -11,6 +11,7 @@ import {
   TenantKeyAlreadyExistsException,
   TenantKeyNotFoundException,
   TenantKeyRevokedException,
+  TenantOrganizationNotFoundException,
 } from '../exceptions/tenant-key.exceptions';
 import { TenantKeyService } from '../tenant-key.service';
 
@@ -161,6 +162,19 @@ describe('TenantKeyService', () => {
         service.uploadPublicKey(TENANT_ID, ORG_ID, dto),
       ).rejects.toBeInstanceOf(TenantKeyAlreadyExistsException);
 
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('组织 ID 缺失时应在构造查询前抛出领域异常', async () => {
+      await expect(
+        service.uploadPublicKey(
+          TENANT_ID,
+          undefined as unknown as string,
+          { publicKey: PUBLIC_KEY },
+        ),
+      ).rejects.toBeInstanceOf(TenantOrganizationNotFoundException);
+
+      expect(db.select).not.toHaveBeenCalled();
       expect(db.insert).not.toHaveBeenCalled();
     });
   });

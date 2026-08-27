@@ -9,9 +9,10 @@ import { TRIGGER_CRON_JOB, TRIGGER_QUEUE } from '../trigger.constants';
 
 const mocks = vi.hoisted(() => ({
   createMockQueue: () => ({
-    add: vi.fn(),
-    getRepeatableJobs: vi.fn(),
-    removeRepeatableByKey: vi.fn(),
+    upsertJobScheduler: vi.fn(),
+    getJobScheduler: vi.fn(),
+    removeJobScheduler: vi.fn(),
+    removeRepeatable: vi.fn(),
   }),
   createMockDb: () => ({
     select: vi.fn(),
@@ -84,61 +85,57 @@ describe('TriggerSchedulerService', () => {
     service = module.get(TriggerSchedulerService);
   });
 
-  it('应注册 cron repeatable job', async () => {
-    queue.add.mockResolvedValue({});
-    queue.getRepeatableJobs.mockResolvedValue([
-      {
-        key: 'repeat-key',
-        name: TRIGGER_CRON_JOB,
-        id: TRIGGER_ID,
-        endDate: null,
-        tz: 'UTC',
-        pattern: '0 8 * * *',
-        next: NEXT_FIRE_AT.getTime(),
-      },
-    ]);
+  it('应迁移旧 repeatable job 并注册 Job Scheduler，持久化真实下次触发时间', async () => {
+    queue.removeRepeatable.mockResolvedValue(true);
+    queue.upsertJobScheduler.mockResolvedValue({});
+    queue.getJobScheduler.mockResolvedValue({
+      key: TRIGGER_ID,
+      name: TRIGGER_CRON_JOB,
+      pattern: '0 8 * * *',
+      tz: 'UTC',
+      next: NEXT_FIRE_AT.getTime(),
+    });
     db.update.mockReturnValueOnce(createUpdateWhereResolved(undefined));
 
-    await expect(service.registerCronJob(cronTrigger)).resolves.toEqual(
-      NEXT_FIRE_AT,
-    );
+    const nextFireAt = await service.registerCronJob(cronTrigger);
 
-    expect(queue.add).toHaveBeenCalledWith(
+    expect(nextFireAt).toBeInstanceOf(Date);
+    expect(nextFireAt).toEqual(NEXT_FIRE_AT);
+    expect(queue.removeRepeatable).toHaveBeenCalledWith(
       TRIGGER_CRON_JOB,
       {
-        triggerId: TRIGGER_ID,
-        tenantId: TENANT_ID,
-        workflowId: WORKFLOW_ID,
+        pattern: '0 8 * * *',
+        tz: 'UTC',
+      },
+      TRIGGER_ID,
+    );
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      TRIGGER_ID,
+      {
+        pattern: '0 8 * * *',
+        tz: 'UTC',
       },
       {
-        jobId: TRIGGER_ID,
-        repeat: {
-          pattern: '0 8 * * *',
-          tz: 'UTC',
+        name: TRIGGER_CRON_JOB,
+        data: {
+          triggerId: TRIGGER_ID,
+          tenantId: TENANT_ID,
+          workflowId: WORKFLOW_ID,
         },
       },
     );
+    expect(queue.getJobScheduler).toHaveBeenCalledWith(TRIGGER_ID);
 
     const updateValues = db.update.mock.results[0].value.set.mock.calls[0][0];
     expect(updateValues).toEqual({ nextFireAt: NEXT_FIRE_AT });
   });
 
-  it('应按 repeatable key 删除 cron job', async () => {
-    queue.getRepeatableJobs.mockResolvedValue([
-      {
-        key: 'repeat-key',
-        name: TRIGGER_CRON_JOB,
-        id: TRIGGER_ID,
-        endDate: null,
-        tz: 'UTC',
-        pattern: '0 8 * * *',
-      },
-    ]);
-    queue.removeRepeatableByKey.mockResolvedValue(true);
+  it('应按 trigger id 删除 Job Scheduler', async () => {
+    queue.removeJobScheduler.mockResolvedValue(true);
     db.update.mockReturnValueOnce(createUpdateWhereResolved(undefined));
 
     await expect(service.removeCronJob(TRIGGER_ID)).resolves.toBe(true);
-    expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('repeat-key');
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith(TRIGGER_ID);
 
     const updateValues = db.update.mock.results[0].value.set.mock.calls[0][0];
     expect(updateValues).toEqual({ nextFireAt: null });

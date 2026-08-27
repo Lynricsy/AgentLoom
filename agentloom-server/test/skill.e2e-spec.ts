@@ -26,6 +26,7 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { MINIO_CLIENT } from '../src/infrastructure/storage/storage.constants';
 import { StorageService } from '../src/infrastructure/storage/storage.service';
+import { StorageObjectNotFoundException } from '../src/infrastructure/storage/storage.exceptions';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import {
   createRlsTestContext,
@@ -213,7 +214,7 @@ describe('Skill E2E', () => {
     ),
     download: vi.fn(async (key: string) => {
       const value = objects.get(key);
-      if (!value) throw new Error(`NoSuchKey: ${key}`);
+      if (!value) throw new StorageObjectNotFoundException(key);
       return Readable.from([value]);
     }),
     delete: vi.fn(async (key: string) => {
@@ -461,32 +462,33 @@ describe('Skill E2E', () => {
     expect(deleteResponse.statusCode).toBe(204);
   });
 
-  it('穿越文件名被取 basename 后存入当前 skill 前缀，不产生路径逃逸', async () => {
+  it('multipart 上传拒绝包含穿越段的原始文件名', async () => {
     const response = await createSkill(owner, undefined, [
       { filename: '../../../etc/passwd', content: 'safe fixture' },
     ]);
-    expect(response.statusCode).toBe(201);
-    const created = response.json();
 
-    const uploadedKeys = storageServiceMock.upload.mock.calls.map(([key]) => key);
-    expect(uploadedKeys).toContain(
-      `tenants/${owner.tenantId}/skills/${created.id}/passwd`,
-    );
+    expect(response.statusCode).toBe(400);
+    expect(response.json().detail).toContain('文件名无效');
     expect(
-      uploadedKeys.every((key) => !(key as string).includes('..')),
+      storageServiceMock.upload.mock.calls.every(
+        ([key]) => !(key as string).includes('passwd'),
+      ),
     ).toBe(true);
-
-    const filesResponse = await app.inject({
-      method: 'GET',
-      url: `/api/v1/skills/${created.id}/files`,
-      headers: owner.headers,
-    });
-    expect(filesResponse.statusCode).toBe(200);
-    expect(filesResponse.json()).toEqual([{ name: 'passwd', size: 12 }]);
   });
 
-  // 已知缺陷，修复后启用：用原始穿越名下载目前返回 500，应 fail-closed 为 4xx。
-  it.todo('GET files/<穿越名> 应返回 4xx 而非 500');
+  it('GET files/<穿越名> 应返回 4xx 而非 500', async () => {
+    const createResponse = await createSkill(owner);
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/skills/${created.id}/files/${encodeURIComponent('../SKILL.md')}`,
+      headers: owner.headers,
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
 
   it('跨租户详情 404，文件列表不泄露任何文件名', async () => {
     const createResponse = await createSkill(owner);
@@ -511,8 +513,19 @@ describe('Skill E2E', () => {
     expect(filesResponse.body).not.toContain('input.txt');
   });
 
-  // 已知缺陷，修复后启用：跨租户下载 SKILL.md 目前返回 500，应返回 404。
-  it.todo('跨租户 GET files/SKILL.md 应返回 404 而非 500');
+  it('跨租户 GET files/SKILL.md 应返回 404 而非 500', async () => {
+    const createResponse = await createSkill(owner);
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/skills/${created.id}/files/SKILL.md`,
+      headers: otherTenant.headers,
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
 
   // 已知缺陷，修复后启用：应用层实际返回 500，canonical 期望通过
   // PayloadTooLargeException 返回 413；生产环境 nginx 的 50m 限制会先拦截，

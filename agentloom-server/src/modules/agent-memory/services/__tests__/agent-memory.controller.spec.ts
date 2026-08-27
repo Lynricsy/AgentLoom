@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 
 // ─── Mock Factories ────────────────────────────────────────────────────
 
@@ -78,6 +79,8 @@ type MockDb = ReturnType<typeof mocks.createMockDb>;
 type SelectChain<TResult> = Promise<TResult[]> & {
   from: ReturnType<typeof vi.fn>;
   where: ReturnType<typeof vi.fn>;
+  innerJoin: Mock;
+  leftJoin: Mock;
   orderBy: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   offset: ReturnType<typeof vi.fn>;
@@ -97,6 +100,8 @@ const NOW = new Date('2025-02-01T08:00:00.000Z');
 function createSelectChain<TResult>(result: TResult[]): SelectChain<TResult> {
   const chain = Promise.resolve(result) as SelectChain<TResult>;
   chain.from = vi.fn().mockReturnValue(chain);
+  chain.innerJoin = vi.fn().mockReturnValue(chain);
+  chain.leftJoin = vi.fn().mockReturnValue(chain);
   chain.where = vi.fn().mockReturnValue(chain);
   chain.orderBy = vi.fn().mockReturnValue(chain);
   chain.limit = vi.fn().mockReturnValue(chain);
@@ -1411,9 +1416,22 @@ describe('AgentMemoryController', () => {
   // ─── Audit/Review ──────────────────────────────────────────────────
 
   describe('listAuditLogs', () => {
-    it('应返回版本变更记录作为审计条目', async () => {
-      const versions = [createVersion()];
-      const dataQuery = createSelectChain(versions);
+    it('应联结节点与用户并序列化为 Studio 审计字段', async () => {
+      const auditRow = {
+        id: VERSION_ID,
+        instanceId: INSTANCE_ID,
+        nodeId: NODE_ID,
+        nodeName: '核心记忆',
+        version: 2,
+        content: '新内容',
+        reviewStatus: 'pending' as const,
+        patchSummary: 'patch: oldString -> newString',
+        createdBy: USER_ID,
+        createdAt: NOW,
+        actor: '测试用户',
+        previousValue: '旧内容',
+      };
+      const dataQuery = createSelectChain([auditRow]);
       const countQuery = createSelectChain([{ total: 1 }]);
 
       tenantDb.select
@@ -1426,9 +1444,29 @@ describe('AgentMemoryController', () => {
         d<ListAuditLogQueryDto>({ page: 1, pageSize: 20 }),
       );
 
-      expect(result.data).toEqual(versions);
+      expect(result.data).toEqual([
+        {
+          id: VERSION_ID,
+          instanceId: INSTANCE_ID,
+          nodeId: NODE_ID,
+          nodeName: '核心记忆',
+          versionId: VERSION_ID,
+          operationType: 'update',
+          actor: '测试用户',
+          actorId: USER_ID,
+          timestamp: NOW.toISOString(),
+          changeSummary: 'patch: oldString -> newString',
+          previousValue: '旧内容',
+          currentValue: '新内容',
+          reviewStatus: 'pending',
+          metadata: {},
+        },
+      ]);
       expect(result.meta.total).toBe(1);
-      expect(dataQuery.from).toHaveBeenCalledWith(memoryVersions);
+      expect(dataQuery.innerJoin).toHaveBeenCalledWith(
+        memoryNodes,
+        expect.anything(),
+      );
     });
 
     it('分页参数缺省时应使用审计日志默认分页', async () => {

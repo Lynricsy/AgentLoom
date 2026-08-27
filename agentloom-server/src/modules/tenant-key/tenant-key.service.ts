@@ -12,6 +12,7 @@ import {
   TenantKeyAlreadyExistsException,
   TenantKeyNotFoundException,
   TenantKeyRevokedException,
+  TenantOrganizationNotFoundException,
 } from './exceptions/tenant-key.exceptions';
 import { computeKeyFingerprint, validateRsaPublicKey } from './rsa-key-utils';
 
@@ -31,6 +32,8 @@ export class TenantKeyService {
     orgId: string,
     dto: UploadPublicKeyDto,
   ): Promise<TenantEncryptionKey> {
+    // 控制器之外也可能直接调用服务，必须在构造 SQL 前阻断缺失组织 ID。
+    this.assertOrganizationId(tenantId, orgId);
     validateRsaPublicKey(dto.publicKey);
     const keyFingerprint = computeKeyFingerprint(dto.publicKey);
 
@@ -66,6 +69,8 @@ export class TenantKeyService {
     tenantId: string,
     orgId: string,
   ): Promise<TenantEncryptionKey[]> {
+    // 防御性校验保证缺失 claim 不会退化成 DrizzleQueryError 500。
+    this.assertOrganizationId(tenantId, orgId);
     return this.tenantDb
       .select()
       .from(tenantEncryptionKeys)
@@ -233,6 +238,8 @@ export class TenantKeyService {
     tenantId: string,
     orgId: string,
   ): Promise<TenantEncryptionKey | null> {
+    // 活跃密钥查询会被上传流程复用，入口处校验可确保所有调用方都 fail-closed。
+    this.assertOrganizationId(tenantId, orgId);
     const [key] = await this.tenantDb
       .select()
       .from(tenantEncryptionKeys)
@@ -245,5 +252,11 @@ export class TenantKeyService {
       );
 
     return key ?? null;
+  }
+
+  private assertOrganizationId(tenantId: string, orgId: string): void {
+    if (!orgId) {
+      throw new TenantOrganizationNotFoundException(tenantId);
+    }
   }
 }

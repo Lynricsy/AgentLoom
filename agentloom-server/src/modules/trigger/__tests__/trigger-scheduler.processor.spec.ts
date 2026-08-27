@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Job } from 'bullmq';
@@ -109,7 +110,7 @@ describe('TriggerSchedulerProcessor', () => {
     processor = module.get(TriggerSchedulerProcessor);
   });
 
-  it('应在 cron job 到达时触发工作流执行', async () => {
+  it('应在 cron job 到达时触发工作流并用 Scheduler 时间更新 bookkeeping', async () => {
     mockTriggerService.findById.mockResolvedValue(cronTrigger);
     mockExecutionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
     mockTriggerSchedulerService.getNextFireAt.mockResolvedValue(NEXT_FIRE_AT);
@@ -143,6 +144,9 @@ describe('TriggerSchedulerProcessor', () => {
         executionId: EXECUTION_ID,
       }),
     );
+    expect(mockTriggerSchedulerService.getNextFireAt).toHaveBeenCalledWith(
+      TRIGGER_ID,
+    );
     expect(mockTriggerService.markTriggered).toHaveBeenCalledWith(
       TENANT_ID,
       TRIGGER_ID,
@@ -150,18 +154,22 @@ describe('TriggerSchedulerProcessor', () => {
     );
   });
 
-  it('入队成功后即使 bookkeeping 失败也应返回 processed=true 且不抛错', async () => {
+  it('应记录并向上传播成功 bookkeeping 失败', async () => {
+    const bookkeepingError = new Error('history failed');
+    const loggerErrorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
     mockTriggerService.findById.mockResolvedValue(cronTrigger);
     mockExecutionService.runWorkflow.mockResolvedValue({ id: EXECUTION_ID });
-    mockTriggerHistoryService.record.mockRejectedValue(
-      new Error('history failed'),
+    mockTriggerHistoryService.record.mockRejectedValue(bookkeepingError);
+
+    await expect(processor.process(createMockJob())).rejects.toBe(
+      bookkeepingError,
     );
 
-    await expect(processor.process(createMockJob())).resolves.toEqual({
-      processed: true,
-      executionId: EXECUTION_ID,
-    });
-
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('trigger_cron_job_success_bookkeeping_failed'),
+    );
     expect(mockTriggerHistoryService.record).toHaveBeenCalledWith(
       TENANT_ID,
       expect.objectContaining({

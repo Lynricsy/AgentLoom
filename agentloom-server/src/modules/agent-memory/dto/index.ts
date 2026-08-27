@@ -24,8 +24,11 @@ export {
 export { MemorySearchQueryDto, ResolveUriQueryDto } from './memory-search.dto';
 export {
   ListAuditLogQueryDto,
+  MemoryAuditListResponseSwaggerDto,
   ReviewVersionDto,
   ListPendingReviewsQueryDto,
+  serializeMemoryAuditEntry,
+  type MemoryAuditQueryRow,
 } from './memory-audit.dto';
 export {
   BrowseQueryDto,

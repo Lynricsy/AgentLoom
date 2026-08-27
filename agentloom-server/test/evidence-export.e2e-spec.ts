@@ -569,7 +569,9 @@ describe('EvidenceExport E2E', () => {
         tenantId: owner.tenantId,
       },
       expect.objectContaining({
-        jobId: `evidence-export:${response.body.data.id}`,
+        // BullMQ 5 的 validateOptions 拒绝含 `:` 的 custom job id，
+        // 旧写法直接让创建导出 500——这里同步为连字符形态。
+        jobId: `evidence-export-${response.body.data.id}`,
       }),
     );
 
