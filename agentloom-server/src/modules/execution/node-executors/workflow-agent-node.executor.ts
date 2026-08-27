@@ -50,8 +50,6 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
     steps: ExecutionStep[],
     runtime: NodeSchedulerService,
   ): Promise<void> {
-    // 标记步骤是否已落库为 waiting_intervention：此后任何异常都不得再改写步骤状态。
-    let pausedForIntervention = false;
     try {
       const nodeData = step.nodeData ?? {};
       const agentDefinitionId = getWorkflowAgentDefinitionId(nodeData);
@@ -146,8 +144,8 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
         }
 
         // MANUAL_CONFIRM 必须在 Agent 产出建议后暂停；提前归档或 completed 会让既有恢复链失去 session。
-        // 一旦决定暂停，本步骤的状态所有权就交给干预链路：后续任何异常都只能上抛，不能改写状态。
-        pausedForIntervention = true;
+        // 事务提交后的副作用失败由 pauseForIntervention 内部降级处理，不会冒泡到这里；
+        // 能走到下面 catch 的只有「事务未提交、步骤仍是 running」的失败，此时写 failed 合法。
         await runtime.pauseForIntervention({
           executionId,
           tenantId,
@@ -196,13 +194,6 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
       await runtime.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (error instanceof InvalidStepTransitionException) {
-        throw error;
-      }
-
-      // 已经暂停等待干预的步骤不能再被写成 failed（waiting_intervention → failed
-      // 是非法转换）。若暂停链路自身抛错，在这里二次写 failed 只会把原始错误掩盖成
-      // 「步骤状态转换非法」，并把整个 execution 误判为失败。
-      if (pausedForIntervention) {
         throw error;
       }
 
