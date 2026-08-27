@@ -1,0 +1,139 @@
+<!-- ============ 实现页 A：契约层 ============ -->
+<section class="page" data-sec="IMPL A">
+  <div class="body stack m">
+    <div class="stack s">
+      <span class="kicker">10 · 实现 A</span>
+      <h2>契约层：一份 schema 怎么走到三端</h2>
+    </div>
+
+    <p class="lead">这里其实是<strong>两条并行的链</strong>，讲的时候不能混为一谈 —— REST 走 OpenAPI 生成，Socket 走 fixture 对锁。</p>
+
+    <div class="stack s">
+      <h4>链 A · REST：Zod 定义 → 生成类型</h4>
+      <div class="pipe" style="grid-template-columns:repeat(5,1fr)">
+        <div class="st"><span class="i">01</span><b>Zod schema</b><span class="d">含 transform 归一 snake/camel、superRefine 补校验</span></div>
+        <div class="st"><span class="i">02</span><b>createZodDto</b><span class="d">包成类，同时喂运行时校验与 Swagger</span></div>
+        <div class="st"><span class="i">03</span><b>openapi:export</b><span class="d">nest build 后启动 app 导出 spec 文件</span></div>
+        <div class="st"><span class="i">04</span><b>生成器</b><span class="d">openapi-generator 出 models.ts</span></div>
+        <div class="st"><span class="i">05</span><b>Studio</b><span class="d">import type，改字段前端 tsc 就红</span></div>
+      </div>
+    </div>
+
+    <div class="stack s">
+      <h4>controller 里的真实写法</h4>
+      <div class="formula">async create(<br>
+      &nbsp;&nbsp;<b>@Body(new ZodValidationPipe(CreateAgentDefinitionSchema))</b><br>
+      &nbsp;&nbsp;dto: CreateAgentDefinitionDto,   <span class="cm">// 仅作类型，type-only import</span><br>
+      ) { ... }</div>
+      <p class="xs">值得注意：DTO 类只提供 TS 类型与 Swagger 元数据，<strong>运行时校验靠显式传进管道的那份 schema</strong>。另有一个同名的全局管道兜底，靠检测形参上的 <code>.schema</code> 静态属性工作。</p>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7 gap-s">
+      <div class="stack s">
+        <h4>校验失败长什么样</h4>
+        <p class="xs">不是默认的 400，而是 <strong>422</strong> + <code>application/problem+json</code>；<code>errors</code> 数组每条是「字段路径 + 消息」，字段路径由 Zod issue 的 path 用点连接而成。</p>
+      </div>
+      <div class="stack s">
+        <h4>链 B · Socket wire：fixture 双向对锁</h4>
+        <p class="xs">契约包里放一批<strong>服务端真实输出形状</strong>的 JSON。契约侧断言「目录里的文件集合、映射表的键、事件名数组」三者两两全等；服务端侧用 <em>同一批文件</em> 比对自己真实发出的信封。服务端偷偷改 wire 格式，两边同时变红。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">三个反直觉的点（讲出来很加分）</span>
+      一、生成产物<strong>不是纯 interface</strong> —— 枚举以 <code>as const</code> 对象形式保留，所以前端能当运行时值用。二、「禁止手改」的标记<strong>不在文件头</strong>，在包的 README 与 AGENTS.md 里。三、运行时 <code>/openapi.json</code> 端点与导出的 spec 文件<strong>不是同一份文档</strong> —— 导出脚本额外做了通配路径参数、元组降级、标量联合三步归一，运行时端点不做。
+    </div>
+  </div>
+</section>
+
+<!-- ============ 实现页 B：沙箱边界 ============ -->
+<section class="page" data-sec="IMPL B">
+  <div class="body stack m">
+    <div class="stack s">
+      <span class="kicker">11 · 实现 B</span>
+      <h2>沙箱边界：四道各自独立的闸</h2>
+    </div>
+
+    <p class="lead">文件、解包、网络、凭据四处各有独立实现，共同原则只有一条：<strong>默认拒绝，校验后放行</strong>。文件校验全部发生在沙箱内的 Go 进程里，不在服务端。</p>
+
+    <div class="stack s">
+      <h4>文件侧：三个函数各管一类操作</h4>
+      <table class="tight">
+        <thead><tr><th style="width:34mm">函数</th><th>判定步骤</th></tr></thead>
+        <tbody>
+          <tr><td>读/通用路径</td><td>拒空串与 NUL 字节 → 规范化 → 必须绝对路径且在固定根内 → 解开软链接 → <strong>解开后再判一次根边界</strong> → 需目录时确认确实是目录</td></tr>
+          <tr><td>写文件</td><td>同上前两步 → <strong>不许把根本身当文件写</strong> → 用不跟随软链接的方式取状态：已存在则必须是<em>常规文件</em>（拒目录、管道、设备节点）并解链后再判根；不存在则解析父目录、确认父目录是目录且在根内</td></tr>
+          <tr><td>解 tar 条目</td><td>拒绝绝对路径与 NUL → 拼接后规范化 → 必须仍以目标目录加分隔符为前缀。<strong>两个调用点：条目名与硬链接名</strong></td></tr>
+        </tbody>
+      </table>
+      <p class="xs">固定根只有两个，前缀匹配<strong>带路径分隔符</strong> —— 否则 <code>/workspace-evil</code> 这类前缀伪装会通过。</p>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5 gap-s">
+      <div class="stack s">
+        <h4>网络侧：网卡入口五条规则，最后一条兜底</h4>
+        <div class="formula"><span class="cm">// 入口方向，优先级从小到大</span><br>
+        10 &nbsp;IP&nbsp; &nbsp;src_ip==分配IP <b>且</b> src_mac==分配MAC → pass<br>
+        11 &nbsp;ARP&nbsp; src_mac==分配MAC <b>且</b> arp_sip==分配IP → pass<br>
+        12 &nbsp;IPv6 → <b>drop</b><br>
+        20 &nbsp;matchall → <b>drop</b></div>
+        <p class="xs">在 CNI 建好网络之后下发；任一条失败，两层 defer 分别回滚 CNI 与网络命名空间。另有一套防火墙规则以<strong>整表单事务</strong>下发，其中包含「沙箱之间互访直接丢弃」与「访问私网段直接丢弃」两条。</p>
+      </div>
+      <div class="stack s">
+        <h4>凭据侧：两段都验对方</h4>
+        <p class="xs">服务端到虚拟机管理器是<strong>双向 TLS</strong>：服务端加载 ca/cert/key，管理器侧要求并验证客户端证书且强制 TLS 1.3。管理器转发到沙箱内时，<strong>先剥掉入站的 Authorization 头</strong>再注入沙箱自己的令牌 —— 外部无法把凭据透传进去。沙箱内令牌用恒定时间比较。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 实现页 C：多租户 ============ -->
+<section class="page" data-sec="IMPL C">
+  <div class="body stack m">
+    <div class="stack s">
+      <span class="kicker">12 · 实现 C</span>
+      <h2>多租户：真正生效的是哪一条链</h2>
+    </div>
+
+    <div class="note warn">
+      <span class="t">先纠正一个容易讲错的地方</span>
+      有一个租户中间件会从请求里解出 tenantId，但它<strong>只做 base64url 解码、不验签</strong>，写在原生 request 上，而且<strong>唯一的消费者是限流分桶</strong>。数据隔离链路根本不读它。把它讲成「隔离的第一步」是错的 —— 它在旁路上。
+    </div>
+
+    <div class="stack s">
+      <h4>真正的隔离链</h4>
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">01</span><b>AuthGuard 验签</b><span class="d">验 JWT 签名与 audience，把可信身份写入 request.user</span></div>
+        <div class="st"><span class="i">02</span><b>TenantGuard</b><span class="d">租户准入，随后 RolesGuard 判角色</span></div>
+        <div class="st"><span class="i">03</span><b>事务拦截器</b><span class="d">读 request.user 的 tenantId，开事务并设上下文</span></div>
+        <div class="st"><span class="i">04</span><b>表级策略</b><span class="d">68 张表的行级安全策略强制过滤</span></div>
+      </div>
+      <p class="xs">拦截器在 guards 之后执行，这个顺序不是偶然：<strong>可信身份必须先建立，才能拿去设置数据库租户上下文</strong>。否则未验签的 claim 会直接影响行级安全的判定结果。API Key 分支不验 JWT，走独立的令牌校验，再把 tenantId 补到 request 上。</p>
+    </div>
+
+    <div class="stack s">
+      <h4>事务里下发的两句</h4>
+      <div class="formula">SET LOCAL ROLE authenticated;<br>
+      SELECT set_config('app.current_tenant', $1, <b>true</b>);
+      </div>
+      <p class="xs">第三个参数为真表示<strong>只在本事务内有效</strong>，事务结束自动失效，不会泄漏到连接池里的下一个请求。表上的策略条件是 <code>tenant_id = get_tenant_id()</code>，而那个函数读的就是上面这个配置键。事务对象经异步上下文下发给所有数据访问代码。</p>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h4>只追加的表是怎么做的</h4>
+        <p class="xs">审计表<strong>没有用触发器</strong>：只建 SELECT 与 INSERT 两条策略、并且只授予 SELECT 与 INSERT 权限 —— 策略层与权限层双重保证 UPDATE / DELETE 无从下手。</p>
+      </div>
+      <div class="stack s">
+        <h4>怎么验证隔离真的生效</h4>
+        <p class="xs">集成测试起一个真实数据库容器，<strong>逐条回放全部迁移 SQL</strong>，然后在带/不带租户上下文两种情形下查询，断言跨租户结果为空数组或直接抛权限错误。</p>
+      </div>
+    </div>
+  </div>
+</section>
