@@ -446,6 +446,108 @@ export function normalizeConversationHistoryMessage(
   };
 }
 
+/**
+ * 归一化 `conversation.state.snapshot` 的消息列表。
+ *
+ * 重连时 EventBridge 的内存缓冲可能已被清理（终态 30s 回收、进程重启），
+ * 服务端无法逐事件补发，改为下发一份持久 snapshot。
+ *
+ * 直接复用历史消息的归一化路径：snapshot 行就是 `agent_messages` 行，字段一一对应
+ * （只有主键名从 `id` 变成 `messageId`）。**不要**在这里另写一套——segments、
+ * 附件、thinking、工具卡都藏在 metadata/toolCalls 里，漏掉任何一项，
+ * 按 messageId 整条覆盖时就会把界面上对应的部分抹掉。
+ *
+ * 之后由调用方用 mergeSnapshotWithLiveMessages 与本地 live 消息合并。
+ */
+export function normalizeConversationSnapshotMessages(
+  raw: unknown,
+): ConversationMessage[] | null {
+  if (!isRecord(raw) || !Array.isArray(raw.messages)) {
+    return null;
+  }
+
+  return raw.messages.filter(isRecord).map((message) =>
+    normalizeConversationHistoryMessage({
+      ...message,
+      id: readString(message.messageId),
+    } as ConversationDetailResponseSwaggerDtoDataMessagesDataInner),
+  );
+}
+
+/**
+ * 用持久 snapshot 覆盖本地已落定的消息，并保留本地仍在流式的尾部。
+ *
+ * 不能复用 mergeHistoryWithLiveTail：那个函数假设 canonical 是本地列表的**前缀**，
+ * 而 snapshot 的触发场景恰恰是本地列表缺了中间几轮（断线期间的正文根本没到过客户端），
+ * 按下标比对必然判定为「非前缀」而整体丢弃 live 尾部。
+ *
+ * 去重分两层：
+ * 1. **同 ID** —— snapshot 里已有的一律以 snapshot 为准。
+ * 2. **等价** —— 本地 optimistic 用户消息用的是随机 UUID，落库后 ID 会变，只能靠
+ *    内容等价认亲。这一层有两道闸：只在「没有被同 ID 认领的 canonical」里配对，
+ *    且**一对一消费**；另外要求 canonical 不早于本地消息（落库必然发生在本地
+ *    构造 optimistic 之后）。否则历史里那句旧的「继续」会把用户刚发的同文消息
+ *    匹配掉，导致它凭空消失。
+ */
+export function mergeSnapshotWithLiveMessages(
+  currentMessages: ConversationMessage[],
+  snapshotMessages: ConversationMessage[],
+): ConversationMessage[] {
+  const snapshotIds = new Set(snapshotMessages.map((message) => message.id));
+  const currentIds = new Set(currentMessages.map((message) => message.id));
+
+  const unclaimed = snapshotMessages.filter(
+    (canonical) => !currentIds.has(canonical.id),
+  );
+  const consumed = new Set<number>();
+
+  const liveTail = currentMessages.filter((message) => {
+    if (snapshotIds.has(message.id)) {
+      return false;
+    }
+
+    const match = unclaimed.findIndex(
+      (canonical, index) =>
+        !consumed.has(index) &&
+        canonical.createdAt >= message.createdAt &&
+        areMessagesEquivalent(message, canonical),
+    );
+
+    if (match === -1) {
+      return true;
+    }
+
+    consumed.add(match);
+    return false;
+  });
+
+  return [...snapshotMessages, ...liveTail];
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 从实时事件信封中读取 wire 游标（gateway 的 buildEventPayload 统一注入 eventId）。
+ * 读不到就返回 null，由调用方保持原游标不动——宁可重放一次，也不能跳过缺口。
+ */
+export function readEventCursor(payload: unknown): number | null {
+  return isRecord(payload) ? readFiniteNumber(payload.eventId) : null;
+}
+
+/**
+ * 读取 `lastEventId` 字段：snapshot 事件与 `conversation:subscribe` 的 ack 都用它。
+ *
+ * 与 readEventCursor 分开，因为两处的应用语义不同：
+ * - snapshot 是 epoch 起点，可能比本地游标**小**（计数器归零或新一轮从 1 重启），
+ *   调用方要直接赋值；
+ * - ack 是增量补发完成时的服务端进度，调用方取 max 前进。
+ */
+export function readLastEventIdField(payload: unknown): number | null {
+  return isRecord(payload) ? readFiniteNumber(payload.lastEventId) : null;
+}
+
 export function projectComparableMessage(message: ConversationMessage) {
   return {
     role: message.role,

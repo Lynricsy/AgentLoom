@@ -1,7 +1,12 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, count, desc, eq } from 'drizzle-orm';
 
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import { MemoryGateway } from '../memory.gateway';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
   agentMemoryInstances,
@@ -36,7 +41,25 @@ export interface DeleteMemoryNodeResult {
 
 @Injectable()
 export class MemoryNodeService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly gateway: MemoryGateway,
+  ) {}
+
+  /**
+   * 广播实时事件。
+   *
+   * 有活跃租户事务时延迟到提交之后：否则事务回滚后客户端已经收到「已创建」，
+   * 前端图谱会出现一个数据库里并不存在的节点。
+   */
+  private broadcastAfterCommit(emit: () => void): void {
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => emit());
+      return;
+    }
+
+    emit();
+  }
 
   async createNode(
     instanceId: string,
@@ -56,6 +79,15 @@ export class MemoryNodeService {
         disclosureLevel: data.disclosureLevel ?? 0,
       })
       .returning();
+
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitNodeCreated(node.tenantId, node.instanceId, {
+        nodeId: node.id,
+        contentType: node.contentType,
+        disclosureLevel: node.disclosureLevel,
+        metadata: node.metadata,
+      }),
+    );
 
     return node;
   }
@@ -90,13 +122,23 @@ export class MemoryNodeService {
       throw new NotFoundException(`Memory node ${nodeId} not found`);
     }
 
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitNodeUpdated(node.tenantId, node.instanceId, {
+        nodeId: node.id,
+        contentType: node.contentType,
+        disclosureLevel: node.disclosureLevel,
+        metadata: node.metadata,
+      }),
+    );
+
     return node;
   }
 
   async deleteNode(nodeId: string): Promise<DeleteMemoryNodeResult> {
     const tenantDb = getTenantDb(this.db);
 
-    await this.findNodeOrThrow(nodeId);
+    // 删除后行已不存在，租户/实例归属只能从删除前的快照取。
+    const existing = await this.findNodeOrThrow(nodeId);
 
     const [deletedNode] = await tenantDb
       .delete(memoryNodes)
@@ -106,6 +148,12 @@ export class MemoryNodeService {
     if (!deletedNode) {
       throw new NotFoundException(`Memory node ${nodeId} not found`);
     }
+
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitNodeDeleted(existing.tenantId, existing.instanceId, {
+        nodeId: deletedNode.id,
+      }),
+    );
 
     return {
       id: deletedNode.id,

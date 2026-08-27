@@ -30,9 +30,11 @@ import {
   ensureAssistantMessage,
   finishStreamingAssistantMessage,
   mergeHistoryWithLiveTail,
+  mergeSnapshotWithLiveMessages,
   normalizeAgentDonePayload,
   normalizeConversationExecutionSnapshot,
   normalizeConversationHistoryMessage,
+  normalizeConversationSnapshotMessages,
   normalizeFileChangePayload,
   normalizeMessageChunkPayload,
   normalizeOutgoingConversationMessage,
@@ -41,6 +43,8 @@ import {
   normalizeThinkingPayload,
   normalizeToolPayload,
   pushSubAgentEvent,
+  readEventCursor,
+  readLastEventIdField,
   upsertToolCall,
 } from "../lib/conversation-normalizers";
 import {
@@ -231,6 +235,12 @@ export const useAgentConversationStore = create<
             });
             socketInstance = socket;
 
+            // 首次订阅由 REST 水合历史，不能带游标——否则服务端会把整个环形缓冲
+            // 重放一遍，和历史消息撞车。之后的每一次 Socket.IO 自动重连都必须带上
+            // 游标（含 0）：客户端可能在首个事件到达前就断了，离线期间执行完成并
+            // 清缓存，省略游标就永远拿不到 snapshot。
+            let hasSubscribed = false;
+
             socket.on("connect", () => {
               set((s) => {
                 s.status = "connected";
@@ -238,15 +248,40 @@ export const useAgentConversationStore = create<
               });
 
               const tenantId = useAuthStore.getState().tenantId ?? "";
+              const isReconnect = hasSubscribed;
+              hasSubscribed = true;
               socket.emit(
                 "conversation:subscribe",
-                { conversationId, tenantId },
-                (ack: { status: string; error?: string }) => {
+                {
+                  conversationId,
+                  tenantId,
+                  ...(isReconnect ? { lastEventId: get().lastEventId } : {}),
+                },
+                (ack: {
+                  status: string;
+                  error?: string;
+                  lastEventId?: number;
+                }) => {
                   if (ack?.status === "error") {
                     set((s) => {
                       s.connectionError = ack.error ?? "Subscription failed";
                     });
+                    return;
                   }
+
+                  // 增量补发会跳过 unmapped 事件，只按收到的 eventId 推进会把游标
+                  // 卡在最后一个可映射事件上，之后每次重连都重放同一段。
+                  // 服务端在 ack 里给出补发完成时的真实进度（snapshot 路径不给）。
+                  const cursor = readLastEventIdField(ack);
+                  if (cursor === null) {
+                    return;
+                  }
+
+                  set((s) => {
+                    if (cursor > s.lastEventId) {
+                      s.lastEventId = cursor;
+                    }
+                  });
                 },
               );
             });
@@ -261,6 +296,46 @@ export const useAgentConversationStore = create<
               set((s) => {
                 s.status = "error";
                 s.connectionError = err.message;
+              });
+            });
+
+            // 实时事件信封统一带 eventId，在这里单点推进游标，
+            // 避免每个 handler 各记一份而漏掉分支。snapshot 不走这里（它是 epoch
+            // 重置点，游标要允许回退），由下面的专属 handler 直接赋值。
+            socket.onAny((_event: string, payload: unknown) => {
+              const cursor = readEventCursor(payload);
+              if (cursor === null) {
+                return;
+              }
+
+              set((s) => {
+                if (cursor > s.lastEventId) {
+                  s.lastEventId = cursor;
+                }
+              });
+            });
+
+            // 重连时服务端缓存有缺口，会用持久 snapshot 兜底（见 D-12）。
+            socket.on("conversation.state.snapshot", (payload: unknown) => {
+              set((s) => {
+                const canonical =
+                  normalizeConversationSnapshotMessages(payload);
+                if (!canonical) {
+                  return;
+                }
+
+                s.messages = mergeSnapshotWithLiveMessages(
+                  s.messages,
+                  canonical,
+                );
+
+                // snapshot 是新 epoch 的起点：服务端计数器可能已归零或从 1 重启，
+                // 这里必须**直接赋值**（允许回退），否则旧游标会一直卡住，
+                // 之后每次重连都被判成 epoch 回退，新一轮事件也无法正常推进。
+                const epoch = readLastEventIdField(payload);
+                if (epoch !== null) {
+                  s.lastEventId = epoch;
+                }
               });
             });
 

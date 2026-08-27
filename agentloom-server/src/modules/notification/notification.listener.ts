@@ -2,7 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
-import { transactionStorage } from '../../common/interceptors/tenant-transaction.context';
+import {
+  transactionStorage,
+  type TenantTransactionContext,
+} from '../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { NotificationService } from './notification.service';
@@ -488,18 +491,29 @@ export class NotificationListener {
       return runInTenantTransaction(this.db, tenantId, operation);
     }
 
-    return this.db.transaction(async (tx) => {
+    const context: TenantTransactionContext = {
+      db: undefined as unknown as DrizzleDB,
+      afterCommitHooks: [],
+    };
+
+    const result = await this.db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL ROLE authenticated`);
       await tx.execute(
         sql`SELECT set_config('app.current_tenant', ${tenantId}, true)`,
       );
 
       const tenantDb = tx as unknown as DrizzleDB;
-      return transactionStorage.run(
-        { db: tenantDb, afterCommitHooks: [] },
-        () => operation(tenantDb),
-      );
+      context.db = tenantDb;
+      return transactionStorage.run(context, () => operation(tenantDb));
     });
+
+    // 这里此前建了 afterCommitHooks 数组却从不执行，于是治理/配额通知注册的
+    // 「提交后入队」回调永远不会跑，通知落库但永不推送。
+    for (const hook of context.afterCommitHooks) {
+      await hook();
+    }
+
+    return result;
   }
 
   private buildBaseBody(

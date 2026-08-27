@@ -34,6 +34,10 @@ import type { JwtPayload } from '../../common/guards/auth.guard';
 import { AgentExecutionService } from './agent-execution.service';
 import type { AgentEvent } from '../agent/types/agent-event.types';
 import type { SubAgentEventEnvelope } from './subagent';
+import {
+  CONVERSATION_STATE_SNAPSHOT_EVENT,
+  type ConversationStateSnapshot,
+} from '@agentloom/contracts';
 
 export const ConversationEventName = {
   AGENT_MESSAGE_CHUNK: 'conversation.agent.message_chunk',
@@ -76,6 +80,8 @@ interface ConversationCancelPayload {
 export interface ConversationSubscribeAck {
   status: 'subscribed' | 'error';
   error?: string;
+  /** 增量补发完成后服务端的真实进度；客户端据此推进游标（snapshot 路径不带）。 */
+  lastEventId?: number;
 }
 
 interface QueuedEvent {
@@ -257,7 +263,20 @@ export class AgentConversationGateway
     );
 
     if (lastEventId != null) {
-      this.replayEvents(client, conversationId, lastEventId);
+      const replayCursor = await this.replayEvents(
+        client,
+        tenantId,
+        conversationId,
+        lastEventId,
+      );
+
+      // 逐事件补发会跳过 unmapped 事件，客户端只能从「实际收到的」eventId 推进，
+      // 游标会卡在最后一个可映射事件上，之后每次重连都重放同一段。
+      // 这里把服务端真实进度回给客户端；snapshot 路径不带（它自己是 epoch 起点），
+      // 快照查询失败时更不能推进。
+      if (replayCursor !== null) {
+        return { status: 'subscribed', lastEventId: replayCursor };
+      }
     }
 
     return { status: 'subscribed' };
@@ -742,28 +761,106 @@ export class AgentConversationGateway
     return !!sockets && sockets.size > 0;
   }
 
-  private replayEvents(
+  /**
+   * 重连补发。两级判别，缺一不可：
+   *
+   * 1. **计数器回退** —— `lastEventId > getLastEventId()` 说明服务端的进度比客户端
+   *    还旧，只可能是 epoch 变了：终态 30s 后 `clearExecution()` 同时删 counter 与
+   *    buffer（归零），或同一 conversation 已经开启下一轮（新 buffer 从 1 重新计数）。
+   *    后者尤其阴险——新 buffer 存在，`getEventsSince(5)` 会返回空数组，看起来像
+   *    「已追平」，实际整轮都漏了。
+   * 2. **缓冲区是否覆盖** —— `getEventsSince()` 返回数组表示缓冲区仍持有这段区间
+   *    （空数组＝确已追平）；返回 null 表示缓冲区没了或游标已滑出窗口。
+   *
+   * 此前只用 `lastEventId >= getLastEventId()` 抢先短路，上面两种回退都被误判为
+   * 已追平而静默结束，断线期间的内容永远补不回来——这就是 D-12。
+   */
+  private async replayEvents(
     client: Socket,
+    tenantId: string,
     conversationId: string,
     lastEventId: number,
-  ): void {
+  ): Promise<number | null> {
     const currentEventId =
       this.eventBridgeService.getLastEventId(conversationId) ?? 0;
-    if (lastEventId >= currentEventId) {
-      return;
+
+    if (lastEventId <= currentEventId) {
+      const missedEvents = this.eventBridgeService.getEventsSince(
+        conversationId,
+        lastEventId,
+      );
+
+      if (missedEvents !== null) {
+        for (const event of missedEvents) {
+          const conversationEvent = this.mapExecutionEventToConversation(event);
+          if (!conversationEvent) {
+            continue;
+          }
+
+          client.emit(conversationEvent, event);
+
+          // 复刻 live 的终态语义与顺序：handleExecutionStatusChanged 在终态时
+          // 紧跟着补一条 AGENT_DONE。少了它，客户端补回最后一段 chunk 后
+          // 不会调 finishStreamingAssistantMessage，那条消息会永久卡在 streaming。
+          if (this.isTerminalExecutionEvent(event)) {
+            client.emit(ConversationEventName.AGENT_DONE, event);
+          }
+        }
+        // 循环是同步的，这里读到的就是补发完成时刻的服务端进度。
+        return this.eventBridgeService.getLastEventId(conversationId) ?? 0;
+      }
     }
 
-    const missedEvents = this.eventBridgeService.getEventsSince(
-      conversationId,
-      lastEventId,
-    );
-    if (missedEvents && missedEvents.length > 0) {
-      for (const event of missedEvents) {
-        const conversationEvent = this.mapExecutionEventToConversation(event);
-        if (conversationEvent) {
-          client.emit(conversationEvent, event);
-        }
-      }
+    await this.emitConversationSnapshot(client, tenantId, conversationId);
+    return null;
+  }
+
+  /** 终态判定与 live 的 handleExecutionStatusChanged 保持同一套状态集合。 */
+  private isTerminalExecutionEvent(event: ExecutionEvent): boolean {
+    if (event.event !== ExecutionEventName.EXECUTION_STATUS_CHANGED) {
+      return false;
+    }
+
+    const { status } = event.data as ExecutionStatusChangedPayload;
+    return status === 'completed' || status === 'failed' || status === 'cancelled';
+  }
+
+  private async emitConversationSnapshot(
+    client: Socket,
+    tenantId: string,
+    conversationId: string,
+  ): Promise<void> {
+    try {
+      const messages =
+        await this.agentExecutionService.getConversationSnapshotMessages(
+          tenantId,
+          conversationId,
+        );
+
+      // 游标必须在 DB 查询**之后**读:socket 早已 join room,查询期间产生的实时
+      // 事件会先于 snapshot 抵达并推进客户端游标。若沿用查询前的旧值,客户端会
+      // 被回退到更早的位置,下次 replay 就把这批 chunk 重复追加一遍。
+      // 这里到 emit 之间不得再有 await。
+      const lastEventId =
+        this.eventBridgeService.getLastEventId(conversationId) ?? 0;
+
+      const snapshot: ConversationStateSnapshot = {
+        event: CONVERSATION_STATE_SNAPSHOT_EVENT,
+        conversationId,
+        lastEventId,
+        reason: 'replay-buffer-gap',
+        messages,
+        timestamp: new Date().toISOString(),
+      };
+
+      client.emit(CONVERSATION_STATE_SNAPSHOT_EVENT, snapshot);
+    } catch (error) {
+      // 快照失败不能让订阅本身失败：客户端已经订阅上，后续实时事件仍应送达。
+      this.logger.warn(
+        `Failed to build conversation snapshot for ${conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 

@@ -7,6 +7,7 @@ import {
   NOTIFICATION_DISPATCH_JOB,
 } from '../notification.constants';
 import { DRIZZLE } from '../../../database/database.module';
+import { transactionStorage } from '../../../common/interceptors/tenant-transaction.context';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
@@ -137,6 +138,35 @@ describe('NotificationService', () => {
           notificationId: NOTIFICATION_ID,
           type: 'execution_completed',
         },
+        { jobId: NOTIFICATION_ID },
+      );
+    });
+
+    it('在租户事务内应延迟到提交后才入队', async () => {
+      db.insert.mockReturnValue(createInsertReturning([mockNotification]));
+      notificationQueue.add.mockResolvedValue(undefined);
+
+      const afterCommitHooks: Array<() => Promise<void>> = [];
+      await transactionStorage.run(
+        { db: db as never, afterCommitHooks },
+        async () => {
+          await service.create(TENANT_ID, {
+            userId: USER_ID,
+            type: 'execution_completed',
+            title: '执行已完成',
+          });
+        },
+      );
+
+      // processor 在独立事务里按 notificationId 读行，提交前入队必然读不到。
+      expect(notificationQueue.add).not.toHaveBeenCalled();
+      expect(afterCommitHooks).toHaveLength(1);
+
+      await afterCommitHooks[0]();
+
+      expect(notificationQueue.add).toHaveBeenCalledWith(
+        NOTIFICATION_DISPATCH_JOB,
+        expect.objectContaining({ notificationId: NOTIFICATION_ID }),
         { jobId: NOTIFICATION_ID },
       );
     });

@@ -26,6 +26,7 @@ const mockTokenBlacklistService = {
 const mockAgentExecutionService = {
   injectMessage: vi.fn().mockResolvedValue(undefined),
   cancelExecution: vi.fn().mockResolvedValue(undefined),
+  getConversationSnapshotMessages: vi.fn().mockResolvedValue([]),
 };
 
 import {
@@ -211,8 +212,10 @@ describe('AgentConversationGateway', () => {
       );
     });
 
-    it('should skip replay when lastEventId >= currentEventId', async () => {
+    // 缓冲区仍在（返回空数组）＝客户端确已追平：既不补发也不发 snapshot。
+    it('should skip replay when the live buffer reports nothing missed', async () => {
       mockEventBridgeService.getLastEventId.mockReturnValue(5);
+      mockEventBridgeService.getEventsSince.mockReturnValue([]);
 
       const client = makeSocket();
       await gateway.handleSubscribe(client, {
@@ -220,7 +223,14 @@ describe('AgentConversationGateway', () => {
         lastEventId: 5,
       });
 
-      expect(mockEventBridgeService.getEventsSince).not.toHaveBeenCalled();
+      expect(mockEventBridgeService.getEventsSince).toHaveBeenCalledWith(
+        'conv-1',
+        5,
+      );
+      expect(
+        mockAgentExecutionService.getConversationSnapshotMessages,
+      ).not.toHaveBeenCalled();
+      expect(client.emit).not.toHaveBeenCalled();
     });
 
     it('should allow tenantId in payload matching user tenantId', async () => {
@@ -1475,20 +1485,177 @@ describe('AgentConversationGateway', () => {
       ]);
     });
 
-    it('skips empty replay results when the bridge has no current event id', async () => {
-      mockEventBridgeService.getLastEventId.mockReturnValue(undefined);
-      mockEventBridgeService.getEventsSince.mockReturnValue(undefined);
+    // D-12 回归：缓冲区放不下这段区间（getEventsSince 返回 null）时，
+    // 此前会静默结束，客户端永远补不回断线期间的内容。现在必须回退持久 snapshot。
+    it('falls back to a persisted snapshot when the replay buffer has a gap', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(12);
+      mockEventBridgeService.getEventsSince.mockReturnValue(null);
+      mockAgentExecutionService.getConversationSnapshotMessages.mockResolvedValue(
+        [
+          {
+            messageId: 'msg-1',
+            role: 'assistant',
+            contentType: 'text',
+            content: '断线期间产生的最终正文',
+            segments: [{ type: 'thinking', text: '推理' }],
+            createdAt: '2025-01-01T00:00:00.000Z',
+          },
+        ],
+      );
       const client = makeSocket();
 
       await gateway.handleSubscribe(client, {
         conversationId: 'conv-1',
-        lastEventId: -1,
+        lastEventId: 3,
       });
 
       expect(mockEventBridgeService.getEventsSince).toHaveBeenCalledWith(
         'conv-1',
-        -1,
+        3,
       );
+      expect(
+        mockAgentExecutionService.getConversationSnapshotMessages,
+      ).toHaveBeenCalledWith('tenant-1', 'conv-1');
+      expect(client.emit).toHaveBeenCalledWith(
+        'conversation.state.snapshot',
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          lastEventId: 12,
+          reason: 'replay-buffer-gap',
+          messages: [
+            expect.objectContaining({
+              messageId: 'msg-1',
+              content: '断线期间产生的最终正文',
+            }),
+          ],
+        }),
+      );
+      // 禁止把聚合正文伪装成无 ID 的 message_chunk。
+      expect(client.emit).not.toHaveBeenCalledWith(
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+        expect.anything(),
+      );
+    });
+
+    // D-12 回归：终态 30s 后 clearExecution() 同时删掉 counter 与 buffer，
+    // getLastEventId() 归零。旧游标 5 「大于等于」0，此前被误判为已追平而静默结束。
+    it('emits a snapshot when the bridge has been cleared after the terminal state', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(0);
+      mockEventBridgeService.getEventsSince.mockReturnValue(null);
+      mockAgentExecutionService.getConversationSnapshotMessages.mockResolvedValue(
+        [
+          {
+            messageId: 'msg-final',
+            role: 'assistant',
+            contentType: 'text',
+            content: '离线期间完成的最终回答',
+            segments: null,
+            createdAt: '2025-01-01T00:00:00.000Z',
+          },
+        ],
+      );
+      const client = makeSocket();
+
+      await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 5,
+      });
+
+      expect(client.emit).toHaveBeenCalledWith(
+        'conversation.state.snapshot',
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          // 计数器已归零：snapshot 是新 epoch 的起点，客户端据此重置游标。
+          lastEventId: 0,
+          reason: 'replay-buffer-gap',
+        }),
+      );
+    });
+
+    // 同一 conversation 开启下一轮：新 buffer 从 1 重新计数，旧游标 5 落在它之后。
+    // 只看 buffer 会拿到空数组而误判为已追平——必须先按计数器回退判 gap。
+    it('emits a snapshot when the counter restarted for a new round', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(3);
+      mockEventBridgeService.getEventsSince.mockReturnValue([]);
+      const client = makeSocket();
+
+      await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 5,
+      });
+
+      expect(mockEventBridgeService.getEventsSince).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledWith(
+        'conversation.state.snapshot',
+        expect.objectContaining({ lastEventId: 3 }),
+      );
+    });
+
+    // 零游标重连同样要能恢复：客户端在首个事件到达前断线，
+    // 离线期间执行完成并清缓存，此时不发 snapshot 就永远拿不到内容。
+    it('emits a snapshot for a zero-cursor reconnect after the buffer is gone', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(0);
+      mockEventBridgeService.getEventsSince.mockReturnValue(null);
+      const client = makeSocket();
+
+      await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 0,
+      });
+
+      expect(
+        mockAgentExecutionService.getConversationSnapshotMessages,
+      ).toHaveBeenCalledWith('tenant-1', 'conv-1');
+    });
+
+    // 竞态回归：socket 早已 join room，snapshot 查询期间到达的实时事件会先送达并
+    // 推进客户端游标。snapshot 必须带查询**之后**的游标，否则客户端被回退，
+    // 下次 replay 会把这批 chunk 重复追加一遍。
+    it('stamps the snapshot with the cursor observed after the query resolves', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(0);
+      mockEventBridgeService.getEventsSince.mockReturnValue(null);
+
+      // server 的 tsconfig lib 低于 es2024，拿不到 Promise.withResolvers，
+      // 这里只能用 executor 形式手动挂出 resolve。
+      let resolveQuery!: (messages: unknown[]) => void;
+      const pendingQuery = new Promise<unknown[]>((resolve) => {
+        resolveQuery = resolve;
+      });
+      mockAgentExecutionService.getConversationSnapshotMessages.mockReturnValue(
+        pendingQuery,
+      );
+
+      const client = makeSocket();
+      const subscribed = gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 5,
+      });
+
+      // 查询挂起期间，新一轮事件推进了 bridge 的计数器。
+      mockEventBridgeService.getLastEventId.mockReturnValue(4);
+      resolveQuery([]);
+      await subscribed;
+
+      expect(client.emit).toHaveBeenCalledWith(
+        'conversation.state.snapshot',
+        expect.objectContaining({ lastEventId: 4 }),
+      );
+    });
+
+    it('keeps the subscription alive when the snapshot query fails', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(12);
+      mockEventBridgeService.getEventsSince.mockReturnValue(null);
+      mockAgentExecutionService.getConversationSnapshotMessages.mockRejectedValue(
+        new Error('db unavailable'),
+      );
+      const client = makeSocket();
+
+      const ack = await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 3,
+      });
+
+      expect(ack.status).toBe('subscribed');
       expect(client.emit).not.toHaveBeenCalled();
     });
 
@@ -1529,7 +1696,7 @@ describe('AgentConversationGateway', () => {
       const clientEmit = vi.fn();
       const client = makeSocket({ emit: clientEmit });
 
-      await gateway.handleSubscribe(client, {
+      const ack = await gateway.handleSubscribe(client, {
         conversationId: 'conv-1',
         lastEventId: 0,
       });
@@ -1542,6 +1709,82 @@ describe('AgentConversationGateway', () => {
         ConversationEventName.STATUS_CHANGED,
         ConversationEventName.STATUS_CHANGED,
       ]);
+      // 最后一个可映射事件是 5，但服务端已经到 10：ack 必须带真实进度，
+      // 否则客户端游标卡在 5，之后每次重连都重放 6..10。
+      expect(ack.lastEventId).toBe(10);
+    });
+
+    // 终态 execution 事件在 live 路径上会紧跟一条 AGENT_DONE；replay 必须同序复刻，
+    // 否则客户端补回最后一段 chunk 后不会收尾，消息永久卡在 streaming。
+    it('replays a terminal execution event followed by agent done', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(8);
+      mockEventBridgeService.getEventsSince.mockReturnValue([
+        {
+          eventId: 7,
+          event: ExecutionEventName.OUTPUT_CHUNK,
+          data: { chunk: '最后一段' },
+        },
+        {
+          eventId: 8,
+          event: ExecutionEventName.EXECUTION_STATUS_CHANGED,
+          data: { status: 'completed' },
+        },
+      ]);
+      const clientEmit = vi.fn();
+      const client = makeSocket({ emit: clientEmit });
+
+      const ack = await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 6,
+      });
+
+      expect(clientEmit.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+        ConversationEventName.STATUS_CHANGED,
+        ConversationEventName.AGENT_DONE,
+      ]);
+      expect(ack.lastEventId).toBe(8);
+    });
+
+    // 非终态状态不得凭空补 AGENT_DONE。
+    it('does not append agent done for a non-terminal status replay', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(4);
+      mockEventBridgeService.getEventsSince.mockReturnValue([
+        {
+          eventId: 4,
+          event: ExecutionEventName.EXECUTION_STATUS_CHANGED,
+          data: { status: 'running' },
+        },
+      ]);
+      const clientEmit = vi.fn();
+      const client = makeSocket({ emit: clientEmit });
+
+      await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 3,
+      });
+
+      expect(clientEmit.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        ConversationEventName.STATUS_CHANGED,
+      ]);
+    });
+
+    // snapshot 路径不带 ack 游标：snapshot 事件自己是 epoch 起点；
+    // 查询失败时更不能推进，否则客户端会跳过永远补不回的区间。
+    it('omits the ack cursor on the snapshot path', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(0);
+      mockEventBridgeService.getEventsSince.mockReturnValue(null);
+      mockAgentExecutionService.getConversationSnapshotMessages.mockRejectedValue(
+        new Error('db unavailable'),
+      );
+      const client = makeSocket();
+
+      const ack = await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 5,
+      });
+
+      expect(ack).toEqual({ status: 'subscribed' });
     });
 
     it('drops the oldest event when the backpressure queue reaches its limit', () => {

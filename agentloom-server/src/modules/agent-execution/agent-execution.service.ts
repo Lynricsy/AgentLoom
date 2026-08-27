@@ -1,7 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import type { ConversationSnapshotMessage } from '@agentloom/contracts';
 
 import {
   hasActiveTenantTransaction,
@@ -10,7 +11,10 @@ import {
 } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type { DrizzleDB } from '../../database/database.module';
-import { agentConversations } from '../../database/schema/agent-conversations.schema';
+import {
+  agentConversations,
+  agentMessages,
+} from '../../database/schema/agent-conversations.schema';
 import { AgentConversationService } from '../agent-conversation/agent-conversation.service';
 import type { SendMessageDto } from '../agent-conversation/dto/send-message.dto';
 import { SandboxMaintenanceException } from '../sandbox/sandbox.exceptions';
@@ -328,6 +332,52 @@ export class AgentExecutionService {
     }
 
     return conversation;
+  }
+
+  /**
+   * 读取对话的持久快照，用于重连时 EventBridge 缓存出现缺口的兜底补发。
+   *
+   * 对话侧没有带 wire eventId 的持久事件表，`agent_messages` 只有轮末聚合正文，
+   * 因此缓存缺口时只能整体重放这份持久状态，不能逐事件补发。
+   * 查询强制带 tenantId 条件：ws 订阅只校验 JWT 的 tenant，不能靠 conversationId 兜底。
+   */
+  async getConversationSnapshotMessages(
+    tenantId: string,
+    conversationId: string,
+  ): Promise<ConversationSnapshotMessage[]> {
+    const rows = await runInTenantTransaction(this.db, tenantId, async (tx) =>
+      tx
+        .select({
+          id: agentMessages.id,
+          role: agentMessages.role,
+          contentType: agentMessages.contentType,
+          content: agentMessages.content,
+          toolCalls: agentMessages.toolCalls,
+          metadata: agentMessages.metadata,
+          createdAt: agentMessages.createdAt,
+        })
+        .from(agentMessages)
+        .where(
+          and(
+            eq(agentMessages.conversationId, conversationId),
+            eq(agentMessages.tenantId, tenantId),
+          ),
+        )
+        .orderBy(agentMessages.createdAt),
+    );
+
+    // 原样带上 toolCalls 与 metadata：客户端按历史消息的同一套规则归一化。
+    // snapshot 是按 messageId 整条覆盖的，少带一个字段就等于抹掉界面上对应的部分
+    // （工具卡、附件、thinking 都只存在于这两处）。
+    return rows.map((row) => ({
+      messageId: row.id,
+      role: row.role,
+      contentType: row.contentType,
+      content: row.content,
+      toolCalls: row.toolCalls ?? null,
+      metadata: row.metadata ?? {},
+      createdAt: row.createdAt.toISOString(),
+    }));
   }
 
   private async withTenantContext<T>(

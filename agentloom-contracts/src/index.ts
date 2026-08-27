@@ -3,4 +3,5 @@ export * from './port-compatibility';
 export * from './workflow-graph';
 export * from './agent-events';
 export * from './execution-events';
+export * from './conversation-events';
 export * from './agent-runtime-config';
