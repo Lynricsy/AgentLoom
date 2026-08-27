@@ -3,8 +3,10 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
+import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 import { WorkflowImportService } from '../workflow-import.service';
 import { WorkflowImportSourceResolverService } from '../workflow-import-source-resolver.service';
+import { WorkflowImportValidationException } from '../workflow-version.exceptions';
 
 function selectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
@@ -26,6 +28,55 @@ function insertChain(result: unknown, onWrite: () => void) {
     }),
   };
 }
+
+function createService() {
+  return new WorkflowImportService(
+    {} as never,
+    { findBySlug: vi.fn() } as never,
+    { getShareByToken: vi.fn(), incrementCopyCount: vi.fn() } as never,
+    { recordImportedResources: vi.fn() } as never,
+    new WorkflowImportSourceResolverService(),
+  );
+}
+
+describe('WorkflowImportService import validation', () => {
+  it('DTO 形状错误时应统一返回 422 导入校验异常', async () => {
+    await expect(
+      createService().importWorkflow('tenant-id', 'user-id', {}),
+    ).rejects.toMatchObject({
+      type: 'https://agentloom.dev/errors/workflow-import-validation',
+      status: 422,
+    });
+    await expect(
+      createService().importWorkflow('tenant-id', 'user-id', {}),
+    ).rejects.toBeInstanceOf(WorkflowImportValidationException);
+  });
+
+  it('文件内容校验失败时应返回 422 而不是 400', async () => {
+    await expect(
+      createService().importWorkflow('tenant-id', 'user-id', {
+        name: '坏文件',
+        file_content: {
+          schema_version: WORKFLOW_EXPORT_VERSION,
+          exported_at: '2026-08-27T00:00:00.000Z',
+          workflow: {
+            name: '坏文件',
+            description: null,
+            definition: {
+              nodes: [{ type: 'agent', position: { x: 0, y: 0 }, data: {} }],
+              edges: [],
+              viewport: { x: 0, y: 0, zoom: 1 },
+            },
+            input_schema: null,
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      type: 'https://agentloom.dev/errors/workflow-import-validation',
+      status: 422,
+    });
+  });
+});
 
 describe('WorkflowImportService transaction boundary', () => {
   it('依赖克隆失败回滚时，源 Agent 读取与克隆写入均不逃逸事务', async () => {

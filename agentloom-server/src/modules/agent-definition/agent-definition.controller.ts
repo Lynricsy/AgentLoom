@@ -190,6 +190,29 @@ export class AgentDefinitionController {
     );
   }
 
+  @Post(':id/versions/:versionId/rollback')
+  @Roles('owner', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '将 Agent 编辑草稿恢复到指定版本' })
+  @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
+  @ApiParam({ name: 'versionId', description: 'Agent 版本 ID' })
+  @ApiResponse({ status: 200, description: '草稿恢复成功' })
+  @ApiResponse({ status: 404, description: 'Agent 或版本不存在' })
+  @ApiResponse({ status: 409, description: 'Agent 已归档' })
+  async rollback(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    // 回滚只恢复编辑草稿，独立路由可避免误用 publish 改变线上版本指针。
+    const data = await this.agentDefinitionService.rollback(
+      id,
+      versionId,
+      userId,
+    );
+    return { data };
+  }
+
   @Post(':id/publish')
   @Roles('owner', 'admin')
   @ApiOperation({ summary: '发布 Agent 定义' })

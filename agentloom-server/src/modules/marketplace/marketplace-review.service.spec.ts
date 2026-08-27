@@ -195,7 +195,7 @@ describe('MarketplaceReviewService', () => {
     expect(result.reviewedAt).toBe(NOW.toISOString());
     expect(result.recentSuccessfulExecutionId).toBe(EXECUTION_ID);
     expect(result.recentSuccessfulExecutionAt).toBe(NOW.toISOString());
-    expect(result.checks).toHaveLength(8);
+    expect(result.checks).toHaveLength(9);
     expect(result.checks.every((check) => check.status === 'passed')).toBe(
       true,
     );
@@ -338,6 +338,43 @@ describe('MarketplaceReviewService', () => {
       'passed',
     );
   });
+  it('遗留 llm-agent 节点应返回独立迁移检查码', async () => {
+    db.select
+      .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            snapshot: createWorkflowSnapshot({
+              nodes: [
+                createNode({
+                  id: 'legacy-agent',
+                  type: 'custom',
+                  data: { node_type: 'llm-agent' },
+                }),
+              ],
+            }),
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
+
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
+
+    expect(
+      getCheck(result, 'WORKFLOW_LEGACY_LLM_AGENT_DETECTED'),
+    ).toMatchObject({
+      status: 'failed',
+      fixHint:
+        '检测到已废弃的 llm-agent 内联 Agent 节点；请将其迁移为 agent 节点、绑定已发布 Agent Definition 后重新发布工作流',
+    });
+  });
+
 
   it('Agent 节点未绑定已发布 Agent Definition 时应返回关键配置失败', async () => {
     db.select

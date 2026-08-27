@@ -6,6 +6,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 import { WorkflowDefinitionCreateController } from '../workflow-definition-create.controller';
 import type { WorkflowVersionService } from '../workflow-version.service';
@@ -54,6 +55,7 @@ function setup() {
     findDefinitionDetailById: vi.fn(),
     updateDefinition: vi.fn(),
     archive: vi.fn(),
+    importWorkflow: vi.fn(),
   };
   const controller = new WorkflowDefinitionCreateController(
     service as unknown as WorkflowVersionService,
@@ -267,6 +269,13 @@ describe('WorkflowDefinitionCreateController', () => {
           }),
         }),
       );
+    });
+
+    it('/import/validate 应保持 200 预校验报告语义', () => {
+      const handler = Object.getPrototypeOf(setup().controller)
+        .validateImport as object;
+
+      expect(Reflect.getMetadata(HTTP_CODE_METADATA, handler)).toBe(200);
     });
   });
 

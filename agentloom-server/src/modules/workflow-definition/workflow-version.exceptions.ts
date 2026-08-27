@@ -1,5 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import type { FieldError } from '../../common/types/problem-details.type';
+import { LEGACY_LLM_AGENT_MIGRATION_DETAIL } from './utils/legacy-llm-agent-node.utils';
 
 interface WorkflowPublishAutonomyViolation {
   nodeId: string;
@@ -39,6 +41,32 @@ export class WorkflowPublishValidationException extends DomainException {
         field: 'workflow',
         message,
       })),
+    });
+  }
+}
+
+export class WorkflowPublishLegacyLlmAgentException extends DomainException {
+  constructor(nodeIds: string[]) {
+    // 专用错误让旧画布获得可执行的迁移指引，而不是被归一化后误报为普通绑定缺失。
+    super({
+      type: 'https://agentloom.dev/errors/workflow-publish-legacy-llm-agent',
+      title: '工作流包含已废弃的 llm-agent 节点',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: LEGACY_LLM_AGENT_MIGRATION_DETAIL,
+      extensions: { nodeIds },
+    });
+  }
+}
+
+export class WorkflowImportValidationException extends DomainException {
+  constructor(errors: FieldError[]) {
+    // 文件内容与请求 DTO 都属于同一导入校验边界，统一 422 可避免客户端误判为路由请求错误。
+    super({
+      type: 'https://agentloom.dev/errors/workflow-import-validation',
+      title: '工作流导入校验失败',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: '导入的工作流文件无效，请修正后重试',
+      errors,
     });
   }
 }

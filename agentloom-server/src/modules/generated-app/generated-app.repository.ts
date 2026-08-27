@@ -17,6 +17,7 @@ import {
 } from '@agentloom/plugin-sdk';
 import JSZip from 'jszip';
 
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -54,6 +55,8 @@ import {
   type CreateGeneratedAppRepairAttemptDtoType,
   type CreateGeneratedAppSubmissionDtoType,
   type CreateGeneratedAppDtoType,
+  UpdateGeneratedAppSchema,
+  type UpdateGeneratedAppDtoType,
   type DeleteGeneratedAppSubmissionsResponseDto,
   type DeleteGeneratedAppSubmissionsDtoType,
   type GeneratedAppArtifactContentResponseDto,
@@ -328,6 +331,76 @@ export class GeneratedAppRepository {
     const app = await this.findGeneratedAppRecord(tenantId, appId);
     return this.toResponseDto(app);
   }
+  // 展示信息更新保持租户条件，避免同 ID 猜测导致跨租户改写。
+  async update(
+    tenantId: string,
+    userId: string,
+    appId: string,
+    dto: UpdateGeneratedAppDtoType,
+  ): Promise<GeneratedAppResponseDto> {
+    const parsed = UpdateGeneratedAppSchema.parse(dto);
+    const [updated] = await this.tenantDb
+      .update(schema.generatedApps)
+      .set({
+        ...parsed,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedApps.id, appId),
+          eq(schema.generatedApps.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppNotFoundException(appId);
+    }
+
+    return this.toResponseDto(updated);
+  }
+
+  // 先在同一租户事务内撤销公开 token，再删除父记录，避免删除流程留下仍可读取的公开入口。
+  async delete(tenantId: string, appId: string): Promise<void> {
+    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
+      const now = new Date();
+      const [disabled] = await tenantDb
+        .update(schema.generatedApps)
+        .set({
+          publicShareEnabled: false,
+          publicShareToken: null,
+          publicShareDisabledAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.generatedApps.id, appId),
+            eq(schema.generatedApps.tenantId, tenantId),
+          ),
+        )
+        .returning({ id: schema.generatedApps.id });
+
+      if (!disabled) {
+        throw new GeneratedAppNotFoundException(appId);
+      }
+
+      const [deleted] = await tenantDb
+        .delete(schema.generatedApps)
+        .where(
+          and(
+            eq(schema.generatedApps.id, appId),
+            eq(schema.generatedApps.tenantId, tenantId),
+          ),
+        )
+        .returning({ id: schema.generatedApps.id });
+
+      if (!deleted) {
+        throw new GeneratedAppNotFoundException(appId);
+      }
+    });
+  }
+
 
 
   async recordGateResults(
@@ -517,6 +590,16 @@ export class GeneratedAppRepository {
 
     return this.toGenerationRunResponseDto(updated);
   }
+  // 详情读取同时绑定租户、应用和运行 ID，任一父级错配都按不存在处理。
+  async findGenerationRun(
+    tenantId: string,
+    appId: string,
+    runId: string,
+  ): Promise<GeneratedAppGenerationRunResponseDto> {
+    const run = await this.findGenerationRunRecord(tenantId, appId, runId);
+    return this.toGenerationRunResponseDto(run);
+  }
+
 
 
   async listRepairAttempts(
@@ -696,6 +779,46 @@ export class GeneratedAppRepository {
 
     return this.toRepairAttemptResponseDto(updated);
   }
+  // 修复尝试详情必须沿完整父链过滤，避免仅凭记录 ID 穿透到其他运行或租户。
+  async findRepairAttempt(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    repairAttemptId: string,
+  ): Promise<GeneratedAppRepairAttemptResponseDto> {
+    const attempt = await this.findRepairAttemptForRunRecord(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+    );
+    return this.toRepairAttemptResponseDto(attempt);
+  }
+
+  // 删除同样锁定完整父链，确保错配的 tenant/app/run/record 组合统一返回 404。
+  async deleteRepairAttempt(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    repairAttemptId: string,
+  ): Promise<void> {
+    const [deleted] = await this.tenantDb
+      .delete(schema.generatedAppRepairAttempts)
+      .where(
+        and(
+          eq(schema.generatedAppRepairAttempts.id, repairAttemptId),
+          eq(schema.generatedAppRepairAttempts.tenantId, tenantId),
+          eq(schema.generatedAppRepairAttempts.generatedAppId, appId),
+          eq(schema.generatedAppRepairAttempts.generationRunId, runId),
+        ),
+      )
+      .returning({ id: schema.generatedAppRepairAttempts.id });
+
+    if (!deleted) {
+      throw new GeneratedAppRepairAttemptNotFoundException(repairAttemptId);
+    }
+  }
+
 
 
   async listGateRuns(
@@ -1141,6 +1264,33 @@ export class GeneratedAppRepository {
 
     return attempt;
   }
+  // 路由详情需要 runId 作为父级边界，不能复用只按 appId 过滤的内部关联检查。
+  private async findRepairAttemptForRunRecord(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    repairAttemptId: string,
+  ): Promise<GeneratedAppRepairAttempt> {
+    const [attempt] = await this.tenantDb
+      .select()
+      .from(schema.generatedAppRepairAttempts)
+      .where(
+        and(
+          eq(schema.generatedAppRepairAttempts.id, repairAttemptId),
+          eq(schema.generatedAppRepairAttempts.tenantId, tenantId),
+          eq(schema.generatedAppRepairAttempts.generatedAppId, appId),
+          eq(schema.generatedAppRepairAttempts.generationRunId, runId),
+        ),
+      )
+      .limit(1);
+
+    if (!attempt) {
+      throw new GeneratedAppRepairAttemptNotFoundException(repairAttemptId);
+    }
+
+    return attempt;
+  }
+
 
 
   public async findPublicGeneratedAppRecord(

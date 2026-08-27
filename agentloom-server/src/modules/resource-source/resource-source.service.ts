@@ -12,12 +12,19 @@ import {
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
+  agentDefinitions,
+  agentMemoryInstances,
+  knowledgeBases,
+  mcpServerConfigs,
   resourceSourceRecords,
+  skills,
+  workflowDefinitions,
   type NewResourceSourceRecord,
   type ResourceSourceKind,
   type ResourceSourceResourceType,
   type ResourceSourceShareType,
 } from '../../database/schema';
+import { ResourceSourceNotFoundException } from './resource-source.exceptions';
 
 export interface ImportedResourceSourceRecordInput {
   resourceType: ResourceSourceResourceType;
@@ -29,6 +36,16 @@ export interface ImportedResourceSourceRecordInput {
   sourceResourceId?: string | null;
   sourceResourceTitle?: string | null;
 }
+
+// 来源类型必须映射到真实业务表，不能仅凭可缺失的来源记录判断资源是否存在。
+const RESOURCE_TABLES = {
+  workflow_definition: workflowDefinitions,
+  agent_definition: agentDefinitions,
+  knowledge_base: knowledgeBases,
+  memory_instance: agentMemoryInstances,
+  mcp_server_config: mcpServerConfigs,
+  skill: skills,
+} satisfies Record<ResourceSourceResourceType, unknown>;
 
 @Injectable()
 export class ResourceSourceService {
@@ -144,6 +161,44 @@ export class ResourceSourceService {
     resourceId: string;
     currentKind: ResourceSourceKind;
   }> {
+    const resourceTable = RESOURCE_TABLES[resourceType];
+    const [resource] = await this.tenantDb
+      .select({ id: resourceTable.id })
+      .from(resourceTable)
+      .where(
+        and(
+          eq(resourceTable.tenantId, tenantId),
+          eq(resourceTable.id, resourceId),
+        ),
+      )
+      .limit(1);
+
+    // 显式同时校验 tenantId 与资源 id，避免不存在或跨租户资源被伪装成成功。
+    if (!resource) {
+      throw new ResourceSourceNotFoundException(resourceType, resourceId);
+    }
+
+    const [sourceRecord] = await this.tenantDb
+      .select({ currentKind: resourceSourceRecords.currentKind })
+      .from(resourceSourceRecords)
+      .where(
+        and(
+          eq(resourceSourceRecords.tenantId, tenantId),
+          eq(resourceSourceRecords.resourceType, resourceType),
+          eq(resourceSourceRecords.resourceId, resourceId),
+        ),
+      )
+      .limit(1);
+
+    // 系统以“无来源记录即手工创建”为约定，已有 manual 记录也无需产生无意义写入。
+    if (!sourceRecord || sourceRecord.currentKind === 'manual') {
+      return {
+        resourceId,
+        resourceType,
+        currentKind: 'manual',
+      };
+    }
+
     const [updated] = await this.tenantDb
       .update(resourceSourceRecords)
       .set({
@@ -155,6 +210,7 @@ export class ResourceSourceService {
           eq(resourceSourceRecords.tenantId, tenantId),
           eq(resourceSourceRecords.resourceType, resourceType),
           eq(resourceSourceRecords.resourceId, resourceId),
+          eq(resourceSourceRecords.currentKind, 'share_imported'),
         ),
       )
       .returning({
@@ -163,12 +219,11 @@ export class ResourceSourceService {
         currentKind: resourceSourceRecords.currentKind,
       });
 
-    return (
-      updated ?? {
-        resourceId,
-        resourceType,
-        currentKind: 'manual',
-      }
-    );
+    // 更新阶段记录若消失或已不再可转换，必须 fail-closed，不能恢复旧的伪造 fallback。
+    if (!updated) {
+      throw new ResourceSourceNotFoundException(resourceType, resourceId);
+    }
+
+    return updated;
   }
 }

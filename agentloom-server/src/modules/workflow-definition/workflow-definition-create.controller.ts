@@ -17,17 +17,12 @@ import { type z } from 'zod';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
 import {
   CaptureAuditLog,
   auditLogCaptureConfigs,
 } from '../evidence/audit-log.capture';
 import { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
-import {
-  ImportWorkflowSchema,
-  type ImportWorkflowDto,
-} from './dto/workflow-import.dto';
 import { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import { UpdateWorkflowDefinitionDto } from './dto/update-workflow-definition.dto';
 import type { WorkflowExportDto } from './dto/workflow-export.dto';
@@ -134,8 +129,10 @@ export class WorkflowDefinitionCreateController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '导入工作流定义' })
   @ApiResponse({ status: 201, description: '工作流定义导入成功' })
+  @ApiResponse({ status: 422, description: '导入工作流文件校验失败' })
   async importWorkflow(
-    @Body(new ZodValidationPipe(ImportWorkflowSchema)) dto: ImportWorkflowDto,
+    // 保留原始请求体给 service 统一映射 422，避免 Zod pipe 抢先返回 400。
+    @Body() dto: unknown,
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ): Promise<{ id: string; name: string; slug: string }> {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
 
 import { AgentDefinitionService } from './agent-definition.service';
 import type {
@@ -134,6 +135,17 @@ vi.mock('../../database/schema', () => ({
     id: 'mcpServerConfigId',
     name: 'mcpServerConfigName',
     transportType: 'mcpServerConfigTransportType',
+  },
+  workflowDefinitions: { id: 'workflowDefinitionId', tenantId: 'tenantId' },
+  knowledgeBases: { id: 'knowledgeBaseId', tenantId: 'tenantId' },
+  agentMemoryInstances: { id: 'memoryInstanceId', tenantId: 'tenantId' },
+  skills: { id: 'skillId', tenantId: 'tenantId' },
+  resourceSourceRecords: {
+    id: 'resourceSourceRecordId',
+    tenantId: 'tenantId',
+    resourceType: 'resourceType',
+    resourceId: 'resourceId',
+    currentKind: 'currentKind',
   },
 }));
 
@@ -3088,6 +3100,123 @@ describe('AgentDefinitionService', () => {
 
       expect(capturedValues).toBeDefined();
       expect(capturedValues!.label).toBe(`v1 - ${'A'.repeat(50)}`);
+    });
+  });
+
+  // ─── rollback ─────────────────────────────────────────────
+  describe('rollback', () => {
+    const mockSelectResults = (...results: unknown[][]) => {
+      let selectCall = 0;
+      mockTxClient.select.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi
+          .fn()
+          .mockImplementation(() => Promise.resolve(results[selectCall++]));
+        return chain;
+      });
+    };
+
+    it('应从目标版本恢复全部草稿字段并递增版本且不修改已发布指针', async () => {
+      const agent = makeAgent({
+        version: 7,
+        status: 'published',
+        publishedVersionId: 'published-version',
+      });
+      const snapshot: Record<string, any> = {
+        runtimeMode: 'sandbox',
+        nodes: [{ id: 'snapshot-node', type: 'text', data: {} }],
+        edges: [
+          {
+            id: 'snapshot-edge',
+            source: 'snapshot-node',
+            target: 'snapshot-node',
+          },
+        ],
+        viewport: { x: 12, y: 34, zoom: 0.8 },
+        systemPrompt: 'snapshot prompt',
+        sandboxConfig: { timeoutSeconds: 3600 },
+        workspaceSnapshotId: 'workspace-snapshot',
+        metadata: { nodeCount: 1, edgeCount: 1, createdFromVersion: 2 },
+      };
+      const targetVersion = makeVersion({
+        id: 'version-target',
+        versionNumber: 3,
+        snapshot,
+      });
+      mockSelectResults([agent], [targetVersion]);
+
+      let capturedSet: Record<string, any> | undefined;
+      mockTxClient.update.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn().mockImplementation((values: Record<string, any>) => {
+          capturedSet = values;
+          return chain;
+        });
+        chain.where = vi.fn().mockResolvedValue(undefined);
+        return chain;
+      });
+
+      const result = await service.rollback(
+        'agent-1',
+        'version-target',
+        'user-rollback',
+      );
+
+      expect(result.id).toBe('version-target');
+      expect(capturedSet).toMatchObject({
+        nodes: snapshot.nodes,
+        edges: snapshot.edges,
+        viewport: snapshot.viewport,
+        runtimeMode: snapshot.runtimeMode,
+        systemPrompt: snapshot.systemPrompt,
+        sandboxConfig: snapshot.sandboxConfig,
+        workspaceSnapshotId: snapshot.workspaceSnapshotId,
+        updatedBy: 'user-rollback',
+      });
+      expect(capturedSet).not.toHaveProperty('publishedVersionId');
+      expect(capturedSet).not.toHaveProperty('status');
+      expect(capturedSet?.version?.[1]).toBe('version');
+      expect(capturedSet?.version?.[0]?.join('')).toContain('+ 1');
+      expect(mockTxClient.execute).toHaveBeenCalledOnce();
+    });
+
+    it('跨租户 Agent 不可见时应返回 AgentNotFoundException', async () => {
+      mockSelectResults([]);
+
+      await expect(
+        service.rollback('other-tenant-agent', 'version-1', 'user-1'),
+      ).rejects.toBeInstanceOf(AgentNotFoundException);
+      expect(mockTxClient.update).not.toHaveBeenCalled();
+    });
+
+    it('不存在版本时应返回 AgentVersionNotFoundException', async () => {
+      mockSelectResults([makeAgent()], []);
+
+      await expect(
+        service.rollback('agent-1', 'missing-version', 'user-1'),
+      ).rejects.toBeInstanceOf(AgentVersionNotFoundException);
+      expect(mockTxClient.update).not.toHaveBeenCalled();
+    });
+
+    it('版本不属于路径 Agent 时应返回 AgentVersionNotFoundException', async () => {
+      mockSelectResults([makeAgent()], []);
+
+      await expect(
+        service.rollback('agent-1', 'other-agent-version', 'user-1'),
+      ).rejects.toBeInstanceOf(AgentVersionNotFoundException);
+      expect(eq).toHaveBeenCalledWith('agentDefinitionId', 'agent-1');
+      expect(mockTxClient.update).not.toHaveBeenCalled();
+    });
+
+    it('跨租户版本不可见时应按 tenantId 过滤并返回 AgentVersionNotFoundException', async () => {
+      mockSelectResults([makeAgent({ tenantId: 'tenant-1' })], []);
+
+      await expect(
+        service.rollback('agent-1', 'other-tenant-version', 'user-1'),
+      ).rejects.toBeInstanceOf(AgentVersionNotFoundException);
+      expect(eq).toHaveBeenCalledWith('tenantId', 'tenant-1');
+      expect(mockTxClient.update).not.toHaveBeenCalled();
     });
   });
 
