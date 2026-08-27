@@ -667,32 +667,48 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       );
     });
 
-    // 只有持久状态成功后才广播和入队，避免消费者处理不存在的 waiting checkpoint。
-    this.eventBridge.emitInterventionRequired(
-      params.tenantId,
-      params.executionId,
-      {
-        stepId: params.step.id,
-        nodeId: params.step.nodeId,
-        nodeName,
-        executionType: params.executionType ?? 'workflow',
-        ...(params.decision
-          ? {
-              decision:
-                params.decision as InterventionRequiredPayload['decision'],
-            }
-          : {}),
-        ...(params.partialContent
-          ? { partialContent: params.partialContent }
-          : {}),
-        requestedAt,
-      },
-    );
-    await this.enqueueInterventionTimeout(
-      params.executionId,
-      params.step.id,
-      params.tenantId,
-    );
+    // 分界线：事务已提交，步骤此刻已经是 waiting_intervention。
+    // 之后的副作用（广播 + 超时兜底入队）失败只做降级，绝不向上抛：
+    // 一旦抛出，调用方的 catch 会把已处于 waiting_intervention 的步骤再写成
+    // failed（非法转换），原始错误被掩盖成「步骤状态转换非法」，整个 execution
+    // 也被误判为失败，用户反而彻底无法处置这次干预。
+    // 相比之下，丢掉自动超时兜底只是降级为「仅人工处置」，严格优于打死执行。
+    // 注意：事务本身失败必须继续向上抛——那时步骤仍是 running，
+    // 调用方写 failed 是合法且正确的。
+    try {
+      this.eventBridge.emitInterventionRequired(
+        params.tenantId,
+        params.executionId,
+        {
+          stepId: params.step.id,
+          nodeId: params.step.nodeId,
+          nodeName,
+          executionType: params.executionType ?? 'workflow',
+          ...(params.decision
+            ? {
+                decision:
+                  params.decision as InterventionRequiredPayload['decision'],
+              }
+            : {}),
+          ...(params.partialContent
+            ? { partialContent: params.partialContent }
+            : {}),
+          requestedAt,
+        },
+      );
+      await this.enqueueInterventionTimeout(
+        params.executionId,
+        params.step.id,
+        params.tenantId,
+      );
+    } catch (error) {
+      this.logger.error(
+        `步骤 ${params.step.id} 已暂停并落库为 waiting_intervention，但提交后的副作用失败：` +
+          `自动超时兜底可能缺失，该干预需人工处置。原因：${
+            error instanceof Error ? error.message : String(error)
+          }`,
+      );
+    }
   }
 
   async resolveIntervention(

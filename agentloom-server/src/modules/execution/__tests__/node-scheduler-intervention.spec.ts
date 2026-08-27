@@ -396,6 +396,90 @@ describe('intervention migrated scenarios', () => {
         TENANT_ID,
       );
     });
+
+    it('状态已提交后 queue.add 抛错时应降级：不抛出、不回滚 waiting_intervention', async () => {
+      const step = makeStep({
+        id: 'step-pause-degrade',
+        nodeId: 'node-pause-degrade',
+        nodeData: { label: '人工复核' },
+      });
+      // 真实缺陷形态：事务已提交为 waiting_intervention，随后超时任务入队失败。
+      // 若此处向上抛，调用方 catch 会写 waiting_intervention → failed（非法转换），
+      // 且 ExecutionWorker.onFailed 会无条件 markFailed，把整个 execution 打死。
+      const enqueueTimeout = vi
+        .spyOn(service, 'enqueueInterventionTimeout')
+        .mockRejectedValue(new Error('custom jobId is not allowed to contain :'));
+
+      await expect(
+        service.pauseForIntervention({
+          executionId: EXECUTION_ID,
+          tenantId: TENANT_ID,
+          step,
+          sessionId: 'session-pause-degrade',
+          partialContent: '待确认内容',
+          executionType: 'workflow',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(enqueueTimeout).toHaveBeenCalled();
+      // 步骤只被写过一次 waiting_intervention，绝不能再出现第二次状态写入。
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledTimes(1);
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        step.id,
+        'waiting_intervention',
+        expect.anything(),
+      );
+    });
+
+    it('广播抛错同样降级，不影响已提交的暂停状态', async () => {
+      const step = makeStep({ id: 'step-pause-emit', nodeId: 'node-pause-emit' });
+      mockEventBridge.emitInterventionRequired.mockImplementationOnce(() => {
+        throw new Error('event bridge down');
+      });
+      const enqueueTimeout = vi
+        .spyOn(service, 'enqueueInterventionTimeout')
+        .mockResolvedValue(undefined);
+
+      await expect(
+        service.pauseForIntervention({
+          executionId: EXECUTION_ID,
+          tenantId: TENANT_ID,
+          step,
+          sessionId: 'session-pause-emit',
+          partialContent: '待确认内容',
+          executionType: 'workflow',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledTimes(1);
+      // 广播失败发生在入队之前，入队因此被跳过——这正是「降级」的可观察边界。
+      expect(enqueueTimeout).not.toHaveBeenCalled();
+    });
+
+    it('事务本身失败必须继续上抛：此时步骤仍是 running，调用方写 failed 是合法的', async () => {
+      const step = makeStep({ id: 'step-pause-tx', nodeId: 'node-pause-tx' });
+      mockStateMachine.updateStepStatus.mockRejectedValueOnce(
+        new Error('db connection lost'),
+      );
+      const enqueueTimeout = vi
+        .spyOn(service, 'enqueueInterventionTimeout')
+        .mockResolvedValue(undefined);
+
+      await expect(
+        service.pauseForIntervention({
+          executionId: EXECUTION_ID,
+          tenantId: TENANT_ID,
+          step,
+          sessionId: 'session-pause-tx',
+          partialContent: '待确认内容',
+          executionType: 'workflow',
+        }),
+      ).rejects.toThrow('db connection lost');
+
+      expect(mockEventBridge.emitInterventionRequired).not.toHaveBeenCalled();
+      expect(enqueueTimeout).not.toHaveBeenCalled();
+    });
   });
 
   describe('resolveIntervention', () => {
