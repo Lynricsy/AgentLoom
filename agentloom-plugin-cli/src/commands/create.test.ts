@@ -184,6 +184,16 @@ describe('createPluginProject', () => {
       'pub fn execute(input: String) -> FnResult<String>',
     );
     expect(rustSource).toContain('json!({ "result":');
+    // 精确锁死 .into()：漏掉它会让模板以 E0308 编译失败，
+    // 而这个失败只有在真跑 cargo 时才暴露，单测必须替它把关。
+    expect(rustSource).toContain(
+      'Err(Error::msg(format!("不支持的 nodeType: {node_type}")).into()),',
+    );
+    // README 必须给 cargo 口径；wasm-pack 与 Extism raw cdylib 不兼容。
+    expect(readme).toContain(
+      'cargo build --target wasm32-unknown-unknown --release',
+    );
+    expect(readme).not.toContain('wasm-pack');
     expect(readme).toContain('agentloom-plugin build --wasm');
     expect(readme).toContain('agentloom-plugin publish -k <key>');
     expect(readme).toContain('Studio');

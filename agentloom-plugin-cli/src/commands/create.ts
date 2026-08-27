@@ -255,11 +255,13 @@ function createWasmReadme(options: CreatePluginOptions): string {
 ## 构建与发布
 
 1. 安装 Rust 的 WASM 目标：\`rustup target add wasm32-unknown-unknown\`。
-2. 构建 Rust：\`cargo build --target wasm32-unknown-unknown --release\`。
-3. 将 \`target/wasm32-unknown-unknown/release/${crateName}.wasm\` 复制到清单的 \`wasmEntry\` 路径 \`dist/plugin.wasm\`。也可以安装 \`wasm-pack\`，由下一步自动构建并复制产物。
-4. 生成可签名归档：\`agentloom-plugin build --wasm\`。
-5. 显式指定私钥签名：\`agentloom-plugin publish -k <key>\`。
-6. 在 AgentLoom Studio 的插件管理页上传签名后的 \`.alp\` 完成注册。
+2. 生成可签名归档：\`agentloom-plugin build --wasm\`。该命令会执行
+   \`cargo build --target wasm32-unknown-unknown --release\`，并把
+   \`target/wasm32-unknown-unknown/release/${crateName}.wasm\` 复制到清单的
+   \`wasmEntry\` 路径 \`dist/plugin.wasm\`。若 \`dist/plugin.wasm\` 已存在则跳过构建。
+3. 手工构建时可自行执行上述 cargo 命令并复制产物，效果等价。
+4. 显式指定私钥签名：\`agentloom-plugin publish -k <key>\`。
+5. 在 AgentLoom Studio 的插件管理页上传签名后的 \`.alp\` 完成注册。
 
 \`.alp\` 包含 \`manifest.json\`、\`node-definitions.json\` 和 \`manifest.wasmEntry\` 指向的 WASM 产物。
 `;
