@@ -52,6 +52,7 @@ import {
   EVIDENCE_EXPORT_QUEUE,
 } from '../src/modules/evidence/evidence-export.constants';
 import { EvidenceExportService } from '../src/modules/evidence/evidence-export.service';
+import { EvidenceService } from '../src/modules/evidence/evidence.service';
 import type { OrganizationRole, RlsTestContext } from './rls/rls-test-utils';
 import {
   createRlsTestContext,
@@ -538,6 +539,138 @@ describe('EvidenceExport E2E', () => {
 
     return row ?? null;
   }
+  /**
+   * 针对真实 Postgres 执行证据溯源链的递归 CTE。
+   * 这个用例不能用 mock db 写：缺陷是 chain CTE 没有投影出外层 SELECT 引用的
+   * is_encrypted / encryption_metadata，只有真库才会报 column does not exist。
+   * 该 SQL 同时被证据导出 worker 复用，因此它一挂，导出任务必然 failed。
+   */
+  async function seedEvidenceChain(options: {
+    tenantId: string;
+    executionId: string;
+  }) {
+    const stepId = crypto.randomUUID();
+    const rootEvidenceId = crypto.randomUUID();
+    const childEvidenceId = crypto.randomUUID();
+
+    await ctx.adminSql`
+      INSERT INTO execution_steps (
+        id, execution_id, node_id, step_order, status, started_at, completed_at
+      )
+      VALUES (
+        ${stepId}::uuid,
+        ${options.executionId}::uuid,
+        'node-start',
+        1,
+        'completed'::step_status_enum,
+        NOW() - INTERVAL '4 minutes',
+        NOW() - INTERVAL '3 minutes'
+      )
+    `;
+
+    for (const record of [
+      { id: rootEvidenceId, parent: null, encrypted: false },
+      { id: childEvidenceId, parent: rootEvidenceId, encrypted: true },
+    ]) {
+      const contentHash = crypto.randomBytes(32).toString('hex');
+      // 落库的 packet 必须满足 EvidencePacketSchema（含 evidenceId/contentHash/timestamp
+      // 这组存储态元数据），否则 projectEvidenceRecord 会先抛包体非法，
+      // 测不到我们真正要守护的 CTE 列投影。
+      const packet = record.encrypted
+        ? {
+            sourceType: 'tool_output',
+            encryptedPacket: {
+              ciphertext: 'Y2lwaGVy',
+              encryptedSessionKey: 'a2V5',
+              iv: 'aXY=',
+              authTag: 'dGFn',
+              aad: 'YWFk',
+              keyFingerprint: 'fp-chain-probe',
+              algorithm: 'aes-256-gcm',
+            },
+            summary: { title: 'chain-probe encrypted' },
+            evidenceId: record.id,
+            contentHash,
+            timestamp: new Date().toISOString(),
+          }
+        : {
+            sourceType: 'tool_output',
+            toolOutput: {
+              toolName: 'chain-probe',
+              toolInput: { q: 'ping' },
+              toolOutput: { ok: true },
+            },
+            evidenceId: record.id,
+            contentHash,
+            timestamp: new Date().toISOString(),
+          };
+
+      await ctx.adminSql`
+        INSERT INTO evidence_records (
+          id, execution_id, step_id, tenant_id, source_type,
+          packet, content_hash, parent_evidence_id, is_encrypted, encryption_metadata
+        )
+        VALUES (
+          ${record.id}::uuid,
+          ${options.executionId}::uuid,
+          ${stepId}::uuid,
+          ${options.tenantId}::uuid,
+          'tool_output'::evidence_source_type,
+          ${ctx.adminSql.json(toJsonValue(packet))},
+          ${contentHash},
+          ${record.parent === null ? null : record.parent}::uuid,
+          ${record.encrypted},
+          ${
+            record.encrypted
+              ? ctx.adminSql.json(
+                  toJsonValue({
+                    algorithm: 'aes-256-gcm',
+                    keyFingerprint: 'fp-chain-probe',
+                  }),
+                )
+              : null
+          }
+        )
+      `;
+    }
+
+    return { stepId, rootEvidenceId, childEvidenceId };
+  }
+
+  it('证据溯源链应能在真实 Postgres 上返回加密字段，而不是 CTE 列缺失 500', async () => {
+    const owner = await seedTenant('owner-chain', 'owner');
+    const execution = await seedWorkflowExecution({
+      tenantId: owner.tenantId,
+      createdBy: owner.user.id,
+    });
+    const chain = await seedEvidenceChain({
+      tenantId: owner.tenantId,
+      executionId: execution.executionId,
+    });
+
+    // 本 e2e 只挂了 EvidenceExportController，因此直接构造 EvidenceService
+    // 打真库跑那条递归 CTE —— 缺陷就在 SQL 本身，HTTP 层不是必要条件。
+    const evidenceService = new EvidenceService(
+      ctx.db,
+      {
+        get: async () => null,
+        set: async () => undefined,
+        delByPattern: async () => undefined,
+      } as unknown as ConstructorParameters<typeof EvidenceService>[1],
+      {
+        isE2EEEnabled: async () => false,
+      } as unknown as ConstructorParameters<typeof EvidenceService>[2],
+    );
+
+    const result = await evidenceService.verifyChainIntegrity(
+      owner.tenantId,
+      execution.executionId,
+    );
+
+    const serialized = JSON.stringify(result);
+    expect(serialized).toContain(chain.rootEvidenceId);
+    expect(serialized).toContain(chain.childEvidenceId);
+  });
 
   it('owner can create an evidence export and queue it', async () => {
     const owner = await seedTenant('owner-create', 'owner');

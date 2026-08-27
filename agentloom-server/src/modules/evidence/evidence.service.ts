@@ -1353,6 +1353,10 @@ export class EvidenceService {
             AND child.tenant_id = er.tenant_id
         )`;
 
+    // 注意：chain CTE 的两个分支必须投影出外层 SELECT 用到的**全部**列。
+    // is_encrypted / encryption_metadata 曾只出现在外层 SELECT 与 GROUP BY 里，
+    // 而 CTE 没有带出来，导致 Postgres 直接报 column does not exist——
+    // 证据溯源链端点与证据导出 worker 因此双双 500。
     const result = await tenantDb.execute(sql`
       WITH RECURSIVE chain AS (
         SELECT er.id,
@@ -1362,6 +1366,8 @@ export class EvidenceService {
                er.source_type,
                er.packet,
                er.content_hash,
+               er.is_encrypted,
+               er.encryption_metadata,
                er.parent_evidence_id,
                er.created_at,
                0 AS depth,
@@ -1381,6 +1387,8 @@ export class EvidenceService {
                parent.source_type,
                parent.packet,
                parent.content_hash,
+               parent.is_encrypted,
+               parent.encryption_metadata,
                parent.parent_evidence_id,
                parent.created_at,
                c.depth + 1,
