@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MINIO_CLIENT } from '../../infrastructure/storage/storage.constants';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SKILL_FILE_MAX_SIZE } from './skill.constants';
+import { SkillFileNameInvalidException } from './skill.exceptions';
 import { SkillStorageService } from './skill-storage.service';
 
 const mocks = vi.hoisted(() => ({
@@ -101,6 +102,39 @@ describe('SkillStorageService', () => {
       await service.uploadSkillFile(TENANT_ID, SKILL_ID, 'exact.bin', buffer);
       expect(storageService.upload).toHaveBeenCalledOnce();
     });
+
+    it.each(['../secret.txt', 'dir/../secret.txt', '.'])(
+      'rejects unsafe file name %s before upload',
+      async (fileName) => {
+        await expect(
+          service.uploadSkillFile(
+            TENANT_ID,
+            SKILL_ID,
+            fileName,
+            Buffer.from('secret'),
+          ),
+        ).rejects.toThrow(SkillFileNameInvalidException);
+        expect(storageService.upload).not.toHaveBeenCalled();
+      },
+    );
+
+    it('normalizes safe nested names to their basename', async () => {
+      const buffer = Buffer.from('example');
+
+      await service.uploadSkillFile(
+        TENANT_ID,
+        SKILL_ID,
+        'examples/input.txt',
+        buffer,
+      );
+
+      expect(storageService.upload).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/skills/${SKILL_ID}/input.txt`,
+        buffer,
+        buffer.length,
+        undefined,
+      );
+    });
   });
 
   // ─── downloadSkillFile ─────────────────────────────────────────────────
@@ -122,6 +156,33 @@ describe('SkillStorageService', () => {
       expect(storageService.download).toHaveBeenCalledWith(
         `tenants/${TENANT_ID}/skills/${SKILL_ID}/file.txt`,
       );
+    });
+
+    it('rejects traversal names before download', async () => {
+      await expect(
+        service.downloadSkillFile(TENANT_ID, SKILL_ID, '..\\secret.txt'),
+      ).rejects.toThrow(SkillFileNameInvalidException);
+      expect(storageService.download).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteSkillFile', () => {
+    it('delegates safe names to storageService.delete', async () => {
+      await service.deleteSkillFile(TENANT_ID, SKILL_ID, 'file.txt');
+
+      expect(storageService.delete).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/skills/${SKILL_ID}/file.txt`,
+      );
+    });
+
+    it('rejects empty and control-character names before delete', async () => {
+      await expect(
+        service.deleteSkillFile(TENANT_ID, SKILL_ID, ''),
+      ).rejects.toThrow(SkillFileNameInvalidException);
+      await expect(
+        service.deleteSkillFile(TENANT_ID, SKILL_ID, 'bad\u0000name.txt'),
+      ).rejects.toThrow(SkillFileNameInvalidException);
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
   });
 

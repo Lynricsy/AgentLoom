@@ -31,7 +31,6 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { JwtPayload } from '../../common/guards/auth.guard';
-import { StorageService } from '../../infrastructure/storage/storage.service';
 import {
   CreateSkillSchema,
   type CreateSkillDtoType,
@@ -44,6 +43,7 @@ import {
   SkillQuerySchema,
   type SkillQueryDtoType,
 } from './dto/skill-query.dto';
+import { validateAndCanonicalizeSkillFileName } from './skill-file-name.utils';
 import { SkillService } from './skill.service';
 import { SkillStorageService } from './skill-storage.service';
 
@@ -62,7 +62,6 @@ export class SkillController {
   constructor(
     private readonly skillService: SkillService,
     private readonly skillStorageService: SkillStorageService,
-    private readonly storageService: StorageService,
   ) {}
 
   @Post()
@@ -314,8 +313,12 @@ export class SkillController {
   ) {
     const tenantId = this.requireTenantId(req);
 
-    const key = `tenants/${tenantId}/skills/${id}/${fileName}`;
-    await this.storageService.delete(key);
+    // 单文件删除必须经过 Skill 存储边界，避免 controller 自行拼键绕过统一文件名校验。
+    await this.skillStorageService.deleteSkillFile(
+      tenantId,
+      id,
+      fileName,
+    );
 
     await this.refreshFileMeta(tenantId, id);
   }
@@ -336,7 +339,8 @@ export class SkillController {
       mimetype: string;
     }>;
   }> {
-    const parts = req.parts();
+    // 必须保留 multipart 原始路径，否则 busboy 会先取 basename，穿越校验将失去依据。
+    const parts = req.parts({ preservePath: true });
     let metadataRaw: string | undefined;
     const files: Array<{
       fieldname: string;
@@ -349,10 +353,12 @@ export class SkillController {
       if (part.type === 'field' && part.fieldname === 'metadata') {
         metadataRaw = part.value as string;
       } else if (part.type === 'file') {
+        // 必须先校验原始文件名再取 basename，避免危险路径被静默收口后进入存储层。
+        const fileName = validateAndCanonicalizeSkillFileName(part.filename);
         const buffer = await part.toBuffer();
         files.push({
           fieldname: part.fieldname,
-          filename: part.filename,
+          filename: fileName,
           buffer,
           mimetype: part.mimetype,
         });

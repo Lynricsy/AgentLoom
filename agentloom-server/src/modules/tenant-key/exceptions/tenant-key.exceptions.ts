@@ -11,6 +11,18 @@ export class TenantKeyNotFoundException extends DomainException {
   }
 }
 
+// 租户未关联组织属于可预期的领域状态，不能泄漏为数据库参数错误 500。
+export class TenantOrganizationNotFoundException extends DomainException {
+  constructor(tenantId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/tenant-organization-not-found',
+      title: '租户组织不存在',
+      status: 404,
+      detail: `租户 ${tenantId} 未关联组织，无法管理租户密钥`,
+    });
+  }
+}
+
 export class TenantKeyAlreadyExistsException extends DomainException {
   constructor(orgId: string) {
     super({

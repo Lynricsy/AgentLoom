@@ -104,11 +104,7 @@ export function RootLayout() {
     return null;
   }
 
-  // 已完成 onboarding 的用户不应停留在 /onboarding
-  if (isAuthenticated && !needsOnboarding && isOnboardingRoute) {
-    window.location.href = "/";
-    return null;
-  }
+  // onboarding 完成后的离开必须由向导在偏好步骤结束时决定，避免租户刷新抢跑最后一步。
 
   if (isPublicRoute || isOnboardingRoute) {
     return <Outlet />;

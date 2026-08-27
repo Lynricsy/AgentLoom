@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue, type RepeatableJob } from 'bullmq';
+import { Queue } from 'bullmq';
 import { and, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -16,22 +16,9 @@ export type TriggerCronJobData = {
   workflowId: string;
 };
 
-type RepeatableQueueCompat = Pick<Queue<TriggerCronJobData>, 'add'> & {
-  getRepeatableJobs(
-    start?: number,
-    end?: number,
-    asc?: boolean,
-  ): Promise<RepeatableJob[]>;
-  removeRepeatableByKey(key: string): Promise<boolean>;
-};
-
 @Injectable()
 export class TriggerSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(TriggerSchedulerService.name);
-
-  private get repeatableQueue(): RepeatableQueueCompat {
-    return this.queue;
-  }
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
@@ -54,18 +41,28 @@ export class TriggerSchedulerService implements OnModuleInit {
 
     const config = CronConfigSchema.parse(trigger.config);
 
-    await this.queue.add(
+    // 升级期间旧 repeatable 元数据仍会继续派发，因此注册新 Scheduler 前必须一次性清理，避免同一触发器双触发。
+    await this.queue.removeRepeatable(
       TRIGGER_CRON_JOB,
       {
-        triggerId: trigger.id,
-        tenantId: trigger.tenantId,
-        workflowId: trigger.workflowDefinitionId,
+        pattern: config.expression,
+        tz: config.timezone,
+      },
+      trigger.id,
+    );
+
+    await this.queue.upsertJobScheduler(
+      trigger.id,
+      {
+        pattern: config.expression,
+        tz: config.timezone,
       },
       {
-        jobId: trigger.id,
-        repeat: {
-          pattern: config.expression,
-          tz: config.timezone,
+        name: TRIGGER_CRON_JOB,
+        data: {
+          triggerId: trigger.id,
+          tenantId: trigger.tenantId,
+          workflowId: trigger.workflowDefinitionId,
         },
       },
     );
@@ -88,17 +85,10 @@ export class TriggerSchedulerService implements OnModuleInit {
   }
 
   async removeCronJob(triggerId: string): Promise<boolean> {
-    const repeatableJob = await this.findRepeatableJob(triggerId);
+    // Scheduler ID 是稳定主键，因此无需再依赖 BullMQ 可能缺失的 repeatable job id。
+    const removed = await this.queue.removeJobScheduler(triggerId);
 
     await this.persistNextFireAt(triggerId, null);
-
-    if (!repeatableJob) {
-      return false;
-    }
-
-    const removed = await this.repeatableQueue.removeRepeatableByKey(
-      repeatableJob.key,
-    );
 
     this.logger.log(
       JSON.stringify({
@@ -112,13 +102,14 @@ export class TriggerSchedulerService implements OnModuleInit {
   }
 
   async getNextFireAt(triggerId: string): Promise<Date | null> {
-    const repeatableJob = await this.findRepeatableJob(triggerId);
+    const scheduler = await this.queue.getJobScheduler(triggerId);
 
-    if (!repeatableJob || repeatableJob.next === undefined) {
+    // next 由 Job Scheduler 元数据直接给出，避免旧 repeatable 列表中 id 缺失导致误判未注册。
+    if (scheduler?.next === undefined) {
       return null;
     }
 
-    return new Date(repeatableJob.next);
+    return new Date(scheduler.next);
   }
 
   async syncOnInit(): Promise<void> {
@@ -141,16 +132,6 @@ export class TriggerSchedulerService implements OnModuleInit {
         action: 'trigger_cron_jobs_synced',
         count: triggers.length,
       }),
-    );
-  }
-
-  private async findRepeatableJob(
-    triggerId: string,
-  ): Promise<RepeatableJob | undefined> {
-    const repeatableJobs = await this.repeatableQueue.getRepeatableJobs();
-
-    return repeatableJobs.find(
-      (job) => job.name === TRIGGER_CRON_JOB && job.id === triggerId,
     );
   }
 

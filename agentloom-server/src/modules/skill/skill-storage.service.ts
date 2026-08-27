@@ -10,6 +10,7 @@ import { Readable } from 'node:stream';
 import { MINIO_CLIENT } from '../../infrastructure/storage/storage.constants';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SKILL_FILE_MAX_SIZE } from './skill.constants';
+import { validateAndCanonicalizeSkillFileName } from './skill-file-name.utils';
 
 @Injectable()
 export class SkillStorageService {
@@ -33,7 +34,10 @@ export class SkillStorageService {
     fileName?: string,
   ): string {
     const prefix = `tenants/${tenantId}/skills/${skillId}/`;
-    return fileName ? `${prefix}${fileName}` : prefix;
+    // 所有单文件操作必须在唯一入口校验，防止绕过 controller 直接拼接对象键。
+    return fileName === undefined
+      ? prefix
+      : `${prefix}${validateAndCanonicalizeSkillFileName(fileName)}`;
   }
 
   async uploadSkillFile(
@@ -64,6 +68,15 @@ export class SkillStorageService {
   ): Promise<Readable> {
     const key = this.buildSkillKey(tenantId, skillId, fileName);
     return this.storageService.download(key);
+  }
+
+  async deleteSkillFile(
+    tenantId: string,
+    skillId: string,
+    fileName: string,
+  ): Promise<void> {
+    const key = this.buildSkillKey(tenantId, skillId, fileName);
+    await this.storageService.delete(key);
   }
 
   async deleteSkillFiles(tenantId: string, skillId: string): Promise<void> {

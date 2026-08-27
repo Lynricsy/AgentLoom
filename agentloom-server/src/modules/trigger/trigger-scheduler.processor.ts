@@ -151,6 +151,8 @@ export class TriggerSchedulerProcessor extends WorkerHost {
           error: this.getErrorMessage(error),
         }),
       );
+      // bookkeeping 失败会让 nextFireAt 停留在旧值，因此必须让 BullMQ 感知失败并按队列策略处理，不能伪装成已完成。
+      throw error;
     }
   }
 

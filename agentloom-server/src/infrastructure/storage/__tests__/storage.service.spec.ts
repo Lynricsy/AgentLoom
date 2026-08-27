@@ -136,6 +136,24 @@ describe('StorageService', () => {
       expect(mockMinioClient.getObject).toHaveBeenCalledWith(BUCKET_NAME, key);
       expect(result).toBe(mockStream);
     });
+
+    it('对象不存在时应将 NoSuchKey 映射为 404 异常', async () => {
+      const key = 'tenants/t1/skills/s1/SKILL.md';
+      mockMinioClient.getObject.mockRejectedValue({ code: 'NoSuchKey' });
+
+      await expect(service.download(key)).rejects.toThrow(
+        StorageObjectNotFoundException,
+      );
+    });
+
+    it('MinIO 下载失败时应映射为 503 异常', async () => {
+      const key = 'tenants/t1/skills/s1/SKILL.md';
+      mockMinioClient.getObject.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(service.download(key)).rejects.toThrow(
+        StorageUnavailableException,
+      );
+    });
   });
 
   describe('delete', () => {

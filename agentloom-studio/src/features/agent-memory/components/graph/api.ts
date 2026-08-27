@@ -3,6 +3,8 @@ import { apiClient } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
 import type { MemoryNode, MemoryEdge, MemoryNodeVersion } from './types'
 
+const BASE_PATH = 'memory-instances'
+
 // --- Query key factory ---
 
 export const memoryGraphKeys = {
@@ -17,40 +19,43 @@ export const memoryGraphKeys = {
 
 // --- API functions ---
 
-async function fetchMemoryNodes(
+export async function fetchMemoryNodes(
   instanceId: string,
 ): Promise<MemoryNode[]> {
+  // ky 已统一挂载 /api/v1，使用资源相对路径可避免生产请求出现双前缀。
   const res = await apiClient
-    .get(`api/v1/memory-instances/${instanceId}/nodes`)
+    .get(`${BASE_PATH}/${instanceId}/nodes`)
     .json<ApiResponse<MemoryNode[]>>()
   return res.data
 }
 
-async function fetchMemoryEdges(
+export async function fetchMemoryEdges(
   instanceId: string,
 ): Promise<MemoryEdge[]> {
+  // 列表端点返回分页信封，图谱只消费其中的数据数组。
   const res = await apiClient
-    .get(`api/v1/memory-instances/${instanceId}/edges`)
+    .get(`${BASE_PATH}/${instanceId}/edges`)
     .json<ApiResponse<MemoryEdge[]>>()
   return res.data
 }
 
-async function fetchMemoryNodeDetail(
+export async function fetchMemoryNodeDetail(
   instanceId: string,
   nodeId: string,
 ): Promise<MemoryNode> {
   const res = await apiClient
-    .get(`api/v1/memory-instances/${instanceId}/nodes/${nodeId}`)
+    .get(`${BASE_PATH}/${instanceId}/nodes/${nodeId}`)
     .json<ApiResponse<MemoryNode>>()
   return res.data
 }
 
-async function fetchMemoryNodeVersions(
+export async function fetchMemoryNodeVersions(
   instanceId: string,
   nodeId: string,
 ): Promise<MemoryNodeVersion[]> {
+  // 版本历史同样是分页信封，不能把整个响应误当成数组交给组件。
   const res = await apiClient
-    .get(`api/v1/memory-instances/${instanceId}/nodes/${nodeId}/versions`)
+    .get(`${BASE_PATH}/${instanceId}/nodes/${nodeId}/versions`)
     .json<ApiResponse<MemoryNodeVersion[]>>()
   return res.data
 }

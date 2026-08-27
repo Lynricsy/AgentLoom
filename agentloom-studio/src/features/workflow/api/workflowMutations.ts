@@ -5,7 +5,7 @@ import type {
 } from '../types'
 import { workflowKeys } from './workflowKeys'
 import { createWorkflow, exportWorkflow, importWorkflow, validateImport } from './workflowApi'
-import { apiClient, toSnakeBody } from '@/shared/api/client'
+import { apiClient } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
 import type { WorkflowDefinition, WorkflowImportFileContent } from '../types'
 
@@ -17,7 +17,8 @@ export function useUpdateWorkflow(id: string) {
     mutationFn: async (payload: UpdateWorkflowPayload) => {
       const response = await apiClient
         .patch(`workflow-definitions/${id}`, {
-          json: toSnakeBody(payload),
+          // server 的 strict DTO 只接受 camelCase，转换后会把合法字段变成未知键并返回 422。
+          json: payload,
         })
         .json<ApiResponse<WorkflowDefinition>>()
       return response.data

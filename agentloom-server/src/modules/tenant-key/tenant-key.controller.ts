@@ -14,7 +14,9 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import type { JwtPayload } from '../../common/guards/auth.guard';
 import type { TenantEncryptionKey } from '../../database/schema';
+import { PluginService } from '../plugin/plugin.service';
 import {
   type TenantKeyDetailResponse,
   TenantKeyDetailResponseDto,
@@ -22,12 +24,16 @@ import {
   TenantKeyResponseDto,
   UploadPublicKeyDto,
 } from './dto/tenant-key.dto';
+import { TenantOrganizationNotFoundException } from './exceptions/tenant-key.exceptions';
 import { TenantKeyService } from './tenant-key.service';
 
 @ApiTags('tenant-keys')
 @Controller('tenant-keys')
 export class TenantKeyController {
-  constructor(private readonly tenantKeyService: TenantKeyService) {}
+  constructor(
+    private readonly tenantKeyService: TenantKeyService,
+    private readonly pluginService: PluginService,
+  ) {}
 
   @Post()
   @Roles('owner', 'admin')
@@ -43,8 +49,9 @@ export class TenantKeyController {
   async uploadPublicKey(
     @Body() dto: UploadPublicKeyDto,
     @CurrentTenant() tenantId: string,
-    @CurrentUser('org_id') orgId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<TenantKeyDetailResponse> {
+    const orgId = await this.resolveOrgId(tenantId, user);
     const key = await this.tenantKeyService.uploadPublicKey(
       tenantId,
       orgId,
@@ -64,8 +71,9 @@ export class TenantKeyController {
   })
   async findByOrg(
     @CurrentTenant() tenantId: string,
-    @CurrentUser('org_id') orgId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<TenantKeyResponse[]> {
+    const orgId = await this.resolveOrgId(tenantId, user);
     const keys = await this.tenantKeyService.findByOrg(tenantId, orgId);
     return keys.map((key) => this.toResponse(key));
   }
@@ -125,6 +133,29 @@ export class TenantKeyController {
   ): Promise<TenantKeyDetailResponse> {
     const key = await this.tenantKeyService.revokeKey(tenantId, id);
     return this.toDetailResponse(key);
+  }
+
+  private async resolveOrgId(
+    tenantId: string,
+    user: Pick<JwtPayload, 'orgId' | 'org_id'>,
+  ): Promise<string> {
+    const claimedOrgId = user.orgId ?? user.org_id;
+    if (claimedOrgId) {
+      return claimedOrgId;
+    }
+
+    try {
+      // JWT 不保证携带组织 claim，因此复用既有租户解析器，避免 undefined 进入 Drizzle 条件。
+      return await this.pluginService.resolveOrganizationId(tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === `tenant ${tenantId} 未找到关联组织`
+      ) {
+        throw new TenantOrganizationNotFoundException(tenantId);
+      }
+      throw error;
+    }
   }
 
   private toResponse(key: TenantEncryptionKey): TenantKeyResponse {

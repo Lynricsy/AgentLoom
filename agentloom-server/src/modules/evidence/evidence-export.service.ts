@@ -173,7 +173,8 @@ export class EvidenceExportService {
       },
       {
         ...evidenceExportDefaultJobOptions,
-        jobId: `evidence-export:${job.id}`,
+        // BullMQ 5 禁止自定义 jobId 含冒号，否则导出请求会在入队时直接失败为 500。
+        jobId: `evidence-export-${job.id}`,
       },
     );
 

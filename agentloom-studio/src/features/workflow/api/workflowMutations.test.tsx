@@ -1,27 +1,32 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
 
-import { useCreateWorkflow, useUpdateWorkflow } from './workflowMutations';
 import type { WorkflowInputSchema } from '../types';
 
-const { createWorkflowMock, patchMock, patchJsonMock } = vi.hoisted(() => ({
+const { createWorkflowMock } = vi.hoisted(() => ({
   createWorkflowMock: vi.fn(),
-  patchMock: vi.fn(),
-  patchJsonMock: vi.fn(),
 }));
 
 vi.mock('./workflowApi', () => ({
   createWorkflow: createWorkflowMock,
 }));
 
-vi.mock('../../../shared/api/client', () => ({
-  apiClient: {
-    patch: (...args: unknown[]) => patchMock(...args),
-  },
-  toSnakeBody: (data: Record<string, unknown>) => data,
-}));
+// apiClient 在模块求值时固化 prefixUrl；测试需先 stubEnv，再动态加载以验证真实 wire 请求。
+async function loadWorkflowMutations() {
+  return import('./workflowMutations');
+}
+beforeEach(() => {
+  vi.resetModules();
+  vi.stubEnv('VITE_API_BASE_URL', 'http://localhost/api/v1');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -46,6 +51,7 @@ describe('useCreateWorkflow', () => {
     const mockResult = { id: 'wf-1', name: '测试工作流', status: 'draft' };
     createWorkflowMock.mockResolvedValue(mockResult);
 
+    const { useCreateWorkflow } = await loadWorkflowMutations();
     const { Wrapper, queryClient } = createWrapper();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -83,6 +89,7 @@ describe('useCreateWorkflow', () => {
   it('不含模板时只发送 name', async () => {
     createWorkflowMock.mockResolvedValue({ id: 'wf-2', name: '空白' });
 
+    const { useCreateWorkflow } = await loadWorkflowMutations();
     const { Wrapper } = createWrapper();
 
     const { result } = renderHook(() => useCreateWorkflow(), {
@@ -104,6 +111,7 @@ describe('useCreateWorkflow', () => {
   it('包含 shareToken 时应原样透传并保持缓存失效行为', async () => {
     createWorkflowMock.mockResolvedValue({ id: 'wf-3', name: '分享副本' });
 
+    const { useCreateWorkflow } = await loadWorkflowMutations();
     const { Wrapper, queryClient } = createWrapper();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
@@ -138,6 +146,7 @@ describe('useCreateWorkflow', () => {
   it('请求失败时抛出错误', async () => {
     createWorkflowMock.mockRejectedValue(new Error('Network error'));
 
+    const { useCreateWorkflow } = await loadWorkflowMutations();
     const { Wrapper } = createWrapper();
 
     const { result } = renderHook(() => useCreateWorkflow(), {
@@ -168,10 +177,9 @@ describe('useUpdateWorkflow', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    patchMock.mockReturnValue({ json: patchJsonMock });
   });
 
-  it('提交 inputSchema 并更新 detail cache', async () => {
+  it('以 camelCase wire body 提交 inputSchema 并更新 detail cache', async () => {
     const updatedWorkflow = {
       id: 'wf-1',
       tenantId: 'tenant-1',
@@ -194,7 +202,21 @@ describe('useUpdateWorkflow', () => {
       updatedAt: '2026-03-10T00:00:00Z',
     };
 
-    patchJsonMock.mockResolvedValue({ data: updatedWorkflow });
+    let sentRequest: Request | undefined;
+    let sentBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (request: Request) => {
+        sentRequest = request;
+        sentBody = (await request.json()) as Record<string, unknown>;
+        return new Response(JSON.stringify({ data: updatedWorkflow }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+
+    const { useUpdateWorkflow } = await loadWorkflowMutations();
 
     const { Wrapper, queryClient } = createWrapper();
     const { result } = renderHook(() => useUpdateWorkflow('wf-1'), {
@@ -209,11 +231,13 @@ describe('useUpdateWorkflow', () => {
       expect(data).toEqual(updatedWorkflow);
     });
 
-    expect(patchMock).toHaveBeenCalledWith('workflow-definitions/wf-1', {
-      json: {
-        version: 7,
-        inputSchema,
-      },
+    expect(sentRequest?.method).toBe('PATCH');
+    expect(sentRequest?.url).toBe(
+      'http://localhost/api/v1/workflow-definitions/wf-1',
+    );
+    expect(sentBody).toEqual({
+      version: 7,
+      inputSchema,
     });
 
     await waitFor(() => {

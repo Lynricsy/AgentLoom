@@ -14,16 +14,18 @@ import type { Mock } from "vitest";
 
 const AGENT_ID = "01a01e35-ac80-7a19-b0ba-2cf0836d3a56";
 
-describe("saveAgentCanvas 请求体大小写", () => {
+describe("Agent strict DTO 请求体大小写", () => {
   let fetchMock: Mock;
   let sentBody: Record<string, unknown> | null;
-
+  let sentRequest: Request | null;
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv("VITE_API_BASE_URL", "http://localhost/api/v1");
     sentBody = null;
+    sentRequest = null;
     // 在 mock 内读取 body：ky 发出请求后 body stream 已被消费，事后 clone 不可用。
     fetchMock = vi.fn(async (input: Request) => {
+      sentRequest = input;
       sentBody = (await input.text()
         .then((text) => (text ? JSON.parse(text) : null))) as Record<
         string,
@@ -73,5 +75,37 @@ describe("saveAgentCanvas 请求体大小写", () => {
     expect(body).not.toHaveProperty("canvas_edges");
     expect(body).not.toHaveProperty("canvas_viewport");
     expect(body).not.toHaveProperty("memory_instance_ids");
+  });
+
+  it("以 PUT 和 camelCase body 更新 Agent，且只由 prefixUrl 添加 API 前缀", async () => {
+    const { updateAgent } = await import("./agentDefinitionApi");
+
+    const result = await updateAgent(AGENT_ID, {
+      version: 4,
+      name: "更新后的 Agent",
+      description: null,
+      icon: "bot",
+      globalSandboxConfig: {
+        networkPolicy: "restricted",
+      },
+    });
+
+    expect(result).toEqual({ version: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sentRequest?.method).toBe("PUT");
+    expect(sentRequest?.url).toBe(
+      `http://localhost/api/v1/agent-definitions/${AGENT_ID}`,
+    );
+    expect(sentRequest?.url).not.toContain("/api/v1/api/v1/");
+    expect(sentBody).toEqual({
+      version: 4,
+      name: "更新后的 Agent",
+      description: null,
+      icon: "bot",
+      globalSandboxConfig: {
+        networkPolicy: "restricted",
+      },
+    });
+    expect(sentBody).not.toHaveProperty("global_sandbox_config");
   });
 });

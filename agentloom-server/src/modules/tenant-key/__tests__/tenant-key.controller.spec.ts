@@ -6,10 +6,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
+import type { JwtPayload } from '../../../common/guards/auth.guard';
 import type { TenantEncryptionKey } from '../../../database/schema';
+import { PluginService } from '../../plugin/plugin.service';
 import { UploadPublicKeyDto } from '../dto/tenant-key.dto';
 import { TenantKeyController } from '../tenant-key.controller';
 import { TenantKeyService } from '../tenant-key.service';
+import { TenantOrganizationNotFoundException } from '../exceptions/tenant-key.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockTenantKeyService: () => ({
@@ -19,12 +22,23 @@ const mocks = vi.hoisted(() => ({
     rotateKey: vi.fn(),
     revokeKey: vi.fn(),
   }),
+  createMockPluginService: () => ({
+    resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
+  }),
 }));
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const ORG_ID = '22222222-2222-4222-8222-222222222222';
 const KEY_ID = '33333333-3333-4333-8333-333333333333';
 const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----';
+const USER: JwtPayload = {
+  sub: '44444444-4444-4444-8444-444444444444',
+  email: 'owner@example.com',
+  aud: 'authenticated',
+  exp: 2_000_000_000,
+  iat: 1_900_000_000,
+  orgId: ORG_ID,
+};
 
 function getRoles(
   controller: object,
@@ -72,10 +86,12 @@ function createTenantKey(
 describe('TenantKeyController', () => {
   let controller: TenantKeyController;
   let service: ReturnType<typeof mocks.createMockTenantKeyService>;
+  let pluginService: ReturnType<typeof mocks.createMockPluginService>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     service = mocks.createMockTenantKeyService();
+    pluginService = mocks.createMockPluginService();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TenantKeyController],
@@ -83,6 +99,10 @@ describe('TenantKeyController', () => {
         {
           provide: TenantKeyService,
           useValue: service,
+        },
+        {
+          provide: PluginService,
+          useValue: pluginService,
         },
       ],
     }).compile();
@@ -96,7 +116,7 @@ describe('TenantKeyController', () => {
       const createdKey = createTenantKey();
       service.uploadPublicKey.mockResolvedValue(createdKey);
 
-      const result = await controller.uploadPublicKey(dto, TENANT_ID, ORG_ID);
+      const result = await controller.uploadPublicKey(dto, TENANT_ID, USER);
 
       expect(getRoles(controller, 'uploadPublicKey')).toEqual([
         'owner',
@@ -123,6 +143,46 @@ describe('TenantKeyController', () => {
         updatedAt: '2025-01-01T00:00:00.000Z',
       });
     });
+
+    it('JWT 无 org claim 时应复用 PluginService resolver 后上传', async () => {
+      const dto: UploadPublicKeyDto = { publicKey: PUBLIC_KEY };
+      const createdKey = createTenantKey();
+      service.uploadPublicKey.mockResolvedValue(createdKey);
+
+      await controller.uploadPublicKey(dto, TENANT_ID, {
+        ...USER,
+        orgId: undefined,
+        org_id: undefined,
+      });
+
+      expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(
+        TENANT_ID,
+      );
+      expect(service.uploadPublicKey).toHaveBeenCalledWith(
+        TENANT_ID,
+        ORG_ID,
+        dto,
+      );
+    });
+
+    it('tenant 未关联组织时应抛出显式领域异常且不查询密钥', async () => {
+      pluginService.resolveOrganizationId.mockRejectedValue(
+        new Error(`tenant ${TENANT_ID} 未找到关联组织`),
+      );
+
+      await expect(
+        controller.uploadPublicKey(
+          { publicKey: PUBLIC_KEY },
+          TENANT_ID,
+          {
+            ...USER,
+            orgId: undefined,
+            org_id: undefined,
+          },
+        ),
+      ).rejects.toBeInstanceOf(TenantOrganizationNotFoundException);
+      expect(service.uploadPublicKey).not.toHaveBeenCalled();
+    });
   });
 
   describe('findByOrg', () => {
@@ -135,7 +195,7 @@ describe('TenantKeyController', () => {
         }),
       ]);
 
-      const result = await controller.findByOrg(TENANT_ID, ORG_ID);
+      const result = await controller.findByOrg(TENANT_ID, USER);
 
       expect(getRoles(controller, 'findByOrg')).toEqual([
         'operator',

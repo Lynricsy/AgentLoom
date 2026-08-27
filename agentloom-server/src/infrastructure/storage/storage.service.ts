@@ -81,7 +81,16 @@ export class StorageService implements OnModuleInit {
   }
 
   async download(key: string): Promise<Readable> {
-    return this.minioClient.getObject(this.bucket, key);
+    try {
+      return await this.minioClient.getObject(this.bucket, key);
+    } catch (error) {
+      // MinIO 原始错误会被全局异常链当成 500，必须在基础设施边界稳定映射为公开 HTTP 语义。
+      if (this.isNotFoundError(error)) {
+        throw new StorageObjectNotFoundException(key);
+      }
+
+      throw new StorageUnavailableException('getObject', key, error);
+    }
   }
 
   async delete(key: string): Promise<void> {

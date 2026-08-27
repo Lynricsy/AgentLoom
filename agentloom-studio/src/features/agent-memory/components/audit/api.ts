@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, toSnakeBody } from '@/shared/api/client';
+import { apiClient } from '@/shared/api/client';
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 import type {
   AuditLogEntry,
@@ -9,6 +9,8 @@ import type {
   ReviewRequestBody,
   RollbackParams,
 } from './types';
+
+const BASE_PATH = 'memory-instances';
 
 // --- Query Key Factory ---
 
@@ -26,7 +28,7 @@ export const memoryAuditKeys = {
 
 // --- API Functions ---
 
-async function fetchAuditLog(
+export async function fetchAuditLog(
   instanceId: string,
   filters: Partial<AuditLogFilters>,
 ): Promise<PaginatedResponse<AuditLogEntry>> {
@@ -40,47 +42,51 @@ async function fetchAuditLog(
   if (filters.nodeName) params.set('node_name', filters.nodeName);
 
   const query = params.toString();
-  const url = `api/v1/memory-instances/${instanceId}/audit-log${query ? `?${query}` : ''}`;
+  // server 的公开契约是 /audit；沿用旧的 /audit-log 会在去掉双前缀后继续 404。
+  const url = `${BASE_PATH}/${instanceId}/audit${query ? `?${query}` : ''}`;
   return apiClient.get(url).json<PaginatedResponse<AuditLogEntry>>();
 }
 
-async function fetchPendingReviews(
+export async function fetchPendingReviews(
   instanceId: string,
 ): Promise<PendingReview[]> {
+  // 待审核列表返回 { data, meta }，页面只需要 data。
   const res = await apiClient
-    .get(`api/v1/memory-instances/${instanceId}/pending-reviews`)
+    .get(`${BASE_PATH}/${instanceId}/pending-reviews`)
     .json<ApiResponse<PendingReview[]>>();
   return res.data;
 }
 
-async function fetchNodeVersions(
+export async function fetchNodeVersions(
   instanceId: string,
   nodeId: string,
 ): Promise<MemoryVersion[]> {
+  // 版本列表返回分页信封，必须先解包才能供版本差异视图查找。
   const res = await apiClient
-    .get(
-      `api/v1/memory-instances/${instanceId}/nodes/${nodeId}/versions`,
-    )
+    .get(`${BASE_PATH}/${instanceId}/nodes/${nodeId}/versions`)
     .json<ApiResponse<MemoryVersion[]>>();
   return res.data;
 }
 
-async function submitReview(
+export async function submitReview(
   instanceId: string,
   body: ReviewRequestBody,
 ): Promise<void> {
+  // node/version 属于路由参数，严格 DTO 的请求体只能包含 action。
   await apiClient
-    .post(`api/v1/memory-instances/${instanceId}/review`, {
-      json: toSnakeBody(body),
-    })
+    .post(
+      `${BASE_PATH}/${instanceId}/nodes/${body.nodeId}/versions/${body.versionId}/review`,
+      { json: { action: body.action } },
+    )
     .json();
 }
 
-async function rollbackVersion(params: RollbackParams): Promise<void> {
+export async function rollbackVersion(params: RollbackParams): Promise<void> {
+  // server 在节点级 rollback 路由接收目标版本 ID，而不是把版本放进 URL。
   await apiClient
-    .post(
-      `api/v1/memory-instances/${params.instanceId}/nodes/${params.nodeId}/versions/${params.versionId}/rollback`,
-    )
+    .post(`${BASE_PATH}/${params.instanceId}/nodes/${params.nodeId}/rollback`, {
+      json: { targetVersionId: params.versionId },
+    })
     .json();
 }
 
