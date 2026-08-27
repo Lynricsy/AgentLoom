@@ -56,7 +56,8 @@ export class HttpNodeExecutor implements NodeExecutor {
       // 默认 true：验收口径要求 HTTP 非 2xx 让节点失败（fail-closed），
       // 只有显式配置 false 才保留「探测型」用法（非 2xx 也算成功继续往下走）。
       const failOnHttpError = nodeData.failOnHttpError !== false;
-      const succeeded = response.ok || !failOnHttpError;
+      // 只用它分流**节点状态**，不参与 result 内容构造。
+      const shouldFailStep = failOnHttpError && !response.ok;
       const result = {
         ok: response.ok,
         status: response.status,
@@ -66,12 +67,15 @@ export class HttpNodeExecutor implements NodeExecutor {
         'response-out': response.body,
         'exec-out': {
           triggered: true,
-          success: succeeded,
+          // 如实记录 HTTP 结果：探测型用法只是允许节点 completed，
+          // 不代表这次请求成功；否则同一个 result 里 ok=false 却 success=true，
+          // 下游按 success 分支会被误导。
+          success: response.ok,
           status: response.status,
         },
       };
 
-      if (!succeeded) {
+      if (shouldFailStep) {
         // 完整响应 payload 仍写入 result 供排障与下游读取，错误信封只带定位信息。
         await this.stepStateMachine.updateStepStatus(
           tenantId,
