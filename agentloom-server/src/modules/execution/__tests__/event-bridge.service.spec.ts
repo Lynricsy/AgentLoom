@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -22,14 +23,22 @@ import type {
 
 const TENANT = 'tenant-1';
 const EXEC = 'exec-1';
+type BroadcastMock = (
+  tenantId: string,
+  executionId: string,
+  event?: string,
+  data?: Record<string, unknown>,
+) => void;
+type QueueMock = (tenantId: string, executionId: string) => void;
+
 
 describe('EventBridgeService', () => {
   let service: EventBridgeService;
   let gateway: {
-    broadcastTypedEvent: ReturnType<typeof vi.fn>;
-    broadcastTypedEventImmediately: ReturnType<typeof vi.fn>;
-    flushExecutionQueue: ReturnType<typeof vi.fn>;
-    clearExecutionQueue: ReturnType<typeof vi.fn>;
+    broadcastTypedEvent: Mock<BroadcastMock>;
+    broadcastTypedEventImmediately: Mock<BroadcastMock>;
+    flushExecutionQueue: Mock<QueueMock>;
+    clearExecutionQueue: Mock<QueueMock>;
   };
   let throttle: {
     forceFlush: ReturnType<typeof vi.fn>;
@@ -43,10 +52,10 @@ describe('EventBridgeService', () => {
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
 
     gateway = {
-      broadcastTypedEvent: vi.fn(),
-      broadcastTypedEventImmediately: vi.fn(),
-      flushExecutionQueue: vi.fn(),
-      clearExecutionQueue: vi.fn(),
+      broadcastTypedEvent: vi.fn<BroadcastMock>(),
+      broadcastTypedEventImmediately: vi.fn<BroadcastMock>(),
+      flushExecutionQueue: vi.fn<QueueMock>(),
+      clearExecutionQueue: vi.fn<QueueMock>(),
     };
     throttle = {
       forceFlush: vi.fn().mockReturnValue([]),

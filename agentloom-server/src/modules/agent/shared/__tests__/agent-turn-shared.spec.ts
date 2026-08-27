@@ -72,7 +72,7 @@ describe('AgentTurnEventAccumulator', () => {
   it('工作流可委托工具状态机聚合，同时仍统一维护 segment', () => {
     const accumulator = new AgentTurnEventAccumulator({
       toolCalls: [
-        { id: 'existing', tool: 'read', status: 'pending' },
+        { id: 'existing', tool: 'read', args: {}, status: 'pending' },
       ],
       mapDecision: (event) => event,
     });
@@ -80,13 +80,13 @@ describe('AgentTurnEventAccumulator', () => {
     accumulator.consume(
       {
         type: 'tool_call',
-        call: { id: 'new', tool: 'write', status: 'pending' },
+        call: { id: 'new', tool: 'write', args: {}, status: 'pending' },
       },
       { aggregateToolCall: false },
     );
 
     expect(accumulator.toolCalls).toEqual([
-      { id: 'existing', tool: 'read', status: 'pending' },
+      { id: 'existing', tool: 'read', args: {}, status: 'pending' },
     ]);
     expect(accumulator.segments).toEqual([
       { type: 'tool_call', toolCallId: 'new' },

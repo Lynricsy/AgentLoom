@@ -28,7 +28,7 @@ import { ExecutionEventName } from '../types/execution-event.types';
  * 这道测试让"server 悄悄改 wire 格式"直接变成红灯。
  */
 
-const require_ = createRequire(import.meta.url);
+const require_ = createRequire(__filename);
 
 function readFixture<T>(relativePath: string): T {
   const resolved = require_.resolve(`@agentloom/contracts/${relativePath}`);
