@@ -432,8 +432,19 @@ export const useAgentConversationStore = create<
 
             // 重连时服务端缓存有缺口，会用持久 snapshot 兜底（见 D-12）。
             onEvent("conversation.state.snapshot", (payload: unknown) => {
+              // snapshot 在 ack 之前到达，此时补发窗口还开着：查询期间到达的 live
+              // 事件正躺在队列里。必须先放行，否则 merge 看不到 live tail，而 ack
+              // 之后的 flush 又会另起一条流式消息，正文重复。
+              // snapshot 路径本来就没有逐事件补发，提前关窗不会丢东西。
+              flushPendingReplay();
+
               // 新 epoch 的 eventId 会从头重排，旧键留着会把新事件误判成重复。
               forgetSeenEvents();
+
+              const epoch = readLastEventIdField(payload);
+              if (epoch !== null) {
+                highestReceivedEventId = epoch;
+              }
 
               set((s) => {
                 const canonical =
@@ -450,7 +461,6 @@ export const useAgentConversationStore = create<
                 // snapshot 是新 epoch 的起点：服务端计数器可能已归零或从 1 重启，
                 // 这里必须**直接赋值**（允许回退），否则旧游标会一直卡住，
                 // 之后每次重连都被判成 epoch 回退，新一轮事件也无法正常推进。
-                const epoch = readLastEventIdField(payload);
                 if (epoch !== null) {
                   s.lastEventId = epoch;
                 }

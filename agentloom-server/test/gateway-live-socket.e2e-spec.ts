@@ -453,7 +453,8 @@ describe('Gateway live Socket.IO (E2E)', () => {
 
   describe('/memory', () => {
     it('返回订阅 ACK，并按 lastEventId 回放后续事件', async () => {
-      // 已知 GAP：这些 emit 方法目前没有生产调用点；本用例只固化 Gateway 传输与回放层。
+      // 生产调用点在 MemoryNode/Edge/VersionService 的 broadcastAfterCommit；
+      // 本用例固化 Gateway 的传输与按 lastEventId 回放。
       memoryGateway.emitNodeCreated(TENANT_A, MEMORY_ID, { nodeId: 'node-1' });
       memoryGateway.emitNodeUpdated(TENANT_A, MEMORY_ID, { nodeId: 'node-1' });
       const socket = await connectAuthenticated('/memory', tokenA, {
@@ -472,6 +473,28 @@ describe('Gateway live Socket.IO (E2E)', () => {
       await expect(replay).resolves.toMatchObject({
         eventId: 2,
         data: { nodeId: 'node-1' },
+      });
+    });
+
+    it('边事件同样带单调 eventId 并可被订阅端收到', async () => {
+      const socket = await connectAuthenticated('/memory', tokenA);
+      const created = waitForEvent<{
+        eventId: number;
+        data: { edgeId: string };
+      }>(socket, MemoryEventName.EDGE_CREATED);
+
+      await emitWithAck(socket, 'memory:subscribe', {
+        instanceId: MEMORY_ID,
+      });
+
+      memoryGateway.emitEdgeCreated(TENANT_A, MEMORY_ID, {
+        edgeId: 'edge-1',
+        parentNodeId: 'node-1',
+        childNodeId: 'node-2',
+      });
+
+      await expect(created).resolves.toMatchObject({
+        data: { edgeId: 'edge-1' },
       });
     });
   });
