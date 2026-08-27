@@ -244,17 +244,27 @@ export const useAgentConversationStore = create<
             // 清缓存，省略游标就永远拿不到 snapshot。
             let hasSubscribed = false;
 
-            // 幂等去重 + 游标推进，**只对可 replay 的执行信封生效**。
+            // 重连补发的定序 + 幂等去重 + 游标推进，**只对可 replay 的执行信封生效**。
             //
-            // 为什么去重：`conversation:subscribe` 会先 await client.join(room) 再读
-            // 缓冲区，这中间到达的 live 事件先经 room 送达，随后 replay 又补一遍
-            // 同一条；handler 只会无脑 `content += chunk`，正文就重复了。
-            // 键必须带事件名——同一 eventId 会同时用于 STATUS_CHANGED 与 AGENT_DONE。
+            // 为什么需要：`conversation:subscribe` 会先 await client.join(room) 再读
+            // 缓冲区。join 之后到达的 live 事件（ID 更高）会抢在 replay 前送达，随后
+            // 服务端把 6..10 补一遍。只去重不定序，正文会变成「最后一段一二三四」。
+            // 因此重连窗口内先攒着，ack 到达后按 eventId 稳定排序再逐条交给 handler
+            // （同 ID 的 STATUS→DONE 按到达顺序保持原序）。
+            //
+            // 去重键必须带事件名——同一 eventId 会同时用于 STATUS_CHANGED 与 AGENT_DONE。
             //
             // 为什么限定可 replay 信封：gateway 的 buildEventPayload 只是**读取**当前
             // counter 而不递增，synthetic 事件（file_change 按 changedFiles 循环连发、
-            // subagent、title）会共用同一个 eventId，套上去重只会剩第一条。
-            // 判据取顶层 executionId：live 与 replay 两条路径上它都在，synthetic 没有。
+            // subagent、title）会共用同一个 eventId，攒起来重排只会打乱它们、去重更是
+            // 只剩第一条。判据取顶层 executionId：live 与 replay 都有，synthetic 没有。
+            interface PendingReplayEvent {
+              readonly event: string;
+              readonly eventId: number;
+              readonly payload: unknown;
+              readonly handler: (payload: unknown) => void;
+            }
+
             const seenEvents = new Set<string>();
             const forgetSeenEvents = () => seenEvents.clear();
 
@@ -262,60 +272,95 @@ export const useAgentConversationStore = create<
             // 那不是我们**实际收到**的最大 eventId，拿它判回退会把补发误判成新 epoch。
             let highestReceivedEventId = 0;
 
-            // 重连 subscribe 发出到 ack 返回之间＝服务端正在补发的窗口。
-            // 窗口内低 ID 是正常回放（join 之后先到的 live 事件 ID 反而更高），
-            // 不能当成 epoch 回退。
-            let replayWindowOpen = false;
+            // 非 null ＝重连补发窗口开着（subscribe 已发出、ack 未回）。
+            let pendingReplay: PendingReplayEvent[] | null = null;
+
+            const rememberEvent = (key: string) => {
+              // 有界：只用于跨 replay 窗口去重，不需要记住整场会话。
+              if (seenEvents.size >= SEEN_EVENT_LIMIT) {
+                const oldest = seenEvents.values().next().value;
+                if (oldest !== undefined) {
+                  seenEvents.delete(oldest);
+                }
+              }
+              seenEvents.add(key);
+            };
+
+            const deliverEvent = (entry: PendingReplayEvent) => {
+              const { event, eventId, payload, handler } = entry;
+
+              // epoch 判定必须在查重之前：新一轮从 1 重新计数时键会与上一轮撞车，
+              // 先查重就把新事件当成重复丢了。窗口内的事件走的是 flush 路径，
+              // 已按 eventId 升序，不会在这里触发误判。
+              if (eventId < highestReceivedEventId) {
+                forgetSeenEvents();
+                highestReceivedEventId = eventId;
+                set((s) => {
+                  s.lastEventId = eventId;
+                });
+              } else if (eventId > highestReceivedEventId) {
+                highestReceivedEventId = eventId;
+              }
+
+              const key = `${event}:${eventId}`;
+              if (seenEvents.has(key)) {
+                return;
+              }
+              rememberEvent(key);
+
+              set((s) => {
+                if (eventId > s.lastEventId) {
+                  s.lastEventId = eventId;
+                }
+              });
+
+              handler(payload);
+            };
+
+            const flushPendingReplay = () => {
+              const queued = pendingReplay;
+              pendingReplay = null;
+              if (!queued) {
+                return;
+              }
+
+              queued
+                .map((entry, index) => ({ entry, index }))
+                .sort(
+                  (a, b) =>
+                    a.entry.eventId - b.entry.eventId || a.index - b.index,
+                )
+                .forEach(({ entry }) => deliverEvent(entry));
+            };
 
             const onEvent = (
               event: string,
               handler: (payload: never) => void,
             ) => {
               socket.on(event, (payload: unknown) => {
+                const typedHandler = handler as (value: unknown) => void;
                 const eventId = isReplayableEnvelope(payload)
                   ? readEventCursor(payload)
                   : null;
 
-                if (eventId !== null) {
-                  const key = `${event}:${eventId}`;
-
-                  // 顺序要紧：epoch 判定必须在查重之前。新一轮从 1 重新计数时，
-                  // 键会与上一轮撞车，先查重就把新事件当成重复丢了。
-                  //
-                  // 反过来「live 10 先到、随后 replay 6..10」也不能被判成回退
-                  // （否则会清掉 key10，让补发的 10 再追加一次）——靠补发窗口拦住：
-                  // 窗口内的低 ID 是正常回放，之后 10 照常在查重那步被丢弃。
-                  if (!replayWindowOpen && eventId < highestReceivedEventId) {
-                    forgetSeenEvents();
-                    highestReceivedEventId = eventId;
-                    set((s) => {
-                      s.lastEventId = eventId;
-                    });
-                  } else if (eventId > highestReceivedEventId) {
-                    highestReceivedEventId = eventId;
-                  }
-
-                  if (seenEvents.has(key)) {
-                    return;
-                  }
-
-                  // 有界：只用于跨 replay 窗口去重，不需要记住整场会话。
-                  if (seenEvents.size >= SEEN_EVENT_LIMIT) {
-                    const oldest = seenEvents.values().next().value;
-                    if (oldest !== undefined) {
-                      seenEvents.delete(oldest);
-                    }
-                  }
-                  seenEvents.add(key);
-
-                  set((s) => {
-                    if (eventId > s.lastEventId) {
-                      s.lastEventId = eventId;
-                    }
-                  });
+                if (eventId === null) {
+                  typedHandler(payload);
+                  return;
                 }
 
-                (handler as (value: unknown) => void)(payload);
+                const entry: PendingReplayEvent = {
+                  event,
+                  eventId,
+                  payload,
+                  handler: typedHandler,
+                };
+
+                if (pendingReplay) {
+                  pendingReplay.push(entry);
+                  return;
+                }
+
+                deliverEvent(entry);
               });
             };
 
@@ -328,7 +373,8 @@ export const useAgentConversationStore = create<
               const tenantId = useAuthStore.getState().tenantId ?? "";
               const isReconnect = hasSubscribed;
               hasSubscribed = true;
-              replayWindowOpen = isReconnect;
+              // 重连才开窗：首连没有补发，事件直接下发。
+              pendingReplay = isReconnect ? [] : null;
               socket.emit(
                 "conversation:subscribe",
                 {
@@ -341,7 +387,8 @@ export const useAgentConversationStore = create<
                   error?: string;
                   lastEventId?: number;
                 }) => {
-                  replayWindowOpen = false;
+                  // 补发结束：按 eventId 升序放行攒下的事件。
+                  flushPendingReplay();
 
                   if (ack?.status === "error") {
                     set((s) => {
@@ -368,9 +415,9 @@ export const useAgentConversationStore = create<
             });
 
             socket.on("disconnect", () => {
-              // ack 可能永远不来，窗口必须在断开时关掉，
+              // ack 可能永远不来：丢弃待放行队列并关窗，
               // 否则下一轮真正的 epoch 回退会被当成补发放过去。
-              replayWindowOpen = false;
+              pendingReplay = null;
               set((s) => {
                 s.status = "idle";
               });

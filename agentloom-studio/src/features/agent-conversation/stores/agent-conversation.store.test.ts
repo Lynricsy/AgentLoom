@@ -1743,7 +1743,7 @@ describe("agentConversationStore", () => {
   // subscribe 竞态：gateway 先 await join(room) 再读缓冲区，join 之后到达的 live
   // 事件（ID 更高）会抢在 replay 之前送达，随后 replay 又把 6..10 补一遍。
   // 补发窗口内的低 ID 不能触发 epoch 重置，重复的 10 必须被丢掉。
-  it("join 后先收 live 高 ID 再补发低 ID 时正文只出现一次", () => {
+  it("join 后先收 live 高 ID 再补发低 ID 时按事件序落地且不重复", () => {
     useAgentConversationStore.getState().actions.connect({
       conversationId: "conv-1",
       agentId: "agent-1",
@@ -1804,7 +1804,8 @@ describe("agentConversationStore", () => {
     deferredAck();
 
     const [message] = useAgentConversationStore.getState().messages;
-    expect(message?.content).toBe("最后一段一二三四");
+    // 攒到 ack 后按 eventId 升序放行：正文必须是事件序，而不是到达序。
+    expect(message?.content).toBe("一二三四最后一段");
     // 补发窗口内的低 ID 不得被当成 epoch 回退。
     expect(useAgentConversationStore.getState().lastEventId).toBe(10);
   });
