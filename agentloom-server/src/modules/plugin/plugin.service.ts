@@ -14,6 +14,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { PluginRecord } from '../../database/schema/plugins.schema';
 import { StorageService } from '../../infrastructure/storage/storage.service';
+import { TenantOrganizationResolver } from '../../common/providers/tenant-organization.resolver';
 import { normalizeFixedScaleDecimal } from './fixed-scale-decimal';
 import {
   QueryPluginsSchema,
@@ -103,6 +104,7 @@ export class PluginService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly storageService: StorageService,
+    private readonly tenantOrganizationResolver: TenantOrganizationResolver,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -873,17 +875,15 @@ export class PluginService {
   }
 
   private async findOrganizationIdOrThrow(tenantId: string): Promise<string> {
-    const [organization] = await this.tenantDb
-      .select({ id: schema.organizations.id })
-      .from(schema.organizations)
-      .where(eq(schema.organizations.tenantId, tenantId))
-      .limit(1);
+    // 解析口径与 tenant-key 等入口共用同一个 provider，避免各自实现产生漂移。
+    const organizationId =
+      await this.tenantOrganizationResolver.findOrganizationId(tenantId);
 
-    if (!organization) {
+    if (!organizationId) {
       throw new Error(`tenant ${tenantId} 未找到关联组织`);
     }
 
-    return organization.id;
+    return organizationId;
   }
 
   private async findPluginMarketplaceListingById(

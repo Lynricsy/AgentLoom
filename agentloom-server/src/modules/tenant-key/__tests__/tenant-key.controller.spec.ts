@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import type { JwtPayload } from '../../../common/guards/auth.guard';
 import type { TenantEncryptionKey } from '../../../database/schema';
-import { PluginService } from '../../plugin/plugin.service';
+import { TenantOrganizationResolver } from '../../../common/providers/tenant-organization.resolver';
 import { UploadPublicKeyDto } from '../dto/tenant-key.dto';
 import { TenantKeyController } from '../tenant-key.controller';
 import { TenantKeyService } from '../tenant-key.service';
@@ -22,8 +22,8 @@ const mocks = vi.hoisted(() => ({
     rotateKey: vi.fn(),
     revokeKey: vi.fn(),
   }),
-  createMockPluginService: () => ({
-    resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
+  createMockOrganizationResolver: () => ({
+    findOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
   }),
 }));
 
@@ -86,12 +86,14 @@ function createTenantKey(
 describe('TenantKeyController', () => {
   let controller: TenantKeyController;
   let service: ReturnType<typeof mocks.createMockTenantKeyService>;
-  let pluginService: ReturnType<typeof mocks.createMockPluginService>;
+  let organizationResolver: ReturnType<
+    typeof mocks.createMockOrganizationResolver
+  >;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     service = mocks.createMockTenantKeyService();
-    pluginService = mocks.createMockPluginService();
+    organizationResolver = mocks.createMockOrganizationResolver();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TenantKeyController],
@@ -101,8 +103,8 @@ describe('TenantKeyController', () => {
           useValue: service,
         },
         {
-          provide: PluginService,
-          useValue: pluginService,
+          provide: TenantOrganizationResolver,
+          useValue: organizationResolver,
         },
       ],
     }).compile();
@@ -144,7 +146,7 @@ describe('TenantKeyController', () => {
       });
     });
 
-    it('JWT 无 org claim 时应复用 PluginService resolver 后上传', async () => {
+    it('JWT 无 org claim 时应经共享租户组织解析器回查后上传', async () => {
       const dto: UploadPublicKeyDto = { publicKey: PUBLIC_KEY };
       const createdKey = createTenantKey();
       service.uploadPublicKey.mockResolvedValue(createdKey);
@@ -155,7 +157,7 @@ describe('TenantKeyController', () => {
         org_id: undefined,
       });
 
-      expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(
+      expect(organizationResolver.findOrganizationId).toHaveBeenCalledWith(
         TENANT_ID,
       );
       expect(service.uploadPublicKey).toHaveBeenCalledWith(
@@ -166,9 +168,8 @@ describe('TenantKeyController', () => {
     });
 
     it('tenant 未关联组织时应抛出显式领域异常且不查询密钥', async () => {
-      pluginService.resolveOrganizationId.mockRejectedValue(
-        new Error(`tenant ${TENANT_ID} 未找到关联组织`),
-      );
+      // 解析器约定「查不到返回 null」，由 controller 翻译成 404 领域异常。
+      organizationResolver.findOrganizationId.mockResolvedValue(null);
 
       await expect(
         controller.uploadPublicKey(

@@ -155,7 +155,13 @@ function createMockTriggerQueue() {
   return {
     add: vi.fn().mockResolvedValue(undefined),
     removeRepeatableByKey: vi.fn().mockResolvedValue(undefined),
+    // 保留 legacy repeatable 列表：注册前会清理旧条目，防升级后双触发。
     getRepeatableJobs: vi.fn().mockResolvedValue([]),
+    // BullMQ 5 Job Scheduler API —— nextFireAt 现在由它提供，
+    // 旧的 getRepeatableJobs 对 metadata-hash 任务返回空 id，永远匹配不上。
+    upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
+    getJobScheduler: vi.fn().mockResolvedValue(null),
+    removeJobScheduler: vi.fn().mockResolvedValue(true),
   };
 }
 
@@ -245,6 +251,21 @@ describe('Trigger E2E', () => {
       'getRepeatableJobs',
       triggerQueueMock.getRepeatableJobs,
     );
+    Reflect.set(
+      triggerQueue,
+      'upsertJobScheduler',
+      triggerQueueMock.upsertJobScheduler,
+    );
+    Reflect.set(
+      triggerQueue,
+      'getJobScheduler',
+      triggerQueueMock.getJobScheduler,
+    );
+    Reflect.set(
+      triggerQueue,
+      'removeJobScheduler',
+      triggerQueueMock.removeJobScheduler,
+    );
   }, 60_000);
 
   afterAll(async () => {
@@ -268,6 +289,9 @@ describe('Trigger E2E', () => {
     triggerQueueMock.add.mockResolvedValue(undefined);
     triggerQueueMock.removeRepeatableByKey.mockResolvedValue(undefined);
     triggerQueueMock.getRepeatableJobs.mockResolvedValue([]);
+    triggerQueueMock.upsertJobScheduler.mockResolvedValue(undefined);
+    triggerQueueMock.getJobScheduler.mockResolvedValue(null);
+    triggerQueueMock.removeJobScheduler.mockResolvedValue(true);
   });
 
   async function seedTenant(prefix: string, role: OrganizationRole = 'owner') {
@@ -780,29 +804,36 @@ describe('Trigger E2E', () => {
       createdBy: owner.user.id,
     });
     const nextFireAt = new Date('2025-01-06T01:00:00.000Z');
-    let scheduledTriggerId: string | null = null;
+    let registeredSchedulerId: string | null = null;
 
-    triggerQueueMock.add.mockImplementation(async (_name, data) => {
-      scheduledTriggerId = data.triggerId;
-      return undefined;
+    // 注册走 upsertJobScheduler，scheduler id 就是 trigger id（稳定主键）。
+    triggerQueueMock.upsertJobScheduler.mockImplementation(
+      async (schedulerId: string) => {
+        registeredSchedulerId = schedulerId;
+        return undefined;
+      },
+    );
+    triggerQueueMock.removeJobScheduler.mockImplementation(async () => {
+      registeredSchedulerId = null;
+      return true;
     });
-    triggerQueueMock.getRepeatableJobs.mockImplementation(async () => {
-      if (!scheduledTriggerId) {
-        return [];
-      }
+    // nextFireAt 现在从 Job Scheduler 元数据的 next 读出，
+    // 不再依赖 legacy repeatable 列表里那个可能为空的 id。
+    triggerQueueMock.getJobScheduler.mockImplementation(
+      async (schedulerId: string) => {
+        if (!registeredSchedulerId || schedulerId !== registeredSchedulerId) {
+          return null;
+        }
 
-      return [
-        {
-          key: 'repeat-key',
+        return {
+          key: schedulerId,
           name: 'trigger-cron-execution',
-          id: scheduledTriggerId,
-          endDate: null,
           tz: 'Asia/Hong_Kong',
           pattern: '0 9 * * 1',
           next: nextFireAt.getTime(),
-        },
-      ];
-    });
+        };
+      },
+    );
 
     const createResponse = await request(app.getHttpServer())
       .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)

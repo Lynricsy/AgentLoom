@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
 
-import { PluginModule } from '../plugin/plugin.module';
+import { TenantOrganizationResolver } from '../../common/providers/tenant-organization.resolver';
 
 import { TenantKeyController } from './tenant-key.controller';
 import { TenantKeyService } from './tenant-key.service';
 
 @Module({
-  // 复用插件模块的租户组织解析器，避免不同入口各自实现组织回查而产生契约漂移。
-  imports: [PluginModule],
+  // 只依赖轻量的租户组织解析器；此前 import PluginModule 会把基于 extism 的
+  // 插件运行时拖进所有进程（含 ACP stdio），触发 Node WASI 告警污染 stderr。
   controllers: [TenantKeyController],
-  providers: [TenantKeyService],
+  providers: [TenantKeyService, TenantOrganizationResolver],
   exports: [TenantKeyService],
 })
 export class TenantKeyModule {}

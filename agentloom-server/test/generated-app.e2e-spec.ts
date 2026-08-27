@@ -359,6 +359,56 @@ describe('Generated App (E2E)', () => {
     return published.publicShareToken as string;
   }
 
+  /**
+   * 按公开详情返回的 runtimeForm 构造一份合法提交。
+   * 公开提交现在是 fail-closed 的：未在运行时表单声明的字段一律 422，
+   * 因此测试不能再硬编码任意字段名，必须依据服务端声明的契约来填。
+   */
+  type RuntimeFormField = {
+    id: string;
+    type: string;
+    required: boolean;
+    // 选项用 value 作为提交值（不是 id）——写错会得到 undefined，
+    // 而 JSON.stringify 会把 undefined 整个键丢掉，表现成「必填项缺失」。
+    options: Array<{ value: string; label: string }>;
+  };
+
+  async function buildValidSubmissionInput(token: string) {
+    const publicApp = await app.inject({
+      method: 'GET',
+      url: `/api/v1/generated-apps/public/${token}`,
+    });
+    expect(publicApp.statusCode).toBe(200);
+
+    const fields = parseJson(publicApp).data.runtimeForm
+      .fields as RuntimeFormField[];
+    const input: Record<string, unknown> = {};
+
+    for (const field of fields) {
+      if (!field.required) continue;
+
+      if (field.options.length > 0) {
+        input[field.id] = field.options[0].value;
+        continue;
+      }
+
+      switch (field.type) {
+        case 'number':
+        case 'range':
+          input[field.id] = 1;
+          break;
+        case 'checkbox':
+          input[field.id] = true;
+          break;
+        default:
+          input[field.id] = 'offline E2E';
+      }
+    }
+
+    expect(Object.keys(input).length).toBeGreaterThan(0);
+    return input;
+  }
+
   it('固化 create → 离线 generation run → run/gate 列表 → readiness 核心链', async () => {
     const owner = await seedTenant('generated-owner');
     const created = await createApp(owner);
@@ -479,12 +529,13 @@ describe('Generated App (E2E)', () => {
     expect(preview.headers['cache-control']).toBe('no-store');
     expect(preview.body).toBe(PREVIEW_HTML);
 
+    const validInput = await buildValidSubmissionInput(token);
     const submission = await app.inject({
       method: 'POST',
       url: `/api/v1/generated-apps/public/${token}/submissions`,
       payload: {
         anonymousSessionId: 'anonymous-e2e-session',
-        input: { topic: 'offline E2E' },
+        input: validInput,
       },
     });
     expect(submission.statusCode).toBe(201);
@@ -492,9 +543,20 @@ describe('Generated App (E2E)', () => {
     expect(submitted).toMatchObject({
       appId: created.id,
       anonymousSessionId: 'anonymous-e2e-session',
-      input: { topic: 'offline E2E' },
+      input: validInput,
     });
     expect(submitted.id).toMatch(/^[0-9a-f-]{36}$/);
+
+    // 公开提交 fail-closed：未声明字段必须 422，且不得落库。
+    const undeclared = await app.inject({
+      method: 'POST',
+      url: `/api/v1/generated-apps/public/${token}/submissions`,
+      payload: {
+        anonymousSessionId: 'anonymous-e2e-session',
+        input: { ...validInput, topic: 'offline E2E' },
+      },
+    });
+    expect(undeclared.statusCode).toBe(422);
 
     const status = await app.inject({
       method: 'GET',
@@ -582,7 +644,7 @@ describe('Generated App (E2E)', () => {
     const submission = await app.inject({
       method: 'POST',
       url: `/api/v1/generated-apps/public/${token}/submissions`,
-      payload: { input: { value: 'tenant secret' } },
+      payload: { input: await buildValidSubmissionInput(token) },
     });
     expect(submission.statusCode).toBe(201);
     const submissionId = parseJson(submission).data.id as string;
