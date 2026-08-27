@@ -244,7 +244,13 @@ export class WorkflowPublishService {
           ]);
         }
 
-
+        // 必须先看 raw 画布，否则 normalize 会把 llm-agent alias 成 agent 并丢失准确的迁移诊断。
+        const legacyLlmAgentNodeIds = findLegacyLlmAgentNodeIds(nodes);
+        if (legacyLlmAgentNodeIds.length > 0) {
+          throw new WorkflowPublishLegacyLlmAgentException(
+            legacyLlmAgentNodeIds,
+          );
+        }
         const edges: schema.ReactFlowEdge[] = Array.isArray(workflow.edges)
           ? workflow.edges
           : [];
