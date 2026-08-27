@@ -268,6 +268,7 @@ describe('WorkflowCanvas', () => {
     fitViewMock.mockReset()
     evaluateCompatibilityMock.mockReset()
     getCachedCompatibilityMock.mockReset()
+    vi.mocked(mockTypeEngineService.warmup).mockClear()
     setTypeEngineServiceForTesting(mockTypeEngineService)
   })
 
@@ -280,6 +281,11 @@ describe('WorkflowCanvas', () => {
     const edgeTypes = capturedProps.edgeTypes as Record<string, unknown>
     expect(edgeTypes).toBeDefined()
     expect(edgeTypes).toHaveProperty('smart')
+  })
+
+  it('挂载时预热 TypeEngine runtime，避免首次连线冷启动', () => {
+    render(<WorkflowCanvas />)
+    expect(mockTypeEngineService.warmup).toHaveBeenCalledTimes(1)
   })
 
   it('点击边时打开字段映射面板并选中边', () => {

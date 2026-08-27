@@ -57,8 +57,6 @@ export interface TypeEngineBindings {
     source: SerializedPortDefinition,
     target: SerializedPortDefinition,
   ) => TypeEngineCompatibilityResult
-  checkSchemaCompatibility: (source: TypeSchema, target: TypeSchema) => TypeEngineCompatibilityResult
-  validateSchema: (schema: TypeSchema | string) => unknown
 }
 
 export type TypeEngineWorkerRequest =

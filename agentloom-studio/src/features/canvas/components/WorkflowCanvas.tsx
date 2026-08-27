@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useReactFlow, type Viewport } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import { useTheme } from '@/shared/hooks/use-theme'
@@ -15,6 +15,7 @@ import { useConnectionInteraction } from '../hooks/useConnectionInteraction'
 import { useConnectionValidation } from '../hooks/useConnectionValidation'
 import { useExecutionHighlight } from '../hooks/useExecutionHighlight'
 import { collectCollapsedCompoundDescendantIds } from '../lib/collapsedCompoundNodes'
+import { getTypeEngineService } from '../lib/typeEngine/service'
 import {
   useSelectedNodeIds,
   useCanvasActions,
@@ -98,6 +99,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<CompatibilityPreviewHandle>(null)
+
+  /** 画布挂载即预热 worker + WASM，避免首次连线时才冷启动（warmup 内部已吞掉失败） */
+  useEffect(() => {
+    void getTypeEngineService().warmup()
+  }, [])
 
   useExecutionHighlight({ containerRef, edges: renderedEdges })
 

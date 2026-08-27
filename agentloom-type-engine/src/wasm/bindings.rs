@@ -1,6 +1,5 @@
 use crate::checker;
-use crate::types::{PortDefinition, TypeSchema};
-use crate::validator;
+use crate::types::PortDefinition;
 use crate::wasm::error::WasmError;
 use serde::Serialize;
 use serde_json::json;
@@ -16,42 +15,8 @@ pub fn check_compatibility(source: JsValue, target: JsValue) -> Result<JsValue, 
     ))
 }
 
-#[wasm_bindgen(js_name = checkSchemaCompatibility)]
-pub fn check_schema_compatibility(source: JsValue, target: JsValue) -> Result<JsValue, JsError> {
-    let source_schema = parse_type_schema(&source, "source")?;
-    let target_schema = parse_type_schema(&target, "target")?;
-    serialize_response(&checker::check_schema_compatibility(
-        &source_schema,
-        &target_schema,
-    ))
-}
-
-#[wasm_bindgen(js_name = validateSchema)]
-pub fn validate_schema(input: JsValue) -> Result<JsValue, JsError> {
-    let result = if input.is_undefined() {
-        validator::ValidationResult::single_error("$", "EMPTY_INPUT", "Schema input is required.")
-    } else if input.is_null() {
-        validator::ValidationResult::single_error(
-            "$",
-            "NULL_SCHEMA",
-            "Schema input cannot be null.",
-        )
-    } else if let Some(raw_json) = input.as_string() {
-        validator::validate_raw_json(&raw_json)
-    } else {
-        let raw_json = js_value_to_json_string(&input, "schema")?;
-        validator::validate_raw_json(&raw_json)
-    };
-
-    serialize_response(&result)
-}
-
 fn parse_port_definition(input: &JsValue, field: &str) -> Result<PortDefinition, JsError> {
     parse_json_input(input, field, "INVALID_PORT_DEFINITION")
-}
-
-fn parse_type_schema(input: &JsValue, field: &str) -> Result<TypeSchema, JsError> {
-    parse_json_input(input, field, "INVALID_SCHEMA_INPUT")
 }
 
 fn parse_json_input<T>(input: &JsValue, field: &str, code: &str) -> Result<T, JsError>
