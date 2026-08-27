@@ -100,8 +100,8 @@
     </div>
 
     <div class="note warn">
-      <span class="t">先纠正一个容易讲错的地方</span>
-      有一个租户中间件会从请求里解出 tenantId，但它<strong>只做 base64url 解码、不验签</strong>，写在原生 request 上，而且<strong>唯一的消费者是限流分桶</strong>。数据隔离链路根本不读它。把它讲成「隔离的第一步」是错的 —— 它在旁路上。
+      <span class="t">两条消费链，别混讲</span>
+      租户中间件解出的 tenantId <strong>只做 base64url 解码、不验签</strong>，写在原生 request 上，之后被限流守卫拷到框架 request 上。它有两类消费者：<strong>限流与配额计费</strong>，以及<strong>一部分 controller</strong> —— 有的优先读它、回退到验签值，有的<em>只</em>读它。而下面这条数据隔离链<strong>只读验签后的 <code>request.user.tenantId</code></strong>。所以「数据隔离不读它」是对的，「唯一消费者是限流」是错的。
     </div>
 
     <div class="stack s">
@@ -112,7 +112,7 @@
         <div class="st"><span class="i">03</span><b>事务拦截器</b><span class="d">读 request.user 的 tenantId，开事务并设上下文</span></div>
         <div class="st"><span class="i">04</span><b>表级策略</b><span class="d">68 张表的行级安全策略强制过滤</span></div>
       </div>
-      <p class="xs">拦截器在 guards 之后执行，这个顺序不是偶然：<strong>可信身份必须先建立，才能拿去设置数据库租户上下文</strong>。否则未验签的 claim 会直接影响行级安全的判定结果。API Key 分支不验 JWT，走独立的令牌校验，再把 tenantId 补到 request 上。</p>
+      <p class="xs">拦截器在 guards 之后执行，这个顺序不是偶然：<strong>可信身份必须先建立，才能拿去设置数据库租户上下文</strong>。否则未验签的 claim 会直接影响行级安全的判定结果。API Key 分支不验 JWT，走独立的令牌校验，再把 tenantId 补到 request 上。至于那些直读未验签值的 controller，当前不构成越权 —— 请求必须先通过认证守卫，token 本身已被验过，两个值来自同一份 payload；但这份安全性<strong>由链路顺序保证，不是自证的</strong>：某天给这些路由挂上跳过认证的标记，它立刻变成越权读。</p>
     </div>
 
     <div class="stack s">
@@ -134,6 +134,11 @@
         <h4>怎么验证隔离真的生效</h4>
         <p class="xs">集成测试起一个真实数据库容器，<strong>逐条回放全部迁移 SQL</strong>，然后在带/不带租户上下文两种情形下查询，断言跨租户结果为空数组或直接抛权限错误。</p>
       </div>
+    </div>
+
+    <div class="note">
+      <span class="t">但这条线整体不是闭环 —— 一个未认证的放大面</span>
+      限流守卫<strong>排在认证守卫之前</strong>，而它接受未验签解码出来的 tenantId，并用它查该租户的治理状态、按日配额键<strong>无条件递增计数器</strong>。也就是说：伪造一个签名无效、payload 里填受害者 tenantId 的 token，反复打任意受限流端点，每次都会在最终 401 之前先把受害者的日配额<em>加一</em>；分钟级限流也按同一个未验签值分桶。<strong>不泄漏数据，但能把指定租户的配额刷干。</strong>修法是配额计费改到验签之后、或对未验签身份只做 IP 维度计数，并补回归测试。
     </div>
   </div>
 </section>
