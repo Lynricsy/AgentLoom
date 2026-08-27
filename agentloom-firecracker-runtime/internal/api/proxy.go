@@ -19,6 +19,27 @@ import (
 	"github.com/agentloom/agentloom-firecracker-runtime/internal/manager"
 )
 
+// callbackTokenHeader 是 guest ↔ relay ↔ server 三端共享的远程工具回调令牌头名。
+// 契约来源：guest 侧 agentloom-deploy/sandbox/src/remote-tools.ts 的
+// REMOTE_TOOL_CALLBACK_TOKEN_HEADER，server 侧
+// agentloom-server/src/modules/agent/agent-runtime.controller.ts 的
+// @Headers('x-agentloom-sandbox-session-token')。
+// relay 曾在入站校验与上游转发两处各写了另一个头名，导致 guest 的工具回调直接 403；
+// 收敛成单一常量后两处不可能再各自漂移。
+const callbackTokenHeader = "x-agentloom-sandbox-session-token"
+
+// callbackTokenAuthorized 以恒定时间比较入站回调令牌。
+func callbackTokenAuthorized(request *http.Request, opaque string) bool {
+	provided := request.Header.Get(callbackTokenHeader)
+	return len(provided) == len(opaque) &&
+		subtle.ConstantTimeCompare([]byte(provided), []byte(opaque)) == 1
+}
+
+// applyCallbackToken 把上游真实令牌按契约头名写入转发请求。
+func applyCallbackToken(header http.Header, token string) {
+	header.Set(callbackTokenHeader, token)
+}
+
 type callbackEntry struct {
 	VMID          string
 	Kind          string
@@ -186,12 +207,9 @@ func (server *Server) callback(response http.ResponseWriter, request *http.Reque
 		http.Error(response, "forbidden", http.StatusForbidden)
 		return
 	}
-	if kind == "tools" {
-		provided := request.Header.Get("X-AgentLoom-Callback-Token")
-		if len(provided) != len(opaque) || subtle.ConstantTimeCompare([]byte(provided), []byte(opaque)) != 1 {
-			http.Error(response, "forbidden", http.StatusForbidden)
-			return
-		}
+	if kind == "tools" && !callbackTokenAuthorized(request, opaque) {
+		http.Error(response, "forbidden", http.StatusForbidden)
+		return
 	}
 	body, err := io.ReadAll(io.LimitReader(request.Body, 1024*1024+1))
 	if err != nil || len(body) > 1024*1024 {
@@ -205,7 +223,7 @@ func (server *Server) callback(response http.ResponseWriter, request *http.Reque
 	}
 	upstreamRequest.Header.Set("Content-Type", "application/json")
 	if kind == "tools" {
-		upstreamRequest.Header.Set("X-AgentLoom-Callback-Token", entry.UpstreamToken)
+		applyCallbackToken(upstreamRequest.Header, entry.UpstreamToken)
 	}
 	upstreamResponse, err := server.callbackClient.Do(upstreamRequest)
 	if err != nil {

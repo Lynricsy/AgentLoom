@@ -4,6 +4,7 @@ import type { TypeEngineServiceLike } from './typeEngine/contracts'
 import { setTypeEngineServiceForTesting } from './typeEngine/service'
 import {
   adaptCompatibilityToEdgeData,
+  arePortDataTypesCompatible,
   evaluateConnection,
   getCachedConnectionEvaluation,
   mergeEdgeDataWithStoredMappings,
@@ -556,5 +557,32 @@ describe('connectionCompatibility', () => {
       manualCount: 0,
       requiredUnmappedCount: 1,
     })
+  })
+})
+
+describe('arePortDataTypesCompatible', () => {
+  it('同类型恒兼容', () => {
+    expect(arePortDataTypesCompatible('json', 'json')).toBe(true)
+    expect(arePortDataTypesCompatible('array', 'array')).toBe(true)
+  })
+
+  it('放行 contracts canonical 表的三条变换', () => {
+    expect(arePortDataTypesCompatible('text', 'json')).toBe(true)
+    expect(arePortDataTypesCompatible('json', 'text')).toBe(true)
+    expect(arePortDataTypesCompatible('skill', 'text')).toBe(true)
+  })
+
+  it('json 与 array 之间不再互通（同步 guard 曾比深层求值更宽松）', () => {
+    expect(arePortDataTypesCompatible('json', 'array')).toBe(false)
+    expect(arePortDataTypesCompatible('array', 'json')).toBe(false)
+  })
+
+  it('exec / volume / memory 保持专有严格匹配', () => {
+    expect(arePortDataTypesCompatible('exec', 'exec')).toBe(true)
+    expect(arePortDataTypesCompatible('exec', 'json')).toBe(false)
+    expect(arePortDataTypesCompatible('volume', 'volume')).toBe(true)
+    expect(arePortDataTypesCompatible('volume', 'json')).toBe(false)
+    expect(arePortDataTypesCompatible('memory', 'memory')).toBe(true)
+    expect(arePortDataTypesCompatible('json', 'memory')).toBe(false)
   })
 })

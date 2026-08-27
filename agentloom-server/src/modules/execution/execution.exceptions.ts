@@ -1,4 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
+import { isPortDataTypeCompatible } from '@agentloom/contracts';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import type { FieldError } from '../../common/types/problem-details.type';
 
@@ -221,15 +222,15 @@ export class NodeTypeMismatchException extends DomainException {
 }
 
 /**
- * 端口类型兼容性检查
- * 规则：同类型兼容，json 接受任何类型，其余不兼容
+ * 端口类型兼容性检查。
+ *
+ * 委托 contracts 的 canonical 变换表（其权威来源是 type-engine 的 Rust checker），
+ * 不再自带一份规则。此前 server 额外放行 `targetType === 'json'` 通配，
+ * 使执行期比画布更宽松——但画布上根本造不出这种边，通配只会掩盖真实的类型不匹配。
  */
 export function isPortTypeCompatible(
   sourceType: string,
   targetType: string,
 ): boolean {
-  if (sourceType === targetType) return true;
-  if (targetType === 'json') return true;
-  if (sourceType === 'skill' && targetType === 'text') return true;
-  return false;
+  return isPortDataTypeCompatible(sourceType, targetType);
 }

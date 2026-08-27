@@ -48,47 +48,47 @@ EXACT > TRANSFORM > PARTIAL > INCOMPATIBLE
 
 ## 端口数据类型（PortDataType）
 
-10 种规范端口数据类型在 Rust 中定义为枚举：
+14 种规范端口数据类型在 Rust 中定义为枚举：
 
 ```rust
 // 简化示意，非完整源码
 enum PortDataType {
-    Model, Text, Json, Image, Audio, Tool, Sandbox, Knowledge, Skill, Agent
+    Model, Text, Json, Array, Image, Audio, Tool, Sandbox,
+    Knowledge, Skill, Agent, Memory, Exec, Volume
 }
 ```
 
-序列化时统一使用小写标识：`model`、`text`、`json`、`image`、`audio`、`tool`、`sandbox`、`knowledge`、`skill`、`agent`。
+序列化时统一使用小写标识：`model`、`text`、`json`、`array`、`image`、`audio`、`tool`、`sandbox`、`knowledge`、`skill`、`agent`、`memory`、`exec`、`volume`。
 
-## 10×10 兼容矩阵
+全集的唯一来源是 `agentloom-contracts/src/port-data-type.ts` 的 `PORT_DATA_TYPES`；Rust、plugin-sdk、Studio、server 四端的镜像由 `agentloom-contracts/src/port-data-type.test.ts` 机械校验。
 
-下表展示了所有端口数据类型对之间的 **基础兼容性**（不考虑 Schema 级比较）：
+## 14×14 兼容矩阵
 
-| 源 ↓ \ 目标 → |  model   |     text     |     json     |  image   |  audio   |   tool   | sandbox  | knowledge |  skill   |  agent   |
-| :-----------: | :------: | :----------: | :----------: | :------: | :------: | :------: | :------: | :-------: | :------: | :------: |
-|   **model**   | ✅ EXACT |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
-|   **text**    |    ❌    |   ✅ EXACT   | 🔄 TRANSFORM |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
-|   **json**    |    ❌    | 🔄 TRANSFORM |   ✅ EXACT   |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
-|   **image**   |    ❌    |      ❌      |      ❌      | ✅ EXACT |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
-|   **audio**   |    ❌    |      ❌      |      ❌      |    ❌    | ✅ EXACT |    ❌    |    ❌    |    ❌     |    ❌    |    ❌    |
-|   **tool**    |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    | ✅ EXACT |    ❌    |    ❌     |    ❌    |    ❌    |
-|  **sandbox**  |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    | ✅ EXACT |    ❌     |    ❌    |    ❌    |
-| **knowledge** |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    | ✅ EXACT  |    ❌    |    ❌    |
-|   **skill**   |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     | ✅ EXACT |    ❌    |
-|   **agent**   |    ❌    |      ❌      |      ❌      |    ❌    |    ❌    |    ❌    |    ❌    |    ❌     |    ❌    | ✅ EXACT |
+基础兼容性（不考虑 Schema 级比较）由两条规则完全决定：
+
+1. **同类型恒为 EXACT**（对角线），随后进入 Schema 级比较，结果可能降级为 PARTIAL 或 INCOMPATIBLE；
+2. **跨类型仅当命中内置转换规则时为 TRANSFORM**，否则一律 INCOMPATIBLE。
+
+因此 14×14 = 196 格中，只有 14 格 EXACT + 3 格 TRANSFORM 可连，其余 179 格均为 INCOMPATIBLE。
 
 **图例：**
 
 - ✅ **EXACT** — 类型完全匹配，直接连接
-- 🔄 **TRANSFORM** — 需要内置转换（`text↔json`）
+- 🔄 **TRANSFORM** — 需要内置转换
 - ❌ **INCOMPATIBLE** — 不可连接
 
 ::: info 关于转换规则
-当前引擎内置 **2 条转换规则**：
+当前引擎内置 **3 条转换规则**（`agentloom-type-engine/src/checker/compatibility.rs` 的 `CompatibilityChecker::default()`）：
 
-- `text → json`：`parse_json` — 将文本解析为 JSON 结构
-- `json → text`：`stringify_json` — 将 JSON 序列化为文本
+| 源 → 目标 | `reason_key` | `transform_fn` | 说明 |
+| --- | --- | --- | --- |
+| `text → json` | `text_to_json_parse` | `parse_json` | 将文本解析为 JSON 结构 |
+| `json → text` | `json_to_text_stringify` | `stringify_json` | 将 JSON 序列化为文本 |
+| `skill → text` | `skill_to_text_degrade` | `extract_skill_text` | 取技能的文本表示 |
 
-转换规则是可扩展的，未来可按需添加更多跨类型转换。
+Rust 是权威实现；`agentloom-contracts/src/port-compatibility.ts` 的 `PORT_DATA_TYPE_TRANSFORM_RULES` 是它的 wire 镜像，server 执行期守卫与 Studio 画布同步 guard、JS fallback 都从该表派生，由 `port-compatibility.test.ts` 机械比对。新增转换规则必须先改 Rust 并重建 WASM，再同步 contracts。
+
+注意：`json ↔ array` **不是**转换规则，两者互不兼容。
 :::
 
 ::: tip 同类型 Schema 级比较
@@ -103,7 +103,9 @@ enum PortDataType {
 
 ```typescript
 interface ScalarTypeSchema {
-  kind: "model" | "text" | "image" | "audio" | "tool" | "sandbox" | "knowledge" | "skill" | "agent";
+  // 14 值全集中除 json 之外的任意端口数据类型
+  kind: "model" | "text" | "array" | "image" | "audio" | "tool" | "sandbox"
+      | "knowledge" | "skill" | "agent" | "memory" | "exec" | "volume";
   format?: string;
   examples?: string[];
   title?: string;
@@ -113,7 +115,7 @@ interface ScalarTypeSchema {
 ```
 
 ::: warning 约束
-Scalar 的 `kind` **不能**为 `json`。`json` 类型必须使用 Object 或 Array Schema。
+`json` 类型必须携带 `shape: "object"` 或 `shape: "array"`，从而反序列化为 Object 或 Array Schema；缺少 `shape` 的 `json` 会退化为 Scalar，Schema 级比较将失去结构信息。
 :::
 
 ### Object（对象）

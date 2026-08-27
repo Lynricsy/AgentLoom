@@ -2,11 +2,63 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/agentloom/agentloom-firecracker-runtime/internal/manager"
 )
+
+// D-10 回归：relay 的回调令牌头名必须与 guest / server 契约一致。
+func TestCallbackTokenHeaderMatchesGuestAndServerContract(t *testing.T) {
+	if callbackTokenHeader != "x-agentloom-sandbox-session-token" {
+		t.Fatalf("callback token header drifted from the guest/server contract: %q", callbackTokenHeader)
+	}
+}
+
+func TestCallbackTokenAuthorizedAcceptsContractHeader(t *testing.T) {
+	opaque := strings.Repeat("a", 64)
+	request := httptest.NewRequest(http.MethodPost, "/v1/callbacks/tools/"+opaque, nil)
+	request.Header.Set(callbackTokenHeader, opaque)
+
+	if !callbackTokenAuthorized(request, opaque) {
+		t.Fatal("inbound callback carrying the contract header must be authorized")
+	}
+}
+
+func TestCallbackTokenAuthorizedRejectsLegacyAndWrongTokens(t *testing.T) {
+	opaque := strings.Repeat("a", 64)
+
+	legacy := httptest.NewRequest(http.MethodPost, "/v1/callbacks/tools/"+opaque, nil)
+	legacy.Header.Set("X-AgentLoom-Callback-Token", opaque)
+	if callbackTokenAuthorized(legacy, opaque) {
+		t.Fatal("legacy header name must not authorize the callback")
+	}
+
+	wrong := httptest.NewRequest(http.MethodPost, "/v1/callbacks/tools/"+opaque, nil)
+	wrong.Header.Set(callbackTokenHeader, strings.Repeat("b", 64))
+	if callbackTokenAuthorized(wrong, opaque) {
+		t.Fatal("mismatched token must not authorize the callback")
+	}
+
+	missing := httptest.NewRequest(http.MethodPost, "/v1/callbacks/tools/"+opaque, nil)
+	if callbackTokenAuthorized(missing, opaque) {
+		t.Fatal("missing token must not authorize the callback")
+	}
+}
+
+func TestApplyCallbackTokenForwardsUnderContractHeader(t *testing.T) {
+	upstream := httptest.NewRequest(http.MethodPost, "http://worker:3000/api/v1/tools", nil)
+	applyCallbackToken(upstream.Header, "upstream-secret")
+
+	if got := upstream.Header.Get("x-agentloom-sandbox-session-token"); got != "upstream-secret" {
+		t.Fatalf("upstream request lost the contract header, got %q", got)
+	}
+	if upstream.Header.Get("X-AgentLoom-Callback-Token") != "" {
+		t.Fatal("upstream request must not carry the legacy header name")
+	}
+}
 
 func TestRewriteCallbacksUsesOpaqueRelayAndPreservesUpstreamSecretOnlyInManager(t *testing.T) {
 	registry, err := newCallbackRegistry([]string{"worker"})
