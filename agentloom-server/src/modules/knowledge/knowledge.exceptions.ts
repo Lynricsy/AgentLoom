@@ -99,3 +99,23 @@ export class DocumentChunkException extends DomainException {
     });
   }
 }
+
+/**
+ * 租户没有可用的 Embedding 模型配置。
+ *
+ * 此前这种情况会静默回退到硬编码的 `https://api.openai.com/v1/embeddings` 加一个
+ * 并不存在的凭据，于是索引失败被表现为「网络错误」，运维完全看不出真正原因是
+ * 没配模型。配置缺失必须在发出任何网络请求之前显式失败。
+ */
+export class KnowledgeEmbeddingModelNotConfiguredException extends DomainException {
+  constructor(context?: string) {
+    super({
+      type: 'knowledge-base/embedding-model-not-configured',
+      title: '缺少可用的 Embedding 模型配置',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `当前租户没有可用的 Embedding 模型配置${
+        context ? `（${context}）` : ''
+      }；请先在模型管理中设置默认 Embedding 模型，或为知识库显式绑定 Embedding 模型配置`,
+    });
+  }
+}

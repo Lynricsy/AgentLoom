@@ -25,6 +25,7 @@ import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.ser
 import { PiAiAdapter } from '../../llm/pi-ai-adapter';
 import { LlmService } from '../../llm/llm.service';
 import { KnowledgeBaseService } from '../knowledge-base.service';
+import { KnowledgeEmbeddingModelNotConfiguredException } from '../knowledge.exceptions';
 import type { KnowledgeQueryOrchestrationStrategy } from '../knowledge-base-config';
 import type { VectorSearchResult } from '../interfaces/vector-store.interface';
 import { QDRANT_CLIENT } from '../qdrant.provider';
@@ -818,45 +819,49 @@ export class RagService {
       throw new Error(`Knowledge base not found: ${knowledgeBaseId}`);
     }
 
-    if (knowledgeBase.embeddingModelConfigId) {
-      const config = await this.llmService.findById(
-        knowledgeBase.embeddingModelConfigId,
-        tenantId,
+    const config = knowledgeBase.embeddingModelConfigId
+      ? await this.llmService.findById(
+          knowledgeBase.embeddingModelConfigId,
+          tenantId,
+        )
+      : // 未显式绑定时回退到租户默认 Embedding 模型（与知识库创建路径同一优先级），
+        // 而不是假设 OpenAI —— 后者会在没有凭据的情况下发出注定失败的外网请求。
+        await this.llmService.findDefaultByType(tenantId, 'embedding');
+
+    if (!config) {
+      throw new KnowledgeEmbeddingModelNotConfiguredException(knowledgeBaseId);
+    }
+
+    if (config.modelType !== 'embedding') {
+      throw new Error(
+        `Knowledge base ${knowledgeBaseId} 绑定的模型不是 Embedding 模型`,
       );
-      if (config.modelType !== 'embedding') {
-        throw new Error(
-          `Knowledge base ${knowledgeBaseId} 绑定的模型不是 Embedding 模型`,
-        );
-      }
+    }
 
-      if (
-        config.provider.slug !== 'openai' &&
-        config.provider.slug !== 'private_cloud'
-      ) {
-        throw new Error(
-          `Embedding 模型仅支持 openai/private_cloud，当前为 ${config.provider.slug}`,
-        );
-      }
+    if (
+      config.provider.slug !== 'openai' &&
+      config.provider.slug !== 'private_cloud'
+    ) {
+      throw new Error(
+        `Embedding 模型仅支持 openai/private_cloud，当前为 ${config.provider.slug}`,
+      );
+    }
 
-      return {
-        organizationId,
-        tenantId,
-        provider: config.provider.slug as 'openai' | 'private_cloud',
-        modelName: config.modelId,
-        apiKeyId: config.provider.apiKeyId,
-        endpointUrl: config.provider.baseUrl,
-        authMethod: null,
-        dimensions: config.embeddingDimensions,
-      };
+    const endpointUrl =
+      config.provider.baseUrl ?? config.provider.defaultBaseUrl ?? null;
+    if (!endpointUrl) {
+      throw new KnowledgeEmbeddingModelNotConfiguredException(knowledgeBaseId);
     }
 
     return {
       organizationId,
       tenantId,
-      provider: 'openai',
-      modelName: knowledgeBase.embeddingModel,
-      apiKeyId: null,
-      dimensions: null,
+      provider: config.provider.slug,
+      modelName: config.modelId,
+      apiKeyId: config.provider.apiKeyId,
+      endpointUrl,
+      authMethod: null,
+      dimensions: config.embeddingDimensions,
     };
   }
 }

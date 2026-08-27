@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { LlmAsRouterStrategy } from '../llm-as-router.strategy';
 import type { RoutingCandidate } from '../../core/routing-candidate';
 import type { RoutingContext } from '../../core/routing-context';
@@ -67,10 +68,28 @@ const mockFetch = vi.fn();
 
 describe('LlmAsRouterStrategy', () => {
   let strategy: LlmAsRouterStrategy;
+  let findById: Mock;
+  let decryptConfiguredApiKey: Mock;
 
   beforeEach(() => {
     vi.stubGlobal('fetch', mockFetch);
-    strategy = new LlmAsRouterStrategy();
+    // routerModelId 现在会被解析成租户内的模型配置：端点与凭据都来自该配置。
+    findById = vi.fn().mockResolvedValue({
+      id: 'config-router',
+      modelId: 'gpt-4o-mini',
+      provider: {
+        slug: 'openai',
+        orgId: 'org-1',
+        apiKeyId: 'key-1',
+        baseUrl: 'https://router.example.test',
+        defaultBaseUrl: null,
+      },
+    });
+    decryptConfiguredApiKey = vi.fn().mockResolvedValue('router-secret');
+    strategy = new LlmAsRouterStrategy(
+      { findById } as never,
+      { decryptConfiguredApiKey } as never,
+    );
     mockFetch.mockReset();
   });
 

@@ -8,6 +8,9 @@ import {
   QDRANT_CLIENT,
   qdrantClientProvider,
 } from '../knowledge/qdrant.provider';
+import { ApiKeyModule } from '../api-key/api-key.module';
+import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
+import { LlmService } from '../llm/llm.service';
 import { LlmModule } from '../llm/llm.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { PluginSandboxService } from '../plugin/plugin-sandbox.service';
@@ -101,6 +104,7 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
   imports: [
     ConfigModule,
     BullModule.registerQueue({ name: ROUTING_LEARNING_QUEUE }),
+    ApiKeyModule,
     LlmModule,
     EmbeddingModule,
     RoutingLearningModule,
@@ -129,7 +133,11 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
     },
     {
       provide: LlmAsRouterStrategy,
-      useFactory: () => new LlmAsRouterStrategy(),
+      useFactory: (
+        llmService: LlmService,
+        decryptionBoundaryService: DecryptionBoundaryService,
+      ) => new LlmAsRouterStrategy(llmService, decryptionBoundaryService),
+      inject: [LlmService, DecryptionBoundaryService],
     },
     {
       provide: KnnRouter,

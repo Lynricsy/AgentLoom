@@ -22,16 +22,17 @@ const UNSUPPORTED_VALUE = '[UNSUPPORTED_VALUE]';
 const DEFAULT_PUBLIC_APP_NAME = 'Generated App';
 const DEFAULT_PUBLIC_USER_GOAL = '整理公开提交内容并生成本地运行报告';
 const DEFAULT_MEDICAL_USER_GOAL = '整理问诊提交信息、生成下一步问题和免责声明';
-const MAX_INPUT_DEPTH = 6;
-const MAX_INPUT_FIELD_COUNT = 80;
-const MAX_ARRAY_ITEMS = 20;
-const MAX_STRING_LENGTH = 1000;
-const MAX_PREVIEW_LENGTH = 180;
-const FORBIDDEN_OBJECT_KEYS = new Set([
+/** 以下四个上限由 evaluator 与公开提交入参校验共享，避免两处漂移。 */
+export const MAX_INPUT_DEPTH = 6;
+export const MAX_INPUT_FIELD_COUNT = 80;
+export const MAX_ARRAY_ITEMS = 20;
+export const FORBIDDEN_OBJECT_KEYS: ReadonlySet<string> = new Set([
   '__proto__',
   'constructor',
   'prototype',
 ]);
+const MAX_STRING_LENGTH = 1000;
+const MAX_PREVIEW_LENGTH = 180;
 
 const SENSITIVE_KEY_PATTERN =
   /(authorization|api[-_]?key|token|secret|password|passwd|credential|private[-_]?key|cookie|session|public[-_]?share|readiness|gate[-_]?results?|generation[-_]?plan|source[-_]?artifact|test[-_]?report|plugin[-_]?ids?|internal)/i;

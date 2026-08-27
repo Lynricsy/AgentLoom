@@ -100,7 +100,12 @@ import {
   GeneratedAppArtifactNotFoundException,
   GeneratedAppArtifactTooLargeException,
   GeneratedAppSubmissionNotFoundException,
+  GeneratedAppPublicSubmissionValidationException,
 } from './generated-app.exceptions';
+import {
+  validatePublicSubmissionInput,
+  validateSubmissionAgainstWorkflowInputSchema,
+} from './generated-app-public-submission.util';
 import {
   GeneratedAppGate3WorkspaceRunner,
   type GeneratedAppGate3CommandPlan,
@@ -360,9 +365,27 @@ export class GeneratedAppPublicRuntimeService {
       dto.anonymousSessionId,
     );
     const now = new Date();
+
+    // 必须在 evaluator 之前 fail-closed：evaluator 只做脱敏与截断，会把非法结构
+    // 与超长文本静默改写后当作已接受，于是 201 + 一条被悄悄改过的 submission。
+    const validation = validatePublicSubmissionInput({
+      runtimeForm: buildGeneratedAppRuntimeForm({
+        appSpec: app.appSpec,
+        generationPlan: app.generationPlan,
+        description: app.description,
+      }),
+      input: dto.input,
+      clientContext: dto.clientContext,
+    });
+    if (!validation.ok) {
+      throw new GeneratedAppPublicSubmissionValidationException(
+        validation.errors,
+      );
+    }
+
     const evaluation = evaluateGeneratedAppLocalRuntime({
       app,
-      input: dto.input ?? {},
+      input: validation.input,
       now,
     });
     const workflowExecutionHandoff =
@@ -1037,15 +1060,32 @@ export class GeneratedAppPublicRuntimeService {
       );
     }
 
+    // 第二层校验放在 try 之外：runWorkflow 自己抛的 422 会被下面的 catch 吞成
+    // workflow-execution-blocked，公开面照样落一条「已接收」的 submission。
+    // 这里先按 Workflow 输入契约判定并直接抛 422，提交者拿到明确错误、不建 execution；
+    // 同时把入参投影到契约声明的字段，避免公开表单多收集的字段触发 runWorkflow 的未知键 422。
+    const workflowInputSchema = workflow.inputSchema
+      ? workflowInputSchemaSchema.parse(workflow.inputSchema)
+      : null;
+    let workflowInput = params.input;
+    if (workflowInputSchema) {
+      const { errors, projectedInput } =
+        validateSubmissionAgainstWorkflowInputSchema({
+          workflowInputSchema,
+          input: params.input,
+        });
+      if (errors.length > 0) {
+        throw new GeneratedAppPublicSubmissionValidationException(errors);
+      }
+      workflowInput = projectedInput;
+    }
+
     try {
-      const workflowInputSchema = workflow.inputSchema
-        ? workflowInputSchemaSchema.parse(workflow.inputSchema)
-        : null;
       const execution = await this.executionService.runWorkflow(
         workflowDefinitionId,
         this.buildGeneratedAppPublicRunRequest({
           app: params.app,
-          input: params.input,
+          input: workflowInput,
           anonymousSessionId: params.anonymousSessionId,
           submittedAt: params.submittedAt,
           workflowInputSchemaVersion: workflowInputSchema?.version,
