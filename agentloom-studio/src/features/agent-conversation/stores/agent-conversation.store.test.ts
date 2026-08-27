@@ -66,21 +66,12 @@ vi.mock("socket.io-client", () => ({
 
 import { useAgentConversationStore } from "./agent-conversation.store";
 
-const anyHandlers: Array<(event: string, ...args: unknown[]) => void> = [];
-
-const LIFECYCLE_EVENTS = new Set(["connect", "disconnect", "connect_error"]);
-
 function createSocket() {
   socketHandlers.clear();
-  anyHandlers.length = 0;
 
   const socket = {
     on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
       socketHandlers.set(event, handler);
-      return socket;
-    }),
-    onAny: vi.fn((handler: (event: string, ...args: unknown[]) => void) => {
-      anyHandlers.push(handler);
       return socket;
     }),
     emit: socketEmitMock,
@@ -97,14 +88,6 @@ function emitSocketEvent(event: string, payload?: unknown) {
   const handler = socketHandlers.get(event);
   if (!handler) {
     throw new Error(`Socket handler for ${event} is not registered`);
-  }
-
-  // 真实 socket.io-client 的 onAny 只对服务端事件触发，
-  // connect/disconnect 等生命周期事件不走这里。
-  if (!LIFECYCLE_EVENTS.has(event)) {
-    for (const anyHandler of anyHandlers) {
-      anyHandler(event, payload);
-    }
   }
 
   handler(payload);
@@ -1449,6 +1432,7 @@ describe("agentConversationStore", () => {
 
     emitSocketEvent("conversation.agent.message_chunk", {
       conversationId: "conv-1",
+      executionId: "conv-1",
       messageId: "stream-1",
       chunk: "第一轮",
       eventId: 5,
@@ -1468,6 +1452,7 @@ describe("agentConversationStore", () => {
     // 新一轮从 1 开始，必须能正常推进。
     emitSocketEvent("conversation.agent.message_chunk", {
       conversationId: "conv-1",
+      executionId: "conv-1",
       messageId: "stream-2",
       chunk: "新一轮",
       eventId: 1,
@@ -1608,6 +1593,7 @@ describe("agentConversationStore", () => {
     emitSocketEvent("connect");
     emitSocketEvent("conversation.agent.message_chunk", {
       conversationId: "conv-1",
+      executionId: "conv-1",
       messageId: "stream-replay",
       chunk: "补发内容",
       eventId: 5,
@@ -1637,6 +1623,7 @@ describe("agentConversationStore", () => {
     emitSocketEvent("connect");
     emitSocketEvent("conversation.agent.message_chunk", {
       conversationId: "conv-1",
+      executionId: "conv-1",
       messageId: "stream-1",
       chunk: "第一轮",
       eventId: 3,
@@ -1646,5 +1633,179 @@ describe("agentConversationStore", () => {
     emitSocketEvent("connect");
 
     expect(useAgentConversationStore.getState().lastEventId).toBe(3);
+  });
+
+  // subscribe 先 await join(room) 再读缓冲区：这中间的 live chunk 会先经 room 送达，
+  // 随后 replay 又补同一条。没有幂等去重，正文会被追加两遍。
+  it("同一 eventId 的 live 与 replay 事件只生效一次", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+
+    const chunk = {
+      conversationId: "conv-1",
+      executionId: "conv-1",
+      messageId: "stream-1",
+      chunk: "只应出现一次",
+      eventId: 7,
+    };
+    emitSocketEvent("conversation.agent.message_chunk", chunk);
+    emitSocketEvent("conversation.agent.message_chunk", chunk);
+
+    const [message] = useAgentConversationStore.getState().messages;
+    expect(message?.content).toBe("只应出现一次");
+  });
+
+  // buildEventPayload 只读取 counter 而不递增：file_change 会按 changedFiles 循环
+  // 用同一 eventId 连发多条。这类 synthetic 事件没有 executionId，不能参与去重。
+  it("共用 eventId 的 synthetic 事件不会被去重吞掉", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+
+    emitSocketEvent("conversation.sandbox.file_change", {
+      conversationId: "conv-1",
+      path: "workspace/a.txt",
+      changeType: "created",
+      eventId: 4,
+    });
+    emitSocketEvent("conversation.sandbox.file_change", {
+      conversationId: "conv-1",
+      path: "workspace/b.txt",
+      changeType: "created",
+      eventId: 4,
+    });
+
+    expect(
+      useAgentConversationStore
+        .getState()
+        .fileChanges.map((change) => change.path),
+    ).toEqual(["workspace/a.txt", "workspace/b.txt"]);
+  });
+
+  // 连接不断时同一对话开启下一轮，eventId 从 1 重新计数且不会先来 snapshot。
+  // 必须识别为新 epoch：回退游标并清掉旧去重键，否则新事件会被当成重复丢掉。
+  it("eventId 回退时开启新 epoch 并放行新一轮事件", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      executionId: "conv-1",
+      messageId: "stream-old",
+      chunk: "上一轮",
+      eventId: 1,
+    });
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      executionId: "conv-1",
+      messageId: "stream-old",
+      chunk: "上一轮续",
+      eventId: 2,
+    });
+
+    // 新一轮从 1 重新计数：键 `…:1` 与上一轮撞车，但内容必须照常落地。
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      executionId: "conv-1",
+      messageId: "stream-new",
+      chunk: "新一轮",
+      eventId: 1,
+    });
+
+    expect(useAgentConversationStore.getState().lastEventId).toBe(1);
+    expect(
+      useAgentConversationStore
+        .getState()
+        .messages.map((message) => message.content),
+    ).toEqual(["上一轮上一轮续", "新一轮"]);
+  });
+
+  // subscribe 竞态：gateway 先 await join(room) 再读缓冲区，join 之后到达的 live
+  // 事件（ID 更高）会抢在 replay 之前送达，随后 replay 又把 6..10 补一遍。
+  // 补发窗口内的低 ID 不能触发 epoch 重置，重复的 10 必须被丢掉。
+  it("join 后先收 live 高 ID 再补发低 ID 时正文只出现一次", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+    emitSocketEvent("disconnect");
+
+    // 重连：ack 要等补发结束才回，这里先不触发它。
+    const deferredAck = vi.fn();
+    socketEmitMock.mockImplementationOnce(
+      (
+        event: string,
+        _payload?: unknown,
+        callback?: { status: string } | ((arg: unknown) => void),
+      ) => {
+        if (
+          event === "conversation:subscribe" &&
+          typeof callback === "function"
+        ) {
+          deferredAck.mockImplementation(() =>
+            callback({ status: "subscribed", lastEventId: 10 }),
+          );
+        }
+      },
+    );
+    emitSocketEvent("connect");
+
+    // join 之后的 live 事件先到。
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      executionId: "conv-1",
+      messageId: "stream-1",
+      chunk: "最后一段",
+      eventId: 10,
+    });
+
+    // 随后服务端补发 6..10，其中 10 与上面那条重复。
+    for (const [eventId, chunk] of [
+      [6, "一"],
+      [7, "二"],
+      [8, "三"],
+      [9, "四"],
+      [10, "最后一段"],
+    ] as const) {
+      emitSocketEvent("conversation.agent.message_chunk", {
+        conversationId: "conv-1",
+        executionId: "conv-1",
+        messageId: "stream-1",
+        chunk,
+        eventId,
+      });
+    }
+
+    deferredAck();
+
+    const [message] = useAgentConversationStore.getState().messages;
+    expect(message?.content).toBe("最后一段一二三四");
+    // 补发窗口内的低 ID 不得被当成 epoch 回退。
+    expect(useAgentConversationStore.getState().lastEventId).toBe(10);
   });
 });
