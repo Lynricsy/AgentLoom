@@ -206,10 +206,20 @@ beforeEach(() => {
       return Buffer.alloc(0);
     }
 
-    if (command === 'npx wasm-pack build --target bundler --release') {
-      mkdirSync(join(cwd, 'pkg'), { recursive: true });
+    // scaffold 是 Extism raw cdylib，构建走 cargo 交叉编译而非 wasm-pack。
+    // 产物落在 target/<target>/release/<crate 下划线名>.wasm。
+    if (command === 'cargo build --target wasm32-unknown-unknown --release') {
+      mkdirSync(join(cwd, 'target', 'wasm32-unknown-unknown', 'release'), {
+        recursive: true,
+      });
       writeFileSync(
-        join(cwd, 'pkg', 'archive_fixture_bg.wasm'),
+        join(
+          cwd,
+          'target',
+          'wasm32-unknown-unknown',
+          'release',
+          'archive_fixture.wasm',
+        ),
         Buffer.from([0, 97, 115, 109]),
       );
       return Buffer.alloc(0);
@@ -324,6 +334,64 @@ describe('buildPluginArchive', () => {
     expect(nodeDefinitions[0]?.outputPorts).toEqual([
       { id: 'result', label: 'Result', dataType: 'text', required: true },
     ]);
+  });
+
+  it('build --wasm 应调用 cargo 交叉编译并复制 target 产物到 dist/plugin.wasm', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root, { withCargo: true });
+
+    const result = await buildPluginArchive({ cwd: root, wasm: true });
+
+    // 锁死命令本身：wasm-pack 与 Extism raw cdylib 不兼容，回退到它就是回归。
+    expect(mocks.execSync).toHaveBeenCalledWith(
+      'cargo build --target wasm32-unknown-unknown --release',
+      expect.objectContaining({ cwd: root }),
+    );
+    expect(mocks.execSync).not.toHaveBeenCalledWith(
+      expect.stringContaining('wasm-pack'),
+      expect.anything(),
+    );
+
+    // 复制的必须是 cargo 的真实产物字节（WASM 魔术字 \0asm）。
+    expect(
+      readFileSync(join(root, 'dist', 'plugin.wasm')).subarray(0, 4),
+    ).toEqual(Buffer.from([0, 97, 115, 109]));
+    expect(listArchiveEntries(result.archivePath)).toContain(
+      'dist/plugin.wasm',
+    );
+  });
+
+  it('build --wasm 应按 [package] 段的 name 推导产物文件名而非依赖目录名', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root, { withCargo: true });
+    // crate 名带连字符时，cargo 产物文件名会把连字符换成下划线。
+    writeFileSync(
+      join(root, 'Cargo.toml'),
+      `[package]\nname = "hyphen-crate"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nname = "not-the-crate"\n`,
+    );
+    mocks.execSync.mockImplementation((_command, options) => {
+      const cwd = (options as { cwd: string }).cwd;
+      mkdirSync(join(cwd, 'target', 'wasm32-unknown-unknown', 'release'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(
+          cwd,
+          'target',
+          'wasm32-unknown-unknown',
+          'release',
+          'hyphen_crate.wasm',
+        ),
+        Buffer.from([0, 97, 115, 109]),
+      );
+      return Buffer.alloc(0);
+    });
+
+    const result = await buildPluginArchive({ cwd: root, wasm: true });
+
+    expect(listArchiveEntries(result.archivePath)).toContain(
+      'dist/plugin.wasm',
+    );
   });
 
   it('build --wasm 缺少 node-definitions.json 时给出可操作错误', async () => {

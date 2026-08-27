@@ -104,13 +104,13 @@ agentloom-plugin build [options]
 | 参数                 | 说明                                      | 默认值   |
 | -------------------- | ----------------------------------------- | -------- |
 | `-o, --output <dir>` | 输出目录                                  | `build/` |
-| `--wasm`             | 打包正式 WASM；无预置产物时运行 wasm-pack | `false`  |
+| `--wasm`             | 打包正式 WASM；无预置产物时运行 cargo     | `false`  |
 
 ### WASM 节点定义要求
 
 项目根目录必须存在非空的 `node-definitions.json`。每个节点使用与 SDK 相同的
 节点 schema；端口 `dataType` 必须取自 14 值 `PortDataType`。文件缺失、数组为空、
-节点字段非法或 `type` 重复都会终止构建，并在运行 wasm-pack 前给出修复提示。
+节点字段非法或 `type` 重复都会终止构建，并在运行 cargo 前给出修复提示。
 
 ### 归档内容
 

@@ -5,7 +5,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   rmSync,
   statSync,
 } from 'node:fs';
@@ -173,34 +172,69 @@ function buildTypeScriptBundle(cwd: string): void {
   });
 }
 
+const WASM_TARGET = 'wasm32-unknown-unknown';
+
+/**
+ * scaffold 产出的是 Extism raw cdylib（crate-type=["cdylib"] + #[plugin_fn] 展开成
+ * #[no_mangle] extern "C"），而 wasm-pack 要求 wasm-bindgen 依赖并额外产出 JS glue，
+ * 两者本质不兼容——这才是 `build --wasm` 一直失败的根因，不是模板代码有误。
+ * 因此直接用 cargo 交叉编译到 wasm32，产物布局仍保持 dist/plugin.wasm 不变
+ * （publish 的归档签名依赖该布局）。
+ */
 function buildWasmBundle(cwd: string): void {
   const prebuiltWasmPath = resolve(cwd, 'dist', 'plugin.wasm');
   if (existsSync(prebuiltWasmPath)) {
     return;
   }
 
-  childProcess.execSync('npx wasm-pack build --target bundler --release', {
+  const crateName = readCrateName(cwd);
+
+  childProcess.execSync(`cargo build --target ${WASM_TARGET} --release`, {
     cwd,
     env: buildCommandEnv(),
     stdio: 'pipe',
   });
 
-  const pkgDir = resolve(cwd, 'pkg');
-  if (!existsSync(pkgDir)) {
-    throw new Error('WASM 构建失败：未生成 pkg/ 目录。');
-  }
-
-  const wasmFileName = readdirSync(pkgDir).find((entry) =>
-    entry.endsWith('.wasm'),
+  // cargo 把 crate 名里的连字符换成下划线作为产物文件名。
+  const artifactPath = resolve(
+    cwd,
+    'target',
+    WASM_TARGET,
+    'release',
+    `${crateName.replace(/-/g, '_')}.wasm`,
   );
-  if (!wasmFileName) {
-    throw new Error('WASM 构建失败：pkg/ 目录中未找到 .wasm 文件。');
+  if (!existsSync(artifactPath)) {
+    throw new Error(
+      `WASM 构建失败：未在 target/${WASM_TARGET}/release/ 找到 ${crateName.replace(/-/g, '_')}.wasm。`,
+    );
   }
 
   const distDir = resolve(cwd, 'dist');
   rmSync(distDir, { recursive: true, force: true });
   mkdirSync(distDir, { recursive: true });
-  copyFileSync(resolve(pkgDir, wasmFileName), resolve(distDir, 'plugin.wasm'));
+  copyFileSync(artifactPath, resolve(distDir, 'plugin.wasm'));
+}
+
+function readCrateName(cwd: string): string {
+  const cargoTomlPath = resolve(cwd, 'Cargo.toml');
+  if (!existsSync(cargoTomlPath)) {
+    throw new Error('WASM 构建失败：未找到 Cargo.toml。');
+  }
+
+  // 只取 [package] 段的 name，避免误匹配 [dependencies] 里的同名键。
+  const cargoToml = readFileSync(cargoTomlPath, 'utf8');
+  const packageSection = cargoToml.split(/^\s*\[/m).find((section) =>
+    section.startsWith('package]'),
+  );
+  const crateName = packageSection?.match(
+    /^\s*name\s*=\s*"([^"]+)"/m,
+  )?.[1];
+
+  if (!crateName) {
+    throw new Error('WASM 构建失败：Cargo.toml 的 [package] 段缺少 name。');
+  }
+
+  return crateName;
 }
 
 function buildCommandEnv(): NodeJS.ProcessEnv {
@@ -215,7 +249,7 @@ function buildCommandEnv(): NodeJS.ProcessEnv {
 export const buildCommand = new Command('build')
   .description('构建 AgentLoom 插件归档')
   .option('-o, --output <dir>', 'Output directory', 'build')
-  .option('--wasm', '使用 wasm-pack 构建 WASM 产物')
+  .option('--wasm', '使用 cargo 交叉编译到 wasm32-unknown-unknown 构建 WASM 产物')
   .action(async (options: { output: string; wasm?: boolean }) => {
     const result = await buildPluginArchive({
       outputDir: options.output,

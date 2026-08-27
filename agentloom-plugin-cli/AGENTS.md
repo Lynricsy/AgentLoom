@@ -48,7 +48,7 @@ CLI 子命令以 `src/cli.ts` 为准：
 
 - `create <name>`：询问作者、描述、许可证，在新目录生成 manifest、TS 配置、空插件和测试。
 - `dev [-p, --port <port>]`：启动本地 Express 服务，默认端口 `4400`。
-- `build [-o, --output <dir>] [--wasm]`：调用 `npx tsc` 或 `wasm-pack`，默认输出 `build/<id>-<version>.alp`。
+- `build [-o, --output <dir>] [--wasm]`：调用 `npx tsc` 或 `cargo build --target wasm32-unknown-unknown --release`，默认输出 `build/<id>-<version>.alp`。
 - `keys generate [-o, --output <dir>] [-b, --bits <bits>]`：生成 2048/3072/4096 位 RSA PEM 密钥，默认写入 `keys/`。
 - `publish -k, --key <path> [-o, --output <dir>]`：签名已有 `.alp` 并就地回写；不负责网络上传。
 
@@ -71,7 +71,7 @@ CLI 子命令以 `src/cli.ts` 为准：
 ## Runtime/Tooling Preferences
 
 - Node 22 + pnpm（workspace 成员）；包为纯 ESM，`bin` 与库产物均由 tsup 构建。
-- `build` 子命令外部依赖 `npx tsc`（TS 插件）或 `wasm-pack`（WASM 插件）；`dev` 服务器基于 Express。
+- `build` 子命令外部依赖 `npx tsc`（TS 插件）或 `cargo` + 已安装的 `wasm32-unknown-unknown` target（WASM 插件，scaffold 是 Extism raw cdylib，不能用 wasm-pack）；`dev` 服务器基于 Express。
 - 校验/归档/签名一律复用 `@agentloom/plugin-sdk`（Zod 3），不在 CLI 内重新实现。
 
 ## Testing & QA
@@ -79,6 +79,6 @@ CLI 子命令以 `src/cli.ts` 为准：
 Vitest 使用 Node 环境和 globals，仅收集 `src/**/*.test.ts`。测试与被测文件同目录。
 
 - 文件系统用例通过 `mkdtempSync(join(tmpdir(), 'agentloom-...'))` 创建真实临时插件 fixture，并在 `afterEach` 递归清理。
-- build/publish 测试必须在 import 被测模块前使用 `vi.hoisted()` 保存 `execSync` mock，再由 `vi.mock('node:child_process', ...)` 替换；这样可模拟 `tsc`/`wasm-pack` 产物而不启动外部构建。
+- build/publish 测试必须在 import 被测模块前使用 `vi.hoisted()` 保存 `execSync` mock，再由 `vi.mock('node:child_process', ...)` 替换；这样可模拟 `tsc`/`cargo` 产物而不启动外部构建。
 - dev 测试使用端口 `0` 获取临时端口，跟踪并 `await server.stop()`，避免遗留 watcher、信号处理器或监听端口。
 - 归档和签名测试应读取真实 ZIP，断言条目、manifest、内容哈希与 SDK 验签结果，而不是只检查文件存在。

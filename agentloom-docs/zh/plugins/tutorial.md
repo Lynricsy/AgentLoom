@@ -304,8 +304,11 @@ curl -X POST http://localhost:4400/nodes/text-to-uppercase/execute \
 agentloom-plugin build --wasm
 ```
 
-若 `dist/plugin.wasm` 尚不存在，CLI 会运行 wasm-pack 并复制产物；随后把
-`manifest.json`、`node-definitions.json` 和 WASM 产物写入 `.alp`。
+若 `dist/plugin.wasm` 尚不存在，CLI 会执行
+`cargo build --target wasm32-unknown-unknown --release`（需先
+`rustup target add wasm32-unknown-unknown`），把
+`target/wasm32-unknown-unknown/release/<crate>.wasm` 复制为 `dist/plugin.wasm`；
+随后把 `manifest.json`、`node-definitions.json` 和 WASM 产物写入 `.alp`。
 
 ## 第八步：签名归档
 
