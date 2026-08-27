@@ -54,6 +54,7 @@ import {
   type CreateGeneratedAppRepairAttemptDtoType,
   type CreateGeneratedAppSubmissionDtoType,
   type CreateGeneratedAppDtoType,
+  type UpdateGeneratedAppDtoType,
   type DeleteGeneratedAppSubmissionsResponseDto,
   type DeleteGeneratedAppSubmissionsDtoType,
   type GeneratedAppArtifactContentResponseDto,
@@ -263,6 +264,20 @@ export class GeneratedAppService {
   ): Promise<GeneratedAppResponseDto> {
     return this.repository.findOne(tenantId, appId);
   }
+  // 控制器只通过稳定 service 边界访问新写路由，避免把仓储细节泄漏到 HTTP 层。
+  async update(
+    tenantId: string,
+    userId: string,
+    appId: string,
+    dto: UpdateGeneratedAppDtoType,
+  ): Promise<GeneratedAppResponseDto> {
+    return this.repository.update(tenantId, userId, appId, dto);
+  }
+
+  async delete(tenantId: string, appId: string): Promise<void> {
+    return this.repository.delete(tenantId, appId);
+  }
+
 
   async getRuntimeBindingReadiness(
     tenantId: string,
@@ -337,6 +352,15 @@ export class GeneratedAppService {
   ): Promise<GeneratedAppGenerationRunResponseDto> {
     return this.repository.updateGenerationRun(tenantId, appId, runId, dto);
   }
+  // 详情委托保留 appId/runId 全路径，避免后续调用方降级成仅按子资源 ID 查询。
+  async findGenerationRun(
+    tenantId: string,
+    appId: string,
+    runId: string,
+  ): Promise<GeneratedAppGenerationRunResponseDto> {
+    return this.repository.findGenerationRun(tenantId, appId, runId);
+  }
+
 
   async listRepairAttempts(
     tenantId: string,
@@ -374,6 +398,35 @@ export class GeneratedAppService {
   ): Promise<GeneratedAppRepairAttemptResponseDto> {
     return this.repository.updateRepairAttempt(tenantId, appId, runId, repairAttemptId, dto);
   }
+  // 修复详情与删除共享完整父链参数，确保 HTTP 层不会丢失任一租户边界。
+  async findRepairAttempt(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    repairAttemptId: string,
+  ): Promise<GeneratedAppRepairAttemptResponseDto> {
+    return this.repository.findRepairAttempt(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+    );
+  }
+
+  async deleteRepairAttempt(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    repairAttemptId: string,
+  ): Promise<void> {
+    return this.repository.deleteRepairAttempt(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+    );
+  }
+
 
   async listGateRuns(
     tenantId: string,

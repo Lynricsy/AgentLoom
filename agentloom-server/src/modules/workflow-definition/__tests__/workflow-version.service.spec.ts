@@ -28,6 +28,7 @@ import {
   WorkflowPublishAgentBindingException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
+  WorkflowPublishLegacyLlmAgentException,
   WorkflowVersionConflictException,
   WorkflowVersionNotFoundException,
 } from '../workflow-version.exceptions';
@@ -165,8 +166,7 @@ function createPortMappedWorkflow(sourceType: string, targetType: string) {
   });
 }
 
-// 刻意保留 legacy `llm-agent` 类型：归一化会把它收敛成 canonical `agent`，
-// 这条 fixture 因此顺带覆盖了「legacy 别名生效后自治上限校验仍能命中该节点」。
+// 自治模式 fixture 必须使用 canonical `agent`：遗留 `llm-agent` 现会在更早的专用迁移校验中被阻断。
 // 绑定字段是必需的——发布前的 Agent 绑定校验先于自治校验，不带绑定就走不到被测逻辑。
 function createAutonomyWorkflow(
   autonomyMode: 'MANUAL_CONFIRM' | 'RULE_BASED' | 'LLM_SUGGEST' | 'FULL_AUTO',
@@ -176,7 +176,7 @@ function createAutonomyWorkflow(
     nodes: [
       {
         id: 'agent-1',
-        type: 'llm-agent',
+        type: 'agent',
         position: { x: 0, y: 0 },
         data:
           source === 'legacy'
@@ -1805,6 +1805,54 @@ describe('WorkflowVersionService', () => {
         service.publish(WORKFLOW_ID, {}, USER_ID),
       ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
     });
+    it('发布遗留 llm-agent 画布时应在归一化前返回专用迁移错误', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'legacy-by-type',
+            type: 'llm-agent',
+            position: { x: 0, y: 0 },
+            data: {},
+          },
+          {
+            id: 'legacy-by-camel-data',
+            type: 'custom',
+            position: { x: 100, y: 0 },
+            data: { nodeType: 'llm-agent' },
+          },
+          {
+            id: 'legacy-by-snake-data',
+            type: 'custom',
+            position: { x: 200, y: 0 },
+            data: { node_type: 'llm-agent' },
+          },
+        ],
+        edges: [],
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+
+      const publishPromise = service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      await expect(publishPromise).rejects.toBeInstanceOf(
+        WorkflowPublishLegacyLlmAgentException,
+      );
+      await expect(publishPromise).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-publish-legacy-llm-agent',
+        status: 422,
+        detail:
+          '检测到已废弃的 llm-agent 内联 Agent 节点；请将其迁移为 agent 节点、绑定已发布 Agent Definition 后重新发布工作流',
+        extensions: {
+          nodeIds: [
+            'legacy-by-type',
+            'legacy-by-camel-data',
+            'legacy-by-snake-data',
+          ],
+        },
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
 
     it('发布时 agent 节点未绑定已发布 Agent Definition 应阻断', async () => {
       const workflow = createDraftWorkflow({
@@ -2149,8 +2197,7 @@ describe('WorkflowVersionService', () => {
                 autonomyConfig: {
                   mode: 'LLM_SUGGEST',
                 },
-                // legacy `llm-agent` 经别名收敛为 canonical `agent` 后，
-                // 会拿到 agent 的默认端口模板，不再是空端口
+                // canonical agent 会拿到默认端口模板，自治校验应收到完整的运行时节点数据。
                 inputPorts: expect.arrayContaining([
                   expect.objectContaining({ id: 'system-prompt-in' }),
                 ]),

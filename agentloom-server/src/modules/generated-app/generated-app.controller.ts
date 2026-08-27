@@ -50,6 +50,8 @@ import {
   UpdateGeneratedAppGenerationRunSchema,
   UpdateGeneratedAppRepairAttemptDto,
   UpdateGeneratedAppRepairAttemptSchema,
+  UpdateGeneratedAppDto,
+  UpdateGeneratedAppSchema,
 } from './dto';
 import { GeneratedAppService } from './generated-app.service';
 
@@ -100,6 +102,27 @@ export class GeneratedAppController {
   ) {
     return this.generatedAppService.listGenerationRuns(tenantId, appId, query);
   }
+  // 子资源详情保留完整父级路径，便于仓储同时校验 tenant/app/run 边界。
+  @Get(':appId/generation-runs/:runId')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取生成应用自动开发运行台账详情' })
+  @ApiResponse({ status: 200, description: '生成应用运行台账详情' })
+  @ApiResponse({ status: 404, description: '生成应用任务或运行台账不存在' })
+  async findGenerationRun(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.findGenerationRun(
+      tenantId,
+      appId,
+      runId,
+    );
+
+    return { data };
+  }
+
 
   @Post(':appId/generation-runs')
   @Roles('owner', 'admin', 'creator')
@@ -189,6 +212,31 @@ export class GeneratedAppController {
       query,
     );
   }
+  // 修复详情沿用父级 run 路径，避免仅凭 repairAttemptId 读取其他运行的数据。
+  @Get(
+    ':appId/generation-runs/:runId/repair-attempts/:repairAttemptId',
+  )
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取生成应用修复尝试详情' })
+  @ApiResponse({ status: 200, description: '生成应用修复尝试详情' })
+  @ApiResponse({ status: 404, description: '修复尝试不存在' })
+  async findRepairAttempt(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @Param('repairAttemptId', ParseUUIDPipe) repairAttemptId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.findRepairAttempt(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+    );
+
+    return { data };
+  }
+
 
   @Post(':appId/generation-runs/:runId/repair-attempts')
   @Roles('owner', 'admin', 'creator')
@@ -239,6 +287,29 @@ export class GeneratedAppController {
 
     return { data };
   }
+  // 删除必须使用完整父链并限制 owner/admin，避免 creator 删除审计意义上的修复记录。
+  @Delete(
+    ':appId/generation-runs/:runId/repair-attempts/:repairAttemptId',
+  )
+  @Roles('owner', 'admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: '删除生成应用修复尝试' })
+  @ApiResponse({ status: 204, description: '生成应用修复尝试已删除' })
+  @ApiResponse({ status: 404, description: '修复尝试不存在' })
+  async deleteRepairAttempt(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @Param('repairAttemptId', ParseUUIDPipe) repairAttemptId: string,
+    @CurrentTenant() tenantId: string,
+  ): Promise<void> {
+    await this.generatedAppService.deleteRepairAttempt(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+    );
+  }
+
 
   @Get(':appId/gate-runs')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
@@ -420,6 +491,44 @@ export class GeneratedAppController {
     const data = await this.generatedAppService.findOne(tenantId, appId);
     return { data };
   }
+  // 普通 PATCH 只开放展示字段，避免绕过 Gate 契约改写生成规格、状态和公开 token。
+  @Patch(':appId')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '更新生成应用名称或描述' })
+  @ApiResponse({ status: 200, description: '生成应用展示信息已更新' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async update(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Body(new ZodValidationPipe(UpdateGeneratedAppSchema))
+    dto: UpdateGeneratedAppDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    const data = await this.generatedAppService.update(
+      tenantId,
+      userId,
+      appId,
+      dto,
+    );
+
+    return { data };
+  }
+
+  // 硬删除前由仓储在同一事务撤销公开分享，且只有 owner/admin 可执行破坏性操作。
+  @Delete(':appId')
+  @Roles('owner', 'admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: '永久删除生成应用任务' })
+  @ApiResponse({ status: 204, description: '生成应用任务已删除' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async delete(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @CurrentTenant() tenantId: string,
+  ): Promise<void> {
+    await this.generatedAppService.delete(tenantId, appId);
+  }
+
 
   @Patch(':appId/gates')
   @Roles('owner', 'admin', 'creator')

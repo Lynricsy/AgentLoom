@@ -104,6 +104,36 @@ export class CreateGeneratedAppDto extends createZodDto(
 export type CreateGeneratedAppDtoType = z.infer<
   typeof CreateGeneratedAppSchema
 >;
+// 仅开放展示信息，避免普通 PATCH 绕过 Gate 流程改写生成规格、状态或公开分享凭据。
+export const UpdateGeneratedAppSchema = z
+  .object({
+    appName: z
+      .string()
+      .trim()
+      .min(1, '应用名称不能为空')
+      .max(255, '应用名称不能超过 255 个字符')
+      .optional(),
+    description: z
+      .string()
+      .trim()
+      .min(1, '应用描述不能为空')
+      .max(4000, '应用描述不能超过 4000 个字符')
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.appName !== undefined || value.description !== undefined,
+    { message: '至少需要提供一个可更新字段' },
+  );
+
+export class UpdateGeneratedAppDto extends createZodDto(
+  UpdateGeneratedAppSchema,
+) {}
+
+export type UpdateGeneratedAppDtoType = z.infer<
+  typeof UpdateGeneratedAppSchema
+>;
+
 
 export const QueryGeneratedAppsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

@@ -39,6 +39,7 @@ import { OrganizationAutonomyPolicyService } from '../organization/organization-
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
 import { normalizeWorkflowNodesAndEdges } from './utils/normalize-workflow-graph.utils';
+import { findLegacyLlmAgentNodeIds } from './utils/legacy-llm-agent-node.utils';
 import { sanitizeDefinition } from './utils/sanitize-export.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
@@ -67,6 +68,7 @@ import {
   WorkflowArchivedException,
   WorkflowPublishAutonomyCapException,
   WorkflowPublishAgentBindingException,
+  WorkflowPublishLegacyLlmAgentException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
   WorkflowVersionConflictException,
@@ -240,6 +242,14 @@ export class WorkflowPublishService {
           throw new WorkflowPublishValidationException([
             '工作流必须包含至少一个节点才能发布',
           ]);
+        }
+
+        // 必须先看 raw 画布，否则 normalize 会把 llm-agent alias 成 agent 并丢失准确的迁移诊断。
+        const legacyLlmAgentNodeIds = findLegacyLlmAgentNodeIds(nodes);
+        if (legacyLlmAgentNodeIds.length > 0) {
+          throw new WorkflowPublishLegacyLlmAgentException(
+            legacyLlmAgentNodeIds,
+          );
         }
 
         const edges: schema.ReactFlowEdge[] = Array.isArray(workflow.edges)

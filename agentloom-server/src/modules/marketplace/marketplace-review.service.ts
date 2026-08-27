@@ -12,6 +12,10 @@ import {
 } from '../../database/schema';
 import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-versions.schema';
 import { getWorkflowAgentDefinitionId } from '../execution/workflow-runtime-input.util';
+import {
+  findLegacyLlmAgentNodeIds,
+  LEGACY_LLM_AGENT_MIGRATION_DETAIL,
+} from '../workflow-definition/utils/legacy-llm-agent-node.utils';
 
 @Injectable()
 export class MarketplaceReviewService {
@@ -216,6 +220,29 @@ export class MarketplaceReviewService {
       );
     }
 
+
+    // raw snapshot 仍保留历史节点名；先独立报迁移问题，避免普通 agent 绑定检查漏检或给出误导结论。
+    const legacyLlmAgentNodeIds = findLegacyLlmAgentNodeIds(nodes);
+    if (legacyLlmAgentNodeIds.length > 0) {
+      checks.push(
+        this.fail(
+          'WORKFLOW_LEGACY_LLM_AGENT_DETECTED',
+          `检测到 ${legacyLlmAgentNodeIds.length} 个已废弃的 llm-agent 节点`,
+          {
+            fixHint: LEGACY_LLM_AGENT_MIGRATION_DETAIL,
+            nodeId: legacyLlmAgentNodeIds[0],
+            nodeType: 'llm-agent',
+          },
+        ),
+      );
+    } else {
+      checks.push(
+        this.pass(
+          'WORKFLOW_LEGACY_LLM_AGENT_DETECTED',
+          '工作流未包含已废弃的 llm-agent 节点',
+        ),
+      );
+    }
     const agentNodes = nodes.filter((n) => n.type === 'agent');
     const misconfiguredNodes: Array<{
       nodeId: string;

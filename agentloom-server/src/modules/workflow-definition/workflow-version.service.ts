@@ -39,7 +39,6 @@ import { normalizeWorkflowNodesAndEdges } from './utils/normalize-workflow-graph
 import { sanitizeDefinition } from './utils/sanitize-export.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
-import type { ImportWorkflowDto } from './dto/workflow-import.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import type { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
@@ -512,7 +511,8 @@ export class WorkflowVersionService {
   async importWorkflow(
     tenantId: string,
     userId: string,
-    dto: ImportWorkflowDto,
+    // 原始 DTO 必须下沉到导入服务校验，才能把所有形状错误稳定映射为同一 422 异常。
+    dto: unknown,
   ): Promise<{ id: string; name: string; slug: string }> {
     return this.workflowImportService.importWorkflow(tenantId, userId, dto);
   }

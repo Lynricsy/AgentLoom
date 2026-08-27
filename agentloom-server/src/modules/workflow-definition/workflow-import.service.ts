@@ -42,7 +42,7 @@ import { normalizeWorkflowNodesAndEdges } from './utils/normalize-workflow-graph
 import { sanitizeDefinition } from './utils/sanitize-export.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
-import type { ImportWorkflowDto } from './dto/workflow-import.dto';
+import { ImportWorkflowSchema } from './dto/workflow-import.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import type { ListWorkflowDefinitionsQueryDto } from './dto/list-workflow-definitions-query.dto';
 import type { PublishWorkflowDto } from './dto/publish-workflow.dto';
@@ -71,6 +71,7 @@ import {
   WorkflowPublishValidationException,
   WorkflowVersionConflictException,
   WorkflowVersionNotFoundException,
+  WorkflowImportValidationException,
 } from './workflow-version.exceptions';
 import { MarketplaceListingNotFoundException } from '../marketplace/marketplace.exceptions';
 import {
@@ -450,18 +451,25 @@ export class WorkflowImportService {
   async importWorkflow(
     tenantId: string,
     userId: string,
-    dto: ImportWorkflowDto,
+    dto: unknown,
   ): Promise<{ id: string; name: string; slug: string }> {
-    const { name, description, file_content } = dto;
+    // DTO 与文件内容共用 422 边界，避免 controller pipe 先把同类导入错误转换成 400。
+    const parsedDto = ImportWorkflowSchema.safeParse(dto);
+    if (!parsedDto.success) {
+      throw new WorkflowImportValidationException(
+        parsedDto.error.issues.map((issue) => ({
+          field: issue.path.join('.') || 'body',
+          message: issue.message,
+        })),
+      );
+    }
+
+    const { name, description, file_content } = parsedDto.data;
     const validationResult = validateImportFile(file_content);
 
     if (!validationResult.valid || !validationResult.workflow) {
-      throw new DomainException({
-        type: 'workflow/import-validation-failed',
-        title: 'Import Validation Failed',
-        status: HttpStatus.BAD_REQUEST,
-        detail: 'The imported workflow file is invalid.',
-        errors: validationResult.errors.map((message) => {
+      throw new WorkflowImportValidationException(
+        validationResult.errors.map((message) => {
           const separatorIndex = message.indexOf(': ');
 
           if (separatorIndex === -1) {
@@ -476,7 +484,7 @@ export class WorkflowImportService {
             message: message.slice(separatorIndex + 2),
           };
         }),
-      });
+      );
     }
 
     const importedWorkflow = validationResult.workflow;

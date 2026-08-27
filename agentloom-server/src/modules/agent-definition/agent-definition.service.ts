@@ -1024,6 +1024,63 @@ export class AgentDefinitionService {
     });
   }
 
+  async rollback(
+    agentId: string,
+    versionId: string,
+    userId: string,
+  ): Promise<AgentVersionResponseDto> {
+    return this.withAgentWriteLock(agentId, async (dbClient) => {
+      const [agent] = await dbClient
+        .select()
+        .from(schema.agentDefinitions)
+        .where(eq(schema.agentDefinitions.id, agentId));
+
+      if (!agent) {
+        throw new AgentNotFoundException(agentId);
+      }
+
+      if (agent.status === 'archived') {
+        throw new AgentArchivedException(agentId);
+      }
+
+      const [targetVersion] = await dbClient
+        .select()
+        .from(schema.agentVersions)
+        .where(
+          and(
+            eq(schema.agentVersions.id, versionId),
+            eq(schema.agentVersions.agentDefinitionId, agentId),
+            eq(schema.agentVersions.tenantId, agent.tenantId),
+          ),
+        );
+
+      if (!targetVersion) {
+        throw new AgentVersionNotFoundException(versionId);
+      }
+
+      const snapshot = targetVersion.snapshot;
+      // 历史版本可能没有后来新增的可选字段，显式回退可避免 undefined 被 Drizzle 跳过而残留当前草稿值。
+      await dbClient
+        .update(schema.agentDefinitions)
+        .set({
+          nodes: snapshot.nodes,
+          edges: snapshot.edges,
+          viewport: snapshot.viewport,
+          runtimeMode: snapshot.runtimeMode ?? agent.runtimeMode,
+          systemPrompt: snapshot.systemPrompt ?? null,
+          sandboxConfig: snapshot.sandboxConfig ?? null,
+          workspaceSnapshotId: snapshot.workspaceSnapshotId ?? null,
+          version: sql`${schema.agentDefinitions.version} + 1`,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.agentDefinitions.id, agentId));
+
+      // 返回目标版本而非草稿，方便调用方确认恢复来源且不会暗示线上发布指针发生变化。
+      return toVersionResponseDto(targetVersion);
+    });
+  }
+
   async listVersions(
     agentId: string,
     page = 1,
