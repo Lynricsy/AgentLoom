@@ -486,7 +486,7 @@ describe('intervention migrated scenarios', () => {
         },
       );
       expect(mockQueue.getJob).toHaveBeenCalledWith(
-        `intervention-timeout:${STEP_ID}`,
+        `intervention-timeout-${STEP_ID}`,
       );
       expect(mockQueue.add).toHaveBeenCalledWith('agent-task', {
         executionId: EXECUTION_ID,
@@ -950,7 +950,7 @@ describe('intervention migrated scenarios', () => {
         },
         expect.objectContaining({
           delay: 900 * 1000,
-          jobId: 'intervention-timeout:step-x',
+          jobId: 'intervention-timeout-step-x',
           attempts: 1,
           removeOnComplete: true,
           removeOnFail: true,
@@ -995,9 +995,50 @@ describe('intervention migrated scenarios', () => {
           escalationCount: 2,
         },
         expect.objectContaining({
-          jobId: 'intervention-timeout:step-x:escalated:2',
+          jobId: 'intervention-timeout-step-x-escalated-2',
         }),
       );
+    });
+
+    it('自定义 jobId 不得含 `:`（BullMQ 5 会直接拒绝，导致暂停后抛错）', async () => {
+      for (const _ of [0, 1]) {
+        db.select.mockReturnValueOnce(
+          createSelectChain([
+            {
+              nodeId: 'node-x',
+              workflowDefinitionId: 'workflow-timeout-001',
+            },
+          ]),
+        );
+        mockInterventionPolicyService.resolvePolicy.mockResolvedValueOnce({
+          allowedRoles: ['owner'],
+          timeoutSeconds: 900,
+          timeoutAction: 'escalate',
+          escalateToRole: 'admin',
+          notifyChannels: ['in_app'],
+          source: 'node',
+        });
+      }
+
+      await service.enqueueInterventionTimeout(
+        EXECUTION_ID,
+        'step-x',
+        TENANT_ID,
+      );
+      await service.enqueueInterventionTimeout(
+        EXECUTION_ID,
+        'step-x',
+        TENANT_ID,
+        { escalated: true, escalationCount: 2 },
+      );
+
+      const jobIds = mockQueue.add.mock.calls.map(
+        (call) => (call[2] as { jobId: string }).jobId,
+      );
+      expect(jobIds).toHaveLength(2);
+      for (const jobId of jobIds) {
+        expect(jobId).not.toContain(':');
+      }
     });
   });
 
@@ -1040,7 +1081,7 @@ describe('intervention migrated scenarios', () => {
       );
 
       expect(mockQueue.getJob).toHaveBeenCalledWith(
-        'intervention-timeout:019391d4-0000-7000-0000-000000000099',
+        'intervention-timeout-019391d4-0000-7000-0000-000000000099',
       );
       for (
         let escalationCount = 1;
@@ -1048,7 +1089,7 @@ describe('intervention migrated scenarios', () => {
         escalationCount += 1
       ) {
         expect(mockQueue.getJob).toHaveBeenCalledWith(
-          `intervention-timeout:019391d4-0000-7000-0000-000000000099:escalated:${escalationCount}`,
+          `intervention-timeout-019391d4-0000-7000-0000-000000000099-escalated-${escalationCount}`,
         );
       }
       expect(mockJob.remove).toHaveBeenCalled();

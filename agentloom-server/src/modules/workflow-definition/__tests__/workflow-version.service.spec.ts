@@ -1805,7 +1805,8 @@ describe('WorkflowVersionService', () => {
         service.publish(WORKFLOW_ID, {}, USER_ID),
       ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
     });
-    it('发布遗留 llm-agent 画布时应在归一化前返回专用迁移错误', async () => {
+    it('发布数据库中遗留的 llm-agent 存量画布时应在归一化前返回专用迁移错误', async () => {
+      // 保存 API 会主动迁移 alias；这里让仓储直接返回 raw 节点，准确模拟升级前已经落库的历史行。
       const workflow = createDraftWorkflow({
         nodes: [
           {
