@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -41,6 +41,7 @@ import {
   type MemoryEdge,
   type MemoryNode,
 } from '../../../../database/schema';
+import type { MemoryGateway } from '../../memory.gateway';
 import { MemoryEdgeService } from '../memory-edge.service';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
@@ -136,6 +137,7 @@ describe('MemoryEdgeService', () => {
   let service: MemoryEdgeService;
   let rawDb: MockDb;
   let tenantDb: MockDb;
+  let gateway: { emitEdgeCreated: Mock; emitEdgeDeleted: Mock };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -143,8 +145,12 @@ describe('MemoryEdgeService', () => {
     rawDb = mocks.createMockDb();
     tenantDb = mocks.createMockDb();
     mocks.getTenantDb.mockReturnValue(tenantDb as unknown as DrizzleDB);
+    gateway = { emitEdgeCreated: vi.fn(), emitEdgeDeleted: vi.fn() };
 
-    service = new MemoryEdgeService(rawDb as unknown as DrizzleDB);
+    service = new MemoryEdgeService(
+      rawDb as unknown as DrizzleDB,
+      gateway as unknown as MemoryGateway,
+    );
   });
 
   describe('createEdge', () => {
@@ -191,6 +197,15 @@ describe('MemoryEdgeService', () => {
         priority: 8,
         disclosure: 2,
       });
+      expect(gateway.emitEdgeCreated).toHaveBeenCalledWith(
+        createdEdge.tenantId,
+        createdEdge.instanceId,
+        expect.objectContaining({
+          edgeId: createdEdge.id,
+          parentNodeId: PARENT_NODE_ID,
+          childNodeId: CHILD_NODE_ID,
+        }),
+      );
     });
 
     it('跨实例创建边时应抛出 BadRequestException', async () => {
@@ -407,6 +422,11 @@ describe('MemoryEdgeService', () => {
       });
       expect(tenantDb.delete).toHaveBeenCalledWith(memoryEdges);
       expect(deleteQuery.returning).toHaveBeenCalledTimes(1);
+      expect(gateway.emitEdgeDeleted).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ edgeId: EDGE_ID }),
+      );
     });
 
     it('删除返回空结果时应抛出 NotFoundException', async () => {
@@ -416,6 +436,7 @@ describe('MemoryEdgeService', () => {
       await expect(service.deleteEdge(EDGE_ID)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+      expect(gateway.emitEdgeDeleted).not.toHaveBeenCalled();
     });
   });
 

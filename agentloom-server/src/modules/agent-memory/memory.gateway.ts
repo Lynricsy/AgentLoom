@@ -34,6 +34,9 @@ export const MemoryEventName = {
   NODE_CREATED: 'memory.node.created',
   NODE_UPDATED: 'memory.node.updated',
   NODE_DELETED: 'memory.node.deleted',
+  // 边事件：验收 P2-13 要求建/删边同样有实时反馈，此前 wire 上完全没有这两个事件。
+  EDGE_CREATED: 'memory.edge.created',
+  EDGE_DELETED: 'memory.edge.deleted',
   VERSION_CREATED: 'memory.version.created',
   VERSION_ROLLBACK: 'memory.version.rollback',
   REVIEW_SUBMITTED: 'memory.review.submitted',
@@ -299,6 +302,32 @@ export class MemoryGateway
       tenantId,
       instanceId,
       MemoryEventName.NODE_DELETED,
+      data,
+    );
+  }
+
+  emitEdgeCreated(
+    tenantId: string,
+    instanceId: string,
+    data: Record<string, unknown>,
+  ): void {
+    this.broadcastMemoryEvent(
+      tenantId,
+      instanceId,
+      MemoryEventName.EDGE_CREATED,
+      data,
+    );
+  }
+
+  emitEdgeDeleted(
+    tenantId: string,
+    instanceId: string,
+    data: Record<string, unknown>,
+  ): void {
+    this.broadcastMemoryEvent(
+      tenantId,
+      instanceId,
+      MemoryEventName.EDGE_DELETED,
       data,
     );
   }

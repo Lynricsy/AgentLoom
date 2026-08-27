@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -39,6 +39,7 @@ import {
   type MemoryNode,
   type MemoryVersion,
 } from '../../../../database/schema';
+import type { MemoryGateway } from '../../memory.gateway';
 import { MemoryVersionService } from '../memory-version.service';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
@@ -53,6 +54,7 @@ type SelectChain<TResult> = Promise<TResult[]> & {
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const NODE_ID = '22222222-2222-4222-8222-222222222222';
 const VERSION_ID = '33333333-3333-4333-8333-333333333333';
+const INSTANCE_ID = '44444444-4444-4444-8444-444444444444';
 const NOW = new Date('2025-02-01T08:00:00.000Z');
 
 function createSelectChain<TResult>(result: TResult[]): SelectChain<TResult> {
@@ -91,7 +93,7 @@ function createUpdateChain<TResult>(result: TResult[]) {
 function createNode(overrides: Partial<MemoryNode> = {}): MemoryNode {
   return {
     id: NODE_ID,
-    instanceId: '44444444-4444-4444-8444-444444444444',
+    instanceId: INSTANCE_ID,
     tenantId: TENANT_ID,
     contentType: 'text',
     metadata: { topic: 'agent-memory' },
@@ -123,6 +125,7 @@ describe('MemoryVersionService', () => {
   let rawDb: MockDb;
   let tenantDb: MockDb;
   let txDb: MockDb;
+  let gateway: { emitVersionCreated: Mock; emitVersionRollback: Mock };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -137,7 +140,15 @@ describe('MemoryVersionService', () => {
 
     mocks.getTenantDb.mockReturnValue(tenantDb as unknown as DrizzleDB);
 
-    service = new MemoryVersionService(rawDb as unknown as DrizzleDB);
+    gateway = {
+      emitVersionCreated: vi.fn(),
+      emitVersionRollback: vi.fn(),
+    };
+
+    service = new MemoryVersionService(
+      rawDb as unknown as DrizzleDB,
+      gateway as unknown as MemoryGateway,
+    );
   });
 
   describe('createVersion', () => {
@@ -203,6 +214,8 @@ describe('MemoryVersionService', () => {
       const insertQuery = createInsertChain([created]);
       const updateQuery = createUpdateChain([{ id: latest.id }]);
 
+      // patch/append/rollback 现在会先读节点以取得 instanceId（用于事件广播）。
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       txDb.select.mockReturnValueOnce(latestQuery);
       txDb.insert.mockReturnValueOnce(insertQuery.chain);
       txDb.update.mockReturnValueOnce(updateQuery.chain);
@@ -231,6 +244,8 @@ describe('MemoryVersionService', () => {
     });
 
     it('oldString 不存在时应抛出 409', async () => {
+      // patch/append/rollback 现在会先读节点以取得 instanceId（用于事件广播）。
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       txDb.select.mockReturnValueOnce(
         createSelectChain([
           createVersion({ content: 'hello world', version: 2 }),
@@ -249,6 +264,8 @@ describe('MemoryVersionService', () => {
     });
 
     it('最新版本在写入前发生变化时应触发 OCC 冲突', async () => {
+      // patch/append/rollback 现在会先读节点以取得 instanceId（用于事件广播）。
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       txDb.select.mockReturnValueOnce(
         createSelectChain([
           createVersion({ content: 'hello old world', version: 2 }),
@@ -283,6 +300,8 @@ describe('MemoryVersionService', () => {
       const insertQuery = createInsertChain([created]);
       const updateQuery = createUpdateChain([{ id: latest.id }]);
 
+      // patch/append/rollback 现在会先读节点以取得 instanceId（用于事件广播）。
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       txDb.select.mockReturnValueOnce(createSelectChain([latest]));
       txDb.insert.mockReturnValueOnce(insertQuery.chain);
       txDb.update.mockReturnValueOnce(updateQuery.chain);
@@ -374,6 +393,7 @@ describe('MemoryVersionService', () => {
       const insertQuery = createInsertChain([created]);
       const updateQuery = createUpdateChain([{ id: latest.id }]);
 
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       txDb.select
         .mockReturnValueOnce(createSelectChain([target]))
         .mockReturnValueOnce(createSelectChain([latest]));
@@ -397,6 +417,25 @@ describe('MemoryVersionService', () => {
         deprecated: true,
         migratedTo: created.id,
       });
+      expect(gateway.emitVersionRollback).toHaveBeenCalledWith(
+        TENANT_ID,
+        INSTANCE_ID,
+        expect.objectContaining({
+          nodeId: NODE_ID,
+          versionId: created.id,
+          targetVersionId: target.id,
+        }),
+      );
+    });
+
+    it('回滚失败时不广播事件', async () => {
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
+      txDb.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.rollbackToVersion(NODE_ID, 'missing-version'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(gateway.emitVersionRollback).not.toHaveBeenCalled();
     });
   });
 

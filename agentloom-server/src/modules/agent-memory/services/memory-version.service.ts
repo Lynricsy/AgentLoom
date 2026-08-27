@@ -6,12 +6,18 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import { MemoryGateway } from '../memory.gateway';
 import {
   getTenantId,
   memoryNodes,
   memoryVersions,
+  type MemoryNode,
   type MemoryVersion,
 } from '../../../database/schema';
 
@@ -26,7 +32,41 @@ type VersionQueryClient = Pick<DrizzleDB, 'select' | 'insert' | 'update'>;
 
 @Injectable()
 export class MemoryVersionService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly gateway: MemoryGateway,
+  ) {}
+
+  /**
+   * 广播实时事件。有活跃租户事务时延迟到提交之后，避免回滚后客户端已收到「已创建」。
+   * 注意：patch/append/rollback 自带 drizzle 事务，emit 必须放在该事务 **之外**，
+   * 否则回调内广播同样早于提交。
+   */
+  private broadcastAfterCommit(emit: () => void): void {
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => emit());
+      return;
+    }
+
+    emit();
+  }
+
+  private emitVersionCreated(
+    node: MemoryNode,
+    version: MemoryVersion,
+    operationType: string,
+  ): void {
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitVersionCreated(node.tenantId, node.instanceId, {
+        instanceId: node.instanceId,
+        nodeId: node.id,
+        versionId: version.id,
+        version: version.version,
+        operationType,
+        reviewStatus: version.reviewStatus,
+      }),
+    );
+  }
 
   async createVersion(
     nodeId: string,
@@ -35,7 +75,7 @@ export class MemoryVersionService {
   ): Promise<MemoryVersion> {
     const tenantDb = getTenantDb(this.db);
 
-    await this.findNodeOrThrow(nodeId);
+    const node = await this.findNodeOrThrow(nodeId);
 
     const existingVersion = await this.findLatestVersion(tenantDb, nodeId);
 
@@ -57,6 +97,8 @@ export class MemoryVersionService {
       })
       .returning();
 
+    this.emitVersionCreated(node, createdVersion, 'create');
+
     return createdVersion;
   }
 
@@ -66,8 +108,9 @@ export class MemoryVersionService {
     createdBy?: string,
   ): Promise<MemoryVersion> {
     const tenantDb = getTenantDb(this.db);
+    const node = await this.findNodeOrThrow(nodeId);
 
-    return tenantDb.transaction(async (tx) => {
+    const created = await tenantDb.transaction(async (tx) => {
       const latestVersion = await this.findLatestVersionOrThrow(tx, nodeId);
 
       if (!latestVersion.content.includes(patch.oldString)) {
@@ -102,6 +145,10 @@ export class MemoryVersionService {
 
       return createdVersion;
     });
+
+    this.emitVersionCreated(node, created, 'patch');
+
+    return created;
   }
 
   async appendVersion(
@@ -110,8 +157,9 @@ export class MemoryVersionService {
     createdBy?: string,
   ): Promise<MemoryVersion> {
     const tenantDb = getTenantDb(this.db);
+    const node = await this.findNodeOrThrow(nodeId);
 
-    return tenantDb.transaction(async (tx) => {
+    const created = await tenantDb.transaction(async (tx) => {
       const latestVersion = await this.findLatestVersionOrThrow(tx, nodeId);
       const [createdVersion] = await tx
         .insert(memoryVersions)
@@ -134,6 +182,10 @@ export class MemoryVersionService {
 
       return createdVersion;
     });
+
+    this.emitVersionCreated(node, created, 'append');
+
+    return created;
   }
 
   async getLatestVersion(nodeId: string): Promise<MemoryVersion | null> {
@@ -158,8 +210,9 @@ export class MemoryVersionService {
     createdBy?: string,
   ): Promise<MemoryVersion> {
     const tenantDb = getTenantDb(this.db);
+    const node = await this.findNodeOrThrow(nodeId);
 
-    return tenantDb.transaction(async (tx) => {
+    const created = await tenantDb.transaction(async (tx) => {
       const [targetVersion] = await tx
         .select()
         .from(memoryVersions)
@@ -199,6 +252,18 @@ export class MemoryVersionService {
 
       return createdVersion;
     });
+
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitVersionRollback(node.tenantId, node.instanceId, {
+        instanceId: node.instanceId,
+        nodeId: node.id,
+        versionId: created.id,
+        version: created.version,
+        targetVersionId,
+      }),
+    );
+
+    return created;
   }
 
   async updateReviewStatus(
@@ -219,7 +284,7 @@ export class MemoryVersionService {
     return updatedVersion;
   }
 
-  private async findNodeOrThrow(nodeId: string): Promise<void> {
+  private async findNodeOrThrow(nodeId: string): Promise<MemoryNode> {
     const tenantDb = getTenantDb(this.db);
     const [node] = await tenantDb
       .select()
@@ -230,6 +295,8 @@ export class MemoryVersionService {
     if (!node) {
       throw new NotFoundException(`Memory node ${nodeId} not found`);
     }
+
+    return node;
   }
 
   private async findLatestVersion(

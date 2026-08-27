@@ -6,6 +6,10 @@ import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../common/interceptors/tenant-transaction.context';
+import {
   NOTIFICATION_DISPATCH_JOB,
   NOTIFICATION_QUEUE,
   type NotificationDispatchJobData,
@@ -57,18 +61,29 @@ export class NotificationService {
       })
       .returning();
 
-    await this.notificationQueue.add(
-      NOTIFICATION_DISPATCH_JOB,
-      {
-        tenantId,
-        userId: data.userId,
-        notificationId: notification.id,
-        type: data.type,
-      },
-      {
-        jobId: notification.id,
-      },
-    );
+    // 必须等租户事务提交后再入队：processor 在独立事务里按 notificationId 读行，
+    // 提交前入队会读不到未提交的行，直接返回 {pushed:false} 且不会重试，
+    // 表现为「通知落库了但 notification.new 永远不推」。
+    const enqueue = async (): Promise<void> => {
+      await this.notificationQueue.add(
+        NOTIFICATION_DISPATCH_JOB,
+        {
+          tenantId,
+          userId: data.userId,
+          notificationId: notification.id,
+          type: data.type,
+        },
+        {
+          jobId: notification.id,
+        },
+      );
+    };
+
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(enqueue);
+    } else {
+      await enqueue();
+    }
 
     return notification;
   }

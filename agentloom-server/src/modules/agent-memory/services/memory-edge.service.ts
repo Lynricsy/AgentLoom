@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import { MemoryGateway } from '../memory.gateway';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
   getTenantId,
@@ -34,7 +39,20 @@ const MAX_CYCLE_DEPTH = 10;
 
 @Injectable()
 export class MemoryEdgeService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly gateway: MemoryGateway,
+  ) {}
+
+  /** 有活跃租户事务时延迟到提交之后广播，避免回滚后客户端已收到「已创建」。 */
+  private broadcastAfterCommit(emit: () => void): void {
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => emit());
+      return;
+    }
+
+    emit();
+  }
 
   async createEdge(
     instanceId: string,
@@ -73,6 +91,17 @@ export class MemoryEdgeService {
         })
         .returning();
 
+      this.broadcastAfterCommit(() =>
+        this.gateway.emitEdgeCreated(edge.tenantId, edge.instanceId, {
+          edgeId: edge.id,
+          parentNodeId: edge.parentNodeId,
+          childNodeId: edge.childNodeId,
+          name: edge.name,
+          priority: edge.priority,
+          disclosure: edge.disclosure,
+        }),
+      );
+
       return edge;
     } catch (error: unknown) {
       if (this.isUniqueViolation(error)) {
@@ -88,7 +117,8 @@ export class MemoryEdgeService {
   async deleteEdge(edgeId: string): Promise<DeleteMemoryEdgeResult> {
     const tenantDb = getTenantDb(this.db);
 
-    await this.findEdgeOrThrow(edgeId);
+    // 删除后行已不存在，租户/实例归属只能从删除前的快照取。
+    const existing = await this.findEdgeOrThrow(edgeId);
 
     const [deletedEdge] = await tenantDb
       .delete(memoryEdges)
@@ -98,6 +128,14 @@ export class MemoryEdgeService {
     if (!deletedEdge) {
       throw new NotFoundException(`Memory edge ${edgeId} not found`);
     }
+
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitEdgeDeleted(existing.tenantId, existing.instanceId, {
+        edgeId: deletedEdge.id,
+        parentNodeId: existing.parentNodeId,
+        childNodeId: existing.childNodeId,
+      }),
+    );
 
     return {
       id: deletedEdge.id,

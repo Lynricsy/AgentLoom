@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -42,6 +42,7 @@ import {
   type MemoryNode,
   type MemoryNodeMetadata,
 } from '../../../../database/schema';
+import type { MemoryGateway } from '../../memory.gateway';
 import { MemoryNodeService } from '../memory-node.service';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
@@ -142,6 +143,11 @@ describe('MemoryNodeService', () => {
   let service: MemoryNodeService;
   let rawDb: MockDb;
   let tenantDb: MockDb;
+  let gateway: {
+    emitNodeCreated: Mock;
+    emitNodeUpdated: Mock;
+    emitNodeDeleted: Mock;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -149,8 +155,16 @@ describe('MemoryNodeService', () => {
     rawDb = mocks.createMockDb();
     tenantDb = mocks.createMockDb();
     mocks.getTenantDb.mockReturnValue(tenantDb as unknown as DrizzleDB);
+    gateway = {
+      emitNodeCreated: vi.fn(),
+      emitNodeUpdated: vi.fn(),
+      emitNodeDeleted: vi.fn(),
+    };
 
-    service = new MemoryNodeService(rawDb as unknown as DrizzleDB);
+    service = new MemoryNodeService(
+      rawDb as unknown as DrizzleDB,
+      gateway as unknown as MemoryGateway,
+    );
   });
 
   describe('createNode', () => {
@@ -181,6 +195,11 @@ describe('MemoryNodeService', () => {
         contentType: 'markdown',
         disclosureLevel: 2,
       });
+      expect(gateway.emitNodeCreated).toHaveBeenCalledWith(
+        TENANT_ID,
+        INSTANCE_ID,
+        expect.objectContaining({ nodeId: NODE_ID, contentType: 'markdown' }),
+      );
     });
 
     it('实例不存在时应抛出异常', async () => {
@@ -190,6 +209,7 @@ describe('MemoryNodeService', () => {
         NotFoundException,
       );
       expect(tenantDb.insert).not.toHaveBeenCalled();
+      expect(gateway.emitNodeCreated).not.toHaveBeenCalled();
     });
   });
 
@@ -270,6 +290,12 @@ describe('MemoryNodeService', () => {
       });
       expect(tenantDb.delete).toHaveBeenCalledWith(memoryNodes);
       expect(deleteQuery.returning).toHaveBeenCalledTimes(1);
+      expect(gateway.emitNodeDeleted).toHaveBeenCalledWith(
+        // 行已删除，租户/实例只能来自删除前快照。
+        existing.tenantId,
+        existing.instanceId,
+        { nodeId: existing.id },
+      );
     });
   });
 
