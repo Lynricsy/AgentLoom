@@ -1842,12 +1842,13 @@ describe("agentConversationStore", () => {
     );
     emitSocketEvent("connect");
 
-    // 查询期间新一轮的 live chunk 先到，被暂存。
+    // 查询期间到达的 live chunk 被暂存——它属于 DB snapshot 已经落库的**同一轮**，
+    // 正文完全一致，只是本地 id 还是流式 messageId。
     emitSocketEvent("conversation.agent.message_chunk", {
       conversationId: "conv-1",
       executionId: "conv-1",
       messageId: "stream-live",
-      chunk: "查询期间的新内容",
+      chunk: "离线期间完成的回答",
       eventId: 1,
     });
 
@@ -1863,7 +1864,8 @@ describe("agentConversationStore", () => {
           content: "离线期间完成的回答",
           toolCalls: null,
           metadata: {},
-          createdAt: "2026-04-01T05:44:09.000Z",
+          // 落库必然发生在本地构造流式消息之后，等价认亲要求 canonical 不更早。
+          createdAt: new Date(Date.now() + 60_000).toISOString(),
         },
       ],
       timestamp: "2026-04-01T05:44:10.000Z",
@@ -1871,10 +1873,11 @@ describe("agentConversationStore", () => {
 
     deferredAck();
 
+    // 先 flush 再 merge，等价去重才能认出这两条是同一轮；
+    // 若 merge 先跑（看不到暂存的 live tail），ack 后的 flush 会另起一条流式消息。
     const { messages } = useAgentConversationStore.getState();
-    expect(messages.map((message) => message.content)).toEqual([
-      "离线期间完成的回答",
-      "查询期间的新内容",
-    ]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.id).toBe("msg-persisted");
+    expect(messages[0]?.isStreaming).toBe(false);
   });
 });
