@@ -21,10 +21,17 @@ import { EvidenceExportService } from '../evidence-export.service';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
+  hasActiveTenantTransaction: vi.fn().mockReturnValue(false),
+  registerAfterCommitHook: vi.fn(),
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: mocks.getTenantDb,
+}));
+
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  hasActiveTenantTransaction: mocks.hasActiveTenantTransaction,
+  registerAfterCommitHook: mocks.registerAfterCommitHook,
 }));
 
 const TENANT_ID = '00000000-0000-4000-8000-000000000001';
@@ -131,6 +138,8 @@ describe('EvidenceExportService', () => {
     storageService = createMockStorageService();
 
     mocks.getTenantDb.mockReturnValue(tenantDb);
+    mocks.hasActiveTenantTransaction.mockReturnValue(false);
+    mocks.registerAfterCommitHook.mockReset();
 
     service = new EvidenceExportService(
       {} as never,
@@ -212,6 +221,50 @@ describe('EvidenceExportService', () => {
         resourceType: 'evidence_export_job',
         resourceId: 'export-1',
       }),
+    );
+  });
+
+  it('在租户事务中应把入队推迟到事务提交之后', async () => {
+    // worker 是独立进程：事务未提交时它读不到刚插入的导出任务行，
+    // 会当作任务不存在立刻结束，任务永远停在 queued。
+    mocks.hasActiveTenantTransaction.mockReturnValue(true);
+
+    tenantDb.select.mockReturnValueOnce(
+      createSelectChain([{ id: 'exec-1' }]),
+    );
+    const insertReturning = createInsertReturning([
+      {
+        id: 'export-tx',
+        tenantId: TENANT_ID,
+        requestedBy: ACTOR_ID,
+        status: 'queued',
+        filters: { workflowId: WORKFLOW_ID, executionIds: ['exec-1'] },
+        artifactFormat: EVIDENCE_EXPORT_ARTIFACT_FORMAT,
+        matchedExecutionCount: 1,
+        storageKey: null,
+        completedAt: null,
+      },
+    ]);
+    tenantDb.insert.mockImplementation(insertReturning.insert);
+
+    await service.requestExport({
+      tenantId: TENANT_ID,
+      actorId: ACTOR_ID,
+      filters: { workflowId: WORKFLOW_ID },
+    });
+
+    // 请求返回时绝不能已经入队。
+    expect(exportQueue.add).not.toHaveBeenCalled();
+    expect(mocks.registerAfterCommitHook).toHaveBeenCalledTimes(1);
+
+    // 提交后钩子执行，才真正入队。
+    const hook = mocks.registerAfterCommitHook.mock.calls[0]?.[0] as () => Promise<void>;
+    await hook();
+
+    expect(exportQueue.add).toHaveBeenCalledWith(
+      expect.stringContaining('evidence-export'),
+      expect.objectContaining({ tenantId: TENANT_ID, exportId: 'export-tx' }),
+      expect.objectContaining({ jobId: 'evidence-export-export-tx' }),
     );
   });
 
