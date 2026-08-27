@@ -668,13 +668,15 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     });
 
     // 分界线：事务已提交，步骤此刻已经是 waiting_intervention。
-    // 之后的副作用（广播 + 超时兜底入队）失败只做降级，绝不向上抛：
-    // 一旦抛出，调用方的 catch 会把已处于 waiting_intervention 的步骤再写成
-    // failed（非法转换），原始错误被掩盖成「步骤状态转换非法」，整个 execution
-    // 也被误判为失败，用户反而彻底无法处置这次干预。
-    // 相比之下，丢掉自动超时兜底只是降级为「仅人工处置」，严格优于打死执行。
-    // 注意：事务本身失败必须继续向上抛——那时步骤仍是 running，
-    // 调用方写 failed 是合法且正确的。
+    // 之后的副作用失败只做降级，绝不向上抛：一旦抛出，调用方的 catch 会把已处于
+    // waiting_intervention 的步骤再写成 failed（非法转换），原始错误被掩盖成
+    // 「步骤状态转换非法」；且 ExecutionWorker.onFailed 对任何 job 失败都无条件
+    // markFailed，execution 会被打死，用户反而彻底无法处置这次干预。
+    // 注意：事务本身失败必须继续向上抛——那时步骤仍是 running，调用方写 failed 合法。
+    //
+    // 广播与超时入队是两个**互相独立**的副作用，必须各自 try/catch：
+    // 若合用一个 try，广播 listener 抛错会连带跳过入队，同时丢掉实时通知与自动超时兜底，
+    // 留下最差的「孤儿暂停」。分开之后，任一侧失败都只损失自己那一份能力。
     try {
       this.eventBridge.emitInterventionRequired(
         params.tenantId,
@@ -696,6 +698,16 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
           requestedAt,
         },
       );
+    } catch (error) {
+      this.logger.error(
+        `步骤 ${params.step.id} 已暂停并落库为 waiting_intervention，但 intervention_required 广播失败：` +
+          `客户端需靠轮询/重新拉取才能看到该干预。原因：${
+            error instanceof Error ? error.message : String(error)
+          }`,
+      );
+    }
+
+    try {
       await this.enqueueInterventionTimeout(
         params.executionId,
         params.step.id,
@@ -703,8 +715,8 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       );
     } catch (error) {
       this.logger.error(
-        `步骤 ${params.step.id} 已暂停并落库为 waiting_intervention，但提交后的副作用失败：` +
-          `自动超时兜底可能缺失，该干预需人工处置。原因：${
+        `步骤 ${params.step.id} 已暂停并落库为 waiting_intervention，但超时兜底任务入队失败：` +
+          `自动超时处置缺失，该干预只能人工处置。原因：${
             error instanceof Error ? error.message : String(error)
           }`,
       );

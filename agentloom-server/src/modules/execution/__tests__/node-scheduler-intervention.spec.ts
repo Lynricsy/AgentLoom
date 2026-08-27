@@ -432,7 +432,7 @@ describe('intervention migrated scenarios', () => {
       );
     });
 
-    it('广播抛错同样降级，不影响已提交的暂停状态', async () => {
+    it('广播抛错只损失实时通知：超时兜底仍必须照常入队', async () => {
       const step = makeStep({ id: 'step-pause-emit', nodeId: 'node-pause-emit' });
       mockEventBridge.emitInterventionRequired.mockImplementationOnce(() => {
         throw new Error('event bridge down');
@@ -453,8 +453,13 @@ describe('intervention migrated scenarios', () => {
       ).resolves.toBeUndefined();
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledTimes(1);
-      // 广播失败发生在入队之前，入队因此被跳过——这正是「降级」的可观察边界。
-      expect(enqueueTimeout).not.toHaveBeenCalled();
+      // 两个 post-commit 副作用互相独立：广播挂了不能连带吞掉自动超时兜底，
+      // 否则就是既无实时通知、又无超时处置的「孤儿暂停」——最差的结果。
+      expect(enqueueTimeout).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        step.id,
+        TENANT_ID,
+      );
     });
 
     it('事务本身失败必须继续上抛：此时步骤仍是 running，调用方写 failed 是合法的', async () => {
