@@ -453,6 +453,146 @@ describe('http migrated scenarios', () => {
     });
   });
 
+  describe('非 2xx 响应的失败语义', () => {
+    const makeErrorResponse = () =>
+      ({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        url: 'https://example.com/missing',
+        headers: {
+          entries: () =>
+            Object.entries({
+              'content-type': 'application/json',
+            })[Symbol.iterator](),
+          get: (key: string) =>
+            key === 'content-type' ? 'application/json' : null,
+        },
+        json: vi.fn().mockResolvedValue({ error: 'not found' }),
+      }) as unknown as Response;
+
+    const makeErrorSteps = (config: Record<string, unknown>) => [
+      makeStep({
+        id: 'step-h',
+        nodeId: 'H',
+        status: 'pending',
+        nodeType: 'http-tool',
+        nodeData: {
+          config: { url: 'https://example.com/missing', method: 'GET', ...config },
+        },
+      }),
+    ];
+
+    it('默认配置下非 2xx 应写 failed 并携带完整响应 payload', async () => {
+      const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);
+      globalThis.fetch = vi.fn().mockResolvedValue(makeErrorResponse());
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'H',
+        TENANT_ID,
+        snapshot,
+        makeErrorSteps({}),
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-h',
+        'failed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            ok: false,
+            status: 404,
+            'response-out': { error: 'not found' },
+            'exec-out': { triggered: true, success: false, status: 404 },
+          }),
+          errorMessage: {
+            message:
+              'HTTP GET https://example.com/missing 返回 404 Not Found',
+            nodeId: 'H',
+          },
+        }),
+      );
+      expect(onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
+      expect(onNodeCompleted).not.toHaveBeenCalled();
+    });
+
+    it('failOnHttpError 显式 false 时非 2xx 仍视为成功（探测型用法）', async () => {
+      const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);
+      globalThis.fetch = vi.fn().mockResolvedValue(makeErrorResponse());
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'H',
+        TENANT_ID,
+        snapshot,
+        makeErrorSteps({ failOnHttpError: false }),
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-h',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            ok: false,
+            'exec-out': { triggered: true, success: true, status: 404 },
+          }),
+        }),
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
+      expect(onNodeFailed).not.toHaveBeenCalled();
+    });
+
+    it('failOnHttpError 显式 true 时非 2xx 写 failed', async () => {
+      const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);
+      globalThis.fetch = vi.fn().mockResolvedValue(makeErrorResponse());
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'H',
+        TENANT_ID,
+        snapshot,
+        makeErrorSteps({ failOnHttpError: true }),
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-h',
+        'failed',
+        expect.anything(),
+      );
+      expect(onNodeFailed).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('scheduleNode migrated', () => {
     it('http-tool 节点应兼容 snake_case query_params 配置', async () => {
       const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);

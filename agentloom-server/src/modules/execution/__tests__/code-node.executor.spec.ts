@@ -414,6 +414,67 @@ describe('code migrated scenarios', () => {
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
+
+    it('code-tool 执行 success:false 时应写 failed 并保留诊断输出', async () => {
+      const steps = [
+        makeStep({
+          id: 'step-c',
+          nodeId: 'C',
+          status: 'pending',
+          nodeType: 'code-tool',
+          nodeData: {
+            config: { language: 'bash', code: 'exit 1' },
+          },
+        }),
+      ];
+      const codeSnapshot = makeSnapshot([makeNode('C', 'code-tool')], []);
+
+      mockCodeExecutionService.execute.mockResolvedValue({
+        success: false,
+        output: null,
+        stdout: '',
+        stderr: 'bash: command not found',
+        executionTimeMs: 3,
+        error: '解释器不可用',
+      });
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'C',
+        TENANT_ID,
+        codeSnapshot,
+        steps,
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-c',
+        'failed',
+        {
+          result: expect.objectContaining({
+            success: false,
+            stderr: 'bash: command not found',
+            error: '解释器不可用',
+            'exec-out': { triggered: true, success: false },
+          }),
+          errorMessage: { message: '解释器不可用', nodeId: 'C' },
+        },
+      );
+      expect(onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-c',
+        TENANT_ID,
+      );
+      expect(onNodeCompleted).not.toHaveBeenCalled();
+    });
     const inlineDispatchCases = [
       ['llm-model', 'executeLlmModelNode', false],
       ['knowledge-base', 'executeKnowledgeNode', false],

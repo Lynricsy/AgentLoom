@@ -76,4 +76,28 @@ describe('NodeExecutionFailurePolicy', () => {
       'tenant-1',
     );
   });
+
+  it('透传诊断 result 到 failed 落库', async () => {
+    const updateStepStatus = vi.fn().mockResolvedValue(undefined);
+    const policy = new NodeExecutionFailurePolicy({ updateStepStatus } as unknown as StepStateMachineService);
+    const onNodeFailed = vi.fn().mockResolvedValue(undefined);
+    const step = makeStep();
+
+    await policy.handle(new Error('boom'), {
+      tenantId: 'tenant-1',
+      executionId: 'execution-1',
+      step,
+      onNodeFailed,
+      result: { stdout: 'partial', 'exec-out': { success: false } },
+    });
+
+    expect(updateStepStatus).toHaveBeenCalledWith(
+      'tenant-1',
+      step.id,
+      'failed',
+      expect.objectContaining({
+        result: { stdout: 'partial', 'exec-out': { success: false } },
+      }),
+    );
+  });
 });

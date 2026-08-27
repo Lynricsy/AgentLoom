@@ -221,6 +221,18 @@ describe("nodeTypeRegistry", () => {
     expect(textNode.configSchema.properties.text?.title).toBe("文本内容");
   });
 
+  it("http-tool 的 failOnHttpError 默认为 true（非 2xx 判定失败）", () => {
+    const httpToolNode = getNodeTypeConfig("http-tool");
+    const failOnHttpError =
+      httpToolNode.configSchema.properties.failOnHttpError;
+
+    expect(failOnHttpError).toEqual({
+      type: "boolean",
+      title: "非 2xx 视为失败",
+      default: true,
+    });
+  });
+
   it("目标 workflow 节点都会暴露 exec-in 与 exec-out", () => {
     for (const type of EXEC_PORT_NODE_TYPES) {
       const config = getNodeTypeConfig(type);

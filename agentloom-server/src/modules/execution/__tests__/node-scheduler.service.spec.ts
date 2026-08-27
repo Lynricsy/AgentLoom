@@ -726,6 +726,101 @@ describe('facade migrated scenarios', () => {
         TENANT_ID,
       );
     });
+
+    it('无 portMappingMetadata 时应改用 normalize 写入的静态端口判定不兼容', async () => {
+      const nodeA = makeNode('A', 'text-output', {
+        outputPorts: [{ id: 'text-out', dataType: 'text' }],
+      });
+      const nodeB = makeNode('B', 'merge', {
+        inputPorts: [{ id: 'items-in', dataType: 'array' }],
+      });
+      const snapshot = makeSnapshot(
+        [nodeA, nodeB],
+        [makeEdge('A', 'B', 'text-out', 'items-in')],
+      );
+      const stepA = makeStep({
+        id: 'step-a',
+        nodeId: 'A',
+        status: 'completed',
+        result: { text: 'hello' },
+      });
+      const stepB = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'pending',
+        nodeType: 'merge',
+      });
+
+      vi.spyOn(service, 'onNodeFailed').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [
+        stepA,
+        stepB,
+      ]);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-b',
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            type: 'https://agentloom.dev/errors/node-type-mismatch',
+            typeMismatch: expect.objectContaining({
+              sourceType: 'text',
+              targetType: 'array',
+            }),
+          }),
+        }),
+      );
+      expect(service.onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-b',
+        TENANT_ID,
+      );
+    });
+
+    it('静态端口两端都缺 dataType 时保持 no-op（保护动态 MCP 端口）', async () => {
+      const nodeA = makeNode('A', 'mcp-tool');
+      const nodeB = makeNode('B', 'agent');
+      const snapshot = makeSnapshot(
+        [nodeA, nodeB],
+        [makeEdge('A', 'B', 'dynamic-out', 'dynamic-in')],
+      );
+      const stepA = makeStep({
+        id: 'step-a',
+        nodeId: 'A',
+        status: 'completed',
+        result: { 'dynamic-out': 'value' },
+      });
+      const stepB = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'pending',
+        nodeType: 'agent',
+      });
+
+      db.update.mockReturnValue(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeFailed').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [
+        stepA,
+        stepB,
+      ]);
+
+      // 端口守卫必须放行：动态端口在快照里没有类型信息，误报会阻断合法的 MCP 连线。
+      // 该节点之后是否因其它原因失败与本用例无关，故只断言不存在 typeMismatch 判定。
+      const typeMismatchCalls =
+        mockStateMachine.updateStepStatus.mock.calls.filter(
+          (call: unknown[]) =>
+            (
+              call[3] as
+                | { errorMessage?: { type?: string } }
+                | undefined
+            )?.errorMessage?.type ===
+            'https://agentloom.dev/errors/node-type-mismatch',
+        );
+      expect(typeMismatchCalls).toHaveLength(0);
+    });
   });
 
 

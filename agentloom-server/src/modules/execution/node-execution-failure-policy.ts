@@ -16,6 +16,12 @@ export interface NodeExecutionFailureContext {
     stepId: string,
     tenantId: string,
   ) => Promise<void>;
+  /**
+   * 失败时要一并落库的诊断 payload（HTTP 响应体、代码 stdout/stderr 等）。
+   * 必须走 result JSONB 而不是塞进 errorMessage：errorMessage 是有声明结构的
+   * 错误信封，塞未声明字段会被下游序列化器丢弃，且 result 是下游节点读取端口值的位置。
+   */
+  readonly result?: Record<string, unknown>;
   readonly checkpointData?: Record<string, unknown>;
 }
 
@@ -33,6 +39,7 @@ export class NodeExecutionFailurePolicy {
       context.step.id,
       'failed',
       {
+        ...(context.result !== undefined ? { result: context.result } : {}),
         errorMessage: {
           message,
           ...(error instanceof Error ? { stack: error.stack } : {}),

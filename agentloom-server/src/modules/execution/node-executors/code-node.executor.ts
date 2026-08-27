@@ -75,6 +75,26 @@ export class CodeNodeExecutor implements NodeExecutor {
         ...(executionResult.error ? { error: executionResult.error } : {}),
       };
 
+      if (!executionResult.success) {
+        // CodeExecutionService 对 ENOENT / 超时 / 非零退出码统一返回 success:false，
+        // 这里必须 fail-closed：否则解释器缺失或脚本抛错的节点会被记成 completed，
+        // 下游节点继续读到空 output，整条 workflow 假绿。
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'failed',
+          {
+            result,
+            errorMessage: {
+              message: executionResult.error ?? '代码执行失败',
+              nodeId: step.nodeId,
+            },
+          },
+        );
+        await runtime.onNodeFailed(executionId, step.id, tenantId);
+        return;
+      }
+
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
