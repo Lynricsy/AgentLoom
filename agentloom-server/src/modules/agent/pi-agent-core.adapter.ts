@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import { ToolPermissionResolutionNotAllowedException } from '../../common/exceptions/tool-call.exceptions';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type {
   AgentCodeToolBinding,
@@ -429,6 +430,13 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     this.clearPendingPermissions(sessionId, 'cancelled');
     this.clearDeniedToolCallCache(sessionId);
   }
+  // 持久消息落库前只能从运行时 gate 判断调用是否仍可审批，查询必须无副作用。
+  hasPendingToolPermission(sessionId: string, toolCallId: string): boolean {
+    return (
+      this.pendingPermissionResolvers.get(sessionId)?.has(toolCallId) === true
+    );
+  }
+
 
   async resolveToolPermission(
     sessionId: string,
@@ -448,8 +456,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       return;
     }
 
-    throw new Error(
-      `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+    // 没有本地或分布式 gate 时属于审批时序冲突，而不是运行时 500。
+    throw new ToolPermissionResolutionNotAllowedException(
+      toolCallId,
+      'not_pending',
     );
   }
 

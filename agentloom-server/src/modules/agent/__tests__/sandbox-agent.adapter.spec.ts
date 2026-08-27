@@ -17,6 +17,7 @@ import { RagService } from '../../knowledge/services/rag.service';
 import { PiConfigGeneratorService } from '../../sandbox/pi-config-generator.service';
 import type { SandboxRuntimeDriver } from '../../sandbox/sandbox-runtime-driver.port';
 import type { RequestInit as UndiciRequestInit } from 'undici';
+import { ToolPermissionResolutionNotAllowedException } from '../../../common/exceptions/tool-call.exceptions';
 
 vi.mock('@nestjs/common', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nestjs/common')>();
@@ -1217,7 +1218,9 @@ describe('SandboxAgentAdapter', () => {
       await expect(pending).resolves.toEqual({ allowed: true });
       await expect(
         adapter.resolveToolPermission(session.id, 'tool-1', 'approve'),
-      ).rejects.toThrow('has no pending tool permission');
+      ).rejects.toBeInstanceOf(
+        ToolPermissionResolutionNotAllowedException,
+      );
     });
 
     it('deny 时应返回 allowed=false', async () => {
@@ -2512,7 +2515,9 @@ describe('SandboxAgentAdapter', () => {
           'permission-a',
           'approve',
         ),
-      ).rejects.toThrow('has no pending tool permission');
+      ).rejects.toBeInstanceOf(
+        ToolPermissionResolutionNotAllowedException,
+      );
     });
 
     it('已完成 session 上等待权限应立即拒绝', async () => {

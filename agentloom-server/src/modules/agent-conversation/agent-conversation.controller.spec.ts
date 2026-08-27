@@ -11,6 +11,10 @@ import { WorkspaceIntegrationService } from '../agent-execution/workspace-integr
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
 import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
 
 const mockService = {
   create: vi.fn(),
@@ -18,6 +22,7 @@ const mockService = {
   listByAgent: vi.fn(),
   getDetail: vi.fn(),
   getPermissionResolutionTarget: vi.fn(),
+  validateConversationToolCallPermissionState: vi.fn(),
   sendMessage: vi.fn(),
   cancel: vi.fn(),
   end: vi.fn(),
@@ -96,6 +101,9 @@ describe('AgentConversationController', () => {
     controller = module.get(AgentConversationController);
     mockSelfEvolutionPermissionService.resolveConversationRequest.mockResolvedValue(
       false,
+    );
+    mockService.validateConversationToolCallPermissionState.mockResolvedValue(
+      true,
     );
   });
 
@@ -337,6 +345,83 @@ describe('AgentConversationController', () => {
   });
 
   describe('resolveToolPermission', () => {
+    it('持久化 completed 工具调用应在访问 live gate 前返回 409', async () => {
+      mockService.validateConversationToolCallPermissionState.mockRejectedValueOnce(
+        new ToolPermissionResolutionNotAllowedException(
+          'tool-completed',
+          'completed',
+        ),
+      );
+
+      await expect(
+        controller.resolveToolPermission(
+          CONVERSATION_ID,
+          'tool-completed',
+          { action: 'approve' } as any,
+          TENANT_ID,
+        ),
+      ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+
+      expect(
+        mockSelfEvolutionPermissionService.resolveConversationRequest,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('持久化 failed 工具调用应在访问 live gate 前返回 409', async () => {
+      mockService.validateConversationToolCallPermissionState.mockRejectedValueOnce(
+        new ToolPermissionResolutionNotAllowedException('tool-failed', 'failed'),
+      );
+
+      await expect(
+        controller.resolveToolPermission(
+          CONVERSATION_ID,
+          'tool-failed',
+          { action: 'deny' } as any,
+          TENANT_ID,
+        ),
+      ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+
+      expect(
+        mockSelfEvolutionPermissionService.resolveConversationRequest,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).not.toHaveBeenCalled();
+    });
+    it('持久历史与 live gate 均无 toolCallId 时应在访问决议服务前返回 404', async () => {
+      mockService.validateConversationToolCallPermissionState.mockRejectedValueOnce(
+        new ToolCallNotFoundException('tool-unknown'),
+      );
+
+      await expect(
+        controller.resolveToolPermission(
+          CONVERSATION_ID,
+          'tool-unknown',
+          { action: 'approve' } as any,
+          TENANT_ID,
+        ),
+      ).rejects.toBeInstanceOf(ToolCallNotFoundException);
+
+      expect(
+        mockSelfEvolutionPermissionService.resolveConversationRequest,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).not.toHaveBeenCalled();
+    });
+
     it('未被自进化权限服务接管时，应调用 sandbox adapter 解析权限并返回 accepted payload', async () => {
       mockService.getPermissionResolutionTarget.mockResolvedValueOnce({
         runtimeMode: 'sandbox',

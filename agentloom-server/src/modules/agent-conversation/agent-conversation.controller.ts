@@ -21,6 +21,10 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
+import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../agent/ports/agent-runtime.port';
@@ -193,12 +197,20 @@ export class AgentConversationController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: '解析对话沙箱中的工具权限（批准/拒绝）' })
   @ApiResponse({ status: 202, description: '对话工具权限解析已接受' })
+  @ApiResponse({ status: 409, description: '工具调用已不在等待审批状态' })
   async resolveToolPermission(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('toolCallId') toolCallId: string,
     @Body() dto: ResolveConversationToolPermissionDto,
-    @CurrentTenant() _tenantId: string,
+    @CurrentTenant() tenantId: string,
   ) {
+    const hasPersistedToolCall =
+      await this.conversationService.validateConversationToolCallPermissionState(
+        tenantId,
+        id,
+        toolCallId,
+      );
+
     const handledBySelfEvolution =
       await this.selfEvolutionPermissionService.resolveConversationRequest({
         conversationId: id,
@@ -208,27 +220,39 @@ export class AgentConversationController {
       });
 
     if (!handledBySelfEvolution) {
-      const target =
-        await this.conversationService.getPermissionResolutionTarget(id);
+      try {
+        const target =
+          await this.conversationService.getPermissionResolutionTarget(id);
 
-      if (target.runtimeMode === 'no_sandbox') {
-        if (!target.sessionId) {
-          throw new ConflictException(
-            `Conversation ${id} has no active in-process session`,
+        if (target.runtimeMode === 'no_sandbox') {
+          if (!target.sessionId) {
+            throw new ConflictException(
+              `Conversation ${id} has no active in-process session`,
+            );
+          }
+
+          await this.inProcessAgentRuntime.resolveToolPermission?.(
+            target.sessionId,
+            toolCallId,
+            dto.action,
+          );
+        } else {
+          await this.sandboxAgentAdapter.resolveConversationToolPermission(
+            id,
+            toolCallId,
+            dto.action,
           );
         }
-
-        await this.inProcessAgentRuntime.resolveToolPermission?.(
-          target.sessionId,
-          toolCallId,
-          dto.action,
-        );
-      } else {
-        await this.sandboxAgentAdapter.resolveConversationToolPermission(
-          id,
-          toolCallId,
-          dto.action,
-        );
+      } catch (error) {
+        if (
+          error instanceof ToolPermissionResolutionNotAllowedException &&
+          !hasPersistedToolCall
+        ) {
+          // 持久历史与 live gate 都没有该调用时才是 404；已归档调用的矛盾状态已由
+          // validator 提前按 409 拦截，不能让运行时的瞬时状态覆盖持久真相。
+          throw new ToolCallNotFoundException(toolCallId);
+        }
+        throw error;
       }
     }
 

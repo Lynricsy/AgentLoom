@@ -265,7 +265,7 @@ Agent 的核心是一个 **Reasoning-Action 循环**：
 6. **输出** — 将结果通过输出端口传递给下游节点
 
 ::: info 自主性模式
-`agent` 节点上的 `autonomyMode` 是发布期的治理标记：组织自治上限会在发布时校验它，超过上限则阻止发布。它不进入 `WorkflowAgentAdapter.createSession()`，因此不是引用式 agent 节点的执行输入。
+`agent` 节点上的 `autonomyMode` 同时参与发布期治理与运行期控制。运行时会按节点配置解析模式并受组织自治上限约束；当有效模式为 `MANUAL_CONFIRM` 时，Agent 先产出建议，再把步骤暂停为 `waiting_intervention`，由现有干预接口批准、修改或拒绝后恢复执行。该字段仍不直接传入 `WorkflowAgentAdapter.createSession()`，而是在 executor 边界决定是否暂停。
 :::
 
 ## DAG 调度

@@ -16,6 +16,10 @@ import { and, eq } from 'drizzle-orm';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import type { OrgRole } from '../../common/types/org-role.type';
 import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../common/exceptions/tool-call.exceptions';
+import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../agent/ports/agent-runtime.port';
@@ -38,13 +42,8 @@ import { LlmEncryptionService } from '../llm/llm-encryption.service';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
-  ToolCallNotFoundException,
-  ToolPermissionResolutionNotAllowedException,
 } from './execution.exceptions';
-import type {
-  InterventionCheckpointRecord,
-  InterventionRequiredPayload,
-} from './types/execution-event.types';
+import type { InterventionCheckpointRecord } from './types/execution-event.types';
 import type {
   ToolCallEvent,
   ToolCallStatus,
@@ -828,51 +827,23 @@ export class AgentTaskWorker extends WorkerHost {
       }
 
       if (lastStopReason === 'intervention_required') {
-        const requestedAt = new Date().toISOString();
-        const nodeName = this.runtimeService.resolveNodeName(step);
-        await this.runtimeService.withTenantContext(tenantId, async () => {
-          await this.stepStateMachine.updateStepStatus(
-            tenantId,
-            stepId,
-            'waiting_intervention',
-            {
-              checkpointData: {
-                sessionId,
-                partialContent: accumulatedContent,
-                stopReason: lastStopReason,
-                interventionRequestedAt: requestedAt,
-                interventionNodeName: nodeName,
-                ...(toolCalls.length > 0 ? { toolCalls } : {}),
-                ...(segments.length > 0 ? { segments } : {}),
-                ...(decision ? { decision } : {}),
-              },
-              result: {
-                content: accumulatedContent,
-                stopReason: lastStopReason,
-                ...(decision ? { decision } : {}),
-              },
-            },
-          );
-          await this.stepStateMachine.updateExecutionStatus(
-            executionId,
-            tenantId,
-          );
-        });
-        this.eventBridge.emitInterventionRequired(tenantId, executionId, {
-          stepId,
-          nodeId: step.nodeId,
-          nodeName,
-          ...(decision
-            ? { decision: decision as InterventionRequiredPayload['decision'] }
-            : {}),
-          ...(accumulatedContent ? { partialContent: accumulatedContent } : {}),
-          requestedAt,
-        });
-        await this.nodeScheduler.enqueueInterventionTimeout(
+        if (!sessionId) {
+          // 干预恢复必须绑定原会话；缺少 sessionId 时继续暂停只会生成无法恢复的 checkpoint。
+          throw new AgentExecutionException('Agent 干预检查点缺少 sessionId');
+        }
+
+        // worker 与 Workflow Agent executor 共用暂停原语，避免事件、checkpoint 和 timeout 语义再次分叉。
+        await this.nodeScheduler.pauseForIntervention({
           executionId,
-          stepId,
           tenantId,
-        );
+          step,
+          sessionId,
+          partialContent: accumulatedContent ?? '',
+          toolCalls,
+          segments,
+          ...(decision ? { decision } : {}),
+          executionType: 'workflow',
+        });
         this.logger.log(
           `Agent task waiting intervention: ${JSON.stringify({ executionId, stepId })}`,
         );

@@ -8,6 +8,7 @@ import { PiAgentCoreAdapter } from '../pi-agent-core.adapter';
 import type { AgentEvent } from '../types/agent-event.types';
 import type { CreateSessionParams } from '../types/agent-session.types';
 import type { ContentBlock } from '../types/content-block.types';
+import { ToolPermissionResolutionNotAllowedException } from '../../../common/exceptions/tool-call.exceptions';
 
 const hoisted = vi.hoisted(() => {
   type MockAgentOptions = {
@@ -2767,7 +2768,9 @@ describe('PiAgentCoreAdapter', () => {
           'missing-call',
           'approve',
         ),
-      ).rejects.toThrow('has no pending tool permission');
+      ).rejects.toBeInstanceOf(
+        ToolPermissionResolutionNotAllowedException,
+      );
     });
   });
 });

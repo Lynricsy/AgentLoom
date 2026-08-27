@@ -45,9 +45,11 @@ import {
   InterventionNotAllowedException,
   NodeInputResolutionException,
   InterventionPermissionDeniedException,
-  ToolPermissionResolutionNotAllowedException,
-  ToolCallNotFoundException,
 } from '../execution.exceptions';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../../common/exceptions/tool-call.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';

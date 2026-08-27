@@ -124,6 +124,15 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     return session;
   }
 
+  // facade 与 core 使用同一 live gate，避免 controller 依赖 Pi 的具体实现。
+  hasPendingToolPermission(sessionId: string, toolCallId: string): boolean {
+    const runtimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
+    return this.coreAdapter.hasPendingToolPermission(
+      runtimeSessionId,
+      toolCallId,
+    );
+  }
+
   async loadSession(sessionId: string): Promise<AgentSession> {
     const runtimeSession = await this.tryLoadRuntimeSession(sessionId);
     if (runtimeSession) {

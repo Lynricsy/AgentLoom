@@ -6,6 +6,7 @@ import type { ExecutionStep, ReactFlowEdge } from '../../../database/schema';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
 import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
+import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { InvalidStepTransitionException } from '../execution.exceptions';
 import { StepStateMachineService } from '../step-state-machine.service';
@@ -24,6 +25,7 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
     private readonly workflowAgentAdapterFactory: AgentAdapterFactory,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly stepStateMachine: StepStateMachineService,
+    private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
@@ -120,6 +122,45 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
             ? { agentVersionId: nodeData.agent_version_id }
             : {}),
       });
+      const effectiveAutonomyMode =
+        await this.organizationAutonomyPolicyService.resolveEffectiveAutonomyMode(
+          tenantId,
+          nodeData,
+        );
+      const checkpointData = step.checkpointData ?? {};
+      const sessionId =
+        typeof checkpointData.sessionId === 'string'
+          ? checkpointData.sessionId
+          : undefined;
+
+      if (
+        effectiveAutonomyMode === 'MANUAL_CONFIRM' ||
+        result.stopReason === 'intervention_required'
+      ) {
+        if (!sessionId) {
+          throw new Error(
+            `Workflow agent node ${step.nodeId} 的干预检查点缺少 sessionId`,
+          );
+        }
+
+        // MANUAL_CONFIRM 必须在 Agent 产出建议后暂停；提前归档或 completed 会让既有恢复链失去 session。
+        await runtime.pauseForIntervention({
+          executionId,
+          tenantId,
+          step,
+          sessionId,
+          partialContent: result.content,
+          ...(Array.isArray(checkpointData.toolCalls)
+            ? { toolCalls: checkpointData.toolCalls }
+            : {}),
+          ...(Array.isArray(checkpointData.segments)
+            ? { segments: checkpointData.segments }
+            : {}),
+          ...(result.decision ? { decision: result.decision } : {}),
+          executionType: 'workflow',
+        });
+        return;
+      }
       const workspaceSnapshotId = workflowSandboxNodeId
         ? await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
             executionId,

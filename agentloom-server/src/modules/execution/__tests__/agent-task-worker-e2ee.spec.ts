@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => ({
     broadcastStepRetry: vi.fn(),
   },
   nodeScheduler: {
+    pauseForIntervention: vi.fn(),
     onNodeCompleted: vi.fn(),
     onNodeFailed: vi.fn(),
     enqueueInterventionTimeout: vi.fn(),
@@ -91,6 +92,7 @@ const mocks = vi.hoisted(() => ({
     recordDecision: vi.fn(),
   },
   organizationAutonomyPolicyService: {
+    resolveEffectiveAutonomyMode: vi.fn(),
     resolveAutonomyCapForTenant: vi.fn(),
   },
   workspaceIntegrationService: {
@@ -283,6 +285,7 @@ describe('AgentTaskWorker E2EE integration', () => {
 
     mocks.stepStateMachine.updateStepStatus.mockResolvedValue(makeStep());
     mocks.stepStateMachine.updateExecutionStatus.mockResolvedValue(undefined);
+    mocks.nodeScheduler.pauseForIntervention.mockResolvedValue(undefined);
     mocks.nodeScheduler.onNodeCompleted.mockResolvedValue(undefined);
     mocks.nodeScheduler.onNodeFailed.mockResolvedValue(undefined);
     mocks.nodeScheduler.enqueueInterventionTimeout.mockResolvedValue(undefined);
@@ -304,6 +307,9 @@ describe('AgentTaskWorker E2EE integration', () => {
       .mockReset()
       .mockResolvedValue(undefined);
     mocks.organizationAutonomyPolicyService.resolveAutonomyCapForTenant
+      .mockReset()
+      .mockResolvedValue('LLM_SUGGEST');
+    mocks.organizationAutonomyPolicyService.resolveEffectiveAutonomyMode
       .mockReset()
       .mockResolvedValue('LLM_SUGGEST');
     mocks.agentRuntime.createSession.mockResolvedValue(makeSession());

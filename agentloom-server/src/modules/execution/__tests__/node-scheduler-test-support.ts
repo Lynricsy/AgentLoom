@@ -45,9 +45,11 @@ import {
   InterventionNotAllowedException,
   NodeInputResolutionException,
   InterventionPermissionDeniedException,
-  ToolPermissionResolutionNotAllowedException,
-  ToolCallNotFoundException,
 } from '../execution.exceptions';
+import {
+  ToolCallNotFoundException,
+  ToolPermissionResolutionNotAllowedException,
+} from '../../../common/exceptions/tool-call.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
@@ -63,12 +65,17 @@ import { SharedResourceRegistry } from '../../shared-resources/shared-resource-r
 import { McpService } from '../../mcp/mcp.service';
 import { CodeExecutionService } from '../../agent/code-execution.service';
 import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
+import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import type {
   ExecutionStep,
   ReactFlowEdge,
   ReactFlowNode,
 } from '../../../database/schema';
 import type { DagExecutionPlan } from '../dag-resolver.service';
+export const mockOrganizationAutonomyPolicyService = {
+  resolveEffectiveAutonomyMode: vi.fn().mockResolvedValue('FULL_AUTO'),
+};
+
 export const NODE_EXECUTION_PROVIDERS = [
   NodeDispatcherService,
   NodeExecutionFailurePolicy,
@@ -86,6 +93,10 @@ export const NODE_EXECUTION_PROVIDERS = [
   TriggerNodeExecutor,
   ValueNodeExecutor,
   WorkflowAgentNodeExecutor,
+  {
+    provide: OrganizationAutonomyPolicyService,
+    useValue: mockOrganizationAutonomyPolicyService,
+  },
 ] as const;
 
 
