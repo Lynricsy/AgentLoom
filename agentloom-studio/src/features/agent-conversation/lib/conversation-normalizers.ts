@@ -548,6 +548,18 @@ export function readLastEventIdField(payload: unknown): number | null {
   return isRecord(payload) ? readFiniteNumber(payload.lastEventId) : null;
 }
 
+/**
+ * 是否为可 replay 的执行事件信封。
+ *
+ * gateway 的 `buildEventPayload()` 只是读取当前 counter 而不递增，因此 synthetic
+ * 事件（file_change 按 changedFiles 循环连发、subagent、title）会共用同一个
+ * eventId——它们不能参与按 eventId 的幂等去重，也不该驱动游标。
+ * 真正来自 EventBridge 环形缓冲、能被逐事件补发的信封都带顶层 `executionId`。
+ */
+export function isReplayableEnvelope(payload: unknown): boolean {
+  return isRecord(payload) && typeof payload.executionId === "string";
+}
+
 export function projectComparableMessage(message: ConversationMessage) {
   return {
     role: message.role,

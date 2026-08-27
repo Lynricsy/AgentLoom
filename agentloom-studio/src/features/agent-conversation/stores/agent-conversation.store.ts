@@ -29,6 +29,7 @@ import {
   buildOptimisticUserMessage,
   ensureAssistantMessage,
   finishStreamingAssistantMessage,
+  isReplayableEnvelope,
   mergeHistoryWithLiveTail,
   mergeSnapshotWithLiveMessages,
   normalizeAgentDonePayload,
@@ -59,6 +60,8 @@ const RECONNECT_DELAY_MS = 5_000;
 const RECONNECT_DELAY_MAX_MS = 30_000;
 const TERMINAL_ENTRY_LIMIT = 200;
 const FILE_CHANGE_LIMIT = 50;
+/** replay 幂等去重窗口：只需覆盖一次重连补发的跨度，不必记住整场会话。 */
+const SEEN_EVENT_LIMIT = 2_000;
 const inFlightHistoryLoads = new Map<string, Promise<void>>();
 const inFlightWorkspaceTreeLoads = new Map<string, Promise<void>>();
 
@@ -241,6 +244,81 @@ export const useAgentConversationStore = create<
             // 清缓存，省略游标就永远拿不到 snapshot。
             let hasSubscribed = false;
 
+            // 幂等去重 + 游标推进，**只对可 replay 的执行信封生效**。
+            //
+            // 为什么去重：`conversation:subscribe` 会先 await client.join(room) 再读
+            // 缓冲区，这中间到达的 live 事件先经 room 送达，随后 replay 又补一遍
+            // 同一条；handler 只会无脑 `content += chunk`，正文就重复了。
+            // 键必须带事件名——同一 eventId 会同时用于 STATUS_CHANGED 与 AGENT_DONE。
+            //
+            // 为什么限定可 replay 信封：gateway 的 buildEventPayload 只是**读取**当前
+            // counter 而不递增，synthetic 事件（file_change 按 changedFiles 循环连发、
+            // subagent、title）会共用同一个 eventId，套上去重只会剩第一条。
+            // 判据取顶层 executionId：live 与 replay 两条路径上它都在，synthetic 没有。
+            const seenEvents = new Set<string>();
+            const forgetSeenEvents = () => seenEvents.clear();
+
+            // 与 store 的 lastEventId 分开：ack 会把游标推到「服务端进度」，
+            // 那不是我们**实际收到**的最大 eventId，拿它判回退会把补发误判成新 epoch。
+            let highestReceivedEventId = 0;
+
+            // 重连 subscribe 发出到 ack 返回之间＝服务端正在补发的窗口。
+            // 窗口内低 ID 是正常回放（join 之后先到的 live 事件 ID 反而更高），
+            // 不能当成 epoch 回退。
+            let replayWindowOpen = false;
+
+            const onEvent = (
+              event: string,
+              handler: (payload: never) => void,
+            ) => {
+              socket.on(event, (payload: unknown) => {
+                const eventId = isReplayableEnvelope(payload)
+                  ? readEventCursor(payload)
+                  : null;
+
+                if (eventId !== null) {
+                  const key = `${event}:${eventId}`;
+
+                  // 顺序要紧：epoch 判定必须在查重之前。新一轮从 1 重新计数时，
+                  // 键会与上一轮撞车，先查重就把新事件当成重复丢了。
+                  //
+                  // 反过来「live 10 先到、随后 replay 6..10」也不能被判成回退
+                  // （否则会清掉 key10，让补发的 10 再追加一次）——靠补发窗口拦住：
+                  // 窗口内的低 ID 是正常回放，之后 10 照常在查重那步被丢弃。
+                  if (!replayWindowOpen && eventId < highestReceivedEventId) {
+                    forgetSeenEvents();
+                    highestReceivedEventId = eventId;
+                    set((s) => {
+                      s.lastEventId = eventId;
+                    });
+                  } else if (eventId > highestReceivedEventId) {
+                    highestReceivedEventId = eventId;
+                  }
+
+                  if (seenEvents.has(key)) {
+                    return;
+                  }
+
+                  // 有界：只用于跨 replay 窗口去重，不需要记住整场会话。
+                  if (seenEvents.size >= SEEN_EVENT_LIMIT) {
+                    const oldest = seenEvents.values().next().value;
+                    if (oldest !== undefined) {
+                      seenEvents.delete(oldest);
+                    }
+                  }
+                  seenEvents.add(key);
+
+                  set((s) => {
+                    if (eventId > s.lastEventId) {
+                      s.lastEventId = eventId;
+                    }
+                  });
+                }
+
+                (handler as (value: unknown) => void)(payload);
+              });
+            };
+
             socket.on("connect", () => {
               set((s) => {
                 s.status = "connected";
@@ -250,6 +328,7 @@ export const useAgentConversationStore = create<
               const tenantId = useAuthStore.getState().tenantId ?? "";
               const isReconnect = hasSubscribed;
               hasSubscribed = true;
+              replayWindowOpen = isReconnect;
               socket.emit(
                 "conversation:subscribe",
                 {
@@ -262,6 +341,8 @@ export const useAgentConversationStore = create<
                   error?: string;
                   lastEventId?: number;
                 }) => {
+                  replayWindowOpen = false;
+
                   if (ack?.status === "error") {
                     set((s) => {
                       s.connectionError = ack.error ?? "Subscription failed";
@@ -287,6 +368,9 @@ export const useAgentConversationStore = create<
             });
 
             socket.on("disconnect", () => {
+              // ack 可能永远不来，窗口必须在断开时关掉，
+              // 否则下一轮真正的 epoch 回退会被当成补发放过去。
+              replayWindowOpen = false;
               set((s) => {
                 s.status = "idle";
               });
@@ -299,24 +383,11 @@ export const useAgentConversationStore = create<
               });
             });
 
-            // 实时事件信封统一带 eventId，在这里单点推进游标，
-            // 避免每个 handler 各记一份而漏掉分支。snapshot 不走这里（它是 epoch
-            // 重置点，游标要允许回退），由下面的专属 handler 直接赋值。
-            socket.onAny((_event: string, payload: unknown) => {
-              const cursor = readEventCursor(payload);
-              if (cursor === null) {
-                return;
-              }
-
-              set((s) => {
-                if (cursor > s.lastEventId) {
-                  s.lastEventId = cursor;
-                }
-              });
-            });
-
             // 重连时服务端缓存有缺口，会用持久 snapshot 兜底（见 D-12）。
-            socket.on("conversation.state.snapshot", (payload: unknown) => {
+            onEvent("conversation.state.snapshot", (payload: unknown) => {
+              // 新 epoch 的 eventId 会从头重排，旧键留着会把新事件误判成重复。
+              forgetSeenEvents();
+
               set((s) => {
                 const canonical =
                   normalizeConversationSnapshotMessages(payload);
@@ -339,7 +410,7 @@ export const useAgentConversationStore = create<
               });
             });
 
-            socket.on(
+            onEvent(
               "conversation.agent.message_chunk",
               (payload: unknown) => {
                 set((s) => {
@@ -384,7 +455,7 @@ export const useAgentConversationStore = create<
               },
             );
 
-            socket.on("conversation.agent.thinking", (payload: unknown) => {
+            onEvent("conversation.agent.thinking", (payload: unknown) => {
               set((s) => {
                 const normalized = normalizeThinkingPayload(payload);
                 if (!normalized) {
@@ -421,7 +492,7 @@ export const useAgentConversationStore = create<
               });
             });
 
-            socket.on("conversation.agent.tool_call", (payload: unknown) => {
+            onEvent("conversation.agent.tool_call", (payload: unknown) => {
               set((s) => {
                 const normalized = normalizeToolPayload(payload);
                 if (!normalized) {
@@ -460,7 +531,7 @@ export const useAgentConversationStore = create<
               });
             });
 
-            socket.on("conversation.agent.tool_result", (payload: unknown) => {
+            onEvent("conversation.agent.tool_result", (payload: unknown) => {
               set((s) => {
                 const normalized = normalizeToolPayload(payload);
                 if (!normalized) {
@@ -499,7 +570,7 @@ export const useAgentConversationStore = create<
               });
             });
 
-            socket.on("conversation.agent.done", (payload: unknown) => {
+            onEvent("conversation.agent.done", (payload: unknown) => {
               const normalized = normalizeAgentDonePayload(payload);
 
               set((s) => {
@@ -539,7 +610,7 @@ export const useAgentConversationStore = create<
               }
             });
 
-            socket.on(
+            onEvent(
               "conversation.sandbox.terminal_output",
               (payload: unknown) => {
                 set((s) => {
@@ -564,7 +635,7 @@ export const useAgentConversationStore = create<
               },
             );
 
-            socket.on(
+            onEvent(
               "conversation.sandbox.file_change",
               (payload: unknown) => {
                 set((s) => {
@@ -602,7 +673,7 @@ export const useAgentConversationStore = create<
               },
             );
 
-            socket.on("conversation.status.changed", (payload: unknown) => {
+            onEvent("conversation.status.changed", (payload: unknown) => {
               set((s) => {
                 const normalized = normalizeStatusChangedPayload(payload);
                 if (!normalized) {
@@ -678,7 +749,7 @@ export const useAgentConversationStore = create<
               });
             });
 
-            socket.on(
+            onEvent(
               "conversation.subagent.event",
               (payload: {
                 subagent: SubAgentEventEnvelope;
@@ -696,7 +767,7 @@ export const useAgentConversationStore = create<
               },
             );
 
-            socket.on(
+            onEvent(
               "conversation.subagent.status",
               (payload: {
                 handle: string;
@@ -720,7 +791,7 @@ export const useAgentConversationStore = create<
               },
             );
 
-            socket.on(
+            onEvent(
               "conversation.title.updated",
               (_payload: { title: string }) => {
                 set((s) => {
