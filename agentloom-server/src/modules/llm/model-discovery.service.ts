@@ -93,7 +93,12 @@ export class ModelDiscoveryService {
   // =========================================================================
 
   /**
-   * 测试到提供商端点的连接。先尝试 /health，失败则回退到 /v1/models。
+   * 测试到提供商端点的连接。
+   *
+   * **成功只能来自带凭据 probe 的 2xx + 响应体形状校验。** 此前实现先打无凭据的
+   * `/health`，2xx 即判定 success —— 而 `/health` 通常不鉴权，于是错误的 API Key
+   * 照样返回「连接正常」（假绿）。`/health` 现在只在 probe 成功之后用于补充
+   * serverInfo，不再具备判定权。
    */
   async testConnection(
     provider: LlmProvider,
@@ -102,64 +107,15 @@ export class ModelDiscoveryService {
     const timeout = timeoutMs ?? 10_000;
     const baseUrl = this.resolveBaseUrl(provider);
     const headers = await this.buildProviderHeaders(provider);
+    const probe = this.resolveConnectionProbe(provider, baseUrl);
     const start = Date.now();
 
-    // 第一阶段: 尝试 /health
+    let probeRes: Response;
     try {
-      const healthRes = await this.fetchWithTimeout(
-        `${baseUrl}/health`,
-        { headers },
+      probeRes = await this.fetchWithTimeout(
+        probe.url,
+        { method: probe.method, headers: { ...headers, ...probe.headers } },
         timeout,
-      );
-
-      this.checkAuthError(healthRes, provider.slug);
-
-      if (healthRes.ok) {
-        const serverInfo = await this.extractServerInfo(healthRes);
-        return {
-          success: true,
-          latencyMs: Date.now() - start,
-          ...(serverInfo ? { serverInfo } : {}),
-        };
-      }
-
-      this.logger.debug(
-        `/health 返回状态 ${healthRes.status}，尝试 /v1/models (provider=${provider.slug})`,
-      );
-    } catch (error) {
-      if (
-        error instanceof LlmProviderException ||
-        error instanceof LlmTimeoutException
-      ) {
-        throw error;
-      }
-      this.logger.debug(
-        `/health 端点不可用，尝试 /v1/models (provider=${provider.slug})`,
-      );
-    }
-
-    // 第二阶段: 回退到 /v1/models
-    try {
-      const modelsRes = await this.fetchWithTimeout(
-        `${baseUrl}/v1/models`,
-        { headers },
-        timeout,
-      );
-
-      this.checkAuthError(modelsRes, provider.slug);
-
-      if (modelsRes.ok) {
-        const serverInfo = await this.extractServerInfo(modelsRes);
-        return {
-          success: true,
-          latencyMs: Date.now() - start,
-          ...(serverInfo ? { serverInfo } : {}),
-        };
-      }
-
-      throw new LlmProviderException(
-        provider.slug,
-        `端点返回状态码 ${modelsRes.status}`,
       );
     } catch (error) {
       if (
@@ -173,6 +129,132 @@ export class ModelDiscoveryService {
         `无法连接到提供商端点: ${(error as Error).message}`,
       );
     }
+
+    this.checkAuthError(probeRes, provider.slug);
+
+    if (!probeRes.ok) {
+      throw new LlmProviderException(
+        provider.slug,
+        `鉴权探测端点返回状态码 ${probeRes.status}`,
+      );
+    }
+
+    const body = await this.readJsonBody(probeRes);
+    if (!probe.isValidBody(body)) {
+      throw new LlmProviderException(
+        provider.slug,
+        '鉴权探测端点返回了无法识别的响应体，可能不是该协议的兼容端点',
+      );
+    }
+
+    const latencyMs = Date.now() - start;
+    const serverInfo = this.buildServerInfoFromBody(body);
+
+    return {
+      success: true,
+      latencyMs,
+      ...(serverInfo ? { serverInfo } : {}),
+    };
+  }
+
+  /**
+   * 按 apiProtocol 选择带凭据的鉴权探测端点。
+   *
+   * 每个协议都必须选一个「无有效凭据一定失败」的端点：只有这样 2xx 才能证明
+   * 凭据可用。凭据只进 header，绝不进 URL 或日志。
+   */
+  private resolveConnectionProbe(
+    provider: LlmProvider,
+    baseUrl: string,
+  ): {
+    url: string;
+    method: 'GET' | 'POST';
+    headers: Record<string, string>;
+    isValidBody: (body: unknown) => boolean;
+  } {
+    const hasArrayField =
+      (field: string) =>
+      (body: unknown): boolean =>
+        Array.isArray((body as Record<string, unknown> | null)?.[field]);
+
+    switch (provider.apiProtocol) {
+      case 'anthropic':
+        return {
+          url: `${baseUrl}/v1/models`,
+          method: 'GET',
+          // buildProviderHeaders 已按 anthropic 协议注入 x-api-key 与 anthropic-version。
+          headers: {},
+          isValidBody: hasArrayField('data'),
+        };
+      case 'google':
+        return {
+          url: `${baseUrl}/v1beta/models`,
+          method: 'GET',
+          headers: {},
+          isValidBody: hasArrayField('models'),
+        };
+      case 'cohere':
+        return {
+          url: `${baseUrl}/v1/check-api-key`,
+          method: 'POST',
+          headers: {},
+          isValidBody: (body) =>
+            (body as { valid?: unknown } | null)?.valid === true,
+        };
+      case 'openai_chat':
+      case 'openai_responses':
+      default:
+        return {
+          url: `${baseUrl}/v1/models`,
+          method: 'GET',
+          headers: {},
+          isValidBody: hasArrayField('data'),
+        };
+    }
+  }
+
+  private async readJsonBody(res: Response): Promise<unknown> {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /** 从已解析的 probe 响应体提取 serverInfo（version / status / 前 10 个模型 id）。 */
+  private buildServerInfoFromBody(
+    body: unknown,
+  ): ConnectionTestResult['serverInfo'] | undefined {
+    if (!body || typeof body !== 'object') return undefined;
+
+    const record = body as {
+      version?: unknown;
+      status?: unknown;
+      data?: unknown;
+      models?: unknown;
+    };
+    const serverInfo: NonNullable<ConnectionTestResult['serverInfo']> = {};
+
+    if (typeof record.version === 'string') serverInfo.version = record.version;
+    if (typeof record.status === 'string') serverInfo.status = record.status;
+
+    const entries = Array.isArray(record.data)
+      ? record.data
+      : Array.isArray(record.models)
+        ? record.models
+        : [];
+    const models = entries
+      .flatMap((item) => {
+        const id = (item as { id?: unknown; name?: unknown } | null)?.id;
+        const name = (item as { name?: unknown } | null)?.name;
+        if (typeof id === 'string') return [id];
+        return typeof name === 'string' ? [name] : [];
+      })
+      .slice(0, 10);
+
+    if (models.length > 0) serverInfo.models = models;
+
+    return Object.keys(serverInfo).length > 0 ? serverInfo : undefined;
   }
 
   /**
@@ -297,7 +379,10 @@ export class ModelDiscoveryService {
 
   /**
    * 为提供商构建认证 headers。如果配置了 apiKeyId 则解密后注入。
-   * anthropic 协议使用 x-api-key header，其他使用 Authorization: Bearer。
+   *
+   * 各协议的凭据头名不同：anthropic 用 `x-api-key`（并要求 `anthropic-version`），
+   * google 用 `x-goog-api-key`，其余走 `Authorization: Bearer`。
+   * google 此前误落到 Bearer 分支，导致带凭据探测必然 401。
    */
   private async buildProviderHeaders(
     provider: LlmProvider,
@@ -316,12 +401,15 @@ export class ModelDiscoveryService {
       ModelDiscoveryService.name,
     );
 
-    // Anthropic 使用 x-api-key 而非 Bearer token
     if (provider.apiProtocol === 'anthropic') {
       return {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       };
+    }
+
+    if (provider.apiProtocol === 'google') {
+      return { 'x-goog-api-key': apiKey };
     }
 
     return {
@@ -373,45 +461,6 @@ export class ModelDiscoveryService {
         `认证失败 (${res.status})，请检查认证配置`,
         { authenticationFailed: true },
       );
-    }
-  }
-
-  /**
-   * 从 HTTP 响应中提取服务器信息（version / status / models 前 10 项）。
-   */
-  private async extractServerInfo(
-    res: Response,
-  ): Promise<ConnectionTestResult['serverInfo'] | undefined> {
-    try {
-      const body = (await res.json()) as {
-        version?: unknown;
-        status?: unknown;
-        data?: Array<{ id?: unknown }>;
-      };
-
-      const serverInfo: NonNullable<ConnectionTestResult['serverInfo']> = {};
-
-      if (typeof body.version === 'string') {
-        serverInfo.version = body.version;
-      }
-
-      if (typeof body.status === 'string') {
-        serverInfo.status = body.status;
-      }
-
-      if (Array.isArray(body.data)) {
-        const models = body.data
-          .flatMap((item) => (typeof item.id === 'string' ? [item.id] : []))
-          .slice(0, 10);
-
-        if (models.length > 0) {
-          serverInfo.models = models;
-        }
-      }
-
-      return Object.keys(serverInfo).length > 0 ? serverInfo : undefined;
-    } catch {
-      return undefined;
     }
   }
 

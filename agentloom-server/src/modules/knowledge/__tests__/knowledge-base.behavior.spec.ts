@@ -8,7 +8,10 @@ import {
   createDefaultRetrievalStrategy,
   createDefaultRerankerStrategy,
 } from '../knowledge-base-config';
-import { KnowledgeBaseNotFoundException } from '../knowledge.exceptions';
+import {
+  KnowledgeBaseNotFoundException,
+  KnowledgeEmbeddingModelNotConfiguredException,
+} from '../knowledge.exceptions';
 import { KnowledgeBaseService } from '../knowledge-base.service';
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -222,29 +225,24 @@ describe('KnowledgeBaseService behavior contracts', () => {
     );
   });
 
-  it('create falls back to the requested legacy name when the tenant has no configured model', async () => {
-    const values = vi.fn().mockReturnValue({
-      returning: vi
-        .fn()
-        .mockResolvedValue([
-          knowledgeBaseRow({ embeddingModel: 'legacy-request' }),
-        ]),
-    });
+  it('create rejects when neither a bound model config nor a tenant default embedding model exists', async () => {
+    // 旧行为是回退到裸模型名（无 provider/endpoint/凭据），索引必然失败且被
+    // 表现成网络错误。现在配置缺失必须在建库时就显式失败。
+    const values = vi.fn();
     db.insert.mockReturnValue({ values });
-    await service.create(
-      createKnowledgeBaseDto({
-        name: 'Legacy',
-        embeddingModel: 'legacy-request',
-      }),
-      TENANT_ID,
-      USER_ID,
-    );
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        embeddingModel: 'legacy-request',
-        embeddingModelConfigId: null,
-      }),
-    );
+
+    await expect(
+      service.create(
+        createKnowledgeBaseDto({
+          name: 'Legacy',
+          embeddingModel: 'legacy-request',
+        }),
+        TENANT_ID,
+        USER_ID,
+      ),
+    ).rejects.toBeInstanceOf(KnowledgeEmbeddingModelNotConfiguredException);
+
+    expect(values).not.toHaveBeenCalled();
   });
 
   it('source filtering distinguishes imported resources from manual resources', async () => {
@@ -415,6 +413,11 @@ describe('KnowledgeBaseService behavior contracts', () => {
 
   it('create propagates insert failures and does not fabricate a summary', async () => {
     const storageError = new Error('insert failed');
+    llm.findDefaultByType.mockResolvedValue({
+      id: 'config-default',
+      modelId: 'text-embedding-3-small',
+      modelType: 'embedding',
+    });
     db.insert.mockReturnValue({
       values: vi.fn().mockReturnValue({
         returning: vi.fn().mockRejectedValue(storageError),

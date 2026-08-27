@@ -107,7 +107,13 @@ describe('KnowledgeBaseService', () => {
     };
     llmService = {
       findById: vi.fn(),
-      findDefaultByType: vi.fn().mockResolvedValue(null),
+      // 建库/改设置都要求解析出一个 Embedding 模型配置，默认给一个可用的；
+      // 「没有任何可用配置」的路径由 knowledge-base.behavior.spec.ts 覆盖。
+      findDefaultByType: vi.fn().mockResolvedValue({
+        id: 'config-default-embedding',
+        modelId: 'text-embedding-3-small',
+        modelType: 'embedding',
+      }),
     };
     resourceSourceService = {
       mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
@@ -290,7 +296,10 @@ describe('KnowledgeBaseService', () => {
 
     expect(set).toHaveBeenCalledWith(
       expect.objectContaining({
-        embeddingModel: 'text-embedding-3-large',
+        // 租户默认 Embedding 模型优先于请求里的裸模型名（该优先级早于本次改动即存在），
+        // 现在没有默认模型时会直接抛异常而不是回退裸名。
+        embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: 'config-default-embedding',
         chunkingStrategy: input.chunkingStrategy,
         retrievalStrategy: input.retrievalStrategy,
         rerankingStrategy: input.rerankingStrategy,

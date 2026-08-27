@@ -516,6 +516,10 @@ export class GeneratedAppPublicController {
   @ApiResponse({ status: 201, description: '公开提交记录已创建' })
   @ApiResponse({ status: 404, description: '公开链接不存在或已关闭' })
   @ApiResponse({ status: 409, description: '生成应用不再满足发布门槛' })
+  @ApiResponse({
+    status: 422,
+    description: '提交内容未通过运行时表单契约或 Workflow 输入契约校验',
+  })
   async createPublicSubmission(
     @Param('token') token: string,
     @Body(new ZodValidationPipe(CreateGeneratedAppSubmissionSchema))

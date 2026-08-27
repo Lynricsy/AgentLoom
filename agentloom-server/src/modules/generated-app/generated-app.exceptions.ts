@@ -1,6 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
+import type { FieldError } from '../../common/types/problem-details.type';
 
 export class GeneratedAppNotFoundException extends DomainException {
   constructor(idOrToken: string) {
@@ -86,6 +87,25 @@ export class GeneratedAppArtifactTooLargeException extends DomainException {
       title: '生成应用交付物过大',
       status: HttpStatus.PAYLOAD_TOO_LARGE,
       detail: `生成应用交付物 ${id} 超过 ${maxBytes} 字节，不能以内联文本方式读取`,
+    });
+  }
+}
+
+/**
+ * 公开提交入参未通过运行时表单契约校验。
+ *
+ * 公开面此前完全不校验 `input`：DTO 只有 `z.unknown()`，evaluator 又把超长字符串
+ * 静默截断，于是任意结构都会落一条 submission 并返回 201，创建者拿到的是被悄悄
+ * 改写过的数据。校验失败必须 fail-closed：不插 submission、不触发 Workflow。
+ */
+export class GeneratedAppPublicSubmissionValidationException extends DomainException {
+  constructor(errors: FieldError[]) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-public-submission-invalid',
+      title: '公开提交内容校验失败',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: '提交内容未通过该应用的运行时表单契约校验，请修正后重试',
+      errors,
     });
   }
 }

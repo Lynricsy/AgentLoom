@@ -12,6 +12,18 @@ const createMockDecryptionBoundaryService = () => ({
 
 const createMockLlmService = () => ({
   findAll: vi.fn().mockResolvedValue([{ id: 'org-1', orgId: 'org-1' }]),
+  // endpoint / 凭据 / 模型名现在都从租户默认 Embedding 模型配置解析。
+  findDefaultByType: vi.fn().mockResolvedValue({
+    id: 'config-embedding',
+    modelId: 'text-embedding-3-small',
+    provider: {
+      slug: 'openai',
+      orgId: 'org-1',
+      apiKeyId: 'key-1',
+      baseUrl: null,
+      defaultBaseUrl: 'https://api.openai.com',
+    },
+  }),
 });
 
 function make1536Vector(seed = 0.1): number[] {

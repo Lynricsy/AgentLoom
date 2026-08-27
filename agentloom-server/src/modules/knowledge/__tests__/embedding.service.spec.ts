@@ -29,6 +29,9 @@ function createRuntimeConfig(
     provider: 'openai',
     modelName: EMBEDDING_MODEL,
     apiKeyId: null,
+    // endpoint 现在一律由调用方从模型配置的 baseUrl/defaultBaseUrl 解析，
+    // 不再对 provider === 'openai' 硬编码官方地址。
+    endpointUrl: 'https://api.openai.com',
     dimensions: null,
     ...overrides,
   };

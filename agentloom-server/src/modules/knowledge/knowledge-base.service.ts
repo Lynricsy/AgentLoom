@@ -14,7 +14,10 @@ import { LlmService } from '../llm/llm.service';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
 import { EMBEDDING_MODEL } from './knowledge.constants';
 import { CreateKnowledgeBaseDto, UpdateKnowledgeBaseSettingsDto } from './dto';
-import { KnowledgeBaseNotFoundException } from './knowledge.exceptions';
+import {
+  KnowledgeBaseNotFoundException,
+  KnowledgeEmbeddingModelNotConfiguredException,
+} from './knowledge.exceptions';
 import {
   createDefaultChunkingStrategy,
   createDefaultQueryOrchestration,
@@ -386,10 +389,12 @@ export class KnowledgeBaseService {
       };
     }
 
-    return {
-      modelName: requestedModelName ?? EMBEDDING_MODEL,
-      modelConfigId: null,
-    };
+    // 既没有显式绑定、也没有租户默认 Embedding 模型时不再回退到裸模型名：
+    // 那个名字没有对应的 provider/endpoint/凭据，索引一定失败，而且失败会被
+    // 表现成网络错误，掩盖「没配模型」这个真正原因。
+    throw new KnowledgeEmbeddingModelNotConfiguredException(
+      `请求的模型名 ${requestedModelName ?? EMBEDDING_MODEL} 没有对应的模型配置`,
+    );
   }
 
   getChunkingStrategy(

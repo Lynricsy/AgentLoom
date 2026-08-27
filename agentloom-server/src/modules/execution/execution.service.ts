@@ -33,9 +33,9 @@ import { SYSTEM_TRIGGER_USER_ID } from '../trigger/trigger.constants';
 import {
   workflowInputSchemaSchema,
   type CollectionMode,
-  type InputFieldDefinition,
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
+import { resolveWorkflowInputParams } from '../workflow/utils/workflow-input-validation.util';
 import {
   attachExecutionRuntimeMeta,
   isTrackedExecutionStep,
@@ -264,22 +264,6 @@ function createDefaultWorkflowInputSchema(): WorkflowInputSchema {
   return workflowInputSchemaSchema.parse({});
 }
 
-function createInputFieldError(fieldId: string, message: string): FieldError {
-  return {
-    field: `inputParams.${fieldId}`,
-    message,
-  };
-}
-
-function isEmptyInputValue(value: unknown): boolean {
-  return (
-    value === undefined ||
-    value === null ||
-    value === '' ||
-    (Array.isArray(value) && value.length === 0)
-  );
-}
-
 function shouldNormalizeLaunchInput(
   workflowInputSchema: WorkflowInputSchema | null | undefined,
   runRequest: InternalRunWorkflowRequest | undefined,
@@ -308,114 +292,7 @@ function getRawLaunchInputParams(
   return rawInputParams;
 }
 
-function validateResolvedFieldValue(
-  field: InputFieldDefinition,
-  value: unknown,
-  errors: FieldError[],
-): unknown {
-  if (isEmptyInputValue(value)) {
-    if (field.required) {
-      errors.push(createInputFieldError(field.id, '该字段为必填项'));
-    }
 
-    return undefined;
-  }
-
-  switch (field.type) {
-    case 'text': {
-      if (typeof value !== 'string') {
-        errors.push(createInputFieldError(field.id, '该字段必须是字符串'));
-        return undefined;
-      }
-
-      if (
-        field.validation?.minLength !== undefined &&
-        value.length < field.validation.minLength
-      ) {
-        errors.push(
-          createInputFieldError(
-            field.id,
-            `长度不能少于 ${field.validation.minLength} 个字符`,
-          ),
-        );
-      }
-
-      if (
-        field.validation?.maxLength !== undefined &&
-        value.length > field.validation.maxLength
-      ) {
-        errors.push(
-          createInputFieldError(
-            field.id,
-            `长度不能超过 ${field.validation.maxLength} 个字符`,
-          ),
-        );
-      }
-
-      return value;
-    }
-    case 'number': {
-      if (typeof value !== 'number' || Number.isNaN(value)) {
-        errors.push(createInputFieldError(field.id, '该字段必须是数字'));
-        return undefined;
-      }
-
-      if (field.validation?.min !== undefined && value < field.validation.min) {
-        errors.push(
-          createInputFieldError(
-            field.id,
-            `数值不能小于 ${field.validation.min}`,
-          ),
-        );
-      }
-
-      if (field.validation?.max !== undefined && value > field.validation.max) {
-        errors.push(
-          createInputFieldError(
-            field.id,
-            `数值不能大于 ${field.validation.max}`,
-          ),
-        );
-      }
-
-      return value;
-    }
-    case 'single_select': {
-      if (typeof value !== 'string') {
-        errors.push(createInputFieldError(field.id, '该字段必须是字符串选项'));
-        return undefined;
-      }
-
-      if (field.options && !field.options.includes(value)) {
-        errors.push(
-          createInputFieldError(field.id, '该字段必须是预定义选项之一'),
-        );
-      }
-
-      return value;
-    }
-    case 'multi_select': {
-      if (!Array.isArray(value)) {
-        errors.push(createInputFieldError(field.id, '该字段必须是字符串数组'));
-        return undefined;
-      }
-
-      if (value.some((item) => typeof item !== 'string')) {
-        errors.push(createInputFieldError(field.id, '该字段必须是字符串数组'));
-        return undefined;
-      }
-
-      if (
-        field.options &&
-        value.some((item) => !field.options?.includes(item))
-      ) {
-        errors.push(createInputFieldError(field.id, '该字段包含未定义的选项'));
-      }
-
-      return value;
-    }
-  }
-}
 
 function buildNormalizedExecutionInputParams(
   workflowId: string,
@@ -441,93 +318,14 @@ function buildNormalizedExecutionInputParams(
     );
   }
 
-  const fieldMap = new Map(
-    workflowInputSchema.fields.map((field) => [field.id, field]),
-  );
-  const errors: FieldError[] = [];
-
-  Object.keys(rawInputParams).forEach((fieldId) => {
-    if (!fieldMap.has(fieldId)) {
-      errors.push(
-        createInputFieldError(fieldId, '该字段不存在于当前输入契约中'),
-      );
-    }
-  });
-
-  if (errors.length > 0) {
-    throw new WorkflowLaunchInputValidationException(errors);
-  }
-
-  const fieldStateCache = new Map<
-    string,
-    { visible: boolean; value: unknown }
-  >();
-
-  const resolveFieldState = (
-    fieldId: string,
-    path = new Set<string>(),
-  ): { visible: boolean; value: unknown } => {
-    const cachedState = fieldStateCache.get(fieldId);
-    if (cachedState) {
-      return cachedState;
-    }
-
-    const field = fieldMap.get(fieldId);
-    if (!field) {
-      return { visible: false, value: undefined };
-    }
-
-    if (path.has(fieldId)) {
-      return { visible: false, value: undefined };
-    }
-
-    let visible = true;
-    if (field.visibility) {
-      const nextPath = new Set(path);
-      nextPath.add(fieldId);
-
-      const controllerState = resolveFieldState(
-        field.visibility.fieldId,
-        nextPath,
-      );
-      visible =
-        controllerState.visible &&
-        controllerState.value === field.visibility.equals;
-    }
-
-    const state = {
-      visible,
-      value: visible
-        ? Object.prototype.hasOwnProperty.call(rawInputParams, field.id)
-          ? rawInputParams[field.id]
-          : field.default
-        : undefined,
-    };
-
-    fieldStateCache.set(fieldId, state);
-    return state;
-  };
-
-  const resolvedInputs: Record<string, unknown> = {};
-  const unresolvedFieldIds: string[] = [];
-
-  workflowInputSchema.fields.forEach((field) => {
-    const fieldState = resolveFieldState(field.id);
-
-    if (!fieldState.visible) {
-      unresolvedFieldIds.push(field.id);
-      return;
-    }
-
-    const resolvedValue = validateResolvedFieldValue(
-      field,
-      fieldState.value,
-      errors,
-    );
-    if (resolvedValue !== undefined) {
-      resolvedInputs[field.id] = resolvedValue;
-    }
-  });
+  // 未知键 / visibility / default / 空值 / options 语义与生成应用公开提交共用同一实现，
+  // 见 workflow/utils/workflow-input-validation.util.ts 的注释。
+  const { resolvedInputs, unresolvedFieldIds, errors } =
+    resolveWorkflowInputParams({
+      workflowInputSchema,
+      rawInputParams,
+      fieldPrefix: 'inputParams',
+    });
 
   if (errors.length > 0) {
     throw new WorkflowLaunchInputValidationException(errors);

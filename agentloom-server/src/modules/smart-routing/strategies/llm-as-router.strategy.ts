@@ -4,6 +4,8 @@ import { BaseRouterStrategy } from '../core/base-router-strategy';
 import type { RoutingCandidate } from '../core/routing-candidate';
 import type { RoutingContext } from '../core/routing-context';
 import type { RoutingDecision, ModelScore } from '../core/routing-decision';
+import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
+import { LlmService } from '../../llm/llm.service';
 
 const LLM_TIMEOUT_MS = 3000;
 
@@ -19,6 +21,13 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
     routerModelId: z.string(),
     promptTemplate: z.string().optional(),
   });
+
+  constructor(
+    private readonly llmService: LlmService,
+    private readonly decryptionBoundaryService: DecryptionBoundaryService,
+  ) {
+    super();
+  }
 
   async routeSingle(
     candidates: RoutingCandidate[],
@@ -50,6 +59,30 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
     context: RoutingContext,
   ): Promise<string | null> {
     const config = this.configSchema.parse(context.strategyConfig ?? {});
+    // routerModelId 是租户里的模型配置 id：端点与凭据都必须从该配置解析。
+    // 此前固定打 OpenAI chat completions 且完全不带凭据，这条策略实际从未可用过。
+    const routerModel = await this.llmService.findById(
+      config.routerModelId,
+      context.tenantId,
+    );
+    const baseUrl =
+      routerModel.provider.baseUrl ?? routerModel.provider.defaultBaseUrl;
+    if (!baseUrl) {
+      throw new Error(
+        `路由器模型 ${config.routerModelId} 的提供商没有可用的 base URL`,
+      );
+    }
+
+    const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
+      {
+        apiKeyId: routerModel.provider.apiKeyId,
+        organizationId: routerModel.provider.orgId,
+        tenantId: context.tenantId,
+        provider: routerModel.provider.slug,
+      },
+      'LlmAsRouterStrategy.callRouterLlm',
+    );
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
@@ -61,12 +94,15 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
       );
 
       const response = await fetch(
-        `https://api.openai.com/v1/chat/completions`,
+        `${baseUrl.replace(/\/+$/, '')}/v1/chat/completions`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
-            model: config.routerModelId,
+            model: routerModel.modelId,
             messages: prompt,
             temperature: 0,
             max_tokens: 256,

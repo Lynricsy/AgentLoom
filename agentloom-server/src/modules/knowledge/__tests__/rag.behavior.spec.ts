@@ -2,6 +2,7 @@ import { TextNode, type NodeWithScore } from 'llamaindex';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { RagService } from '../services/rag.service';
+import { KnowledgeEmbeddingModelNotConfiguredException } from '../knowledge.exceptions';
 
 const externalMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
@@ -650,22 +651,49 @@ describe('RagService behavior contracts', () => {
     expect(rollback).toHaveBeenCalledWith('doc', TENANT_ID);
   });
 
-  it('embedding config returns the legacy OpenAI selection when no model config is bound', async () => {
+  it('embedding config falls back to the tenant default embedding model when none is bound', async () => {
     db.limit
       .mockResolvedValueOnce([{ id: 'org-legacy' }])
       .mockResolvedValueOnce([
         { embeddingModel: 'legacy-embedding', embeddingModelConfigId: null },
       ]);
+    llm.findDefaultByType.mockResolvedValue({
+      modelType: 'embedding',
+      modelId: 'text-embedding-3-small',
+      embeddingDimensions: 1536,
+      provider: {
+        slug: 'openai',
+        apiKeyId: 'default-key',
+        baseUrl: null,
+        defaultBaseUrl: 'https://api.openai.com',
+      },
+    });
+
     await expect(
       internals.resolveEmbeddingConfig(TENANT_ID, KB_ID),
     ).resolves.toEqual({
       organizationId: 'org-legacy',
       tenantId: TENANT_ID,
       provider: 'openai',
-      modelName: 'legacy-embedding',
-      apiKeyId: null,
-      dimensions: null,
+      modelName: 'text-embedding-3-small',
+      apiKeyId: 'default-key',
+      endpointUrl: 'https://api.openai.com',
+      authMethod: null,
+      dimensions: 1536,
     });
+  });
+
+  it('embedding config rejects when neither a bound nor a default embedding model exists', async () => {
+    db.limit
+      .mockResolvedValueOnce([{ id: 'org-legacy' }])
+      .mockResolvedValueOnce([
+        { embeddingModel: 'legacy-embedding', embeddingModelConfigId: null },
+      ]);
+    llm.findDefaultByType.mockResolvedValue(null);
+
+    await expect(
+      internals.resolveEmbeddingConfig(TENANT_ID, KB_ID),
+    ).rejects.toBeInstanceOf(KnowledgeEmbeddingModelNotConfiguredException);
   });
 
   it('embedding config maps a supported configured provider and its credentials', async () => {

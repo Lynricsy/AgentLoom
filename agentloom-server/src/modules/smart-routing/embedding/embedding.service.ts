@@ -62,24 +62,48 @@ export class EmbeddingIntegrationService {
     }
   }
 
+  /**
+   * 用租户默认 Embedding 模型配置解析 provider endpoint / 凭据 / 模型名。
+   *
+   * 此前这里固定打 `https://api.openai.com/v1/embeddings`，并且用
+   * `apiKeyId: null` + `provider: 'openai'` 去要凭据——租户如果用的是自建网关或
+   * 非 OpenAI 提供商，请求必然打到错误地址。没有默认 Embedding 模型时保持
+   * best-effort 的 `null` 语义（智能路由的语义嵌入是可选增强，缺失时降级即可，
+   * 与知识库索引的显式异常语义不同）。
+   */
   private async callEmbeddingApi(
     text: string,
     tenantId: string,
   ): Promise<number[] | null> {
-    const configs = await this.llmService.findAll(tenantId);
-    const orgId = configs[0]?.orgId;
+    const embeddingModel = await this.llmService.findDefaultByType(
+      tenantId,
+      'embedding',
+    );
 
-    if (!orgId) {
-      this.logger.warn(`No organization found for tenant ${tenantId}`);
+    if (!embeddingModel) {
+      this.logger.warn(
+        `Tenant ${tenantId} has no default embedding model; skipping semantic embedding`,
+      );
+      return null;
+    }
+
+    const baseUrl =
+      embeddingModel.provider.baseUrl ??
+      embeddingModel.provider.defaultBaseUrl ??
+      null;
+    if (!baseUrl) {
+      this.logger.warn(
+        `Embedding provider ${embeddingModel.provider.slug} has no base URL; skipping semantic embedding`,
+      );
       return null;
     }
 
     const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
       {
-        apiKeyId: null,
-        organizationId: orgId,
+        apiKeyId: embeddingModel.provider.apiKeyId,
+        organizationId: embeddingModel.provider.orgId,
         tenantId,
-        provider: 'openai',
+        provider: embeddingModel.provider.slug,
       },
       'EmbeddingIntegrationService.callEmbeddingApi',
     );
@@ -88,18 +112,22 @@ export class EmbeddingIntegrationService {
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
     try {
-      const response = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+      const response = await fetch(
+        `${baseUrl.replace(/\/+$/, '')}/v1/embeddings`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model:
+              this.config.modelId ?? embeddingModel.modelId ?? EMBEDDING_MODEL,
+            input: text,
+          }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({
-          model: this.config.modelId ?? EMBEDDING_MODEL,
-          input: text,
-        }),
-        signal: controller.signal,
-      });
+      );
 
       if (!response.ok) {
         const body = await response.text();

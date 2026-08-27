@@ -267,7 +267,7 @@ describe('ModelDiscoveryService', () => {
       expect(error.detail).toContain('连接超时 (15000ms)');
     });
 
-    it('Anthropic 连接使用 x-api-key，并从 health 提取有效服务器信息', async () => {
+    it('Anthropic 连接带凭据打 /v1/models，并从响应体提取服务器信息', async () => {
       decryptConfiguredApiKey.mockResolvedValue('anthropic-secret');
       const fetchMock = vi.fn().mockResolvedValue(
         response(200, {
@@ -310,9 +310,11 @@ describe('ModelDiscoveryService', () => {
           'model-8',
         ],
       });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.example.test/health',
+        'https://api.example.test/v1/models',
         expect.objectContaining({
+          method: 'GET',
           headers: {
             'x-api-key': 'anthropic-secret',
             'anthropic-version': '2023-06-01',
@@ -321,90 +323,161 @@ describe('ModelDiscoveryService', () => {
       );
     });
 
-    it('health 非成功时回退 models，无法解析 JSON 时省略 serverInfo', async () => {
-      const malformed = response(200, {});
-      vi.mocked(malformed.json).mockRejectedValue(new SyntaxError('bad json'));
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce(response(404, {}))
-        .mockResolvedValueOnce(malformed);
-      vi.stubGlobal('fetch', fetchMock);
-
-      const result = await service.testConnection(provider());
-      expect(result).toEqual(expect.objectContaining({ success: true }));
-      expect(result.serverInfo).toBeUndefined();
-    });
-
-    it('health 网络失败后 models 成功且空信息对象被省略', async () => {
-      const fetchMock = vi
-        .fn()
-        .mockRejectedValueOnce(new Error('health unsupported'))
-        .mockResolvedValueOnce(response(200, { version: 1, status: false }));
-      vi.stubGlobal('fetch', fetchMock);
-
-      const result = await service.testConnection(provider());
-
-      expect(result.success).toBe(true);
-      expect(result.serverInfo).toBeUndefined();
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        2,
-        'https://api.example.test/v1/models',
-        expect.any(Object),
+    // D-11 关键回归：/health 通常不鉴权，绝不能让它替带凭据探测下结论。
+    it('health 可用但带凭据探测 401 时必须失败', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('bad-key');
+      const fetchMock = vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('/health')
+            ? response(200, { status: 'ok' })
+            : response(401, { error: 'invalid api key' }),
+        ),
       );
-    });
-
-    it('health 认证错误不回退 models', async () => {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue(response(401, { error: 'unauthorized' }));
-      vi.stubGlobal('fetch', fetchMock);
-
-      await expect(service.testConnection(provider())).rejects.toMatchObject({
-        detail: '认证失败 (401)，请检查认证配置',
-      });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('health 超时不回退 models', async () => {
-      const abortError = new Error('aborted');
-      abortError.name = 'AbortError';
-      const fetchMock = vi.fn().mockRejectedValue(abortError);
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(
-        service.testConnection(provider(), 25),
-      ).rejects.toMatchObject({
-        detail: '连接超时 (25ms)',
-      });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+        service.testConnection(provider({ apiKeyId: 'key-id' })),
+      ).rejects.toMatchObject({ detail: '认证失败 (401)，请检查认证配置' });
+      expect(
+        fetchMock.mock.calls.every(
+          (call) => !String(call[0]).endsWith('/health'),
+        ),
+      ).toBe(true);
     });
 
-    it('models 非成功状态抛出 provider 异常', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValueOnce(response(404, {}))
-          .mockResolvedValueOnce(response(502, {})),
+    it.each([
+      [
+        'openai_chat',
+        'https://api.example.test/v1/models',
+        'GET',
+        { data: [{ id: 'gpt-4o' }] },
+      ],
+      [
+        'openai_responses',
+        'https://api.example.test/v1/models',
+        'GET',
+        { data: [] },
+      ],
+      [
+        'anthropic',
+        'https://api.example.test/v1/models',
+        'GET',
+        { data: [] },
+      ],
+      [
+        'google',
+        'https://api.example.test/v1beta/models',
+        'GET',
+        { models: [{ name: 'gemini-2.0' }] },
+      ],
+      [
+        'cohere',
+        'https://api.example.test/v1/check-api-key',
+        'POST',
+        { valid: true },
+      ],
+    ] as const)(
+      '%s 协议探测 %s (%s)',
+      async (apiProtocol, expectedUrl, expectedMethod, body) => {
+        decryptConfiguredApiKey.mockResolvedValue('secret');
+        const fetchMock = vi.fn().mockResolvedValue(response(200, body));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const result = await service.testConnection(
+          provider({ apiProtocol, apiKeyId: 'key-id' }),
+        );
+
+        expect(result.success).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith(
+          expectedUrl,
+          expect.objectContaining({ method: expectedMethod }),
+        );
+      },
+    );
+
+    it('google 协议使用 x-goog-api-key 而非 Bearer', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('google-secret');
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(response(200, { models: [{ name: 'gemini' }] }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await service.testConnection(
+        provider({ apiProtocol: 'google', apiKeyId: 'key-id' }),
       );
 
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.test/v1beta/models',
+        expect.objectContaining({
+          headers: { 'x-goog-api-key': 'google-secret' },
+        }),
+      );
+    });
+
+    it('cohere 的 valid !== true 视为失败', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('secret');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(response(200, { valid: false })),
+      );
+
+      await expect(
+        service.testConnection(
+          provider({ apiProtocol: 'cohere', apiKeyId: 'key-id' }),
+        ),
+      ).rejects.toBeInstanceOf(LlmProviderException);
+    });
+
+    it('2xx 但响应体形状不匹配时视为失败而不是成功', async () => {
+      const malformed = response(200, {});
+      vi.mocked(malformed.json).mockRejectedValue(new SyntaxError('bad json'));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(malformed));
+
       await expect(service.testConnection(provider())).rejects.toMatchObject({
-        detail: '端点返回状态码 502',
+        detail: '鉴权探测端点返回了无法识别的响应体，可能不是该协议的兼容端点',
       });
     });
 
-    it('health 与 models 网络均失败时包装最终网络错误', async () => {
+    it('探测超时保留 timeout 异常', async () => {
+      const abortError = new Error('aborted');
+      abortError.name = 'AbortError';
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
+
+      await expect(
+        service.testConnection(provider(), 25),
+      ).rejects.toMatchObject({ detail: '连接超时 (25ms)' });
+    });
+
+    it('探测非成功状态抛出 provider 异常', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(502, {})));
+
+      await expect(service.testConnection(provider())).rejects.toMatchObject({
+        detail: '鉴权探测端点返回状态码 502',
+      });
+    });
+
+    it('网络失败包装为 provider 异常', async () => {
       vi.stubGlobal(
         'fetch',
-        vi
-          .fn()
-          .mockRejectedValueOnce(new Error('no health'))
-          .mockRejectedValueOnce(new Error('network down')),
+        vi.fn().mockRejectedValue(new Error('network down')),
       );
 
       await expect(service.testConnection(provider())).rejects.toMatchObject({
         detail: '无法连接到提供商端点: network down',
       });
+    });
+
+    it('凭据只出现在 header，不进 URL', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('super-secret-key');
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(response(200, { data: [] }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await service.testConnection(provider({ apiKeyId: 'key-id' }));
+
+      const [url] = fetchMock.mock.calls[0] as [string];
+      expect(url).not.toContain('super-secret-key');
     });
   });
 

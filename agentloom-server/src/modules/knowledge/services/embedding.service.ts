@@ -210,13 +210,19 @@ export class EmbeddingService {
     );
   }
 
+  /**
+   * 从配置解析 embeddings 端点。
+   *
+   * 不再对 `provider === 'openai'` 硬编码 `https://api.openai.com`：endpointUrl 由
+   * 调用方从模型配置的 `provider.baseUrl ?? provider.defaultBaseUrl` 解析，
+   * 这样自建网关 / 代理 / Azure 兼容端点都能正常工作，OpenAI 官方地址只是
+   * provider 种子里的默认值之一。
+   */
   private resolveEmbeddingEndpoint(config: EmbeddingRuntimeConfig): string {
-    if (config.provider === 'openai') {
-      return 'https://api.openai.com/v1/embeddings';
-    }
-
     if (!config.endpointUrl) {
-      throw new Error('私有云 Embedding 模型缺少 endpointUrl');
+      throw new Error(
+        `Embedding 模型缺少可用的 endpointUrl（provider=${config.provider}）`,
+      );
     }
 
     const normalizedBase = config.endpointUrl.replace(/\/+$/, '');
@@ -225,10 +231,6 @@ export class EmbeddingService {
 
     if (!normalizedPath || normalizedPath === '/') {
       return `${normalizedBase}/v1/embeddings`;
-    }
-
-    if (normalizedPath.endsWith('/v1')) {
-      return `${normalizedBase}/embeddings`;
     }
 
     return `${normalizedBase}/embeddings`;

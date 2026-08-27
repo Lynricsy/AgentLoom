@@ -38,6 +38,7 @@ import {
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
   GeneratedAppRepairAttemptNotFoundException,
+  GeneratedAppPublicSubmissionValidationException,
   GeneratedAppSubmissionNotFoundException,
 } from '../generated-app.exceptions';
 import * as generationPlanBuilder from '../plan-builders/generation-plan.builder';
@@ -114,6 +115,23 @@ import {
   createGeneratedAppWithGate3Workspace,
   mockTenantDb
 } from './generated-app-test-support';
+
+/**
+ * 默认测试应用（"自动化中医问诊系统"）命中 medical 运行时表单，
+ * 其中 chiefComplaint / duration / symptoms / severity 四项为必填。
+ * D-15 起公开提交按运行时表单契约 fail-closed，因此正例必须给全必填字段。
+ */
+function createValidMedicalInput(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    chiefComplaint: '头痛',
+    duration: '三天',
+    symptoms: ['pain'],
+    severity: 5,
+    ...overrides,
+  };
+}
 
 describe('public migrated scenarios', () => {
   let service: GeneratedAppService;
@@ -958,7 +976,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     const response = await service.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
@@ -977,7 +995,7 @@ describe('public migrated scenarios', () => {
     expect(insertPayload.publicShareToken).toBe(token);
     expect(insertPayload.anonymousSessionId).toMatch(/^[0-9a-f-]{36}$/i);
     expect(insertPayload.status).toBe('completed');
-    expect(insertPayload.input).toEqual({ chiefComplaint: '头痛' });
+    expect(insertPayload.input).toEqual(createValidMedicalInput());
     expect(insertPayload.result).toEqual(
       expect.objectContaining({
         runtimeKind: 'local-generated-app-deterministic-report',
@@ -1036,7 +1054,17 @@ describe('public migrated scenarios', () => {
             id: WORKFLOW_DEFINITION_ID,
             status: 'published',
             publishedVersionId: '55555555-5555-4555-8555-555555555559',
-            inputSchema: { version: 7 },
+            inputSchema: {
+              version: 7,
+              fields: [
+                {
+                  id: 'chiefComplaint',
+                  type: 'text',
+                  label: '主诉',
+                  required: true,
+                },
+              ],
+            },
           },
         ]),
       );
@@ -1044,7 +1072,7 @@ describe('public migrated scenarios', () => {
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
       anonymousSessionId: 'browser-session-1',
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).toHaveBeenCalledWith(
@@ -1151,7 +1179,7 @@ describe('public migrated scenarios', () => {
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
       anonymousSessionId: 'browser-session-1',
-      input: { chiefComplaint: '头痛', duration: '三天' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).toHaveBeenCalledWith(
@@ -1231,7 +1259,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     await serviceWithExecution.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).toHaveBeenCalledWith(
@@ -1273,7 +1301,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).not.toHaveBeenCalled();
@@ -1353,7 +1381,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).not.toHaveBeenCalled();
@@ -1409,7 +1437,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).not.toHaveBeenCalled();
@@ -1465,7 +1493,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
@@ -1533,7 +1561,7 @@ describe('public migrated scenarios', () => {
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
     const response = await serviceWithExecution.createPublicSubmission(token, {
-      input: { chiefComplaint: '头痛' },
+      input: createValidMedicalInput(),
     });
 
     expect(runWorkflow).toHaveBeenCalledTimes(1);
@@ -1605,7 +1633,7 @@ describe('public migrated scenarios', () => {
 
     const response = await service.createPublicSubmission(token, {
       anonymousSessionId: 'browser-session-1',
-      input: { name: '访客' },
+      input: createValidMedicalInput(),
       clientContext: { userAgent: 'test-browser' },
     });
 
@@ -1620,7 +1648,7 @@ describe('public migrated scenarios', () => {
     expect(JSON.stringify(response)).not.toContain(token);
   });
 
-  it('公开提交会脱敏 token-like/path 输入，非法结构保存 failed 状态', async () => {
+  it('公开提交会脱敏合法字段中的 token-like/path 内容', async () => {
     const token = '6'.repeat(64);
     const app = createGeneratedApp({
       status: 'published',
@@ -1635,12 +1663,10 @@ describe('public migrated scenarios', () => {
 
     const response = await service.createPublicSubmission(token, {
       anonymousSessionId: 'Bearer very-secret-token-value',
-      input: {
-        publicShareToken: 'a'.repeat(64),
-        note: 'Bearer very-secret-token-value',
-        attachmentPath: '/root/AgentLoom/.env',
-        chiefComplaint: '头痛',
-      },
+      input: createValidMedicalInput({
+        priorCare: 'Bearer very-secret-token-value',
+        medicalHistory: '/root/AgentLoom/.env',
+      }),
     });
 
     const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
@@ -1664,67 +1690,124 @@ describe('public migrated scenarios', () => {
     );
     expect(insertPayload.input).toEqual(
       expect.objectContaining({
-        redactedField1: '[REDACTED]',
-        note: '[REDACTED_TOKEN]',
-        attachmentPath: '[REDACTED_PATH]',
+        priorCare: '[REDACTED_TOKEN]',
+        medicalHistory: '[REDACTED_PATH]',
         chiefComplaint: '头痛',
       }),
     );
-    expect(serializedRuntimeOutput).not.toContain('publicShareToken');
     expect(serializedRuntimeOutput).not.toContain('very-secret-token-value');
     expect(serializedRuntimeOutput).not.toContain('/root/AgentLoom');
     expect(response.input).toEqual(insertPayload.input);
     expect(response.errorMessage).toBeNull();
+  });
 
-    vi.clearAllMocks();
-
-    const failedInsertChain =
-      createGeneratedAppSubmissionInsertReturningFromPayload();
-    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
-    mockTenantDb.insert.mockReturnValueOnce(failedInsertChain);
-
-    const failedResponse = await service.createPublicSubmission(token, {
-      input: { ['__proto__']: { polluted: true }, safe: 'value' },
+  it('公开提交对非法结构一律 422 fail-closed，不落 submission 也不触发 Workflow', async () => {
+    const token = '6'.repeat(64);
+    const runWorkflow = vi.fn();
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
     });
-    const failedInsertPayload = failedInsertChain.values.mock.calls[0]?.[0] as {
-      status: string;
-      result: Record<string, unknown> | null;
-      report: Record<string, unknown> | null;
-      errorMessage: string | null;
-    };
-
-    expect(failedInsertPayload.status).toBe('failed');
-    expect(failedInsertPayload.result).toBeNull();
-    expect(failedInsertPayload.report).toBeNull();
-    expect(failedInsertPayload.errorMessage).toContain('无法处理的结构');
-    expect(failedResponse.status).toBe('failed');
-    expect(failedResponse.errorMessage).toBe(failedInsertPayload.errorMessage);
-
-    vi.clearAllMocks();
-
-    const arrayFailedInsertChain =
-      createGeneratedAppSubmissionInsertReturningFromPayload();
-    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
-    mockTenantDb.insert.mockReturnValueOnce(arrayFailedInsertChain);
-
-    const arrayFailedResponse = await service.createPublicSubmission(token, {
-      input: ['array input is not supported'],
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
     });
-    const arrayFailedInsertPayload = arrayFailedInsertChain.values.mock
-      .calls[0]?.[0] as {
-      status: string;
-      input: Record<string, unknown>;
-      result: Record<string, unknown> | null;
-      report: Record<string, unknown> | null;
-      errorMessage: string | null;
-    };
 
-    expect(arrayFailedInsertPayload.status).toBe('failed');
-    expect(arrayFailedInsertPayload.input).toEqual({});
-    expect(arrayFailedInsertPayload.result).toBeNull();
-    expect(arrayFailedInsertPayload.report).toBeNull();
-    expect(arrayFailedInsertPayload.errorMessage).toContain('无法处理的结构');
-    expect(arrayFailedResponse.status).toBe('failed');
+    const invalidInputs: Array<[string, unknown]> = [
+      ['缺少全部必填字段', {}],
+      ['数组不是对象', ['array input is not supported']],
+      [
+        '原型污染键',
+        { ...createValidMedicalInput(), ['__proto__']: { polluted: true } },
+      ],
+      [
+        '运行时表单未声明的字段',
+        createValidMedicalInput({ unexpectedField: 'x' }),
+      ],
+      ['必填文本为空串', createValidMedicalInput({ chiefComplaint: '   ' })],
+      [
+        '非法 multi_select 选项',
+        createValidMedicalInput({ symptoms: ['not-an-option'] }),
+      ],
+      ['range 越界', createValidMedicalInput({ severity: 42 })],
+      ['range 非步长整数倍', createValidMedicalInput({ severity: 4.5 })],
+      ['数字字段收到非数字', createValidMedicalInput({ severity: 'high' })],
+      [
+        '单字段超长文本',
+        createValidMedicalInput({ additionalNotes: 'a'.repeat(4001) }),
+      ],
+      [
+        // 单字段上限 4000 字符挡不住整体体量：20 个 4000 字符的数组元素约 80 KB。
+        'payload 超过 64 KiB',
+        createValidMedicalInput({
+          symptoms: Array.from({ length: 20 }, () => 'a'.repeat(4000)),
+        }),
+      ],
+    ];
+
+    for (const [label, input] of invalidInputs) {
+      vi.clearAllMocks();
+      mockTenantDb.select.mockReturnValue(createSelectChain([app]));
+
+      await expect(
+        serviceWithExecution.createPublicSubmission(token, {
+          input: input as Record<string, unknown>,
+        }),
+        label,
+      ).rejects.toBeInstanceOf(GeneratedAppPublicSubmissionValidationException);
+
+      expect(mockTenantDb.insert, label).not.toHaveBeenCalled();
+      expect(runWorkflow, label).not.toHaveBeenCalled();
+    }
+  });
+
+  it('绑定 Workflow 的公开提交在 Workflow 输入契约不满足时 422，不落 submission', async () => {
+    const token = '6'.repeat(64);
+    const runWorkflow = vi.fn();
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: '55555555-5555-4555-8555-555555555559',
+            inputSchema: {
+              version: 3,
+              fields: [
+                {
+                  id: 'triageLevel',
+                  type: 'single_select',
+                  label: '分诊级别',
+                  required: true,
+                  options: ['low', 'high'],
+                },
+              ],
+            },
+          },
+        ]),
+      );
+
+    await expect(
+      serviceWithExecution.createPublicSubmission(token, {
+        input: createValidMedicalInput(),
+      }),
+    ).rejects.toBeInstanceOf(GeneratedAppPublicSubmissionValidationException);
+
+    expect(mockTenantDb.insert).not.toHaveBeenCalled();
+    expect(runWorkflow).not.toHaveBeenCalled();
   });
 
   it('创建者提交列表和详情只返回当前租户、应用且未删除的记录，并能看到同一 completed report', async () => {
@@ -3126,7 +3209,7 @@ describe('public migrated scenarios', () => {
     );
   });
 
-  it('公开提交省略 input 时应按空对象执行并持久化确定性报告', async () => {
+  it('公开提交省略 input 时按必填契约拒绝，且不落 submission', async () => {
     const token = 'd'.repeat(64);
     const app = createGeneratedApp({
       status: 'published',
@@ -3134,38 +3217,13 @@ describe('public migrated scenarios', () => {
       publicShareEnabled: true,
       publicShareToken: token,
     });
-    const insertChain =
-      createGeneratedAppSubmissionInsertReturningFromPayload();
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
-    mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
-    const response = await service.createPublicSubmission(token, {
-      input: undefined,
-    });
+    await expect(
+      service.createPublicSubmission(token, { input: undefined }),
+    ).rejects.toBeInstanceOf(GeneratedAppPublicSubmissionValidationException);
 
-    expect(insertChain.values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: TENANT_ID,
-        generatedAppId: APP_ID,
-        publicShareToken: token,
-        input: {},
-        status: 'completed',
-        result: expect.objectContaining({
-          runtimeKind: 'local-generated-app-deterministic-report',
-        }),
-        report: expect.objectContaining({
-          runtimeKind: 'local-generated-app-deterministic-report',
-        }),
-        errorMessage: null,
-      }),
-    );
-    expect(response).toEqual(
-      expect.objectContaining({
-        appId: APP_ID,
-        status: 'completed',
-        input: {},
-      }),
-    );
+    expect(mockTenantDb.insert).not.toHaveBeenCalled();
   });
 
   it('公开链接关闭写入零行时应报告应用不存在而不返回旧状态', async () => {
