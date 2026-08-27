@@ -44,6 +44,7 @@ PortDefinition / TypeSchema JSON
 
 ```bash
 cargo test
+wasm-pack test --node
 cargo bench
 wasm-pack build --target bundler --release
 ```
@@ -81,7 +82,7 @@ Studio 通过 module Web Worker 隔离 WASM 加载和兼容性计算；runtime �
 
 ## Testing & QA
 
-- `cargo test` 覆盖连接方向、required/capacity、四级兼容性、schema validator 和 WASM 输入输出。
+- `cargo test` 覆盖原生 Rust 测试；`#[wasm_bindgen_test]` 不会被原生 harness 计数，必须另跑 `wasm-pack test --node` 覆盖三个 JavaScript 导出的输入输出与结构化错误。
 - `cargo bench` 运行 `compatibility_bench`；仅用于观察性能，不承担正确性断言。
-- 改动 WASM bindings 时核对 `pkg/agentloom_type_engine.d.ts` 的三个导出及 Studio worker 的调用签名。
+- 改动 WASM bindings 时运行 `wasm-pack test --node`，并核对 `pkg/agentloom_type_engine.d.ts` 的三个导出及 Studio worker 的调用签名。
 - 改动 14 值端口集合时运行 contracts 的跨包集合测试；改动兼容性算法时同时覆盖 Rust checker 与 Studio fallback 的同类场景。

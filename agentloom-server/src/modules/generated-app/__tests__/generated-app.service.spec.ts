@@ -120,7 +120,7 @@ describe('GeneratedAppService facade', () => {
       .mockRejectedValue(error);
     const dto = {
       attemptNumber: 1,
-      targetGateId: 'gate-3',
+      targetGateId: 'gate-3' as const,
       status: 'running' as const,
       failureSummary: 'build failed',
     };

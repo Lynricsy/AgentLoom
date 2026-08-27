@@ -2637,7 +2637,7 @@ describe('SandboxAgentAdapter', () => {
       const initPayload = JSON.parse(
         String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
       ) as { remoteToolExecution: { callbackToken: string } };
-      session.tenantId = undefined;
+      Reflect.set(session, 'tenantId', undefined);
 
       await expect(
         adapter.executeSessionToolCallback(

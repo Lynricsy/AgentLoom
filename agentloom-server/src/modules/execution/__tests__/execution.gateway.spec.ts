@@ -44,6 +44,7 @@ function makeSnapshot(
     completedSteps: 0,
     totalSteps: 3,
     steps: [],
+    lastEventId: 0,
     snapshotAt: '2025-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -432,6 +433,8 @@ describe('ExecutionGateway', () => {
             status: 'running',
             startedAt: '2025-01-01T00:00:01.000Z',
             completedAt: null,
+            result: null,
+            checkpointData: null,
           },
           {
             stepId: 'step-done',
@@ -439,6 +442,8 @@ describe('ExecutionGateway', () => {
             status: 'completed',
             startedAt: '2025-01-01T00:00:00.000Z',
             completedAt: '2025-01-01T00:00:10.000Z',
+            result: null,
+            checkpointData: null,
           },
         ],
       });
@@ -641,6 +646,8 @@ describe('ExecutionGateway', () => {
             status: 'queued',
             startedAt: null,
             completedAt: null,
+            result: null,
+            checkpointData: null,
           },
         ],
       });
@@ -697,6 +704,8 @@ describe('ExecutionGateway', () => {
             status: 'completed',
             startedAt: null,
             completedAt: '2025-01-01T00:00:01.000Z',
+            result: null,
+            checkpointData: null,
           },
         ],
       });
