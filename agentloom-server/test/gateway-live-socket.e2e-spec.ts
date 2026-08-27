@@ -19,6 +19,11 @@ import {
   MemoryEventName,
   MemoryGateway,
 } from '../src/modules/agent-memory/memory.gateway';
+import {
+  AgentConversationGateway,
+  ConversationEventName,
+} from '../src/modules/agent-execution/agent-conversation.gateway';
+import { AgentExecutionService } from '../src/modules/agent-execution/agent-execution.service';
 import { EventBridgeService } from '../src/modules/execution/services/event-bridge.service';
 import { StateReplayService } from '../src/modules/execution/services/state-replay.service';
 import { ThrottleService } from '../src/modules/execution/services/throttle.service';
@@ -32,6 +37,7 @@ const USER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const USER_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const KB_ID = '33333333-3333-4333-8333-333333333333';
 const MEMORY_ID = '44444444-4444-4444-8444-444444444444';
+const CONVERSATION_ID = '55555555-5555-4555-8555-555555555555';
 const SOCKET_TIMEOUT_MS = 3_000;
 
 type SocketError = Error & { data?: { code?: number; reason?: string } };
@@ -98,6 +104,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
   let notificationGateway: NotificationGateway;
   let memoryGateway: MemoryGateway;
   let eventBridge: EventBridgeService;
+  let conversationSnapshotMessages: ReturnType<typeof vi.fn>;
   let snapshots: Map<string, ExecutionStateSnapshot>;
   const sockets = new Set<Socket>();
 
@@ -105,7 +112,12 @@ describe('Gateway live Socket.IO (E2E)', () => {
   const tokenB = signToken(USER_B, TENANT_A);
 
   function connect(
-    namespace: '/knowledge' | '/execution' | '/notification' | '/memory',
+    namespace:
+      | '/knowledge'
+      | '/execution'
+      | '/notification'
+      | '/memory'
+      | '/agent-conversation',
     token?: string,
     query?: Record<string, string>,
   ): Socket {
@@ -121,7 +133,12 @@ describe('Gateway live Socket.IO (E2E)', () => {
   }
 
   async function connectAuthenticated(
-    namespace: '/knowledge' | '/execution' | '/notification' | '/memory',
+    namespace:
+      | '/knowledge'
+      | '/execution'
+      | '/notification'
+      | '/memory'
+      | '/agent-conversation',
     token = tokenA,
     query?: Record<string, string>,
   ): Promise<Socket> {
@@ -153,6 +170,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
       ),
       checkExecutionExists: vi.fn().mockResolvedValue(false),
     };
+    conversationSnapshotMessages = vi.fn().mockResolvedValue([]);
     const tokenBlacklist = {
       isBlacklisted: vi.fn().mockResolvedValue(false),
     };
@@ -172,6 +190,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
         ExecutionGateway,
         NotificationGateway,
         MemoryGateway,
+        AgentConversationGateway,
         EventBridgeService,
         ThrottleService,
         WsJwtGuard,
@@ -179,6 +198,14 @@ describe('Gateway live Socket.IO (E2E)', () => {
         { provide: TokenBlacklistService, useValue: tokenBlacklist },
         { provide: UserIdentityResolverService, useValue: identityResolver },
         { provide: StateReplayService, useValue: stateReplay },
+        {
+          provide: AgentExecutionService,
+          useValue: {
+            injectMessage: vi.fn(),
+            cancelExecution: vi.fn(),
+            getConversationSnapshotMessages: conversationSnapshotMessages,
+          },
+        },
       ],
     }).compile();
 
@@ -495,6 +522,120 @@ describe('Gateway live Socket.IO (E2E)', () => {
 
       await expect(created).resolves.toMatchObject({
         data: { edgeId: 'edge-1' },
+      });
+    });
+  });
+
+  // D-12：断线重连补发。缓存窗口内逐事件补发，缓存缺口回退持久 snapshot——
+  // 修复前后者是静默 return，客户端永远补不回断线期间的正文。
+  describe('/agent-conversation', () => {
+    it('断线期间产生的 chunk 在重连订阅后被逐条补发，ack 回传服务端进度', async () => {
+      // 1) socket1 正常订阅，收一条 live chunk 并记下游标。
+      const socket1 = await connectAuthenticated('/agent-conversation');
+      const liveChunk = waitForEvent<{ eventId: number }>(
+        socket1,
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+      );
+      await emitWithAck(socket1, 'conversation:subscribe', {
+        conversationId: CONVERSATION_ID,
+      });
+
+      eventBridge.emitOutputChunk(TENANT_A, CONVERSATION_ID, {
+        stepId: 'step-1',
+        chunk: '断线前已收到',
+        index: 0,
+        executionType: 'conversation',
+      });
+      const { eventId: cursorBeforeDisconnect } = await liveChunk;
+
+      // 2) 真断开：走完 gateway 的 disconnect 清理。
+      socket1.removeAllListeners();
+      socket1.disconnect();
+      await delay(100);
+
+      // 3) 断线期间继续产生事件——它们只进环形缓冲，没有任何在线客户端。
+      eventBridge.emitOutputChunk(TENANT_A, CONVERSATION_ID, {
+        stepId: 'step-1',
+        chunk: '断线期间的第一段',
+        index: 1,
+        executionType: 'conversation',
+      });
+      eventBridge.emitOutputChunk(TENANT_A, CONVERSATION_ID, {
+        stepId: 'step-1',
+        chunk: '断线期间的第二段',
+        index: 2,
+        executionType: 'conversation',
+      });
+      const currentEventId = eventBridge.getLastEventId(CONVERSATION_ID);
+
+      // 4) socket2 拿旧游标重连订阅。
+      const socket2 = await connectAuthenticated('/agent-conversation');
+      const replayed: string[] = [];
+      socket2.on(
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+        (event: { data?: { chunk?: string } }) => {
+          if (event?.data?.chunk) {
+            replayed.push(event.data.chunk);
+          }
+        },
+      );
+
+      const ack = await emitWithAck<{
+        status: string;
+        lastEventId?: number;
+      }>(socket2, 'conversation:subscribe', {
+        conversationId: CONVERSATION_ID,
+        lastEventId: cursorBeforeDisconnect,
+      });
+      await delay();
+
+      expect(ack.status).toBe('subscribed');
+      // 只补断线期间那两段，已收到的那段不得重发。
+      expect(replayed).toEqual(['断线期间的第一段', '断线期间的第二段']);
+      // ack 必须带服务端真实进度，否则客户端游标会卡在最后一个可映射事件上。
+      expect(ack.lastEventId).toBe(currentEventId);
+      expect(conversationSnapshotMessages).not.toHaveBeenCalled();
+    });
+
+    it('缓存缺口时回退持久 snapshot 而不是静默结束', async () => {
+      const unbufferedConversationId = '66666666-6666-4666-8666-666666666666';
+      conversationSnapshotMessages.mockResolvedValueOnce([
+        {
+          messageId: 'msg-persisted',
+          role: 'assistant',
+          contentType: 'text',
+          content: '断线期间完成的完整回答',
+          toolCalls: null,
+          metadata: {},
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+
+      const socket = await connectAuthenticated('/agent-conversation');
+      const snapshotEvent = waitForEvent<{
+        reason: string;
+        messages: Array<{ messageId: string; content: string }>;
+      }>(socket, 'conversation.state.snapshot');
+
+      const ack = await emitWithAck<{
+        status: string;
+        lastEventId?: number;
+      }>(socket, 'conversation:subscribe', {
+        conversationId: unbufferedConversationId,
+        // 旧游标高于服务端进度＝终态清理或新一轮重排，必须走 snapshot。
+        lastEventId: 5,
+      });
+
+      expect(ack.status).toBe('subscribed');
+      // snapshot 路径不带 ack 游标：snapshot 事件自己是新 epoch 的起点。
+      expect(ack.lastEventId).toBeUndefined();
+      expect(conversationSnapshotMessages).toHaveBeenCalledWith(
+        TENANT_A,
+        unbufferedConversationId,
+      );
+      await expect(snapshotEvent).resolves.toMatchObject({
+        reason: 'replay-buffer-gap',
+        messages: [{ messageId: 'msg-persisted' }],
       });
     });
   });
