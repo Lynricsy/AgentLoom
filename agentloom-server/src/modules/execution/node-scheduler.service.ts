@@ -439,6 +439,40 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     return input;
   }
 
+  /**
+   * 读取节点某个方向的端口 dataType。
+   *
+   * 两级查找：normalize 阶段已把内置节点的静态端口写入 data.inputPorts/outputPorts
+   * （字段名 id），这是绝大多数边的唯一来源；portMappingMetadata 只有动态端口
+   * （MCP 工具、可复用块）才会写，字段名是 name。两处都查不到时返回 undefined，
+   * 调用方保持 no-op —— 动态端口在快照里可能确实没有类型信息，不能误报不兼容。
+   */
+  private resolvePortDataType(
+    node: schema.ReactFlowNode,
+    handle: string,
+    direction: 'source' | 'target',
+  ): string | undefined {
+    const staticPorts = (
+      direction === 'source'
+        ? node.data?.outputPorts
+        : node.data?.inputPorts
+    ) as Array<{ id?: string; name?: string; dataType?: string }> | undefined;
+    const staticPort = Array.isArray(staticPorts)
+      ? staticPorts.find((p) => p?.id === handle || p?.name === handle)
+      : undefined;
+    if (staticPort?.dataType) return staticPort.dataType;
+
+    const metadata = node.data?.portMappingMetadata as
+      | {
+          outputs?: Array<{ name: string; dataType: string }>;
+          inputs?: Array<{ name: string; dataType: string }>;
+        }
+      | undefined;
+    const dynamicPorts =
+      direction === 'source' ? metadata?.outputs : metadata?.inputs;
+    return dynamicPorts?.find((p) => p.name === handle)?.dataType;
+  }
+
   private checkEdgePortTypeCompatibility(
     edge: ReactFlowEdge,
     nodes: schema.ReactFlowNode[],
@@ -451,29 +485,26 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     const targetNode = nodes.find((n) => n.id === edge.target);
     if (!sourceNode || !targetNode) return;
 
-    const sourcePortMeta = sourceNode.data?.portMappingMetadata as
-      | { outputs?: Array<{ name: string; dataType: string }> }
-      | undefined;
-    const targetPortMeta = targetNode.data?.portMappingMetadata as
-      | { inputs?: Array<{ name: string; dataType: string }> }
-      | undefined;
-
-    const sourcePort = sourcePortMeta?.outputs?.find(
-      (p) => p.name === sourceHandle,
+    const sourceType = this.resolvePortDataType(
+      sourceNode,
+      sourceHandle,
+      'source',
     );
-    const targetPort = targetPortMeta?.inputs?.find(
-      (p) => p.name === targetHandle,
+    const targetType = this.resolvePortDataType(
+      targetNode,
+      targetHandle,
+      'target',
     );
-    if (!sourcePort?.dataType || !targetPort?.dataType) return;
+    if (!sourceType || !targetType) return;
 
-    if (!isPortTypeCompatible(sourcePort.dataType, targetPort.dataType)) {
+    if (!isPortTypeCompatible(sourceType, targetType)) {
       throw new NodeTypeMismatchException({
         sourceNodeId: edge.source,
         targetNodeId: edge.target,
         sourcePortId: sourceHandle,
         targetPortId: targetHandle,
-        sourceType: sourcePort.dataType,
-        targetType: targetPort.dataType,
+        sourceType,
+        targetType,
         edgeId: edge.id,
       });
     }

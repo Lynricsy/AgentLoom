@@ -155,6 +155,7 @@ const NODE_CONFIG_KEY_ALIASES: Record<string, string> = {
   expose_total: 'exposeTotal',
   expose_is_last: 'exposeIsLast',
   query_params: 'queryParams',
+  fail_on_http_error: 'failOnHttpError',
   auth_type: 'authType',
   auth_config: 'authConfig',
   ip_whitelist: 'ipWhitelist',

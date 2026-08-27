@@ -16,7 +16,11 @@ export type StepStatus = schema.ExecutionStep['status'];
  * 终态（completed, failed, skipped, cancelled）不包含任何合法转换目标。
  */
 export const STEP_TRANSITIONS: Readonly<Record<string, ReadonlySet<string>>> = {
-  pending: new Set(['queued', 'running', 'skipped', 'cancelled']),
+  // pending → failed：节点在进入 running 之前就被判定为不可调度（例如边端口类型不兼容、
+  // 依赖的可复用块无法解析）时必须 fail-closed。若不允许该转换，失败策略会抛
+  // InvalidStepTransitionException，导致 step 永久停留在 pending 成为孤儿步骤，
+  // execution 也永远无法收敛到终态。
+  pending: new Set(['queued', 'running', 'skipped', 'cancelled', 'failed']),
   queued: new Set(['running', 'cancelled']),
   running: new Set([
     'pending',

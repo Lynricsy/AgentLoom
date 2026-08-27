@@ -3,6 +3,7 @@ import { Globe, Plus, Trash2 } from 'lucide-react'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { Separator } from '@/shared/ui/separator'
+import { Switch } from '@/shared/ui/switch'
 import {
   Select,
   SelectContent,
@@ -29,6 +30,7 @@ interface HttpToolConfig {
   authType: AuthType
   authConfig: Record<string, string>
   timeout: number
+  failOnHttpError: boolean
 }
 
 interface HttpToolConfigPanelProps {
@@ -75,6 +77,9 @@ function parseHttpToolConfig(config: Record<string, unknown>): HttpToolConfig {
         ? (authConfig as Record<string, string>)
         : {},
     timeout: typeof timeout === 'number' && timeout > 0 ? timeout : 30,
+    // 默认 true：与 server 端 http-node executor 的 `!== false` 口径完全一致，
+    // 非 2xx 必须让节点失败；只有显式 false 才是「探测型」请求。
+    failOnHttpError: config.failOnHttpError !== false,
   }
 }
 
@@ -246,6 +251,13 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
     (e: ChangeEvent<HTMLInputElement>) => {
       const v = parseInt(e.target.value, 10)
       applyPatch({ timeout: Number.isNaN(v) || v <= 0 ? 30 : v })
+    },
+    [applyPatch],
+  )
+
+  const handleFailOnHttpError = useCallback(
+    (checked: boolean) => {
+      applyPatch({ failOnHttpError: checked })
     },
     [applyPatch],
   )
@@ -502,6 +514,27 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
         />
         <p className="text-xs text-muted">
           请求超时时间，默认 30 秒，最长 300 秒
+        </p>
+      </div>
+
+      {/* 失败语义：非 2xx 是否判定节点失败 */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor="http-fail-on-error"
+            className="text-xs font-medium text-foreground"
+          >
+            非 2xx 视为失败
+          </label>
+          <Switch
+            id="http-fail-on-error"
+            aria-label="非 2xx 视为失败"
+            checked={parsed.failOnHttpError}
+            onCheckedChange={handleFailOnHttpError}
+          />
+        </div>
+        <p className="text-xs text-muted">
+          默认开启：HTTP 响应状态码非 2xx 时该节点判定为失败。关闭后非 2xx 也视为成功（探测型请求）。
         </p>
       </div>
     </div>

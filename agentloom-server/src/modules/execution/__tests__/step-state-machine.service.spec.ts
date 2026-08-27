@@ -132,9 +132,9 @@ describe('StepStateMachineService', () => {
   });
 
   describe('STEP_TRANSITIONS', () => {
-    it('允许 pending 直接进入 running', () => {
+    it('允许 pending 直接进入 running，并允许 fail-closed 的 pending → failed', () => {
       expect(STEP_TRANSITIONS.pending).toEqual(
-        new Set(['queued', 'running', 'skipped', 'cancelled']),
+        new Set(['queued', 'running', 'skipped', 'cancelled', 'failed']),
       );
     });
 
@@ -210,6 +210,36 @@ describe('StepStateMachineService', () => {
       );
       expect(updateChain.set.mock.calls[0][0]).not.toHaveProperty(
         'completedAt',
+      );
+    });
+
+    it('允许 pending → failed，使不可调度节点不会成为孤儿步骤', async () => {
+      const step = makeStep({ status: 'pending' });
+      const updatedStep = makeStep({
+        status: 'failed',
+        completedAt: NOW,
+        updatedAt: NOW,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+      const updateChain = createUpdateChainReturning([updatedStep]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.updateStepStatus(
+        TENANT_ID,
+        STEP_ID,
+        'failed',
+        { errorMessage: { message: '端口类型不兼容', nodeId: NODE_ID } },
+      );
+
+      expect(result.status).toBe('failed');
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed', completedAt: NOW }),
+      );
+      expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        expect.objectContaining({ from: 'pending', to: 'failed' }),
       );
     });
 

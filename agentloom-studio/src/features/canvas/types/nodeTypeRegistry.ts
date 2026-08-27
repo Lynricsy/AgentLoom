@@ -308,6 +308,12 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         }),
         authConfig: createConfigField("string", "认证配置"),
         timeout: createConfigField("number", "超时时间", { default: 30 }),
+        // 默认 true：验收口径要求 HTTP 非 2xx 直接判定节点失败（fail-closed），
+        // 与 server 端 http-node executor 的 `nodeData.failOnHttpError !== false` 一致；
+        // 只有显式关闭才保留「探测型」请求语义（非 2xx 也算成功）。
+        failOnHttpError: createConfigField("boolean", "非 2xx 视为失败", {
+          default: true,
+        }),
       },
       required: ["url", "method"],
     },
