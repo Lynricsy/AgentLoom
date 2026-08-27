@@ -287,7 +287,9 @@ describe('Misc uncovered HTTP domains (E2E)', () => {
   describe('resource-source convert-to-manual', () => {
     it('正例与重复转换均返回 200 manual', async () => {
       const tenant = await seedTenant('resource-source');
-      const resourceId = crypto.randomUUID();
+      // convert-to-manual 现在会先校验真实资源存在且属于本租户，
+      // 因此必须真的建一个 workflow_definition，不能只插来源记录。
+      const resourceId = await seedPublishedWorkflow(tenant);
       await ctx.adminSql`
         INSERT INTO resource_source_records (
           tenant_id, resource_type, resource_id, origin_kind, current_kind,
@@ -324,11 +326,27 @@ describe('Misc uncovered HTTP domains (E2E)', () => {
       });
     });
 
-    // 已知缺陷：ResourceSourceService.convertToManual 在 update 无结果时 fallback
-    // { currentKind: 'manual' }（约 166-171 行），导致外租户与不存在 id 都返回 200。
-    // fallback 只回显请求方已提供的 resourceType/resourceId 和固定 manual，未带出其他租户字段，
-    // 因此当前是语义不齐而非跨租户信息泄露；修复后启用 404 断言。
-    it.todo('跨租户或不存在 resourceId 应返回 404');
+    it('跨租户或不存在 resourceId 应返回 404', async () => {
+      const owner = await seedTenant('resource-source-owner');
+      const outsider = await seedTenant('resource-source-outsider');
+      const resourceId = await seedPublishedWorkflow(owner);
+
+      // 不存在的 id：此前会命中伪造 fallback 返回 200 manual。
+      const missing = await app.inject({
+        method: 'POST',
+        url: `/api/v1/resource-sources/workflow_definition/${crypto.randomUUID()}/convert-to-manual`,
+        headers: owner.headers,
+      });
+      expect(missing.statusCode).toBe(404);
+
+      // 跨租户：资源真实存在但不属于调用方，同样必须 404。
+      const crossTenant = await app.inject({
+        method: 'POST',
+        url: `/api/v1/resource-sources/workflow_definition/${resourceId}/convert-to-manual`,
+        headers: outsider.headers,
+      });
+      expect(crossTenant.statusCode).toBe(404);
+    });
   });
 
   describe('share', () => {

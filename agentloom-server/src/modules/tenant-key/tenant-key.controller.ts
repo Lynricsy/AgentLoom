@@ -16,7 +16,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import type { TenantEncryptionKey } from '../../database/schema';
-import { PluginService } from '../plugin/plugin.service';
+import { TenantOrganizationResolver } from '../../common/providers/tenant-organization.resolver';
 import {
   type TenantKeyDetailResponse,
   TenantKeyDetailResponseDto,
@@ -32,7 +32,7 @@ import { TenantKeyService } from './tenant-key.service';
 export class TenantKeyController {
   constructor(
     private readonly tenantKeyService: TenantKeyService,
-    private readonly pluginService: PluginService,
+    private readonly tenantOrganizationResolver: TenantOrganizationResolver,
   ) {}
 
   @Post()
@@ -144,18 +144,14 @@ export class TenantKeyController {
       return claimedOrgId;
     }
 
-    try {
-      // JWT 不保证携带组织 claim，因此复用既有租户解析器，避免 undefined 进入 Drizzle 条件。
-      return await this.pluginService.resolveOrganizationId(tenantId);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === `tenant ${tenantId} 未找到关联组织`
-      ) {
-        throw new TenantOrganizationNotFoundException(tenantId);
-      }
-      throw error;
+    // JWT 不保证携带组织 claim，因此回查组织，避免 undefined 进入 Drizzle 条件。
+    const resolvedOrgId =
+      await this.tenantOrganizationResolver.findOrganizationId(tenantId);
+    if (!resolvedOrgId) {
+      throw new TenantOrganizationNotFoundException(tenantId);
     }
+
+    return resolvedOrgId;
   }
 
   private toResponse(key: TenantEncryptionKey): TenantKeyResponse {
