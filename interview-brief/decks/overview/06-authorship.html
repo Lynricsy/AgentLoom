@@ -55,13 +55,13 @@
     <div class="def">
       <div class="term"><span class="lv">02</span>沙箱隔离边界</div>
       <p class="body2"><strong>在防：</strong>模型现场生成的代码逃出笼子，或读到别的租户的东西。<strong>文件边界（在沙箱内的 Go 进程里，不在服务端）：</strong>只有 <code>/workspace</code> 与 <code>/tmp</code> 两个固定可写根；路径先规范化、判定在根内，再解开软链接、<strong>解开后再判一次</strong>。写文件另走一条更严的分支：不许把根本身当文件写，已存在的目标必须是<em>常规文件</em>（拒绝目录、管道、设备节点），不存在的目标则解析其父目录并确认父目录是目录且在根内。解 tar 包再单独一条：拒绝绝对路径条目，拼接后必须仍在目标目录下。<strong>网络边界：</strong>虚拟机网卡入口一条白名单链，IP 包必须源 IP 与源 MAC 同时匹配、ARP 必须 MAC 与声明 IP 同时匹配、IPv6 全丢，末尾<em>匹配一切即丢弃</em>兜底。<strong>凭据边界：</strong>沙箱内不持有应用侧证书，回调必须经受控中继绕回发起它的那个进程。</p>
-      <p class="xs">可复述的因果：容器共享宿主内核，一个内核漏洞就穿透。跑不可信生成代码时，隔离强度优先于启动开销 —— 这是选微型虚拟机的全部理由，代价是要自己管生命周期、网络与磁盘。四处（读、写、解包、网络）都是<strong>默认拒绝 + 显式放行</strong>，不是列黑名单；且都做<strong>「解析前判一次、解析后再判一次」</strong> —— 只判解析前拦不住指向外部的软链接。</p>
+      <p class="xs">可复述的因果：容器共享宿主内核，一个内核漏洞就可能穿透。跑不可信生成代码时，隔离强度优先于启动开销 —— 这是选微型虚拟机的核心理由，代价是要自己管理生命周期、网络与磁盘。读写路径会在规范化前后守住固定根边界；tar 解包单独校验条目路径及软链接父目录；网络用身份白名单与末尾默认丢弃。共同原则是<strong>默认拒绝、校验后放行</strong>，不是四处都用同一种检查。
     </div>
 
     <div class="def">
       <div class="term"><span class="lv">03</span>多租户数据隔离</div>
-      <p class="body2"><strong>在防：</strong>某个查询漏写一个 <code>where organization_id = ?</code>，就把别的组织的数据返回出去。<strong>两道锁：</strong>第一道在请求侧 —— 中间件先从请求里认出租户身份，拦截器再把后续所有数据库操作包进带租户上下文的事务；第二道在数据库侧 —— 表上开行级安全策略，即使应用层漏了条件，数据库自己也不会把别人的行交出来。</p>
-      <p class="xs">可复述的因果：只靠应用层就等于把安全押在「每个人每次都记得加条件」上，而这是纯纪律，纪律必然失效。<strong>第二道锁的价值恰恰在于它假设第一道会被写错。</strong></p>
+      <p class="body2"><strong>在防：</strong>某个查询漏写一个 <code>where organization_id = ?</code>，就把别的组织的数据返回出去。<strong>实际顺序：</strong>Middleware 先解析请求里的租户提示，但此时 JWT 尚未验签，不能把 claim 当可信身份；随后 AuthGuard 验证签名并把可信的 <code>tenantId</code> 写入 <code>request.user</code>，TenantGuard 再做租户准入；Guards 通过后，TenantTransactionInterceptor 才读取可信身份，把 handler 的数据库操作包进事务并设置 RLS 上下文。数据库表上的行级安全策略是最后一道锁。</p>
+      <p class="xs">可复述的因果：Middleware 只能做早期解析，<strong>认证必须先于数据库租户上下文</strong>，否则攻击者可伪造未验签 claim 影响 RLS。应用层负责建立可信上下文，数据库 RLS 假设应用查询仍可能漏条件 —— 两层防的是不同错误。</p>
     </div>
 
     <div class="note warn">
