@@ -1809,4 +1809,72 @@ describe("agentConversationStore", () => {
     // 补发窗口内的低 ID 不得被当成 epoch 回退。
     expect(useAgentConversationStore.getState().lastEventId).toBe(10);
   });
+
+  // snapshot 在 ack 之前到达，此时补发窗口还开着：查询期间的 live chunk 正躺在
+  // 队列里。若 merge 看不到它，ack 后的 flush 会另起一条流式消息，正文重复。
+  it("snapshot 查询期间到达的 live chunk 与 snapshot 合并后不重复", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+    emitSocketEvent("disconnect");
+
+    // 重连：snapshot 路径的 ack 不带游标，且要等查询结束才回。
+    const deferredAck = vi.fn();
+    socketEmitMock.mockImplementationOnce(
+      (
+        event: string,
+        _payload?: unknown,
+        callback?: { status: string } | ((arg: unknown) => void),
+      ) => {
+        if (
+          event === "conversation:subscribe" &&
+          typeof callback === "function"
+        ) {
+          deferredAck.mockImplementation(() => callback({ status: "subscribed" }));
+        }
+      },
+    );
+    emitSocketEvent("connect");
+
+    // 查询期间新一轮的 live chunk 先到，被暂存。
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      executionId: "conv-1",
+      messageId: "stream-live",
+      chunk: "查询期间的新内容",
+      eventId: 1,
+    });
+
+    emitSocketEvent("conversation.state.snapshot", {
+      conversationId: "conv-1",
+      lastEventId: 1,
+      reason: "replay-buffer-gap",
+      messages: [
+        {
+          messageId: "msg-persisted",
+          role: "assistant",
+          contentType: "text",
+          content: "离线期间完成的回答",
+          toolCalls: null,
+          metadata: {},
+          createdAt: "2026-04-01T05:44:09.000Z",
+        },
+      ],
+      timestamp: "2026-04-01T05:44:10.000Z",
+    });
+
+    deferredAck();
+
+    const { messages } = useAgentConversationStore.getState();
+    expect(messages.map((message) => message.content)).toEqual([
+      "离线期间完成的回答",
+      "查询期间的新内容",
+    ]);
+  });
 });
