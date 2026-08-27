@@ -530,7 +530,7 @@ describe('http migrated scenarios', () => {
       expect(onNodeCompleted).not.toHaveBeenCalled();
     });
 
-    it('failOnHttpError 显式 false 时非 2xx 仍视为成功（探测型用法）', async () => {
+    it('failOnHttpError 显式 false 时非 2xx 让节点 completed，但 result 仍如实记录 success:false', async () => {
       const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);
       globalThis.fetch = vi.fn().mockResolvedValue(makeErrorResponse());
       db.update.mockReturnValueOnce(createUpdateChainVoid());
@@ -556,7 +556,9 @@ describe('http migrated scenarios', () => {
         expect.objectContaining({
           result: expect.objectContaining({
             ok: false,
-            'exec-out': { triggered: true, success: true, status: 404 },
+            // 探测型用法只放行节点状态，不得把失败的响应粉饰成 success:true，
+            // 否则同一个 result 里 ok 与 success 自相矛盾，下游分支会被误导。
+            'exec-out': { triggered: true, success: false, status: 404 },
           }),
         }),
       );
