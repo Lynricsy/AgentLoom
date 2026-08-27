@@ -1,3 +1,4 @@
+import { PORT_DATA_TYPE_TRANSFORM_RULES } from '@agentloom/contracts'
 import type { Edge } from '@xyflow/react'
 import {
   createDefaultEdgeData,
@@ -332,14 +333,14 @@ export async function evaluateConnection(
   }
 }
 
-// 已知的端口类型变换对（与 WASM Rust 端 + JS fallback 保持一致）
-const SYNC_TRANSFORM_PAIRS: ReadonlySet<string> = new Set([
-  'text->json',
-  'json->text',
-  'json->array',
-  'array->json',
-  'skill->text',
-])
+// 端口类型变换对来自 contracts 的 canonical 表（其权威来源是 type-engine 的 Rust
+// checker），不再在此另写一份。此前这里多出 json<->array 两条，而 WASM / fallback
+// 的深层求值会拒绝它们——同步 guard 比深层判定更宽松只会给出错误的"可连"视觉反馈。
+const SYNC_TRANSFORM_PAIRS: ReadonlySet<string> = new Set(
+  PORT_DATA_TYPE_TRANSFORM_RULES.map(
+    (rule) => `${rule.sourceKind}->${rule.targetKind}`,
+  ),
+)
 
 /**
  * 同步端口 dataType 级别兼容性检查。

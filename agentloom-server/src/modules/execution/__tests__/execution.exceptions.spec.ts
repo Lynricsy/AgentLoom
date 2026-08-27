@@ -1,5 +1,9 @@
 import { HttpStatus } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
+import {
+  PORT_DATA_TYPES,
+  PORT_DATA_TYPE_TRANSFORM_RULES,
+} from '@agentloom/contracts';
 
 import {
   isPortTypeCompatible,
@@ -7,52 +11,36 @@ import {
   type TypeMismatchDetail,
 } from '../execution.exceptions';
 
-const PORT_TYPES = [
-  'model',
-  'text',
-  'json',
-  'image',
-  'audio',
-  'tool',
-  'sandbox',
-  'knowledge',
-] as const;
+const TRANSFORM_PAIRS = new Set(
+  PORT_DATA_TYPE_TRANSFORM_RULES.map(
+    (rule) => `${rule.sourceKind}->${rule.targetKind}`,
+  ),
+);
 
 describe('execution.exceptions', () => {
   describe('isPortTypeCompatible', () => {
-    it.each(PORT_TYPES)('当源类型与目标类型同为 %s 时返回 true', (portType) => {
-      expect(isPortTypeCompatible(portType, portType)).toBe(true);
+    // 全 14×14 矩阵：执行期守卫必须与 contracts canonical 表逐格一致。
+    for (const sourceType of PORT_DATA_TYPES) {
+      for (const targetType of PORT_DATA_TYPES) {
+        const expected =
+          sourceType === targetType ||
+          TRANSFORM_PAIRS.has(`${sourceType}->${targetType}`);
+
+        it(`${sourceType} → ${targetType} 返回 ${expected}`, () => {
+          expect(isPortTypeCompatible(sourceType, targetType)).toBe(expected);
+        });
+      }
+    }
+
+    it('非 text 源类型不再因目标是 json 而被通配放行', () => {
+      const nonTextSources = PORT_DATA_TYPES.filter(
+        (type) => type !== 'json' && type !== 'text',
+      );
+
+      for (const sourceType of nonTextSources) {
+        expect(isPortTypeCompatible(sourceType, 'json')).toBe(false);
+      }
     });
-
-    it.each(PORT_TYPES)(
-      '当目标类型为 json 时，无论源类型 %s 为何都返回 true',
-      (sourceType) => {
-        expect(isPortTypeCompatible(sourceType, 'json')).toBe(true);
-      },
-    );
-
-    it.each([
-      ['model', 'text'],
-      ['text', 'image'],
-      ['json', 'audio'],
-      ['image', 'tool'],
-      ['audio', 'knowledge'],
-      ['tool', 'sandbox'],
-      ['sandbox', 'model'],
-      ['knowledge', 'text'],
-    ])(
-      '当源类型 %s 与目标类型 %s 不同且目标不是 json 时返回 false',
-      (sourceType, targetType) => {
-        expect(isPortTypeCompatible(sourceType, targetType)).toBe(false);
-      },
-    );
-
-    it('should return true for skill to skill', () =>
-      expect(isPortTypeCompatible('skill', 'skill')).toBe(true));
-    it('should return true for skill to text', () =>
-      expect(isPortTypeCompatible('skill', 'text')).toBe(true));
-    it('should return false for text to skill', () =>
-      expect(isPortTypeCompatible('text', 'skill')).toBe(false));
   });
 
   describe('NodeTypeMismatchException', () => {

@@ -1,3 +1,4 @@
+import { PORT_DATA_TYPE_TRANSFORM_RULES } from '@agentloom/contracts'
 import type { PortDefinition } from '../../types/nodeTypeRegistry'
 import type { TypeSchema } from '../../types/typeSchema'
 import type {
@@ -36,26 +37,17 @@ interface TransformRule {
   transformFn: string
 }
 
-const TRANSFORM_RULES: TransformRule[] = [
-  {
-    sourceKind: 'text',
-    targetKind: 'json',
-    reason: 'text_to_json_parse',
-    transformFn: 'parse_json',
-  },
-  {
-    sourceKind: 'json',
-    targetKind: 'text',
-    reason: 'json_to_text_stringify',
-    transformFn: 'stringify_json',
-  },
-  {
-    sourceKind: 'skill',
-    targetKind: 'text',
-    reason: 'skill_to_text_degrade',
-    transformFn: 'extract_skill_text',
-  },
-]
+// 从 contracts 的 canonical 表派生（权威来源是 type-engine 的 Rust checker）。
+// fallback 是 WASM 不可用时的降级实现，规则必须与 WASM 完全一致，
+// 否则同一条边在两条求值路径下会给出不同结论。
+const TRANSFORM_RULES: TransformRule[] = PORT_DATA_TYPE_TRANSFORM_RULES.map(
+  (rule) => ({
+    sourceKind: rule.sourceKind,
+    targetKind: rule.targetKind,
+    reason: rule.reasonKey,
+    transformFn: rule.transformFn,
+  }),
+)
 
 function normalizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
