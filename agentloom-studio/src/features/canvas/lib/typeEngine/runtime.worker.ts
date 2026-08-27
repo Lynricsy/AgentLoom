@@ -9,7 +9,6 @@ import type {
   TypeEngineWorkerResponse,
   TypeEngineWasmLoadStrategy,
 } from './contracts'
-import type { TypeSchema } from '../../types/typeSchema'
 
 const TYPE_ENGINE_WASM_URL = new URL(
   '../../../../../../agentloom-type-engine/pkg/agentloom_type_engine_bg.wasm',
@@ -34,8 +33,6 @@ interface TypeEngineWasmExports extends WebAssembly.Exports {
     source: SerializedPortDefinition,
     target: SerializedPortDefinition,
   ) => [number, number, number]
-  checkSchemaCompatibility: (source: TypeSchema, target: TypeSchema) => [number, number, number]
-  validateSchema: (schema: TypeSchema | string) => [number, number, number]
 }
 
 interface FetchResponseLike {
@@ -118,12 +115,6 @@ export function createTypeEngineBindings(
     loadStrategy,
     checkCompatibility(source, target) {
       return call<TypeEngineCompatibilityResult>(() => wasmExports.checkCompatibility(source, target))
-    },
-    checkSchemaCompatibility(source, target) {
-      return call<TypeEngineCompatibilityResult>(() => wasmExports.checkSchemaCompatibility(source, target))
-    },
-    validateSchema(schema) {
-      return call<unknown>(() => wasmExports.validateSchema(schema))
     },
   }
 }

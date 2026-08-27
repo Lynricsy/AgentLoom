@@ -5,5 +5,5 @@ import { __wbg_set_wasm } from "./agentloom_type_engine_bg.js";
 __wbg_set_wasm(wasm);
 wasm.__wbindgen_start();
 export {
-    checkCompatibility, checkSchemaCompatibility, validateSchema
+    checkCompatibility
 } from "./agentloom_type_engine_bg.js";

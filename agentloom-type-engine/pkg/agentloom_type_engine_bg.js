@@ -10,31 +10,6 @@ export function checkCompatibility(source, target) {
     }
     return takeFromExternrefTable0(ret[0]);
 }
-
-/**
- * @param {any} source
- * @param {any} target
- * @returns {any}
- */
-export function checkSchemaCompatibility(source, target) {
-    const ret = wasm.checkSchemaCompatibility(source, target);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
-/**
- * @param {any} input
- * @returns {any}
- */
-export function validateSchema(input) {
-    const ret = wasm.validateSchema(input);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
 export function __wbg_Error_83742b46f01ce22d(arg0, arg1) {
     const ret = Error(getStringFromWasm0(arg0, arg1));
     return ret;

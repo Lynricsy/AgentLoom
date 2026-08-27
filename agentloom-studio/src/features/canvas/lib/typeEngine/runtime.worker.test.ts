@@ -96,24 +96,6 @@ function createMockWasmExports() {
         0,
       ] as [number, number, number]
     }),
-    checkSchemaCompatibility: vi.fn(() => {
-      return [
-        table.store({
-          level: 'EXACT',
-          reason: null,
-          missingFields: [],
-          candidateMappings: [],
-          conflictPath: null,
-          transformFn: null,
-          metadata: {},
-        }),
-        0,
-        0,
-      ] as [number, number, number]
-    }),
-    validateSchema: vi.fn(() => {
-      return [table.store({ valid: true }), 0, 0] as [number, number, number]
-    }),
   }
 
   return exports
@@ -134,8 +116,6 @@ describe('runtime.worker', () => {
     const bindings: TypeEngineBindings = {
       loadStrategy: 'streaming',
       checkCompatibility: vi.fn(() => partialResult),
-      checkSchemaCompatibility: vi.fn(),
-      validateSchema: vi.fn(),
     }
 
     const handler = createWorkerMessageHandler({
@@ -181,8 +161,6 @@ describe('runtime.worker', () => {
             context: { stage: 'checkCompatibility' },
           }
         },
-        checkSchemaCompatibility: vi.fn(),
-        validateSchema: vi.fn(),
       }),
       postMessage(message) {
         responses.push(message)

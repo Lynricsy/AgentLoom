@@ -1,4 +1,4 @@
-use crate::types::{PortDataType, PortDefinition, PortDirection, ScalarTypeSchema, TypeSchema};
+use crate::types::{PortDataType, PortDefinition, ScalarTypeSchema, TypeSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -72,23 +72,6 @@ pub fn check_compatibility(
 ) -> CompatibilityResult {
     CompatibilityChecker::default().check(source, target)
 }
-pub fn check_port_connection(
-    source: &PortDefinition,
-    target: &PortDefinition,
-    source_connection_count: u32,
-    target_connection_count: u32,
-) -> CompatibilityResult {
-    CompatibilityChecker::default().check_port_connection(
-        source,
-        target,
-        source_connection_count,
-        target_connection_count,
-    )
-}
-
-pub fn check_schema_compatibility(source: &TypeSchema, target: &TypeSchema) -> CompatibilityResult {
-    CompatibilityChecker::default().check_schemas(source, target)
-}
 
 impl Default for CompatibilityChecker {
     fn default() -> Self {
@@ -135,31 +118,6 @@ impl CompatibilityChecker {
         });
 
         self.check_schemas(&source_schema, &target_schema)
-    }
-    pub fn check_port_connection(
-        &self,
-        source: &PortDefinition,
-        target: &PortDefinition,
-        source_connection_count: u32,
-        target_connection_count: u32,
-    ) -> CompatibilityResult {
-        if source.direction != PortDirection::Output {
-            return connection_incompatible("source_direction_must_be_output");
-        }
-        if target.direction != PortDirection::Input {
-            return connection_incompatible("target_direction_must_be_input");
-        }
-        if !source.required && target.required {
-            return connection_incompatible("optional_source_to_required_target");
-        }
-        if connection_limit(source).is_some_and(|limit| source_connection_count >= limit) {
-            return connection_incompatible("source_connection_limit_reached");
-        }
-        if connection_limit(target).is_some_and(|limit| target_connection_count >= limit) {
-            return connection_incompatible("target_connection_limit_reached");
-        }
-
-        self.check(source, target)
     }
 
     pub fn check_schemas(&self, source: &TypeSchema, target: &TypeSchema) -> CompatibilityResult {
@@ -472,18 +430,6 @@ impl ComparisonState {
             metadata,
         }
     }
-}
-
-fn connection_limit(port: &PortDefinition) -> Option<u32> {
-    if port.multiple {
-        port.max_connections
-    } else {
-        Some(1)
-    }
-}
-
-fn connection_incompatible(reason: &str) -> CompatibilityResult {
-    ComparisonState::incompatible(reason, None, 1).into_result()
 }
 
 fn scalar_schema(kind: PortDataType, description: Option<String>, nullable: bool) -> TypeSchema {

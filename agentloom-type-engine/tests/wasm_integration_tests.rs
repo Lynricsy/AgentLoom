@@ -1,9 +1,7 @@
 use agentloom_type_engine::types::{
     ObjectTypeSchema, PortDataType, PortDefinition, PortDirection, ScalarTypeSchema, TypeSchema,
 };
-use agentloom_type_engine::wasm::{
-    check_compatibility, check_schema_compatibility, validate_schema,
-};
+use agentloom_type_engine::wasm::check_compatibility;
 use js_sys::{Array, Reflect};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
@@ -112,89 +110,6 @@ fn check_compatibility_rejects_malformed_json_with_structured_error() {
             target,
         )),
         "INVALID_PORT_DEFINITION",
-        "source",
-    );
-}
-
-#[wasm_bindgen_test]
-fn validate_schema_returns_structured_error_for_empty_input() {
-    let result = must_ok(validate_schema(JsValue::from_str("")));
-    let errors = Array::from(&value_field(&result, "errors"));
-    let first_error = errors.get(0);
-
-    assert!(!bool_field(&result, "valid"));
-    assert_eq!(string_field(&first_error, "code"), "EMPTY_INPUT");
-}
-
-#[wasm_bindgen_test]
-fn validate_schema_returns_structured_error_for_undefined_input() {
-    assert_validation_error(
-        must_ok(validate_schema(JsValue::UNDEFINED)),
-        "EMPTY_INPUT",
-        "$",
-    );
-}
-
-#[wasm_bindgen_test]
-fn validate_schema_returns_structured_error_for_null_input() {
-    assert_validation_error(
-        must_ok(validate_schema(JsValue::NULL)),
-        "NULL_SCHEMA",
-        "$",
-    );
-}
-
-#[wasm_bindgen_test]
-fn validate_schema_accepts_valid_schema_object() {
-    let result = must_ok(validate_schema(to_js_value(&scalar_schema(
-        PortDataType::Text,
-    ))));
-
-    assert!(bool_field(&result, "valid"));
-    assert_eq!(Array::from(&value_field(&result, "errors")).length(), 0);
-}
-
-#[wasm_bindgen_test]
-fn validate_schema_reports_invalid_schema_contract() {
-    let result = must_ok(validate_schema(JsValue::from_str(
-        r#"{"kind":"json","shape":"object","properties":{},"required":["missing"]}"#,
-    )));
-
-    assert_validation_error(result, "REQUIRED_FIELD_NOT_DEFINED", "$.required.missing");
-}
-
-#[wasm_bindgen_test]
-fn validate_schema_reports_malformed_json() {
-    assert_validation_error(
-        must_ok(validate_schema(JsValue::from_str("{not-json"))),
-        "MALFORMED_JSON",
-        "$",
-    );
-}
-
-#[wasm_bindgen_test]
-fn check_schema_compatibility_returns_transform_result() {
-    let source = serialize_json_string(&scalar_schema(PortDataType::Text));
-    let target = serialize_json_string(&build_object_schema(&[(
-        "payload",
-        scalar_schema(PortDataType::Text),
-    )]));
-
-    let result = must_ok(check_schema_compatibility(source, target));
-
-    assert_eq!(string_field(&result, "level"), "TRANSFORM");
-    assert_eq!(string_field(&result, "transformFn"), "parse_json");
-}
-
-#[wasm_bindgen_test]
-fn check_schema_compatibility_rejects_malformed_json_with_structured_error() {
-    let target = serialize_json_string(&scalar_schema(PortDataType::Text));
-    assert_type_engine_error(
-        must_err(check_schema_compatibility(
-            JsValue::from_str("{not-json"),
-            target,
-        )),
-        "INVALID_SCHEMA_INPUT",
         "source",
     );
 }
@@ -318,13 +233,4 @@ fn assert_type_engine_error(error: wasm_bindgen::JsError, code: &str, field: &st
     assert_eq!(string_field(&value, "name"), "TypeEngineError");
     assert_eq!(string_field(&value, "code"), code);
     assert_eq!(string_field(&context, "field"), field);
-}
-
-fn assert_validation_error(result: JsValue, code: &str, path: &str) {
-    let errors = Array::from(&value_field(&result, "errors"));
-    let first_error = errors.get(0);
-
-    assert!(!bool_field(&result, "valid"));
-    assert_eq!(string_field(&first_error, "code"), code);
-    assert_eq!(string_field(&first_error, "path"), path);
 }
