@@ -3,6 +3,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { StorageService } from '../../infrastructure/storage/storage.service';
@@ -165,18 +169,28 @@ export class EvidenceExportService {
       return job;
     }
 
-    await this.exportQueue.add(
-      EVIDENCE_EXPORT_JOB_NAME,
-      {
-        exportId: job.id,
-        tenantId: input.tenantId,
-      },
-      {
-        ...evidenceExportDefaultJobOptions,
-        // BullMQ 5 禁止自定义 jobId 含冒号，否则导出请求会在入队时直接失败为 500。
-        jobId: `evidence-export-${job.id}`,
-      },
-    );
+    const enqueue = async () => {
+      await this.exportQueue.add(
+        EVIDENCE_EXPORT_JOB_NAME,
+        {
+          exportId: job.id,
+          tenantId: input.tenantId,
+        },
+        {
+          ...evidenceExportDefaultJobOptions,
+          // BullMQ 5 禁止自定义 jobId 含冒号，否则导出请求会在入队时直接失败为 500。
+          jobId: `evidence-export-${job.id}`,
+        },
+      );
+    };
+
+    // 必须等租户事务提交后再入队：worker 是独立进程，事务未提交时它读不到刚插入的
+    // 导出任务行，会当作「任务不存在」立刻结束，任务永远停在 queued。
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(enqueue);
+    } else {
+      await enqueue();
+    }
 
     return job;
   }
