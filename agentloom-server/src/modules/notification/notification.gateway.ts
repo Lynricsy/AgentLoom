@@ -12,6 +12,7 @@ import * as jwt from 'jsonwebtoken';
 import { Server, Socket } from 'socket.io';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
 import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../common/services/user-identity-resolver.service';
 import type { Notification } from '../../database/schema';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 
@@ -33,6 +34,7 @@ export class NotificationGateway
   constructor(
     private readonly configService: ConfigService,
     private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly userIdentityResolver: UserIdentityResolverService,
   ) {}
 
   afterInit(server: Server): void {
@@ -71,8 +73,20 @@ export class NotificationGateway
           | string
           | undefined;
 
+        // 必须与 WsJwtGuard 保持同一身份契约：sub = 内部 app user id，
+        // supabaseUserId = 原始 JWT sub。此前这里直接沿用原始 Supabase sub 建房间，
+        // 而 processor 用内部 app user id 发送，房间键不一致导致通知永远送不到客户端。
+        const supabaseUserId = payload.sub;
+        const appUserId =
+          await this.userIdentityResolver.resolveAppUserId(supabaseUserId);
+
+        if (!appUserId) {
+          return next(this.createAuthError('User account not found'));
+        }
+
         socket.data.user = {
-          sub: payload.sub,
+          sub: appUserId,
+          supabaseUserId,
           email: email ?? '',
           aud: payload.aud,
           exp: payload.exp,

@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as jwt from 'jsonwebtoken';
 import type { ConfigService } from '@nestjs/config';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
+import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
 import { NotificationGateway } from '../notification.gateway';
 
 const JWT_SECRET = 'notification-test-secret';
+// 房间键必须用内部 app user id，而不是 JWT 里的 Supabase sub。
+const SUPABASE_USER_ID = 'supabase-sub-0001';
+const APP_USER_ID = 'app-user-0001';
 
 function createToken(payload: Record<string, unknown>): string {
   return jwt.sign(
@@ -32,6 +36,7 @@ describe('NotificationGateway', () => {
   let gateway: NotificationGateway;
   let configService: { get: ReturnType<typeof vi.fn> };
   let tokenBlacklistService: { isBlacklisted: ReturnType<typeof vi.fn> };
+  let userIdentityResolver: { resolveAppUserId: ReturnType<typeof vi.fn> };
   let server: { use: ReturnType<typeof vi.fn>; to: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
@@ -43,6 +48,9 @@ describe('NotificationGateway', () => {
     tokenBlacklistService = {
       isBlacklisted: vi.fn().mockResolvedValue(false),
     };
+    userIdentityResolver = {
+      resolveAppUserId: vi.fn().mockResolvedValue(APP_USER_ID),
+    };
     server = {
       use: vi.fn(),
       to: vi.fn().mockReturnValue({ emit: vi.fn() }),
@@ -51,6 +59,7 @@ describe('NotificationGateway', () => {
     gateway = new NotificationGateway(
       configService as unknown as ConfigService,
       tokenBlacklistService as unknown as TokenBlacklistService,
+      userIdentityResolver as unknown as UserIdentityResolverService,
     );
     gateway.server = server as never;
   });
@@ -103,6 +112,75 @@ describe('NotificationGateway', () => {
     );
   });
 
+  it('鉴权后房间键应使用内部 app user id，而不是 JWT 的 Supabase sub', async () => {
+    gateway.afterInit(server as never);
+    const middleware = server.use.mock.calls[0]?.[0] as (
+      socket: ReturnType<typeof createSocket>,
+      next: (error?: Error & { data?: { code: number } }) => void,
+    ) => Promise<void>;
+    const socket = createSocket({
+      handshake: {
+        auth: {
+          token: createToken({
+            sub: SUPABASE_USER_ID,
+            email: 'user@example.com',
+            tenantId: 'tenant-1',
+          }),
+        },
+        headers: {},
+      },
+    });
+    const next = vi.fn();
+
+    await middleware(socket, next);
+    expect(next).toHaveBeenCalledWith();
+    expect(userIdentityResolver.resolveAppUserId).toHaveBeenCalledWith(
+      SUPABASE_USER_ID,
+    );
+
+    gateway.handleConnection(socket as never);
+
+    // processor 用 app user id 调 sendToUser，房间键必须与之一致，否则通知永远送不到。
+    expect(socket.join).toHaveBeenCalledWith(
+      `tenant:tenant-1:user:${APP_USER_ID}`,
+    );
+    expect(socket.join).not.toHaveBeenCalledWith(
+      `tenant:tenant-1:user:${SUPABASE_USER_ID}`,
+    );
+  });
+
+  it('解析不到 app user 时应拒绝连接', async () => {
+    userIdentityResolver.resolveAppUserId.mockResolvedValue(null);
+    gateway.afterInit(server as never);
+    const middleware = server.use.mock.calls[0]?.[0] as (
+      socket: ReturnType<typeof createSocket>,
+      next: (error?: Error & { data?: { code: number } }) => void,
+    ) => Promise<void>;
+    const next = vi.fn();
+
+    await middleware(
+      createSocket({
+        handshake: {
+          auth: {
+            token: createToken({
+              sub: SUPABASE_USER_ID,
+              email: 'user@example.com',
+              tenantId: 'tenant-1',
+            }),
+          },
+          headers: {},
+        },
+      }),
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { code: 4001, reason: 'User account not found' },
+      }),
+    );
+  });
+
   it('鉴权中间件应拒绝 MFA pending token', async () => {
     gateway.afterInit(server as never);
     const middleware = server.use.mock.calls[0]?.[0] as (
@@ -142,7 +220,7 @@ describe('NotificationGateway', () => {
         auth: {},
         headers: {
           authorization: `Bearer ${createToken({
-            sub: 'user-1',
+            sub: SUPABASE_USER_ID,
             email: 'user@example.com',
             tenant_id: 'tenant-1',
             tenant_role: 'owner',
@@ -155,7 +233,9 @@ describe('NotificationGateway', () => {
 
     expect(next).toHaveBeenCalledWith();
     expect(socket.data.user).toMatchObject({
-      sub: 'user-1',
+      // 与 WsJwtGuard 同一契约：sub 是内部 app user id，原始 Supabase sub 另存。
+      sub: APP_USER_ID,
+      supabaseUserId: SUPABASE_USER_ID,
       email: 'user@example.com',
       tenantId: 'tenant-1',
       tenantRole: 'owner',

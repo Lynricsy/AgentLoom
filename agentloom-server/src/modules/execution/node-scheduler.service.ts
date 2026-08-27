@@ -92,16 +92,19 @@ interface PauseForInterventionParams {
   readonly executionType?: 'workflow' | 'conversation';
 }
 
-
+// BullMQ 5 的 validateOptions 拒绝含 `:` 的 custom jobId。
+// 之前用冒号形态会让 enqueueInterventionTimeout 直接抛错：暂停已写入
+// waiting_intervention 后异常冒泡到节点执行器的 catch，catch 又尝试
+// waiting_intervention → failed（非法转换），最终把整个 execution 打成 failed。
 function buildInterventionTimeoutJobId(stepId: string): string {
-  return `intervention-timeout:${stepId}`;
+  return `intervention-timeout-${stepId}`;
 }
 
 function buildEscalatedInterventionTimeoutJobId(
   stepId: string,
   escalationCount: number,
 ): string {
-  return `intervention-timeout:${stepId}:escalated:${escalationCount}`;
+  return `intervention-timeout-${stepId}-escalated-${escalationCount}`;
 }
 
 

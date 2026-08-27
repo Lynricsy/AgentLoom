@@ -559,7 +559,7 @@ describe('workflow migrated scenarios', () => {
           tenantId: TENANT_ID,
         },
         expect.objectContaining({
-          jobId: `intervention-timeout:${step.id}`,
+          jobId: `intervention-timeout-${step.id}`,
         }),
       );
       expect(
