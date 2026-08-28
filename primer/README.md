@@ -21,10 +21,10 @@ node build.mjs           # 两本都构建
 node build.mjs brief     # 只构建主册
 node build.mjs full      # 只构建附录
 ```
-50a
+
 构建脚本会：
 
-1. 拼接 `style.html` + `chapters/*.html`（按文件名排序）；
+1. 拼接 `style.html` + 目标目录下的 `*.html`（按文件名排序）；
 2. 用 headless Chrome 流式排版输出 A4 PDF，页脚自动页码；
 3. 体检：横向溢出（长代码/宽表格撑破内容盒）、术语框重名——任一命中即列出并以非零码退出。
 
