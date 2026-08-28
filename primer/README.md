@@ -1,6 +1,15 @@
 # AgentLoom · 通俗版说明册
 
-两本 A4 PDF：主册 `out/AgentLoom-是怎么搭起来的.pdf`（16 页），附录 `out/AgentLoom-是怎么搭起来的-详解.pdf`（46 页）。
+两本 A4 PDF，各有浅色 / 深色两版，共四个产物（`out/`）：
+
+| 文件 | 页数 |
+| --- | --- |
+| `AgentLoom-是怎么搭起来的.pdf` | 15 |
+| `AgentLoom-是怎么搭起来的-深色.pdf` | 15 |
+| `AgentLoom-是怎么搭起来的-详解.pdf` | 43 |
+| `AgentLoom-是怎么搭起来的-详解-深色.pdf` | 43 |
+
+深浅两版**逐页对应**（同书页数必须相同），主册是主文档，详解是附录。
 
 ## 它跟 `interview-brief/` 的区别
 
@@ -9,7 +18,7 @@
 | 读者 | 已具备后端/前端技术背景 | **不写代码、没听过 Zod / NestJS / Drizzle** |
 | 写法 | 一句话一个结论，术语不解释，高密度速记卡 | 从零讲起，术语首次出现即用大白话解释，宁可啰嗦不跳步 |
 | 排版 | 固定页瑞士国际主义（无衬线、发丝线、大量留白） | 书籍式流式排版（衬线正文、1.74 行距、Chrome 自动分页） |
-| 篇幅 | 10-53 页，为索引优化 | 主册 16 页，附录 46 页 |
+| 篇幅 | 10-53 页，为索引优化 | 主册 15 页，附录 43 页 |
 
 两者内容有重叠，结论一致；差别只在密度与预设知识。
 
@@ -17,38 +26,59 @@
 
 ```bash
 cd primer
-node build.mjs           # 两本都构建
-node build.mjs brief     # 只构建主册
-node build.mjs full      # 只构建附录
+node build.mjs                 # 4 本全建（两本书 × 两个主题）
+node build.mjs brief           # 主册的浅色 + 深色
+node build.mjs brief dark      # 只建主册深色
+node build.mjs full light      # 只建附录浅色
 ```
 
 构建脚本会：
 
-1. 拼接 `style.html` + 目标目录下的 `*.html`（按文件名排序）；
-2. 用 headless Chrome 流式排版输出 A4 PDF，页脚自动页码；
+1. 拼接 `style.html` + 生成的 `@page` 规则 + 深色覆盖层 + 目标目录下的 `*.html`（按文件名排序）；
+2. 用 headless Chrome 流式排版输出 A4 PDF，页眉页脚与页码由 CSS `@page` margin box 提供；
 3. 体检：横向溢出（长代码/宽表格撑破内容盒）、术语框重名——任一命中即列出并以非零码退出。
 
 ## 目录结构
 
 ```text
 primer/
-├── style.html              # 字体挂载 + 全部排版样式（两本共用）
-├── build.mjs               # 拼接、体检、出 PDF
-├── brief/                  # 主册 16 页，七节
+├── style.html              # 字体挂载 + 全部排版样式（四个产物共用）
+├── dark.html               # 深色主题覆盖层：只覆盖颜色，不动任何排版尺寸
+├── build.mjs               # 拼接、体检、出 PDF（BOOKS × THEMES 双轴）
+├── brief/                  # 主册 15 页，七节
 │   ├── 00-intro       第 1-2 节：完整例子 + 餐厅类比、五个组成部分
 │   ├── 01-tech        第 3-4 节：Zod 讲透、其余技术选型表 + Rust/WASM
-│   ├── 02-flow        第 5-6 节：运行链路七阶段、三处最费心的设计
+│   ├── 02-flow        第 5-6 节：运行链路七阶段、两处闭环边界加一处只闭了一半
 │   └── 03-authorship  第 7 节：贡献边界 + 已核实缺口清单
-└── chapters/               # 附录 46 页，七部分 23 章
+└── chapters/               # 附录 43 页，七部分 23 章
     ├── 00-front   封面 / 读前须知 / 目录
     ├── 01-part1   第 1-2 章：完整例子、餐厅类比总表
     ├── 02-part2   第 3-5 章：名词表（语言 / 框架 / 四种存储）
     ├── 03-part3   第 6-11 章：画布、服务器、队列、智能体、沙箱、数据库
     ├── 04-part4   第 12-17 章：技术选型逐项展开
     ├── 05-part5   第 18 章：运行链路 17 步
-    ├── 06-part6   第 19-21 章：契约层、沙箱四道锁、多租户两道锁
+    ├── 06-part6   第 19-21 章：契约层、沙箱五道闸、多租户两道锁
     └── 07-part7   第 22-23 章：贡献边界、缺口清单
 ```
+
+## 深色版的实现约束
+
+`dark.html` 是**颜色覆盖层**，不是第二套样式：它只重写 `style.html` 中 `:root` 里的颜色变量（`--ink --soft --faint --lead --line --wash --accent --warn --paper --code-bg --card-bg`），外加少数必须反向处理的规则（h1 / th 分隔线改中灰、表格斑马纹、`.analogy` 边框、代码注释色）。所有排版尺寸一律不动——这是深浅两版逐页对应的前提。改样式时若要动尺寸，改 `style.html`；若要动颜色，优先加变量而不是在 `dark.html` 里写新选择器。
+
+**深色要铺满含页边距的整页，只有 CSS `@page` margin box 能做到。**页边距区域不属于文档内容盒，普通 CSS 碰不到它。实测排除了三条看似可行的路：
+
+1. `html { background }` 不够——CSS 规范说根元素背景传播到画布，但 Chrome 打印时只覆盖内容盒，四周边距仍是白的。
+2. `position:fixed` 底色层不够——它确实每页重复渲染，但被裁剪到内容盒，`top:-19mm; left:-20mm` 这类负偏移进不了边距区（两页探针四角均为纯白）。
+3. Puppeteer 的 `headerTemplate` / `footerTemplate` 也不够——Chrome 给注入容器加了固定水平内缩，模板里写满 `width:100%;height:100%;background` 后左右两侧依然留白。
+
+可行的是 Chrome 131+ 起支持的 CSS `@page` margin at-rules：margin box 支持 `background`，也支持 `counter(page)` / `counter(pages)`。`build.mjs` 的 `pageCss()` 给全部 16 个 margin box 上底色，`@top-center` 放书名、`@bottom-center` 放页码，Puppeteer 侧 `displayHeaderFooter: false`。
+
+这条路径的价值在于**边距仍由 `@page` 提供**：上下安全边距每页重复，正文永不贴顶。曾试过「左右边距归零 + `body{padding}` 自己造留白」，那是错的——`body` 的**垂直** padding 只作用于首个分页片段，第 2 页起正文直接贴到页顶、跨页框被切在切口处；只有**水平** padding 每页都生效。
+
+纸张尺寸交给 Puppeteer 的 `format: 'A4'`，不加 `preferCSSPageSize`。改动前后与 `git HEAD` 基线逐词比对：16 / 46 页不变、每页逐词内容一致，仅有 0.28mm 整体位移（来自 CSS `mm→px` 标准换算，20mm 精确等于 56.69pt，基线的 56.2pt 反而偏小）。
+
+顺带加固了封面：`.cover` 除固定高度外还有显式 `break-after:page`，不再依赖「高度刚好溢出内容盒」这种巧合来独占一页。改边距时若封面和第 1 节挤到同一页，先查这条规则是否还在。
+
 ## 三种方框的语义
 
 正文用三种带边框段落承载不同职责，改内容时不要混用：

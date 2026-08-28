@@ -16,12 +16,13 @@
 @font-face{font-family:MO;src:url('file:///usr/share/fonts/TTF/JetBrainsMono-Bold.ttf');font-weight:600 700}
 
 :root{
-  --ink:#1a1a1a; --soft:#4a4a4a; --faint:#8a8a8a;
+  --ink:#1a1a1a; --soft:#4a4a4a; --faint:#8a8a8a; --lead:#2c2c2c;
   --line:#dcdcdc; --wash:#f5f4f1; --accent:#1f5fa8; --warn:#a8461f;
+  --paper:#ffffff; --code-bg:#fbfaf8; --card-bg:#fcfcfa;
   --serif:SR,serif; --sans:SA,sans-serif; --mono:MO,monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:var(--paper)}
 
 body{
   font-family:var(--serif); color:var(--ink);
@@ -57,7 +58,7 @@ h3{
 
 /* ===== 正文 ===== */
 p{margin:0 0 2.9mm}
-p.lead{font-size:11.2pt;line-height:1.7;color:#2c2c2c;margin-bottom:4mm}
+p.lead{font-size:11.2pt;line-height:1.7;color:var(--lead);margin-bottom:4mm}
 strong{font-weight:600}
 em{font-style:normal;color:var(--accent);font-weight:500}
 code{font-family:var(--mono);font-size:9.2pt;background:var(--wash);
@@ -89,7 +90,7 @@ ol>li::before{content:counter(n) ".";position:absolute;left:0;top:0;
 /* ===== 类比框 ===== */
 .analogy{
   border:1px solid var(--line); border-top:2px solid var(--soft);
-  padding:3.2mm 4.2mm; margin:3.8mm 0; background:#fcfcfa; break-inside:avoid;
+  padding:3.2mm 4.2mm; margin:3.8mm 0; background:var(--card-bg); break-inside:avoid;
 }
 .analogy .t{font-family:var(--sans);font-weight:600;font-size:9.6pt;
   letter-spacing:.04em;color:var(--soft);display:block;margin-bottom:2mm}
@@ -109,7 +110,7 @@ ol>li::before{content:counter(n) ".";position:absolute;left:0;top:0;
 /* ===== 代码 / 示意 ===== */
 pre{
   font-family:var(--mono); font-size:8.5pt; line-height:1.62;
-  background:#fbfaf8; border:1px solid var(--line);
+  background:var(--code-bg); border:1px solid var(--line);
   padding:2.8mm 3.4mm; margin:3.2mm 0; overflow-wrap:break-word;
   white-space:pre-wrap; break-inside:avoid; text-align:left;
 }
@@ -135,7 +136,8 @@ th:last-child,td:last-child{padding-right:0}
 .toc .row .s{font-size:10.2pt}
 
 /* ===== 封面 ===== */
-.cover{height:238mm;display:flex;flex-direction:column;justify-content:center}
+.cover{height:238mm;display:flex;flex-direction:column;
+  justify-content:center;break-after:page}
 .cover .k{font-family:var(--mono);font-size:10pt;letter-spacing:.26em;
   color:var(--accent);margin-bottom:8mm}
 .cover h1{font-size:32pt;line-height:1.3;border:0;padding:0;margin:0 0 7mm;

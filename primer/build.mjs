@@ -34,12 +34,31 @@ const BOOKS = {
   },
 };
 
-const wanted = process.argv[2];
-const targets = Object.entries(BOOKS).filter(([k]) => !wanted || k === wanted);
-if (!targets.length) {
-  console.error(`unknown book: ${wanted}. available: ${Object.keys(BOOKS).join(', ')}`);
+const THEMES = {
+  light: { suffix: '', extra: '', fg: '#999', folio: '#666', pageBg: '#ffffff' },
+  dark: {
+    suffix: '-深色',
+    extra: readFileSync(join(root, 'dark.html'), 'utf8'),
+    fg: '#6e716c',
+    folio: '#8a8d88',
+    pageBg: '#15171c',
+  },
+};
+
+// 用法：node build.mjs [brief|full] [light|dark]
+const argv = process.argv.slice(2);
+const wantedBook = argv.find((a) => a in BOOKS);
+const wantedTheme = argv.find((a) => a in THEMES);
+if (argv.some((a) => !(a in BOOKS) && !(a in THEMES))) {
+  console.error(`用法: node build.mjs [${Object.keys(BOOKS).join('|')}] [${Object.keys(THEMES).join('|')}]`);
   process.exit(2);
 }
+
+const books = Object.entries(BOOKS).filter(([k]) => !wantedBook || k === wantedBook);
+const themes = Object.entries(THEMES).filter(([k]) => !wantedTheme || k === wantedTheme);
+const targets = books.flatMap(([bk, book]) =>
+  themes.map(([tk, theme]) => [`${bk}-${tk}`, book, theme]),
+);
 
 const head = readFileSync(join(root, 'style.html'), 'utf8');
 
@@ -50,9 +69,9 @@ const browser = await puppeteer.launch({
 });
 let failed = false;
 
-for (const [name, book] of targets) {
+for (const [name, book, theme] of targets) {
 const TITLE = book.title;
-const PDF = book.pdf;
+const PDF = book.pdf.replace(/\.pdf$/, `${theme.suffix}.pdf`);
 const parts = readdirSync(join(root, book.dir))
   .filter((f) => f.endsWith('.html'))
   .sort();
@@ -62,7 +81,31 @@ if (!parts.length) {
   process.exit(2);
 }
 
-const html = `${head}\n${parts
+// Chrome 131+ 支持 CSS @page margin at-rules（含背景与 page/pages 计数器）。
+// 页边距区域无法被文档背景或 position:fixed 覆盖，只有 margin box 能着色，
+// 因此深色铺满整页必须走这条路径——同时保住每页重复的上下安全边距。
+const CORNERS = ['top-left-corner', 'top-right-corner', 'bottom-left-corner', 'bottom-right-corner'];
+const EDGES = ['top-left', 'top-right', 'right-top', 'right-middle', 'right-bottom',
+  'bottom-left', 'bottom-right', 'left-top', 'left-middle', 'left-bottom'];
+const pageCss = (theme, title) => `<style>
+@page {
+  size: A4;
+  margin: 19mm 20mm 17mm 20mm;
+${[...CORNERS, ...EDGES].map((n) => `  @${n} { content:''; background:${theme.pageBg}; }`).join('\n')}
+  @top-center {
+    content: '${title}';
+    background: ${theme.pageBg}; color: ${theme.fg};
+    font-family: SA, sans-serif; font-size: 8pt; text-align: left;
+  }
+  @bottom-center {
+    content: counter(page) ' / ' counter(pages);
+    background: ${theme.pageBg}; color: ${theme.folio};
+    font-family: SA, sans-serif; font-size: 8.5pt;
+  }
+}
+</style>`;
+
+const html = `${head}\n${pageCss(theme, TITLE)}\n${theme.extra}\n${parts
   .map((f) => readFileSync(join(root, book.dir, f), 'utf8'))
   .join('\n')}\n</body></html>`;
 
@@ -92,13 +135,7 @@ await page.pdf({
   path: pdfPath,
   format: 'A4',
   printBackground: true,
-  margin: { top: '19mm', bottom: '17mm', left: '20mm', right: '20mm' },
-  displayHeaderFooter: true,
-  headerTemplate: `<div style="width:100%;font-family:sans-serif;font-size:8pt;color:#999;
-    padding:0 20mm;display:flex;justify-content:space-between;">
-    <span>${TITLE}</span><span></span></div>`,
-  footerTemplate: `<div style="width:100%;font-family:sans-serif;font-size:8.5pt;color:#666;
-    padding:0 20mm;text-align:center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
+  displayHeaderFooter: false,
 });
 await page.close();
 
