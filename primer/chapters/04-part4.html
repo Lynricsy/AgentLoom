@@ -1,0 +1,342 @@
+<!-- ============ 第四部分 ============ -->
+<div class="part">
+  <div class="k">第 四 部 分</div>
+  <h1>为什么用这些技术</h1>
+  <p>每一节讲三件事：这个技术是什么、不用它会撞到什么墙、为什么选它而不是同类的竞争对手。</p>
+</div>
+
+<!-- ============ 12 ============ -->
+<h1><span class="num">第 12 章</span>为什么整个项目用 TypeScript</h1>
+
+<p class="lead">这是最基础的一个选择，也是后面很多选择的前提。</p>
+
+<h2>先说 JavaScript 的问题</h2>
+
+<p>JavaScript 不检查类型。下面这段代码完全合法，能正常保存、正常部署：</p>
+
+<pre>function 打折(价格) {
+  return 价格 * 0.8;
+}
+
+打折(100)      <span class="cm">// 得到 80，正确</span>
+打折("100")    <span class="cm">// 得到 80，居然也对（悄悄把文字转成了数字）</span>
+打折("一百")    <span class="cm">// 得到 NaN，意思是「不是数字」</span>
+打折()         <span class="cm">// 也得到 NaN</span>
+</pre>
+
+<p>最后两种情况不会报错，只是算出一个叫 <code>NaN</code> 的怪东西，然后它会继续往下传，可能一路传到数据库里、传到用户的账单上，直到某个完全无关的地方突然崩掉。<strong>而那个崩掉的地方，跟真正的错误来源可能隔着十几层调用。</strong></p>
+
+<div class="problem">
+  <span class="t">不这样会出什么事</span>
+  <p>这类错误的特征是<em>报错的地方不是出错的地方</em>。你花两小时排查一个显示异常，最后发现是三天前另一个人在完全不相干的模块里少传了一个参数。项目越大，这个成本增长得越快。</p>
+</div>
+
+<h2>TypeScript 怎么解决</h2>
+
+<pre>function 打折(价格<b>: number</b>)<b>: number</b> {
+  return 价格 * 0.8;
+}
+
+打折("100")    <span class="cm">// 检查器直接报错，代码根本编译不过去</span>
+打折()         <span class="cm">// 同样报错：缺少参数</span>
+</pre>
+
+<p>关键收益不只是「少出错」，而是<strong>错误被提前到了写代码的时候</strong>。你在编辑器里就能看到红线，不需要等部署、不需要等用户投诉。</p>
+
+<h2>为什么要求前后端都用它</h2>
+
+<p>因为可以<strong>共享类型定义</strong>。服务器定义「工作流长这样」，网页端直接引用同一份。服务器改了一个字段，网页端立刻编译不过——错误在几秒内暴露，而不是等到上线后某个页面白屏。</p>
+
+<p>如果前后端用不同语言，这份定义就必须在两边各写一份，靠人力保持同步。<strong>而人力同步的东西，一定会在某个时刻不同步。</strong>第 19 章整章都在讲这件事。</p>
+
+<h2>它的一个重要局限，直接引出下一章</h2>
+
+<p>TypeScript 的检查<strong>只在编译期有效</strong>。检查完之后，所有类型信息都被删掉，真正跑起来的还是普通 JavaScript。</p>
+
+<p>这意味着：如果数据是<strong>运行时才从外面进来的</strong>——用户提交的表单、别的系统发来的请求、数据库读出来的记录——TypeScript 一点忙都帮不上。你可以声明「我期望收到一个有 name 字段的对象」，但如果对方实际发来的是一段乱码，程序照样接受，然后在某个地方崩掉。</p>
+
+<div class="analogy">
+  <span class="t">打个比方</span>
+  <p>TypeScript 像装修时的图纸审查——它能确保设计上门宽匹配门框。但它管不了<em>装修完成之后，谁从门进来</em>。要在门口验证来客身份，需要另一个东西：门卫。</p>
+  <p>Zod 就是那个门卫。</p>
+</div>
+
+<!-- ============ 13 ============ -->
+<h1><span class="num">第 13 章</span>Zod 是什么，为什么它这么重要</h1>
+
+<p class="lead">这一章最长，因为 Zod 在这个项目里不只是一个工具库，它是整套跨端约定的地基。理解了它，第 19 章会变得很容易。</p>
+
+<h2>问题：外面进来的数据，没人检查</h2>
+
+<p>服务器收到一个创建智能体的请求，理想情况下数据长这样：</p>
+
+<pre>{ "name": "周报助手", "runtimeMode": "sandbox" }</pre>
+
+<p>但实际可能收到任何东西：字段名拼错、少了必填项、类型不对，或者干脆是一段恶意构造的内容。<strong>TypeScript 挡不住任何一种，因为这些都发生在运行时。</strong></p>
+
+<p>所以必须在代码里手写检查。手写版大概是这样：</p>
+
+<pre>if (typeof body.name !== 'string' || body.name.length === 0) {
+  throw new Error('name 必须是非空文字');
+}
+if (body.runtimeMode !== 'sandbox' &amp;&amp; body.runtimeMode !== 'no_sandbox') {
+  throw new Error('runtimeMode 取值不对');
+}
+<span class="cm">// ……每个字段都要来一遍</span>
+</pre>
+
+<p>这么写有三个问题。<strong>一是啰嗦</strong>，几十个接口每个都要写一大段。<strong>二是容易漏</strong>，加了新字段忘了加检查。<strong>三是最要命的——它和类型声明是两份独立的东西，可以不一致：</strong></p>
+
+<pre>type CreateAgent = { name: string; runtimeMode: 'sandbox' | 'no_sandbox' };
+<span class="cm">// 类型说 runtimeMode 有两种取值</span>
+
+if (body.runtimeMode !== 'sandbox') { throw ... }
+<span class="cm">// 检查却只认一种。两边对不上，没有任何工具会提醒你</span>
+</pre>
+
+<div class="problem">
+  <span class="t">不这样会出什么事</span>
+  <p>类型声明和实际检查各写一份，就一定会在某次修改后不一致。而且这种不一致<strong>没有任何工具能自动发现</strong>——类型检查器只看类型声明，测试只测检查逻辑，两边都觉得自己是对的。最终表现为线上偶发的奇怪数据。</p>
+</div>
+
+<h2>Zod 的做法：只写一份，类型自动推导出来</h2>
+
+<pre>const CreateAgentSchema = z.object({
+  name: z.string().min(1),
+  runtimeMode: z.enum(['sandbox', 'no_sandbox']),
+});
+</pre>
+
+<p>这一份东西同时给你两样：</p>
+
+<pre><span class="cm">// 一、运行时的检查器</span>
+CreateAgentSchema.parse(收到的数据)
+<span class="cm">//   合规就返回数据；不合规就抛错，并说明哪个字段错在哪</span>
+
+<span class="cm">// 二、静态类型，从上面那份规格「反推」出来</span>
+type CreateAgent = z.infer&lt;typeof CreateAgentSchema&gt;;
+<span class="cm">//   等价于 { name: string; runtimeMode: 'sandbox' | 'no_sandbox' }</span>
+</pre>
+
+<p><strong>这里是整章的关键：类型不是你另写的，是从检查器身上推导出来的。</strong>所以「类型说三种取值、检查只认两种」这种事在结构上就不可能发生——它们本来就是同一个东西的两个面。</p>
+
+<div class="analogy">
+  <span class="t">打个比方</span>
+  <p>过去是：门口贴一张「入场要求」海报（类型声明），门卫另有一本自己的检查手册（校验代码）。海报改了没人通知门卫，于是海报写「凭票入场」，门卫还在只看身份证。</p>
+  <p>Zod 的做法是：<strong>只有门卫的手册是真的，海报直接由手册自动打印。</strong>手册改一个字，海报下一秒就跟着变。</p>
+</div>
+
+<h2>项目里真实的用法</h2>
+
+<p>规格写好之后，包装成服务器框架认识的形式：</p>
+
+<pre>export class CreateAgentDefinitionDto
+  extends <b>createZodDto</b>(CreateAgentDefinitionSchema) {}
+</pre>
+
+<p>然后在接收请求的地方挂上检查：</p>
+
+<pre>async create(
+  <b>@Body(new ZodValidationPipe(CreateAgentDefinitionSchema))</b>
+  dto: CreateAgentDefinitionDto,   <span class="cm">// 这里只用它的类型</span>
+) { ... }
+</pre>
+
+<p>意思是：这个接口的请求体，进来之前先用那份规格检查一遍。通过了，<code>dto</code> 就是干净可信的数据；没通过，请求根本进不到函数体里。</p>
+
+<p>规格里还能顺手做两件事，这也是手写检查很难做好的：<strong>字段名归一</strong>（客户端传下划线还是驼峰都接受，统一转成一种）和<strong>跨字段校验</strong>（比如「选了沙箱模式，就必须同时给出沙箱配置」）。</p>
+
+<h2>检查失败时返回什么</h2>
+
+<p>这个项目没用默认的错误格式，而是统一转成一种标准化结构，状态码 <strong>422</strong>（意思是「格式我看懂了，但内容不合规」）：</p>
+
+<pre>{
+  "type": "https://agentloom.dev/errors/validation-error",
+  "title": "Validation Error",
+  "status": 422,
+  "detail": "Request validation failed",
+  "errors": [
+    { "field": "runtimeMode", "message": "取值必须是 sandbox 或 no_sandbox" }
+  ]
+}
+</pre>
+
+<p><code>errors</code> 里每条是「哪个字段、错在哪」，前端可以直接把消息显示在对应输入框下面。</p>
+
+<h2>一个反直觉的坑：请求和响应不能共用一份规格</h2>
+
+<p>这一节稍绕，但它是项目里一条明文规矩，也是内行会追问的点。</p>
+
+<p>Zod 支持给字段设默认值。比如分页查询：</p>
+
+<pre>const ListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1)<b>.default(1)</b>,
+  pageSize: z.coerce.number().int()<b>.default(20)</b>,
+});
+</pre>
+
+<p><code>.default(1)</code> 的意思是「客户端可以不传 page，不传就当 1」。<strong>这对请求是完全正确的语义。</strong>问题在于服务器返回响应时，这两个字段的语义<strong>反过来了</strong>：</p>
+
+<table>
+  <thead><tr><th style="width:30mm">场景</th><th>page 字段的语义</th></tr></thead>
+  <tbody>
+    <tr><td>请求</td><td><strong>可选</strong>——客户端不传也行</td></tr>
+    <tr><td>响应</td><td><strong>必填</strong>——服务器一定会给</td></tr>
+  </tbody>
+</table>
+
+<p>如果图省事，直接拿请求的规格当响应用，接口文档生成器会<strong>按请求的语义</strong>去理解，把这些字段标成「可能没有」。于是网页端拿到的类型是「page 可能不存在」，前端得写一堆没必要的判空；更糟的是<strong>凭空放宽了真实的接口约定</strong>——明明服务器保证一定给，文档却说可能没有。</p>
+
+<p>所以规矩是：<strong>响应必须另写一份规格，按「输出形状」建模。</strong>响应里的 page 声明成必填的正整数，不带默认值。</p>
+
+<p>同一个模块里还有个更彻底的例子：详情响应把所有可选字段声明成 <code>nullable</code>（可以是空值），而请求侧对应字段是 <code>optional</code>（可以不存在）。这两个不一样：</p>
+
+<ul>
+  <li><strong>optional</strong>：这个键可能根本不在数据里</li>
+  <li><strong>nullable</strong>：这个键一定在，但值可能是空</li>
+</ul>
+
+<p>服务器返回时会显式把缺失字段补成空值，所以响应侧一律是 nullable。<strong>「请求形状 ≠ 响应形状」这句话，落在代码上就是这个区别。</strong></p>
+
+<h2>为什么不用 class-validator</h2>
+
+<p>class-validator 是这个领域的老牌选择，写法是在类的属性上加标记：</p>
+
+<pre>class CreateAgentDto {
+  <b>@IsString()</b>
+  <b>@MinLength(1)</b>
+  name: string;
+}
+</pre>
+
+<p>看起来清爽，但它有个结构性问题：<strong><code>@IsString()</code> 和 <code>name: string</code> 是两份独立的声明。</strong>你可以把类型改成 <code>number</code> 而忘记改标记，没有任何工具会报错。</p>
+
+<p>这就回到本章开头那个问题——两份声明就会不一致。Zod 用「类型从校验器推导」在结构上消灭了这个可能。这是项目里「用 Zod 不用 class-validator」那条规矩的实质理由。</p>
+
+<!-- ============ 14 ============ -->
+<h1><span class="num">第 14 章</span>后端为什么用 NestJS 加 Fastify</h1>
+
+<p class="lead">这两个是配合关系，不是竞争关系。NestJS 管代码怎么组织，Fastify 管请求怎么收发。</p>
+
+<h2>NestJS 解决的是「41 个模块怎么不乱」</h2>
+
+<p>如果不用框架，一个有 41 个业务领域的服务器很快会变成一团麻：每个人按自己习惯组织代码，文件到处放，模块之间随意互相调用。半年后没人说得清「改这一行会影响什么」。</p>
+
+<p>NestJS 强制一套结构：每个业务领域一个模块，模块内部按职责分文件，后缀固定。<strong>这套约定的价值不在于它多聪明，而在于它是统一的</strong>——任何人打开任何一个模块，都知道该去哪个文件找什么。</p>
+
+<h3>依赖注入是它最实用的能力</h3>
+
+<p>传统写法里，一个服务需要数据库连接，就自己去创建一个。问题是测试时你没法换掉它——它写死在代码里了。</p>
+
+<p>依赖注入的做法是：服务只<strong>声明</strong>「我需要一个数据库连接」，由框架在启动时送进来。测试时框架可以送进一个假的，于是不用真连数据库也能测业务逻辑。</p>
+
+<h2>Fastify 替换掉了默认的 Express</h2>
+
+<p>NestJS 默认搭配 Express——最老牌、生态最大的选择。这个项目换成 Fastify，理由是吞吐更高。代价是有些为 Express 写的插件不能直接用。</p>
+
+<p>这里有个真实的坑值得一提，因为它说明了「换掉默认选择」的隐性成本：项目锁定了 Fastify 的某个具体版本，但某个上传文件的插件会拉进另一个版本。<strong>两份同名但版本不同的东西同时存在，会导致类型系统认为它们不兼容，插件根本注册不上。</strong>解决办法是在包管理配置里强制全项目只用一个版本。</p>
+
+<div class="analogy">
+  <span class="t">打个比方</span>
+  <p>就像两家供应商送来同规格的螺丝，但螺纹标准差一点。单独看都没问题，装在同一台机器上就是拧不进去。解决办法不是换螺丝，而是规定「全厂只认一家的标准」。</p>
+</div>
+
+<!-- ============ 15 ============ -->
+<h1><span class="num">第 15 章</span>为什么用 Drizzle 碰数据库</h1>
+
+<p class="lead">这一类工具叫 ORM。它们的共同目标是：让你别手写 SQL 字符串。</p>
+
+<h2>手写 SQL 的问题</h2>
+
+<pre>const sql = "SELECT * FROM agents WHERE name = '" + 用户输入 + "'";
+</pre>
+
+<p>这行代码有两个毛病。第一，如果用户输入里含引号，SQL 语法就断了——更糟的是攻击者可以借此<strong>拼进自己的命令</strong>，这叫 SQL 注入，是最经典的安全漏洞之一。第二，字段名写错了没人告诉你，直到运行时数据库报错。</p>
+
+<h2>Drizzle 的做法</h2>
+
+<pre>await db.select().from(agents).where(eq(agents.name, 用户输入));
+</pre>
+
+<p><code>agents.name</code> 是个真实的 TypeScript 对象，字段名拼错编译就不过。用户输入通过参数传递而不是拼进字符串，注入问题自然消失。</p>
+
+<h2>为什么是 Drizzle 而不是 Prisma</h2>
+
+<p>Prisma 是这个领域最流行的选择，功能更全、文档更好。这个项目选 Drizzle，核心理由是它<strong>薄</strong>。</p>
+
+<p>「薄」的意思是：你写的代码和它生成的 SQL 几乎一一对应，看着代码就知道数据库会收到什么查询。Prisma 做了更多封装，某些写法背后会变成好几条查询，性能问题不容易预判。</p>
+
+<p>还有一个具体原因：这个项目需要<strong>在事务里下发原生 SQL 语句</strong>来设置数据隔离的上下文（第 21 章会讲）。这种「大部分时候用工具、关键处直接写 SQL」的混合用法，薄工具支持得更自然。</p>
+
+<div class="problem">
+  <span class="t">代价也要说清楚</span>
+  <p>薄的代价是要自己写的东西更多，而且 Drizzle 生态比 Prisma 小，遇到问题能搜到的答案少。这是个真实的取舍，不是「Drizzle 全面更好」。</p>
+</div>
+
+<!-- ============ 16 ============ -->
+<h1><span class="num">第 16 章</span>前端那一堆库各自在干什么</h1>
+
+<p class="lead">网页端用了十几个库，看起来很多。但它们各管一件事，职责边界很清楚。</p>
+
+<h2>一条明确的分工线：数据从哪来，就交给谁管</h2>
+
+<table>
+  <thead><tr><th style="width:34mm">数据类型</th><th style="width:26mm">交给谁</th><th>例子</th></tr></thead>
+  <tbody>
+    <tr><td>从服务器拿来的</td><td>TanStack Query</td><td>工作流列表、智能体详情、执行历史</td></tr>
+    <tr><td>纯本地的、临时的</td><td>Zustand</td><td>画布上选中了哪个方块、侧边栏开合</td></tr>
+    <tr><td>该出现在网址里的</td><td>URL 参数</td><td>列表的筛选条件、当前页码</td></tr>
+  </tbody>
+</table>
+
+<div class="problem">
+  <span class="t">不这样会出什么事</span>
+  <p>如果把服务器数据也塞进本地状态管理，就会出现两份真相：一份在本地，一份在服务器。它们什么时候同步、谁覆盖谁，会变成一团糊。典型症状是「我明明改了，刷新一下又变回去了」。</p>
+  <p>把筛选条件放进网址的理由更实际：<strong>用户能把当前筛选结果的链接发给同事。</strong>放在内存里就做不到。</p>
+</div>
+
+<h2>一个容易被忽略的细节：命名风格转换</h2>
+
+<p>服务器那边字段叫 <code>runtime_mode</code>（下划线分隔），网页端习惯叫 <code>runtimeMode</code>（驼峰）。</p>
+
+<p>处理方式是在网络请求的统一出入口做自动转换——发出去时转下划线，收回来时转驼峰。<strong>两边各自都用自己习惯的风格，没人需要在业务代码里手动转。</strong></p>
+
+<p>但有个例外要记住：<strong>实时推送的消息不做转换，两边都用驼峰。</strong>因为那条链路的数据结构由契约包统一定义，没有历史包袱。手机端的模型也明确配置成不转换，跟这条对齐。</p>
+
+<!-- ============ 17 ============ -->
+<h1><span class="num">第 17 章</span>为什么会掺进 Rust 和 Go</h1>
+
+<p class="lead">一个 TypeScript 项目里出现另外两种语言，需要理由。这两个理由不一样，而且其中一个<strong>目前只兑现了一半</strong>——这一点必须讲清楚。</p>
+
+<h2>Go：因为要跟操作系统打交道</h2>
+
+<p>沙箱管理要做的事包括：启动虚拟机、配置网卡、下发防火墙规则、挂载磁盘、限制 CPU 和内存。这些都是贴着操作系统的活。</p>
+
+<p>用 JavaScript 干这些不是不行，但很别扭——需要不停调用外部命令、解析命令输出的文字。Go 在这方面是对口的：有成熟的库直接操作这些系统资源，而且编译出来是单个可执行文件，往机器上一放就能跑。</p>
+
+<p>这个选择比较无争议。<strong>它属于「用对的工具干对的活」。</strong></p>
+
+<h2>Rust：理由的一半没兑现</h2>
+
+<p>Rust 负责第 6 章讲的那个连线判断。当初选它的理由有两条：</p>
+
+<ol>
+  <li><strong>递归结构比较这类算法用 Rust 表达最清晰</strong>，而且编译产物小、能在浏览器后台线程里跑不阻塞画布</li>
+  <li><strong>同一份规则服务器也能用</strong>，避免前后端各写一套判断逻辑然后慢慢跑偏</li>
+</ol>
+
+<p>第一条兑现了。<strong>第二条没有。</strong>经核实：服务器端没有任何地方调用这个判断，它只在网页端加载。</p>
+
+<p>而且还有一层：Rust 那边其实写了一个<strong>更严格</strong>的连线判断，包含「方向必须是输出接输入」「可选的源不能接必填的目标」「双侧连接数上限」三项检查。但这个函数<strong>没有对外暴露的接口，浏览器根本调不到</strong>。实际生效的是网页端另写的一份 TypeScript 检查，它只查目标侧的连接上限，也没有「可选接必填」这一条。</p>
+
+<div class="problem">
+  <span class="t">这意味着什么</span>
+  <p>出现了<strong>两份规则</strong>：Rust 里那份严格的没在用，TypeScript 里那份宽松的在用。这正是当初想避免的「各写一套然后跑偏」，只是跑偏的形式变了——不是前后端跑偏，是同一个前端里两份实现跑偏。</p>
+  <p>诚实的结论是：<strong>按现状看，选 Rust 这件事偏重了。</strong>收益只剩表达力和产物体积，「一份规则两端共用」这个主要理由还没落地。</p>
+</div>
+
+<h2>顺便说清一个容易吹过头的地方</h2>
+
+<p>如果有人问「为什么不用 TypeScript 写这个判断」，正确答案是<strong>「为了不写两遍」</strong>，而不是「为了快」。</p>
+
+<p>因为 Rust 和 JavaScript 之间传数据要来回转换格式，数据量小的时候这个开销可能比计算本身还大。答「为了快」会被追问性能对比数据，而这个项目没做过这种对照实验。</p>

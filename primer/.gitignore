@@ -1,0 +1,3 @@
+# 构建中间产物
+out/_*.html
+out/*.png

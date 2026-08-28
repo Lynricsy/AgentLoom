@@ -1,0 +1,197 @@
+<!-- ============ 第二部分 ============ -->
+<div class="part">
+  <div class="k">第 二 部 分</div>
+  <h1>名词表</h1>
+  <p>后面会用到的技术名词，集中在这里解释一遍。不用背，读到不认识的词回来查就行。</p>
+</div>
+
+<!-- ============ 3 ============ -->
+<h1><span class="num">第 3 章</span>编程语言与运行环境</h1>
+
+<p class="lead">这个项目用了五种语言。看起来很杂，但每种都有它非用不可的理由——后面第 12 和第 17 章会讲为什么。这里先认个脸。</p>
+
+<div class="termbox">
+  <span class="t">JavaScript<span class="en">JS</span></span>
+  <p>浏览器唯一能直接执行的语言。你在网页上点按钮有反应，背后就是它。它诞生得很早、设计上有不少历史包袱，最大的问题是<strong>不检查类型</strong>——你可以把一个数字塞进一个本该放文字的地方，它不会报错，直到运行到某一行才崩。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">TypeScript<span class="en">TS</span></span>
+  <p>给 JavaScript 加上类型检查的版本。你写代码时声明「这个变量是文字」「这个函数要收两个数字」，然后有个工具在你写完之后、真正运行之前先检查一遍，对不上就报错。</p>
+  <p>关键是：<strong>它检查完之后，类型信息就被丢掉了</strong>，真正跑起来的还是普通 JavaScript。这一点很重要，第 13 章讲 Zod 时会回到这里。</p>
+  <p>这个项目的网页端、服务器端、契约层、插件工具都是 TypeScript 写的，是绝对的主力语言。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Node.js<span class="en">Node</span></span>
+  <p>让 JavaScript 能脱离浏览器、在服务器上跑起来的运行环境。有了它，前端和后端才可能用同一种语言。这个项目的服务器就跑在 Node 上。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Rust</span>
+  <p>一种以「快」和「安全」著称的语言。它的特点是编译器极其严格，很多其他语言要等运行时才暴露的错误，它在编译阶段就拦住。代价是学习曲线陡、写起来慢。</p>
+  <p>这个项目里它只负责一件事：判断画布上两个方块能不能连线。第 17 章会讲为什么这件小事值得单独用一种语言。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Go</span>
+  <p>另一种偏底层的语言，擅长跟操作系统打交道——管理进程、配置网络、控制虚拟机这类活。语法简单，编译出来是单个可执行文件，部署方便。</p>
+  <p>这个项目里它负责管理沙箱：起虚拟机、配网卡、执行防火墙规则。这些活用 JavaScript 干很别扭，Go 是对口的选择。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Dart 与 Flutter</span>
+  <p>Dart 是语言，Flutter 是基于它的界面框架。它俩的卖点是<strong>一套代码同时生成 iOS 和安卓两个 App</strong>，不用把界面写两遍。这个项目的手机端用的是它。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">SQL</span>
+  <p>跟数据库对话的专用语言。「把所有姓张的用户查出来」这种要求，写成 SQL 大概是 <code>SELECT * FROM users WHERE name LIKE '张%'</code>。它不是通用编程语言，只用来查数据、改数据。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">WebAssembly<span class="en">WASM</span></span>
+  <p>一种能在浏览器里运行的、接近机器码的格式。它的意义是：<strong>让 Rust、C++ 这类语言写的程序也能在网页里跑</strong>，而不是只能用 JavaScript。</p>
+  <p>这个项目把 Rust 写的连线判断编译成 WASM，塞进浏览器执行。</p>
+</div>
+
+<!-- ============ 4 ============ -->
+<h1><span class="num">第 4 章</span>框架与工具库</h1>
+
+<p class="lead">「框架」和「库」的区别用一句话讲：<strong>库是你调用它，框架是它调用你。</strong>用库像用工具箱，你决定什么时候拿哪把螺丝刀；用框架像进流水线，框架规定了流程，你往里填自己的部分。</p>
+
+<h2>服务器那一侧</h2>
+
+<div class="termbox">
+  <span class="t">NestJS<span class="en">Nest</span></span>
+  <p>服务器端的框架。它规定了代码该怎么组织：每个业务领域一个「模块」，模块里分「控制器」（负责接收网络请求）、「服务」（负责真正干活）。</p>
+  <p>它最有用的一点叫<strong>依赖注入</strong>——你的代码不需要自己去创建它依赖的东西，只要声明「我需要一个数据库连接」，框架会把它送进来。好处是测试时可以轻易换成假的。</p>
+  <p>这个项目的服务器有 41 个这样的模块。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Fastify</span>
+  <p>负责处理网络请求的底层组件——接收 HTTP 请求、解析、返回响应。它的竞争对手叫 Express，是老牌选择。选 Fastify 的理由是它更快，代价是生态没 Express 那么大。</p>
+  <p>它跟 NestJS 是配合关系：NestJS 管代码组织，Fastify 管收发请求。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Zod</span>
+  <p>一个用来<strong>检查数据长得对不对</strong>的库。你先写一份「规格说明」，比如「这个东西必须有 name 字段且是文字、有 age 字段且是正整数」，然后拿真实数据去对，不合规就报错并告诉你哪个字段错了。</p>
+  <p>它在这个项目里的地位特别高，单独占了第 13 章。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Drizzle</span>
+  <p>让你用 TypeScript 写数据库查询，而不用手写 SQL 字符串。它属于「对象关系映射」这类工具（简称 ORM），竞争对手是 Prisma、TypeORM。</p>
+  <p>它的特点是「薄」——生成的 SQL 跟你写的代码几乎一一对应，不做太多幕后魔法。第 15 章讲为什么这一点重要。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">BullMQ</span>
+  <p>队列工具，也就是餐厅里的「叫号板」。它让服务器可以把耗时的活先记下来、稍后由别的进程慢慢干，而不是让发请求的人一直等着。</p>
+  <p>它还负责定时任务（每周一早上八点跑一次）和失败重试。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Socket.IO</span>
+  <p>让服务器能<strong>主动</strong>给网页推消息的工具。普通的网页交互是「网页问一句、服务器答一句」，服务器没法主动说话。有了它，执行进度可以实时推到你的屏幕上，不用你不停刷新。</p>
+  <p>它还能在断网重连后补上你错过的消息，这一点第 18 章会讲。</p>
+</div>
+
+<h2>网页那一侧</h2>
+
+<div class="termbox">
+  <span class="t">React</span>
+  <p>目前最主流的网页界面框架。它的核心思想是把界面切成一个个「组件」——一个按钮是组件，一个卡片是组件，整个页面由组件拼起来。数据变了，组件自动重绘。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">React Flow</span>
+  <p>专门做「拖拽画流程图」的库。方块能拖、线能连、画布能缩放，这些都是它提供的。整个画布界面的地基就是它。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Vite</span>
+  <p>开发和打包工具。你改一行代码，它负责让浏览器几乎立刻看到效果；发布时它把几百个文件压缩合并成浏览器能高效加载的形式。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">TanStack Query</span>
+  <p>管理「从服务器拿来的数据」的库。它解决的问题很具体：同一份数据被三个组件用到，不该请求三次；数据可能过期，要知道何时重新拿；请求失败要能重试。这些它都替你办了。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Zustand</span>
+  <p>管理「纯本地状态」的库——比如画布上当前选中了哪个方块、侧边栏是展开还是收起。这些数据服务器不关心，只存在于你这一次的浏览过程里。</p>
+  <p>这个项目有条明确规矩：<strong>服务器来的数据交给 TanStack Query，纯本地的交给 Zustand，不许混。</strong></p>
+</div>
+
+<div class="termbox">
+  <span class="t">Tailwind CSS</span>
+  <p>写样式的方式。传统做法是另开一个文件写「这个按钮红色、圆角、内边距 8 像素」，Tailwind 让你直接在元素上写一串短标记达到同样效果。好处是不用在两个文件之间来回跳。</p>
+</div>
+
+<!-- ============ 5 ============ -->
+<h1><span class="num">第 5 章</span>存数据的四个地方</h1>
+
+<p class="lead">这个系统同时用了四种数据库。听起来是过度设计，其实每一种存的东西性质完全不同——第 11 章会详细讲为什么不能合成一个。这里先认识它们。</p>
+
+<div class="termbox">
+  <span class="t">PostgreSQL<span class="en">Postgres / PG</span></span>
+  <p>主数据库，存所有「正式记录」：用户、组织、工作流定义、执行记录、审计日志。它是<strong>关系型</strong>数据库，意思是数据存成一张张有固定列的表，表之间能互相引用。</p>
+  <p>它最重要的能力是<strong>事务</strong>——一组操作要么全部成功，要么全部撤销，不会停在中间状态。转账时「A 减钱」和「B 加钱」必须同生共死，靠的就是这个。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Redis</span>
+  <p>把数据放在内存里的数据库，所以极快，但容量小、断电就没。它在这个项目里干两件事：<strong>做队列的底座</strong>（叫号板本身就存在 Redis 里），以及<strong>存计数器</strong>（某个组织今天调了多少次接口）。</p>
+  <p>这些数据的特点是「短命、高频、丢了也不致命」，正好是 Redis 的强项。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">Qdrant</span>
+  <p>向量数据库。这个概念稍绕，但值得理解，因为它是「按意思检索」的技术基础。</p>
+  <p>普通数据库只能精确匹配：你搜「苹果」就只找到含「苹果」的记录。向量数据库能按<strong>意思</strong>找：你搜「水果」，它能把「苹果」「香蕉」都翻出来，因为它存的不是文字本身，而是文字经 AI 转换成的一串数字（叫「向量」），意思相近的向量在数学上距离也近。</p>
+  <p>它在这个项目里有两个用户：<strong>知识库检索</strong>（把文档切段、转成向量存起来，提问时找最相关的几段塞给 AI）和<strong>智能路由的学习</strong>（把历史调用的特征存成向量，用最近邻和小型神经网络来预测哪个模型更合适）。</p>
+  <p>要特别注意：<strong>智能体的记忆不用它</strong>，那一块走的是另一条路，下面一条会讲。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">全文检索<span class="en">Full-text Search</span></span>
+  <p>PostgreSQL 自带的一种检索能力，介于「精确匹配」和「按意思匹配」之间。它把一段文字拆成词、去掉「的」「是」这类没信息量的词、把词变成统一形式（比如 running 归到 run），然后按<strong>关键词命中的多少和位置</strong>算一个相关度分数排序。</p>
+  <p>它比精确匹配聪明（搜「部署」能命中「部署方案」「如何部署」），但比向量检索笨（搜「上线」找不到「部署」，因为它们没有共同的词）。<strong>好处是不需要额外的数据库，也不需要调用 AI 把文字转成向量</strong>——省一次网络请求、省一笔费用。</p>
+  <p>智能体的记忆检索用的就是它。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">MinIO</span>
+  <p>对象存储，可以理解成「自己搭的网盘」。存的是文件本身：用户上传的附件、技能说明文档、插件安装包。</p>
+  <p>为什么不直接把文件塞进主数据库？因为关系型数据库擅长处理「大量小记录」，不擅长「少量大文件」，硬塞会拖慢整个库。</p>
+</div>
+
+<h2>几个反复出现的概念</h2>
+
+<div class="termbox">
+  <span class="t">API<span class="en">应用程序接口</span></span>
+  <p>两个程序之间说话的约定。网页想拿到工作流列表，就按约定向服务器的某个地址发一个请求，服务器按约定返回一段数据。这份约定就是 API。</p>
+  <p>约定的形式包括：请求发到哪个地址、要带哪些参数、返回的数据长什么样。<strong>三个端（网页、手机、服务器）对这份约定的理解必须完全一致</strong>，否则就会出现「服务器说这个字段可能为空、网页以为它一定有值」这种事故。第 19 章专门讲怎么防这个。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">多租户<span class="en">Multi-tenancy</span></span>
+  <p>一套系统同时服务多个互不相关的组织，而每个组织只能看到自己的数据。「租户」就是一个组织。</p>
+  <p>难点在于：所有组织的数据其实存在同一个数据库的同一张表里，靠代码里的过滤条件区分。<strong>一旦某个查询忘了加过滤条件，就会把别人的数据返回出去。</strong>第 21 章讲这个系统怎么防。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">沙箱<span class="en">Sandbox</span></span>
+  <p>一个被隔离起来的执行环境。让 AI 在里面跑命令、改文件，它干什么都出不了这个环境的边界，也影响不到外面。</p>
+  <p>为什么必须有：因为 AI 生成的代码是<strong>不可信</strong>的——不一定是恶意，可能只是写错了一个删除命令。第 10 章和第 20 章讲实现。</p>
+</div>
+
+<div class="termbox">
+  <span class="t">端到端加密<span class="en">E2EE</span></span>
+  <p>数据在你的浏览器里就加密好，然后才发给服务器存起来；解密的钥匙只在你本地，服务器没有。所以即使数据库整个被人拷走，里面也是一堆看不懂的乱码。</p>
+  <p>要诚实说明它的边界：<strong>它防的是「数据库被偷」，不防「服务器运行时被攻破」</strong>。因为 AI 的输出是在服务器进程里产生的，那一刻它还是明文。</p>
+</div>

@@ -1,0 +1,89 @@
+<!-- ============ 封面 ============ -->
+<div class="cover">
+  <div class="k">写给不懂编程的人</div>
+  <h1>AgentLoom<br>是怎么搭起来的</h1>
+  <p class="sub">这份文档假设你不写代码，也没听过 Zod、NestJS、Drizzle 这些名字。它会从「这个系统到底在干什么」讲起，每遇到一个新名词就先用大白话解释一遍，再讲它在系统里起什么作用、为什么选它而不是别的。</p>
+  <div class="meta">读完之后，你应该能向别人讲清楚：这个系统由哪几块组成、它们各自解决什么问题、以及为什么当初这么选。</div>
+</div>
+
+<!-- ============ 读前须知 ============ -->
+<h1><span class="num">读前须知</span>这份文档怎么用</h1>
+
+<p class="lead">你设计了这个系统，但代码基本是 AI 写的。所以你现在的处境很具体：<strong>你知道每一块该干什么，但不知道它们实际上是怎么干的。</strong>这份文档专门补这一层。</p>
+
+<p>它跟同目录下另外几份 PDF 不一样。那几份是给已经懂技术的人看的速记卡——一句话一个结论，术语不解释，密度极高。那种写法对你没用，因为它假设读者早就知道 Zod 是什么、RLS 是什么。这份文档反过来：<strong>宁可啰嗦，也不跳步。</strong></p>
+
+<h2>三种方框的含义</h2>
+
+<p>正文里会反复出现三种带边框的段落，它们的作用不同：</p>
+
+<div class="termbox">
+  <span class="t">名词解释<span class="en">TERM</span></span>
+  <p>蓝色左边框的框，是某个技术名词第一次出现的地方。里面用大白话讲它是什么、干什么用的。看到这种框可以慢一点读，后面的正文会直接用这个词，不再重复解释。</p>
+</div>
+
+<div class="analogy">
+  <span class="t">打个比方</span>
+  <p>灰色边框的框，是类比。整份文档会反复用「一间餐厅」来比这个系统——因为餐厅里有接单、排队、后厨、独立灶台、食材仓库、包间，正好能对上系统里的每一块。类比不精确，但能帮你先建立整体印象。</p>
+</div>
+
+<div class="problem">
+  <span class="t">不这样会出什么事</span>
+  <p>橙色左边框的框，讲的是「如果不这么做会怎样」。技术选择的理由往往藏在这里——不是因为某个技术好，而是因为不用它会踩到某个具体的坑。这类框是理解「为什么」的关键。</p>
+</div>
+
+<h2>建议的读法</h2>
+
+<p>如果你时间紧，只读<em>第一部分</em>和<em>第五部分</em>：前者给你整体印象，后者跟着一次真实的「点击运行」把整个系统走一遍。这两部分读完，你已经能跟人聊得下去了。</p>
+
+<p>如果你要准备面试，重点是<em>第七部分</em>——它讲的不是技术，是怎么诚实地描述「哪部分是你的贡献」。这部分建议完整读，因为它涉及一些反直觉的判断。</p>
+
+<p>中间的第二、三、四部分是词典和逐项拆解，可以在需要时回头查。</p>
+
+<h2>一句话预告</h2>
+
+<p>如果只让你记住一句话，那就是这句：<strong>这个系统的难点不在于「让 AI 干活」，而在于「让很多个 AI 按正确的顺序干活，出错时知道错在哪，而且不会互相干扰、也不会把机器搞坏」。</strong>后面所有的技术选择，都是为了这一句话里的某个词。</p>
+
+<!-- ============ 目录 ============ -->
+<h1><span class="num">目录</span>这份文档讲什么</h1>
+
+<div class="toc">
+  <div class="grp">第一部分 · 先建立整体印象</div>
+  <div class="row"><span class="n">1</span><span class="s">这个系统到底在干什么：一个完整的例子</span></div>
+  <div class="row"><span class="n">2</span><span class="s">把它想象成一间餐厅</span></div>
+
+  <div class="grp">第二部分 · 名词表</div>
+  <div class="row"><span class="n">3</span><span class="s">编程语言与运行环境</span></div>
+  <div class="row"><span class="n">4</span><span class="s">框架与工具库</span></div>
+  <div class="row"><span class="n">5</span><span class="s">存数据的四个地方</span></div>
+
+  <div class="grp">第三部分 · 六个组成部分</div>
+  <div class="row"><span class="n">6</span><span class="s">画布：你看到的那个界面</span></div>
+  <div class="row"><span class="n">7</span><span class="s">服务器：接单和派活的那一层</span></div>
+  <div class="row"><span class="n">8</span><span class="s">队列：为什么不能「来了就干」</span></div>
+  <div class="row"><span class="n">9</span><span class="s">智能体：跟直接问 AI 差在哪</span></div>
+  <div class="row"><span class="n">10</span><span class="s">沙箱：为什么不敢让 AI 直接在服务器上跑命令</span></div>
+  <div class="row"><span class="n">11</span><span class="s">为什么要四种数据库而不是一种</span></div>
+
+  <div class="grp">第四部分 · 为什么用这些技术</div>
+  <div class="row"><span class="n">12</span><span class="s">为什么整个项目用 TypeScript</span></div>
+  <div class="row"><span class="n">13</span><span class="s">Zod 是什么，为什么它这么重要</span></div>
+  <div class="row"><span class="n">14</span><span class="s">后端为什么用 NestJS 加 Fastify</span></div>
+  <div class="row"><span class="n">15</span><span class="s">为什么用 Drizzle 碰数据库</span></div>
+  <div class="row"><span class="n">16</span><span class="s">前端那一堆库各自在干什么</span></div>
+  <div class="row"><span class="n">17</span><span class="s">为什么会掺进 Rust 和 Go</span></div>
+
+  <div class="grp">第五部分 · 走一遍完整流程</div>
+  <div class="row"><span class="n">18</span><span class="s">点一次「运行」，系统里发生了什么</span></div>
+
+  <div class="grp">第六部分 · 三处最费心的设计</div>
+  <div class="row"><span class="n">19</span><span class="s">怎么保证三个端说的是同一种话</span></div>
+  <div class="row"><span class="n">20</span><span class="s">笼子是怎么焊住的</span></div>
+  <div class="row"><span class="n">21</span><span class="s">怎么保证 A 公司看不到 B 公司的数据</span></div>
+
+  <div class="grp">第七部分 · 面试时怎么说</div>
+  <div class="row"><span class="n">22</span><span class="s">哪部分算你的贡献</span></div>
+  <div class="row"><span class="n">23</span><span class="s">已知还没修的问题</span></div>
+</div>
+
+<p class="tip">全文出现的技术名词都在第二部分有解释。如果读到某个词想不起来是什么，回第二部分查。</p>

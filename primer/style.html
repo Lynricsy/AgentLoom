@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AgentLoom 是怎么搭起来的</title>
+<style>
+/* ===== 字体：直挂文件，绕开 Chrome 泛用族解析 ===== */
+@font-face{font-family:SR;src:url('file:///usr/share/fonts/noto-cjk/NotoSerifCJK-Regular.ttc');font-weight:400}
+@font-face{font-family:SR;src:url('file:///usr/share/fonts/noto-cjk/NotoSerifCJK-Medium.ttc');font-weight:500}
+@font-face{font-family:SR;src:url('file:///usr/share/fonts/noto-cjk/NotoSerifCJK-SemiBold.ttc');font-weight:600}
+@font-face{font-family:SR;src:url('file:///usr/share/fonts/noto-cjk/NotoSerifCJK-Bold.ttc');font-weight:700}
+@font-face{font-family:SA;src:url('file:///usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc');font-weight:400}
+@font-face{font-family:SA;src:url('file:///usr/share/fonts/noto-cjk/NotoSansCJK-Medium.ttc');font-weight:500}
+@font-face{font-family:SA;src:url('file:///usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc');font-weight:600 700}
+@font-face{font-family:MO;src:url('file:///usr/share/fonts/TTF/JetBrainsMono-Regular.ttf');font-weight:400}
+@font-face{font-family:MO;src:url('file:///usr/share/fonts/TTF/JetBrainsMono-Bold.ttf');font-weight:600 700}
+
+:root{
+  --ink:#1a1a1a; --soft:#4a4a4a; --faint:#8a8a8a;
+  --line:#dcdcdc; --wash:#f5f4f1; --accent:#1f5fa8; --warn:#a8461f;
+  --serif:SR,serif; --sans:SA,sans-serif; --mono:MO,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+body{
+  font-family:var(--serif); color:var(--ink);
+  font-size:10.8pt; line-height:1.95;
+  text-align:justify; text-justify:inter-ideograph;
+}
+
+/* ===== 标题 ===== */
+h1{
+  font-family:var(--sans); font-weight:600; font-size:19pt; line-height:1.4;
+  break-before:page; margin:0 0 2mm; padding-bottom:3mm;
+  border-bottom:2px solid var(--ink); text-align:left;
+}
+h1:first-of-type{break-before:avoid}
+h1 .num{display:block;font-family:var(--mono);font-size:9pt;font-weight:400;
+  color:var(--accent);letter-spacing:.16em;margin-bottom:2.5mm}
+
+h2{
+  font-family:var(--sans); font-weight:600; font-size:13pt; line-height:1.5;
+  margin:9mm 0 3mm; text-align:left; break-after:avoid;
+}
+h3{
+  font-family:var(--sans); font-weight:500; font-size:11.2pt; line-height:1.5;
+  margin:6mm 0 2mm; text-align:left; color:var(--soft); break-after:avoid;
+}
+
+/* 部分分隔页 */
+.part{break-before:page; text-align:center; padding-top:62mm}
+.part .k{font-family:var(--mono);font-size:9.5pt;letter-spacing:.3em;color:var(--accent)}
+.part h1{border:0;font-size:26pt;break-before:avoid;text-align:center;margin:6mm 0 4mm;padding:0}
+.part p{text-align:center;color:var(--soft);font-size:11pt;max-width:118mm;margin:0 auto}
+
+/* ===== 正文 ===== */
+p{margin:0 0 3.6mm}
+p.lead{font-size:12pt;line-height:1.85;color:#2c2c2c;margin-bottom:5mm}
+strong{font-weight:600}
+em{font-style:normal;color:var(--accent);font-weight:500}
+code{font-family:var(--mono);font-size:9.2pt;background:var(--wash);
+  padding:.4mm 1.2mm;border-radius:1px;word-break:break-all}
+
+ul,ol{margin:0 0 4mm;padding-left:0;list-style:none}
+li{margin-bottom:2.4mm;padding-left:7mm;position:relative}
+ul>li::before{content:"·";position:absolute;left:2.6mm;top:-.2mm;
+  font-weight:700;color:var(--accent);font-size:13pt}
+ol{counter-reset:n}
+ol>li{counter-increment:n}
+ol>li::before{content:counter(n) ".";position:absolute;left:0;top:0;
+  font-family:var(--mono);font-size:9.4pt;color:var(--accent);font-weight:600}
+
+/* ===== 术语框：第一次出现的名词解释 ===== */
+.termbox{
+  background:var(--wash); border-left:3px solid var(--accent);
+  padding:4mm 5mm; margin:5mm 0; break-inside:avoid;
+}
+.termbox .t{
+  font-family:var(--sans); font-weight:600; font-size:10.6pt;
+  color:var(--accent); display:block; margin-bottom:1.6mm;
+}
+.termbox .t .en{font-family:var(--mono);font-size:9pt;font-weight:400;
+  color:var(--faint);margin-left:2mm}
+.termbox p{margin:0 0 2.4mm;font-size:10.2pt;line-height:1.85}
+.termbox p:last-child{margin-bottom:0}
+
+/* ===== 类比框 ===== */
+.analogy{
+  border:1px solid var(--line); border-top:2px solid var(--soft);
+  padding:4mm 5mm; margin:5mm 0; background:#fcfcfa; break-inside:avoid;
+}
+.analogy .t{font-family:var(--sans);font-weight:600;font-size:9.6pt;
+  letter-spacing:.04em;color:var(--soft);display:block;margin-bottom:2mm}
+.analogy p{margin:0 0 2.4mm;font-size:10.4pt}
+.analogy p:last-child{margin-bottom:0}
+
+/* ===== 「不这样会怎样」框 ===== */
+.problem{
+  border-left:3px solid var(--warn); padding:3.4mm 5mm;
+  margin:5mm 0; break-inside:avoid;
+}
+.problem .t{font-family:var(--sans);font-weight:600;font-size:9.6pt;
+  color:var(--warn);display:block;margin-bottom:1.8mm}
+.problem p{margin:0;font-size:10.3pt}
+
+/* ===== 代码 / 示意 ===== */
+pre{
+  font-family:var(--mono); font-size:9pt; line-height:1.7;
+  background:#fbfaf8; border:1px solid var(--line);
+  padding:3.6mm 4mm; margin:4mm 0; overflow-wrap:break-word;
+  white-space:pre-wrap; break-inside:avoid; text-align:left;
+}
+pre .cm{color:var(--faint)}
+pre b{color:var(--accent);font-weight:700}
+
+/* ===== 表格 ===== */
+table{width:100%;border-collapse:collapse;margin:4.5mm 0;
+  font-size:10pt;break-inside:avoid;text-align:left}
+th{font-family:var(--sans);font-weight:600;font-size:9.4pt;
+  border-bottom:1.5px solid var(--ink);padding:0 3mm 2mm 0;vertical-align:bottom}
+td{border-bottom:1px solid var(--line);padding:2.4mm 3mm 2.4mm 0;
+  vertical-align:top;line-height:1.72}
+th:last-child,td:last-child{padding-right:0}
+
+/* ===== 目录 ===== */
+.toc{margin:6mm 0}
+.toc .grp{font-family:var(--sans);font-weight:600;font-size:10.4pt;
+  color:var(--accent);margin:5mm 0 2mm}
+.toc .row{display:flex;gap:3mm;padding:1.4mm 0;border-bottom:1px dotted var(--line)}
+.toc .row .n{font-family:var(--mono);font-size:9pt;color:var(--faint);
+  width:8mm;flex:0 0 auto}
+.toc .row .s{font-size:10.2pt}
+
+/* ===== 封面 ===== */
+.cover{height:238mm;display:flex;flex-direction:column;justify-content:center}
+.cover .k{font-family:var(--mono);font-size:10pt;letter-spacing:.26em;
+  color:var(--accent);margin-bottom:8mm}
+.cover h1{font-size:32pt;line-height:1.3;border:0;padding:0;margin:0 0 7mm;
+  break-before:avoid;font-weight:600}
+.cover .sub{font-size:12.4pt;line-height:1.9;color:var(--soft);max-width:128mm}
+.cover .meta{margin-top:auto;padding-top:6mm;border-top:1px solid var(--line);
+  font-size:9.6pt;color:var(--faint);font-family:var(--sans)}
+
+hr{border:0;border-top:1px solid var(--line);margin:6mm 0}
+.tip{font-size:9.8pt;color:var(--soft);font-style:normal}
+</style>
+</head>
+<body>
