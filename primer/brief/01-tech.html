@@ -1,0 +1,156 @@
+<!-- ============ 4 ============ -->
+<h1><span class="num">第 3 节</span>Zod 是什么，为什么它这么重要</h1>
+
+<p class="lead">这一节给的篇幅最多，因为 Zod 在这个项目里不只是一个工具库，它是整套跨端约定的地基。</p>
+
+<h2>先讲一个前提：类型检查在运行时会消失</h2>
+
+<div class="termbox">
+  <span class="t">TypeScript</span>
+  <p>给 JavaScript 加类型检查的版本。你声明「这个参数必须是数字」，然后有个工具在真正运行之前先核对一遍，对不上就报错——错误被提前到<em>写代码的时候</em>，你在编辑器里就能看到红线。</p>
+  <p>但关键在于：<strong>它检查完之后，所有类型信息就被删掉了</strong>，真正跑起来的还是普通 JavaScript。</p>
+</div>
+
+<p>这意味着：如果数据是<strong>运行时才从外面进来的</strong>——用户提交的表单、别的系统发来的请求——TypeScript 一点忙都帮不上。你可以声明「我期望收到一个有 name 字段的对象」，但对方实际发来一段乱码，程序照样接受，然后在某个地方崩掉。</p>
+
+<div class="analogy">
+  <span class="t">打个比方</span>
+  <p>TypeScript 像装修时的图纸审查——能确保设计上门宽匹配门框。但它管不了<em>装修完成之后谁从门进来</em>。要在门口验证来客，需要另一个东西：门卫。<strong>Zod 就是那个门卫。</strong></p>
+</div>
+
+<h2>手写门卫的问题</h2>
+
+<p>服务器收到创建智能体的请求，得自己检查。手写版大概这样：</p>
+
+<pre>if (typeof body.name !== 'string' || body.name.length === 0) {
+  throw new Error('name 必须是非空文字');
+}
+if (body.runtimeMode !== 'sandbox' &amp;&amp; body.runtimeMode !== 'no_sandbox') {
+  throw new Error('runtimeMode 取值不对');
+}
+<span class="cm">// ……每个字段都要来一遍</span>
+</pre>
+
+<p>三个问题：<strong>啰嗦</strong>（几十个接口每个都写一大段）、<strong>容易漏</strong>（加了新字段忘了加检查），以及最要命的一个：</p>
+
+<pre>type CreateAgent = { name: string; runtimeMode: 'sandbox' | 'no_sandbox' };
+<span class="cm">// 类型声明说 runtimeMode 有两种取值</span>
+
+if (body.runtimeMode !== 'sandbox') { throw ... }
+<span class="cm">// 检查代码却只认一种。两边对不上，没有任何工具会提醒你</span>
+</pre>
+
+<div class="problem">
+  <span class="t">不这样会出什么事</span>
+  <p>类型声明和实际检查各写一份，就一定会在某次修改后不一致。而且这种不一致<strong>没有任何工具能自动发现</strong>——类型检查器只看声明，测试只测检查逻辑，两边都觉得自己是对的。最终表现为线上偶发的奇怪数据。</p>
+</div>
+
+<h2>Zod 的做法：只写一份，类型自动推导出来</h2>
+
+<pre>const CreateAgentSchema = z.object({
+  name: z.string().min(1),
+  runtimeMode: z.enum(['sandbox', 'no_sandbox']),
+});
+</pre>
+
+<p>这一份东西同时给你两样：</p>
+
+<pre><span class="cm">// 一、运行时的检查器</span>
+CreateAgentSchema.parse(收到的数据)
+<span class="cm">//   合规就返回数据；不合规就抛错，并说明哪个字段错在哪</span>
+
+<span class="cm">// 二、静态类型，从上面那份规格「反推」出来</span>
+type CreateAgent = z.infer&lt;typeof CreateAgentSchema&gt;;
+<span class="cm">//   等价于 { name: string; runtimeMode: 'sandbox' | 'no_sandbox' }</span>
+</pre>
+
+<p><strong>这里是关键：类型不是你另写的，是从检查器身上推导出来的。</strong>所以「类型说三种、检查只认两种」这种事在结构上就不可能发生——它们本来就是同一个东西的两个面。</p>
+
+<div class="analogy">
+  <span class="t">打个比方</span>
+  <p>过去是：门口贴一张「入场要求」海报（类型声明），门卫另有一本自己的检查手册（校验代码）。海报改了没人通知门卫，于是海报写「凭票入场」，门卫还在只看身份证。</p>
+  <p>Zod 的做法是：<strong>只有门卫的手册是真的，海报直接由手册自动打印。</strong>手册改一个字，海报下一秒跟着变。</p>
+</div>
+
+<h2>项目里怎么用</h2>
+
+<p>规格写好后包装成框架认识的形式，再挂到接收请求的地方：</p>
+
+<pre>async create(
+  <b>@Body(new ZodValidationPipe(CreateAgentDefinitionSchema))</b>
+  dto: CreateAgentDefinitionDto,
+) { ... }
+</pre>
+
+<p>意思是：这个接口的请求体，进来之前先用那份规格检查。通过了 <code>dto</code> 就是干净可信的数据；没通过，请求根本进不到函数体里。检查失败返回 <strong>422</strong>，附一个 <code>errors</code> 数组，每条是「哪个字段、错在哪」，前端可以直接显示在对应输入框下面。</p>
+
+<h2>一个反直觉的坑：请求和响应不能共用一份规格</h2>
+
+<p>Zod 支持默认值。分页查询里 <code>page: ....default(1)</code> 意思是「客户端可以不传，不传当 1」。<strong>这对请求完全正确。</strong>但服务器返回响应时，语义反过来了：</p>
+
+<table>
+  <thead><tr><th style="width:26mm">场景</th><th>page 字段的语义</th></tr></thead>
+  <tbody>
+    <tr><td>请求</td><td><strong>可选</strong>——客户端不传也行</td></tr>
+    <tr><td>响应</td><td><strong>必填</strong>——服务器一定会给</td></tr>
+  </tbody>
+</table>
+
+<p>图省事直接拿请求规格当响应用，接口文档生成器会<em>按请求的语义</em>理解，把字段标成「可能没有」。于是前端得写一堆没必要的判空；更糟的是<strong>凭空放宽了真实的接口约定</strong>——明明服务器保证一定给，文档却说可能没有。</p>
+
+<p>所以项目的规矩是：<strong>响应必须另写一份规格，按「输出形状」建模。</strong></p>
+
+<h2>为什么不用同类的 class-validator</h2>
+
+<p>那个方案是在类的属性上加标记，看起来更清爽，但 <code>@IsString()</code> 和 <code>name: string</code> 是<strong>两份独立的声明</strong>，可以互相矛盾且没人报错。这就回到本节开头那个问题。Zod 用「类型从校验器推导」在结构上消灭了这个可能。
+
+<!-- ============ 5 ============ -->
+<h1><span class="num">第 4 节</span>其余技术为什么这么选</h1>
+
+<p class="lead">每一条的理由都不是「这个技术好」，而是「不用它会踩某个具体的坑」。</p>
+
+<table>
+  <thead><tr><th style="width:30mm">技术</th><th style="width:34mm">干什么</th><th>为什么是它</th></tr></thead>
+  <tbody>
+    <tr><td>NestJS</td><td>服务器代码怎么组织</td><td>41 个业务模块不用框架很快会变成一团麻。它强制统一结构，价值不在多聪明而在<strong>统一</strong>——任何人打开任何模块都知道去哪找什么</td></tr>
+    <tr><td>Fastify</td><td>收发网络请求</td><td>替换掉框架默认的 Express，理由是吞吐更高，代价是部分 Express 插件不能直接用</td></tr>
+    <tr><td>Drizzle</td><td>操作数据库，不用手写 SQL</td><td>手拼 SQL 字符串会被<em>注入攻击</em>，字段名写错还要等运行时才发现。选它而非更流行的 Prisma，因为它<strong>薄</strong>——代码和生成的 SQL 几乎一一对应，性能可预判</td></tr>
+    <tr><td>BullMQ</td><td>队列（叫号板）</td><td>见第 2 节，顺带解决定时任务与失败重试</td></tr>
+    <tr><td>Socket.IO</td><td>服务器主动推消息</td><td>普通交互是「网页问一句服务器答一句」，服务器没法主动说话。有了它执行进度能实时推到屏幕上，断线重连还能补上错过的消息</td></tr>
+    <tr><td>React + React Flow</td><td>网页界面 + 拖拽画布</td><td>画布类库都在 React 生态里，拖拽连线缩放都是现成的</td></tr>
+    <tr><td>Flutter</td><td>手机端</td><td>一套代码同时生成 iOS 和安卓，不用把界面写两遍</td></tr>
+    <tr><td>Go</td><td>管理沙箱虚拟机</td><td>启动虚拟机、配网卡、下发防火墙规则都是贴着操作系统的活。用 JavaScript 要不停调外部命令、解析文字输出，很别扭；Go 有成熟的库直接操作</td></tr>
+  </tbody>
+</table>
+
+<h2>前端有一条明确的分工线</h2>
+
+<p>这条规矩值得单独说，因为它防的是一类很烦的 bug：</p>
+
+<table>
+  <thead><tr><th style="width:32mm">数据来源</th><th style="width:28mm">交给谁管</th><th>例子</th></tr></thead>
+  <tbody>
+    <tr><td>从服务器拿来的</td><td>TanStack Query</td><td>工作流列表、执行历史</td></tr>
+    <tr><td>纯本地、临时的</td><td>Zustand</td><td>画布上选中了哪个方块</td></tr>
+    <tr><td>该出现在网址里的</td><td>URL 参数</td><td>筛选条件、当前页码</td></tr>
+  </tbody>
+</table>
+
+<div class="problem">
+  <span class="t">不这样会出什么事</span>
+  <p>把服务器数据也塞进本地状态管理，就出现<strong>两份真相</strong>：一份在本地一份在服务器。谁覆盖谁会变成一团糊，典型症状是「我明明改了，刷新一下又变回去了」。</p>
+  <p>筛选条件放网址的理由更实际：<strong>用户能把当前筛选结果的链接发给同事。</strong></p>
+</div>
+
+<h2>为什么会掺进 Rust</h2>
+
+<p>Rust 负责第 2 节讲的那个连线判断，编译成一种<strong>能在浏览器里跑的接近机器码的格式</strong>（叫 WebAssembly，简称 WASM），放在后台线程执行——因为这个判断在你拖鼠标时会被反复触发，占用主线程画布会卡。</p>
+
+<p>当初选它的理由有两条：<strong>一是</strong>递归结构比较这类算法用 Rust 表达最清晰、编译产物小；<strong>二是</strong>同一份规则服务器也能用，避免前后端各写一套然后慢慢跑偏。</p>
+
+<div class="problem">
+  <span class="t">第二条没兑现，这点必须说清</span>
+  <p>经核实：<strong>服务器端没有任何地方调用这个判断</strong>，它只在网页端加载。而且 Rust 那边其实写了一个<em>更严格</em>的版本（多了「方向必须输出接输入」「可选的源不能接必填的目标」等检查），但它没有对外暴露接口，浏览器根本调不到。实际生效的是网页端另写的一份宽松版。</p>
+  <p>于是出现了<strong>两份规则</strong>：严格的没在用，宽松的在用——正是当初想避免的「各写一套然后跑偏」，只是跑偏形式变了。诚实的结论是：<strong>按现状看，选 Rust 这件事偏重了。</strong></p>
+  <p>顺带提醒：如果有人问「为什么不用 TypeScript 写」，正确答案是<em>「为了不写两遍」</em>而不是「为了快」。Rust 和 JavaScript 之间传数据要来回转格式，数据量小时这开销可能比计算本身还大；答「为了快」会被追问性能对比数据，而这个项目没做过那种实验。</p>
+</div>

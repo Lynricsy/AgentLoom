@@ -21,31 +21,53 @@ const root = dirname(fileURLToPath(import.meta.url));
 const outDir = join(root, 'out');
 mkdirSync(outDir, { recursive: true });
 
-const TITLE = 'AgentLoom 是怎么搭起来的';
-const PDF = 'AgentLoom-是怎么搭起来的.pdf';
+const BOOKS = {
+  brief: {
+    dir: 'brief',
+    title: 'AgentLoom 是怎么搭起来的',
+    pdf: 'AgentLoom-是怎么搭起来的.pdf',
+  },
+  full: {
+    dir: 'chapters',
+    title: 'AgentLoom 是怎么搭起来的 · 详解',
+    pdf: 'AgentLoom-是怎么搭起来的-详解.pdf',
+  },
+};
 
-const head = readFileSync(join(root, 'style.html'), 'utf8');
-const parts = readdirSync(join(root, 'chapters'))
-  .filter((f) => f.endsWith('.html'))
-  .sort();
-
-if (!parts.length) {
-  console.error('chapters/ 下没有 html 片段');
+const wanted = process.argv[2];
+const targets = Object.entries(BOOKS).filter(([k]) => !wanted || k === wanted);
+if (!targets.length) {
+  console.error(`unknown book: ${wanted}. available: ${Object.keys(BOOKS).join(', ')}`);
   process.exit(2);
 }
 
-const html = `${head}\n${parts
-  .map((f) => readFileSync(join(root, 'chapters', f), 'utf8'))
-  .join('\n')}\n</body></html>`;
-
-const htmlPath = join(outDir, '_primer.html');
-writeFileSync(htmlPath, html);
+const head = readFileSync(join(root, 'style.html'), 'utf8');
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: 'new',
   args: ['--no-sandbox', '--font-render-hinting=none'],
 });
+let failed = false;
+
+for (const [name, book] of targets) {
+const TITLE = book.title;
+const PDF = book.pdf;
+const parts = readdirSync(join(root, book.dir))
+  .filter((f) => f.endsWith('.html'))
+  .sort();
+
+if (!parts.length) {
+  console.error(`${book.dir}/ 下没有 html 片段`);
+  process.exit(2);
+}
+
+const html = `${head}\n${parts
+  .map((f) => readFileSync(join(root, book.dir, f), 'utf8'))
+  .join('\n')}\n</body></html>`;
+
+const htmlPath = join(outDir, `_${name}.html`);
+writeFileSync(htmlPath, html);
 
 const page = await browser.newPage();
 await page.goto('file://' + htmlPath, { waitUntil: 'networkidle0' });
@@ -70,25 +92,29 @@ await page.pdf({
   path: pdfPath,
   format: 'A4',
   printBackground: true,
-  margin: { top: '22mm', bottom: '20mm', left: '24mm', right: '24mm' },
+  margin: { top: '19mm', bottom: '17mm', left: '20mm', right: '20mm' },
   displayHeaderFooter: true,
   headerTemplate: `<div style="width:100%;font-family:sans-serif;font-size:8pt;color:#999;
-    padding:0 24mm;display:flex;justify-content:space-between;">
+    padding:0 20mm;display:flex;justify-content:space-between;">
     <span>${TITLE}</span><span></span></div>`,
   footerTemplate: `<div style="width:100%;font-family:sans-serif;font-size:8.5pt;color:#666;
-    padding:0 24mm;text-align:center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
+    padding:0 20mm;text-align:center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
 });
 await page.close();
-await browser.close();
+
 
 const kb = Math.round(statSync(pdfPath).size / 1024);
-console.log(`${parts.length} 章片段 -> ${PDF} (${kb}KB)`);
+console.log(`[${name}] ${parts.length} 章片段 -> ${PDF} (${kb}KB)`);
 console.log(`术语框 ${report.terms} 个`);
 if (report.dupes.length) console.log(`  重复术语: ${report.dupes.join(', ')}`);
 if (report.overflow.length) {
   console.log('  横向溢出:');
   report.overflow.forEach((o) => console.log(`    ${o}`));
-  process.exitCode = 1;
+  failed = true;
 } else {
   console.log('  横向溢出: 无');
 }
+}
+
+await browser.close();
+if (failed) process.exitCode = 1;
