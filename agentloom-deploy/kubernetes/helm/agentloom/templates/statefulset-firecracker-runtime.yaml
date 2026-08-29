@@ -7,8 +7,8 @@ metadata:
     {{- include "agentloom.labels" . | nindent 4 }}
     app.kubernetes.io/component: firecracker-runtime
 spec:
-  serviceName: {{ include "agentloom.firecrackerRuntimeFullname" . }}
-  replicas: 1
+  serviceName: {{ include "agentloom.firecrackerRuntimeHeadlessFullname" . }}
+  replicas: {{ .Values.firecrackerRuntime.replicas | default 1 }}
   selector:
     matchLabels:
       {{- include "agentloom.selectorLabels" . | nindent 6 }}
