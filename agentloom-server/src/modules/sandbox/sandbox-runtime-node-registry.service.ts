@@ -31,6 +31,13 @@ export interface NodeProbeResult {
   capacity?: CapacitySnapshot;
 }
 
+/** 注册表意图 + manager 实况，供管理 API 列表直接呈现。 */
+export interface SandboxRuntimeNodeStatus {
+  node: SandboxRuntimeNode;
+  healthy: boolean;
+  capacity?: CapacitySnapshot;
+}
+
 export interface CreateSandboxNodeInput {
   id: string;
   baseUrl: string;
@@ -46,8 +53,6 @@ export interface UpdateSandboxNodeInput {
 
 const NODE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const CACHE_TTL_MS = 10_000;
-/** miss 时强制刷新的最小间隔，避免未知 handle 打成 DB 热循环。 */
-const MISS_REFRESH_DEBOUNCE_MS = 1_000;
 const PROBE_TIMEOUT_MS = 3_000;
 
 /**
@@ -109,6 +114,17 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
       .orderBy(schema.sandboxRuntimeNodes.id);
   }
 
+  /** 管理 API 列表：逐节点并行探针，让运维直接看到实况而非注册表意图。 */
+  async listNodeStatuses(): Promise<SandboxRuntimeNodeStatus[]> {
+    const nodes = await this.listNodes();
+    return Promise.all(
+      nodes.map(async (node) => {
+        const probe = await this.probeNode(node);
+        return { node, healthy: probe.healthy, capacity: probe.capacity };
+      }),
+    );
+  }
+
   /** 调度候选：仅 active。draining 保留存量 VM 但不再接新，disabled 完全下线。 */
   async listSchedulable(): Promise<SandboxRuntimeNode[]> {
     const nodes = await this.loadCache();
@@ -116,14 +132,15 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
   }
 
   async getNode(nodeId: string): Promise<SandboxRuntimeNode | undefined> {
+    const reusedSnapshot =
+      this.cache !== undefined &&
+      Date.now() - this.cacheLoadedAt < CACHE_TTL_MS;
     const cached = (await this.loadCache()).get(nodeId);
-    if (cached) return cached;
-    // 另一进程刚注册的节点可能还没进本进程缓存；miss 才刷新，带去抖动保护。
-    if (Date.now() - this.cacheLoadedAt > MISS_REFRESH_DEBOUNCE_MS) {
-      this.invalidate();
-      return (await this.loadCache()).get(nodeId);
-    }
-    return undefined;
+    if (cached || !reusedSnapshot) return cached;
+    // 复用快照上没命中：可能是别的进程刚注册的节点，重查一次再判死。
+    // 刚从 DB 加载过的快照没必要重查——结果必然相同。
+    this.invalidate();
+    return (await this.loadCache()).get(nodeId);
   }
 
   /** handle 路由用：解析不到节点即 fail-closed，绝不回退到"某个"节点。 */
@@ -190,6 +207,41 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
       .returning({ id: schema.sandboxRuntimeNodes.id });
     this.invalidate();
     if (deleted.length === 0) throw new SandboxNodeNotFoundException(nodeId);
+  }
+
+  /**
+   * 带前置条件的下线：必须先 disable（避免删到还在接新请求的节点），且节点上
+   * 不能还有 microVM。
+   *
+   * 占用判定用 manager 实况而非扫 `sandbox_sessions`：后者受 RLS 约束，跨租户
+   * 计数必然失真，会把"有别的租户 VM 在跑"误判成空节点。
+   */
+  async removeNode(nodeId: string, force: boolean): Promise<void> {
+    const [node] = await this.db
+      .select()
+      .from(schema.sandboxRuntimeNodes)
+      .where(eq(schema.sandboxRuntimeNodes.id, nodeId))
+      .limit(1);
+    if (!node) throw new SandboxNodeNotFoundException(nodeId);
+    if (node.status !== 'disabled') {
+      throw new SandboxNodeConflictException(
+        `Sandbox runtime node ${nodeId} is ${node.status}; PATCH status to "disabled" before deleting it`,
+      );
+    }
+    const probe = await this.probeNode(node);
+    if (probe.healthy) {
+      const vmsUsed = probe.capacity?.vmsUsed ?? 0;
+      if (vmsUsed > 0) {
+        throw new SandboxNodeConflictException(
+          `Sandbox runtime node ${nodeId} still hosts ${vmsUsed} microVM(s); destroy them before deleting the node`,
+        );
+      }
+    } else if (!force) {
+      throw new SandboxNodeConflictException(
+        `Sandbox runtime node ${nodeId} is unreachable, so its microVMs cannot be counted; retry with force=true to delete anyway`,
+      );
+    }
+    await this.deleteNode(nodeId);
   }
 
   /**

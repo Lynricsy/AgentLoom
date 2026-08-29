@@ -11,6 +11,7 @@ import { SandboxController } from './sandbox.controller';
 import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
 import { PiConfigGeneratorService } from './pi-config-generator.service';
 import { SANDBOX_RUNTIME_DRIVER } from './sandbox-runtime-driver.port';
+import { SandboxNodeController } from './sandbox-node.controller';
 import { SandboxRuntimeNodeRegistryService } from './sandbox-runtime-node-registry.service';
 import { WorkspaceRuntimeLeaseService } from './workspace-runtime-lease.service';
 
@@ -28,7 +29,7 @@ import { WorkspaceRuntimeLeaseService } from './workspace-runtime-lease.service'
       },
     }),
   ],
-  controllers: [SandboxController],
+  controllers: [SandboxController, SandboxNodeController],
   providers: [
     SandboxService,
     SandboxRuntimeNodeRegistryService,
