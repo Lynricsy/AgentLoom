@@ -1209,6 +1209,9 @@
         "responses": {
           "201": {
             "description": "工作流定义导入成功"
+          },
+          "422": {
+            "description": "导入工作流文件校验失败"
           }
         },
         "summary": "导入工作流定义",
@@ -8721,6 +8724,46 @@
         ]
       }
     },
+    "/api/v1/agent-definitions/{id}/versions/{versionId}/rollback": {
+      "post": {
+        "operationId": "AgentDefinition_rollback",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Agent 定义 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "required": true,
+            "in": "path",
+            "description": "Agent 版本 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "草稿恢复成功"
+          },
+          "404": {
+            "description": "Agent 或版本不存在"
+          },
+          "409": {
+            "description": "Agent 已归档"
+          }
+        },
+        "summary": "将 Agent 编辑草稿恢复到指定版本",
+        "tags": [
+          "Agent Definitions"
+        ]
+      }
+    },
     "/api/v1/agent-definitions/{id}/publish": {
       "post": {
         "operationId": "AgentDefinition_publish",
@@ -9170,6 +9213,9 @@
         "responses": {
           "202": {
             "description": "对话工具权限解析已接受"
+          },
+          "409": {
+            "description": "工具调用已不在等待审批状态"
           }
         },
         "summary": "解析对话沙箱中的工具权限（批准/拒绝）",
@@ -10937,7 +10983,14 @@
         ],
         "responses": {
           "200": {
-            "description": "查询成功"
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAuditListResponseSwaggerDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11751,9 +11804,9 @@
         ]
       }
     },
-    "/api/v1/generated-apps/{appId}/generation-runs/start": {
-      "post": {
-        "operationId": "GeneratedApp_startGenerationRun",
+    "/api/v1/generated-apps/{appId}/generation-runs/{runId}": {
+      "get": {
+        "operationId": "GeneratedApp_findGenerationRun",
         "parameters": [
           {
             "name": "appId",
@@ -11762,33 +11815,29 @@
             "schema": {
               "type": "string"
             }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StartGeneratedAppGenerationRunDto"
-              }
+          },
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
-          "201": {
-            "description": "生成门禁运行器已完成同步切片"
+          "200": {
+            "description": "生成应用运行台账详情"
           },
           "404": {
-            "description": "生成应用任务不存在"
+            "description": "生成应用任务或运行台账不存在"
           }
         },
-        "summary": "启动同步轻量生成门禁运行器",
+        "summary": "获取生成应用自动开发运行台账详情",
         "tags": [
           "Generated Apps"
         ]
-      }
-    },
-    "/api/v1/generated-apps/{appId}/generation-runs/{runId}": {
+      },
       "patch": {
         "operationId": "GeneratedApp_updateGenerationRun",
         "parameters": [
@@ -11828,6 +11877,43 @@
           }
         },
         "summary": "更新生成应用自动开发运行台账状态",
+        "tags": [
+          "Generated Apps"
+        ]
+      }
+    },
+    "/api/v1/generated-apps/{appId}/generation-runs/start": {
+      "post": {
+        "operationId": "GeneratedApp_startGenerationRun",
+        "parameters": [
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartGeneratedAppGenerationRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "生成门禁运行器已完成同步切片"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
+          }
+        },
+        "summary": "启动同步轻量生成门禁运行器",
         "tags": [
           "Generated Apps"
         ]
@@ -11964,6 +12050,47 @@
       }
     },
     "/api/v1/generated-apps/{appId}/generation-runs/{runId}/repair-attempts/{repairAttemptId}": {
+      "get": {
+        "operationId": "GeneratedApp_findRepairAttempt",
+        "parameters": [
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repairAttemptId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "生成应用修复尝试详情"
+          },
+          "404": {
+            "description": "修复尝试不存在"
+          }
+        },
+        "summary": "获取生成应用修复尝试详情",
+        "tags": [
+          "Generated Apps"
+        ]
+      },
       "patch": {
         "operationId": "GeneratedApp_updateRepairAttempt",
         "parameters": [
@@ -12011,6 +12138,47 @@
           }
         },
         "summary": "更新生成应用修复尝试台账状态",
+        "tags": [
+          "Generated Apps"
+        ]
+      },
+      "delete": {
+        "operationId": "GeneratedApp_deleteRepairAttempt",
+        "parameters": [
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repairAttemptId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "生成应用修复尝试已删除"
+          },
+          "404": {
+            "description": "修复尝试不存在"
+          }
+        },
+        "summary": "删除生成应用修复尝试",
         "tags": [
           "Generated Apps"
         ]
@@ -12426,6 +12594,66 @@
         "tags": [
           "Generated Apps"
         ]
+      },
+      "patch": {
+        "operationId": "GeneratedApp_update",
+        "parameters": [
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGeneratedAppDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成应用展示信息已更新"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
+          }
+        },
+        "summary": "更新生成应用名称或描述",
+        "tags": [
+          "Generated Apps"
+        ]
+      },
+      "delete": {
+        "operationId": "GeneratedApp_delete",
+        "parameters": [
+          {
+            "name": "appId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "生成应用任务已删除"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
+          }
+        },
+        "summary": "永久删除生成应用任务",
+        "tags": [
+          "Generated Apps"
+        ]
       }
     },
     "/api/v1/generated-apps/{appId}/gates": {
@@ -12573,6 +12801,9 @@
           },
           "409": {
             "description": "生成应用不再满足发布门槛"
+          },
+          "422": {
+            "description": "提交内容未通过运行时表单契约或 Workflow 输入契约校验"
           }
         },
         "summary": "公开生成应用提交终端用户输入",
@@ -12947,6 +13178,133 @@
         "summary": "Get sandbox logs",
         "tags": [
           "Sandboxes"
+        ]
+      }
+    },
+    "/api/v1/sandbox-nodes": {
+      "get": {
+        "operationId": "SandboxNode_listNodes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxNodeListResponseSwaggerDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List sandbox runtime nodes with live capacity",
+        "tags": [
+          "Sandbox Runtime Nodes"
+        ]
+      },
+      "post": {
+        "operationId": "SandboxNode_createNode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSandboxNodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxNodeEnvelopeSwaggerDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Register a sandbox runtime node",
+        "tags": [
+          "Sandbox Runtime Nodes"
+        ]
+      }
+    },
+    "/api/v1/sandbox-nodes/{nodeId}": {
+      "patch": {
+        "operationId": "SandboxNode_updateNode",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSandboxNodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxNodeEnvelopeSwaggerDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update a sandbox runtime node",
+        "tags": [
+          "Sandbox Runtime Nodes"
+        ]
+      },
+      "delete": {
+        "operationId": "SandboxNode_deleteNode",
+        "parameters": [
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sandbox runtime node deleted"
+          }
+        },
+        "summary": "Deregister a disabled sandbox runtime node",
+        "tags": [
+          "Sandbox Runtime Nodes"
         ]
       }
     }
@@ -17550,7 +17908,8 @@
         "properties": {
           "pluginDbId": {
             "type": "string",
-            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "title": {
             "type": "string",
@@ -17632,7 +17991,8 @@
         "properties": {
           "pluginDbId": {
             "type": "string",
-            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "title": {
             "type": "string",
@@ -20290,6 +20650,134 @@
           "targetVersionId"
         ]
       },
+      "MemoryAuditListResponseSwaggerDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "instanceId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "nodeId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "nodeName": {
+                  "type": "string"
+                },
+                "versionId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "operationType": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete",
+                    "rollback"
+                  ]
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "actorId": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "changeSummary": {
+                  "type": "string"
+                },
+                "previousValue": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "currentValue": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "reviewStatus": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected"
+                  ]
+                },
+                "metadata": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "id",
+                "instanceId",
+                "nodeId",
+                "nodeName",
+                "versionId",
+                "operationType",
+                "actor",
+                "actorId",
+                "timestamp",
+                "changeSummary",
+                "previousValue",
+                "currentValue",
+                "reviewStatus",
+                "metadata"
+              ]
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "pageSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "totalPages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "page",
+              "pageSize",
+              "total",
+              "totalPages"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
       "ReviewVersionDto": {
         "type": "object",
         "properties": {
@@ -20757,6 +21245,22 @@
           "ids"
         ]
       },
+      "UpdateGeneratedAppDto": {
+        "type": "object",
+        "properties": {
+          "appName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "additionalProperties": false
+      },
       "RecordGeneratedAppGateResultsDto": {
         "type": "object",
         "properties": {
@@ -20848,7 +21352,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-08-26T03:21:33.711Z",
+                  "default": "2026-08-29T13:25:46.249Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
@@ -20948,6 +21452,199 @@
         "required": [
           "name"
         ]
+      },
+      "SandboxNodeListResponseSwaggerDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "baseUrl": {
+                  "type": "string"
+                },
+                "serverName": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "draining",
+                    "disabled"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "healthy": {
+                  "type": "boolean"
+                },
+                "capacity": {
+                  "type": "object",
+                  "properties": {
+                    "vmsUsed": {
+                      "type": "number"
+                    },
+                    "vmsLimit": {
+                      "type": "number"
+                    },
+                    "vcpuUsed": {
+                      "type": "number"
+                    },
+                    "vcpuLimit": {
+                      "type": "number"
+                    },
+                    "memoryMiBUsed": {
+                      "type": "number"
+                    },
+                    "memoryMiBLimit": {
+                      "type": "number"
+                    },
+                    "diskGiBUsed": {
+                      "type": "number"
+                    },
+                    "diskGiBLimit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "vmsUsed",
+                    "vmsLimit",
+                    "vcpuUsed",
+                    "vcpuLimit",
+                    "memoryMiBUsed",
+                    "memoryMiBLimit",
+                    "diskGiBUsed",
+                    "diskGiBLimit"
+                  ],
+                  "nullable": true
+                }
+              },
+              "required": [
+                "id",
+                "baseUrl",
+                "serverName",
+                "status",
+                "createdAt",
+                "updatedAt",
+                "healthy",
+                "capacity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "CreateSandboxNodeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+          },
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 256,
+            "format": "uri"
+          },
+          "serverName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "draining",
+              "disabled"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "baseUrl"
+        ]
+      },
+      "SandboxNodeEnvelopeSwaggerDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "baseUrl": {
+                "type": "string"
+              },
+              "serverName": {
+                "type": "string",
+                "nullable": true
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "draining",
+                  "disabled"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "baseUrl",
+              "serverName",
+              "status",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "UpdateSandboxNodeDto": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "maxLength": 256,
+            "format": "uri"
+          },
+          "serverName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "draining",
+              "disabled"
+            ]
+          }
+        }
       }
     }
   }

@@ -2766,6 +2766,49 @@ export interface CreateSandboxDto {
 /**
  * 
  * @export
+ * @interface CreateSandboxNodeDto
+ */
+export interface CreateSandboxNodeDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateSandboxNodeDto
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateSandboxNodeDto
+     */
+    baseUrl: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateSandboxNodeDto
+     */
+    serverName?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateSandboxNodeDto
+     */
+    status?: CreateSandboxNodeDtoStatusEnum;
+}
+
+
+/**
+ * @export
+ */
+export const CreateSandboxNodeDtoStatusEnum = {
+    Active: 'active',
+    Draining: 'draining',
+    Disabled: 'disabled'
+} as const;
+export type CreateSandboxNodeDtoStatusEnum = typeof CreateSandboxNodeDtoStatusEnum[keyof typeof CreateSandboxNodeDtoStatusEnum];
+
+/**
+ * 
+ * @export
  * @interface CreateTriggerDto
  */
 export interface CreateTriggerDto {
@@ -3763,6 +3806,170 @@ export interface LoginDto {
      * @memberof LoginDto
      */
     password: string;
+}
+/**
+ * 
+ * @export
+ * @interface MemoryAuditListResponseSwaggerDto
+ */
+export interface MemoryAuditListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<MemoryAuditListResponseSwaggerDtoDataInner>}
+     * @memberof MemoryAuditListResponseSwaggerDto
+     */
+    data: Array<MemoryAuditListResponseSwaggerDtoDataInner>;
+    /**
+     * 
+     * @type {MemoryAuditListResponseSwaggerDtoMeta}
+     * @memberof MemoryAuditListResponseSwaggerDto
+     */
+    meta: MemoryAuditListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface MemoryAuditListResponseSwaggerDtoDataInner
+ */
+export interface MemoryAuditListResponseSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    instanceId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    nodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    nodeName: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    versionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    operationType: MemoryAuditListResponseSwaggerDtoDataInnerOperationTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    actor: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    actorId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    timestamp: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    changeSummary: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    previousValue: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    currentValue: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    reviewStatus: MemoryAuditListResponseSwaggerDtoDataInnerReviewStatusEnum;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof MemoryAuditListResponseSwaggerDtoDataInner
+     */
+    metadata: { [key: string]: any; };
+}
+
+
+/**
+ * @export
+ */
+export const MemoryAuditListResponseSwaggerDtoDataInnerOperationTypeEnum = {
+    Create: 'create',
+    Update: 'update',
+    Delete: 'delete',
+    Rollback: 'rollback'
+} as const;
+export type MemoryAuditListResponseSwaggerDtoDataInnerOperationTypeEnum = typeof MemoryAuditListResponseSwaggerDtoDataInnerOperationTypeEnum[keyof typeof MemoryAuditListResponseSwaggerDtoDataInnerOperationTypeEnum];
+
+/**
+ * @export
+ */
+export const MemoryAuditListResponseSwaggerDtoDataInnerReviewStatusEnum = {
+    Pending: 'pending',
+    Approved: 'approved',
+    Rejected: 'rejected'
+} as const;
+export type MemoryAuditListResponseSwaggerDtoDataInnerReviewStatusEnum = typeof MemoryAuditListResponseSwaggerDtoDataInnerReviewStatusEnum[keyof typeof MemoryAuditListResponseSwaggerDtoDataInnerReviewStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface MemoryAuditListResponseSwaggerDtoMeta
+ */
+export interface MemoryAuditListResponseSwaggerDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof MemoryAuditListResponseSwaggerDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof MemoryAuditListResponseSwaggerDtoMeta
+     */
+    pageSize: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof MemoryAuditListResponseSwaggerDtoMeta
+     */
+    total: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof MemoryAuditListResponseSwaggerDtoMeta
+     */
+    totalPages: number;
 }
 /**
  * 
@@ -5212,6 +5419,209 @@ export type RunWorkflowDtoLaunchSourceEnum = typeof RunWorkflowDtoLaunchSourceEn
 /**
  * 
  * @export
+ * @interface SandboxNodeEnvelopeSwaggerDto
+ */
+export interface SandboxNodeEnvelopeSwaggerDto {
+    /**
+     * 
+     * @type {SandboxNodeEnvelopeSwaggerDtoData}
+     * @memberof SandboxNodeEnvelopeSwaggerDto
+     */
+    data: SandboxNodeEnvelopeSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface SandboxNodeEnvelopeSwaggerDtoData
+ */
+export interface SandboxNodeEnvelopeSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeEnvelopeSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeEnvelopeSwaggerDtoData
+     */
+    baseUrl: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeEnvelopeSwaggerDtoData
+     */
+    serverName: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeEnvelopeSwaggerDtoData
+     */
+    status: SandboxNodeEnvelopeSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeEnvelopeSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeEnvelopeSwaggerDtoData
+     */
+    updatedAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const SandboxNodeEnvelopeSwaggerDtoDataStatusEnum = {
+    Active: 'active',
+    Draining: 'draining',
+    Disabled: 'disabled'
+} as const;
+export type SandboxNodeEnvelopeSwaggerDtoDataStatusEnum = typeof SandboxNodeEnvelopeSwaggerDtoDataStatusEnum[keyof typeof SandboxNodeEnvelopeSwaggerDtoDataStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface SandboxNodeListResponseSwaggerDto
+ */
+export interface SandboxNodeListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<SandboxNodeListResponseSwaggerDtoDataInner>}
+     * @memberof SandboxNodeListResponseSwaggerDto
+     */
+    data: Array<SandboxNodeListResponseSwaggerDtoDataInner>;
+}
+/**
+ * 
+ * @export
+ * @interface SandboxNodeListResponseSwaggerDtoDataInner
+ */
+export interface SandboxNodeListResponseSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    baseUrl: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    serverName: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    status: SandboxNodeListResponseSwaggerDtoDataInnerStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    healthy: boolean;
+    /**
+     * 
+     * @type {SandboxNodeListResponseSwaggerDtoDataInnerCapacity}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInner
+     */
+    capacity: SandboxNodeListResponseSwaggerDtoDataInnerCapacity | null;
+}
+
+
+/**
+ * @export
+ */
+export const SandboxNodeListResponseSwaggerDtoDataInnerStatusEnum = {
+    Active: 'active',
+    Draining: 'draining',
+    Disabled: 'disabled'
+} as const;
+export type SandboxNodeListResponseSwaggerDtoDataInnerStatusEnum = typeof SandboxNodeListResponseSwaggerDtoDataInnerStatusEnum[keyof typeof SandboxNodeListResponseSwaggerDtoDataInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+ */
+export interface SandboxNodeListResponseSwaggerDtoDataInnerCapacity {
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    vmsUsed: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    vmsLimit: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    vcpuUsed: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    vcpuLimit: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    memoryMiBUsed: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    memoryMiBLimit: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    diskGiBUsed: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof SandboxNodeListResponseSwaggerDtoDataInnerCapacity
+     */
+    diskGiBLimit: number;
+}
+/**
+ * 
+ * @export
  * @interface SendMessageDto
  */
 export interface SendMessageDto {
@@ -6115,6 +6525,25 @@ export interface UpdateConversationDto {
      * @memberof UpdateConversationDto
      */
     metadata?: { [key: string]: any; };
+}
+/**
+ * 
+ * @export
+ * @interface UpdateGeneratedAppDto
+ */
+export interface UpdateGeneratedAppDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateGeneratedAppDto
+     */
+    appName?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateGeneratedAppDto
+     */
+    description?: string;
 }
 /**
  * 
@@ -7033,6 +7462,43 @@ export interface UpdateReusableBlockDtoMetadata {
      */
     exportedAt?: string;
 }
+/**
+ * 
+ * @export
+ * @interface UpdateSandboxNodeDto
+ */
+export interface UpdateSandboxNodeDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateSandboxNodeDto
+     */
+    baseUrl?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateSandboxNodeDto
+     */
+    serverName?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateSandboxNodeDto
+     */
+    status?: UpdateSandboxNodeDtoStatusEnum;
+}
+
+
+/**
+ * @export
+ */
+export const UpdateSandboxNodeDtoStatusEnum = {
+    Active: 'active',
+    Draining: 'draining',
+    Disabled: 'disabled'
+} as const;
+export type UpdateSandboxNodeDtoStatusEnum = typeof UpdateSandboxNodeDtoStatusEnum[keyof typeof UpdateSandboxNodeDtoStatusEnum];
+
 /**
  * 
  * @export
