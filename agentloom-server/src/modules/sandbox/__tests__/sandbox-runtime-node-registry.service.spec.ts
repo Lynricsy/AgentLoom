@@ -517,6 +517,40 @@ describe('SandboxRuntimeNodeRegistryService', () => {
         SandboxNodeAdminForbiddenException,
       );
     });
+
+    /**
+     * `APP_DEPLOYMENT_MODE` 的默认值 saas 由 Zod 合成，只进 ConfigService，
+     * 不回写 process.env——合法省略该变量时读到的是 undefined。若按
+     * 「不等于 saas 就放行」实现，任意租户 owner/admin 都能操纵全局节点池。
+     */
+    it('变量缺省时按 saas 处理，仍然拒绝（fail-closed）', () => {
+      delete process.env.APP_DEPLOYMENT_MODE;
+      const service = createService(createDb());
+
+      expect(() => service.assertNodeAdmin(TENANT_ID)).toThrow(
+        SandboxNodeAdminForbiddenException,
+      );
+    });
+
+    it('变量缺省 + 白名单命中才放行', () => {
+      delete process.env.APP_DEPLOYMENT_MODE;
+      process.env.APP_SANDBOX_NODE_ADMIN_TENANT_IDS = TENANT_ID;
+      const service = createService(createDb());
+
+      expect(() => service.assertNodeAdmin(TENANT_ID)).not.toThrow();
+      expect(() => service.assertNodeAdmin('someone-else')).toThrow(
+        SandboxNodeAdminForbiddenException,
+      );
+    });
+
+    it('非法/未知 mode 值也不放行', () => {
+      process.env.APP_DEPLOYMENT_MODE = 'PRIVATE';
+      const service = createService(createDb());
+
+      expect(() => service.assertNodeAdmin(TENANT_ID)).toThrow(
+        SandboxNodeAdminForbiddenException,
+      );
+    });
   });
 });
 
