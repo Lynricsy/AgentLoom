@@ -68,6 +68,7 @@ func NewServer(runtimeManager *manager.Manager, config ServerConfig, logger *slo
 	server.mux.HandleFunc("GET /healthz", server.health)
 	server.mux.HandleFunc("GET /readyz", server.health)
 	server.mux.HandleFunc("GET /metrics", server.metrics)
+	server.mux.HandleFunc("GET /v1/capacity", server.capacity)
 	server.mux.HandleFunc("POST /v1/vms", server.create)
 	server.mux.HandleFunc("GET /v1/vms/{id}", server.inspect)
 	server.mux.HandleFunc("POST /v1/vms/{action}", server.action)
@@ -103,6 +104,10 @@ func (server *Server) metrics(response http.ResponseWriter, _ *http.Request) {
 	snapshot := server.manager.Capacity()
 	response.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = fmt.Fprintf(response, "agentloom_firecracker_vms %d\nagentloom_firecracker_vms_limit %d\nagentloom_firecracker_vcpu %.3f\nagentloom_firecracker_memory_mib %d\nagentloom_firecracker_disk_gib %d\n", snapshot.VMsUsed, snapshot.VMsLimit, snapshot.VCPUUsed, snapshot.MemoryMiBUsed, snapshot.DiskGiBUsed)
+}
+
+func (server *Server) capacity(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, http.StatusOK, server.manager.Capacity())
 }
 
 func (server *Server) create(response http.ResponseWriter, request *http.Request) {
