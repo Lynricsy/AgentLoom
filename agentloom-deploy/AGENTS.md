@@ -10,7 +10,8 @@
 - `reverse-proxy` 是 Compose 唯一公开 Web 入口，默认绑定宿主 `8080`；`/api/`、`/socket.io/` 转发 server，页面转发 studio，文档位于 `/documentation/`。
 - `server` 与 `worker` 共用 server 镜像和 Nest 入口；callback 地址分别指向各自容器，不能合并成同一地址。
 - `postgres`、`redis`、`minio`、`qdrant` 保存业务数据；`createbuckets` 是一次性 MinIO bucket 初始化任务。
-- `firecracker-runtime` 是单实例特权 control plane，持有 KVM、TUN、host PID/cgroup、CNI/nft 和 mutable VM disk；server/worker 仅持有只读 mTLS client 凭据。
+- `firecracker-runtime` 在 Compose 中是单实例特权 control plane，持有 KVM、TUN、host PID/cgroup、CNI/nft 和 mutable VM disk；server/worker 仅持有只读 mTLS client 凭据。Helm 的 `firecrackerRuntime.replicas` 可大于 1，每个副本是一个独立沙箱运行时节点。
+- 沙箱运行时节点登记在 `sandbox_runtime_nodes` 表并经 `/api/v1/sandbox-nodes` 管理；`sandbox_sessions.runtime_handle` 为 `<nodeId>/<managerHandle>`，创建时按 `GET /v1/capacity` 探针择优，其余操作按 handle 前缀路由回原节点。表为空时以 `APP_FIRECRACKER_RUNTIME_URL` 播种 `default`，表非空后不再回写。
 - `frontend_net` 连接入口与 Web 应用，`app_net`、`data_net` 为 internal network，`sandbox_egress_net` 提供 guest 出站；`supabase_net` 是名为 `supabase-shared` 的 external network。
 - runtime 的 8443 仅在 Compose 网络内暴露并要求 mTLS；sandbox 校验或 runtime 不可用时不回退到 Docker/宿主执行。
 

@@ -33,6 +33,9 @@ env:
     APP_FIRECRACKER_RUNTIME_SERVER_NAME: firecracker-runtime
     APP_SANDBOX_MAINTENANCE_MODE: "false"
     APP_SANDBOX_ROLLBACK_HOURS: "168"
+    # 允许管理 /api/v1/sandbox-nodes 的租户 ID（逗号分隔）。
+    # saas 模式留空即全部拒绝；private 模式无条件放行。
+    APP_SANDBOX_NODE_ADMIN_TENANT_IDS: ""
   server:
     APP_JWT_SECRET: change-me-jwt-secret
     APP_MASTER_ENCRYPTION_KEY: REPLACE_WITH_BASE64_32_BYTES
