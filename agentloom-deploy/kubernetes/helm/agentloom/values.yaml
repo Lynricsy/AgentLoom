@@ -83,6 +83,11 @@ worker:
 
 firecrackerRuntime:
   enabled: true
+  # 多副本 = 多个沙箱运行时节点。每个 pod 需要所在 K8s node 具备 KVM，且各自
+  # 拿到独立 PVC（volumeClaimTemplates 已保证）。副本以 headless service 的
+  # 稳定 DNS 名 <pod>.<headless> 注册到 /api/v1/sandbox-nodes，
+  # 证书 SAN 由 PKI 脚本的 FIRECRACKER_MANAGER_EXTRA_SANS 覆盖。
+  replicas: 1
   image:
     repository: agentloom/firecracker-runtime
     tag: 1.16.1

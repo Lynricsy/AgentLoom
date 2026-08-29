@@ -1,0 +1,24 @@
+{{- if .Values.firecrackerRuntime.enabled }}
+# StatefulSet 的 governing service。存在它才有 <pod>.<headless>.<ns>.svc 这种
+# 稳定的 per-pod DNS 名——多副本时每个沙箱运行时节点必须能被单独寻址，
+# 因为 runtime handle 已经把节点身份编码进去，请求必须回到原来那台机器。
+# 上层 ClusterIP service 保留：单副本默认路径与负载均衡语义不变。
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentloom.firecrackerRuntimeHeadlessFullname" . }}
+  labels:
+    {{- include "agentloom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: firecracker-runtime
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "agentloom.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: firecracker-runtime
+  ports:
+    - name: https
+      port: {{ .Values.firecrackerRuntime.service.port }}
+      targetPort: https
+      protocol: TCP
+{{- end }}
