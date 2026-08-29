@@ -1,5 +1,18 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import { Test } from '@nestjs/testing';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import { ZodValidationPipe } from 'nestjs-zod';
 
 import type { SandboxRuntimeNode } from '../../../database/schema';
 import { SandboxNodeController } from '../sandbox-node.controller';
@@ -173,5 +186,94 @@ describe('SandboxNodeController', () => {
       controller.deleteNode(TENANT_ID, 'node-a', { force: false }),
     ).rejects.toBeInstanceOf(SandboxNodeConflictException);
     expect(registry.removeNode).toHaveBeenLastCalledWith('node-a', false);
+  });
+
+  /**
+   * 经真实 HTTP 管道跑一遍：DELETE 的 query schema 带 transform
+   * （'true' → boolean），若 handler 上再挂一道显式 ZodValidationPipe，
+   * 全局 pipe 转换后的 boolean 会撞上 string enum 而必然 422。
+   * 直接调 controller 方法绕过 pipe，看不到这个回归，故必须走 HTTP。
+   */
+  describe('经全局 ZodValidationPipe 的 HTTP 管道', () => {
+    let app: NestFastifyApplication;
+
+    beforeEach(async () => {
+      const module = await Test.createTestingModule({
+        controllers: [SandboxNodeController],
+        providers: [
+          { provide: SandboxRuntimeNodeRegistryService, useValue: registry },
+        ],
+      }).compile();
+      app = module.createNestApplication<NestFastifyApplication>(
+        new FastifyAdapter(),
+      );
+      app.useGlobalPipes(new ZodValidationPipe());
+      await app.init();
+      await app.getHttpAdapter().getInstance().ready();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('force 省略时按 false 解析，显式 true/false 都被接受', async () => {
+      registry.removeNode.mockResolvedValue(undefined);
+
+      for (const [query, expected] of [
+        ['', false],
+        ['?force=false', false],
+        ['?force=true', true],
+      ] as const) {
+        const response = await app
+          .getHttpAdapter()
+          .getInstance()
+          .inject({ method: 'DELETE', url: `/sandbox-nodes/node-a${query}` });
+
+        expect(response.statusCode).toBe(204);
+        expect(registry.removeNode).toHaveBeenLastCalledWith(
+          'node-a',
+          expected,
+        );
+      }
+    });
+
+    it('非法 force 值被拒绝，不触达注册表', async () => {
+      const response = await app
+        .getHttpAdapter()
+        .getInstance()
+        .inject({ method: 'DELETE', url: '/sandbox-nodes/node-a?force=yes' });
+
+      expect(response.statusCode).toBe(400);
+      expect(registry.removeNode).not.toHaveBeenCalled();
+    });
+
+    it('创建请求经管道校验 id 与 https 基址', async () => {
+      registry.createNode.mockResolvedValue(makeNode('node-a'));
+
+      const rejected = await app
+        .getHttpAdapter()
+        .getInstance()
+        .inject({
+          method: 'POST',
+          url: '/sandbox-nodes',
+          payload: { id: 'Bad_Id', baseUrl: 'http://a.internal' },
+        });
+      expect(rejected.statusCode).toBe(400);
+      expect(registry.createNode).not.toHaveBeenCalled();
+
+      const accepted = await app
+        .getHttpAdapter()
+        .getInstance()
+        .inject({
+          method: 'POST',
+          url: '/sandbox-nodes',
+          payload: { id: 'node-a', baseUrl: 'https://a.internal:8443' },
+        });
+      expect(accepted.statusCode).toBe(201);
+      expect(registry.createNode).toHaveBeenCalledWith({
+        id: 'node-a',
+        baseUrl: 'https://a.internal:8443',
+      });
+    });
   });
 });
