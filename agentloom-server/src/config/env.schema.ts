@@ -96,6 +96,13 @@ const baseEnvSchema = z.object({
     .string()
     .min(1)
     .default('firecracker-runtime'),
+  /**
+   * 允许管理 `/api/v1/sandbox-nodes` 的租户 ID（逗号分隔 UUID）。
+   *
+   * 节点是跨租户共享的物理基础设施，saas 模式下默认空 = 全部 403，只能走 SQL——
+   * 这是有意的安全默认。private 模式只有一个租户，无条件放行。
+   */
+  APP_SANDBOX_NODE_ADMIN_TENANT_IDS: z.string().default(''),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
 });
 
