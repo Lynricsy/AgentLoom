@@ -11,6 +11,7 @@ import { SandboxController } from './sandbox.controller';
 import { SANDBOX_LIFECYCLE_QUEUE } from './sandbox.constants';
 import { PiConfigGeneratorService } from './pi-config-generator.service';
 import { SANDBOX_RUNTIME_DRIVER } from './sandbox-runtime-driver.port';
+import { SandboxRuntimeNodeRegistryService } from './sandbox-runtime-node-registry.service';
 import { WorkspaceRuntimeLeaseService } from './workspace-runtime-lease.service';
 
 @Module({
@@ -30,6 +31,7 @@ import { WorkspaceRuntimeLeaseService } from './workspace-runtime-lease.service'
   controllers: [SandboxController],
   providers: [
     SandboxService,
+    SandboxRuntimeNodeRegistryService,
     FirecrackerRuntimeService,
     {
       provide: SANDBOX_RUNTIME_DRIVER,
@@ -42,6 +44,7 @@ import { WorkspaceRuntimeLeaseService } from './workspace-runtime-lease.service'
   ],
   exports: [
     SandboxService,
+    SandboxRuntimeNodeRegistryService,
     FirecrackerRuntimeService,
     SANDBOX_RUNTIME_DRIVER,
     SandboxLifecycleProducer,

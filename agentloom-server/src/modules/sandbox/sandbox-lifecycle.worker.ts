@@ -1031,10 +1031,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       ...(typeof execution.runningState === 'string'
         ? {
             runningState: execution.runningState as
-              | 'idle'
-              | 'running'
-              | 'failed'
-              | 'cancelled',
+              'idle' | 'running' | 'failed' | 'cancelled',
           }
         : {}),
     };

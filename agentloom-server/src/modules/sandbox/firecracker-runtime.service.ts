@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
-import { Agent, fetch as undiciFetch, type RequestInit } from 'undici';
+import { fetch as undiciFetch, type RequestInit } from 'undici';
 
-import type { SandboxConfig } from '../../database/schema';
+import type { SandboxConfig, SandboxRuntimeNode } from '../../database/schema';
 import type {
   RuntimeProcess,
   RuntimeStats,
@@ -15,57 +14,107 @@ import type {
   DeleteRuntimeOptions,
   SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
-import { SandboxRuntimeNotFoundException } from './sandbox.exceptions';
+import {
+  composeRuntimeHandle,
+  splitRuntimeHandle,
+} from './sandbox-runtime-handle.util';
+import {
+  SandboxRuntimeNodeRegistryService,
+  type CapacitySnapshot,
+} from './sandbox-runtime-node-registry.service';
+import {
+  SandboxCreationException,
+  SandboxRuntimeNotFoundException,
+} from './sandbox.exceptions';
 
 interface RuntimeResponse {
   runtimeHandle: string;
   state: string;
 }
 
+/** 节点解析结果：manager 基址 + 该节点内的裸 handle。 */
+interface RuntimeTarget {
+  node: SandboxRuntimeNode;
+  managerHandle: string;
+}
+
 @Injectable()
 export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
   private readonly logger = new Logger(FirecrackerRuntimeService.name);
-  private readonly baseUrl = (
-    process.env.APP_FIRECRACKER_RUNTIME_URL ??
-    'https://firecracker-runtime:8443'
-  ).replace(/\/$/, '');
-  private dispatcher?: Agent;
 
+  constructor(private readonly registry: SandboxRuntimeNodeRegistryService) {}
+
+  /**
+   * 容量感知调度：探针筛出有余量的节点，按空闲内存比降序依次尝试。
+   *
+   * 返回的 handle 是复合格式 `<nodeId>/<managerHandle>`——manager 侧 handle 仍
+   * 是裸 sessionId，节点前缀纯属 server 侧编码，用于后续所有操作路由回原节点。
+   */
   async createRuntime(
     sessionId: string,
     config: SandboxConfig,
     _piContext?: CreateRuntimePiContext,
   ): Promise<{ runtimeHandle: string }> {
-    const response = await this.managerJson<RuntimeResponse>('/v1/vms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: sessionId,
-        cpu: config.cpu,
-        memoryMiB: config.memory,
-        diskGiB: config.disk,
-        lifecycleMode: config.lifecycleMode ?? 'session',
-        workspaceId: config.restoreWorkspaceId,
-      }),
+    const candidates = await this.pickNodes(config);
+    const body = JSON.stringify({
+      id: sessionId,
+      cpu: config.cpu,
+      memoryMiB: config.memory,
+      diskGiB: config.disk,
+      lifecycleMode: config.lifecycleMode ?? 'session',
+      workspaceId: config.restoreWorkspaceId,
     });
-    if (response.state === 'stopped') {
-      await this.startRuntime(response.runtimeHandle);
-    } else if (response.state !== 'running') {
-      throw new Error(`Firecracker runtime is ${response.state}`);
+    const tried: string[] = [];
+    for (const node of candidates) {
+      tried.push(node.id);
+      let response: RuntimeResponse;
+      try {
+        response = await this.managerJson<RuntimeResponse>(node, '/v1/vms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        });
+      } catch (error) {
+        // 503（节点满）与网络错误换下一个节点；其余状态码是配置/请求问题，
+        // 换节点只会把同一个错误重复 N 次，直接上抛。
+        if (isRetryableNodeFailure(error)) {
+          this.logger.warn(
+            `Sandbox runtime node ${node.id} rejected create: ${String(error)}`,
+          );
+          continue;
+        }
+        throw error;
+      }
+      const runtimeHandle = composeRuntimeHandle(
+        node.id,
+        response.runtimeHandle,
+      );
+      if (response.state === 'stopped') {
+        await this.startRuntime(runtimeHandle);
+      } else if (response.state !== 'running') {
+        throw new Error(`Firecracker runtime is ${response.state}`);
+      }
+      return { runtimeHandle };
     }
-    return { runtimeHandle: response.runtimeHandle };
+    throw new SandboxCreationException(
+      `All sandbox runtime nodes exhausted (${tried.join(', ')})`,
+    );
   }
 
   async startRuntime(runtimeHandle: string): Promise<void> {
+    const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
     await this.managerRequest(
-      `/v1/vms/${encodeURIComponent(runtimeHandle)}:start`,
+      node,
+      `/v1/vms/${encodeURIComponent(managerHandle)}:start`,
       { method: 'POST' },
     );
   }
 
   async stopRuntime(runtimeHandle: string): Promise<void> {
+    const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
     await this.managerRequest(
-      `/v1/vms/${encodeURIComponent(runtimeHandle)}:stop`,
+      node,
+      `/v1/vms/${encodeURIComponent(managerHandle)}:stop`,
       { method: 'POST' },
     );
   }
@@ -74,23 +123,29 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     runtimeHandle: string,
     options?: DeleteRuntimeOptions,
   ): Promise<void> {
+    const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
     await this.managerRequest(
-      `/v1/vms/${encodeURIComponent(runtimeHandle)}?deleteDisk=${options?.removeVolumes ?? true}`,
+      node,
+      `/v1/vms/${encodeURIComponent(managerHandle)}?deleteDisk=${options?.removeVolumes ?? true}`,
       { method: 'DELETE' },
     );
   }
 
   async inspectRuntime(runtimeHandle: string): Promise<{ state: string }> {
+    const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
     const runtime = await this.managerJson<RuntimeResponse>(
-      `/v1/vms/${encodeURIComponent(runtimeHandle)}`,
+      node,
+      `/v1/vms/${encodeURIComponent(managerHandle)}`,
     );
     return { state: runtime.state };
   }
 
   async healthCheck(runtimeHandle: string): Promise<boolean> {
     try {
+      const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
       const runtime = await this.managerJson<RuntimeResponse>(
-        `/v1/vms/${encodeURIComponent(runtimeHandle)}`,
+        node,
+        `/v1/vms/${encodeURIComponent(managerHandle)}`,
       );
       if (runtime.state !== 'running') return false;
       const response = await this.requestGuest(runtimeHandle, '/health');
@@ -100,12 +155,12 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     }
   }
 
-  getPromptUrl(runtimeHandle: string): Promise<string> {
-    return Promise.resolve(this.guestUrl(runtimeHandle, '/v1/prompt'));
+  async getPromptUrl(runtimeHandle: string): Promise<string> {
+    return this.guestUrl(runtimeHandle, '/v1/prompt');
   }
 
-  getSessionUrl(runtimeHandle: string): Promise<string> {
-    return Promise.resolve(this.guestUrl(runtimeHandle, '/v1/session'));
+  async getSessionUrl(runtimeHandle: string): Promise<string> {
+    return this.guestUrl(runtimeHandle, '/v1/session');
   }
 
   async requestGuest(
@@ -113,8 +168,10 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     path: string,
     init: RequestInit = {},
   ): Promise<Response> {
+    const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
     return this.managerRequest(
-      `/v1/vms/${encodeURIComponent(runtimeHandle)}/guest${path.startsWith('/') ? path : `/${path}`}`,
+      node,
+      `/v1/vms/${encodeURIComponent(managerHandle)}/guest${path.startsWith('/') ? path : `/${path}`}`,
       init,
     );
   }
@@ -295,23 +352,81 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     return this.readJson<RuntimeProcess[]>(response, 'list guest processes');
   }
 
+  /**
+   * 调度候选排序。探针失败的节点直接剔除——宁可少一个候选，也不能把 VM 派给
+   * 一台状态未知的机器（3s 超时误伤的节点下一次创建自动恢复）。
+   */
+  private async pickNodes(
+    config: SandboxConfig,
+  ): Promise<SandboxRuntimeNode[]> {
+    const nodes = await this.registry.listSchedulable();
+    if (nodes.length === 0) {
+      throw new SandboxCreationException(
+        'No active sandbox runtime nodes registered',
+      );
+    }
+    const probes = await Promise.allSettled(
+      nodes.map(async (node) => ({
+        node,
+        probe: await this.registry.probeNode(node),
+      })),
+    );
+    const healthy: { node: SandboxRuntimeNode; capacity: CapacitySnapshot }[] =
+      [];
+    for (const result of probes) {
+      if (result.status !== 'fulfilled') continue;
+      const { node, probe } = result.value;
+      if (!probe.healthy || !probe.capacity) continue;
+      healthy.push({ node, capacity: probe.capacity });
+    }
+    if (healthy.length === 0) {
+      throw new SandboxCreationException(
+        `No healthy sandbox runtime nodes (probed: ${nodes
+          .map((node) => node.id)
+          .join(', ')})`,
+      );
+    }
+    const fits = healthy.filter(
+      ({ capacity }) =>
+        capacity.vmsLimit - capacity.vmsUsed >= 1 &&
+        capacity.vcpuLimit - capacity.vcpuUsed >= config.cpu &&
+        capacity.memoryMiBLimit - capacity.memoryMiBUsed >= config.memory &&
+        capacity.diskGiBLimit - capacity.diskGiBUsed >= config.disk,
+    );
+    // 全都放不下时不直接失败：容量快照可能已过时，把最终判定交给 manager 的 503。
+    if (fits.length === 0) return healthy.map(({ node }) => node);
+    return fits
+      .sort(
+        (left, right) =>
+          freeMemoryRatio(right.capacity) - freeMemoryRatio(left.capacity),
+      )
+      .map(({ node }) => node);
+  }
+
+  private async resolveTarget(runtimeHandle: string): Promise<RuntimeTarget> {
+    const { nodeId, managerHandle } = splitRuntimeHandle(runtimeHandle);
+    return { node: await this.registry.getNodeOrThrow(nodeId), managerHandle };
+  }
+
   private async managerJson<T>(
+    node: SandboxRuntimeNode,
     path: string,
     init: RequestInit = {},
   ): Promise<T> {
     return this.readJson<T>(
-      await this.managerRequest(path, init),
+      await this.managerRequest(node, path, init),
       `runtime manager ${init.method ?? 'GET'} ${path}`,
     );
   }
 
   private async managerRequest(
+    node: SandboxRuntimeNode,
     path: string,
     init: RequestInit = {},
   ): Promise<Response> {
-    const response = await undiciFetch(`${this.baseUrl}${path}`, {
+    const response = await undiciFetch(`${node.baseUrl}${path}`, {
       ...init,
-      dispatcher: this.getDispatcher(),
+      dispatcher: this.registry.getDispatcher(node),
       signal:
         init.signal ??
         AbortSignal.timeout(path.includes('/guest/') ? 15 * 60_000 : 60_000),
@@ -321,9 +436,7 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     }
     if (!response.ok && !path.includes('/guest/')) {
       await response.body?.cancel();
-      throw new Error(
-        `Firecracker runtime request failed (${response.status})`,
-      );
+      throw new ManagerRequestError(response.status);
     }
     return response as unknown as Response;
   }
@@ -336,38 +449,15 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     return (await response.json()) as T;
   }
 
-  private getDispatcher(): Agent {
-    if (this.dispatcher) return this.dispatcher;
-    const caPath =
-      process.env.APP_FIRECRACKER_RUNTIME_CA ??
-      '/run/secrets/firecracker-client/ca.crt';
-    const certPath =
-      process.env.APP_FIRECRACKER_RUNTIME_CERT ??
-      '/run/secrets/firecracker-client/tls.crt';
-    const keyPath =
-      process.env.APP_FIRECRACKER_RUNTIME_KEY ??
-      '/run/secrets/firecracker-client/tls.key';
-    this.dispatcher = new Agent({
-      connect: {
-        ca: readFileSync(caPath),
-        cert: readFileSync(certPath),
-        key: readFileSync(keyPath),
-        rejectUnauthorized: true,
-        servername:
-          process.env.APP_FIRECRACKER_RUNTIME_SERVER_NAME ||
-          new URL(this.baseUrl).hostname,
-      },
-      connectTimeout: 5_000,
-      headersTimeout: 65_000,
-      bodyTimeout: 0,
-    });
-    return this.dispatcher;
+  private async guestUrl(runtimeHandle: string, path: string): Promise<string> {
+    const { node, managerHandle } = await this.resolveTarget(runtimeHandle);
+    return `${node.baseUrl}/v1/vms/${encodeURIComponent(managerHandle)}/guest${path}`;
   }
 
-  private guestUrl(runtimeHandle: string, path: string): string {
-    return `${this.baseUrl}/v1/vms/${encodeURIComponent(runtimeHandle)}/guest${path}`;
-  }
-
+  /**
+   * exec handle 形如 `<nodeId>/<managerHandle>:<guestExecId>`，按第一个 `:` 切分
+   * 即可拿回完整复合 runtimeHandle——节点前缀用的是 `/`，不会与此冲突。
+   */
   private parseExecHandle(value: string): [string, string] {
     const separator = value.indexOf(':');
     if (separator <= 0 || separator === value.length - 1) {
@@ -375,4 +465,30 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     }
     return [value.slice(0, separator), value.slice(separator + 1)];
   }
+}
+
+/** 携带 HTTP 状态码的 manager 请求失败，供调度判断"该换节点还是直接失败"。 */
+class ManagerRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Firecracker runtime request failed (${status})`);
+    this.name = 'ManagerRequestError';
+  }
+}
+
+/**
+ * 只有"节点满"和"节点不可达"值得换机器重试；其余状态码（400 参数错、401 证书
+ * 错、500 manager 内部错）在每个节点上都会以同样方式失败，重试纯属浪费。
+ */
+function isRetryableNodeFailure(error: unknown): boolean {
+  if (error instanceof SandboxRuntimeNotFoundException) return false;
+  if (error instanceof ManagerRequestError) return error.status === 503;
+  return true;
+}
+
+/** 空闲内存比：以相对余量而非绝对值排序，避免大机器长期吃满而小机器空转。 */
+function freeMemoryRatio(capacity: CapacitySnapshot): number {
+  if (capacity.memoryMiBLimit <= 0) return 0;
+  return (
+    (capacity.memoryMiBLimit - capacity.memoryMiBUsed) / capacity.memoryMiBLimit
+  );
 }

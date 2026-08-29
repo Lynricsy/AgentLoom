@@ -117,3 +117,37 @@ export class SandboxMaintenanceException extends DomainException {
     });
   }
 }
+
+export class SandboxNodeConflictException extends DomainException {
+  constructor(detail: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-node-conflict',
+      title: '沙箱运行时节点冲突',
+      status: HttpStatus.CONFLICT,
+      detail,
+    });
+  }
+}
+
+export class SandboxNodeNotFoundException extends DomainException {
+  constructor(nodeId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-node-not-found',
+      title: '沙箱运行时节点不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `Sandbox runtime node ${nodeId} is not registered`,
+    });
+  }
+}
+
+export class SandboxNodeAdminForbiddenException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-node-admin-forbidden',
+      title: '无权管理沙箱运行时节点',
+      status: HttpStatus.FORBIDDEN,
+      detail:
+        'Sandbox runtime nodes are platform-level infrastructure; this tenant is not allowed to manage them',
+    });
+  }
+}
