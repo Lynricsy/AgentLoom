@@ -11,19 +11,15 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ZodValidationPipe } from 'nestjs-zod';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import type { SandboxRuntimeNode } from '../../database/schema';
 import {
-  createSandboxNodeSchema,
   CreateSandboxNodeDto,
-  deleteSandboxNodeQuerySchema,
   DeleteSandboxNodeQueryDto,
   SandboxNodeEnvelopeSwaggerDto,
   SandboxNodeListResponseSwaggerDto,
-  updateSandboxNodeSchema,
   UpdateSandboxNodeDto,
   type SandboxNodeEnvelopeDto,
   type SandboxNodeListResponseDto,
@@ -67,8 +63,7 @@ export class SandboxNodeController {
   @ApiResponse({ status: 201, type: SandboxNodeEnvelopeSwaggerDto })
   async createNode(
     @CurrentTenant() tenantId: string,
-    @Body(new ZodValidationPipe(createSandboxNodeSchema))
-    dto: CreateSandboxNodeDto,
+    @Body() dto: CreateSandboxNodeDto,
   ): Promise<SandboxNodeEnvelopeDto> {
     this.registry.assertNodeAdmin(tenantId);
     const node = await this.registry.createNode(dto);
@@ -82,8 +77,7 @@ export class SandboxNodeController {
   async updateNode(
     @CurrentTenant() tenantId: string,
     @Param('nodeId') nodeId: string,
-    @Body(new ZodValidationPipe(updateSandboxNodeSchema))
-    dto: UpdateSandboxNodeDto,
+    @Body() dto: UpdateSandboxNodeDto,
   ): Promise<SandboxNodeEnvelopeDto> {
     this.registry.assertNodeAdmin(tenantId);
     const node = await this.registry.updateNode(nodeId, dto);
@@ -98,8 +92,9 @@ export class SandboxNodeController {
   async deleteNode(
     @CurrentTenant() tenantId: string,
     @Param('nodeId') nodeId: string,
-    @Query(new ZodValidationPipe(deleteSandboxNodeQuerySchema))
-    query: DeleteSandboxNodeQueryDto,
+    // 依赖全局 ZodValidationPipe：schema 带 transform，再挂一道显式 pipe 会对
+    // 已转换过的值二次校验（boolean 撞上 string enum）而必然 422。
+    @Query() query: DeleteSandboxNodeQueryDto,
   ): Promise<void> {
     this.registry.assertNodeAdmin(tenantId);
     await this.registry.removeNode(nodeId, query.force);
