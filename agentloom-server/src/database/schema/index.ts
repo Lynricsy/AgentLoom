@@ -140,6 +140,12 @@ export {
   type NewSandboxRuntimeMigration,
 } from './sandbox-runtime-migrations.schema';
 export {
+  sandboxRuntimeNodeStatusEnum,
+  sandboxRuntimeNodes,
+  type SandboxRuntimeNode,
+  type NewSandboxRuntimeNode,
+} from './sandbox-runtime-nodes.schema';
+export {
   workspaceRuntimeLeases,
   type WorkspaceRuntimeLease,
   type NewWorkspaceRuntimeLease,
