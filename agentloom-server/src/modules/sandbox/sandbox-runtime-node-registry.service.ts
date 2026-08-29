@@ -309,9 +309,15 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
   /**
    * 节点是跨租户共享的物理基础设施，任意租户 admin 都能改会导致越权。
    * private 部署只有一个租户，直接放行；saas 需显式白名单，默认空 = 全部拒绝。
+   *
+   * 必须判「显式等于 private」而非「不等于 saas」：`APP_DEPLOYMENT_MODE` 的
+   * 默认值 `saas` 由 Zod 在 config validate 里合成，只进 ConfigService 的内部
+   * 存储，**不会**回写 process.env。合法地省略该变量时 process.env 读到
+   * undefined，用 `!== 'saas'` 会让每个租户的 owner/admin 都绕过白名单。
+   * 未显式声明 private 就按 saas 处理，方向上 fail-closed。
    */
   assertNodeAdmin(tenantId: string): void {
-    if (process.env.APP_DEPLOYMENT_MODE !== 'saas') return;
+    if (process.env.APP_DEPLOYMENT_MODE === 'private') return;
     const allowed = (process.env.APP_SANDBOX_NODE_ADMIN_TENANT_IDS ?? '')
       .split(',')
       .map((value) => value.trim())
