@@ -19,13 +19,14 @@ studio (React 19/Vite 7) ──REST /api/v1──→ server (NestJS 11 + Fastify
 mobile (Flutter 3.41.2)  ──REST + Socket.IO(JWT)──→ server
 
 server → PostgreSQL(Supabase/Drizzle) + Redis(BullMQ) + Qdrant + MinIO
-server ──mTLS──→ agentloom-firecracker-runtime (Go, runtime manager) → Firecracker microVM (pi-coding-agent guest)
+server ──mTLS──→ agentloom-firecracker-runtime × N 节点（Go runtime manager）→ Firecracker microVM (pi-coding-agent guest)
 ```
 
 - **请求链**：TenantMiddleware → TenantTransactionInterceptor → CustomThrottlerGuard → AuthGuard(JWT→X-Api-Key) → TenantGuard → RolesGuard → 域模块 → 租户事务 Drizzle / BullMQ 队列。
 - **实时事件**：worker 通过 `EventBridgeService` 发 EventEmitter2 广播意图 → gateway `@OnEvent` 订阅 → Socket.IO camelCase 信封（gateway 侧 500 cap / 100ms drain 背压）；断线重连用 `lastEventId` 增量回放。server `src/` 不使用 `forwardRef`。
 - **类型流**：server DTO/OpenAPI → `agentloom-server/sdk/typescript-models` → `agentloom-api-client/src/models.ts`。根命令 `pnpm contracts:regen` 一键再生成（需要 Redis 可达）。
 - **Agent 双运行态**：`no_sandbox` 走 `InProcessAgentAdapter → PiAgentCoreAdapter`（pi-agent-core 进程内）；`sandbox` 走 Firecracker guest 内 pi-coding-agent。`SandboxModule` 将 `SANDBOX_RUNTIME_DRIVER` 绑定到 `FirecrackerRuntimeService`（undici mTLS 调 manager）；server/worker 不持有 KVM/网络/cgroup 特权。
+- **沙箱节点路由**：运行时节点登记在 `sandbox_runtime_nodes`（平台级表，无 tenant_id / 无 RLS），经 `/api/v1/sandbox-nodes` 管理。`sandbox_sessions.runtime_handle` 为复合格式 `<nodeId>/<managerHandle>`，因此所有按 handle 定位的 driver 方法无需改接口即可路由回原节点；创建时按各节点 `GET /v1/capacity` 探针择优（空闲内存比降序，503/不可达换下一节点）。全节点共用同一套 client 证书。
 - **响应契约**：list/detail 响应由 Zod schema（`...SwaggerSchema` + `createZodDto`）单一定义，手写类型改为 `z.infer` 导出；响应 schema 不得复用带 `.default()` 的请求 schema。
 
 ## Key Directories
