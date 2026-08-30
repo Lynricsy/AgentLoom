@@ -158,8 +158,8 @@ class _EmojiImage extends StatelessWidget {
       width: size,
       height: size,
       fit: BoxFit.contain,
-      placeholder: (_, __) => SizedBox(width: size, height: size),
-      errorWidget: (_, __, ___) {
+      placeholder: (_, _) => SizedBox(width: size, height: size),
+      errorWidget: (_, _, _) {
         // CDN 加载失败，尝试渲染原生 emoji
         final native = _codePointToNative(codepoint);
         if (native.isNotEmpty) {

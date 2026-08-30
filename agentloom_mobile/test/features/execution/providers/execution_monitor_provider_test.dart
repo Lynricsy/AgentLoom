@@ -156,7 +156,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -188,7 +188,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -244,7 +244,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -321,7 +321,7 @@ void main() {
 
           final sub = container.listen(
             executionMonitorProvider('exec-1'),
-            (_, __) {},
+            (_, _) {},
           );
           await container.read(executionMonitorProvider('exec-1').future);
 
@@ -397,7 +397,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -447,7 +447,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -500,7 +500,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -527,7 +527,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
 
         await container.read(executionMonitorProvider('exec-1').future);
@@ -576,7 +576,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
         return sub;
@@ -1076,7 +1076,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1107,7 +1107,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1142,7 +1142,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1283,7 +1283,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1339,7 +1339,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1413,7 +1413,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1508,7 +1508,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1559,7 +1559,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 
@@ -1657,7 +1657,7 @@ void main() {
 
         final sub = container.listen(
           executionMonitorProvider('exec-1'),
-          (_, __) {},
+          (_, _) {},
         );
         await container.read(executionMonitorProvider('exec-1').future);
 

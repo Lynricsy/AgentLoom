@@ -50,7 +50,7 @@ class LlmProviderIcon extends StatelessWidget {
       src,
       width: size,
       height: size,
-      errorBuilder: (_, __, ___) => Icon(_fallbackIcon(slug), size: size),
+      errorBuilder: (_, _, _) => Icon(_fallbackIcon(slug), size: size),
     );
   }
 

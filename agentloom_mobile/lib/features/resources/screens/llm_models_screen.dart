@@ -155,7 +155,7 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
                         child: ListView.separated(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                           itemCount: filtered.length,
-                          separatorBuilder: (_, __) =>
+                          separatorBuilder: (_, _) =>
                               const SizedBox(height: 12),
                           itemBuilder: (context, index) {
                             final provider = filtered[index];

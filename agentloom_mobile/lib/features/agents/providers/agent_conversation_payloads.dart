@@ -241,9 +241,8 @@ String? extractThinkingContent(Map<String, dynamic> metadata) {
   }
 
   final parts = <String>[
-    if (readString(decision['rationale']) case final rationale?) rationale,
-    if (readString(decision['suggestedContent']) case final suggestedContent?)
-      suggestedContent,
+    ?readString(decision['rationale']),
+    ?readString(decision['suggestedContent']),
   ];
 
   if (parts.isEmpty) {

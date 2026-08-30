@@ -35,7 +35,7 @@ void main() {
       ).thenAnswer((_) async => createTestWorkflowList());
 
       // 读取 provider 触发 build
-      final sub = container.listen(workflowListProvider, (_, __) {});
+      final sub = container.listen(workflowListProvider, (_, _) {});
 
       // 等待异步完成
       await container.read(workflowListProvider.future);

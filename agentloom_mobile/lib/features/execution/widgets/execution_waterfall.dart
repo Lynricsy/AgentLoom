@@ -36,7 +36,7 @@ class ExecutionWaterfall extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       itemCount: visibleSteps.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final step = visibleSteps[index];
         final runtimeStep = runtime.stepById(step.stepId);

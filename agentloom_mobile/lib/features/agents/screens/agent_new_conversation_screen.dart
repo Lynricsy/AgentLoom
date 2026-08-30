@@ -108,13 +108,13 @@ class _AgentNewConversationScreenState
   }
 
   Future<void> _pickAttachments({required bool image}) async {
-    final result = await FilePicker.platform.pickFiles(
+    // file_picker 12：移除了 FilePicker.platform 与 FilePickerResult，
+    // pickFiles 直接返回 List<PlatformFile>；withData 已弃用，改用 readAsBytes()。
+    final files = await FilePicker.pickFiles(
       type: image ? FileType.image : FileType.any,
-      allowMultiple: true,
-      withData: true,
     );
 
-    if (result == null || result.files.isEmpty) {
+    if (files.isEmpty) {
       return;
     }
 
@@ -122,9 +122,9 @@ class _AgentNewConversationScreenState
       final nextAttachments = <ConversationDraftAttachment>[
         ..._pendingAttachments,
       ];
-      for (final file in result.files) {
-        final bytes = file.bytes;
-        if (bytes == null || bytes.isEmpty) {
+      for (final file in files) {
+        final bytes = await file.readAsBytes();
+        if (bytes.isEmpty) {
           throw Exception('无法读取所选文件，请重试。');
         }
 

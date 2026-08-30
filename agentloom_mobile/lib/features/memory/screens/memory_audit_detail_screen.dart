@@ -91,7 +91,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
             )
           : versionAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
               data: (version) => SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
