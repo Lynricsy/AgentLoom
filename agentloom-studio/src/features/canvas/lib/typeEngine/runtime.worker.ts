@@ -119,9 +119,21 @@ export function createTypeEngineBindings(
   }
 }
 
+/**
+ * wasm-bindgen 为「JS 侧函数」生成的 import 名形如
+ * `__wbg_<逻辑名>_<16位内容哈希>`，哈希每次升级 wasm-bindgen 都会变。
+ * 这里只对带 `__wbg_` 前缀的名字剥前缀与哈希后按逻辑名注册 handler，
+ * 使本文件不必跟着 wasm-bindgen 版本逐个改名。
+ *
+ * 不带该前缀的 import（`__wbindgen_init_externref_table`、
+ * `__wbindgen_cast_<id>`）用**原名**注册：其后缀是 wasm-bindgen 的稳定
+ * cast 序号而非内容哈希，剥掉会把不同 cast 混为一个。
+ */
+const WASM_IMPORT_HASH_SUFFIX = /_[0-9a-f]{16}$/u
+
 function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): WebAssembly.Imports {
-  const imports = {
-    __wbg_Error_83742b46f01ce22d(pointer: number, length: number) {
+  const handlers: Record<string, (...args: never[]) => unknown> = {
+    Error(pointer: number, length: number) {
       const wasm = wasmRef.current
       if (!wasm) {
         return new Error('TypeEngine WASM exports are not ready.')
@@ -131,19 +143,19 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
       const message = new TextDecoder('utf-8').decode(bytes.subarray(pointer, pointer + length))
       return new Error(message)
     },
-    __wbg___wbindgen_boolean_get_c0f3f60bac5a78d1(value: unknown) {
+    __wbindgen_boolean_get(value: unknown) {
       return typeof value === 'boolean' ? (value ? 1 : 0) : 0xffffff
     },
-    __wbg___wbindgen_is_null_0b605fc6b167c56f(value: unknown) {
+    __wbindgen_is_null(value: unknown) {
       return value === null
     },
-    __wbg___wbindgen_is_object_781bc9f159099513(value: unknown) {
+    __wbindgen_is_object(value: unknown) {
       return typeof value === 'object' && value !== null
     },
-    __wbg___wbindgen_is_undefined_52709e72fb9f179c(value: unknown) {
+    __wbindgen_is_undefined(value: unknown) {
       return value === undefined
     },
-    __wbg___wbindgen_number_get_34bb9d9dcfa21373(pointer: number, value: unknown) {
+    __wbindgen_number_get(pointer: number, value: unknown) {
       const wasm = wasmRef.current
       if (!wasm) {
         return
@@ -154,7 +166,7 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
       view.setFloat64(pointer + 8, numberValue ?? 0, true)
       view.setInt32(pointer, numberValue == null ? 0 : 1, true)
     },
-    __wbg___wbindgen_string_get_395e606bd0ee4427(pointer: number, value: unknown) {
+    __wbindgen_string_get(pointer: number, value: unknown) {
       const wasm = wasmRef.current
       if (!wasm) {
         return
@@ -174,7 +186,7 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
       view.setInt32(pointer + 4, encoded.length, true)
       view.setInt32(pointer, stringPointer, true)
     },
-    __wbg___wbindgen_throw_6ddd609b62940d55(pointer: number, length: number) {
+    __wbindgen_throw(pointer: number, length: number) {
       const wasm = wasmRef.current
       if (!wasm) {
         throw new Error('TypeEngine WASM exports are not ready.')
@@ -184,7 +196,7 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
       const message = new TextDecoder('utf-8').decode(bytes.subarray(pointer, pointer + length))
       throw new Error(message)
     },
-    __wbg_parse_e9eddd2a82c706eb(pointer: number, length: number) {
+    parse(pointer: number, length: number) {
       const wasm = wasmRef.current
       if (!wasm) {
         throw new Error('TypeEngine WASM exports are not ready.')
@@ -195,10 +207,10 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
       )
       return JSON.parse(text)
     },
-    __wbg_set_7eaa4f96924fd6b3(target: object, property: PropertyKey, value: unknown) {
+    set(target: object, property: PropertyKey, value: unknown) {
       return Reflect.set(target, property, value)
     },
-    __wbg_stringify_5ae93966a84901ac(value: unknown) {
+    stringify(value: unknown) {
       return JSON.stringify(value)
     },
     __wbindgen_cast_0000000000000001(pointer: number, length: number) {
@@ -226,8 +238,33 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
     },
   }
 
+  // WebAssembly 实例化时按名取 import；用 Proxy 把带哈希的实际名归一化到
+  // handlers 的逻辑名。命中不到时抛出可读错误，而不是让 WebAssembly
+  // 报「function import requires a callable」这种无法定位的信息。
+  const proxied = new Proxy(handlers, {
+    has: () => true,
+    get(target, property) {
+      if (typeof property !== 'string') {
+        return undefined
+      }
+
+      const normalized = property.startsWith('__wbg_')
+        ? property.slice('__wbg_'.length).replace(WASM_IMPORT_HASH_SUFFIX, '')
+        : property
+      const handler = target[normalized]
+      if (!handler) {
+        throw new Error(
+          `TypeEngine WASM 请求了未实现的 import「${property}」（归一化为「${normalized}」）。` +
+            'wasm-bindgen 的 import 集合可能已变化，请同步 runtime.worker.ts 的 handlers。',
+        )
+      }
+
+      return handler
+    },
+  })
+
   return {
-    './agentloom_type_engine_bg.js': imports,
+    './agentloom_type_engine_bg.js': proxied as unknown as WebAssembly.ModuleImports,
   }
 }
 

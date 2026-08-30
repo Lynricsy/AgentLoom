@@ -233,6 +233,49 @@ describe('runtime.worker', () => {
     expect(wasmExports.__wbindgen_start).toHaveBeenCalledOnce()
   })
 
+  it('按逻辑名解析带哈希的 wasm-bindgen import，并对未知 import 抛出可定位错误', async () => {
+    const wasmExports = createMockWasmExports()
+    let capturedImports: WebAssembly.Imports | undefined
+
+    await loadTypeEngineBindings({
+      wasmUrl: new URL('https://example.com/type-engine.wasm'),
+      fetchImpl: vi.fn(async () => ({
+        arrayBuffer: vi.fn(async () => new ArrayBuffer(8)),
+      })),
+      webAssemblyImpl: {
+        instantiateStreaming: vi.fn(async (_source, importObject) => {
+          capturedImports = importObject
+          return {
+            instance: { exports: wasmExports } as unknown as WebAssembly.Instance,
+            module: {} as WebAssembly.Module,
+          }
+        }),
+        instantiate: vi.fn(),
+      },
+    })
+
+    const glue = capturedImports?.['./agentloom_type_engine_bg.js'] as Record<
+      string,
+      unknown
+    >
+    expect(glue).toBeDefined()
+
+    // wasm-bindgen 每次升版都会换掉这些 16 位内容哈希；下面用两组不同哈希
+    // 断言解析只依赖逻辑名，不依赖具体哈希。
+    expect(typeof glue.__wbg_parse_1cc93481b0865939).toBe('function')
+    expect(typeof glue.__wbg_parse_e9eddd2a82c706eb).toBe('function')
+    expect(typeof glue.__wbg___wbindgen_boolean_get_c9c83ebd41b34df3).toBe('function')
+    expect(typeof glue.__wbg___wbindgen_boolean_get_c0f3f60bac5a78d1).toBe('function')
+
+    // 不带 __wbg_ 前缀的 import 必须按原名命中（后缀是稳定 cast 序号，不能剥）。
+    expect(typeof glue.__wbindgen_cast_0000000000000001).toBe('function')
+    expect(typeof glue.__wbindgen_init_externref_table).toBe('function')
+
+    expect(() => glue.__wbg_totallyNewBinding_0123456789abcdef).toThrow(
+      /未实现的 import/u,
+    )
+  })
+
   it('wraps raw wasm exports into browser-safe bindings', () => {
     const bindings = createTypeEngineBindings(createMockWasmExports() as never, 'streaming')
 
