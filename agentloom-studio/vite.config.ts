@@ -7,13 +7,13 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {
     port: 5173,
     fs: {
-      allow: [path.resolve(__dirname, '..')],
+      allow: [path.resolve(import.meta.dirname, '..')],
     },
     proxy: {
       '/api': {
