@@ -41,16 +41,6 @@ export class TriggerSchedulerService implements OnModuleInit {
 
     const config = CronConfigSchema.parse(trigger.config);
 
-    // 升级期间旧 repeatable 元数据仍会继续派发，因此注册新 Scheduler 前必须一次性清理，避免同一触发器双触发。
-    await this.queue.removeRepeatable(
-      TRIGGER_CRON_JOB,
-      {
-        pattern: config.expression,
-        tz: config.timezone,
-      },
-      trigger.id,
-    );
-
     await this.queue.upsertJobScheduler(
       trigger.id,
       {

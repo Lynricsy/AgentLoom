@@ -67,7 +67,7 @@
     "@types/jmespath": "^0.15.2",
     "ahocorasick": "^1.0.2",
     "ai": "^7.0.84",
-    "bullmq": "^5.70.4",
+    "bullmq": "^6.3.2",
     "drizzle-orm": "^0.45.1",
     "fastify": "5.11.3",
     "file-type": "^21.3.0",

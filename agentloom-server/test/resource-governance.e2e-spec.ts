@@ -281,8 +281,6 @@ function createMockQueue() {
   return {
     add: vi.fn().mockResolvedValue(undefined),
     upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
-    removeRepeatableByKey: vi.fn().mockResolvedValue(undefined),
-    getRepeatableJobs: vi.fn().mockResolvedValue([]),
     getJob: vi.fn().mockResolvedValue(null),
     getJobs: vi.fn().mockResolvedValue([]),
     close: vi.fn().mockResolvedValue(undefined),

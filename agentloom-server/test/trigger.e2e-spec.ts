@@ -154,11 +154,7 @@ function createMockExecutionQueue() {
 function createMockTriggerQueue() {
   return {
     add: vi.fn().mockResolvedValue(undefined),
-    removeRepeatableByKey: vi.fn().mockResolvedValue(undefined),
-    // 保留 legacy repeatable 列表：注册前会清理旧条目，防升级后双触发。
-    getRepeatableJobs: vi.fn().mockResolvedValue([]),
-    // BullMQ 5 Job Scheduler API —— nextFireAt 现在由它提供，
-    // 旧的 getRepeatableJobs 对 metadata-hash 任务返回空 id，永远匹配不上。
+    // BullMQ 6 只保留 Job Scheduler API；legacy repeatable 系列方法已移除。
     upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
     getJobScheduler: vi.fn().mockResolvedValue(null),
     removeJobScheduler: vi.fn().mockResolvedValue(true),
@@ -243,16 +239,6 @@ describe('Trigger E2E', () => {
     Reflect.set(triggerQueue, 'add', triggerQueueMock.add);
     Reflect.set(
       triggerQueue,
-      'removeRepeatableByKey',
-      triggerQueueMock.removeRepeatableByKey,
-    );
-    Reflect.set(
-      triggerQueue,
-      'getRepeatableJobs',
-      triggerQueueMock.getRepeatableJobs,
-    );
-    Reflect.set(
-      triggerQueue,
       'upsertJobScheduler',
       triggerQueueMock.upsertJobScheduler,
     );
@@ -287,8 +273,6 @@ describe('Trigger E2E', () => {
     redisClientMock.publish.mockResolvedValue(1);
     executionQueueMock.add.mockResolvedValue(undefined);
     triggerQueueMock.add.mockResolvedValue(undefined);
-    triggerQueueMock.removeRepeatableByKey.mockResolvedValue(undefined);
-    triggerQueueMock.getRepeatableJobs.mockResolvedValue([]);
     triggerQueueMock.upsertJobScheduler.mockResolvedValue(undefined);
     triggerQueueMock.getJobScheduler.mockResolvedValue(null);
     triggerQueueMock.removeJobScheduler.mockResolvedValue(true);
