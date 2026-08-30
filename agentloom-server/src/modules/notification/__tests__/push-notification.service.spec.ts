@@ -14,24 +14,36 @@ const adminMocks = vi.hoisted(() => {
     return app;
   });
   const sendEachForMulticast = vi.fn();
-  const messaging = vi.fn(() => ({ sendEachForMulticast }));
+  const getMessaging = vi.fn(() => ({ sendEachForMulticast }));
+  const deleteApp = vi.fn((app: Record<string, unknown>) => {
+    const index = apps.indexOf(app);
+
+    if (index >= 0) {
+      apps.splice(index, 1);
+    }
+
+    return Promise.resolve();
+  });
 
   return {
     apps,
     cert,
     initializeApp,
+    deleteApp,
     sendEachForMulticast,
-    messaging,
+    getMessaging,
   };
 });
 
-vi.mock('firebase-admin', () => ({
-  apps: adminMocks.apps,
-  credential: {
-    cert: adminMocks.cert,
-  },
+vi.mock('firebase-admin/app', () => ({
+  cert: adminMocks.cert,
   initializeApp: adminMocks.initializeApp,
-  messaging: adminMocks.messaging,
+  getApps: () => adminMocks.apps,
+  deleteApp: adminMocks.deleteApp,
+}));
+
+vi.mock('firebase-admin/messaging', () => ({
+  getMessaging: adminMocks.getMessaging,
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -110,7 +122,7 @@ describe('PushNotificationService', () => {
       }),
     );
     expect(adminMocks.initializeApp).toHaveBeenCalledOnce();
-    expect(adminMocks.messaging).toHaveBeenCalledOnce();
+    expect(adminMocks.getMessaging).toHaveBeenCalledOnce();
     expect(logSpy).toHaveBeenCalledWith('Firebase Cloud Messaging 已初始化');
     expect(service.isEnabled).toBe(true);
   });
