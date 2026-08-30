@@ -11,7 +11,7 @@ import {
 import { delimiter, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
@@ -86,7 +86,9 @@ async function createArchive(
 ): Promise<void> {
   await new Promise<void>((resolveArchive, rejectArchive) => {
     const output = createWriteStream(outputPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // archiver 8 是纯 ESM 重写：移除了可调用的默认导出工厂，
+    // 改为按格式导出 ZipArchive / TarArchive / JsonArchive 类。
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     output.on('close', () => resolveArchive());
     output.on('error', rejectArchive);
