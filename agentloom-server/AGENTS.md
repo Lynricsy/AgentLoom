@@ -81,7 +81,7 @@ pnpm format                    # Prettier 写入 src/ 与 test/
 - 依赖通过构造器注入。基础设施或 port 使用 Symbol token，例如 `DRIZZLE`、`AGENT_RUNTIME`、`SANDBOX_RUNTIME_DRIVER`；动态 provider 用显式 `useFactory` 与 `inject`。
 - 新 service 应加入所属 module 的 `providers`，跨模块消费则从拥有者 module `exports`；不要在消费方重复 provision 同一 service。
 - server `src/` 保持无 `forwardRef`，通过模块边界、事件或 port 拆除循环依赖。
-- `@mariozechner/pi-agent-core` 与 `@mariozechner/pi-ai` 是纯 ESM。CJS Nest 代码只能经 `src/modules/agent/pi-imports.ts` 的 `await import()` 加载；允许 `import type`，禁止顶层 runtime static import。
+- `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai` 是纯 ESM。CJS Nest 代码只能经 `src/modules/agent/pi-imports.ts` 的 `await import()` 加载（含 `@earendil-works/pi-ai/compat` 的 `streamSimple`）；允许 `import type`，禁止顶层 runtime static import。
 - 复杂域以 facade + 注入的 repository/service 组合，不通过 service 继承复用实现；纯转换逻辑放 `.util.ts` 或无 DI 模块。
 - 跨包事件和 runtime 类型从 `@agentloom/contracts` re-export，不在 server 复制 wire interface。
 

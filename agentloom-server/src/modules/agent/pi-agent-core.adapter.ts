@@ -22,7 +22,7 @@ import type {
   IAgentRuntime,
   SessionToolProvider,
 } from './ports/agent-runtime.port';
-import { importPiAgentCore } from './pi-imports';
+import { importPiAgentCore, importPiAiCompat } from './pi-imports';
 import {
   flexibleSchemaToTypeBox,
   normalizeFlexibleSchemaJson,
@@ -94,12 +94,16 @@ type PiAgentInstance = {
   prompt: (input: string) => Promise<void>;
   abort: () => void;
   subscribe: (listener: (event: Record<string, unknown>) => void) => () => void;
-  setTools?: (tools: PiAgentTool[]) => void;
-  streamFn?: unknown;
+  // pi-agent-core 0.84 移除了 setTools()，改为直接写 state.tools（state getter 返回稳定引用）。
+  state: { tools: PiAgentTool[] };
 };
 
 type PiAgentCoreModule = {
   Agent: new (options: Record<string, unknown>) => PiAgentInstance;
+};
+
+type PiAiCompatModule = {
+  streamSimple: (...args: unknown[]) => unknown;
 };
 
 type PermissionResolution = 'approve' | 'deny' | 'cancelled';
@@ -312,14 +316,19 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     const modelConfig = await this.resolveModelConfig(session);
     const model = await this.piAiAdapter.getPiRuntimeModel(modelConfig);
     const tools = this.convertToolSetToPiTools(toolSet);
-    const piAgentCore =
-      (await importPiAgentCore()) as unknown as PiAgentCoreModule;
+    const [piAgentCore, piAiCompat] = (await Promise.all([
+      importPiAgentCore(),
+      importPiAiCompat(),
+    ])) as unknown as [PiAgentCoreModule, PiAiCompatModule];
     const agent = new piAgentCore.Agent({
       initialState: {
         systemPrompt: params.systemPrompt ?? '',
         model: model.model,
         tools,
       },
+      // 0.84 起 streamFn 必填；agent loop 会把 getApiKey 的结果注入 options.apiKey
+      // 后传给 streamFn，行为与 0.62 内部默认的 streamSimple 一致。
+      streamFn: piAiCompat.streamSimple,
       ...(model.apiKey ? { getApiKey: async () => model.apiKey } : {}),
       sessionId: session.id,
       beforeToolCall: async (
@@ -362,7 +371,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     const { session, agent } = runtimeSession;
     const toolSet = await this.resolveSessionTools(sessionId);
 
-    agent.setTools?.(this.convertToolSetToPiTools(toolSet));
+    agent.state.tools = this.convertToolSetToPiTools(toolSet);
 
     session.context.history.push(...content);
     session.status = 'active';

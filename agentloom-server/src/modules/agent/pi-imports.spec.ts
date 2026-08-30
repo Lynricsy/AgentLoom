@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importPiAgentCore, importPiAi } from './pi-imports';
+import { importPiAgentCore, importPiAi, importPiAiCompat } from './pi-imports';
 
 describe('pi-imports', () => {
   it('importPiAgentCore() resolves and exports Agent class', async () => {
@@ -9,11 +9,16 @@ describe('pi-imports', () => {
     expect(typeof mod.Agent).toBe('function');
   });
 
-  it('importPiAi() resolves and exports getModel and complete functions', async () => {
+  it('importPiAi() resolves and exports createAssistantMessageEventStream', async () => {
     const mod = await importPiAi();
     expect(mod).toBeDefined();
-    expect(typeof mod.getModel).toBe('function');
-    expect(typeof mod.complete).toBe('function');
+    expect(typeof mod.createAssistantMessageEventStream).toBe('function');
+  });
+
+  it('importPiAiCompat() resolves and exports streamSimple for Agent.streamFn', async () => {
+    const mod = await importPiAiCompat();
+    expect(mod).toBeDefined();
+    expect(typeof mod.streamSimple).toBe('function');
   });
 
   it('both imports can be called multiple times without errors (module caching)', async () => {

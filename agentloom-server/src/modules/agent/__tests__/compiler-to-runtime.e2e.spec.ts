@@ -8,6 +8,9 @@ import { PiAgentCoreAdapter } from '../pi-agent-core.adapter';
 import type { AgentEvent } from '../types/agent-event.types';
 
 const hoisted = vi.hoisted(() => {
+  // pi-ai 0.84 的 streamSimple 由 /compat 子路径提供，Agent 构造时必填 streamFn。
+  const streamSimple = vi.fn();
+
   type MockAgentOptions = {
     streamFn?: unknown;
     sessionId?: string;
@@ -26,7 +29,8 @@ const hoisted = vi.hoisted(() => {
       | null = null;
 
     readonly listeners = new Set<(event: Record<string, unknown>) => void>();
-    readonly setTools = vi.fn((tools: unknown[]) => {
+    // pi-agent-core 0.84 没有 setTools()，工具集通过 state.tools 赋值下发。
+    readonly assignTools = vi.fn((tools: unknown[]) => {
       this.tools = tools;
     });
     readonly abort = vi.fn();
@@ -38,9 +42,19 @@ const hoisted = vi.hoisted(() => {
     streamFn: unknown;
     tools: unknown[] = [];
     promptInputs: string[] = [];
+    state!: { tools: unknown[] };
 
     constructor(public readonly options: MockAgentOptions = {}) {
       this.streamFn = options.streamFn;
+      const agent = this;
+      this.state = {
+        get tools(): unknown[] {
+          return agent.tools;
+        },
+        set tools(next: unknown[]) {
+          agent.assignTools(next);
+        },
+      };
       MockPiAgent.instances.push(this);
     }
 
@@ -64,6 +78,7 @@ const hoisted = vi.hoisted(() => {
   return {
     MockPiAgent,
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
+    importPiAiCompat: vi.fn(async () => ({ streamSimple })),
     typeBoxToZod: vi.fn(() => z.any()),
     normalizeFlexibleSchemaJson: vi.fn((schema: unknown) =>
       typeof schema === 'object' && schema !== null ? schema : {},
@@ -95,6 +110,7 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
 
 vi.mock('../pi-imports', () => ({
   importPiAgentCore: hoisted.importPiAgentCore,
+  importPiAiCompat: hoisted.importPiAiCompat,
 }));
 
 vi.mock('../tool-schema-converter', () => ({
@@ -241,6 +257,7 @@ describe('compiler → runtime tool injection E2E', () => {
   beforeEach(() => {
     hoisted.MockPiAgent.reset();
     hoisted.importPiAgentCore.mockClear();
+    hoisted.importPiAiCompat.mockClear();
     hoisted.typeBoxToZod.mockClear();
     hoisted.flexibleSchemaToTypeBox.mockClear();
     hoisted.getTenantDb.mockClear();
@@ -372,7 +389,7 @@ describe('compiler → runtime tool injection E2E', () => {
     );
 
     const agent = hoisted.MockPiAgent.instances[0];
-    const tools = (agent.setTools.mock.lastCall?.[0] ?? []) as InjectedTool[];
+    const tools = (agent.assignTools.mock.lastCall?.[0] ?? []) as InjectedTool[];
 
     return {
       runtimeConfig,
@@ -380,7 +397,7 @@ describe('compiler → runtime tool injection E2E', () => {
     };
   }
 
-  it('MCP Tool chain: 画布 MCP 节点编译后会进入真实 adapter 的 setTools()', async () => {
+  it('MCP Tool chain: 画布 MCP 节点编译后会进入真实 adapter 的 state.tools', async () => {
     const mcpNode = createNode('mcp-1', 'mcp-tool', {
       name: 'search_docs',
       description: '搜索产品文档',
@@ -522,7 +539,7 @@ describe('compiler → runtime tool injection E2E', () => {
     );
   });
 
-  it('Orphan exclusion: 只有接到 agent-main 的节点才会进入最终 setTools()', async () => {
+  it('Orphan exclusion: 只有接到 agent-main 的节点才会进入最终 state.tools', async () => {
     const nodes = [
       ...baseNodes,
       createNode('mcp-connected', 'mcp-tool', {
