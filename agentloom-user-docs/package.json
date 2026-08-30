@@ -14,9 +14,9 @@
   "dependencies": {
     "vitepress": "^2.0.0-alpha.17",
     "vue": "^3.5.30",
-    "vitepress-openapi": "latest"
+    "vitepress-openapi": "^0.2.4"
   },
   "devDependencies": {
-    "markdownlint-cli2": "latest"
+    "markdownlint-cli2": "^0.23.2"
   }
 }

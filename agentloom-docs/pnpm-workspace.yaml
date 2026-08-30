@@ -1,0 +1,11 @@
+# 独立站点：不是根 workspace 成员，这里声明自己就是一个独立 workspace 根，
+# 否则 pnpm 会向上找到 /root/AgentLoom/pnpm-workspace.yaml 并把本站当成
+# 根仓库的一部分安装（也就读不到下面的 allowBuilds）。
+packages:
+  - .
+
+# esbuild：postinstall 负责落地平台二进制，缺失会导致 vitepress 构建失败。
+# vue-demi：postinstall 的 vue-demi-switch 决定其入口指向 Vue 2/3，必须执行。
+allowBuilds:
+  esbuild: true
+  vue-demi: true
