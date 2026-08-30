@@ -95,7 +95,9 @@ function validateResolvedFieldValue(
     }
     case 'number': {
       if (typeof value !== 'number' || Number.isNaN(value)) {
-        errors.push(createFieldError(fieldPrefix, field.id, '该字段必须是数字'));
+        errors.push(
+          createFieldError(fieldPrefix, field.id, '该字段必须是数字'),
+        );
         return undefined;
       }
 

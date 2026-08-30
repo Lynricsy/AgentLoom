@@ -1,17 +1,10 @@
 export type DeploymentMode = 'saas' | 'private';
 export type PrivateDeploymentLlmProxyMode =
-  | 'direct'
-  | 'private_cloud'
-  | 'enterprise_proxy';
+  'direct' | 'private_cloud' | 'enterprise_proxy';
 export type PrivateDeploymentCertificateSource =
-  | 'uploaded'
-  | 'secretRef'
-  | 'ingress-managed';
+  'uploaded' | 'secretRef' | 'ingress-managed';
 export type PrivateDeploymentLicenseStatus =
-  | 'missing'
-  | 'valid'
-  | 'invalid'
-  | 'expired';
+  'missing' | 'valid' | 'invalid' | 'expired';
 
 export interface PrivateDeploymentSmtpSettingsDto {
   host: string | null;

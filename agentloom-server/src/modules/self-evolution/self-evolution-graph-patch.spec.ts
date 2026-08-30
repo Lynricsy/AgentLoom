@@ -5,11 +5,9 @@ import { SelfEvolutionGraphPatch } from './self-evolution-graph-patch';
 
 describe('SelfEvolutionGraphPatch', () => {
   it('独立应用节点补丁且不修改输入图', () => {
-    const graphPatch = new SelfEvolutionGraphPatch(
-      { listTools: vi.fn() } as unknown as ConstructorParameters<
-        typeof SelfEvolutionGraphPatch
-      >[0],
-    );
+    const graphPatch = new SelfEvolutionGraphPatch({
+      listTools: vi.fn(),
+    } as unknown as ConstructorParameters<typeof SelfEvolutionGraphPatch>[0]);
     const nodes = [{ id: 'node-1', data: { config: { a: 1 } } }];
 
     const result = graphPatch.applyNodes(nodes, [

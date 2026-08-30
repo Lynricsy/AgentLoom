@@ -82,10 +82,9 @@ function normalizeSubAgent(value: unknown): unknown {
         ...value.extensions,
         ...(Array.isArray(value.extensions.knowledgeBindings)
           ? {
-              knowledgeBindings:
-                value.extensions.knowledgeBindings.map(
-                  normalizeKnowledgeBinding,
-                ),
+              knowledgeBindings: value.extensions.knowledgeBindings.map(
+                normalizeKnowledgeBinding,
+              ),
             }
           : {}),
         ...(Array.isArray(value.extensions.subAgents)
@@ -126,7 +125,9 @@ function normalizeAliasRecord(record: JsonRecord): JsonRecord {
  * 归一并校验外部或存量数据中的 Agent runtime 配置。
  * 返回值只包含 contracts 定义的 canonical 字段。
  */
-export function normalizeAgentRuntimeConfig(input: unknown): AgentRuntimeConfig {
+export function normalizeAgentRuntimeConfig(
+  input: unknown,
+): AgentRuntimeConfig {
   const normalized = isRecord(input) ? normalizeAliasRecord(input) : input;
   return AgentRuntimeConfigSchema.parse(normalized);
 }
@@ -137,7 +138,10 @@ function normalizeNodeConfig(
 ): JsonRecord {
   if (nodeType === 'knowledge-base') {
     const next = { ...config };
-    if (!hasOwn(next, 'similarityThreshold') && hasOwn(next, 'scoreThreshold')) {
+    if (
+      !hasOwn(next, 'similarityThreshold') &&
+      hasOwn(next, 'scoreThreshold')
+    ) {
       next.similarityThreshold = next.scoreThreshold;
     }
     delete next.scoreThreshold;
@@ -200,9 +204,7 @@ export function normalizeAgentCanvasRuntimeConfigAliases<
       ...node,
       data: {
         ...normalizedData,
-        ...(normalizedConfig === undefined
-          ? {}
-          : { config: normalizedConfig }),
+        ...(normalizedConfig === undefined ? {} : { config: normalizedConfig }),
       },
     } as T;
   });

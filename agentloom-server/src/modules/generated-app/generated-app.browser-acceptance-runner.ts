@@ -13,10 +13,7 @@ import type {
 } from '../../database/schema';
 
 export type GeneratedAppGate5ExecutorMode =
-  | 'real'
-  | 'real-browser-e2e'
-  | 'fixture'
-  | 'disabled';
+  'real' | 'real-browser-e2e' | 'fixture' | 'disabled';
 
 export type GeneratedAppBrowserAcceptanceExecutionLevel =
   GeneratedAppBrowserAcceptancePlan['executionLevel'];

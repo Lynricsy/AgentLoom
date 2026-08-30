@@ -220,7 +220,6 @@ export class MarketplaceReviewService {
       );
     }
 
-
     // raw snapshot 仍保留历史节点名；先独立报迁移问题，避免普通 agent 绑定检查漏检或给出误导结论。
     const legacyLlmAgentNodeIds = findLegacyLlmAgentNodeIds(nodes);
     if (legacyLlmAgentNodeIds.length > 0) {

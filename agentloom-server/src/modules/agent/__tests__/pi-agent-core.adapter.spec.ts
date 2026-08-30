@@ -28,8 +28,7 @@ const hoisted = vi.hoisted(() => {
   class MockPiAgent {
     static instances: MockPiAgent[] = [];
     static script:
-      | ((agent: MockPiAgent, input: string) => Promise<void>)
-      | null = null;
+      ((agent: MockPiAgent, input: string) => Promise<void>) | null = null;
 
     readonly listeners = new Set<(event: Record<string, unknown>) => void>();
     readonly abortController = new AbortController();
@@ -52,15 +51,15 @@ const hoisted = vi.hoisted(() => {
 
     constructor(public readonly options: MockAgentOptions = {}) {
       this.streamFn = options.streamFn;
-      const agent = this;
-      this.state = {
-        get tools(): unknown[] {
-          return agent.tools;
+      // 箭头访问器直接闭包构造器的 this，无需给 this 起别名。
+      const state = {} as { tools: unknown[] };
+      Object.defineProperty(state, 'tools', {
+        get: (): unknown[] => this.tools,
+        set: (next: unknown[]): void => {
+          this.assignTools(next);
         },
-        set tools(next: unknown[]) {
-          agent.assignTools(next);
-        },
-      };
+      });
+      this.state = state;
       MockPiAgent.instances.push(this);
     }
 
@@ -2199,7 +2198,9 @@ describe('PiAgentCoreAdapter', () => {
         },
       ]);
       expect(hoisted.flexibleSchemaToJsonSchema).toHaveBeenCalledTimes(8);
-      expect(hoisted.flexibleSchemaToJsonSchema.mock.calls[0]?.[0]).toMatchObject({
+      expect(
+        hoisted.flexibleSchemaToJsonSchema.mock.calls[0]?.[0],
+      ).toMatchObject({
         jsonSchema: {
           type: 'object',
           properties: {
@@ -2788,9 +2789,7 @@ describe('PiAgentCoreAdapter', () => {
           'missing-call',
           'approve',
         ),
-      ).rejects.toBeInstanceOf(
-        ToolPermissionResolutionNotAllowedException,
-      );
+      ).rejects.toBeInstanceOf(ToolPermissionResolutionNotAllowedException);
     });
   });
 });

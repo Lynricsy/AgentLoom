@@ -125,7 +125,7 @@ import {
   planGate7Runner,
   buildBuildUnitPlanForTest,
   createGeneratedApp,
-  mockTenantDb
+  mockTenantDb,
 } from './generated-app-test-support';
 
 describe('orchestrator migrated scenarios', () => {
@@ -138,17 +138,55 @@ describe('orchestrator migrated scenarios', () => {
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
-    vi.restoreAllMocks(); vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
     const configService = createConfigService();
     const pluginService = createGeneratedPrivatePluginServiceMock();
     const storageService = createStorageServiceMock();
-    repository = new GeneratedAppRepository(mockTenantDb as unknown as DrizzleDB, configService);
-    artifactService = new GeneratedAppArtifactService(repository, configService, storageService);
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(repository, artifactService, pluginService);
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    artifactService = new GeneratedAppArtifactService(
+      repository,
+      configService,
+      storageService,
+    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(
+      repository,
+      artifactService,
+      pluginService,
+    );
     repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(repository, repairService, runtimeBindingService, configService);
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(repository, artifactService, runtimeBindingService);
-    service = new GeneratedAppService(mockTenantDb as unknown as DrizzleDB, configService, undefined, undefined, undefined, undefined, undefined, pluginService, undefined, storageService, repository, artifactService, runtimeBindingService, repairService, orchestrator, publicRuntimeService);
+    orchestrator = new GeneratedAppGenerationOrchestratorService(
+      repository,
+      repairService,
+      runtimeBindingService,
+      configService,
+    );
+    publicRuntimeService = new GeneratedAppPublicRuntimeService(
+      repository,
+      artifactService,
+      runtimeBindingService,
+    );
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+      repository,
+      artifactService,
+      runtimeBindingService,
+      repairService,
+      orchestrator,
+      publicRuntimeService,
+    );
   });
 
   async function startGenerationRunWithGate3Result(
@@ -443,7 +481,6 @@ describe('orchestrator migrated scenarios', () => {
       updateRunChain,
     };
   }
-
 
   it('Gate 0/Gate 1/Gate 2/Gate 3/Gate 4/Gate 5/Gate 6 通过后应执行 Gate 7 real runner、进入 publish_candidate 且不创建公开 token', async () => {
     const previousGateResults = createInitialGeneratedAppGateResults(
@@ -3233,8 +3270,7 @@ describe('orchestrator migrated scenarios', () => {
     expect(
       (
         evaluation.failure?.details as
-          | { skeletonOnlyUpstreamGateIds?: string[] }
-          | undefined
+          { skeletonOnlyUpstreamGateIds?: string[] } | undefined
       )?.skeletonOnlyUpstreamGateIds,
     ).toEqual(['gate-3', 'gate-4', 'gate-5', 'gate-6']);
   });
@@ -3384,8 +3420,7 @@ describe('orchestrator migrated scenarios', () => {
     expect(
       (
         evaluation.failure?.details as
-          | { skeletonOnlyUpstreamGateIds?: string[] }
-          | undefined
+          { skeletonOnlyUpstreamGateIds?: string[] } | undefined
       )?.skeletonOnlyUpstreamGateIds,
     ).toEqual(['gate-4', 'gate-5', 'gate-6']);
   });
@@ -7692,4 +7727,3 @@ describe('orchestrator migrated scenarios', () => {
     expect(mockTenantDb.update).not.toHaveBeenCalled();
   });
 });
-

@@ -343,7 +343,7 @@ export class AuthService {
       });
     }
 
-    let supabaseUser: SupabaseUser | null = null;
+    let supabaseUser: SupabaseUser | null;
 
     try {
       supabaseUser = await this.supabaseService.getUser(accessToken);

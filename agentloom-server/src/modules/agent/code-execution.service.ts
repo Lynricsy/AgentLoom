@@ -392,7 +392,7 @@ export class CodeExecutionService {
         const stdoutContent =
           lastNewline >= 0 ? trimmed.slice(0, lastNewline) : '';
 
-        let output: unknown = null;
+        let output: unknown;
         try {
           output = JSON.parse(lastLine);
         } catch {

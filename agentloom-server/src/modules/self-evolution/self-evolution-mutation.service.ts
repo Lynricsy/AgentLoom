@@ -16,12 +16,34 @@ import { WorkspaceService } from '../workspace/workspace.service';
 import { SelfEvolutionGraphPatch } from './self-evolution-graph-patch';
 import { SelfEvolutionPermissionPolicy } from './self-evolution-permission-policy';
 import { SelfEvolutionReadService } from './self-evolution-read.service';
-import { buildSkillFiles, hasNewPublishedVersion, readOptionalNumber, readProposal, readRecord, readRequiredRecord, readRequiredString, readRequiredStringArray, readString, toFailureResult } from './self-evolution-value.util';
+import {
+  buildSkillFiles,
+  hasNewPublishedVersion,
+  readOptionalNumber,
+  readProposal,
+  readRecord,
+  readRequiredRecord,
+  readRequiredString,
+  readRequiredStringArray,
+  readString,
+  toFailureResult,
+} from './self-evolution-value.util';
 import type { ApplyAgentCanvasSnapshotOptions } from '../agent-definition/agent-definition.service';
 import { CreateWorkflowDefinitionSchema } from '../workflow-definition/dto/create-workflow-definition.dto';
 import { UpdateWorkflowDefinitionSchema } from '../workflow-definition/dto/update-workflow-definition.dto';
-import type { SelfEvolutionSessionContext, SelfEvolutionToolResult } from './self-evolution.types';
-import { AgentCreateDtoSchema, AgentGraphEdgeArraySchema, AgentGraphNodeArraySchema, McpImportDtoSchema, ModelCreateDtoSchema, ProviderCreateDtoSchema, SkillCreateDtoSchema } from './self-evolution.schemas';
+import type {
+  SelfEvolutionSessionContext,
+  SelfEvolutionToolResult,
+} from './self-evolution.types';
+import {
+  AgentCreateDtoSchema,
+  AgentGraphEdgeArraySchema,
+  AgentGraphNodeArraySchema,
+  McpImportDtoSchema,
+  ModelCreateDtoSchema,
+  ProviderCreateDtoSchema,
+  SkillCreateDtoSchema,
+} from './self-evolution.schemas';
 
 type GenericRecord = Record<string, unknown>;
 
@@ -40,12 +62,33 @@ export class SelfEvolutionMutationService {
     private readonly readService: SelfEvolutionReadService,
   ) {}
 
-  async execute(mutation: () => Promise<SelfEvolutionToolResult>): Promise<SelfEvolutionToolResult> {
-    try { return await mutation(); } catch (error) {
+  async execute(
+    mutation: () => Promise<SelfEvolutionToolResult>,
+  ): Promise<SelfEvolutionToolResult> {
+    try {
+      return await mutation();
+    } catch (error) {
       if (error instanceof DomainException) {
-        return { success: false, data: { problemDetails: { type: error.type, title: error.message, status: error.getStatus(), detail: error.detail, ...(error.errors ? { errors: error.errors } : {}), ...(error.extensions ? { extensions: error.extensions } : {}) } }, error: error.detail };
+        return {
+          success: false,
+          data: {
+            problemDetails: {
+              type: error.type,
+              title: error.message,
+              status: error.getStatus(),
+              detail: error.detail,
+              ...(error.errors ? { errors: error.errors } : {}),
+              ...(error.extensions ? { extensions: error.extensions } : {}),
+            },
+          },
+          error: error.detail,
+        };
       }
-      return { success: false, data: null, error: error instanceof Error ? error.message : String(error) };
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
@@ -232,9 +275,7 @@ export class SelfEvolutionMutationService {
               ...(readString(spec.description)
                 ? { description: readString(spec.description) }
                 : {}),
-              ...(readString(spec.icon)
-                ? { icon: readString(spec.icon) }
-                : {}),
+              ...(readString(spec.icon) ? { icon: readString(spec.icon) } : {}),
             }),
             context.actorUserId,
           );
@@ -250,9 +291,7 @@ export class SelfEvolutionMutationService {
               ...(readString(spec.description)
                 ? { description: readString(spec.description) }
                 : {}),
-              ...(readString(spec.icon)
-                ? { icon: readString(spec.icon) }
-                : {}),
+              ...(readString(spec.icon) ? { icon: readString(spec.icon) } : {}),
             }),
           );
           return { success: true, data: { resourceType, resource: workflow } };
@@ -344,9 +383,7 @@ export class SelfEvolutionMutationService {
                 : {}),
               ...(readOptionalNumber(spec.maxOutputTokens)
                 ? {
-                    maxOutputTokens: readOptionalNumber(
-                      spec.maxOutputTokens,
-                    ),
+                    maxOutputTokens: readOptionalNumber(spec.maxOutputTokens),
                   }
                 : {}),
               ...(readOptionalNumber(spec.timeoutMs)
@@ -366,5 +403,4 @@ export class SelfEvolutionMutationService {
       return toFailureResult(error);
     }
   }
-
 }

@@ -11,17 +11,40 @@ import { SkillResolverService } from '../../skill/skill-resolver.service';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 import { StepStateMachineService } from '../step-state-machine.service';
-import { getRuntimeNodeData, isRecord, readFirstString, readStringArray } from '../node-value.util';
+import {
+  getRuntimeNodeData,
+  isRecord,
+  readFirstString,
+  readStringArray,
+} from '../node-value.util';
 import { extractConfiguredMcpTools } from '../workflow-runtime-input.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class ExtensionNodeExecutor implements NodeExecutor {
   private readonly logger = new Logger(ExtensionNodeExecutor.name);
   private readonly handlers = {
-    plugin: (c: NodeExecutionContext) => this.executePlugin(c.step, c.input, c.tenantId, c.executionId),
-    skill: (c: NodeExecutionContext) => this.executeSkillNode(c.step, c.input, c.tenantId, c.executionId, c.runtime),
-    'mcp-tool': (c: NodeExecutionContext) => this.executeMcpToolNode(c.step, c.input, c.tenantId, c.executionId, c.runtime),
+    plugin: (c: NodeExecutionContext) =>
+      this.executePlugin(c.step, c.input, c.tenantId, c.executionId),
+    skill: (c: NodeExecutionContext) =>
+      this.executeSkillNode(
+        c.step,
+        c.input,
+        c.tenantId,
+        c.executionId,
+        c.runtime,
+      ),
+    'mcp-tool': (c: NodeExecutionContext) =>
+      this.executeMcpToolNode(
+        c.step,
+        c.input,
+        c.tenantId,
+        c.executionId,
+        c.runtime,
+      ),
   } satisfies Record<string, (context: NodeExecutionContext) => Promise<void>>;
 
   constructor(
@@ -29,12 +52,15 @@ export class ExtensionNodeExecutor implements NodeExecutor {
     @InjectQueue(PLUGIN_EXECUTION_QUEUE) private readonly pluginQueue: Queue,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly failurePolicy: NodeExecutionFailurePolicy,
-    @Optional() @Inject(SkillResolverService)
+    @Optional()
+    @Inject(SkillResolverService)
     private readonly skillResolverService?: SkillResolverService,
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.handlers[context.step.nodeType as keyof typeof this.handlers](context);
+    await this.handlers[context.step.nodeType as keyof typeof this.handlers](
+      context,
+    );
   }
 
   async executePlugin(

@@ -29,7 +29,6 @@ const mocks = vi.hoisted(() => {
     getSkillContent: vi.fn(),
   });
 
-
   return {
     createMockSkillService,
     createMockSkillStorageService,

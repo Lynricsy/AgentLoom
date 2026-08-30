@@ -383,9 +383,10 @@ function readToolError(
 ): string | undefined {
   const error = data?.error;
   if (typeof error === 'string' && error.length > 0) return error;
-  if (isRecord(error)) return readString(error.message) ?? JSON.stringify(error);
+  if (isRecord(error))
+    return readString(error.message) ?? JSON.stringify(error);
   return readBoolean(data?.isError)
-    ? readString(data?.message) ?? 'Sandbox tool execution failed'
+    ? (readString(data?.message) ?? 'Sandbox tool execution failed')
     : undefined;
 }
 
@@ -393,7 +394,9 @@ function isAgentEvent(value: unknown): value is AgentEvent {
   if (!isRecord(value) || typeof value.type !== 'string') return false;
   switch (value.type) {
     case 'plan':
-      return typeof value.title === 'string' && typeof value.content === 'string';
+      return (
+        typeof value.title === 'string' && typeof value.content === 'string'
+      );
     case 'message_chunk':
       return typeof value.content === 'string';
     case 'tool_call':
@@ -407,7 +410,9 @@ function isAgentEvent(value: unknown): value is AgentEvent {
     case 'pty.killed':
       return typeof value.sessionId === 'string';
     case 'pty.output':
-      return typeof value.sessionId === 'string' && typeof value.data === 'string';
+      return (
+        typeof value.sessionId === 'string' && typeof value.data === 'string'
+      );
     default:
       return false;
   }

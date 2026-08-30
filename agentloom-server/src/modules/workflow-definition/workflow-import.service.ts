@@ -93,14 +93,12 @@ type WorkflowDbClient = Pick<
   'execute' | 'insert' | 'select' | 'update'
 >;
 
-
 interface ImportedWorkflowAgentCloneResult {
   agentDefinitionId: string;
   publishedVersionId: string;
   name: string;
   runtimeMode: AgentRuntimeMode;
 }
-
 
 interface ImportedWorkflowAgentCloneContext {
   importSource: 'marketplace' | 'share';
@@ -151,7 +149,6 @@ function clearNodeConfigField(node: schema.ReactFlowNode, key: string): void {
   nodeData.config = config;
   node.data = nodeData;
 }
-
 
 @Injectable()
 export class WorkflowImportService {
@@ -1158,7 +1155,6 @@ export class WorkflowImportService {
     }
   }
 
-
   private async remapImportedWorkflowAgentModelNode(params: {
     node: schema.ReactFlowNode;
     runtimeNodeData: Record<string, unknown>;
@@ -1239,7 +1235,6 @@ export class WorkflowImportService {
       clearNodeConfigField(params.node, 'endpointUrl');
     }
   }
-
 
   private sanitizeImportedAgentSandboxConfig(
     sandboxConfig: schema.SandboxConfig | null,
@@ -1465,6 +1460,4 @@ export class WorkflowImportService {
     const normalizedValue = value?.trim();
     return normalizedValue ? normalizedValue : null;
   }
-
-
 }

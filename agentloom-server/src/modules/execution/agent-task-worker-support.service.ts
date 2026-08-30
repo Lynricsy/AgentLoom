@@ -933,7 +933,6 @@ export class AgentTaskWorkerSupportService {
     return [];
   }
 
-
   public asRecord(value: unknown): Record<string, unknown> | null {
     return typeof value === 'object' && value !== null
       ? (value as Record<string, unknown>)
@@ -946,5 +945,4 @@ export class AgentTaskWorkerSupportService {
   ): Promise<T> {
     return runInTenantTransaction(this.db, tenantId, async () => operation());
   }
-
 }

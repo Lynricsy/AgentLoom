@@ -217,14 +217,11 @@ import {
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
 
-
 import { GeneratedAppRepository } from './generated-app.repository';
 
 @Injectable()
 export class GeneratedAppGenerationRepairService {
   constructor(private readonly repository: GeneratedAppRepository) {}
-
-
 
   public async recordAutomaticRepairAttemptForFailedRun(params: {
     tenantId: string;
@@ -292,7 +289,6 @@ export class GeneratedAppGenerationRepairService {
     return this.repository.toRepairAttemptResponseDto(attempt);
   }
 
-
   public async createRunningGate3RepairAttempt(params: {
     tenantId: string;
     userId: string;
@@ -336,7 +332,6 @@ export class GeneratedAppGenerationRepairService {
     return this.repository.toRepairAttemptResponseDto(attempt);
   }
 
-
   public async completeGate3RepairAttempt(params: {
     tenantId: string;
     appId: string;
@@ -375,7 +370,6 @@ export class GeneratedAppGenerationRepairService {
 
     return this.repository.toRepairAttemptResponseDto(attempt);
   }
-
 
   public buildFailedGateRepairPlan(
     failedGateRun: GeneratedAppGateRunResponseDto,
@@ -504,7 +498,6 @@ export class GeneratedAppGenerationRepairService {
       : basePlan;
   }
 
-
   public buildFailedGateReverificationPlan(
     failedGateRun: GeneratedAppGateRunResponseDto,
     generatedAt: Date,
@@ -533,7 +526,6 @@ export class GeneratedAppGenerationRepairService {
       generatedAt: generatedAt.toISOString(),
     };
   }
-
 
   public resolveRepairAllowedChangeScopes(
     gateId: string,
@@ -589,7 +581,6 @@ export class GeneratedAppGenerationRepairService {
     }
   }
 
-
   public resolveRepairPatchTargets(gateId: string): string[] {
     switch (gateId) {
       case 'gate-0':
@@ -629,7 +620,6 @@ export class GeneratedAppGenerationRepairService {
     }
   }
 
-
   public resolveReverificationGateIds(gateId: string): string[] {
     const gateDefinition = getGeneratedAppGateDefinition(gateId);
 
@@ -639,7 +629,6 @@ export class GeneratedAppGenerationRepairService {
 
     return [`gate-${gateDefinition.order}`];
   }
-
 
   public resolveReverificationCommandIds(gateId: string): string[] {
     switch (gateId) {
@@ -660,7 +649,6 @@ export class GeneratedAppGenerationRepairService {
         return [];
     }
   }
-
 
   public async resolveLatestFailedRepairContext(
     tenantId: string,

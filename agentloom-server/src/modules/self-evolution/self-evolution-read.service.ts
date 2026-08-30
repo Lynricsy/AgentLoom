@@ -12,16 +12,34 @@ import { WorkflowVersionService } from '../workflow-definition/workflow-version.
 import { WorkspaceService } from '../workspace/workspace.service';
 import { SelfEvolutionGraphPatch } from './self-evolution-graph-patch';
 import { SelfEvolutionPermissionPolicy } from './self-evolution-permission-policy';
-import { cloneJsonArray, cloneJsonRecord, readEdgeOperations, readNodeOperations, readPositiveInt, readRecord, readString, readTargetKind } from './self-evolution-value.util';
+import {
+  cloneJsonArray,
+  cloneJsonRecord,
+  readEdgeOperations,
+  readNodeOperations,
+  readPositiveInt,
+  readRecord,
+  readString,
+  readTargetKind,
+} from './self-evolution-value.util';
 import { ListAgentDefinitionsQuerySchema } from '../agent-definition/dto/list-agent-definitions-query.dto';
 import { McpServerConfigQuerySchema } from '../mcp/dto/mcp-server-config-query.dto';
 import { SkillQuerySchema } from '../skill/dto/skill-query.dto';
 import { ListWorkflowDefinitionsQuerySchema } from '../workflow-definition/dto/list-workflow-definitions-query.dto';
-import type { SelfEvolutionSessionContext, SelfEvolutionToolName, SelfEvolutionToolResult, SelfEvolutionGraphProposal, SelfEvolutionTargetKind } from './self-evolution.types';
+import type {
+  SelfEvolutionSessionContext,
+  SelfEvolutionToolName,
+  SelfEvolutionToolResult,
+  SelfEvolutionGraphProposal,
+  SelfEvolutionTargetKind,
+} from './self-evolution.types';
 import { SELF_EVOLUTION_DOMAIN } from './self-evolution.types';
 
 type GenericRecord = Record<string, unknown>;
-type ReadToolName = Extract<SelfEvolutionToolName, 'query_state' | 'query_resource_pool' | 'propose_change'>;
+type ReadToolName = Extract<
+  SelfEvolutionToolName,
+  'query_state' | 'query_resource_pool' | 'propose_change'
+>;
 
 @Injectable()
 export class SelfEvolutionReadService {
@@ -36,14 +54,34 @@ export class SelfEvolutionReadService {
     private readonly graphPatch: SelfEvolutionGraphPatch,
   ) {}
 
-  async execute(toolName: ReadToolName, handlers: Record<ReadToolName, () => Promise<unknown>>): Promise<SelfEvolutionToolResult> {
+  async execute(
+    toolName: ReadToolName,
+    handlers: Record<ReadToolName, () => Promise<unknown>>,
+  ): Promise<SelfEvolutionToolResult> {
     try {
       return { success: true, data: await handlers[toolName]() };
     } catch (error) {
       if (error instanceof DomainException) {
-        return { success: false, data: { problemDetails: { type: error.type, title: error.message, status: error.getStatus(), detail: error.detail, ...(error.errors ? { errors: error.errors } : {}), ...(error.extensions ? { extensions: error.extensions } : {}) } }, error: error.detail };
+        return {
+          success: false,
+          data: {
+            problemDetails: {
+              type: error.type,
+              title: error.message,
+              status: error.getStatus(),
+              detail: error.detail,
+              ...(error.errors ? { errors: error.errors } : {}),
+              ...(error.extensions ? { extensions: error.extensions } : {}),
+            },
+          },
+          error: error.detail,
+        };
       }
-      return { success: false, data: null, error: error instanceof Error ? error.message : String(error) };
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
@@ -259,16 +297,17 @@ export class SelfEvolutionReadService {
     const nextEdges = this.graphPatch.applyEdges(target.edges, edgeOperations);
     const nextViewport = viewport ?? target.viewport ?? null;
 
-    const permissionProfile = this.permissionPolicy.determineGraphChangePermissionProfile({
-      context,
-      target,
-      currentNodes: target.nodes,
-      currentEdges: target.edges,
-      nodeOperations,
-      edgeOperations,
-      nextNodes,
-      nextEdges,
-    });
+    const permissionProfile =
+      this.permissionPolicy.determineGraphChangePermissionProfile({
+        context,
+        target,
+        currentNodes: target.nodes,
+        currentEdges: target.edges,
+        nodeOperations,
+        edgeOperations,
+        nextNodes,
+        nextEdges,
+      });
 
     const publishTarget =
       typeof input.publishTarget === 'boolean'
@@ -391,5 +430,4 @@ export class SelfEvolutionReadService {
       viewport: cloneJsonRecord(detail.viewport),
     };
   }
-
 }

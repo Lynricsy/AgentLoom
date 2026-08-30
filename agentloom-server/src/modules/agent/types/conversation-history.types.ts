@@ -14,5 +14,4 @@ export interface ConversationAgentEventReplayEntry {
 }
 
 export type ConversationReplayEntry =
-  | ConversationUserMessageReplayEntry
-  | ConversationAgentEventReplayEntry;
+  ConversationUserMessageReplayEntry | ConversationAgentEventReplayEntry;

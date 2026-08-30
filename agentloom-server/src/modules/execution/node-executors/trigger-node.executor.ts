@@ -11,7 +11,10 @@ import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { extractExecutionInputPayload } from '../node-value.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class TriggerNodeExecutor implements NodeExecutor {
@@ -21,10 +24,17 @@ export class TriggerNodeExecutor implements NodeExecutor {
     private readonly failurePolicy: NodeExecutionFailurePolicy,
   ) {}
 
-  private get tenantDb(): DrizzleDB { return getTenantDb(this.db); }
+  private get tenantDb(): DrizzleDB {
+    return getTenantDb(this.db);
+  }
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.executeTriggerNode(context.step, context.tenantId, context.executionId, context.runtime);
+    await this.executeTriggerNode(
+      context.step,
+      context.tenantId,
+      context.executionId,
+      context.runtime,
+    );
   }
 
   async executeTriggerNode(

@@ -32,19 +32,22 @@ describe('SandboxToolRegistryService', () => {
   });
 
   it('runtimeConfig HTTP tool 可注册、解析并在事务外执行', async () => {
-    const provider = service.createRuntimeConfigToolProvider(session as never, {
-      tools: [
-        {
-          toolId: 'http-1',
-          toolType: 'http',
-          name: 'fetch_status',
-          enabled: true,
-          url: 'https://api.example.test/status',
-          method: 'POST',
-          parameterOverrides: { fixed: true },
-        },
-      ],
-    } as never);
+    const provider = service.createRuntimeConfigToolProvider(
+      session as never,
+      {
+        tools: [
+          {
+            toolId: 'http-1',
+            toolType: 'http',
+            name: 'fetch_status',
+            enabled: true,
+            url: 'https://api.example.test/status',
+            method: 'POST',
+            parameterOverrides: { fixed: true },
+          },
+        ],
+      } as never,
+    );
     expect(provider).not.toBeNull();
     service.registerSessionToolProvider(session.id, provider!);
     globalThis.fetch = vi.fn().mockResolvedValue({

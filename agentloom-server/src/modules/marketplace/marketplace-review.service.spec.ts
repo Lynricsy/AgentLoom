@@ -375,7 +375,6 @@ describe('MarketplaceReviewService', () => {
     });
   });
 
-
   it('Agent 节点未绑定已发布 Agent Definition 时应返回关键配置失败', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))

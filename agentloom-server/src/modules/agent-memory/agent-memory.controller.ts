@@ -993,7 +993,9 @@ export class AgentMemoryController {
           patchSummary: memoryVersions.patchSummary,
           createdBy: memoryVersions.createdBy,
           createdAt: memoryVersions.createdAt,
-          actor: sql<string | null>`coalesce(${users.displayName}, ${users.email})`,
+          actor: sql<
+            string | null
+          >`coalesce(${users.displayName}, ${users.email})`,
           // 前一版本内容必须由数据库事实产生，不能用当前内容伪造 diff。
           previousValue: sql<string | null>`(
             SELECT previous.content
@@ -1005,10 +1007,7 @@ export class AgentMemoryController {
         })
         .from(memoryVersions)
         .innerJoin(memoryNodes, eq(memoryVersions.nodeId, memoryNodes.id))
-        .leftJoin(
-          users,
-          eq(users.supabaseUserId, memoryVersions.createdBy),
-        )
+        .leftJoin(users, eq(users.supabaseUserId, memoryVersions.createdBy))
         .where(auditPredicate)
         .orderBy(desc(memoryVersions.createdAt))
         .limit(pageSize)

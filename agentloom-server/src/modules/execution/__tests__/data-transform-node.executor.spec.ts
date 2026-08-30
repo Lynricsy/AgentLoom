@@ -81,7 +81,7 @@ import {
   makeEdge,
   makeSnapshot,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('data migrated scenarios', () => {
@@ -390,7 +390,9 @@ describe('data migrated scenarios', () => {
         [makeEdge('A', 'B')],
       );
       const executor = nodeDispatcher.find('data_transform')!;
-      const execute = vi.spyOn(executor, 'execute').mockResolvedValue(undefined);
+      const execute = vi
+        .spyOn(executor, 'execute')
+        .mockResolvedValue(undefined);
       const steps = [
         makeStep({
           id: 'step-a',
@@ -493,6 +495,4 @@ describe('data migrated scenarios', () => {
       );
     });
   });
-
-
 });

@@ -238,8 +238,6 @@ export class GeneratedAppArtifactService {
     @Optional() private readonly storageService?: StorageService,
   ) {}
 
-
-
   public resolveWorkspaceRoot(): string {
     const configuredRoot =
       this.configService.get<string>('GENERATED_APP_WORKSPACE_ROOT') ??
@@ -251,7 +249,6 @@ export class GeneratedAppArtifactService {
         : join(tmpdir(), 'agentloom-generated-app-workspaces'),
     );
   }
-
 
   public resolveArtifactWorkspaceContext(app: GeneratedApp): {
     workspace: GeneratedAppGenerationWorkspaceContract;
@@ -280,7 +277,6 @@ export class GeneratedAppArtifactService {
       return null;
     }
   }
-
 
   public resolveArtifactBuildUnitPlan(
     app: GeneratedApp,
@@ -328,7 +324,6 @@ export class GeneratedAppArtifactService {
     return buildUnitPlan as unknown as GeneratedAppBuildUnitPlan;
   }
 
-
   public buildArtifactDefinitions(
     workspace: GeneratedAppGenerationWorkspaceContract,
   ): GeneratedAppArtifactDefinition[] {
@@ -354,7 +349,6 @@ export class GeneratedAppArtifactService {
     ];
   }
 
-
   public extractPluginToolIdsFromWorkspace(
     workspace: GeneratedAppGenerationWorkspaceContract,
   ): string[] {
@@ -372,7 +366,6 @@ export class GeneratedAppArtifactService {
       ),
     ];
   }
-
 
   public async toArtifactSummaryDto(
     workspacePath: string,
@@ -417,14 +410,12 @@ export class GeneratedAppArtifactService {
     };
   }
 
-
   public resolveArtifactFilePath(
     workspacePath: string,
     relativePath: string,
   ): string {
     return this.resolveSafeRelativePathInside(workspacePath, relativePath);
   }
-
 
   public async resolveArtifactContentForApp(
     app: GeneratedApp,
@@ -480,7 +471,6 @@ export class GeneratedAppArtifactService {
     };
   }
 
-
   public async hasReadableArtifactForApp(
     app: GeneratedApp,
     artifactId: string,
@@ -494,13 +484,11 @@ export class GeneratedAppArtifactService {
     }
   }
 
-
   public buildPublicBuildPreviewUrl(token: string): string {
     return `${GENERATED_APP_PUBLIC_PREVIEW_PATH_PREFIX}/${encodeURIComponent(
       token,
     )}/preview`;
   }
-
 
   public async resolvePublicRuntimePreviewUrl(
     app: GeneratedApp,
@@ -517,7 +505,6 @@ export class GeneratedAppArtifactService {
 
     return app.preview.previewUrl;
   }
-
 
   public resolveSafeRelativePathInside(root: string, relativePath: string) {
     const trimmedPath = relativePath.trim();
@@ -556,7 +543,6 @@ export class GeneratedAppArtifactService {
     return resolvedPath;
   }
 
-
   async getArtifactManifest(
     tenantId: string,
     appId: string,
@@ -593,7 +579,6 @@ export class GeneratedAppArtifactService {
     };
   }
 
-
   async getArtifactContent(
     tenantId: string,
     appId: string,
@@ -603,7 +588,6 @@ export class GeneratedAppArtifactService {
 
     return this.resolveArtifactContentForApp(app, artifactId);
   }
-
 
   public async loadAndVerifyGeneratedPrivatePlugin(params: {
     app: GeneratedAppResponseDto;
@@ -774,7 +758,6 @@ export class GeneratedAppArtifactService {
     };
   }
 
-
   public async persistGeneratedPrivatePluginArtifacts(params: {
     archiveStorageKey: string;
     archiveBuffer: Buffer;
@@ -803,7 +786,6 @@ export class GeneratedAppArtifactService {
       );
     }
   }
-
 
   public async extractGeneratedPrivatePluginWasm(
     archiveBuffer: Buffer,
@@ -834,7 +816,6 @@ export class GeneratedAppArtifactService {
     return wasmBuffer;
   }
 
-
   public assertSafeGeneratedPrivatePluginWasmEntry(
     wasmEntry: string,
     pluginId: string,
@@ -853,7 +834,6 @@ export class GeneratedAppArtifactService {
       );
     }
   }
-
 
   public assertGeneratedPrivatePluginHardGates(
     toolId: string,
@@ -877,7 +857,6 @@ export class GeneratedAppArtifactService {
       );
     }
   }
-
 
   public async readJsonFile<T>(path: string): Promise<T> {
     const content = await readFile(path, 'utf8');

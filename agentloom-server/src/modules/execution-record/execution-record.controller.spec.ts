@@ -170,8 +170,7 @@ describe('ExecutionRecordController', () => {
   it('should declare a 404 swagger response for missing executions', () => {
     const handler = getHandler('findByExecution');
     const responses = Reflect.getMetadata(DECORATORS.API_RESPONSE, handler) as
-      | Record<string, { description?: string }>
-      | undefined;
+      Record<string, { description?: string }> | undefined;
 
     expect(responses).toBeDefined();
     expect(

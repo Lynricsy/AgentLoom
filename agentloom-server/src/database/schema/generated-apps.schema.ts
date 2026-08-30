@@ -81,7 +81,6 @@ export const generatedAppRepairAttemptStatusEnum = pgEnum(
 export type GeneratedAppRepairAttemptStatus =
   (typeof generatedAppRepairAttemptStatusEnum.enumValues)[number];
 
-
 export const generatedApps = pgTable(
   'generated_apps',
   {

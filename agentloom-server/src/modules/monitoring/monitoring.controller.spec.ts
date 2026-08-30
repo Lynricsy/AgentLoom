@@ -102,8 +102,7 @@ describe('MonitoringController', () => {
 
     const responses = handler
       ? (Reflect.getMetadata(DECORATORS.API_RESPONSE, handler) as
-          | Record<string, { description?: string }>
-          | undefined)
+          Record<string, { description?: string }> | undefined)
       : undefined;
 
     expect(responses).toBeDefined();

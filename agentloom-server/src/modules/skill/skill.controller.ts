@@ -314,11 +314,7 @@ export class SkillController {
     const tenantId = this.requireTenantId(req);
 
     // 单文件删除必须经过 Skill 存储边界，避免 controller 自行拼键绕过统一文件名校验。
-    await this.skillStorageService.deleteSkillFile(
-      tenantId,
-      id,
-      fileName,
-    );
+    await this.skillStorageService.deleteSkillFile(tenantId, id, fileName);
 
     await this.refreshFileMeta(tenantId, id);
   }

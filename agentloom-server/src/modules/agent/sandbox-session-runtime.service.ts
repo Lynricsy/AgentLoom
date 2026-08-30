@@ -36,9 +36,7 @@ export class SandboxSessionRuntimeService {
       ? workflowState.serverSandbox
       : undefined;
     const nestedExecutionId = readString(serverSandbox?.executionId);
-    const nestedConversationId = readString(
-      serverSandbox?.agentConversationId,
-    );
+    const nestedConversationId = readString(serverSandbox?.agentConversationId);
     const sandboxNodeId =
       readString(workflowState.sandboxNodeId) ??
       readString(serverSandbox?.sandboxNodeId);
@@ -49,8 +47,7 @@ export class SandboxSessionRuntimeService {
         : {}),
       ...((agentConversationId ?? nestedConversationId)
         ? {
-            agentConversationId:
-              agentConversationId ?? nestedConversationId,
+            agentConversationId: agentConversationId ?? nestedConversationId,
           }
         : {}),
       ...(sandboxNodeId ? { sandboxNodeId } : {}),
@@ -95,7 +92,10 @@ export class SandboxSessionRuntimeService {
                 tenantId,
               )
             : null;
-        if (latest && (latest.status === 'failed' || latest.status === 'stopped')) {
+        if (
+          latest &&
+          (latest.status === 'failed' || latest.status === 'stopped')
+        ) {
           throw new Error(
             await this.describeUnavailableSandboxSession(latest, bindingLabel),
           );
@@ -133,12 +133,16 @@ export class SandboxSessionRuntimeService {
     const signal = abortSignal
       ? AbortSignal.any([abortSignal, timeoutSignal])
       : timeoutSignal;
-    return this.runtimeDriver.requestGuest(sandbox.runtimeHandle, '/v1/prompt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, content, cwd: CONTAINER_WORKSPACE }),
-      signal,
-    }) as Promise<Response>;
+    return this.runtimeDriver.requestGuest(
+      sandbox.runtimeHandle,
+      '/v1/prompt',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, content, cwd: CONTAINER_WORKSPACE }),
+        signal,
+      },
+    ) as Promise<Response>;
   }
 
   async abortContainerPrompt(

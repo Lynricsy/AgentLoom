@@ -194,13 +194,7 @@ describe('API Event ingestion E2E', () => {
       userId,
       tenantId,
     );
-    await seedMember(
-      ctx.adminSql,
-      organizationId,
-      userId,
-      'owner',
-      userId,
-    );
+    await seedMember(ctx.adminSql, organizationId, userId, 'owner', userId);
     await ctx.adminSql`
       UPDATE users
       SET current_organization_id = ${organizationId}::uuid
@@ -429,37 +423,40 @@ describe('API Event ingestion E2E', () => {
   it.each([
     ['错误签名', { 'x-hub-signature-256': 'sha256=invalid' }],
     ['缺少签名头', {}],
-  ])('GitHub %s 应 fail-closed，只计 skipped 且不创建 execution', async (_label, headers) => {
-    const tenant = await seedTenant('api-event-github-rejected');
-    const workflowId = await seedWorkflow(tenant);
-    await seedApiEventTrigger({
-      tenant,
-      workflowId,
-      config: {
-        eventSource: 'github',
-        eventType: 'push',
-        secret: 'github-e2e-secret',
-      },
-    });
+  ])(
+    'GitHub %s 应 fail-closed，只计 skipped 且不创建 execution',
+    async (_label, headers) => {
+      const tenant = await seedTenant('api-event-github-rejected');
+      const workflowId = await seedWorkflow(tenant);
+      await seedApiEventTrigger({
+        tenant,
+        workflowId,
+        config: {
+          eventSource: 'github',
+          eventType: 'push',
+          secret: 'github-e2e-secret',
+        },
+      });
 
-    const before = await db.select().from(schema.workflowExecutions);
-    const response = await postEvent(tenant, {
-      source: 'github',
-      type: 'push',
-      data: { rawBody: '{"ref":"refs/heads/main"}', headers },
-    });
+      const before = await db.select().from(schema.workflowExecutions);
+      const response = await postEvent(tenant, {
+        source: 'github',
+        type: 'push',
+        data: { rawBody: '{"ref":"refs/heads/main"}', headers },
+      });
 
-    expect(response.statusCode).toBe(202);
-    expect(response.json()).toEqual({
-      triggeredCount: 0,
-      executions: [],
-      skippedCount: 1,
-    });
-    expect(executionQueueAdd).not.toHaveBeenCalled();
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toEqual({
+        triggeredCount: 0,
+        executions: [],
+        skippedCount: 1,
+      });
+      expect(executionQueueAdd).not.toHaveBeenCalled();
 
-    const after = await db.select().from(schema.workflowExecutions);
-    expect(after).toHaveLength(before.length);
-  });
+      const after = await db.select().from(schema.workflowExecutions);
+      expect(after).toHaveLength(before.length);
+    },
+  );
 
   it('坏 filter 应 fail-closed，且不影响同场有效 trigger', async () => {
     const tenant = await seedTenant('api-event-filter');

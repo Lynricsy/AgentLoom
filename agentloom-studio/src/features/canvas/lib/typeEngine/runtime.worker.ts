@@ -247,7 +247,7 @@ export async function loadTypeEngineBindings(options?: {
   const fallbackResponse = typeof response.clone === 'function' ? response.clone() : null
 
   let instantiated: WebAssembly.WebAssemblyInstantiatedSource
-  let loadStrategy: TypeEngineWasmLoadStrategy = 'arrayBuffer'
+  let loadStrategy: TypeEngineWasmLoadStrategy
 
   try {
     if (!webAssemblyImpl.instantiateStreaming) {

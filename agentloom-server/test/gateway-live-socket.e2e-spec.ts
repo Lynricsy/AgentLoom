@@ -1,4 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
@@ -310,7 +318,9 @@ describe('Gateway live Socket.IO (E2E)', () => {
         knowledgeBaseId: KB_ID,
         status: 'ready',
       });
-      await expect(knowledgeBaseEvent).resolves.toEqual({ knowledgeBaseId: KB_ID });
+      await expect(knowledgeBaseEvent).resolves.toEqual({
+        knowledgeBaseId: KB_ID,
+      });
     });
 
     it('缺 knowledgeBaseId 返回 INVALID_PAYLOAD', async () => {
@@ -331,9 +341,13 @@ describe('Gateway live Socket.IO (E2E)', () => {
         'execution.state.snapshot',
       );
 
-      const ack = await emitWithAck<SubscribeAck>(socket, 'execution:subscribe', {
-        executionId,
-      });
+      const ack = await emitWithAck<SubscribeAck>(
+        socket,
+        'execution:subscribe',
+        {
+          executionId,
+        },
+      );
 
       expect(ack).toEqual({
         status: 'subscribed',
@@ -358,10 +372,14 @@ describe('Gateway live Socket.IO (E2E)', () => {
         received.push(event),
       );
 
-      const ack = await emitWithAck<SubscribeAck>(socket, 'execution:subscribe', {
-        executionId,
-        lastEventId: 1,
-      });
+      const ack = await emitWithAck<SubscribeAck>(
+        socket,
+        'execution:subscribe',
+        {
+          executionId,
+          lastEventId: 1,
+        },
+      );
       await delay();
 
       expect(ack.status).toBe('subscribed');
@@ -393,10 +411,14 @@ describe('Gateway live Socket.IO (E2E)', () => {
         snapshotsReceived.push(event),
       );
 
-      const ack = await emitWithAck<SubscribeAck>(socket, 'execution:subscribe', {
-        executionId,
-        lastEventId: 1,
-      });
+      const ack = await emitWithAck<SubscribeAck>(
+        socket,
+        'execution:subscribe',
+        {
+          executionId,
+          lastEventId: 1,
+        },
+      );
       await delay();
 
       expect(ack.status).toBe('subscribed');
@@ -437,10 +459,14 @@ describe('Gateway live Socket.IO (E2E)', () => {
         ExecutionEventName.STEP_STATUS_CHANGED,
       );
 
-      const ack = await emitWithAck<SubscribeAck>(socket, 'execution:subscribe', {
-        executionId,
-        lastEventId: 0,
-      });
+      const ack = await emitWithAck<SubscribeAck>(
+        socket,
+        'execution:subscribe',
+        {
+          executionId,
+          lastEventId: 0,
+        },
+      );
 
       expect(ack.status).toBe('subscribed');
       await expect(snapshotEvent).resolves.toEqual(snapshots.get(executionId));
@@ -466,11 +492,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
         type: 'execution_completed',
         title: 'Execution completed',
       };
-      notificationGateway.sendToUser(
-        TENANT_A,
-        USER_A,
-        notification as never,
-      );
+      notificationGateway.sendToUser(TENANT_A, USER_A, notification as never);
       await delay();
 
       expect(receivedByA).toEqual([notification]);
@@ -487,10 +509,10 @@ describe('Gateway live Socket.IO (E2E)', () => {
       const socket = await connectAuthenticated('/memory', tokenA, {
         lastEventId: '1',
       });
-      const replay = waitForEvent<{ eventId: number; data: { nodeId: string } }>(
-        socket,
-        MemoryEventName.NODE_UPDATED,
-      );
+      const replay = waitForEvent<{
+        eventId: number;
+        data: { nodeId: string };
+      }>(socket, MemoryEventName.NODE_UPDATED);
 
       const ack = await emitWithAck(socket, 'memory:subscribe', {
         instanceId: MEMORY_ID,

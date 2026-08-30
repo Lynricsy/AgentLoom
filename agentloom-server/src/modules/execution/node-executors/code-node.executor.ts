@@ -7,8 +7,16 @@ import { CodeExecutionService } from '../../agent/code-execution.service';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 import { StepStateMachineService } from '../step-state-machine.service';
-import { extractCodeToolInputPayload, getRuntimeNodeData, readFirstString, readOptionalNumber } from '../node-value.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import {
+  extractCodeToolInputPayload,
+  getRuntimeNodeData,
+  readFirstString,
+  readOptionalNumber,
+} from '../node-value.util';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class CodeNodeExecutor implements NodeExecutor {
@@ -19,7 +27,13 @@ export class CodeNodeExecutor implements NodeExecutor {
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.executeCodeToolNode(context.step, context.input, context.tenantId, context.executionId, context.runtime);
+    await this.executeCodeToolNode(
+      context.step,
+      context.input,
+      context.tenantId,
+      context.executionId,
+      context.runtime,
+    );
   }
 
   async executeCodeToolNode(

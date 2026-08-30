@@ -36,8 +36,7 @@ function getRoles(target: object, methodName: string): string[] | undefined {
   );
   if (!descriptor?.value) return undefined;
   return Reflect.getMetadata(ROLES_KEY, descriptor.value) as
-    | string[]
-    | undefined;
+    string[] | undefined;
 }
 
 // ---------------------------------------------------------------------------

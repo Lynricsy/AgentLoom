@@ -2,8 +2,19 @@
  * Sandbox 工具注册边界：构建 runtimeConfig 工具集、序列化远程工具描述并校验回调令牌。
  * 数据库事务仅包围 MCP 描述读取；MCP、HTTP、RAG 与代码执行均在事务外发生。
  */
-import { Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
-import { asSchema, jsonSchema, tool, type FlexibleSchema, type ToolSet } from 'ai';
+import {
+  Inject,
+  Injectable,
+  Optional,
+  UnauthorizedException,
+} from '@nestjs/common';
+import {
+  asSchema,
+  jsonSchema,
+  tool,
+  type FlexibleSchema,
+  type ToolSet,
+} from 'ai';
 import { and, eq } from 'drizzle-orm';
 import { existsSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -11,7 +22,14 @@ import { runInTenantTransaction } from '../../common/interceptors/tenant-transac
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import type { AgentCodeToolBinding, AgentHttpToolBinding, AgentKnowledgeBinding, AgentMcpToolBinding, AgentRuntimeConfig, AgentToolBinding } from '../agent-definition/agent-runtime-config.interface';
+import type {
+  AgentCodeToolBinding,
+  AgentHttpToolBinding,
+  AgentKnowledgeBinding,
+  AgentMcpToolBinding,
+  AgentRuntimeConfig,
+  AgentToolBinding,
+} from '../agent-definition/agent-runtime-config.interface';
 import { RagService } from '../knowledge/services/rag.service';
 import { McpService } from '../mcp/mcp.service';
 import { SandboxNotFoundException } from '../sandbox/sandbox.exceptions';
@@ -21,17 +39,70 @@ import { normalizeFlexibleSchemaJson } from './tool-schema-converter';
 import type { SessionToolProvider } from './ports/agent-runtime.port';
 import type { AgentSession } from './types';
 
-const DEFAULT_REMOTE_TOOL_SCHEMA = { type: 'object', additionalProperties: true } satisfies Record<string, unknown>;
+const DEFAULT_REMOTE_TOOL_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+} satisfies Record<string, unknown>;
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0];
-type RemoteToolDescriptor = { name: string; label: string; description: string; promptSnippet?: string; parameters: Record<string, unknown> };
-type McpRuntimeToolDescriptor = { toolName: string; description: string; inputSchema?: Record<string, unknown>; mcpServerConfigId: string };
-const HTTP_TOOL_INPUT_SCHEMA = { type: 'object', properties: { query: { type: 'object', description: '可选 query 参数，会自动附加到 URL', additionalProperties: true }, headers: { type: 'object', description: '可选请求头，值必须为字符串', additionalProperties: { type: 'string' } }, body: { description: '非 GET/HEAD 请求时发送的 body；对象会默认序列化为 JSON' } }, additionalProperties: true } satisfies AiJsonSchemaInput;
-const CODE_TOOL_INPUT_SCHEMA = { type: 'object', properties: { input: { description: '传入代码工具的结构化输入' } }, additionalProperties: true } satisfies AiJsonSchemaInput;
-const KNOWLEDGE_TOOL_INPUT_SCHEMA = { type: 'object', properties: { query: { type: 'string', description: '用于知识检索的查询词' }, knowledgeBaseIds: { type: 'array', items: { type: 'string' }, minItems: 1, description: '要检索的知识库 ID 列表，必须从当前 Agent 可用知识库中选择' }, topK: { type: 'integer', minimum: 1, description: '可选覆盖返回条数' } }, required: ['query', 'knowledgeBaseIds'], additionalProperties: false } satisfies AiJsonSchemaInput;
+type RemoteToolDescriptor = {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet?: string;
+  parameters: Record<string, unknown>;
+};
+type McpRuntimeToolDescriptor = {
+  toolName: string;
+  description: string;
+  inputSchema?: Record<string, unknown>;
+  mcpServerConfigId: string;
+};
+const HTTP_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    query: {
+      type: 'object',
+      description: '可选 query 参数，会自动附加到 URL',
+      additionalProperties: true,
+    },
+    headers: {
+      type: 'object',
+      description: '可选请求头，值必须为字符串',
+      additionalProperties: { type: 'string' },
+    },
+    body: {
+      description: '非 GET/HEAD 请求时发送的 body；对象会默认序列化为 JSON',
+    },
+  },
+  additionalProperties: true,
+} satisfies AiJsonSchemaInput;
+const CODE_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: { input: { description: '传入代码工具的结构化输入' } },
+  additionalProperties: true,
+} satisfies AiJsonSchemaInput;
+const KNOWLEDGE_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    query: { type: 'string', description: '用于知识检索的查询词' },
+    knowledgeBaseIds: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 1,
+      description: '要检索的知识库 ID 列表，必须从当前 Agent 可用知识库中选择',
+    },
+    topK: { type: 'integer', minimum: 1, description: '可选覆盖返回条数' },
+  },
+  required: ['query', 'knowledgeBaseIds'],
+  additionalProperties: false,
+} satisfies AiJsonSchemaInput;
 
 @Injectable()
 export class SandboxToolRegistryService {
-  private readonly sessionToolProviders = new Map<string, SessionToolProvider[]>();
+  private readonly sessionToolProviders = new Map<
+    string,
+    SessionToolProvider[]
+  >();
   private readonly sessionToolCallbackTokens = new Map<string, string>();
 
   constructor(
@@ -41,13 +112,18 @@ export class SandboxToolRegistryService {
     @Optional() private readonly codeExecutionService?: CodeExecutionService,
   ) {}
 
-  private get tenantDb(): DrizzleDB { return getTenantDb(this.db); }
+  private get tenantDb(): DrizzleDB {
+    return getTenantDb(this.db);
+  }
 
   initializeSession(sessionId: string): void {
     this.sessionToolCallbackTokens.set(sessionId, randomUUID());
   }
 
-  registerSessionToolProvider(sessionId: string, provider: SessionToolProvider): void {
+  registerSessionToolProvider(
+    sessionId: string,
+    provider: SessionToolProvider,
+  ): void {
     const providers = this.sessionToolProviders.get(sessionId) ?? [];
     providers.push(provider);
     this.sessionToolProviders.set(sessionId, providers);

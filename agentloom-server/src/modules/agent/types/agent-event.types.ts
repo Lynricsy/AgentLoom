@@ -95,10 +95,7 @@ export interface PtyKilledEvent {
 }
 
 export type PtyEvent =
-  | PtySpawnedEvent
-  | PtyOutputEvent
-  | PtyExitEvent
-  | PtyKilledEvent;
+  PtySpawnedEvent | PtyOutputEvent | PtyExitEvent | PtyKilledEvent;
 
 export type AgentEvent =
   | PlanEvent

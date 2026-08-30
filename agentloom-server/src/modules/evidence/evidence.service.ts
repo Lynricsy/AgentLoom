@@ -869,7 +869,7 @@ export class EvidenceService {
     if (encryptable.length === 0) return;
 
     const tenantId = encryptable[0].insertValue.tenantId;
-    let orgId: string | null = null;
+    let orgId: string | null;
 
     try {
       orgId = await this.resolveOrgId(tenantId);

@@ -33,7 +33,7 @@ export class AuditLogRetentionWorker extends WorkerHost {
       : await this.findTenantIdsWithExpiredRows(cutoff);
 
     for (const tenantId of tenantIds) {
-      let archivedInBatch = 0;
+      let archivedInBatch: number;
 
       do {
         archivedInBatch = await this.db.transaction((tx) =>

@@ -9,16 +9,10 @@ import type {
 export type ResourceGovernanceDecision = 'allow' | 'blocked';
 
 export type ResourceGovernanceDecisionAction =
-  | 'execution_start'
-  | 'api_request'
-  | 'quota_update'
-  | 'governance_update';
+  'execution_start' | 'api_request' | 'quota_update' | 'governance_update';
 
 export type ResourceGovernanceDecisionCategory =
-  | 'execution_quota'
-  | 'api_rate_limit'
-  | 'tenant_pause'
-  | 'workflow_pause';
+  'execution_quota' | 'api_rate_limit' | 'tenant_pause' | 'workflow_pause';
 
 export type ResourceGovernanceDecisionScope = 'tenant' | 'workflow' | 'api';
 

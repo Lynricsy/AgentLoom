@@ -10,12 +10,26 @@ import type { NodeExecutionFailurePolicy } from '../node-execution-failure-polic
 import type { StepStateMachineService } from '../step-state-machine.service';
 import type { DrizzleDB } from '../../../database/database.module';
 
-function makeStep(nodeType: string, nodeData: Record<string, unknown>): ExecutionStep {
+function makeStep(
+  nodeType: string,
+  nodeData: Record<string, unknown>,
+): ExecutionStep {
   return {
-    id: 'step-parent', executionId: 'execution-1', nodeId: 'iteration-1',
-    stepOrder: 0, status: 'pending', nodeType, nodeData, input: null,
-    result: null, checkpointData: null, errorMessage: null, startedAt: null,
-    completedAt: null, createdAt: new Date(0), updatedAt: new Date(0),
+    id: 'step-parent',
+    executionId: 'execution-1',
+    nodeId: 'iteration-1',
+    stepOrder: 0,
+    status: 'pending',
+    nodeType,
+    nodeData,
+    input: null,
+    result: null,
+    checkpointData: null,
+    errorMessage: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
   } as ExecutionStep;
 }
 
@@ -36,9 +50,26 @@ describe('CompoundExecutionService', () => {
       {} as NodeExecutionFailurePolicy,
     );
     const nodes = [
-      { id: 'iteration-1', type: 'iteration', position: { x: 0, y: 0 }, data: {} },
-      { id: 'start', type: 'iteration-start', position: { x: 0, y: 0 }, data: {}, parent_id: 'iteration-1' },
-      { id: 'result', type: 'result', position: { x: 0, y: 0 }, data: {}, parent_id: 'iteration-1' },
+      {
+        id: 'iteration-1',
+        type: 'iteration',
+        position: { x: 0, y: 0 },
+        data: {},
+      },
+      {
+        id: 'start',
+        type: 'iteration-start',
+        position: { x: 0, y: 0 },
+        data: {},
+        parent_id: 'iteration-1',
+      },
+      {
+        id: 'result',
+        type: 'result',
+        position: { x: 0, y: 0 },
+        data: {},
+        parent_id: 'iteration-1',
+      },
     ] as ReactFlowNode[];
 
     const context = service.createCompoundContext(
@@ -52,7 +83,10 @@ describe('CompoundExecutionService', () => {
 
     expect(context.iterationItems).toEqual(['spec', 'qa', 'release']);
     expect(context.outputMode).toBe('collect-array');
-    expect(context.internalNodes.map((node) => node.id)).toEqual(['start', 'result']);
+    expect(context.internalNodes.map((node) => node.id)).toEqual([
+      'start',
+      'result',
+    ]);
     expect(context.orderedNodeIds).toEqual(['start', 'result']);
   });
 

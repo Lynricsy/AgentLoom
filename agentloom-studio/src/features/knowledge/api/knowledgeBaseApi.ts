@@ -31,7 +31,7 @@ export async function fetchAllKnowledgeBases(
   const pageSize = params?.pageSize ?? 100;
   const knowledgeBases: KnowledgeBase[] = [];
   let page = 1;
-  let totalPages = 1;
+  let totalPages: number;
 
   do {
     const response = await fetchKnowledgeBases({

@@ -232,8 +232,73 @@ import type {
 
 @Injectable()
 export class GeneratedAppService {
-  private readonly repository: GeneratedAppRepository; private readonly artifactService: GeneratedAppArtifactService; private readonly runtimeBindingService: GeneratedAppRuntimeBindingService; private readonly repairService: GeneratedAppGenerationRepairService; private readonly orchestrator: GeneratedAppGenerationOrchestratorService; private readonly publicRuntimeService: GeneratedAppPublicRuntimeService;
-  constructor(@Inject(DRIZZLE) db: DrizzleDB, configService: ConfigService, @Optional() gate3WorkspaceRunner?: GeneratedAppGate3WorkspaceRunner, @Optional() gate4IntegrationRunner?: GeneratedAppGate4IntegrationRunner, @Optional() gate5BrowserAcceptanceRunner?: GeneratedAppGate5BrowserAcceptanceRunner, @Optional() gate6IndependentVerifierRunner?: GeneratedAppGate6IndependentVerifierRunner, @Optional() gate7PublishCandidateRunner?: GeneratedAppGate7PublishCandidateRunner, @Optional() pluginService?: PluginService, @Optional() executionService?: ExecutionService, @Optional() storageService?: StorageService, @Optional() repository?: GeneratedAppRepository, @Optional() artifactService?: GeneratedAppArtifactService, @Optional() runtimeBindingService?: GeneratedAppRuntimeBindingService, @Optional() repairService?: GeneratedAppGenerationRepairService, @Optional() orchestrator?: GeneratedAppGenerationOrchestratorService, @Optional() publicRuntimeService?: GeneratedAppPublicRuntimeService) { this.repository = repository ?? new GeneratedAppRepository(db, configService); this.artifactService = artifactService ?? new GeneratedAppArtifactService(this.repository, configService, storageService); this.runtimeBindingService = runtimeBindingService ?? new GeneratedAppRuntimeBindingService(this.repository, this.artifactService, pluginService); this.repairService = repairService ?? new GeneratedAppGenerationRepairService(this.repository); this.orchestrator = orchestrator ?? new GeneratedAppGenerationOrchestratorService(this.repository, this.repairService, this.runtimeBindingService, configService, gate3WorkspaceRunner, gate4IntegrationRunner, gate5BrowserAcceptanceRunner, gate6IndependentVerifierRunner, gate7PublishCandidateRunner); this.publicRuntimeService = publicRuntimeService ?? new GeneratedAppPublicRuntimeService(this.repository, this.artifactService, this.runtimeBindingService, executionService); }
+  private readonly repository: GeneratedAppRepository;
+  private readonly artifactService: GeneratedAppArtifactService;
+  private readonly runtimeBindingService: GeneratedAppRuntimeBindingService;
+  private readonly repairService: GeneratedAppGenerationRepairService;
+  private readonly orchestrator: GeneratedAppGenerationOrchestratorService;
+  private readonly publicRuntimeService: GeneratedAppPublicRuntimeService;
+  constructor(
+    @Inject(DRIZZLE) db: DrizzleDB,
+    configService: ConfigService,
+    @Optional() gate3WorkspaceRunner?: GeneratedAppGate3WorkspaceRunner,
+    @Optional() gate4IntegrationRunner?: GeneratedAppGate4IntegrationRunner,
+    @Optional()
+    gate5BrowserAcceptanceRunner?: GeneratedAppGate5BrowserAcceptanceRunner,
+    @Optional()
+    gate6IndependentVerifierRunner?: GeneratedAppGate6IndependentVerifierRunner,
+    @Optional()
+    gate7PublishCandidateRunner?: GeneratedAppGate7PublishCandidateRunner,
+    @Optional() pluginService?: PluginService,
+    @Optional() executionService?: ExecutionService,
+    @Optional() storageService?: StorageService,
+    @Optional() repository?: GeneratedAppRepository,
+    @Optional() artifactService?: GeneratedAppArtifactService,
+    @Optional() runtimeBindingService?: GeneratedAppRuntimeBindingService,
+    @Optional() repairService?: GeneratedAppGenerationRepairService,
+    @Optional() orchestrator?: GeneratedAppGenerationOrchestratorService,
+    @Optional() publicRuntimeService?: GeneratedAppPublicRuntimeService,
+  ) {
+    this.repository =
+      repository ?? new GeneratedAppRepository(db, configService);
+    this.artifactService =
+      artifactService ??
+      new GeneratedAppArtifactService(
+        this.repository,
+        configService,
+        storageService,
+      );
+    this.runtimeBindingService =
+      runtimeBindingService ??
+      new GeneratedAppRuntimeBindingService(
+        this.repository,
+        this.artifactService,
+        pluginService,
+      );
+    this.repairService =
+      repairService ?? new GeneratedAppGenerationRepairService(this.repository);
+    this.orchestrator =
+      orchestrator ??
+      new GeneratedAppGenerationOrchestratorService(
+        this.repository,
+        this.repairService,
+        this.runtimeBindingService,
+        configService,
+        gate3WorkspaceRunner,
+        gate4IntegrationRunner,
+        gate5BrowserAcceptanceRunner,
+        gate6IndependentVerifierRunner,
+        gate7PublishCandidateRunner,
+      );
+    this.publicRuntimeService =
+      publicRuntimeService ??
+      new GeneratedAppPublicRuntimeService(
+        this.repository,
+        this.artifactService,
+        this.runtimeBindingService,
+        executionService,
+      );
+  }
 
   async create(
     tenantId: string,
@@ -278,12 +343,14 @@ export class GeneratedAppService {
     return this.repository.delete(tenantId, appId);
   }
 
-
   async getRuntimeBindingReadiness(
     tenantId: string,
     appId: string,
   ): Promise<GeneratedAppRuntimeBindingReadinessResponseDto> {
-    return this.runtimeBindingService.getRuntimeBindingReadiness(tenantId, appId);
+    return this.runtimeBindingService.getRuntimeBindingReadiness(
+      tenantId,
+      appId,
+    );
   }
 
   async getArtifactManifest(
@@ -361,7 +428,6 @@ export class GeneratedAppService {
     return this.repository.findGenerationRun(tenantId, appId, runId);
   }
 
-
   async listRepairAttempts(
     tenantId: string,
     appId: string,
@@ -386,7 +452,13 @@ export class GeneratedAppService {
     runId: string,
     dto: CreateGeneratedAppRepairAttemptDtoType,
   ): Promise<GeneratedAppRepairAttemptResponseDto> {
-    return this.repository.createRepairAttempt(tenantId, userId, appId, runId, dto);
+    return this.repository.createRepairAttempt(
+      tenantId,
+      userId,
+      appId,
+      runId,
+      dto,
+    );
   }
 
   async updateRepairAttempt(
@@ -396,7 +468,13 @@ export class GeneratedAppService {
     repairAttemptId: string,
     dto: UpdateGeneratedAppRepairAttemptDtoType,
   ): Promise<GeneratedAppRepairAttemptResponseDto> {
-    return this.repository.updateRepairAttempt(tenantId, appId, runId, repairAttemptId, dto);
+    return this.repository.updateRepairAttempt(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+      dto,
+    );
   }
   // 修复详情与删除共享完整父链参数，确保 HTTP 层不会丢失任一租户边界。
   async findRepairAttempt(
@@ -426,7 +504,6 @@ export class GeneratedAppService {
       repairAttemptId,
     );
   }
-
 
   async listGateRuns(
     tenantId: string,
@@ -466,7 +543,11 @@ export class GeneratedAppService {
     userId: string,
     appId: string,
   ): Promise<GeneratedAppResponseDto> {
-    return this.publicRuntimeService.regeneratePublicShare(tenantId, userId, appId);
+    return this.publicRuntimeService.regeneratePublicShare(
+      tenantId,
+      userId,
+      appId,
+    );
   }
 
   async disablePublicShare(
@@ -474,7 +555,11 @@ export class GeneratedAppService {
     userId: string,
     appId: string,
   ): Promise<GeneratedAppResponseDto> {
-    return this.publicRuntimeService.disablePublicShare(tenantId, userId, appId);
+    return this.publicRuntimeService.disablePublicShare(
+      tenantId,
+      userId,
+      appId,
+    );
   }
 
   async getPublicApp(token: string): Promise<PublicGeneratedAppResponseDto> {
@@ -520,7 +605,11 @@ export class GeneratedAppService {
     appId: string,
     submissionId: string,
   ): Promise<GeneratedAppSubmissionResponseDto> {
-    return this.publicRuntimeService.findSubmission(tenantId, appId, submissionId);
+    return this.publicRuntimeService.findSubmission(
+      tenantId,
+      appId,
+      submissionId,
+    );
   }
 
   async deleteSubmission(
@@ -528,7 +617,11 @@ export class GeneratedAppService {
     appId: string,
     submissionId: string,
   ): Promise<DeleteGeneratedAppSubmissionsResponseDto> {
-    return this.publicRuntimeService.deleteSubmission(tenantId, appId, submissionId);
+    return this.publicRuntimeService.deleteSubmission(
+      tenantId,
+      appId,
+      submissionId,
+    );
   }
 
   async deleteSubmissions(
@@ -542,5 +635,4 @@ export class GeneratedAppService {
   assertCanEnablePublicShare(app: Pick<GeneratedApp, 'id' | 'readiness'>) {
     return this.repository.assertCanEnablePublicShare(app);
   }
-
 }

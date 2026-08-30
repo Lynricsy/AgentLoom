@@ -19,9 +19,7 @@ import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { CircuitBreakerService } from '../../smart-routing/circuit-breaker/circuit-breaker.service';
 import { RoutingLearningProducer } from '../../smart-routing/learning/routing-learning.producer';
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
-import {
-  AgentExecutionException,
-} from '../execution.exceptions';
+import { AgentExecutionException } from '../execution.exceptions';
 import {
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,

@@ -224,7 +224,10 @@ function buildMultiSelectFieldSchema(
     }
 
     if (raw.length > MAX_ARRAY_ITEMS) {
-      ctx.addIssue({ code: 'custom', message: `最多选择 ${MAX_ARRAY_ITEMS} 项` });
+      ctx.addIssue({
+        code: 'custom',
+        message: `最多选择 ${MAX_ARRAY_ITEMS} 项`,
+      });
       return;
     }
 
@@ -264,8 +267,7 @@ function buildFieldSchema(
 
 function toFieldErrors(error: z.ZodError, prefix: string): FieldError[] {
   return error.issues.map((issue) => ({
-    field:
-      issue.path.length > 0 ? `${prefix}.${issue.path.join('.')}` : prefix,
+    field: issue.path.length > 0 ? `${prefix}.${issue.path.join('.')}` : prefix,
     message: issue.message,
   }));
 }

@@ -25,8 +25,7 @@ const hoisted = vi.hoisted(() => {
   class MockPiAgent {
     static instances: MockPiAgent[] = [];
     static script:
-      | ((agent: MockPiAgent, input: string) => Promise<void>)
-      | null = null;
+      ((agent: MockPiAgent, input: string) => Promise<void>) | null = null;
 
     readonly listeners = new Set<(event: Record<string, unknown>) => void>();
     // pi-agent-core 0.84 没有 setTools()，工具集通过 state.tools 赋值下发。
@@ -46,15 +45,15 @@ const hoisted = vi.hoisted(() => {
 
     constructor(public readonly options: MockAgentOptions = {}) {
       this.streamFn = options.streamFn;
-      const agent = this;
-      this.state = {
-        get tools(): unknown[] {
-          return agent.tools;
+      // 箭头访问器直接闭包构造器的 this，无需给 this 起别名。
+      const state = {} as { tools: unknown[] };
+      Object.defineProperty(state, 'tools', {
+        get: (): unknown[] => this.tools,
+        set: (next: unknown[]): void => {
+          this.assignTools(next);
         },
-        set tools(next: unknown[]) {
-          agent.assignTools(next);
-        },
-      };
+      });
+      this.state = state;
       MockPiAgent.instances.push(this);
     }
 
@@ -389,7 +388,8 @@ describe('compiler → runtime tool injection E2E', () => {
     );
 
     const agent = hoisted.MockPiAgent.instances[0];
-    const tools = (agent.assignTools.mock.lastCall?.[0] ?? []) as InjectedTool[];
+    const tools = (agent.assignTools.mock.lastCall?.[0] ??
+      []) as InjectedTool[];
 
     return {
       runtimeConfig,

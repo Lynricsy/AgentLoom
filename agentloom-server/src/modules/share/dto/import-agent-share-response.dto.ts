@@ -1,8 +1,5 @@
 export type AgentShareImportReportOutcome =
-  | 'cloned'
-  | 'cleared'
-  | 'needs_rebind'
-  | 'skipped_ephemeral';
+  'cloned' | 'cleared' | 'needs_rebind' | 'skipped_ephemeral';
 
 export interface AgentShareImportReportItem {
   resourceType:

@@ -40,9 +40,7 @@ type WebhookTriggerResponseConfig = Omit<WebhookTriggerConfig, 'secret'> & {
 
 type WorkflowTriggerResponse = Omit<WorkflowTrigger, 'config'> & {
   config:
-    | CronTriggerConfig
-    | ApiEventTriggerConfig
-    | WebhookTriggerResponseConfig;
+    CronTriggerConfig | ApiEventTriggerConfig | WebhookTriggerResponseConfig;
 };
 
 @ApiTags('Triggers')

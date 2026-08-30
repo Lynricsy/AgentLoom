@@ -207,8 +207,7 @@ export class AgentExecutionWorkerPersistenceService {
     protected readonly conversationTitleService?: ConversationTitleService,
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     protected readonly smartRoutingService?: SmartRoutingService,
-  ) {
-  }
+  ) {}
 
   public async persistConversationTurn(
     conversationId: string,
@@ -739,7 +738,7 @@ export class AgentExecutionWorkerPersistenceService {
     ]);
 
     let runtime: IAgentRuntime | null = null;
-    let session: AgentSession | null = null;
+    let session: AgentSession | null;
 
     try {
       const versionSnapshot = params.versionSnapshot?.snapshot;

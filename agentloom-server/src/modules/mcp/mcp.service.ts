@@ -55,11 +55,7 @@ type DiscoveredMcpTool = Awaited<
 >['tools'][number];
 type SavedMcpConfig = typeof mcpServerConfigs.$inferSelect;
 type McpOperation =
-  | '连接测试'
-  | '工具发现'
-  | '工具导入'
-  | '运行时工具发现'
-  | '运行时工具调用';
+  '连接测试' | '工具发现' | '工具导入' | '运行时工具发现' | '运行时工具调用';
 type McpToolListingOperation = '工具发现' | '工具导入' | '运行时工具发现';
 
 type ImportSummary = {
@@ -1195,8 +1191,7 @@ export class McpService {
     if (!schema || typeof schema !== 'object') return null;
 
     const properties = schema.properties as
-      | Record<string, Record<string, unknown>>
-      | undefined;
+      Record<string, Record<string, unknown>> | undefined;
     if (!properties) return null;
 
     const requiredFields = Array.isArray(schema.required)

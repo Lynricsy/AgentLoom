@@ -30,16 +30,20 @@ function makeStep(): ExecutionStep {
 describe('NodeExecutionFailurePolicy', () => {
   it('只重抛 InvalidStepTransitionException，不二次写 failed', async () => {
     const updateStepStatus = vi.fn();
-    const policy = new NodeExecutionFailurePolicy({ updateStepStatus } as unknown as StepStateMachineService);
+    const policy = new NodeExecutionFailurePolicy({
+      updateStepStatus,
+    } as unknown as StepStateMachineService);
     const onNodeFailed = vi.fn();
     const error = new InvalidStepTransitionException('running', 'completed');
 
-    await expect(policy.handle(error, {
-      tenantId: 'tenant-1',
-      executionId: 'execution-1',
-      step: makeStep(),
-      onNodeFailed,
-    })).rejects.toBe(error);
+    await expect(
+      policy.handle(error, {
+        tenantId: 'tenant-1',
+        executionId: 'execution-1',
+        step: makeStep(),
+        onNodeFailed,
+      }),
+    ).rejects.toBe(error);
 
     expect(updateStepStatus).not.toHaveBeenCalled();
     expect(onNodeFailed).not.toHaveBeenCalled();
@@ -47,16 +51,20 @@ describe('NodeExecutionFailurePolicy', () => {
 
   it('普通错误结构化落库后吞掉并推进 workflow failure', async () => {
     const updateStepStatus = vi.fn().mockResolvedValue(undefined);
-    const policy = new NodeExecutionFailurePolicy({ updateStepStatus } as unknown as StepStateMachineService);
+    const policy = new NodeExecutionFailurePolicy({
+      updateStepStatus,
+    } as unknown as StepStateMachineService);
     const onNodeFailed = vi.fn().mockResolvedValue(undefined);
     const step = makeStep();
 
-    await expect(policy.handle(new Error('runner failed'), {
-      tenantId: 'tenant-1',
-      executionId: 'execution-1',
-      step,
-      onNodeFailed,
-    })).resolves.toBeUndefined();
+    await expect(
+      policy.handle(new Error('runner failed'), {
+        tenantId: 'tenant-1',
+        executionId: 'execution-1',
+        step,
+        onNodeFailed,
+      }),
+    ).resolves.toBeUndefined();
 
     expect(updateStepStatus).toHaveBeenCalledWith(
       'tenant-1',
@@ -79,7 +87,9 @@ describe('NodeExecutionFailurePolicy', () => {
 
   it('透传诊断 result 到 failed 落库', async () => {
     const updateStepStatus = vi.fn().mockResolvedValue(undefined);
-    const policy = new NodeExecutionFailurePolicy({ updateStepStatus } as unknown as StepStateMachineService);
+    const policy = new NodeExecutionFailurePolicy({
+      updateStepStatus,
+    } as unknown as StepStateMachineService);
     const onNodeFailed = vi.fn().mockResolvedValue(undefined);
     const step = makeStep();
 

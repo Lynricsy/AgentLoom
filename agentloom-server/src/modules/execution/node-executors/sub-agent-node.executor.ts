@@ -7,7 +7,10 @@ import type { Queue } from 'bullmq';
 import type { ExecutionStep } from '../../../database/schema';
 import type { McpRuntimeConnection } from '../../mcp/mcp.service';
 import { McpService } from '../../mcp/mcp.service';
-import { AGENT_TASK_QUEUE, type AgentTaskJobData } from '../execution.constants';
+import {
+  AGENT_TASK_QUEUE,
+  type AgentTaskJobData,
+} from '../execution.constants';
 import { StepStateMachineService } from '../step-state-machine.service';
 import {
   extractMcpServerConfigIds,
@@ -16,7 +19,10 @@ import {
   isFallbackChainStrategy,
 } from '../smart-routing-input.util';
 import { getRuntimeNodeData } from '../node-value.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class SubAgentNodeExecutor implements NodeExecutor {

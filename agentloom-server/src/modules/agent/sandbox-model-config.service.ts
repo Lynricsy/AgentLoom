@@ -9,10 +9,20 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
-import { ApiKeyNotFoundException, DefaultApiKeyNotConfiguredException } from '../api-key/api-key.exceptions';
+import {
+  ApiKeyNotFoundException,
+  DefaultApiKeyNotConfiguredException,
+} from '../api-key/api-key.exceptions';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
-import { PiConfigGeneratorService, resolvePiProviderApiKeyEnv, type PiModelConfig } from '../sandbox/pi-config-generator.service';
-import { SANDBOX_RUNTIME_DRIVER, type SandboxRuntimeDriver } from '../sandbox/sandbox-runtime-driver.port';
+import {
+  PiConfigGeneratorService,
+  resolvePiProviderApiKeyEnv,
+  type PiModelConfig,
+} from '../sandbox/pi-config-generator.service';
+import {
+  SANDBOX_RUNTIME_DRIVER,
+  type SandboxRuntimeDriver,
+} from '../sandbox/sandbox-runtime-driver.port';
 import type { AgentSession, McpServerConfig } from './types';
 
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
@@ -20,8 +30,18 @@ const SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS = 90_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_READY_TIMEOUT_WITH_MCP_MS = 120_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
-const RETRYABLE_SESSION_INIT_STATUSES = new Set([404, 408, 425, 429, 500, 502, 503, 504]);
-const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set(['ECONNREFUSED','ECONNRESET','EHOSTUNREACH','ENOTFOUND','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET']);
+const RETRYABLE_SESSION_INIT_STATUSES = new Set([
+  404, 408, 425, 429, 500, 502, 503, 504,
+]);
+const RETRYABLE_SESSION_INIT_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
 
 type ResolvedPiModelConfig = {
   modelConfig: PiModelConfig;
@@ -35,12 +55,16 @@ export class SandboxModelConfigService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    @Inject(SANDBOX_RUNTIME_DRIVER) private readonly runtimeDriver: SandboxRuntimeDriver,
-    @Optional() private readonly decryptionBoundaryService?: DecryptionBoundaryService,
+    @Inject(SANDBOX_RUNTIME_DRIVER)
+    private readonly runtimeDriver: SandboxRuntimeDriver,
+    @Optional()
+    private readonly decryptionBoundaryService?: DecryptionBoundaryService,
     @Optional() private readonly piConfigGenerator?: PiConfigGeneratorService,
   ) {}
 
-  private get tenantDb(): DrizzleDB { return getTenantDb(this.db); }
+  private get tenantDb(): DrizzleDB {
+    return getTenantDb(this.db);
+  }
   async buildContainerSessionPayload(params: {
     session: AgentSession;
     runtimeConfig?: AgentRuntimeConfig;

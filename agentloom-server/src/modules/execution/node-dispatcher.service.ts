@@ -9,7 +9,10 @@ import { DataTransformNodeExecutor } from './node-executors/data-transform-node.
 import { DeprecatedNodeExecutor } from './node-executors/deprecated-node.executor';
 import { ExtensionNodeExecutor } from './node-executors/extension-node.executor';
 import { HttpNodeExecutor } from './node-executors/http-node.executor';
-import type { NodeExecutionContext, NodeExecutor } from './node-executors/node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executors/node-executor.interface';
 import { ResourceNodeExecutor } from './node-executors/resource-node.executor';
 import { SmartRoutingNodeExecutor } from './node-executors/smart-routing-node.executor';
 import { SubAgentNodeExecutor } from './node-executors/sub-agent-node.executor';

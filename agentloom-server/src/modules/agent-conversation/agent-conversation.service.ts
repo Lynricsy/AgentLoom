@@ -47,7 +47,8 @@ export class AgentConversationService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly eventEmitter: EventEmitter2,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
-    @Inject(AGENT_RUNTIME) private readonly inProcessAgentRuntime: IAgentRuntime,
+    @Inject(AGENT_RUNTIME)
+    private readonly inProcessAgentRuntime: IAgentRuntime,
     private readonly selfEvolutionPermissionService: SelfEvolutionPermissionService,
   ) {}
 
@@ -457,10 +458,10 @@ export class AgentConversationService {
       target.runtimeMode === 'no_sandbox'
         ? Boolean(
             target.sessionId &&
-              this.inProcessAgentRuntime.hasPendingToolPermission?.(
-                target.sessionId,
-                toolCallId,
-              ),
+            this.inProcessAgentRuntime.hasPendingToolPermission?.(
+              target.sessionId,
+              toolCallId,
+            ),
           )
         : this.sandboxAgentAdapter.hasPendingConversationToolPermission(
             conversationId,
@@ -599,9 +600,7 @@ export class AgentConversationService {
     return { data: serializeConversation(conversation) };
   }
 
-  private readPersistedToolCallStatus(
-    entry: Record<string, unknown>,
-  ): string {
+  private readPersistedToolCallStatus(entry: Record<string, unknown>): string {
     switch (entry.status) {
       case 'pending':
       case 'awaiting_permission':

@@ -564,9 +564,7 @@ export class GeneratedAppGate7PublishCandidateRunner {
     artifact: GeneratedAppPublishCandidatePlan['artifactReleaseManifest'][number],
     index: number,
     expectedSignoffStatus:
-      | 'contract-accepted'
-      | 'fixture-only'
-      | 'not-executed',
+      'contract-accepted' | 'fixture-only' | 'not-executed',
   ): string[] {
     const artifactRecord = artifact as Record<string, unknown>;
     const path = artifact.path;

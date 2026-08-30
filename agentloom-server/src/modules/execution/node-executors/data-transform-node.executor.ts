@@ -17,7 +17,10 @@ import {
   resolveJsonPath,
 } from '../node-value.util';
 import type { ExecutionStep } from '../../../database/schema';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class DataTransformNodeExecutor implements NodeExecutor {
@@ -28,10 +31,22 @@ export class DataTransformNodeExecutor implements NodeExecutor {
 
   async execute(context: NodeExecutionContext): Promise<void> {
     if (context.step.nodeType === 'data_transform') {
-      await this.executeDataTransform(context.step, context.input, context.tenantId, context.executionId, context.runtime);
+      await this.executeDataTransform(
+        context.step,
+        context.input,
+        context.tenantId,
+        context.executionId,
+        context.runtime,
+      );
       return;
     }
-    await this.executeInputPreprocessor(context.step, context.input, context.tenantId, context.executionId, context.runtime);
+    await this.executeInputPreprocessor(
+      context.step,
+      context.input,
+      context.tenantId,
+      context.executionId,
+      context.runtime,
+    );
   }
 
   async executeDataTransform(

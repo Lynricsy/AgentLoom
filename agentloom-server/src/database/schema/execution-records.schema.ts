@@ -16,10 +16,7 @@ import { executionSteps } from './execution-steps.schema';
 export type ToolCallRecordStatus = 'success' | 'error';
 
 export type ExecutionRecordErrorType =
-  | 'tool_error'
-  | 'llm_error'
-  | 'validation_error'
-  | 'timeout';
+  'tool_error' | 'llm_error' | 'validation_error' | 'timeout';
 
 export interface ToolCallRecord {
   toolName: string;

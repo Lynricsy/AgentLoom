@@ -74,5 +74,4 @@ export interface PublicAgentShareResponse extends BasePublicShareResponse {
 }
 
 export type PublicShareResponse =
-  | PublicWorkflowShareResponse
-  | PublicAgentShareResponse;
+  PublicWorkflowShareResponse | PublicAgentShareResponse;

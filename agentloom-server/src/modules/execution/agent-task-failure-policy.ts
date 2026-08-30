@@ -79,8 +79,6 @@ export function getNextAgentTaskSmartRouting(
   };
 }
 
-export function isAgentTaskFallbackChainStrategy(
-  strategy?: string,
-): boolean {
+export function isAgentTaskFallbackChainStrategy(strategy?: string): boolean {
   return strategy === 'FALLBACK_CHAIN' || strategy === 'fallback_chain';
 }

@@ -780,10 +780,9 @@ describe('ExecutionGateway', () => {
       });
 
       expect(mockThrottle.tryConsume).toHaveBeenCalledWith('e1');
-      expect(emitFn).toHaveBeenCalledWith(
-        'execution.node.status-changed',
-        { status: 'running' },
-      );
+      expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
+        status: 'running',
+      });
       expect(ExecutionBroadcastIntent.BROADCAST).toBe(
         'execution.gateway.broadcast',
       );

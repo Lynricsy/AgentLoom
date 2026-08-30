@@ -24,8 +24,7 @@ function getCaptureMetadata(
   }
 
   return Reflect.getMetadata(AUDIT_LOG_CAPTURE_KEY, descriptor.value) as
-    | AuditLogHttpCaptureConfig
-    | undefined;
+    AuditLogHttpCaptureConfig | undefined;
 }
 
 describe('Audit log capture matrix', () => {

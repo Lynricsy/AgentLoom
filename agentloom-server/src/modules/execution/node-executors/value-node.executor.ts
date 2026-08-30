@@ -16,15 +16,34 @@ import {
   resolveTextNodeContent,
   stringifyOutputValue,
 } from '../node-value.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class ValueNodeExecutor implements NodeExecutor {
   private readonly handlers = {
-    merge: (c: NodeExecutionContext) => this.executeMerge(c.step, c.input, c.tenantId, c.executionId, c.runtime),
-    text: (c: NodeExecutionContext) => this.executeTextNode(c.step, c.tenantId, c.executionId, c.runtime),
-    'text-output': (c: NodeExecutionContext) => this.executeOutputNode(c.step, c.input, c.tenantId, c.executionId, c.runtime),
-    'json-output': (c: NodeExecutionContext) => this.executeOutputNode(c.step, c.input, c.tenantId, c.executionId, c.runtime),
+    merge: (c: NodeExecutionContext) =>
+      this.executeMerge(c.step, c.input, c.tenantId, c.executionId, c.runtime),
+    text: (c: NodeExecutionContext) =>
+      this.executeTextNode(c.step, c.tenantId, c.executionId, c.runtime),
+    'text-output': (c: NodeExecutionContext) =>
+      this.executeOutputNode(
+        c.step,
+        c.input,
+        c.tenantId,
+        c.executionId,
+        c.runtime,
+      ),
+    'json-output': (c: NodeExecutionContext) =>
+      this.executeOutputNode(
+        c.step,
+        c.input,
+        c.tenantId,
+        c.executionId,
+        c.runtime,
+      ),
   } satisfies Record<string, (context: NodeExecutionContext) => Promise<void>>;
 
   constructor(
@@ -33,7 +52,9 @@ export class ValueNodeExecutor implements NodeExecutor {
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.handlers[context.step.nodeType as keyof typeof this.handlers](context);
+    await this.handlers[context.step.nodeType as keyof typeof this.handlers](
+      context,
+    );
   }
 
   async executeMerge(

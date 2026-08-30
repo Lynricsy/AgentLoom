@@ -80,7 +80,7 @@ import {
   makeNode,
   makeSnapshot,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('extension migrated scenarios', () => {

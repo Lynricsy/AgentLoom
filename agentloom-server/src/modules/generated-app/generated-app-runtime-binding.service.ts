@@ -234,8 +234,6 @@ export class GeneratedAppRuntimeBindingService {
     @Optional() private readonly pluginService?: PluginService,
   ) {}
 
-
-
   async getRuntimeBindingReadiness(
     tenantId: string,
     appId: string,
@@ -328,13 +326,11 @@ export class GeneratedAppRuntimeBindingService {
     });
   }
 
-
   public buildRuntimeBindingReadinessResponse(
     response: GeneratedAppRuntimeBindingReadinessResponseDto,
   ): GeneratedAppRuntimeBindingReadinessResponseDto {
     return response;
   }
-
 
   public async ensureGeneratedWorkflowRuntimeBinding(
     tenantId: string,
@@ -402,7 +398,6 @@ export class GeneratedAppRuntimeBindingService {
     return this.repository.toResponseDto(updated);
   }
 
-
   public async ensureGeneratedPrivatePluginBindings(
     tenantId: string,
     userId: string,
@@ -434,11 +429,12 @@ export class GeneratedAppRuntimeBindingService {
         throw new Error('Generated App 私有插件 toolId 缺失。');
       }
 
-      const pluginBundle = await this.artifactService.loadAndVerifyGeneratedPrivatePlugin({
-        app,
-        toolId,
-        workspaceRelativePath: workspace.relativePath,
-      });
+      const pluginBundle =
+        await this.artifactService.loadAndVerifyGeneratedPrivatePlugin({
+          app,
+          toolId,
+          workspaceRelativePath: workspace.relativePath,
+        });
       const wasmBundleUrl =
         pluginBundle.wasmBuffer && pluginBundle.wasmEntry
           ? `generated-apps/${app.id}/plugins/${toolId}.wasm`
@@ -569,7 +565,6 @@ export class GeneratedAppRuntimeBindingService {
     return this.repository.toResponseDto(updated);
   }
 
-
   public mustRefreshGeneratedPrivatePluginRegistration(
     app: { id: string; appSpec: { version: number } },
     toolId: string,
@@ -605,7 +600,6 @@ export class GeneratedAppRuntimeBindingService {
     );
   }
 
-
   public async findGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     appId: string,
@@ -630,7 +624,6 @@ export class GeneratedAppRuntimeBindingService {
 
     return workflow ?? null;
   }
-
 
   public async createGeneratedWorkflowRuntimeBinding(
     tenantId: string,
@@ -719,7 +712,6 @@ export class GeneratedAppRuntimeBindingService {
     throw new Error('Unreachable: generated workflow slug retry exhausted');
   }
 
-
   public async publishGeneratedWorkflowRuntimeBinding(params: {
     tenantId: string;
     userId: string;
@@ -786,7 +778,6 @@ export class GeneratedAppRuntimeBindingService {
     return version.id;
   }
 
-
   public isGeneratedAppEditorHandoffWorkflowMetadata(
     metadata: unknown,
   ): boolean {
@@ -825,5 +816,4 @@ export class GeneratedAppRuntimeBindingService {
       wasmBundleUrl,
     );
   }
-
 }

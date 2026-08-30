@@ -95,11 +95,7 @@ describe('ResourceSourceService.convertToManual', () => {
       selectResults.push([]);
 
       await expect(
-        service.convertToManual(
-          TENANT_ID,
-          'workflow_definition',
-          RESOURCE_ID,
-        ),
+        service.convertToManual(TENANT_ID, 'workflow_definition', RESOURCE_ID),
       ).rejects.toBeInstanceOf(ResourceSourceNotFoundException);
       expect(db.update).not.toHaveBeenCalled();
     },

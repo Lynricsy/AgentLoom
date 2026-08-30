@@ -78,7 +78,7 @@ import {
   USER_ID,
   NOW,
   makeStep,
-  createSelectChain
+  createSelectChain,
 } from './node-scheduler-test-support';
 
 describe('intervention migrated scenarios', () => {
@@ -408,7 +408,9 @@ describe('intervention migrated scenarios', () => {
       // 且 ExecutionWorker.onFailed 会无条件 markFailed，把整个 execution 打死。
       const enqueueTimeout = vi
         .spyOn(service, 'enqueueInterventionTimeout')
-        .mockRejectedValue(new Error('custom jobId is not allowed to contain :'));
+        .mockRejectedValue(
+          new Error('custom jobId is not allowed to contain :'),
+        );
 
       await expect(
         service.pauseForIntervention({
@@ -433,7 +435,10 @@ describe('intervention migrated scenarios', () => {
     });
 
     it('广播抛错只损失实时通知：超时兜底仍必须照常入队', async () => {
-      const step = makeStep({ id: 'step-pause-emit', nodeId: 'node-pause-emit' });
+      const step = makeStep({
+        id: 'step-pause-emit',
+        nodeId: 'node-pause-emit',
+      });
       mockEventBridge.emitInterventionRequired.mockImplementationOnce(() => {
         throw new Error('event bridge down');
       });

@@ -1342,8 +1342,7 @@ describe('EvidenceService', () => {
   ) {
     const packetOverrides = { ...overrides };
     const physicalLocationOverride = packetOverrides.physicalLocation as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
 
     delete packetOverrides.physicalLocation;
 

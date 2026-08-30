@@ -3149,10 +3149,12 @@ describe('AgentDefinitionService', () => {
       let capturedSet: Record<string, any> | undefined;
       mockTxClient.update.mockImplementation(() => {
         const chain: Record<string, any> = {};
-        chain.set = vi.fn().mockImplementation((values: Record<string, any>) => {
-          capturedSet = values;
-          return chain;
-        });
+        chain.set = vi
+          .fn()
+          .mockImplementation((values: Record<string, any>) => {
+            capturedSet = values;
+            return chain;
+          });
         chain.where = vi.fn().mockResolvedValue(undefined);
         return chain;
       });

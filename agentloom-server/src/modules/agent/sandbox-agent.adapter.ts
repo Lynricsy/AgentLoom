@@ -2,12 +2,7 @@
  * Sandbox Agent 运行时 facade：保留既有 IAgentRuntime 与控制器 API，
  * 会话 transport、模型配置、工具注册、事件解码和 PTY 分别委托给独立边界。
  */
-import {
-  Inject,
-  Injectable,
-  Logger,
-  Optional,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { ToolPermissionResolutionNotAllowedException } from '../../common/exceptions/tool-call.exceptions';
@@ -168,10 +163,11 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     this.abortControllers.set(session.id, new AbortController());
     this.toolRegistry.initializeSession(session.id);
 
-    const runtimeConfigProvider = this.toolRegistry.createRuntimeConfigToolProvider(
-      session,
-      params.runtimeConfig,
-    );
+    const runtimeConfigProvider =
+      this.toolRegistry.createRuntimeConfigToolProvider(
+        session,
+        params.runtimeConfig,
+      );
     if (runtimeConfigProvider) {
       this.registerSessionToolProvider(session.id, runtimeConfigProvider);
     }
@@ -239,7 +235,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     session.context.history.push(...content);
     session.updatedAt = new Date();
     const workflowState = session.context.workflowState ?? {};
-    const sandboxBinding = this.sessionRuntime.readSandboxBinding(workflowState);
+    const sandboxBinding =
+      this.sessionRuntime.readSandboxBinding(workflowState);
     const tenantId =
       typeof workflowState.tenantId === 'string'
         ? workflowState.tenantId
@@ -449,7 +446,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
     clearTimeout(gate.timer);
     resolvers?.delete(toolCallId);
-    if (resolvers?.size === 0) this.pendingPermissionResolvers.delete(sessionId);
+    if (resolvers?.size === 0)
+      this.pendingPermissionResolvers.delete(sessionId);
     gate.resolve(action);
   }
 
@@ -458,7 +456,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     callback: SandboxToolPermissionCallback,
   ): Promise<{ allowed: boolean }> {
     const sessionId =
-      callback.sessionId ?? this.resolveSessionIdForConversation(conversationId);
+      callback.sessionId ??
+      this.resolveSessionIdForConversation(conversationId);
     return {
       allowed:
         (await this.waitForPermission(sessionId, callback.toolCallId)) ===
@@ -520,7 +519,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         resolve(action);
       };
       const onAbort = () => finish('cancelled');
-      const timer = setTimeout(() => finish('deny'), TOOL_PERMISSION_TIMEOUT_MS);
+      const timer = setTimeout(
+        () => finish('deny'),
+        TOOL_PERMISSION_TIMEOUT_MS,
+      );
       resolvers.set(toolCallId, { resolve: finish, timer });
       if (signal?.aborted || session.status !== 'active') {
         finish('cancelled');

@@ -1,7 +1,11 @@
 /**
  * 节点执行器统一契约：限定 dispatcher 与各执行域之间传递的调度上下文。
  */
-import type { ExecutionStep, ReactFlowEdge, ReactFlowNode } from '../../../database/schema';
+import type {
+  ExecutionStep,
+  ReactFlowEdge,
+  ReactFlowNode,
+} from '../../../database/schema';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 
 export interface NodeExecutionContext {

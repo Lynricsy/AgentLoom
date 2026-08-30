@@ -187,7 +187,10 @@ async function createSignedFixture(): Promise<SignedFixture> {
 
 async function tamperSignedArchive(archive: Buffer): Promise<Buffer> {
   const zip = await JSZip.loadAsync(archive);
-  zip.file('dist/plugin.wasm', Buffer.concat([VALID_WASM, Buffer.from([0x01])]));
+  zip.file(
+    'dist/plugin.wasm',
+    Buffer.concat([VALID_WASM, Buffer.from([0x01])]),
+  );
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
@@ -201,11 +204,9 @@ describe('Plugin trust chain (E2E)', () => {
   const storedObjects = new Map<string, Buffer>();
 
   const storageMock = {
-    upload: vi.fn(
-      async (key: string, data: Buffer): Promise<void> => {
-        storedObjects.set(key, Buffer.from(data));
-      },
-    ),
+    upload: vi.fn(async (key: string, data: Buffer): Promise<void> => {
+      storedObjects.set(key, Buffer.from(data));
+    }),
     download: vi.fn(async (key: string) => {
       const value = storedObjects.get(key);
       if (!value) throw new Error(`missing object: ${key}`);
@@ -219,13 +220,23 @@ describe('Plugin trust chain (E2E)', () => {
     buildStorageKey: vi.fn(),
   };
 
-  async function seedTenant(prefix: string, role: OrganizationRole): Promise<TestTenant> {
+  async function seedTenant(
+    prefix: string,
+    role: OrganizationRole,
+  ): Promise<TestTenant> {
     const userId = crypto.randomUUID();
     const tenantId = crypto.randomUUID();
     const orgId = crypto.randomUUID();
     const email = `${prefix}-${crypto.randomUUID().slice(0, 8)}@example.com`;
     await seedAppUser(ctx.adminSql, userId, email);
-    await seedOrg(ctx.adminSql, orgId, `${prefix} org`, `${prefix}-${orgId.slice(0, 8)}`, userId, tenantId);
+    await seedOrg(
+      ctx.adminSql,
+      orgId,
+      `${prefix} org`,
+      `${prefix}-${orgId.slice(0, 8)}`,
+      userId,
+      tenantId,
+    );
     await seedMember(ctx.adminSql, orgId, userId, role, userId);
     await ctx.adminSql`UPDATE users SET current_organization_id = ${orgId}::uuid WHERE id = ${userId}::uuid`;
     return {
@@ -242,7 +253,13 @@ describe('Plugin trust chain (E2E)', () => {
     const userId = crypto.randomUUID();
     const email = `plugin-viewer-${crypto.randomUUID().slice(0, 8)}@example.com`;
     await seedAppUser(ctx.adminSql, userId, email);
-    await seedMember(ctx.adminSql, tenant.orgId, userId, 'viewer', tenant.userId);
+    await seedMember(
+      ctx.adminSql,
+      tenant.orgId,
+      userId,
+      'viewer',
+      tenant.userId,
+    );
     await ctx.adminSql`UPDATE users SET current_organization_id = ${tenant.orgId}::uuid WHERE id = ${userId}::uuid`;
     return {
       ...tenant,
@@ -260,7 +277,11 @@ describe('Plugin trust chain (E2E)', () => {
       .send({ publicKey: fixture.publicKey, label: 'E2E signing key' });
   }
 
-  async function uploadPlugin(tenant: TestTenant, archive: Buffer, status = 'active') {
+  async function uploadPlugin(
+    tenant: TestTenant,
+    archive: Buffer,
+    status = 'active',
+  ) {
     return request(app.getHttpServer())
       .post(API_BASE)
       .set(tenant.headers)
@@ -378,7 +399,10 @@ describe('Plugin trust chain (E2E)', () => {
       .set(owner.headers)
       .send({ status: 'active', occVersion: plugin.occVersion });
     expect(activated.status).toBe(200);
-    expect(activated.body.data).toMatchObject({ status: 'active', occVersion: 2 });
+    expect(activated.body.data).toMatchObject({
+      status: 'active',
+      occVersion: 2,
+    });
 
     const staleUpdate = await request(app.getHttpServer())
       .patch(`${API_BASE}/${plugin.id}/status`)

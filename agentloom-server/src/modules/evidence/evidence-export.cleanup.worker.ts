@@ -37,7 +37,7 @@ export class EvidenceExportCleanupWorker extends WorkerHost {
       : new Date();
     const batchSize = job.data.batchSize ?? EVIDENCE_EXPORT_CLEANUP_BATCH_SIZE;
 
-    let expiredInBatch = 0;
+    let expiredInBatch: number;
     do {
       expiredInBatch = await this.expireEligibleExportsBatch(
         cutoff,

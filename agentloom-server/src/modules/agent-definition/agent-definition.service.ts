@@ -2185,9 +2185,7 @@ export class AgentDefinitionService {
     nodes: any[],
     edges: any[],
     fallbackConfig?:
-      | AgentRuntimeConfig['sandboxConfig']
-      | Record<string, unknown>
-      | null,
+      AgentRuntimeConfig['sandboxConfig'] | Record<string, unknown> | null,
     runtimeMode: AgentRuntimeMode = 'sandbox',
   ): AgentRuntimeConfig['sandboxConfig'] | null {
     if (runtimeMode === 'no_sandbox') {

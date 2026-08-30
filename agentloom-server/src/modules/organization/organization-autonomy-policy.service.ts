@@ -422,10 +422,8 @@ export class OrganizationAutonomyPolicyService {
     const autonomyCap = await this.resolveAutonomyCapForTenant(tenantId);
 
     // 在唯一入口同时解析节点优先级与租户上限，避免 worker、executor 和发布校验各自漂移。
-    return clampAutonomyModeToCap(
-      resolveRawAutonomyMode(nodeData),
-      autonomyCap,
-    ).effectiveMode;
+    return clampAutonomyModeToCap(resolveRawAutonomyMode(nodeData), autonomyCap)
+      .effectiveMode;
   }
 
   async inspectWorkflowNodesAgainstPolicy(

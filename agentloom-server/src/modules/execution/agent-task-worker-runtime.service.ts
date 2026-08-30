@@ -212,7 +212,6 @@ export class AgentTaskWorkerRuntimeService {
       }),
     });
 
-
     for (let round = params.startRound; round < MAX_TOOL_CALL_ROUNDS; round++) {
       const roundToolCallIds = new Set<string>();
       accumulator.beginRound();
@@ -336,7 +335,10 @@ export class AgentTaskWorkerRuntimeService {
             inProgressStatus,
             currentToolCall.status,
           );
-          toolCalls = this.support.mergeToolCall(toolCalls, transitionedToolCall);
+          toolCalls = this.support.mergeToolCall(
+            toolCalls,
+            transitionedToolCall,
+          );
           this.support.emitToolCallStatus({
             tenantId: params.tenantId,
             executionId: params.executionId,
@@ -742,7 +744,6 @@ export class AgentTaskWorkerRuntimeService {
     };
   }
 
-
   public async reportSmartRoutingOutcome(params: {
     tenantId: string;
     stepId: string;
@@ -884,7 +885,6 @@ export class AgentTaskWorkerRuntimeService {
     return Math.max(0, Math.ceil(serialized.length / 4));
   }
 
-
   public shouldRetry(job: Job<AgentTaskJobData>): boolean {
     return job.attemptsMade + 1 < this.getMaxAttempts(job);
   }
@@ -892,7 +892,6 @@ export class AgentTaskWorkerRuntimeService {
   public getMaxAttempts(job: Job<AgentTaskJobData>): number {
     return getAgentTaskMaxAttempts(job.opts.attempts);
   }
-
 
   public async resolveOrgId(tenantId: string): Promise<string | null> {
     const result = await this.tenantDb

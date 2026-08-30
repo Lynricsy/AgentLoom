@@ -77,7 +77,6 @@ import {
 
 type GenericRecord = Record<string, unknown>;
 
-
 @Injectable()
 export class SelfEvolutionService {
   readonly logger = new Logger(SelfEvolutionService.name);
@@ -116,7 +115,11 @@ export class SelfEvolutionService {
           '查询当前 Agent 自身编排状态，或在权限允许时查询外部 Agent / Workflow 状态。',
         inputSchema: QueryStateSchema,
         execute: async (input) =>
-          this.executeReadTool('query_state', context, QueryStateSchema.parse(input)),
+          this.executeReadTool(
+            'query_state',
+            context,
+            QueryStateSchema.parse(input),
+          ),
       }),
       query_resource_pool: tool({
         description:
@@ -458,11 +461,6 @@ export class SelfEvolutionService {
     };
   }
 
-
-
-
-
-
   async buildSessionContext(
     session: AgentSession,
   ): Promise<SelfEvolutionSessionContext> {
@@ -584,14 +582,6 @@ export class SelfEvolutionService {
       viewport: this.cloneJsonRecord(detail.viewport),
     };
   }
-
-
-
-
-
-
-
-
 
   toFailureResult(error: unknown): SelfEvolutionToolResult {
     if (error instanceof DomainException) {
@@ -809,10 +799,7 @@ export class SelfEvolutionService {
     }));
   }
 
-  mergeRecords(
-    base: GenericRecord,
-    patch: GenericRecord,
-  ): GenericRecord {
+  mergeRecords(base: GenericRecord, patch: GenericRecord): GenericRecord {
     const result: GenericRecord = { ...base };
 
     for (const [key, value] of Object.entries(patch)) {
@@ -857,21 +844,15 @@ export class SelfEvolutionService {
     return JSON.parse(JSON.stringify(value)) as T;
   }
 
-  ensureResourceManagementEnabled(
-    context: SelfEvolutionSessionContext,
-  ): void {
+  ensureResourceManagementEnabled(context: SelfEvolutionSessionContext): void {
     this.permissionPolicy.requireResourceManagement(context);
   }
 
-  ensureExternalEditingEnabled(
-    context: SelfEvolutionSessionContext,
-  ): void {
+  ensureExternalEditingEnabled(context: SelfEvolutionSessionContext): void {
     this.permissionPolicy.requireExternalEditing(context);
   }
 
-  ensureSandboxManagementEnabled(
-    context: SelfEvolutionSessionContext,
-  ): void {
+  ensureSandboxManagementEnabled(context: SelfEvolutionSessionContext): void {
     this.permissionPolicy.requireSandboxManagement(context);
   }
 
@@ -892,11 +873,7 @@ export class SelfEvolutionService {
     );
   }
 
-  readPositiveInt(
-    value: unknown,
-    fallback: number,
-    max: number,
-  ): number {
+  readPositiveInt(value: unknown, fallback: number, max: number): number {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       return fallback;
     }
