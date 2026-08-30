@@ -24,8 +24,9 @@ void main() {
     });
 
     test('fromDotEnv reads dotenv values', () {
-      dotenv.testLoad(
-        fileInput:
+      // flutter_dotenv 6 移除了 testLoad，改用 loadFromString。
+      dotenv.loadFromString(
+        envString:
             'API_BASE_URL=https://api-dev.agentloom.com/api/v1\nAPP_NAME=AgentLoom Dev',
       );
 
@@ -38,7 +39,7 @@ void main() {
     });
 
     test('fromDotEnv falls back to default values', () {
-      dotenv.testLoad(fileInput: '');
+      dotenv.loadFromString(envString: '', isOptional: true);
 
       final config = EnvConfig.fromDotEnv(environment: AppEnvironment.staging);
 
@@ -49,8 +50,8 @@ void main() {
     });
 
     test('fromDotEnv 优先使用 STUDIO_BASE_URL 作为生产入口', () {
-      dotenv.testLoad(
-        fileInput:
+      dotenv.loadFromString(
+        envString:
             'STUDIO_BASE_URL=https://agentloom.ling.plus\nAPI_BASE_URL=https://api.agentloom.com/api/v1\nAPP_NAME=AgentLoom',
       );
 

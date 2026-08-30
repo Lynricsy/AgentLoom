@@ -63,7 +63,7 @@ class MemoryDetailScreen extends ConsumerWidget {
             )
           : instanceAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
               data: (instance) => CustomScrollView(
                 slivers: [
                   // 实例信息卡片
@@ -189,7 +189,7 @@ class MemoryDetailScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    error: (_, __) => SliverToBoxAdapter(
+                    error: (_, _) => SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(

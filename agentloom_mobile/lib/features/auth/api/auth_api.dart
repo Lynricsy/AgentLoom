@@ -84,7 +84,7 @@ class AuthApi {
       data: {
         'email': email,
         'password': password,
-        if (displayName != null) 'display_name': displayName,
+        'display_name': ?displayName,
       },
     );
 

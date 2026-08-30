@@ -100,7 +100,7 @@ void main() {
     test('终止态 FCM 点击启动应用时发出 payload', () async {
       when(
         () => mockLocalNotifications.initialize(
-          any(),
+          settings: any(named: 'settings'),
           onDidReceiveNotificationResponse: any(
             named: 'onDidReceiveNotificationResponse',
           ),
@@ -136,7 +136,7 @@ void main() {
     test('本地通知启动应用时发出 payload', () async {
       when(
         () => mockLocalNotifications.initialize(
-          any(),
+          settings: any(named: 'settings'),
           onDidReceiveNotificationResponse: any(
             named: 'onDidReceiveNotificationResponse',
           ),
@@ -194,7 +194,7 @@ void main() {
 
       verifyNever(
         () => mockLocalNotifications.initialize(
-          any(),
+          settings: any(named: 'settings'),
           onDidReceiveNotificationResponse: any(
             named: 'onDidReceiveNotificationResponse',
           ),
@@ -331,10 +331,10 @@ void main() {
     test('有 notification 时展示本地通知（payload 为 JSON 序列化 data）', () async {
       when(
         () => mockLocalNotifications.show(
-          any(),
-          any(),
-          any(),
-          any(),
+          id: any(named: 'id'),
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+          notificationDetails: any(named: 'notificationDetails'),
           payload: any(named: 'payload'),
         ),
       ).thenAnswer((_) async {});
@@ -356,10 +356,10 @@ void main() {
 
       final captured = verify(
         () => mockLocalNotifications.show(
-          any(),
-          'Workflow done',
-          'Execution completed',
-          any(),
+          id: any(named: 'id'),
+          title: 'Workflow done',
+          body: 'Execution completed',
+          notificationDetails: any(named: 'notificationDetails'),
           payload: captureAny(named: 'payload'),
         ),
       ).captured;
@@ -378,10 +378,10 @@ void main() {
 
       verifyNever(
         () => mockLocalNotifications.show(
-          any(),
-          any(),
-          any(),
-          any(),
+          id: any(named: 'id'),
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+          notificationDetails: any(named: 'notificationDetails'),
           payload: any(named: 'payload'),
         ),
       );

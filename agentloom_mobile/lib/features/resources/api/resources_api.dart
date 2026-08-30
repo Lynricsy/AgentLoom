@@ -459,8 +459,8 @@ class ResourcesApi {
         if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
         if (iconUrl != null && iconUrl.trim().isNotEmpty)
           'iconUrl': iconUrl.trim(),
-        if (sortOrder != null) 'sortOrder': sortOrder,
-        if (isEnabled != null) 'isEnabled': isEnabled,
+        'sortOrder': ?sortOrder,
+        'isEnabled': ?isEnabled,
       },
     );
     return LlmProviderEntityDto.fromJson(_unwrapDataEnvelope(response));
@@ -534,7 +534,7 @@ class ResourcesApi {
   }) async {
     final response = await _dio.post(
       '/api/v1/llm-providers/$id/test-connection',
-      data: {if (timeoutMs != null) 'timeoutMs': timeoutMs},
+      data: {'timeoutMs': ?timeoutMs},
     );
     return TestLlmConnectionResultDto.fromJson(_unwrapDataEnvelope(response));
   }
@@ -607,14 +607,13 @@ class ResourcesApi {
         'isDefault': isDefault,
         'isEnabled': isEnabled,
         if (capabilities != null) 'capabilities': capabilities.toJson(),
-        if (contextWindow != null) 'contextWindow': contextWindow,
-        if (maxOutputTokens != null) 'maxOutputTokens': maxOutputTokens,
+        'contextWindow': ?contextWindow,
+        'maxOutputTokens': ?maxOutputTokens,
         if (pricing != null) 'pricing': pricing.toJson(),
         if (parameters != null && parameters.isNotEmpty)
           'parameters': parameters,
-        if (embeddingDimensions != null)
-          'embeddingDimensions': embeddingDimensions,
-        if (timeoutMs != null) 'timeoutMs': timeoutMs,
+        'embeddingDimensions': ?embeddingDimensions,
+        'timeoutMs': ?timeoutMs,
       },
     );
     return LlmModelConfigDto.fromJson(_unwrapDataEnvelope(response));
@@ -723,8 +722,7 @@ class ResourcesApi {
         'modelName': modelName.trim(),
         'parameters': parameters.toJson(),
         if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
-        if (embeddingDimensions != null)
-          'embeddingDimensions': embeddingDimensions,
+        'embeddingDimensions': ?embeddingDimensions,
         'isDefault': isDefault,
         if (endpointUrl != null && endpointUrl.trim().isNotEmpty)
           'endpointUrl': endpointUrl.trim(),
@@ -732,7 +730,7 @@ class ResourcesApi {
           'authMethod': authMethod,
         if (authConfig != null && authConfig.isNotEmpty)
           'authConfig': authConfig,
-        if (timeoutMs != null) 'timeoutMs': timeoutMs,
+        'timeoutMs': ?timeoutMs,
       },
     );
     return LlmModelInfoDto.fromJson(_unwrapDataEnvelope(response));
@@ -836,7 +834,7 @@ class ResourcesApi {
         'authMethod': authMethod,
         if (apiKey != null && apiKey.trim().isNotEmpty) 'apiKey': apiKey.trim(),
         if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
-        if (timeoutMs != null) 'timeoutMs': timeoutMs,
+        'timeoutMs': ?timeoutMs,
       },
     );
     return TestLlmConnectionResultDto.fromJson(_unwrapDataEnvelope(response));

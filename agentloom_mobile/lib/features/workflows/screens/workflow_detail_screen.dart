@@ -177,7 +177,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    error: (_, __) => SliverToBoxAdapter(
+                    error: (_, _) => SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(

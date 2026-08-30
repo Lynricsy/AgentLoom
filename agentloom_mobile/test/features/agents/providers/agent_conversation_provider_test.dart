@@ -152,7 +152,7 @@ void main() {
   test('dispose provider 时应先清空 socket 监听再销毁，避免 onDispose 生命周期断言', () async {
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -173,7 +173,7 @@ void main() {
   test('failed 状态事件应读取 errorMessage 并写入会话错误', () async {
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -206,7 +206,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -271,7 +271,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -333,7 +333,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -388,7 +388,7 @@ void main() {
   test('socket 连接配置应按平台选择 transport 与鉴权头', () async {
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -425,7 +425,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -444,7 +444,7 @@ void main() {
   test('订阅 ACK 返回 error 时应展示失败原因并标记未连接', () async {
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -492,7 +492,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -585,7 +585,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -631,7 +631,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -683,7 +683,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -725,7 +725,7 @@ void main() {
 
       container.listen(
         agentConversationProvider(params),
-        (_, __) {},
+        (_, _) {},
         fireImmediately: true,
       );
 
@@ -760,7 +760,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -796,7 +796,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -824,7 +824,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
 
@@ -878,7 +878,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
     await container.read(authProvider.future);
@@ -915,7 +915,7 @@ void main() {
 
     container.listen(
       agentConversationProvider(params),
-      (_, __) {},
+      (_, _) {},
       fireImmediately: true,
     );
     await container.read(authProvider.future);

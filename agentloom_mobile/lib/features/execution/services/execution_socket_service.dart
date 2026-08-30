@@ -329,8 +329,8 @@ class ExecutionSocketService {
 
     final payload = <String, dynamic>{
       'executionId': executionId,
-      if (tenantId != null) 'tenantId': tenantId,
-      if (lastEventId != null) 'lastEventId': lastEventId,
+      'tenantId': ?tenantId,
+      'lastEventId': ?lastEventId,
     };
 
     try {
@@ -356,7 +356,7 @@ class ExecutionSocketService {
 
     _socket!.emit('execution:unsubscribe', {
       'executionId': executionId,
-      if (tenantId != null) 'tenantId': tenantId,
+      'tenantId': ?tenantId,
     });
   }
 

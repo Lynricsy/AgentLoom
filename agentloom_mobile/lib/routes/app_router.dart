@@ -47,7 +47,7 @@ import 'route_names.dart';
 /// 认证路由通知器 — 桥接 Riverpod AuthNotifier 与 GoRouter refreshListenable
 class AuthRouteNotifier extends ChangeNotifier {
   AuthRouteNotifier(this._ref) {
-    _subscription = _ref.listen(authProvider, (_, __) {
+    _subscription = _ref.listen(authProvider, (_, _) {
       notifyListeners();
     });
   }

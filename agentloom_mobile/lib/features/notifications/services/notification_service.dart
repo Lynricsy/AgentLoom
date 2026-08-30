@@ -69,7 +69,7 @@ class NotificationService {
       );
 
       await _localNotifications.initialize(
-        const InitializationSettings(
+        settings: const InitializationSettings(
           android: androidSettings,
           iOS: iosSettings,
         ),
@@ -186,10 +186,10 @@ class NotificationService {
 
     unawaited(
       _localNotifications.show(
-        message.hashCode,
-        notification.title,
-        notification.body,
-        const NotificationDetails(
+        id: message.hashCode,
+        title: notification.title,
+        body: notification.body,
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'agentloom_executions',
             '工作流执行',

@@ -331,8 +331,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         'conversation:subscribe',
         {
           'conversationId': params.conversationId,
-          if (_boundTenantId case final tenantId? when tenantId.isNotEmpty)
-            'tenantId': tenantId,
+          'tenantId': ?_boundTenantId,
         },
         ack: (response) {
           final ack = asMap(response);

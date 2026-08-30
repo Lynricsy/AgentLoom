@@ -48,7 +48,7 @@ class MemoryNodeScreen extends ConsumerWidget {
             )
           : nodeAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
               data: (node) => CustomScrollView(
                 slivers: [
                   // 节点元数据
@@ -108,7 +108,7 @@ class MemoryNodeScreen extends ConsumerWidget {
                             child: CircularProgressIndicator(),
                           ),
                         ),
-                        error: (_, __) => const SizedBox.shrink(),
+                        error: (_, _) => const SizedBox.shrink(),
                         data: (versions) {
                           if (versions.isEmpty) {
                             return const SizedBox.shrink();
@@ -159,7 +159,7 @@ class MemoryNodeScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    error: (_, __) => SliverToBoxAdapter(
+                    error: (_, _) => SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(

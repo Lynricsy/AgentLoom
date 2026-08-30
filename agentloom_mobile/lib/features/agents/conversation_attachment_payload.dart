@@ -143,7 +143,7 @@ Map<String, dynamic> buildConversationAttachmentsMetadata(
       .map((attachment) => attachment.toMetadata())
       .toList(growable: false);
   return <String, dynamic>{
-    if (contentType != null) 'contentType': contentType,
+    'contentType': ?contentType,
     'attachments': serializedAttachments,
     if (serializedAttachments.length == 1)
       'attachment': serializedAttachments.first,

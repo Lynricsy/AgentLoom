@@ -175,7 +175,7 @@ class _WorkspaceTab extends StatelessWidget {
         if (vertical) {
           return Column(
             children: [
-              if (previewNotice != null) previewNotice,
+              ?previewNotice,
               Expanded(
                 child: _WorkspaceTree(
                   nodes: state.fileTree,
@@ -204,7 +204,7 @@ class _WorkspaceTab extends StatelessWidget {
               width: 300,
               child: Column(
                 children: [
-                  if (previewNotice != null) previewNotice,
+                  ?previewNotice,
                   Expanded(
                     child: _WorkspaceTree(
                       nodes: state.fileTree,

@@ -143,7 +143,7 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: visibleFields.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
+              separatorBuilder: (_, _) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
                 final field = visibleFields[index];
                 return InputFieldBuilder(

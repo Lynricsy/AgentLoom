@@ -367,12 +367,10 @@ String? extractCheckpointThinking(Map<String, dynamic>? checkpointData) {
   }
 
   final parts = <String>[
-    if (readString(decision['rationale']) case final rationale?) rationale,
-    if (readString(
+    ?readString(decision['rationale']),
+    ?readString(
           decision['suggestedContent'] ?? decision['suggested_content'],
-        )
-        case final suggestedContent?)
-      suggestedContent,
+        ),
   ];
 
   if (parts.isEmpty) {

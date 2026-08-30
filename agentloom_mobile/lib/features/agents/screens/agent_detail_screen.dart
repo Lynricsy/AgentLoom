@@ -62,7 +62,7 @@ class AgentDetailScreen extends ConsumerWidget {
             )
           : agentAsync.when(
               loading: () => const _SkeletonLoading(),
-              error: (_, __) => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
               data: (agent) => CustomScrollView(
                 slivers: [
                   // 元数据卡片
@@ -189,7 +189,7 @@ class AgentDetailScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    error: (_, __) => SliverToBoxAdapter(
+                    error: (_, _) => SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
