@@ -11,7 +11,10 @@ import type { ToolSet, ToolExecutionOptions } from 'ai';
 function makeTool(
   description: string,
   inputSchema: z.ZodTypeAny,
-  execute?: (input: unknown, options: ToolExecutionOptions) => Promise<unknown>,
+  execute?: (
+    input: unknown,
+    options: ToolExecutionOptions<unknown>,
+  ) => Promise<unknown>,
 ): ToolSet[string] {
   return {
     description,
