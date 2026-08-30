@@ -23,6 +23,7 @@ import type {
   SessionToolProvider,
 } from './ports/agent-runtime.port';
 import { importPiAgentCore, importPiAiCompat } from './pi-imports';
+import { resolveToolDescription } from './mcp-tool-bridge';
 import {
   flexibleSchemaToJsonSchema,
   normalizeFlexibleSchemaJson,
@@ -960,7 +961,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     return Object.entries(toolSet).map(([name, tool]) => ({
       name,
       label: name,
-      description: tool.description ?? '',
+      description: resolveToolDescription(tool),
       parameters: flexibleSchemaToJsonSchema(
         tool.inputSchema as Parameters<typeof flexibleSchemaToJsonSchema>[0],
       ),
@@ -985,6 +986,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
           toolCallId,
           messages: [],
           abortSignal: signal,
+          // v7 起 context 是必填字段；pi 侧无 tool context，显式传 undefined。
+          context: undefined,
         });
 
         return {

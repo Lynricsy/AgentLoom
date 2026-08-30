@@ -426,7 +426,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       toolCallId: callback.toolCallId,
       messages: [],
       abortSignal: undefined,
-      experimental_context: undefined,
+      // v7 起 experimental_context 转正为必填 context。
+      context: undefined,
     });
     return { result };
   }

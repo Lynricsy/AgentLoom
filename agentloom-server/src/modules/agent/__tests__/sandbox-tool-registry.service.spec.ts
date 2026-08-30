@@ -66,7 +66,7 @@ describe('SandboxToolRegistryService', () => {
           toolCallId: 'call-1',
           messages: [],
           abortSignal: undefined,
-          experimental_context: undefined,
+          context: undefined,
         },
       ),
     ).resolves.toMatchObject({ status: 200 });

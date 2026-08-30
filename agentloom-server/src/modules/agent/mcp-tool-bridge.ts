@@ -20,6 +20,21 @@ export interface PiAgentTool {
 }
 
 /**
+ * AI SDK v7 允许 `description` 是「按 context 动态求值」的函数。
+ * pi-agent-core 的 AgentTool 只接受静态字符串，且 pi 侧没有 tool context 概念，
+ * 因此函数形态在转换时以空 context 求值一次，取其静态快照。
+ */
+export function resolveToolDescription(tool: ToolSet[string]): string {
+  const { description } = tool;
+
+  if (typeof description === 'function') {
+    return description({ context: undefined });
+  }
+
+  return description ?? '';
+}
+
+/**
  * Convert a single AgentLoom MCP tool (Vercel AI SDK `CoreTool` format) to a
  * pi-agent-core compatible `AgentTool`.
  *
@@ -34,7 +49,7 @@ export function convertMcpToolToPiTool(
   return {
     name,
     label: name,
-    description: tool.description ?? '',
+    description: resolveToolDescription(tool),
     parameters: flexibleSchemaToJsonSchema(
       tool.inputSchema as Parameters<typeof flexibleSchemaToJsonSchema>[0],
     ),
@@ -56,6 +71,8 @@ export function convertMcpToolToPiTool(
         toolCallId,
         messages: [],
         abortSignal: signal,
+        // v7 起 context 是必填字段；pi 侧无 tool context，显式传 undefined。
+        context: undefined,
       });
 
       const text =
