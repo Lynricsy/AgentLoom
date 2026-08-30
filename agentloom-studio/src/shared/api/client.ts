@@ -15,7 +15,7 @@ function readStoredToken(): string | undefined {
 }
 
 export const apiClient = ky.create({
-  prefixUrl: API_BASE_URL,
+  prefix: API_BASE_URL,
   // ky automatically sets Content-Type: application/json for `json:` requests
   // and the browser sets multipart boundary for `body: FormData` requests.
   // A hardcoded default would break FormData uploads.
@@ -26,7 +26,7 @@ export const apiClient = ky.create({
   },
   hooks: {
     beforeRequest: [
-      (request) => {
+      ({ request }) => {
         const token = readStoredToken()
         if (token) {
           request.headers.set('Authorization', `Bearer ${token}`)
@@ -55,7 +55,7 @@ export const apiClient = ky.create({
       },
     ],
     afterResponse: [
-      async (_request, _options, response) => {
+      async ({ response }) => {
         const contentType = response.headers.get('content-type')
         if (contentType?.includes('application/json')) {
           const body = await response.json()

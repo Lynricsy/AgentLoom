@@ -86,7 +86,7 @@ describe('beforeRequest hook', () => {
     mockStorage.setItem('auth_token', 'test-access-token')
     const req = createMockRequest()
 
-    ;(capturedHooks.beforeRequest[0] as AnyFn)(req)
+    ;(capturedHooks.beforeRequest[0] as AnyFn)({ request: req })
 
     expect(req.headers.set).toHaveBeenCalledWith(
       'Authorization',
@@ -97,7 +97,7 @@ describe('beforeRequest hook', () => {
   it('does not set Authorization header when localStorage has no token', () => {
     const req = createMockRequest()
 
-    ;(capturedHooks.beforeRequest[0] as AnyFn)(req)
+    ;(capturedHooks.beforeRequest[0] as AnyFn)({ request: req })
 
     expect(req.headers.set).not.toHaveBeenCalled()
   })
@@ -106,7 +106,9 @@ describe('beforeRequest hook', () => {
     vi.stubGlobal('localStorage', undefined)
     const req = createMockRequest()
 
-    expect(() => (capturedHooks.beforeRequest[0] as AnyFn)(req)).not.toThrow()
+    expect(() =>
+      (capturedHooks.beforeRequest[0] as AnyFn)({ request: req }),
+    ).not.toThrow()
     expect(req.headers.set).not.toHaveBeenCalled()
   })
 })
@@ -203,11 +205,12 @@ describe('afterResponse hook (snake_case ↔ camelCase)', () => {
       headers: { 'content-type': 'application/json' },
     })
 
-    const result = (await (capturedHooks.afterResponse[0] as AnyFn)(
-      new Request('https://api.example.com'),
-      {},
+    const result = (await (capturedHooks.afterResponse[0] as AnyFn)({
+      request: new Request('https://api.example.com'),
+      options: {},
       response,
-    )) as Response | undefined
+      retryCount: 0,
+    })) as Response | undefined
 
     expect(result).not.toBeUndefined()
     const body = await result!.json()
@@ -224,11 +227,12 @@ describe('afterResponse hook (snake_case ↔ camelCase)', () => {
       headers: { 'content-type': 'text/plain' },
     })
 
-    const result = (await (capturedHooks.afterResponse[0] as AnyFn)(
-      new Request('https://api.example.com'),
-      {},
+    const result = (await (capturedHooks.afterResponse[0] as AnyFn)({
+      request: new Request('https://api.example.com'),
+      options: {},
       response,
-    )) as Response | undefined
+      retryCount: 0,
+    })) as Response | undefined
 
     expect(result).toBeUndefined()
   })
@@ -239,11 +243,12 @@ describe('afterResponse hook (snake_case ↔ camelCase)', () => {
       headers: { 'content-type': 'application/json' },
     })
 
-    const result = (await (capturedHooks.afterResponse[0] as AnyFn)(
-      new Request('https://api.example.com'),
-      {},
+    const result = (await (capturedHooks.afterResponse[0] as AnyFn)({
+      request: new Request('https://api.example.com'),
+      options: {},
       response,
-    )) as Response | undefined
+      retryCount: 0,
+    })) as Response | undefined
 
     expect(result?.status).toBe(201)
   })
