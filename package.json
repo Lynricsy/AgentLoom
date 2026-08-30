@@ -9,6 +9,6 @@
 		"contracts:regen": "pnpm --filter agentloom-server run openapi:export && pnpm --filter agentloom-server run sdk:generate:models && pnpm --filter @agentloom/api-client run sync && pnpm --filter @agentloom/api-client run build"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.27.1"
+		"@modelcontextprotocol/sdk": "^1.30.0"
 	}
 }
