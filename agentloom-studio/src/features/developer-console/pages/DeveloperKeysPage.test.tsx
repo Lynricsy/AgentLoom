@@ -99,8 +99,20 @@ function createBadRequestError(detail: string) {
   )
   const options: NormalizedOptions = {
     method: 'DELETE',
-    retry: { limit: 0 },
-    prefixUrl: '',
+    // ky 2 的 NormalizedOptions.retry 是完全归一化后的对象，所有字段必填。
+    retry: {
+      limit: 0,
+      methods: [],
+      statusCodes: [],
+      afterStatusCodes: [],
+      maxRetryAfter: Number.POSITIVE_INFINITY,
+      backoffLimit: Number.POSITIVE_INFINITY,
+      delay: () => 0,
+      jitter: false,
+      retryOnTimeout: false,
+    },
+    prefix: '',
+    headers: new Headers(),
     onDownloadProgress: undefined,
     onUploadProgress: undefined,
     context: {},
