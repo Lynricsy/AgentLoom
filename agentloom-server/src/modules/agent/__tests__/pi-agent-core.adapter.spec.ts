@@ -87,7 +87,7 @@ const hoisted = vi.hoisted(() => {
     importPiAiCompat: vi.fn(async () => ({ streamSimple })),
     typeBoxToZod: vi.fn((schema: unknown) => ({ typeBoxConverted: schema })),
     normalizeFlexibleSchemaJson: vi.fn((schema: unknown) => schema),
-    flexibleSchemaToTypeBox: vi.fn((schema: unknown) => ({
+    flexibleSchemaToJsonSchema: vi.fn((schema: unknown) => ({
       converted: schema,
     })),
     getTenantDb: vi.fn((db: unknown) => db),
@@ -116,7 +116,7 @@ vi.mock('../pi-imports', () => ({
 vi.mock('../tool-schema-converter', () => ({
   typeBoxToZod: hoisted.typeBoxToZod,
   normalizeFlexibleSchemaJson: hoisted.normalizeFlexibleSchemaJson,
-  flexibleSchemaToTypeBox: hoisted.flexibleSchemaToTypeBox,
+  flexibleSchemaToJsonSchema: hoisted.flexibleSchemaToJsonSchema,
 }));
 
 function createSelectChain(result: unknown) {
@@ -241,7 +241,7 @@ describe('PiAgentCoreAdapter', () => {
     hoisted.importPiAiCompat.mockClear();
     hoisted.typeBoxToZod.mockClear();
     hoisted.normalizeFlexibleSchemaJson.mockClear();
-    hoisted.flexibleSchemaToTypeBox.mockClear();
+    hoisted.flexibleSchemaToJsonSchema.mockClear();
     hoisted.getTenantDb.mockClear();
 
     mockDb = { select: vi.fn() };
@@ -472,7 +472,7 @@ describe('PiAgentCoreAdapter', () => {
       );
 
       const agent = hoisted.MockPiAgent.instances[0];
-      expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledWith(
+      expect(hoisted.flexibleSchemaToJsonSchema).toHaveBeenCalledWith(
         toolSet['docs/search'].inputSchema,
       );
       expect(agent.assignTools).toHaveBeenCalledWith([
@@ -518,7 +518,7 @@ describe('PiAgentCoreAdapter', () => {
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.assignTools).toHaveBeenCalledWith([]);
-      expect(hoisted.flexibleSchemaToTypeBox).not.toHaveBeenCalled();
+      expect(hoisted.flexibleSchemaToJsonSchema).not.toHaveBeenCalled();
     });
 
     it('会把 runtimeConfig 的 MCP 工具与额外 provider 一起注入 prompt', async () => {
@@ -611,7 +611,7 @@ describe('PiAgentCoreAdapter', () => {
         },
         required: ['query'],
       });
-      expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledWith(
+      expect(hoisted.flexibleSchemaToJsonSchema).toHaveBeenCalledWith(
         expect.objectContaining({
           jsonSchema: expect.objectContaining({
             required: ['query'],
@@ -2198,8 +2198,8 @@ describe('PiAgentCoreAdapter', () => {
           timeout: 30,
         },
       ]);
-      expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledTimes(8);
-      expect(hoisted.flexibleSchemaToTypeBox.mock.calls[0]?.[0]).toMatchObject({
+      expect(hoisted.flexibleSchemaToJsonSchema).toHaveBeenCalledTimes(8);
+      expect(hoisted.flexibleSchemaToJsonSchema.mock.calls[0]?.[0]).toMatchObject({
         jsonSchema: {
           type: 'object',
           properties: {

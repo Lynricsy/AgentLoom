@@ -3,7 +3,7 @@ import { Type, TypeGuard } from '@sinclair/typebox';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
-  flexibleSchemaToTypeBox,
+  flexibleSchemaToJsonSchema,
   normalizeFlexibleSchemaJson,
   typeBoxToZod,
   zodToTypeBox,
@@ -264,9 +264,9 @@ describe('round-trip', () => {
   });
 });
 
-describe('flexibleSchemaToTypeBox', () => {
+describe('flexibleSchemaToJsonSchema', () => {
   it('accepts AI jsonSchema wrappers without touching zod internals', () => {
-    const result = flexibleSchemaToTypeBox(
+    const result = flexibleSchemaToJsonSchema(
       jsonSchema({
         type: 'object',
         properties: {
@@ -282,7 +282,7 @@ describe('flexibleSchemaToTypeBox', () => {
   });
 
   it('removes draft $schema recursively from flexible schemas', () => {
-    const result = flexibleSchemaToTypeBox(
+    const result = flexibleSchemaToJsonSchema(
       jsonSchema({
         $schema: 'https://json-schema.org/draft/2020-12/schema',
         type: 'object',
@@ -309,13 +309,37 @@ describe('flexibleSchemaToTypeBox', () => {
   });
 
   it('falls back to a permissive object schema for invalid inputs', () => {
-    const result = flexibleSchemaToTypeBox(null);
+    const result = flexibleSchemaToJsonSchema(null);
 
     expect(result).toMatchObject({
       type: 'object',
       properties: {},
       additionalProperties: true,
     });
+  });
+
+  it('产出的 schema 不能带 TypeBox.Kind symbol，否则 pi 会丢掉入参强制转换', () => {
+    // pi-ai 0.84 的 validateToolArguments 只在 parameters 上没有这个 legacy
+    // symbol 时才走 coerceWithJsonSchema，而那是 "5" -> 5 转换的唯一来源。
+    // 一旦这里重新套上 @sinclair/typebox 的 Type.Unsafe()，LLM 传字符串数字
+    // 的工具调用就会直接校验失败（0.62 用 Ajv coerceTypes 时是能转的）。
+    const typeBoxKind = Symbol.for('TypeBox.Kind');
+    const withSchema = flexibleSchemaToJsonSchema(
+      jsonSchema({
+        type: 'object',
+        properties: { limit: { type: 'number' } },
+        required: ['limit'],
+      }),
+    );
+
+    expect(Object.getOwnPropertySymbols(withSchema)).not.toContain(typeBoxKind);
+    expect(
+      Object.getOwnPropertySymbols(flexibleSchemaToJsonSchema(null)),
+    ).not.toContain(typeBoxKind);
+    // 反向锚点：Type.Unsafe 正是会挂上该 symbol 的写法。
+    expect(
+      Object.getOwnPropertySymbols(Type.Unsafe({ type: 'object' })),
+    ).toContain(typeBoxKind);
   });
 });
 
