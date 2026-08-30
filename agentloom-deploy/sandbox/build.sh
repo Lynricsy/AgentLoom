@@ -6,7 +6,7 @@ DEPLOY_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PREPARE_SCRIPT="$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh"
 TARBALLS_DIR="$SCRIPT_DIR/.pi-tarballs"
 
-echo "==> [1/2] Preparing shared pi-mono tarballs..."
+echo "==> [1/2] Preparing shared pi tarballs..."
 bash "$PREPARE_SCRIPT"
 
 echo "    Sandbox tarballs ready:"

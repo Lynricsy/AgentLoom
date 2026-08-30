@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@mariozechner/pi-coding-agent', () => ({}));
+vi.mock('@earendil-works/pi-coding-agent', () => ({}));
 
 import type {
   PiExtensionAPI,

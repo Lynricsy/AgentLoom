@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 
 const mockPtyManager = { id: 'pty-manager' };
 const mockPtyRegister = vi.fn();
@@ -47,8 +48,11 @@ describe('createPiSessionFactory', () => {
     };
     const reload = vi.fn().mockResolvedValue(undefined);
     const settingsManager = { id: 'settings-manager' };
-    const authStorage = { id: 'auth-storage', setRuntimeApiKey: vi.fn() };
-    const modelRegistry = { id: 'model-registry', registerProvider: vi.fn() };
+    const modelRuntime = {
+      id: 'model-runtime',
+      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+      registerProvider: vi.fn(),
+    };
     const sessionManager = { id: 'session-manager' };
 
     const piAgent = {
@@ -60,10 +64,9 @@ describe('createPiSessionFactory', () => {
       SettingsManager: {
         inMemory: vi.fn().mockReturnValue(settingsManager),
       },
-      AuthStorage: {
-        inMemory: vi.fn().mockReturnValue(authStorage),
+      ModelRuntime: {
+        create: vi.fn().mockResolvedValue(modelRuntime),
       },
-      ModelRegistry: vi.fn().mockImplementation(() => modelRegistry),
     };
 
     const setPtyManager = vi.fn();
@@ -124,11 +127,10 @@ describe('createPiSessionFactory', () => {
       defaultProvider: 'anthropic',
       defaultModel: 'claude-opus-4-6',
     });
-    expect(piAgent.AuthStorage.inMemory).toHaveBeenCalledWith();
-    expect(piAgent.ModelRegistry).toHaveBeenCalledWith(
-      authStorage,
-      expect.stringMatching(/session-123\/models\.json$/),
-    );
+    expect(piAgent.ModelRuntime.create).toHaveBeenCalledWith({
+      authPath: expect.stringMatching(/session-123\/auth\.json$/),
+      modelsPath: expect.stringMatching(/session-123\/models\.json$/),
+    });
     expect(piAgent.DefaultResourceLoader).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: '/workspace/project',
@@ -146,8 +148,7 @@ describe('createPiSessionFactory', () => {
         agentDir: expect.stringMatching(/session-123$/),
         sessionManager,
         settingsManager,
-        authStorage,
-        modelRegistry,
+        modelRuntime,
         resourceLoader: expect.any(Object),
         customTools: [
           expect.objectContaining({
@@ -158,7 +159,67 @@ describe('createPiSessionFactory', () => {
         ],
       }),
     );
-    expect(piAgent.createAgentSession.mock.calls[0]?.[0]).not.toHaveProperty('model');
+    const createSessionOptions = piAgent.createAgentSession.mock.calls[0]?.[0];
+    expect(createSessionOptions).not.toHaveProperty('model');
+    // 0.84 移除了这三个入参；残留任何一个都说明装配没迁移干净。
+    expect(createSessionOptions).not.toHaveProperty('authStorage');
+    expect(createSessionOptions).not.toHaveProperty('modelRegistry');
+    expect(createSessionOptions).not.toHaveProperty('tools');
+    // 默认策略全启用 → 不下发拒绝清单，交回 pi 的内置默认工具集。
+    expect(createSessionOptions).not.toHaveProperty('excludeTools');
+  });
+
+  it('nativeToolPolicy 关闭的内置工具应转成 excludeTools 拒绝清单', async () => {
+    const session = {
+      prompt: vi.fn(),
+      abort: vi.fn(),
+      subscribe: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const piAgent = {
+      createAgentSession: vi.fn().mockResolvedValue({ session }),
+      DefaultResourceLoader: vi.fn().mockImplementation(() => ({
+        reload: vi.fn().mockResolvedValue(undefined),
+      })),
+      SessionManager: { inMemory: vi.fn().mockReturnValue({}) },
+      SettingsManager: { inMemory: vi.fn().mockReturnValue({}) },
+      ModelRuntime: {
+        create: vi.fn().mockResolvedValue({
+          setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+          registerProvider: vi.fn(),
+        }),
+      },
+    };
+
+    const factory = createPiSessionFactory(piAgent);
+
+    // 这是 workflow agent 与执行 worker 实际下发的只读策略。
+    await factory(
+      '/workspace/project',
+      {},
+      {
+        sessionId: 'session-readonly',
+        nativeToolPolicy: {
+          readEnabled: true,
+          writeEnabled: false,
+          editEnabled: false,
+          terminalEnabled: false,
+        },
+      },
+    );
+
+    const options = piAgent.createAgentSession.mock.calls[0]?.[0] as {
+      excludeTools?: string[];
+    };
+    // 终端要连 powershell 一起禁，否则 Windows guest 上禁 bash 等于没禁。
+    expect(options.excludeTools).toEqual([
+      'bash',
+      'powershell',
+      'edit',
+      'write',
+    ]);
+    // 允许清单会连 customTools/远程工具一起过滤，因此绝不能下发 tools。
+    expect(options).not.toHaveProperty('tools');
   });
 
   it('should apply session-level settings, models, prompt, MCP servers, and runtime API keys', async () => {
@@ -170,12 +231,9 @@ describe('createPiSessionFactory', () => {
     };
     const reload = vi.fn().mockResolvedValue(undefined);
     const settingsManager = { id: 'settings-manager' };
-    const authStorage = {
-      id: 'auth-storage',
-      setRuntimeApiKey: vi.fn(),
-    };
-    const modelRegistry = {
-      id: 'model-registry',
+    const modelRuntime = {
+      id: 'model-runtime',
+      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
       registerProvider: vi.fn(),
     };
     const sessionManager = { id: 'session-manager' };
@@ -189,10 +247,9 @@ describe('createPiSessionFactory', () => {
       SettingsManager: {
         inMemory: vi.fn().mockReturnValue(settingsManager),
       },
-      AuthStorage: {
-        inMemory: vi.fn().mockReturnValue(authStorage),
+      ModelRuntime: {
+        create: vi.fn().mockResolvedValue(modelRuntime),
       },
-      ModelRegistry: vi.fn().mockImplementation(() => modelRegistry),
     };
 
     const factory = createPiSessionFactory(piAgent);
@@ -266,11 +323,11 @@ describe('createPiSessionFactory', () => {
       defaultProvider: 'openai',
       defaultModel: 'gpt-4.1',
     });
-    expect(authStorage.setRuntimeApiKey).toHaveBeenCalledWith(
+    expect(modelRuntime.setRuntimeApiKey).toHaveBeenCalledWith(
       'openai',
       'sk-openai-runtime',
     );
-    expect(modelRegistry.registerProvider).toHaveBeenCalledWith(
+    expect(modelRuntime.registerProvider).toHaveBeenCalledWith(
       'openai',
       expect.objectContaining({
         api: 'openai-completions',
@@ -304,13 +361,10 @@ describe('createPiSessionFactory', () => {
   it('同一工厂连续创建多个会话时应保持 session 级配置隔离', async () => {
     const createSessionArgs: Array<Record<string, unknown>> = [];
     const settingsManagers: Array<Record<string, unknown>> = [];
-    const authStorages: Array<{
+    const modelRuntimes: Array<{
       id: string;
-      setRuntimeApiKey: ReturnType<typeof vi.fn>;
-    }> = [];
-    const modelRegistries: Array<{
-      id: string;
-      registerProvider: ReturnType<typeof vi.fn>;
+      setRuntimeApiKey: Mock;
+      registerProvider: Mock;
     }> = [];
     const resourceLoaders: Array<Record<string, unknown>> = [];
 
@@ -349,24 +403,17 @@ describe('createPiSessionFactory', () => {
           return manager;
         }),
       },
-      AuthStorage: {
-        inMemory: vi.fn().mockImplementation(() => {
-          const authStorage = {
-            id: `auth-storage-${authStorages.length + 1}`,
-            setRuntimeApiKey: vi.fn(),
+      ModelRuntime: {
+        create: vi.fn().mockImplementation(async () => {
+          const modelRuntime = {
+            id: `model-runtime-${modelRuntimes.length + 1}`,
+            setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
+            registerProvider: vi.fn(),
           };
-          authStorages.push(authStorage);
-          return authStorage;
+          modelRuntimes.push(modelRuntime);
+          return modelRuntime;
         }),
       },
-      ModelRegistry: vi.fn().mockImplementation(() => {
-        const modelRegistry = {
-          id: `model-registry-${modelRegistries.length + 1}`,
-          registerProvider: vi.fn(),
-        };
-        modelRegistries.push(modelRegistry);
-        return modelRegistry;
-      }),
     };
 
     const factory = createPiSessionFactory(piAgent);
@@ -436,24 +483,28 @@ describe('createPiSessionFactory', () => {
       defaultModel: 'claude-sonnet-4-6',
     });
 
-    expect(authStorages).toHaveLength(2);
-    expect(authStorages[0]?.setRuntimeApiKey).toHaveBeenCalledWith(
+    // 每个会话必须拿到独立的 ModelRuntime，否则 runtime key 会跨会话泄漏。
+    expect(modelRuntimes).toHaveLength(2);
+    expect(modelRuntimes[0]?.setRuntimeApiKey).toHaveBeenCalledWith(
       'openai',
       'sk-openai-a',
     );
-    expect(authStorages[1]?.setRuntimeApiKey).toHaveBeenCalledWith(
+    expect(modelRuntimes[1]?.setRuntimeApiKey).toHaveBeenCalledWith(
+      'anthropic',
+      'ak-anthropic-b',
+    );
+    expect(modelRuntimes[0]?.setRuntimeApiKey).not.toHaveBeenCalledWith(
       'anthropic',
       'ak-anthropic-b',
     );
 
-    expect(modelRegistries).toHaveLength(2);
-    expect(modelRegistries[0]?.registerProvider).toHaveBeenCalledWith(
+    expect(modelRuntimes[0]?.registerProvider).toHaveBeenCalledWith(
       'openai',
       expect.objectContaining({
         api: 'openai-completions',
       }),
     );
-    expect(modelRegistries[1]?.registerProvider).toHaveBeenCalledWith(
+    expect(modelRuntimes[1]?.registerProvider).toHaveBeenCalledWith(
       'anthropic',
       expect.objectContaining({
         api: 'anthropic',
@@ -475,10 +526,8 @@ describe('createPiSessionFactory', () => {
     expect(createSessionArgs).toHaveLength(2);
     expect(createSessionArgs[0]?.settingsManager).toBe(settingsManagers[0]);
     expect(createSessionArgs[1]?.settingsManager).toBe(settingsManagers[1]);
-    expect(createSessionArgs[0]?.authStorage).toBe(authStorages[0]);
-    expect(createSessionArgs[1]?.authStorage).toBe(authStorages[1]);
-    expect(createSessionArgs[0]?.modelRegistry).toBe(modelRegistries[0]);
-    expect(createSessionArgs[1]?.modelRegistry).toBe(modelRegistries[1]);
+    expect(createSessionArgs[0]?.modelRuntime).toBe(modelRuntimes[0]);
+    expect(createSessionArgs[1]?.modelRuntime).toBe(modelRuntimes[1]);
     expect(createSessionArgs[0]?.resourceLoader).not.toBe(
       createSessionArgs[1]?.resourceLoader,
     );

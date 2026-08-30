@@ -28,7 +28,7 @@ function createMockSession(): IAgentSession & {
   };
 }
 
-vi.mock("@mariozechner/pi-coding-agent", () => ({}));
+vi.mock("@earendil-works/pi-coding-agent", () => ({}));
 
 vi.mock("../src/acp-adapter.js", async () => {
   const actual = await vi.importActual<typeof import("../src/acp-adapter.js")>(

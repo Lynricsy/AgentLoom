@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { Type } from '@sinclair/typebox';
+import { Type } from 'typebox';
 
 import { PTYManager } from './pty/pty-manager.js';
 import type { PTYEvent } from './pty/types.js';

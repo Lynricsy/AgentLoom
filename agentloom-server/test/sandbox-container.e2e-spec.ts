@@ -9,7 +9,7 @@ import {
 } from 'vitest';
 import { execSync } from 'node:child_process';
 
-vi.mock('@mariozechner/pi-coding-agent', () => ({}));
+vi.mock('@earendil-works/pi-coding-agent', () => ({}));
 
 vi.mock('../../agentloom-deploy/sandbox/src/pty-extension.js', () => ({
   createPtyExtension: () => ({
