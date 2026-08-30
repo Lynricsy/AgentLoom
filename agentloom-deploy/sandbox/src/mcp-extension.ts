@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox';
+import { Type } from 'typebox';
 
 import { McpClient } from './mcp-client.js';
 import type { McpCallToolResult, McpContentItem } from './mcp-client.js';

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
 import { AcpAdapter, type SessionFactory } from './acp-adapter.js';
 import { streamSessionEvents } from './event-stream.js';
@@ -36,29 +36,37 @@ const DEFAULT_SESSION_MODEL_INPUT = ['text'] as const;
 const DEFAULT_SESSION_MODEL_CONTEXT_WINDOW = 128_000;
 const DEFAULT_SESSION_MODEL_MAX_TOKENS = 16_384;
 
+/** pi-coding-agent 0.84 内置工具注册名，供 excludeTools 拒绝清单使用。 */
+const NATIVE_READ_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
+const NATIVE_TERMINAL_TOOLS = ['bash', 'powershell'] as const;
+const NATIVE_EDIT_TOOLS = ['edit'] as const;
+const NATIVE_WRITE_TOOLS = ['write'] as const;
+
 export interface PiCodingAgentBindings {
-  createAgentSession: (...args: any[]) => Promise<{ session: unknown }>;
-  createReadTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
-  createBashTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
-  createEditTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
-  createWriteTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
+  createAgentSession: (
+    options: Record<string, unknown>,
+  ) => Promise<{ session: unknown }>;
   DefaultResourceLoader: new (options: Record<string, unknown>) => {
     reload: () => Promise<void>;
   };
   SessionManager: {
-    inMemory: (...args: any[]) => unknown;
+    inMemory: (cwd?: string) => unknown;
   };
   SettingsManager: {
-    inMemory: (...args: any[]) => unknown;
+    inMemory: (settings?: Record<string, unknown>) => unknown;
   };
-  AuthStorage: {
-    inMemory: (...args: any[]) => {
-      setRuntimeApiKey?: (provider: string, apiKey: string) => void;
-    };
+  // 0.84 用 ModelRuntime 取代了 AuthStorage + ModelRegistry 两件套。
+  ModelRuntime: {
+    create: (options?: Record<string, unknown>) => Promise<PiModelRuntime>;
   };
-  ModelRegistry: new (...args: any[]) => {
-    registerProvider?: (providerName: string, config: Record<string, unknown>) => void;
-  };
+}
+
+interface PiModelRuntime {
+  setRuntimeApiKey: (providerId: string, apiKey: string) => Promise<void>;
+  registerProvider: (
+    providerId: string,
+    config: Record<string, unknown>,
+  ) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -135,28 +143,37 @@ function resolveNativeToolPolicy(
   };
 }
 
-function buildNativeTools(
-  piAgent: PiCodingAgentBindings,
-  cwd: string,
+/**
+ * pi-coding-agent 0.84 的 createAgentSession 不再接收 Tool 实例数组，只认工具名。
+ * 这里返回被策略禁用的内置工具名，交给 excludeTools（拒绝清单）。
+ *
+ * 选 excludeTools 而不是 tools 允许清单：允许清单会连 customTools（远程工具）
+ * 与扩展工具一起过滤掉，导致 remote tool 静默消失；拒绝清单只作用于命中的名字。
+ *
+ * 拒绝清单里附带 0.84 扩展池的名字（grep/find/ls/powershell）是 fail-closed：
+ * 若默认工具集只含四个内置名，多余的名字是 no-op；若默认集含扩展池，
+ * 则「禁读 / 禁终端」的策略语义仍然成立。
+ */
+function buildExcludedNativeTools(
   nativeToolPolicy: CreateSessionRequest['nativeToolPolicy'],
-): unknown[] {
+): string[] {
   const policy = resolveNativeToolPolicy(nativeToolPolicy);
-  const tools: unknown[] = [];
+  const excluded: string[] = [];
 
-  if (policy.readEnabled && piAgent.createReadTool) {
-    tools.push(piAgent.createReadTool(cwd));
+  if (!policy.readEnabled) {
+    excluded.push(...NATIVE_READ_TOOLS);
   }
-  if (policy.terminalEnabled && piAgent.createBashTool) {
-    tools.push(piAgent.createBashTool(cwd));
+  if (!policy.terminalEnabled) {
+    excluded.push(...NATIVE_TERMINAL_TOOLS);
   }
-  if (policy.editEnabled && piAgent.createEditTool) {
-    tools.push(piAgent.createEditTool(cwd));
+  if (!policy.editEnabled) {
+    excluded.push(...NATIVE_EDIT_TOOLS);
   }
-  if (policy.writeEnabled && piAgent.createWriteTool) {
-    tools.push(piAgent.createWriteTool(cwd));
+  if (!policy.writeEnabled) {
+    excluded.push(...NATIVE_WRITE_TOOLS);
   }
 
-  return tools;
+  return excluded;
 }
 
 function normalizeDynamicModelDefinition(
@@ -237,13 +254,11 @@ function normalizeDynamicProviderConfig(
   return providerConfig;
 }
 
-function applyRuntimeApiKeys(
-  authStorage: {
-    setRuntimeApiKey?: (provider: string, apiKey: string) => void;
-  },
+async function applyRuntimeApiKeys(
+  modelRuntime: PiModelRuntime,
   runtimeApiKeys?: Record<string, string>,
-): void {
-  if (!runtimeApiKeys || !authStorage.setRuntimeApiKey) {
+): Promise<void> {
+  if (!runtimeApiKeys) {
     return;
   }
 
@@ -252,17 +267,16 @@ function applyRuntimeApiKeys(
       continue;
     }
 
-    authStorage.setRuntimeApiKey(provider, apiKey);
+    // 0.84 的 setRuntimeApiKey 是 async；runtime key 只写内存映射，不落盘。
+    await modelRuntime.setRuntimeApiKey(provider, apiKey);
   }
 }
 
 function applyDynamicProviders(
-  modelRegistry: {
-    registerProvider?: (providerName: string, config: Record<string, unknown>) => void;
-  },
+  modelRuntime: PiModelRuntime,
   models?: CreateSessionRequest['models'],
 ): void {
-  if (!models?.providers || !modelRegistry.registerProvider) {
+  if (!models?.providers) {
     return;
   }
 
@@ -274,7 +288,7 @@ function applyDynamicProviders(
       continue;
     }
 
-    modelRegistry.registerProvider(normalizedProviderName, normalizedConfig);
+    modelRuntime.registerProvider(normalizedProviderName, normalizedConfig);
   }
 }
 
@@ -501,15 +515,10 @@ export function createPiSessionFactory(
     try {
       const {
         createAgentSession,
-        createReadTool,
-        createBashTool,
-        createEditTool,
-        createWriteTool,
         DefaultResourceLoader,
         SessionManager,
         SettingsManager,
-        AuthStorage,
-        ModelRegistry,
+        ModelRuntime,
       } = piAgent;
 
       const ptyExt = createPtyExtension({
@@ -526,13 +535,14 @@ export function createPiSessionFactory(
       const mergedSettings =
         mergeRecords(config.settings, sessionRequest.settings) ?? {};
       const settingsManager = SettingsManager.inMemory(mergedSettings);
-      const authStorage = AuthStorage.inMemory();
-      applyRuntimeApiKeys(authStorage, sessionRequest.runtimeApiKeys);
-      const modelRegistry = new ModelRegistry(
-        authStorage,
-        preparedConfig.modelsPath,
-      );
-      applyDynamicProviders(modelRegistry, sessionRequest.models);
+      // authPath 指向会话一次性目录，避免落到默认的 ~/.pi/agent/auth.json；
+      // runtime API key 本就只写内存，不会命中这个文件。
+      const modelRuntime = await ModelRuntime.create({
+        authPath: join(preparedConfig.directory, 'auth.json'),
+        modelsPath: preparedConfig.modelsPath,
+      });
+      await applyRuntimeApiKeys(modelRuntime, sessionRequest.runtimeApiKeys);
+      applyDynamicProviders(modelRuntime, sessionRequest.models);
       const resourceLoader = new DefaultResourceLoader({
         cwd,
         agentDir: preparedConfig.directory,
@@ -542,24 +552,16 @@ export function createPiSessionFactory(
       });
       await resourceLoader.reload();
 
+      const excludeTools = buildExcludedNativeTools(
+        sessionRequest.nativeToolPolicy,
+      );
       const { session } = await createAgentSession({
         cwd,
         agentDir: preparedConfig.directory,
         sessionManager: SessionManager.inMemory(cwd),
         settingsManager,
-        authStorage,
-        modelRegistry,
-        tools: buildNativeTools(
-          {
-            ...piAgent,
-            createReadTool,
-            createBashTool,
-            createEditTool,
-            createWriteTool,
-          },
-          cwd,
-          sessionRequest.nativeToolPolicy,
-        ),
+        modelRuntime,
+        ...(excludeTools.length > 0 ? { excludeTools } : {}),
         resourceLoader,
         customTools: createRemoteToolDefinitions(
           sessionRequest.remoteToolExecution,
@@ -585,7 +587,7 @@ export function createPiSessionFactory(
 
 async function defaultSessionFactory(): Promise<never> {
   throw new Error(
-    'pi-coding-agent not available. Install @mariozechner/pi-coding-agent to use the sandbox.',
+    'pi-coding-agent not available. Install @earendil-works/pi-coding-agent to use the sandbox.',
   );
 }
 
@@ -594,10 +596,15 @@ export async function startServer() {
   let currentPtyManager: PTYManager | null = null;
 
   try {
-    const piAgent = await import('@mariozechner/pi-coding-agent');
-    factory = createPiSessionFactory(piAgent, (manager) => {
-      currentPtyManager = manager;
-    });
+    const piAgent = await import('@earendil-works/pi-coding-agent');
+    // 真实模块的 createAgentSession 签名比本地 bindings 更窄（具名 options 类型），
+    // 结构上兼容但参数逆变不通过；bindings 只是本地注入边界，用具名断言收口。
+    factory = createPiSessionFactory(
+      piAgent as unknown as PiCodingAgentBindings,
+      (manager) => {
+        currentPtyManager = manager;
+      },
+    );
   } catch {
     console.warn('pi-coding-agent not found, using stub factory');
   }

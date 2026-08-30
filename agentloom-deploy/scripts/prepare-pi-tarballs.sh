@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 为 server/worker 与 sandbox 共用的 pi-mono tarballs 准备统一产物。
-# 默认从 GitHub 拉取 badlogic/pi-mono；如需复用本地 checkout，可显式设置 PI_MONO_DIR。
+# 为 server/worker 与 sandbox 共用的 pi tarballs 准备统一产物。
+# 默认从 GitHub 拉取 earendil-works/pi；如需复用本地 checkout，可显式设置 PI_MONO_DIR。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly SCRIPT_DIR DEPLOY_DIR
 
-PI_MONO_REPO_URL="${PI_MONO_REPO_URL:-https://github.com/badlogic/pi-mono}"
-PI_MONO_REF="${PI_MONO_REF:-576e5e1a2fbe1abbbad96b696f4058cffd8391ca}"
+PI_MONO_REPO_URL="${PI_MONO_REPO_URL:-https://github.com/earendil-works/pi}"
+PI_MONO_REF="${PI_MONO_REF:-b79e4cc834970cca69daebffab7df1da7d1e52c4}"
 
 DEFAULT_OUTPUT_DIRS=(
   "$DEPLOY_DIR/docker/.pi-tarballs"
@@ -93,11 +93,17 @@ install_dependencies() {
   )
 }
 
+# 0.84 起 coding-agent 的内部依赖闭包扩大到 7 个包：
+#   telemetry / tui / protocol 无内部依赖；client -> protocol；ai -> telemetry；
+#   agent -> ai + telemetry；coding-agent -> agent + ai + client + protocol + tui。
+# 顺序必须保持拓扑序，否则先构建的包解析不到尚未构建的 workspace 依赖。
+PI_BUILD_ORDER=(telemetry tui protocol client ai agent coding-agent)
+
 build_packages() {
   local package_name
 
-  printf '==> [3/4] Building pi-mono packages in dependency order...\n'
-  for package_name in tui ai agent coding-agent; do
+  printf '==> [3/4] Building pi packages in dependency order...\n'
+  for package_name in "${PI_BUILD_ORDER[@]}"; do
     printf '    - %s\n' "$package_name"
     (
       cd "$SOURCE_DIR/packages/$package_name"
@@ -147,7 +153,10 @@ printf '==> [4/4] Packing tarballs...\n'
 rm -rf "$PACK_DIR"
 mkdir -p "$PACK_DIR"
 
+pack_pkg "telemetry" "pi-telemetry.tgz"
 pack_pkg "tui" "pi-tui.tgz"
+pack_pkg "protocol" "pi-protocol.tgz"
+pack_pkg "client" "pi-client.tgz"
 pack_pkg "ai" "pi-ai.tgz"
 pack_pkg "agent" "pi-agent-core.tgz"
 pack_pkg "coding-agent" "pi-coding-agent.tgz"
