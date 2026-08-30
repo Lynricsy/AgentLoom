@@ -2710,7 +2710,7 @@
           },
           {
             "name": "status",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "array",
@@ -3699,7 +3699,7 @@
           },
           {
             "name": "isRead",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "boolean"
@@ -9455,7 +9455,7 @@
           },
           {
             "name": "includeAutoArchived",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "boolean"
@@ -21352,7 +21352,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-08-29T13:25:46.249Z",
+                  "default": "2026-08-30T14:24:43.091Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

@@ -40,4 +40,15 @@ catalog:
   '@types/node': ^22.10.7
   typescript: ~5.9.3
   vitest: ^4.0.18
-  zod: ^4.3.6
+
+  # zod 钉在 4.4.x：4.5.0 起 `toJSONSchema` 默认用 draft-2020-12 表示可空
+  # （`type: ['string','null']`，4.4 及以前是 `anyOf: [..., {type:'null'}]`）。
+  # nestjs-zod@5.5.0 的 `cleanupOpenApiDoc` 只认 anyOf 那一种形状，数组形透传；
+  # 更糟的是 `SwaggerModule.createDocument` 会把数组形 `type` 当成 Nest 的
+  # `type: [String]`（数组元素类型）约定，于是 `z.string().nullable()` 被导出成
+  # `{type:'array',items:{type:'string'}}` —— 可空信息在 createDocument 内部就已
+  # 丢失且与真正的 `z.array(z.string())` 无法区分，导出后再做任何后处理都救不回来。
+  # 后果：`sdk/openapi.json` 自称 3.0.0 却带 3.1 语法，openapi-generator 校验失败，
+  # `pnpm contracts:regen` 断链；models.ts 里 `activatedAt: string | null` 会被
+  # 错生成为 `Array<string>`。nestjs-zod 跟进 zod 4.5 输出后再解开此钉。
+  zod: ~4.4.3
