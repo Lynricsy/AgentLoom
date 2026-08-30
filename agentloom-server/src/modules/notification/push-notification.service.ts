@@ -5,7 +5,14 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as admin from 'firebase-admin';
+import {
+  cert,
+  deleteApp,
+  getApps,
+  initializeApp,
+  type ServiceAccount,
+} from 'firebase-admin/app';
+import { getMessaging, type Messaging } from 'firebase-admin/messaging';
 import { DeviceTokenService } from './device-token.service';
 
 const PUSH_CHUNK_SIZE = 150;
@@ -23,7 +30,7 @@ export interface PushNotificationPayload {
 @Injectable()
 export class PushNotificationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PushNotificationService.name);
-  private messagingClient: admin.messaging.Messaging | null = null;
+  private messagingClient: Messaging | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -45,17 +52,15 @@ export class PushNotificationService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const serviceAccount = JSON.parse(
-        serviceAccountJson,
-      ) as admin.ServiceAccount;
+      const serviceAccount = JSON.parse(serviceAccountJson) as ServiceAccount;
 
-      if (admin.apps.length === 0) {
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
+      if (getApps().length === 0) {
+        initializeApp({
+          credential: cert(serviceAccount),
         });
       }
 
-      this.messagingClient = admin.messaging();
+      this.messagingClient = getMessaging();
       this.logger.log('Firebase Cloud Messaging 已初始化');
     } catch (error) {
       this.messagingClient = null;
@@ -68,12 +73,12 @@ export class PushNotificationService implements OnModuleInit, OnModuleDestroy {
 
     const firebaseAppDeletes: Array<Promise<void>> = [];
 
-    for (const app of admin.apps) {
+    for (const app of getApps()) {
       if (!app) {
         continue;
       }
 
-      firebaseAppDeletes.push(app.delete());
+      firebaseAppDeletes.push(deleteApp(app));
     }
 
     if (firebaseAppDeletes.length === 0) {
