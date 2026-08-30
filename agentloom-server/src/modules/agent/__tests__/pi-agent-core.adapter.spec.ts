@@ -11,6 +11,9 @@ import type { ContentBlock } from '../types/content-block.types';
 import { ToolPermissionResolutionNotAllowedException } from '../../../common/exceptions/tool-call.exceptions';
 
 const hoisted = vi.hoisted(() => {
+  // pi-ai 0.84 的 streamSimple 由 /compat 子路径提供，Agent 构造时必填 streamFn。
+  const streamSimple = vi.fn();
+
   type MockAgentOptions = {
     streamFn?: unknown;
     sessionId?: string;
@@ -30,7 +33,8 @@ const hoisted = vi.hoisted(() => {
 
     readonly listeners = new Set<(event: Record<string, unknown>) => void>();
     readonly abortController = new AbortController();
-    readonly setTools = vi.fn((tools: unknown[]) => {
+    // pi-agent-core 0.84 没有 setTools()，工具集通过 state.tools 赋值下发。
+    readonly assignTools = vi.fn((tools: unknown[]) => {
       this.tools = tools;
     });
     readonly abort = vi.fn(() => {
@@ -44,9 +48,19 @@ const hoisted = vi.hoisted(() => {
     streamFn: unknown;
     tools: unknown[] = [];
     promptInputs: string[] = [];
+    state!: { tools: unknown[] };
 
     constructor(public readonly options: MockAgentOptions = {}) {
       this.streamFn = options.streamFn;
+      const agent = this;
+      this.state = {
+        get tools(): unknown[] {
+          return agent.tools;
+        },
+        set tools(next: unknown[]) {
+          agent.assignTools(next);
+        },
+      };
       MockPiAgent.instances.push(this);
     }
 
@@ -70,6 +84,7 @@ const hoisted = vi.hoisted(() => {
   return {
     MockPiAgent,
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
+    importPiAiCompat: vi.fn(async () => ({ streamSimple })),
     typeBoxToZod: vi.fn((schema: unknown) => ({ typeBoxConverted: schema })),
     normalizeFlexibleSchemaJson: vi.fn((schema: unknown) => schema),
     flexibleSchemaToTypeBox: vi.fn((schema: unknown) => ({
@@ -95,6 +110,7 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
 
 vi.mock('../pi-imports', () => ({
   importPiAgentCore: hoisted.importPiAgentCore,
+  importPiAiCompat: hoisted.importPiAiCompat,
 }));
 
 vi.mock('../tool-schema-converter', () => ({
@@ -222,6 +238,7 @@ describe('PiAgentCoreAdapter', () => {
 
     hoisted.MockPiAgent.reset();
     hoisted.importPiAgentCore.mockClear();
+    hoisted.importPiAiCompat.mockClear();
     hoisted.typeBoxToZod.mockClear();
     hoisted.normalizeFlexibleSchemaJson.mockClear();
     hoisted.flexibleSchemaToTypeBox.mockClear();
@@ -333,6 +350,7 @@ describe('PiAgentCoreAdapter', () => {
       const agent = hoisted.MockPiAgent.instances[0];
 
       expect(hoisted.importPiAgentCore).toHaveBeenCalledTimes(1);
+      expect(hoisted.importPiAiCompat).toHaveBeenCalledTimes(1);
       expect(mockPiAiAdapter.getPiRuntimeModel).toHaveBeenCalledWith({
         ...storedModelConfig,
         provider: storedProvider,
@@ -346,6 +364,8 @@ describe('PiAgentCoreAdapter', () => {
         }),
         tools: [],
       });
+      // 0.84 起 streamFn 必填，且必须是 pi-ai/compat 的 streamSimple。
+      expect(agent.options.streamFn).toBeTypeOf('function');
       expect(agent.options.getApiKey).toBeTypeOf('function');
       expect(typeof agent.options.beforeToolCall).toBe('function');
     });
@@ -455,7 +475,7 @@ describe('PiAgentCoreAdapter', () => {
       expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledWith(
         toolSet['docs/search'].inputSchema,
       );
-      expect(agent.setTools).toHaveBeenCalledWith([
+      expect(agent.assignTools).toHaveBeenCalledWith([
         expect.objectContaining({
           name: 'docs/search',
           label: 'docs/search',
@@ -497,7 +517,7 @@ describe('PiAgentCoreAdapter', () => {
       );
 
       const agent = hoisted.MockPiAgent.instances[0];
-      expect(agent.setTools).toHaveBeenCalledWith([]);
+      expect(agent.assignTools).toHaveBeenCalledWith([]);
       expect(hoisted.flexibleSchemaToTypeBox).not.toHaveBeenCalled();
     });
 
@@ -563,13 +583,13 @@ describe('PiAgentCoreAdapter', () => {
       );
 
       const agent = hoisted.MockPiAgent.instances[0];
-      expect(agent.setTools).toHaveBeenLastCalledWith(
+      expect(agent.assignTools).toHaveBeenLastCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ name: 'search_docs' }),
           expect.objectContaining({ name: 'manual_tool' }),
         ]),
       );
-      const injectedTools = agent.setTools.mock.lastCall?.[0] as Array<{
+      const injectedTools = agent.assignTools.mock.lastCall?.[0] as Array<{
         name: string;
         execute: (
           toolCallId: string,
@@ -675,7 +695,7 @@ describe('PiAgentCoreAdapter', () => {
       );
 
       const agent = hoisted.MockPiAgent.instances[0];
-      expect(agent.setTools).toHaveBeenLastCalledWith(
+      expect(agent.assignTools).toHaveBeenLastCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ name: 'search_knowledge' }),
         ]),
@@ -717,7 +737,7 @@ describe('PiAgentCoreAdapter', () => {
       );
 
       const agent = hoisted.MockPiAgent.instances[0];
-      expect(agent.setTools).toHaveBeenLastCalledWith([]);
+      expect(agent.assignTools).toHaveBeenLastCalledWith([]);
       expect(hoisted.typeBoxToZod).not.toHaveBeenCalled();
       expect(mockMcpService.resolveRuntimeConnection).not.toHaveBeenCalled();
       expect(mockRagService.search).not.toHaveBeenCalled();

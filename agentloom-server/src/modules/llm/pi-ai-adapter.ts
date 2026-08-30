@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Api as PiApi, Model as PiModel } from '@mariozechner/pi-ai';
+import type { Api as PiApi, Model as PiModel } from '@earendil-works/pi-ai';
 
 import type { LlmModelConfig } from '../../database/schema/llm-model-configs.schema';
 import type { LlmProvider } from '../../database/schema/llm-providers.schema';
