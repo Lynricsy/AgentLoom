@@ -95,20 +95,20 @@
     "@types/node": "catalog:",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
+    "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^10.9.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.5",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.11.0",
-    "jsdom": "^28.1.0",
+    "jsdom": "^30.0.1",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tailwindcss": "^4.2.1",
     "typescript": "catalog:",
     "typescript-eslint": "^8.48.0",
-    "vite": "^7.3.1",
+    "vite": "^8.2.2",
     "vitest": "catalog:"
   }
 }
