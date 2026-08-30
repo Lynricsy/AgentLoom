@@ -7,7 +7,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "build": "nest build",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=4096 tsc --noEmit -p tsconfig.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -73,7 +73,7 @@
     "file-type": "^21.3.0",
     "firebase-admin": "^13.7.0",
     "gpt-tokenizer": "^3.4.0",
-    "ioredis": "^5.10.0",
+    "ioredis": "^6.0.0",
     "jmespath": "^0.16.0",
     "jsonata": "^2.1.0",
     "jsonrepair": "^3.13.2",
