@@ -59,7 +59,7 @@
     "html-react-parser": "^6.1.7",
     "immer": "^11.0.0",
     "jszip": "^3.10.1",
-    "katex": "^0.16.44",
+    "katex": "^0.18.4",
     "ky": "^2.1.0",
     "lucide-react": "^1.37.0",
     "markdown-it": "^15.0.1",
