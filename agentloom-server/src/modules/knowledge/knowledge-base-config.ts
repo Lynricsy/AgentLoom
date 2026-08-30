@@ -116,8 +116,7 @@ export interface CohereKnowledgeRerankerStrategy {
 }
 
 export type KnowledgeRerankerStrategy =
-  | NoopKnowledgeRerankerStrategy
-  | CohereKnowledgeRerankerStrategy;
+  NoopKnowledgeRerankerStrategy | CohereKnowledgeRerankerStrategy;
 
 export interface NoopKnowledgeQueryOrchestrationStrategy {
   type: 'none';
@@ -179,11 +178,9 @@ export const MarkdownChunkingStrategySchema = z
   .object({
     type: z.literal('markdown'),
   })
-  .transform(
-    (): MarkdownChunkingStrategy => ({
-      type: 'markdown',
-    }),
-  );
+  .transform((): MarkdownChunkingStrategy => ({
+    type: 'markdown',
+  }));
 
 export const KnowledgeChunkingStrategySchema = z.discriminatedUnion('type', [
   SentenceChunkingStrategySchema,
@@ -210,11 +207,9 @@ export const NoopKnowledgeRerankerStrategySchema = z
   .object({
     type: z.literal('none'),
   })
-  .transform(
-    (): NoopKnowledgeRerankerStrategy => ({
-      type: 'none',
-    }),
-  );
+  .transform((): NoopKnowledgeRerankerStrategy => ({
+    type: 'none',
+  }));
 
 export const CohereKnowledgeRerankerStrategySchema = z
   .object({
@@ -254,11 +249,9 @@ export const NoopKnowledgeQueryOrchestrationSchema = z
   .object({
     type: z.literal('none'),
   })
-  .transform(
-    (): NoopKnowledgeQueryOrchestrationStrategy => ({
-      type: 'none',
-    }),
-  );
+  .transform((): NoopKnowledgeQueryOrchestrationStrategy => ({
+    type: 'none',
+  }));
 
 export const HydeKnowledgeQueryOrchestrationSchema = z
   .object({

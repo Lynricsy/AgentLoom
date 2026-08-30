@@ -18,17 +18,10 @@ import type { JwtPayload } from '../../common/guards/auth.guard';
 const WS_CLOSE_AUTH_FAILURE = 4001;
 
 export type DocumentRealtimeStatus =
-  | 'uploaded'
-  | 'processing'
-  | 'ready'
-  | 'failed';
+  'uploaded' | 'processing' | 'ready' | 'failed';
 
 export type DocumentProgressStage =
-  | 'preparing'
-  | 'parsing'
-  | 'chunking'
-  | 'queueing'
-  | 'completed';
+  'preparing' | 'parsing' | 'chunking' | 'queueing' | 'completed';
 
 export interface DocumentStatusProgress {
   percentage: number;
@@ -128,8 +121,7 @@ export class KnowledgeGateway
         }
 
         const email = (payload as Record<string, unknown>).email as
-          | string
-          | undefined;
+          string | undefined;
 
         socket.data.user = {
           sub: payload.sub,
@@ -139,18 +131,14 @@ export class KnowledgeGateway
           iat: payload.iat,
           tenantId:
             ((payload as Record<string, unknown>).tenantId as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_id as
-              | string
-              | undefined),
+              string | undefined),
           tenantRole:
             ((payload as Record<string, unknown>).tenantRole as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_role as
-              | string
-              | undefined),
+              string | undefined),
         } satisfies JwtPayload;
 
         next();
@@ -191,7 +179,10 @@ export class KnowledgeGateway
   }
 
   @SubscribeMessage('leave')
-  handleLeave(client: Socket, payload: KnowledgeRoomPayload): KnowledgeLeaveAck {
+  handleLeave(
+    client: Socket,
+    payload: KnowledgeRoomPayload,
+  ): KnowledgeLeaveAck {
     const resolved = this.resolveRoom(client, payload);
     if ('error' in resolved) {
       return { status: 'error', error: resolved.error };

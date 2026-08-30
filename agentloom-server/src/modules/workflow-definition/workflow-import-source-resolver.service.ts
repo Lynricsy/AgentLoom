@@ -215,10 +215,7 @@ export class WorkflowImportSourceResolverService {
     });
 
     if (exactMatches.length > 0) {
-      return this.pickTargetModel(
-        exactMatches,
-        params.sourceModel.config.name,
-      );
+      return this.pickTargetModel(exactMatches, params.sourceModel.config.name);
     }
 
     const looseMatches = params.context.targetModels.filter(
@@ -229,10 +226,7 @@ export class WorkflowImportSourceResolverService {
     );
 
     if (looseMatches.length > 0) {
-      return this.pickTargetModel(
-        looseMatches,
-        params.sourceModel.config.name,
-      );
+      return this.pickTargetModel(looseMatches, params.sourceModel.config.name);
     }
 
     return null;

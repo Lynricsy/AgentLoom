@@ -83,7 +83,9 @@ describe('GeneratedAppService facade', () => {
     const expected = { id: APP_ID };
     const delegate = vi
       .spyOn(repository, 'findOne')
-      .mockResolvedValue(expected as Awaited<ReturnType<GeneratedAppRepository['findOne']>>);
+      .mockResolvedValue(
+        expected as Awaited<ReturnType<GeneratedAppRepository['findOne']>>,
+      );
 
     await expect(service.findOne(TENANT_ID, APP_ID)).resolves.toBe(expected);
     expect(delegate).toHaveBeenCalledWith(TENANT_ID, APP_ID);

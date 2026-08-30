@@ -447,7 +447,6 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     );
   }
 
-
   async resolveToolPermission(
     sessionId: string,
     toolCallId: string,

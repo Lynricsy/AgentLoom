@@ -77,7 +77,7 @@ import {
   TENANT_ID,
   NOW,
   makeStep,
-  createSelectChain
+  createSelectChain,
 } from './node-scheduler-test-support';
 
 describe('conditional migrated scenarios', () => {

@@ -248,12 +248,10 @@ export class SessionPersistenceService {
         history: session.context.history,
         cwd: session.context.cwd,
         mcpServers: session.context.mcpServers as
-          | Record<string, unknown>
-          | undefined,
+          Record<string, unknown> | undefined,
         serverSandbox: session.context.serverSandbox,
         workflowState: session.context.workflowState as
-          | Record<string, unknown>
-          | undefined,
+          Record<string, unknown> | undefined,
         ...(session.context.terminalContinuity === undefined
           ? {}
           : { terminalContinuity: session.context.terminalContinuity }),
@@ -285,8 +283,7 @@ export class SessionPersistenceService {
         cwd: raw.context?.cwd,
         mcpServers: raw.context?.mcpServers,
         serverSandbox: raw.context?.serverSandbox as unknown as
-          | ServerSandboxBinding
-          | undefined,
+          ServerSandboxBinding | undefined,
         workflowState: raw.context?.workflowState,
         ...(raw.context?.terminalContinuity === undefined
           ? {}

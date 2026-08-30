@@ -276,7 +276,7 @@ describe('ACP stdio bootstrap', { timeout: 30_000 }, () => {
     }
     await flush();
     expect(gateway.handleMessage).not.toHaveBeenCalledWith(
-      expect.stringContaining('\"id\":42'),
+      expect.stringContaining('"id":42'),
       expect.anything(),
     );
 

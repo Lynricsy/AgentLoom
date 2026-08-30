@@ -43,9 +43,7 @@ export interface ApiEventTriggerConfig {
 }
 
 export type TriggerConfig =
-  | CronTriggerConfig
-  | WebhookTriggerConfig
-  | ApiEventTriggerConfig;
+  CronTriggerConfig | WebhookTriggerConfig | ApiEventTriggerConfig;
 
 export const workflowTriggers = pgTable(
   'workflow_triggers',

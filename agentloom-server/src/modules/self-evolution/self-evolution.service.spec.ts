@@ -294,16 +294,36 @@ describe('SelfEvolutionService', () => {
       readService,
     );
     service = new SelfEvolutionService(
-      mockTenantDb as unknown as ConstructorParameters<typeof SelfEvolutionService>[0],
-      mockAgentDefinitionService as unknown as ConstructorParameters<typeof SelfEvolutionService>[1],
-      mockSkillService as unknown as ConstructorParameters<typeof SelfEvolutionService>[2],
-      mockLlmService as unknown as ConstructorParameters<typeof SelfEvolutionService>[3],
-      mockLlmProviderService as unknown as ConstructorParameters<typeof SelfEvolutionService>[4],
-      mockMcpService as unknown as ConstructorParameters<typeof SelfEvolutionService>[5],
-      mockWorkspaceService as unknown as ConstructorParameters<typeof SelfEvolutionService>[6],
-      mockWorkflowVersionService as unknown as ConstructorParameters<typeof SelfEvolutionService>[7],
-      mockPermissionService as unknown as ConstructorParameters<typeof SelfEvolutionService>[8],
-      mockSandboxService as unknown as ConstructorParameters<typeof SelfEvolutionService>[9],
+      mockTenantDb as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[0],
+      mockAgentDefinitionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[1],
+      mockSkillService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[2],
+      mockLlmService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[3],
+      mockLlmProviderService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[4],
+      mockMcpService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[5],
+      mockWorkspaceService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[6],
+      mockWorkflowVersionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[7],
+      mockPermissionService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[8],
+      mockSandboxService as unknown as ConstructorParameters<
+        typeof SelfEvolutionService
+      >[9],
       readService,
       mutationService,
       permissionPolicy,
@@ -1240,10 +1260,13 @@ describe('SelfEvolutionService', () => {
         ],
       });
 
-      const result = await service.readService.queryResourcePool(makeContext(), {
-        search: 'Search',
-        limit: 150,
-      });
+      const result = await service.readService.queryResourcePool(
+        makeContext(),
+        {
+          search: 'Search',
+          limit: 150,
+        },
+      );
 
       expect(mockSkillService.findAll).toHaveBeenCalledWith(
         expect.objectContaining({ pageSize: 100, search: 'Search' }),
@@ -1431,8 +1454,16 @@ describe('SelfEvolutionService', () => {
     });
 
     it.each([
-      ['workflow', { kind: 'workflow' as const, id: 'workflow-1' }, 'workflow_edit'],
-      ['agent', { kind: 'agent' as const, id: 'agent-2' }, 'agent_external_edit'],
+      [
+        'workflow',
+        { kind: 'workflow' as const, id: 'workflow-1' },
+        'workflow_edit',
+      ],
+      [
+        'agent',
+        { kind: 'agent' as const, id: 'agent-2' },
+        'agent_external_edit',
+      ],
     ])(
       'proposeChange 应将外部 %s 变更分类为强制审批',
       async (targetKind, targetIdentity, category) => {
@@ -2045,14 +2076,17 @@ describe('SelfEvolutionService', () => {
         id: 'workflow-1',
       });
 
-      const skill = await service.mutationService.createResource(makeContext(), {
-        resourceType: 'skill',
-        spec: {
-          name: 'Skill',
-          description: ' desc ',
-          files: { 'SKILL.md': '# skill', 'guide.md': 'guide' },
+      const skill = await service.mutationService.createResource(
+        makeContext(),
+        {
+          resourceType: 'skill',
+          spec: {
+            name: 'Skill',
+            description: ' desc ',
+            files: { 'SKILL.md': '# skill', 'guide.md': 'guide' },
+          },
         },
-      });
+      );
       expect(skill).toMatchObject({
         success: true,
         data: { resourceType: 'skill', resource: { id: 'skill-1' } },

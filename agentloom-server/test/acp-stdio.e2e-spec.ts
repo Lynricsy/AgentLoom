@@ -276,6 +276,7 @@ async function runAcpStdioScenario(
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       `ACP stdio helper returned invalid JSON (${message}). stdout: ${stdout}. stderr: ${stderr}`,
+      { cause: error },
     );
   }
 

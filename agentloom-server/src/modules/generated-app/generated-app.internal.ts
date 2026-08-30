@@ -227,7 +227,8 @@ export const GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE =
   'generated-app-editor-handoff';
 export const GENERATED_APP_WORKFLOW_RUNTIME_METADATA_SOURCE =
   'generated-app-runtime-workflow';
-export const GENERATED_APP_WORKFLOW_RUNTIME_BINDING_KIND = 'public-runtime-workflow';
+export const GENERATED_APP_WORKFLOW_RUNTIME_BINDING_KIND =
+  'public-runtime-workflow';
 export const GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY =
   'async-workflow-execution-created';
 export const GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY =
@@ -244,7 +245,8 @@ export const UUID_LIKE_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES = 256 * 1024;
-export const GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID = 'gate-3-build-output-html';
+export const GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID =
+  'gate-3-build-output-html';
 export const GENERATED_APP_PUBLIC_PREVIEW_PATH_PREFIX =
   '/api/v1/generated-apps/public';
 
@@ -498,4 +500,3 @@ export interface GeneratedAppWorkflowExecutionHandoff {
   completedAt?: string | null;
   summary?: Record<string, unknown>;
 }
-

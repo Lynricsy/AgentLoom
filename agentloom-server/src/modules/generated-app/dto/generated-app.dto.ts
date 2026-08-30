@@ -134,7 +134,6 @@ export type UpdateGeneratedAppDtoType = z.infer<
   typeof UpdateGeneratedAppSchema
 >;
 
-
 export const QueryGeneratedAppsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -607,12 +606,7 @@ export interface PublicGeneratedAppResponseDto {
 }
 
 export type PublicGeneratedAppRuntimeFieldType =
-  | 'text'
-  | 'textarea'
-  | 'single_select'
-  | 'multi_select'
-  | 'number'
-  | 'range';
+  'text' | 'textarea' | 'single_select' | 'multi_select' | 'number' | 'range';
 
 export interface PublicGeneratedAppRuntimeFormOptionDto {
   value: string;

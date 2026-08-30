@@ -158,7 +158,9 @@ function buildMultipart(
     append(
       `Content-Disposition: form-data; name="${file.fieldName ?? 'files'}"; filename="${file.filename}"\r\n`,
     );
-    append(`Content-Type: ${file.contentType ?? 'application/octet-stream'}\r\n\r\n`);
+    append(
+      `Content-Type: ${file.contentType ?? 'application/octet-stream'}\r\n\r\n`,
+    );
     append(file.content);
     append('\r\n');
   }
@@ -346,7 +348,11 @@ describe('Skill E2E', () => {
         content: '---\nname: multipart\nlicense: MIT\n---\n# Instructions',
         contentType: 'text/markdown',
       },
-      { filename: 'examples/input.txt', content: 'example', contentType: 'text/plain' },
+      {
+        filename: 'examples/input.txt',
+        content: 'example',
+        contentType: 'text/plain',
+      },
     ],
   ) {
     const multipartBody = buildMultipart(
@@ -366,19 +372,26 @@ describe('Skill E2E', () => {
     expect(createResponse.statusCode).toBe(201);
     const created = createResponse.json();
     expect(created).not.toHaveProperty('data');
-    expect(created).toEqual(expect.objectContaining({
-      tenantId: owner.tenantId,
-      description: 'multipart skill description',
-      content: expect.stringContaining('# Instructions'),
-      frontmatter: expect.objectContaining({ name: 'multipart', license: 'MIT' }),
-      isBuiltin: false,
-      status: 'active',
-      fileCount: 2,
-      sourceKind: 'manual',
-      version: 1,
-      createdBy: owner.user.id,
-    }));
-    expect(Object.keys(created)).toEqual(expect.arrayContaining(skillResponseFields()));
+    expect(created).toEqual(
+      expect.objectContaining({
+        tenantId: owner.tenantId,
+        description: 'multipart skill description',
+        content: expect.stringContaining('# Instructions'),
+        frontmatter: expect.objectContaining({
+          name: 'multipart',
+          license: 'MIT',
+        }),
+        isBuiltin: false,
+        status: 'active',
+        fileCount: 2,
+        sourceKind: 'manual',
+        version: 1,
+        createdBy: owner.user.id,
+      }),
+    );
+    expect(Object.keys(created)).toEqual(
+      expect.arrayContaining(skillResponseFields()),
+    );
 
     const listResponse = await app.inject({
       method: 'GET',

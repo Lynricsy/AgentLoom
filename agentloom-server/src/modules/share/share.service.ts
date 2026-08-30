@@ -49,9 +49,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function resolveSharedAgentSandboxLifecycle(
   metadata: Record<string, unknown>,
   sandboxConfig:
-    | schema.AgentVersionSnapshot['sandboxConfig']
-    | null
-    | undefined,
+    schema.AgentVersionSnapshot['sandboxConfig'] | null | undefined,
 ): 'session' | 'persistent' | null {
   const configLifecycle =
     sandboxConfig?.lifecycleMode === 'session' ||

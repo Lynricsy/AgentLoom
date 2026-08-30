@@ -109,14 +109,12 @@ const EMIT_CASES: ReadonlyArray<{
   {
     event: ExecutionEventName.STEP_RETRYING,
     fixture: 'node-retrying.json',
-    emit: (service, payload) =>
-      service.emitStepRetrying(TENANT, EXEC, payload),
+    emit: (service, payload) => service.emitStepRetrying(TENANT, EXEC, payload),
   },
   {
     event: ExecutionEventName.OUTPUT_CHUNK,
     fixture: 'node-output-chunk.json',
-    emit: (service, payload) =>
-      service.emitOutputChunk(TENANT, EXEC, payload),
+    emit: (service, payload) => service.emitOutputChunk(TENANT, EXEC, payload),
   },
   {
     event: ExecutionEventName.NODE_INTERVENTION_REQUIRED,

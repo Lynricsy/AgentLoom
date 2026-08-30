@@ -4,23 +4,49 @@
 import { Injectable } from '@nestjs/common';
 import type { ExecutionStep, ReactFlowEdge } from '../../../database/schema';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import type { MemoryResourceConfig, MemoryResourceInstance } from '../../agent-memory/memory-resource.provider';
+import type {
+  MemoryResourceConfig,
+  MemoryResourceInstance,
+} from '../../agent-memory/memory-resource.provider';
 import { SharedResourceRegistry } from '../../shared-resources/shared-resource-registry';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 import { StepStateMachineService } from '../step-state-machine.service';
-import { getRuntimeNodeData, readFirstString, readOptionalNumber } from '../node-value.util';
-import { resolveMemoryConfig, resolveSandboxConfigForStep } from '../workflow-runtime-input.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import {
+  getRuntimeNodeData,
+  readFirstString,
+  readOptionalNumber,
+} from '../node-value.util';
+import {
+  resolveMemoryConfig,
+  resolveSandboxConfigForStep,
+} from '../workflow-runtime-input.util';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class ResourceNodeExecutor implements NodeExecutor {
   private readonly handlers = {
-    'llm-model': (c: NodeExecutionContext) => this.executeLlmModelNode(c.step, c.tenantId, c.executionId, c.runtime),
-    sandbox: (c: NodeExecutionContext) => this.executeSandboxNode(c.step, c.input, c.tenantId, c.executionId, c.snapshot.edges, c.steps, c.runtime),
-    workspace: (c: NodeExecutionContext) => this.executeWorkspaceNode(c.step, c.tenantId, c.executionId, c.runtime),
-    memory: (c: NodeExecutionContext) => this.executeMemoryNode(c.step, c.tenantId, c.executionId, c.runtime),
-    'knowledge-base': (c: NodeExecutionContext) => this.executeKnowledgeNode(c.step, c.tenantId, c.executionId, c.runtime),
+    'llm-model': (c: NodeExecutionContext) =>
+      this.executeLlmModelNode(c.step, c.tenantId, c.executionId, c.runtime),
+    sandbox: (c: NodeExecutionContext) =>
+      this.executeSandboxNode(
+        c.step,
+        c.input,
+        c.tenantId,
+        c.executionId,
+        c.snapshot.edges,
+        c.steps,
+        c.runtime,
+      ),
+    workspace: (c: NodeExecutionContext) =>
+      this.executeWorkspaceNode(c.step, c.tenantId, c.executionId, c.runtime),
+    memory: (c: NodeExecutionContext) =>
+      this.executeMemoryNode(c.step, c.tenantId, c.executionId, c.runtime),
+    'knowledge-base': (c: NodeExecutionContext) =>
+      this.executeKnowledgeNode(c.step, c.tenantId, c.executionId, c.runtime),
   } satisfies Record<string, (context: NodeExecutionContext) => Promise<void>>;
 
   constructor(
@@ -31,7 +57,9 @@ export class ResourceNodeExecutor implements NodeExecutor {
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.handlers[context.step.nodeType as keyof typeof this.handlers](context);
+    await this.handlers[context.step.nodeType as keyof typeof this.handlers](
+      context,
+    );
   }
 
   async executeLlmModelNode(

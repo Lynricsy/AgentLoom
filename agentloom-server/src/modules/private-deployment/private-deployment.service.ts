@@ -48,9 +48,7 @@ const PRIVATE_DEPLOYMENT_ADMIN_ROLES = ['owner', 'admin'] as const;
 
 type PrivateCloudAuthMethod = 'none' | 'api_key';
 type PrivateDeploymentPersistenceCertificateSource =
-  | 'none'
-  | 'uploaded'
-  | 'tls_secret_ref';
+  'none' | 'uploaded' | 'tls_secret_ref';
 
 interface AccessibleOrganization {
   id: string;

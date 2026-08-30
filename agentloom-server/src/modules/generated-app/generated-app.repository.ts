@@ -220,9 +220,7 @@ import {
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
 
-import {
-  DEFAULT_PREVIEW,
-} from './generated-app.internal';
+import { DEFAULT_PREVIEW } from './generated-app.internal';
 
 @Injectable()
 export class GeneratedAppRepository {
@@ -231,14 +229,13 @@ export class GeneratedAppRepository {
     private readonly configService: ConfigService,
   ) {}
 
-  get globalDb(): DrizzleDB { return this.db; }
-
-
+  get globalDb(): DrizzleDB {
+    return this.db;
+  }
 
   public get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
   }
-
 
   async create(
     tenantId: string,
@@ -272,7 +269,6 @@ export class GeneratedAppRepository {
 
     return this.toResponseDto(created);
   }
-
 
   async list(
     tenantId: string,
@@ -322,7 +318,6 @@ export class GeneratedAppRepository {
       },
     };
   }
-
 
   async findOne(
     tenantId: string,
@@ -401,8 +396,6 @@ export class GeneratedAppRepository {
     });
   }
 
-
-
   async recordGateResults(
     tenantId: string,
     userId: string,
@@ -442,7 +435,6 @@ export class GeneratedAppRepository {
 
     return this.toResponseDto(updated);
   }
-
 
   async listGenerationRuns(
     tenantId: string,
@@ -499,7 +491,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   async createGenerationRun(
     tenantId: string,
     userId: string,
@@ -538,7 +529,6 @@ export class GeneratedAppRepository {
 
     return this.toGenerationRunResponseDto(run);
   }
-
 
   async updateGenerationRun(
     tenantId: string,
@@ -599,8 +589,6 @@ export class GeneratedAppRepository {
     const run = await this.findGenerationRunRecord(tenantId, appId, runId);
     return this.toGenerationRunResponseDto(run);
   }
-
-
 
   async listRepairAttempts(
     tenantId: string,
@@ -665,7 +653,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   async createRepairAttempt(
     tenantId: string,
     userId: string,
@@ -711,7 +698,6 @@ export class GeneratedAppRepository {
 
     return this.toRepairAttemptResponseDto(attempt);
   }
-
 
   async updateRepairAttempt(
     tenantId: string,
@@ -819,8 +805,6 @@ export class GeneratedAppRepository {
     }
   }
 
-
-
   async listGateRuns(
     tenantId: string,
     appId: string,
@@ -890,7 +874,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   async recordGateRun(
     tenantId: string,
     userId: string,
@@ -904,7 +887,6 @@ export class GeneratedAppRepository {
     return this.createGateRunAndUpdateApp(tenantId, userId, app, parsed);
   }
 
-
   assertCanEnablePublicShare(app: Pick<GeneratedApp, 'id' | 'readiness'>) {
     if (
       app.readiness.state !== 'publish_candidate' ||
@@ -916,7 +898,6 @@ export class GeneratedAppRepository {
       );
     }
   }
-
 
   public async assertGateRunLinks(
     tenantId: string,
@@ -954,7 +935,6 @@ export class GeneratedAppRepository {
       }
     }
   }
-
 
   public async createGateRunAndUpdateApp(
     tenantId: string,
@@ -1056,7 +1036,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   public buildRunnerGateResults(
     app: GeneratedApp,
     executedGateResults: GeneratedAppGateResult[],
@@ -1084,7 +1063,6 @@ export class GeneratedAppRepository {
     );
   }
 
-
   public async resolveNextGenerationRunNumber(
     tenantId: string,
     appId: string,
@@ -1103,7 +1081,6 @@ export class GeneratedAppRepository {
 
     return (latestRun?.runNumber ?? 0) + 1;
   }
-
 
   public buildGateResultsUpdatePayload(
     userId: string,
@@ -1144,7 +1121,6 @@ export class GeneratedAppRepository {
 
     return updatePayload;
   }
-
 
   public async activatePublicShare(
     tenantId: string,
@@ -1192,7 +1168,6 @@ export class GeneratedAppRepository {
     return this.toResponseDto(updated);
   }
 
-
   public async findGeneratedAppRecord(
     tenantId: string,
     appId: string,
@@ -1214,7 +1189,6 @@ export class GeneratedAppRepository {
 
     return app;
   }
-
 
   public async findGenerationRunRecord(
     tenantId: string,
@@ -1239,7 +1213,6 @@ export class GeneratedAppRepository {
 
     return run;
   }
-
 
   public async findRepairAttemptRecord(
     tenantId: string,
@@ -1291,8 +1264,6 @@ export class GeneratedAppRepository {
     return attempt;
   }
 
-
-
   public async findPublicGeneratedAppRecord(
     token: string,
   ): Promise<GeneratedApp> {
@@ -1316,7 +1287,6 @@ export class GeneratedAppRepository {
 
     return app;
   }
-
 
   public async findSubmissionRecord(
     tenantId: string,
@@ -1342,7 +1312,6 @@ export class GeneratedAppRepository {
 
     return submission;
   }
-
 
   public toResponseDto(app: GeneratedApp): GeneratedAppResponseDto {
     const publicShareUrl =
@@ -1376,7 +1345,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   public toSubmissionResponseDto(
     submission: GeneratedAppSubmission,
   ): GeneratedAppSubmissionResponseDto {
@@ -1398,7 +1366,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   public toPublicSubmissionResponseDto(
     submission: GeneratedAppSubmission,
   ): PublicGeneratedAppSubmissionResponseDto {
@@ -1416,7 +1383,6 @@ export class GeneratedAppRepository {
       updatedAt: submission.updatedAt,
     };
   }
-
 
   public toGateRunResponseDto(
     gateRun: GeneratedAppGateRun,
@@ -1445,7 +1411,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   public toGenerationRunResponseDto(
     run: GeneratedAppGenerationRun,
   ): GeneratedAppGenerationRunResponseDto {
@@ -1467,7 +1432,6 @@ export class GeneratedAppRepository {
       updatedAt: run.updatedAt,
     };
   }
-
 
   public toRepairAttemptResponseDto(
     attempt: GeneratedAppRepairAttempt,
@@ -1495,7 +1459,6 @@ export class GeneratedAppRepository {
     };
   }
 
-
   public getBaseUrl(): string {
     const baseUrl =
       this.configService.get<string>('APP_FRONTEND_URL') ??
@@ -1505,7 +1468,6 @@ export class GeneratedAppRepository {
 
     return baseUrl.replace(/\/+$/, '');
   }
-
 
   public sanitizePublicSubmissionResultReport<
     T extends Record<string, unknown>,
@@ -1517,13 +1479,11 @@ export class GeneratedAppRepository {
     return sanitizePublicSubmissionValue(payload) as T;
   }
 
-
   public getRepairPlanOrNull(value: unknown): GeneratedAppRepairPlan | null {
     return isRecord(value)
       ? (value as unknown as GeneratedAppRepairPlan)
       : null;
   }
-
 
   public getReverificationPlanOrNull(
     value: unknown,
@@ -1557,5 +1517,4 @@ export class GeneratedAppRepository {
         ),
       );
   }
-
 }

@@ -31,7 +31,6 @@ type BroadcastMock = (
 ) => void;
 type QueueMock = (tenantId: string, executionId: string) => void;
 
-
 describe('EventBridgeService', () => {
   let service: EventBridgeService;
   let gateway: {
@@ -79,9 +78,7 @@ describe('EventBridgeService', () => {
               payload.event,
               payload.data,
             );
-          } else if (
-            event === ExecutionBroadcastIntent.BROADCAST_IMMEDIATELY
-          ) {
+          } else if (event === ExecutionBroadcastIntent.BROADCAST_IMMEDIATELY) {
             gateway.broadcastTypedEventImmediately(
               payload.tenantId,
               payload.executionId,

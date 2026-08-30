@@ -17,7 +17,10 @@ import {
   getWorkflowAgentRuntimeMode,
   getWorkflowSandboxOverride,
 } from '../workflow-runtime-input.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class WorkflowAgentNodeExecutor implements NodeExecutor {
@@ -38,7 +41,15 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
       );
       return;
     }
-    await this.executeWorkflowAgentNode(context.step, context.input, context.tenantId, context.executionId, context.snapshot.edges, context.steps, context.runtime);
+    await this.executeWorkflowAgentNode(
+      context.step,
+      context.input,
+      context.tenantId,
+      context.executionId,
+      context.snapshot.edges,
+      context.steps,
+      context.runtime,
+    );
   }
 
   async executeWorkflowAgentNode(

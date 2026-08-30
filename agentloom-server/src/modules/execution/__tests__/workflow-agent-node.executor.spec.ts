@@ -455,171 +455,166 @@ describe('workflow migrated scenarios', () => {
       );
     });
   });
-    it('MANUAL_CONFIRM + end_turn 会暂停并进入 waiting_intervention', async () => {
-      const step = makeStep({
-        id: 'step-manual',
-        nodeId: 'manual-agent',
-        status: 'queued',
-        nodeType: 'agent',
-        nodeData: {
-          agentDefinitionId: 'agent-def-manual',
-          autonomyMode: 'MANUAL_CONFIRM',
-          label: '人工确认 Agent',
-        },
-      });
-      const decision = {
-        suggestedContent: '建议稿',
-        confidence: 0.9,
-      };
-      mockOrganizationAutonomyPolicyService.resolveEffectiveAutonomyMode.mockResolvedValueOnce(
-        'MANUAL_CONFIRM',
-      );
-      mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
-        execute: vi
-          .fn()
-          .mockImplementation(async ({ step: executingStep }) => {
-            executingStep.checkpointData = {
-              ...(executingStep.checkpointData ?? {}),
-              sessionId: 'session-manual',
-              toolCalls: [{ id: 'tool-1', status: 'completed' }],
-              segments: [{ type: 'text', content: '建议稿' }],
-            };
-            return {
-              content: '建议稿',
-              stopReason: 'end_turn',
-              decision,
-            };
-          }),
-      });
-      db.select.mockReturnValue(
-        createSelectChain([
-          {
-            nodeId: step.nodeId,
-            workflowDefinitionId: 'workflow-001',
-          },
-        ]),
-      );
-      const onNodeCompleted = vi.spyOn(service, 'onNodeCompleted');
-
-      await workflowAgentNodeExecutor.executeWorkflowAgentNode(
-        step,
-        {},
-        TENANT_ID,
-        EXECUTION_ID,
-        [],
-        [step],
-        service,
-      );
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
-        2,
-        TENANT_ID,
-        step.id,
-        'waiting_intervention',
-        {
-          checkpointData: {
-            sessionId: 'session-manual',
-            partialContent: '建议稿',
-            stopReason: 'intervention_required',
-            interventionRequestedAt: expect.any(String),
-            interventionNodeName: '人工确认 Agent',
-            toolCalls: [{ id: 'tool-1', status: 'completed' }],
-            segments: [{ type: 'text', content: '建议稿' }],
-            decision,
-          },
-          result: {
-            content: '建议稿',
-            stopReason: 'intervention_required',
-            decision,
-          },
-        },
-      );
-      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        TENANT_ID,
-      );
-      expect(mockEventBridge.emitInterventionRequired).toHaveBeenCalledWith(
-        TENANT_ID,
-        EXECUTION_ID,
-        {
-          stepId: step.id,
-          nodeId: step.nodeId,
-          nodeName: '人工确认 Agent',
-          executionType: 'workflow',
-          decision,
-          partialContent: '建议稿',
-          requestedAt: expect.any(String),
-        },
-      );
-      expect(mockQueue.add).toHaveBeenCalledWith(
-        'intervention-timeout',
-        {
-          executionId: EXECUTION_ID,
-          stepId: step.id,
-          tenantId: TENANT_ID,
-        },
-        expect.objectContaining({
-          jobId: `intervention-timeout-${step.id}`,
-        }),
-      );
-      expect(
-        mockWorkspaceIntegrationService.archiveExecutionStepWorkspace,
-      ).not.toHaveBeenCalled();
-      expect(onNodeCompleted).not.toHaveBeenCalled();
+  it('MANUAL_CONFIRM + end_turn 会暂停并进入 waiting_intervention', async () => {
+    const step = makeStep({
+      id: 'step-manual',
+      nodeId: 'manual-agent',
+      status: 'queued',
+      nodeType: 'agent',
+      nodeData: {
+        agentDefinitionId: 'agent-def-manual',
+        autonomyMode: 'MANUAL_CONFIRM',
+        label: '人工确认 Agent',
+      },
     });
-
-    it('FULL_AUTO + end_turn 会按原路径完成节点', async () => {
-      const step = makeStep({
-        id: 'step-full-auto',
-        nodeId: 'full-auto-agent',
-        status: 'queued',
-        nodeType: 'agent',
-        nodeData: {
-          agentDefinitionId: 'agent-def-full-auto',
-          autonomyMode: 'FULL_AUTO',
+    const decision = {
+      suggestedContent: '建议稿',
+      confidence: 0.9,
+    };
+    mockOrganizationAutonomyPolicyService.resolveEffectiveAutonomyMode.mockResolvedValueOnce(
+      'MANUAL_CONFIRM',
+    );
+    mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
+      execute: vi.fn().mockImplementation(async ({ step: executingStep }) => {
+        executingStep.checkpointData = {
+          ...(executingStep.checkpointData ?? {}),
+          sessionId: 'session-manual',
+          toolCalls: [{ id: 'tool-1', status: 'completed' }],
+          segments: [{ type: 'text', content: '建议稿' }],
+        };
+        return {
+          content: '建议稿',
+          stopReason: 'end_turn',
+          decision,
+        };
+      }),
+    });
+    db.select.mockReturnValue(
+      createSelectChain([
+        {
+          nodeId: step.nodeId,
+          workflowDefinitionId: 'workflow-001',
         },
-      });
-      mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
-        execute: vi.fn().mockResolvedValue({
+      ]),
+    );
+    const onNodeCompleted = vi.spyOn(service, 'onNodeCompleted');
+
+    await workflowAgentNodeExecutor.executeWorkflowAgentNode(
+      step,
+      {},
+      TENANT_ID,
+      EXECUTION_ID,
+      [],
+      [step],
+      service,
+    );
+
+    expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+      2,
+      TENANT_ID,
+      step.id,
+      'waiting_intervention',
+      {
+        checkpointData: {
+          sessionId: 'session-manual',
+          partialContent: '建议稿',
+          stopReason: 'intervention_required',
+          interventionRequestedAt: expect.any(String),
+          interventionNodeName: '人工确认 Agent',
+          toolCalls: [{ id: 'tool-1', status: 'completed' }],
+          segments: [{ type: 'text', content: '建议稿' }],
+          decision,
+        },
+        result: {
+          content: '建议稿',
+          stopReason: 'intervention_required',
+          decision,
+        },
+      },
+    );
+    expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+      EXECUTION_ID,
+      TENANT_ID,
+    );
+    expect(mockEventBridge.emitInterventionRequired).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      {
+        stepId: step.id,
+        nodeId: step.nodeId,
+        nodeName: '人工确认 Agent',
+        executionType: 'workflow',
+        decision,
+        partialContent: '建议稿',
+        requestedAt: expect.any(String),
+      },
+    );
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      'intervention-timeout',
+      {
+        executionId: EXECUTION_ID,
+        stepId: step.id,
+        tenantId: TENANT_ID,
+      },
+      expect.objectContaining({
+        jobId: `intervention-timeout-${step.id}`,
+      }),
+    );
+    expect(
+      mockWorkspaceIntegrationService.archiveExecutionStepWorkspace,
+    ).not.toHaveBeenCalled();
+    expect(onNodeCompleted).not.toHaveBeenCalled();
+  });
+
+  it('FULL_AUTO + end_turn 会按原路径完成节点', async () => {
+    const step = makeStep({
+      id: 'step-full-auto',
+      nodeId: 'full-auto-agent',
+      status: 'queued',
+      nodeType: 'agent',
+      nodeData: {
+        agentDefinitionId: 'agent-def-full-auto',
+        autonomyMode: 'FULL_AUTO',
+      },
+    });
+    mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
+      execute: vi.fn().mockResolvedValue({
+        content: '自动完成',
+        stopReason: 'end_turn',
+      }),
+    });
+    const runtime = {
+      pauseForIntervention: vi.fn(),
+      onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+      onNodeFailed: vi.fn().mockResolvedValue(undefined),
+    } as unknown as NodeSchedulerService;
+
+    await workflowAgentNodeExecutor.executeWorkflowAgentNode(
+      step,
+      {},
+      TENANT_ID,
+      EXECUTION_ID,
+      [],
+      [step],
+      runtime,
+    );
+
+    expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      TENANT_ID,
+      step.id,
+      'completed',
+      expect.objectContaining({
+        result: {
           content: '自动完成',
           stopReason: 'end_turn',
-        }),
-      });
-      const runtime = {
-        pauseForIntervention: vi.fn(),
-        onNodeCompleted: vi.fn().mockResolvedValue(undefined),
-        onNodeFailed: vi.fn().mockResolvedValue(undefined),
-      } as unknown as NodeSchedulerService;
-
-      await workflowAgentNodeExecutor.executeWorkflowAgentNode(
-        step,
-        {},
-        TENANT_ID,
-        EXECUTION_ID,
-        [],
-        [step],
-        runtime,
-      );
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-        TENANT_ID,
-        step.id,
-        'completed',
-        expect.objectContaining({
-          result: {
-            content: '自动完成',
-            stopReason: 'end_turn',
-          },
-        }),
-      );
-      expect(runtime.pauseForIntervention).not.toHaveBeenCalled();
-      expect(runtime.onNodeCompleted).toHaveBeenCalledWith(
-        EXECUTION_ID,
-        step.id,
-        TENANT_ID,
-      );
-    });
-
-
-
+        },
+      }),
+    );
+    expect(runtime.pauseForIntervention).not.toHaveBeenCalled();
+    expect(runtime.onNodeCompleted).toHaveBeenCalledWith(
+      EXECUTION_ID,
+      step.id,
+      TENANT_ID,
+    );
+  });
 });

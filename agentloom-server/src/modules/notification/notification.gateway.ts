@@ -70,8 +70,7 @@ export class NotificationGateway
         }
 
         const email = (payload as Record<string, unknown>).email as
-          | string
-          | undefined;
+          string | undefined;
 
         // 必须与 WsJwtGuard 保持同一身份契约：sub = 内部 app user id，
         // supabaseUserId = 原始 JWT sub。此前这里直接沿用原始 Supabase sub 建房间，
@@ -93,18 +92,14 @@ export class NotificationGateway
           iat: payload.iat,
           tenantId:
             ((payload as Record<string, unknown>).tenantId as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_id as
-              | string
-              | undefined),
+              string | undefined),
           tenantRole:
             ((payload as Record<string, unknown>).tenantRole as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_role as
-              | string
-              | undefined),
+              string | undefined),
         } satisfies JwtPayload;
 
         next();

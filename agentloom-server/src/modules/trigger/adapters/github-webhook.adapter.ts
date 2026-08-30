@@ -15,8 +15,7 @@ export class GithubWebhookAdapter implements EventSourceAdapter {
     config?: ApiEventTriggerConfig,
   ): boolean {
     const headers = payload.data.headers as
-      | Record<string, string | undefined>
-      | undefined;
+      Record<string, string | undefined> | undefined;
 
     if (!headers) {
       this.logger.warn('GitHub 事件载荷缺少 headers');

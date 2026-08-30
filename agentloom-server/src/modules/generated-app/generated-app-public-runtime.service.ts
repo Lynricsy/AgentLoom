@@ -241,9 +241,12 @@ import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-bindi
 
 @Injectable()
 export class GeneratedAppPublicRuntimeService {
-  constructor(private readonly repository: GeneratedAppRepository, private readonly artifactService: GeneratedAppArtifactService, private readonly runtimeBindingService: GeneratedAppRuntimeBindingService, @Optional() private readonly executionService?: ExecutionService) {}
-
-
+  constructor(
+    private readonly repository: GeneratedAppRepository,
+    private readonly artifactService: GeneratedAppArtifactService,
+    private readonly runtimeBindingService: GeneratedAppRuntimeBindingService,
+    @Optional() private readonly executionService?: ExecutionService,
+  ) {}
 
   async enablePublicShare(
     tenantId: string,
@@ -256,7 +259,6 @@ export class GeneratedAppPublicRuntimeService {
     });
   }
 
-
   async regeneratePublicShare(
     tenantId: string,
     userId: string,
@@ -267,7 +269,6 @@ export class GeneratedAppPublicRuntimeService {
       forceNewToken: true,
     });
   }
-
 
   async disablePublicShare(
     tenantId: string,
@@ -302,7 +303,6 @@ export class GeneratedAppPublicRuntimeService {
     return this.repository.toResponseDto(updated);
   }
 
-
   async getPublicApp(token: string): Promise<PublicGeneratedAppResponseDto> {
     const app = await this.repository.findPublicGeneratedAppRecord(token);
     const publicAppSpec = buildPublicGeneratedAppRuntimeSpec({
@@ -313,7 +313,8 @@ export class GeneratedAppPublicRuntimeService {
       appSpec: app.appSpec,
       description: app.description,
     });
-    const previewUrl = await this.artifactService.resolvePublicRuntimePreviewUrl(app, token);
+    const previewUrl =
+      await this.artifactService.resolvePublicRuntimePreviewUrl(app, token);
 
     await this.repository.globalDb
       .update(schema.generatedApps)
@@ -344,7 +345,6 @@ export class GeneratedAppPublicRuntimeService {
     };
   }
 
-
   async getPublicBuildPreviewHtml(token: string): Promise<string> {
     const app = await this.repository.findPublicGeneratedAppRecord(token);
     const artifact = await this.artifactService.resolveArtifactContentForApp(
@@ -354,7 +354,6 @@ export class GeneratedAppPublicRuntimeService {
 
     return artifact.content;
   }
-
 
   async createPublicSubmission(
     token: string,
@@ -438,7 +437,6 @@ export class GeneratedAppPublicRuntimeService {
     return this.repository.toPublicSubmissionResponseDto(submission);
   }
 
-
   async getPublicSubmission(
     token: string,
     submissionId: string,
@@ -467,7 +465,6 @@ export class GeneratedAppPublicRuntimeService {
     return this.repository.toPublicSubmissionResponseDto(refreshedSubmission);
   }
 
-
   public async refreshPublicSubmissionWorkflowHandoff(
     app: GeneratedApp,
     submission: GeneratedAppSubmission,
@@ -477,7 +474,6 @@ export class GeneratedAppPublicRuntimeService {
     });
   }
 
-
   public async refreshCreatorSubmissionWorkflowHandoff(
     app: GeneratedApp,
     submission: GeneratedAppSubmission,
@@ -486,7 +482,6 @@ export class GeneratedAppPublicRuntimeService {
       requireGeneratedAppMetadata: true,
     });
   }
-
 
   public async refreshSubmissionWorkflowHandoff(
     app: GeneratedApp,
@@ -581,7 +576,6 @@ export class GeneratedAppPublicRuntimeService {
     }
   }
 
-
   public isWorkflowExecutionForGeneratedAppSubmission(
     inputParams: Record<string, unknown> | null,
     app: GeneratedApp,
@@ -609,7 +603,6 @@ export class GeneratedAppPublicRuntimeService {
     );
   }
 
-
   public shouldRefreshSubmissionWorkflowHandoff(
     submission: GeneratedAppSubmission,
   ): boolean {
@@ -636,7 +629,6 @@ export class GeneratedAppPublicRuntimeService {
       : true;
   }
 
-
   public getWorkflowExecutionStatusFromPayload(
     payload: Record<string, unknown> | null,
   ): schema.WorkflowExecution['status'] | null {
@@ -645,7 +637,6 @@ export class GeneratedAppPublicRuntimeService {
 
     return this.isWorkflowExecutionStatus(status) ? status : null;
   }
-
 
   public isWorkflowExecutionStatus(
     status: string | null | undefined,
@@ -660,13 +651,11 @@ export class GeneratedAppPublicRuntimeService {
     );
   }
 
-
   public isRefreshableWorkflowExecutionStatus(
     status: schema.WorkflowExecution['status'],
   ): boolean {
     return status === 'pending' || status === 'running' || status === 'paused';
   }
-
 
   public extractPublicWorkflowExecutionHandoff(
     submission: GeneratedAppSubmission,
@@ -683,7 +672,6 @@ export class GeneratedAppPublicRuntimeService {
       submission.result,
     );
   }
-
 
   public extractPublicWorkflowExecutionHandoffFromPayload(
     payload: Record<string, unknown> | null,
@@ -708,7 +696,6 @@ export class GeneratedAppPublicRuntimeService {
 
     return { executionId, workflowDefinitionId };
   }
-
 
   public buildRefreshedWorkflowExecutionHandoff(params: {
     workflowDefinitionId: string;
@@ -788,7 +775,6 @@ export class GeneratedAppPublicRuntimeService {
     }
   }
 
-
   public async buildPublicWorkflowExecutionSummary(
     executionId: string,
     tenantId: string,
@@ -848,7 +834,6 @@ export class GeneratedAppPublicRuntimeService {
       publicOutputs,
     };
   }
-
 
   public extractPublicWorkflowStepOutputs(params: {
     nodeId: string;
@@ -914,7 +899,6 @@ export class GeneratedAppPublicRuntimeService {
     return [];
   }
 
-
   public withRefreshedWorkflowHandoff(
     submission: GeneratedAppSubmission,
     handoff: GeneratedAppWorkflowExecutionHandoff,
@@ -941,7 +925,6 @@ export class GeneratedAppPublicRuntimeService {
       updatedAt: new Date(),
     };
   }
-
 
   public async persistRefreshedSubmissionWorkflowHandoff(
     submission: GeneratedAppSubmission,
@@ -973,7 +956,6 @@ export class GeneratedAppPublicRuntimeService {
     return updated ?? refreshed;
   }
 
-
   public getPublicSubmissionStatusForWorkflowHandoff(
     currentStatus: schema.GeneratedAppSubmissionStatus,
     handoff: GeneratedAppWorkflowExecutionHandoff,
@@ -987,7 +969,6 @@ export class GeneratedAppPublicRuntimeService {
       handoff.executionStatus,
     );
   }
-
 
   public getPublicSubmissionStatusForWorkflowExecutionStatus(
     currentStatus: schema.GeneratedAppSubmissionStatus,
@@ -1008,7 +989,6 @@ export class GeneratedAppPublicRuntimeService {
         return currentStatus;
     }
   }
-
 
   public async createPublicWorkflowExecutionHandoff(params: {
     app: GeneratedApp;
@@ -1043,7 +1023,9 @@ export class GeneratedAppPublicRuntimeService {
 
     if (
       !workflow ||
-      this.runtimeBindingService.isGeneratedAppEditorHandoffWorkflowMetadata(workflow.metadata) ||
+      this.runtimeBindingService.isGeneratedAppEditorHandoffWorkflowMetadata(
+        workflow.metadata,
+      ) ||
       workflow.status !== 'published' ||
       !workflow.publishedVersionId
     ) {
@@ -1117,7 +1099,6 @@ export class GeneratedAppPublicRuntimeService {
     }
   }
 
-
   public buildGeneratedAppPublicRunRequest(params: {
     app: GeneratedApp;
     input: Record<string, unknown>;
@@ -1154,7 +1135,6 @@ export class GeneratedAppPublicRuntimeService {
     };
   }
 
-
   public buildWorkflowExecutionNotStartedHandoff(
     workflowDefinitionId: string | null,
     reason: GeneratedAppWorkflowExecutionNotStartedReason,
@@ -1169,7 +1149,6 @@ export class GeneratedAppPublicRuntimeService {
       notice: this.getWorkflowExecutionNotStartedNotice(reason),
     };
   }
-
 
   public getWorkflowExecutionNotStartedNotice(
     reason: GeneratedAppWorkflowExecutionNotStartedReason,
@@ -1186,7 +1165,6 @@ export class GeneratedAppPublicRuntimeService {
         return '未创建 Workflow execution：当前 Generated App 没有绑定可执行 Workflow，公开提交继续返回本地 deterministic report。';
     }
   }
-
 
   public attachWorkflowExecutionHandoff<T extends Record<string, unknown>>(
     payload: T | null,
@@ -1211,7 +1189,6 @@ export class GeneratedAppPublicRuntimeService {
     };
   }
 
-
   public removeWorkflowExecutionStatusSection(
     report: Record<string, unknown> | null,
   ): Record<string, unknown> | null {
@@ -1234,7 +1211,6 @@ export class GeneratedAppPublicRuntimeService {
       sections,
     };
   }
-
 
   public appendWorkflowExecutionReportSection(
     report: Record<string, unknown> | null,
@@ -1271,7 +1247,6 @@ export class GeneratedAppPublicRuntimeService {
       ],
     };
   }
-
 
   async listSubmissions(
     tenantId: string,
@@ -1344,7 +1319,6 @@ export class GeneratedAppPublicRuntimeService {
     };
   }
 
-
   async findSubmission(
     tenantId: string,
     appId: string,
@@ -1361,7 +1335,6 @@ export class GeneratedAppPublicRuntimeService {
 
     return this.repository.toSubmissionResponseDto(refreshedSubmission);
   }
-
 
   async deleteSubmission(
     tenantId: string,
@@ -1391,7 +1364,6 @@ export class GeneratedAppPublicRuntimeService {
     return { deletedCount: 1 };
   }
 
-
   async deleteSubmissions(
     tenantId: string,
     appId: string,
@@ -1417,7 +1389,6 @@ export class GeneratedAppPublicRuntimeService {
     return { deletedCount: deleted.length };
   }
 
-
   public normalizePublicAnonymousSessionId(value: string | undefined): string {
     const trimmed = value?.trim();
 
@@ -1434,7 +1405,9 @@ export class GeneratedAppPublicRuntimeService {
 
     return trimmed;
   }
-  assertCanEnablePublicShare(app: Pick<GeneratedApp, 'id' | 'readiness'>): void {
+  assertCanEnablePublicShare(
+    app: Pick<GeneratedApp, 'id' | 'readiness'>,
+  ): void {
     if (
       app.readiness.state !== 'publish_candidate' ||
       !app.readiness.canCreatePublicShare
@@ -1449,5 +1422,4 @@ export class GeneratedAppPublicRuntimeService {
   normalizeAnonymousSessionId(value: string | undefined): string {
     return this.normalizePublicAnonymousSessionId(value);
   }
-
 }

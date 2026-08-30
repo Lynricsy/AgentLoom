@@ -6,9 +6,15 @@ import type { ExecutionStep } from '../../../database/schema';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 import { StepStateMachineService } from '../step-state-machine.service';
-import { evaluateConditionBranch, resolveConditionBranches } from '../condition-evaluator.util';
+import {
+  evaluateConditionBranch,
+  resolveConditionBranches,
+} from '../condition-evaluator.util';
 import { flattenInput, getRuntimeNodeData } from '../node-value.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class ConditionalNodeExecutor implements NodeExecutor {
@@ -18,7 +24,13 @@ export class ConditionalNodeExecutor implements NodeExecutor {
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.executeConditional(context.step, context.input, context.tenantId, context.executionId, context.runtime);
+    await this.executeConditional(
+      context.step,
+      context.input,
+      context.tenantId,
+      context.executionId,
+      context.runtime,
+    );
   }
 
   async executeConditional(

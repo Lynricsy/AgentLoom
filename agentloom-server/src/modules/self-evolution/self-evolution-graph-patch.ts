@@ -5,7 +5,14 @@
 import { Injectable } from '@nestjs/common';
 import { McpService } from '../mcp/mcp.service';
 import { resolveMcpServerConfigId } from '../agent-definition/mcp-tool-descriptor.utils';
-import { cloneJsonRecord, cloneJsonValue, readNodeType, readRecord, readString, readStringArray } from './self-evolution-value.util';
+import {
+  cloneJsonRecord,
+  cloneJsonValue,
+  readNodeType,
+  readRecord,
+  readString,
+  readStringArray,
+} from './self-evolution-value.util';
 
 export type GraphRecord = Record<string, unknown>;
 
@@ -22,22 +29,32 @@ export interface GraphPatchOperation {
 export class SelfEvolutionGraphPatch {
   constructor(private readonly mcpService: McpService) {}
 
-  applyNodes(nodes: GraphRecord[], operations: GraphPatchOperation[]): GraphRecord[] {
+  applyNodes(
+    nodes: GraphRecord[],
+    operations: GraphPatchOperation[],
+  ): GraphRecord[] {
     let next = this.cloneArray(nodes);
     for (const operation of operations) {
       if (operation.op === 'add') {
         const id = this.readString(operation.node?.id);
-        if (!operation.node || !id) throw new Error('新增节点时必须提供 node 且包含合法 id');
-        if (next.some((item) => this.readString(item.id) === id)) throw new Error(`节点 ${id} 已存在，不能重复新增`);
+        if (!operation.node || !id)
+          throw new Error('新增节点时必须提供 node 且包含合法 id');
+        if (next.some((item) => this.readString(item.id) === id))
+          throw new Error(`节点 ${id} 已存在，不能重复新增`);
         next.push(this.cloneRecord(operation.node));
       } else if (operation.op === 'update') {
-        if (!operation.nodeId || !operation.patch) throw new Error('更新节点时必须提供 nodeId 与 patch');
-        const index = next.findIndex((item) => this.readString(item.id) === operation.nodeId);
+        if (!operation.nodeId || !operation.patch)
+          throw new Error('更新节点时必须提供 nodeId 与 patch');
+        const index = next.findIndex(
+          (item) => this.readString(item.id) === operation.nodeId,
+        );
         if (index < 0) throw new Error(`待更新节点不存在: ${operation.nodeId}`);
         next[index] = this.merge(next[index], operation.patch);
       } else if (operation.op === 'remove') {
         if (!operation.nodeId) throw new Error('删除节点时必须提供 nodeId');
-        next = next.filter((item) => this.readString(item.id) !== operation.nodeId);
+        next = next.filter(
+          (item) => this.readString(item.id) !== operation.nodeId,
+        );
       } else {
         throw new Error(`不支持的节点操作: ${operation.op}`);
       }
@@ -45,22 +62,32 @@ export class SelfEvolutionGraphPatch {
     return next;
   }
 
-  applyEdges(edges: GraphRecord[], operations: GraphPatchOperation[]): GraphRecord[] {
+  applyEdges(
+    edges: GraphRecord[],
+    operations: GraphPatchOperation[],
+  ): GraphRecord[] {
     let next = this.cloneArray(edges);
     for (const operation of operations) {
       if (operation.op === 'add') {
         const id = this.readString(operation.edge?.id);
-        if (!operation.edge || !id) throw new Error('新增连线时必须提供 edge 且包含合法 id');
-        if (next.some((item) => this.readString(item.id) === id)) throw new Error(`连线 ${id} 已存在，不能重复新增`);
+        if (!operation.edge || !id)
+          throw new Error('新增连线时必须提供 edge 且包含合法 id');
+        if (next.some((item) => this.readString(item.id) === id))
+          throw new Error(`连线 ${id} 已存在，不能重复新增`);
         next.push(this.cloneRecord(operation.edge));
       } else if (operation.op === 'update') {
-        if (!operation.edgeId || !operation.patch) throw new Error('更新连线时必须提供 edgeId 与 patch');
-        const index = next.findIndex((item) => this.readString(item.id) === operation.edgeId);
+        if (!operation.edgeId || !operation.patch)
+          throw new Error('更新连线时必须提供 edgeId 与 patch');
+        const index = next.findIndex(
+          (item) => this.readString(item.id) === operation.edgeId,
+        );
         if (index < 0) throw new Error(`待更新连线不存在: ${operation.edgeId}`);
         next[index] = this.merge(next[index], operation.patch);
       } else if (operation.op === 'remove') {
         if (!operation.edgeId) throw new Error('删除连线时必须提供 edgeId');
-        next = next.filter((item) => this.readString(item.id) !== operation.edgeId);
+        next = next.filter(
+          (item) => this.readString(item.id) !== operation.edgeId,
+        );
       } else {
         throw new Error(`不支持的连线操作: ${operation.op}`);
       }
@@ -319,5 +346,4 @@ export class SelfEvolutionGraphPatch {
       },
     };
   }
-
 }

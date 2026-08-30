@@ -76,19 +76,17 @@ export type LegacyEventName =
   | 'execution:paused'
   | 'execution:cancelled';
 
-export const LEGACY_EVENT_MAP: Record<
-  LegacyEventName,
-  ExecutionEventNameType
-> = {
-  'step:status-changed': ExecutionEventName.STEP_STATUS_CHANGED,
-  'step:agent-event': ExecutionEventName.STEP_AGENT_EVENT,
-  'step:retrying': ExecutionEventName.STEP_RETRYING,
-  'execution:running': ExecutionEventName.EXECUTION_STATUS_CHANGED,
-  'execution:completed': ExecutionEventName.EXECUTION_STATUS_CHANGED,
-  'execution:failed': ExecutionEventName.EXECUTION_STATUS_CHANGED,
-  'execution:paused': ExecutionEventName.EXECUTION_STATUS_CHANGED,
-  'execution:cancelled': ExecutionEventName.EXECUTION_STATUS_CHANGED,
-};
+export const LEGACY_EVENT_MAP: Record<LegacyEventName, ExecutionEventNameType> =
+  {
+    'step:status-changed': ExecutionEventName.STEP_STATUS_CHANGED,
+    'step:agent-event': ExecutionEventName.STEP_AGENT_EVENT,
+    'step:retrying': ExecutionEventName.STEP_RETRYING,
+    'execution:running': ExecutionEventName.EXECUTION_STATUS_CHANGED,
+    'execution:completed': ExecutionEventName.EXECUTION_STATUS_CHANGED,
+    'execution:failed': ExecutionEventName.EXECUTION_STATUS_CHANGED,
+    'execution:paused': ExecutionEventName.EXECUTION_STATUS_CHANGED,
+    'execution:cancelled': ExecutionEventName.EXECUTION_STATUS_CHANGED,
+  };
 
 export interface SubscribePayload {
   readonly tenantId: string;

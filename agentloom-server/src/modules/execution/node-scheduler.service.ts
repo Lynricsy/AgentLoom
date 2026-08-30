@@ -49,11 +49,7 @@ import {
   filterTopLevelExecutionGraph,
   isCompoundInternalStep,
 } from './compound-runtime.util';
-import {
-  isRecord,
-  readEdgeHandle,
-  setValueAtPath,
-} from './node-value.util';
+import { isRecord, readEdgeHandle, setValueAtPath } from './node-value.util';
 import {
   normalizeConditionBranch,
   normalizeConditionSourceHandle,
@@ -65,7 +61,10 @@ import {
   getUpstreamMemorySessionIds,
 } from './workflow-runtime-input.util';
 import { NodeDispatcherService } from './node-dispatcher.service';
-import { CompoundExecutionService, type CompoundExecutionRuntime } from './compound-execution.service';
+import {
+  CompoundExecutionService,
+  type CompoundExecutionRuntime,
+} from './compound-execution.service';
 import type { NodeExecutionContext } from './node-executors/node-executor.interface';
 
 /** 调度决策 */
@@ -106,7 +105,6 @@ function buildEscalatedInterventionTimeoutJobId(
 ): string {
   return `intervention-timeout-${stepId}-escalated-${escalationCount}`;
 }
-
 
 @Injectable()
 export class NodeSchedulerService implements CompoundExecutionRuntime {
@@ -356,7 +354,6 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
         `不支持的节点类型 "${step.nodeType}"`,
       );
     }
-
   }
 
   private async executeNodeType(
@@ -369,8 +366,14 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     steps: ExecutionStep[] = [],
   ): Promise<void> {
     await this.nodeDispatcher.dispatchAs(nodeType, {
-      executionId, tenantId, step, input, steps,
-      snapshot: { nodes: [], edges }, memorySessionIds: [], runtime: this,
+      executionId,
+      tenantId,
+      step,
+      input,
+      steps,
+      snapshot: { nodes: [], edges },
+      memorySessionIds: [],
+      runtime: this,
     });
   }
 
@@ -397,7 +400,12 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     await this.onNodeFailed(executionId, step.id, tenantId);
   }
 
-  async executePlugin( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executePlugin(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('plugin', step, input, tenantId, executionId);
   }
 
@@ -474,9 +482,7 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     direction: 'source' | 'target',
   ): string | undefined {
     const staticPorts = (
-      direction === 'source'
-        ? node.data?.outputPorts
-        : node.data?.inputPorts
+      direction === 'source' ? node.data?.outputPorts : node.data?.inputPorts
     ) as Array<{ id?: string; name?: string; dataType?: string }> | undefined;
     const staticPort = Array.isArray(staticPorts)
       ? staticPorts.find((p) => p?.id === handle || p?.name === handle)
@@ -1078,118 +1084,333 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
   /**
    * 内联执行数据转换节点。
    */
-  async executeDataTransform( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
-    await this.executeNodeType('data_transform', step, input, tenantId, executionId);
+  async executeDataTransform(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.executeNodeType(
+      'data_transform',
+      step,
+      input,
+      tenantId,
+      executionId,
+    );
   }
 
-  async executeInputPreprocessor( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
-    await this.executeNodeType('input-preprocessor', step, input, tenantId, executionId);
+  async executeInputPreprocessor(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.executeNodeType(
+      'input-preprocessor',
+      step,
+      input,
+      tenantId,
+      executionId,
+    );
   }
 
-  async executeHttpToolNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executeHttpToolNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('http-tool', step, input, tenantId, executionId);
   }
 
-  async executeCodeToolNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executeCodeToolNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('code-tool', step, input, tenantId, executionId);
   }
 
-  async executeSkillNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executeSkillNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('skill', step, input, tenantId, executionId);
   }
 
   /** 内联处理 MCP 工具节点：同步完成，输出工具描述符供下游 agent 节点消费。 */
-  async executeMcpToolNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executeMcpToolNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('mcp-tool', step, input, tenantId, executionId);
   }
 
   /**
    * 内联执行条件节点。
    */
-  async executeConditional( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executeConditional(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('condition', step, input, tenantId, executionId);
   }
 
-  async executeLoopNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
-    await this.compoundExecution.executeLoopNode(step, input, tenantId, executionId, this);
+  async executeLoopNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeLoopNode(
+      step,
+      input,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeIterationNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
-    await this.compoundExecution.executeIterationNode(step, input, tenantId, executionId, this);
+  async executeIterationNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeIterationNode(
+      step,
+      input,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeLoopStartNode(step: ExecutionStep, tenantId: string, executionId: string): Promise<void> {
-    await this.compoundExecution.executeLoopStartNode(step, tenantId, executionId, this);
+  async executeLoopStartNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeLoopStartNode(
+      step,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeIterationStartNode(step: ExecutionStep, tenantId: string, executionId: string): Promise<void> {
-    await this.compoundExecution.executeIterationStartNode(step, tenantId, executionId, this);
+  async executeIterationStartNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeIterationStartNode(
+      step,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeLoopStateNode(step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string): Promise<void> {
-    await this.compoundExecution.executeLoopStateNode(step, input, tenantId, executionId, this);
+  async executeLoopStateNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeLoopStateNode(
+      step,
+      input,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeResultNode(step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string): Promise<void> {
-    await this.compoundExecution.executeResultNode(step, input, tenantId, executionId, this);
+  async executeResultNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeResultNode(
+      step,
+      input,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeBreakNode(step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string): Promise<void> {
-    await this.compoundExecution.executeBreakNode(step, input, tenantId, executionId, this);
+  async executeBreakNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeBreakNode(
+      step,
+      input,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeContinueNode(step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string): Promise<void> {
-    await this.compoundExecution.executeContinueNode(step, input, tenantId, executionId, this);
+  async executeContinueNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.compoundExecution.executeContinueNode(
+      step,
+      input,
+      tenantId,
+      executionId,
+      this,
+    );
   }
 
-  async executeMerge( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
+  async executeMerge(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('merge', step, input, tenantId, executionId);
   }
 
-
-
-  async executeSmartRouting( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
-    await this.executeNodeType('smart-routing', step, input, tenantId, executionId);
+  async executeSmartRouting(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.executeNodeType(
+      'smart-routing',
+      step,
+      input,
+      tenantId,
+      executionId,
+    );
   }
-
-
 
   // ── 私有辅助 ───────────────────────────────────────────────
 
-  async executeWorkflowAgentNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, edges: ReactFlowEdge[], steps: ExecutionStep[], ): Promise<void> {
-    await this.executeNodeType('agent', step, input, tenantId, executionId, edges, steps);
+  async executeWorkflowAgentNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): Promise<void> {
+    await this.executeNodeType(
+      'agent',
+      step,
+      input,
+      tenantId,
+      executionId,
+      edges,
+      steps,
+    );
   }
 
-  async executeSandboxNode( step: ExecutionStep, _input: Record<string, unknown>, tenantId: string, executionId: string, edges: ReactFlowEdge[], steps: ExecutionStep[], ): Promise<void> {
-    await this.executeNodeType('sandbox', step, _input, tenantId, executionId, edges, steps);
+  async executeSandboxNode(
+    step: ExecutionStep,
+    _input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+    edges: ReactFlowEdge[],
+    steps: ExecutionStep[],
+  ): Promise<void> {
+    await this.executeNodeType(
+      'sandbox',
+      step,
+      _input,
+      tenantId,
+      executionId,
+      edges,
+      steps,
+    );
   }
 
-  async executeWorkspaceNode( step: ExecutionStep, tenantId: string, executionId: string, ): Promise<void> {
+  async executeWorkspaceNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('workspace', step, {}, tenantId, executionId);
   }
 
-  async executeMemoryNode( step: ExecutionStep, tenantId: string, executionId: string, ): Promise<void> {
+  async executeMemoryNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('memory', step, {}, tenantId, executionId);
   }
 
-  async executeTriggerNode( step: ExecutionStep, tenantId: string, executionId: string, ): Promise<void> {
-    await this.executeNodeType('manual-trigger', step, {}, tenantId, executionId);
+  async executeTriggerNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.executeNodeType(
+      'manual-trigger',
+      step,
+      {},
+      tenantId,
+      executionId,
+    );
   }
 
-  async executeLlmModelNode( step: ExecutionStep, tenantId: string, executionId: string, ): Promise<void> {
+  async executeLlmModelNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('llm-model', step, {}, tenantId, executionId);
   }
 
-  async executeKnowledgeNode( step: ExecutionStep, tenantId: string, executionId: string, ): Promise<void> {
-    await this.executeNodeType('knowledge-base', step, {}, tenantId, executionId);
+  async executeKnowledgeNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.executeNodeType(
+      'knowledge-base',
+      step,
+      {},
+      tenantId,
+      executionId,
+    );
   }
 
-  async executeTextNode( step: ExecutionStep, tenantId: string, executionId: string, ): Promise<void> {
+  async executeTextNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.executeNodeType('text', step, {}, tenantId, executionId);
   }
 
-  async executeOutputNode( step: ExecutionStep, input: Record<string, unknown>, tenantId: string, executionId: string, ): Promise<void> {
-    const nodeType = step.nodeType === 'text-output' ? 'text-output' : 'json-output';
+  async executeOutputNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    const nodeType =
+      step.nodeType === 'text-output' ? 'text-output' : 'json-output';
     await this.executeNodeType(nodeType, step, input, tenantId, executionId);
   }
 

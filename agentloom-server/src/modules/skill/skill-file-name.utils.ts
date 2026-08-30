@@ -2,6 +2,8 @@ import { basename } from 'node:path/posix';
 
 import { SkillFileNameInvalidException } from './skill.exceptions';
 
+// 这里的控制字符正是校验目标：文件名含 C0/DEL 时必须拒绝。
+// eslint-disable-next-line no-control-regex -- 故意匹配控制字符
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 
 /**

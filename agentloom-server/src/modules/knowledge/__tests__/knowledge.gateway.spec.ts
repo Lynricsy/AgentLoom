@@ -95,9 +95,10 @@ describe('KnowledgeGateway 房间授权', () => {
     ).toEqual({ status: 'error', error: 'FORBIDDEN' });
     expect(left).toEqual([]);
 
-    expect(
-      gateway.handleLeave(client, { knowledgeBaseId: KB_ID }),
-    ).toEqual({ status: 'left', knowledgeBaseId: KB_ID });
+    expect(gateway.handleLeave(client, { knowledgeBaseId: KB_ID })).toEqual({
+      status: 'left',
+      knowledgeBaseId: KB_ID,
+    });
     expect(left).toEqual([`knowledge:${TENANT_A}:${KB_ID}`]);
   });
 

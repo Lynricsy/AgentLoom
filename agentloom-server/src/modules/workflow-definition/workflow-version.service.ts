@@ -982,7 +982,6 @@ export class WorkflowVersionService {
     };
   }
 
-
   private extractReleaseNumber(
     snapshot?: WorkflowVersionSnapshot | null,
     publishedAt?: Date | null,

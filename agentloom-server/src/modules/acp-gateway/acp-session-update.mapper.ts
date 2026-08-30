@@ -103,7 +103,4 @@ function applyReplayFlag<T extends AcpSessionUpdate>(
 }
 
 void (0 as unknown as
-  | DecisionEvent
-  | MessageChunkEvent
-  | PlanEvent
-  | ToolCallAgentEvent);
+  DecisionEvent | MessageChunkEvent | PlanEvent | ToolCallAgentEvent);

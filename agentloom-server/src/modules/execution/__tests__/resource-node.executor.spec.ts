@@ -81,7 +81,7 @@ import {
   makeEdge,
   makeSnapshot,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('resource migrated scenarios', () => {

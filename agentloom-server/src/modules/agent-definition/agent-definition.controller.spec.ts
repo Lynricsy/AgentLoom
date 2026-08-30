@@ -31,11 +31,7 @@ describe('AgentDefinitionController rollback', () => {
       service as unknown as AgentDefinitionService,
     );
 
-    const result = await controller.rollback(
-      'agent-1',
-      'version-1',
-      'user-1',
-    );
+    const result = await controller.rollback('agent-1', 'version-1', 'user-1');
 
     expect(service.rollback).toHaveBeenCalledWith(
       'agent-1',

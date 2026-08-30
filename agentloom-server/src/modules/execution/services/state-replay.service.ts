@@ -70,25 +70,22 @@ export class StateReplayService {
       status: execution.status,
       completedSteps: execution.completedSteps ?? 0,
       totalSteps: execution.totalSteps ?? 0,
-      steps: steps.map(
-        (step): StepSnapshot => ({
-          stepId: step.id,
-          nodeId: step.nodeId,
-          status: step.status,
-          startedAt: step.startedAt?.toISOString() ?? null,
-          completedAt: step.completedAt?.toISOString() ?? null,
-          ...(step.errorMessage
-            ? {
-                errorMessage: (step.errorMessage as { message: string })
-                  .message,
-                errorDetail:
-                  step.errorMessage as unknown as StepSnapshot['errorDetail'],
-              }
-            : {}),
-          result: step.result ?? null,
-          checkpointData: step.checkpointData ?? null,
-        }),
-      ),
+      steps: steps.map((step): StepSnapshot => ({
+        stepId: step.id,
+        nodeId: step.nodeId,
+        status: step.status,
+        startedAt: step.startedAt?.toISOString() ?? null,
+        completedAt: step.completedAt?.toISOString() ?? null,
+        ...(step.errorMessage
+          ? {
+              errorMessage: (step.errorMessage as { message: string }).message,
+              errorDetail:
+                step.errorMessage as unknown as StepSnapshot['errorDetail'],
+            }
+          : {}),
+        result: step.result ?? null,
+        checkpointData: step.checkpointData ?? null,
+      })),
       snapshotAt: new Date().toISOString(),
       lastEventId,
     };

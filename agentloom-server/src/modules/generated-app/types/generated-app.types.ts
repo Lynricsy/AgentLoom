@@ -2,18 +2,10 @@
 
 import type { GeneratedAppRepairAttemptStatus } from '../../../database/schema/generated-apps.schema';
 export type GeneratedAppReadinessState =
-  | 'preview'
-  | 'trial'
-  | 'publish_candidate'
-  | 'blocked';
+  'preview' | 'trial' | 'publish_candidate' | 'blocked';
 
 export type GeneratedAppGateStatus =
-  | 'pending'
-  | 'running'
-  | 'passed'
-  | 'failed'
-  | 'warning'
-  | 'skipped';
+  'pending' | 'running' | 'passed' | 'failed' | 'warning' | 'skipped';
 
 export interface GeneratedAppAcceptanceScenario {
   id: string;
@@ -361,9 +353,7 @@ export interface GeneratedAppBuildUnitPlan {
         | 'script'
         | 'manifest';
       derivedFrom:
-        | 'AppSpec'
-        | 'generationPlan.staticContracts'
-        | 'generated-app-scaffold';
+        'AppSpec' | 'generationPlan.staticContracts' | 'generated-app-scaffold';
       required: boolean;
     }>;
     artifactPaths: {
@@ -506,8 +496,7 @@ export interface GeneratedAppIntegrationPlan {
   }>;
   agentWorkflowDryRunExpectations: {
     expectationLevel:
-      | 'dry-run-fixture-skeleton'
-      | 'controlled-local-trace-fixture';
+      'dry-run-fixture-skeleton' | 'controlled-local-trace-fixture';
     orchestrationNodeIds: string[];
     orchestrationEdgeRefs: string[];
     fixtures: Array<{
@@ -961,13 +950,11 @@ export interface GeneratedAppPublishCandidatePlan {
   }>;
   rollbackShareControls: {
     publicTokenCreation:
-      | 'disabled-while-guard-fails'
-      | 'deferred-until-enable-public-share';
+      'disabled-while-guard-fails' | 'deferred-until-enable-public-share';
     publicShareEnabledWhileGuardFails: false;
     createdPublicShareToken: null;
     stalePublicTokenRequiredAction:
-      | 'clear-before-publish-candidate'
-      | 'clear-before-enable-public-share';
+      'clear-before-publish-candidate' | 'clear-before-enable-public-share';
     closeShareControl: 'DELETE /generated-apps/:appId/public-share';
     enableShareControl?: 'POST /generated-apps/:appId/public-share';
     regenerateShareControl: 'POST /generated-apps/:appId/public-share/regenerate';

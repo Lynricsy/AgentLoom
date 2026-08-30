@@ -81,7 +81,7 @@ import {
   makeEdge,
   makeSnapshot,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('http migrated scenarios', () => {
@@ -480,7 +480,11 @@ describe('http migrated scenarios', () => {
         status: 'pending',
         nodeType: 'http-tool',
         nodeData: {
-          config: { url: 'https://example.com/missing', method: 'GET', ...config },
+          config: {
+            url: 'https://example.com/missing',
+            method: 'GET',
+            ...config,
+          },
         },
       }),
     ];
@@ -516,8 +520,7 @@ describe('http migrated scenarios', () => {
             'exec-out': { triggered: true, success: false, status: 404 },
           }),
           errorMessage: {
-            message:
-              'HTTP GET https://example.com/missing 返回 404 Not Found',
+            message: 'HTTP GET https://example.com/missing 返回 404 Not Found',
             nodeId: 'H',
           },
         }),

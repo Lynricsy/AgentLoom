@@ -60,8 +60,7 @@ export class SharedResourceRegistry {
     type: string,
   ): SharedResourceProvider<TConfig, TInstance> | undefined {
     return this.providers.get(type) as
-      | SharedResourceProvider<TConfig, TInstance>
-      | undefined;
+      SharedResourceProvider<TConfig, TInstance> | undefined;
   }
 
   /**

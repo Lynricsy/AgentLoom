@@ -196,10 +196,7 @@ export interface AcpSessionCancelParams {
 }
 
 export type AcpPermissionOptionKind =
-  | 'allow_once'
-  | 'allow_always'
-  | 'reject_once'
-  | 'reject_always';
+  'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 
 export interface AcpPermissionOption {
   optionId: string;
@@ -229,8 +226,7 @@ export interface AcpPermissionCancelledOutcome {
 }
 
 export type AcpPermissionOutcome =
-  | AcpPermissionSelectedOutcome
-  | AcpPermissionCancelledOutcome;
+  AcpPermissionSelectedOutcome | AcpPermissionCancelledOutcome;
 
 export interface AcpSessionRequestPermissionParams {
   sessionId: string;

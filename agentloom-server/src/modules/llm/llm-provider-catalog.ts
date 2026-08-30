@@ -1,11 +1,6 @@
 /** 已知的提供商 slug 标识 */
 export type LlmProviderSlug =
-  | 'openai'
-  | 'anthropic'
-  | 'google'
-  | 'deepseek'
-  | 'custom'
-  | 'private_cloud';
+  'openai' | 'anthropic' | 'google' | 'deepseek' | 'custom' | 'private_cloud';
 
 export interface LlmModelRoutingMeta {
   /** 上下文窗口大小 (tokens) */

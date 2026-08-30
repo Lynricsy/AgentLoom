@@ -80,7 +80,7 @@ import {
   makeNode,
   makeSnapshot,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('trigger migrated scenarios', () => {
@@ -338,7 +338,9 @@ describe('trigger migrated scenarios', () => {
     it('manual-trigger 节点会内联执行，不进入 agent-task 队列', async () => {
       const snapshot = makeSnapshot([makeNode('T', 'manual-trigger')], []);
       const executor = nodeDispatcher.find('manual-trigger')!;
-      const execute = vi.spyOn(executor, 'execute').mockResolvedValue(undefined);
+      const execute = vi
+        .spyOn(executor, 'execute')
+        .mockResolvedValue(undefined);
       const steps = [
         makeStep({
           id: 'step-t',

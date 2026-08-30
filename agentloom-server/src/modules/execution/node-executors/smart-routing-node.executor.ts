@@ -29,7 +29,10 @@ import {
   resolveSmartRoutingStrategyConfig,
   resolveSmartRoutingStrategyValue,
 } from '../smart-routing-input.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class SmartRoutingNodeExecutor implements NodeExecutor {
@@ -43,10 +46,18 @@ export class SmartRoutingNodeExecutor implements NodeExecutor {
     private readonly failurePolicy: NodeExecutionFailurePolicy,
   ) {}
 
-  private get tenantDb(): DrizzleDB { return getTenantDb(this.db); }
+  private get tenantDb(): DrizzleDB {
+    return getTenantDb(this.db);
+  }
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.executeSmartRouting(context.step, context.input, context.tenantId, context.executionId, context.runtime);
+    await this.executeSmartRouting(
+      context.step,
+      context.input,
+      context.tenantId,
+      context.executionId,
+      context.runtime,
+    );
   }
 
   async executeSmartRouting(

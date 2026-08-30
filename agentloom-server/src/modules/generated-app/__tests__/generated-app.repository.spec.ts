@@ -101,7 +101,7 @@ import {
   createGeneratedAppGenerationRun,
   createGeneratedAppRepairAttempt,
   createGeneratedApp,
-  mockTenantDb
+  mockTenantDb,
 } from './generated-app-test-support';
 
 describe('repository migrated scenarios', () => {
@@ -114,17 +114,55 @@ describe('repository migrated scenarios', () => {
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
-    vi.restoreAllMocks(); vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
     const configService = createConfigService();
     const pluginService = createGeneratedPrivatePluginServiceMock();
     const storageService = createStorageServiceMock();
-    repository = new GeneratedAppRepository(mockTenantDb as unknown as DrizzleDB, configService);
-    artifactService = new GeneratedAppArtifactService(repository, configService, storageService);
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(repository, artifactService, pluginService);
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    artifactService = new GeneratedAppArtifactService(
+      repository,
+      configService,
+      storageService,
+    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(
+      repository,
+      artifactService,
+      pluginService,
+    );
     repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(repository, repairService, runtimeBindingService, configService);
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(repository, artifactService, runtimeBindingService);
-    service = new GeneratedAppService(mockTenantDb as unknown as DrizzleDB, configService, undefined, undefined, undefined, undefined, undefined, pluginService, undefined, storageService, repository, artifactService, runtimeBindingService, repairService, orchestrator, publicRuntimeService);
+    orchestrator = new GeneratedAppGenerationOrchestratorService(
+      repository,
+      repairService,
+      runtimeBindingService,
+      configService,
+    );
+    publicRuntimeService = new GeneratedAppPublicRuntimeService(
+      repository,
+      artifactService,
+      runtimeBindingService,
+    );
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+      repository,
+      artifactService,
+      runtimeBindingService,
+      repairService,
+      orchestrator,
+      publicRuntimeService,
+    );
   });
 
   it('创建和更新生成运行台账时应保留预算、状态和失败原因', async () => {
@@ -813,4 +851,3 @@ describe('repository migrated scenarios', () => {
     );
   });
 });
-

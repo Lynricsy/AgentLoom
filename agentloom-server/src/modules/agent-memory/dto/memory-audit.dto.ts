@@ -40,9 +40,7 @@ export class MemoryAuditListResponseSwaggerDto extends createZodDto(
   MemoryAuditListResponseSwaggerSchema,
 ) {}
 
-export type MemoryAuditEntryDto = z.infer<
-  typeof MemoryAuditEntrySwaggerSchema
->;
+export type MemoryAuditEntryDto = z.infer<typeof MemoryAuditEntrySwaggerSchema>;
 
 export interface MemoryAuditQueryRow {
   id: string;

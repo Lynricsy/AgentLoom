@@ -935,7 +935,6 @@ describe('AgentExecutionWorker', () => {
         );
       });
     });
-
   });
 
   describe('executeAgentLoop() — sandbox adapter selection', () => {

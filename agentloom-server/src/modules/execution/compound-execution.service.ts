@@ -23,7 +23,10 @@ import {
   readFirstString,
   readOptionalNumber,
 } from './node-value.util';
-import { evaluateExpression, normalizeLoopItemsInput } from './condition-evaluator.util';
+import {
+  evaluateExpression,
+  normalizeLoopItemsInput,
+} from './condition-evaluator.util';
 
 export type CompoundSchedulingDecision = 'schedule' | 'skip' | 'wait';
 
@@ -46,8 +49,16 @@ export interface CompoundExecutionRuntime {
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
   ): CompoundSchedulingDecision;
-  onNodeCompleted(executionId: string, stepId: string, tenantId: string): Promise<void>;
-  onNodeFailed(executionId: string, stepId: string, tenantId: string): Promise<void>;
+  onNodeCompleted(
+    executionId: string,
+    stepId: string,
+    tenantId: string,
+  ): Promise<void>;
+  onNodeFailed(
+    executionId: string,
+    stepId: string,
+    tenantId: string,
+  ): Promise<void>;
 }
 
 export interface CompoundExecutionContext {
@@ -77,13 +88,19 @@ export interface CompoundExecutionContext {
   nextState: unknown;
 }
 
-function buildCompoundContextKey(executionId: string, parentNodeId: string): string {
+function buildCompoundContextKey(
+  executionId: string,
+  parentNodeId: string,
+): string {
   return `${executionId}:${parentNodeId}`;
 }
 
 @Injectable()
 export class CompoundExecutionService {
-  private readonly compoundContexts = new Map<string, CompoundExecutionContext>();
+  private readonly compoundContexts = new Map<
+    string,
+    CompoundExecutionContext
+  >();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -372,7 +389,8 @@ export class CompoundExecutionService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const { snapshot, steps } = await runtime.loadExecutionContext(executionId);
+      const { snapshot, steps } =
+        await runtime.loadExecutionContext(executionId);
       const context = this.createCompoundContext(
         step,
         input,
@@ -771,7 +789,13 @@ export class CompoundExecutionService {
 
     const hasPending = internalSteps.some((step) => step.status === 'pending');
     if (!hasPending) {
-      await this.advanceCompoundRound(context, internalSteps, tenantId, false, runtime);
+      await this.advanceCompoundRound(
+        context,
+        internalSteps,
+        tenantId,
+        false,
+        runtime,
+      );
     }
   }
 

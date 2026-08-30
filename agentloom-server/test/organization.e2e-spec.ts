@@ -883,7 +883,7 @@ describe('Organization E2E (testcontainers)', () => {
           },
         },
       };
-      let result: HookEvent | null = null;
+      let result: HookEvent | null;
 
       await sql.unsafe('BEGIN');
       try {

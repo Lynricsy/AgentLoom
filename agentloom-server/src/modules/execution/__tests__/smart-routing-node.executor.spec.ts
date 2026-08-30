@@ -82,7 +82,7 @@ import {
   makeSnapshot,
   makeExecution,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('smart migrated scenarios', () => {

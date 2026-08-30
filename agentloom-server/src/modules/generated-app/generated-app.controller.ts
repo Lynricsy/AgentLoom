@@ -123,7 +123,6 @@ export class GeneratedAppController {
     return { data };
   }
 
-
   @Post(':appId/generation-runs')
   @Roles('owner', 'admin', 'creator')
   @HttpCode(HttpStatus.CREATED)
@@ -213,9 +212,7 @@ export class GeneratedAppController {
     );
   }
   // 修复详情沿用父级 run 路径，避免仅凭 repairAttemptId 读取其他运行的数据。
-  @Get(
-    ':appId/generation-runs/:runId/repair-attempts/:repairAttemptId',
-  )
+  @Get(':appId/generation-runs/:runId/repair-attempts/:repairAttemptId')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取生成应用修复尝试详情' })
@@ -236,7 +233,6 @@ export class GeneratedAppController {
 
     return { data };
   }
-
 
   @Post(':appId/generation-runs/:runId/repair-attempts')
   @Roles('owner', 'admin', 'creator')
@@ -288,9 +284,7 @@ export class GeneratedAppController {
     return { data };
   }
   // 删除必须使用完整父链并限制 owner/admin，避免 creator 删除审计意义上的修复记录。
-  @Delete(
-    ':appId/generation-runs/:runId/repair-attempts/:repairAttemptId',
-  )
+  @Delete(':appId/generation-runs/:runId/repair-attempts/:repairAttemptId')
   @Roles('owner', 'admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除生成应用修复尝试' })
@@ -309,7 +303,6 @@ export class GeneratedAppController {
       repairAttemptId,
     );
   }
-
 
   @Get(':appId/gate-runs')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
@@ -528,7 +521,6 @@ export class GeneratedAppController {
   ): Promise<void> {
     await this.generatedAppService.delete(tenantId, appId);
   }
-
 
   @Patch(':appId/gates')
   @Roles('owner', 'admin', 'creator')

@@ -2,7 +2,10 @@
  * 已废弃节点执行器：为不可迁移的发布快照提供明确失败诊断。
  */
 import { Injectable } from '@nestjs/common';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class DeprecatedNodeExecutor implements NodeExecutor {

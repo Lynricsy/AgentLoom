@@ -98,7 +98,7 @@ import {
   createRepairServiceForTest,
   createGeneratedAppGateRun,
   createGeneratedAppRepairAttempt,
-  mockTenantDb
+  mockTenantDb,
 } from './generated-app-test-support';
 
 describe('repair migrated scenarios', () => {
@@ -111,17 +111,55 @@ describe('repair migrated scenarios', () => {
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
-    vi.restoreAllMocks(); vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
     const configService = createConfigService();
     const pluginService = createGeneratedPrivatePluginServiceMock();
     const storageService = createStorageServiceMock();
-    repository = new GeneratedAppRepository(mockTenantDb as unknown as DrizzleDB, configService);
-    artifactService = new GeneratedAppArtifactService(repository, configService, storageService);
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(repository, artifactService, pluginService);
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    artifactService = new GeneratedAppArtifactService(
+      repository,
+      configService,
+      storageService,
+    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(
+      repository,
+      artifactService,
+      pluginService,
+    );
     repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(repository, repairService, runtimeBindingService, configService);
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(repository, artifactService, runtimeBindingService);
-    service = new GeneratedAppService(mockTenantDb as unknown as DrizzleDB, configService, undefined, undefined, undefined, undefined, undefined, pluginService, undefined, storageService, repository, artifactService, runtimeBindingService, repairService, orchestrator, publicRuntimeService);
+    orchestrator = new GeneratedAppGenerationOrchestratorService(
+      repository,
+      repairService,
+      runtimeBindingService,
+      configService,
+    );
+    publicRuntimeService = new GeneratedAppPublicRuntimeService(
+      repository,
+      artifactService,
+      runtimeBindingService,
+    );
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+      repository,
+      artifactService,
+      runtimeBindingService,
+      repairService,
+      orchestrator,
+      publicRuntimeService,
+    );
   });
 
   it('Gate 5 real-browser-e2e 失败应生成脱敏 repairPlan 和可执行再验证工作单', () => {
@@ -500,4 +538,3 @@ describe('repair migrated scenarios', () => {
     expect(mockTenantDb.insert).not.toHaveBeenCalled();
   });
 });
-

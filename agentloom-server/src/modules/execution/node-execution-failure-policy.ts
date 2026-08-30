@@ -30,7 +30,10 @@ export class NodeExecutionFailurePolicy {
   constructor(private readonly stepStateMachine: StepStateMachineService) {}
 
   /** 状态机非法转换必须向上抛出；其他执行错误落库后由调度器推进 workflow failure。 */
-  async handle(error: unknown, context: NodeExecutionFailureContext): Promise<void> {
+  async handle(
+    error: unknown,
+    context: NodeExecutionFailureContext,
+  ): Promise<void> {
     if (error instanceof InvalidStepTransitionException) throw error;
 
     const message = error instanceof Error ? error.message : String(error);

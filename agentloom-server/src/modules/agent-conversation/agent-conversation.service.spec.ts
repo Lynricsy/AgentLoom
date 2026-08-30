@@ -899,9 +899,7 @@ describe('AgentConversationService', () => {
       db.select.mockReturnValueOnce(
         createCountSelectChain([
           {
-            toolCalls: [
-              { id: 'tool-awaiting', status: 'awaiting_permission' },
-            ],
+            toolCalls: [{ id: 'tool-awaiting', status: 'awaiting_permission' }],
           },
         ]),
       );
@@ -972,9 +970,7 @@ describe('AgentConversationService', () => {
           CONVERSATION_ID,
           'tool-pending',
         ),
-      ).rejects.toBeInstanceOf(
-        ToolPermissionResolutionNotAllowedException,
-      );
+      ).rejects.toBeInstanceOf(ToolPermissionResolutionNotAllowedException);
     });
 
     it('持久历史没有该调用但 self-evolution live gate 存在时应允许继续', async () => {
@@ -995,9 +991,9 @@ describe('AgentConversationService', () => {
     });
 
     it('持久历史与 live gate 都没有该调用时应抛出 404', async () => {
-      const limit = vi.fn().mockResolvedValue([
-        { runtimeMode: 'sandbox', metadata: {} },
-      ]);
+      const limit = vi
+        .fn()
+        .mockResolvedValue([{ runtimeMode: 'sandbox', metadata: {} }]);
       const targetWhere = vi.fn().mockReturnValue({ limit });
       const innerJoin = vi.fn().mockReturnValue({ where: targetWhere });
       const targetFrom = vi.fn().mockReturnValue({ innerJoin });

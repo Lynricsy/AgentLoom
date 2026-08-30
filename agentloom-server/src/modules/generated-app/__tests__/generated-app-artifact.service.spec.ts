@@ -109,7 +109,7 @@ import {
   createGeneratedAppRepairAttempt,
   createGeneratedApp,
   createGeneratedAppWithGate3Workspace,
-  mockTenantDb
+  mockTenantDb,
 } from './generated-app-test-support';
 
 describe('artifact migrated scenarios', () => {
@@ -122,17 +122,55 @@ describe('artifact migrated scenarios', () => {
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
-    vi.restoreAllMocks(); vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
     const configService = createConfigService();
     const pluginService = createGeneratedPrivatePluginServiceMock();
     const storageService = createStorageServiceMock();
-    repository = new GeneratedAppRepository(mockTenantDb as unknown as DrizzleDB, configService);
-    artifactService = new GeneratedAppArtifactService(repository, configService, storageService);
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(repository, artifactService, pluginService);
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    artifactService = new GeneratedAppArtifactService(
+      repository,
+      configService,
+      storageService,
+    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(
+      repository,
+      artifactService,
+      pluginService,
+    );
     repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(repository, repairService, runtimeBindingService, configService);
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(repository, artifactService, runtimeBindingService);
-    service = new GeneratedAppService(mockTenantDb as unknown as DrizzleDB, configService, undefined, undefined, undefined, undefined, undefined, pluginService, undefined, storageService, repository, artifactService, runtimeBindingService, repairService, orchestrator, publicRuntimeService);
+    orchestrator = new GeneratedAppGenerationOrchestratorService(
+      repository,
+      repairService,
+      runtimeBindingService,
+      configService,
+    );
+    publicRuntimeService = new GeneratedAppPublicRuntimeService(
+      repository,
+      artifactService,
+      runtimeBindingService,
+    );
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+      repository,
+      artifactService,
+      runtimeBindingService,
+      repairService,
+      orchestrator,
+      publicRuntimeService,
+    );
   });
 
   it('artifact manifest 应返回受控 Gate 3 workspace 源码与测试交付物清单', async () => {
@@ -811,4 +849,3 @@ describe('artifact migrated scenarios', () => {
     }
   });
 });
-

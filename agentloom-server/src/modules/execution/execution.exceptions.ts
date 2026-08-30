@@ -175,7 +175,6 @@ export class InvalidToolCallTransitionException extends DomainException {
   }
 }
 
-
 export interface TypeMismatchDetail {
   readonly sourcePortId: string;
   readonly targetPortId: string;

@@ -1854,7 +1854,6 @@ describe('WorkflowVersionService', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
 
-
     it('发布时 agent 节点未绑定已发布 Agent Definition 应阻断', async () => {
       const workflow = createDraftWorkflow({
         nodes: [

@@ -110,7 +110,6 @@ export class AgentTurnEventAccumulator<TDecision = DecisionEvent> {
     this.stopReasonValue = undefined;
   }
 
-
   replaceToolCalls(toolCalls: Iterable<ToolCallEvent>): void {
     this.toolCallsValue.clear();
     for (const toolCall of toolCalls) {

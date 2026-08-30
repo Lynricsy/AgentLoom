@@ -117,15 +117,21 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.handleIntervention.bind(this.supportService);
   }
 
-  public set handleIntervention(value: AgentTaskWorkerSupportService['handleIntervention']) {
+  public set handleIntervention(
+    value: AgentTaskWorkerSupportService['handleIntervention'],
+  ) {
     this.supportService.handleIntervention = value;
   }
 
   public get resolveWorkflowSandboxNodeId(): AgentTaskWorkerSupportService['resolveWorkflowSandboxNodeId'] {
-    return this.supportService.resolveWorkflowSandboxNodeId.bind(this.supportService);
+    return this.supportService.resolveWorkflowSandboxNodeId.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveWorkflowSandboxNodeId(value: AgentTaskWorkerSupportService['resolveWorkflowSandboxNodeId']) {
+  public set resolveWorkflowSandboxNodeId(
+    value: AgentTaskWorkerSupportService['resolveWorkflowSandboxNodeId'],
+  ) {
     this.supportService.resolveWorkflowSandboxNodeId = value;
   }
 
@@ -138,26 +144,38 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   public get startStepWorkspaceWatcher(): AgentTaskWorkerSupportService['startStepWorkspaceWatcher'] {
-    return this.supportService.startStepWorkspaceWatcher.bind(this.supportService);
+    return this.supportService.startStepWorkspaceWatcher.bind(
+      this.supportService,
+    );
   }
 
-  public set startStepWorkspaceWatcher(value: AgentTaskWorkerSupportService['startStepWorkspaceWatcher']) {
+  public set startStepWorkspaceWatcher(
+    value: AgentTaskWorkerSupportService['startStepWorkspaceWatcher'],
+  ) {
     this.supportService.startStepWorkspaceWatcher = value;
   }
 
   public get resolveInterventionRecord(): AgentTaskWorkerSupportService['resolveInterventionRecord'] {
-    return this.supportService.resolveInterventionRecord.bind(this.supportService);
+    return this.supportService.resolveInterventionRecord.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveInterventionRecord(value: AgentTaskWorkerSupportService['resolveInterventionRecord']) {
+  public set resolveInterventionRecord(
+    value: AgentTaskWorkerSupportService['resolveInterventionRecord'],
+  ) {
     this.supportService.resolveInterventionRecord = value;
   }
 
   public get resolveInterventionContent(): AgentTaskWorkerSupportService['resolveInterventionContent'] {
-    return this.supportService.resolveInterventionContent.bind(this.supportService);
+    return this.supportService.resolveInterventionContent.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveInterventionContent(value: AgentTaskWorkerSupportService['resolveInterventionContent']) {
+  public set resolveInterventionContent(
+    value: AgentTaskWorkerSupportService['resolveInterventionContent'],
+  ) {
     this.supportService.resolveInterventionContent = value;
   }
 
@@ -165,7 +183,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.buildContentBlocks.bind(this.supportService);
   }
 
-  public set buildContentBlocks(value: AgentTaskWorkerSupportService['buildContentBlocks']) {
+  public set buildContentBlocks(
+    value: AgentTaskWorkerSupportService['buildContentBlocks'],
+  ) {
     this.supportService.buildContentBlocks = value;
   }
 
@@ -173,23 +193,33 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.extractUpstreamSkills.bind(this.supportService);
   }
 
-  public set extractUpstreamSkills(value: AgentTaskWorkerSupportService['extractUpstreamSkills']) {
+  public set extractUpstreamSkills(
+    value: AgentTaskWorkerSupportService['extractUpstreamSkills'],
+  ) {
     this.supportService.extractUpstreamSkills = value;
   }
 
   public get resolveMemorySessionIds(): AgentTaskWorkerSupportService['resolveMemorySessionIds'] {
-    return this.supportService.resolveMemorySessionIds.bind(this.supportService);
+    return this.supportService.resolveMemorySessionIds.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveMemorySessionIds(value: AgentTaskWorkerSupportService['resolveMemorySessionIds']) {
+  public set resolveMemorySessionIds(
+    value: AgentTaskWorkerSupportService['resolveMemorySessionIds'],
+  ) {
     this.supportService.resolveMemorySessionIds = value;
   }
 
   public get resolveWorkflowSystemPrompt(): AgentTaskWorkerSupportService['resolveWorkflowSystemPrompt'] {
-    return this.supportService.resolveWorkflowSystemPrompt.bind(this.supportService);
+    return this.supportService.resolveWorkflowSystemPrompt.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveWorkflowSystemPrompt(value: AgentTaskWorkerSupportService['resolveWorkflowSystemPrompt']) {
+  public set resolveWorkflowSystemPrompt(
+    value: AgentTaskWorkerSupportService['resolveWorkflowSystemPrompt'],
+  ) {
     this.supportService.resolveWorkflowSystemPrompt = value;
   }
 
@@ -197,15 +227,21 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.buildMemoryBootPrompt.bind(this.supportService);
   }
 
-  public set buildMemoryBootPrompt(value: AgentTaskWorkerSupportService['buildMemoryBootPrompt']) {
+  public set buildMemoryBootPrompt(
+    value: AgentTaskWorkerSupportService['buildMemoryBootPrompt'],
+  ) {
     this.supportService.buildMemoryBootPrompt = value;
   }
 
   public get buildMemoryNavigationSummary(): AgentTaskWorkerSupportService['buildMemoryNavigationSummary'] {
-    return this.supportService.buildMemoryNavigationSummary.bind(this.supportService);
+    return this.supportService.buildMemoryNavigationSummary.bind(
+      this.supportService,
+    );
   }
 
-  public set buildMemoryNavigationSummary(value: AgentTaskWorkerSupportService['buildMemoryNavigationSummary']) {
+  public set buildMemoryNavigationSummary(
+    value: AgentTaskWorkerSupportService['buildMemoryNavigationSummary'],
+  ) {
     this.supportService.buildMemoryNavigationSummary = value;
   }
 
@@ -213,31 +249,45 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.prependSystemPrompt.bind(this.supportService);
   }
 
-  public set prependSystemPrompt(value: AgentTaskWorkerSupportService['prependSystemPrompt']) {
+  public set prependSystemPrompt(
+    value: AgentTaskWorkerSupportService['prependSystemPrompt'],
+  ) {
     this.supportService.prependSystemPrompt = value;
   }
 
   public get registerMemoryToolsProvider(): AgentTaskWorkerSupportService['registerMemoryToolsProvider'] {
-    return this.supportService.registerMemoryToolsProvider.bind(this.supportService);
+    return this.supportService.registerMemoryToolsProvider.bind(
+      this.supportService,
+    );
   }
 
-  public set registerMemoryToolsProvider(value: AgentTaskWorkerSupportService['registerMemoryToolsProvider']) {
+  public set registerMemoryToolsProvider(
+    value: AgentTaskWorkerSupportService['registerMemoryToolsProvider'],
+  ) {
     this.supportService.registerMemoryToolsProvider = value;
   }
 
   public get cleanupMemoryToolsProvider(): AgentTaskWorkerSupportService['cleanupMemoryToolsProvider'] {
-    return this.supportService.cleanupMemoryToolsProvider.bind(this.supportService);
+    return this.supportService.cleanupMemoryToolsProvider.bind(
+      this.supportService,
+    );
   }
 
-  public set cleanupMemoryToolsProvider(value: AgentTaskWorkerSupportService['cleanupMemoryToolsProvider']) {
+  public set cleanupMemoryToolsProvider(
+    value: AgentTaskWorkerSupportService['cleanupMemoryToolsProvider'],
+  ) {
     this.supportService.cleanupMemoryToolsProvider = value;
   }
 
   public get resolveSessionMcpServers(): AgentTaskWorkerSupportService['resolveSessionMcpServers'] {
-    return this.supportService.resolveSessionMcpServers.bind(this.supportService);
+    return this.supportService.resolveSessionMcpServers.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveSessionMcpServers(value: AgentTaskWorkerSupportService['resolveSessionMcpServers']) {
+  public set resolveSessionMcpServers(
+    value: AgentTaskWorkerSupportService['resolveSessionMcpServers'],
+  ) {
     this.supportService.resolveSessionMcpServers = value;
   }
 
@@ -245,23 +295,33 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.getCheckpointData.bind(this.supportService);
   }
 
-  public set getCheckpointData(value: AgentTaskWorkerSupportService['getCheckpointData']) {
+  public set getCheckpointData(
+    value: AgentTaskWorkerSupportService['getCheckpointData'],
+  ) {
     this.supportService.getCheckpointData = value;
   }
 
   public get archiveStepWorkspaceSnapshot(): AgentTaskWorkerSupportService['archiveStepWorkspaceSnapshot'] {
-    return this.supportService.archiveStepWorkspaceSnapshot.bind(this.supportService);
+    return this.supportService.archiveStepWorkspaceSnapshot.bind(
+      this.supportService,
+    );
   }
 
-  public set archiveStepWorkspaceSnapshot(value: AgentTaskWorkerSupportService['archiveStepWorkspaceSnapshot']) {
+  public set archiveStepWorkspaceSnapshot(
+    value: AgentTaskWorkerSupportService['archiveStepWorkspaceSnapshot'],
+  ) {
     this.supportService.archiveStepWorkspaceSnapshot = value;
   }
 
   public get loadToolLoopStateFromCheckpoint(): AgentTaskWorkerSupportService['loadToolLoopStateFromCheckpoint'] {
-    return this.supportService.loadToolLoopStateFromCheckpoint.bind(this.supportService);
+    return this.supportService.loadToolLoopStateFromCheckpoint.bind(
+      this.supportService,
+    );
   }
 
-  public set loadToolLoopStateFromCheckpoint(value: AgentTaskWorkerSupportService['loadToolLoopStateFromCheckpoint']) {
+  public set loadToolLoopStateFromCheckpoint(
+    value: AgentTaskWorkerSupportService['loadToolLoopStateFromCheckpoint'],
+  ) {
     this.supportService.loadToolLoopStateFromCheckpoint = value;
   }
 
@@ -269,7 +329,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.mergeCheckpointData.bind(this.supportService);
   }
 
-  public set mergeCheckpointData(value: AgentTaskWorkerSupportService['mergeCheckpointData']) {
+  public set mergeCheckpointData(
+    value: AgentTaskWorkerSupportService['mergeCheckpointData'],
+  ) {
     this.supportService.mergeCheckpointData = value;
   }
 
@@ -277,7 +339,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.saveToolLoopCheckpoint.bind(this.supportService);
   }
 
-  public set saveToolLoopCheckpoint(value: AgentTaskWorkerSupportService['saveToolLoopCheckpoint']) {
+  public set saveToolLoopCheckpoint(
+    value: AgentTaskWorkerSupportService['saveToolLoopCheckpoint'],
+  ) {
     this.supportService.saveToolLoopCheckpoint = value;
   }
 
@@ -285,7 +349,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.mergeToolCall.bind(this.supportService);
   }
 
-  public set mergeToolCall(value: AgentTaskWorkerSupportService['mergeToolCall']) {
+  public set mergeToolCall(
+    value: AgentTaskWorkerSupportService['mergeToolCall'],
+  ) {
     this.supportService.mergeToolCall = value;
   }
 
@@ -293,15 +359,21 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.emitToolCallStatus.bind(this.supportService);
   }
 
-  public set emitToolCallStatus(value: AgentTaskWorkerSupportService['emitToolCallStatus']) {
+  public set emitToolCallStatus(
+    value: AgentTaskWorkerSupportService['emitToolCallStatus'],
+  ) {
     this.supportService.emitToolCallStatus = value;
   }
 
   public get appendToolCallTransition(): AgentTaskWorkerSupportService['appendToolCallTransition'] {
-    return this.supportService.appendToolCallTransition.bind(this.supportService);
+    return this.supportService.appendToolCallTransition.bind(
+      this.supportService,
+    );
   }
 
-  public set appendToolCallTransition(value: AgentTaskWorkerSupportService['appendToolCallTransition']) {
+  public set appendToolCallTransition(
+    value: AgentTaskWorkerSupportService['appendToolCallTransition'],
+  ) {
     this.supportService.appendToolCallTransition = value;
   }
 
@@ -309,23 +381,33 @@ export class AgentTaskWorker extends WorkerHost {
     return this.supportService.applyToolCallUpdate.bind(this.supportService);
   }
 
-  public set applyToolCallUpdate(value: AgentTaskWorkerSupportService['applyToolCallUpdate']) {
+  public set applyToolCallUpdate(
+    value: AgentTaskWorkerSupportService['applyToolCallUpdate'],
+  ) {
     this.supportService.applyToolCallUpdate = value;
   }
 
   public get resolveToolCallTransitions(): AgentTaskWorkerSupportService['resolveToolCallTransitions'] {
-    return this.supportService.resolveToolCallTransitions.bind(this.supportService);
+    return this.supportService.resolveToolCallTransitions.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveToolCallTransitions(value: AgentTaskWorkerSupportService['resolveToolCallTransitions']) {
+  public set resolveToolCallTransitions(
+    value: AgentTaskWorkerSupportService['resolveToolCallTransitions'],
+  ) {
     this.supportService.resolveToolCallTransitions = value;
   }
 
   public get resolveToolPermissionAndBuildBlocks(): AgentTaskWorkerSupportService['resolveToolPermissionAndBuildBlocks'] {
-    return this.supportService.resolveToolPermissionAndBuildBlocks.bind(this.supportService);
+    return this.supportService.resolveToolPermissionAndBuildBlocks.bind(
+      this.supportService,
+    );
   }
 
-  public set resolveToolPermissionAndBuildBlocks(value: AgentTaskWorkerSupportService['resolveToolPermissionAndBuildBlocks']) {
+  public set resolveToolPermissionAndBuildBlocks(
+    value: AgentTaskWorkerSupportService['resolveToolPermissionAndBuildBlocks'],
+  ) {
     this.supportService.resolveToolPermissionAndBuildBlocks = value;
   }
 
@@ -333,31 +415,45 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.executeMultiTurnLoop.bind(this.runtimeService);
   }
 
-  public set executeMultiTurnLoop(value: AgentTaskWorkerRuntimeService['executeMultiTurnLoop']) {
+  public set executeMultiTurnLoop(
+    value: AgentTaskWorkerRuntimeService['executeMultiTurnLoop'],
+  ) {
     this.runtimeService.executeMultiTurnLoop = value;
   }
 
   public get extractThinkingEventContent(): AgentTaskWorkerRuntimeService['extractThinkingEventContent'] {
-    return this.runtimeService.extractThinkingEventContent.bind(this.runtimeService);
+    return this.runtimeService.extractThinkingEventContent.bind(
+      this.runtimeService,
+    );
   }
 
-  public set extractThinkingEventContent(value: AgentTaskWorkerRuntimeService['extractThinkingEventContent']) {
+  public set extractThinkingEventContent(
+    value: AgentTaskWorkerRuntimeService['extractThinkingEventContent'],
+  ) {
     this.runtimeService.extractThinkingEventContent = value;
   }
 
   public get shouldRequireToolPermission(): AgentTaskWorkerRuntimeService['shouldRequireToolPermission'] {
-    return this.runtimeService.shouldRequireToolPermission.bind(this.runtimeService);
+    return this.runtimeService.shouldRequireToolPermission.bind(
+      this.runtimeService,
+    );
   }
 
-  public set shouldRequireToolPermission(value: AgentTaskWorkerRuntimeService['shouldRequireToolPermission']) {
+  public set shouldRequireToolPermission(
+    value: AgentTaskWorkerRuntimeService['shouldRequireToolPermission'],
+  ) {
     this.runtimeService.shouldRequireToolPermission = value;
   }
 
   public get resolveEffectiveAutonomyMode(): AgentTaskWorkerRuntimeService['resolveEffectiveAutonomyMode'] {
-    return this.runtimeService.resolveEffectiveAutonomyMode.bind(this.runtimeService);
+    return this.runtimeService.resolveEffectiveAutonomyMode.bind(
+      this.runtimeService,
+    );
   }
 
-  public set resolveEffectiveAutonomyMode(value: AgentTaskWorkerRuntimeService['resolveEffectiveAutonomyMode']) {
+  public set resolveEffectiveAutonomyMode(
+    value: AgentTaskWorkerRuntimeService['resolveEffectiveAutonomyMode'],
+  ) {
     this.runtimeService.resolveEffectiveAutonomyMode = value;
   }
 
@@ -365,7 +461,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.resolveRawAutonomyMode.bind(this.runtimeService);
   }
 
-  public set resolveRawAutonomyMode(value: AgentTaskWorkerRuntimeService['resolveRawAutonomyMode']) {
+  public set resolveRawAutonomyMode(
+    value: AgentTaskWorkerRuntimeService['resolveRawAutonomyMode'],
+  ) {
     this.runtimeService.resolveRawAutonomyMode = value;
   }
 
@@ -389,31 +487,45 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.resolveNodeName.bind(this.runtimeService);
   }
 
-  public set resolveNodeName(value: AgentTaskWorkerRuntimeService['resolveNodeName']) {
+  public set resolveNodeName(
+    value: AgentTaskWorkerRuntimeService['resolveNodeName'],
+  ) {
     this.runtimeService.resolveNodeName = value;
   }
 
   public get handleInterventionTimeout(): AgentTaskWorkerRuntimeService['handleInterventionTimeout'] {
-    return this.runtimeService.handleInterventionTimeout.bind(this.runtimeService);
+    return this.runtimeService.handleInterventionTimeout.bind(
+      this.runtimeService,
+    );
   }
 
-  public set handleInterventionTimeout(value: AgentTaskWorkerRuntimeService['handleInterventionTimeout']) {
+  public set handleInterventionTimeout(
+    value: AgentTaskWorkerRuntimeService['handleInterventionTimeout'],
+  ) {
     this.runtimeService.handleInterventionTimeout = value;
   }
 
   public get loadInterventionTimeoutContext(): AgentTaskWorkerRuntimeService['loadInterventionTimeoutContext'] {
-    return this.runtimeService.loadInterventionTimeoutContext.bind(this.runtimeService);
+    return this.runtimeService.loadInterventionTimeoutContext.bind(
+      this.runtimeService,
+    );
   }
 
-  public set loadInterventionTimeoutContext(value: AgentTaskWorkerRuntimeService['loadInterventionTimeoutContext']) {
+  public set loadInterventionTimeoutContext(
+    value: AgentTaskWorkerRuntimeService['loadInterventionTimeoutContext'],
+  ) {
     this.runtimeService.loadInterventionTimeoutContext = value;
   }
 
   public get loadEscalationRecipientIds(): AgentTaskWorkerRuntimeService['loadEscalationRecipientIds'] {
-    return this.runtimeService.loadEscalationRecipientIds.bind(this.runtimeService);
+    return this.runtimeService.loadEscalationRecipientIds.bind(
+      this.runtimeService,
+    );
   }
 
-  public set loadEscalationRecipientIds(value: AgentTaskWorkerRuntimeService['loadEscalationRecipientIds']) {
+  public set loadEscalationRecipientIds(
+    value: AgentTaskWorkerRuntimeService['loadEscalationRecipientIds'],
+  ) {
     this.runtimeService.loadEscalationRecipientIds = value;
   }
 
@@ -426,42 +538,62 @@ export class AgentTaskWorker extends WorkerHost {
   }
 
   public get isAuthenticationFailure(): AgentTaskWorkerRuntimeService['isAuthenticationFailure'] {
-    return this.runtimeService.isAuthenticationFailure.bind(this.runtimeService);
+    return this.runtimeService.isAuthenticationFailure.bind(
+      this.runtimeService,
+    );
   }
 
-  public set isAuthenticationFailure(value: AgentTaskWorkerRuntimeService['isAuthenticationFailure']) {
+  public set isAuthenticationFailure(
+    value: AgentTaskWorkerRuntimeService['isAuthenticationFailure'],
+  ) {
     this.runtimeService.isAuthenticationFailure = value;
   }
 
   public get getNextSmartRoutingContext(): AgentTaskWorkerRuntimeService['getNextSmartRoutingContext'] {
-    return this.runtimeService.getNextSmartRoutingContext.bind(this.runtimeService);
+    return this.runtimeService.getNextSmartRoutingContext.bind(
+      this.runtimeService,
+    );
   }
 
-  public set getNextSmartRoutingContext(value: AgentTaskWorkerRuntimeService['getNextSmartRoutingContext']) {
+  public set getNextSmartRoutingContext(
+    value: AgentTaskWorkerRuntimeService['getNextSmartRoutingContext'],
+  ) {
     this.runtimeService.getNextSmartRoutingContext = value;
   }
 
   public get buildFallbackRoutingDecision(): AgentTaskWorkerRuntimeService['buildFallbackRoutingDecision'] {
-    return this.runtimeService.buildFallbackRoutingDecision.bind(this.runtimeService);
+    return this.runtimeService.buildFallbackRoutingDecision.bind(
+      this.runtimeService,
+    );
   }
 
-  public set buildFallbackRoutingDecision(value: AgentTaskWorkerRuntimeService['buildFallbackRoutingDecision']) {
+  public set buildFallbackRoutingDecision(
+    value: AgentTaskWorkerRuntimeService['buildFallbackRoutingDecision'],
+  ) {
     this.runtimeService.buildFallbackRoutingDecision = value;
   }
 
   public get reportSmartRoutingOutcome(): AgentTaskWorkerRuntimeService['reportSmartRoutingOutcome'] {
-    return this.runtimeService.reportSmartRoutingOutcome.bind(this.runtimeService);
+    return this.runtimeService.reportSmartRoutingOutcome.bind(
+      this.runtimeService,
+    );
   }
 
-  public set reportSmartRoutingOutcome(value: AgentTaskWorkerRuntimeService['reportSmartRoutingOutcome']) {
+  public set reportSmartRoutingOutcome(
+    value: AgentTaskWorkerRuntimeService['reportSmartRoutingOutcome'],
+  ) {
     this.runtimeService.reportSmartRoutingOutcome = value;
   }
 
   public get resolveSmartRoutingModelInfo(): AgentTaskWorkerRuntimeService['resolveSmartRoutingModelInfo'] {
-    return this.runtimeService.resolveSmartRoutingModelInfo.bind(this.runtimeService);
+    return this.runtimeService.resolveSmartRoutingModelInfo.bind(
+      this.runtimeService,
+    );
   }
 
-  public set resolveSmartRoutingModelInfo(value: AgentTaskWorkerRuntimeService['resolveSmartRoutingModelInfo']) {
+  public set resolveSmartRoutingModelInfo(
+    value: AgentTaskWorkerRuntimeService['resolveSmartRoutingModelInfo'],
+  ) {
     this.runtimeService.resolveSmartRoutingModelInfo = value;
   }
 
@@ -469,7 +601,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.estimateTokenCount.bind(this.runtimeService);
   }
 
-  public set estimateTokenCount(value: AgentTaskWorkerRuntimeService['estimateTokenCount']) {
+  public set estimateTokenCount(
+    value: AgentTaskWorkerRuntimeService['estimateTokenCount'],
+  ) {
     this.runtimeService.estimateTokenCount = value;
   }
 
@@ -485,7 +619,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.getMaxAttempts.bind(this.runtimeService);
   }
 
-  public set getMaxAttempts(value: AgentTaskWorkerRuntimeService['getMaxAttempts']) {
+  public set getMaxAttempts(
+    value: AgentTaskWorkerRuntimeService['getMaxAttempts'],
+  ) {
     this.runtimeService.getMaxAttempts = value;
   }
 
@@ -493,7 +629,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.resolveOrgId.bind(this.runtimeService);
   }
 
-  public set resolveOrgId(value: AgentTaskWorkerRuntimeService['resolveOrgId']) {
+  public set resolveOrgId(
+    value: AgentTaskWorkerRuntimeService['resolveOrgId'],
+  ) {
     this.runtimeService.resolveOrgId = value;
   }
 
@@ -501,7 +639,9 @@ export class AgentTaskWorker extends WorkerHost {
     return this.runtimeService.withTenantContext.bind(this.runtimeService);
   }
 
-  public set withTenantContext(value: AgentTaskWorkerRuntimeService['withTenantContext']) {
+  public set withTenantContext(
+    value: AgentTaskWorkerRuntimeService['withTenantContext'],
+  ) {
     this.runtimeService.withTenantContext = value;
   }
 
@@ -548,10 +688,55 @@ export class AgentTaskWorker extends WorkerHost {
     void throttleService;
     this.supportService =
       injectedSupportService ??
-      new AgentTaskWorkerSupportService(db, agentRuntime, adapterFactory, stepStateMachine, nodeScheduler, throttleService, eventBridge, toolCallStateMachine, sessionPersistence, interventionPolicyService, notificationService, llmEncryptionService, smartRoutingService, organizationAutonomyPolicyService, workspaceIntegrationService, agentTaskQueue, circuitBreakerService, routingLearningProducer, memoryToolsService, memoryFusionService, skillResolverService);
+      new AgentTaskWorkerSupportService(
+        db,
+        agentRuntime,
+        adapterFactory,
+        stepStateMachine,
+        nodeScheduler,
+        throttleService,
+        eventBridge,
+        toolCallStateMachine,
+        sessionPersistence,
+        interventionPolicyService,
+        notificationService,
+        llmEncryptionService,
+        smartRoutingService,
+        organizationAutonomyPolicyService,
+        workspaceIntegrationService,
+        agentTaskQueue,
+        circuitBreakerService,
+        routingLearningProducer,
+        memoryToolsService,
+        memoryFusionService,
+        skillResolverService,
+      );
     this.runtimeService =
       injectedRuntimeService ??
-      new AgentTaskWorkerRuntimeService(this.supportService, db, agentRuntime, adapterFactory, stepStateMachine, nodeScheduler, throttleService, eventBridge, toolCallStateMachine, sessionPersistence, interventionPolicyService, notificationService, llmEncryptionService, smartRoutingService, organizationAutonomyPolicyService, workspaceIntegrationService, agentTaskQueue, circuitBreakerService, routingLearningProducer, memoryToolsService, memoryFusionService, skillResolverService);
+      new AgentTaskWorkerRuntimeService(
+        this.supportService,
+        db,
+        agentRuntime,
+        adapterFactory,
+        stepStateMachine,
+        nodeScheduler,
+        throttleService,
+        eventBridge,
+        toolCallStateMachine,
+        sessionPersistence,
+        interventionPolicyService,
+        notificationService,
+        llmEncryptionService,
+        smartRoutingService,
+        organizationAutonomyPolicyService,
+        workspaceIntegrationService,
+        agentTaskQueue,
+        circuitBreakerService,
+        routingLearningProducer,
+        memoryToolsService,
+        memoryFusionService,
+        skillResolverService,
+      );
   }
 
   private get tenantDb(): DrizzleDB {
@@ -626,10 +811,11 @@ export class AgentTaskWorker extends WorkerHost {
     let chunkIndex = 0;
     let toolCalls: ToolCallEvent[] = [];
     let segments: ConversationMessageSegmentRecord[] = [];
-    const effectiveAutonomyMode = await this.runtimeService.resolveEffectiveAutonomyMode(
-      tenantId,
-      nodeData,
-    );
+    const effectiveAutonomyMode =
+      await this.runtimeService.resolveEffectiveAutonomyMode(
+        tenantId,
+        nodeData,
+      );
     const llmCallStartedAt = Date.now();
 
     try {
@@ -648,8 +834,13 @@ export class AgentTaskWorker extends WorkerHost {
 
       if (toolPermission) {
         runtime.registerSessionMetadata?.(sessionId!, tenantId, stepId);
-        this.supportService.registerMemoryToolsProvider(runtime, sessionId, memorySessionIds);
-        const toolLoopState = this.supportService.loadToolLoopStateFromCheckpoint(step);
+        this.supportService.registerMemoryToolsProvider(
+          runtime,
+          sessionId,
+          memorySessionIds,
+        );
+        const toolLoopState =
+          this.supportService.loadToolLoopStateFromCheckpoint(step);
         accumulatedContent = toolLoopState.partialContent;
         decision = toolLoopState.decision;
         chunkIndex = toolLoopState.chunkIndex;
@@ -662,15 +853,17 @@ export class AgentTaskWorker extends WorkerHost {
           sandboxNodeId,
           enabled: Boolean(hasSandbox),
         });
-        const contentBlocks = await this.supportService.resolveToolPermissionAndBuildBlocks({
-          executionId,
-          stepId,
-          tenantId,
-          step,
-          toolPermission,
-          nodeId: step.nodeId,
-        });
-        const resumedToolLoopState = this.supportService.loadToolLoopStateFromCheckpoint(step);
+        const contentBlocks =
+          await this.supportService.resolveToolPermissionAndBuildBlocks({
+            executionId,
+            stepId,
+            tenantId,
+            step,
+            toolPermission,
+            nodeId: step.nodeId,
+          });
+        const resumedToolLoopState =
+          this.supportService.loadToolLoopStateFromCheckpoint(step);
         const loopResult = await this.runtimeService.executeMultiTurnLoop({
           runtime,
           step,
@@ -713,7 +906,8 @@ export class AgentTaskWorker extends WorkerHost {
 
         const isExistingSession = Boolean(sessionId);
         if (!sessionId) {
-          const upstreamSkills = this.supportService.extractUpstreamSkills(input);
+          const upstreamSkills =
+            this.supportService.extractUpstreamSkills(input);
           let enrichedBasePrompt =
             typeof nodeData.systemPrompt === 'string'
               ? nodeData.systemPrompt
@@ -733,10 +927,11 @@ export class AgentTaskWorker extends WorkerHost {
             }
           }
 
-          const systemPrompt = await this.supportService.resolveWorkflowSystemPrompt(
-            memorySessionIds,
-            enrichedBasePrompt,
-          );
+          const systemPrompt =
+            await this.supportService.resolveWorkflowSystemPrompt(
+              memorySessionIds,
+              enrichedBasePrompt,
+            );
           const nextSessionId = randomUUID();
           this.supportService.registerMemoryToolsProvider(
             runtime,
@@ -791,7 +986,8 @@ export class AgentTaskWorker extends WorkerHost {
           enabled: Boolean(hasSandbox),
         });
 
-        const initialContentBlocks = this.supportService.buildContentBlocks(input);
+        const initialContentBlocks =
+          this.supportService.buildContentBlocks(input);
         const loopResult = await this.runtimeService.executeMultiTurnLoop({
           runtime,
           step,
@@ -808,7 +1004,8 @@ export class AgentTaskWorker extends WorkerHost {
           startRound: 0,
           existingToolCalls:
             this.supportService.loadToolLoopStateFromCheckpoint(step).toolCalls,
-          existingSegments: this.supportService.loadToolLoopStateFromCheckpoint(step).segments,
+          existingSegments:
+            this.supportService.loadToolLoopStateFromCheckpoint(step).segments,
           effectiveAutonomyMode,
         });
 
@@ -931,7 +1128,11 @@ export class AgentTaskWorker extends WorkerHost {
       await this.runtimeService.withTenantContext(tenantId, async () => {
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
       });
-      this.supportService.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+      this.supportService.cleanupMemoryToolsProvider(
+        runtime,
+        sessionId,
+        memorySessionIds,
+      );
 
       await this.runtimeService.reportSmartRoutingOutcome({
         tenantId,
@@ -978,7 +1179,8 @@ export class AgentTaskWorker extends WorkerHost {
         attempts: allAttempts,
       };
       const smartRouting = job.data.smartRouting;
-      const authenticationFailed = this.runtimeService.isAuthenticationFailure(err);
+      const authenticationFailed =
+        this.runtimeService.isAuthenticationFailure(err);
       const failureDecision = decideAgentTaskFailure({
         attemptsMade: job.attemptsMade,
         configuredAttempts: job.opts.attempts,
@@ -997,10 +1199,11 @@ export class AgentTaskWorker extends WorkerHost {
         smartRouting,
         success: false,
         latencyMs: Date.now() - llmCallStartedAt,
-        tokenCount: this.runtimeService.estimateTokenCount(finalAccumulatedContent),
+        tokenCount: this.runtimeService.estimateTokenCount(
+          finalAccumulatedContent,
+        ),
         error: err,
       });
-
 
       if (failureDecision.kind === 'retry') {
         await this.runtimeService.withTenantContext(tenantId, async () => {
@@ -1048,12 +1251,13 @@ export class AgentTaskWorker extends WorkerHost {
         const nextAttempt = allAttempts.length;
         const nextSmartRouting = failureDecision.nextSmartRouting;
         const fallbackMessage = `模型 ${smartRouting.selectedModelId} 调用失败，已切换到备用模型 ${nextSmartRouting.selectedModelId}。`;
-        const fallbackDecision = this.runtimeService.buildFallbackRoutingDecision(
-          smartRouting,
-          nextSmartRouting,
-          allAttempts,
-          err,
-        );
+        const fallbackDecision =
+          this.runtimeService.buildFallbackRoutingDecision(
+            smartRouting,
+            nextSmartRouting,
+            allAttempts,
+            err,
+          );
         let nextRoutingDecisionId: string | undefined;
 
         await this.runtimeService.withTenantContext(tenantId, async () => {
@@ -1279,7 +1483,11 @@ export class AgentTaskWorker extends WorkerHost {
       await this.runtimeService.withTenantContext(tenantId, async () => {
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       });
-      this.supportService.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
+      this.supportService.cleanupMemoryToolsProvider(
+        runtime,
+        sessionId,
+        memorySessionIds,
+      );
       throw finalError;
     } finally {
       this.workspaceIntegrationService.stopExecutionStepFileWatcher(
@@ -1304,6 +1512,4 @@ export class AgentTaskWorker extends WorkerHost {
       `Agent task failed: ${JSON.stringify({ stepId, executionId, tenantId, attempt: job.attemptsMade + 1, maxAttempts: this.runtimeService.getMaxAttempts(job), error: error.message })}`,
     );
   }
-
-
 }

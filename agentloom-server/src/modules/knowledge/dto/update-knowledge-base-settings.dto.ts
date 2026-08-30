@@ -34,17 +34,15 @@ export const UpdateKnowledgeBaseSettingsSchema = z
     queryOrchestration: KnowledgeQueryOrchestrationSchema.optional(),
     query_orchestration: KnowledgeQueryOrchestrationSchema.optional(),
   })
-  .transform(
-    (value): NormalizedUpdateKnowledgeBaseSettings => ({
-      embeddingModel: value.embeddingModel ?? value.embedding_model,
-      embeddingModelConfigId:
-        value.embeddingModelConfigId ?? value.embedding_model_config_id,
-      chunkingStrategy: value.chunkingStrategy ?? value.chunking_strategy,
-      retrievalStrategy: value.retrievalStrategy ?? value.retrieval_strategy,
-      rerankingStrategy: value.rerankingStrategy ?? value.reranking_strategy,
-      queryOrchestration: value.queryOrchestration ?? value.query_orchestration,
-    }),
-  );
+  .transform((value): NormalizedUpdateKnowledgeBaseSettings => ({
+    embeddingModel: value.embeddingModel ?? value.embedding_model,
+    embeddingModelConfigId:
+      value.embeddingModelConfigId ?? value.embedding_model_config_id,
+    chunkingStrategy: value.chunkingStrategy ?? value.chunking_strategy,
+    retrievalStrategy: value.retrievalStrategy ?? value.retrieval_strategy,
+    rerankingStrategy: value.rerankingStrategy ?? value.reranking_strategy,
+    queryOrchestration: value.queryOrchestration ?? value.query_orchestration,
+  }));
 
 export class UpdateKnowledgeBaseSettingsDto extends createZodDto(
   UpdateKnowledgeBaseSettingsSchema,

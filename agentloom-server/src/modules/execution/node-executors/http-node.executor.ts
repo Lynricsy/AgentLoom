@@ -8,8 +8,16 @@ import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { buildHttpToolRequestInput } from '../http-tool-request.util';
-import { getRuntimeNodeData, readFirstString, readHttpMethod, readOptionalNumber } from '../node-value.util';
-import type { NodeExecutionContext, NodeExecutor } from './node-executor.interface';
+import {
+  getRuntimeNodeData,
+  readFirstString,
+  readHttpMethod,
+  readOptionalNumber,
+} from '../node-value.util';
+import type {
+  NodeExecutionContext,
+  NodeExecutor,
+} from './node-executor.interface';
 
 @Injectable()
 export class HttpNodeExecutor implements NodeExecutor {
@@ -19,7 +27,13 @@ export class HttpNodeExecutor implements NodeExecutor {
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
-    await this.executeHttpToolNode(context.step, context.input, context.tenantId, context.executionId, context.runtime);
+    await this.executeHttpToolNode(
+      context.step,
+      context.input,
+      context.tenantId,
+      context.executionId,
+      context.runtime,
+    );
   }
 
   async executeHttpToolNode(

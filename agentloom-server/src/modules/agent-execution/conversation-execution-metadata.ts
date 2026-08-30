@@ -69,10 +69,7 @@ export function readExecutionMetadata(
     ...(typeof executionRecord.runningState === 'string'
       ? {
           runningState: executionRecord.runningState as
-            | 'idle'
-            | 'running'
-            | 'failed'
-            | 'cancelled',
+            'idle' | 'running' | 'failed' | 'cancelled',
         }
       : {}),
     ...(typeof executionRecord.errorMessage === 'string'

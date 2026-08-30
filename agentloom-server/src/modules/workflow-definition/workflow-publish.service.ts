@@ -539,11 +539,9 @@ export class WorkflowPublishService {
       if (!sourceNode || !targetNode) continue;
 
       const sourcePortMeta = sourceNode.data?.portMappingMetadata as
-        | { outputs?: Array<{ name: string; dataType: string }> }
-        | undefined;
+        { outputs?: Array<{ name: string; dataType: string }> } | undefined;
       const targetPortMeta = targetNode.data?.portMappingMetadata as
-        | { inputs?: Array<{ name: string; dataType: string }> }
-        | undefined;
+        { inputs?: Array<{ name: string; dataType: string }> } | undefined;
 
       const sourcePort = sourcePortMeta?.outputs?.find(
         (p) => p.name === edge.sourceHandle,
@@ -822,7 +820,6 @@ export class WorkflowPublishService {
 
     return null;
   }
-
 
   private getPublishedCacheKey(tenantId: string, workflowId: string): string {
     return redisKey(tenantId, RedisDomain.CACHE, `wf:published:${workflowId}`);

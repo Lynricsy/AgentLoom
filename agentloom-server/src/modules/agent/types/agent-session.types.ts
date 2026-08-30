@@ -19,10 +19,7 @@ export interface ServerSandboxBinding {
 }
 
 export type TerminalContinuityStatus =
-  | 'running'
-  | 'exited'
-  | 'killed'
-  | 'released';
+  'running' | 'exited' | 'killed' | 'released';
 
 export interface TerminalContinuityEntry {
   readonly terminalId: string;

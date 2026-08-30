@@ -110,8 +110,7 @@ function extractSandboxConfig(
     readString(data.lifecycleMode) === 'persistent'
       ? {
           lifecycleMode: readString(data.lifecycleMode) as
-            | 'session'
-            | 'persistent',
+            'session' | 'persistent',
         }
       : {}),
     ...(readString(data.persistencePath)

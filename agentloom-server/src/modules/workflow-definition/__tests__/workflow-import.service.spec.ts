@@ -134,9 +134,8 @@ describe('WorkflowImportService transaction boundary', () => {
           ),
         )
         .mockReturnValueOnce(
-          insertChain(
-            { id: '00000000-0000-0000-0000-000000000007' },
-            () => pendingWrites.push('agent-version'),
+          insertChain({ id: '00000000-0000-0000-0000-000000000007' }, () =>
+            pendingWrites.push('agent-version'),
           ),
         )
         .mockReturnValueOnce({
@@ -183,16 +182,18 @@ describe('WorkflowImportService transaction boundary', () => {
       ),
       insert: vi.fn(),
       update: vi.fn(),
-      transaction: vi.fn(async (operation: (client: typeof tx) => Promise<unknown>) => {
-        try {
-          const result = await operation(tx);
-          committedWrites.push(...pendingWrites);
-          return result;
-        } catch (error) {
-          pendingWrites.length = 0;
-          throw error;
-        }
-      }),
+      transaction: vi.fn(
+        async (operation: (client: typeof tx) => Promise<unknown>) => {
+          try {
+            const result = await operation(tx);
+            committedWrites.push(...pendingWrites);
+            return result;
+          } catch (error) {
+            pendingWrites.length = 0;
+            throw error;
+          }
+        },
+      ),
     };
 
     const service = new WorkflowImportService(

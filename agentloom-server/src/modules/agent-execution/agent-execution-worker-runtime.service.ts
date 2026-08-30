@@ -210,8 +210,7 @@ export class AgentExecutionWorkerRuntimeService {
     protected readonly conversationTitleService?: ConversationTitleService,
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     protected readonly smartRoutingService?: SmartRoutingService,
-  ) {
-  }
+  ) {}
 
   public async loadConversationExecutionContext(
     conversationId: string,
@@ -462,15 +461,17 @@ export class AgentExecutionWorkerRuntimeService {
     const hasSandboxRuntime =
       context.hasSandbox && Boolean(context.runtimeConfig.sandboxConfig);
     const runtime = this.resolveConversationRuntime(context);
-    const memorySessionIds = await this.persistence.ensureConversationMemorySessions(
-      context,
-      conversationId,
-      tenantId,
-    );
+    const memorySessionIds =
+      await this.persistence.ensureConversationMemorySessions(
+        context,
+        conversationId,
+        tenantId,
+      );
 
     let sandboxReused = false;
     if (hasSandboxRuntime) {
-      const skillPayloads = await this.persistence.resolveSkillPayloads(context);
+      const skillPayloads =
+        await this.persistence.resolveSkillPayloads(context);
       const piConfigInput = await buildPiConfigInput(
         {
           tenantId,
@@ -491,7 +492,11 @@ export class AgentExecutionWorkerRuntimeService {
       sandboxReused = existingSession != null;
 
       if (!sandboxReused) {
-        this.persistence.emitPreparationPhase(tenantId, conversationId, 'sandbox_creating');
+        this.persistence.emitPreparationPhase(
+          tenantId,
+          conversationId,
+          'sandbox_creating',
+        );
       }
 
       await this.sandboxService.createSandboxSession({
@@ -504,15 +509,24 @@ export class AgentExecutionWorkerRuntimeService {
     }
 
     // Phase 4: agent_initializing — sandbox ready, creating agent runtime session
-    this.persistence.emitPreparationPhase(tenantId, conversationId, 'agent_initializing', {
-      sandboxReused,
-    });
+    this.persistence.emitPreparationPhase(
+      tenantId,
+      conversationId,
+      'agent_initializing',
+      {
+        sandboxReused,
+      },
+    );
 
     const sessionId = context.executionMetadata.sessionId;
     if (sessionId) {
       try {
         const session = await runtime.loadSession(sessionId);
-        this.persistence.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+        this.persistence.registerMemoryToolsProvider(
+          runtime,
+          session.id,
+          memorySessionIds,
+        );
         await this.persistence.registerSelfEvolutionToolsProvider({
           runtime,
           sessionId: session.id,
@@ -570,7 +584,11 @@ export class AgentExecutionWorkerRuntimeService {
     );
 
     const nextSessionId = randomUUID();
-    this.persistence.registerMemoryToolsProvider(runtime, nextSessionId, memorySessionIds);
+    this.persistence.registerMemoryToolsProvider(
+      runtime,
+      nextSessionId,
+      memorySessionIds,
+    );
     await this.persistence.registerSelfEvolutionToolsProvider({
       runtime,
       sessionId: nextSessionId,
@@ -916,6 +934,4 @@ export class AgentExecutionWorkerRuntimeService {
 
     return readStringValue(error['code']);
   }
-
-
 }

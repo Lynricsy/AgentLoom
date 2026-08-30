@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { io } from 'socket.io-client'
-import { useAuthToken } from '@/features/auth/hooks/useAuthToken'
+import { useAuthToken } from '@/features/auth'
 import { knowledgeBaseKeys } from '../api/knowledgeBaseKeys'
 import type { DocumentStatus } from '../types'
 

@@ -3,22 +3,41 @@
  * 集中维护能力开关、图变更风险分类与审批请求构造。
  */
 import { Injectable } from '@nestjs/common';
-import type { SelfEvolutionCategory, SelfEvolutionGraphProposal, SelfEvolutionPermissionRequest, SelfEvolutionRiskLevel, SelfEvolutionSessionContext } from './self-evolution.types';
+import type {
+  SelfEvolutionCategory,
+  SelfEvolutionGraphProposal,
+  SelfEvolutionPermissionRequest,
+  SelfEvolutionRiskLevel,
+  SelfEvolutionSessionContext,
+} from './self-evolution.types';
 import { SELF_EVOLUTION_DOMAIN } from './self-evolution.types';
-import { findEdgeById, findNodeById, readNodeType, readRecord, readRequiredRecord, readRequiredString, readString, readStringArray, type EvolutionRecord } from './self-evolution-value.util';
+import {
+  findEdgeById,
+  findNodeById,
+  readNodeType,
+  readRecord,
+  readRequiredRecord,
+  readRequiredString,
+  readString,
+  readStringArray,
+  type EvolutionRecord,
+} from './self-evolution-value.util';
 
 type GenericRecord = EvolutionRecord;
 
 @Injectable()
 export class SelfEvolutionPermissionPolicy {
   requireResourceManagement(context: SelfEvolutionSessionContext): void {
-    if (!context.selfEvolutionPolicy.resourceManagement) throw new Error('当前 Agent 未启用资源管理子能力');
+    if (!context.selfEvolutionPolicy.resourceManagement)
+      throw new Error('当前 Agent 未启用资源管理子能力');
   }
   requireExternalEditing(context: SelfEvolutionSessionContext): void {
-    if (!context.selfEvolutionPolicy.externalEditing) throw new Error('当前 Agent 未启用外部编辑子能力');
+    if (!context.selfEvolutionPolicy.externalEditing)
+      throw new Error('当前 Agent 未启用外部编辑子能力');
   }
   requireSandboxManagement(context: SelfEvolutionSessionContext): void {
-    if (!context.selfEvolutionPolicy.sandboxManagement) throw new Error('当前 Agent 未启用沙箱管理子能力');
+    if (!context.selfEvolutionPolicy.sandboxManagement)
+      throw new Error('当前 Agent 未启用沙箱管理子能力');
   }
 
   determineGraphChangePermissionProfile(params: {
@@ -95,8 +114,7 @@ export class SelfEvolutionPermissionPolicy {
         return false;
       }
       return (
-        readString((edge as GenericRecord).sourceHandle) ===
-          'volume-out' ||
+        readString((edge as GenericRecord).sourceHandle) === 'volume-out' ||
         readString((edge as GenericRecord).targetHandle) === 'volume-in'
       );
     });
@@ -133,10 +151,7 @@ export class SelfEvolutionPermissionPolicy {
     category: SelfEvolutionCategory;
     request: SelfEvolutionPermissionRequest;
   } {
-    const resourceType = readRequiredString(
-      input.resourceType,
-      'resourceType',
-    );
+    const resourceType = readRequiredString(input.resourceType, 'resourceType');
     const spec = readRequiredRecord(input.spec, 'spec');
     const sourceLabel = context.currentAgentName;
 
@@ -175,10 +190,7 @@ export class SelfEvolutionPermissionPolicy {
             riskLevel: 'high',
             sourceLabel,
             targetType: 'mcp',
-            targetLabel: readRequiredString(
-              spec.serverName,
-              'spec.serverName',
-            ),
+            targetLabel: readRequiredString(spec.serverName, 'spec.serverName'),
             approveEffect: '创建 MCP 配置并导入选定工具。',
             denyEffect: '不会连接或导入新的 MCP 资源。',
             diffPreview: {
@@ -315,6 +327,4 @@ export class SelfEvolutionPermissionPolicy {
       ],
     };
   }
-
-
 }

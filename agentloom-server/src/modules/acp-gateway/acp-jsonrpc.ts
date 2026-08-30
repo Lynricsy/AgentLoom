@@ -32,8 +32,7 @@ export interface JsonRpcErrorResponse {
 }
 
 export type JsonRpcResponse<TResult = unknown> =
-  | JsonRpcSuccessResponse<TResult>
-  | JsonRpcErrorResponse;
+  JsonRpcSuccessResponse<TResult> | JsonRpcErrorResponse;
 
 export class AcpJsonRpcError extends Error {
   constructor(

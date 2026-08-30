@@ -1,9 +1,7 @@
 import type { WorkspaceSnapshot } from '../../database/schema';
 
 export type WorkspaceSourceKind =
-  | 'manual'
-  | 'sandbox_snapshot'
-  | 'execution_archive';
+  'manual' | 'sandbox_snapshot' | 'execution_archive';
 
 export type WorkspaceListItem = WorkspaceSnapshot & {
   sourceKind: WorkspaceSourceKind;

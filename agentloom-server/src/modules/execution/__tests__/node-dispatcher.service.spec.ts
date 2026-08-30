@@ -366,9 +366,6 @@ describe('dispatcher migrated scenarios', () => {
     });
   });
 
-
-
-
   describe('scheduleNode migrated', () => {
     it.each(inlineDispatchCases)(
       '%s 节点应分派给公开 executor，并保持标准调度上下文',
@@ -447,4 +444,3 @@ describe('dispatcher migrated scenarios', () => {
     });
   });
 });
-

@@ -195,7 +195,7 @@ describe('CodeExecutionService', () => {
     expect(hoisted.writeFile).toHaveBeenCalledWith(
       '/tmp/agentloom-code-fixed-id/script.py',
       expect.stringMatching(
-        /input = json\.loads\("null"\)[\s\S]*    if True:\n        output = input/,
+        /input = json\.loads\("null"\)[\s\S]* {4}if True:\n {8}output = input/,
       ),
       'utf-8',
     );

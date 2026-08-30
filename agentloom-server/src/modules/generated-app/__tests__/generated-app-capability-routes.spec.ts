@@ -31,7 +31,10 @@ const OTHER_ID = '99999999-9999-4999-8999-999999999999';
 
 type SqlLike = { queryChunks?: unknown[]; value?: unknown };
 
-function collectSqlParameterValues(value: unknown, seen = new Set<object>()): unknown[] {
+function collectSqlParameterValues(
+  value: unknown,
+  seen = new Set<object>(),
+): unknown[] {
   if (Array.isArray(value)) {
     return value.flatMap((entry) => collectSqlParameterValues(entry, seen));
   }
@@ -154,12 +157,7 @@ describe('Generated App capability routes', () => {
     );
 
     await expect(
-      controller.update(
-        APP_ID,
-        { appName: '新名称' },
-        TENANT_ID,
-        OTHER_ID,
-      ),
+      controller.update(APP_ID, { appName: '新名称' }, TENANT_ID, OTHER_ID),
     ).resolves.toEqual({ data });
     await expect(
       controller.findGenerationRun(APP_ID, GENERATION_RUN_ID, TENANT_ID),
@@ -201,12 +199,14 @@ describe('Generated App capability routes', () => {
 
     Object.assign(mockTenantDb, {
       execute: vi.fn().mockResolvedValue(undefined),
-      transaction: vi.fn(async (operation: (tx: DrizzleDB) => Promise<unknown>) => {
-        order.push('transaction-start');
-        const result = await operation(mockTenantDb as unknown as DrizzleDB);
-        order.push('transaction-commit');
-        return result;
-      }),
+      transaction: vi.fn(
+        async (operation: (tx: DrizzleDB) => Promise<unknown>) => {
+          order.push('transaction-start');
+          const result = await operation(mockTenantDb as unknown as DrizzleDB);
+          order.push('transaction-commit');
+          return result;
+        },
+      ),
       delete: vi.fn(() => {
         order.push('delete-parent');
         return deleteChain;
@@ -295,12 +295,7 @@ describe('Generated App capability routes', () => {
       Object.assign(mockTenantDb, { delete: vi.fn(() => chain) });
 
       await expect(
-        repository.deleteRepairAttempt(
-          tenantId,
-          appId,
-          runId,
-          repairAttemptId,
-        ),
+        repository.deleteRepairAttempt(tenantId, appId, runId, repairAttemptId),
       ).rejects.toBeInstanceOf(GeneratedAppRepairAttemptNotFoundException);
       expect(collectSqlParameterValues(chain.where.mock.calls[0]?.[0])).toEqual(
         expect.arrayContaining([tenantId, appId, runId, repairAttemptId]),
@@ -318,15 +313,10 @@ describe('Generated App capability routes', () => {
     mockTenantDb.update.mockReturnValue(chain);
 
     await expect(
-      repository.update(
-        TENANT_ID,
-        OTHER_ID,
-        APP_ID,
-        {
-          appName: '新名称',
-          description: '新描述',
-        } satisfies UpdateGeneratedAppDtoType,
-      ),
+      repository.update(TENANT_ID, OTHER_ID, APP_ID, {
+        appName: '新名称',
+        description: '新描述',
+      } satisfies UpdateGeneratedAppDtoType),
     ).resolves.toEqual(
       expect.objectContaining({ appName: '新名称', description: '新描述' }),
     );

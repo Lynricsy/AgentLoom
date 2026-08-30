@@ -166,7 +166,7 @@ function sendPluginArchive(
   }
 
   request.addEventListener('load', () => {
-    let body: unknown = null
+    let body: unknown
     try {
       body = JSON.parse(request.responseText) as unknown
     } catch {

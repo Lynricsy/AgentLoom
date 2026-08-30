@@ -172,15 +172,11 @@ describe('TenantKeyController', () => {
       organizationResolver.findOrganizationId.mockResolvedValue(null);
 
       await expect(
-        controller.uploadPublicKey(
-          { publicKey: PUBLIC_KEY },
-          TENANT_ID,
-          {
-            ...USER,
-            orgId: undefined,
-            org_id: undefined,
-          },
-        ),
+        controller.uploadPublicKey({ publicKey: PUBLIC_KEY }, TENANT_ID, {
+          ...USER,
+          orgId: undefined,
+          org_id: undefined,
+        }),
       ).rejects.toBeInstanceOf(TenantOrganizationNotFoundException);
       expect(service.uploadPublicKey).not.toHaveBeenCalled();
     });

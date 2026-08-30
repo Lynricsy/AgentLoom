@@ -95,7 +95,7 @@ import {
   createGeneratedApp,
   createWorkflowDefinitionReadinessRow,
   createGeneratedAppWithGate3Workspace,
-  mockTenantDb
+  mockTenantDb,
 } from './generated-app-test-support';
 
 describe('runtime migrated scenarios', () => {
@@ -108,17 +108,55 @@ describe('runtime migrated scenarios', () => {
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
-    vi.restoreAllMocks(); vi.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
     const configService = createConfigService();
     const pluginService = createGeneratedPrivatePluginServiceMock();
     const storageService = createStorageServiceMock();
-    repository = new GeneratedAppRepository(mockTenantDb as unknown as DrizzleDB, configService);
-    artifactService = new GeneratedAppArtifactService(repository, configService, storageService);
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(repository, artifactService, pluginService);
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    artifactService = new GeneratedAppArtifactService(
+      repository,
+      configService,
+      storageService,
+    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(
+      repository,
+      artifactService,
+      pluginService,
+    );
     repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(repository, repairService, runtimeBindingService, configService);
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(repository, artifactService, runtimeBindingService);
-    service = new GeneratedAppService(mockTenantDb as unknown as DrizzleDB, configService, undefined, undefined, undefined, undefined, undefined, pluginService, undefined, storageService, repository, artifactService, runtimeBindingService, repairService, orchestrator, publicRuntimeService);
+    orchestrator = new GeneratedAppGenerationOrchestratorService(
+      repository,
+      repairService,
+      runtimeBindingService,
+      configService,
+    );
+    publicRuntimeService = new GeneratedAppPublicRuntimeService(
+      repository,
+      artifactService,
+      runtimeBindingService,
+    );
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+      repository,
+      artifactService,
+      runtimeBindingService,
+      repairService,
+      orchestrator,
+      publicRuntimeService,
+    );
   });
 
   it('runtime binding readiness 无 Workflow 绑定时应返回 deterministic_only', async () => {
@@ -302,8 +340,9 @@ describe('runtime migrated scenarios', () => {
         },
       },
     });
-    const pluginBindingInternals =
-      createRuntimeBindingServiceForTest(pluginService) as unknown as {
+    const pluginBindingInternals = createRuntimeBindingServiceForTest(
+      pluginService,
+    ) as unknown as {
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -340,12 +379,12 @@ describe('runtime migrated scenarios', () => {
     });
     const pluginBindingInternals =
       createRuntimeBindingServiceForTest() as unknown as {
-      ensureGeneratedPrivatePluginBindings(
-        tenantId: string,
-        userId: string,
-        app: GeneratedApp,
-      ): Promise<GeneratedApp>;
-    };
+        ensureGeneratedPrivatePluginBindings(
+          tenantId: string,
+          userId: string,
+          app: GeneratedApp,
+        ): Promise<GeneratedApp>;
+      };
 
     await expect(
       pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
@@ -370,8 +409,9 @@ describe('runtime migrated scenarios', () => {
       undefined,
       pluginService,
     );
-    const pluginBindingInternals =
-      createRuntimeBindingServiceForTest(pluginService) as unknown as {
+    const pluginBindingInternals = createRuntimeBindingServiceForTest(
+      pluginService,
+    ) as unknown as {
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -440,8 +480,7 @@ describe('runtime migrated scenarios', () => {
       wasmBundleUrl,
       metadata,
     };
-    const pluginInternals =
-      createRuntimeBindingServiceForTest() as unknown as {
+    const pluginInternals = createRuntimeBindingServiceForTest() as unknown as {
       mustRefreshGeneratedPrivatePluginRegistration(
         app: GeneratedApp,
         toolId: string,
@@ -506,4 +545,3 @@ describe('runtime migrated scenarios', () => {
     }
   });
 });
-

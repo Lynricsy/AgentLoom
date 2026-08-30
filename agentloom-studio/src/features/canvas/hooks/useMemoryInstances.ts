@@ -43,7 +43,7 @@ async function fetchAllMemoryInstances(
 ): Promise<MemoryInstance[]> {
   const instances: MemoryInstance[] = []
   let page = 1
-  let totalPages = 1
+  let totalPages: number
 
   do {
     const response = await fetchMemoryInstances({ page, pageSize })

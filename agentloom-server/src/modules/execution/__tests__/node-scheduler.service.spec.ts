@@ -83,7 +83,7 @@ import {
   makeExecution,
   makePlan,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('facade migrated scenarios', () => {
@@ -814,16 +814,11 @@ describe('facade migrated scenarios', () => {
       const typeMismatchCalls =
         mockStateMachine.updateStepStatus.mock.calls.filter(
           (call: unknown[]) =>
-            (
-              call[3] as
-                | { errorMessage?: { type?: string } }
-                | undefined
-            )?.errorMessage?.type ===
+            (call[3] as { errorMessage?: { type?: string } } | undefined)
+              ?.errorMessage?.type ===
             'https://agentloom.dev/errors/node-type-mismatch',
         );
       expect(typeMismatchCalls).toHaveLength(0);
     });
   });
-
-
 });

@@ -6,11 +6,7 @@ import {
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
-import {
-  Logger,
-  UseGuards,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Logger, UseGuards, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
@@ -172,8 +168,7 @@ export class AgentConversationGateway
         }
 
         const email = (payload as Record<string, unknown>).email as
-          | string
-          | undefined;
+          string | undefined;
 
         socket.data.user = {
           sub: payload.sub,
@@ -183,18 +178,14 @@ export class AgentConversationGateway
           iat: payload.iat,
           tenantId:
             ((payload as Record<string, unknown>).tenantId as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_id as
-              | string
-              | undefined),
+              string | undefined),
           tenantRole:
             ((payload as Record<string, unknown>).tenantRole as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_role as
-              | string
-              | undefined),
+              string | undefined),
         } satisfies JwtPayload;
 
         next();
@@ -822,7 +813,9 @@ export class AgentConversationGateway
     }
 
     const { status } = event.data as ExecutionStatusChangedPayload;
-    return status === 'completed' || status === 'failed' || status === 'cancelled';
+    return (
+      status === 'completed' || status === 'failed' || status === 'cancelled'
+    );
   }
 
   private async emitConversationSnapshot(

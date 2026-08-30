@@ -1218,9 +1218,7 @@ describe('SandboxAgentAdapter', () => {
       await expect(pending).resolves.toEqual({ allowed: true });
       await expect(
         adapter.resolveToolPermission(session.id, 'tool-1', 'approve'),
-      ).rejects.toBeInstanceOf(
-        ToolPermissionResolutionNotAllowedException,
-      );
+      ).rejects.toBeInstanceOf(ToolPermissionResolutionNotAllowedException);
     });
 
     it('deny 时应返回 allowed=false', async () => {
@@ -2128,7 +2126,6 @@ describe('SandboxAgentAdapter', () => {
     });
   });
 
-
   describe('readSandboxBinding nested serverSandbox', () => {
     it('reads executionId from nested serverSandbox', async () => {
       const session = await adapter.createSession({
@@ -2515,9 +2512,7 @@ describe('SandboxAgentAdapter', () => {
           'permission-a',
           'approve',
         ),
-      ).rejects.toBeInstanceOf(
-        ToolPermissionResolutionNotAllowedException,
-      );
+      ).rejects.toBeInstanceOf(ToolPermissionResolutionNotAllowedException);
     });
 
     it('已完成 session 上等待权限应立即拒绝', async () => {

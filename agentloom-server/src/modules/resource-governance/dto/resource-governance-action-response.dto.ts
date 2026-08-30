@@ -1,9 +1,7 @@
 import type { ResourceGovernanceStateResponseDto } from './resource-governance-response.dto';
 
 export type ResourceGovernanceActionType =
-  | 'quota_update'
-  | 'governance_update'
-  | 'execution_termination';
+  'quota_update' | 'governance_update' | 'execution_termination';
 
 export type ResourceGovernanceActionScope = 'tenant' | 'workflow' | 'execution';
 

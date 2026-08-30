@@ -48,7 +48,6 @@ export function buildPromptBlocks(
   });
 }
 
-
 export function buildConversationTurnResult(
   assistantText: string,
   decision: DecisionEvent | undefined,
@@ -93,4 +92,3 @@ export function turnResultHasPersistableOutput(
     Boolean(turnResult.decision)
   );
 }
-

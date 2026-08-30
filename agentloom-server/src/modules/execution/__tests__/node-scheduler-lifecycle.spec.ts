@@ -82,7 +82,7 @@ import {
   makeSnapshot,
   makeExecution,
   makePlan,
-  createSelectChain
+  createSelectChain,
 } from './node-scheduler-test-support';
 
 describe('lifecycle migrated scenarios', () => {
@@ -767,5 +767,4 @@ describe('lifecycle migrated scenarios', () => {
       expect(mockStateMachine.markExecutionFailed).not.toHaveBeenCalled();
     });
   });
-
 });

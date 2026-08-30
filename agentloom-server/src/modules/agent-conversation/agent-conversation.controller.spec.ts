@@ -375,7 +375,10 @@ describe('AgentConversationController', () => {
 
     it('持久化 failed 工具调用应在访问 live gate 前返回 409', async () => {
       mockService.validateConversationToolCallPermissionState.mockRejectedValueOnce(
-        new ToolPermissionResolutionNotAllowedException('tool-failed', 'failed'),
+        new ToolPermissionResolutionNotAllowedException(
+          'tool-failed',
+          'failed',
+        ),
       );
 
       await expect(

@@ -292,8 +292,6 @@ function getRawLaunchInputParams(
   return rawInputParams;
 }
 
-
-
 function buildNormalizedExecutionInputParams(
   workflowId: string,
   runRequest: InternalRunWorkflowRequest | undefined,

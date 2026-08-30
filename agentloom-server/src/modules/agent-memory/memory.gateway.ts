@@ -167,8 +167,7 @@ export class MemoryGateway
         }
 
         const email = (payload as Record<string, unknown>).email as
-          | string
-          | undefined;
+          string | undefined;
 
         socket.data.user = {
           sub: payload.sub,
@@ -178,18 +177,14 @@ export class MemoryGateway
           iat: payload.iat,
           tenantId:
             ((payload as Record<string, unknown>).tenantId as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_id as
-              | string
-              | undefined),
+              string | undefined),
           tenantRole:
             ((payload as Record<string, unknown>).tenantRole as
-              | string
-              | undefined) ??
+              string | undefined) ??
             ((payload as Record<string, unknown>).tenant_role as
-              | string
-              | undefined),
+              string | undefined),
         } satisfies JwtPayload;
 
         next();
@@ -240,8 +235,7 @@ export class MemoryGateway
 
     // lastEventId 重连回放
     const lastEventIdRaw = client.handshake.query?.lastEventId as
-      | string
-      | undefined;
+      string | undefined;
     if (lastEventIdRaw != null && lastEventIdRaw !== '') {
       const lastEventId = parseInt(lastEventIdRaw, 10);
       if (!isNaN(lastEventId)) {

@@ -718,7 +718,6 @@ function createPublicRuntimeServiceForTest(
   );
 }
 
-
 function createGeneratedAppGateRun(
   overrides: Partial<GeneratedAppGateRun> = {},
 ): GeneratedAppGateRun {
@@ -981,7 +980,6 @@ function createGeneratedAppWithGate3Workspace(
   }) as GeneratedApp & { generationPlan: GeneratedAppGenerationPlan };
 }
 
-
 export {
   TENANT_ID,
   USER_ID,
@@ -1044,7 +1042,7 @@ export {
   createGeneratedApp,
   createWorkflowDefinitionReadinessRow,
   createGeneratedAppWithGate3Workspace,
-  mockTenantDb
+  mockTenantDb,
 };
 
 export type { SelectOrderedLimitChain, StartGenerationRunInput };

@@ -392,8 +392,7 @@ describe('GeneratedAppGate4IntegrationRunner', () => {
 
     const result = runner.run(plans);
     const failureDetails = result.failure?.details as
-      | { failedCheckIds?: string[] }
-      | undefined;
+      { failedCheckIds?: string[] } | undefined;
     const serializedResult = JSON.stringify(result);
 
     expect(result.status).toBe('failed');
@@ -509,8 +508,7 @@ describe('GeneratedAppGate4IntegrationRunner', () => {
 
     const result = runner.run(plans);
     const failureDetails = result.failure?.details as
-      | { failedCheckIds?: string[] }
-      | undefined;
+      { failedCheckIds?: string[] } | undefined;
     const serializedResult = JSON.stringify(result);
 
     expect(result.status).toBe('failed');

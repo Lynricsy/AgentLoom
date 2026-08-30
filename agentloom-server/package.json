@@ -93,8 +93,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
-    "@eslint/js": "^9.18.0",
+    "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
@@ -109,10 +108,10 @@
     "@types/supertest": "^6.0.2",
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
-    "eslint": "^9.18.0",
+    "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
-    "globals": "^16.0.0",
+    "globals": "^17.11.0",
     "prettier": "^3.4.2",
     "socket.io-client": "^4.8.3",
     "source-map-support": "^0.5.21",

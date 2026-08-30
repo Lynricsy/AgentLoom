@@ -229,9 +229,7 @@ describe('EvidenceExportService', () => {
     // 会当作任务不存在立刻结束，任务永远停在 queued。
     mocks.hasActiveTenantTransaction.mockReturnValue(true);
 
-    tenantDb.select.mockReturnValueOnce(
-      createSelectChain([{ id: 'exec-1' }]),
-    );
+    tenantDb.select.mockReturnValueOnce(createSelectChain([{ id: 'exec-1' }]));
     const insertReturning = createInsertReturning([
       {
         id: 'export-tx',
@@ -258,7 +256,8 @@ describe('EvidenceExportService', () => {
     expect(mocks.registerAfterCommitHook).toHaveBeenCalledTimes(1);
 
     // 提交后钩子执行，才真正入队。
-    const hook = mocks.registerAfterCommitHook.mock.calls[0]?.[0] as () => Promise<void>;
+    const hook = mocks.registerAfterCommitHook.mock
+      .calls[0]?.[0] as () => Promise<void>;
     await hook();
 
     expect(exportQueue.add).toHaveBeenCalledWith(

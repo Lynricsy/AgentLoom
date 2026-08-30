@@ -326,13 +326,15 @@ describe('ModelDiscoveryService', () => {
     // D-11 关键回归：/health 通常不鉴权，绝不能让它替带凭据探测下结论。
     it('health 可用但带凭据探测 401 时必须失败', async () => {
       decryptConfiguredApiKey.mockResolvedValue('bad-key');
-      const fetchMock = vi.fn().mockImplementation((url: string) =>
-        Promise.resolve(
-          url.endsWith('/health')
-            ? response(200, { status: 'ok' })
-            : response(401, { error: 'invalid api key' }),
-        ),
-      );
+      const fetchMock = vi
+        .fn()
+        .mockImplementation((url: string) =>
+          Promise.resolve(
+            url.endsWith('/health')
+              ? response(200, { status: 'ok' })
+              : response(401, { error: 'invalid api key' }),
+          ),
+        );
       vi.stubGlobal('fetch', fetchMock);
 
       await expect(
@@ -358,12 +360,7 @@ describe('ModelDiscoveryService', () => {
         'GET',
         { data: [] },
       ],
-      [
-        'anthropic',
-        'https://api.example.test/v1/models',
-        'GET',
-        { data: [] },
-      ],
+      ['anthropic', 'https://api.example.test/v1/models', 'GET', { data: [] }],
       [
         'google',
         'https://api.example.test/v1beta/models',
@@ -469,9 +466,7 @@ describe('ModelDiscoveryService', () => {
 
     it('凭据只出现在 header，不进 URL', async () => {
       decryptConfiguredApiKey.mockResolvedValue('super-secret-key');
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValue(response(200, { data: [] }));
+      const fetchMock = vi.fn().mockResolvedValue(response(200, { data: [] }));
       vi.stubGlobal('fetch', fetchMock);
 
       await service.testConnection(provider({ apiKeyId: 'key-id' }));

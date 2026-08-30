@@ -81,7 +81,7 @@ import {
   makeEdge,
   makeSnapshot,
   createSelectChain,
-  createUpdateChainVoid
+  createUpdateChainVoid,
 } from './node-scheduler-test-support';
 
 describe('subagent migrated scenarios', () => {
@@ -1064,10 +1064,7 @@ describe('subagent migrated scenarios', () => {
         nodeType: 'sub-agent',
         nodeData: {},
       });
-      const snapshot = makeSnapshot(
-        [makeNode(step.nodeId, 'sub-agent')],
-        [],
-      );
+      const snapshot = makeSnapshot([makeNode(step.nodeId, 'sub-agent')], []);
       db.update.mockReturnValueOnce(createUpdateChainVoid());
 
       await service.scheduleNode(

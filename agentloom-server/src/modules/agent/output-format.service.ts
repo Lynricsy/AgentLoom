@@ -13,13 +13,7 @@ import type {
 } from './dto/output-format.dto';
 
 type JsonSchemaPrimitiveType =
-  | 'string'
-  | 'number'
-  | 'integer'
-  | 'boolean'
-  | 'object'
-  | 'array'
-  | 'null';
+  'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'null';
 
 type JsonLiteralValue = string | number | boolean | null;
 

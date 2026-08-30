@@ -3,10 +3,7 @@ import jsonata from 'jsonata';
 import { createContext, Script } from 'node:vm';
 
 export type InputPreprocessorTransformType =
-  | 'jmespath'
-  | 'jsonata'
-  | 'template'
-  | 'script';
+  'jmespath' | 'jsonata' | 'template' | 'script';
 
 export interface InputPreprocessorConfig {
   transformType: InputPreprocessorTransformType;
