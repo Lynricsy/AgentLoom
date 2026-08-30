@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
     upsertJobScheduler: vi.fn(),
     getJobScheduler: vi.fn(),
     removeJobScheduler: vi.fn(),
-    removeRepeatable: vi.fn(),
   }),
   createMockDb: () => ({
     select: vi.fn(),
@@ -85,8 +84,7 @@ describe('TriggerSchedulerService', () => {
     service = module.get(TriggerSchedulerService);
   });
 
-  it('应迁移旧 repeatable job 并注册 Job Scheduler，持久化真实下次触发时间', async () => {
-    queue.removeRepeatable.mockResolvedValue(true);
+  it('应注册 Job Scheduler 并持久化真实下次触发时间', async () => {
     queue.upsertJobScheduler.mockResolvedValue({});
     queue.getJobScheduler.mockResolvedValue({
       key: TRIGGER_ID,
@@ -101,14 +99,6 @@ describe('TriggerSchedulerService', () => {
 
     expect(nextFireAt).toBeInstanceOf(Date);
     expect(nextFireAt).toEqual(NEXT_FIRE_AT);
-    expect(queue.removeRepeatable).toHaveBeenCalledWith(
-      TRIGGER_CRON_JOB,
-      {
-        pattern: '0 8 * * *',
-        tz: 'UTC',
-      },
-      TRIGGER_ID,
-    );
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
       TRIGGER_ID,
       {
