@@ -17,13 +17,13 @@
   },
   "dependencies": {
     "@agentloom/plugin-sdk": "workspace:*",
-    "commander": "^12.0.0",
+    "commander": "^15.0.0",
     "prompts": "^2.4.2",
-    "archiver": "^7.0.0",
-    "chokidar": "^3.6.0",
-    "chalk": "^5.3.0",
-    "express": "^4.18.0",
-    "glob": "^10.0.0"
+    "archiver": "^8.0.0",
+    "chokidar": "^5.0.0",
+    "chalk": "^6.0.0",
+    "express": "^5.2.1",
+    "glob": "^13.0.6"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
@@ -31,8 +31,8 @@
     "vitest": "catalog:",
     "@types/node": "catalog:",
     "@types/prompts": "^2.4.0",
-    "@types/archiver": "^6.0.0",
-    "@types/express": "^4.17.0"
+    "@types/archiver": "^8.0.0",
+    "@types/express": "^5.0.0"
   },
   "license": "GPL-3.0-only"
 }
