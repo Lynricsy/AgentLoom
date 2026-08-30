@@ -83,7 +83,7 @@ const hoisted = vi.hoisted(() => {
     normalizeFlexibleSchemaJson: vi.fn((schema: unknown) =>
       typeof schema === 'object' && schema !== null ? schema : {},
     ),
-    flexibleSchemaToTypeBox: vi.fn((schema: unknown) => ({
+    flexibleSchemaToJsonSchema: vi.fn((schema: unknown) => ({
       converted: schema,
     })),
     getTenantDb: vi.fn((db: unknown) => db),
@@ -116,7 +116,7 @@ vi.mock('../pi-imports', () => ({
 vi.mock('../tool-schema-converter', () => ({
   typeBoxToZod: hoisted.typeBoxToZod,
   normalizeFlexibleSchemaJson: hoisted.normalizeFlexibleSchemaJson,
-  flexibleSchemaToTypeBox: hoisted.flexibleSchemaToTypeBox,
+  flexibleSchemaToJsonSchema: hoisted.flexibleSchemaToJsonSchema,
 }));
 
 type CanvasNode = {
@@ -259,7 +259,7 @@ describe('compiler → runtime tool injection E2E', () => {
     hoisted.importPiAgentCore.mockClear();
     hoisted.importPiAiCompat.mockClear();
     hoisted.typeBoxToZod.mockClear();
-    hoisted.flexibleSchemaToTypeBox.mockClear();
+    hoisted.flexibleSchemaToJsonSchema.mockClear();
     hoisted.getTenantDb.mockClear();
 
     mockDb = {

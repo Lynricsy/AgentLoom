@@ -24,7 +24,7 @@ import type {
 } from './ports/agent-runtime.port';
 import { importPiAgentCore, importPiAiCompat } from './pi-imports';
 import {
-  flexibleSchemaToTypeBox,
+  flexibleSchemaToJsonSchema,
   normalizeFlexibleSchemaJson,
 } from './tool-schema-converter';
 import type { AgentEvent, StopReason } from './types/agent-event.types';
@@ -961,8 +961,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       name,
       label: name,
       description: tool.description ?? '',
-      parameters: flexibleSchemaToTypeBox(
-        tool.inputSchema as Parameters<typeof flexibleSchemaToTypeBox>[0],
+      parameters: flexibleSchemaToJsonSchema(
+        tool.inputSchema as Parameters<typeof flexibleSchemaToJsonSchema>[0],
       ),
       execute: async (
         toolCallId: string,

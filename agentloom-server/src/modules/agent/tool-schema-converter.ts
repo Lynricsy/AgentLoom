@@ -202,15 +202,26 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
   );
 }
 
-export function flexibleSchemaToTypeBox(
+/**
+ * 把 flexible schema 归一化为 pi 工具 `parameters` 需要的**纯 JSON Schema** 对象。
+ *
+ * 这里刻意不套 `Type.Unsafe()`：pi-ai 0.84 的 `validateToolArguments` 只在
+ * `parameters` 上**没有** `Symbol.for("TypeBox.Kind")` 时才走 `coerceWithJsonSchema`
+ * 回退分支，而该分支正是 `"5" -> 5` 这类入参强制转换的唯一来源。
+ * `@sinclair/typebox@0.34`（含 `Type.Unsafe`）会挂上这个 legacy symbol，
+ * 于是 0.84 改用 `typebox@1` 的 `Value.Convert` 处理它——但 v1 认不出 0.34 的
+ * 内部表示，转换静默失效，LLM 传字符串数字就会校验失败。
+ * 0.62 用 Ajv（`coerceTypes`）做校验，本来是会转换的；返回纯 JSON Schema
+ * 才能保住这个行为。
+ */
+export function flexibleSchemaToJsonSchema(
   schema?: FlexibleSchema<Record<string, unknown>> | null,
-): TSchema {
+): Record<string, unknown> {
   if (!schema) {
-    return Type.Unsafe({ ...DEFAULT_FLEXIBLE_SCHEMA_JSON });
+    return { ...DEFAULT_FLEXIBLE_SCHEMA_JSON };
   }
 
-  const json = asSchema(schema).jsonSchema;
-  return Type.Unsafe(normalizeFlexibleSchemaJson(json));
+  return normalizeFlexibleSchemaJson(asSchema(schema).jsonSchema);
 }
 
 export function normalizeFlexibleSchemaJson(
