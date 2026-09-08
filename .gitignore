@@ -71,12 +71,16 @@ $RECYCLE.BIN/
 # ──────────────────────────────────────────────
 .sisyphus/
 .trellis/tasks/
+.trellis/workspace/
+.trellis/.template-hashes.json
+_bmad/
 _bmad-output/
 SubmitDocs/
 bmad-opencode/
 AgentLogs/
 .autobmad-logs/
 .autobmad-state.json
+.autobmad-state.json.bak
 .opencode/
 .claude/
 .cursor/
