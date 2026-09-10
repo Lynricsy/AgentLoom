@@ -136,7 +136,7 @@ export const CommandItem = forwardRef<
     <CommandPrimitive.Item
       ref={ref}
       className={cn(
-        'relative flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-primary/12 data-[selected=true]:text-primary data-[disabled=true]:opacity-50',
+        'relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-2 text-sm text-foreground outline-none data-[disabled=true]:pointer-events-none data-[selected=true]:bg-muted data-[selected=true]:text-foreground data-[disabled=true]:opacity-50',
         className,
       )}
       {...props}

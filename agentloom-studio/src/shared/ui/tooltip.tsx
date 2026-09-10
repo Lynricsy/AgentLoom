@@ -65,7 +65,7 @@ export const TooltipContent = forwardRef<
             <motion.div
               {...scaleIn}
               className={cn(
-                'z-50 max-w-xs rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-lg',
+                'z-50 max-w-xs rounded-sm border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md',
                 className,
               )}
             >

@@ -74,7 +74,7 @@ export function ToastProvider({ children }: PropsWithChildren) {
                 }
               }}
               className={cn(
-                'grid w-full gap-1 rounded-lg border bg-muted px-4 py-3 text-foreground shadow-xl backdrop-blur-sm',
+                'grid w-full gap-1 rounded-lg border border-border bg-popover px-4 py-3 text-foreground shadow-lg',
                 variantStyles[variant]
               )}
             >

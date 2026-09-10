@@ -20,6 +20,7 @@ import {
 } from '../sheet'
 import { Popover, PopoverContent, PopoverTrigger } from '../popover'
 import { Badge } from '../badge'
+import { StatusBadge, StatusDot } from '../status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../card'
 import { Textarea } from '../textarea'
 import { Separator } from '../separator'
@@ -122,6 +123,44 @@ describe('Badge', () => {
     const badge = screen.getByTestId('badge')
     expect(badge).toHaveTextContent('Agent')
     expect(badge.style.color).toBe('var(--color-node-agent)')
+  })
+})
+
+describe('StatusBadge', () => {
+  it('按 tone 渲染语义配色的状态圆点', () => {
+    render(
+      <StatusBadge data-testid="badge" tone="error" dot pulse>
+        失败
+      </StatusBadge>,
+    )
+
+    const badge = screen.getByTestId('badge')
+    expect(badge).toHaveTextContent('失败')
+    // error tone → Badge error variant（红色描边/底色）
+    expect(badge.className).toContain('text-error')
+
+    const dot = badge.querySelector('[aria-hidden]')
+    expect(dot?.className).toContain('bg-error')
+    expect(dot?.className).toContain('animate-pulse')
+  })
+
+  it('不传 dot 时不渲染圆点', () => {
+    render(
+      <StatusBadge data-testid="badge" tone="success">
+        成功
+      </StatusBadge>,
+    )
+
+    expect(
+      screen.getByTestId('badge').querySelector('[aria-hidden]'),
+    ).toBeNull()
+  })
+
+  it('StatusDot 可独立使用', () => {
+    render(<StatusDot tone="warning" className="size-2" />)
+    const dot = document.querySelector('[aria-hidden]')
+    expect(dot?.className).toContain('bg-warning')
+    expect(dot?.className).toContain('size-2')
   })
 })
 

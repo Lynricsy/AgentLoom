@@ -11,6 +11,8 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react'
 import { X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from './button'
+import { OVERLAY_CLASS } from './overlay'
 import { DUR, EASE, fadeIn } from '@/shared/lib/motion'
 import {
   useControllableOpen,
@@ -79,7 +81,7 @@ export const SheetContent = forwardRef<
           <DialogPrimitive.Overlay asChild forceMount>
             <motion.div
               {...fadeIn}
-              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs"
+              className={OVERLAY_CLASS}
             />
           </DialogPrimitive.Overlay>
 
@@ -90,7 +92,7 @@ export const SheetContent = forwardRef<
               exit={sideMotion.exit}
               transition={{ duration: DUR.slow, ease: EASE }}
               className={cn(
-                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-lg',
+                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-xl',
                 SIDE_CLASS[side],
                 className,
               )}
@@ -98,11 +100,15 @@ export const SheetContent = forwardRef<
               {children}
 
               {hideClose ? null : (
-                <DialogPrimitive.Close
-                  aria-label="关闭"
-                  className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                >
-                  <X className="h-4 w-4" />
+                <DialogPrimitive.Close asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="关闭"
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                  >
+                    <X />
+                  </Button>
                 </DialogPrimitive.Close>
               )}
             </motion.div>

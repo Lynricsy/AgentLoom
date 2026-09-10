@@ -60,7 +60,7 @@ export function TabsList({ className, ...props }: HTMLAttributes<HTMLDivElement>
   return (
     <div
       className={cn(
-        'inline-flex w-full gap-1 overflow-x-auto rounded-lg border border-border bg-muted p-1',
+        'inline-flex w-full gap-1 overflow-x-auto rounded-md bg-muted p-1',
         className,
       )}
       {...props}
@@ -86,9 +86,9 @@ export function TabsTrigger({ className, value, children, ...props }: TabsTrigge
       type="button"
       data-state={isActive ? 'active' : 'inactive'}
       className={cn(
-        'flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+        'flex-1 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
         isActive
-          ? 'bg-surface text-foreground shadow-sm'
+          ? 'bg-surface text-foreground shadow-xs'
           : 'text-muted-foreground hover:text-foreground',
         className,
       )}

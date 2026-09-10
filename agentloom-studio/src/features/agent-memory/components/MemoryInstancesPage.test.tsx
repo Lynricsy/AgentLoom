@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ToastProvider } from "@/shared/ui/toast";
@@ -332,6 +332,9 @@ describe("MemoryInstancesPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "取消" }));
 
-    expect(screen.queryByText(/确定要删除/)).not.toBeInTheDocument();
+    // AlertDialog 有退场动画，卸载发生在动画结束后
+    await waitFor(() =>
+      expect(screen.queryByText(/确定要删除/)).not.toBeInTheDocument(),
+    );
   });
 });
