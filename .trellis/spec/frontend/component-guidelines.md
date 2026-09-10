@@ -182,6 +182,8 @@ export function useToast() {
 
 Design tokens are CSS-variable-based: `text-foreground`, `bg-primary`, `border-border`, `text-muted-foreground`.
 
+**视觉 token 的取值、圆角/阴影档位、原语选型与页面骨架规范见 [Design System](./design-system.md)** —— 本表只说明工具用途，不定义视觉档位。
+
 **No CSS Modules or styled-components** are used anywhere in the project.
 
 ---
@@ -201,6 +203,11 @@ Design tokens are CSS-variable-based: `text-foreground`, `bg-primary`, `border-b
 3. **Inline styles** -- use Tailwind classes
 4. **CSS Modules / styled-components** -- not used in this project
 5. **Direct Radix imports in features** -- wrap in `shared/ui/` first (for project-level consistency)
+6. **原生 `<button>` / `<textarea>` / `<select>` / `<input>` 与 `<h1>` 在 features 层** -- 用 `shared/ui` 原语与 `PageHeader` / `WorkbenchHeader`
+7. **Tailwind 原生调色板**（`bg-slate-800`、`text-emerald-500` …）-- 不随主题切换，改用语义 token
+8. **已废弃的样式类** -- `rounded-2xl|3xl`、`shadow-2xl|node|panel|popover`、`surface-elevated`、`text-muted`、`bg-card`、`border-input`、`animate-in|zoom-in-95`（插件未安装）、`z-[...]`、`transition-all`、`dark:` 变体
+
+以上 6-8 条由 ESLint 强制（`no-restricted-syntax` / `no-restricted-imports`），不允许 `eslint-disable`。
 
 ---
 

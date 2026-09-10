@@ -92,11 +92,14 @@ const TEST_IGNORES = [
   'src/test-setup.ts',
 ]
 
-/** 画布节点内部允许原生 button（节点是高密度自定义渲染，非常规表单控件） */
 const NATIVE_ELEMENT_IGNORES = [
   ...TEST_IGNORES,
+  // 画布节点是高密度自定义渲染，允许原生 button
   'src/features/canvas/components/nodes/**',
   'src/features/canvas/components/node/**',
+  // 全站唯一两个 h1 生产者本身
+  'src/shared/components/page-header/**',
+  'src/shared/components/workbench-header/**',
 ]
 
 const featureBoundaryConfigs = featureNames.map((featureName) => ({
