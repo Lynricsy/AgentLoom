@@ -1,13 +1,8 @@
-import { Link } from '@tanstack/react-router'
-import { motion } from 'motion/react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
-import { DUR, EASE } from '@/shared/lib/motion'
-import {
-  filterNavGroupsByRole,
-  type NavItem,
-  type NavRole,
-} from './navigation'
+import { Button } from '@/shared/ui/button'
+import { NavItemLink } from './NavItemLink'
+import { filterNavGroupsByRole, type NavRole } from './navigation'
 
 /** active 指示条共享 layoutId，切换路由时在各项之间滑动 */
 const INDICATOR_LAYOUT_ID = 'app-nav-indicator'
@@ -39,9 +34,6 @@ export function SidebarNav({
   return (
     <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 py-2">
       {filterNavGroupsByRole(role).map((group) => {
-        const groupActive = group.items.some((item) =>
-          pathname.startsWith(item.matchPrefix),
-        )
         const expanded = collapsed || (groupExpanded?.[group.id] ?? true)
 
         return (
@@ -52,36 +44,33 @@ export function SidebarNav({
                 className="mx-auto my-1 h-px w-6 bg-border first:hidden"
               />
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => onToggleGroup?.(group.id)}
-                className={cn(
-                  'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-semibold uppercase tracking-wider transition-colors',
-                  groupActive
-                    ? 'text-muted-foreground'
-                    : 'text-muted-foreground hover:text-muted-foreground',
-                )}
+                className="w-full justify-start px-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent"
               >
                 <span className="flex-1 text-left">{group.label}</span>
                 <ChevronDown
-                  size={12}
                   className={cn(
-                    'shrink-0 transition-transform duration-200',
+                    'size-3 shrink-0 transition-transform duration-200',
                     expanded ? 'rotate-0' : '-rotate-90',
                   )}
                 />
-              </button>
+              </Button>
             )}
 
             {expanded
               ? group.items.map((item) => (
-                  <SidebarNavLink
+                  <NavItemLink
                     key={item.to}
-                    item={item}
+                    to={item.to}
+                    icon={item.icon}
+                    label={item.label}
                     active={pathname.startsWith(item.matchPrefix)}
                     collapsed={collapsed}
-                    onNavigate={onNavigate}
-                    indicatorScope={indicatorScope}
+                    onClick={onNavigate}
+                    indicatorLayoutId={`${indicatorScope}-${INDICATOR_LAYOUT_ID}`}
                   />
                 ))
               : null}
@@ -89,48 +78,5 @@ export function SidebarNav({
         )
       })}
     </nav>
-  )
-}
-
-interface SidebarNavLinkProps {
-  item: NavItem
-  active: boolean
-  collapsed: boolean
-  onNavigate?: () => void
-  indicatorScope: string
-}
-
-function SidebarNavLink({
-  item,
-  active,
-  collapsed,
-  onNavigate,
-  indicatorScope,
-}: SidebarNavLinkProps) {
-  const Icon = item.icon
-
-  return (
-    <Link
-      to={item.to}
-      onClick={onNavigate}
-      title={collapsed ? item.label : undefined}
-      className={cn(
-        'group relative flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors',
-        collapsed && 'justify-center',
-        active
-          ? 'bg-primary/10 text-primary'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-      )}
-    >
-      {active ? (
-        <motion.span
-          layoutId={`${indicatorScope}-${INDICATOR_LAYOUT_ID}`}
-          transition={{ duration: DUR.base, ease: EASE }}
-          className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary"
-        />
-      ) : null}
-      <Icon size={18} className="shrink-0" />
-      {collapsed ? null : <span className="truncate">{item.label}</span>}
-    </Link>
   )
 }

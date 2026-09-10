@@ -6,14 +6,13 @@ import { getInterventionPolicyRoleFromToken } from "@/features/intervention-poli
 import { NotificationBell } from "@/features/notification";
 import { BrandMark } from "@/shared/components/brand";
 import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { NavItemLink } from "./NavItemLink";
 import { SidebarNav } from "./SidebarNav";
 import { UserMenu } from "./UserMenu";
 
 const STORAGE_KEY = "agentloom-sidebar-collapsed";
 const GROUP_EXPANDED_KEY = "agentloom-sidebar-group-expanded";
-
-const EXPANDED_WIDTH = 240;
-const COLLAPSED_WIDTH = 64;
 
 function getInitialCollapsed(): boolean {
   try {
@@ -68,16 +67,17 @@ export function AppSidebar() {
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col border-r border-border bg-surface"
-      style={{
-        width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-        transition: "width 250ms cubic-bezier(0.16,1,0.3,1)",
-      }}
+      className={cn(
+        "flex h-full shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-300 ease-out-expo",
+        collapsed
+          ? "w-[var(--spacing-sidebar-collapsed)]"
+          : "w-[var(--spacing-sidebar)]",
+      )}
     >
       {/* 品牌区 + 折叠开关 */}
       <div
         className={cn(
-          "flex h-16 items-center gap-2 px-3",
+          "flex h-14 items-center gap-2 px-3",
           collapsed ? "justify-center" : "justify-between",
         )}
       >
@@ -98,15 +98,16 @@ export function AppSidebar() {
           </Link>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={toggle}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
           title={collapsed ? "展开侧边栏" : "收起侧边栏"}
           aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
         >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+          {collapsed ? <ChevronRight /> : <ChevronLeft />}
+        </Button>
       </div>
 
       <SidebarNav
@@ -119,20 +120,13 @@ export function AppSidebar() {
 
       {/* 底部：设置 / 通知 / 用户 */}
       <div className="flex flex-col gap-1 border-t border-border px-2 py-2">
-        <Link
+        <NavItemLink
           to="/settings"
-          className={cn(
-            "flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors",
-            collapsed && "justify-center",
-            settingsActive
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-          title={collapsed ? "设置" : undefined}
-        >
-          <Settings size={18} className="shrink-0" />
-          {collapsed ? null : <span>设置</span>}
-        </Link>
+          icon={Settings}
+          label="设置"
+          active={settingsActive}
+          collapsed={collapsed}
+        />
 
         <div
           className={cn("flex items-center", collapsed ? "justify-center" : "px-2")}

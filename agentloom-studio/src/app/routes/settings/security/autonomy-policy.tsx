@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { OrganizationAutonomyPolicyPage } from '@/features/organization-autonomy-policy'
-import { rootRoute } from '../../__root'
+import { settingsLayoutRoute } from '../layout'
 
 export const organizationAutonomyPolicyRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/security/autonomy-policy',
   component: OrganizationAutonomyPolicyPage,
 })

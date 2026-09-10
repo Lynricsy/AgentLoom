@@ -2,7 +2,7 @@ import { createRoute } from '@tanstack/react-router'
 
 import { TenantKeyManagement } from '@/features/tenant-key'
 
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 function EncryptionSettingsPage() {
   return (
@@ -13,7 +13,7 @@ function EncryptionSettingsPage() {
 }
 
 export const encryptionSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/encryption',
   component: EncryptionSettingsPage,
 })

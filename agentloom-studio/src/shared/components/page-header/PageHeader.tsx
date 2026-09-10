@@ -39,7 +39,7 @@ export function PageHeader({
         <nav aria-label="面包屑" className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
           {breadcrumb.map((item, index) => (
             <span key={`${item.label}-${index}`} className="flex items-center gap-1">
-              {index > 0 ? <ChevronRight className="h-3 w-3 shrink-0" /> : null}
+              {index > 0 ? <ChevronRight className="size-3 shrink-0" /> : null}
               {item.to ? (
                 <Link
                   to={item.to}
@@ -61,18 +61,20 @@ export function PageHeader({
           {Icon ? (
             <span
               aria-hidden
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
+              className="grid size-10 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
                 color: accent,
               }}
             >
-              <Icon className="h-5 w-5" />
+              <Icon className="size-5" />
             </span>
           ) : null}
 
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
+            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              {title}
+            </h1>
             {description ? (
               <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
             ) : null}

@@ -15,7 +15,7 @@ import {
 import { PageHeader } from '@/shared/components/page-header/PageHeader';
 import { staggerList } from '@/shared/lib/motion';
 import { Card, CardContent, CardDescription, CardTitle } from '@/shared/ui/card';
-import { rootRoute } from '../__root';
+import { settingsLayoutRoute } from './layout';
 
 const SETTINGS_SECTIONS = [
   {
@@ -107,7 +107,7 @@ function SettingsOverviewPage() {
 }
 
 export const settingsIndexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/',
   component: SettingsOverviewPage,
 });

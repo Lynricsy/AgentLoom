@@ -5,65 +5,8 @@ import { useAuthStore } from "@/features/auth";
 import { useNotificationSocket } from "@/features/notification";
 import { AppSidebar, MobileTopBar } from "@/shared/components/app-sidebar";
 import { CommandPalette } from "@/shared/components/command-palette/CommandPalette";
-import { SettingsLayout } from "@/shared/components/settings-layout";
+import { Spinner } from "@/shared/components/spinner/Spinner";
 import { useMediaQuery, LG_QUERY } from "@/shared/hooks/use-media-query";
-import { cn } from "@/shared/lib/utils";
-import { indexRoute } from "./index";
-import { workflowCanvasRoute } from "./workflows/$workflowId";
-import { resourceKnowledgeBaseDetailRoute } from "./resources/knowledge-bases.$knowledgeBaseId";
-import { executionDebugRoute } from "./executions/$executionId";
-import { executionAgentViewerRoute } from "./executions/$executionId.steps.$stepId.agent";
-import { settingsIndexRoute } from "./settings/index";
-import { mcpServerDetailRoute } from "./resources/mcp-servers.$serverId";
-import { auditLogsRoute } from "./settings/audit-logs";
-import { apiTokensRoute } from "./settings/api-tokens";
-import { templatesRoute } from "./templates";
-import { generatedAppsRoute } from "./generated-apps";
-import { generatedAppDetailRoute } from "./generated-apps.$appId";
-import { generatedAppPublicRuntimeRoute } from "./generated-apps.public.$token";
-import { discoverRoute } from "./discover";
-import { marketplaceRoute } from "./marketplace";
-import { marketplaceMyListingsRoute } from "./marketplace.my-listings";
-import { shareTokenRoute } from "./share.$token";
-import { encryptionSettingsRoute } from "./settings/encryption";
-import { developerEarningsRoute } from "./developer-console/earnings";
-import { developerKeysRoute } from "./developer-console/keys";
-import { organizationAutonomyPolicyRoute } from "./settings/security/autonomy-policy";
-import { resourceGovernanceRoute } from "./settings/resource-quotas";
-import { monitoringRoute } from "./settings/monitoring";
-import { privateDeploymentRoute } from "./settings/private-deployment";
-import { userPreferencesRoute } from "./settings/preferences";
-import { securitySettingsRoute } from "./settings/security";
-import { authCallbackRoute } from "./auth/callback";
-import { loginRoute } from "./auth/login";
-import { registerRoute } from "./auth/register";
-import { onboardingRoute } from "./onboarding";
-import { workflowsIndexRoute } from "./workflows/workflows.index";
-import { agentsIndexRoute } from "./agents/agents.index";
-import { agentDetailRoute } from "./agents/agents.$agentId";
-import { agentNewConversationRoute } from "./agents/agents.$agentId.conversations.new";
-import { agentConversationRoute } from "./agents/agents.$agentId.conversations.$conversationId";
-import { memoryRoute } from "./memory";
-import { memoryDetailRoute } from "./memory.$id";
-import { memorySettingsRoute } from "./memory.$id.settings";
-import { memoryGraphRoute } from "./memory.$id.graph";
-import { memoryAuditRoute } from "./memory.$id.audit";
-import { skillsRoute } from "./skills";
-import { mcpServersRoute } from "./resources/mcp-servers";
-import { llmModelsRoute } from "./resources/llm-models";
-import { resourceSkillsRoute } from "./resources/skills";
-import { resourceKnowledgeBasesRoute } from "./resources/knowledge-bases";
-import { memoryInstancesRoute } from "./resources/memory-instances";
-import { workspacesRoute } from "./resources/workspaces";
-import { workspaceDetailRoute } from "./resources/workspaces.$workspaceId";
-import { sandboxesRoute } from "./resources/sandboxes";
-import { pluginsRoute } from "./resources/plugins";
-import { pluginUsageRoute } from "./resources/plugins.$pluginId.usage";
-import { memoryInstanceBrowseRoute } from "./resources/memory-instances.$instanceId.browse";
-import { organizationSettingsRoute } from "./settings/organization";
-import { acceptInvitationRoute } from "./invitations.$token";
-import { notificationPreferencesRoute } from "./settings/notifications";
-import { notificationCenterRoute } from "./notifications";
 
 const PUBLIC_ROUTES = ["/login", "/register", "/auth/callback"];
 const PUBLIC_ROUTE_PREFIXES = ["/s/", "/generated-apps/public/"];
@@ -88,7 +31,7 @@ export function RootLayout() {
   if (isLoading && !isPublicRoute) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -110,20 +53,13 @@ export function RootLayout() {
     return <Outlet />;
   }
 
-  const isSettingsRoute = pathname.startsWith("/settings");
-
+  // 设置区不再替换主侧栏：它由 settingsLayoutRoute 提供二级导航并渲染在
+  // 下方的 Outlet 内，因此壳层对所有非公开路由完全一致。
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      {isSettingsRoute ? (
-        <SettingsLayout />
-      ) : isDesktop ? (
-        <AppSidebar />
-      ) : null}
-      {/* 仅 settings 路由需要 56px 顶部让位：SettingsLayout 小屏是 fixed 顶部条，
-          已退出流式布局，不占据高度；非 settings 路由的 MobileTopBar 是流内 h-14
-          元素，会自然占位，再加内距就会多出 56px 空白。≥lg 两者都是流内侧栏，无需补偿。 */}
-      <div className={cn("flex min-w-0 flex-1 flex-col", isSettingsRoute && "pt-14 lg:pt-0")}>
-        {isSettingsRoute || isDesktop ? null : <MobileTopBar />}
+      {isDesktop ? <AppSidebar /> : null}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {isDesktop ? null : <MobileTopBar />}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </div>
@@ -136,62 +72,3 @@ export function RootLayout() {
 export const rootRoute = createRootRoute({
   component: RootLayout,
 });
-
-export const routeTree = rootRoute.addChildren([
-  indexRoute,
-  workflowsIndexRoute,
-  workflowCanvasRoute,
-  executionDebugRoute,
-  executionAgentViewerRoute,
-  settingsIndexRoute,
-  auditLogsRoute,
-  apiTokensRoute,
-  templatesRoute,
-  generatedAppsRoute,
-  generatedAppDetailRoute,
-  generatedAppPublicRuntimeRoute,
-  discoverRoute,
-  marketplaceRoute,
-  marketplaceMyListingsRoute,
-  shareTokenRoute,
-  encryptionSettingsRoute,
-  developerEarningsRoute,
-  developerKeysRoute,
-  organizationAutonomyPolicyRoute,
-  resourceGovernanceRoute,
-  monitoringRoute,
-  privateDeploymentRoute,
-  userPreferencesRoute,
-  securitySettingsRoute,
-  authCallbackRoute,
-  loginRoute,
-  registerRoute,
-  onboardingRoute,
-  agentsIndexRoute,
-  agentDetailRoute,
-  agentNewConversationRoute,
-  agentConversationRoute,
-  memoryRoute,
-  memoryDetailRoute,
-  memorySettingsRoute,
-  memoryGraphRoute,
-  memoryAuditRoute,
-  skillsRoute,
-  mcpServersRoute,
-  mcpServerDetailRoute,
-  llmModelsRoute,
-  resourceSkillsRoute,
-  resourceKnowledgeBasesRoute,
-  resourceKnowledgeBaseDetailRoute,
-  memoryInstancesRoute,
-  workspacesRoute,
-  workspaceDetailRoute,
-  sandboxesRoute,
-  pluginsRoute,
-  pluginUsageRoute,
-  memoryInstanceBrowseRoute,
-  organizationSettingsRoute,
-  acceptInvitationRoute,
-  notificationPreferencesRoute,
-  notificationCenterRoute,
-]);

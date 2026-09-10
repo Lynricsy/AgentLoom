@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { NotificationPreferencesPage } from '@/features/notification'
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const notificationPreferencesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/notifications',
   component: NotificationPreferencesPage,
 })

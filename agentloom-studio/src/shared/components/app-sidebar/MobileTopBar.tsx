@@ -13,6 +13,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/shared/ui/sheet'
+import { Button } from '@/shared/ui/button'
+import { NavItemLink } from './NavItemLink'
 import { SidebarNav } from './SidebarNav'
 import { UserMenu } from './UserMenu'
 
@@ -31,11 +33,15 @@ export function MobileTopBar() {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3">
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger
-          aria-label="打开导航"
-          className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Menu size={18} />
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="打开导航"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Menu />
+          </Button>
         </SheetTrigger>
 
         <SheetContent side="left" className="p-0">
@@ -55,14 +61,13 @@ export function MobileTopBar() {
           />
 
           <div className="flex flex-col gap-1 border-t border-border px-2 py-2">
-            <Link
+            <NavItemLink
               to="/settings"
+              icon={Settings}
+              label="设置"
+              active={pathname.startsWith('/settings')}
               onClick={() => setOpen(false)}
-              className="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <Settings size={18} className="shrink-0" />
-              <span>设置</span>
-            </Link>
+            />
             <UserMenu collapsed={false} />
           </div>
         </SheetContent>

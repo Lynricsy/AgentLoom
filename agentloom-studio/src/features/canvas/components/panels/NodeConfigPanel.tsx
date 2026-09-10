@@ -32,6 +32,10 @@ import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
 import { InterventionPanel } from './InterventionPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 import { OutputContentRenderer } from '../output/OutputContentRenderer'
+import {
+  CANVAS_FLOATING_CLASS,
+  CANVAS_PANEL_HEADER_CLASS,
+} from '../canvasChrome'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -345,7 +349,8 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
           transition={panelSlideRight.transition}
           style={{ width }}
           className={cn(
-            'relative m-2 flex shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg',
+            CANVAS_FLOATING_CLASS,
+            'relative m-2 flex shrink-0 flex-col overflow-hidden',
             className,
           )}
         >
@@ -369,7 +374,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
             )}
           />
 
-          <header className="flex items-start gap-3 border-b border-border px-4 py-3 pl-5">
+          <header className={cn(CANVAS_PANEL_HEADER_CLASS, 'items-start pl-5')}>
             <span
               aria-hidden
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
