@@ -113,7 +113,7 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
             type="button"
             onClick={onLogicToggle}
             className={cn(
-              'rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors',
+              'rounded px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider transition-colors',
               logic === 'and'
                 ? 'bg-info/15 text-info hover:bg-info/25'
                 : 'bg-warning/15 text-warning hover:bg-warning/25',
@@ -184,7 +184,7 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
             className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
           />
         ) : (
-          <div className="h-8 rounded-md border border-dashed border-border/50 bg-muted/10 px-2 text-xs leading-8 text-muted-foreground">
+          <div className="h-8 rounded-md border border-dashed border-border/50 bg-muted px-2 text-xs leading-8 text-muted-foreground">
             当前运算符不需要右值
           </div>
         )}
@@ -201,7 +201,7 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
       </div>
 
       {selectedPort && (
-        <p className="px-1 text-[10px] text-muted-foreground">
+        <p className="px-1 text-2xs text-muted-foreground">
           左值来源：{selectedPort.portRef}
           {selectedPort.dataTypeLabel ? ` · 当前输入类型 ${selectedPort.dataTypeLabel}` : ''}
         </p>
@@ -285,7 +285,7 @@ export const ConditionBuilder = memo(function ConditionBuilder({
           <button
             type="button"
             onClick={onModeToggle}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             {mode === 'visual' ? (
               <>
@@ -311,7 +311,7 @@ export const ConditionBuilder = memo(function ConditionBuilder({
             placeholder={'例: ports[1] === "ready"\n例: ports[2].score > 80 && ports[3]'}
             className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed"
           />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             表达式左值统一使用 `ports[n]`。`ports[1]` 表示第 1 个输入端口，结构化输入可继续写字段路径。
           </p>
         </div>
@@ -336,7 +336,7 @@ export const ConditionBuilder = memo(function ConditionBuilder({
           <button
             type="button"
             onClick={handleAddRule}
-            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-[10px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-2xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
             <span>添加条件</span>

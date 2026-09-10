@@ -175,7 +175,7 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
       </div>
 
       {selectedKnowledgeBase && (
-        <div className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs">
+        <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs">
           <p className="font-medium text-foreground">
             {selectedKnowledgeBase.name}
           </p>
@@ -188,13 +188,13 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
               {getKnowledgeBaseStatusLabel(selectedKnowledgeBase.status)}
             </span>
           </div>
-          <p className="break-all text-muted">ID: {currentId}</p>
+          <p className="break-all text-muted-foreground">ID: {currentId}</p>
         </div>
       )}
 
       {showMissingKnowledgeBaseWarning && (
         <div
-          className="space-y-2 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
+          className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
           data-testid="knowledge-base-missing-warning"
         >
           <p className="font-medium text-warning">

@@ -172,7 +172,7 @@ export function MemoryInstancesPage() {
       />
 
       <div className="relative max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
           placeholder="搜索记忆实例..."
@@ -193,7 +193,7 @@ export function MemoryInstancesPage() {
               className="flex flex-col gap-3 p-4"
             >
               <div className="flex items-center gap-3">
-                <Skeleton className="h-9 w-9 rounded-card" />
+                <Skeleton className="h-9 w-9 rounded-lg" />
                 <Skeleton className="h-4 w-32 rounded" />
               </div>
               <Skeleton className="h-3 w-full rounded" />
@@ -229,13 +229,13 @@ export function MemoryInstancesPage() {
                 >
                   <button
                     type="button"
-                    className="flex-1 rounded-card px-4 pb-3 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    className="flex-1 rounded-lg px-4 pb-3 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                     onClick={() => handleCardClick(instance.id)}
                   >
                     <div className="flex items-start gap-3">
                       <span
                         aria-hidden
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
                         style={{
                           backgroundColor: `color-mix(in srgb, ${MEMORY_TONE} 14%, transparent)`,
                           color: MEMORY_TONE,
@@ -257,7 +257,7 @@ export function MemoryInstancesPage() {
                           </Badge>
                         </div>
                         {instance.description && (
-                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                             {instance.description}
                           </p>
                         )}
@@ -266,7 +266,7 @@ export function MemoryInstancesPage() {
                   </button>
 
                   <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2">
-                    <div className="flex min-w-0 items-center gap-3 text-[11px] text-muted">
+                    <div className="flex min-w-0 items-center gap-3 text-2xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Network className="h-3 w-3" />
                         {instance.nodeCount ?? 0} 节点
@@ -286,7 +286,7 @@ export function MemoryInstancesPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-[11px] text-muted hover:text-foreground"
+                          className="h-7 px-2 text-2xs text-muted-foreground hover:text-foreground"
                           onClick={() => void handleConvertSource(instance)}
                         >
                           转为自己创建
@@ -295,7 +295,7 @@ export function MemoryInstancesPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="h-7 w-7 text-muted opacity-70 transition-opacity hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                        className="h-7 w-7 text-muted-foreground opacity-70 transition-opacity hover:bg-error/10 hover:text-error group-hover:opacity-100"
                         onClick={() => setDeleteTarget(instance)}
                         aria-label={`删除 ${instance.name}`}
                       >

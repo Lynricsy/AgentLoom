@@ -236,7 +236,7 @@ export function NewConversationDraftPage({
                 {workspacePreviewId ? (
                   <div
                     data-testid="workspace-snapshot-preview-hint"
-                    className="rounded-card border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                    className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
                   >
                     当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
                   </div>

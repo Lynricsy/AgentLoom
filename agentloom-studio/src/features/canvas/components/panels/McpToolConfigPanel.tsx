@@ -177,7 +177,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
       {/* 已配置展示 */}
       {showConfigured && (
         <div className="space-y-3">
-          <div className="rounded-card border border-border bg-surface-elevated p-3">
+          <div className="rounded-lg border border-border bg-muted p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-2 min-w-0">
                 <Server className="mt-0.5 h-4 w-4 shrink-0 text-info" />
@@ -223,7 +223,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                     return (
                       <li
                         key={tool.id}
-                        className="flex items-center gap-2 rounded-md bg-surface-elevated px-2 py-1.5 text-xs"
+                        className="flex items-center gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
                       >
                         <div
                           className={cn(
@@ -238,7 +238,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                         <div className="min-w-0">
                           <span className="truncate text-foreground">{tool.title ?? tool.name}</span>
                           {tool.description && (
-                            <p className="truncate text-[11px] text-muted-foreground">{tool.description}</p>
+                            <p className="truncate text-2xs text-muted-foreground">{tool.description}</p>
                           )}
                         </div>
                       </li>
@@ -279,7 +279,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
             />
           </div>
 
-          <div className="max-h-64 overflow-y-auto rounded-card border border-border">
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
             {serversLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -308,15 +308,15 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                         <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       </div>
                       {server.description && (
-                        <p className="mt-0.5 pl-5.5 text-[11px] text-muted-foreground line-clamp-2">
+                        <p className="mt-0.5 pl-5.5 text-2xs text-muted-foreground line-clamp-2">
                           {server.description}
                         </p>
                       )}
                       <div className="mt-1 flex items-center gap-2 pl-5.5">
-                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                           {server.transportType}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-2xs text-muted-foreground">
                           {server.toolCount} 个工具
                         </span>
                       </div>
@@ -377,7 +377,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
           </div>
 
           {/* 工具复选列表 */}
-          <div className="max-h-64 overflow-y-auto rounded-card border border-border">
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
             {detailLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -416,7 +416,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                             {tool.title ?? tool.name}
                           </span>
                           {tool.description && (
-                            <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
+                            <p className="mt-0.5 text-2xs text-muted-foreground line-clamp-2">
                               {tool.description}
                             </p>
                           )}

@@ -36,7 +36,7 @@ export function PageHeader({
   return (
     <header className={cn('flex flex-col gap-3', className)}>
       {breadcrumb?.length ? (
-        <nav aria-label="面包屑" className="flex flex-wrap items-center gap-1 text-xs text-muted">
+        <nav aria-label="面包屑" className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
           {breadcrumb.map((item, index) => (
             <span key={`${item.label}-${index}`} className="flex items-center gap-1">
               {index > 0 ? <ChevronRight className="h-3 w-3 shrink-0" /> : null}
@@ -61,7 +61,7 @@ export function PageHeader({
           {Icon ? (
             <span
               aria-hidden
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)`,
                 color: accent,
@@ -74,7 +74,7 @@ export function PageHeader({
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
             {description ? (
-              <p className="mt-0.5 text-sm text-muted">{description}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
             ) : null}
           </div>
         </div>

@@ -65,7 +65,7 @@ export function OrgSetupStep({
         {error ? (
           <p className="text-xs font-medium text-error">{error}</p>
         ) : (
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             之后可在「设置 - 组织」中修改名称。
           </p>
         )}

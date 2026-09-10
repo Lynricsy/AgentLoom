@@ -62,7 +62,7 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
           {internalNodeCount} 节点 / {internalEdgeCount} 连线
         </NodeBadge>
         {(inputCount > 0 || outputCount > 0) && (
-          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+          <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
             {inputCount}入 / {outputCount}出
           </span>
         )}
@@ -82,7 +82,7 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-[11px]"
+            className="h-7 px-2 text-2xs"
             onClick={() => updateNodeData(nodeId, { isExpanded: !data.isExpanded })}
             aria-label={toggleLabel}
           >
@@ -103,8 +103,8 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
           className="flex flex-col gap-2 rounded-lg border border-dashed border-border/70 bg-background/70 p-3"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-foreground">内部图预览</span>
-            <span className="text-[11px] text-muted-foreground">只读</span>
+            <span className="text-2xs font-medium text-foreground">内部图预览</span>
+            <span className="text-2xs text-muted-foreground">只读</span>
           </div>
           <div className="flex flex-wrap gap-1">
             {data.blockDefinition.nodes

@@ -80,7 +80,7 @@ export function CreateProviderDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
         <Dialog.Content
           aria-describedby="create-provider-dialog-desc"
-          className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
+          className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-muted p-6 shadow-xl"
         >
           <div className="flex items-center justify-between">
             <Dialog.Title className="text-lg font-semibold text-foreground">

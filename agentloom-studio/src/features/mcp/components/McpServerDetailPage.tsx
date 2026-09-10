@@ -234,11 +234,11 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
         className="flex h-full flex-col gap-5 p-6"
         data-testid="mcp-server-detail-skeleton"
       >
-        <Skeleton className="h-12 w-72 rounded-card" />
-        <Skeleton className="h-10 w-full max-w-xl rounded-card" />
+        <Skeleton className="h-12 w-72 rounded-lg" />
+        <Skeleton className="h-10 w-full max-w-xl rounded-lg" />
         <div className="grid gap-4 xl:grid-cols-2">
           {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-48 rounded-card" />
+            <Skeleton key={index} className="h-48 rounded-lg" />
           ))}
         </div>
       </div>
@@ -333,7 +333,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
           <Label>搜索工具</Label>
         </label>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             autoComplete="off"
             id="server-tool-search"
@@ -390,7 +390,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                       </Badge>
                     </div>
 
-                    <p className="text-sm text-muted">
+                    <p className="text-sm text-muted-foreground">
                       {tool.description ?? "这个工具没有提供额外描述。"}
                     </p>
                   </div>
@@ -398,7 +398,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
 
                 <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                       工具名称
                     </p>
                     <p className="truncate font-mono text-xs text-foreground">
@@ -406,24 +406,24 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                       最后更新
                     </p>
                     <p className="text-foreground">
                       {formatRelativeDateTime(getToolLastUpdatedAt(tool))}
                     </p>
-                    <p className="text-xs text-muted">
+                    <p className="text-xs text-muted-foreground">
                       {formatDateTime(getToolLastUpdatedAt(tool))}
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                       首次导入
                     </p>
                     <p className="text-foreground">
                       {formatRelativeDateTime(getToolImportedAt(tool))}
                     </p>
-                    <p className="text-xs text-muted">
+                    <p className="text-xs text-muted-foreground">
                       {formatDateTime(getToolImportedAt(tool))}
                     </p>
                   </div>
@@ -453,7 +453,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                 </div>
 
                 {!tool.isActive ? (
-                  <p className="mt-4 rounded-card border border-border bg-surface-elevated px-3 py-2 text-sm text-muted">
+                  <p className="mt-4 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                     该工具已停用，不会再出现在画布的 Imported Tools 分组中。
                   </p>
                 ) : null}

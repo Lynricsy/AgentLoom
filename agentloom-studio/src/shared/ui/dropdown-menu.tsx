@@ -15,7 +15,7 @@ export const DropdownMenuContent = forwardRef<
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          'z-50 min-w-[8rem] overflow-hidden rounded-card border border-border bg-popover p-1 text-popover-foreground shadow-popover',
+          'z-50 min-w-[8rem] overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg',
           className,
         )}
         {...props}
@@ -35,7 +35,7 @@ export const DropdownMenuItem = forwardRef<
       ref={ref}
       className={cn(
         'relative flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none transition-colors',
-        'focus:bg-surface-elevated',
+        'focus:bg-muted',
         destructive ? 'text-error focus:bg-error/10' : 'text-foreground',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className,

@@ -66,7 +66,7 @@ export const TerminalTab = memo(function TerminalTab({
             onInput={onInput}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted">
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             选择一个终端会话
           </div>
         )}

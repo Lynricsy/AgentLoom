@@ -49,13 +49,13 @@ export function WorkflowSettingsPanel({
       initial={fadeInUp.initial}
       animate={fadeInUp.animate}
       transition={fadeInUp.transition}
-      className="flex h-[min(76vh,720px)] flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel"
+      className="flex h-[min(76vh,720px)] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
       data-testid="workflow-settings-panel"
     >
       <div className="flex items-start gap-3 border-b border-border px-4 py-3">
         <span
           aria-hidden
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-primary/12 text-primary"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary"
         >
           <Settings2 className="h-4 w-4" />
         </span>
@@ -69,7 +69,7 @@ export function WorkflowSettingsPanel({
 
         <button
           type="button"
-          className="-mr-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="-mr-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           onClick={onClose}
           aria-label="收起工作流设置"
           data-testid="close-workflow-settings-panel"

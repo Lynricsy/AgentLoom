@@ -336,7 +336,7 @@ export function McpServerManagementPage() {
           <div className="flex min-w-0 items-center gap-3">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${MCP_TONE} 14%, transparent)`,
                 color: MCP_TONE,
@@ -348,7 +348,7 @@ export function McpServerManagementPage() {
               <p className="truncate text-sm font-medium text-foreground">
                 {server.name}
               </p>
-              <p className="truncate text-xs text-muted">
+              <p className="truncate text-xs text-muted-foreground">
                 {server.description || "暂无描述"}
               </p>
             </div>
@@ -385,7 +385,7 @@ export function McpServerManagementPage() {
         hideBelow: "sm",
         className: "w-20 tabular-nums",
         cell: (server) => (
-          <span className="flex items-center gap-1 whitespace-nowrap text-muted">
+          <span className="flex items-center gap-1 whitespace-nowrap text-muted-foreground">
             <Zap className="h-3.5 w-3.5" />
             {server.toolCount}
           </span>
@@ -474,7 +474,7 @@ export function McpServerManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}

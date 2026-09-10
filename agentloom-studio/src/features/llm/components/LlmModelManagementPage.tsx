@@ -195,10 +195,10 @@ export function LlmModelManagementPage() {
                   className="w-full max-w-3xl space-y-3"
                   data-testid="llm-provider-config-skeleton"
                 >
-                  <Skeleton className="h-9 w-56 rounded-card" />
-                  <Skeleton className="h-10 w-full rounded-card" />
-                  <Skeleton className="h-10 w-full rounded-card" />
-                  <Skeleton className="h-24 w-full rounded-card" />
+                  <Skeleton className="h-9 w-56 rounded-lg" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-24 w-full rounded-lg" />
                 </div>
               ) : providers.length === 0 ? (
                 <EmptyState

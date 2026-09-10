@@ -68,7 +68,7 @@ export function DataTable<T>({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-card border border-border bg-surface',
+        'overflow-hidden rounded-lg border border-border bg-surface',
         className,
       )}
     >
@@ -147,7 +147,7 @@ function DataTablePager({
   const to = Math.min(page * pageSize, total)
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
       <span>
         {from}–{to} / 共 {total} 条
       </span>
@@ -155,7 +155,7 @@ function DataTablePager({
       <div className="flex items-center gap-1">
         <button
           type="button"
-          className="rounded-md px-2 py-1 transition-colors hover:bg-surface-elevated hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
@@ -166,7 +166,7 @@ function DataTablePager({
         </span>
         <button
           type="button"
-          className="rounded-md px-2 py-1 transition-colors hover:bg-surface-elevated hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >

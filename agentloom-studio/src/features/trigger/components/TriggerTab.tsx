@@ -84,7 +84,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
   )
 
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
+    <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -115,14 +115,14 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
 
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
         {triggerQuery.isLoading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border/70 bg-background/30">
+          <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-border/70 bg-background/30">
             <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               正在加载触发器...
             </div>
           </div>
         ) : triggerQuery.isError ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 px-6 text-center">
+          <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-rose-500/20 bg-rose-500/10 px-6 text-center">
             <div>
               <p className="text-base font-medium text-rose-100">加载失败</p>
               <p className="mt-2 text-sm text-rose-200/80">

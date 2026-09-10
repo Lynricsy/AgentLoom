@@ -22,7 +22,7 @@ function getBarTone(percent: number): string {
 function ProgressBar({ percent }: { percent: number }) {
   const clamped = Math.min(100, Math.max(0, percent));
   return (
-    <div className="h-1.5 overflow-hidden rounded-full bg-surface-elevated">
+    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
       <div
         className="h-full rounded-full transition-[width] duration-300"
         style={{ width: `${clamped}%`, backgroundColor: getBarTone(clamped) }}
@@ -46,23 +46,23 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
     return (
       <div className="space-y-1.5">
         <div>
-          <div className="mb-0.5 flex items-center justify-between text-[10px]">
-            <span className="text-muted">CPU</span>
+          <div className="mb-0.5 flex items-center justify-between text-2xs">
+            <span className="text-muted-foreground">CPU</span>
             <span className="font-medium tabular-nums">{cpuPercent}%</span>
           </div>
           <ProgressBar percent={cpuPercent} />
         </div>
         <div>
-          <div className="mb-0.5 flex items-center justify-between text-[10px]">
-            <span className="text-muted">MEM</span>
+          <div className="mb-0.5 flex items-center justify-between text-2xs">
+            <span className="text-muted-foreground">MEM</span>
             <span className="font-medium tabular-nums">{memPercent}%</span>
           </div>
           <ProgressBar percent={memPercent} />
         </div>
         {diskPercent !== null && (
           <div>
-            <div className="mb-0.5 flex items-center justify-between text-[10px]">
-              <span className="text-muted">DISK</span>
+            <div className="mb-0.5 flex items-center justify-between text-2xs">
+              <span className="text-muted-foreground">DISK</span>
               <span className="font-medium tabular-nums">{diskPercent}%</span>
             </div>
             <ProgressBar percent={diskPercent} />
@@ -77,7 +77,7 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
       {/* CPU */}
       <div>
         <div className="mb-1 flex items-center justify-between text-xs">
-          <span className="text-muted">CPU</span>
+          <span className="text-muted-foreground">CPU</span>
           <span className="font-medium tabular-nums text-foreground">
             {cpuPercent}%
           </span>
@@ -88,11 +88,11 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
       {/* Memory */}
       <div>
         <div className="mb-1 flex items-center justify-between text-xs">
-          <span className="text-muted">内存</span>
+          <span className="text-muted-foreground">内存</span>
           <span className="font-medium tabular-nums text-foreground">
             {formatSandboxMegabytes(stats.memoryUsageMb)} /{" "}
             {formatSandboxMegabytes(stats.memoryLimitMb)}
-            <span className="ml-1 text-muted">({memPercent}%)</span>
+            <span className="ml-1 text-muted-foreground">({memPercent}%)</span>
           </span>
         </div>
         <ProgressBar percent={memPercent} />
@@ -104,11 +104,11 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
         diskPercent !== null && (
           <div>
             <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="text-muted">磁盘</span>
+              <span className="text-muted-foreground">磁盘</span>
               <span className="font-medium tabular-nums text-foreground">
                 {formatSandboxBytes(stats.diskUsage)} /{" "}
                 {formatSandboxBytes(stats.diskTotal)}
-                <span className="ml-1 text-muted">({diskPercent}%)</span>
+                <span className="ml-1 text-muted-foreground">({diskPercent}%)</span>
               </span>
             </div>
             <ProgressBar percent={diskPercent} />

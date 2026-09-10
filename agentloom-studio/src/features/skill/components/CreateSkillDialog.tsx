@@ -102,7 +102,7 @@ function parseSkillFrontmatter(content: string): { name?: string; description?: 
 
 function EditorSkeleton() {
   return (
-    <div className="flex h-[400px] flex-col gap-2 rounded-md border border-border bg-muted/30 p-4">
+    <div className="flex h-[400px] flex-col gap-2 rounded-md border border-border bg-muted p-4">
       <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
       <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
       <div className="h-4 w-5/6 animate-pulse rounded bg-muted" />
@@ -140,7 +140,7 @@ function FileItem({
   }, [skillId, file.name]);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
@@ -167,7 +167,7 @@ function FileItem({
             type="button"
             onClick={() => onDelete(file.name)}
             disabled={isDeleting}
-            className="rounded p-1 text-muted transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
             title="删除"
           >
             {isDeleting ? (
@@ -361,7 +361,7 @@ function ImportDropZone({
       )}
 
       {status === 'success' && (
-        <div className="flex flex-col gap-1 rounded-card border border-success/30 bg-success/5 px-3 py-2">
+        <div className="flex flex-col gap-1 rounded-lg border border-success/30 bg-success/5 px-3 py-2">
           <div className="flex items-center gap-2 text-sm text-success">
             <CircleCheck className="h-3.5 w-3.5" />
             {message}
@@ -376,7 +376,7 @@ function ImportDropZone({
       )}
 
       {status === 'error' && (
-        <div className="flex items-start gap-2 rounded-card border border-error/30 bg-error/5 px-3 py-2">
+        <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/5 px-3 py-2">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
           <p className="text-xs text-error">{message}</p>
         </div>
@@ -774,7 +774,7 @@ export function CreateSkillDialog({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   支持完整 Markdown 语法。以{' '}
-                  <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  <code className="rounded bg-muted px-1 py-0.5 text-2xs">
                     ---
                   </code>{' '}
                   包裹的 YAML frontmatter 会高亮显示。
@@ -785,7 +785,7 @@ export function CreateSkillDialog({
               <TabsContent value="files" className="space-y-3">
                 {!isEditing ? (
                   pendingFiles.length === 0 ? (
-                    <div className="rounded-md border border-border bg-muted/20 px-4 py-8 text-center">
+                    <div className="rounded-md border border-border bg-muted px-4 py-8 text-center">
                       <p className="text-sm text-muted-foreground">
                         导入 .zip 文件后，附件将自动出现在这里。
                       </p>
@@ -796,7 +796,7 @@ export function CreateSkillDialog({
                         {pendingFiles.map((f, idx) => (
                           <div
                             key={`${f.name}-${idx}`}
-                            className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2"
+                            className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2"
                           >
                             <div className="flex min-w-0 items-center gap-2">
                               <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -814,7 +814,7 @@ export function CreateSkillDialog({
                                   prev.filter((_, i) => i !== idx),
                                 )
                               }
-                              className="rounded p-1 text-muted transition-colors hover:bg-error/10 hover:text-error"
+                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
                               title="移除"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -837,7 +837,7 @@ export function CreateSkillDialog({
 
                     {/* 错误信息 */}
                     {fileError && (
-                      <div className="flex items-start gap-2 rounded-card border border-error/30 bg-error/5 px-3 py-2">
+                      <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/5 px-3 py-2">
                         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
                         <p className="text-xs text-error">{fileError}</p>
                       </div>

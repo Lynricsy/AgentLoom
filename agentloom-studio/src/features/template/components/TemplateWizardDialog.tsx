@@ -116,7 +116,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
           <DialogBody className="space-y-4">
             {template && (
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>{nodeCount} 个节点</span>
                   <span aria-hidden>·</span>
                   <span>{edgeCount} 条连线</span>
@@ -127,7 +127,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                   )}
                 </div>
                 <div
-                  className="h-[200px] overflow-hidden rounded-card border border-border"
+                  className="h-[200px] overflow-hidden rounded-lg border border-border"
                   data-testid="template-preview"
                 >
                   <WorkflowPreviewCanvas
@@ -167,7 +167,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                 htmlFor="wf-desc"
                 className="block text-sm font-medium text-foreground"
               >
-                描述 <span className="font-normal text-muted">(可选)</span>
+                描述 <span className="font-normal text-muted-foreground">(可选)</span>
               </label>
               <Textarea
                 id="wf-desc"

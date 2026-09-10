@@ -577,7 +577,7 @@ export const DocumentViewer = memo(function DocumentViewer({
             <p className="text-xs text-muted-foreground">
               无法加载文档预览：缺少知识库关联
             </p>
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-2xs text-muted-foreground/60">
               文档 ID：{documentId}
             </p>
           </div>
@@ -592,7 +592,7 @@ export const DocumentViewer = memo(function DocumentViewer({
         {hasKbId && error && (
           <div className="m-4 rounded-xl border border-error/20 bg-error/5 p-4 text-center">
             <p className="text-xs text-error">加载文档失败</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               {error.message}
             </p>
           </div>
@@ -668,7 +668,7 @@ export const DocumentViewer = memo(function DocumentViewer({
         {hasKbId && fetchError && (
           <div className="m-4 rounded-xl border border-error/20 bg-error/5 p-4 text-center">
             <p className="text-xs text-error">加载文档内容失败</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               {fetchError}
             </p>
           </div>

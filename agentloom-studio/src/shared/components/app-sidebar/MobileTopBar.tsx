@@ -33,7 +33,7 @@ export function MobileTopBar() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger
           aria-label="打开导航"
-          className="flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
+          className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Menu size={18} />
         </SheetTrigger>
@@ -58,7 +58,7 @@ export function MobileTopBar() {
             <Link
               to="/settings"
               onClick={() => setOpen(false)}
-              className="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
+              className="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <Settings size={18} className="shrink-0" />
               <span>设置</span>

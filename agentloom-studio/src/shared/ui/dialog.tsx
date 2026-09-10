@@ -70,7 +70,7 @@ export const DialogContent = forwardRef<
           <DialogPrimitive.Overlay asChild forceMount>
             <motion.div
               {...fadeIn}
-              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs"
             />
           </DialogPrimitive.Overlay>
 
@@ -80,8 +80,8 @@ export const DialogContent = forwardRef<
               <motion.div
                 {...scaleIn}
                 className={cn(
-                  'pointer-events-auto relative flex max-h-full w-full flex-col overflow-hidden border border-border bg-surface text-foreground shadow-popover',
-                  'rounded-none sm:rounded-panel',
+                  'pointer-events-auto relative flex max-h-full w-full flex-col overflow-hidden border border-border bg-surface text-foreground shadow-lg',
+                  'rounded-none sm:rounded-xl',
                   SIZE_CLASS[size],
                   className,
                 )}
@@ -91,7 +91,7 @@ export const DialogContent = forwardRef<
                 {hideClose ? null : (
                   <DialogPrimitive.Close
                     aria-label="关闭"
-                    className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   >
                     <X className="h-4 w-4" />
                   </DialogPrimitive.Close>
@@ -164,7 +164,7 @@ export const DialogDescription = forwardRef<
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn('text-sm text-muted', className)}
+      className={cn('text-sm text-muted-foreground', className)}
       {...props}
     />
   )

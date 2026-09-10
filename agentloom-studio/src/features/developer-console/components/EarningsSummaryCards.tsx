@@ -17,7 +17,7 @@ interface SummaryCardProps {
 
 function SummaryCard({ label, value, icon, isLoading }: SummaryCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{label}</span>
         <span className="text-muted-foreground">{icon}</span>

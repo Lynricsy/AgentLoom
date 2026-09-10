@@ -93,7 +93,7 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-lg border border-border/60 bg-card/80 px-3 py-1.5',
+        'flex items-center gap-2 rounded-lg border border-border/60 bg-surface/80 px-3 py-1.5',
         className,
       )}
       data-testid="graph-timeline-player"
@@ -132,20 +132,20 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
 
       <div className="mx-1 h-4 w-px bg-border/60" />
 
-      <span className="text-[10px] text-muted-foreground tabular-nums" data-testid="timeline-step-info">
+      <span className="text-2xs text-muted-foreground tabular-nums" data-testid="timeline-step-info">
         {currentStep >= 0 ? currentStep + 1 : 0}/{totalSteps}
       </span>
 
       {currentEntry && (
         <>
           <span
-            className="truncate text-[10px] text-foreground/80"
+            className="truncate text-2xs text-foreground/80"
             data-testid="timeline-step-label"
           >
             {currentEntry.label}
           </span>
           <span
-            className="truncate text-[10px] text-muted-foreground tabular-nums"
+            className="truncate text-2xs text-muted-foreground tabular-nums"
             data-testid="timeline-step-timestamp"
           >
             {formatTimelineTimestamp(currentEntry.timestamp)}

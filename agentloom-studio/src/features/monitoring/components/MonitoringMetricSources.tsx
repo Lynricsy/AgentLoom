@@ -23,13 +23,13 @@ export function MonitoringMetricSources({ sources }: MonitoringMetricSourcesProp
     <Card data-testid="monitoring-metric-sources">
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Database className="h-4 w-4 text-muted" aria-hidden="true" />
+          <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <CardTitle>指标来源说明</CardTitle>
         </div>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           第一版监控只展示当前仓库里已经可验证的应用内事实源，不会把规划中的 Prometheus 或 Grafana 说成现状。
         </p>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           其中队列深度来自当前 `agent-task` queue snapshot，只反映此刻积压与活跃作业；第一版不会把它伪装成跨窗口的历史队列曲线。
         </p>
       </CardHeader>

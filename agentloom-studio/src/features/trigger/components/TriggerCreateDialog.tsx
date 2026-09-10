@@ -505,7 +505,7 @@ export function TriggerCreateDialog({
                   <button
                     key={option.value}
                     type="button"
-                    className={`rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${option.toneClassName}`}
+                    className={`rounded-xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${option.toneClassName}`}
                     onClick={() => handleSelectType(option.value)}
                   >
                     <div className="inline-flex items-center gap-2 text-sm font-medium">

@@ -97,12 +97,12 @@ const AttachmentCard = memo(function AttachmentCard({
       : null;
 
     return (
-      <div className="overflow-hidden rounded-card border border-border bg-surface">
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
         {imageSrc ? (
           <img
             src={imageSrc}
             alt={attachment.fileName}
-            className="max-h-72 w-full bg-surface-elevated object-contain"
+            className="max-h-72 w-full bg-muted object-contain"
           />
         ) : (
           <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
@@ -110,7 +110,7 @@ const AttachmentCard = memo(function AttachmentCard({
             <span>图片已随消息发送给 Agent。</span>
           </div>
         )}
-        <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2 text-2xs text-muted-foreground">
           <span className="truncate font-medium text-foreground">
             {attachment.fileName}
           </span>
@@ -121,20 +121,20 @@ const AttachmentCard = memo(function AttachmentCard({
   }
 
   return (
-    <div className="rounded-card border border-border bg-surface px-3 py-3">
+    <div className="rounded-lg border border-border bg-surface px-3 py-3">
       <div className="flex items-start gap-2">
-        <div className="mt-0.5 rounded-md bg-surface-elevated p-2 text-muted-foreground">
+        <div className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
           <FileText className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
             {attachment.fileName}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-2xs text-muted-foreground">
             {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
           </p>
           {attachment.sandboxPath ? (
-            <p className="mt-1 break-all text-[11px] text-muted-foreground">
+            <p className="mt-1 break-all text-2xs text-muted-foreground">
               工作区路径：{attachment.sandboxPath}
             </p>
           ) : null}
@@ -142,11 +142,11 @@ const AttachmentCard = memo(function AttachmentCard({
       </div>
 
       {attachment.textContent ? (
-        <pre className="mt-3 overflow-x-auto rounded-md bg-surface-elevated px-3 py-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
+        <pre className="mt-3 overflow-x-auto rounded-md bg-muted px-3 py-2 text-2xs leading-relaxed text-foreground whitespace-pre-wrap">
           {truncateAttachmentText(attachment.textContent)}
         </pre>
       ) : (
-        <p className="mt-3 text-[11px] text-muted-foreground">
+        <p className="mt-3 text-2xs text-muted-foreground">
           文件内容已随消息发送给 Agent。
         </p>
       )}
@@ -330,7 +330,7 @@ function RestartToLatestVersionCard({
 function ThinkingBlock({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-card border border-border bg-surface-elevated/50 px-3 py-2">
+    <div className="rounded-lg border border-border bg-muted px-3 py-2">
       <button
         type="button"
         aria-expanded={open}
@@ -345,7 +345,7 @@ function ThinkingBlock({ content }: { content: string }) {
         <Brain className="size-3 text-primary" />
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
-          <span className="ml-auto max-w-[200px] truncate text-[10px] text-muted-foreground">
+          <span className="ml-auto max-w-[200px] truncate text-2xs text-muted-foreground">
             {content.slice(0, 60)}...
           </span>
         )}
@@ -413,13 +413,13 @@ const UserBubble = memo(function UserBubble({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="max-w-[88%] min-w-0 rounded-panel bg-primary/10 px-4 py-2.5 text-sm leading-relaxed text-foreground sm:max-w-[75%]">
+      <div className="max-w-[88%] min-w-0 rounded-xl bg-primary/10 px-4 py-2.5 text-sm leading-relaxed text-foreground sm:max-w-[75%]">
         {shouldShowText ? (
           <p className="break-words whitespace-pre-wrap">{message.content}</p>
         ) : null}
         <AttachmentPreview message={message} />
       </div>
-      <span className="text-[10px] text-muted-foreground">
+      <span className="text-2xs text-muted-foreground">
         {formatTime(message.createdAt)}
       </span>
     </div>
@@ -496,7 +496,7 @@ const AssistantMessage = memo(function AssistantMessage({
         {message.isStreaming && segments.length > 0 && <StreamingCaret />}
 
         {incompleteError && (
-          <div className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+          <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>本轮在输出过程中中断：{incompleteError}</span>
           </div>
@@ -511,7 +511,7 @@ const AssistantMessage = memo(function AssistantMessage({
           />
         )}
 
-        <span className="block text-[10px] text-muted-foreground">
+        <span className="block text-2xs text-muted-foreground">
           {formatTime(message.createdAt)}
         </span>
       </div>

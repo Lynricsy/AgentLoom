@@ -65,7 +65,7 @@ export function NotificationDropdown() {
 
   return (
     <div
-      className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border/70 bg-surface-elevated shadow-2xl backdrop-blur"
+      className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/70 bg-muted shadow-xl backdrop-blur"
       data-testid="notification-dropdown"
     >
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
@@ -129,7 +129,7 @@ export function NotificationDropdown() {
         <Link
           to="/notifications"
           onClick={() => setDropdownOpen(false)}
-          className="flex items-center justify-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-surface-elevated"
+          className="flex items-center justify-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-muted"
           data-testid="notification-view-all"
         >
           查看全部通知

@@ -48,7 +48,7 @@ export const WorkflowStatusBar = memo(function WorkflowStatusBar() {
 
   return (
     <div
-      className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-panel border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-popover backdrop-blur-sm"
+      className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur-sm"
       data-testid="workflow-status-bar"
     >
       <span className="tabular-nums">{nodeCount} 节点</span>

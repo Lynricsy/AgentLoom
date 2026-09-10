@@ -76,11 +76,11 @@ function ReviewResultView({
           {failed.map((check) => (
             <div
               key={check.code}
-              className="rounded-card border border-error/25 bg-error/5 p-2.5"
+              className="rounded-lg border border-error/25 bg-error/5 p-2.5"
             >
               <p className="text-xs text-error">{check.message}</p>
               {check.fixHint && (
-                <p className="mt-1 text-xs text-muted">💡 {check.fixHint}</p>
+                <p className="mt-1 text-xs text-muted-foreground">💡 {check.fixHint}</p>
               )}
             </div>
           ))}
@@ -92,7 +92,7 @@ function ReviewResultView({
             已通过项 ({passed.length})
           </p>
           {passed.map((check) => (
-            <p key={check.code} className="text-xs text-muted">
+            <p key={check.code} className="text-xs text-muted-foreground">
               ✓ {check.message}
             </p>
           ))}
@@ -248,7 +248,7 @@ export function MyMarketplaceListingsPage() {
         description="管理已提交到市场的工作流与插件，随时上下架或查看审核结果。"
       />
 
-      <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-3 shadow-node sm:p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-4">
         <Tabs
           value={listingTypeFilter}
           defaultValue="all"
@@ -279,7 +279,7 @@ export function MyMarketplaceListingsPage() {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={`skeleton-${String(i)}`}
-              className="space-y-3 rounded-card border border-border bg-card p-4"
+              className="space-y-3 rounded-lg border border-border bg-surface p-4"
               data-testid="listing-skeleton"
             >
               <Skeleton className="h-5 w-24 rounded-full" />
@@ -347,7 +347,7 @@ export function MyMarketplaceListingsPage() {
           <div className="flex items-start gap-3">
             <span
               aria-hidden
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor:
                   'color-mix(in srgb, var(--color-warning) 14%, transparent)',

@@ -139,7 +139,7 @@ export function BlockImportDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
         <Dialog.Content
           aria-describedby="block-import-dialog-description"
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,42rem)] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated text-foreground shadow-2xl"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,42rem)] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-muted text-foreground shadow-xl"
         >
           <div className="border-b border-border px-6 py-5">
             <div className="flex items-start justify-between gap-4">
@@ -184,7 +184,7 @@ export function BlockImportDialog({
             </div>
 
             {selectedFileName ? (
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
+              <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
                 当前文件：
                 <span className="ml-1 font-medium text-foreground">
                   {selectedFileName}
@@ -194,7 +194,7 @@ export function BlockImportDialog({
 
             {validationErrors.length > 0 ? (
               <div
-                className="rounded-2xl border border-error/50 bg-error/5 px-4 py-3"
+                className="rounded-xl border border-error/50 bg-error/5 px-4 py-3"
                 data-testid="validation-errors"
                 role="alert"
               >
@@ -209,7 +209,7 @@ export function BlockImportDialog({
 
             {submitError ? (
               <div
-                className="rounded-2xl border border-error/50 bg-error/5 px-4 py-3 text-sm text-muted-foreground"
+                className="rounded-xl border border-error/50 bg-error/5 px-4 py-3 text-sm text-muted-foreground"
                 role="alert"
               >
                 {submitError}
@@ -218,7 +218,7 @@ export function BlockImportDialog({
 
             {previewBlock && previewSummary ? (
               <section
-                className="space-y-4 rounded-2xl border border-border bg-surface p-4"
+                className="space-y-4 rounded-xl border border-border bg-surface p-4"
                 data-testid="block-preview"
               >
                 <div className="space-y-1">

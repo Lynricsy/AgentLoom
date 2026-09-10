@@ -194,7 +194,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
             <Dialog.Close asChild>
               <button
                 type="button"
-                className="rounded p-1 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-label="关闭"
               >
                 <X className="h-4 w-4" />
@@ -216,7 +216,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                   value={label}
                   onChange={(event) => setLabel(event.target.value)}
                   placeholder="例如：正式发布"
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   data-testid="publish-label-input"
                 />
               </div>
@@ -235,7 +235,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                   onChange={(event) => setReleaseNotes(event.target.value)}
                   placeholder="例如：补齐 Agent 顶部工具栏与版本历史"
                   rows={4}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   data-testid="publish-release-notes-input"
                 />
               </div>
@@ -243,7 +243,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
               <div className="space-y-3">
                 <p className="text-sm font-medium">发布来源</p>
 
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-surface-elevated">
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-muted">
                   <input
                     type="radio"
                     name="version-source"
@@ -261,7 +261,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                   </div>
                 </label>
 
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-surface-elevated">
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-muted">
                   <input
                     type="radio"
                     name="version-source"
@@ -342,7 +342,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
               <Dialog.Close asChild>
                 <button
                   type="button"
-                  className="rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
+                  className="rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   data-testid="cancel-publish"
                 >
                   取消

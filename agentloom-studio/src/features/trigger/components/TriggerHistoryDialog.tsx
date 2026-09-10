@@ -25,7 +25,7 @@ const statusLabels: Record<TriggerHistoryStatus, string> = {
 const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
   success: 'border-success/30 bg-success/10 text-success',
   failed: 'border-error/30 bg-error/10 text-error',
-  skipped: 'border-border bg-muted/10 text-muted-foreground',
+  skipped: 'border-border bg-muted text-muted-foreground',
   signature_failed: 'border-warning/30 bg-warning/10 text-warning',
 }
 
@@ -199,7 +199,7 @@ export function TriggerHistoryDialog({
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             className={cn(
-                              'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em]',
+                              'inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em]',
                               statusBadgeClassNames[record.status],
                             )}
                           >

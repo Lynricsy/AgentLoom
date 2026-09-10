@@ -44,7 +44,7 @@ export function DocumentViewerToolbar({
         </div>
 
         {locationLabel && (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {locationLabel}
           </span>
         )}

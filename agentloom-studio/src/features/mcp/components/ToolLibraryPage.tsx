@@ -243,7 +243,7 @@ export function ToolLibraryPage() {
 
       {!isLoading && !error ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          <section className="rounded-xl border border-border bg-muted p-4 shadow-sm">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               工具总数
             </p>
@@ -254,7 +254,7 @@ export function ToolLibraryPage() {
               当前工作区已收录的 MCP 工具
             </p>
           </section>
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          <section className="rounded-xl border border-border bg-muted p-4 shadow-sm">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               运行状态
             </p>
@@ -265,7 +265,7 @@ export function ToolLibraryPage() {
               已启用 {summary.activeCount} · 已停用 {summary.inactiveCount}
             </p>
           </section>
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          <section className="rounded-xl border border-border bg-muted p-4 shadow-sm">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               关联配置
             </p>
@@ -276,7 +276,7 @@ export function ToolLibraryPage() {
               关联了 {summary.serverCount} 个 MCP 服务器配置
             </p>
           </section>
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          <section className="rounded-xl border border-border bg-muted p-4 shadow-sm">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               最近更新
             </p>
@@ -317,7 +317,7 @@ export function ToolLibraryPage() {
       ) : null}
 
       {error ? (
-        <div className="rounded-2xl border border-error/50 bg-surface-elevated p-6">
+        <div className="rounded-xl border border-error/50 bg-muted p-6">
           <h2 className="text-lg font-semibold text-foreground">
             工具库加载失败
           </h2>
@@ -328,7 +328,7 @@ export function ToolLibraryPage() {
       ) : null}
 
       {!isLoading && !error && visibleTools.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-surface-elevated p-8 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-muted p-8 text-center">
           <p className="text-sm text-muted-foreground">
             {hasSearch ? "没有匹配的 MCP 工具" : "还没有导入任何 MCP 工具"}
           </p>
@@ -340,7 +340,7 @@ export function ToolLibraryPage() {
           {visibleTools.map((tool) => (
             <article
               key={tool.id}
-              className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
+              className="rounded-xl border border-border bg-muted p-5 shadow-sm"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-2">
@@ -499,7 +499,7 @@ export function ToolLibraryPage() {
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 px-4 backdrop-blur-sm" />
           <Dialog.Content
             aria-describedby="mcp-tool-deactivate-description"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-muted p-6 shadow-xl"
             onCloseAutoFocus={(event) => {
               const restoreFocusElement = deactivateRestoreFocusRef.current;
 

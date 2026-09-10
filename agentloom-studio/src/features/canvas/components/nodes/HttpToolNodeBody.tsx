@@ -22,7 +22,7 @@ export const HttpToolNodeBody = memo(function HttpToolNodeBody({
       <div className="flex items-center gap-1.5">
         <Globe className="h-3.5 w-3.5 shrink-0 text-type-tool" />
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+          className={`rounded px-1.5 py-0.5 text-2xs font-bold ${
             METHOD_COLORS[method] ?? 'bg-muted text-muted-foreground'
           }`}
         >
@@ -30,11 +30,11 @@ export const HttpToolNodeBody = memo(function HttpToolNodeBody({
         </span>
       </div>
       {url ? (
-        <p className="truncate font-mono text-[10px] text-muted-foreground">
+        <p className="truncate font-mono text-2xs text-muted-foreground">
           {url.length > 50 ? `${url.slice(0, 50)}…` : url}
         </p>
       ) : (
-        <p className="text-[10px] text-muted-foreground/60">未配置 URL</p>
+        <p className="text-2xs text-muted-foreground/60">未配置 URL</p>
       )}
     </div>
   )

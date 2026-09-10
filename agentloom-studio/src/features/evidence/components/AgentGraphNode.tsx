@@ -50,13 +50,13 @@ const STATUS_COLORS: Record<
     pulse: false,
   },
   pending: {
-    bg: 'bg-surface-elevated',
+    bg: 'bg-muted',
     ring: 'ring-border',
     dot: 'bg-muted-foreground',
     pulse: false,
   },
   cancelled: {
-    bg: 'bg-surface-elevated',
+    bg: 'bg-muted',
     ring: 'ring-border',
     dot: 'bg-muted-foreground',
     pulse: false,
@@ -64,7 +64,7 @@ const STATUS_COLORS: Record<
 }
 
 const DEFAULT_STATUS = {
-  bg: 'bg-surface-elevated',
+  bg: 'bg-muted',
   ring: 'ring-border',
   dot: 'bg-muted-foreground',
   pulse: false,
@@ -89,7 +89,7 @@ export const AgentGraphNode = memo(function AgentGraphNode({
   return (
     <div
       className={cn(
-        'relative rounded-card border px-4 py-3 shadow-node transition-all duration-200',
+        'relative rounded-lg border px-4 py-3 shadow-sm transition-all duration-200',
         'min-w-[160px] max-w-[220px]',
         'bg-surface',
         statusColors.ring,
@@ -120,7 +120,7 @@ export const AgentGraphNode = memo(function AgentGraphNode({
           <p className="truncate text-xs font-medium text-foreground">
             {data.nodeName}
           </p>
-          <p className="truncate text-[10px] text-muted">
+          <p className="truncate text-2xs text-muted-foreground">
             {data.nodeType}
           </p>
         </div>
@@ -143,7 +143,7 @@ export const AgentGraphNode = memo(function AgentGraphNode({
                 : undefined
             }
           />
-          <span className="text-[10px] text-muted">
+          <span className="text-2xs text-muted-foreground">
             {data.executionStatus}
           </span>
         </div>

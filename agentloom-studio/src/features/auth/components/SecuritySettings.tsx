@@ -237,7 +237,7 @@ export function SecuritySettings() {
 
       <div className="space-y-6">
         <section
-          className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
+          className="rounded-xl border border-border bg-muted p-5 shadow-sm"
           data-testid="password-section"
         >
           <div className="mb-4 flex items-center gap-2">
@@ -319,7 +319,7 @@ export function SecuritySettings() {
         </section>
 
         <section
-          className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
+          className="rounded-xl border border-border bg-muted p-5 shadow-sm"
           data-testid="mfa-section"
         >
           <div className="mb-4 flex items-center gap-2">
@@ -382,7 +382,7 @@ export function SecuritySettings() {
         </section>
 
         <section
-          className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
+          className="rounded-xl border border-border bg-muted p-5 shadow-sm"
           data-testid="sessions-section"
         >
           <div className="mb-4 flex items-center gap-2">

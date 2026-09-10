@@ -87,7 +87,7 @@ function SettingsOverviewPage() {
                   <CardContent className="flex items-start gap-3 p-4">
                     <span
                       aria-hidden
-                      className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-primary/10 text-primary transition-colors group-hover:bg-primary/15"
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15"
                     >
                       <Icon className="h-5 w-5" />
                     </span>

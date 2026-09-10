@@ -141,7 +141,7 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
       </div>
 
       {/* 当前配置预览 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           {parsed.eventSource || parsed.eventType ? (
@@ -155,7 +155,7 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
           )}
         </div>
         {parsed.filterExpression && (
-          <p className="break-all font-mono text-muted">
+          <p className="break-all font-mono text-muted-foreground">
             {parsed.filterExpression.length > 80
               ? `${parsed.filterExpression.slice(0, 80)}...`
               : parsed.filterExpression}

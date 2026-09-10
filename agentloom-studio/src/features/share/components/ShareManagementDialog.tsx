@@ -66,7 +66,7 @@ const OPTION_BASE_CLASS =
   'rounded-md border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
 const OPTION_SELECTED_CLASS = 'border-primary/50 bg-primary/10 text-primary'
 const OPTION_IDLE_CLASS =
-  'border-border bg-surface text-muted hover:border-border-hover hover:bg-surface-elevated'
+  'border-border bg-surface text-muted-foreground hover:border-border-hover hover:bg-muted'
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr)
@@ -142,7 +142,7 @@ const ShareItem = memo(function ShareItem({
 
   return (
     <div
-      className="rounded-card border border-border bg-surface-elevated p-3"
+      className="rounded-lg border border-border bg-muted p-3"
       data-testid="share-item"
     >
       <div className="flex items-start justify-between gap-2">
@@ -161,14 +161,14 @@ const ShareItem = memo(function ShareItem({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Link2 className="h-3 w-3 shrink-0 text-muted" />
-            <span className="truncate text-xs text-muted" title={share.shareUrl}>
+            <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span className="truncate text-xs text-muted-foreground" title={share.shareUrl}>
               {truncateUrl(share.shareUrl)}
             </span>
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-6 w-6 text-muted hover:text-foreground"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
               onClick={handleCopyUrl}
               aria-label="复制链接"
               data-testid="btn-copy-share-url"
@@ -177,7 +177,7 @@ const ShareItem = memo(function ShareItem({
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Eye className="h-3 w-3" />
               {share.viewCount}
@@ -222,7 +222,7 @@ const ShareItem = memo(function ShareItem({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="text-muted hover:text-error"
+              className="text-muted-foreground hover:text-error"
               onClick={handleRevoke}
               aria-label="撤销分享"
               data-testid="btn-revoke-share"
@@ -313,7 +313,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
         <DialogHeader className="flex-row items-center gap-2.5">
           <span
             aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
@@ -334,7 +334,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
 
             {isLoading ? (
               <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-muted" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : shares.length === 0 ? (
               <EmptyState
@@ -361,7 +361,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
             <h3 className="text-sm font-medium text-foreground">创建新分享</h3>
 
             <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted">分享类型</span>
+              <span className="text-xs font-medium text-muted-foreground">分享类型</span>
               <div className="flex gap-2" role="radiogroup" aria-label="分享类型">
                 {(['read_only', 'copyable'] as const).map((type) => (
                   <button
@@ -384,7 +384,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted">有效期</span>
+              <span className="text-xs font-medium text-muted-foreground">有效期</span>
               <div
                 className="grid grid-cols-2 gap-2"
                 role="radiogroup"

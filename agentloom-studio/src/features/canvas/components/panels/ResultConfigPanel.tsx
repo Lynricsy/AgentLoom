@@ -100,7 +100,7 @@ export const ResultConfigPanel = memo(function ResultConfigPanel({
           onChange={handleOutputKeyChange}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
         />
-        <p className="mt-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           父 compound 的外部输出口会直接使用这个 key。
         </p>
       </div>

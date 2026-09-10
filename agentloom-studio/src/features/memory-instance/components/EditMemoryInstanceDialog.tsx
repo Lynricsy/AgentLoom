@@ -162,7 +162,7 @@ export function EditMemoryInstanceDialog({
                 >
                   有效域
                 </label>
-                <p className="text-xs text-muted">输入域名后按 Enter 添加</p>
+                <p className="text-xs text-muted-foreground">输入域名后按 Enter 添加</p>
                 <TagInput
                   id="edit-mi-domains"
                   tags={validDomains}
@@ -178,7 +178,7 @@ export function EditMemoryInstanceDialog({
                 >
                   核心记忆 URI
                 </label>
-                <p className="text-xs text-muted">输入 URI 后按 Enter 添加</p>
+                <p className="text-xs text-muted-foreground">输入 URI 后按 Enter 添加</p>
                 <TagInput
                   id="edit-mi-uris"
                   tags={coreMemoryUris}

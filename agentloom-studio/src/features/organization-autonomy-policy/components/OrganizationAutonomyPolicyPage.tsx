@@ -78,16 +78,16 @@ function SummaryStats({
 }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
-      <div className="rounded-card border border-border bg-surface p-3">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+      <div className="rounded-lg border border-border bg-surface p-3">
+        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {label}工作流
         </p>
         <p className="mt-1.5 text-xl font-semibold tabular-nums text-foreground">
           {summary.workflowCount}
         </p>
       </div>
-      <div className="rounded-card border border-border bg-surface p-3">
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+      <div className="rounded-lg border border-border bg-surface p-3">
+        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
           {label}节点
         </p>
         <p className="mt-1.5 text-xl font-semibold tabular-nums text-foreground">
@@ -117,7 +117,7 @@ function ViolationList({ violations }: { violations: OrganizationAutonomyViolati
         <motion.div
           key={`${violation.workflowId}:${violation.nodeId}`}
           {...staggerList(index)}
-          className="rounded-card border border-border bg-surface-elevated p-3"
+          className="rounded-lg border border-border bg-muted p-3"
         >
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-2">
@@ -125,7 +125,7 @@ function ViolationList({ violations }: { violations: OrganizationAutonomyViolati
                 <p className="truncate text-xs font-medium text-foreground">
                   {violation.nodeName}
                 </p>
-                <p className="truncate text-[11px] text-muted">
+                <p className="truncate text-2xs text-muted-foreground">
                   工作流：{violation.workflowName}
                 </p>
               </div>
@@ -147,7 +147,7 @@ function ViolationList({ violations }: { violations: OrganizationAutonomyViolati
             </Badge>
           </div>
 
-          <p className="mt-2 text-xs leading-relaxed text-muted">{violation.message}</p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{violation.message}</p>
         </motion.div>
       ))}
     </div>
@@ -177,12 +177,12 @@ function AutonomyPolicyBlockedState({
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
             <Icon className="h-5 w-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            <p className="text-xs leading-relaxed text-muted">{message}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{message}</p>
             {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
@@ -204,11 +204,11 @@ function AutonomyPolicyOrganizationLoadingState() {
         description={PAGE_DESCRIPTION}
       />
 
-      <p className="text-xs text-muted">正在确认当前组织…</p>
+      <p className="text-xs text-muted-foreground">正在确认当前组织…</p>
 
       <div className="space-y-3">
-        <Skeleton className="h-28 rounded-card" />
-        <Skeleton className="h-44 rounded-card" />
+        <Skeleton className="h-28 rounded-lg" />
+        <Skeleton className="h-44 rounded-lg" />
       </div>
     </div>
   )
@@ -346,8 +346,8 @@ function OrganizationAutonomyPolicyContent({
           title="组织自治策略"
           description="加载组织自治策略中…"
         />
-        <Skeleton className="h-40 rounded-card" />
-        <Skeleton className="h-56 rounded-card" />
+        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-56 rounded-lg" />
       </div>
     )
   }
@@ -399,14 +399,14 @@ function OrganizationAutonomyPolicyContent({
                 <SlidersHorizontal className="h-4 w-4" />
                 <CardTitle>当前组织策略</CardTitle>
               </div>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 当前自治上限为{' '}
                 <span className="font-medium text-foreground">
                   {getAutonomyModeLabel(policy.autonomyCap)}
                 </span>
                 。
               </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
                 <span>组织 ID：{policy.organizationId}</span>
                 <span>版本：{policy.version}</span>
                 <span>更新人：{policy.updatedBy ?? '—'}</span>
@@ -414,7 +414,7 @@ function OrganizationAutonomyPolicyContent({
               </div>
             </div>
 
-            <p className="shrink-0 rounded-card border border-border bg-surface-elevated px-3 py-2 text-[11px] leading-relaxed text-muted">
+            <p className="shrink-0 rounded-lg border border-border bg-muted px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
               当前存在 {policy.violationSummary.workflowCount} 个工作流、
               {policy.violationSummary.nodeCount} 个节点超出组织上限。
             </p>
@@ -429,7 +429,7 @@ function OrganizationAutonomyPolicyContent({
       <Card>
         <CardHeader>
           <CardTitle>调整自治上限</CardTitle>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             选择新的组织级自治上限。更严格的上限会阻止更高自治模式继续被采纳。
           </p>
         </CardHeader>
@@ -438,7 +438,7 @@ function OrganizationAutonomyPolicyContent({
           <div className="grid gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
             <div className="space-y-1.5">
               <label
-                className="block text-xs font-medium text-muted"
+                className="block text-xs font-medium text-muted-foreground"
                 htmlFor="organization-autonomy-cap-select"
               >
                 目标自治上限
@@ -460,18 +460,18 @@ function OrganizationAutonomyPolicyContent({
               </Select>
             </div>
 
-            <div className="rounded-card border border-border bg-surface-elevated p-3">
+            <div className="rounded-lg border border-border bg-muted p-3">
               <p className="text-xs font-medium text-foreground">
                 {getAutonomyModeLabel(draftCap)}
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
                 {selectedModeDescription}
               </p>
             </div>
           </div>
 
           {isTightening ? (
-            <p className="rounded-card border border-warning/30 bg-warning/10 p-3 text-xs leading-relaxed text-warning">
+            <p className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs leading-relaxed text-warning">
               这次变更会收紧组织自治上限。你可以直接“仅更新策略”，只阻断后续更高自治建议；也可以先预览，再确认批量降级当前已超上限的节点。
             </p>
           ) : null}
@@ -517,7 +517,7 @@ function OrganizationAutonomyPolicyContent({
         <Card data-testid="organization-autonomy-policy-preview">
           <CardHeader>
             <CardTitle>批量降级预览</CardTitle>
-            <p className="text-xs leading-relaxed text-muted">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               预览目标上限为 {getAutonomyModeLabel(previewResult.autonomyCap)}
               。确认后，以下节点会被批量调整到允许的自治模式。
             </p>

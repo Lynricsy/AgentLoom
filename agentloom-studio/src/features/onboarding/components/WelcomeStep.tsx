@@ -35,7 +35,7 @@ export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
         {HIGHLIGHTS.map(({ icon: Icon, tone, title, description }) => (
           <li key={title} className="flex gap-3">
             <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${tone} 14%, transparent)`,
                 color: tone,
@@ -45,7 +45,7 @@ export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
             </span>
             <div className="space-y-0.5">
               <p className="text-sm font-medium text-foreground">{title}</p>
-              <p className="text-xs leading-relaxed text-muted">
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 {description}
               </p>
             </div>

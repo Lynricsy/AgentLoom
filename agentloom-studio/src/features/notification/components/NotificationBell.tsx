@@ -72,7 +72,7 @@ export function NotificationBell() {
 
         {displayCount > 0 ? (
           <span
-            className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-error px-1.5 py-0.5 text-[10px] font-semibold leading-none text-background"
+            className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-error px-1.5 py-0.5 text-2xs font-semibold leading-none text-background"
             data-testid="notification-badge"
           >
             {formatCount(displayCount)}

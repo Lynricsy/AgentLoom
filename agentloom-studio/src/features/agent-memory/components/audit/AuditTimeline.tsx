@@ -118,11 +118,11 @@ export function AuditTimeline({
               type="button"
               {...staggerList(index)}
               className={cn(
-                'relative flex w-full gap-3 rounded-card border p-3 pl-9 text-left transition-colors',
+                'relative flex w-full gap-3 rounded-lg border p-3 pl-9 text-left transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
                 isSelected
                   ? 'border-primary/40 bg-primary/10'
-                  : 'border-transparent hover:bg-surface-elevated',
+                  : 'border-transparent hover:bg-muted',
               )}
               aria-current={isSelected ? 'true' : undefined}
               onClick={() => onSelectEntry?.(entry)}
@@ -149,12 +149,12 @@ export function AuditTimeline({
                 </div>
 
                 {entry.changeSummary && (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted">
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                     {entry.changeSummary}
                   </p>
                 )}
 
-                <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+                <div className="mt-1.5 flex items-center gap-3 text-2xs text-muted-foreground">
                   <span>{entry.actor}</span>
                   <span>{formatTimestamp(entry.timestamp)}</span>
                 </div>

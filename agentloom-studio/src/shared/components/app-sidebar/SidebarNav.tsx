@@ -56,10 +56,10 @@ export function SidebarNav({
                 type="button"
                 onClick={() => onToggleGroup?.(group.id)}
                 className={cn(
-                  'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors',
+                  'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-2xs font-semibold uppercase tracking-wider transition-colors',
                   groupActive
-                    ? 'text-muted'
-                    : 'text-muted-foreground hover:text-muted',
+                    ? 'text-muted-foreground'
+                    : 'text-muted-foreground hover:text-muted-foreground',
                 )}
               >
                 <span className="flex-1 text-left">{group.label}</span>
@@ -119,7 +119,7 @@ function SidebarNavLink({
         collapsed && 'justify-center',
         active
           ? 'bg-primary/10 text-primary'
-          : 'text-muted hover:bg-surface-elevated hover:text-foreground',
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
       )}
     >
       {active ? (

@@ -30,19 +30,19 @@ export function TagInput({ tags, onChange, placeholder, id }: TagInputProps) {
   }
 
   return (
-    <div className="rounded-card border border-input bg-background px-3 py-2 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
+    <div className="rounded-lg border border-border bg-background px-3 py-2 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-md bg-surface-elevated px-2 py-0.5 text-xs text-foreground"
+            className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground"
           >
             {tag}
             <button
               type="button"
               aria-label={`移除 ${tag}`}
               onClick={() => onChange(tags.filter((t) => t !== tag))}
-              className="cursor-pointer text-muted transition-colors hover:text-foreground"
+              className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
             >
               <X className="h-3 w-3" />
             </button>
@@ -58,7 +58,7 @@ export function TagInput({ tags, onChange, placeholder, id }: TagInputProps) {
             if (inputValue.trim()) addTag(inputValue)
           }}
           placeholder={tags.length === 0 ? placeholder : ''}
-          className="min-w-[120px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+          className="min-w-[120px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle-foreground"
         />
       </div>
     </div>

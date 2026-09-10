@@ -74,7 +74,7 @@ export function PendingReviewsList({
 
   return (
     <div className="space-y-3" data-testid="pending-reviews-list">
-      <p className="text-sm font-medium text-muted">
+      <p className="text-sm font-medium text-muted-foreground">
         共 {sortedReviews.length} 项待审核
       </p>
 
@@ -83,7 +83,7 @@ export function PendingReviewsList({
           key={review.id}
           type="button"
           {...staggerList(index)}
-          className="block w-full rounded-card border border-border bg-card p-4 text-left shadow-node transition-all duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-node-selected focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="block w-full rounded-lg border border-border bg-surface p-4 text-left shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           onClick={() => onSelectReview?.(review)}
           data-testid={`pending-review-${review.id}`}
         >
@@ -102,12 +102,12 @@ export function PendingReviewsList({
           </div>
 
           {review.changeSummary && (
-            <p className="mt-2 line-clamp-2 text-sm text-muted">
+            <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
               {review.changeSummary}
             </p>
           )}
 
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+          <div className="mt-2 flex items-center gap-3 text-2xs text-muted-foreground">
             <span>v{review.versionNumber}</span>
             <span>{review.actor}</span>
             <span>{formatTimestamp(review.createdAt)}</span>

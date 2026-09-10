@@ -136,7 +136,7 @@ const KeyValueList = memo(function KeyValueList({
         <button
           type="button"
           onClick={handleAdd}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <Plus className="h-3 w-3" />
           添加
@@ -144,7 +144,7 @@ const KeyValueList = memo(function KeyValueList({
       </div>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted">暂无条目</p>
+        <p className="text-xs text-muted-foreground">暂无条目</p>
       ) : (
         <div className="space-y-2">
           {items.map((item, index) => (
@@ -352,7 +352,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
           placeholder='{"key": "value"}'
           className="font-mono"
         />
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           JSON 格式的请求体，适用于 POST / PUT / PATCH 请求
         </p>
       </div>
@@ -512,7 +512,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
           onChange={handleTimeout}
           className="w-24"
         />
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           请求超时时间，默认 30 秒，最长 300 秒
         </p>
       </div>
@@ -533,7 +533,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
             onCheckedChange={handleFailOnHttpError}
           />
         </div>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           默认开启：HTTP 响应状态码非 2xx 时该节点判定为失败。关闭后非 2xx 也视为成功（探测型请求）。
         </p>
       </div>

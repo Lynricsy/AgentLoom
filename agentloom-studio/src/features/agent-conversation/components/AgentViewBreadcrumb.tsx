@@ -32,7 +32,7 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
       <button
         type="button"
         onClick={handleBack}
-        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <ArrowLeft className="size-3" />
         返回

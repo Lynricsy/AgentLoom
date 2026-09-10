@@ -255,7 +255,7 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
           placeholder='可输入 JSON，例如 {"count":0}'
           className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
         />
-        <p className="mt-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           当 `state-in` 未连线时，循环运行会回退到这里定义的默认 state。
         </p>
       </div>

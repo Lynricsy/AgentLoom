@@ -30,7 +30,7 @@ export function KnowledgeSearchTester({
     <Card className="space-y-4 p-5">
       <div>
         <h2 className="text-base font-semibold text-foreground">测试检索</h2>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-muted-foreground">
           用当前知识库的完整策略直接验证检索结果。
         </p>
       </div>
@@ -66,7 +66,7 @@ export function KnowledgeSearchTester({
           results.map((result) => (
             <div
               key={result.nodeId}
-              className="rounded-card border border-border bg-surface-elevated p-3"
+              className="rounded-lg border border-border bg-muted p-3"
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
@@ -77,11 +77,11 @@ export function KnowledgeSearchTester({
                 </Badge>
               </div>
               <p className="mt-2 text-sm text-foreground/90">{result.content}</p>
-              <p className="mt-2 text-xs text-muted">{renderLocation(result)}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{renderLocation(result)}</p>
             </div>
           ))
         ) : (
-          <div className="rounded-card border border-dashed border-border p-4 text-sm text-muted">
+          <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
             {isPending ? '正在执行测试检索...' : '这里会展示测试检索结果。'}
           </div>
         )}

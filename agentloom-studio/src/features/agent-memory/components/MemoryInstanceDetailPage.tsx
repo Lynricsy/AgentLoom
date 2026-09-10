@@ -110,7 +110,7 @@ export function MemoryInstanceDetailPage({
         data-testid="memory-detail-skeleton"
       >
         <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-card" />
+          <Skeleton className="h-10 w-10 rounded-lg" />
           <div className="space-y-2">
             <Skeleton className="h-4 w-48 rounded" />
             <Skeleton className="h-3 w-64 rounded" />
@@ -118,12 +118,12 @@ export function MemoryInstanceDetailPage({
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }, (_, i) => (
-            <Skeleton key={i} className="h-[86px] rounded-card" />
+            <Skeleton key={i} className="h-[86px] rounded-lg" />
           ))}
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-40 rounded-card" />
-          <Skeleton className="h-40 rounded-card" />
+          <Skeleton className="h-40 rounded-lg" />
+          <Skeleton className="h-40 rounded-lg" />
         </div>
       </div>
     );
@@ -153,7 +153,7 @@ export function MemoryInstanceDetailPage({
         <Button
           variant="ghost"
           size="sm"
-          className="-ml-2 self-start text-muted hover:text-foreground"
+          className="-ml-2 self-start text-muted-foreground hover:text-foreground"
           onClick={handleBack}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -252,7 +252,7 @@ export function MemoryInstanceDetailPage({
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted">未配置有效域</p>
+              <p className="text-sm text-muted-foreground">未配置有效域</p>
             )}
           </CardContent>
         </Card>
@@ -267,14 +267,14 @@ export function MemoryInstanceDetailPage({
                 {instance.coreMemoryUris.map((uri) => (
                   <span
                     key={uri}
-                    className="rounded-md border border-border bg-surface-elevated px-2 py-1 font-mono text-xs text-foreground"
+                    className="rounded-md border border-border bg-muted px-2 py-1 font-mono text-xs text-foreground"
                   >
                     {uri}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted">未配置核心记忆 URI</p>
+              <p className="text-sm text-muted-foreground">未配置核心记忆 URI</p>
             )}
           </CardContent>
         </Card>
@@ -289,11 +289,11 @@ export function MemoryInstanceDetailPage({
         </CardHeader>
         <CardContent>
           {instance.systemPromptOverride ? (
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface-elevated p-3 font-mono text-xs leading-relaxed text-foreground">
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted p-3 font-mono text-xs leading-relaxed text-foreground">
               {instance.systemPromptOverride}
             </pre>
           ) : (
-            <p className="text-sm text-muted">使用默认模板</p>
+            <p className="text-sm text-muted-foreground">使用默认模板</p>
           )}
         </CardContent>
       </Card>
@@ -351,7 +351,7 @@ function StatCard({
         >
           {icon}
         </span>
-        <span className="text-xs text-muted">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
       <p
         className={cn(

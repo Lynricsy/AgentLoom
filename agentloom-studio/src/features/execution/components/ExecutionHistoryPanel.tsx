@@ -35,7 +35,7 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
   return (
     <aside
       className={cn(
-        'flex h-full min-h-[320px] w-full flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel',
+        'flex h-full min-h-[320px] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg',
         className,
       )}
       data-testid="execution-history-panel"
@@ -45,7 +45,7 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
           <History className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">执行记录</h2>
-            <p className="truncate text-xs text-muted">浏览工作流最近运行历史</p>
+            <p className="truncate text-xs text-muted-foreground">浏览工作流最近运行历史</p>
           </div>
         </div>
         {onClose ? (
@@ -59,7 +59,7 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
         {isLoading ? (
           <div className="space-y-3" data-testid="execution-history-loading">
             {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-28 w-full rounded-card" />
+              <Skeleton key={index} className="h-28 w-full rounded-lg" />
             ))}
           </div>
         ) : error ? (

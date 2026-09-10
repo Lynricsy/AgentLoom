@@ -37,13 +37,13 @@ export const TimelineHeader = memo(function TimelineHeader({
           pulse={status === 'running'}
         />
         <p className="truncate text-sm font-semibold text-foreground">{nodeName}</p>
-        <span className="truncate text-[11px] uppercase tracking-[0.18em] text-muted">
+        <span className="truncate text-2xs uppercase tracking-[0.18em] text-muted-foreground">
           {nodeType}
         </span>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <span className="text-xs text-muted">
+        <span className="text-xs text-muted-foreground">
           {formatExecutionDuration(startedAt, completedAt)}
         </span>
         <StepStatusBadge status={status} />

@@ -24,7 +24,7 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 rounded-lg border border-border/60 bg-card/80 p-1',
+        'flex items-center gap-1 rounded-lg border border-border/60 bg-surface/80 p-1',
         className,
       )}
       data-testid="evidence-graph-controls"
@@ -33,7 +33,7 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
         type="button"
         onClick={() => onLayoutChange('dagre')}
         className={cn(
-          'rounded px-2 py-1 text-[10px] font-medium transition',
+          'rounded px-2 py-1 text-2xs font-medium transition',
           layoutMode === 'dagre'
             ? 'bg-primary/15 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -48,7 +48,7 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
         type="button"
         onClick={() => onLayoutChange('force')}
         className={cn(
-          'rounded px-2 py-1 text-[10px] font-medium transition',
+          'rounded px-2 py-1 text-2xs font-medium transition',
           layoutMode === 'force'
             ? 'bg-primary/15 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',

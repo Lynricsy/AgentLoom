@@ -92,7 +92,7 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
       className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
       data-testid="generated-app-public-runtime-error"
     >
-      <section className="w-full max-w-xl rounded-panel border border-error/30 bg-error/5 p-6">
+      <section className="w-full max-w-xl rounded-xl border border-error/30 bg-error/5 p-6">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-error" />
           <div className="min-w-0 space-y-4">
@@ -337,7 +337,7 @@ function WorkflowExecutionStatusPanel({
   return (
     <section
       className={cn(
-        'space-y-3 rounded-card border p-4',
+        'space-y-3 rounded-lg border p-4',
         completed
           ? 'border-success/30 bg-success/5'
           : incomplete
@@ -586,7 +586,7 @@ function PublicSubmissionResult({
 
   return (
     <article
-      className="space-y-5 border border-border bg-surface-elevated p-4"
+      className="space-y-5 border border-border bg-muted p-4"
       data-testid="generated-app-public-submission-result"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -620,7 +620,7 @@ function PublicSubmissionResult({
       ) : null}
 
       {submission.errorMessage ? (
-        <div className="rounded-card border border-error/30 bg-error/5 p-3 text-sm text-error">
+        <div className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">
           {submission.errorMessage}
         </div>
       ) : null}
@@ -815,7 +815,7 @@ function PublicRuntimeSuccess({
           </div>
         </header>
 
-        <section className="border-y border-border bg-surface-elevated px-4 py-4 sm:px-5">
+        <section className="border-y border-border bg-muted px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <p className="break-words text-sm leading-6 text-muted-foreground">

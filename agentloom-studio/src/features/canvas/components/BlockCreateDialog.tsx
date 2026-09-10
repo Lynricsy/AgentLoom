@@ -179,7 +179,7 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
                 id="block-description"
                 aria-label="描述"
                 rows={3}
-                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 placeholder="描述这个可复用块的用途"
                 {...register('description')}
               />
@@ -235,7 +235,7 @@ interface PortEditorSectionProps {
 
 function PortEditorSection({ title, ports, register, fieldPath }: PortEditorSectionProps) {
   return (
-    <section className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+    <section className="space-y-3 rounded-xl border border-border/70 bg-muted p-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
         <span className="text-xs text-muted-foreground">{ports.length} 个</span>
@@ -251,7 +251,7 @@ function PortEditorSection({ title, ports, register, fieldPath }: PortEditorSect
             <div key={port.id} className="rounded-lg border border-border/60 bg-background/70 p-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-medium text-muted-foreground">{port.dataType}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {port.sourceNodeId} · {port.sourcePortId}
                 </span>
               </div>

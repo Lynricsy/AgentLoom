@@ -59,7 +59,7 @@ export const PluginConfigPanel = memo(function PluginConfigPanel({
             <p className="text-xs text-muted-foreground mt-0.5">{data.pluginId}</p>
           )}
           {data.pluginVersion && (
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 mt-1">
+            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-2xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 mt-1">
               v{data.pluginVersion}
             </span>
           )}

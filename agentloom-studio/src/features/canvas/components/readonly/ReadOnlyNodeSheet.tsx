@@ -87,7 +87,7 @@ function renderConfigValue(value: unknown): ReactNode {
   }
 
   return (
-    <pre className="max-h-40 overflow-auto rounded-card bg-surface-elevated p-2 font-mono text-[11px] leading-5 text-foreground">
+    <pre className="max-h-40 overflow-auto rounded-lg bg-muted p-2 font-mono text-2xs leading-5 text-foreground">
       {JSON.stringify(value, null, 2)}
     </pre>
   )
@@ -142,7 +142,7 @@ export const ReadOnlyNodeSheet = memo(function ReadOnlyNodeSheet({
         <SheetHeader className="flex-row items-start gap-3">
           <span
             aria-hidden
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
             style={{
               backgroundColor: `color-mix(in srgb, ${accentToken} 14%, transparent)`,
               color: accentToken,
@@ -174,7 +174,7 @@ export const ReadOnlyNodeSheet = memo(function ReadOnlyNodeSheet({
                 该节点无需额外配置。
               </p>
             ) : (
-              <dl className="mt-2 divide-y divide-border rounded-card border border-border bg-surface-elevated/60">
+              <dl className="mt-2 divide-y divide-border rounded-lg border border-border bg-muted">
                 {entries.map((entry) => (
                   <div
                     key={entry.key}
@@ -227,7 +227,7 @@ const ReadOnlyNodeOutput = memo(function ReadOnlyNodeOutput({
         </h3>
 
         {nodeState?.isStreaming && (
-          <span className={cn('text-[11px] font-medium text-primary')}>
+          <span className={cn('text-2xs font-medium text-primary')}>
             流式输出中
           </span>
         )}

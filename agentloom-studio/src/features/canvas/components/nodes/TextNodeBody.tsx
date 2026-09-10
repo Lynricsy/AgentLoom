@@ -29,7 +29,7 @@ export const TextNodeBody = memo(function TextNodeBody({
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <FileText className="h-3.5 w-3.5 shrink-0 text-type-text" />
-        <span className="rounded bg-type-text/15 px-1.5 py-0.5 text-[10px] font-medium text-type-text">
+        <span className="rounded bg-type-text/15 px-1.5 py-0.5 text-2xs font-medium text-type-text">
           Text
         </span>
       </div>

@@ -27,14 +27,14 @@ export function MonitoringTrendChart({
     <Card data-testid="monitoring-trend-chart">
       <CardHeader>
         <CardTitle>执行趋势（{activeWindowLabel}）</CardTitle>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           这里仅展示当前窗口内的执行量变化。队列深度仍然会出现在摘要卡片、告警与热点中，但只代表当前 queue snapshot，不提供历史曲线。
         </p>
       </CardHeader>
 
       <CardContent>
         {trend.length === 0 ? (
-          <div className="flex h-72 items-center justify-center rounded-card border border-dashed border-border bg-surface-elevated text-xs text-muted">
+          <div className="flex h-72 items-center justify-center rounded-lg border border-dashed border-border bg-muted text-xs text-muted-foreground">
             当前窗口内暂无趋势数据
           </div>
         ) : (
@@ -58,7 +58,7 @@ export function MonitoringTrendChart({
                   contentStyle={{
                     backgroundColor: 'var(--color-popover)',
                     border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-card)',
+                    borderRadius: 'var(--radius-lg)',
                     color: 'var(--color-foreground)',
                   }}
                   labelStyle={{ color: 'var(--color-muted)' }}

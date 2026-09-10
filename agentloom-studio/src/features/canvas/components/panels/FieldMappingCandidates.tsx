@@ -15,7 +15,7 @@ export function FieldMappingCandidates({
   return (
     <div className="mapping-panel__candidates" data-testid="mapping-candidates-section">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs text-muted">{candidates.length} 个推荐映射</span>
+        <span className="text-xs text-muted-foreground">{candidates.length} 个推荐映射</span>
         <button
           type="button"
           className="text-xs text-primary hover:underline"
@@ -32,7 +32,7 @@ export function FieldMappingCandidates({
           data-testid={`candidate-${c.targetPath}`}
         >
           <span className="truncate">{c.sourcePath}</span>
-          <span className="shrink-0 text-muted">→</span>
+          <span className="shrink-0 text-muted-foreground">→</span>
           <span className="truncate">{c.targetPath}</span>
           <button
             type="button"

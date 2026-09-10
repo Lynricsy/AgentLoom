@@ -40,7 +40,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       onClick={handleCopy}
       className={cn(
-        'flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors',
+        'flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors',
         copied
           ? 'text-success'
           : 'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
@@ -74,8 +74,8 @@ function CodeBlockWrapper({
 }) {
   return (
     <div className="group relative rounded-lg border border-border overflow-hidden">
-      <div className="flex items-center justify-between bg-surface-elevated/60 px-3 py-1 border-b border-border">
-        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+      <div className="flex items-center justify-between bg-muted px-3 py-1 border-b border-border">
+        <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wide">
           {language || 'code'}
         </span>
         <CopyButton text={raw} />

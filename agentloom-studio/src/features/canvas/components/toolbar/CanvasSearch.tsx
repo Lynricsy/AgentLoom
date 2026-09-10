@@ -51,7 +51,7 @@ export const CanvasSearch = memo(function CanvasSearch() {
     <TooltipProvider delayDuration={300}>
       <motion.div
         {...fadeInUp}
-        className="absolute left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-panel border border-border bg-surface/90 px-3 py-1.5 shadow-popover backdrop-blur-sm"
+        className="absolute left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-border bg-surface/90 px-3 py-1.5 shadow-lg backdrop-blur-sm"
         data-testid="canvas-search"
       >
         <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -63,7 +63,7 @@ export const CanvasSearch = memo(function CanvasSearch() {
           onKeyDown={handleKeyDown}
           placeholder="搜索节点..."
           aria-label="搜索节点"
-          className="w-48 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          className="w-48 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle-foreground"
           data-testid="canvas-search-input"
         />
         {searchQuery && (

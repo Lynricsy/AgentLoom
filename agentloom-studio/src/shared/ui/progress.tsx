@@ -29,7 +29,7 @@ export const Progress = forwardRef<
       value={safeValue}
       max={max}
       className={cn(
-        'relative h-2 w-full overflow-hidden rounded-full bg-surface-elevated',
+        'relative h-2 w-full overflow-hidden rounded-full bg-muted',
         className,
       )}
       {...props}

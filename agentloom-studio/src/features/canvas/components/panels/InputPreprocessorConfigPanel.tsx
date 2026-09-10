@@ -156,7 +156,7 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
         </p>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <span>{selectedOption?.label ?? parsed.transformType}</span>
@@ -168,7 +168,7 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
           )}
         </div>
         {parsed.expression && (
-          <p className="break-all font-mono text-muted">
+          <p className="break-all font-mono text-muted-foreground">
             {parsed.expression.length > 80
               ? `${parsed.expression.slice(0, 80)}…`
               : parsed.expression}

@@ -153,12 +153,12 @@ const CallDetail = memo(function CallDetail({
           <Bot className="size-4" style={{ color: 'var(--color-node-agent)' }} />
           <span className="text-xs font-medium text-foreground">{alias}</span>
           {handle && (
-            <span className="text-[10px] font-mono text-muted-foreground/50">
+            <span className="text-2xs font-mono text-muted-foreground/50">
               {handle}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground">
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5",
@@ -180,7 +180,7 @@ const CallDetail = memo(function CallDetail({
 
       {state === "completed" && output && (
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             输出
           </div>
           <pre className="max-h-[200px] overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">

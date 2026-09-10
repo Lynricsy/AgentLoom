@@ -45,7 +45,7 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
 
   return (
     <button
-      className="flex w-full cursor-grab flex-col items-start gap-3 rounded-xl border border-border bg-surface-elevated p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface active:cursor-grabbing"
+      className="flex w-full cursor-grab flex-col items-start gap-3 rounded-xl border border-border bg-muted p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface active:cursor-grabbing"
       data-testid={`block-item-${block.id}`}
       draggable
       onClick={() => onClick?.(block)}
@@ -66,7 +66,7 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
           </p>
         </div>
 
-        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground">
           {categoryLabel}
         </span>
       </div>

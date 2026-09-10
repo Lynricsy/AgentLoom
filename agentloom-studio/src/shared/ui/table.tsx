@@ -50,7 +50,7 @@ export const TableBody = forwardRef<
 
 /** 行样式基类 — 需要在 `<tr>` 之外的元素（如 motion.tr）上复用时直接引用 */
 export const tableRowClass =
-  'border-b border-border transition-colors hover:bg-surface-elevated data-[state=selected]:bg-surface-elevated'
+  'border-b border-border transition-colors hover:bg-muted data-[state=selected]:bg-muted'
 
 export const TableRow = forwardRef<
   HTMLTableRowElement,
@@ -67,7 +67,7 @@ export const TableHead = forwardRef<
     <th
       ref={ref}
       className={cn(
-        'h-10 whitespace-nowrap px-3 text-left align-middle text-xs font-medium text-muted',
+        'h-10 whitespace-nowrap px-3 text-left align-middle text-xs font-medium text-muted-foreground',
         className,
       )}
       {...props}
@@ -95,7 +95,7 @@ export const TableCaption = forwardRef<
   return (
     <caption
       ref={ref}
-      className={cn('mt-3 text-xs text-muted', className)}
+      className={cn('mt-3 text-xs text-muted-foreground', className)}
       {...props}
     />
   )

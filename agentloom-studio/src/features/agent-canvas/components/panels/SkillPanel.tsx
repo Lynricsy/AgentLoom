@@ -129,17 +129,17 @@ export const SkillPanel = memo(function SkillPanel({
                       )}
                     </div>
                     {item.description && (
-                      <p className="mt-0.5 text-[11px] text-neutral-500 line-clamp-2">
+                      <p className="mt-0.5 text-2xs text-neutral-500 line-clamp-2">
                         {item.description}
                       </p>
                     )}
                     {item.slug && (
                       <div className="mt-1 flex items-center gap-2">
-                        <span className="rounded-full bg-neutral-700/50 px-1.5 py-0.5 text-[10px] text-neutral-400">
+                        <span className="rounded-full bg-neutral-700/50 px-1.5 py-0.5 text-2xs text-neutral-400">
                           {item.slug}
                         </span>
                         {item.isBuiltin && (
-                          <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-[10px] text-purple-400">
+                          <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-2xs text-purple-400">
                             内置
                           </span>
                         )}

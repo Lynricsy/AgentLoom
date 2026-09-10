@@ -102,7 +102,7 @@ export function OnboardingWizard() {
             value={(currentStep / TOTAL_STEPS) * 100}
             aria-label={`初始化进度：第 ${currentStep} 步，共 ${TOTAL_STEPS} 步`}
           />
-          <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted">
+          <span className="shrink-0 text-2xs font-medium tabular-nums text-muted-foreground">
             {currentStep} / {TOTAL_STEPS}
           </span>
         </div>
@@ -115,7 +115,7 @@ export function OnboardingWizard() {
                 {orgError && (
                   <div
                     role="alert"
-                    className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
+                    className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
                   >
                     <AlertCircle
                       className="mt-0.5 h-4 w-4 shrink-0"

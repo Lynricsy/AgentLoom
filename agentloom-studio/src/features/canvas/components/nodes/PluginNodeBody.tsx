@@ -16,12 +16,12 @@ export const PluginNodeBody = memo(function PluginNodeBody({ data }: PluginNodeB
         </span>
       </div>
       {data.pluginNodeType && (
-        <span className="text-[10px] text-muted-foreground truncate">
+        <span className="text-2xs text-muted-foreground truncate">
           {data.pluginNodeType}
         </span>
       )}
       {data.pluginVersion && (
-        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-surface-elevated px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
           v{data.pluginVersion}
         </span>
       )}

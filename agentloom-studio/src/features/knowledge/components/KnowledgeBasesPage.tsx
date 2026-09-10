@@ -261,7 +261,7 @@ export function KnowledgeBasesPage() {
       />
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="搜索知识库..."
           value={searchQuery}
@@ -291,7 +291,7 @@ export function KnowledgeBasesPage() {
             <Skeleton
               key={index}
               data-testid="knowledge-base-card-skeleton"
-              className="h-36 rounded-card"
+              className="h-36 rounded-lg"
             />
           ))}
         </div>
@@ -332,7 +332,7 @@ export function KnowledgeBasesPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             aria-hidden
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
                             style={{
                               backgroundColor: `color-mix(in srgb, ${KNOWLEDGE_TONE} 14%, transparent)`,
                               color: KNOWLEDGE_TONE,
@@ -356,7 +356,7 @@ export function KnowledgeBasesPage() {
                           </Badge>
                         </div>
                         {kb.description && (
-                          <p className="mt-2 line-clamp-2 text-xs text-muted">
+                          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                             {kb.description}
                           </p>
                         )}
@@ -379,7 +379,7 @@ export function KnowledgeBasesPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          className="text-muted hover:text-error"
+                          className="text-muted-foreground hover:text-error"
                           aria-label={`删除 ${kb.name}`}
                           onClick={() => setDeleteTarget(kb)}
                         >
@@ -388,7 +388,7 @@ export function KnowledgeBasesPage() {
                       </div>
                     </div>
 
-                    <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-4 text-xs text-muted">
+                    <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-4 text-xs text-muted-foreground">
                       <span>{kb.documentCount} 个文档</span>
                       <span aria-hidden>·</span>
                       <span>{getKnowledgeNodeCountLabel(kb)}</span>

@@ -41,7 +41,7 @@ export type SheetSide = 'right' | 'left' | 'bottom'
 const SIDE_CLASS: Record<SheetSide, string> = {
   right: 'inset-y-0 right-0 h-full w-full max-w-md border-l',
   left: 'inset-y-0 left-0 h-full w-[min(20rem,85vw)] border-r',
-  bottom: 'inset-x-0 bottom-0 max-h-[85vh] w-full rounded-t-panel border-t',
+  bottom: 'inset-x-0 bottom-0 max-h-[85vh] w-full rounded-t-xl border-t',
 }
 
 interface SideMotion {
@@ -79,7 +79,7 @@ export const SheetContent = forwardRef<
           <DialogPrimitive.Overlay asChild forceMount>
             <motion.div
               {...fadeIn}
-              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs"
             />
           </DialogPrimitive.Overlay>
 
@@ -90,7 +90,7 @@ export const SheetContent = forwardRef<
               exit={sideMotion.exit}
               transition={{ duration: DUR.slow, ease: EASE }}
               className={cn(
-                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-popover',
+                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-lg',
                 SIDE_CLASS[side],
                 className,
               )}
@@ -100,7 +100,7 @@ export const SheetContent = forwardRef<
               {hideClose ? null : (
                 <DialogPrimitive.Close
                   aria-label="关闭"
-                  className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 >
                   <X className="h-4 w-4" />
                 </DialogPrimitive.Close>
@@ -172,7 +172,7 @@ export const SheetDescription = forwardRef<
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn('text-sm text-muted', className)}
+      className={cn('text-sm text-muted-foreground', className)}
       {...props}
     />
   )

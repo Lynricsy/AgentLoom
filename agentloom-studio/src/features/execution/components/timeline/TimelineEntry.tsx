@@ -49,7 +49,7 @@ export const TimelineEntry = memo(function TimelineEntry({
   return (
     <div
       className={cn(
-        'rounded-card border border-border bg-surface transition-colors',
+        'rounded-lg border border-border bg-surface transition-colors',
         isSelected && 'border-primary bg-primary/5',
         isFailed && 'border-error/40 bg-error/5',
       )}
@@ -57,7 +57,7 @@ export const TimelineEntry = memo(function TimelineEntry({
     >
       <button
         type="button"
-        className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-elevated"
+        className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-muted"
         onClick={() => {
           onSelect()
           setExpanded((prev) => !prev)

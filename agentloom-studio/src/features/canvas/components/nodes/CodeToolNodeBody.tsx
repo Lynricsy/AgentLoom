@@ -33,20 +33,20 @@ export const CodeToolNodeBody = memo(function CodeToolNodeBody({
         <Code className="h-3.5 w-3.5 shrink-0 text-type-tool" />
         {language ? (
           <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+            className={`rounded px-1.5 py-0.5 text-2xs font-bold ${
               LANGUAGE_COLORS[language] ?? 'bg-muted text-muted-foreground'
             }`}
           >
             {LANGUAGE_LABELS[language] ?? language.toUpperCase()}
           </span>
         ) : (
-          <span className="text-[10px] text-muted-foreground/60">
+          <span className="text-2xs text-muted-foreground/60">
             未选择语言
           </span>
         )}
       </div>
       {lines.length > 0 ? (
-        <div className="space-y-0 font-mono text-[10px] leading-[14px] text-muted-foreground">
+        <div className="space-y-0 font-mono text-2xs leading-[14px] text-muted-foreground">
           {lines.map((line, i) => (
             <div key={i} className="flex gap-1.5 truncate">
               <span className="w-3 shrink-0 text-right text-muted-foreground/40">
@@ -57,7 +57,7 @@ export const CodeToolNodeBody = memo(function CodeToolNodeBody({
           ))}
         </div>
       ) : (
-        <p className="text-[10px] text-muted-foreground/60">未编写代码</p>
+        <p className="text-2xs text-muted-foreground/60">未编写代码</p>
       )}
     </div>
   )

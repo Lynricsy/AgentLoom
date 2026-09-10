@@ -19,7 +19,7 @@ const COLOR_CLASSES: Record<NodeBadgeColor, string> = {
   warning: 'bg-warning/10 text-warning',
   destructive: 'bg-error/10 text-error',
   info: 'bg-info/10 text-info',
-  muted: 'bg-muted/70 text-muted-foreground',
+  muted: 'bg-muted text-muted-foreground',
 }
 
 const VARIANT_CLASSES: Record<NodeBadgeVariant, string> = {
@@ -43,7 +43,7 @@ export const NodeBadge = memo(function NodeBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium',
         VARIANT_CLASSES[variant],
         COLOR_CLASSES[color],
         className,

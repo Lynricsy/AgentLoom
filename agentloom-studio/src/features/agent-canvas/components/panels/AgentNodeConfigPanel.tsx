@@ -47,7 +47,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   return (
     <div
       className={cn(
-        'absolute top-3 right-3 z-10 flex max-h-[calc(100vh-6rem)] w-80 flex-col overflow-hidden rounded-card border border-border bg-surface/95 shadow-panel backdrop-blur-sm',
+        'absolute top-3 right-3 z-10 flex max-h-[calc(100vh-6rem)] w-80 flex-col overflow-hidden rounded-lg border border-border bg-surface/95 shadow-lg backdrop-blur-sm',
         className,
       )}
     >
@@ -56,7 +56,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           <span className="text-sm font-medium text-foreground">
             {nodeData.label}
           </span>
-          <span className="text-xs text-muted">{nodeData.nodeType}</span>
+          <span className="text-xs text-muted-foreground">{nodeData.nodeType}</span>
         </div>
         <button
           type="button"
@@ -113,7 +113,7 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
       );
     default:
       return (
-        <div className="text-xs text-muted">
+        <div className="text-xs text-muted-foreground">
           暂不支持配置节点类型 <strong>{nodeData.nodeType}</strong>
         </div>
       );

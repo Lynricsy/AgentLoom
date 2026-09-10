@@ -68,7 +68,7 @@ const STEP_DEFINITIONS: Array<{
 ];
 
 const FIELD_CLASS_NAME =
-  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50";
+  "w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 function parseCommandArgs(raw: string): string[] {
   return raw
@@ -455,7 +455,7 @@ export function McpImportDialog({
           : `地址 ${connectionForm.url.trim() || "未填写"}${connectionPayload.headers ? ` · 请求头 ${Object.keys(connectionPayload.headers).length} 项` : ""}`;
 
       return (
-        <dl className="grid gap-3 rounded-2xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
+        <dl className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
           <div className="space-y-1">
             <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               服务器
@@ -493,7 +493,7 @@ export function McpImportDialog({
     }
 
     return (
-      <dl className="grid gap-3 rounded-2xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
+      <dl className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
         <div className="space-y-1">
           <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             已保存服务器
@@ -520,7 +520,7 @@ export function McpImportDialog({
     }
 
     return (
-      <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
         <p className="font-medium">服务器响应正常</p>
         <p className="mt-1 text-muted-foreground">
           {serverInfo.name} · 版本 {serverInfo.version}
@@ -538,7 +538,7 @@ export function McpImportDialog({
         <Dialog.Overlay className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
         <Dialog.Content
           aria-describedby="mcp-import-dialog-description"
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,52rem)] w-[min(52rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated text-foreground shadow-2xl"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,52rem)] w-[min(52rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-muted text-foreground shadow-xl"
           onCloseAutoFocus={(event) => {
             if (restoreFocusElement) {
               event.preventDefault();
@@ -583,7 +583,7 @@ export function McpImportDialog({
                 return (
                   <li
                     className={cn(
-                      "rounded-2xl border px-3 py-3 transition-colors",
+                      "rounded-xl border px-3 py-3 transition-colors",
                       isActive
                         ? "border-primary bg-primary/10"
                         : isCompleted
@@ -883,7 +883,7 @@ export function McpImportDialog({
                 {renderConnectionSummary()}
                 {renderServerIdentity(currentServerInfo)}
 
-                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface p-4 text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm text-muted-foreground">
                   <span>当前已发现 {discoveredTools.length} 个工具</span>
                   <Button
                     disabled={
@@ -900,7 +900,7 @@ export function McpImportDialog({
                   <div className="space-y-3">
                     {discoveredTools.map((tool) => (
                       <div
-                        className="rounded-2xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary/40"
+                        className="rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary/40"
                         key={tool.name}
                       >
                         <div className="min-w-0 space-y-2">
@@ -939,7 +939,7 @@ export function McpImportDialog({
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border bg-surface p-6 text-center text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-center text-sm text-muted-foreground">
                     还没有发现工具，先执行一次发现操作。
                   </div>
                 )}
@@ -979,7 +979,7 @@ export function McpImportDialog({
 
                         return (
                           <label
-                            className="flex items-start gap-3 rounded-2xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary/40"
+                            className="flex items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary/40"
                             htmlFor={checkboxId}
                             key={tool.name}
                           >
@@ -1012,13 +1012,13 @@ export function McpImportDialog({
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-border bg-surface p-6 text-center text-sm text-muted-foreground">
+                    <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-center text-sm text-muted-foreground">
                       还没有发现工具，请先返回上一步完成发现。
                     </div>
                   )}
                 </div>
 
-                <div className="grid gap-4 rounded-2xl border border-border bg-surface p-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+                <div className="grid gap-4 rounded-xl border border-border bg-surface p-4 md:grid-cols-[minmax(0,1fr)_16rem]">
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-foreground">
                       本次导入摘要
@@ -1114,7 +1114,7 @@ export function McpImportDialog({
                     <div className="space-y-3">
                       {receipt.results.map((result) => (
                         <div
-                          className="rounded-2xl border border-border bg-surface p-4"
+                          className="rounded-xl border border-border bg-surface p-4"
                           key={`${result.toolName}-${result.status}-${result.toolDefinitionId ?? "none"}`}
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">

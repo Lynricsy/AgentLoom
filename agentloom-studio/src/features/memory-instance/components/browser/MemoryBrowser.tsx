@@ -161,7 +161,7 @@ export function MemoryBrowser() {
             onClick={() =>
               navigate({ to: '/resources/memory-instances' })
             }
-            className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft size={10} />
             返回列表
@@ -177,12 +177,12 @@ export function MemoryBrowser() {
         />
 
         <div className="mt-auto border-t border-border p-4">
-          <div className="rounded-lg border border-border bg-card p-3">
+          <div className="rounded-lg border border-border bg-surface p-3">
             <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
               <Hash size={12} />
               <span>当前路径</span>
             </div>
-            <code className="block break-all font-mono text-[10px] leading-tight text-primary/80">
+            <code className="block break-all font-mono text-2xs leading-tight text-primary/80">
               {domain}://{path || 'root'}
             </code>
           </div>
@@ -201,7 +201,7 @@ export function MemoryBrowser() {
             onClick={() => setShowSearch(!showSearch)}
             aria-label={showSearch ? '关闭搜索' : '打开搜索'}
             title={showSearch ? '关闭搜索' : '打开搜索'}
-            className={cn(showSearch && 'bg-surface-elevated text-foreground')}
+            className={cn(showSearch && 'bg-muted text-foreground')}
           >
             <Search size={16} />
           </Button>
@@ -242,10 +242,10 @@ export function MemoryBrowser() {
           {isLoading ? (
             <div className="mx-auto max-w-7xl space-y-6">
               <Skeleton className="h-8 w-64" />
-              <Skeleton className="h-48 rounded-panel" />
+              <Skeleton className="h-48 rounded-xl" />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {Array.from({ length: 4 }, (_, index) => (
-                  <Skeleton key={index} className="h-28 rounded-card" />
+                  <Skeleton key={index} className="h-28 rounded-lg" />
                 ))}
               </div>
             </div>
@@ -279,7 +279,7 @@ export function MemoryBrowser() {
 
                       {node.disclosure && !editing && (
                         <div
-                          className="inline-flex max-w-full items-center gap-2 rounded-card px-3 py-1.5 text-xs"
+                          className="inline-flex max-w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs"
                           style={{
                             border:
                               '1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)',
@@ -304,7 +304,7 @@ export function MemoryBrowser() {
                             {node.aliases.map((alias) => (
                               <code
                                 key={alias}
-                                className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-primary/70"
+                                className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-primary/70"
                               >
                                 {alias}
                               </code>
@@ -369,12 +369,12 @@ export function MemoryBrowser() {
 
                   {/* Edit metadata */}
                   {editing && (
-                    <div className="grid grid-cols-1 gap-4 rounded-card border border-border bg-surface p-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 rounded-lg border border-border bg-surface p-4 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <label htmlFor="memory-node-priority" className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                        <label htmlFor="memory-node-priority" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                           <Star size={12} />
                           优先级
-                          <span className="font-normal text-muted">
+                          <span className="font-normal text-muted-foreground">
                             (值越小优先级越高)
                           </span>
                         </label>
@@ -388,10 +388,10 @@ export function MemoryBrowser() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label htmlFor="memory-node-disclosure" className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                        <label htmlFor="memory-node-disclosure" className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                           <AlertTriangle size={12} />
                           披露条件
-                          <span className="font-normal text-muted">
+                          <span className="font-normal text-muted-foreground">
                             (何时召回)
                           </span>
                         </label>
@@ -409,9 +409,9 @@ export function MemoryBrowser() {
                   {/* Content area */}
                   <div
                     className={cn(
-                      'relative overflow-hidden rounded-panel border transition-colors duration-200',
+                      'relative overflow-hidden rounded-xl border transition-colors duration-200',
                       editing
-                        ? 'border-primary/50 bg-surface shadow-panel'
+                        ? 'border-primary/50 bg-surface shadow-lg'
                         : 'border-border bg-surface',
                     )}
                   >

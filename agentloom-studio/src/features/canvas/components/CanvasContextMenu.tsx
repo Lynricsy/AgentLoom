@@ -87,7 +87,7 @@ export function CanvasContextMenu({
       role="menu"
       aria-label="画布上下文菜单"
       data-testid="canvas-context-menu"
-      className="z-[1000] min-w-48 overflow-hidden rounded-card border border-border bg-popover p-1 shadow-popover"
+      className="z-40 min-w-48 overflow-hidden rounded-lg border border-border bg-popover p-1 shadow-lg"
       style={{
         position: 'fixed',
         left: `${state.x}px`,
@@ -116,7 +116,7 @@ export function CanvasContextMenu({
           type="button"
           role="menuitem"
           data-testid="canvas-context-menu-encapsulate"
-          className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-surface-elevated focus:bg-surface-elevated"
+          className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted focus:bg-muted"
           onClick={handleEncapsulate}
         >
           <PackagePlus aria-hidden className="h-3.5 w-3.5 shrink-0" />

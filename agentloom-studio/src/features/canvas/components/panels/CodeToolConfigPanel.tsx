@@ -158,10 +158,10 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
               className="flex h-[300px] flex-col gap-2 rounded-md border border-border bg-surface p-4"
               data-testid="code-tool-editor-fallback"
             >
-              <div className="h-4 w-28 animate-pulse rounded bg-muted/60" />
-              <div className="h-3 w-full animate-pulse rounded bg-muted/40" />
-              <div className="h-3 w-5/6 animate-pulse rounded bg-muted/40" />
-              <div className="h-3 w-2/3 animate-pulse rounded bg-muted/40" />
+              <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-full animate-pulse rounded bg-muted" />
+              <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
             </div>
           }
         >

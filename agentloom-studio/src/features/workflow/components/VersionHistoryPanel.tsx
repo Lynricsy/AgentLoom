@@ -101,7 +101,7 @@ const VersionItem = memo(function VersionItem({
 
   return (
     <div
-      className="group border-b border-border p-4 transition-colors hover:bg-surface-elevated"
+      className="group border-b border-border p-4 transition-colors hover:bg-muted"
       data-testid={`version-item-${version.versionNumber}`}
     >
       <div className="flex items-center justify-between">
@@ -131,13 +131,13 @@ const VersionItem = memo(function VersionItem({
 
       <div className="mt-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
-          <span className="flex items-center gap-1 text-xs text-muted">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
             {formatRelativeTime(new Date(version.createdAt))}
           </span>
 
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-2xs font-medium text-primary">
               {formatCreatorInitial(version.createdBy)}
             </span>
             <span data-testid={`version-created-by-${version.versionNumber}`}>
@@ -146,14 +146,14 @@ const VersionItem = memo(function VersionItem({
           </div>
 
           {version.snapshot?.metadata && (
-            <div className="text-xs text-muted">
+            <div className="text-xs text-muted-foreground">
               {version.snapshot.metadata.nodeCount} 个节点 ·{" "}
               {version.snapshot.metadata.edgeCount} 条连线
             </div>
           )}
 
           {releaseNotes && (
-            <p className="rounded-card border border-border bg-surface-elevated px-3 py-2 text-xs leading-5 text-foreground">
+            <p className="rounded-lg border border-border bg-muted px-3 py-2 text-xs leading-5 text-foreground">
               {releaseNotes}
             </p>
           )}
@@ -329,7 +329,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
   return (
     <aside
       className={cn(
-        "fixed right-0 top-0 z-40 flex h-full w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-panel transition-transform duration-300",
+        "fixed right-0 top-0 z-40 flex h-full w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-lg transition-transform duration-300",
         open ? "translate-x-0" : "translate-x-full",
       )}
       data-testid="version-history-panel"
@@ -338,9 +338,9 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
       {/* 头部 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-muted" />
+          <History className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-sm font-medium text-foreground">历史记录</h2>
-          {total > 0 && <span className="text-xs text-muted">({total})</span>}
+          {total > 0 && <span className="text-xs text-muted-foreground">({total})</span>}
         </div>
         <Button
           variant="ghost"
@@ -425,7 +425,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
             ))}
             {isFetching && hasMorePages && (
               <div
-                className="flex items-center justify-center gap-2 py-4 text-xs text-muted"
+                className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground"
                 data-testid="version-list-loading-more"
               >
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -438,10 +438,10 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
 
       {footerLabel && (
         <div className="flex items-center justify-between border-t border-border px-4 py-2">
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             已加载 {displayVersions.length}/{total} 条记录
           </span>
-          <span className="text-xs text-muted">{footerLabel}</span>
+          <span className="text-xs text-muted-foreground">{footerLabel}</span>
         </div>
       )}
     </aside>

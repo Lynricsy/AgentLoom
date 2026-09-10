@@ -81,7 +81,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       return (
         <button
           type="button"
-          className="shrink-0 rounded p-0.5 text-muted hover:text-error"
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-error"
           aria-label={`删除 ${node.leafKey} 映射`}
           onClick={() => handleRemoveMapping(node.path)}
         >
@@ -177,7 +177,7 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
 
           <button
             type="button"
-            className="mt-2 text-xs text-muted hover:text-primary"
+            className="mt-2 text-xs text-muted-foreground hover:text-primary"
             data-testid="mapping-undo"
             onClick={interactions.handleUndo}
           >

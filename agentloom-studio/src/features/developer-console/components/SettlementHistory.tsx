@@ -153,7 +153,7 @@ export function SettlementHistory({
   )
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-lg border border-border bg-surface">
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-base font-semibold text-foreground">结算历史</h3>
       </div>
@@ -297,7 +297,7 @@ export function SettlementHistory({
               className="text-sm font-medium text-foreground"
             >
               打款凭证号
-              <span className="ml-1 text-xs font-normal text-muted">(可选)</span>
+              <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
             </label>
             <Input
               id="payout-reference"

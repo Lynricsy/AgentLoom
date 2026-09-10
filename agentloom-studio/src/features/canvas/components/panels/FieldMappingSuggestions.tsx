@@ -26,7 +26,7 @@ export function FieldMappingSuggestions({
   return (
     <div className="mapping-panel__suggestions" data-testid="mapping-suggestions-section">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs text-muted">
+        <span className="text-xs text-muted-foreground">
           {suggestionsByTarget.size} 个智能推荐
         </span>
         {hasApplicableSuggestions && (

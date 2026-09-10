@@ -40,7 +40,7 @@ export const TemplateCard = memo(function TemplateCard({
   return (
     <button
       type="button"
-      className="group h-full w-full rounded-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      className="group h-full w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       onClick={() => onClick(template)}
     >
       <Card interactive className="flex h-full flex-col overflow-hidden">
@@ -82,7 +82,7 @@ export const TemplateCard = memo(function TemplateCard({
           </div>
 
           {template.description && (
-            <p className="line-clamp-2 text-xs leading-relaxed text-muted">
+            <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
               {template.description}
             </p>
           )}
@@ -95,7 +95,7 @@ export const TemplateCard = memo(function TemplateCard({
               </Badge>
             )}
             {nodeCount > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Layers className="h-3 w-3" />
                 {nodeCount} 节点
               </span>

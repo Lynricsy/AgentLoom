@@ -276,8 +276,8 @@ function GovernanceStatusBadge({ status }: { status: ExecutionGovernanceState })
 /** 元数据小格：统一 label / value 的字号与间距 */
 function MetaTile({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-card border border-border bg-surface p-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{label}</p>
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       <div className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</div>
     </div>
   )
@@ -286,13 +286,13 @@ function MetaTile({ label, value }: { label: string; value: ReactNode }) {
 function ActionSummaryCard({ testId, title, action }: ActionSummaryCardProps) {
   return (
     <div
-      className="rounded-card border border-border bg-surface-elevated p-4"
+      className="rounded-lg border border-border bg-muted p-4"
       data-testid={testId}
     >
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-foreground">{title}</p>
-          <p className="mt-1 text-[11px] text-muted">
+          <p className="mt-1 text-2xs text-muted-foreground">
             操作人：{action.operator ?? '—'} · 生效时间：{formatTimestamp(action.effectedAt)}
           </p>
         </div>
@@ -310,7 +310,7 @@ function ActionSummaryCard({ testId, title, action }: ActionSummaryCardProps) {
       </div>
 
       {action.reason ? (
-        <p className="mt-3 text-xs leading-relaxed text-muted">原因：{action.reason}</p>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">原因：{action.reason}</p>
       ) : null}
 
       {'execution' in action ? (
@@ -320,7 +320,7 @@ function ActionSummaryCard({ testId, title, action }: ActionSummaryCardProps) {
           <MetaTile label="最终状态" value={action.execution.status} />
           <MetaTile
             label="时间线链接"
-            value={<span className="text-muted">{action.execution.timelineUrl}</span>}
+            value={<span className="text-muted-foreground">{action.execution.timelineUrl}</span>}
           />
         </div>
       ) : null}
@@ -347,12 +347,12 @@ function ResourceGovernanceBlockedState({
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
             <Icon className="h-5 w-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            <p className="text-xs leading-relaxed text-muted">{message}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{message}</p>
             {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
@@ -370,14 +370,14 @@ function ResourceGovernanceOrganizationLoadingState() {
     >
       <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
 
-      <p className="flex items-center gap-2 text-xs text-muted">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <Spinner size="sm" />
         正在确认当前组织…
       </p>
 
       <div className="space-y-3">
-        <Skeleton className="h-28 rounded-card" />
-        <Skeleton className="h-44 rounded-card" />
+        <Skeleton className="h-28 rounded-lg" />
+        <Skeleton className="h-44 rounded-lg" />
       </div>
     </div>
   )
@@ -470,7 +470,7 @@ function ResourceGovernanceContent({
         cell: (field) => (
           <div className="min-w-0 space-y-1">
             <p className="text-xs font-medium text-foreground">{field.label}</p>
-            <p className="text-[11px] leading-relaxed text-muted">{field.description}</p>
+            <p className="text-2xs leading-relaxed text-muted-foreground">{field.description}</p>
           </div>
         ),
       },
@@ -483,7 +483,7 @@ function ResourceGovernanceContent({
           const current = state?.quota[field.key] ?? null
 
           return (
-            <span className="text-xs tabular-nums text-muted">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {current == null ? '未限制' : current}
             </span>
           )
@@ -719,10 +719,10 @@ function ResourceGovernanceContent({
         <PageHeader icon={Gauge} title="资源治理" description="加载资源治理设置中…" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-20 rounded-card" />
+            <Skeleton key={index} className="h-20 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-72 rounded-card" />
+        <Skeleton className="h-72 rounded-lg" />
       </div>
     )
   }
@@ -761,7 +761,7 @@ function ResourceGovernanceContent({
                 <PauseCircle className="h-4 w-4" />
                 <CardTitle>当前组织状态</CardTitle>
               </div>
-              <p className="text-xs leading-relaxed text-muted">
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 这里展示后端返回的当前资源治理状态。租户级治理状态为{' '}
                 <span className="font-medium text-foreground">
                   {getGovernanceStatusLabel(state.governance.tenantControl.status)}
@@ -781,7 +781,7 @@ function ResourceGovernanceContent({
             <MetaTile label="治理版本" value={state.governance.version} />
           </div>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
             <span>配额更新人：{state.quota.updatedBy ?? '—'}</span>
             <span>配额更新时间：{formatTimestamp(state.quota.updatedAt)}</span>
             <span>治理更新人：{state.governance.tenantControl.updatedBy ?? '—'}</span>
@@ -793,7 +793,7 @@ function ResourceGovernanceContent({
       <Card data-testid="resource-governance-quota-form">
         <CardHeader>
           <CardTitle>资源配额</CardTitle>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             配额会直接影响新的执行请求、API 调用和沙箱容量。除 API 每分钟限流外，其余字段留空表示不设置额外上限。
           </p>
         </CardHeader>
@@ -816,7 +816,7 @@ function ResourceGovernanceContent({
               {quotaMutation.isPending ? <Spinner size="sm" /> : null}
               保存配额
             </Button>
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               当前 API 每分钟限流：{state.quota.apiRateLimitPerMinute}，沙箱 CPU 上限：
               {state.quota.maxSandboxCpuPercent ?? '未限制'}。
             </span>
@@ -827,27 +827,27 @@ function ResourceGovernanceContent({
       <Card data-testid="resource-governance-controls-form">
         <CardHeader>
           <CardTitle>治理暂停控制</CardTitle>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             治理暂停只会阻止新的执行进入，不会把已经运行中的执行改成 paused。若需要解除某个治理暂停，请把状态切回 active。
           </p>
         </CardHeader>
 
         <CardContent className="space-y-4">
           <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-card border border-border bg-surface-elevated p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <p className="text-xs font-semibold text-foreground">当前租户总控</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <GovernanceStatusBadge status={state.governance.tenantControl.status} />
-                <span className="text-[11px] text-muted">
+                <span className="text-2xs text-muted-foreground">
                   更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}
                 </span>
               </div>
-              <p className="mt-2 text-xs text-muted">
+              <p className="mt-2 text-xs text-muted-foreground">
                 原因：{state.governance.tenantControl.reason ?? '未填写治理原因'}
               </p>
             </div>
 
-            <div className="rounded-card border border-border bg-surface-elevated p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <p className="text-xs font-semibold text-foreground">工作流级治理目标</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Badge variant="secondary" size="sm">
@@ -860,19 +860,19 @@ function ResourceGovernanceContent({
                   治理放行：{workflowControlCount - pausedWorkflowCount}
                 </Badge>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-muted">
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                 当前租户治理状态不影响已在运行中的执行，只决定新执行是否允许进入。
               </p>
             </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-            <div className="rounded-card border border-border bg-surface-elevated p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <p className="text-xs font-semibold text-foreground">租户总控编辑</p>
               <div className="mt-3 space-y-3">
                 <div className="space-y-1.5">
                   <label
-                    className="block text-xs font-medium text-muted"
+                    className="block text-xs font-medium text-muted-foreground"
                     htmlFor="resource-governance-tenant-status"
                   >
                     租户治理状态
@@ -897,13 +897,13 @@ function ResourceGovernanceContent({
                   </Select>
                 </div>
 
-                <p className="rounded-card border border-border bg-surface p-2.5 text-[11px] leading-relaxed text-muted">
+                <p className="rounded-lg border border-border bg-surface p-2.5 text-2xs leading-relaxed text-muted-foreground">
                   {tenantStatusDescription}
                 </p>
 
                 <div className="space-y-1.5">
                   <label
-                    className="block text-xs font-medium text-muted"
+                    className="block text-xs font-medium text-muted-foreground"
                     htmlFor="resource-governance-tenant-reason"
                   >
                     租户治理原因
@@ -921,11 +921,11 @@ function ResourceGovernanceContent({
               </div>
             </div>
 
-            <div className="rounded-card border border-border bg-surface-elevated p-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-foreground">工作流治理目标</p>
-                  <p className="mt-1 text-[11px] text-muted">
+                  <p className="mt-1 text-2xs text-muted-foreground">
                     可以逐个指定工作流目标的治理状态；新增空白行后填写 UUID 即可提交。
                   </p>
                 </div>
@@ -946,7 +946,7 @@ function ResourceGovernanceContent({
                 {workflowDrafts.map((draft, index) => (
                   <div
                     key={draft.draftId}
-                    className="rounded-card border border-border bg-surface p-3"
+                    className="rounded-lg border border-border bg-surface p-3"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-medium text-foreground">
@@ -966,7 +966,7 @@ function ResourceGovernanceContent({
                     <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem]">
                       <div className="space-y-1.5">
                         <label
-                          className="block text-xs font-medium text-muted"
+                          className="block text-xs font-medium text-muted-foreground"
                           htmlFor={`resource-governance-workflow-target-${draft.draftId}`}
                         >
                           工作流目标 ID
@@ -984,7 +984,7 @@ function ResourceGovernanceContent({
 
                       <div className="space-y-1.5">
                         <label
-                          className="block text-xs font-medium text-muted"
+                          className="block text-xs font-medium text-muted-foreground"
                           htmlFor={`resource-governance-workflow-status-${draft.draftId}`}
                         >
                           治理状态
@@ -1014,7 +1014,7 @@ function ResourceGovernanceContent({
 
                     <div className="mt-3 space-y-1.5">
                       <label
-                        className="block text-xs font-medium text-muted"
+                        className="block text-xs font-medium text-muted-foreground"
                         htmlFor={`resource-governance-workflow-reason-${draft.draftId}`}
                       >
                         治理原因
@@ -1048,7 +1048,7 @@ function ResourceGovernanceContent({
               {controlsMutation.isPending ? <Spinner size="sm" /> : null}
               更新治理控制
             </Button>
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               若要解除某个治理暂停，请把该目标状态改回 active 并重新提交。
             </span>
           </div>
@@ -1069,7 +1069,7 @@ function ResourceGovernanceContent({
             <OctagonAlert className="h-4 w-4" />
             <CardTitle>终止异常执行</CardTitle>
           </div>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             仅在确认执行异常且需要立即止损时使用。这个动作会直接终止指定执行，不会把治理暂停误写成执行 paused。
           </p>
         </CardHeader>
@@ -1078,7 +1078,7 @@ function ResourceGovernanceContent({
           <div className="grid gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
             <div className="space-y-1.5">
               <label
-                className="block text-xs font-medium text-muted"
+                className="block text-xs font-medium text-muted-foreground"
                 htmlFor="resource-governance-execution-id"
               >
                 异常执行 ID
@@ -1094,7 +1094,7 @@ function ResourceGovernanceContent({
 
             <div className="space-y-1.5">
               <label
-                className="block text-xs font-medium text-muted"
+                className="block text-xs font-medium text-muted-foreground"
                 htmlFor="resource-governance-termination-reason"
               >
                 终止原因
@@ -1122,7 +1122,7 @@ function ResourceGovernanceContent({
               {terminateMutation.isPending ? <Spinner size="sm" /> : null}
               终止异常执行
             </Button>
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               建议在填写明确原因后再执行终止，以便后续审计和回溯。
             </span>
           </div>

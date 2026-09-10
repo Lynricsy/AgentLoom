@@ -26,7 +26,7 @@ const DISCLOSURE_COLORS: Record<string, string> = {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+    <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
       {children}
     </p>
   )
@@ -56,7 +56,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
       {...panelSlideRight}
       className={cn(
         'absolute right-0 top-0 z-20 flex h-full w-[360px] max-w-[85vw] flex-col',
-        'border-l border-border bg-surface/95 shadow-panel backdrop-blur-md',
+        'border-l border-border bg-surface/95 shadow-lg backdrop-blur-md',
       )}
       data-testid="node-detail-panel"
     >
@@ -67,7 +67,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
           variant="ghost"
           size="icon-sm"
           onClick={onClose}
-          className="h-7 w-7 text-muted hover:text-foreground"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           aria-label="关闭详情面板"
           data-testid="node-detail-close"
         >
@@ -81,7 +81,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
           <div className="space-y-3" data-testid="node-detail-loading">
             <Skeleton className="h-4 w-2/3 rounded" />
             <Skeleton className="h-3 w-1/3 rounded" />
-            <Skeleton className="h-24 w-full rounded-card" />
+            <Skeleton className="h-24 w-full rounded-lg" />
           </div>
         ) : node ? (
           <>
@@ -135,10 +135,10 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
               {node.content && (
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <FileText className="h-3 w-3 text-muted" />
+                    <FileText className="h-3 w-3 text-muted-foreground" />
                     <FieldLabel>内容</FieldLabel>
                   </div>
-                  <pre className="mt-1.5 max-h-[200px] overflow-auto whitespace-pre-wrap break-words rounded-card border border-border bg-surface-elevated p-3 text-xs leading-relaxed text-foreground">
+                  <pre className="mt-1.5 max-h-[200px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 text-xs leading-relaxed text-foreground">
                     {node.content}
                   </pre>
                 </div>
@@ -148,14 +148,14 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
             {/* 版本历史 */}
             <div className="mt-6">
               <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3 text-muted" />
+                <Clock className="h-3 w-3 text-muted-foreground" />
                 <FieldLabel>版本历史</FieldLabel>
               </div>
 
               {versionsLoading ? (
                 <div className="mt-3 space-y-2">
                   {Array.from({ length: 2 }, (_, i) => (
-                    <Skeleton key={i} className="h-14 rounded-card" />
+                    <Skeleton key={i} className="h-14 rounded-lg" />
                   ))}
                 </div>
               ) : versions && versions.length > 0 ? (
@@ -163,22 +163,22 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
                   {versions.map((v) => (
                     <div
                       key={v.id}
-                      className="rounded-card border border-border bg-surface-elevated p-2.5"
+                      className="rounded-lg border border-border bg-muted p-2.5"
                       data-testid={`version-item-${v.version}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                          <Hash className="h-3 w-3 text-muted" />
+                          <Hash className="h-3 w-3 text-muted-foreground" />
                           <span className="text-xs font-medium text-foreground">
                             v{v.version}
                           </span>
                         </div>
-                        <span className="text-[10px] text-muted">
+                        <span className="text-2xs text-muted-foreground">
                           {new Date(v.createdAt).toLocaleString('zh-CN')}
                         </span>
                       </div>
                       {v.content && (
-                        <p className="mt-1.5 line-clamp-3 text-[11px] leading-relaxed text-muted">
+                        <p className="mt-1.5 line-clamp-3 text-2xs leading-relaxed text-muted-foreground">
                           {v.content}
                         </p>
                       )}
@@ -186,12 +186,12 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-muted">暂无版本记录</p>
+                <p className="mt-3 text-xs text-muted-foreground">暂无版本记录</p>
               )}
             </div>
           </>
         ) : (
-          <p className="py-8 text-center text-xs text-muted">
+          <p className="py-8 text-center text-xs text-muted-foreground">
             无法加载节点信息
           </p>
         )}

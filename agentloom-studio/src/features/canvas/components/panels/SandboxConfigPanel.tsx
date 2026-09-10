@@ -314,7 +314,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               onChange={handleCpu}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-xs text-muted">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>0.5 核</span>
               <span>4 核</span>
             </div>
@@ -351,7 +351,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               onChange={handleMemory}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-xs text-muted">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>256 MB</span>
               <span>4096 MB</span>
             </div>
@@ -388,7 +388,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               onChange={handleDisk}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-xs text-muted">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>1 GB</span>
               <span>10 GB</span>
             </div>
@@ -425,20 +425,20 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               onChange={handleTimeout}
               className="w-full accent-primary"
             />
-            <div className="flex justify-between text-xs text-muted">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>0 = 不超时</span>
               <span>168 小时</span>
             </div>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               设为 0 表示不超时；如需显式限制，可设置到最多 168 小时。
             </p>
           </div>
 
           {/* Summary */}
-          <div className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs">
+          <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs">
             <p className="font-medium text-foreground">当前配置</p>
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+              <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning">
                 临时
               </span>
               <span>{sandbox.cpu} 核</span>
@@ -468,10 +468,10 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
           </div>
 
           {/* Summary */}
-          <div className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs">
+          <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs">
             <p className="font-medium text-foreground">当前配置</p>
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span className="inline-flex items-center rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-medium text-info">
+              <span className="inline-flex items-center rounded-full bg-info/10 px-2 py-0.5 text-2xs font-medium text-info">
                 持久
               </span>
               {sandbox.persistentSandboxName ? (

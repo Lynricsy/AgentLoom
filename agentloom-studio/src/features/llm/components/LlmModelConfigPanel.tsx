@@ -265,11 +265,11 @@ function TagInput({
 
   return (
     <div className="space-y-2">
-      <div className="flex min-h-[44px] flex-wrap gap-1 rounded-md border border-input bg-background px-2 py-2 focus-within:ring-2 focus-within:ring-primary/30">
+      <div className="flex min-h-[44px] flex-wrap gap-1 rounded-md border border-border bg-background px-2 py-2 focus-within:ring-2 focus-within:ring-primary/30">
         {tags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-[11px] text-foreground"
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-2xs text-foreground"
           >
             {tag}
             <button
@@ -289,11 +289,11 @@ function TagInput({
           onKeyDown={handleKeyDown}
           onBlur={commitValue}
           placeholder={tags.length === 0 ? placeholder : "继续添加"}
-          className="min-w-[96px] flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+          className="min-w-[96px] flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-subtle-foreground"
         />
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         可添加多个停止序列，用回车确认。
       </p>
     </div>
@@ -313,7 +313,7 @@ function ExistingConfigSummary({ current }: { current: LlmModelInfo | null }) {
   const hasConfiguredApiKey = Boolean(current.providerEntity?.apiKeyId);
 
   return (
-    <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs">
+    <div className="rounded-lg border border-border bg-muted p-3 text-xs">
       <div className="flex items-center gap-2 text-foreground">
         <ProviderIcon provider={current.provider} size={14} />
         <span className="font-medium">{current.name}</span>
@@ -691,7 +691,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                   llmModelsQuery.isLoading || !hasSelectableExistingModels
                 }
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 选择后会立即调用 `updateNodeData(nodeId, {"{"} llmConfigId,
                 parameters {"}"})` 所在的数据链路，并交给现有自动保存流程处理。
               </p>
@@ -717,7 +717,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                   {...form.register("name")}
                 />
                 {form.formState.errors.name ? (
-                  <p className="text-[11px] text-error">
+                  <p className="text-2xs text-error">
                     {form.formState.errors.name.message}
                   </p>
                 ) : null}
@@ -787,7 +787,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                       />
                     )}
                     {form.formState.errors.modelName ? (
-                      <p className="text-[11px] text-error">
+                      <p className="text-2xs text-error">
                         {form.formState.errors.modelName.message}
                       </p>
                     ) : null}
@@ -833,13 +833,13 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
               )}
             </div>
 
-            <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+            <div className="space-y-3 rounded-lg border border-border bg-muted p-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-foreground">
                     参数设置
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     这些参数会和配置 ID 一起写回节点数据并触发自动保存。
                   </p>
                 </div>
@@ -858,7 +858,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <Label>Temperature</Label>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {selectedTemperature.toFixed(1)}
                   </span>
                 </div>
@@ -891,7 +891,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                     {...form.register("maxTokens")}
                   />
                   {form.formState.errors.maxTokens ? (
-                    <p className="text-[11px] text-error">
+                    <p className="text-2xs text-error">
                       {form.formState.errors.maxTokens.message}
                     </p>
                   ) : null}
@@ -900,7 +900,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <Label>Top P</Label>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       {selectedTopP.toFixed(2)}
                     </span>
                   </div>
@@ -926,7 +926,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <Label>Frequency Penalty</Label>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       {selectedFrequencyPenalty.toFixed(1)}
                     </span>
                   </div>
@@ -952,7 +952,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <Label>Presence Penalty</Label>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       {selectedPresencePenalty.toFixed(1)}
                     </span>
                   </div>

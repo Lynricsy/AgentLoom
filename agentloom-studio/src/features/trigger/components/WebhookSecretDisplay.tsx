@@ -75,7 +75,7 @@ export function WebhookSecretDisplay({
       )}
     >
       <div className="space-y-1">
-        <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200">
+        <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em] text-violet-200">
           <KeyRound className="h-3.5 w-3.5" />
           Webhook 凭证
         </div>
@@ -112,7 +112,7 @@ export function WebhookSecretDisplay({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-[11px] text-violet-100 hover:bg-violet-500/20"
+            className="h-7 px-2 text-2xs text-violet-100 hover:bg-violet-500/20"
             onClick={() => setIsSecretVisible((current) => !current)}
           >
             {isSecretVisible ? '隐藏' : '显示'}
@@ -164,7 +164,7 @@ function CredentialField({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 gap-1 px-2 text-[11px]"
+            className="h-7 gap-1 px-2 text-2xs"
             onClick={() => void onCopy(value, copyLabel)}
           >
             <Copy className="h-3.5 w-3.5" />

@@ -309,7 +309,7 @@ export function MemoryAuditPage() {
         <Button
           variant="ghost"
           size="sm"
-          className="-ml-2 self-start text-muted hover:text-foreground"
+          className="-ml-2 self-start text-muted-foreground hover:text-foreground"
           onClick={handleBack}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -350,7 +350,7 @@ export function MemoryAuditPage() {
           <TabsTrigger value="pending" className="px-4">
             待审核
             {pendingCount > 0 && (
-              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/15 px-1 text-[10px] font-medium text-warning">
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/15 px-1 text-2xs font-medium text-warning">
                 {pendingCount}
               </span>
             )}
@@ -362,7 +362,7 @@ export function MemoryAuditPage() {
           className="flex min-h-0 flex-1 flex-col gap-4 space-y-0 lg:flex-row"
         >
           {/* 左：筛选 + 时间线 */}
-          <div className="flex min-h-0 w-full flex-col overflow-hidden rounded-card border border-border bg-surface lg:w-96 lg:shrink-0">
+          <div className="flex min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-surface lg:w-96 lg:shrink-0">
             <div className="space-y-3 border-b border-border p-3">
               <div className="flex gap-2">
                 <Input
@@ -389,7 +389,7 @@ export function MemoryAuditPage() {
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
                         isActive
                           ? 'border-primary/30 bg-primary/10 text-primary'
-                          : 'border-border text-muted hover:border-border-hover hover:text-foreground',
+                          : 'border-border text-muted-foreground hover:border-border-hover hover:text-foreground',
                       )}
                       onClick={() =>
                         handleFilterChange({
@@ -417,7 +417,7 @@ export function MemoryAuditPage() {
                     })
                   }
                 />
-                <span className="text-xs text-muted">至</span>
+                <span className="text-xs text-muted-foreground">至</span>
                 <Input
                   type="date"
                   aria-label="结束日期"
@@ -455,7 +455,7 @@ export function MemoryAuditPage() {
           </div>
 
           {/* 右：详情 */}
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-card border border-border bg-surface">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface">
             {selectedEntry ? (
               <div className="flex flex-col gap-6 p-5">
                 <div className="space-y-2">
@@ -476,7 +476,7 @@ export function MemoryAuditPage() {
                       {REVIEW_STATUS_META[selectedEntry.reviewStatus].label}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted">
+                  <p className="text-sm text-muted-foreground">
                     {selectedEntry.actor} 于{' '}
                     {new Intl.DateTimeFormat('zh-CN', {
                       dateStyle: 'medium',
@@ -507,7 +507,7 @@ export function MemoryAuditPage() {
                                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
                                 isActive
                                   ? 'border-primary/40 bg-primary/10 text-primary'
-                                  : 'border-border text-muted hover:border-border-hover hover:text-foreground',
+                                  : 'border-border text-muted-foreground hover:border-border-hover hover:text-foreground',
                               )}
                               onClick={() => handleVersionSelect(ver.id)}
                             >

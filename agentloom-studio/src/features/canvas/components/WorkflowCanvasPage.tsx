@@ -342,7 +342,7 @@ export function WorkflowCanvasPage() {
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <p className="text-muted">加载工作流中...</p>
+        <p className="text-muted-foreground">加载工作流中...</p>
       </div>
     );
   }

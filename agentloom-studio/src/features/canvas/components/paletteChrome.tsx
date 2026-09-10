@@ -153,7 +153,7 @@ export const PaletteSectionHeader = memo(function PaletteSectionHeader({
       type="button"
       onClick={onToggle}
       aria-expanded={!isCollapsed}
-      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-elevated"
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
     >
       <PaletteIconChip icon={icon} color={color} size="sm" />
       <span className="flex-1 text-left text-xs font-semibold tracking-wide">
@@ -202,7 +202,7 @@ export const PaletteItemButton = memo(function PaletteItemButton({
         'flex w-full items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors',
         disabled
           ? 'cursor-default opacity-55'
-          : 'cursor-grab hover:border-border hover:bg-surface-elevated active:cursor-grabbing',
+          : 'cursor-grab hover:border-border hover:bg-muted active:cursor-grabbing',
       )}
     >
       <PaletteIconChip icon={icon} color={color} />
@@ -219,7 +219,7 @@ export const PaletteItemButton = memo(function PaletteItemButton({
           {badge}
         </span>
         {description ? (
-          <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+          <span className="mt-0.5 block text-2xs leading-4 text-muted-foreground">
             {description}
           </span>
         ) : null}
@@ -267,7 +267,7 @@ export const PaletteRailItem = memo(function PaletteRailItem({
           'flex items-center justify-center rounded-lg border border-transparent p-1 transition-colors',
           disabled
             ? 'cursor-default opacity-55'
-            : 'cursor-grab hover:border-border hover:bg-surface-elevated active:cursor-grabbing',
+            : 'cursor-grab hover:border-border hover:bg-muted active:cursor-grabbing',
         )}
       >
         <PaletteIconChip icon={icon} color={color} size="lg" />
@@ -292,7 +292,7 @@ export function applyPaletteDragPreview(
 
   const card = document.createElement('div')
   card.className =
-    'pointer-events-none flex w-[188px] items-center gap-2 rounded-card border bg-surface px-3 py-2 shadow-node'
+    'pointer-events-none flex w-[188px] items-center gap-2 rounded-lg border bg-surface px-3 py-2 shadow-sm'
   card.style.position = 'fixed'
   card.style.top = '-1000px'
   card.style.left = '-1000px'

@@ -303,7 +303,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
             </div>
 
             <div className="flex-1 overflow-y-auto p-2">
-              <p className="mb-2 px-2 text-[11px] text-muted-foreground">
+              <p className="mb-2 px-2 text-2xs text-muted-foreground">
                 拖拽节点到画布以添加
               </p>
               {filteredGroups.map((group) => {

@@ -145,12 +145,12 @@ export const SearchResultList = memo(function SearchResultList({
       {Array.from(grouped.entries()).map(([filePath, fileResults]) => (
         <div key={filePath} className="border-b border-border/60 last:border-0">
           {/* File path header */}
-          <div className="sticky top-0 flex items-center gap-1.5 bg-surface-elevated/90 px-3 py-1.5 backdrop-blur-sm">
+          <div className="sticky top-0 flex items-center gap-1.5 bg-muted px-3 py-1.5 backdrop-blur-sm">
             <File className="size-3 shrink-0 text-muted-foreground" />
             <span className="truncate text-xs font-medium text-foreground/90">
               {filePath}
             </span>
-            <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/50">
+            <span className="ml-auto shrink-0 text-2xs text-muted-foreground/50">
               {fileResults.length} 项匹配
             </span>
           </div>

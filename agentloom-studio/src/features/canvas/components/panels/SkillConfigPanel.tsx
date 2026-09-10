@@ -116,7 +116,7 @@ export const SkillConfigPanel = memo(function SkillConfigPanel({
         />
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         {skill.skillId ? (
           <div className="space-y-1 text-muted-foreground">
@@ -127,7 +127,7 @@ export const SkillConfigPanel = memo(function SkillConfigPanel({
             )}
           </div>
         ) : (
-          <p className="text-muted">未配置技能 ID</p>
+          <p className="text-muted-foreground">未配置技能 ID</p>
         )}
       </div>
     </div>

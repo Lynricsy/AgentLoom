@@ -68,8 +68,8 @@ interface SummaryTileProps {
 
 function SummaryTile({ label, value, isLoading }: SummaryTileProps) {
   return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <p className="text-xs text-muted">{label}</p>
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
       {isLoading ? (
         <Skeleton className="mt-2 h-6 w-24 rounded-md" />
       ) : (
@@ -118,7 +118,7 @@ export function PluginUsagePage({
         header: '时间 (UTC)',
         className: 'w-44',
         cell: (record) => (
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {DATE_TIME_FORMATTER.format(new Date(record.createdAt))}
           </span>
         ),
@@ -132,7 +132,7 @@ export function PluginUsagePage({
             <p className="truncate font-mono text-xs text-foreground">
               {record.executionId}
             </p>
-            <p className="truncate font-mono text-[11px] text-muted">
+            <p className="truncate font-mono text-2xs text-muted-foreground">
               step {record.stepId}
             </p>
           </div>
@@ -144,7 +144,7 @@ export function PluginUsagePage({
         className: 'w-24',
         hideBelow: 'sm',
         cell: (record) => (
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {formatDuration(record.executionDurationMs)}
           </span>
         ),
@@ -166,11 +166,11 @@ export function PluginUsagePage({
         hideBelow: 'lg',
         cell: (record) =>
           record.sourceListingId ? (
-            <span className="truncate font-mono text-xs text-muted">
+            <span className="truncate font-mono text-xs text-muted-foreground">
               {record.sourceListingId}
             </span>
           ) : (
-            <span className="text-muted">本地插件</span>
+            <span className="text-muted-foreground">本地插件</span>
           ),
       },
     ],
@@ -212,11 +212,11 @@ export function PluginUsagePage({
         }
       />
 
-      <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-3 sm:flex-row sm:items-end sm:p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 sm:flex-row sm:items-end sm:p-4">
         <div className="space-y-1.5">
           <label
             htmlFor="usage-period-start"
-            className="block text-xs font-medium text-muted"
+            className="block text-xs font-medium text-muted-foreground"
           >
             开始日期 (UTC)
           </label>
@@ -232,7 +232,7 @@ export function PluginUsagePage({
         <div className="space-y-1.5">
           <label
             htmlFor="usage-period-end"
-            className="block text-xs font-medium text-muted"
+            className="block text-xs font-medium text-muted-foreground"
           >
             结束日期 (UTC)
           </label>

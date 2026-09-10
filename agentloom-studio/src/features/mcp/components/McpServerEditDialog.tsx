@@ -273,7 +273,7 @@ export function McpServerEditDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
         <Dialog.Content
           aria-describedby="mcp-edit-desc"
-          className="fixed left-1/2 top-1/2 z-50 flex w-[min(40rem,calc(100vw-2rem))] max-h-[min(44rem,calc(100vh-4rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl"
+          className="fixed left-1/2 top-1/2 z-50 flex w-[min(40rem,calc(100vw-2rem))] max-h-[min(44rem,calc(100vh-4rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-muted shadow-xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-0">
@@ -344,7 +344,7 @@ export function McpServerEditDialog({
                   <textarea
                     id="mcp-edit-desc-input"
                     rows={3}
-                    className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="可选描述"
@@ -434,7 +434,7 @@ export function McpServerEditDialog({
                       <textarea
                         id="mcp-edit-env"
                         rows={4}
-                        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                         value={credentialText}
                         onChange={(e) => {
                           setCredentialText(e.target.value);
@@ -478,7 +478,7 @@ export function McpServerEditDialog({
                       <textarea
                         id="mcp-edit-headers"
                         rows={4}
-                        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                         value={credentialText}
                         onChange={(e) => {
                           setCredentialText(e.target.value);

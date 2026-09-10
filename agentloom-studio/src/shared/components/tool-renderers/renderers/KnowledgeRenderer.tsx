@@ -107,7 +107,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
                 {source}
               </span>
               {entry.score != null && (
-                <span className={cn('shrink-0 text-[10px] font-medium', scoreColor(entry.score))}>
+                <span className={cn('shrink-0 text-2xs font-medium', scoreColor(entry.score))}>
                   {entry.score.toFixed(2)}
                 </span>
               )}

@@ -161,7 +161,7 @@ export function ApiTokenCreateDialog({
 
             <DialogBody className="space-y-4">
               <div
-                className="flex gap-2 rounded-card border border-warning/30 bg-warning/10 px-3 py-2.5"
+                className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5"
                 role="alert"
               >
                 <ShieldAlert
@@ -174,14 +174,14 @@ export function ApiTokenCreateDialog({
               </div>
 
               <div className="space-y-2">
-                <span className="text-xs font-medium text-muted">
+                <span className="text-xs font-medium text-muted-foreground">
                   {created.name}
                 </span>
                 <div className="flex items-start gap-2">
                   <code
                     ref={tokenRef}
                     data-testid="api-token-plaintext"
-                    className="min-w-0 flex-1 break-all rounded-card border border-border bg-surface-elevated px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
+                    className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
                   >
                     {created.token}
                   </code>
@@ -238,7 +238,7 @@ export function ApiTokenCreateDialog({
                 {nameError ? (
                   <p className="text-xs font-medium text-error">{nameError}</p>
                 ) : (
-                  <p className="text-xs text-muted">便于日后在列表中辨认用途。</p>
+                  <p className="text-xs text-muted-foreground">便于日后在列表中辨认用途。</p>
                 )}
               </div>
 
@@ -248,7 +248,7 @@ export function ApiTokenCreateDialog({
                   className="text-xs font-medium text-foreground"
                 >
                   作用域
-                  <span className="ml-1 font-normal text-muted">（可选）</span>
+                  <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
                 </label>
                 <Input
                   id="api-token-scopes"
@@ -259,7 +259,7 @@ export function ApiTokenCreateDialog({
                     setForm((current) => ({ ...current, scopes: event.target.value }))
                   }
                 />
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   以英文逗号分隔；留空表示继承你当前账号的全部权限。
                 </p>
               </div>
@@ -270,7 +270,7 @@ export function ApiTokenCreateDialog({
                   className="text-xs font-medium text-foreground"
                 >
                   过期时间
-                  <span className="ml-1 font-normal text-muted">（可选）</span>
+                  <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
                 </label>
                 <Input
                   id="api-token-expires-at"
@@ -283,7 +283,7 @@ export function ApiTokenCreateDialog({
                     }))
                   }
                 />
-                <p className="text-xs text-muted">留空表示长期有效，直至被撤销。</p>
+                <p className="text-xs text-muted-foreground">留空表示长期有效，直至被撤销。</p>
               </div>
             </DialogBody>
 

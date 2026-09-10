@@ -32,7 +32,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
     <Card data-testid="monitoring-hotspots">
       <CardHeader>
         <CardTitle>热点工作流与异常执行</CardTitle>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           这里只统计当前组织内部的热点对象，不是跨租户总榜。治理暂停与 execution paused（人工介入）会用不同标签显示。
         </p>
       </CardHeader>
@@ -54,7 +54,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
               <motion.article
                 key={hotspot.id}
                 {...staggerList(index)}
-                className="rounded-card border border-border bg-surface-elevated p-3"
+                className="rounded-lg border border-border bg-muted p-3"
               >
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 space-y-2">
@@ -67,25 +67,25 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                         {getHotspotStatusLabel(hotspot.status)}
                       </Badge>
                     </div>
-                    <p className="text-xs leading-relaxed text-muted">{hotspot.impactSummary}</p>
+                    <p className="text-xs leading-relaxed text-muted-foreground">{hotspot.impactSummary}</p>
                   </div>
 
-                  <span className="shrink-0 text-[11px] text-muted">
+                  <span className="shrink-0 text-2xs text-muted-foreground">
                     最近出现：{formatMonitoringTimestamp(hotspot.lastSeenAt)}
                   </span>
                 </div>
 
                 <dl className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-card border border-border bg-surface p-2.5">
-                    <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+                  <div className="rounded-lg border border-border bg-surface p-2.5">
+                    <dt className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                       执行量
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
                       {formatMonitoringCount(hotspot.executionCount)}
                     </dd>
                   </div>
-                  <div className="rounded-card border border-border bg-surface p-2.5">
-                    <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+                  <div className="rounded-lg border border-border bg-surface p-2.5">
+                    <dt className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                       失败率
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -94,8 +94,8 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                         : formatMonitoringPercent(hotspot.failureRate)}
                     </dd>
                   </div>
-                  <div className="rounded-card border border-border bg-surface p-2.5">
-                    <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+                  <div className="rounded-lg border border-border bg-surface p-2.5">
+                    <dt className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
                       排队深度
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">

@@ -23,14 +23,14 @@ function InvitationShell({ children }: { children: ReactNode }) {
       </div>
 
       <motion.div {...fadeInUp} className="relative w-full max-w-md">
-        <Card className="rounded-panel p-6 shadow-popover sm:p-8">
+        <Card className="rounded-xl p-6 shadow-lg sm:p-8">
           <div className="flex items-center gap-3">
             <BrandMark size="md" className="bg-surface ring-border" />
             <div className="flex flex-col">
               <span className="text-lg font-semibold leading-tight tracking-tight text-foreground">
                 AgentLoom
               </span>
-              <span className="mt-1 text-[10px] font-semibold uppercase leading-none tracking-[0.28em] text-primary">
+              <span className="mt-1 text-2xs font-semibold uppercase leading-none tracking-[0.28em] text-primary">
                 Studio
               </span>
             </div>
@@ -100,14 +100,14 @@ export function AcceptInvitationPage() {
         <div className="flex flex-col items-start gap-3">
           <span
             aria-hidden
-            className="grid h-11 w-11 place-items-center rounded-card bg-error/10 text-error"
+            className="grid h-11 w-11 place-items-center rounded-lg bg-error/10 text-error"
           >
             <AlertTriangle className="h-5 w-5" />
           </span>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
             邀请无法接受
           </h1>
-          <p className="text-sm text-muted">{error}</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
           <Button
             className="mt-2"
             variant="outline"
@@ -126,14 +126,14 @@ export function AcceptInvitationPage() {
         <div className="flex flex-col items-start gap-3">
           <span
             aria-hidden
-            className="grid h-11 w-11 place-items-center rounded-card bg-success/10 text-success"
+            className="grid h-11 w-11 place-items-center rounded-lg bg-success/10 text-success"
           >
             <CheckCircle2 className="h-5 w-5" />
           </span>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
             已加入组织
           </h1>
-          <p className="text-sm text-muted">正在带你前往工作台…</p>
+          <p className="text-sm text-muted-foreground">正在带你前往工作台…</p>
         </div>
       </InvitationShell>
     )
@@ -147,7 +147,7 @@ export function AcceptInvitationPage() {
           <h1 className="text-base font-semibold tracking-tight text-foreground">
             正在接受邀请
           </h1>
-          <p className="mt-0.5 text-sm text-muted">请稍候，正在校验邀请链接。</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">请稍候，正在校验邀请链接。</p>
         </div>
       </div>
     </InvitationShell>

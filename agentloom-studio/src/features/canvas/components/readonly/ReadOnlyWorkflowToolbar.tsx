@@ -42,7 +42,7 @@ export const ReadOnlyWorkflowToolbar = memo(function ReadOnlyWorkflowToolbar({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center justify-end gap-1 rounded-panel border border-border bg-surface/90 px-2 py-1.5 shadow-popover backdrop-blur-sm',
+        'flex flex-wrap items-center justify-end gap-1 rounded-xl border border-border bg-surface/90 px-2 py-1.5 shadow-lg backdrop-blur-sm',
         className,
       )}
       data-testid="readonly-workflow-toolbar"

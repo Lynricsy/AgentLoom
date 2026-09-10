@@ -419,7 +419,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="min-h-0 overflow-hidden rounded-card border border-border">
+        <div className="min-h-0 overflow-hidden rounded-lg border border-border">
           <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
             交付文件
           </div>
@@ -434,7 +434,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
                   'flex w-full min-w-0 items-start justify-between gap-3 border-b border-border px-3 py-3 text-left last:border-b-0',
                   selectedArtifactId === artifact.artifactId
                     ? 'bg-primary/10'
-                    : 'hover:bg-muted/40',
+                    : 'hover:bg-muted',
                   !artifact.readable && 'cursor-not-allowed opacity-60',
                 )}
               >
@@ -504,7 +504,7 @@ function GeneratedAppBuildPreview({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-44 items-center justify-center rounded-card border border-border p-6 text-sm text-muted-foreground">
+      <div className="flex min-h-44 items-center justify-center rounded-lg border border-border p-6 text-sm text-muted-foreground">
         <Spinner className="mr-2" />
         正在读取构建预览
       </div>
@@ -513,7 +513,7 @@ function GeneratedAppBuildPreview({
 
   if (isError) {
     return (
-      <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-card border border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
         <span>构建预览读取失败。</span>
         <Button variant="outline" size="sm" onClick={onRetry}>
           重试
@@ -524,7 +524,7 @@ function GeneratedAppBuildPreview({
 
   return (
     <div
-      className="overflow-hidden rounded-card border border-border"
+      className="overflow-hidden rounded-lg border border-border"
       data-testid="generated-app-build-preview"
     >
       <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
@@ -562,7 +562,7 @@ function ArtifactWorkspaceSummary({
   }
 
   return (
-    <dl className="grid gap-3 rounded-card border border-border bg-muted/20 p-3 text-xs text-muted-foreground md:grid-cols-3">
+    <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground md:grid-cols-3">
       <div className="min-w-0">
         <dt>Workspace</dt>
         <dd className="break-all font-medium text-foreground">
@@ -598,7 +598,7 @@ function ArtifactContentPreview({
 }) {
   if (!artifact) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-card border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         选择一个已物化且可读的源码或测试产物查看内容。
       </div>
     )
@@ -606,7 +606,7 @@ function ArtifactContentPreview({
 
   if (!artifact.readable) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-card border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         该交付物尚未物化，或大小超过内联查看限制。
       </div>
     )
@@ -614,7 +614,7 @@ function ArtifactContentPreview({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-card border border-border p-6 text-sm text-muted-foreground">
+      <div className="flex min-h-56 items-center justify-center rounded-lg border border-border p-6 text-sm text-muted-foreground">
         <Spinner className="mr-2" />
         正在读取 {artifact.label}
       </div>
@@ -623,7 +623,7 @@ function ArtifactContentPreview({
 
   if (isError) {
     return (
-      <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-card border border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
         <span>交付物内容读取失败。</span>
         <Button variant="outline" size="sm" onClick={onRetry}>
           重试
@@ -633,7 +633,7 @@ function ArtifactContentPreview({
   }
 
   return (
-    <div className="overflow-hidden rounded-card border border-border">
+    <div className="overflow-hidden rounded-lg border border-border">
       <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h3 className="break-words text-sm font-medium text-foreground">
@@ -883,7 +883,7 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
             <Skeleton className="h-4 w-full max-w-2xl" />
           </div>
           {Array.from({ length: 3 }, (_, index) => (
-            <Skeleton key={index} className="h-40 rounded-card" />
+            <Skeleton key={index} className="h-40 rounded-lg" />
           ))}
         </div>
       </div>
@@ -905,7 +905,7 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
               </Button>
               <Link
                 to="/generated-apps"
-                className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-elevated"
+                className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 返回列表
               </Link>

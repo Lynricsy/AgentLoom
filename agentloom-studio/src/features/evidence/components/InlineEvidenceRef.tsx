@@ -101,7 +101,7 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
             title={`证据引用 #${index}`}
             data-testid={`inline-evidence-ref-${evidenceId}`}
           >
-            <sup className="text-[10px] font-semibold">[{index}]</sup>
+            <sup className="text-2xs font-semibold">[{index}]</sup>
           </button>
         </Tooltip.Trigger>
 
@@ -115,30 +115,30 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
               <div className="text-xs font-semibold">证据引用 #{index}</div>
 
               {isLoadingPreview ? (
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1 text-2xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   <span>加载预览中…</span>
                 </div>
               ) : previewSummary ? (
                 <>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {previewSummary.label}
                   </div>
-                  <div className="truncate text-[11px] text-foreground/85">
+                  <div className="truncate text-2xs text-foreground/85">
                     {previewSummary.detail}
                   </div>
                 </>
               ) : previewError ? (
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   预览不可用（{previewError}）
                 </div>
               ) : (
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   悬停可加载来源预览
                 </div>
               )}
 
-              <div className="pt-1 text-[10px] text-muted-foreground">
+              <div className="pt-1 text-2xs text-muted-foreground">
                 点击打开证据面板并高亮 2 秒
               </div>
             </div>

@@ -301,16 +301,16 @@ export const CompoundStartConfigPanel = memo(function CompoundStartConfigPanel({
         </span>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <p className="text-xs font-medium text-foreground">固定上下文输出</p>
-        <p className="text-[10px] leading-5 text-muted-foreground">
+        <p className="text-2xs leading-5 text-muted-foreground">
           这些端口由运行时自动提供；额外透传端口可在下方编辑，可选增强上下文通过开关按需暴露。
         </p>
         <div className="flex flex-wrap gap-2">
           {fixedOutputs.map((port) => (
             <span
               key={port.id}
-              className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-1 text-[11px] text-foreground"
+              className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-1 text-2xs text-foreground"
             >
               <span>{port.label}</span>
               <span className="font-mono text-muted-foreground">{port.id}</span>
@@ -336,7 +336,7 @@ export const CompoundStartConfigPanel = memo(function CompoundStartConfigPanel({
         onRename={handleRenameInputPort}
       />
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <p className="text-xs font-medium text-foreground">可选增强输出</p>
         {toggleEntries.map(([key, label]) => (
           <label

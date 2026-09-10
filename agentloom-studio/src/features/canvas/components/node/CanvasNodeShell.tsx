@@ -318,7 +318,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       data-testid={`canvas-node-${id}`}
       data-selected={selected ? "true" : "false"}
       className={cn(
-        "canvas-node-shell relative rounded-card border bg-surface text-foreground",
+        "canvas-node-shell relative rounded-lg border bg-surface text-foreground",
         isCompoundContainer && "h-full w-full",
         lod === "full" && !isCompoundContainer && "min-w-[200px] max-w-[268px]",
         lod === "full" &&

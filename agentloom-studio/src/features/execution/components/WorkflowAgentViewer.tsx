@@ -83,18 +83,18 @@ const WorkspaceFilePreviewPanel = memo(function WorkspaceFilePreviewPanel({
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border bg-surface-elevated px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
         <FileCode2 className="size-4 shrink-0 text-info" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
             {fileName || "文件预览"}
           </p>
-          <p className="truncate text-[11px] text-muted">
+          <p className="truncate text-2xs text-muted-foreground">
             {selectedPath || "选择文件后显示当前内容"}
           </p>
         </div>
         {selectedFile && (
-          <span className="shrink-0 text-[10px] text-muted">
+          <span className="shrink-0 text-2xs text-muted-foreground">
             {selectedFile.size} bytes
           </span>
         )}
@@ -109,12 +109,12 @@ const WorkspaceFilePreviewPanel = memo(function WorkspaceFilePreviewPanel({
             description="选择左侧文件后，这里会显示该步骤工作区中的最新内容。"
           />
         ) : isLoading ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted">
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
             <Spinner className="size-4" />
             <span>正在加载文件内容…</span>
           </div>
         ) : error ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
             <p>{error}</p>
           </div>
         ) : selectedFile ? (
@@ -127,7 +127,7 @@ const WorkspaceFilePreviewPanel = memo(function WorkspaceFilePreviewPanel({
             </pre>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
             <p>当前文件暂时不可读取。</p>
           </div>
         )}
@@ -306,7 +306,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-card" />
+            <Skeleton className="h-10 w-10 rounded-lg" />
             <div className="space-y-2">
               <Skeleton className="h-4 w-44 rounded-full" />
               <Skeleton className="h-3 w-56 rounded-full" />
@@ -315,8 +315,8 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           <Skeleton className="h-8 w-40 rounded-full" />
         </div>
         <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[58fr_42fr]">
-          <Skeleton className="h-full min-h-[240px] rounded-panel" />
-          <Skeleton className="hidden h-full min-h-[240px] rounded-panel lg:block" />
+          <Skeleton className="h-full min-h-[240px] rounded-xl" />
+          <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
         </div>
       </div>
     );
@@ -430,7 +430,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           </div>
 
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               Workspace
             </span>
             <Button
@@ -458,7 +458,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
                   onSelectFile={setSelectedPath}
                 />
                 {workspaceError && (
-                  <p className="mt-2 text-xs text-muted">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {workspaceError}
                   </p>
                 )}
@@ -492,7 +492,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         />
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               Workspace
             </span>
             <Button
@@ -522,7 +522,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
             error={selectedFileError}
           />
           {workspaceError && (
-            <p className="text-xs text-muted">{workspaceError}</p>
+            <p className="text-xs text-muted-foreground">{workspaceError}</p>
           )}
         </div>
       </div>

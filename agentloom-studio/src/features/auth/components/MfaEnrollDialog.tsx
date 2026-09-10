@@ -154,7 +154,7 @@ export function MfaEnrollDialog({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-md p-1 text-muted hover:text-foreground transition-colors"
+            className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="关闭"
           >
             <svg
@@ -178,7 +178,7 @@ export function MfaEnrollDialog({
         {step === 'loading' && (
           <div className="flex flex-col items-center gap-4 py-8">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm text-muted">正在生成 TOTP 密钥...</p>
+            <p className="text-sm text-muted-foreground">正在生成 TOTP 密钥...</p>
           </div>
         )}
 
@@ -186,7 +186,7 @@ export function MfaEnrollDialog({
           <div className="flex flex-col gap-5">
             {enrollData && (
               <>
-                <p className="text-sm text-muted">
+                <p className="text-sm text-muted-foreground">
                   使用身份验证器应用扫描下方二维码，然后输入 6 位验证码完成绑定。
                 </p>
 
@@ -201,8 +201,8 @@ export function MfaEnrollDialog({
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-border bg-muted/30 p-3">
-                  <p className="mb-1 text-xs text-muted">
+                <div className="rounded-lg border border-border bg-muted p-3">
+                  <p className="mb-1 text-xs text-muted-foreground">
                     无法扫描？手动输入密钥：
                   </p>
                   <code
@@ -240,7 +240,7 @@ export function MfaEnrollDialog({
                     onKeyDown={(e) => handleKeyDown(i, e)}
                     disabled={step === 'verifying'}
                     className={cn(
-                      'h-12 w-10 rounded-md border border-input bg-background text-center text-lg font-mono text-foreground',
+                      'h-12 w-10 rounded-md border border-border bg-background text-center text-lg font-mono text-foreground',
                       'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',
                       'disabled:opacity-50',
                     )}
@@ -286,7 +286,7 @@ export function MfaEnrollDialog({
             <p className="text-sm font-medium text-foreground">
               两步验证已成功启用
             </p>
-            <p className="text-xs text-muted text-center">
+            <p className="text-xs text-muted-foreground text-center">
               下次登录时，你需要输入身份验证器应用中的验证码。
             </p>
             <Button onClick={handleClose} className="mt-2">

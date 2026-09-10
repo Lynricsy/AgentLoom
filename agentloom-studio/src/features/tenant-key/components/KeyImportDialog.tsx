@@ -150,7 +150,7 @@ export const KeyImportDialog = memo(function KeyImportDialog({
                   <Label>私钥 (PEM)</Label>
                   <textarea
                     id="pem-input"
-                    className="mt-2 h-48 w-full resize-none rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    className="mt-2 h-48 w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground transition-colors placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                     placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
                     value={pemInput}
                     onChange={(e) => setPemInput(e.target.value)}

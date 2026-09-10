@@ -70,7 +70,7 @@ export const MappingSuggestionCard = memo(function MappingSuggestionCard({
 
         <span
           data-testid="suggestion-type-pair"
-          className="suggestion-type-pair inline-flex items-center whitespace-nowrap font-mono text-[10px] text-muted"
+          className="suggestion-type-pair inline-flex items-center whitespace-nowrap font-mono text-2xs text-muted-foreground"
         >
           {suggestion.sourceTypeLabel} → {suggestion.targetTypeLabel}
         </span>

@@ -65,7 +65,7 @@ export const stepStatusMeta: Record<ExecutionStepStatus, {
   running: {
     label: '执行中',
     variant: 'info',
-    nodeClassName: 'border-info/60 bg-info/5 shadow-node',
+    nodeClassName: 'border-info/60 bg-info/5 shadow-sm',
     dotClassName: 'bg-info',
   },
   waiting_for_intervention: {

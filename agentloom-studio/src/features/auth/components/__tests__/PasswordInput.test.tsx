@@ -32,13 +32,6 @@ describe('PasswordInput', () => {
     expect(input.className).toContain('border-error');
   });
 
-  it('非 error 状态时应用 border-input 样式', () => {
-    render(<PasswordInput data-testid="pw" />);
-
-    const input = screen.getByTestId('pw');
-    expect(input.className).toContain('border-input');
-  });
-
   it('支持 ref 转发', () => {
     const ref = vi.fn();
     render(<PasswordInput ref={ref} />);

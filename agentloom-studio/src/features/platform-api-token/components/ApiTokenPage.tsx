@@ -143,7 +143,7 @@ export function ApiTokenPage() {
         cell: (row) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
-            <p className="truncate text-xs text-muted">
+            <p className="truncate text-xs text-muted-foreground">
               {row.scopes ? row.scopes : '继承账号全部权限'}
             </p>
           </div>
@@ -154,7 +154,7 @@ export function ApiTokenPage() {
         header: '前缀',
         hideBelow: 'sm',
         cell: (row) => (
-          <code className="whitespace-nowrap font-mono text-xs text-muted">
+          <code className="whitespace-nowrap font-mono text-xs text-muted-foreground">
             {row.tokenPrefix}…
           </code>
         ),
@@ -179,7 +179,7 @@ export function ApiTokenPage() {
                 <Badge variant="success">有效</Badge>
               )}
               {row.expiresAt ? (
-                <span className="hidden whitespace-nowrap text-[11px] text-muted sm:inline">
+                <span className="hidden whitespace-nowrap text-2xs text-muted-foreground sm:inline">
                   {isExpired ? '过期于 ' : '有效至 '}
                   {formatTimestamp(row.expiresAt)}
                 </span>
@@ -193,7 +193,7 @@ export function ApiTokenPage() {
         header: '创建时间',
         hideBelow: 'md',
         cell: (row) => (
-          <span className="whitespace-nowrap text-xs text-muted">
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
             {formatTimestamp(row.createdAt)}
           </span>
         ),
@@ -203,7 +203,7 @@ export function ApiTokenPage() {
         header: '最后使用',
         hideBelow: 'lg',
         cell: (row) => (
-          <span className="whitespace-nowrap text-xs text-muted">
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
             {row.lastUsedAt ? formatTimestamp(row.lastUsedAt) : '从未使用'}
           </span>
         ),
@@ -265,7 +265,7 @@ export function ApiTokenPage() {
         </Select>
 
         {meta ? (
-          <span className="text-xs text-muted">共 {meta.total} 个</span>
+          <span className="text-xs text-muted-foreground">共 {meta.total} 个</span>
         ) : null}
       </div>
 

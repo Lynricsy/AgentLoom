@@ -21,7 +21,7 @@ import {
 import { buildWebhookUrl } from './WebhookSecretDisplay'
 
 const triggerCardVariants = cva(
-  'rounded-2xl border p-4 shadow-sm transition-colors',
+  'rounded-xl border p-4 shadow-sm transition-colors',
   {
     variants: {
       tone: {
@@ -132,7 +132,7 @@ export const TriggerCard = memo(function TriggerCard({
                 <h3 className="text-base font-semibold text-foreground">{trigger.name}</h3>
                 <span
                   className={cn(
-                    'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em]',
+                    'inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em]',
                     typeBadgeClassNames[trigger.type],
                   )}
                 >
@@ -150,7 +150,7 @@ export const TriggerCard = memo(function TriggerCard({
                   <p className="text-xs font-medium text-foreground">
                     {trigger.isEnabled ? '已启用' : '已停用'}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     切换后立即生效
                   </p>
                 </div>

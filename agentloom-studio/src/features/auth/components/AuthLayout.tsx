@@ -41,14 +41,14 @@ export function AuthLayout({
         {...fadeInUp}
         className={cn("relative w-full max-w-md", className)}
       >
-        <Card className="rounded-panel p-6 shadow-popover sm:p-8">
+        <Card className="rounded-xl p-6 shadow-lg sm:p-8">
           <div className="flex items-center gap-3">
             <BrandMark size="md" className="bg-surface ring-border" />
             <div className="flex flex-col">
               <span className="text-lg font-semibold leading-tight tracking-tight text-foreground">
                 AgentLoom
               </span>
-              <span className="mt-1 text-[10px] font-semibold uppercase leading-none tracking-[0.28em] text-primary">
+              <span className="mt-1 text-2xs font-semibold uppercase leading-none tracking-[0.28em] text-primary">
                 Studio
               </span>
             </div>
@@ -59,7 +59,7 @@ export function AuthLayout({
               {title}
             </h1>
           ) : null}
-          <p className={cn("text-sm text-muted", title ? "mt-1.5" : "mt-5")}>
+          <p className={cn("text-sm text-muted-foreground", title ? "mt-1.5" : "mt-5")}>
             {subtitle ?? DEFAULT_SUBTITLE}
           </p>
 

@@ -62,12 +62,12 @@ export const ManualTriggerConfigPanel = memo(function ManualTriggerConfigPanel({
         <span className="text-xs font-medium text-foreground">手动触发配置</span>
       </div>
 
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         定义工作流手动运行时需要填写的输入参数。每个参数对应一个输出端口。
       </p>
 
       {/* 输出端口编辑器 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <p className="text-xs font-medium text-foreground">输出参数</p>
         <DynamicPortEditor
           ports={portEntries}
@@ -81,7 +81,7 @@ export const ManualTriggerConfigPanel = memo(function ManualTriggerConfigPanel({
       </div>
 
       {/* 配置摘要 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-col gap-1 text-muted-foreground">
           <span>

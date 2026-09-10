@@ -19,7 +19,7 @@ export function Spinner({ size = 'default', className, label = '加载中' }: Sp
     <Loader2
       role="status"
       aria-label={label}
-      className={cn('animate-spin text-muted', SIZE_CLASS[size], className)}
+      className={cn('animate-spin text-muted-foreground', SIZE_CLASS[size], className)}
     />
   )
 }

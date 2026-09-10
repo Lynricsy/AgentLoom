@@ -20,7 +20,7 @@ const itemVariants = cva(
       unread: {
         true: 'border-l-primary bg-primary/10 hover:bg-primary/15',
         false:
-          'border-l-transparent bg-transparent hover:border-l-border hover:bg-surface-elevated',
+          'border-l-transparent bg-transparent hover:border-l-border hover:bg-muted',
       },
     },
   },

@@ -40,7 +40,7 @@ export function PrivateDeploymentLicenseCard({
     <Card data-testid="private-deployment-license-form">
       <CardHeader>
         <CardTitle>License 管理</CardTitle>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           这里只展示 License 校验状态和元数据。新的 License Key 只会一次性提交，不会回显历史内容。
         </p>
       </CardHeader>

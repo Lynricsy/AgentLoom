@@ -24,7 +24,7 @@ interface SourceStatusBadgeProps {
 }
 
 const badgeVariants = cva(
-  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
+  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium',
   {
     variants: {
       status: {
@@ -126,7 +126,7 @@ export const SourceStatusBadge = memo(function SourceStatusBadge(
             <Tooltip.Portal>
               <Tooltip.Content
                 side="top"
-                className="z-50 max-w-xs rounded-lg border border-border/60 bg-popover px-3 py-2 text-left text-[11px] text-popover-foreground shadow-lg"
+                className="z-50 max-w-xs rounded-lg border border-border/60 bg-popover px-3 py-2 text-left text-2xs text-popover-foreground shadow-lg"
               >
                 <div className="space-y-1">
                   {tooltipLines.map((line) => (
@@ -145,7 +145,7 @@ export const SourceStatusBadge = memo(function SourceStatusBadge(
       {showSnapshotToggle && (
         <button
           type="button"
-          className="text-[11px] font-medium text-primary transition hover:text-primary/80 hover:underline"
+          className="text-2xs font-medium text-primary transition hover:text-primary/80 hover:underline"
           onClick={(event) => {
             event.stopPropagation()
             props.onToggleOriginalSnapshot?.()

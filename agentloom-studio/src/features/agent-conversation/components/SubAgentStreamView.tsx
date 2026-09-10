@@ -118,7 +118,7 @@ function ElapsedTime({
       : `${remainingSeconds}s`;
 
   return (
-    <span className="text-[10px] tabular-nums text-muted-foreground">
+    <span className="text-2xs tabular-nums text-muted-foreground">
       {display}
     </span>
   );
@@ -268,17 +268,17 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
                     {tc.name}
                   </span>
                   {tc.args !== undefined && (
-                    <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground">
+                    <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-2xs leading-relaxed text-muted-foreground">
                       {formatValue(tc.args)}
                     </pre>
                   )}
                   {tc.result !== undefined && (
-                    <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-[11px] leading-relaxed text-muted-foreground max-h-40 overflow-y-auto">
+                    <pre className="mt-1 overflow-x-auto rounded bg-surface p-2 text-2xs leading-relaxed text-muted-foreground max-h-40 overflow-y-auto">
                       {formatValue(tc.result)}
                     </pre>
                   )}
                   {tc.error && (
-                    <pre className="mt-1 overflow-x-auto rounded bg-error/10 p-2 text-[11px] leading-relaxed text-error max-h-40 overflow-y-auto">
+                    <pre className="mt-1 overflow-x-auto rounded bg-error/10 p-2 text-2xs leading-relaxed text-error max-h-40 overflow-y-auto">
                       {tc.error}
                     </pre>
                   )}
@@ -396,14 +396,14 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
   return (
     <div
       className={cn(
-        'rounded-card border border-border bg-surface-elevated/50',
+        'rounded-lg border border-border bg-muted',
         !isTerminal && 'border-l-2 border-l-primary/50',
       )}
       style={{ marginLeft: `${indentPx}px` }}
     >
       <button
         type="button"
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-elevated"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
@@ -426,7 +426,7 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
         <span className="text-xs font-medium text-foreground truncate">
           {statusConfig.emoji} {alias}
         </span>
-        <span className="truncate font-mono text-[10px] text-muted-foreground">
+        <span className="truncate font-mono text-2xs text-muted-foreground">
           {handle}
         </span>
 
@@ -478,21 +478,21 @@ export const SubAgentCompletionNotice = memo(
 
     return (
       <div className="flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-2 rounded-card border border-border bg-surface-elevated/60 px-3 py-1.5">
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5">
           <span className={config.textClass}>{config.icon}</span>
           <span className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{alias}</span>
             <span className="mx-1.5 text-muted-foreground">·</span>
-            <span className={cn('text-[10px]', config.textClass)}>
+            <span className={cn('text-2xs', config.textClass)}>
               {config.label}
             </span>
             {error && (
-              <span className="ml-1.5 truncate text-[10px] text-error">
+              <span className="ml-1.5 truncate text-2xs text-error">
                 — {error}
               </span>
             )}
           </span>
-          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+          <span className="ml-auto font-mono text-2xs text-muted-foreground">
             {handle}
           </span>
         </div>

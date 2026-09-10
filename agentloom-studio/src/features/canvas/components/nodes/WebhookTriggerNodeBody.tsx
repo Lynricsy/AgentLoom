@@ -19,11 +19,11 @@ export const WebhookTriggerNodeBody = memo(function WebhookTriggerNodeBody({
     <div className="flex flex-col gap-1" data-testid="webhook-trigger-node-body">
       <div className="flex items-center gap-1.5">
         <Webhook className="h-3.5 w-3.5 shrink-0 text-warning" />
-        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-2xs font-bold text-emerald-400">
           POST
         </span>
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+          className={`rounded px-1.5 py-0.5 text-2xs font-medium ${
             authMode === 'signed'
               ? 'bg-amber-500/15 text-amber-400'
               : 'bg-muted text-muted-foreground'
@@ -33,7 +33,7 @@ export const WebhookTriggerNodeBody = memo(function WebhookTriggerNodeBody({
         </span>
       </div>
       {ipCount > 0 && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {ipCount} IP{ipCount > 1 ? 's' : ''}
         </p>
       )}

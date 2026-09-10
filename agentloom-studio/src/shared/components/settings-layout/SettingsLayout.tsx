@@ -97,8 +97,8 @@ export function SettingsLayout() {
           to="/"
           aria-label="返回工作台"
           className={cn(
-            'flex items-center gap-1.5 rounded-md text-xs font-medium text-muted transition-colors',
-            'hover:bg-surface-elevated hover:text-foreground',
+            'flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors',
+            'hover:bg-muted hover:text-foreground',
             'max-lg:size-9 max-lg:shrink-0 max-lg:justify-center',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
             'lg:w-fit lg:px-1.5 lg:py-1',
@@ -133,7 +133,7 @@ export function SettingsLayout() {
                 className="hidden h-4 w-px shrink-0 bg-border max-lg:block"
               />
             ) : null}
-            <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground max-lg:hidden">
+            <p className="mb-1 px-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground max-lg:hidden">
               {group.label}
             </p>
             <div className="flex flex-col gap-0.5 max-lg:contents">
@@ -155,7 +155,7 @@ export function SettingsLayout() {
                       'max-lg:h-9 max-lg:shrink-0 max-lg:gap-1.5 max-lg:whitespace-nowrap max-lg:px-2.5',
                       active
                         ? 'bg-primary/10 text-primary'
-                        : 'text-muted hover:bg-surface-elevated hover:text-foreground',
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                     )}
                   >
                     {active ? (

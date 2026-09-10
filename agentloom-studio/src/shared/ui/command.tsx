@@ -16,7 +16,7 @@ export const Command = forwardRef<
     <CommandPrimitive
       ref={ref}
       className={cn(
-        'flex h-full w-full flex-col overflow-hidden rounded-panel bg-popover text-popover-foreground',
+        'flex h-full w-full flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground',
         className,
       )}
       {...props}
@@ -45,7 +45,7 @@ export function CommandDialog({
         size="md"
         // 命令面板无描述文本，显式清空以关闭 Radix 的 aria-describedby 校验告警
         aria-describedby={undefined}
-        className="max-h-[70vh] overflow-hidden p-0 sm:rounded-panel"
+        className="max-h-[70vh] overflow-hidden p-0 sm:rounded-xl"
       >
         <DialogHiddenTitle>{label}</DialogHiddenTitle>
         <Command loop>{children}</Command>
@@ -60,11 +60,11 @@ export const CommandInput = forwardRef<
 >(function CommandInput({ className, ...props }, ref) {
   return (
     <div className="flex items-center gap-2 border-b border-border px-4">
-      <Search className="h-4 w-4 shrink-0 text-muted" />
+      <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
       <CommandPrimitive.Input
         ref={ref}
         className={cn(
-          'flex h-11 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-11 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed disabled:opacity-50',
           className,
         )}
         {...props}
@@ -93,7 +93,7 @@ export const CommandEmpty = forwardRef<
   return (
     <CommandPrimitive.Empty
       ref={ref}
-      className={cn('py-8 text-center text-sm text-muted', className)}
+      className={cn('py-8 text-center text-sm text-muted-foreground', className)}
       {...props}
     />
   )
@@ -107,7 +107,7 @@ export const CommandGroup = forwardRef<
     <CommandPrimitive.Group
       ref={ref}
       className={cn(
-        'overflow-hidden text-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted-foreground',
+        'overflow-hidden text-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted-foreground',
         className,
       )}
       {...props}
@@ -151,7 +151,7 @@ export function CommandShortcut({
   return (
     <span
       className={cn(
-        'ml-auto font-mono text-[10px] tracking-widest text-muted-foreground',
+        'ml-auto font-mono text-2xs tracking-widest text-muted-foreground',
         className,
       )}
       {...props}

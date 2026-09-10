@@ -60,7 +60,7 @@ function AgentBreadcrumb({
       <span className="max-w-[220px] truncate font-medium text-foreground">
         {agentName || "加载中…"}
       </span>
-      {isDirty && <span className="text-amber-400 text-[10px]">未保存</span>}
+      {isDirty && <span className="text-amber-400 text-2xs">未保存</span>}
     </nav>
   );
 }
@@ -162,7 +162,7 @@ function AgentCanvasPage() {
 
           <div className="order-2 flex justify-end xl:order-2">
             <div
-              className="pointer-events-auto w-full rounded-2xl border border-border/70 bg-background/85 p-2 shadow-lg backdrop-blur-md xl:w-auto"
+              className="pointer-events-auto w-full rounded-xl border border-border/70 bg-background/85 p-2 shadow-lg backdrop-blur-md xl:w-auto"
               data-testid="agent-toolbar-shell"
             >
               <AgentVersionToolbar

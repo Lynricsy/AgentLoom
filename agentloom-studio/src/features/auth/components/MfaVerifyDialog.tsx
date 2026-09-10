@@ -138,7 +138,7 @@ export function MfaVerifyDialog({
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-md p-1 text-muted hover:text-foreground transition-colors"
+            className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="关闭"
           >
             <svg
@@ -181,7 +181,7 @@ export function MfaVerifyDialog({
               </div>
             </div>
 
-            <p className="text-sm text-muted text-center">
+            <p className="text-sm text-muted-foreground text-center">
               请输入身份验证器应用中的 6 位验证码以完成身份验证。
             </p>
 
@@ -210,7 +210,7 @@ export function MfaVerifyDialog({
                     onKeyDown={(e) => handleKeyDown(i, e)}
                     disabled={step === 'verifying'}
                     className={cn(
-                      'h-12 w-10 rounded-md border border-input bg-background text-center text-lg font-mono text-foreground',
+                      'h-12 w-10 rounded-md border border-border bg-background text-center text-lg font-mono text-foreground',
                       'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',
                       'disabled:opacity-50',
                     )}
@@ -254,7 +254,7 @@ export function MfaVerifyDialog({
             <p className="text-sm font-medium text-foreground">
               验证成功
             </p>
-            <p className="text-xs text-muted text-center">
+            <p className="text-xs text-muted-foreground text-center">
               身份已确认，你可以继续操作。
             </p>
             <Button onClick={handleClose} className="mt-2">

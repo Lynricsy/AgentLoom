@@ -79,7 +79,7 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
   return createPortal(
     <div
       ref={popupRef}
-      className="fixed z-[100] flex w-72 flex-col overflow-hidden rounded-panel border bg-surface shadow-popover"
+      className="fixed z-[100] flex w-72 flex-col overflow-hidden rounded-xl border bg-surface shadow-lg"
       style={{
         ...style,
         borderColor: `color-mix(in srgb, ${GLOSSARY_TONE} 35%, var(--color-border))`,
@@ -94,7 +94,7 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
           type="button"
           aria-label="关闭词条卡片"
           onClick={onClose}
-          className="ml-auto text-muted transition-colors hover:text-foreground"
+          className="ml-auto text-muted-foreground transition-colors hover:text-foreground"
         >
           <X size={12} />
         </button>
@@ -115,14 +115,14 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
               className={cn(
                 'group relative w-full rounded-lg px-2.5 py-2 text-left transition-colors',
                 isUnlinked
-                  ? 'cursor-default opacity-80 bg-muted/40'
+                  ? 'cursor-default opacity-80 bg-muted'
                   : 'cursor-pointer hover:bg-muted',
               )}
             >
               <div className="flex items-center justify-between gap-2">
                 <code
                   className={cn(
-                    'block flex-1 truncate font-mono text-[11px]',
+                    'block flex-1 truncate font-mono text-2xs',
                     isUnlinked
                       ? 'text-muted-foreground'
                       : 'text-primary/80 group-hover:text-primary',
@@ -137,7 +137,7 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
                 )}
               </div>
               {node.contentSnippet && (
-                <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground line-clamp-2">
+                <p className="mt-0.5 text-2xs leading-snug text-muted-foreground line-clamp-2">
                   {node.contentSnippet}
                 </p>
               )}

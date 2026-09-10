@@ -141,7 +141,7 @@ export function EditModelForm({ model, onClose }: EditModelFormProps) {
   ]);
 
   return (
-    <div className="rounded-lg border border-primary/30 bg-surface-elevated p-4">
+    <div className="rounded-lg border border-primary/30 bg-muted p-4">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-foreground">
           编辑: {model.modelId}

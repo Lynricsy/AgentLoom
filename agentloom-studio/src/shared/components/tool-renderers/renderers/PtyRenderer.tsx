@@ -173,7 +173,7 @@ function KeyValue({ label, value }: { label: string; value: string | number | un
   if (value == null || value === '') return null
   return (
     <div className="flex items-baseline gap-2 py-0.5">
-      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="shrink-0 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <span className="font-mono text-xs text-foreground/90 break-all">
@@ -224,7 +224,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
     <div className="space-y-2">
       <ConsoleBlock output={output} />
       {result.totalLines != null && (
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-3 text-2xs text-muted-foreground">
           <span>Total: {result.totalLines} lines</span>
           {result.hasMore && <span className="text-warning">还有更多</span>}
         </div>
@@ -241,13 +241,13 @@ const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRen
 
   return (
     <div className="rounded-lg bg-background p-3">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         输入数据
       </div>
       <div className="font-mono text-xs text-foreground/90">
         {visualizeEscapes(args.data)}
       </div>
-      <div className="mt-2 text-[10px] text-muted-foreground">
+      <div className="mt-2 text-2xs text-muted-foreground">
         Session: {args.id}
       </div>
     </div>
@@ -274,7 +274,7 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
     <div className="overflow-auto rounded-lg bg-background">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-border text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-1.5 text-left">状态</th>
             <th className="px-3 py-1.5 text-left">ID</th>
             <th className="px-3 py-1.5 text-left">命令</th>

@@ -25,7 +25,7 @@ export function PriorityBadge({ priority, size = 'sm' }: PriorityBadgeProps) {
       variant={variant}
       className={cn(
         'rounded-md font-mono font-semibold',
-        size === 'lg' ? 'gap-1.5 px-2.5 py-1 text-xs' : 'gap-1 px-1.5 py-0.5 text-[10px]',
+        size === 'lg' ? 'gap-1.5 px-2.5 py-1 text-xs' : 'gap-1 px-1.5 py-0.5 text-2xs',
       )}
     >
       <Star size={size === 'lg' ? 12 : 9} />

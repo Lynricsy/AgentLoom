@@ -62,12 +62,12 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
         <CopyButton text={formatted} />
       </div>
-      <pre className="overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-muted">
+      <pre className="overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-muted-foreground">
         <code>{formatted}</code>
       </pre>
     </div>
@@ -102,7 +102,7 @@ export const DefaultDetail = memo(function DefaultDetail({
 
       {(state === 'failed' || hasError) && toolCall.error && (
         <div>
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-error">
+          <span className="mb-1 block text-2xs font-medium uppercase tracking-wider text-error">
             错误
           </span>
           <pre

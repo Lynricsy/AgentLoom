@@ -186,7 +186,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-card" />
+            <Skeleton className="h-10 w-10 rounded-lg" />
             <div className="space-y-2">
               <Skeleton className="h-4 w-40 rounded-full" />
               <Skeleton className="h-3 w-56 rounded-full" />
@@ -195,12 +195,12 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
           <Skeleton className="h-8 w-32 rounded-full" />
         </div>
 
-        <Skeleton className="h-9 w-64 rounded-card" />
+        <Skeleton className="h-9 w-64 rounded-lg" />
 
         <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[38fr_34fr_28fr]">
-          <Skeleton className="h-full min-h-[240px] rounded-panel" />
-          <Skeleton className="hidden h-full min-h-[240px] rounded-panel lg:block" />
-          <Skeleton className="hidden h-full min-h-[240px] rounded-panel lg:block" />
+          <Skeleton className="h-full min-h-[240px] rounded-xl" />
+          <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
+          <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
         </div>
       </div>
     )

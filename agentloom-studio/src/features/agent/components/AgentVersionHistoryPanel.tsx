@@ -57,7 +57,7 @@ const VersionItem = memo(function VersionItem({
 
   return (
     <div
-      className="group border-b border-border p-4 transition-colors hover:bg-muted/30"
+      className="group border-b border-border p-4 transition-colors hover:bg-muted"
       data-testid={`agent-version-item-${version.versionNumber}`}
     >
       <div className="flex items-center justify-between">
@@ -112,7 +112,7 @@ const VersionItem = memo(function VersionItem({
           </div>
 
           {releaseNotes && (
-            <p className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground/80">
+            <p className="rounded-md border border-border/70 bg-muted px-3 py-2 text-xs leading-5 text-foreground/80">
               {releaseNotes}
             </p>
           )}

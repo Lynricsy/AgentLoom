@@ -27,7 +27,7 @@ export function NodeIconChip({
     <span
       data-testid={`canvas-node-icon-${id}`}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[10px]",
+        "inline-flex shrink-0 items-center justify-center rounded-lg",
         size === "full" ? "h-9 w-9" : "h-8 w-8",
       )}
       style={{
@@ -60,7 +60,7 @@ function NodeStatusBadge({ id, meta, isRunning }: NodeStatusBadgeProps) {
     <span
       data-testid={`canvas-node-status-badge-${id}`}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium leading-none",
         meta.className,
       )}
     >
@@ -194,7 +194,7 @@ export function NodeFullHeader({
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
           ) : null}
         </div>
-        <p className="truncate text-[11px] leading-tight text-muted-foreground">
+        <p className="truncate text-2xs leading-tight text-muted-foreground">
           {subtitle}
         </p>
       </div>

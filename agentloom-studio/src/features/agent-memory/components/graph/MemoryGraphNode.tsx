@@ -53,7 +53,7 @@ const DISCLOSURE_COLORS: Record<string, string> = {
 const DEFAULT_DISCLOSURE_COLOR = DEFAULT_NODE_COLOR
 
 const HANDLE_CLASS =
-  '!h-2 !w-2 !border !border-border !bg-surface-elevated'
+  '!h-2 !w-2 !border !border-border !bg-muted'
 
 export const MemoryGraphNode = memo(function MemoryGraphNode({
   data,
@@ -68,9 +68,9 @@ export const MemoryGraphNode = memo(function MemoryGraphNode({
   return (
     <div
       className={cn(
-        'relative min-w-[180px] max-w-[240px] rounded-card border bg-surface px-4 py-3',
-        'shadow-node transition-all duration-150 hover:shadow-node-selected',
-        selected && 'shadow-node-selected',
+        'relative min-w-[180px] max-w-[240px] rounded-lg border bg-surface px-4 py-3',
+        'shadow-sm transition-all duration-150 hover:shadow-md',
+        selected && 'shadow-md',
         data.isHighlighted && 'ring-2 ring-warning',
         data.isDimmed && 'opacity-30',
       )}
@@ -104,7 +104,7 @@ export const MemoryGraphNode = memo(function MemoryGraphNode({
           <p className="truncate text-xs font-medium text-foreground">
             {data.name}
           </p>
-          <p className="truncate text-[10px] text-muted">
+          <p className="truncate text-2xs text-muted-foreground">
             {data.nodeType}
             {data.domain && ` · ${data.domain}`}
           </p>
@@ -113,7 +113,7 @@ export const MemoryGraphNode = memo(function MemoryGraphNode({
 
       {/* 内容摘要 */}
       {data.contentSnippet && (
-        <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-muted">
+        <p className="mt-2 line-clamp-2 text-2xs leading-relaxed text-muted-foreground">
           {data.contentSnippet}
         </p>
       )}

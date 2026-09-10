@@ -487,7 +487,7 @@ export function LlmModelConfigDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
         <Dialog.Content
           aria-describedby="llm-config-dialog-description"
-          className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
+          className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-muted p-6 shadow-xl"
         >
           <div className="flex items-center justify-between">
             <Dialog.Title className="text-lg font-semibold text-foreground">
@@ -543,7 +543,7 @@ export function LlmModelConfigDialog({
               <div className="space-y-2">
                 <Label>提供商</Label>
                 {isEditMode ? (
-                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
                     <ProviderIcon provider={selectedProvider} size={16} />
                     <span>
                       {getProviderInfo(selectedProvider)?.name ??
@@ -583,7 +583,7 @@ export function LlmModelConfigDialog({
                           {...form.register("modelName")}
                         />
                         {form.formState.errors.modelName ? (
-                          <p className="text-[11px] text-error">
+                          <p className="text-2xs text-error">
                             {form.formState.errors.modelName.message}
                           </p>
                         ) : null}
@@ -612,7 +612,7 @@ export function LlmModelConfigDialog({
                           )}
                         />
                         {form.formState.errors.modelName ? (
-                          <p className="text-[11px] text-error">
+                          <p className="text-2xs text-error">
                             {form.formState.errors.modelName.message}
                           </p>
                         ) : null}
@@ -667,7 +667,7 @@ export function LlmModelConfigDialog({
                   {...form.register("name")}
                 />
                 {form.formState.errors.name ? (
-                  <p className="text-[11px] text-error">
+                  <p className="text-2xs text-error">
                     {form.formState.errors.name.message}
                   </p>
                 ) : null}
@@ -683,11 +683,11 @@ export function LlmModelConfigDialog({
                     {...form.register("embeddingDimensions")}
                   />
                   {form.formState.errors.embeddingDimensions ? (
-                    <p className="text-[11px] text-error">
+                    <p className="text-2xs text-error">
                       {form.formState.errors.embeddingDimensions.message}
                     </p>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground">
                       向量库会按该维度创建索引，需与模型返回维度保持一致。
                     </p>
                   )}
@@ -696,7 +696,7 @@ export function LlmModelConfigDialog({
                 <div className="rounded-lg border border-border">
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/30"
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                     onClick={() => setParamsExpanded(!paramsExpanded)}
                   >
                     <span>参数设置</span>
@@ -712,7 +712,7 @@ export function LlmModelConfigDialog({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <Label>Temperature</Label>
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {selectedTemperature.toFixed(1)}
                           </span>
                         </div>
@@ -744,7 +744,7 @@ export function LlmModelConfigDialog({
                           {...form.register("maxTokens")}
                         />
                         {form.formState.errors.maxTokens ? (
-                          <p className="text-[11px] text-error">
+                          <p className="text-2xs text-error">
                             {form.formState.errors.maxTokens.message}
                           </p>
                         ) : null}
@@ -753,7 +753,7 @@ export function LlmModelConfigDialog({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <Label>Top P</Label>
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {selectedTopP.toFixed(2)}
                           </span>
                         </div>
@@ -779,7 +779,7 @@ export function LlmModelConfigDialog({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <Label>Frequency Penalty</Label>
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {selectedFrequencyPenalty.toFixed(1)}
                           </span>
                         </div>
@@ -806,7 +806,7 @@ export function LlmModelConfigDialog({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <Label>Presence Penalty</Label>
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {selectedPresencePenalty.toFixed(1)}
                           </span>
                         </div>
@@ -838,7 +838,7 @@ export function LlmModelConfigDialog({
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>设为默认配置</Label>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     {selectedModelType === "embedding"
                       ? "默认 Embedding 模型会在新建知识库时自动选中"
                       : "默认配置会在新建 LLM 节点时自动选中"}

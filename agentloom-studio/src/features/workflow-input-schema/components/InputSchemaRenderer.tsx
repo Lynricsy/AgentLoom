@@ -80,7 +80,7 @@ function RendererField({
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
         <span className="block text-xs font-medium text-foreground">{field.label}</span>
-        {field.required ? <span className="text-[11px] text-warning">必填</span> : null}
+        {field.required ? <span className="text-2xs text-warning">必填</span> : null}
       </div>
 
       {field.type === 'text' ? (
@@ -135,7 +135,7 @@ function RendererField({
       ) : null}
 
       {field.type === 'multi_select' ? (
-        <div className="space-y-2 rounded-md border border-input bg-background px-3 py-2">
+        <div className="space-y-2 rounded-md border border-border bg-background px-3 py-2">
           {(field.options ?? []).map((option) => {
             const currentValues = Array.isArray(value)
               ? value.map(String).filter((currentValue) => (field.options ?? []).includes(currentValue))

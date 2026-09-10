@@ -17,7 +17,7 @@ export function Field({
 }) {
   return (
     <div className={cn('space-y-1.5', className)}>
-      <label className="block text-xs font-medium text-muted" htmlFor={htmlFor}>
+      <label className="block text-xs font-medium text-muted-foreground" htmlFor={htmlFor}>
         {label}
       </label>
       {children}
@@ -28,8 +28,8 @@ export function Field({
 /** 元数据小格：统一 label / value 的字号与间距 */
 export function MetaTile({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-card border border-border bg-surface p-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{label}</p>
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       <div className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</div>
     </div>
   )
@@ -48,10 +48,10 @@ export function ToggleTile({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-card border border-border bg-surface p-3">
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3">
       <div className="min-w-0">
         <p className="text-xs font-medium text-foreground">{title}</p>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted">{description}</p>
+        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{description}</p>
       </div>
       <Switch checked={checked} aria-label={title} onCheckedChange={onCheckedChange} />
     </div>
@@ -69,10 +69,10 @@ export function SecretStatusBlock({
   description: string
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 rounded-card border border-border bg-surface p-3">
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border bg-surface p-3">
       <div className="min-w-0">
         <p className="text-xs font-medium text-foreground">{title}</p>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted">{description}</p>
+        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{description}</p>
       </div>
       <Badge variant={configured ? 'success' : 'secondary'} size="sm">
         {configured ? '已配置受管密钥' : '未配置'}

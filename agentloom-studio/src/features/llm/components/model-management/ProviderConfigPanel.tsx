@@ -263,7 +263,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                 </Badge>
               )}
             </div>
-            <p className="truncate text-xs text-muted">{provider.slug}</p>
+            <p className="truncate text-xs text-muted-foreground">{provider.slug}</p>
           </div>
         </div>
 
@@ -308,7 +308,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
             )}
           </div>
           {provider.defaultBaseUrl && (
-            <p className="text-[11px] text-muted">
+            <p className="text-2xs text-muted-foreground">
               默认: {provider.defaultBaseUrl}
             </p>
           )}

@@ -100,7 +100,7 @@ export function TenantKeyManagement() {
 
       {hasKey ? (
         <div className="space-y-4">
-          <div className="rounded-xl border border-border/60 bg-card/60 p-5">
+          <div className="rounded-xl border border-border/60 bg-surface/60 p-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -171,7 +171,7 @@ export function TenantKeyManagement() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border/60 bg-card/30 py-12">
+        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border/60 bg-surface/30 py-12">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
             <Key className="h-7 w-7 text-muted-foreground" />
           </div>
@@ -204,13 +204,13 @@ export function TenantKeyManagement() {
             {historicalKeys.map((key) => (
                 <div
                   key={key.id}
-                  className="flex items-center justify-between rounded-lg border border-border/40 bg-card/30 px-4 py-3"
+                  className="flex items-center justify-between rounded-lg border border-border/40 bg-surface/30 px-4 py-3"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-mono text-xs text-muted-foreground">
                       {key.keyFingerprint}
                     </p>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    <p className="mt-0.5 text-2xs text-muted-foreground">
                       {key.status === 'rotating'
                         ? `轮换于 ${formatDate(key.rotatedAt)}`
                         : `撤销于 ${formatDate(key.revokedAt)}`}

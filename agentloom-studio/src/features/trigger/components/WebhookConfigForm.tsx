@@ -82,7 +82,7 @@ export function WebhookConfigForm({
         <textarea
           id="webhook-trigger-description"
           rows={3}
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           placeholder="说明这个 webhook 的来源系统与用途"
           {...register('description')}
         />

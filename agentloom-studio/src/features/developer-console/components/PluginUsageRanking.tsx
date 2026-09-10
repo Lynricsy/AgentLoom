@@ -42,7 +42,7 @@ export function PluginUsageRanking({
   isLoading,
 }: PluginUsageRankingProps) {
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-lg border border-border bg-surface">
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-base font-semibold text-foreground">
           插件使用排名

@@ -36,7 +36,7 @@ export const SkillBody = memo(function SkillBody({ data }: SkillBodyProps) {
         </span>
       </div>
       {skillDescription && (
-        <p className="line-clamp-2 text-[11px] text-muted-foreground">
+        <p className="line-clamp-2 text-2xs text-muted-foreground">
           {skillDescription}
         </p>
       )}

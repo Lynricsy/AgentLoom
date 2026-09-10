@@ -79,12 +79,12 @@ export function ReviewForm({ listingId, onSuccess }: ReviewFormProps) {
 
   return (
     <div
-      className="space-y-4 rounded-card border border-border bg-surface-elevated p-4"
+      className="space-y-4 rounded-lg border border-border bg-muted p-4"
       data-testid="review-form"
     >
       <div className="space-y-1">
         <h4 className="text-sm font-semibold text-foreground">写下你的评价</h4>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           评分会帮助其他用户判断这个工作流是否适合他们。
         </p>
       </div>
@@ -102,7 +102,7 @@ export function ReviewForm({ listingId, onSuccess }: ReviewFormProps) {
               onClick={() => setRating(value)}
               onMouseEnter={() => setHoveredRating(value)}
               onMouseLeave={() => setHoveredRating(null)}
-              className="rounded p-1 text-muted transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="rounded p-1 text-muted-foreground transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               aria-label={`选择 ${value} 星`}
             >
               <Star
@@ -135,7 +135,7 @@ export function ReviewForm({ listingId, onSuccess }: ReviewFormProps) {
           placeholder="分享这个工作流在真实场景中的使用感受。"
         />
         <div className="flex items-center justify-between gap-2 text-xs">
-          <span className={errorMessage ? 'font-medium text-error' : 'text-muted'}>
+          <span className={errorMessage ? 'font-medium text-error' : 'text-muted-foreground'}>
             {errorMessage ?? '你的反馈会公开展示在市场页。'}
           </span>
           <span className="shrink-0 text-muted-foreground">

@@ -98,8 +98,8 @@ export const KeyRotateDialog = memo(function KeyRotateDialog({
           <div className="mt-5 space-y-4">
             {state.step === 'confirm' && (
               <>
-                <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="rounded-lg border border-border/60 bg-muted p-3">
+                  <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                     当前密钥指纹
                   </p>
                   <p className="mt-1 break-all font-mono text-xs text-foreground">

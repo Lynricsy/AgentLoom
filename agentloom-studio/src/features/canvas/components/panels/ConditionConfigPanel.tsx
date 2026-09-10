@@ -67,11 +67,11 @@ const BranchSection = memo(function BranchSection({
   }, [branch.mode, index, onUpdate])
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-lg border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
         <span
           className={cn(
-            'inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+            'inline-flex shrink-0 rounded px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wider',
             branch.label === 'IF'
               ? 'bg-blue-500/15 text-blue-400'
               : 'bg-amber-500/15 text-amber-400',
@@ -80,7 +80,7 @@ const BranchSection = memo(function BranchSection({
           {branch.label}
         </span>
 
-        <span className="flex-1 text-[10px] text-muted-foreground">
+        <span className="flex-1 text-2xs text-muted-foreground">
           {branch.mode === 'expression'
             ? branch.expression || '未配置表达式'
             : `${branch.conditions.rules.length} 条条件`}
@@ -405,18 +405,18 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
         </span>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-foreground">输入端口</p>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               条件左值统一引用输入端口；表达式模式使用 `ports[n]`。
             </p>
           </div>
           <button
             type="button"
             onClick={handleAddInputPort}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-2xs text-foreground hover:bg-muted"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>添加输入</span>
@@ -438,11 +438,11 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
                     placeholder={`输入 ${index + 1}`}
                     className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
                   />
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     ports[{index + 1}]
                   </span>
                 </div>
-                <p className="mt-0.5 px-1 text-[10px] text-muted-foreground">
+                <p className="mt-0.5 px-1 text-2xs text-muted-foreground">
                   {availablePorts[index]?.dataTypeLabel
                     ? `当前已连接 ${availablePorts[index]?.dataTypeLabel} 输入`
                     : '当前未连接上游，默认按整值比较'}
@@ -506,12 +506,12 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
         <span>添加 ELSE IF 分支</span>
       </button>
 
-      <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="rounded-lg border border-border bg-surface px-3 py-2">
         <div className="flex min-h-[20px] items-center gap-1.5">
-          <span className="inline-flex shrink-0 rounded bg-muted/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
+          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
             ELSE
           </span>
-          <span className="flex-1 text-[10px] text-muted-foreground">
+          <span className="flex-1 text-2xs text-muted-foreground">
             默认分支，当前面所有条件都不匹配时进入
           </span>
         </div>

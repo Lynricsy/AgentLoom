@@ -60,7 +60,7 @@ export function KeywordManager({
   }
 
   return (
-    <div className="flex items-start gap-2 text-xs text-muted">
+    <div className="flex items-start gap-2 text-xs text-muted-foreground">
       <Tag size={13} className="mt-0.5 shrink-0" style={{ color: GLOSSARY_TONE }} />
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-medium" style={{ color: GLOSSARY_TONE }}>
@@ -69,7 +69,7 @@ export function KeywordManager({
         {keywords.map((kw) => (
           <span
             key={kw}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[11px]"
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-2xs"
             style={{
               border: `1px solid color-mix(in srgb, ${GLOSSARY_TONE} 30%, transparent)`,
               backgroundColor: `color-mix(in srgb, ${GLOSSARY_TONE} 12%, transparent)`,
@@ -100,7 +100,7 @@ export function KeywordManager({
                 if (!newKeyword.trim()) setAdding(false)
               }}
               placeholder="keyword..."
-              className="w-28 rounded-md border border-input bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-28 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-2xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <button
               type="button"
@@ -116,7 +116,7 @@ export function KeywordManager({
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-border px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:border-border-hover hover:text-foreground"
+            className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-border px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:border-border-hover hover:text-foreground"
           >
             <Plus size={9} /> add
           </button>

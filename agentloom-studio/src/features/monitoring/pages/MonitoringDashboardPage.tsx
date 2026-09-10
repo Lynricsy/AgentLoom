@@ -54,12 +54,12 @@ function MonitoringBlockedState({
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
             <Icon className="h-5 w-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            <p className="text-xs leading-relaxed text-muted">{message}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{message}</p>
             {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
@@ -77,17 +77,17 @@ function MonitoringOrganizationLoadingState() {
     >
       <PageHeader icon={Activity} title="运行监控" description={PAGE_DESCRIPTION} />
 
-      <p className="flex items-center gap-2 text-xs text-muted">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <Spinner className="h-3.5 w-3.5" />
         正在确认当前组织…
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-[6.5rem] rounded-card" />
+          <Skeleton key={index} className="h-[6.5rem] rounded-lg" />
         ))}
       </div>
-      <Skeleton className="h-80 rounded-card" />
+      <Skeleton className="h-80 rounded-lg" />
     </div>
   )
 }
@@ -117,11 +117,11 @@ function MonitoringOverviewTab({
               <RadioTower className="h-4 w-4" aria-hidden="true" />
               <h2 className="text-sm font-semibold">当前组织全局视图</h2>
             </div>
-            <p className="text-xs leading-relaxed text-muted">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               当前窗口：{activeWindowLabel} · 组织范围：organization · 最近刷新：
               {formatMonitoringTimestamp(data?.summary.lastUpdatedAt)}
             </p>
-            <p className="flex items-center gap-1.5 text-xs leading-relaxed text-muted">
+            <p className="flex items-center gap-1.5 text-xs leading-relaxed text-muted-foreground">
               {isFetching && !isLoading ? (
                 <>
                   <Spinner className="h-3 w-3" />
@@ -131,7 +131,7 @@ function MonitoringOverviewTab({
                 '切换时间窗口会触发新的查询，请避免把不同窗口下的数据混读。'
               )}
             </p>
-            <p className="text-xs leading-relaxed text-muted">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               治理暂停只会阻止新的执行进入，不等同于 execution paused（人工介入）。如需处置，请跳转到既有治理或执行详情入口。
             </p>
           </div>
@@ -169,18 +169,18 @@ function MonitoringOverviewTab({
 
       {isLoading ? (
         <div className="space-y-6" data-testid="monitoring-loading-state">
-          <p className="flex items-center gap-2 text-xs text-muted">
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <Spinner className="h-3.5 w-3.5" />
             正在加载监控数据…
           </p>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="h-[6.5rem] rounded-card" />
+              <Skeleton key={index} className="h-[6.5rem] rounded-lg" />
             ))}
           </div>
           <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <Skeleton className="h-80 rounded-card" />
-            <Skeleton className="h-80 rounded-card" />
+            <Skeleton className="h-80 rounded-lg" />
+            <Skeleton className="h-80 rounded-lg" />
           </div>
         </div>
       ) : null}

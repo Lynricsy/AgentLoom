@@ -74,7 +74,7 @@ function KeyValue({ label, value }: { label: string; value: string | number | un
   if (value == null || value === '') return null
   return (
     <div className="flex items-baseline gap-2 py-0.5">
-      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="shrink-0 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <span className="font-mono text-xs text-foreground/90 break-all">
@@ -156,7 +156,7 @@ const CreateMemoryDetail = memo(function CreateMemoryDetail({ toolCall, state }:
       </div>
       {args.content && (
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             内容
           </div>
           <ContentPreview content={truncate(args.content, 500)} maxHeight="200px" />
@@ -175,7 +175,7 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
   if (args.mode === 'append' && args.appendContent) {
     return (
       <div>
-        <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           追加的内容
         </div>
         <ContentPreview content={args.appendContent} maxHeight="200px" />
@@ -187,7 +187,7 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
     return (
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             原始内容
           </div>
           <pre className="overflow-auto rounded-md bg-error/10 p-2 font-mono text-xs text-error leading-relaxed whitespace-pre-wrap break-all max-h-[200px]">
@@ -195,7 +195,7 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
           </pre>
         </div>
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             修改后
           </div>
           <pre className="overflow-auto rounded-md bg-success/10 p-2 font-mono text-xs text-success leading-relaxed whitespace-pre-wrap break-all max-h-[200px]">
@@ -287,7 +287,7 @@ const SearchMemoryDetail = memo(function SearchMemoryDetail({ toolCall, state }:
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-info truncate">{uri}</span>
               {entry.score != null && (
-                <span className="shrink-0 text-[10px] text-muted-foreground">
+                <span className="shrink-0 text-2xs text-muted-foreground">
                   score: {typeof entry.score === 'number' ? entry.score.toFixed(2) : entry.score}
                 </span>
               )}

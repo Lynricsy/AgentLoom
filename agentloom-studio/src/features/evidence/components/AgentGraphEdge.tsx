@@ -85,7 +85,7 @@ export const AgentGraphEdge = memo(function AgentGraphEdge({
         {showTooltip && (
           <div
             className={cn(
-              'pointer-events-auto absolute rounded-lg border px-2.5 py-1.5 text-[10px] shadow-lg',
+              'pointer-events-auto absolute rounded-lg border px-2.5 py-1.5 text-2xs shadow-lg',
               'border-border/60 bg-popover/95 backdrop-blur-sm',
             )}
             style={{

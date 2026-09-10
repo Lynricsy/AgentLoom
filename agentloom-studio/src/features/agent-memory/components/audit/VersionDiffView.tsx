@@ -44,7 +44,7 @@ export function VersionDiffView({
               aria-hidden
               className="inline-block h-2.5 w-2.5 rounded-full bg-error"
             />
-            <span className="text-muted">
+            <span className="text-muted-foreground">
               v{oldVersion.versionNumber} — {oldVersion.nodeName}
             </span>
           </div>
@@ -55,7 +55,7 @@ export function VersionDiffView({
               aria-hidden
               className="inline-block h-2.5 w-2.5 rounded-full bg-success"
             />
-            <span className="text-muted">
+            <span className="text-muted-foreground">
               v{newVersion.versionNumber} — {newVersion.nodeName}
             </span>
           </div>
@@ -63,7 +63,7 @@ export function VersionDiffView({
       </div>
 
       {/* 差异内容 */}
-      <div className="overflow-x-auto rounded-card border border-border bg-surface-elevated">
+      <div className="overflow-x-auto rounded-lg border border-border bg-muted">
         <pre className="p-3 font-mono text-xs leading-relaxed">
           {changes?.map((part, index) => {
             const lineClass = part.added
@@ -88,7 +88,7 @@ export function VersionDiffView({
                       : 'diff-unchanged'
                 }
               >
-                <span aria-hidden className="mr-2 select-none text-muted">
+                <span aria-hidden className="mr-2 select-none text-muted-foreground">
                   {prefix}
                 </span>
                 {line || '\u00A0'}

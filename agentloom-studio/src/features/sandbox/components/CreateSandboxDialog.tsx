@@ -163,7 +163,7 @@ export function CreateSandboxDialog({
               >
                 CPU
               </label>
-              <span className="text-sm tabular-nums text-muted">{cpu} 核</span>
+              <span className="text-sm tabular-nums text-muted-foreground">{cpu} 核</span>
             </div>
             <Slider
               id="sandbox-cpu-slider"
@@ -176,7 +176,7 @@ export function CreateSandboxDialog({
                 clearPresetSelection();
               }}
             />
-            <div className="mt-1 flex justify-between text-xs text-muted">
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
               <span>0.5 核</span>
               <span>4 核</span>
             </div>
@@ -190,7 +190,7 @@ export function CreateSandboxDialog({
               >
                 Memory
               </label>
-              <span className="text-sm tabular-nums text-muted">
+              <span className="text-sm tabular-nums text-muted-foreground">
                 {memory} MB
               </span>
             </div>
@@ -205,7 +205,7 @@ export function CreateSandboxDialog({
                 clearPresetSelection();
               }}
             />
-            <div className="mt-1 flex justify-between text-xs text-muted">
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
               <span>256 MB</span>
               <span>4096 MB</span>
             </div>
@@ -219,7 +219,7 @@ export function CreateSandboxDialog({
               >
                 Disk
               </label>
-              <span className="text-sm tabular-nums text-muted">{disk} GB</span>
+              <span className="text-sm tabular-nums text-muted-foreground">{disk} GB</span>
             </div>
             <Slider
               id="sandbox-disk-slider"
@@ -232,7 +232,7 @@ export function CreateSandboxDialog({
                 clearPresetSelection();
               }}
             />
-            <div className="mt-1 flex justify-between text-xs text-muted">
+            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
               <span>1 GB</span>
               <span>10 GB</span>
             </div>
@@ -259,7 +259,7 @@ export function CreateSandboxDialog({
                 )
               }
             />
-            <p className="text-xs leading-5 text-muted">
+            <p className="text-xs leading-5 text-muted-foreground">
               沙箱里没有运行中的对话，且所有对话都空闲后，会按该分钟数自动结束对话。
             </p>
           </div>

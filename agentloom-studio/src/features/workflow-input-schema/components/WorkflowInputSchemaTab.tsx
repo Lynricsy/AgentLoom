@@ -70,7 +70,7 @@ const COLLECTION_MODE_OPTIONS: Array<{
 ]
 
 const TEXTAREA_CLASSNAME =
-  'min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50'
+  'min-h-24 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50'
 
 /**
  * Radix Select 不允许空串 value 的 SelectItem，而「始终显示」是用户必须能重新选回的真实选项
@@ -185,7 +185,7 @@ export function WorkflowInputSchemaTab({
   }
 
   return (
-    <section className="space-y-4 rounded-2xl border border-border/70 bg-surface/95 p-4" data-testid="workflow-input-schema-tab">
+    <section className="space-y-4 rounded-xl border border-border/70 bg-surface/95 p-4" data-testid="workflow-input-schema-tab">
       <div className="space-y-1">
         <div className="text-sm font-semibold text-foreground">输入参数</div>
         <p className="text-xs text-muted-foreground">
@@ -478,7 +478,7 @@ export function WorkflowInputSchemaTab({
                 </FieldInput>
 
                 <FieldInput label="必填">
-                  <label className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
+                  <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-foreground">
                     <input
                       type="checkbox"
                       checked={field.required}
@@ -839,7 +839,7 @@ function ConversationCollectionPreview({
                 <span className="font-medium">
                   {index + 1}. {field.label}
                 </span>
-                <span className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                <span className="rounded-full border border-border/70 px-2 py-0.5 text-2xs text-muted-foreground">
                   {field.required ? '必填' : '可选'}
                 </span>
               </div>

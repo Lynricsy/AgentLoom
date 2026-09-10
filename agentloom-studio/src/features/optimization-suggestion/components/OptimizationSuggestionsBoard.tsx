@@ -62,7 +62,7 @@ function AdoptionStatsCard() {
     return (
       <Card data-testid="suggestion-stats-empty">
         <CardContent className="p-4">
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             当前组织还没有生成过优化建议，采纳率会在建议产生后开始统计。
           </p>
         </CardContent>
@@ -100,7 +100,7 @@ function AdoptionStatsCard() {
           aria-label="优化建议采纳率"
         />
 
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted sm:grid-cols-5">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-5">
           {(
             [
               ['总计', stats.total],
@@ -195,7 +195,7 @@ export const OptimizationSuggestionsBoard = memo(
               <p className="text-xs font-medium text-foreground">
                 {SUGGESTION_TYPE_LABELS[suggestion.suggestionType]}
               </p>
-              <p className="line-clamp-2 text-xs text-muted" title={suggestion.rationale}>
+              <p className="line-clamp-2 text-xs text-muted-foreground" title={suggestion.rationale}>
                 {suggestion.rationale}
               </p>
             </div>
@@ -226,7 +226,7 @@ export const OptimizationSuggestionsBoard = memo(
           header: '节点',
           hideBelow: 'md',
           cell: (suggestion) => (
-            <span className="text-xs text-muted">{suggestion.nodeId}</span>
+            <span className="text-xs text-muted-foreground">{suggestion.nodeId}</span>
           ),
         },
         {
@@ -235,7 +235,7 @@ export const OptimizationSuggestionsBoard = memo(
           hideBelow: 'lg',
           className: 'whitespace-nowrap',
           cell: (suggestion) => (
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               {formatSuggestionTimestamp(suggestion.createdAt)}
             </span>
           ),
@@ -307,7 +307,7 @@ export const OptimizationSuggestionsBoard = memo(
           })}
         </div>
 
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           workflow agent 节点上的模型、工具、超时与自治级别字段不参与执行，采纳后不会产生
           任何效果，因此这些建议当前无法采纳。agent 节点的运行时配置来自所绑定的 Agent
           Definition，如需调整请到该 Agent 中修改。建议可以忽略，也可以在画布中查看所属节点的上下文。

@@ -225,7 +225,7 @@ export function MarketplaceBrowsePage({
         }
       />
 
-      <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-3 shadow-node sm:p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -312,7 +312,7 @@ export function MarketplaceBrowsePage({
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={`marketplace-loading-${String(index)}`}
-              className="overflow-hidden rounded-card border border-border bg-card"
+              className="overflow-hidden rounded-lg border border-border bg-surface"
               data-testid="marketplace-listing-skeleton"
             >
               <Skeleton className="aspect-[16/9] w-full rounded-none" />
@@ -356,7 +356,7 @@ export function MarketplaceBrowsePage({
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between text-xs text-muted">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>共 {String(total)} 个项目</span>
             <span>第 {filters.page} 页</span>
           </div>

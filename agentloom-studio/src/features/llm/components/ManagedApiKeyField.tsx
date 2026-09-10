@@ -50,12 +50,12 @@ export const ManagedApiKeyField = memo(function ManagedApiKeyField({
       />
 
       {errorText ? (
-        <p className="text-[11px] text-error">{errorText}</p>
+        <p className="text-2xs text-error">{errorText}</p>
       ) : warningText ? (
-        <p className="text-[11px] text-warning">{warningText}</p>
+        <p className="text-2xs text-warning">{warningText}</p>
       ) : clearRequested ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-[11px] text-warning">保存后会移除当前 API Key。</p>
+          <p className="text-2xs text-warning">保存后会移除当前 API Key。</p>
           <Button
             type="button"
             variant="outline"
@@ -69,7 +69,7 @@ export const ManagedApiKeyField = memo(function ManagedApiKeyField({
         </div>
       ) : hasConfiguredKey ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             当前已配置 API Key，留空表示保持不变；输入新 key 会替换。
           </p>
           <Button
@@ -84,7 +84,7 @@ export const ManagedApiKeyField = memo(function ManagedApiKeyField({
           </Button>
         </div>
       ) : helperText ? (
-        <p className="text-[11px] text-muted-foreground">{helperText}</p>
+        <p className="text-2xs text-muted-foreground">{helperText}</p>
       ) : null}
     </div>
   );

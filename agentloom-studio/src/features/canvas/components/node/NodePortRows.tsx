@@ -11,7 +11,7 @@ import type { PortDefinition } from "../../types/nodeTypeRegistry";
 import { TypedPort } from "../TypedPort";
 import { getMinimalHandleOffsets } from "./nodeVisualMeta";
 
-const PORT_LABEL_CLASS = "truncate text-[11px] text-muted-foreground";
+const PORT_LABEL_CLASS = "truncate text-2xs text-muted-foreground";
 
 function PortLabel({
   port,

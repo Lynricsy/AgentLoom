@@ -41,7 +41,7 @@ export const SubAgentNodeBody = memo(function SubAgentNodeBody({
         </span>
       </div>
       {(alias || versionLabel) && (
-        <div className="flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap gap-1 text-2xs text-muted-foreground">
           {alias && (
             <span className="rounded bg-muted px-1.5 py-0.5">@{alias}</span>
           )}

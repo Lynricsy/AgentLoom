@@ -219,13 +219,13 @@ const WorkflowCard = memo(function WorkflowCard({
       interactive
       className={cn(
         "group relative flex h-full flex-col gap-3 p-4",
-        selected && "border-primary shadow-node-selected",
+        selected && "border-primary shadow-md",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <span
           aria-hidden
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
           style={{
             backgroundColor: `color-mix(in srgb, ${WORKFLOW_TONE} 14%, transparent)`,
             color: WORKFLOW_TONE,
@@ -261,20 +261,20 @@ const WorkflowCard = memo(function WorkflowCard({
           {/* 标题按钮拉伸覆盖整张卡片，保证唯一可访问名同时整卡可点 */}
           <button
             type="button"
-            className="max-w-full truncate rounded-sm after:absolute after:inset-0 after:rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="max-w-full truncate rounded-sm after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             onClick={() => onClick(workflow)}
           >
             {workflow.name}
           </button>
         </h3>
-        <p className="line-clamp-2 text-xs text-muted">
+        <p className="line-clamp-2 text-xs text-muted-foreground">
           {workflow.description || "暂无描述"}
         </p>
       </div>
 
       <div className="flex h-8 items-center justify-between gap-2">
         <span className="inline-flex min-w-0 items-center gap-2">
-          <span className="inline-flex items-center gap-1 truncate text-xs text-muted">
+          <span className="inline-flex items-center gap-1 truncate text-xs text-muted-foreground">
             <Clock className="h-3 w-3 shrink-0" />
             {formatRelativeTime(new Date(workflow.updatedAt))}
           </span>
@@ -315,7 +315,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
       interactive
       className={cn(
         "group relative flex items-center gap-3 px-4 py-3",
-        selected && "border-primary shadow-node-selected",
+        selected && "border-primary shadow-md",
       )}
     >
       <span
@@ -336,7 +336,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
 
       <span
         aria-hidden
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
         style={{
           backgroundColor: `color-mix(in srgb, ${WORKFLOW_TONE} 14%, transparent)`,
           color: WORKFLOW_TONE,
@@ -350,7 +350,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
           <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
             <button
               type="button"
-              className="max-w-full truncate rounded-sm after:absolute after:inset-0 after:rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="max-w-full truncate rounded-sm after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               onClick={() => onClick(workflow)}
             >
               {workflow.name}
@@ -360,7 +360,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
             {getWorkflowReleaseLabel(workflow)}
           </Badge>
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {workflow.description || "暂无描述"}
         </p>
       </div>
@@ -369,7 +369,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
         <Badge variant={getStatusVariant(workflow.status)}>
           {getStatusLabel(workflow.status)}
         </Badge>
-        <span className="hidden items-center gap-1 text-xs text-muted lg:flex">
+        <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:flex">
           <Clock className="h-3 w-3" />
           {formatRelativeTime(new Date(workflow.updatedAt))}
         </span>
@@ -392,7 +392,7 @@ function WorkflowCardSkeleton() {
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between">
-        <Skeleton className="h-10 w-10 rounded-card" />
+        <Skeleton className="h-10 w-10 rounded-lg" />
         <Skeleton className="h-5 w-14 rounded-full" />
       </div>
       <Skeleton className="h-4 w-3/5 rounded" />
@@ -585,7 +585,7 @@ export function WorkflowListPage({
 
         <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="relative min-w-0 flex-1 basis-full sm:basis-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="搜索工作流..."
               value={searchInput}
@@ -634,7 +634,7 @@ export function WorkflowListPage({
         </div>
 
         {batchMode && (
-          <div className="mt-3 flex items-center gap-3 rounded-card bg-primary/5 px-3 py-2">
+          <div className="mt-3 flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
             <Checkbox
               checked={
                 selectedWorkflowIds.size === workflows.length
@@ -733,7 +733,7 @@ export function WorkflowListPage({
 
       {meta && meta.totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border px-4 py-3 sm:px-6">
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             {meta.total} 个工作流, 第 {meta.page}/{meta.totalPages} 页
           </span>
           <div className="flex items-center gap-1">

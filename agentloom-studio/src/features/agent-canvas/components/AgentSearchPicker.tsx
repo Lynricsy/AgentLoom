@@ -115,7 +115,7 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                        <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-2xs text-emerald-400">
                           已发布
                         </span>
                         {isSelected && (
@@ -124,7 +124,7 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
                       </div>
                     </div>
                     {agent.description && (
-                      <p className="mt-0.5 pl-5.5 text-[11px] text-neutral-500 line-clamp-1">
+                      <p className="mt-0.5 pl-5.5 text-2xs text-neutral-500 line-clamp-1">
                         {agent.description}
                       </p>
                     )}

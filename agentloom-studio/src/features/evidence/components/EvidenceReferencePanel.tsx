@@ -99,7 +99,7 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
   return (
     <aside
       className={cn(
-        'fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l border-border bg-surface shadow-panel transition-transform duration-300 ease-out sm:w-[400px]',
+        'fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l border-border bg-surface shadow-lg transition-transform duration-300 ease-out sm:w-[400px]',
         isOpen ? 'translate-x-0' : 'translate-x-full',
         className,
       )}
@@ -146,7 +146,7 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
             {isLoading && (
               <div className="space-y-2" data-testid="evidence-chain-loading">
                 {Array.from({ length: 3 }, (_, index) => (
-                  <Skeleton key={index} className="h-24 w-full rounded-card" />
+                  <Skeleton key={index} className="h-24 w-full rounded-lg" />
                 ))}
               </div>
             )}
@@ -203,7 +203,7 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
           </div>
 
           {chain && (
-            <div className="border-t border-border px-4 py-2 text-[11px] text-muted">
+            <div className="border-t border-border px-4 py-2 text-2xs text-muted-foreground">
               链完整度：{chain.chainCompleteness ?? '未知'} · 共 {chain.totalNodes} 个节点
             </div>
           )}

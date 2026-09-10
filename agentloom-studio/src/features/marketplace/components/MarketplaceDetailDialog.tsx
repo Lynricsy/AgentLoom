@@ -54,17 +54,17 @@ function WorkflowPreviewSection({
     <section className="space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-foreground">工作流预览</h3>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           这是一个只读预览，安装后可以在画布中继续编辑。
         </p>
       </div>
 
       <WorkflowPreviewCanvas
-        className="h-[260px] overflow-hidden rounded-card border border-border sm:h-[300px]"
+        className="h-[260px] overflow-hidden rounded-lg border border-border sm:h-[300px]"
         definition={listing.definition}
         lodOverride="full"
         emptyFallback={
-          <div className="flex h-[260px] items-center justify-center rounded-card border border-dashed border-border text-sm text-muted sm:h-[300px]">
+          <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground sm:h-[300px]">
             暂无可预览的工作流结构。
           </div>
         }
@@ -85,19 +85,19 @@ function PluginDetailSection({
     <section className="space-y-3">
       <div>
         <h3 className="text-sm font-semibold text-foreground">插件信息</h3>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           安装后可在工作流画布中使用该插件节点。
         </p>
       </div>
 
       <div
-        className="space-y-3 rounded-card border border-border bg-surface-elevated p-4"
+        className="space-y-3 rounded-lg border border-border bg-muted p-4"
         data-testid="plugin-detail-metadata"
       >
         <div className="flex items-center gap-2">
           <span
             aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-node-plugin) 14%, transparent)',
@@ -113,20 +113,20 @@ function PluginDetailSection({
         </div>
 
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-          <dt className="text-muted">插件 ID</dt>
+          <dt className="text-muted-foreground">插件 ID</dt>
           <dd className="truncate font-mono text-xs text-foreground">
             {plugin.pluginId}
           </dd>
 
-          <dt className="text-muted">开发者</dt>
+          <dt className="text-muted-foreground">开发者</dt>
           <dd className="truncate text-foreground">{plugin.author}</dd>
 
-          <dt className="text-muted">许可协议</dt>
+          <dt className="text-muted-foreground">许可协议</dt>
           <dd className="truncate text-foreground">{plugin.license ?? '未指定'}</dd>
         </dl>
 
         {plugin.description ? (
-          <p className="border-t border-border pt-3 text-sm text-muted">
+          <p className="border-t border-border pt-3 text-sm text-muted-foreground">
             {plugin.description}
           </p>
         ) : null}
@@ -180,7 +180,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               data-testid="marketplace-detail-loading"
             >
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm text-muted">正在加载详情…</span>
+              <span className="text-sm text-muted-foreground">正在加载详情…</span>
             </div>
           </>
         ) : detailQuery.isError || !listing || !typeMeta || !TypeIcon ? (
@@ -193,7 +193,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               <p className="text-base font-medium text-foreground">
                 无法加载详情
               </p>
-              <p className="text-sm text-muted">
+              <p className="text-sm text-muted-foreground">
                 请稍后重试，或返回列表后重新打开。
               </p>
             </div>
@@ -222,7 +222,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               <DialogTitle className="text-lg">{listing.title}</DialogTitle>
               <DialogDescription>{listing.summary}</DialogDescription>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
                 <span>作者：{listing.author.displayName}</span>
                 <span className="inline-flex items-center gap-1.5">
                   <Download className="h-3.5 w-3.5" />
@@ -236,7 +236,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               </div>
 
               {listing.tags.length > 0 ? (
-                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
                   {listing.tags.map((tag) => (
                     <span key={tag}>#{tag}</span>
                   ))}
@@ -258,7 +258,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                   <h3 className="text-sm font-semibold text-foreground">
                     用户评价
                   </h3>
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-muted-foreground">
                     {reviewsQuery.isLoading
                       ? '正在加载评价…'
                       : `共 ${String(reviewsTotal)} 条评价`}

@@ -84,14 +84,14 @@ export function AppSidebar() {
         {collapsed ? null : (
           <Link
             to="/"
-            className="flex min-w-0 items-center gap-3 rounded-md px-1 py-1 transition-colors hover:bg-surface-elevated"
+            className="flex min-w-0 items-center gap-3 rounded-md px-1 py-1 transition-colors hover:bg-muted"
           >
             <BrandMark size="sm" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-foreground">
                 AgentLoom
               </p>
-              <p className="truncate text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+              <p className="truncate text-2xs uppercase tracking-[0.24em] text-muted-foreground">
                 Studio
               </p>
             </div>
@@ -101,7 +101,7 @@ export function AppSidebar() {
         <button
           type="button"
           onClick={toggle}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           title={collapsed ? "展开侧边栏" : "收起侧边栏"}
           aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
         >
@@ -126,7 +126,7 @@ export function AppSidebar() {
             collapsed && "justify-center",
             settingsActive
               ? "bg-primary/10 text-primary"
-              : "text-muted hover:bg-surface-elevated hover:text-foreground",
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
           title={collapsed ? "设置" : undefined}
         >

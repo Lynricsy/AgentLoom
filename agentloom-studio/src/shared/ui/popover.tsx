@@ -61,7 +61,7 @@ export const PopoverContent = forwardRef<
             <motion.div
               {...scaleIn}
               className={cn(
-                'z-50 w-72 rounded-card border border-border bg-popover p-4 text-popover-foreground shadow-popover outline-none',
+                'z-50 w-72 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-lg outline-none',
                 className,
               )}
             >

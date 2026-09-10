@@ -14,9 +14,9 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
     <div
       ref={ref}
       className={cn(
-        'rounded-card border border-border bg-card text-card-foreground shadow-node',
+        'rounded-lg border border-border bg-surface text-foreground shadow-sm',
         interactive &&
-          'cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-node-selected',
+          'cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-md',
         className,
       )}
       {...props}
@@ -57,7 +57,7 @@ export const CardDescription = forwardRef<
   HTMLAttributes<HTMLParagraphElement>
 >(function CardDescription({ className, ...props }, ref) {
   return (
-    <p ref={ref} className={cn('text-xs text-muted', className)} {...props} />
+    <p ref={ref} className={cn('text-xs text-muted-foreground', className)} {...props} />
   )
 })
 

@@ -143,7 +143,7 @@ export function NotificationCenterPage() {
                 )}
               </div>
 
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="md:hidden">{meta.label}</span>
                 <span className="sm:hidden">
                   {formatRelativeTime(new Date(notification.createdAt))}
@@ -185,7 +185,7 @@ export function NotificationCenterPage() {
       hideBelow: 'sm',
       cell: (notification) => (
         <span
-          className="text-xs text-muted"
+          className="text-xs text-muted-foreground"
           title={new Date(notification.createdAt).toLocaleString('zh-CN')}
         >
           {formatRelativeTime(new Date(notification.createdAt))}
@@ -198,7 +198,7 @@ export function NotificationCenterPage() {
       className: 'w-28 whitespace-nowrap text-right',
       cell: (notification) =>
         notification.isRead ? (
-          <span className="text-xs text-muted">已读</span>
+          <span className="text-xs text-muted-foreground">已读</span>
         ) : (
           <Button
             variant="ghost"

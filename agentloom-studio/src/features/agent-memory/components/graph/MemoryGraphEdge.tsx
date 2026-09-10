@@ -50,8 +50,8 @@ export const MemoryGraphEdge = memo(function MemoryGraphEdge({
         <EdgeLabelRenderer>
           <div
             className={cn(
-              'pointer-events-none absolute rounded-md border border-border px-2 py-0.5 text-[10px]',
-              'bg-surface/90 shadow-node backdrop-blur-sm',
+              'pointer-events-none absolute rounded-md border border-border px-2 py-0.5 text-2xs',
+              'bg-surface/90 shadow-sm backdrop-blur-sm',
             )}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
@@ -62,7 +62,7 @@ export const MemoryGraphEdge = memo(function MemoryGraphEdge({
               <span className="font-medium text-foreground">{edgeName}</span>
             )}
             {priority != null && (
-              <span className="ml-1 text-muted">#{priority}</span>
+              <span className="ml-1 text-muted-foreground">#{priority}</span>
             )}
           </div>
         </EdgeLabelRenderer>

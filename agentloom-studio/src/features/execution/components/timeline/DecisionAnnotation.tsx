@@ -26,11 +26,11 @@ import { InlineEvidenceRef } from '@/features/evidence'
 import { cn } from '@/shared/lib/utils'
 
 const autonomyVariants = cva(
-  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
+  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium',
   {
     variants: {
       mode: {
-        FIXED: 'border-border bg-surface-elevated text-muted',
+        FIXED: 'border-border bg-muted text-muted-foreground',
         LLM_SUGGEST: 'border-warning/25 bg-warning/10 text-warning',
         LLM_DECIDE: 'border-info/25 bg-info/10 text-info',
       },
@@ -164,12 +164,12 @@ export const ReasoningBlock = memo(function ReasoningBlock({
     <section
       aria-label="Agent decision reasoning"
       className={cn(
-        'rounded-card border border-border bg-surface-elevated px-3 py-2',
+        'rounded-lg border border-border bg-muted px-3 py-2',
         className,
       )}
       data-testid="reasoning-block"
     >
-      <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted">
+      <p className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         推理过程
       </p>
       <div className="space-y-2 break-words text-xs text-foreground [&_code]:rounded-md [&_code]:bg-surface [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:leading-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-surface [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-4">
@@ -230,7 +230,7 @@ export const AlternativesList = memo(function AlternativesList({
       className={cn('space-y-1', className)}
       data-testid="alternatives-list"
     >
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
+      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         备选方案
         {formatConfidenceLabel(confidence) && (
           <span className="ml-2 normal-case tracking-normal text-foreground">
@@ -320,7 +320,7 @@ export const InterventionTag = memo(function InterventionTag({
   return (
     <div
       className={cn(
-        'space-y-2 rounded-card border border-border bg-surface-elevated px-3 py-2',
+        'space-y-2 rounded-lg border border-border bg-muted px-3 py-2',
         className,
       )}
       data-testid="intervention-tag"
@@ -331,7 +331,7 @@ export const InterventionTag = memo(function InterventionTag({
           {actionMeta.label}
         </span>
         {resolvedBy && (
-          <span className="text-xs text-muted">处理人 {resolvedBy}</span>
+          <span className="text-xs text-muted-foreground">处理人 {resolvedBy}</span>
         )}
       </div>
 
@@ -341,7 +341,7 @@ export const InterventionTag = memo(function InterventionTag({
 
       {modifiedSummary && (
         <div className="rounded-lg border border-border bg-surface px-2.5 py-2">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
+          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             修改摘要
           </p>
           <p className="mt-1 break-words text-xs text-foreground" data-testid="intervention-modified-content">

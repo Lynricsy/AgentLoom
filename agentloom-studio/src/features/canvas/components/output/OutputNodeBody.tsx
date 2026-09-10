@@ -58,7 +58,7 @@ export const OutputNodeBody = memo(function OutputNodeBody({
         <button
           type="button"
           className={cn(
-            'nodrag nopan nowheel group flex w-full flex-col gap-2 rounded-xl border border-border/60 bg-muted/20 px-2.5 py-2 text-left transition-colors',
+            'nodrag nopan nowheel group flex w-full flex-col gap-2 rounded-xl border border-border/60 bg-muted px-2.5 py-2 text-left transition-colors',
             'hover:border-primary/40 hover:bg-primary/5',
           )}
           onClick={stopNodeEvent}
@@ -69,13 +69,13 @@ export const OutputNodeBody = memo(function OutputNodeBody({
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <Icon className="h-3.5 w-3.5 shrink-0 text-foreground" />
-              <span className="truncate text-[11px] font-medium text-foreground">
+              <span className="truncate text-2xs font-medium text-foreground">
                 {title}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               {isStreaming ? (
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
                   流式中
                 </span>
               ) : null}
@@ -84,16 +84,16 @@ export const OutputNodeBody = memo(function OutputNodeBody({
           </div>
 
           {previewText ? (
-            <pre className="max-h-[7.5rem] overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/40 px-2.5 py-2 font-mono text-[11px] leading-5 text-foreground">
+            <pre className="max-h-[7.5rem] overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/40 px-2.5 py-2 font-mono text-2xs leading-5 text-foreground">
               {previewText}
             </pre>
           ) : (
-            <div className="rounded-lg border border-dashed border-border/60 bg-background/30 px-2.5 py-2 text-[11px] italic text-muted-foreground/80">
+            <div className="rounded-lg border border-dashed border-border/60 bg-background/30 px-2.5 py-2 text-2xs italic text-muted-foreground/80">
               暂无输出，运行后可在这里查看详情
             </div>
           )}
 
-          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="flex items-center justify-between text-2xs text-muted-foreground">
             <span>{format === 'json' ? '结构化 JSON 详情' : 'Markdown 详情'}</span>
             <span className="transition group-hover:text-primary">点击查看</span>
           </div>
@@ -107,7 +107,7 @@ export const OutputNodeBody = memo(function OutputNodeBody({
             'fixed inset-0 z-50 flex flex-col bg-background',
             'data-[state=closed]:animate-out data-[state=open]:animate-in',
             'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(88vh,760px)] sm:w-[min(960px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:border sm:border-border/70 sm:bg-background/95 sm:shadow-2xl',
+            'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(88vh,760px)] sm:w-[min(960px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:border sm:border-border/70 sm:bg-background/95 sm:shadow-xl',
           )}
           data-testid="node-output-detail-dialog"
         >
@@ -124,7 +124,7 @@ export const OutputNodeBody = memo(function OutputNodeBody({
 
             <div className="flex items-center gap-2">
               {isStreaming ? (
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium text-primary">
                   流式输出中
                 </span>
               ) : null}

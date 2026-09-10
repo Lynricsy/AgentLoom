@@ -154,7 +154,7 @@ export const EmojiIconPicker = memo(function EmojiIconPicker({
         {children ?? (
           <button
             type="button"
-            className="flex items-center justify-center rounded-md p-1.5 transition-colors hover:bg-muted/50"
+            className="flex items-center justify-center rounded-md p-1.5 transition-colors hover:bg-muted"
             aria-label="选择图标"
           >
             <EntityIcon icon={value} fallback={fallbackIcon} size={20} />
@@ -220,7 +220,7 @@ const PickerContent = memo(function PickerContent({
         <div className="border-t border-border p-2">
           <button
             type="button"
-            className="flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-error"
+            className="flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-error"
             onClick={() => onChange(null)}
           >
             <Trash2 size={14} />
@@ -334,7 +334,7 @@ const EmojiTab = memo(function EmojiTab({
             placeholder="搜索表情..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           />
         </div>
       </div>
@@ -350,7 +350,7 @@ const EmojiTab = memo(function EmojiTab({
                 'shrink-0 rounded-md px-1.5 py-1 text-sm transition-colors',
                 category === cat.id
                   ? 'bg-primary/10 text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
               onClick={() => setCategory(cat.id)}
               title={CATEGORY_NAMES[cat.id] ?? cat.id}
@@ -471,7 +471,7 @@ const EmojiCell = memo(function EmojiCell({
         'flex items-center justify-center rounded-md transition-colors',
         selected
           ? 'bg-primary/20 ring-1 ring-primary/40'
-          : 'hover:bg-muted/60',
+          : 'hover:bg-muted',
       )}
       style={{ width: EMOJI_CELL_SIZE, height: EMOJI_CELL_SIZE }}
       onClick={onClick}
@@ -530,7 +530,7 @@ const IconTab = memo(function IconTab({
             placeholder="搜索图标..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           />
         </div>
       </div>
@@ -617,7 +617,7 @@ const LucideIconGrid = memo(function LucideIconGrid({
                       'flex items-center justify-center rounded-md transition-colors',
                       isSelected
                         ? 'bg-primary/20 ring-1 ring-primary/40'
-                        : 'hover:bg-muted/60',
+                        : 'hover:bg-muted',
                     )}
                     style={{ width: ICON_CELL_SIZE, height: ICON_CELL_SIZE }}
                     onClick={() => onChange(iconValue)}

@@ -87,11 +87,11 @@ export const COMPACT_STATUS_META: Record<
 > = {
   idle: {
     label: "空闲",
-    className: "border-border bg-muted/50 text-muted-foreground",
+    className: "border-border bg-muted text-muted-foreground",
   },
   pending: {
     label: "等待中",
-    className: "border-border bg-muted/50 text-muted-foreground",
+    className: "border-border bg-muted text-muted-foreground",
   },
   queued: {
     label: "排队中",
@@ -115,11 +115,11 @@ export const COMPACT_STATUS_META: Record<
   },
   skipped: {
     label: "已跳过",
-    className: "border-border bg-muted/50 text-muted-foreground",
+    className: "border-border bg-muted text-muted-foreground",
   },
   cancelled: {
     label: "已取消",
-    className: "border-border bg-muted/50 text-muted-foreground",
+    className: "border-border bg-muted text-muted-foreground",
   },
 };
 

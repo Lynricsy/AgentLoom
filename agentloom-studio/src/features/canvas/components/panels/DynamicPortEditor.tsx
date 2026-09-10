@@ -71,7 +71,7 @@ export const DynamicPortEditor = memo(function DynamicPortEditor({
             value={port.label}
             onChange={(e) => handleLabelChange(index, e)}
             placeholder={createDefaultLabel(index)}
-            className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/50"
+            className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-subtle-foreground/50"
           />
           <button
             type="button"

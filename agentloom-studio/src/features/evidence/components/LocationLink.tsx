@@ -60,7 +60,7 @@ export const LocationLink = memo(function LocationLink({
       <FileText className="h-3 w-3 shrink-0" />
       <span className="truncate">{location.fileName}</span>
       {locationLabel && (
-        <span className="truncate text-[10px] text-muted-foreground">
+        <span className="truncate text-2xs text-muted-foreground">
           {locationLabel}
         </span>
       )}

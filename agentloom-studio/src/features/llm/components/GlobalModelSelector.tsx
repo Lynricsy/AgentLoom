@@ -189,7 +189,7 @@ export function GlobalModelSelector({
         aria-required={required}
         disabled={disabled}
         className={cn(
-          "flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-9 w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         onClick={() => setOpen((current) => !current)}
@@ -224,7 +224,7 @@ export function GlobalModelSelector({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-50 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-border bg-surface-elevated p-2 shadow-2xl"
+          className="absolute z-50 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-border bg-muted p-2 shadow-xl"
         >
           {allowEmpty ? (
             <button
@@ -235,7 +235,7 @@ export function GlobalModelSelector({
                 "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                 value === ""
                   ? "bg-primary/10 text-primary"
-                  : "text-foreground hover:bg-muted/60",
+                  : "text-foreground hover:bg-muted",
               )}
               onClick={() => {
                 onValueChange("");
@@ -249,7 +249,7 @@ export function GlobalModelSelector({
 
           {groups.map((group) => (
             <div key={group.provider.id} className="mt-2 first:mt-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="flex items-center gap-2 px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                 <ProviderIcon
                   slug={group.provider.slug}
                   iconUrl={group.provider.iconUrl}
@@ -269,7 +269,7 @@ export function GlobalModelSelector({
                       "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                       model.id === value
                         ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted/60",
+                        : "text-foreground hover:bg-muted",
                     )}
                     onClick={() => {
                       onValueChange(model.id);
@@ -285,7 +285,7 @@ export function GlobalModelSelector({
                       </span>
                     </span>
                     {model.isDefault ? (
-                      <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+                      <span className="rounded-full bg-warning/15 px-2 py-0.5 text-2xs font-medium text-warning">
                         默认
                       </span>
                     ) : null}

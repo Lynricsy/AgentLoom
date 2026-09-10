@@ -260,10 +260,10 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
           onBlur={handleAliasBlur}
           placeholder="例如: code-reviewer"
           aria-invalid={aliasError ? true : undefined}
-          className={`w-full rounded-md border bg-background px-3 py-1.5 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 ${
+          className={`w-full rounded-md border bg-background px-3 py-1.5 text-xs text-foreground outline-none transition-colors placeholder:text-subtle-foreground focus-visible:ring-2 ${
             aliasError
               ? 'border-error focus-visible:ring-error/30'
-              : 'border-input focus-visible:ring-primary/30'
+              : 'border-border focus-visible:ring-primary/30'
           }`}
         />
         {aliasError && (
@@ -308,7 +308,7 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
             <Bot className="h-3.5 w-3.5 text-muted-foreground" />
             描述
           </span>
-          <div className="rounded-card border border-border bg-surface-elevated px-3 py-2">
+          <div className="rounded-lg border border-border bg-muted px-3 py-2">
             <p className="text-xs leading-relaxed text-muted-foreground">
               {parsed._agentDescription}
             </p>

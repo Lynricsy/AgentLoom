@@ -25,17 +25,17 @@ export const AgentNodeBody = memo(function AgentNodeBody({ data, hasSchemaConnec
         </span>
       </div>
       {versionLabel && (
-        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-surface-elevated px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
           {versionLabel}
         </span>
       )}
       {hasSandboxOverride && (
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Container className="h-3 w-3" />
           <span>Sandbox 已连接</span>
         </div>
       )}
-      <div className="flex items-center gap-1 text-[10px]">
+      <div className="flex items-center gap-1 text-2xs">
         {hasSchemaConnection ? (
           <>
             <Braces className="h-3 w-3 text-type-json" />

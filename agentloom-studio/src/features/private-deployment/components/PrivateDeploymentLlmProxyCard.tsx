@@ -62,7 +62,7 @@ export function PrivateDeploymentLlmProxyCard({
     <Card data-testid="private-deployment-llm-proxy-form">
       <CardHeader>
         <CardTitle>LLM 代理</CardTitle>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           管理 `llmProxy` 模式、代理基地址和受管 API Key。不要在页面中展示或回填任何已保存的 Key 明文。
         </p>
       </CardHeader>
@@ -92,7 +92,7 @@ export function PrivateDeploymentLlmProxyCard({
             </Select>
           </Field>
 
-          <p className="self-end rounded-card border border-border bg-surface p-3 text-[11px] leading-relaxed text-muted">
+          <p className="self-end rounded-lg border border-border bg-surface p-3 text-2xs leading-relaxed text-muted-foreground">
             {
               LLM_PROXY_MODE_OPTIONS.find((option) => option.value === draft.mode)
                 ?.description

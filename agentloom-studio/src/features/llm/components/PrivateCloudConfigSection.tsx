@@ -232,11 +232,11 @@ export function PrivateCloudConfigSection({
           data-testid="endpoint-url-input"
         />
         {form.formState.errors.endpointUrl ? (
-          <p className="text-[11px] text-error">
+          <p className="text-2xs text-error">
             {form.formState.errors.endpointUrl.message as string}
           </p>
         ) : null}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           OpenAI 兼容的推理端点地址，例如 vLLM、Ollama 或 LocalAI 的服务地址。
         </p>
       </div>
@@ -273,7 +273,7 @@ export function PrivateCloudConfigSection({
             )}
           />
           {form.formState.errors.authMethod ? (
-            <p className="text-[11px] text-error">
+            <p className="text-2xs text-error">
               {form.formState.errors.authMethod.message as string}
             </p>
           ) : null}
@@ -290,7 +290,7 @@ export function PrivateCloudConfigSection({
             data-testid="timeout-input"
           />
           {form.formState.errors.timeoutMs ? (
-            <p className="text-[11px] text-error">
+            <p className="text-2xs text-error">
               {form.formState.errors.timeoutMs.message as string}
             </p>
           ) : null}
@@ -440,7 +440,7 @@ export function PrivateCloudConfigSection({
               </Select>
             )}
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             已从端点发现 {remoteModels.length} 个模型，可继续手动修改模型名称。
           </p>
         </div>
@@ -452,7 +452,7 @@ export function PrivateCloudConfigSection({
             {...form.register("modelName")}
             data-testid="manual-model-input"
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             如果端点未返回模型列表，可以手动输入模型 ID。
           </p>
         </div>

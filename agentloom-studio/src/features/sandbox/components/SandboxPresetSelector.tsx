@@ -48,7 +48,7 @@ const PresetCard = memo(function PresetCard({
           compact ? "py-2" : "py-2.5",
           isSelected
             ? "border-primary bg-primary/5"
-            : "border-border bg-surface-elevated hover:border-primary/50",
+            : "border-border bg-muted hover:border-primary/50",
         )}
       >
         <span
@@ -59,13 +59,13 @@ const PresetCard = memo(function PresetCard({
         >
           {preset.name}
           {preset.isBuiltin && (
-            <span className="ml-1 text-[10px] text-muted-foreground">
+            <span className="ml-1 text-2xs text-muted-foreground">
               (内置)
             </span>
           )}
         </span>
 
-        <span className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+        <span className="mt-1 flex items-center gap-2 text-2xs text-muted-foreground">
           <span className="inline-flex items-center gap-0.5">
             <Cpu className="h-2.5 w-2.5" />
             {preset.cpu}核
@@ -88,7 +88,7 @@ const PresetCard = memo(function PresetCard({
               type="button"
               aria-label={`${preset.name} 重命名`}
               onClick={onStartRename}
-              className="rounded-full bg-surface-elevated p-1 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-full bg-muted p-1 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground"
             >
               <Pencil className="h-3 w-3" />
             </button>
@@ -98,7 +98,7 @@ const PresetCard = memo(function PresetCard({
               type="button"
               aria-label={`${preset.name} 删除`}
               onClick={onRemove}
-              className="rounded-full bg-surface-elevated p-1 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-full bg-muted p-1 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground"
             >
               <X className="h-3 w-3" />
             </button>
@@ -179,7 +179,7 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
               clearRename();
               setShowSaveForm(true);
             }}
-            className="inline-flex items-center gap-1 text-[11px] text-primary transition-colors hover:text-primary/80"
+            className="inline-flex items-center gap-1 text-2xs text-primary transition-colors hover:text-primary/80"
           >
             <Plus className="h-3 w-3" />
             保存为预设

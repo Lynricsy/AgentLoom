@@ -284,7 +284,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                         "flex w-full items-center justify-center rounded-md p-2 text-lg transition-colors",
                         isActive
                           ? "bg-primary/12"
-                          : "hover:bg-surface-elevated",
+                          : "hover:bg-muted",
                       )}
                       title={conv.title ?? "未命名"}
                     >
@@ -315,7 +315,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       "flex w-full items-center gap-2 rounded-md py-1.5 pr-9 pl-2.5 text-left transition-colors",
                       isActive
                         ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-surface-elevated",
+                        : "text-foreground hover:bg-muted",
                     )}
                   >
                     <span className="shrink-0 text-base">{emoji}</span>
@@ -325,7 +325,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       </p>
                       <p
                         className={cn(
-                          "text-[11px]",
+                          "text-2xs",
                           isActive ? "text-primary/70" : "text-muted-foreground",
                         )}
                       >

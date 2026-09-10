@@ -412,7 +412,7 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
       {/* 已选实例详情卡片 */}
       {selectedInstance && (
         <div
-          className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs"
+          className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs"
           data-testid="memory-instance-details"
         >
           <p className="font-medium text-foreground">{selectedInstance.name}</p>
@@ -432,14 +432,14 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
           {selectedInstance.description && (
             <p className="text-muted-foreground">{selectedInstance.description}</p>
           )}
-          <p className="break-all text-muted">ID: {currentId}</p>
+          <p className="break-all text-muted-foreground">ID: {currentId}</p>
         </div>
       )}
 
       {/* 缺失实例警告 */}
       {showMissingWarning && (
         <div
-          className="space-y-2 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
+          className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
           data-testid="memory-instance-missing-warning"
         >
           <p className="font-medium text-warning">

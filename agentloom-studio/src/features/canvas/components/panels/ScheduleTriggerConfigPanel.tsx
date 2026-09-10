@@ -154,7 +154,7 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
       </div>
 
       {/* 当前配置预览 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           {parsed.cron ? (

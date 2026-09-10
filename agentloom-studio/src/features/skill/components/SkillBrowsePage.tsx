@@ -252,7 +252,7 @@ export function SkillBrowsePage() {
       {/* 筛选行 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -289,7 +289,7 @@ export function SkillBrowsePage() {
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-36 rounded-card" />
+            <Skeleton key={index} className="h-36 rounded-lg" />
           ))}
         </div>
       ) : isError ? (
@@ -341,7 +341,7 @@ export function SkillBrowsePage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             aria-hidden
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
                             style={{
                               backgroundColor: `color-mix(in srgb, ${SKILL_TONE} 14%, transparent)`,
                               color: SKILL_TONE,
@@ -371,7 +371,7 @@ export function SkillBrowsePage() {
                             {skill.status === "active" ? "活跃" : "已归档"}
                           </Badge>
                         </div>
-                        <p className="mt-2 line-clamp-2 text-xs text-muted">
+                        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                           {skill.description || "暂无描述"}
                         </p>
                       </div>
@@ -385,7 +385,7 @@ export function SkillBrowsePage() {
                       />
                     </div>
 
-                    <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted">
+                    <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <FileText className="h-3.5 w-3.5" />
                         {skill.fileCount} 个文件

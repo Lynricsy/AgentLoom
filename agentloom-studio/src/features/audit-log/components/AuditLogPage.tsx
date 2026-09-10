@@ -212,7 +212,7 @@ function FilterField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-medium text-muted" htmlFor={htmlFor}>
+      <label className="block text-xs font-medium text-muted-foreground" htmlFor={htmlFor}>
         {label}
       </label>
       {children}
@@ -255,7 +255,7 @@ function EvidenceExportPanel({
     : '基于当前筛选条件向服务端发起证据导出任务，并在这里查看状态与下载链接。'
 
   return (
-    <section className="mt-5 rounded-card border border-border bg-surface-elevated p-4">
+    <section className="mt-5 rounded-lg border border-border bg-muted p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -266,9 +266,9 @@ function EvidenceExportPanel({
               </Badge>
             ) : null}
           </div>
-          <p className="max-w-2xl text-xs leading-relaxed text-muted">{statusDescription}</p>
+          <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">{statusDescription}</p>
           {exportJob ? (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>导出任务：{exportJob.id}</span>
               <span>命中执行：{exportJob.matchedExecutionCount}</span>
               <span>请求时间：{formatTimestamp(exportJob.requestedAt)}</span>
@@ -336,16 +336,16 @@ function JsonPanel({
   testId?: string
 }) {
   return (
-    <details open className="rounded-card border border-border bg-surface-elevated p-3">
+    <details open className="rounded-lg border border-border bg-muted p-3">
       <summary className="cursor-pointer text-xs font-semibold text-foreground">
         {label}
       </summary>
       <div className="mt-2">
         {value == null ? (
-          <p className="text-xs text-muted">暂无数据</p>
+          <p className="text-xs text-muted-foreground">暂无数据</p>
         ) : (
           <pre
-            className="max-h-72 overflow-auto rounded-md bg-background p-2 text-[11px] leading-relaxed text-muted"
+            className="max-h-72 overflow-auto rounded-md bg-background p-2 text-2xs leading-relaxed text-muted-foreground"
             data-testid={testId}
           >
             {stringifyValue(value)}
@@ -375,12 +375,12 @@ function AuditLogForbiddenState({ authToken, role }: { authToken?: string; role?
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
             <ShieldAlert className="h-5 w-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">无权访问审计日志</h2>
-            <p className="text-xs leading-relaxed text-muted">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {getForbiddenMessage(authToken, role)}
             </p>
           </div>
@@ -424,7 +424,7 @@ function AuditLogDetailView({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-1">
               <CardTitle className="text-base">{detail.summary ?? '未提供摘要'}</CardTitle>
-              <p className="text-xs leading-relaxed text-muted">
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 记录于 {formatTimestamp(detail.createdAt)}，用于追踪资源与执行相关的配置或状态变更。
               </p>
             </div>
@@ -437,25 +437,25 @@ function AuditLogDetailView({
 
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               日志 ID
             </p>
             <p className="break-all font-mono text-xs text-foreground">{detail.id}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               资源 ID
             </p>
             <p className="break-all font-mono text-xs text-foreground">{detail.resourceId}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               操作人
             </p>
             <p className="text-xs text-foreground">{detail.actorId ?? '系统 / 服务账号'}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               执行 ID
             </p>
             <p className="break-all font-mono text-xs text-foreground">
@@ -477,7 +477,7 @@ function AuditLogDetailView({
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="space-y-1">
                 <CardTitle>资源时序</CardTitle>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   同一资源的审计记录按时间顺序展示，便于回溯状态演进。
                 </p>
               </div>
@@ -489,7 +489,7 @@ function AuditLogDetailView({
 
           <CardContent className="space-y-2">
             {isSequenceLoading ? (
-              <p className="text-xs text-muted" role="status">
+              <p className="text-xs text-muted-foreground" role="status">
                 加载资源时序中…
               </p>
             ) : null}
@@ -502,10 +502,10 @@ function AuditLogDetailView({
                   <div
                     key={record.id}
                     className={cn(
-                      'rounded-card border p-3 transition-colors',
+                      'rounded-lg border p-3 transition-colors',
                       record.id === detail.id
                         ? 'border-primary/40 bg-primary/5'
-                        : 'border-border bg-surface-elevated',
+                        : 'border-border bg-muted',
                     )}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -513,20 +513,20 @@ function AuditLogDetailView({
                         <p className="text-xs font-medium text-foreground">
                           {record.summary ?? '未提供摘要'}
                         </p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                        <div className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
                           <span>{record.eventType}</span>
                           <span>{record.actorType}</span>
                           <span>{record.actorId ?? '系统'}</span>
                         </div>
                       </div>
-                      <span className="text-[11px] text-muted">
+                      <span className="text-2xs text-muted-foreground">
                         {formatTimestamp(record.createdAt)}
                       </span>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-xs text-muted">该资源暂无额外时序记录。</p>
+                <p className="text-xs text-muted-foreground">该资源暂无额外时序记录。</p>
               )
             ) : null}
           </CardContent>
@@ -634,7 +634,7 @@ function AuditLogContent() {
                 record.id === resolvedSelectedAuditLogId ? 'bg-primary' : 'bg-transparent',
               )}
             />
-            <span className="whitespace-nowrap text-xs text-muted">
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
               {formatTimestamp(record.createdAt)}
             </span>
           </div>
@@ -661,7 +661,7 @@ function AuditLogContent() {
         cell: (record) => (
           <div className="min-w-0 space-y-1">
             <p className="text-xs text-foreground">{record.resourceType}</p>
-            <p className="truncate font-mono text-[11px] text-muted">{record.resourceId}</p>
+            <p className="truncate font-mono text-2xs text-muted-foreground">{record.resourceId}</p>
           </div>
         ),
       },
@@ -674,7 +674,7 @@ function AuditLogContent() {
             <Badge variant="secondary" size="sm">
               {record.actorType}
             </Badge>
-            <p className="truncate text-[11px] text-muted">{record.actorId ?? '系统'}</p>
+            <p className="truncate text-2xs text-muted-foreground">{record.actorId ?? '系统'}</p>
           </div>
         ),
       },
@@ -869,7 +869,7 @@ function AuditLogContent() {
         <section className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold text-foreground">记录列表</h2>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {paginationMeta
                 ? `当前第 ${paginationMeta.page} 页，共 ${paginationMeta.total} 条记录`
                 : '按当前筛选条件查看审计记录'}
@@ -877,13 +877,13 @@ function AuditLogContent() {
           </div>
 
           {auditLogsQuery.isLoading ? (
-            <p className="text-xs text-muted" role="status">
+            <p className="text-xs text-muted-foreground" role="status">
               加载审计日志中…
             </p>
           ) : null}
 
           {auditLogsQuery.error ? (
-            <div className="rounded-card border border-error/30 bg-error/5 p-4">
+            <div className="rounded-lg border border-error/30 bg-error/5 p-4">
               <p className="text-xs font-medium text-foreground">审计日志加载失败</p>
               <p className="mt-1 text-xs text-error">{listError}</p>
             </div>
@@ -931,7 +931,7 @@ function AuditLogContent() {
           {resolvedSelectedAuditLogId != null && detailQuery.isLoading ? (
             <Card>
               <CardContent className="p-5">
-                <p className="text-xs text-muted" role="status">
+                <p className="text-xs text-muted-foreground" role="status">
                   加载审计详情中…
                 </p>
               </CardContent>

@@ -88,7 +88,7 @@ export const ListingTagsInput = memo(function ListingTagsInput({
     <div className="space-y-1.5">
       <label htmlFor={id} className="text-sm font-medium text-foreground">
         标签 <span className="text-error">*</span>
-        <span className="ml-1 text-xs font-normal text-muted">
+        <span className="ml-1 text-xs font-normal text-muted-foreground">
           ({tags.length}/{L.maxTags})
         </span>
       </label>
@@ -99,7 +99,7 @@ export const ListingTagsInput = memo(function ListingTagsInput({
               {tag}
               <button
                 type="button"
-                className="rounded-full p-0.5 text-muted transition-colors hover:bg-background hover:text-foreground"
+                className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                 onClick={() => removeTag(tag)}
                 aria-label={`移除标签 ${tag}`}
                 disabled={disabled}

@@ -25,7 +25,7 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
     header: '时间',
     className: 'whitespace-nowrap',
     cell: (decision) => (
-      <span className="text-xs text-muted">
+      <span className="text-xs text-muted-foreground">
         {formatRoutingTimestamp(decision.createdAt)}
       </span>
     ),
@@ -39,7 +39,7 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
           {ROUTING_STRATEGY_LABELS[decision.strategy] ?? decision.strategy}
         </span>
         {decision.routerType ? (
-          <span className="text-[10px] text-muted">{decision.routerType}</span>
+          <span className="text-2xs text-muted-foreground">{decision.routerType}</span>
         ) : null}
       </div>
     ),
@@ -79,7 +79,7 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
     hideBelow: 'lg',
     cell: (decision) => (
       <span
-        className="block max-w-[12rem] truncate text-xs text-muted"
+        className="block max-w-[12rem] truncate text-xs text-muted-foreground"
         title={decision.routingNodeId}
       >
         {decision.routingNodeId}
@@ -92,7 +92,7 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
     hideBelow: 'lg',
     className: 'w-full max-w-0',
     cell: (decision) => (
-      <span className="line-clamp-2 text-xs text-muted" title={decision.decisionReasoning}>
+      <span className="line-clamp-2 text-xs text-muted-foreground" title={decision.decisionReasoning}>
         {decision.decisionReasoning || '—'}
       </span>
     ),

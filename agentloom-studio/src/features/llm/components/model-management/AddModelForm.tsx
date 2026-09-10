@@ -131,7 +131,7 @@ export function AddModelForm({
   const [showDiscovered, setShowDiscovered] = useState(false);
 
   return (
-    <div className="rounded-lg border border-primary/30 bg-surface-elevated p-4">
+    <div className="rounded-lg border border-primary/30 bg-muted p-4">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-foreground">添加模型</h4>
         <button
@@ -179,7 +179,7 @@ export function AddModelForm({
             <div>
               <button
                 type="button"
-                className="flex items-center gap-1 text-[11px] text-primary hover:underline"
+                className="flex items-center gap-1 text-2xs text-primary hover:underline"
                 onClick={() => setShowDiscovered(!showDiscovered)}
               >
                 {showDiscovered ? (
@@ -196,7 +196,7 @@ export function AddModelForm({
                       key={dm.id}
                       type="button"
                       className={cn(
-                        "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted/50",
+                        "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted",
                         modelId === dm.id && "bg-primary/10",
                       )}
                       onClick={() => {
@@ -210,7 +210,7 @@ export function AddModelForm({
                         {dm.name || dm.id}
                       </span>
                       {dm.ownedBy && (
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                        <span className="shrink-0 text-2xs text-muted-foreground">
                           {dm.ownedBy}
                         </span>
                       )}
@@ -223,7 +223,7 @@ export function AddModelForm({
 
           {/* LiteLLM 元数据结果 */}
           {lookupDone && (
-            <div className="text-[11px]">
+            <div className="text-2xs">
               {metadata ? (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-success">
@@ -251,7 +251,7 @@ export function AddModelForm({
                       : null}
                   </div>
                   {metadata.pricing ? (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground">
                       定价单位：$/1M tokens
                     </p>
                   ) : null}

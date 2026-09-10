@@ -85,7 +85,7 @@ export const ListingCard = memo(function ListingCard({
       </h3>
 
       {listing.workflowName ? (
-        <div className="flex items-center gap-1.5 text-xs text-muted">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Workflow className="h-3 w-3 shrink-0" />
           <span className="truncate">{listing.workflowName}</span>
           {listing.versionNumber != null ? (
@@ -97,7 +97,7 @@ export const ListingCard = memo(function ListingCard({
       ) : null}
 
       {isPlugin && listing.pluginName ? (
-        <div className="flex items-center gap-1.5 text-xs text-muted">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Puzzle className="h-3 w-3 shrink-0" />
           <span className="truncate">{listing.pluginName}</span>
           {listing.pluginVersion ? (
@@ -109,20 +109,20 @@ export const ListingCard = memo(function ListingCard({
       ) : null}
 
       {listing.summary ? (
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted">
+        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {listing.summary}
         </p>
       ) : null}
 
       {listing.tags.length > 0 ? (
-        <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
           {listing.tags.slice(0, 4).map((tag) => (
             <span key={tag}>#{tag}</span>
           ))}
         </div>
       ) : null}
 
-      <div className="mt-auto flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="mt-auto flex items-center gap-1.5 text-2xs text-muted-foreground">
         <Calendar className="h-3 w-3" />
         <span>{new Date(listing.submittedAt).toLocaleDateString('zh-CN')}</span>
       </div>

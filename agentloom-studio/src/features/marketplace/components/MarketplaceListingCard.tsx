@@ -34,7 +34,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
     <button
       type="button"
       onClick={onClick}
-      className="group h-full w-full rounded-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      className="group h-full w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       data-testid="marketplace-listing-card"
     >
       <Card interactive className="flex h-full flex-col overflow-hidden">
@@ -86,12 +86,12 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
             {listing.title}
           </h3>
 
-          <p className="line-clamp-2 text-xs leading-relaxed text-muted">
+          <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
             {listing.summary}
           </p>
 
           {listing.tags.length > 0 ? (
-            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
               {listing.tags.slice(0, 3).map((tag) => (
                 <span key={tag}>#{tag}</span>
               ))}
@@ -99,7 +99,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
           ) : null}
 
           <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted">
+            <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
               <UserRound className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{listing.author.displayName}</span>
             </span>
@@ -110,7 +110,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
                 count={listing.reviewCount}
                 size="sm"
               />
-              <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Download className="h-3.5 w-3.5" />
                 {listing.useCount}
               </span>

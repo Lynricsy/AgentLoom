@@ -57,7 +57,7 @@ const HeaderMetric = memo(function HeaderMetric({
   const Icon = icon;
 
   return (
-    <div className="flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[10px] text-muted-foreground">
+    <div className="flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-2xs text-muted-foreground">
       {Icon ? <Icon className="h-3 w-3 shrink-0" /> : null}
       <span className="uppercase tracking-wide">{label}</span>
       <span className="font-medium text-foreground">{value}</span>
@@ -304,7 +304,7 @@ const ActivityCard = memo(function ActivityCard({
   const Icon = item.icon;
 
   return (
-    <div className="rounded-card border border-border bg-surface-elevated/40 p-3">
+    <div className="rounded-lg border border-border bg-muted p-3">
       <div className="flex items-start gap-3">
         <div className="rounded-md border border-border bg-surface p-2 text-muted-foreground">
           <Icon className="h-3.5 w-3.5" />
@@ -315,7 +315,7 @@ const ActivityCard = memo(function ActivityCard({
               <div className="truncate text-sm font-medium text-foreground">
                 {item.title}
               </div>
-              <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              <div className="mt-0.5 truncate text-2xs text-muted-foreground">
                 {item.subtitle}
               </div>
             </div>
@@ -329,7 +329,7 @@ const ActivityCard = memo(function ActivityCard({
           </div>
 
           {item.command ? (
-            <div className="mt-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 font-mono text-[11px] break-all text-success">
+            <div className="mt-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 font-mono text-2xs break-all text-success">
               <span className="mr-1 text-muted-foreground">$</span>
               {item.command}
             </div>
@@ -346,7 +346,7 @@ const ActivityCard = memo(function ActivityCard({
               {item.meta.map((meta) => (
                 <span
                   key={`${item.id}-${meta}`}
-                  className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-2xs text-muted-foreground"
                 >
                   {meta}
                 </span>
@@ -398,7 +398,7 @@ const ProcessTableRow = memo(function ProcessTableRow({
       data-testid={`sandbox-process-row-${process.pid}`}
       className="border-b border-border/30 align-top last:border-0"
     >
-      <td className="px-3 py-2 font-mono text-[11px] text-foreground/85">
+      <td className="px-3 py-2 font-mono text-2xs text-foreground/85">
         {process.pid}
       </td>
       <td className="px-3 py-2">
@@ -406,7 +406,7 @@ const ProcessTableRow = memo(function ProcessTableRow({
           <div className="truncate text-sm font-medium text-foreground">
             {process.executable}
           </div>
-          <div className="mt-1 break-all font-mono text-[11px] leading-relaxed text-muted-foreground">
+          <div className="mt-1 break-all font-mono text-2xs leading-relaxed text-muted-foreground">
             {commandPreview}
           </div>
         </div>
@@ -420,18 +420,18 @@ const ProcessTableRow = memo(function ProcessTableRow({
           >
             {stateMeta.label}
           </Badge>
-          <span className="font-mono text-[10px] text-muted-foreground">
+          <span className="font-mono text-2xs text-muted-foreground">
             {process.state}
           </span>
         </div>
       </td>
-      <td className="px-3 py-2 font-mono text-[11px] text-foreground/85">
+      <td className="px-3 py-2 font-mono text-2xs text-foreground/85">
         {formatProcessPercent(process.cpuPercent)}
       </td>
-      <td className="px-3 py-2 font-mono text-[11px] text-foreground/85">
+      <td className="px-3 py-2 font-mono text-2xs text-foreground/85">
         {formatProcessPercent(process.memoryPercent)}
       </td>
-      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+      <td className="px-3 py-2 font-mono text-2xs text-muted-foreground">
         {process.elapsed}
       </td>
     </tr>
@@ -466,7 +466,7 @@ function ProcessMonitorView({
   if (processes && processes.length > 0) {
     return (
       <div className="flex h-full flex-1 flex-col overflow-hidden">
-        <div className="border-b border-border bg-surface-elevated/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        <div className="border-b border-border bg-muted px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
           <div className="font-medium text-foreground">实时进程快照</div>
           <div className="mt-0.5">
             按 CPU /
@@ -479,7 +479,7 @@ function ProcessMonitorView({
             className="min-w-full border-collapse"
           >
             <thead className="sticky top-0 z-10 bg-surface text-left">
-              <tr className="border-b border-border text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <tr className="border-b border-border text-2xs tracking-[0.18em] text-muted-foreground uppercase">
                 <th className="px-3 py-2 font-medium">PID</th>
                 <th className="px-3 py-2 font-medium">命令</th>
                 <th className="px-3 py-2 font-medium">状态</th>
@@ -505,7 +505,7 @@ function ProcessMonitorView({
         data-testid="sandbox-process-fallback"
         className="flex-1 overflow-y-auto p-3"
       >
-        <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
           {hasRealtimeSource
             ? "当前还没有拿到真实进程快照，先退回展示最近活动摘要。"
             : "当前视图尚未接入真实进程采样，下面展示最近活动摘要。"}
@@ -585,7 +585,7 @@ const FileChangeItem = memo(function FileChangeItem({
         type="button"
         onClick={toggleExpand}
         className={cn(
-          "w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-surface-elevated/50 transition-colors",
+          "w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors",
           (hasDiff || hasContent) && "cursor-pointer",
         )}
       >
@@ -601,7 +601,7 @@ const FileChangeItem = memo(function FileChangeItem({
         {changeTypeIcon(change.changeType)}
         <span className="font-mono text-foreground truncate">{fileName}</span>
         {dirPath && (
-          <span className="text-muted-foreground truncate ml-auto text-[10px]">
+          <span className="text-muted-foreground truncate ml-auto text-2xs">
             {dirPath}
           </span>
         )}
@@ -622,7 +622,7 @@ const FileChangeItem = memo(function FileChangeItem({
 
       {expanded && (hasDiff || hasContent) && (
         <div className="px-3 pb-2">
-          <pre className="bg-background rounded-md p-2 text-[11px] font-mono leading-relaxed overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
+          <pre className="bg-background rounded-md p-2 text-2xs font-mono leading-relaxed overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
             {change.diff ? (
               <DiffHighlight diff={change.diff} />
             ) : (
@@ -804,8 +804,8 @@ export function SandboxComputerPanel({
   }, [activeTab, showToolTab]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Monitor className="h-4 w-4 text-primary" />
           <span className="truncate text-sm font-medium text-foreground">
@@ -835,7 +835,7 @@ export function SandboxComputerPanel({
           <Cpu className="h-3 w-3" />
           进程
           {visibleProcessCount > 0 && (
-            <span className="rounded bg-surface-elevated px-1 text-[10px] text-muted-foreground">
+            <span className="rounded bg-muted px-1 text-2xs text-muted-foreground">
               {visibleProcessCount}
             </span>
           )}
@@ -853,7 +853,7 @@ export function SandboxComputerPanel({
           <FileCode className="h-3 w-3" />
           文件变更
           {fileChanges.length > 0 && (
-            <span className="rounded bg-surface-elevated px-1 text-[10px] text-muted-foreground">
+            <span className="rounded bg-muted px-1 text-2xs text-muted-foreground">
               {fileChanges.length}
             </span>
           )}

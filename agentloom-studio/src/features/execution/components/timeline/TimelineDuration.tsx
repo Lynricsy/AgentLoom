@@ -54,7 +54,7 @@ export const TimelineDuration = memo(function TimelineDuration({
 
   return (
     <div
-      className="h-2 rounded-full bg-surface-elevated"
+      className="h-2 rounded-full bg-muted"
       data-testid="timeline-duration"
     >
       <div

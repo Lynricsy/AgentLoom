@@ -98,7 +98,7 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
           isEnabled={deployedTrigger.isEnabled}
         />
       ) : (
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+        <div className="rounded-lg border border-border/60 bg-muted px-3 py-2.5 text-xs text-muted-foreground">
           工作流发布后将生成 Webhook URL
         </div>
       )}
@@ -147,7 +147,7 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
       </div>
 
       {/* 使用说明 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">使用说明</p>
         <ul className="list-inside list-disc space-y-1 text-muted-foreground">
           <li>外部系统通过 POST 请求发送 JSON 载荷触发工作流</li>
@@ -191,8 +191,8 @@ function DeployedWebhookInfo({ token, secret, authMode, isEnabled }: DeployedWeb
         <span
           className={
             isEnabled
-              ? 'rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success'
-              : 'rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
+              ? 'rounded-full bg-success/15 px-2 py-0.5 text-2xs font-medium text-success'
+              : 'rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground'
           }
         >
           {isEnabled ? '已启用' : '已禁用'}
@@ -219,7 +219,7 @@ function DeployedWebhookInfo({ token, secret, authMode, isEnabled }: DeployedWeb
             copied={copiedField === 'secret'}
             onCopy={() => void handleCopy(secret, 'secret')}
           />
-          <p className="text-[10px] leading-4 text-muted-foreground">
+          <p className="text-2xs leading-4 text-muted-foreground">
             签名算法: HMAC-SHA256(secret, &quot;{'{timestamp}.{body}'}&quot;)
           </p>
         </>
@@ -246,7 +246,7 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
           {icon}
           {label}
         </span>
@@ -255,7 +255,7 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
             <button
               type="button"
               onClick={() => setRevealed((v) => !v)}
-              className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             >
               {revealed ? '隐藏' : '显示'}
             </button>
@@ -263,14 +263,14 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
           <button
             type="button"
             onClick={onCopy}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
             <Copy className="h-2.5 w-2.5" />
             {copied ? '已复制' : '复制'}
           </button>
         </div>
       </div>
-      <code className="block truncate rounded border border-border/60 bg-surface-elevated px-2 py-1 text-[10px] text-foreground/80">
+      <code className="block truncate rounded border border-border/60 bg-muted px-2 py-1 text-2xs text-foreground/80">
         {displayValue}
       </code>
     </div>

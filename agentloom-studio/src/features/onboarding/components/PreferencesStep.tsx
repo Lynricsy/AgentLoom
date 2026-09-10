@@ -49,10 +49,10 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
           </Select>
         </FormItem>
 
-        <div className="flex items-start justify-between gap-4 rounded-card border border-border bg-surface-elevated px-3.5 py-3">
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted px-3.5 py-3">
           <div className="space-y-0.5">
             <span className="text-sm font-medium text-foreground">通知</span>
-            <p className="text-xs text-muted">接收工作流执行的更新通知</p>
+            <p className="text-xs text-muted-foreground">接收工作流执行的更新通知</p>
           </div>
           <Switch
             aria-label="通知"

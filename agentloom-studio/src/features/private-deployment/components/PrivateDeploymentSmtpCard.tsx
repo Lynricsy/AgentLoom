@@ -32,7 +32,7 @@ export function PrivateDeploymentSmtpCard({
     <Card data-testid="private-deployment-smtp-form">
       <CardHeader>
         <CardTitle>SMTP</CardTitle>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           维护邮件投递通道。页面只展示是否存在受管密码，不会回显任何明文或 secret ref 内容。
         </p>
       </CardHeader>

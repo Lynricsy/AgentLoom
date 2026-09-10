@@ -66,7 +66,7 @@ export const MemoryNodeBody = memo(function MemoryNodeBody({
             </NodeBadge>
           </span>
           <span
-            className="text-[11px] leading-tight text-muted-foreground"
+            className="text-2xs leading-tight text-muted-foreground"
             data-testid="memory-priority"
           >
             P{priority}

@@ -87,7 +87,7 @@ const TreeNodeItem = memo(function TreeNodeItem({
           'flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs transition-colors',
           isSelected
             ? 'bg-primary/12 text-primary'
-            : 'text-foreground hover:bg-surface-elevated',
+            : 'text-foreground hover:bg-muted',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -148,7 +148,7 @@ export function WorkspaceFileTree({
 }: WorkspaceFileTreeProps) {
   if (isLoading && tree.length === 0) {
     return (
-      <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
         <WorkspaceHeader />
         <FileTreeSkeleton />
       </div>
@@ -157,7 +157,7 @@ export function WorkspaceFileTree({
 
   if (tree.length === 0) {
     return (
-      <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
         <WorkspaceHeader />
         <div className="flex flex-1 items-center justify-center p-4">
           <EmptyState
@@ -173,7 +173,7 @@ export function WorkspaceFileTree({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
       <WorkspaceHeader />
       <div className="flex-1 overflow-y-auto py-1">
         {tree.map((node) => (
@@ -192,7 +192,7 @@ export function WorkspaceFileTree({
 
 function WorkspaceHeader() {
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+    <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
       <FolderTree
         className="h-4 w-4"
         style={{ color: 'var(--color-node-tool)' }}

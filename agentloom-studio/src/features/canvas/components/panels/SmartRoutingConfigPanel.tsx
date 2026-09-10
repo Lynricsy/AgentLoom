@@ -132,7 +132,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
             ))}
           </SelectContent>
         </Select>
-        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
       </div>
     )
   }
@@ -155,7 +155,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
           />
           {label}
         </label>
-        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
       </div>
     )
   }
@@ -181,7 +181,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
           }}
           className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         />
-        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
       </div>
     )
   }
@@ -200,7 +200,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
         onChange={(e) => onChange(name, e.target.value)}
         className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
       />
-      {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+      {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
     </div>
   )
 })
@@ -399,7 +399,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             ) : null}
             <span
               className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+                'inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium',
                 STRATEGY_CATEGORY_BG[meta.category],
                 STRATEGY_CATEGORY_COLORS[meta.category],
               )}
@@ -422,7 +422,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                     key={status}
                     data-testid={`provider-health-badge-${status}`}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium',
                       HEALTH_STATUS_STYLES[status].bg,
                       HEALTH_STATUS_STYLES[status].text,
                     )}
@@ -434,7 +434,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             )}
           </div>
           {healthSummary.degraded > 0 || healthSummary.open > 0 ? (
-            <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-[10px] text-warning">
+            <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-2xs text-warning">
               <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>
                 {healthSummary.open > 0
@@ -468,7 +468,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             {fallbackPriority.map((portId, index) => (
               <li
                 key={portId}
-                className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
               >
                 <span className="font-mono text-muted-foreground">{index + 1}</span>
                 <span className="flex-1 truncate">{portLabelById.get(portId) ?? portId}</span>
@@ -502,7 +502,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
           {modelInputPorts.map((port) => (
             <li
               key={port.id}
-              className="flex items-center justify-between rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs"
+              className="flex items-center justify-between rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
             >
               <span>{port.label}</span>
               {modelInputPorts.length > MIN_MODEL_PORTS ? (

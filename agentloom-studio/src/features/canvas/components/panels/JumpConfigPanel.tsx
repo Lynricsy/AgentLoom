@@ -216,7 +216,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         <span className="text-xs font-medium text-foreground">{actionMeta.title}</span>
       </div>
 
-      <p className="text-[11px] leading-5 text-muted-foreground">
+      <p className="text-2xs leading-5 text-muted-foreground">
         {actionMeta.description}
       </p>
 
@@ -238,18 +238,18 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         </Select>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-foreground">表达式输入端口</p>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               通过 `ports[n]` 引用，例如 `ports[1].status === &quot;skip&quot;`。
             </p>
           </div>
           <button
             type="button"
             onClick={handleAddInputPort}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-2xs text-foreground hover:bg-muted"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>添加输入</span>
@@ -257,7 +257,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         </div>
 
         {extraInputIds.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             当前没有额外输入端口；如需条件触发，请先添加输入。
           </p>
         ) : (
@@ -275,7 +275,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                     placeholder={`输入 ${index + 1}`}
                     className="min-w-0 w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
                   />
-                  <p className="px-1 text-[10px] font-mono text-muted-foreground">
+                  <p className="px-1 text-2xs font-mono text-muted-foreground">
                     {`ports[${index + 1}]`} · {portId}
                   </p>
                 </div>
