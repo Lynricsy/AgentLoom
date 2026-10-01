@@ -124,7 +124,6 @@ docker compose build --no-cache server && docker compose up -d server worker
 - `agentloom_mobile/lib/main.dart` + `lib/routes/app_router.dart` — Flutter 入口/路由
 - `pnpm-workspace.yaml` — 成员、catalog（typescript ~5.9.3 / vitest ^4 / zod ^4.3.6）、overrides
 - `.env.example`：`agentloom-server/.env.example`（APP_* 全量）、`agentloom-studio/.env.example`（VITE_*）、`agentloom-deploy/.env.template`
-- `.trellis/workflow.md` 与 `.trellis/spec/{backend,frontend,guides}/index.md` — 开发流程与分层规范入口
 
 ## Runtime/Tooling Preferences
 

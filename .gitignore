@@ -70,9 +70,6 @@ $RECYCLE.BIN/
 # Agent / 工具运行时 (Agent / Tool Runtime)
 # ──────────────────────────────────────────────
 .sisyphus/
-.trellis/tasks/
-.trellis/workspace/
-.trellis/.template-hashes.json
 _bmad/
 _bmad-output/
 SubmitDocs/
@@ -127,9 +124,6 @@ node-compile-cache/
 .ace-tool/
 evidence-*.png
 skills-lock.json
-.trellis/tasks/*/check.jsonl
-.trellis/tasks/*/debug.jsonl
-.trellis/tasks/*/implement.jsonl
 .playwright-mcp/
 playwright-*.json
 playwright-*.txt
@@ -149,9 +143,6 @@ agentloom-deploy/secrets/firecracker/
 .agents/
 .codex/
 .agent-logs/
-
-# Trellis 本地备份目录
-.trellis/.backup-*/
 
 # Python 字节码缓存
 **/__pycache__/
