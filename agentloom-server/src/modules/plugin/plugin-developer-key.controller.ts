@@ -21,12 +21,16 @@ import {
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import {
   DeveloperKeyResponseDto,
   QueryDeveloperKeysDto,
   RegisterDeveloperKeyDto,
 } from './dto/plugin-developer-key.dto';
-import { PluginDeveloperKeyService } from './plugin-developer-key.service';
+import {
+  PluginDeveloperKeyService,
+  type DeveloperKeyActor,
+} from './plugin-developer-key.service';
 import { PluginService } from './plugin.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 
@@ -38,6 +42,7 @@ export class PluginDeveloperKeyController {
   constructor(
     private readonly developerKeyService: PluginDeveloperKeyService,
     private readonly pluginService: PluginService,
+    private readonly rbacCacheService: RbacCacheService,
   ) {}
 
   private async resolveOrgId(
@@ -49,6 +54,18 @@ export class PluginDeveloperKeyController {
       user.org_id ??
       this.pluginService.resolveOrganizationId(tenantId)
     );
+  }
+
+  /** 角色来源与 RolesGuard 一致（组织成员表 + RBAC 缓存），不信任 JWT 里的角色声明。 */
+  private async resolveActor(
+    tenantId: string,
+    user: Pick<JwtPayload, 'sub'>,
+  ): Promise<DeveloperKeyActor> {
+    const role = await this.rbacCacheService.getUserRole(tenantId, user.sub);
+    return {
+      userId: user.sub,
+      canManageAllKeys: role === 'owner' || role === 'admin',
+    };
   }
 
   @Post()
@@ -86,7 +103,8 @@ export class PluginDeveloperKeyController {
     @Query() query: QueryDeveloperKeysDto,
   ) {
     const orgId = await this.resolveOrgId(tenantId, user);
-    return this.developerKeyService.listKeys(orgId, query);
+    const actor = await this.resolveActor(tenantId, user);
+    return this.developerKeyService.listKeys(orgId, actor, query);
   }
 
   @Get(':id')
@@ -104,7 +122,8 @@ export class PluginDeveloperKeyController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const orgId = await this.resolveOrgId(tenantId, user);
-    return this.developerKeyService.findById(orgId, id);
+    const actor = await this.resolveActor(tenantId, user);
+    return this.developerKeyService.findById(orgId, id, actor);
   }
 
   @Delete(':id')
@@ -124,6 +143,7 @@ export class PluginDeveloperKeyController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const orgId = await this.resolveOrgId(tenantId, user);
-    return this.developerKeyService.revokeKey(orgId, id);
+    const actor = await this.resolveActor(tenantId, user);
+    return this.developerKeyService.revokeKey(orgId, id, actor);
   }
 }

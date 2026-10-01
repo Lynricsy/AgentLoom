@@ -249,6 +249,7 @@ curl -s "$AGENTLOOM_API/plugins" \
 | --- | --- |
 | `build --wasm` 失败，cargo 报告缺少 `wasm32-unknown-unknown` 目标 | 没有执行 `rustup target add wasm32-unknown-unknown` |
 | 上传返回 401 `plugin-signature-invalid` | 签名后归档被改动过，或签名用的私钥对应的公钥未在本组织注册 / 已撤销；重新执行 `publish` 后上传 |
+| 上传返回 403 `plugin-signer-mismatch` | 签名用的公钥由组织内其他成员登记；用你自己在「开发者密钥」中登记的密钥签名 |
 | 上传返回 400 `plugin-signature-missing` | 没有执行 `publish` |
 | 上传返回 422 `plugin-validation-failed`，`插件缺少 wasmEntry` | 上传的是 TypeScript 预览项目的归档；只有 `create --wasm` 项目能注册 |
 | 上传返回 409 `plugin-already-exists` | 该版本已注册，提升 `version` 后重新构建 |

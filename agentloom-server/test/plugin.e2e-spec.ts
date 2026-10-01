@@ -72,6 +72,13 @@ type SignedFixture = {
 };
 
 function createMockRedisClient() {
+  // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接。
+  const subscriber = {
+    subscribe: vi.fn().mockResolvedValue(undefined),
+    unsubscribe: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+    quit: vi.fn().mockResolvedValue('OK'),
+  };
   return {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue('OK'),
@@ -79,6 +86,7 @@ function createMockRedisClient() {
     keys: vi.fn().mockResolvedValue([]),
     quit: vi.fn().mockResolvedValue('OK'),
     publish: vi.fn().mockResolvedValue(1),
+    duplicate: vi.fn().mockReturnValue(subscriber),
   };
 }
 
@@ -468,5 +476,32 @@ describe('Plugin trust chain (E2E)', () => {
       .set(viewer.headers)
       .send({ status: 'disabled', occVersion: 2 });
     expect(viewerStatus.status).toBe(403);
+  });
+
+  it('签名公钥属于同组织其他成员时拒绝上传，且不写入任何产物', async () => {
+    const creatorId = crypto.randomUUID();
+    const creatorEmail = `plugin-creator-${crypto.randomUUID().slice(0, 8)}@example.com`;
+    await seedAppUser(ctx.adminSql, creatorId, creatorEmail);
+    await seedMember(ctx.adminSql, owner.orgId, creatorId, 'creator', owner.userId);
+    await ctx.adminSql`UPDATE users SET current_organization_id = ${owner.orgId}::uuid WHERE id = ${creatorId}::uuid`;
+    const creator: TestTenant = {
+      ...owner,
+      userId: creatorId,
+      headers: {
+        authorization: `Bearer ${signToken(creatorId, creatorEmail, owner.tenantId, 'creator')}`,
+      },
+    };
+
+    expect((await registerDeveloperKey(owner)).status).toBe(201);
+
+    const response = await uploadPlugin(creator, fixture.archive);
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/plugin-signer-mismatch',
+      status: 403,
+    });
+    expect(storageMock.upload).not.toHaveBeenCalled();
+    expect(storedObjects.size).toBe(0);
   });
 });

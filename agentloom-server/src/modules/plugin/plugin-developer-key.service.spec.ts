@@ -42,6 +42,7 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const KEY_ID = '44444444-4444-4444-8444-444444444444';
 const PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----';
 const KEY_FINGERPRINT = 'a'.repeat(64);
+const ADMIN_ACTOR = { userId: USER_ID, canManageAllKeys: true };
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
 
@@ -222,7 +223,7 @@ describe('PluginDeveloperKeyService', () => {
         .mockReturnValueOnce(dataQuery.chain)
         .mockReturnValueOnce(countQuery.chain);
 
-      const result = await service.listKeys(ORG_ID, {
+      const result = await service.listKeys(ORG_ID, ADMIN_ACTOR, {
         status: 'active',
         page: 2,
         pageSize: 10,
@@ -252,7 +253,7 @@ describe('PluginDeveloperKeyService', () => {
         .mockReturnValueOnce(dataQuery.chain)
         .mockReturnValueOnce(countQuery.chain);
 
-      const result = await service.listKeys(ORG_ID);
+      const result = await service.listKeys(ORG_ID, ADMIN_ACTOR);
 
       expect(dataQuery.limit).toHaveBeenCalledWith(20);
       expect(dataQuery.offset).toHaveBeenCalledWith(0);
@@ -272,7 +273,9 @@ describe('PluginDeveloperKeyService', () => {
 
       db.select.mockReturnValueOnce(selectQuery.chain);
 
-      await expect(service.findById(ORG_ID, KEY_ID)).resolves.toEqual(record);
+      await expect(
+        service.findById(ORG_ID, KEY_ID, ADMIN_ACTOR),
+      ).resolves.toEqual(record);
       expect(selectQuery.limit).toHaveBeenCalledWith(1);
     });
 
@@ -281,7 +284,9 @@ describe('PluginDeveloperKeyService', () => {
 
       db.select.mockReturnValueOnce(selectQuery.chain);
 
-      await expect(service.findById(ORG_ID, KEY_ID)).rejects.toBeInstanceOf(
+      await expect(
+        service.findById(ORG_ID, KEY_ID, ADMIN_ACTOR),
+      ).rejects.toBeInstanceOf(
         PluginDeveloperKeyNotFoundException,
       );
     });
@@ -300,7 +305,7 @@ describe('PluginDeveloperKeyService', () => {
       db.select.mockReturnValueOnce(selectQuery.chain);
       db.update.mockReturnValueOnce(updateQuery.chain);
 
-      const result = await service.revokeKey(ORG_ID, KEY_ID);
+      const result = await service.revokeKey(ORG_ID, KEY_ID, ADMIN_ACTOR);
 
       expect(result).toEqual(revokedKey);
       expect(db.update).toHaveBeenCalledWith(pluginDeveloperKeys);
@@ -322,7 +327,9 @@ describe('PluginDeveloperKeyService', () => {
 
       db.select.mockReturnValueOnce(selectQuery.chain);
 
-      await expect(service.revokeKey(ORG_ID, KEY_ID)).rejects.toBeInstanceOf(
+      await expect(
+        service.revokeKey(ORG_ID, KEY_ID, ADMIN_ACTOR),
+      ).rejects.toBeInstanceOf(
         PluginDeveloperKeyInvalidException,
       );
 

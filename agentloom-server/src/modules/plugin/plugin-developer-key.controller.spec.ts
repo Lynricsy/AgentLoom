@@ -3,9 +3,10 @@ import 'reflect-metadata';
 import { HttpStatus } from '@nestjs/common';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import type { PluginDeveloperKey } from '../../database/schema';
 import {
   QueryDeveloperKeysDto,
@@ -26,6 +27,9 @@ const mocks = vi.hoisted(() => ({
   }),
   createMockPluginService: () => ({
     resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
+  }),
+  createMockRbacCacheService: () => ({
+    getUserRole: vi.fn().mockResolvedValue('creator'),
   }),
 }));
 
@@ -82,6 +86,8 @@ describe('PluginDeveloperKeyController', () => {
   let controller: PluginDeveloperKeyController;
   let service: ReturnType<typeof mocks.createMockPluginDeveloperKeyService>;
   let pluginService: ReturnType<typeof mocks.createMockPluginService>;
+  let rbacCacheService: { getUserRole: Mock };
+  const creatorActor = { userId: USER_ID, canManageAllKeys: false };
 
   const user = {
     sub: USER_ID,
@@ -97,6 +103,7 @@ describe('PluginDeveloperKeyController', () => {
     vi.clearAllMocks();
     service = mocks.createMockPluginDeveloperKeyService();
     pluginService = mocks.createMockPluginService();
+    rbacCacheService = mocks.createMockRbacCacheService();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PluginDeveloperKeyController],
@@ -108,6 +115,10 @@ describe('PluginDeveloperKeyController', () => {
         {
           provide: PluginService,
           useValue: pluginService,
+        },
+        {
+          provide: RbacCacheService,
+          useValue: rbacCacheService,
         },
       ],
     }).compile();
@@ -197,7 +208,11 @@ describe('PluginDeveloperKeyController', () => {
         'admin',
         'owner',
       ]);
-      expect(service.listKeys).toHaveBeenCalledWith(ORG_ID, query);
+      expect(service.listKeys).toHaveBeenCalledWith(
+        ORG_ID,
+        creatorActor,
+        query,
+      );
       expect(result).toEqual(payload);
     });
   });
@@ -214,7 +229,11 @@ describe('PluginDeveloperKeyController', () => {
         'admin',
         'owner',
       ]);
-      expect(service.findById).toHaveBeenCalledWith(ORG_ID, KEY_ID);
+      expect(service.findById).toHaveBeenCalledWith(
+        ORG_ID,
+        KEY_ID,
+        creatorActor,
+      );
       expect(result).toEqual(record);
     });
   });
@@ -236,9 +255,36 @@ describe('PluginDeveloperKeyController', () => {
         'owner',
       ]);
       expect(getHttpCode(controller, 'revokeKey')).toBe(HttpStatus.OK);
-      expect(service.revokeKey).toHaveBeenCalledWith(ORG_ID, KEY_ID);
+      expect(service.revokeKey).toHaveBeenCalledWith(
+        ORG_ID,
+        KEY_ID,
+        creatorActor,
+      );
       expect(result).toEqual(revokedKey);
     });
+
+    it.each([
+      ['owner', true],
+      ['admin', true],
+      ['creator', false],
+    ] as const)(
+      '按 RBAC 角色 %s 决定是否可管理全组织密钥',
+      async (role, canManageAllKeys) => {
+        rbacCacheService.getUserRole.mockResolvedValue(role);
+        service.revokeKey.mockResolvedValue(createDeveloperKey());
+
+        await controller.revokeKey(TENANT_ID, user, KEY_ID);
+
+        expect(rbacCacheService.getUserRole).toHaveBeenCalledWith(
+          TENANT_ID,
+          USER_ID,
+        );
+        expect(service.revokeKey).toHaveBeenCalledWith(ORG_ID, KEY_ID, {
+          userId: USER_ID,
+          canManageAllKeys,
+        });
+      },
+    );
   });
 
   describe('DTO 校验', () => {

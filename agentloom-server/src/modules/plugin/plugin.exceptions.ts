@@ -109,6 +109,18 @@ export class PluginSignatureInvalidException extends DomainException {
   }
 }
 
+/** 签名公钥有效，但不是上传者本人注册的（同组织其他成员的密钥不能代为发布）。 */
+export class PluginSignerMismatchException extends DomainException {
+  constructor(pluginId: string) {
+    super({
+      type: `${BASE_URL}/plugin-signer-mismatch`,
+      title: 'Plugin Signer Mismatch',
+      status: HttpStatus.FORBIDDEN,
+      detail: `插件 "${pluginId}" 的签名公钥不属于当前上传者，只能用自己注册的开发者密钥签名发布。`,
+    });
+  }
+}
+
 export class PluginDeveloperKeyInvalidException extends DomainException {
   constructor(detail?: string) {
     super({

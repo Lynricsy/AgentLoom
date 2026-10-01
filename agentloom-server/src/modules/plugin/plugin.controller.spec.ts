@@ -19,6 +19,7 @@ import {
   PluginFileTooLargeException,
   PluginNotFoundException,
   PluginSignatureInvalidException,
+  PluginSignerMismatchException,
   PluginSignatureMissingException,
   PluginValidationException,
 } from './plugin.exceptions';
@@ -284,6 +285,7 @@ describe('PluginController', () => {
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         id: 'key-1',
         publicKey: 'public-key-pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -350,6 +352,7 @@ describe('PluginController', () => {
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         id: 'key-1',
         publicKey: 'public-key-pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -421,10 +424,35 @@ describe('PluginController', () => {
       expect(service.register).not.toHaveBeenCalled();
     });
 
+    it('签名公钥属于其他成员时应抛出 PluginSignerMismatchException 且不验签、不上传', async () => {
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        id: 'key-1',
+        publicKey: 'public-key-pem',
+        userId: '99999999-9999-4999-8999-999999999999',
+      });
+
+      await expect(
+        controller.register(
+          await createRegisterRequest({
+            manifestOverrides: {
+              signature: SIGNATURE,
+              contentHash: CONTENT_HASH,
+              developerKeyFingerprint: KEY_FINGERPRINT,
+            },
+          }),
+        ),
+      ).rejects.toThrow(PluginSignerMismatchException);
+
+      expect(signatureService.verifyArchiveSignature).not.toHaveBeenCalled();
+      expect(storageService.upload).not.toHaveBeenCalled();
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
     it('contentHash 与验签结果不一致时应抛出 PluginSignatureInvalidException', async () => {
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         id: 'key-1',
         publicKey: 'public-key-pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -796,6 +824,7 @@ describe('PluginController', () => {
       vi.mocked(request.file).mockResolvedValue(multipart);
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -829,6 +858,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -870,6 +900,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -895,6 +926,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -924,6 +956,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -948,6 +981,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -971,6 +1005,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -996,6 +1031,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,
@@ -1026,6 +1062,7 @@ describe('PluginController', () => {
       });
       developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
         publicKey: 'pem',
+        userId: USER_ID,
       });
       signatureService.verifyArchiveSignature.mockResolvedValue({
         valid: true,

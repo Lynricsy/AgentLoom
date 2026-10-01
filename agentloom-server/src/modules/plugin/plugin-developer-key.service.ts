@@ -20,6 +20,16 @@ import { PluginSignatureService } from './plugin-signature.service';
 
 type ListDeveloperKeysOptions = QueryDeveloperKeysDtoType;
 
+/**
+ * 发起密钥管理操作的成员。
+ * creator 只能看到/撤销自己注册的密钥；owner/admin 保留组织全局视图，
+ * 用于处置离职成员或泄露的密钥。
+ */
+export interface DeveloperKeyActor {
+  userId: string;
+  canManageAllKeys: boolean;
+}
+
 type DeveloperKeyListResult = {
   data: PluginDeveloperKey[];
   meta: {
@@ -87,6 +97,7 @@ export class PluginDeveloperKeyService {
 
   async listKeys(
     orgId: string,
+    actor: DeveloperKeyActor,
     options?: Partial<ListDeveloperKeysOptions>,
   ): Promise<DeveloperKeyListResult> {
     const parsedOptions = QueryDeveloperKeysSchema.parse(options ?? {});
@@ -94,7 +105,10 @@ export class PluginDeveloperKeyService {
     const pageSize = parsedOptions.pageSize;
     const offset = (page - 1) * pageSize;
 
-    const conditions = [eq(pluginDeveloperKeys.orgId, orgId)];
+    const conditions = [
+      eq(pluginDeveloperKeys.orgId, orgId),
+      ...this.actorScope(actor),
+    ];
     if (parsedOptions.status) {
       conditions.push(eq(pluginDeveloperKeys.status, parsedOptions.status));
     }
@@ -128,7 +142,11 @@ export class PluginDeveloperKeyService {
     };
   }
 
-  async findById(orgId: string, keyId: string): Promise<PluginDeveloperKey> {
+  async findById(
+    orgId: string,
+    keyId: string,
+    actor: DeveloperKeyActor,
+  ): Promise<PluginDeveloperKey> {
     const [key] = await this.tenantDb
       .select()
       .from(pluginDeveloperKeys)
@@ -136,6 +154,7 @@ export class PluginDeveloperKeyService {
         and(
           eq(pluginDeveloperKeys.id, keyId),
           eq(pluginDeveloperKeys.orgId, orgId),
+          ...this.actorScope(actor),
         ),
       )
       .limit(1);
@@ -147,8 +166,12 @@ export class PluginDeveloperKeyService {
     return key;
   }
 
-  async revokeKey(orgId: string, keyId: string): Promise<PluginDeveloperKey> {
-    const key = await this.findById(orgId, keyId);
+  async revokeKey(
+    orgId: string,
+    keyId: string,
+    actor: DeveloperKeyActor,
+  ): Promise<PluginDeveloperKey> {
+    const key = await this.findById(orgId, keyId, actor);
 
     if (key.status === 'revoked') {
       throw new PluginDeveloperKeyInvalidException('该密钥已被撤销。');
@@ -167,6 +190,7 @@ export class PluginDeveloperKeyService {
         and(
           eq(pluginDeveloperKeys.id, keyId),
           eq(pluginDeveloperKeys.orgId, orgId),
+          ...this.actorScope(actor),
         ),
       )
       .returning();
@@ -198,5 +222,11 @@ export class PluginDeveloperKeyService {
       .limit(1);
 
     return key ?? null;
+  }
+
+  private actorScope(actor: DeveloperKeyActor) {
+    return actor.canManageAllKeys
+      ? []
+      : [eq(pluginDeveloperKeys.userId, actor.userId)];
   }
 }

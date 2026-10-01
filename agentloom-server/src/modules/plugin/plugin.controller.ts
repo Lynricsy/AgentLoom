@@ -51,6 +51,7 @@ import {
   PluginAlreadyExistsException,
   PluginFileTooLargeException,
   PluginSignatureInvalidException,
+  PluginSignerMismatchException,
   PluginSignatureMissingException,
   PluginValidationException,
 } from './plugin.exceptions';
@@ -136,6 +137,10 @@ export class PluginController {
 
     if (!developerKey) {
       throw new PluginSignatureInvalidException(pluginId);
+    }
+
+    if (developerKey.userId !== req.user.sub) {
+      throw new PluginSignerMismatchException(pluginId);
     }
 
     const verificationResult =

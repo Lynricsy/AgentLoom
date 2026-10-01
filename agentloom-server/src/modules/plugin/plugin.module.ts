@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
 import { TenantOrganizationResolver } from '../../common/providers/tenant-organization.resolver';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { EarningsSettlementScheduler } from './earnings-settlement.scheduler';
 import { EarningsSettlementWorker } from './earnings-settlement.worker';
 import {
@@ -45,6 +46,7 @@ import { PluginSignatureService } from './plugin-signature.service';
     PluginSignatureService,
     PluginSandboxService,
     PluginDeveloperKeyService,
+    RbacCacheService,
     PluginUsageService,
     PluginEarningsService,
     PluginMarketplaceReviewService,
