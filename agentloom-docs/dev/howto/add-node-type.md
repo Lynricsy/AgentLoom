@@ -95,7 +95,7 @@ docType: reference
 
 ## 端口与配置
 
-<!--@include: ../../_generated/nodes/my-node.md-->
+（此处写一行 @include 注释，指向 ../../_generated/nodes/my-node.md，写法照抄现有节点页）
 
 ## 使用要点
 

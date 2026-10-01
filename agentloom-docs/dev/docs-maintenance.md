@@ -49,7 +49,7 @@ docType: howto
 
 ## 3. 生成式参考
 
-清单类事实由 `scripts/docs-reference/generate.ts` 从源码生成到 `agentloom-docs/_generated/`，页面用 VitePress include 引用（路径相对当前文件），例如 `dev/server/` 下的页面写 `<!--@include: ../../_generated/queues.md-->`。
+清单类事实由 `scripts/docs-reference/generate.ts` 从源码生成到 `agentloom-docs/_generated/`，页面在需要的位置写一行 VitePress 的 `@include` 注释引用生成文件（路径相对当前文件；`dev/server/` 下的页面指向 `../../_generated/` 下的文件），写法照抄任一节点页或 [队列](/dev/server/queues) 页的源码。
 
 | 产物 | 真相源 |
 | --- | --- |
