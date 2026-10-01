@@ -63,14 +63,14 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 
 ## 自动保存
 
-`agentloom-studio/src/features/canvas/hooks/useAutoSave.ts` 订阅 store 的节点、边、视口与 `isDirty`，防抖 2000 毫秒（常量 `AUTOSAVE_DEBOUNCE_MS`，写在源码里）后调用 `useUpdateWorkflow`，即 `PATCH workflow-definitions/:id`，请求体为 `{ nodes, edges, viewport, version }`，字段保持 camelCase。
+`agentloom-studio/src/features/canvas/hooks/useAutoSave.ts` 订阅 store 的节点、边、视口与 `isDirty`，防抖 `AUTOSAVE_DEBOUNCE_MS` 毫秒后调用 `useUpdateWorkflow`，即 `PATCH workflow-definitions/:id`，请求体为 `{ nodes, edges, viewport, version }`，字段保持 camelCase。防抖时长取 `VITE_AUTOSAVE_DEBOUNCE_MS`，空值、非正数或镜像内未替换的占位符回退 2000。
 
 - 请求带上当前 `version`，server 用它做乐观并发控制。
 - 成功后，若保存期间没有新的编辑，调用 `markSaved(version)` 清除脏标记；若有新编辑，只调用 `advanceVersion(version)` 推进版本号，让下一次保存不因版本落后被拒。
 - 失败时提示「自动保存失败」或「自动保存失败，修改已保留在本地」，草稿不丢。
 - 已归档的工作流不自动保存。
 
-`agentloom-studio/.env.example` 与部署模板中声明的 `VITE_AUTOSAVE_DEBOUNCE_MS` 目前没有被 Studio 源码读取，改防抖时长要改 `AUTOSAVE_DEBOUNCE_MS`。
+`VITE_AUTOSAVE_DEBOUNCE_MS` 经 `agentloom-studio/src/shared/lib/runtimeEnv.ts` 的 `readRuntimeEnv` 按变量名读取。直接写 `Number(import.meta.env.VITE_AUTOSAVE_DEBOUNCE_MS)` 会让压缩器在构建期把镜像占位符折叠成常量，容器启动时的替换因此失效。新增运行时变量同样走 `readRuntimeEnv`。
 
 ## 服务端快照与本地草稿
 

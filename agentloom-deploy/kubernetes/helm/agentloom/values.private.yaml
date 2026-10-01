@@ -32,7 +32,7 @@ env:
     FIREBASE_SERVICE_ACCOUNT: ""
   studio:
     VITE_API_BASE_URL: /api/v1
-    VITE_AUTOSAVE_DEBOUNCE_MS: "500"
+    VITE_AUTOSAVE_DEBOUNCE_MS: "2000"
 
 server:
   replicaCount: 2

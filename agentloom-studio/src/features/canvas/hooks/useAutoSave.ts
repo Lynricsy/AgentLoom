@@ -1,10 +1,27 @@
 import { useEffect, useRef } from 'react'
 import { useUpdateWorkflow } from '@/features/workflow'
 import type { UpdateWorkflowPayload, WorkflowStatus } from '@/features/workflow'
+import { readRuntimeEnv } from '@/shared/lib/runtimeEnv'
 import { useToast } from '@/shared/ui/toast'
 import { useCanvasStore } from '../stores/canvasStore'
 
-export const AUTOSAVE_DEBOUNCE_MS = 2000
+const DEFAULT_AUTOSAVE_DEBOUNCE_MS = 2000
+
+/**
+ * Docker 镜像构建时该值是占位符 `__VITE_AUTOSAVE_DEBOUNCE_MS__`，容器启动由
+ * `/docker-entrypoint.d/40-runtime-env.sh` 用 sed 替换成数值（见 studio.Dockerfile）；
+ * 未替换的占位符、空串、非正数一律回退默认值。
+ *
+ * 必须经 `readRuntimeEnv` 按变量名索引：直接写 `Number(import.meta.env.X)` 会被
+ * 压缩器在构建期折叠成 `NaN → 2000`，产物里不再有占位符，运行时替换失效。
+ */
+const configuredDebounceMs = Number(
+  readRuntimeEnv('VITE_AUTOSAVE_DEBOUNCE_MS'),
+)
+export const AUTOSAVE_DEBOUNCE_MS =
+  Number.isFinite(configuredDebounceMs) && configuredDebounceMs > 0
+    ? configuredDebounceMs
+    : DEFAULT_AUTOSAVE_DEBOUNCE_MS
 const AUTOSAVE_ERROR_MESSAGE = '自动保存失败，修改已保留在本地'
 
 export function useAutoSave(workflowId: string, workflowStatus?: WorkflowStatus) {

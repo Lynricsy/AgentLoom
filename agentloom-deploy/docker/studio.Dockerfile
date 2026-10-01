@@ -63,7 +63,7 @@ RUN printf '%s\n' \
   '}' \
   '' \
   'api_base_url=$(escape_sed "${VITE_API_BASE_URL:-/api/v1}")' \
-  'autosave_debounce=$(escape_sed "${VITE_AUTOSAVE_DEBOUNCE_MS:-500}")' \
+  'autosave_debounce=$(escape_sed "${VITE_AUTOSAVE_DEBOUNCE_MS:-2000}")' \
   'supabase_url=$(escape_sed "${VITE_SUPABASE_URL:-}")' \
   'supabase_anon_key=$(escape_sed "${VITE_SUPABASE_ANON_KEY:-}")' \
   '' \

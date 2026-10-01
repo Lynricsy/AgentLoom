@@ -83,7 +83,7 @@ Studio 镜像（`agentloom-deploy/docker/studio.Dockerfile`）构建时把四个
 | 占位符 | 替换为 | 未设置时 |
 | --- | --- | --- |
 | `__VITE_API_BASE_URL__` | `VITE_API_BASE_URL` | `/api/v1` |
-| `__VITE_AUTOSAVE_DEBOUNCE_MS__` | `VITE_AUTOSAVE_DEBOUNCE_MS` | `500` |
+| `__VITE_AUTOSAVE_DEBOUNCE_MS__` | `VITE_AUTOSAVE_DEBOUNCE_MS` | `2000` |
 | `__VITE_SUPABASE_URL__` | `VITE_SUPABASE_URL` | 空 |
 | `__VITE_SUPABASE_ANON_KEY__` | `VITE_SUPABASE_ANON_KEY` | 空 |
 

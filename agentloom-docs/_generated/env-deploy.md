@@ -62,7 +62,7 @@
 | `APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY` |  |  |
 | `FIREBASE_SERVICE_ACCOUNT` |  |  |
 | `VITE_API_BASE_URL` | `/api/v1` |  |
-| `VITE_AUTOSAVE_DEBOUNCE_MS` | `500` |  |
+| `VITE_AUTOSAVE_DEBOUNCE_MS` | `2000` |  |
 | `VITE_SUPABASE_URL` |  | Supabase Auth — 浏览器端直连地址（留空时前端回退到当前站点 origin，并通过 reverse-proxy 的 /auth 转发） |
 | `VITE_SUPABASE_ANON_KEY` |  |  |
 | `SUPABASE_NETWORK` | `supabase-shared` | 自托管 Supabase（可选） 共享 Docker 网络名，docker-compose.supabase.yml 与主 Compose 通过此网络互联 |
