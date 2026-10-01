@@ -1,21 +1,18 @@
 # @agentloom/plugin-sdk
 
-AgentLoom 插件开发 SDK，提供插件 manifest、节点定义、执行上下文、Zod 3 校验器、端口 helper 和 RSA-PSS 归档签名工具。
+AgentLoom 插件开发 SDK：manifest 与节点定义类型、执行上下文、Zod 3 校验器、端口 helper 与 RSA-PSS 归档签名工具。本包固定使用 Zod 3.x（插件生态兼容），不引用 workspace 的 zod catalog。
 
-## PortDataType
+## 开发命令
 
-SDK 支持 14 种端口数据类型：
-
-`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
-
-canonical 全集来自 `@agentloom/contracts`；contracts 测试机械检查 SDK、server、Studio 和 Rust type-engine 镜像的同步关系。
-
-## 开发
+依赖安装在仓库根执行一次 `pnpm install`；以下命令在 `agentloom-plugin-sdk/` 内运行。
 
 ```bash
-pnpm --filter @agentloom/plugin-sdk build
-pnpm --filter @agentloom/plugin-sdk typecheck
-pnpm --filter @agentloom/plugin-sdk test
+pnpm typecheck
+pnpm test
+pnpm build       # tsup；prepare/prepack 也会构建 dist/
 ```
 
-SDK 固定使用 Zod 3.x。`prepare` 与 `prepack` 会构建 `dist/`。公共 API 和签名格式见 `AGENTS.md`。
+## 文档
+
+- SDK 参考：`agentloom-docs/api/plugins/sdk.md`
+- 插件开发教程：`agentloom-docs/api/plugins/tutorial.md`

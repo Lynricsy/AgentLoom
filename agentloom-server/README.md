@@ -1,141 +1,45 @@
-# AgentLoom Server
+# agentloom-server
 
-AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，负责工作流定义、执行调度、通知、审计、资源治理、插件沙箱、知识库与开放 API。
+AgentLoom 的 NestJS 11 + Fastify 5 后端：多租户 REST API（`/api/v1`）、Socket.IO 实时事件、BullMQ 后台任务、Drizzle/PostgreSQL 持久化，以及独立的 ACP stdio 入口。同一镜像以 server 与 worker 两种角色运行。设计说明见文档站「贡献者 → 服务端」。
 
-## 当前能力概览
+## 开发命令
 
-- **双重认证**：Bearer JWT 优先，`X-Api-Key` 回退；RBAC 角色为 `owner > admin > creator > operator > viewer`
-- **执行引擎**：`ExecutionService.runWorkflow()` 是执行入口；BullMQ 驱动 DAG 调度、断点恢复与人工介入。`NodeSchedulerService` facade 通过注册表 dispatcher 调用执行域 executor
-- **执行实时事件**：`StepStateMachineService.updateStepStatus()` 把状态转换写入的 `result/checkpointData` 透传到 `execution.node.status-changed`；`text-output/json-output` 的 completed 结果可直接进入 Studio live store
-- **Workflow Text 常量节点**：`ValueNodeExecutor` 把 workflow `text` 节点作为同步常量 source node 执行，优先读取 `config.text`，并兼容 root-level `text/value/content`，产出 `{ content, text, 'text-out' }`
-- **HTTP Tool 请求**：`src/modules/execution/http-tool-request.util.ts` 解析 `queryParams` 与 `query_params` 静态查询参数；`HttpNodeExecutor` 使用该纯 helper 构建请求
-- **Agent 双运行态**：Agent 定义固定 `runtimeMode = sandbox | no_sandbox`。`no_sandbox` 使用 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`；`sandbox` 使用 `SandboxAgentAdapter` 通过 runtime manager guest proxy 访问 Firecracker microVM。两种模式都支持 Skill、知识库、Memory、HTTP MCP 与自进化；普通运行时工具自动继续，自进化写操作 `apply_change/create_resource` 使用 `awaiting_permission`
-- **Agent / Workflow 输入节点规范化**：Agent 画布与 workflow `agent` 的系统提示词以 `text -> system-prompt-in` 为 canonical 来源；`sub-agent` 编译结果收敛为 `overrides { systemPrompt, modelConfig, routingConfig, outputSchema } + extensions { tools, knowledgeBindings, subAgents, memoryInstanceIds, skillIds }`，且不允许覆盖 sandbox。分享导入与 `db:migrate:agent-input-nodes` 预迁移脚本会把旧 `systemPrompt` 字段与 legacy `text/json` 句柄收敛到新结构
-- **Agent sandbox 生命周期响应纠偏**：Agent detail / public share 响应在返回 `sandboxLifecycle` 时，会优先使用 canvas / `sandboxConfig` 推导出的真实 lifecycle；历史 `metadata.sandboxLifecycle` 只在缺少 sandboxConfig 时才作为 fallback，避免旧草稿 metadata 把已经切到 `persistent` 的 Agent 仍错误地暴露成 `session`
-- **Agent MCP 节点编译一致性**：direct Agent runtime 现在会和 workflow runtime 一样，正确展开 Studio MCP 面板保存的 `config.enabledToolIds + config.tools[]`；对于历史或模型生成的 `mcpServerId` 半残 payload，migration 与 self-evolution apply 会收敛为 canonical `mcpServerConfigId`，并自动补全 active tools。只要 `mcp-tool` 节点已经携带 MCP 绑定字段，就必须同时给出明确的工具选择；只写 server、`enabledToolIds` 与 `tools[]` 不一致、或已选工具缺少 `id/name/mcpServerConfigId` 元数据时，保存/发布/编译都会直接返回 `AgentCanvasInvalidMcpToolBindingException`
-- **Agent 画布未知节点拦截**：Agent 定义在 `saveCanvas()`、`applyCanvasSnapshot()`、版本快照构建、runtime compile 与 share import 前，都会先执行 legacy alias 归一化与 allowlist 校验；若 graph 仍含未知或缺失 `nodeType`，统一抛 `AgentCanvasUnknownNodeTypeException`，防止坏数据继续发布或执行
-- **Self-Evolution 错误可修复性**：self-evolution 在 `apply_change/create_resource` 失败时，会把 `DomainException.detail/errors/extensions` 作为结构化 `problemDetails` 回传，不再只剩异常标题；模型可以直接根据返回的 canonical 修复提示继续调整节点 payload
-- **Agent 首发消息创建**：`POST /agent-definitions/:agentId/conversations/start` 是 Web / Mobile 新对话页的 canonical 首发接口；服务端会在单次数据库事务内完成 Agent 校验、conversation 插入、首条 user message 插入与 `updatedAt` 更新时间，避免首发失败时残留零消息空会话
-- **子代理历史瀑布**：standalone conversation 在持久化顶层 `metadata.segments` 的同时，也会把当轮 child waterfall 写入 `agent_messages.metadata.subAgentStreams[handle]`；`message_chunk / thinking / tool_call|tool_result / done|status_changed` 会随父 assistant message 一起落库，供 Studio 刷新后继续 drill-in 复原子代理文本/思考/工具顺序；live child 终态则通过 `conversation.subagent.status` 推送
-- **Workflow 子代理持久化回放**：workflow `agent` 现在会把 nested child waterfall 写入父 step 的 `execution_steps.checkpointData.subAgentStreams[handle]`，`execution.node.agent-event` 若带 `subagent` envelope 会被视为 child stream 事件；同一共享 sandbox 下的多个 runtime session 继续各自持有独立的 `SettingsManager/AuthStorage/ModelRegistry/ResourceLoader` 与 session tool provider，避免模型、系统提示词和 provider 凭据串台
-- **Discover 安装工作流本地化**：`POST /workflow-definitions { marketplace_listing_id }` 安装 discover / marketplace workflow 时，会在目标租户创建新的空 workspace 并重写 graph 里的 `workspaceId/workspaceName/restoreWorkspaceId`，同时清空 `persistentSandboxId`；默认名称保持来源 workflow / Agent 原名，不再自动追加“副本”
-- **Generated App 生成与运行记录**：`generated-app` 模块提供一句话生成应用的 AppSpec/readiness/public share 后端面；`/generated-apps/:appId/generation-runs*` 保存自动开发测试循环、修复轮次、预算、失败原因和再验证摘要，`POST /generated-apps/:appId/generation-runs/start` 同步启动轻量门禁运行器，按 Gate 0 AppSpec、Gate 1 架构计划、Gate 2 静态合约、Gate 3 build/unit workspace runner、Gate 4 integration runner、Gate 5 browser acceptance runner、Gate 6 independent verifier runner、Gate 7 publish-candidate contract runner 顺序执行，并在失败时停止后续门禁；Gate 3 `real-local-command-plan` 首次失败且 `maxRepairAttempts > 0` 时会创建 `status='running'` 的修复尝试、应用服务端受控 frontend workspace repair patch、记录 linked attempt-2 Gate 3 再验证运行，并在再验证通过时把修复尝试更新为 `completed` 后继续 Gate 4；再验证失败时更新为 `failed` 且不会为同一 Gate 3 失败再追加 no-patch attempt。其他暂无可执行补丁路径的 failed gate 仍会写入一条 `status='failed'` 的自动修复尝试台账，明确记录当前同步 runner 未应用源码、Workflow 或插件补丁，同时保存结构化 `repairPlan` 与 `reverificationPlan`，把失败证据、允许修改范围、禁止范围、补丁目标、需重跑 Gate/命令和成功标准固化为下一轮补丁输入；`triggerSource='retry'` 的新 run 会把同一应用最近 failed repair attempt 复制到 `generationPlan.repairContext` 和 Gate 1 证据中作为本轮修复目标，但不会把它标记为已修复。Gate 3 `real-local-command-plan` 只通过 `shell=false` 执行服务端 allowlist Node 脚本并脱敏输出，workspace 会生成 `src/generated-app/runtime-form.ts`、可填写/校验/显示本地报告的 React `src/App.tsx`，`dist/index.html` 会生成包含 AppSpec 标题、摘要、核心需求、验收场景、数据用途提示、动态表单和报告视图的自包含静态 HTML；Gate 4 `real-local-integration` 只执行受控 deterministic public runtime、creator query、Agent/Workflow local trace fixture 与插件 local smoke contract；Gate 5 `real-local-browser-contract` 只执行受控 deterministic 本地 DOM/accessibility/network/console contract，不启动 Playwright 或真实浏览器。Gate 6 按 `GENERATED_APP_GATE6_EXECUTOR_MODE` / `APP_GENERATED_APP_GATE6_EXECUTOR_MODE` 选择 `real`、`fixture` 或 `disabled`；`real-local-independent-verifier` 是受控 deterministic 本地规则 verifier，只读取 redacted evidence bundle、Gate 0-5 evidence refs、rubric 与 coverage matrices，输出 `blockingFindings`、`warnings`、`decision`、`traceabilityCoverage`、`repairSuggestions`、`residualRiskSummary`，不访问外部网络，不调用任意模型，不读取 generation transcript/public share token/API key/secret，也不代表外部模型或人工审查；fixture 只标记 verdict shape 且 `executed=false`，disabled 会失败并停止 Gate 7。Gate 7 按 `GENERATED_APP_GATE7_EXECUTOR_MODE` / `APP_GENERATED_APP_GATE7_EXECUTOR_MODE` 选择 `real`、`fixture` 或 `disabled`；`real-local-publish-candidate-contract` 只执行受控 deterministic 本地 release manifest contract 与 evidence citation 签收，不执行任意 shell/用户路径，不创建真实 artifact archive、真实签名、真实公开 token、生产发布或外部 verifier 结果。Gate 3-6 任一为 fixture/disabled/skeleton 时 Gate 7 阻断；Gate 3-6 均为 real-local 且 Gate 7 real 通过后，generation run 可为 `passed`，readiness 成为 `publish_candidate`，并创建或复用同租户已发布 Generated App runtime Workflow，写入 `workflowDefinitionId` 作为公开提交的异步 execution 目标；公开 token 仍为 null，后续必须显式调用公开分享接口才会通过 readiness guard 创建 token。`GET /generated-apps/:appId/artifacts` 与 `GET /generated-apps/:appId/artifacts/:artifactId` 为创建者侧受控 workspace 产物交付接口，只暴露 allowlist artifactId 对应的 Gate 3 源码、runtime form、测试、构建、类型检查、单测、组件/Golden 与覆盖率产物，并且不返回 host 绝对路径。公开 runtime 走 `/generated-apps/public/:token`，返回由 AppSpec/静态合约派生且经过白名单过滤的 `runtimeForm`，并在 Gate 3 build output 可读时把 `runtimeSurface.previewUrl` 指向 `GET /generated-apps/public/:token/preview`；该公开预览端点只返回 `gate-3-build-output-html` / `dist/index.html` 的 HTML，并设置只允许同源连接的 CSP，让 HTML 仅在公开预览路径下调用 public submission create/detail API 保存提交、展示持久化报告并轮询 `pending/running/paused` handoff；不在公开预览路径、无法解析 token 或 public API 不可用时，HTML 会退回本地 deterministic 预览，不返回 creator artifact DTO、源码、测试报告、manifest、workspace metadata、插件信息或 Gate 证据。终端用户无需登录即可通过动态业务表单提交输入到 `generated_app_submissions`；提交记录归属创建者租户，保存 app spec 版本、匿名 session、当前 token 快照和脱敏后的输入，token-like/host-path-like 匿名 session 会改由服务端生成。`createPublicSubmission()` 会同步运行本地 deterministic evaluator，基于 AppSpec、公开运行静态合约摘要和提交内容写入 `completed` 的 `local-generated-app-deterministic-report` result/report；若绑定 Workflow 为同租户、已发布且存在 `publishedVersionId`，还会创建异步 Workflow execution，并且公开响应只追加 execution id/status/boundary 等安全 handoff 字段；公开/创建者提交详情会在租户范围内刷新 handoff，优先使用 `report` handoff 选择 execution 并持久化脱敏后的 execution 状态和安全摘要；`pending`、`running`、`paused` 都视为未终止 handoff，公开详情、创建者详情和创建者列表会继续刷新这些状态；无法安全处理的结构写入 `failed` 与通用错误信息；旧 token 或 stale token 的公开错误详情不回显提交的 token 值。该 local report 明确不代表真实 AI、生产 sandbox 或插件执行，公开页可将其呈现为结构化摘要、下一步问题、补充提示和边界说明，医疗/问诊类内容只输出摘要、下一步问题和非诊断免责声明。创建者可通过 `/generated-apps/:appId/submissions*` 分页查看同一状态/result/report/error、读取详情、单条删除或批量删除。
-- **Generated App 私有插件工具链**：当 AppSpec 暗示问诊/评分/校验/风险筛查/逐步追问/工具或 API 型处理时，Gate 1 会生成租户私有 `pluginTools` 计划并要求 `manifest-validation`、`build`、`signature-verification`、`permission-policy`、`sandbox-smoke`、`generation-safety-scan` 硬门禁。Gate 3 在受控 workspace 下为每个工具写入 `plugins/<toolId>/agentloom.plugin.json`、`src/index.ts`、`node-definitions.json`、`smoke-fixture.json` 等文件，并通过 `node scripts/gate3-plugin-build.mjs` 产出签名 `.alp` 与 build report；artifact manifest 会列出插件 manifest、节点定义、源码、smoke fixture、build report 和二进制 bundle，其中 `.alp` 不支持 inline 内容读取。Gate 7 real-local 通过后，服务端会重新读取 `.alp`、校验 manifest、重算 content hash、用 build report 中的生成公钥验证 RSA-PSS 签名、检查零权限与硬门禁，再调用 PluginService 注册或复用同租户插件并激活为 `tenant-private`，同时把插件数据库 id 写入 `generated_apps.plugin_ids`；该链路不会创建 marketplace listing、公开插件信息或跨租户绑定。
-- **Generated App Gate 5 公开预览验收**：`generationPlan.browserAcceptancePlan.publicRuntimeJourneys` 包含 `public_build_preview_submit` 旅程，要求 Gate 5 的受控 browser contract 覆盖 `runtimeSurface.previewUrl` 指向的 Gate 3 build output HTML、同源 public submission create/detail API、public boundary 网络断言和 deterministic fallback 边界。
-- **Generated App runtime form 合约**：`runtimeForm.fields[]` 是公开 runtime、第三方前端、Gate 3 React/Vite 预览和 Gate 3 `dist/index.html` 静态预览的完整输入字段集合；`runtimeForm.sections[].fieldIds` 只作为分组布局提示，未被任何 section 引用的字段必须进入 `其他信息` 兜底分组后再参与必填校验和提交。
-- **Agent 对话附件**：`POST /agent-conversations/:id/messages` 与 `POST /agent-definitions/:agentId/conversations/start` 现以 `metadata.attachments[]` 作为 canonical 多附件负载，并继续兼容 legacy `metadata.attachment`；单条 user message 可同时携带文本、多个图片和多个文件，单附件上限 `1.5 MB`、单消息附件总量上限 `10 MB`、文本内联上限 `200 KB`；文本文件优先以内联 `resource` block 进入 runtime，图片使用 `image` block，sandbox conversation 会 best-effort 为每个附件写入 `/workspace/uploads/...` 并把工作区路径提示补入 prompt；为避免 base64 图片在 transport 层先被 `413` 拦截，Fastify `bodyLimit` 与 Socket.IO `maxHttpBufferSize` 均已提升到覆盖附件实际传输体积的上限
-- **历史空会话清理**：`src/database/migrations/0067_purge_empty_agent_conversations.sql` 会一次性删除没有任何 `agent_messages` 的历史 `agent_conversations`；运行时不保留自动清理任务，后续依赖延迟创建语义本身避免新增脏数据
-- **资源治理**：`tenant_quotas` + `execution_governance_controls` typed store，覆盖 `maxConcurrentExecutions`、`dailyExecutionLimit`、`dailyApiCallLimit`、`storageQuotaMb`、`apiRateLimitPerMinute`、`maxSandboxCpuPercent`、`maxSandboxMemoryMb`
-- **租户级 API 治理**：`CustomThrottlerGuard` 对 JWT 与 API key 请求解析 tenant，分钟级 `apiRateLimitPerMinute` 返回 `429 + Retry-After + X-RateLimit-*`，日配额和其它治理阻断返回 `409 ResourceGovernanceDecisionBlockedException`
-- **治理操作链路**：支持 quota 更新、tenant/workflow governance pause、anomalous execution termination、正式 audit、治理事件与结构化通知
-- **运行监控聚合**：`GET /organizations/:id/monitoring` 为 owner/admin 提供组织级只读 dashboard，聚合 execution summary、governance state、notifications、audit logs 与当前 `agent-task` queue snapshot；趋势图聚焦执行趋势，队列深度只表示当前 snapshot，支持 `15m|1h|24h` 窗口
-- **通知系统**：REST + BullMQ + `/notification` Socket.IO + FCM，资源治理通知类型包括 `resource_governance_execution_blocked`、`resource_governance_quota_updated`、`resource_governance_controls_updated`、`resource_governance_execution_terminated`
-- **审计与证据**：`AuditLogService.record()` 负责 append-only 审计写入，evidence 域支持 hot/archive 回查与资源序列查询
-- **Workspace 快照预览**：`WorkspaceModule` 现在除了列表/详情元数据外，还提供 `tree` / `preview` / `raw` / `files` 读取与文本保存语义，支持持久化 workspace 的目录树、Monaco 文本预览/编辑、图片/PDF 预览以及 unsupported 文件下载兜底；空 workspace 也会预留各自独立的 canonical `storageKey`，历史上误指向共享 `.../workspaces/empty/snapshot.tar` 的 legacy 记录会在后续读取/写回时自愈回自身对象路径；当某个 workspace 正被 sandbox 以 `restoreWorkspaceId` 挂载时，详情读取会优先走 live workspace volume，只有没有 active mount 或 live 读取失败时才回退到 snapshot
-- **LLM Provider 凭据**：Provider create/update 与私有云原始测试接口支持直接接收明文 `apiKey`；服务端会把明文写入受管 `api_keys` 密文记录，再继续以内联 `api_key_id` / 默认 key 解密链路供运行时使用
-- **MCP 运行约束**：`no_sandbox` Agent 只允许 HTTP MCP；stdio MCP 在版本创建/发布校验与 runtime 调用层都会被 fail-closed；对于 workflow，`no_sandbox` Agent 若通过 `tools-in` 接到 `stdio` 类型的 `mcp-tool` 连接，会在 `WorkflowVersionService.publish()` 阶段直接 422 阻断。自进化 `query_resource_pool(resourceType='mcp_tool')` 现会返回可直接写回节点的 tool metadata，`propose_change/apply_change` 也会对 `mcp-tool` 节点自动补全 canonical tool 选择结构
-- **ACP stdio 网关**：`src/modules/acp-gateway/` + `src/acp-stdio.ts` 提供独立 ACP JSON-RPC stdio 入口，支持 initialize、严格协议版本协商、JWT authenticate、连接级 `session/new` / `session/load` / `session/prompt` / `session/cancel`、真实 `fs/read_text_file` / `fs/write_text_file` surface、真实 `terminal/create` / `terminal/output` / `terminal/wait_for_exit` / `terminal/kill` / `terminal/release` surface、runtime `session/update` notifications、官方 `session/request_permission` request/response，以及读取并发/写出串行的 stdout 协议流隔离；initialize 对外使用 canonical `fs: { readTextFile, writeTextFile }`，并仅在 client 同时声明 `terminal.create=true` 与 `terminal.output=true` 时暴露粗粒度 `terminal: { create: true }` 总开关，同时兼容 legacy `read/write` initialize 输入；文件读取既可走 client-proxy ACP transport，也可在 session 绑定 `serverSandbox.executionId` 时走 ACP-local sandbox workspace，文件写入会先进入 `session/request_permission` 再继续实际写入；terminal 生命周期绑定到 conversation session，默认 1MB ring buffer、每 session 最多 5 个并发 terminal、默认 300s lifetime timeout kill、spawn 前危险 command/pattern/path/cwd 拒绝与正式审计、per-request `outputByteLimit` bounded retrieval、对 exited/killed terminal 返回稳定 output-unavailable error、request-local wait timeout / server lifetime timeout 的稳定错误语义、manual kill 与 cleanup kill 审计、`session/cancel` / stdio 连接关闭 cleanup，以及 durable terminal continuity + cold-recovery fail-closed `session/load` 语义；`server_sandbox` 现落实 `/workspace/` 边界、`realpath` / symlink / traversal 检查、10MB 默认上限、binary default-deny 与正式审计；conversation session 通过 durable `acp_conversation_sessions`（`session_snapshot` + ordered `replay_entries`）实现历史恢复，并在 `session/load` 中遵循 replay-before-response
-
-## 关键模块
-
-- `src/modules/execution/`：`NodeSchedulerService` facade、注册表 dispatcher、按执行域划分的 `node-executors/`、`CompoundExecutionService`、`NodeExecutionFailurePolicy`、DAG 状态机与 BullMQ workers。
-- `src/modules/workflow-definition/`：workflow facade、import、publish、definition/version repository 与 import source resolver。
-- `src/modules/generated-app/`：facade、repository、artifact、runtime binding、generation repair、generation orchestration、public runtime 与 Gate plan builders/runners。
-- `src/modules/agent/`：in-process 与 sandbox adapter；`SandboxAgentAdapter` facade 下分 session runtime、model config、tool registry、PTY 与纯 event decoder。
-- `src/modules/agent-definition/`：Agent CRUD、版本、canvas、发布、runtime config 契约 re-export 与旧 alias 读入归一。
-- `src/modules/self-evolution/`：facade、read、mutation、permission policy 与 graph patch。
-- `src/modules/resource-governance/`：资源配额、治理暂停、治理动作 API 与 blocked decision explain。
-- `src/modules/monitoring/`：组织级只读监控聚合 API。
-- `src/modules/notification/`：通知 REST、BullMQ processor 与 Socket.IO `/notification`。
-- `src/modules/evidence/`：审计日志、证据链与完整性校验。
-- `src/modules/trigger/`：cron、webhook 与 api_event 触发链路。
-- `src/modules/plugin/`：`.alp` 上传、签名校验、Extism WASM 沙箱与收益结算。
-- `src/modules/optimization-suggestion/`：执行遥测分析与配置建议。
-- `src/modules/acp-gateway/`：ACP stdio session、filesystem、terminal、permission 与 replay 协议适配。
-- `src/modules/sandbox/`：Firecracker sandbox 生命周期、workspace lease 与 runtime driver 装配；server/worker 通过独立 runtime manager 的 mTLS API 操作 microVM。
-
-## 契约、事件与 OpenAPI
-
-- `@agentloom/contracts` 是执行事件、Agent runtime config 与 workflow graph wire 类型的唯一来源。`src/modules/execution/types/execution-event.types.ts` 与 `src/modules/agent-definition/agent-runtime-config.interface.ts` 只做 re-export。
-- `src/modules/agent-definition/agent-runtime-config-normalize.util.ts` 在读入边界接受 `scoreThreshold`、`fallbackChain`、`cpuLimit`、`memoryLimitMb`，并归一为 `similarityThreshold`、`candidateModelIds`、`fallbackModelId`、`cpu`、`memory`；写出只含 canonical 字段。
-- `EventBridgeService` 通过 `EventEmitter2` 发出 broadcast intent，`ExecutionGateway` 与 `AgentConversationGateway` 使用 `@OnEvent` 订阅。gateway 维护 500 cap / 100ms drain 背压队列。
-- `scripts/export-openapi-spec.mjs` 只归一 `name === '*'` 且路由模板恰缺一个参数名的通配路径参数，其余不匹配形状 fail closed。
-- `openapitools.json` 的 `typescriptModels` 使用 `withoutRuntimeChecks: true` 生成纯 interface，根命令 `pnpm contracts:regen` 将其同步到 `@agentloom/api-client`。
-
-## 组合式服务边界
-
-服务通过构造器注入组合，不使用 service 继承 service。两个 Agent worker 保持独立；`src/modules/agent/shared/agent-turn-event-accumulator.ts` 与 `memory-tool-session-binder.ts` 只共享 turn 聚合与 memory tool session 绑定。
-
-## 本地开发
+依赖安装在仓库根执行一次 `pnpm install`；以下命令在 `agentloom-server/` 内运行。本地环境变量与依赖服务的准备步骤见 `agentloom-docs/dev/setup.md`。
 
 ```bash
-pnpm install
-pnpm start:dev
-pnpm start:acp:stdio
-```
-
-`pnpm start:acp:stdio` 会先通过 `scripts/start-acp-stdio.mjs` 静默构建，再运行编译后的 `dist/src/acp-stdio.js`，避免 direct `tsx` 入口丢失 Nest DI 所需的 decorator metadata。
-
-Swagger 文档：`/docs`
-
-## 常用命令
-
-```bash
-pnpm test                          # Vitest 单元测试
-pnpm test:e2e                     # E2E 测试（Testcontainers）
-pnpm start:acp:stdio              # ACP stdio 独立入口
-pnpm test:e2e -- resource-governance
-pnpm test:e2e -- monitoring
-pnpm test:cov                     # 覆盖率（80% 阈值）
-pnpm db:migrate:agent-input-nodes # 预迁移 Agent / Workflow 输入节点到新图结构
-pnpm db:generate                  # 生成 Drizzle migration
-pnpm db:migrate                   # 执行 migration
-pnpm db:seed                      # 导入种子数据
+pnpm start:dev                    # Nest watch 模式，默认端口 3000（APP_PORT）
+pnpm start:debug                  # debug + watch
 pnpm build                        # nest build
-pnpm openapi:export               # 导出 OpenAPI 3.0 spec
-pnpm sdk:generate                 # 生成 TypeScript / Python SDK
+pnpm start:prod                   # 运行 dist/src/main.js
+pnpm start:acp:stdio              # 先静默构建，再运行 dist/src/acp-stdio.js（ACP JSON-RPC stdio）
+pnpm typecheck                    # tsc --noEmit
+pnpm lint                         # ESLint，脚本自带 --fix
+pnpm format                       # Prettier 写入 src/ 与 test/
+
+pnpm test                         # Vitest 单元测试（src/**/*.spec.ts）
+pnpm test:watch                   # Vitest watch
+pnpm test:cov                     # V8 覆盖率，四项阈值 80%
+pnpm test:e2e                     # E2E（Testcontainers PostgreSQL，需要 Docker）
+pnpm test:e2e -- api-key          # 按文件名模式过滤 E2E
+
+pnpm db:generate                  # 根据 schema 生成迁移
+pnpm db:migrate                   # 应用迁移
+pnpm db:push                      # 直接同步开发数据库 schema
+pnpm db:studio                    # Drizzle Studio
+pnpm db:seed                      # 导入模板种子（只读进程环境中的 APP_DATABASE_URL）
+pnpm db:migrate:agent-input-nodes # 一次性预迁移 Agent / Workflow 输入节点
+pnpm db:backfill:workflow-ports   # 一次性回填 workflow 端口定义
+
+pnpm openapi:export               # build 后导出 sdk/openapi.json
 pnpm sdk:generate:models          # 生成 @agentloom/api-client 使用的纯 interface
+pnpm sdk:generate                 # 导出 OpenAPI 并生成 TypeScript / Python SDK
 ```
 
-## E2E 说明
+跨包再生成（OpenAPI → models → api-client）用仓库根的 `pnpm contracts:regen`。Swagger UI 在运行中的服务 `/docs`。
 
-- `pnpm test:e2e` 现通过 `scripts/run-e2e.mjs` 包装 Vitest，确保 `pnpm test:e2e -- <pattern>` 能正确前传文件过滤参数
-- `test/acp-stdio.e2e-spec.ts` 先构建 ACP 编译入口，再通过 `scripts/run-acp-stdio-e2e-helper.mjs` 在 Vitest 外驱动 stdio 对话；helper 会设置 `ACP_TEST_FAKE_RUNTIME=1` 并启用 host-side fake exec，验证 unsupported protocol version → `Invalid params`、canonical initialize 能力协商（兼容 legacy alias）、`initialized` notification 静默、authenticate、`session/new` / `session/prompt` / `session/update` 主链、真实 `fs/read_text_file` / `fs/write_text_file` client-proxy surface、写入前 `session/request_permission` allow/deny/cancel、真实 `server_sandbox` read/write success、`terminal/create + bounded output + wait_for_exit` success、危险参数/路径 reject、exited/killed terminal output unavailable、request-local wait timeout 与 server lifetime timeout 的稳定错误、manual kill / `session/cancel` cleanup killed audit、explicit release 后 output not-found、`session/load` 对 active terminal continuity 的 cold-recovery fail-closed、traversal / oversize / binary reject、parse error、非法 `id` invalid request、revoked token 与 stdout hygiene。
-- `test/resource-governance.e2e-spec.ts` 会在 testcontainer 数据库内 bootstrap 资源治理缺失的 enum / table / grant / policy，并额外清理 `notifications`、`notification_preferences`、`workflow_executions`、`workflow_versions`、`execution_steps` 等扩展表
-- `test/monitoring.e2e-spec.ts` 复用同一套 Testcontainers/RLS 基建，校验 monitoring route 的 owner/admin 门禁、时间窗口刷新与 deep-link contract
+## 文档
 
-## 资源治理补充事实
-
-- `ExecutionService.runWorkflow()` 在写入 `workflow_executions` 之前调用 `ResourceGovernanceService.resolveExecutionAdmissionDecision()`，block 时不会插入 execution 行，也不会 enqueue job
-- `CustomThrottlerGuard` 对 API key 路径通过 `PlatformApiTokenService.validateToken()` 懒解析 tenant / user 信息，再应用 tenant-aware API quota
-- blocked audit 使用独立事务写入，避免与请求事务一起回滚
-- quota updated / controls updated / execution terminated 等治理事件在事务提交后再 emit，通知 listener 使用独立 tenant transaction 写入通知，避免 side effect 污染当前请求事务
-
-## 环境变量
-
-关键变量见 `.env.example`，常用项包括：
-
-- `APP_DATABASE_URL`
-- `APP_SUPABASE_URL`
-- `APP_SUPABASE_ANON_KEY`
-- `APP_SUPABASE_SERVICE_ROLE_KEY`
-- `APP_JWT_SECRET`
-- `APP_REDIS_URL`
-- `APP_MASTER_ENCRYPTION_KEY`
-- `APP_MINIO_*`
-- `APP_QDRANT_URL`
-- `FIREBASE_SERVICE_ACCOUNT`
-
-## 依赖说明
-
-- `@llamaindex/qdrant@^0.1.33` 已被上游标记 deprecated 且 `0.1.33` 即 registry 最新版本，无可升级目标；knowledge 模块继续使用该版本，待上游提供替代包后迁移
-
-## 相关文档
-
-- `AGENTS.md`：持久化架构知识库
-- `src/modules/resource-governance/`：资源治理后端实现
-- `src/modules/monitoring/`：组织级只读监控聚合实现
-- `test/resource-governance.e2e-spec.ts`：资源治理 E2E
-- `test/monitoring.e2e-spec.ts`：组织级监控 E2E
-- `src/database/schema/tenant-quotas.schema.ts`
-- `src/database/schema/execution-governance-controls.schema.ts`
+- 服务端总览与模块清单：`agentloom-docs/dev/server/index.md`
+- 请求管线、安全、数据库、队列、实时、Agent 运行态、ACP、插件、生成应用：`agentloom-docs/dev/server/`
+- 新增模块 / 环境变量 / Socket 事件：`agentloom-docs/dev/howto/`
+- 环境变量参考：`agentloom-docs/deploy/configuration.md`

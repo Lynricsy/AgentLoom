@@ -1,242 +1,68 @@
 # AgentLoom
 
-AgentLoom is a multi-agent workflow orchestration platform for designing, running, governing, and sharing AI agents, workflows, generated applications, plugins, skills, and knowledge-powered automations.
+AgentLoom 是多智能体工作流编排平台：在可视化画布上把 AI Agent、工具、知识库、记忆与控制节点连成 DAG 工作流并执行；Agent 也可以独立对话、版本化发布，并通过 API 对外提供服务。
 
-The project combines a visual DAG workflow canvas, standalone agent conversations, sandboxed and in-process runtimes, signed plugin execution, generated apps from natural language, enterprise governance surfaces, and both web and mobile clients.
+- 状态：开发中，无 CI/CD；生产实例 <https://agentloom.ling.plus/>
+- 文档站：<https://agentloom.ling.plus/documentation/>（源码在 `agentloom-docs/`）
 
-## Capabilities
+## 仓库布局
 
-- Visual workflow canvas for composing AI agents, tools, knowledge, memory, conditions, loops, triggers, and typed connections into DAG workflows.
-- Workflow execution with BullMQ-backed scheduling, resumable state, intervention handling, evidence capture, and real-time Socket.IO monitoring.
-- Standalone agents with versioned definitions, conversations, sandbox or no-sandbox runtime modes, Skills, memory, knowledge, MCP tools, and self-evolution approval boundaries.
-- Natural-language generated apps that produce AppSpecs, acceptance scenarios, controlled source artifacts, gate evidence, previews, public runtime links, submissions, and publish-readiness checks.
-- Sandboxed coding/runtime surfaces through `agentloom/sandbox:latest`, plus in-process agent execution for `no_sandbox` agents.
-- Signed `.alp` plugin ecosystem with SDK, CLI, marketplace flows, RSA-PSS archive verification, and Extism WASM sandbox execution.
-- `SKILL.md` based Skills that can be injected into sandbox and no-sandbox agent runtimes.
-- Knowledge and RAG features backed by document parsing, vector indexing, retrieval, reranking, and query orchestration.
-- Agent memory, MCP integrations, marketplace/discover/share workflows, public share links, and private generated-app runtime links.
-- Evidence, audit logs, resource governance, optimization suggestions, monitoring dashboards, private deployment settings, and operational controls.
-- Web Studio and Flutter mobile clients for cross-device creation, execution, monitoring, and resource management.
-
-## Repository Layout
-
-The TypeScript packages are managed by the root pnpm workspace. `agentloom-docs` and `agentloom-user-docs` remain independent projects with their own lockfiles.
+TypeScript 包由根 pnpm workspace 管理；`agentloom-docs/` 是独立项目（自带 lockfile）。各目录的作用、技术栈与对应文档见文档站「贡献者 → 贡献者入口」（`agentloom-docs/dev/index.md`）。
 
 ```text
 AgentLoom/
-├── agentloom-server/          # NestJS 11 + Fastify 5 backend (workspace)
-├── agentloom-studio/          # React 19 + Vite 7 web Studio (workspace)
-├── agentloom-contracts/       # Zod 4 cross-client wire contracts (workspace)
-├── agentloom-api-client/      # OpenAPI-generated REST interfaces (workspace)
-├── agentloom-plugin-sdk/      # TypeScript plugin SDK, Zod 3 (workspace)
-├── agentloom-plugin-cli/      # Plugin CLI (workspace)
-├── agentloom-plugin-template/ # Example plugin (workspace)
-├── agentloom-docs/            # Independent VitePress documentation site
-├── agentloom-user-docs/       # Independent user documentation site
-├── agentloom-deploy/          # Docker Compose, Helm, env templates, ops scripts
-├── agentloom-type-engine/     # Rust/WASM port compatibility engine
-├── agentloom-firecracker-runtime/ # Go runtime manager and guest daemon
-├── brochure/                  # Illustrated intro brochure (HTML/CSS source; build.sh → A4 PDF)
-├── agentloom_mobile/          # Flutter mobile application
-├── pnpm-workspace.yaml        # Workspace members, catalog, overrides, allowBuilds
-└── package.json               # Workspace orchestration scripts
+├── agentloom-server/               # NestJS + Fastify 后端（workspace）
+├── agentloom-studio/               # React + Vite Web 工作台（workspace）
+├── agentloom-contracts/            # Zod 4 跨端 wire 契约（workspace）
+├── agentloom-api-client/           # OpenAPI 生成的 REST 类型（workspace）
+├── agentloom-plugin-sdk/           # 插件 SDK，Zod 3（workspace）
+├── agentloom-plugin-cli/           # 插件 CLI（workspace）
+├── agentloom-plugin-template/      # 示例插件（workspace）
+├── agentloom-type-engine/          # Rust/WASM 端口兼容性引擎
+├── agentloom-firecracker-runtime/  # Go Firecracker runtime manager 与 guest 守护进程
+├── agentloom_mobile/               # Flutter 客户端
+├── agentloom-deploy/               # Docker Compose、Helm、环境模板、运维脚本
+├── agentloom-docs/                 # VitePress 文档站（单站：用户指南 / API / 部署 / 贡献者）
+├── scripts/docs-reference/         # 文档参考生成器（pnpm docs:gen / docs:check）
+└── brochure/                       # 宣传册 HTML 源（build.sh 输出 A4 PDF）
 ```
 
-## Architecture Overview
+## 快速开始
 
-Studio and Mobile call the server through REST under `/api/v1` and through Socket.IO namespaces for real-time execution, notifications, knowledge, memory, and agent conversation updates.
-
-```text
-                         @agentloom/contracts
-                      (canonical wire schemas)
-                           ▲       ▲
-                           │       │
-agentloom-studio  ─┐       │       └── agentloom-server
-                   ├─ REST /api/v1 + Socket.IO ─► agentloom-server
-agentloom_mobile  ─┘
-
-server OpenAPI spec ─► @agentloom/api-client ─► Studio ky payload types
-
-agentloom-server ─► PostgreSQL/Supabase  # tenancy, definitions, execution records
-                 ├► Redis/BullMQ         # queues, schedulers, workers
-                 ├► Qdrant               # vector search
-                 ├► MinIO                # artifacts, documents, plugin archives
-                 ├► Firecracker runtime  # sandbox agent/runtime workspaces
-                 └► Extism WASM sandbox  # plugin execution
-```
-
-The server is authoritative for authentication, tenancy, definitions, execution orchestration, plugins, generated-app readiness, public runtime boundaries, evidence, audit, and governance. `@agentloom/contracts` is the single source for execution events, agent runtime configuration, workflow graph wire shapes, agent events, and the 14-value port data-type set. `@agentloom/api-client` contains generated interfaces only; Studio retains ky as its HTTP runtime.
-
-Server orchestration uses constructor-injected services rather than service inheritance. Generated apps, workflow import/publish, node scheduling, sandbox agents, agent worker lifecycle support, and self-evolution are split into focused facades, repositories, policies, executors, and pure helpers.
-
-## Tech Stack
-
-| Package | Stack |
-| --- | --- |
-| `agentloom-server` | NestJS 11, Fastify 5, TypeScript, Drizzle ORM, PostgreSQL/Supabase, Redis, BullMQ, Socket.IO, Qdrant, MinIO, Vercel AI SDK, Extism, Vitest |
-| `agentloom-studio` | React 19, Vite 7, TypeScript 5.9, TanStack Router, TanStack Query, Zustand, Tailwind CSS v4, Radix UI, React Flow, ky, Socket.IO client, Vitest |
-| `agentloom-contracts` | TypeScript, Zod 4, tsup dual ESM/CJS output, Vitest, shared JSON fixtures |
-| `agentloom-api-client` | OpenAPI-generated TypeScript interfaces, tsup dual ESM/CJS output, no fetch runtime |
-| `agentloom-docs` | VitePress 2, OpenAPI rendering, Mermaid, bilingual documentation content |
-| `agentloom-deploy` | Docker Compose, Nginx, Helm, environment templates, PostgreSQL and MinIO backup/restore scripts |
-| `agentloom-type-engine` | Rust 2024, wasm-bindgen, serde, Criterion, WASM package artifacts |
-| `agentloom-plugin-sdk` | TypeScript, Zod 3, tsup dual ESM/CJS output, RSA-PSS signing helpers, Vitest |
-| `agentloom-plugin-cli` | TypeScript, Commander, prompts, archiver, Express dev server, tsup, Vitest |
-| `agentloom-plugin-template` | Example text transform plugin using the SDK |
-| `agentloom_mobile` | Flutter 3.41.2, Riverpod, GoRouter, Dio, Socket.IO client, Firebase Messaging |
-
-## Development Quick Start
-
-Install workspace dependencies and run cross-package checks from the repository root:
+需要 Node.js 22 与 pnpm（`corepack enable`）。在仓库根安装一次依赖：
 
 ```bash
 pnpm install
-pnpm test:all
-pnpm typecheck:all
-pnpm build:all
-pnpm contracts:regen
 ```
 
-`pnpm contracts:regen` exports the server OpenAPI specification, generates type-only models, synchronizes `agentloom-api-client/src/models.ts`, and builds `@agentloom/api-client`. Redis must be reachable during OpenAPI export.
+数据库、Redis、Supabase Auth 等依赖服务与 server/Studio 的启动步骤见文档站「贡献者 → 本地开发环境」（`agentloom-docs/dev/setup.md`）。各包自己的命令在各包 `README.md`。
 
-### Shared Services
-
-`docker-compose.dev.yml` starts only Qdrant. PostgreSQL/Supabase, Redis, and MinIO must be provided separately for full server development, or started through the private deployment assets.
+## 根命令
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d
+pnpm test:all          # 递归运行 workspace 成员的 test，并执行 docs:check
+pnpm typecheck:all     # 递归 typecheck
+pnpm build:all         # 递归 build
+pnpm contracts:regen   # 导出 server OpenAPI → 生成 models → 同步并构建 @agentloom/api-client（需要 Redis 可达）
+pnpm docs:gen          # 从代码再生成 agentloom-docs/_generated/
+pnpm docs:check        # 校验 _generated 未过期、文档引用的路径与环境变量存在、节点页覆盖
 ```
 
-### Server
+## 文档
+
+|分区|内容|
+|---|---|
+|[用户指南](https://agentloom.ling.plus/documentation/guide/)|工作流、Agent、节点、知识库、技能、触发器、协作|
+|[API 与集成](https://agentloom.ling.plus/documentation/api/)|REST 参考、Agent 对外 API、Webhook、插件开发|
+|[部署运维](https://agentloom.ling.plus/documentation/deploy/)|Docker Compose、Helm、Supabase、Firecracker、备份恢复|
+|[贡献者](https://agentloom.ling.plus/documentation/dev/)|架构、各包内部设计、测试、文档维护规范|
+
+本地预览：
 
 ```bash
-cd agentloom-server
-pnpm install
-cp .env.example .env
-pnpm db:migrate
-pnpm db:seed
-pnpm start:dev
+cd agentloom-docs && pnpm install && pnpm dev
 ```
 
-Useful checks:
+## 许可证
 
-```bash
-pnpm test
-pnpm test:e2e
-pnpm test:cov
-pnpm openapi:export
-pnpm sdk:generate
-```
-
-### Studio
-
-```bash
-cd agentloom-studio
-pnpm install
-cp .env.example .env
-pnpm dev
-```
-
-Useful checks:
-
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-```
-
-### Contracts
-
-```bash
-cd agentloom-contracts
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-### REST API Types
-
-```bash
-cd agentloom-api-client
-pnpm typecheck
-pnpm build
-```
-
-### Documentation Site
-
-```bash
-cd agentloom-docs
-pnpm install
-pnpm dev
-pnpm build
-```
-
-### Type Engine
-
-```bash
-cd agentloom-type-engine
-cargo test
-wasm-pack build --target bundler --release
-```
-
-### Plugin SDK
-
-```bash
-cd agentloom-plugin-sdk
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-### Plugin CLI
-
-```bash
-cd agentloom-plugin-cli
-pnpm install
-pnpm test
-pnpm build
-```
-
-### Plugin Template
-
-```bash
-cd agentloom-plugin-template
-pnpm install
-pnpm test
-pnpm build
-```
-
-### Mobile
-
-The mobile app is pinned to Flutter 3.41.2. Use `fvm` if that is how your local machine selects Flutter versions.
-
-```bash
-cd agentloom_mobile
-flutter pub get
-dart run build_runner build --delete-conflicting-outputs
-flutter analyze
-flutter test
-```
-
-## Deployment
-
-Private deployment assets live in `agentloom-deploy/`.
-
-Start with [`agentloom-deploy/README.md`](agentloom-deploy/README.md) for Docker Compose, Helm, environment templates, backup/restore scripts, and the current deployment topology. The production Compose entrypoint exposes Studio, API, Socket.IO, Supabase Auth proxying, PostgreSQL, Redis, MinIO, Qdrant, and server/worker deployment units behind Nginx.
-
-## Documentation
-
-- Product and platform docs: `agentloom-docs/`
-- Backend details and API generation: `agentloom-server/README.md`
-- Cross-client wire contracts: `agentloom-contracts/README.md`
-- Generated REST interfaces: `agentloom-api-client/README.md`
-- Web Studio details: `agentloom-studio/README.md`
-- Mobile app details: `agentloom_mobile/README.md`
-- Deployment operations: `agentloom-deploy/README.md`
-- Package-level architecture notes: each package's `AGENTS.md`
-
-## License
-
-AgentLoom is licensed under the GNU General Public License v3.0 only. See [`LICENSE`](LICENSE).
+GNU General Public License v3.0 only，见 [`LICENSE`](LICENSE)。

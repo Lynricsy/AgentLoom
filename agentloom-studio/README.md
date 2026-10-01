@@ -1,67 +1,29 @@
-# AgentLoom Studio
+# agentloom-studio
 
-AgentLoom 的 React 19 + Vite 7 Web 工作台，覆盖工作流与 Agent 画布、执行监控、Agent 对话、资源管理、治理配置、模板、市场和 Generated App 体验。
+AgentLoom 的 Web 工作台（React 19 + Vite + TanStack Router/Query + Zustand）：工作流与 Agent 画布、执行监控、Agent 对话、资源管理、治理配置、模板、市场与生成应用。REST 走 `/api/v1`，实时事件走 Socket.IO。设计说明见文档站「贡献者 → 前端」。
 
-## 技术栈
+## 开发命令
 
-- TypeScript 5.9、React 19、Vite 7
-- TanStack Router、TanStack Query
-- Zustand（immer / devtools）
-- Tailwind CSS v4、Radix UI、CVA
-- ky；REST 请求和响应统一进行 snake_case/camelCase 转换
-- Vitest、Testing Library、jsdom
-
-## 架构
-
-```text
-src/
-├── app/                 # providers、router、routes
-├── features/            # 独立业务域及其公共 barrel
-├── shared/              # API transport、UI 原语、跨域组件与工具
-└── test-setup.ts
-```
-
-依赖方向为 `routes → feature barrel → feature 内部 → shared`。ESLint 禁止 route 或 feature 通过 `components|stores|api|lib|hooks|types` 深路径跨 feature 导入；跨域使用目标 feature 的 `index.ts`。
-
-## 数据与契约
-
-- TanStack Query 是服务端实体缓存的唯一事实源。
-- Zustand 保存画布草稿、socket 瞬态、选择态与纯 UI 状态。
-- Agent / Workflow 列表 filters 与分页存入 TanStack Router search params。
-- execution live store 是执行实时状态的唯一事实源；Query detail 只通过 `initFromSnapshot()` 注入初始快照。
-- `@agentloom/contracts` 提供跨端 wire schema 与类型。
-- `@agentloom/api-client` 提供 server OpenAPI 生成 interface，不包含 fetch runtime；生成产物不手改。
-- Provider health 的公共符号为 `ProviderHealthState`、`ProviderHealthRecord`、`fetchProviderHealth`、`useProviderHealth` 和 `routingKeys.health`，统一从 smart-routing barrel 导入。
-- `src/` 生产代码不使用显式 `any`。
-
-## 开发
-
-仓库使用根 pnpm workspace：
+依赖安装在仓库根执行一次 `pnpm install`；以下命令在 `agentloom-studio/` 内运行。
 
 ```bash
-pnpm install
-pnpm --filter agentloom-studio dev
-pnpm --filter agentloom-studio typecheck
-pnpm --filter agentloom-studio lint
-pnpm --filter agentloom-studio test
-pnpm --filter agentloom-studio build
+cp .env.example .env   # 首次：VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 必须填写
+pnpm dev               # Vite 开发服务器 :5173，/api 与 /socket.io 代理到 http://localhost:3000
+pnpm typecheck         # tsc（tsconfig.app.json + tsconfig.node.json）
+pnpm lint              # ESLint（含 feature 边界规则）
+pnpm format            # Prettier
+pnpm test              # Vitest（jsdom）
+pnpm test:watch
+pnpm test:coverage
+pnpm build             # tsc -b && vite build
+pnpm preview           # 预览生产构建
 ```
 
-OpenAPI models 再生成入口：
+OpenAPI 类型再生成在仓库根运行 `pnpm contracts:regen`。
 
-```bash
-pnpm contracts:regen
-```
+## 文档
 
-该命令需要 server 的 OpenAPI 导出依赖可用，包括 Redis。
-
-## 环境变量
-
-- `VITE_API_BASE_URL`
-- `VITE_AUTOSAVE_DEBOUNCE_MS`
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-
-开发代理将 `/api` 和 `/socket.io` 转发到 server。浏览器品牌资源位于 `public/brand/logo.png`。
-
-详细前端约定见 `AGENTS.md`；工作流画布约定见 `src/features/canvas/AGENTS.md`。
+- 架构、feature 清单与路由清单：`agentloom-docs/dev/studio/index.md`
+- 画布：`agentloom-docs/dev/studio/canvas.md`
+- 状态管理与 REST/Socket 约定：`agentloom-docs/dev/studio/state.md`
+- 构建期环境变量：`agentloom-docs/deploy/configuration.md`
