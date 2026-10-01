@@ -60,7 +60,13 @@ svg text { font-family: "Noto Sans CJK SC", "Noto Sans", sans-serif; }
   font-size: 7.5pt; color: #9aa0b8;
 }
 .runfoot .num { font-weight: 800; color: var(--indigo); font-size: 9pt; }
-.runhead::after, .runfoot::before { content: none; }
+/* 页码与章节号由 CSS 计数器生成，增删页面无需手动改号 */
+body { counter-reset: pg sec; }
+.page { counter-increment: pg; }
+.page.sec { counter-increment: pg sec; }
+.runfoot .num::before { content: counter(pg, decimal-leading-zero); }
+.kicker .no::before, .runhead .secno::before { content: counter(sec, decimal-leading-zero); }
+.runhead .secno { font-style: normal; }
 .hairline { position: absolute; left: 17mm; right: 17mm; top: 13.5mm; height: 1px; background: linear-gradient(90deg, #6366f155, #14b8a622, transparent); }
 
 /* 标题系统 */
