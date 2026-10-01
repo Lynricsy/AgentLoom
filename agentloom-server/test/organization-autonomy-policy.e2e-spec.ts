@@ -151,6 +151,13 @@ function createMockRedisClient() {
     keys: vi.fn().mockResolvedValue([]),
     quit: vi.fn().mockResolvedValue('OK'),
     publish: vi.fn().mockResolvedValue(1),
+    // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接
+    duplicate: vi.fn().mockReturnValue({
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      quit: vi.fn().mockResolvedValue('OK'),
+    }),
   };
 }
 

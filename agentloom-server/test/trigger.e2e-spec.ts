@@ -142,6 +142,13 @@ function createMockRedisPubSubService() {
     publish: vi.fn().mockResolvedValue(undefined),
     onModuleInit: vi.fn().mockResolvedValue(undefined),
     onModuleDestroy: vi.fn().mockResolvedValue(undefined),
+    // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接
+    duplicate: vi.fn().mockReturnValue({
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      quit: vi.fn().mockResolvedValue('OK'),
+    }),
   };
 }
 

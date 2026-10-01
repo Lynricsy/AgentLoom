@@ -62,6 +62,13 @@ cd agentloom-server
 pnpm test:e2e -- guard-chain
 ```
 
+E2E 的 Postgres 由 Testcontainers 启动，Redis 需要自备：`agentloom-server/test/setup-e2e.ts` 把 `APP_REDIS_URL` 设为 `E2E_REDIS_URL`，未设置时为 `redis://127.0.0.1:6379`。本机 6379 被其他服务占用时，另起一个 Redis 并指定地址：
+
+```bash
+docker run -d --name agentloom-e2e-redis -p 127.0.0.1:46379:6379 redis:7-alpine
+E2E_REDIS_URL=redis://127.0.0.1:46379 pnpm test:e2e -- trigger
+```
+
 ### 覆盖率
 
 ```bash
