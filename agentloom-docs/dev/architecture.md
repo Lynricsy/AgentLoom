@@ -1,236 +1,177 @@
-# 架构总览
+---
+docType: explanation
+---
 
-AgentLoom 采用前后端分离的多层架构，各子系统通过明确的协议边界进行协作。本页从全局视角介绍系统的整体架构、包结构、技术选型以及多租户设计。
+# 系统架构
 
-## 系统架构图
+一个 HTTP 请求、一次工作流运行、一个 Agent 回合，分别经过哪些进程与组件？本页回答这个问题，并给出读代码时的入口文件。
+
+## 系统组成
 
 ```mermaid
 flowchart TB
-    subgraph Clients["客户端层"]
-        Studio["AgentLoom Studio<br/>(React 19 + Vite 7)"]
-        Mobile["AgentLoom Mobile<br/>(Flutter 3.41.2)"]
-        OpenAPI["Open API / SDK<br/>(TS / Python)"]
+    subgraph Clients["客户端"]
+        Studio["Studio<br/>React 19 + Vite 8"]
+        Mobile["Mobile<br/>Flutter"]
+        ThirdParty["第三方调用方<br/>平台 API Token / Agent API Key"]
     end
 
-    subgraph Server["服务端层"]
-        NestJS["AgentLoom Server<br/>(NestJS v11 + Fastify v5)"]
-        Workers["BullMQ Workers<br/>(13 个异步处理器)"]
-        SocketIO["Socket.IO Gateway<br/>(5 个命名空间)"]
+    subgraph Shared["共享包（编译期）"]
+        Contracts["agentloom-contracts<br/>Zod 4 wire 契约"]
+        ApiClient["agentloom-api-client<br/>OpenAPI 生成的类型"]
+        TypeEngine["agentloom-type-engine<br/>Rust → WASM"]
+        PluginSdk["agentloom-plugin-sdk<br/>Zod 3 + RSA-PSS 签名"]
     end
 
-    subgraph Infra["基础设施层"]
-        PG["PostgreSQL<br/>(Drizzle ORM / 44 张表)"]
-        Redis["Redis<br/>(BullMQ 队列)"]
-        Qdrant["Qdrant<br/>(向量检索)"]
-        MinIO["MinIO<br/>(对象存储)"]
+    subgraph ServerSide["服务端（同一镜像，server 与 worker 两个进程）"]
+        Http["HTTP /api/v1<br/>NestJS 11 + Fastify 5"]
+        Gateways["Socket.IO 网关<br/>Redis adapter"]
+        Workers["BullMQ worker"]
+        Extism["Extism<br/>插件 WASM"]
     end
 
-    subgraph Ecosystem["生态系统"]
-        TypeEngine["Type Engine<br/>(Rust WASM)"]
-        PluginSDK["Plugin SDK + CLI"]
-        PluginWASM["WASM 沙箱<br/>(Extism)"]
+    subgraph Infra["基础设施"]
+        PG["PostgreSQL<br/>Drizzle + RLS"]
+        Redis["Redis<br/>BullMQ / Socket.IO adapter / Stream"]
+        Qdrant["Qdrant<br/>向量检索"]
+        MinIO["MinIO<br/>对象存储"]
     end
 
-    Studio -->|"REST /api/v1"| NestJS
-    Studio -->|"Socket.IO"| SocketIO
-    Mobile -->|"REST /api/v1"| NestJS
-    Mobile -->|"Socket.IO"| SocketIO
-    OpenAPI -->|"REST + API Key"| NestJS
+    subgraph Sandbox["沙箱节点（每台 KVM 宿主一个）"]
+        Manager["agentloom-firecracker-runtime<br/>Go runtime manager"]
+        VM["Firecracker microVM<br/>guestd + pi-coding-agent"]
+    end
 
-    NestJS --> PG
-    NestJS --> Redis
-    NestJS --> Qdrant
-    NestJS --> MinIO
-    Workers --> Redis
+    Studio -->|"REST"| Http
+    Studio -->|"Socket.IO"| Gateways
+    Mobile -->|"REST + Socket.IO(JWT)"| Http
+    Mobile --> Gateways
+    ThirdParty -->|"REST / SSE"| Http
+
+    Http --> PG
+    Http --> Redis
     Workers --> PG
+    Workers --> Redis
+    Workers --> Qdrant
+    Http --> MinIO
+    Workers --> Extism
+    Workers -->|"mTLS"| Manager
+    Manager --> VM
 
+    Contracts -.-> Studio
+    Contracts -.-> Http
+    ApiClient -.-> Studio
     TypeEngine -.->|"Web Worker"| Studio
-    PluginSDK -.->|"开发构建"| PluginWASM
-    PluginWASM -.->|"沙箱执行"| NestJS
+    PluginSdk -.-> Extism
 ```
 
-## 通信协议
+`agentloom-deploy/docker-compose.yml` 中的 `server` 与 `worker` 服务使用同一个镜像、同一个入口 `node dist/src/main.js`。两个进程都注册全部 HTTP 路由、网关与 BullMQ 处理器，因此任何一个进程都可能消费某个队列任务；跨进程的事件扇出依赖 Redis（Socket.IO Redis adapter、Redis 频道、Redis Stream），不依赖进程内状态。部署拓扑见 [部署运维](/deploy/)。
 
-客户端与服务端之间通过两种协议通信：
+## 一个 REST 请求的路径
+
+`agentloom-server/src/main.ts` 设置全局前缀 `api/v1`、全局过滤器 `AllExceptionsFilter`、全局管道 `ZodValidationPipe`，并在 `docs` 路径挂 Swagger UI。`agentloom-server/src/app.module.ts` 注册全局中间件、守卫与拦截器。NestJS 的执行顺序固定为中间件 → 守卫 → 拦截器 → 管道 → 处理器，异常统一落到过滤器：
 
 ```mermaid
 flowchart LR
-    subgraph REST["HTTP REST"]
-        R1["CRUD 操作"]
-        R2["工作流管理"]
-        R3["认证鉴权"]
-    end
-
-    subgraph WS["Socket.IO 实时通信"]
-        W1["/execution<br/>执行事件推送"]
-        W2["/knowledge<br/>知识库同步"]
-        W3["/notification<br/>通知推送"]
-        W4["/agent-conversation<br/>Agent 对话推送"]
-        W5["/memory<br/>记忆图谱操作"]
-    end
-
-    Client["客户端"] --> REST
-    Client --> WS
+    Req["HTTP 请求"] --> TM["TenantMiddleware"]
+    TM --> G1["CustomThrottlerGuard"]
+    G1 --> G2["AuthGuard<br/>JWT → X-Api-Key"]
+    G2 --> G3["TenantGuard"]
+    G3 --> G4["RolesGuard"]
+    G4 --> I["拦截器<br/>TenantTransactionInterceptor<br/>AuditLogInterceptor"]
+    I --> P["ZodValidationPipe"]
+    P --> H["controller → service"]
+    H -.->|"抛出异常"| F["AllExceptionsFilter<br/>problem+json"]
 ```
 
-| 协议                          | 用途                                          | 认证方式                    |
-| ----------------------------- | --------------------------------------------- | --------------------------- |
-| **REST** (`/api/v1`)          | 资源 CRUD、工作流管理、配置操作               | JWT / API Key（`al_` 前缀） |
-| **Socket.IO** `/execution`    | 执行状态实时推送，支持 `lastEventId` 断线续传 | JWT                         |
-| **Socket.IO** `/knowledge`    | 知识库操作同步                                | JWT                         |
-| **Socket.IO** `/notification` | 通知 fan-out（完成 / 失败 / 需介入）          | JWT                         |
-| **Socket.IO** `/agent-conversation` | Agent 对话实时推送，与 `/execution` 对称 | JWT + MFA                   |
-| **Socket.IO** `/memory`       | Agent 记忆图谱实时操作                        | JWT                         |
+| 组件 | 定义位置 | 作用 |
+| --- | --- | --- |
+| `TenantMiddleware` | `agentloom-server/src/common/middleware/tenant.middleware.ts` | 解析租户上下文；`app.module.ts` 对公开路径（模板、市场浏览、生成应用公开页、分享短链、webhooks、agent-api）排除 |
+| `CustomThrottlerGuard` | `agentloom-server/src/common/guards/custom-throttler.guard.ts` | Redis 存储的限流，默认 100 次 / 60 秒；识别 `al_` 与 `alak_` 两种 Key |
+| `AuthGuard` | `agentloom-server/src/common/guards/auth.guard.ts` | 先验 `Authorization: Bearer` JWT，再验 `X-Api-Key` 平台 Token；`@Public()` 路由跳过 |
+| `TenantGuard`、`RolesGuard` | `agentloom-server/src/common/guards/` | 租户归属与角色校验 |
+| `TenantTransactionInterceptor` | `agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts` | 把处理器包进租户事务，使 RLS 生效；`request.user` 不存在时放行 |
+| `AuditLogInterceptor` | `agentloom-server/src/modules/evidence/audit-log.interceptor.ts` | 由 `EvidenceModule` 以 `APP_INTERCEPTOR` 注册，记录审计日志 |
+| `AllExceptionsFilter` | `agentloom-server/src/common/filters/all-exceptions.filter.ts` | 输出 RFC 9457 `application/problem+json` |
 
-> Socket.IO `/execution` 使用 typed `ExecutionEvent<T>` 信封，含单调递增 `eventId`，支持断线后按 `lastEventId` 增量回放。详见 [服务端 Socket.IO 协议](/dev/server/)。
+每一环的细节与 WebSocket 侧的鉴权见 [请求管线](/dev/server/request-pipeline)；错误格式对调用方的约定见 [API 与集成](/api/)。
 
-## 包结构
+`/api/v1/agent-api/**` 是例外：controller 标记 `@Public()`，由 `AgentApiKeyGuard` 校验 `Bearer alak_…`，不设置 `request.user`，所以不进全局租户事务，service 内自行开短事务。决策来由见 [ADR 0001](/dev/decisions/0001-agent-external-api)。
 
-```text
-agentloom/
-├── agentloom-server/          # 后端服务 (NestJS v11)
-├── agentloom-studio/          # 前端工作台 (React 19)
-├── agentloom-type-engine/     # 类型引擎 (Rust → WASM)
-├── agentloom-plugin-sdk/      # 插件 SDK (TypeScript)
-├── agentloom-plugin-cli/      # 插件 CLI 脚手架
-├── agentloom-plugin-template/ # 插件模板
-├── agentloom_mobile/          # 移动端 (Flutter)
-├── agentloom-deploy/          # 部署资产 (Docker / Helm)
-└── agentloom-docs/            # 文档站 (VitePress)
-```
-
-::: info 非标准 Monorepo
-AgentLoom 不使用 pnpm-workspace.yaml，各子包独立管理依赖和 lockfile。包间无直接的 workspace 依赖引用，而是通过 WASM 产物提交、REST API 契约等方式进行集成。
-:::
-
-## 技术选型
-
-### 服务端
-
-| 领域     | 技术                        | 选型理由                        |
-| -------- | --------------------------- | ------------------------------- |
-| 框架     | **NestJS v11 + Fastify v5** | 模块化架构 + 高性能 HTTP        |
-| ORM      | **Drizzle**                 | 类型安全 + 轻量级，schema-first |
-| 数据库   | **PostgreSQL** (Supabase)   | JSONB 支持 + RLS 行级安全       |
-| 队列     | **BullMQ + Redis**          | 可靠的异步任务处理              |
-| 向量检索 | **Qdrant**                  | 知识库 RAG 语义搜索             |
-| 对象存储 | **MinIO**                   | S3 兼容，自托管                 |
-| 校验     | **Zod**                     | 运行时 + 编译时双重类型安全     |
-| AI 集成  | **Vercel AI SDK**           | 统一多模型调用接口              |
-| 测试     | **Vitest**                  | 80% 覆盖率阈值                  |
-
-### 前端工作台
-
-| 领域    | 技术                          | 选型理由                         |
-| ------- | ----------------------------- | -------------------------------- |
-| 框架    | **React 19 + TypeScript 5.9** | 最新 Concurrent 特性             |
-| 构建    | **Vite 7**                    | 极速 HMR                         |
-| 样式    | **Tailwind CSS v4**           | 原子化 + CVA 变体                |
-| 路由    | **TanStack Router**           | 类型安全路由                     |
-| 请求    | **TanStack Query + ky**       | 缓存 + 自动 snake/camelCase 转换 |
-| 状态    | **Zustand**                   | 轻量级全局状态                   |
-| 画布    | **@xyflow/react v12**         | DAG 可视化编辑                   |
-| UI 组件 | **Radix Primitives + CVA**    | 无障碍 + 变体组合                |
-
-### 类型引擎
-
-| 领域        | 技术                 | 选型理由                 |
-| ----------- | -------------------- | ------------------------ |
-| 语言        | **Rust**             | 性能 + 安全              |
-| 编译目标    | **WASM (wasm-pack)** | 浏览器端运行，零网络延迟 |
-| Studio 集成 | **Web Worker**       | 不阻塞 UI 主线程         |
-
-### 插件生态
-
-| 领域 | 技术               | 选型理由                    |
-| ---- | ------------------ | --------------------------- |
-| SDK  | **Zod 3.x + tsup** | ESM/CJS 双输出 + 运行时校验 |
-| 签名 | **RSA-PSS**        | 插件包完整性验证            |
-| 沙箱 | **Extism (WASM)**  | 隔离执行，平台安全保障      |
-
-### 移动端
-
-| 领域 | 技术               | 选型理由            |
-| ---- | ------------------ | ------------------- |
-| 框架 | **Flutter 3.41.2** | 跨平台 + 高性能渲染 |
-| 状态 | **Riverpod**       | 编译时安全          |
-| 路由 | **GoRouter**       | 声明式 + 深层链接   |
-| 网络 | **Dio**            | 拦截器 + 灵活配置   |
-
-## 多租户架构
-
-AgentLoom 在服务端实现了完整的多租户隔离，通过一条全局中间件链保障每个请求都在正确的租户上下文中执行：
+## 一次工作流运行的路径
 
 ```mermaid
-flowchart LR
-    Req["HTTP 请求"] --> TM["TenantMiddleware<br/>解析租户上下文"]
-    TM --> TTI["TenantTransaction<br/>Interceptor<br/>注入租户事务"]
-    TTI --> AG["AuthGuard<br/>JWT / API Key<br/>双重认证"]
-    AG --> TG["TenantGuard<br/>租户归属校验"]
-    TG --> RG["RolesGuard<br/>RBAC 权限校验"]
-    RG --> Handler["业务处理器"]
+sequenceDiagram
+    participant C as Studio
+    participant H as HTTP 进程
+    participant Q as BullMQ
+    participant W as worker 进程
+    participant G as Socket.IO /execution
+
+    C->>H: POST /api/v1/workflow-definitions/:id/run
+    H->>Q: 入队 workflow-execution
+    Q->>W: ExecutionWorker
+    W->>W: NodeSchedulerService.startExecution<br/>DagResolverService 分层，调度第一层节点
+    W->>W: NodeDispatcherService 按节点类型分派执行器<br/>agent 节点经 WorkflowAgentAdapter 在本进程执行
+    W->>Q: 子 Agent 与干预恢复入队 agent-task
+    Q->>W: AgentTaskWorker 执行，完成后 onNodeCompleted
+    W->>W: 调度后继节点（条件分支、跳过级联）
+    W-->>G: EventBridgeService 发出广播意图
+    G-->>C: execution 事件（camelCase 信封，带 eventId）
 ```
 
-### 中间件职责
+- 调度入口是 `agentloom-server/src/modules/execution/node-scheduler.service.ts`：每个节点完成后从数据库重新读取步骤状态，决定后继节点调度、等待或跳过，并保存检查点。`agentloom-server/src/modules/execution/node-dispatcher.service.ts` 维护节点类型到执行器的映射，执行器位于 `agentloom-server/src/modules/execution/node-executors/`。
+- 队列名与 worker 类名见 [队列](/dev/server/queues)。
 
-| 组件                             | 职责                                                        |
-| -------------------------------- | ----------------------------------------------------------- |
-| **TenantMiddleware**             | 从请求中解析 `organizationId`，注入租户上下文               |
-| **TenantTransactionInterceptor** | 自动为每个请求创建租户隔离的数据库事务                      |
-| **AuthGuard**                    | JWT → API Key（`al_` 前缀 + SHA-256 hash）双重认证 fallback |
-| **TenantGuard**                  | 校验当前用户是否属于目标租户                                |
-| **RolesGuard**                   | 基于 RBAC 五级角色体系进行权限校验                          |
+## 实时事件如何到达客户端
 
-### 角色层级
+worker 不直接操作 Socket.IO。`agentloom-server/src/modules/execution/services/event-bridge.service.ts` 中的 `EventBridgeService` 把内部事件转换为 `ExecutionEvent` 信封，为每个执行维护单调递增的 `eventId`，保存最近 500 个事件用于回放，再通过 EventEmitter2 发出广播意图；网关用 `@OnEvent` 订阅后向房间推送。网关侧有背压队列：上限 500 条、每 100ms 排空一次（`execution.gateway.ts`、`agent-conversation.gateway.ts` 中的 `BACKPRESSURE_QUEUE_LIMIT`、`BACKPRESSURE_DRAIN_INTERVAL_MS`）。客户端断线重连时带上 `lastEventId`，网关从缓冲区增量回放。Socket.IO 使用 Redis adapter，所以事件可以从执行进程送达连接在另一个进程上的客户端。
 
-```text
-owner > admin > creator > operator > viewer
-```
+命名空间、事件名与方向见 [实时通信](/dev/server/realtime)。
 
-每个角色继承低级角色的所有权限，详细的权限矩阵请参阅 [服务端架构](/dev/server/)。
+## 类型如何在包之间流动
 
-## 安全架构
+两条独立的链路：
 
-### 端到端加密 (E2EE)
+1. **REST 契约**：server 的 Zod DTO（`createZodDto`）→ `pnpm openapi:export` 导出 `agentloom-server/sdk/openapi.json` → openapi-generator 生成 `agentloom-server/sdk/typescript-models` → 同步为 `agentloom-api-client/src/models.ts`。根命令 `pnpm contracts:regen` 串起全部步骤，生成产物禁止手改。
+2. **wire 契约**：Socket 事件、端口数据类型、Agent 运行配置等跨端格式直接定义在 `agentloom-contracts/src/`，server、Studio、mobile 共同依赖它；mobile 侧的 Dart 模型手写并以契约测试对齐。
 
-AgentLoom 使用 **RSA-4096 + AES-256-GCM** 混合加密方案保护敏感数据：
+细节见 [契约与再生成](/dev/contracts)。
 
-```mermaid
-flowchart LR
-    subgraph Studio["Studio 端"]
-        GenKey["生成 RSA-4096 密钥对"]
-        PubKey["公钥上传至服务端"]
-        PrivKey["私钥存入 IndexedDB<br/>(PKCS8 + non-extractable)"]
-    end
+**大小写边界**：Studio 的 ky 客户端（`agentloom-studio/src/shared/api/client.ts`）在 `afterResponse` 钩子里把 JSON 响应键统一转为 camelCase；请求体没有全局转换，由调用处按端点 DTO 决定是否用 `toSnakeBody` 转成 snake_case。例如 `agentloom-studio/src/features/workflow/api/workflowMutations.ts` 中 `PATCH workflow-definitions/:id` 直接发送 camelCase，因为该端点的 strict DTO 只接受 camelCase。Socket wire 一律 camelCase。
 
-    subgraph Server["服务端"]
-        Encrypt["AES-256-GCM 加密数据<br/>RSA-OAEP 加密 AES 密钥"]
-        Store["加密存储"]
-    end
+## Agent 的两种运行态
 
-    GenKey --> PubKey
-    GenKey --> PrivKey
-    PubKey --> Encrypt
-    Encrypt --> Store
-```
+Agent 定义上的运行态字段取值 `sandbox` 或 `no_sandbox`（`agentloom-server/src/database/schema/agent-definitions.schema.ts`）：
 
-- 租户公钥通过 `TenantKeyModule` 管理，使用 `organization_id + key_fingerprint` 唯一索引
-- `tenant_encryption_keys` 为 append-only 历史模型，支持密钥轮转
-- `AgentTaskWorker` 在执行完成路径加密 LLM 输出
-- `EvidenceService` 加密 `agent_decision` / `tool_output` 证据
+| 运行态 | 执行位置 | 入口 |
+| --- | --- | --- |
+| `no_sandbox` | server/worker 进程内运行 pi-agent-core | `agentloom-server/src/modules/agent/in-process-agent.adapter.ts` → `agentloom-server/src/modules/agent/pi-agent-core.adapter.ts` |
+| `sandbox` | Firecracker microVM 内运行 pi-coding-agent | `agentloom-server/src/modules/sandbox/sandbox.module.ts` 把 `SANDBOX_RUNTIME_DRIVER` 绑定到 `agentloom-server/src/modules/sandbox/firecracker-runtime.service.ts`，经 undici mTLS 调用各节点的 runtime manager |
 
-### API 认证
+server 与 worker 不持有 KVM、网络或 cgroup 特权；这些只在运行 `agentloom-firecracker-runtime` 的宿主机上需要。pi-mono 包是纯 ESM，CJS 的 Nest 代码必须经 `agentloom-server/src/modules/agent/pi-imports.ts` 惰性 `await import()`。工作流中的 `agent` 节点经 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts` 进入同一套 Agent 运行时。
 
-| 认证方式    | 格式                            | 适用场景            |
-| ----------- | ------------------------------- | ------------------- |
-| **JWT**     | `Authorization: Bearer <token>` | Web / 移动端用户    |
-| **API Key** | `X-Api-Key: al_<key>`           | Open API / 外部集成 |
+沙箱节点登记、容量择优与 handle 路由见 [Agent 运行态](/dev/server/agent-runtime)；manager 的 HTTP API 见 [Firecracker 运行时](/dev/firecracker-runtime)。
 
-API Key 使用 `al_` 前缀 + SHA-256 哈希存储，通过 `PlatformApiTokenModule` 管理生命周期。`CustomThrottlerGuard` 对 JWT 与 API Key 请求统一限流（默认 100 req/min）。
+## 关键文件
 
-## 下一步
-
-- [核心概念](/dev/concepts) — 理解工作流、节点、端口等核心抽象
-- [服务端架构](/dev/server/) — 30 个 NestJS 模块的详细设计
-- [工作室前端](/dev/studio/) — 画布引擎与 Feature-Slice 架构
-- [类型引擎](/dev/type-engine/) — Rust WASM 类型兼容性引擎
+| 文件 | 内容 |
+| --- | --- |
+| `agentloom-server/src/main.ts` | HTTP 启动：Fastify 适配器、multipart 上限、Redis Socket.IO adapter、`api/v1` 前缀、全局过滤器与管道、CORS、Swagger |
+| `agentloom-server/src/app.module.ts` | 根模块：导入全部域模块、限流与 BullMQ 的 Redis 连接、全局守卫与拦截器、`TenantMiddleware` 排除路径 |
+| `agentloom-server/src/acp-stdio.ts` | ACP JSON-RPC stdio 独立进程入口 |
+| `agentloom-server/src/config/env.schema.ts` | server 环境变量的 Zod 定义（清单见 [配置参考](/deploy/configuration)） |
+| `agentloom-server/drizzle.config.ts` | Drizzle 配置：schema 入口 `agentloom-server/src/database/schema/index.ts`，迁移目录 `agentloom-server/src/database/migrations` |
+| `agentloom-studio/src/app/providers.tsx` | Studio 全局 Provider |
+| `agentloom-studio/src/app/router.tsx` | TanStack Router 路由树 |
+| `agentloom-studio/src/app/routes/__root.tsx` | 根路由与登录守卫 |
+| `agentloom-studio/vite.config.ts` | Vite 与 Vitest 共用配置，含 dev 代理 |
+| `agentloom-studio/src/shared/api/client.ts` | ky 客户端：注入 Bearer token、401 时刷新会话后重试一次、响应转 camelCase |
+| `agentloom-contracts/src/index.ts` | 契约包公共出口 |
+| `agentloom-firecracker-runtime/cmd/runtime-manager/main.go` | Go runtime manager 入口 |
+| `agentloom_mobile/lib/main.dart` | Flutter 入口 |
+| `agentloom_mobile/lib/routes/app_router.dart` | Flutter 路由 |
+| `pnpm-workspace.yaml` | workspace 成员、依赖版本 catalog、overrides |
+| `agentloom-server/.env.example` | server 环境变量样例 |
+| `agentloom-studio/.env.example` | Studio 环境变量样例 |
+| `agentloom-deploy/.env.template` | 部署环境变量模板 |

@@ -1,381 +1,95 @@
+---
+docType: explanation
+---
+
 # 核心概念
 
-本页介绍 AgentLoom 的核心领域模型和关键抽象。理解这些概念将帮助你更高效地使用平台和阅读后续文档。
+AgentLoom 里的工作流、Agent、节点、端口、运行态各指什么，它们在运行时怎样衔接？本页按设计时到运行时的顺序解释这些对象，清单与取值见各节链接的参考页。
 
 ## 工作流：定义与执行
 
-AgentLoom 将工作流分为两个阶段性实体：**工作流定义**（Workflow Definition）和**工作流执行**（Workflow Execution）。
+工作流分两个实体：**工作流定义**（设计时）与**工作流执行**（运行时）。
 
-```mermaid
-flowchart LR
-    subgraph Definition["工作流定义 (设计时)"]
-        D1["节点配置"]
-        D2["连线拓扑"]
-        D3["输入参数 Schema"]
-        D4["版本管理"]
-    end
-
-    subgraph Execution["工作流执行 (运行时)"]
-        E1["执行实例"]
-        E2["步骤记录"]
-        E3["检查点数据"]
-        E4["状态机"]
-    end
-
-    Definition -->|"Run 触发"| Execution
-    E2 -->|"回溯"| Definition
-```
-
-### 工作流定义
-
-工作流定义是设计时的静态产物，描述了一个 DAG 工作流的完整结构：
-
-- **节点**（Nodes）— 工作流中的处理单元，每个节点有类型、配置和输入/输出端口
-- **边**（Edges）— 节点间的连线，定义数据流向
-- **输入参数 Schema** — 支持 `form`（表单）、`conversation`（对话）、`hybrid`（混合）三种参数收集模式
-- **版本控制** — 每次保存递增 `version` 字段，使用 OCC（乐观并发控制）防止冲突
-
-### 工作流执行
-
-执行是定义的运行时实例，记录整个工作流的执行过程：
+- 工作流定义保存画布上的节点与边，以及输入参数的收集方式（`collectionMode` 取 `form`、`conversation`、`hybrid`）。表 `workflow_definitions` 的 `version` 列做乐观并发控制：Studio 自动保存时带上版本号，版本落后的写入被拒绝。发布后 `published_version_id` 指向一份不可变的版本快照。
+- 工作流执行是一次运行的记录，包含若干**执行步骤**（每个节点一条）。执行状态取值 `pending`、`running`、`paused`、`completed`、`failed`、`cancelled`（`agentloom-server/src/database/schema/workflow-executions.schema.ts`）；步骤状态另有 `queued`、`waiting_intervention`、`skipped` 等（`agentloom-server/src/database/schema/execution-steps.schema.ts`）。
+- 执行的触发来源记录在 `trigger_type`：`manual`、`api`、`webhook`、`system`。
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending: 创建执行实例
-    pending --> running: 调度启动
-    running --> completed: 全部节点完成
-    running --> failed: 节点执行失败
-    running --> cancelled: 用户取消
-    running --> running: 节点逐步推进
+    [*] --> pending
+    pending --> running
+    running --> paused: 等待人工介入
+    paused --> running: 介入处理完成
+    running --> completed
+    running --> failed
+    running --> cancelled
     completed --> [*]
     failed --> [*]
     cancelled --> [*]
 ```
 
-每个执行实例包含多个**执行步骤**（Execution Steps），对应各节点的运行记录。步骤内的 `checkpointData` 保存了会话上下文，支持断点续传。
+## Agent：与工作流并列的顶层对象
 
-## Agent：独立顶层概念
+Agent 有自己的定义、版本、对话与执行体系，不依赖工作流即可运行。用户在 Studio 里与 Agent 多轮对话，回合由 BullMQ 队列异步执行，事件经 `/agent-conversation` 命名空间推送。工作流里的 `agent` 节点引用一个 Agent 定义，经 `WorkflowAgentAdapter` 进入同一套运行时，所以 Agent 的能力在两条路径上一致。
 
-Agent 与 Workflow 是 AgentLoom 中两个**并行的顶层概念**。Agent 拥有独立的定义、版本、对话、执行体系，不依赖工作流即可独立运行。
+第三方系统可以用 Agent 专用 Key 直接调用某个 Agent，见 [Agent 对外 API](/api/agent-api) 与 [ADR 0001](/dev/decisions/0001-agent-external-api)。
 
-```mermaid
-flowchart LR
-    subgraph AgentSystem["Agent 体系"]
-        AD["Agent 定义<br/>+ 版本管理"]
-        AC["Agent 对话<br/>(独立会话)"]
-        AE["Agent 执行<br/>(实时推送)"]
-    end
+## 运行态：进程内或 microVM
 
-    subgraph WorkflowSystem["Workflow 体系"]
-        WD["工作流定义"]
-        WE["工作流执行"]
-    end
+Agent 定义的 `runtime_mode` 列决定一个 Agent 在哪里运行（`agentloom-server/src/database/schema/agent-definitions.schema.ts`）：
 
-    AD --> AC --> AE
-    WD --> WE
+- `no_sandbox`：在 server/worker 进程内运行 pi-agent-core，没有文件系统与终端隔离，适合只调用模型与平台工具的 Agent。
+- `sandbox`：在 Firecracker microVM 内运行 pi-coding-agent，Agent 可以读写文件、执行命令。microVM 由部署在 KVM 宿主机上的 `agentloom-firecracker-runtime` 管理，server 经 mTLS 调用它。
 
-    AD -->|"WorkflowAgentAdapter"| WE
-```
+两者的边界由数据访问而不是性能决定：需要执行任意代码或保留工作目录的 Agent 必须进 microVM，因为 server 进程不应把宿主机能力交给模型。`no_sandbox` 的 Agent 不能调用 `sandbox` 子 Agent。实现细节见 [Agent 运行态](/dev/server/agent-runtime) 与 [Firecracker 运行时](/dev/firecracker-runtime)。
 
-- **独立对话** — Agent 可直接与用户进行多轮对话，通过 `/agent-conversation` Socket.IO namespace 实时推送
-- **工作流桥接** — 通过 `WorkflowAgentAdapter`，Agent 可作为工作流中的 `agent` 节点执行
-- **沙箱共享** — `sandbox_sessions` 表使用双 FK（`execution_id` OR `agent_conversation_id`），在工作流与 Agent 对话间复用沙箱会话
-- **记忆系统** — Agent Memory 提供图拓扑记忆存储与检索，通过 `/memory` Socket.IO namespace 实时操作
+工作流的 `sandbox` 节点与 Agent 对话共用沙箱会话表 `sandbox_sessions`：一条会话关联一个工作流执行或一个 Agent 对话，或者是持久会话（`lifecycleMode` 为 `persistent`）。
 
-## 节点类型
+## 节点
 
-AgentLoom 提供 **22 种节点类型**，按功能归为 **8 大类别**：
+节点是工作流的处理单元，每个节点有类型、配置和输入/输出端口。节点类型、所属分类、端口与配置项由 Studio 的 `agentloom-studio/src/features/canvas/types/nodeTypeRegistry.ts` 定义，server 端由 `agentloom-server/src/modules/execution/node-dispatcher.service.ts` 把类型映射到执行器。逐个节点的说明见 [节点参考](/guide/nodes/)。
 
-```mermaid
-flowchart TB
-    subgraph AgentCat["Agent"]
-        LLMModel["llm-model<br/>模型配置"]
-        SmartRouting2["smart-routing<br/>智能路由"]
-        AgentNode["agent<br/>独立 Agent 节点"]
-        SkillNode["skill<br/>Skill 注入"]
-    end
+节点分三种执行方式：
 
-    subgraph ToolCat["Tool"]
-        HTTPTool["http-tool<br/>HTTP 请求"]
-        CodeTool["code-tool<br/>代码执行"]
-        MCPTool["mcp-tool<br/>MCP 工具调用"]
-        SandboxNode["sandbox<br/>沙箱执行"]
-        InputPreprocessor["input-preprocessor<br/>输入预处理"]
-        WorkspaceNode["workspace<br/>工作区存储卷"]
-    end
-
-    subgraph TriggerCat["Trigger"]
-        ManualTrigger["manual-trigger<br/>手动触发"]
-        ScheduleTrigger["schedule-trigger<br/>定时触发"]
-        WebhookTrigger["webhook-trigger<br/>Webhook 触发"]
-        ApiEventTrigger["api-event-trigger<br/>API 事件触发"]
-    end
-
-    subgraph KnowledgeCat["Knowledge"]
-        KnowledgeBase["knowledge-base<br/>知识库检索"]
-    end
-
-    subgraph OutputCat["Output"]
-        TextOutput["text-output<br/>文本输出"]
-        JsonOutput["json-output<br/>JSON 输出"]
-    end
-
-    subgraph ControlCat["Control"]
-        Condition["condition<br/>条件分支"]
-        Loop["loop<br/>循环"]
-        ReusableBlock["reusable-block<br/>可复用模块"]
-    end
-
-    subgraph PluginCat["Plugin"]
-        Plugin["plugin<br/>WASM 插件"]
-    end
-
-    subgraph MemoryCat["Memory"]
-        Memory["memory<br/>Agent 记忆"]
-    end
-```
-
-### 关键节点说明
-
-| 节点                   | 说明                                                                      |
-| ---------------------- | ------------------------------------------------------------------------- |
-| **smart-routing**      | 根据 6 种策略智能选择最优模型（成本 / 质量 / 延迟 / 历史最优 / Fallback） |
-| **agent**              | 工作流中的 AI 推理节点，引用一个已发布的 Agent Definition，通过 `WorkflowAgentAdapter` 桥接 Agent 体系 |
-| **mcp-tool**           | 调用 MCP（Model Context Protocol）兼容的外部工具                          |
-| **workspace**          | 工作区存储卷，提供 `volume` 端口输出供沙箱和 Agent 挂载                   |
-| **webhook-trigger**    | 外部系统通过 HTTP 回调触发工作流，含签名验证                              |
-| **api-event-trigger**  | 通过 Open API 接收外部事件触发工作流                                      |
-| **condition**          | 基于条件表达式分支，支持多条件分支                                        |
-| **plugin**             | 在 WASM 沙箱中执行第三方插件                                              |
-| **sandbox**            | ACP 沙箱环境，提供文件读写和终端操作能力                                  |
-| **memory**             | Agent 记忆节点，接入图拓扑记忆存储与检索                                  |
+- **资源节点**（如模型、知识库、记忆、工作区、沙箱）在调度时直接产出一个引用，供下游节点消费。
+- **计算节点**（如 HTTP 请求、代码、条件、循环）在 worker 进程内同步执行。
+- **Agent 节点**运行一个 Agent 回合；子 Agent 调用经 `agent-task` 队列执行。
 
 ## 端口与数据类型
 
-每个节点通过**端口**（Port）与其他节点交换数据。端口分为输入端口和输出端口，每个端口携带一个**数据类型**标签。
+节点之间通过端口传值。每个端口带一个数据类型，取值全集定义在 `agentloom-contracts/src/port-data-type.ts`，Rust 类型引擎、插件 SDK、Studio、server 四处的镜像由契约测试机械比对。其中 `exec` 与 `volume` 用于画布上的控制流与工作区挂载连线。取值与兼容矩阵见 [类型引擎](/dev/type-engine)。
 
-### 十种规范数据类型
-
-AgentLoom 定义了 **10 种规范端口数据类型**，在 Type Engine（Rust）、Server（NestJS）和 Plugin SDK 三端统一使用：
-
-```mermaid
-flowchart LR
-    subgraph Types["规范端口数据类型"]
-        model["model<br/>模型配置"]
-        text["text<br/>文本内容"]
-        json["json<br/>结构化数据"]
-        image["image<br/>图像数据"]
-        audio["audio<br/>音频数据"]
-        tool["tool<br/>工具定义"]
-        sandbox["sandbox<br/>沙箱会话"]
-        knowledge["knowledge<br/>知识库引用"]
-        skill["skill<br/>Skill 注入"]
-        agent["agent<br/>Agent 引用"]
-    end
-```
-
-| 类型        | 描述                                  | 典型场景                        |
-| ----------- | ------------------------------------- | ------------------------------- |
-| `model`     | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → agent           |
-| `text`      | 纯文本内容                            | input → agent → output          |
-| `json`      | 结构化 JSON 数据                      | code-tool → http-tool           |
-| `image`     | 图像数据（URL 或 Base64）             | 多模态 Agent 输入               |
-| `audio`     | 音频数据                              | 语音场景                        |
-| `tool`      | MCP 工具定义                          | mcp-tool → agent                |
-| `sandbox`   | 沙箱会话引用                          | sandbox → agent                 |
-| `knowledge` | 知识库引用或检索结果                  | knowledge-base → agent          |
-| `skill`     | Skill 行为指导注入                    | skill → agent                   |
-| `agent`     | Agent 定义引用                        | agent → 工作流节点（子代理桥接）|
-
-::: info Studio 扩展类型
-Studio 前端额外扩展了 `exec`（执行控制流）和 `volume`（工作区存储卷）两种 UI-only 类型，用于画布内的视觉连线，不参与 Type Engine 的兼容性检查。
-:::
-
-### 类型兼容性
-
-连线时，Type Engine 会检查源端口与目标端口的数据类型兼容性。兼容性分为 **4 个等级**：
-
-```mermaid
-flowchart TB
-    EXACT["EXACT (精确匹配)<br/>✅ 类型完全相同"]
-    TRANSFORM["TRANSFORM (可转换)<br/>⚠️ 需要自动类型转换"]
-    PARTIAL["PARTIAL (部分兼容)<br/>⚠️ 可能丢失信息"]
-    INCOMPATIBLE["INCOMPATIBLE (不兼容)<br/>❌ 禁止连接"]
-
-    EXACT --> TRANSFORM --> PARTIAL --> INCOMPATIBLE
-
-    style EXACT fill:#22c55e,color:#fff
-    style TRANSFORM fill:#eab308,color:#fff
-    style PARTIAL fill:#f97316,color:#fff
-    style INCOMPATIBLE fill:#ef4444,color:#fff
-```
-
-- **EXACT** — 类型完全相同，直接传递
-- **TRANSFORM** — 类型不同但可自动转换（如 `text` → `json` 经解析）
-- **PARTIAL** — 可以连接但可能丢失部分信息
-- **INCOMPATIBLE** — 不允许连接，Studio 画布会阻止拖线
-
-::: tip Legacy 兼容
-Studio 的 `mcpToolMapping` 兼容 legacy `number` / `boolean` 类型，自动回退映射为 `json`。
-:::
-
-> 类型引擎的详细规则请参阅 [类型引擎文档](/dev/type-engine/)。
-
-## Agent 运行时
-
-AgentLoom 中的 `agent` 节点采用**六角架构**（Hexagonal Architecture / Ports & Adapters）设计，将核心决策循环与外部依赖解耦：
-
-```mermaid
-flowchart TB
-    subgraph Core["Agent 核心 (领域层)"]
-        Decision["决策循环<br/>Reasoning Loop"]
-        Memory["对话记忆<br/>Session Context"]
-    end
-
-    subgraph InputPorts["输入端口 (Driving)"]
-        Prompt["用户 Prompt"]
-        Context["上下文注入"]
-    end
-
-    subgraph OutputPorts["输出端口 (Driven)"]
-        LLMAdapter["LLM 适配器<br/>(Vercel AI SDK)"]
-        ToolAdapter["工具适配器<br/>(MCP Protocol)"]
-        KBAdapter["知识库适配器<br/>(Qdrant RAG)"]
-        SandboxAdapter["沙箱适配器<br/>(ACP Gateway)"]
-    end
-
-    InputPorts --> Core
-    Core --> OutputPorts
-
-    LLMAdapter --> LLM["LLM 提供商"]
-    ToolAdapter --> MCP["MCP 服务器"]
-    KBAdapter --> Qdrant["Qdrant"]
-    SandboxAdapter --> Sandbox["沙箱进程"]
-```
-
-### 决策循环
-
-Agent 的核心是一个 **Reasoning-Action 循环**：
-
-1. **接收输入** — 接收 Prompt 和上下文数据
-2. **推理** — 调用 LLM 进行推理，决定下一步动作
-3. **工具调用** — 如需使用工具，通过适配器调用并获取结果
-4. **权限检查** — 敏感操作（如文件写入）触发 `session/request_permission` 流程
-5. **循环** — 将工具结果反馈给 LLM，继续推理直到产出最终回复
-6. **输出** — 将结果通过输出端口传递给下游节点
-
-::: info 自主性模式
-`agent` 节点上的 `autonomyMode` 同时参与发布期治理与运行期控制。运行时会按节点配置解析模式并受组织自治上限约束；当有效模式为 `MANUAL_CONFIRM` 时，Agent 先产出建议，再把步骤暂停为 `waiting_intervention`，由现有干预接口批准、修改或拒绝后恢复执行。该字段仍不直接传入 `WorkflowAgentAdapter.createSession()`，而是在 executor 边界决定是否暂停。
-:::
+连线时，类型引擎给出四级兼容结果（`agentloom-type-engine/src/checker/compatibility.rs` 中的 `CompatibilityLevel`）：`Exact`（类型相同）、`Transform`（按转换规则自动转换）、`Partial`（可连接但可能丢信息）、`Incompatible`（画布拒绝连线）。类型引擎编译为 WASM，在 Studio 的 Web Worker 中运行，所以连线校验不需要请求 server。
 
 ## DAG 调度
 
-工作流以有向无环图（DAG）的拓扑结构执行。调度器负责解析节点依赖并按正确顺序推进执行：
+工作流是有向无环图。一次运行的调度过程：
 
-```mermaid
-sequenceDiagram
-    participant User as 用户
-    participant API as Server API
-    participant Scheduler as DAG 调度器
-    participant Queue as BullMQ 队列
-    participant Worker as 任务 Worker
+1. `POST /api/v1/workflow-definitions/:workflowId/run` 创建执行并入队 `workflow-execution`。
+2. `ExecutionWorker` 调用 `NodeSchedulerService.startExecution`，`DagResolverService` 把图分层，第一层节点并行调度。
+3. 每个节点完成后调用 `onNodeCompleted`：从数据库重读步骤状态，逐个判断后继节点是调度、等待还是跳过；条件节点只放行命中的分支，未命中分支级联跳过；随后保存检查点。
+4. 所有步骤进入终态后，执行状态随之更新。
 
-    User->>API: POST /workflow-definitions/:id/run
-    API->>API: 资源治理准入检查
-    API->>Scheduler: 创建执行实例
-    Scheduler->>Scheduler: 拓扑排序，找到入度为 0 的节点
-    Scheduler->>Queue: 入队就绪节点
-    Queue->>Worker: 消费执行任务
-    Worker->>Worker: 执行节点逻辑
-    Worker-->>Scheduler: 节点完成回调
-    Scheduler->>Scheduler: 更新依赖状态，发现新的就绪节点
-    Scheduler->>Queue: 入队下一批节点
-    Note over Scheduler,Worker: 循环直到所有节点完成或出现失败
-    Worker-->>API: 通过 Socket.IO 推送执行事件
-    API-->>User: 实时接收状态更新
-```
+调度状态每次都从数据库读取，因此调度可以在任意 worker 进程上继续，进程重启后也能从检查点恢复。事件如何推到客户端见 [系统架构](/dev/architecture#实时事件如何到达客户端)。
 
-### 调度特性
+## 人工介入
 
-- **拓扑排序** — 根据边的依赖关系确定执行顺序
-- **并行执行** — 无依赖关系的节点可以并行调度
-- **背压控制** — Socket.IO Gateway 含 500 容量的背压队列（100ms 排空周期）
-- **断线续传** — 客户端可通过 `lastEventId` 从断点恢复事件流
-- **检查点** — 每个步骤的 `checkpointData` 支持执行恢复
+Agent 节点的 `autonomyMode` 决定是否需要人工确认，运行时取节点配置与组织自治上限中更严格的一方（组织上限见 [自治策略](/guide/collaboration/autonomy-policy)）。有效模式为 `MANUAL_CONFIRM` 时，Agent 先产出建议，步骤进入 `waiting_intervention`，执行进入 `paused`；用户批准、修改或拒绝后恢复。
 
-## 触发方式
+介入策略规定超时动作：`approve`、`reject`、`escalate`，默认 `reject`；升级次数上限由 `agentloom-server/src/modules/execution/execution.constants.ts` 的 `MAX_ESCALATION_ATTEMPTS` 定义。
 
-工作流执行可以通过多种方式触发：
+## 子 Agent
 
-| 触发方式      | 说明                                   | 状态         |
-| ------------- | -------------------------------------- | ------------ |
-| **手动执行**  | Studio 画布中点击 Run 按钮             | 完整支持     |
-| **Cron 定时** | 基于 Cron 表达式的周期触发             | 完整支持     |
-| **Webhook**   | 外部系统通过 HTTP 回调触发，含签名验证 | 完整支持     |
-| **API 事件**  | 通过 Open API 编程触发                 | 完整支持     |
+Agent 可以调用子 Agent，工具名为 `call_subagent`（同步等待结果）与 `spawn_subagent`（立即返回，子 Agent 在后台运行）。嵌套深度上限由 `agentloom-server/src/modules/execution/node-handlers/sub-agent.handler.ts` 的 `MAX_SUB_AGENT_DEPTH` 定义，防止递归调用无限展开。
 
-::: tip 事件适配器
-`api_event` 触发器通过 `EventSourceAdapterRegistry` 分发外部事件，内置 `GithubWebhookAdapter`（HMAC-SHA256 验签）和 `GenericEventAdapter`（通用透传）。
-:::
+## Skill
+
+Skill 是 Agent 的行为指导文件，格式为 SKILL.md（YAML frontmatter + Markdown 正文）。`agentloom-server/src/modules/skill/skill-resolver.service.ts` 按租户查询已启用的 Skill，生成 `<available_skills>` 片段注入 Agent 的系统提示。平台内置 Skill 由 `pnpm db:seed` 写入，清单见 [内置技能](/guide/skills/built-in)。
+
+## 触发器
+
+除手动运行外，工作流可以由定时表达式、入站 Webhook 与 API 事件触发。API 事件经 `agentloom-server/src/modules/trigger/adapters/event-source-adapter.registry.ts` 选择适配器：`GithubWebhookAdapter` 校验 GitHub 签名，`GenericEventAdapter` 透传通用事件。签名与接入方式见 [Webhook 与 API 事件](/api/webhooks)。
 
 ## 智能路由
 
-Smart Routing 节点提供 **6 种模型选择策略**，根据不同维度动态选择最优模型：
-
-| 策略              | 优化目标          | 适用场景     |
-| ----------------- | ----------------- | ------------ |
-| `TOKEN_OPTIMIZED` | 最小化 Token 消耗 | 长文本处理   |
-| `COST_OPTIMIZED`  | 最低执行成本      | 预算敏感场景 |
-| `QUALITY_FIRST`   | 最高输出质量      | 关键决策任务 |
-| `LATENCY_FIRST`   | 最低响应延迟      | 实时交互     |
-| `HISTORICAL_BEST` | 基于历史表现      | 稳定性优先   |
-| `FALLBACK_CHAIN`  | 故障自动降级      | 高可用场景   |
-
-`FALLBACK_CHAIN` 策略会在非认证失败的情况下自动切换到备选模型重试，是系统默认的路由策略。
-
-## 介入策略
-
-对于需要人工参与的场景，AgentLoom 提供了**介入策略**（Intervention Policy）机制：
-
-- 工具调用时的**权限审批** — 敏感操作需要人工确认
-- 超时处理 — 支持 `approve` / `reject` / `escalate` 三种超时动作
-- 逐级升级 — 最大升级次数为 3 次（`MAX_ESCALATION_ATTEMPTS = 3`）
-- 执行步骤在等待权限时保持 `running` 状态，工具调用处于 `awaiting_permission` 状态
-
-## Skill 系统
-
-Skill 是 Agent 的行为指导文件，采用 **SKILL.md** 格式（YAML frontmatter + Markdown 正文）。`SkillResolverService` 按租户查询已启用的 Skill，生成 `<available_skills>` XML 片段，注入到 Agent 对话和工作流执行的系统提示中。
-
-- 平台内置 **5 个 Skill**（code-review / documentation / test-generation / refactoring / debugging），通过 `pnpm db:seed` 幂等 upsert
-- 画布中的 `skill` 节点在调度器中有独立分支，执行前将上游 Skill 内容注入 Agent 上下文
-- Studio 提供 `/settings/skills` 管理页（分类 Tabs + 搜索 + 启停 + Monaco 编辑器）
-
-## Sub-agent 双模式
-
-Agent 节点内部支持两种子代理调用模式：
-
-| 模式 | 行为 | 适用场景 |
-| --- | --- | --- |
-| `call_subagent` | 同步阻塞，等待子代理返回结果 | 需要子代理结果才能继续推理 |
-| `spawn_subagent` | 异步 fire-and-return，立即返回 | 后台任务、不阻塞主流程 |
-
-最大嵌套深度为 **5 层**，防止无限递归。
-
-## 企业级能力
-
-AgentLoom 内置多项企业级运维和治理能力：
-
-| 能力 | 说明 |
-| --- | --- |
-| **资源治理** | 7 个配额字段（并发/日执行量/API 限流/存储/沙箱 CPU 与内存等），超限返回 429（限流）或 409（治理阻断） |
-| **审计日志** | hot/archive 双表架构，append-only 写入，支持保留归档与资源级事件序列回放 |
-| **监控仪表板** | 15m / 1h / 24h 时间窗口，执行趋势、队列快照、告警热点 |
-| **优化建议** | 4 类建议（模型降级 / 超时调整 / 工具精简 / 自主性升级），周期分析执行记录后生成；当前四类均不可采纳，仅可查看与忽略 |
-| **Agent Memory** | 图拓扑记忆系统，d3-force + dagre 可视化，`/memory` namespace 实时操作 |
-
-## 下一步
-
-- [服务端架构](/dev/server/) — 了解 30 个 NestJS 模块的详细职责
-- [工作室前端](/dev/studio/) — 探索画布编辑器与 Feature-Slice 架构
-- [类型引擎](/dev/type-engine/) — 深入了解 Rust WASM 类型兼容性规则
-- [插件开发](/api/plugins/) — 使用 SDK 开发自定义插件
+`smart-routing` 节点按策略为下游 Agent 选择模型。策略取值定义在 `agentloom-server/src/modules/smart-routing/dto/routing-context.dto.ts` 的 `ROUTING_STRATEGIES`：`TOKEN_OPTIMIZED`、`COST_OPTIMIZED`、`QUALITY_FIRST`、`LATENCY_FIRST`、`HISTORICAL_BEST`、`FALLBACK_CHAIN`。

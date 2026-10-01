@@ -1,86 +1,50 @@
-# 什么是 AgentLoom？
+---
+docType: index
+---
 
-AgentLoom 是一个**多智能体工作流编排平台**。它让你能够通过可视化画布将多个 AI Agent 组合为 DAG（有向无环图）工作流，并对其进行调试、执行和监控。
+# 贡献者文档
 
-无论你是想构建一个简单的文本处理流水线，还是涉及多模型协作、工具调用、知识检索的复杂智能体系统，AgentLoom 都提供了从定义到运行的完整闭环。
+本分区写给要修改 AgentLoom 代码的人：怎样在本机跑起来、系统各部分如何衔接、改某一类东西时要动哪些文件。产品操作见 [用户指南](/guide/)，对外接口见 [API 与集成](/api/)，部署见 [部署运维](/deploy/)。
 
-## 核心能力
+## 按任务选择入口
 
-| 能力            | 说明                                                  |
-| --------------- | ----------------------------------------------------- |
-| 🎨 可视化编排   | 拖拽式画布构建 DAG 工作流，23 种节点类型覆盖 8 大类别 |
-| 🤖 多智能体协作 | 支持 Agent 间通过类型化端口传递数据，自动 DAG 调度    |
-| 🔌 插件生态     | SDK + CLI + WASM 沙箱，完整的插件开发与分发链路       |
-| 🧠 智能路由     | 6 种路由策略，根据成本 / 质量 / 延迟智能选择模型      |
-| 🔐 企业级安全   | 端到端加密（E2EE）、多租户隔离、RBAC 权限体系         |
-| 📊 运维监控     | 执行追踪、资源治理、审计日志、优化建议                |
-| 📱 多端支持     | Web Studio + Flutter 移动端 + Open API                |
+| 你要做的事 | 先读 | 再读 |
+| --- | --- | --- |
+| 第一次在本机跑起 server 与 Studio | [搭建本地开发环境](/dev/setup) | [系统架构](/dev/architecture) |
+| 理解工作流、Agent、节点、端口这些对象的关系 | [核心概念](/dev/concepts) | [类型引擎](/dev/type-engine) |
+| 改 server 的某个域模块 | [模块与分域](/dev/server/) | [请求管线](/dev/server/request-pipeline)、[数据库](/dev/server/database)、[队列](/dev/server/queues) |
+| 改 Agent 执行、沙箱、ACP | [Agent 运行态](/dev/server/agent-runtime) | [Firecracker 运行时](/dev/firecracker-runtime)、[ACP](/dev/server/acp) |
+| 改 Studio 页面或画布 | [Studio 结构](/dev/studio/) | [画布](/dev/studio/canvas)、[状态管理](/dev/studio/state) |
+| 改跨端 wire 格式或 REST 契约 | [契约与再生成](/dev/contracts) | [实时通信](/dev/server/realtime) |
+| 改移动端 | [Flutter 应用](/dev/mobile) | [契约与再生成](/dev/contracts) |
+| 新增模块、节点类型、环境变量或 Socket 事件 | [新增服务端模块](/dev/howto/add-server-module)、[新增节点类型](/dev/howto/add-node-type)、[新增环境变量](/dev/howto/add-env-var)、[新增 Socket 事件](/dev/howto/add-socket-event) | [文档维护指南](/dev/docs-maintenance) |
+| 提交前跑测试 | [运行与编写测试](/dev/testing) | — |
+| 了解某个架构决策的来由 | [决策记录](/dev/decisions/) | — |
 
-## 平台组成
+## 仓库地图
 
-AgentLoom 由以下子系统协作构成：
+仓库根是一个 pnpm monorepo。JS/TS 包是 `pnpm-workspace.yaml` 中列出的 workspace 成员，共用根 `pnpm install`；Rust、Go、Flutter 包与文档站各自独立构建。
 
-```text
-┌─────────────────────────────────────────────────┐
-│                   客户端层                        │
-│  ┌──────────────┐  ┌──────────────┐             │
-│  │ AgentLoom    │  │ AgentLoom    │             │
-│  │ Studio (Web) │  │ Mobile (App) │             │
-│  └──────┬───────┘  └──────┬───────┘             │
-│         │ REST / Socket.IO │                     │
-├─────────┼──────────────────┼─────────────────────┤
-│         ▼                  ▼       服务端层       │
-│  ┌─────────────────────────────────┐             │
-│  │      AgentLoom Server           │             │
-│  │  (NestJS v11 + Fastify v5)     │             │
-│  └──────────┬──────────────────────┘             │
-│             │                                     │
-├─────────────┼─────────────────────────────────────┤
-│             ▼           基础设施层                 │
-│  PostgreSQL  Redis  Qdrant  MinIO                │
-└──────────────────────────────────��──────────────┘
-```
+| 目录 | 作用 | 技术栈 | 文档页 |
+| --- | --- | --- | --- |
+| `agentloom-server/` | 后端服务：REST `/api/v1`、Socket.IO 网关、BullMQ worker、ACP stdio 入口 | NestJS 11 + Fastify 5、Drizzle ORM、BullMQ、Zod 4 | [模块与分域](/dev/server/) |
+| `agentloom-studio/` | Web 工作台：画布编辑器、Agent、知识库、设置等全部页面 | React 19、Vite 8、TanStack Router/Query、Zustand、@xyflow/react | [Studio 结构](/dev/studio/) |
+| `agentloom_mobile/` | 移动端应用 | Flutter（FVM 固定版本）、Riverpod 3、freezed | [Flutter 应用](/dev/mobile) |
+| `agentloom-contracts/` | server、Studio、mobile 共享的 wire 格式唯一来源 | TypeScript + Zod 4 | [契约与再生成](/dev/contracts) |
+| `agentloom-api-client/` | 由 server OpenAPI 生成的 REST 类型定义，禁止手改 | TypeScript（生成产物） | [契约与再生成](/dev/contracts) |
+| `agentloom-type-engine/` | 端口数据类型兼容性检查，编译为 WASM 供 Studio 调用；`pkg/` 为已提交的构建产物 | Rust（edition 2024）+ wasm-pack | [类型引擎](/dev/type-engine) |
+| `agentloom-plugin-sdk/` | 插件开发 SDK：manifest 校验、辅助函数、RSA-PSS 签名 | TypeScript + Zod 3 | [插件 SDK](/api/plugins/sdk) |
+| `agentloom-plugin-cli/` | 插件脚手架与打包、签名、发布命令行 | TypeScript | [插件 CLI](/api/plugins/cli) |
+| `agentloom-plugin-template/` | 基于 SDK 的示例插件 | TypeScript + Vitest | [插件开发教程](/api/plugins/tutorial) |
+| `agentloom-firecracker-runtime/` | 沙箱运行时管理器：在宿主机上创建与管理 Firecracker microVM，经 mTLS 对 server 提供 HTTP API | Go 1.25 | [Firecracker 运行时](/dev/firecracker-runtime) |
+| `agentloom-deploy/` | Docker Compose、Helm chart、nginx、Firecracker 构建与 PKI 脚本、备份恢复脚本、沙箱 guest 代码 | Docker、Helm、Shell | [部署运维](/deploy/) |
+| `agentloom-docs/` | 本文档站（四个分区 + 生成的清单 `agentloom-docs/_generated/`） | VitePress 2（独立 lockfile，非 workspace 成员） | [文档维护指南](/dev/docs-maintenance) |
+| `scripts/` | 仓库级脚本；`scripts/docs-reference/` 是文档参考生成器与漂移检查 | TypeScript（tsx 运行） | [文档维护指南](/dev/docs-maintenance) |
+| `brochure/` | 独立的宣传材料（HTML 渲染为 PDF），不属于文档站 | HTML + CSS | — |
+| `Logo/` | 品牌图片源文件 | PNG | — |
 
-- **AgentLoom Studio** — React 19 前端工作台，提供画布编辑器、节点配置、执行监控等核心交互
-- **AgentLoom Server** — NestJS v11 后端服务，包含 30 个功能模块，处理工作流执行、智能路由、权限管控等
-- **AgentLoom Mobile** — Flutter 移动端应用，支持工作流浏览与执行监控
-- **AgentLoom Type Engine** — Rust 编写的 WASM 类型引擎，负责端口数据类型兼容性校验
-- **AgentLoom Plugin SDK / CLI** — 插件开发工具链，支持 WASM 沙箱运行
+根目录另有 `docker-compose.dev.yml`，只定义一个 Qdrant 服务。
 
-> 详细的系统架构请参阅 [架构总览](/dev/architecture)。
+## 命令在哪里
 
-## 文档导航
-
-本文档按照以下结构组织，帮助你快速找到所需内容：
-
-### 入门指南
-
-- [快速开始](/dev/setup) — 环境准备、项目启动、开发模式
-- [架构总览](/dev/architecture) — 系统架构图、技术栈、多租户设计
-- [核心概念](/dev/concepts) — 工作流定义与执行、节点类型、端口数据类型、DAG 调度
-
-### 深入各子系统
-
-- [服务端架构](/dev/server/) — NestJS 模块组织、数据库 Schema、消息队列、Socket.IO 协议
-- [工作室前端](/dev/studio/) — React 组件体系、画布引擎、状态管理、Feature-Slice 架构
-- [类型引擎](/dev/type-engine/) — Rust WASM 编译、类型兼容性规则、Studio 集成方式
-
-### 生态系统
-
-- [插件开发](/api/plugins/) — SDK 使用、CLI 脚手架、WASM 沙箱机制
-- [移动端](/dev/mobile/) — Flutter 应用架构、Riverpod 状态管理
-
-### 运维与部署
-
-- [API 参考](/api/rest) — OpenAPI 文档、SDK 生成、认证方式
-- [部署运维](/deploy/) — Docker Compose、Helm Charts、私有化部署
-
-## 适合谁阅读？
-
-| 角色           | 推荐路径                                                                      |
-| -------------- | ----------------------------------------------------------------------------- |
-| **初次了解**   | 本页 → [快速开始](/dev/setup) → [核心概念](/dev/concepts) |
-| **前端开发者** | [快速开始](/dev/setup) → [工作室前端](/dev/studio/)             |
-| **后端开发者** | [快速开始](/dev/setup) → [服务端架构](/dev/server/)             |
-| **插件开发者** | [核心概念](/dev/concepts) → [插件开发](/api/plugins/)                     |
-| **运维人员**   | [架构总览](/dev/architecture) → [部署运维](/deploy/)              |
+各包的开发命令写在该包的 `README.md`，仓库级命令写在根 `README.md`。贡献者规则（代码约定、提交前门禁）写在根与各包的 `AGENTS.md`。本分区只解释机制，不重复命令清单。
