@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "AgentLoom Documentation",
   "private": true,
+  "packageManager": "pnpm@10.34.6",
   "scripts": {
     "predev": "node scripts/sync-openapi.mjs",
     "dev": "node --no-experimental-webstorage ./node_modules/vitepress/bin/vitepress.js dev",

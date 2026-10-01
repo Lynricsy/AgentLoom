@@ -29,7 +29,7 @@ AgentLoom/
 
 ## 快速开始
 
-需要 Node.js 22 与 pnpm（`corepack enable`）。在仓库根安装一次依赖：
+需要 Node.js 22 与 pnpm 10.34.6（根 `package.json` 的 `packageManager`；`corepack enable` 后自动使用该版本，手动安装时不低于 10.26）。在仓库根安装一次依赖：
 
 ```bash
 pnpm install

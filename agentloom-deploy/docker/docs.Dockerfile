@@ -9,7 +9,8 @@ ENV CI=true
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
+# pnpm 版本由 agentloom-docs/package.json 的 packageManager 字段决定。
+RUN corepack enable
 
 WORKDIR /workspace
 

@@ -2,6 +2,7 @@
 	"name": "agentloom",
 	"private": true,
 	"license": "GPL-3.0-only",
+	"packageManager": "pnpm@10.34.6",
 	"scripts": {
 		"test:all": "pnpm docs:check && pnpm -r run test",
 		"typecheck:all": "pnpm -r run typecheck",
