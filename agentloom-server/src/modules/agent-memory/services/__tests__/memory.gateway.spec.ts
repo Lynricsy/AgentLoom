@@ -80,6 +80,7 @@ vi.mock('jsonwebtoken', async (importOriginal) => {
 import { MemoryGateway } from '../../memory.gateway';
 import { TokenBlacklistService } from '../../../../common/services/token-blacklist.service';
 import { UserIdentityResolverService } from '../../../../common/services/user-identity-resolver.service';
+import { WsAuthService } from '../../../../common/services/ws-auth.service';
 
 describe('MemoryGateway', () => {
   let gateway: MemoryGateway;
@@ -99,6 +100,7 @@ describe('MemoryGateway', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MemoryGateway,
+        WsAuthService,
         { provide: ConfigService, useValue: mockConfigService },
         {
           provide: TokenBlacklistService,
@@ -237,7 +239,8 @@ describe('MemoryGateway', () => {
 
       expect(next).toHaveBeenCalledWith();
       expect(socket.data.user).toMatchObject({
-        sub: 'user-456',
+        sub: 'app-user-id',
+        supabaseUserId: 'user-456',
         email: 'user@test.com',
         tenantId: 'tenant-xyz',
         tenantRole: 'creator',

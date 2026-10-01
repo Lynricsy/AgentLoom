@@ -80,6 +80,11 @@ type ConversationIdentity = {
   status: 'active' | 'paused' | 'ended' | 'failed';
 };
 
+/** 面向用户的入口要求会话属于该租户。 */
+export interface ConversationTenantScope {
+  tenantId: string;
+}
+
 @Injectable()
 export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentExecutionService.name);
@@ -177,12 +182,20 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     await this.injectMessage(conversationId, initialMessage);
   }
 
+  /**
+   * `scope` 由面向用户的入口（WS 网关）传入：会话不属于调用方租户时按不存在处理，
+   * 防止凭 conversationId 跨租户写入。内部调用（worker、startConversation）不传。
+   */
   async injectMessage(
     conversationId: string,
     message: string | SendMessageDto,
+    scope?: ConversationTenantScope,
   ): Promise<void> {
     const conversation =
       await this.getConversationIdentityOrThrow(conversationId);
+    if (scope && conversation.tenantId !== scope.tenantId) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
     const normalizedMessage = this.normalizeMessage(message);
 
     await this.withTenantContext(conversation.tenantId, async () => {
@@ -199,9 +212,15 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  async cancelExecution(conversationId: string): Promise<void> {
+  async cancelExecution(
+    conversationId: string,
+    scope?: ConversationTenantScope,
+  ): Promise<void> {
     const conversation =
       await this.getConversationIdentityOrThrow(conversationId);
+    if (scope && conversation.tenantId !== scope.tenantId) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
 
     await this.withTenantContext(conversation.tenantId, async () => {
       await this.conversationService.cancel(conversationId);

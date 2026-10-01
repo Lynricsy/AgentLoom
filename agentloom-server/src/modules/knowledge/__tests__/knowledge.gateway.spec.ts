@@ -3,6 +3,8 @@ import type { ConfigService } from '@nestjs/config';
 import type { Socket } from 'socket.io';
 import { KnowledgeGateway } from '../knowledge.gateway';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
+import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
+import { WsAuthService } from '../../../common/services/ws-auth.service';
 
 const TENANT_A = '11111111-1111-4111-8111-111111111111';
 const TENANT_B = '22222222-2222-4222-8222-222222222222';
@@ -16,7 +18,13 @@ function createGateway() {
     isBlacklisted: vi.fn().mockResolvedValue(false),
   } as unknown as TokenBlacklistService;
 
-  return new KnowledgeGateway(configService, tokenBlacklistService);
+  const userIdentityResolver = {
+    resolveAppUserId: vi.fn(async (sub: string) => sub),
+  } as unknown as UserIdentityResolverService;
+
+  return new KnowledgeGateway(
+    new WsAuthService(configService, tokenBlacklistService, userIdentityResolver),
+  );
 }
 
 function createClient(tenantId?: string) {

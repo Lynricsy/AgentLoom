@@ -16,6 +16,7 @@ import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { TokenBlacklistModule } from './common/services/token-blacklist.module';
 import { UserIdentityResolverModule } from './common/services/user-identity-resolver.module';
+import { WsAuthModule } from './common/services/ws-auth.module';
 import { RedisModule } from './common/redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -82,6 +83,7 @@ function createThrottlerOptions(configService: ConfigService) {
     DatabaseModule,
     TokenBlacklistModule,
     UserIdentityResolverModule,
+    WsAuthModule,
     RedisModule,
     EventEmitterModule.forRoot(),
     ThrottlerModule.forRootAsync({

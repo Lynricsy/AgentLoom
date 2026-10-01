@@ -29,12 +29,21 @@ const mockAgentExecutionService = {
   getConversationSnapshotMessages: vi.fn().mockResolvedValue([]),
 };
 
+const mockRbacCacheService = {
+  getUserRole: vi.fn().mockResolvedValue('admin'),
+};
+
+import type { RbacCacheService } from '../../../common/services/rbac-cache.service';
 import {
   AgentConversationGateway,
   ConversationEventName,
 } from '../agent-conversation.gateway';
 import type { ConversationSubscribeAck } from '../agent-conversation.gateway';
 import { ExecutionEventName } from '../../execution/types/execution-event.types';
+import type { ConfigService } from '@nestjs/config';
+import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
+import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
+import { WsAuthService } from '../../../common/services/ws-auth.service';
 
 function makeSocket(
   overrides: Partial<{
@@ -104,11 +113,17 @@ describe('AgentConversationGateway', () => {
     vi.clearAllMocks();
 
     gateway = new AgentConversationGateway(
-      mockConfigService as any,
+      new WsAuthService(
+        mockConfigService as unknown as ConfigService,
+        mockTokenBlacklistService as unknown as TokenBlacklistService,
+        {
+          resolveAppUserId: vi.fn(async (sub: string) => sub),
+        } as unknown as UserIdentityResolverService,
+      ),
       mockThrottleService as any,
       mockEventBridgeService as any,
-      mockTokenBlacklistService as any,
       mockAgentExecutionService as any,
+      mockRbacCacheService as unknown as RbacCacheService,
     );
 
     server = makeServer();
@@ -285,8 +300,28 @@ describe('AgentConversationGateway', () => {
           contentType: 'text',
           metadata: undefined,
         },
+        { tenantId: 'tenant-1' },
+      );
+      expect(mockRbacCacheService.getUserRole).toHaveBeenCalledWith(
+        'tenant-1',
+        'user-1',
       );
     });
+
+    it.each([['viewer'], [null]])(
+      '角色为 %s 时拒绝注入消息（与 HTTP POST agent-conversations/:id/messages 一致）',
+      async (role) => {
+        mockRbacCacheService.getUserRole.mockResolvedValueOnce(role);
+
+        const result = await gateway.handleMessage(makeSocket(), {
+          conversationId: 'conv-1',
+          content: 'Hello agent',
+        });
+
+        expect(result).toEqual({ status: 'error', error: 'FORBIDDEN' });
+        expect(mockAgentExecutionService.injectMessage).not.toHaveBeenCalled();
+      },
+    );
 
     it('should reject when user has no tenantId', async () => {
       const client = makeSocket();
@@ -361,6 +396,7 @@ describe('AgentConversationGateway', () => {
           contentType: 'file',
           metadata: { filename: 'test.txt' },
         },
+        { tenantId: 'tenant-1' },
       );
     });
   });
@@ -375,7 +411,19 @@ describe('AgentConversationGateway', () => {
       expect(result).toEqual({ status: 'ok' });
       expect(mockAgentExecutionService.cancelExecution).toHaveBeenCalledWith(
         'conv-1',
+        { tenantId: 'tenant-1' },
       );
+    });
+
+    it('viewer 不能取消会话（与 HTTP POST agent-conversations/:id/cancel 的角色一致）', async () => {
+      mockRbacCacheService.getUserRole.mockResolvedValueOnce('viewer');
+
+      const result = await gateway.handleCancel(makeSocket(), {
+        conversationId: 'conv-1',
+      });
+
+      expect(result).toEqual({ status: 'error', error: 'FORBIDDEN' });
+      expect(mockAgentExecutionService.cancelExecution).not.toHaveBeenCalled();
     });
 
     it('should reject when user has no tenantId', async () => {
@@ -895,18 +943,6 @@ describe('AgentConversationGateway', () => {
       const client = makeSocket();
       // Should not throw
       gateway.handleDisconnect(client);
-    });
-  });
-
-  describe('createAuthError', () => {
-    it('should return Error with code 4001', () => {
-      const err = (gateway as any).createAuthError('Token expired');
-      expect(err).toBeInstanceOf(Error);
-      expect(err.message).toBe('Token expired');
-      expect(err.data).toEqual({
-        code: 4001,
-        reason: 'Token expired',
-      });
     });
   });
 
@@ -1899,29 +1935,5 @@ describe('AgentConversationGateway', () => {
         vi.useRealTimers();
       }
     });
-  });
-
-  describe('authentication error propagation', () => {
-    function installMiddleware() {
-      const use = vi.fn();
-      gateway.afterInit({ use } as unknown as Server);
-      return use.mock.calls[0]?.[0] as (
-        socket: Socket,
-        next: (error?: Error) => void,
-      ) => Promise<void>;
-    }
-
-    it.each(['MFA provider unavailable', 'token revoked upstream'])(
-      'preserves an authentication error containing %s',
-      async (message) => {
-        const failure = new Error(message);
-        mockTokenBlacklistService.isBlacklisted.mockRejectedValueOnce(failure);
-        const next = vi.fn();
-
-        await installMiddleware()(makeSocket({ authToken: 'token' }), next);
-
-        expect(next).toHaveBeenCalledWith(failure);
-      },
-    );
   });
 });

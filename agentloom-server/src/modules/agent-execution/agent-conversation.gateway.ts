@@ -7,12 +7,12 @@ import {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { Logger, UseGuards, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
-import * as jwt from 'jsonwebtoken';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
-import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
+import { WsAuthService } from '../../common/services/ws-auth.service';
+import type { OrgRole } from '../../common/types/org-role.type';
 import { ThrottleService } from '../execution/services/throttle.service';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import { ExecutionEventName } from '../execution/types/execution-event.types';
@@ -85,11 +85,17 @@ interface QueuedEvent {
   readonly data: Record<string, unknown>;
 }
 
-const WS_CLOSE_AUTH_FAILURE = 4001;
-
 const BACKPRESSURE_QUEUE_LIMIT = 500;
 
 const BACKPRESSURE_DRAIN_INTERVAL_MS = 100;
+
+/** 与 HTTP `POST agent-conversations/:id/messages|cancel` 的 @Roles 保持一致。 */
+const CONVERSATION_WRITE_ROLES: readonly OrgRole[] = [
+  'operator',
+  'creator',
+  'admin',
+  'owner',
+];
 
 @WebSocketGateway({
   namespace: '/agent-conversation',
@@ -117,11 +123,11 @@ export class AgentConversationGateway
   >();
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly wsAuth: WsAuthService,
     private readonly throttleService: ThrottleService,
     private readonly eventBridgeService: EventBridgeService,
-    private readonly tokenBlacklistService: TokenBlacklistService,
     private readonly agentExecutionService: AgentExecutionService,
+    private readonly rbacCacheService: RbacCacheService,
   ) {}
 
   onModuleDestroy(): void {
@@ -134,71 +140,7 @@ export class AgentConversationGateway
   }
 
   afterInit(server: Server) {
-    const secret = this.configService.get<string>('APP_JWT_SECRET');
-
-    server.use(async (socket, next) => {
-      const token =
-        socket.handshake.auth?.token ??
-        (socket.handshake.headers.authorization?.startsWith('Bearer ')
-          ? socket.handshake.headers.authorization.slice(7)
-          : undefined);
-
-      if (!token) {
-        return next(this.createAuthError('Authentication required'));
-      }
-
-      try {
-        const isBlacklisted =
-          await this.tokenBlacklistService.isBlacklisted(token);
-        if (isBlacklisted) {
-          return next(this.createAuthError('Token has been revoked'));
-        }
-
-        const payload = jwt.verify(token, secret!, {
-          algorithms: ['HS256'],
-          audience: 'authenticated',
-        }) as jwt.JwtPayload;
-
-        if ((payload as Record<string, unknown>).type === 'mfa_pending') {
-          return next(this.createAuthError('MFA verification required'));
-        }
-
-        if (!payload.sub || !payload.aud || !payload.exp || !payload.iat) {
-          return next(this.createAuthError('Invalid token claims'));
-        }
-
-        const email = (payload as Record<string, unknown>).email as
-          string | undefined;
-
-        socket.data.user = {
-          sub: payload.sub,
-          email: email ?? '',
-          aud: payload.aud,
-          exp: payload.exp,
-          iat: payload.iat,
-          tenantId:
-            ((payload as Record<string, unknown>).tenantId as
-              string | undefined) ??
-            ((payload as Record<string, unknown>).tenant_id as
-              string | undefined),
-          tenantRole:
-            ((payload as Record<string, unknown>).tenantRole as
-              string | undefined) ??
-            ((payload as Record<string, unknown>).tenant_role as
-              string | undefined),
-        } satisfies JwtPayload;
-
-        next();
-      } catch (err) {
-        if (err instanceof Error && err.message.includes('MFA')) {
-          return next(err);
-        }
-        if (err instanceof Error && err.message.includes('revoked')) {
-          return next(err);
-        }
-        next(this.createAuthError('Invalid or expired token'));
-      }
-    });
+    this.wsAuth.attachHandshake(server);
   }
 
   handleConnection(client: Socket) {
@@ -306,17 +248,29 @@ export class AgentConversationGateway
       return { status: 'error', error: 'FORBIDDEN' };
     }
 
+    const role = await this.rbacCacheService.getUserRole(
+      user.tenantId,
+      user.sub,
+    );
+    if (!role || !CONVERSATION_WRITE_ROLES.includes(role)) {
+      return { status: 'error', error: 'FORBIDDEN' };
+    }
+
     if (!payload.conversationId || !payload.content) {
       return { status: 'error', error: 'INVALID_PAYLOAD' };
     }
 
     try {
-      await this.agentExecutionService.injectMessage(payload.conversationId, {
-        content: payload.content,
-        role: 'user',
-        contentType: payload.contentType ?? 'text',
-        metadata: payload.metadata,
-      });
+      await this.agentExecutionService.injectMessage(
+        payload.conversationId,
+        {
+          content: payload.content,
+          role: 'user',
+          contentType: payload.contentType ?? 'text',
+          metadata: payload.metadata,
+        },
+        { tenantId: user.tenantId },
+      );
       return { status: 'ok' };
     } catch (error) {
       this.logger.warn(
@@ -336,12 +290,22 @@ export class AgentConversationGateway
       return { status: 'error', error: 'FORBIDDEN' };
     }
 
+    const role = await this.rbacCacheService.getUserRole(
+      user.tenantId,
+      user.sub,
+    );
+    if (!role || !CONVERSATION_WRITE_ROLES.includes(role)) {
+      return { status: 'error', error: 'FORBIDDEN' };
+    }
+
     if (!payload.conversationId) {
       return { status: 'error', error: 'INVALID_PAYLOAD' };
     }
 
     try {
-      await this.agentExecutionService.cancelExecution(payload.conversationId);
+      await this.agentExecutionService.cancelExecution(payload.conversationId, {
+        tenantId: user.tenantId,
+      });
       return { status: 'ok' };
     } catch (error) {
       this.logger.warn(
@@ -917,16 +881,6 @@ export class AgentConversationGateway
 
   private buildRoom(tenantId: string, conversationId: string): string {
     return `conversation:${tenantId}:${conversationId}`;
-  }
-
-  private createAuthError(
-    message: string,
-  ): Error & { data?: { code: number; reason: string } } {
-    const err: Error & { data?: { code: number; reason: string } } = new Error(
-      message,
-    );
-    err.data = { code: WS_CLOSE_AUTH_FAILURE, reason: message };
-    return err;
   }
 
   private enqueueEvent(

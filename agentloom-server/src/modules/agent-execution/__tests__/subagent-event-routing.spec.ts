@@ -12,9 +12,8 @@ import {
   type SubAgentEventEnvelope,
 } from '../subagent/subagent-execution.types';
 
-const mockConfigService = {
-  get: vi.fn().mockReturnValue('test-jwt-secret'),
-};
+import type { RbacCacheService } from '../../../common/services/rbac-cache.service';
+import type { WsAuthService } from '../../../common/services/ws-auth.service';
 
 const mockThrottleService = {
   tryConsume: vi.fn().mockReturnValue(true),
@@ -30,9 +29,14 @@ const mockEventBridgeService = {
   completeSubAgentConversationStream: vi.fn(),
 };
 
-const mockTokenBlacklistService = {
-  isBlacklisted: vi.fn().mockReturnValue(false),
-};
+// 本文件只测事件路由，不经过握手中间件。
+const mockWsAuthService = {
+  attachHandshake: vi.fn(),
+} as unknown as WsAuthService;
+
+const mockRbacCacheService = {
+  getUserRole: vi.fn().mockResolvedValue('owner'),
+} as unknown as RbacCacheService;
 
 const mockAgentExecutionService = {
   injectMessage: vi.fn().mockResolvedValue(undefined),
@@ -225,11 +229,11 @@ describe('SubAgent Event Routing', () => {
       vi.clearAllMocks();
 
       gateway = new AgentConversationGateway(
-        mockConfigService as any,
+        mockWsAuthService,
         mockThrottleService as any,
         mockEventBridgeService as any,
-        mockTokenBlacklistService as any,
         mockAgentExecutionService as any,
+        mockRbacCacheService,
       );
 
       server = makeServer();
@@ -458,11 +462,11 @@ describe('SubAgent Event Routing', () => {
       vi.clearAllMocks();
 
       gateway = new AgentConversationGateway(
-        mockConfigService as any,
+        mockWsAuthService,
         mockThrottleService as any,
         mockEventBridgeService as any,
-        mockTokenBlacklistService as any,
         mockAgentExecutionService as any,
+        mockRbacCacheService,
       );
 
       server = makeServer();
@@ -521,11 +525,11 @@ describe('SubAgent Event Routing', () => {
       vi.clearAllMocks();
 
       gateway = new AgentConversationGateway(
-        mockConfigService as any,
+        mockWsAuthService,
         mockThrottleService as any,
         mockEventBridgeService as any,
-        mockTokenBlacklistService as any,
         mockAgentExecutionService as any,
+        mockRbacCacheService,
       );
 
       server = makeServer();

@@ -208,6 +208,25 @@ describe('AgentExecutionService', () => {
     );
   });
 
+  it('带租户作用域时拒绝向其他租户的会话注入消息', async () => {
+    await expect(
+      service.injectMessage('conversation-1', '跨租户消息', {
+        tenantId: 'tenant-2',
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(mockConversationService.sendMessage).not.toHaveBeenCalled();
+    expect(mockQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('带租户作用域时拒绝取消其他租户的会话', async () => {
+    await expect(
+      service.cancelExecution('conversation-1', { tenantId: 'tenant-2' }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(mockConversationService.cancel).not.toHaveBeenCalled();
+  });
+
   it('旧 job 已完成时会先移除再重新入队', async () => {
     mockConversationService.sendMessage.mockResolvedValue({ data: {} });
     mockQueue.add.mockResolvedValue({ id: 'job-3' });

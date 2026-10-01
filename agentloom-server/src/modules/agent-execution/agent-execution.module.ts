@@ -5,6 +5,7 @@ import type { Queue } from 'bullmq';
 import type Redis from 'ioredis';
 
 import { REDIS_CLIENT } from '../../common/redis/redis.constants';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   AGENT_RUNTIME_FACTORY,
@@ -158,6 +159,7 @@ const agentExecutionWorkerProvider: Provider = {
     agentExecutionServiceProvider,
     agentExecutionWorkerProvider,
     AgentConversationGateway,
+    RbacCacheService,
     SubAgentToolsProvider,
   ],
   exports: [AgentExecutionService],

@@ -17,6 +17,8 @@ import {
 } from '../services/event-bridge.service';
 import type { ConfigService } from '@nestjs/config';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
+import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
+import { WsAuthService } from '../../../common/services/ws-auth.service';
 import type { ExecutionStateSnapshot } from '../types/execution-event.types';
 import * as jwt from 'jsonwebtoken';
 
@@ -109,11 +111,16 @@ describe('ExecutionGateway', () => {
     };
 
     gateway = new ExecutionGateway(
-      mockConfig as unknown as ConfigService,
+      new WsAuthService(
+        mockConfig as unknown as ConfigService,
+        mockTokenBlacklist as unknown as TokenBlacklistService,
+        {
+          resolveAppUserId: vi.fn(async (sub: string) => sub),
+        } as unknown as UserIdentityResolverService,
+      ),
       mockStateReplay as unknown as StateReplayService,
       mockThrottle as unknown as ThrottleService,
       mockEventBridge as unknown as EventBridgeService,
-      mockTokenBlacklist as unknown as TokenBlacklistService,
     );
     gateway.server = mockServer as any;
   });
@@ -295,19 +302,21 @@ describe('ExecutionGateway', () => {
       });
     });
 
-    it.each(['MFA provider unavailable', 'token revoked upstream'])(
-      'preserves explicit authentication errors containing %s',
-      async (message) => {
-        mockTokenBlacklist.isBlacklisted.mockRejectedValue(new Error(message));
-        gateway.afterInit(mockServer as any);
-        const middleware = mockServer.use.mock.calls[0][0];
-        const next = vi.fn();
+    it('blacklist 查询异常时不向客户端透出内部错误信息', async () => {
+      mockTokenBlacklist.isBlacklisted.mockRejectedValue(
+        new Error('MFA provider unavailable'),
+      );
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const next = vi.fn();
 
-        await middleware(makeSocket(), next);
+      await middleware(makeSocket(), next);
 
-        expect(next.mock.calls[0][0]).toEqual(new Error(message));
-      },
-    );
+      expect(next.mock.calls[0][0]).toMatchObject({
+        message: 'Invalid or expired token',
+        data: { code: 4001, reason: 'Invalid or expired token' },
+      });
+    });
   });
 
   describe('handleConnection', () => {
@@ -986,29 +995,6 @@ describe('ExecutionGateway', () => {
       expect(emitFn).not.toHaveBeenCalled();
 
       vi.useRealTimers();
-    });
-  });
-
-  describe('createAuthError', () => {
-    it('creates error with code 4001 data', () => {
-      gateway.afterInit(mockServer as any);
-      const middleware = mockServer.use.mock.calls[0][0];
-
-      const socket = makeSocket({
-        handshake: { auth: {}, headers: {} },
-      });
-
-      const next = vi.fn();
-      middleware(socket, next);
-
-      expect(next).toHaveBeenCalledOnce();
-      const err = next.mock.calls[0][0];
-      expect(err).toBeInstanceOf(Error);
-      expect(err.message).toBe('Authentication required');
-      expect(err.data).toEqual({
-        code: 4001,
-        reason: 'Authentication required',
-      });
     });
   });
 });

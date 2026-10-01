@@ -103,7 +103,7 @@ sequenceDiagram
 
 - 路由或 controller 标了 `@Public()`（`agentloom-server/src/common/decorators/public.decorator.ts`）时直接放行。
 - **带 `Authorization: Bearer …` 时只走 JWT 分支**，不会回退到 API Key：
-  1. 在 `revoked_tokens` 表中按令牌 SHA-256 查吊销记录，命中返回 401 `token-revoked`。
+  1. 按令牌 SHA-256 查 `revoked_tokens`；令牌带 `session_id` 时同一条 SQL 还检查 `auth.sessions` 中该会话仍存在且未过 `not_after`。任一不满足返回 401 `token-revoked`；`auth.sessions` 不可读时返回 503 `session-verification-unavailable`。细节见 [/dev/server/security](/dev/server/security)。
   2. 用 `APP_JWT_SECRET` 以 HS256 验签，要求 `aud` 为 `authenticated`。过期返回 `token-expired`，其他失败返回 `token-invalid`。
   3. payload 的 `type` 为 `mfa_pending`（登录第一步签发的临时令牌）时返回 403 `mfa-required`。
   4. 用 `UserIdentityResolverService` 把 Supabase 用户 ID 换成应用内用户 ID：`req.user.sub` 是应用用户 ID，原始值保存在 `req.user.supabaseUserId`。找不到应用用户返回 401。
@@ -163,21 +163,21 @@ RLS 策略本身见 [/dev/server/security](/dev/server/security#数据库行级�
 
 ## WebSocket 连接的鉴权
 
-Socket.IO 连接不经过上面的 HTTP 管线：中间件、全局守卫、interceptor 和 filter 都不作用于握手。每个 gateway 自己负责鉴权，而且都用两层：
+Socket.IO 连接不经过上面的 HTTP 管线：中间件、全局守卫、interceptor 和 filter 都不作用于握手。所有 gateway 共用 `WsAuthService`（`agentloom-server/src/common/services/ws-auth.service.ts`），分两层：
 
-1. **握手阶段**：`afterInit()` 里用 `server.use()` 给本 namespace 注册 Socket.IO 中间件。令牌取自 `handshake.auth.token`，或 `Authorization: Bearer` 头；依次检查 `revoked_tokens` 吊销记录、HS256 验签（`aud` 为 `authenticated`）、拒绝 `mfa_pending` 令牌、要求 `sub`/`aud`/`exp`/`iat` 齐全，然后把身份写入 `socket.data.user`。任一步失败，连接在握手阶段被拒绝。
-2. **消息阶段**：class 上的 `@UseGuards(WsJwtGuard)` 作用于每个 `@SubscribeMessage` 处理器。`WsJwtGuard`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）发现 `socket.data.user` 已存在就直接放行；只有握手没有写入身份时，才自己完成同样的校验，并解析应用用户 ID。
+1. **握手阶段**：`afterInit()` 调用 `WsAuthService.attachHandshake(server)` 给本 namespace 注册 Socket.IO 中间件。令牌取自 `handshake.auth.token`，或 `Authorization: Bearer` 头；依次检查吊销与会话存活（同 HTTP）、HS256 验签（`aud` 为 `authenticated`）、拒绝 `mfa_pending` 令牌、要求 `sub`/`aud`/`exp`/`iat` 齐全、把 Supabase `sub` 解析为应用用户 ID，然后把身份写入 `socket.data.user`。任一步失败，连接在握手阶段被拒绝。
+2. **消息阶段**：class 上的 `@UseGuards(WsJwtGuard)` 作用于每个 `@SubscribeMessage` 处理器。`WsJwtGuard`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）发现 `socket.data.user` 已存在就直接放行；否则委托同一个 `WsAuthService` 完成校验。
 
-| Namespace | Gateway 源文件 | 握手中间件 | `WsJwtGuard` | `socket.data.user.sub` |
-| --- | --- | --- | --- | --- |
-| `/execution` | `agentloom-server/src/modules/execution/execution.gateway.ts` | `afterInit`（`:171`） | class 级（`:84`） | JWT 原始 `sub`（Supabase 用户 ID） |
-| `/agent-conversation` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` | `afterInit`（`:136`） | class 级（`:98`） | JWT 原始 `sub` |
-| `/memory` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` | `afterInit`（`:135`） | class 级（`:93`） | JWT 原始 `sub` |
-| `/knowledge` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` | `afterInit`（`:89`） | class 级（`:70`） | JWT 原始 `sub` |
-| `/notification` | `agentloom-server/src/modules/notification/notification.gateway.ts` | `afterInit`（`:40`） | class 级（`:25`） | 应用用户 ID（握手时经 `UserIdentityResolverService` 解析，原始值存为 `supabaseUserId`） |
+| Namespace | Gateway 源文件 | 握手中间件 | `WsJwtGuard` |
+| --- | --- | --- | --- |
+| `/execution` | `agentloom-server/src/modules/execution/execution.gateway.ts` | `afterInit`（`:165`） | class 级（`:79`） |
+| `/agent-conversation` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` | `afterInit`（`:142`） | class 级（`:104`） |
+| `/memory` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` | `afterInit`（`:127`） | class 级（`:88`） |
+| `/knowledge` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` | `afterInit`（`:80`） | class 级（`:65`） |
+| `/notification` | `agentloom-server/src/modules/notification/notification.gateway.ts` | `afterInit`（`:32`） | class 级（`:20`） |
+
+所有 namespace 的 `socket.data.user.sub` 都是应用用户 ID，原始 Supabase 用户 ID 存为 `supabaseUserId`，与 HTTP 侧 `req.user` 一致。
 
 `/notification` 的 `handleConnection()` 还会把连接加入以 `tenantId` 与用户 ID 组成的房间；其余 gateway 的 `handleConnection()` 只记录日志，房间在订阅消息里按服务端解析出的 `tenantId` 加入。
-
-由于握手中间件总会先写入 `socket.data.user`，除 `/notification` 外的 namespace 中 `WsJwtGuard` 的身份解析分支实际不会执行，`socket.data.user.sub` 保持 Supabase 用户 ID，与 HTTP 侧 `req.user.sub`（应用用户 ID）不一致。按用户 ID 做房间或权限判断的代码需要注意这一点。
 
 事件名与载荷见 [/dev/server/realtime](/dev/server/realtime)。

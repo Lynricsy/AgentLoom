@@ -5,6 +5,7 @@ import { WsException } from '@nestjs/websockets';
 import { WsJwtGuard } from '../ws-jwt.guard';
 import { TokenBlacklistService } from '../../services/token-blacklist.service';
 import { UserIdentityResolverService } from '../../services/user-identity-resolver.service';
+import { WsAuthService } from '../../services/ws-auth.service';
 
 // vi.hoisted mock factory — required because ESM namespace exports are read-only
 const { mockVerify } = vi.hoisted(() => ({
@@ -67,9 +68,11 @@ describe('WsJwtGuard', () => {
     };
 
     guard = new WsJwtGuard(
-      { get: vi.fn().mockReturnValue(JWT_SECRET) } as unknown as ConfigService,
-      tokenBlacklist as unknown as TokenBlacklistService,
-      userIdentityResolver as unknown as UserIdentityResolverService,
+      new WsAuthService(
+        { get: vi.fn().mockReturnValue(JWT_SECRET) } as unknown as ConfigService,
+        tokenBlacklist as unknown as TokenBlacklistService,
+        userIdentityResolver as unknown as UserIdentityResolverService,
+      ),
     );
   });
 
@@ -87,7 +90,7 @@ describe('WsJwtGuard', () => {
   it('缺失 token 时应抛出 WsException', async () => {
     await expect(
       guard.canActivate(createExecutionContext(createClient()) as never),
-    ).rejects.toThrowError(new WsException('Authentication token is missing'));
+    ).rejects.toThrowError(new WsException('Authentication required'));
   });
 
   it('黑名单 token 时应拒绝访问', async () => {
@@ -115,7 +118,7 @@ describe('WsJwtGuard', () => {
           }),
         ) as never,
       ),
-    ).rejects.toThrowError(new WsException('Token payload is malformed'));
+    ).rejects.toThrowError(new WsException('Invalid token claims'));
   });
 
   it('mfa_pending token 时应抛出 MFA 异常', async () => {
@@ -137,19 +140,17 @@ describe('WsJwtGuard', () => {
     ).rejects.toThrowError(new WsException('MFA verification required'));
   });
 
-  it('缺失必要 claim 时应抛出 payload 缺失异常', async () => {
+  it('缺失 sub 时应拒绝', async () => {
     const client = createClient({
       handshake: {
-        auth: { token: createToken({ sub: 'user-1' }) },
+        auth: { token: createToken({ email: 'u@example.com' }) },
         headers: {},
       },
     });
 
     await expect(
       guard.canActivate(createExecutionContext(client) as never),
-    ).rejects.toThrowError(
-      new WsException('Token payload is missing required claims'),
-    );
+    ).rejects.toThrowError(new WsException('Invalid token claims'));
   });
 
   it('过期 token 时应返回过期错误', async () => {
@@ -190,7 +191,7 @@ describe('WsJwtGuard', () => {
 
     await expect(
       guard.canActivate(createExecutionContext(client) as never),
-    ).rejects.toThrowError(new WsException('Token is invalid'));
+    ).rejects.toThrowError(new WsException('Invalid or expired token'));
   });
 
   it('应接受有效 token 并归一化 snake_case claims', async () => {

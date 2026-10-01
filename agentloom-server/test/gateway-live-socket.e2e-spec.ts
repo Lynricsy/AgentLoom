@@ -17,8 +17,10 @@ import {
 import * as crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import { io, type Socket } from 'socket.io-client';
+import { RbacCacheService } from '../src/common/services/rbac-cache.service';
 import { TokenBlacklistService } from '../src/common/services/token-blacklist.service';
 import { UserIdentityResolverService } from '../src/common/services/user-identity-resolver.service';
+import { WsAuthService } from '../src/common/services/ws-auth.service';
 import { WsJwtGuard } from '../src/common/guards/ws-jwt.guard';
 import { KnowledgeGateway } from '../src/modules/knowledge/knowledge.gateway';
 import { ExecutionGateway } from '../src/modules/execution/execution.gateway';
@@ -205,6 +207,11 @@ describe('Gateway live Socket.IO (E2E)', () => {
         { provide: ConfigService, useValue: config },
         { provide: TokenBlacklistService, useValue: tokenBlacklist },
         { provide: UserIdentityResolverService, useValue: identityResolver },
+        WsAuthService,
+        {
+          provide: RbacCacheService,
+          useValue: { getUserRole: vi.fn().mockResolvedValue('owner') },
+        },
         { provide: StateReplayService, useValue: stateReplay },
         {
           provide: AgentExecutionService,

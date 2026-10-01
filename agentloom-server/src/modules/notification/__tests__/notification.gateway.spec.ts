@@ -3,6 +3,7 @@ import * as jwt from 'jsonwebtoken';
 import type { ConfigService } from '@nestjs/config';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
+import { WsAuthService } from '../../../common/services/ws-auth.service';
 import { NotificationGateway } from '../notification.gateway';
 
 const JWT_SECRET = 'notification-test-secret';
@@ -57,9 +58,11 @@ describe('NotificationGateway', () => {
     };
 
     gateway = new NotificationGateway(
-      configService as unknown as ConfigService,
-      tokenBlacklistService as unknown as TokenBlacklistService,
-      userIdentityResolver as unknown as UserIdentityResolverService,
+      new WsAuthService(
+        configService as unknown as ConfigService,
+        tokenBlacklistService as unknown as TokenBlacklistService,
+        userIdentityResolver as unknown as UserIdentityResolverService,
+      ),
     );
     gateway.server = server as never;
   });

@@ -5,6 +5,7 @@ import { AppConfigModule } from '../../config/config.module';
 import { RedisModule } from '../../common/redis/redis.module';
 import { TokenBlacklistModule } from '../../common/services/token-blacklist.module';
 import { UserIdentityResolverModule } from '../../common/services/user-identity-resolver.module';
+import { WsAuthModule } from '../../common/services/ws-auth.module';
 import { DatabaseModule } from '../../database/database.module';
 import { AgentModule } from '../agent/agent.module';
 import { LlmModule } from '../llm/llm.module';
@@ -16,11 +17,12 @@ import { ACP_TEST_RUNTIME_PROVIDER } from './testing/acp-test-runtime';
     AppConfigModule,
     RedisModule,
     DatabaseModule,
-    // WsJwtGuard/AuthGuard 依赖的两个 @Global() 模块必须由入口模块图注册:
+    // WsJwtGuard/AuthGuard 依赖的 @Global() 模块必须由入口模块图注册:
     // @Global() 只在模块出现在图中时生效,HTTP 入口靠 AppModule 引入,
     // stdio 入口必须自己引入,否则 KnowledgeModule 等模块的 guard 无法解析。
     TokenBlacklistModule,
     UserIdentityResolverModule,
+    WsAuthModule,
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) => {
         const redisUrl = configService.get<string>('APP_REDIS_URL')!;

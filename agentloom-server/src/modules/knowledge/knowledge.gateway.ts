@@ -1,5 +1,4 @@
 import { Logger, UseGuards } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -9,13 +8,9 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import * as jwt from 'jsonwebtoken';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
-import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
+import { WsAuthService } from '../../common/services/ws-auth.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
-
-/** 认证失败的 WebSocket 关闭代码 */
-const WS_CLOSE_AUTH_FAILURE = 4001;
 
 export type DocumentRealtimeStatus =
   'uploaded' | 'processing' | 'ready' | 'failed';
@@ -76,82 +71,14 @@ export class KnowledgeGateway
 
   private readonly logger = new Logger(KnowledgeGateway.name);
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly tokenBlacklistService: TokenBlacklistService,
-  ) {}
+  constructor(private readonly wsAuth: WsAuthService) {}
 
   /**
-   * 握手期校验 JWT 并把租户写入 socket.data.user。
-   * 与 `/execution`、`/memory` 两个 namespace 保持同一套认证语义：
+   * 握手期校验 JWT 并把身份写入 socket.data.user（统一走 WsAuthService）。
    * 未认证连接在握手阶段即被拒绝，房间只能由服务端解析出的 tenantId 构成。
    */
   afterInit(server: Server): void {
-    const secret = this.configService.get<string>('APP_JWT_SECRET');
-
-    server.use(async (socket, next) => {
-      const token =
-        socket.handshake.auth?.token ??
-        (socket.handshake.headers.authorization?.startsWith('Bearer ')
-          ? socket.handshake.headers.authorization.slice(7)
-          : undefined);
-
-      if (!token) {
-        return next(this.createAuthError('Authentication required'));
-      }
-
-      try {
-        const isBlacklisted =
-          await this.tokenBlacklistService.isBlacklisted(token);
-        if (isBlacklisted) {
-          return next(this.createAuthError('Token has been revoked'));
-        }
-
-        const payload = jwt.verify(token, secret!, {
-          algorithms: ['HS256'],
-          audience: 'authenticated',
-        }) as jwt.JwtPayload;
-
-        if ((payload as Record<string, unknown>).type === 'mfa_pending') {
-          return next(this.createAuthError('MFA verification required'));
-        }
-
-        if (!payload.sub || !payload.aud || !payload.exp || !payload.iat) {
-          return next(this.createAuthError('Invalid token claims'));
-        }
-
-        const email = (payload as Record<string, unknown>).email as
-          string | undefined;
-
-        socket.data.user = {
-          sub: payload.sub,
-          email: email ?? '',
-          aud: payload.aud,
-          exp: payload.exp,
-          iat: payload.iat,
-          tenantId:
-            ((payload as Record<string, unknown>).tenantId as
-              string | undefined) ??
-            ((payload as Record<string, unknown>).tenant_id as
-              string | undefined),
-          tenantRole:
-            ((payload as Record<string, unknown>).tenantRole as
-              string | undefined) ??
-            ((payload as Record<string, unknown>).tenant_role as
-              string | undefined),
-        } satisfies JwtPayload;
-
-        next();
-      } catch (err) {
-        if (err instanceof Error && err.message.includes('MFA')) {
-          return next(err);
-        }
-        if (err instanceof Error && err.message.includes('revoked')) {
-          return next(err);
-        }
-        next(this.createAuthError('Invalid or expired token'));
-      }
-    });
+    this.wsAuth.attachHandshake(server);
   }
 
   handleConnection(client: Socket) {
@@ -237,18 +164,5 @@ export class KnowledgeGateway
 
   private buildRoom(tenantId: string, knowledgeBaseId: string): string {
     return `knowledge:${tenantId}:${knowledgeBaseId}`;
-  }
-
-  /**
-   * 构造带关闭代码的握手错误，客户端可从 `err.data.code` 读取。
-   */
-  private createAuthError(message: string): Error & {
-    data?: { code: number; reason: string };
-  } {
-    const err: Error & { data?: { code: number; reason: string } } = new Error(
-      message,
-    );
-    err.data = { code: WS_CLOSE_AUTH_FAILURE, reason: message };
-    return err;
   }
 }

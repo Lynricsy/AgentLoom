@@ -28,25 +28,28 @@ docType: reference
 
 每个命名空间都使用同一套两层认证：
 
-1. **握手中间件**：各 Gateway 的 `afterInit()` 通过 `server.use()` 注册中间件，在握手阶段校验令牌，失败即拒绝连接。
-2. **`WsJwtGuard`**：类级 `@UseGuards(WsJwtGuard)`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）保护每个 `@SubscribeMessage` 处理器。握手中间件已写入 `socket.data.user` 时，守卫直接放行（`agentloom-server/src/common/guards/ws-jwt.guard.ts:31`）。
+1. **握手中间件**：各 Gateway 的 `afterInit()` 调用共享的 `WsAuthService.attachHandshake(server)`（`agentloom-server/src/common/services/ws-auth.service.ts`），在握手阶段校验令牌，失败即拒绝连接。各 Gateway 不自行 `jwt.verify`。
+2. **`WsJwtGuard`**：类级 `@UseGuards(WsJwtGuard)`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）保护每个 `@SubscribeMessage` 处理器。握手中间件已写入 `socket.data.user` 时守卫直接放行；否则委托同一个 `WsAuthService` 解析。
 
 握手中间件的检查顺序：
 
 | 步骤 | 失败时的错误消息 |
 | --- | --- |
 | 从 `handshake.auth.token` 或 `Authorization: Bearer` 头取令牌 | `Authentication required` |
-| 令牌黑名单（`TokenBlacklistService`） | `Token has been revoked` |
-| `jwt.verify`：HS256、`audience: 'authenticated'`，密钥为 `APP_JWT_SECRET` | `Invalid or expired token` |
+| 令牌吊销与会话存活（`TokenBlacklistService`，见 [/dev/server/security](/dev/server/security)） | `Token has been revoked` |
+| `jwt.verify`：HS256、`audience: 'authenticated'`，密钥为 `APP_JWT_SECRET` | `Token has expired` / `Invalid or expired token` |
 | 拒绝 `type: 'mfa_pending'` 的令牌 | `MFA verification required` |
 | `sub`、`aud`、`exp`、`iat` 齐全 | `Invalid token claims` |
+| `sub` 能解析为应用用户 | `User account not found` |
 
-握手错误带 `data: { code: 4001, reason }`，客户端从 `err.data.code` 读取（常量 `WS_CLOSE_AUTH_FAILURE`，各 Gateway 文件顶部定义）。
+握手错误带 `data: { code: 4001, reason }`，客户端从 `err.data.code` 读取（常量 `WS_CLOSE_AUTH_FAILURE`，定义在 `agentloom-server/src/common/services/ws-auth.service.ts`）。
 
-`/notification` 多一步：把 JWT 的 `sub`（Supabase 用户 ID）经 `UserIdentityResolverService` 解析为内部用户 ID 写入 `socket.data.user.sub`，原始值保存在 `supabaseUserId`；解析失败返回 `User account not found`（`agentloom-server/src/modules/notification/notification.gateway.ts:75`）。其余命名空间的 `sub` 保持 JWT 原值。
+认证成功后，JWT 的 `sub`（Supabase 用户 ID）经 `UserIdentityResolverService` 解析为应用用户 ID 写入 `socket.data.user.sub`，原始值保存在 `supabaseUserId`，与 HTTP `req.user` 的身份契约一致；解析失败返回 `User account not found`。
+
+`/agent-conversation` 的 `conversation:message` 与 `conversation:cancel` 另外要求调用者在当前租户的角色为 operator、creator、admin 或 owner（与 HTTP `POST agent-conversations/:id/messages|cancel` 相同），且会话属于调用者租户；否则返回 `{ status: 'error', error: 'FORBIDDEN' }` 或会话不存在。
 
 ::: tip /knowledge 与其他命名空间同等认证
-`KnowledgeGateway` 使用 `@UseGuards(WsJwtGuard)`（`agentloom-server/src/modules/knowledge/knowledge.gateway.ts:70`），握手中间件与 `/execution`、`/memory` 相同。未携带令牌的连接在握手阶段即被拒绝，Studio 的 `agentloom-studio/src/features/knowledge/hooks/useKnowledgeBaseSocket.ts` 在没有令牌时不建立连接。
+`KnowledgeGateway` 使用 `@UseGuards(WsJwtGuard)`（`agentloom-server/src/modules/knowledge/knowledge.gateway.ts:65`），握手中间件与 `/execution`、`/memory` 相同。未携带令牌的连接在握手阶段即被拒绝，Studio 的 `agentloom-studio/src/features/knowledge/hooks/useKnowledgeBaseSocket.ts` 在没有令牌时不建立连接。
 :::
 
 ### 事件信封
@@ -111,8 +114,8 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | `EVENT_BUFFER_CAPACITY` | 500 | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:53` | 每个执行的回放环形缓冲区上限，超出丢最旧 |
 | `TERMINAL_EVENT_RETENTION_MS` | 30 000 ms | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:54` | 终态后保留计数器与缓冲区的时长 |
-| `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/execution/execution.gateway.ts:41` | 每个执行的背压队列上限，满时丢最旧并记 warn |
-| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/execution/execution.gateway.ts:44` | 背压队列排空定时器间隔 |
+| `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/execution/execution.gateway.ts:36` | 每个执行的背压队列上限，满时丢最旧并记 warn |
+| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/execution/execution.gateway.ts:39` | 背压队列排空定时器间隔 |
 | `ThrottleService.RATE_LIMIT` | 100 | `agentloom-server/src/modules/execution/services/throttle.service.ts:44` | 令牌桶容量与每秒补充量（按执行计） |
 | `ThrottleService.MERGE_WINDOW_MS` | 50 ms | `agentloom-server/src/modules/execution/services/throttle.service.ts:45` | 同一 `stepId` 输出块的合并窗口 |
 
@@ -175,9 +178,9 @@ socket.on("execution.node.status-changed", (event) => {
 
 | 常量 | 值 | 定义处 |
 | --- | --- | --- |
-| `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:23` |
-| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:26` |
-| `REPLAY_BUFFER_LIMIT` | 1000 | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:29` |
+| `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:18` |
+| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:21` |
+| `REPLAY_BUFFER_LIMIT` | 1000 | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:24` |
 
 - 背压队列只在已有积压时才入队，排空时一次发完，没有令牌桶限速。
 - 断线续传的游标从**握手查询参数** `lastEventId` 读取（`client.handshake.query.lastEventId`），不在 `memory:subscribe` 载荷里；订阅成功后补发该实例回放缓冲区中 `eventId` 更大的事件。
