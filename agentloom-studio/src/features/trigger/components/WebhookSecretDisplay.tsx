@@ -31,6 +31,9 @@ const SIGNATURE_HEADER = 'X-AgentLoom-Signature'
 const TIMESTAMP_HEADER = 'X-AgentLoom-Timestamp'
 /** 与 server WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS 对应 */
 const TIMESTAMP_TOLERANCE_SECONDS = 300
+/** 与 server `trigger.constants.ts` 的 GITHUB_SIGNATURE_HEADER / GITHUB_DELIVERY_HEADER 对应 */
+const GITHUB_SIGNATURE_HEADER = 'X-Hub-Signature-256'
+const GITHUB_DELIVERY_HEADER = 'X-GitHub-Delivery'
 
 function buildSignedCurlExample(webhookUrl: string): string {
   return [
@@ -170,6 +173,33 @@ export function WebhookSecretDisplay({
             {buildSignedCurlExample(webhookUrl)}
           </pre>
         </div>
+      ) : authMode === 'github' ? (
+        <div
+          className="rounded-lg border border-border/60 bg-background/60 p-3 text-xs leading-6 text-muted-foreground"
+          data-testid="webhook-signature-guide"
+        >
+          <p className="font-medium text-foreground">在 GitHub 中配置</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-4">
+            <li>打开 GitHub 仓库 Settings → Webhooks → Add webhook</li>
+            <li>
+              Payload URL 填上面的 Webhook URL
+            </li>
+            <li>
+              Content type 选{' '}
+              <span className="font-mono text-foreground">application/json</span>
+            </li>
+            <li>Secret 填上面的 Secret</li>
+            <li>选择要触发的事件后保存；GitHub 随即发送的 ping 只验签、不启动工作流</li>
+          </ol>
+          <p className="mt-2">
+            服务端用 Secret 校验{' '}
+            <span className="font-mono text-foreground">{GITHUB_SIGNATURE_HEADER}</span>
+            ；同一投递（<span className="font-mono text-foreground">{GITHUB_DELIVERY_HEADER}</span>
+            ）24 小时内只启动一次。事件类型与投递 ID 以{' '}
+            <span className="font-mono text-foreground">_eventType</span>、
+            <span className="font-mono text-foreground">_deliveryId</span> 传入启动参数。
+          </p>
+        </div>
       ) : (
         <div
           className="rounded-lg border border-border/60 bg-background/60 p-3 text-xs leading-6 text-muted-foreground"
@@ -177,7 +207,7 @@ export function WebhookSecretDisplay({
         >
           <p className="font-medium text-foreground">Simple 模式无需签名</p>
           <p className="mt-1">
-            Token 已包含在 URL 中，向该 URL 发送 POST 请求即可触发；secret 仅在改为 Signed 模式后用于签名。
+            Token 已包含在 URL 中，向该 URL 发送 POST 请求即可触发；secret 仅在改为 Signed 或 GitHub 模式后用于签名。
           </p>
         </div>
       )}

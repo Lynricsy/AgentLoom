@@ -18,7 +18,8 @@ export const CronConfigSchema = z
   })
   .strict();
 
-export const WebhookAuthModeSchema = z.enum(['simple', 'signed']);
+// github：校验 GitHub 的 X-Hub-Signature-256（HMAC-SHA256(secret, rawBody)），按 X-GitHub-Delivery 去重
+export const WebhookAuthModeSchema = z.enum(['simple', 'signed', 'github']);
 export type WebhookAuthMode = z.infer<typeof WebhookAuthModeSchema>;
 
 const IpAllowlistSchema = z.array(

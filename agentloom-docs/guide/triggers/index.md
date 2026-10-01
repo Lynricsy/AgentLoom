@@ -9,8 +9,10 @@ docType: howto
 | 触发器 | 由什么启动 | 启动时的输入参数 | 页面 |
 | --- | --- | --- | --- |
 | Cron 定时器 | 服务端按 Cron 表达式与时区定时启动 | 无 | [定时触发](/guide/triggers/cron) |
-| Webhook | 外部系统向该触发器独有的 URL 发送 `POST` | 请求体 JSON 的顶层字段 | [Webhook 触发](/guide/triggers/webhook) |
+| Webhook | 外部系统向该触发器独有的 URL 发送 `POST` | 请求体 JSON 的顶层字段；GitHub 验证模式外加 `_eventSource`、`_eventType`、`_deliveryId` | [Webhook 触发](/guide/triggers/webhook) |
 | API Event | 你的服务向 `POST /api/v1/api-events` 发送事件，组织内所有匹配的触发器各启动一次 | 事件 `data` 的字段，外加 `_eventSource`、`_eventType` | [API 事件触发](/guide/triggers/api-event) |
+
+工作流定义了 [输入参数](/guide/workflows/input-parameters) 时，触发器启动只保留已声明的字段，其余字段（包括上表中以 `_` 开头的字段）被丢弃；缺少必填字段时启动失败。
 
 画布上的 [触发器节点](/guide/nodes/trigger)（Manual Trigger、Schedule、Webhook、API Event）只是工作流的起点，负责把启动参数从「触发数据」端口交给下游；它们的配置不会创建定时任务或入口地址。工作流实际何时被自动启动，只由本页所述「触发器」面板中的触发器决定。
 
@@ -63,7 +65,7 @@ docType: howto
    | --- | --- |
    | 成功 | 已创建一次工作流执行。执行本身之后是否成功，在执行详情中查看 |
    | 失败 | 创建执行时出错，例如启动参数未通过工作流输入参数校验 |
-   | 跳过 | 到点时触发器已停用（Cron） |
+   | 跳过 | 到点时触发器已停用（Cron）；GitHub 验证模式下的 `ping` 事件或重复投递（Webhook） |
    | 签名失败 | Webhook 请求未通过签名或时间戳校验 |
    | IP 被拒 | Webhook 请求来源不在 IP 白名单中 |
 

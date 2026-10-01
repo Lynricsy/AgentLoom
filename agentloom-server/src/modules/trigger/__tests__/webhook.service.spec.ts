@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { REDIS_CLIENT } from '../../../common/redis/redis.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import {
   TriggerNotFoundException,
@@ -62,7 +63,11 @@ describe('WebhookService', () => {
     db = mocks.createMockDb();
 
     const module = await Test.createTestingModule({
-      providers: [WebhookService, { provide: DRIZZLE, useValue: db }],
+      providers: [
+        WebhookService,
+        { provide: DRIZZLE, useValue: db },
+        { provide: REDIS_CLIENT, useValue: { set: vi.fn(), del: vi.fn() } },
+      ],
     }).compile();
 
     service = module.get(WebhookService);

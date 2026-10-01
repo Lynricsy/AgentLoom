@@ -57,11 +57,12 @@ docType: howto
 | 202 | 已接受，执行已启动 | 在「查看执行记录」中查看这次执行 |
 | 404 | URL 中的 Token 不对，或触发器已停用 | 核对触发器卡片上的「Webhook 入口」，确认触发器为「已启用」 |
 | 403 | 请求来源不在触发器的 IP 白名单中 | 把调用方出口 IP 或网段加入白名单，见 [Webhook 触发](/guide/triggers/webhook) |
-| 401 | Signed 模式下签名或时间戳校验失败 | 核对签名方法，见 [Webhook 与 API 事件](/api/webhooks) |
+| 401 | Signed 模式下签名或时间戳校验失败；GitHub 模式下缺少或不匹配 `X-Hub-Signature-256` | 核对签名方法与 Secret，见 [Webhook 与 API 事件](/api/webhooks) |
+| 200 | 仅 GitHub 模式：`ping` 事件或 24 小时内重复的投递，已验签但不启动执行 | 正常现象；需要再次执行时在 GitHub 上触发新事件 |
 
 触发器卡片上的「历史记录」打开「触发历史记录」，可按成功、失败、签名失败、IP 被拒、跳过筛选每次调用的结果。
 
-GitHub 等自带签名头（如 `X-Hub-Signature-256`）的来源不能使用 Signed 模式，因为 AgentLoom 校验的是自己的签名头，见[代码审查](/guide/use-cases/code-review)。
+GitHub 仓库 Webhook 用 GitHub 验证模式接入，不能用 Signed 模式：Signed 模式校验的是 AgentLoom 自己的签名与时间戳请求头，见 [接入 GitHub 仓库](/guide/triggers/webhook#接入-github-仓库)。
 
 ### Webhook 调用为什么拿不到工作流的结果
 

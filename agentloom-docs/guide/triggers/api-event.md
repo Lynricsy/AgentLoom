@@ -12,7 +12,7 @@ docType: howto
 
 - 工作流已发布，你的角色是 owner、admin 或 creator。
 - 发送事件的服务持有一个 [API Token](/guide/integrations/api-keys)。
-- 目标工作流**没有定义输入参数**。当前版本中，API 事件启动的执行要求请求携带输入参数的 schema 版本，而事件入口不传这个值，因此定义了输入参数的工作流被 API 事件启动时总是校验失败，触发历史记为「失败」。
+- 工作流定义了 [输入参数](/guide/workflows/input-parameters) 时，事件 `data` 中只有已声明的字段进入启动参数，其余字段（包括 `_eventSource`、`_eventType`）被丢弃；缺少必填字段时启动失败，触发历史记为「失败」。
 
 ## 创建 API Event 触发器
 
@@ -52,13 +52,15 @@ docType: howto
 
 2. 在 Studio 中打开该触发器的「历史记录」。
 
-   出现一条「成功」记录，「查看执行」打开这次执行。执行的启动参数是 `data` 的全部字段，外加 `_eventSource` 与 `_eventType`。
+   出现一条「成功」记录，「查看执行」打开这次执行。工作流没有定义输入参数时，执行的启动参数是 `data` 的全部字段，外加 `_eventSource` 与 `_eventType`；定义了输入参数时只保留已声明的字段。
 
 `triggeredCount` 为 0 时，检查事件的 `source`、`type` 是否与触发器一致、触发器是否「已启用」、过滤表达式对这条事件是否为真。
 
 ## 转发 GitHub 事件
 
-「事件源」为 `github` 的触发器会按 GitHub Webhook 规则验签。`/api/v1/api-events` 需要 AgentLoom 凭证且要求固定的请求体结构，GitHub 不能直接调用它，需要由你的中转服务接收 GitHub 请求后转发。
+只需让一个 GitHub 仓库启动一个工作流时，用 Webhook 触发器的 GitHub 验证模式让 GitHub 直接调用，不需要中转服务，见 [接入 GitHub 仓库](/guide/triggers/webhook#接入-github-仓库)。
+
+需要由你自己的服务接收 GitHub 事件、再按来源与类型扇出到多个工作流时，用「事件源」为 `github` 的 API Event 触发器：它按 GitHub Webhook 规则验签，`/api/v1/api-events` 需要 AgentLoom 凭证且要求固定的请求体结构，由你的服务接收 GitHub 请求后转发。
 
 1. 创建触发器时「事件源」填 `github`，「事件类型」填 GitHub 事件名（如 `push`、`pull_request`），「签名密钥」填 GitHub 仓库 Webhook 设置中的 Secret。
 

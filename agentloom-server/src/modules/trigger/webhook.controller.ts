@@ -18,6 +18,9 @@ import { WebhookConfigSchema } from './dto/trigger.dto';
 import { TriggerHistoryService } from './trigger-history.service';
 import { TriggerService } from './trigger.service';
 import {
+  GITHUB_DELIVERY_HEADER,
+  GITHUB_EVENT_HEADER,
+  GITHUB_SIGNATURE_HEADER,
   SYSTEM_TRIGGER_USER_ID,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
@@ -46,6 +49,17 @@ type WebhookAcceptedResponse = {
   status: 'accepted';
 };
 
+type WebhookSkippedResponse = {
+  status: 'skipped';
+  reason: 'github-ping' | 'duplicate-delivery';
+};
+
+/** authMode 'github' 下随请求进入启动参数与历史记录的 GitHub 投递元数据 */
+type GithubDelivery = {
+  event: string | undefined;
+  deliveryId: string | undefined;
+};
+
 @ApiTags('Triggers')
 @Controller('webhooks')
 export class WebhookController {
@@ -64,13 +78,22 @@ export class WebhookController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: '接收公开 webhook 触发请求' })
   @ApiResponse({ status: 202, description: 'Webhook 已接受处理' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'authMode=github：ping 事件或窗口内重复的 X-GitHub-Delivery，已验签但不启动执行',
+  })
   @ApiResponse({ status: 401, description: 'Webhook 签名验证失败' })
   @ApiResponse({ status: 403, description: '来源 IP 不在白名单中' })
   async handleWebhook(
     @Param('token') token: string,
     @Req() request: WebhookRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<WebhookAcceptedResponse | typeof INVALID_SIGNATURE_RESPONSE> {
+  ): Promise<
+    | WebhookAcceptedResponse
+    | WebhookSkippedResponse
+    | typeof INVALID_SIGNATURE_RESPONSE
+  > {
     const trigger = await this.webhookService.findTriggerByToken(token);
     const rawBody = request.rawBody;
     // request.ip 由 Fastify trustProxy（APP_TRUST_PROXY_HOPS）解析；不得直接读取
@@ -99,6 +122,8 @@ export class WebhookController {
       throw error;
     }
 
+    let github: GithubDelivery | null = null;
+
     try {
       const webhookConfig = WebhookConfigSchema.parse(trigger.config);
       // 向后兼容：已有的 webhook 无 authMode 字段时视为 'signed'
@@ -122,6 +147,23 @@ export class WebhookController {
           signatureHeader,
           timestampHeader,
         );
+      } else if (authMode === 'github') {
+        if (!rawBody) {
+          throw new WebhookVerificationFailedException('缺少原始请求体');
+        }
+
+        this.webhookService.verifyGithubSignature(
+          webhookConfig.secret,
+          rawBody,
+          this.getHeaderValue(request.headers[GITHUB_SIGNATURE_HEADER]),
+        );
+
+        github = {
+          event: this.getHeaderValue(request.headers[GITHUB_EVENT_HEADER]),
+          deliveryId: this.getHeaderValue(
+            request.headers[GITHUB_DELIVERY_HEADER],
+          ),
+        };
       }
     } catch (error) {
       if (error instanceof WebhookVerificationFailedException) {
@@ -142,13 +184,43 @@ export class WebhookController {
       throw error;
     }
 
+    if (github) {
+      const delivery = github;
+      const skipReason = await this.resolveGithubSkipReason(
+        trigger.id,
+        delivery,
+      );
+
+      if (skipReason) {
+        await runInTenantTransaction(this.db, trigger.tenantId, async () => {
+          await this.triggerHistoryService.record(trigger.tenantId, {
+            triggerId: trigger.id,
+            status: 'skipped',
+            errorMessage:
+              skipReason === 'github-ping'
+                ? 'GitHub ping 事件，不启动执行'
+                : `重复的 GitHub 投递 ${delivery.deliveryId}，不再启动执行`,
+            payload: this.buildPayload(
+              clientIp,
+              requestBody,
+              this.githubPayloadMeta(delivery),
+            ),
+          });
+        });
+
+        reply.code(HttpStatus.OK);
+
+        return { status: 'skipped', reason: skipReason };
+      }
+    }
+
     let execution: Awaited<ReturnType<ExecutionService['runWorkflow']>>;
 
     try {
       execution = await this.executionService.runWorkflow(
         trigger.workflowDefinitionId,
         {
-          inputParams: this.buildInputParams(requestBody),
+          inputParams: this.buildInputParams(requestBody, github),
           launchSource: 'webhook-trigger',
           triggerType: 'webhook',
         },
@@ -156,6 +228,13 @@ export class WebhookController {
         SYSTEM_TRIGGER_USER_ID,
       );
     } catch (error) {
+      if (github?.deliveryId) {
+        await this.webhookService.releaseGithubDelivery(
+          trigger.id,
+          github.deliveryId,
+        );
+      }
+
       await this.recordFailedWebhookTrigger(
         trigger.tenantId,
         trigger.id,
@@ -172,6 +251,7 @@ export class WebhookController {
       execution.id,
       clientIp,
       requestBody,
+      github,
     );
 
     this.logger.log(
@@ -189,12 +269,51 @@ export class WebhookController {
     };
   }
 
+  /**
+   * GitHub 创建 webhook 时会先投递 `ping`，不应启动工作流；
+   * 带 X-GitHub-Delivery 的投递在去重窗口内只启动一次（GitHub 总会发送该头，缺失时不去重）。
+   */
+  private async resolveGithubSkipReason(
+    triggerId: string,
+    github: GithubDelivery,
+  ): Promise<WebhookSkippedResponse['reason'] | null> {
+    if (github.event === 'ping') {
+      return 'github-ping';
+    }
+
+    if (
+      github.deliveryId &&
+      !(await this.webhookService.claimGithubDelivery(
+        triggerId,
+        github.deliveryId,
+      ))
+    ) {
+      return 'duplicate-delivery';
+    }
+
+    return null;
+  }
+
+  private githubPayloadMeta(
+    github: GithubDelivery | null,
+  ): Record<string, unknown> {
+    if (!github) {
+      return {};
+    }
+
+    return {
+      githubEvent: github.event ?? null,
+      githubDelivery: github.deliveryId ?? null,
+    };
+  }
+
   private async recordSuccessfulWebhookTrigger(
     tenantId: string,
     triggerId: string,
     executionId: string,
     clientIp: string | undefined,
     requestBody: unknown,
+    github: GithubDelivery | null,
   ): Promise<void> {
     try {
       await runInTenantTransaction(this.db, tenantId, async () => {
@@ -202,7 +321,11 @@ export class WebhookController {
           triggerId,
           status: 'success',
           executionId,
-          payload: this.buildPayload(clientIp, requestBody),
+          payload: this.buildPayload(
+            clientIp,
+            requestBody,
+            this.githubPayloadMeta(github),
+          ),
         });
 
         await this.triggerService.markTriggered(tenantId, triggerId);
@@ -287,13 +410,22 @@ export class WebhookController {
     }
   }
 
-  private buildInputParams(body: unknown): Record<string, unknown> {
-    if (this.isRecord(body)) {
-      return { ...body };
+  private buildInputParams(
+    body: unknown,
+    github: GithubDelivery | null,
+  ): Record<string, unknown> {
+    const params = this.isRecord(body) ? { ...body } : { payload: body ?? null };
+
+    if (!github) {
+      return params;
     }
 
+    // 与 API 事件触发器（api-event-ingestion.service）的 _eventSource/_eventType 约定一致
     return {
-      payload: body ?? null,
+      ...params,
+      _eventSource: 'github',
+      ...(github.event ? { _eventType: github.event } : {}),
+      ...(github.deliveryId ? { _deliveryId: github.deliveryId } : {}),
     };
   }
 

@@ -26,6 +26,13 @@ const authModeOptions: Array<{
     title: 'Signed：额外要求 HMAC-SHA256 签名与时间戳校验',
     description: '调用方需用 secret 对请求体签名并携带时间戳，可防篡改与重放，更安全。',
   },
+  {
+    value: 'github',
+    id: 'webhook-auth-mode-github',
+    title: 'GitHub：校验 GitHub 的 X-Hub-Signature-256 签名',
+    description:
+      '供 GitHub 仓库 Webhook 直接调用：用 secret 校验签名，同一投递（X-GitHub-Delivery）只启动一次。',
+  },
 ]
 
 interface WebhookConfigFormProps {
@@ -98,12 +105,15 @@ export function WebhookConfigForm({
         <RadioGroup
           aria-labelledby="webhook-auth-mode-label"
           value={authMode}
-          onValueChange={(value) =>
-            setValue('webhook.authMode', value === 'signed' ? 'signed' : 'simple', {
-              shouldDirty: true,
-              shouldValidate: true,
-            })
-          }
+          onValueChange={(value) => {
+            const option = authModeOptions.find((item) => item.value === value)
+            if (option) {
+              setValue('webhook.authMode', option.value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+          }}
           className="gap-3 md:grid-cols-2"
         >
           {authModeOptions.map((option) => (

@@ -28,7 +28,10 @@ import {
   AGENT_TASK_QUEUE,
   type AgentTaskJobData,
 } from './execution.constants';
-import type { InternalRunWorkflowRequest } from './dto/run-workflow.dto';
+import type {
+  InternalLaunchSource,
+  InternalRunWorkflowRequest,
+} from './dto/run-workflow.dto';
 import { SYSTEM_TRIGGER_USER_ID } from '../trigger/trigger.constants';
 import {
   workflowInputSchemaSchema,
@@ -271,9 +274,26 @@ function shouldNormalizeLaunchInput(
   return workflowInputSchema != null || runRequest?.schemaVersion !== undefined;
 }
 
+/**
+ * 触发器启动由外部系统投递（cron / webhook / API 事件），投递方无从得知已发布输入契约的
+ * 版本，也无法控制载荷字段。这些来源只在服务端内部设置，公开 run DTO 不接受。
+ */
+const TRIGGER_LAUNCH_SOURCES: Partial<Record<InternalLaunchSource, true>> = {
+  'cron-trigger': true,
+  'webhook-trigger': true,
+  'api-event-trigger': true,
+};
+
 function shouldRequireSchemaVersion(
   runRequest: InternalRunWorkflowRequest | undefined,
 ): boolean {
+  if (
+    runRequest?.launchSource &&
+    TRIGGER_LAUNCH_SOURCES[runRequest.launchSource]
+  ) {
+    return false;
+  }
+
   const triggerType = runRequest?.triggerType ?? 'manual';
 
   return triggerType === 'manual' || triggerType === 'api';
@@ -318,11 +338,17 @@ function buildNormalizedExecutionInputParams(
 
   // 未知键 / visibility / default / 空值 / options 语义与生成应用公开提交共用同一实现，
   // 见 workflow/utils/workflow-input-validation.util.ts 的注释。
+  // 触发器载荷是外部系统的事件体（如 GitHub push 带数百个键），契约外字段丢弃而非 422，
+  // 原始载荷仍完整保存在 workflow_trigger_history.payload。
+  const isTriggerLaunch =
+    runRequest?.launchSource !== undefined &&
+    TRIGGER_LAUNCH_SOURCES[runRequest.launchSource] === true;
   const { resolvedInputs, unresolvedFieldIds, errors } =
     resolveWorkflowInputParams({
       workflowInputSchema,
       rawInputParams,
       fieldPrefix: 'inputParams',
+      unknownKeys: isTriggerLaunch ? 'drop' : 'reject',
     });
 
   if (errors.length > 0) {

@@ -74,6 +74,9 @@ describe('WebhookController', () => {
   const webhookService = {
     findTriggerByToken: vi.fn(),
     verifySignature: vi.fn(),
+    verifyGithubSignature: vi.fn(),
+    claimGithubDelivery: vi.fn(),
+    releaseGithubDelivery: vi.fn(),
     checkIpWhitelist: vi.fn(),
   };
   const executionService = {
@@ -252,6 +255,47 @@ describe('WebhookController', () => {
     );
     expect(webhookService.verifySignature).not.toHaveBeenCalled();
     expect(executionService.runWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('github 模式启动执行失败时释放 delivery 占位，使 GitHub Redeliver 可以重试', async () => {
+    const reply = createMockReply();
+    const startError = new Error('queue down');
+
+    webhookService.findTriggerByToken.mockResolvedValue({
+      ...webhookTrigger,
+      config: { ...webhookTrigger.config, authMode: 'github' },
+    });
+    webhookService.checkIpWhitelist.mockImplementation(() => undefined);
+    webhookService.claimGithubDelivery.mockResolvedValue(true);
+    executionService.runWorkflow.mockRejectedValue(startError);
+    triggerHistoryService.record.mockResolvedValue(undefined);
+
+    await expect(
+      controller.handleWebhook(
+        'webhook-token',
+        createMockRequest({
+          headers: {
+            'x-hub-signature-256': 'sha256=abc',
+            'x-github-event': 'push',
+            'x-github-delivery': 'delivery-1',
+          },
+        }),
+        reply as never,
+      ),
+    ).rejects.toBe(startError);
+
+    expect(webhookService.claimGithubDelivery).toHaveBeenCalledWith(
+      TRIGGER_ID,
+      'delivery-1',
+    );
+    expect(webhookService.releaseGithubDelivery).toHaveBeenCalledWith(
+      TRIGGER_ID,
+      'delivery-1',
+    );
+    expect(triggerHistoryService.record).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({ status: 'failed' }),
+    );
   });
 
   it('应为 webhook 路由声明 Public 元数据', () => {

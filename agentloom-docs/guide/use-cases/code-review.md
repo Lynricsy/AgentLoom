@@ -53,22 +53,21 @@ Agent 收到的输入是「文本」端口的内容，后面附上其余输入�
 
 1. 在工具栏点击「发布」并完成发布，面板显示「工作流已成功发布」。
 2. 点击工具栏「触发器」→「新增触发器」，类型选「Webhook」，填写「触发器名称」。
-3. 鉴权方式选「Simple：仅校验 Token 与 IP 白名单」，点击「创建触发器」。
+3. 验证模式选「GitHub：校验 GitHub 的 X-Hub-Signature-256 签名」，点击「创建触发器」。
+4. 在「保存 Webhook 凭证」中复制 Webhook URL 与 Secret（Secret 只显示这一次），点击「完成」。
 
-触发器卡片的「Webhook 入口」就是 GitHub 要调用的 URL。
-
-必须用 Simple 模式：Signed 模式要求请求带 `x-agentloom-signature` 与 `x-agentloom-timestamp` 签名头，GitHub 发送的是 `X-Hub-Signature-256`，签名校验会失败。Simple 模式下 URL 中的 Token 就是凭据，不要公开这个 URL；可以在「IP 白名单」中填入 GitHub 公布的 Webhook 出口地址段，进一步限制来源。签名算法见 [Webhook 与 API 事件](/api/webhooks)。
+GitHub 模式用触发器的 Secret 校验 GitHub 发送的 `X-Hub-Signature-256`，同一投递只启动一次执行，见 [接入 GitHub 仓库](/guide/triggers/webhook#接入-github-仓库)。需要进一步限制来源时，在「IP 白名单」中填入 GitHub 公布的 Webhook 出口网段。
 
 ## 4. 在 GitHub 配置 Webhook
 
 在仓库的 **Settings → Webhooks → Add webhook** 中：
 
-- **Payload URL**：「Webhook 入口」的 URL。
+- **Payload URL**：Webhook URL。
 - **Content type**：`application/json`。请求体的顶层字段会成为本次执行的输入参数，`application/x-www-form-urlencoded` 格式下 PR 事件不会以 JSON 对象传入。
-- **Secret**：留空。AgentLoom 的 Webhook 入口不校验 GitHub 签名。
+- **Secret**：触发器的 Secret。
 - **Which events**：选 **Let me select individual events**，只勾选 **Pull requests**。
 
-保存后 GitHub 立即发送一次 `ping` 事件，AgentLoom 为它启动一次执行；Agent 按提示词第 1 条回复跳过。GitHub 的 **Recent Deliveries** 中该次投递的响应码为 202。
+保存后 GitHub 立即发送一次 `ping` 事件。AgentLoom 校验签名后返回 200、不启动执行，触发历史记录一条「跳过」；GitHub 的 **Recent Deliveries** 中该次投递的响应码为 200。
 
 ## 5. 触发并查看结果
 

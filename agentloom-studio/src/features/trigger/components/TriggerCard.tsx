@@ -17,6 +17,7 @@ import {
   isCronConfig,
   isWebhookConfig,
   type Trigger,
+  type WebhookAuthMode,
 } from '../types'
 import { buildWebhookUrl } from './WebhookSecretDisplay'
 
@@ -47,6 +48,12 @@ const typeLabels: Record<Trigger['type'], string> = {
   cron: '定时触发',
   webhook: 'Webhook',
   api_event: 'API Event',
+}
+
+const webhookAuthModeLabels: Record<WebhookAuthMode, string> = {
+  simple: 'Simple（仅校验 Token 与 IP 白名单）',
+  signed: 'Signed（HMAC-SHA256 签名 + 时间戳校验）',
+  github: 'GitHub（X-Hub-Signature-256 签名，按投递去重）',
 }
 
 interface TriggerCardProps {
@@ -112,9 +119,7 @@ export const TriggerCard = memo(function TriggerCard({
     }
 
     // 历史触发器缺省 authMode 时服务端按 signed 处理，卡片展示口径保持一致
-    return (trigger.config.authMode ?? 'signed') === 'signed'
-      ? 'Signed（HMAC-SHA256 签名 + 时间戳校验）'
-      : 'Simple（仅校验 Token 与 IP 白名单）'
+    return webhookAuthModeLabels[trigger.config.authMode ?? 'signed']
   }, [trigger])
 
   return (

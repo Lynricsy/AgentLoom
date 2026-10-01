@@ -5341,6 +5341,9 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "authMode=github：ping 事件或窗口内重复的 X-GitHub-Delivery，已验签但不启动执行"
+          },
           "202": {
             "description": "Webhook 已接受处理"
           },
@@ -18278,7 +18281,8 @@
                     "type": "string",
                     "enum": [
                       "simple",
-                      "signed"
+                      "signed",
+                      "github"
                     ]
                   },
                   "ipWhitelist": {
@@ -18366,7 +18370,8 @@
                     "type": "string",
                     "enum": [
                       "simple",
-                      "signed"
+                      "signed",
+                      "github"
                     ]
                   },
                   "ipWhitelist": {

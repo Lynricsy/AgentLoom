@@ -72,7 +72,7 @@ const formSchema = z
       timezone: z.string(),
     }),
     webhook: z.object({
-      authMode: z.enum(['simple', 'signed']),
+      authMode: z.enum(['simple', 'signed', 'github']),
       ipWhitelist: z.string(),
     }),
     apiEvent: z.object({

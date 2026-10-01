@@ -596,4 +596,59 @@ describe('API Event ingestion E2E', () => {
     });
     expect(executionQueueAdd).not.toHaveBeenCalled();
   });
+
+  it('工作流声明输入契约时 API 事件仍应启动执行：不要求 schemaVersion，契约外字段丢弃', async () => {
+    const tenant = await seedTenant('api-event-input-schema');
+    const workflowId = await seedWorkflow(tenant);
+    await ctx.adminSql`
+      UPDATE workflow_definitions
+      SET input_schema = ${ctx.adminSql.json(
+        toJsonValue({
+          version: 3,
+          collectionMode: 'form',
+          fields: [{ id: 'ref', type: 'text', label: '分支', required: true }],
+        }),
+      )}
+      WHERE id = ${workflowId}::uuid
+    `;
+    const triggerId = await seedApiEventTrigger({
+      tenant,
+      workflowId,
+      config: { eventSource: 'generic', eventType: 'push' },
+    });
+
+    const response = await postEvent(tenant, {
+      source: 'generic',
+      type: 'push',
+      data: { ref: 'refs/heads/main', after: 'abc123' },
+    });
+
+    const history = await ctx.adminSql`
+      SELECT status, error_message FROM workflow_trigger_history
+      WHERE trigger_id = ${triggerId}::uuid
+    `;
+    expect(history.map((row) => [row.status, row.error_message])).toEqual([
+      ['success', null],
+    ]);
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      triggeredCount: 1,
+      skippedCount: 0,
+    });
+
+    const executionId = response.json().executions[0].executionId as string;
+    const [execution] = await db
+      .select()
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId));
+    expect(execution?.inputParams).toMatchObject({
+      ref: 'refs/heads/main',
+      _meta: {
+        launchSource: 'api-event-trigger',
+        launchConfig: expect.objectContaining({ schemaVersion: 3 }),
+      },
+    });
+    expect(execution?.inputParams).not.toHaveProperty('after');
+    expect(execution?.inputParams).not.toHaveProperty('_eventSource');
+  });
 });

@@ -114,6 +114,26 @@ function createMockSupabaseService() {
   };
 }
 
+/**
+ * 内存版 SET/DEL：按 ioredis 语义支持 `NX`（键已存在返回 null），
+ * 供 authMode 'github' 的 X-GitHub-Delivery 去重使用。
+ */
+function createRedisKeyStore() {
+  const keys = new Set<string>();
+
+  return {
+    clear: () => keys.clear(),
+    set: async (key: string, _value: string, ...options: unknown[]) => {
+      if (options.includes('NX') && keys.has(key)) {
+        return null;
+      }
+      keys.add(key);
+      return 'OK';
+    },
+    del: async (key: string) => (keys.delete(key) ? 1 : 0),
+  };
+}
+
 function createMockRedisClient() {
   return {
     get: vi.fn().mockResolvedValue(null),
@@ -191,6 +211,7 @@ describe('Trigger E2E', () => {
   let app: NestFastifyApplication;
   let drizzleDb: DrizzleDB;
   let redisClientMock: ReturnType<typeof createMockRedisClient>;
+  const redisKeyStore = createRedisKeyStore();
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
   let executionQueueMock: ReturnType<typeof createMockExecutionQueue>;
@@ -274,8 +295,9 @@ describe('Trigger E2E', () => {
     redisCacheMock.del.mockResolvedValue(undefined);
     redisCacheMock.delByPattern.mockResolvedValue(undefined);
     redisClientMock.get.mockResolvedValue(null);
-    redisClientMock.set.mockResolvedValue('OK');
-    redisClientMock.del.mockResolvedValue(0);
+    redisKeyStore.clear();
+    redisClientMock.set.mockImplementation(redisKeyStore.set);
+    redisClientMock.del.mockImplementation(redisKeyStore.del);
     redisClientMock.keys.mockResolvedValue([]);
     redisClientMock.publish.mockResolvedValue(1);
     executionQueueMock.add.mockResolvedValue(undefined);
@@ -1332,6 +1354,117 @@ describe('Trigger E2E', () => {
       .where(eq(schema.workflowTriggerHistory.triggerId, triggerId));
     expect(historyRows.map((row) => row.status).sort()).toEqual([
       'ip_rejected',
+      'success',
+    ]);
+  });
+
+  it('authMode github：按 X-Hub-Signature-256 验签，同一 X-GitHub-Delivery 只启动一次，ping 不启动', async () => {
+    const owner = await seedTenant('trigger-webhook-github');
+    const { workflowId } = await seedExecutableWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'GitHub Webhook',
+        type: 'webhook',
+        config: { authMode: 'github', ipWhitelist: [] },
+        isEnabled: true,
+      });
+
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.data.config.authMode).toBe('github');
+    const token = createResponse.body.data.config.token as string;
+    const secret = createResponse.body.data.config.secret as string;
+    const triggerId = createResponse.body.data.id as string;
+
+    const rawBody = JSON.stringify({ ref: 'refs/heads/main', after: 'abc123' });
+    const githubSignature = (body: string, key = secret) =>
+      `sha256=${crypto.createHmac('sha256', key).update(body).digest('hex')}`;
+    const deliver = (headers: Record<string, string>, body = rawBody) =>
+      request(app.getHttpServer())
+        .post(`/api/v1/webhooks/${token}`)
+        .set('content-type', 'application/json')
+        .set(headers)
+        .send(body);
+
+    const accepted = await deliver({
+      'x-hub-signature-256': githubSignature(rawBody),
+      'x-github-event': 'push',
+      'x-github-delivery': 'delivery-1',
+    });
+    expect(accepted.status).toBe(202);
+    expect(accepted.body).toMatchObject({
+      executionId: expect.any(String),
+      status: 'accepted',
+    });
+
+    const replayed = await deliver({
+      'x-hub-signature-256': githubSignature(rawBody),
+      'x-github-event': 'push',
+      'x-github-delivery': 'delivery-1',
+    });
+    expect(replayed.status).toBe(200);
+    expect(replayed.body).toEqual({
+      status: 'skipped',
+      reason: 'duplicate-delivery',
+    });
+
+    const wrongSignature = await deliver({
+      'x-hub-signature-256': githubSignature(rawBody, 'not-the-secret'),
+      'x-github-event': 'push',
+      'x-github-delivery': 'delivery-2',
+    });
+    expect(wrongSignature.status).toBe(401);
+    expect(wrongSignature.body).toEqual({
+      error: 'INVALID_SIGNATURE',
+      message: 'Webhook signature verification failed',
+    });
+
+    const missingSignature = await deliver({
+      'x-github-event': 'push',
+      'x-github-delivery': 'delivery-3',
+    });
+    expect(missingSignature.status).toBe(401);
+
+    const pingBody = JSON.stringify({ zen: 'Keep it logically awesome.' });
+    const ping = await deliver(
+      {
+        'x-hub-signature-256': githubSignature(pingBody),
+        'x-github-event': 'ping',
+        'x-github-delivery': 'delivery-4',
+      },
+      pingBody,
+    );
+    expect(ping.status).toBe(200);
+    expect(ping.body).toEqual({ status: 'skipped', reason: 'github-ping' });
+
+    // 只有第一次投递启动了执行，事件类型与投递 ID 进入启动参数
+    const executions = await drizzleDb
+      .select()
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.workflowDefinitionId, workflowId));
+    expect(executions).toHaveLength(1);
+    expect(executions[0]?.inputParams).toMatchObject({
+      ref: 'refs/heads/main',
+      _eventSource: 'github',
+      _eventType: 'push',
+      _deliveryId: 'delivery-1',
+    });
+    expect(executionQueueMock.add).toHaveBeenCalledTimes(1);
+
+    const historyRows = await drizzleDb
+      .select()
+      .from(schema.workflowTriggerHistory)
+      .where(eq(schema.workflowTriggerHistory.triggerId, triggerId));
+    expect(historyRows.map((row) => row.status).sort()).toEqual([
+      'signature_failed',
+      'signature_failed',
+      'skipped',
+      'skipped',
       'success',
     ]);
   });

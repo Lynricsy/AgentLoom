@@ -1,14 +1,18 @@
 import { memo, useState } from 'react'
 import { Copy, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
 import { useCanvasStore } from '../../stores/canvasStore'
-import { useTriggers, isWebhookConfig, hasWebhookSecret } from '@/features/trigger'
-import { buildWebhookUrl } from '@/features/trigger'
+import {
+  buildWebhookUrl,
+  hasWebhookSecret,
+  isWebhookConfig,
+  useTriggers,
+  type WebhookAuthMode,
+} from '@/features/trigger'
 
-type AuthMode = 'simple' | 'signed'
-
-const AUTH_MODE_LABELS: Record<AuthMode, string> = {
+const AUTH_MODE_LABELS: Record<WebhookAuthMode, string> = {
   simple: '简单模式（仅校验 Token 与 IP 白名单）',
   signed: '签名验证（HMAC-SHA256 + 时间戳）',
+  github: 'GitHub（X-Hub-Signature-256 签名）',
 }
 
 /**
@@ -59,7 +63,7 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
 interface DeployedWebhookInfoProps {
   token: string
   secret: string | null
-  authMode: AuthMode
+  authMode: WebhookAuthMode
   ipWhitelist: readonly string[]
   isEnabled: boolean
 }
@@ -121,8 +125,8 @@ function DeployedWebhookInfo({
         </div>
       </dl>
 
-      {/* Signed 模式下展示 Secret */}
-      {authMode === 'signed' && secret ? (
+      {/* 需要签名的模式下展示 Secret */}
+      {authMode !== 'simple' && secret ? (
         <>
           <CredentialRow
             icon={<KeyRound className="h-3 w-3" />}
@@ -133,7 +137,9 @@ function DeployedWebhookInfo({
             onCopy={() => void handleCopy(secret, 'secret')}
           />
           <p className="text-[10px] leading-4 text-muted-foreground">
-            签名算法: HMAC-SHA256(secret, &quot;{'{timestamp}.{body}'}&quot;)
+            {authMode === 'github'
+              ? '在 GitHub 仓库 Webhook 的 Secret 中填写此密钥'
+              : `签名算法: HMAC-SHA256(secret, "{timestamp}.{body}")`}
           </p>
         </>
       ) : null}

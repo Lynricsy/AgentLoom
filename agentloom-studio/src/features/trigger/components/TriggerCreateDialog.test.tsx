@@ -216,6 +216,39 @@ describe('TriggerCreateDialog', () => {
     })
   })
 
+  it('选择 GitHub 验证模式时提交 authMode github，并展示 GitHub 仓库 Webhook 的填写说明', async () => {
+    const created = makeTrigger('webhook')
+    createMutateAsyncMock.mockResolvedValue({
+      ...created,
+      config: { ...created.config, authMode: 'github' },
+    })
+
+    render(
+      <TriggerCreateDialog
+        workflowId="workflow-1"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Webhook/ }))
+    fireEvent.change(screen.getByLabelText('触发器名称'), {
+      target: { value: 'GitHub Push' },
+    })
+    fireEvent.click(screen.getByRole('radio', { name: /GitHub/ }))
+    fireEvent.click(screen.getByRole('button', { name: '创建触发器' }))
+
+    await waitFor(() => {
+      expect(createMutateAsyncMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: { authMode: 'github', ipWhitelist: [] },
+        }),
+      )
+    })
+    const guide = await screen.findByTestId('webhook-signature-guide')
+    expect(guide).toHaveTextContent('在 GitHub 中配置')
+  })
+
   it('创建 API Event 时按当前选中的类型构造 payload', async () => {
     createMutateAsyncMock.mockResolvedValue(makeTrigger('api_event'))
 

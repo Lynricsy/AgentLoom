@@ -1,7 +1,8 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 
 import type { ApiEventTriggerConfig } from '../../../database/schema/workflow-triggers.schema';
+import { isValidGithubSignature } from '../github-signature.util';
+import { GITHUB_SIGNATURE_HEADER } from '../trigger.constants';
 import type { EventPayload, EventSourceAdapter } from './event-source.adapter';
 
 @Injectable()
@@ -23,7 +24,7 @@ export class GithubWebhookAdapter implements EventSourceAdapter {
     }
 
     const signatureHeader =
-      headers['x-hub-signature-256'] ?? headers['X-Hub-Signature-256'];
+      headers[GITHUB_SIGNATURE_HEADER] ?? headers['X-Hub-Signature-256'];
 
     if (!signatureHeader) {
       this.logger.warn('GitHub 事件缺少 X-Hub-Signature-256 请求头');
@@ -42,17 +43,7 @@ export class GithubWebhookAdapter implements EventSourceAdapter {
       return false;
     }
 
-    const expectedSignature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
-
-    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
-    const providedBuffer = Buffer.from(signatureHeader, 'utf8');
-
-    if (expectedBuffer.length !== providedBuffer.length) {
-      this.logger.warn('GitHub webhook 签名长度不匹配');
-      return false;
-    }
-
-    if (!timingSafeEqual(expectedBuffer, providedBuffer)) {
+    if (!isValidGithubSignature(secret, rawBody, signatureHeader)) {
       this.logger.warn('GitHub webhook 签名验证失败');
       return false;
     }

@@ -3853,7 +3853,8 @@ export interface CreateTriggerDtoConfig {
  */
 export const CreateTriggerDtoConfigAuthModeEnum = {
     Simple: 'simple',
-    Signed: 'signed'
+    Signed: 'signed',
+    Github: 'github'
 } as const;
 export type CreateTriggerDtoConfigAuthModeEnum = typeof CreateTriggerDtoConfigAuthModeEnum[keyof typeof CreateTriggerDtoConfigAuthModeEnum];
 
@@ -3902,7 +3903,8 @@ export interface CreateTriggerDtoConfigAnyOf1 {
  */
 export const CreateTriggerDtoConfigAnyOf1AuthModeEnum = {
     Simple: 'simple',
-    Signed: 'signed'
+    Signed: 'signed',
+    Github: 'github'
 } as const;
 export type CreateTriggerDtoConfigAnyOf1AuthModeEnum = typeof CreateTriggerDtoConfigAnyOf1AuthModeEnum[keyof typeof CreateTriggerDtoConfigAnyOf1AuthModeEnum];
 
@@ -8528,7 +8530,8 @@ export interface UpdateTriggerDtoConfig {
  */
 export const UpdateTriggerDtoConfigAuthModeEnum = {
     Simple: 'simple',
-    Signed: 'signed'
+    Signed: 'signed',
+    Github: 'github'
 } as const;
 export type UpdateTriggerDtoConfigAuthModeEnum = typeof UpdateTriggerDtoConfigAuthModeEnum[keyof typeof UpdateTriggerDtoConfigAuthModeEnum];
 
@@ -8558,7 +8561,8 @@ export interface UpdateTriggerDtoConfigAnyOf {
  */
 export const UpdateTriggerDtoConfigAnyOfAuthModeEnum = {
     Simple: 'simple',
-    Signed: 'signed'
+    Signed: 'signed',
+    Github: 'github'
 } as const;
 export type UpdateTriggerDtoConfigAnyOfAuthModeEnum = typeof UpdateTriggerDtoConfigAnyOfAuthModeEnum[keyof typeof UpdateTriggerDtoConfigAnyOfAuthModeEnum];
 

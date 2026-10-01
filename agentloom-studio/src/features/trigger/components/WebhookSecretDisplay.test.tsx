@@ -29,4 +29,17 @@ describe('WebhookSecretDisplay', () => {
     expect(guide).toHaveTextContent('Simple 模式无需签名')
     expect(guide).not.toHaveTextContent('X-AgentLoom-Signature')
   })
+
+  it('github 模式说明 GitHub 仓库 Webhook 的填写方式，不展示 AgentLoom 签名步骤', () => {
+    render(<WebhookSecretDisplay token="tok-1" secret="sec-1" authMode="github" />)
+
+    const guide = screen.getByTestId('webhook-signature-guide')
+    expect(guide).toHaveTextContent('Settings → Webhooks')
+    expect(guide).toHaveTextContent('Payload URL')
+    expect(guide).toHaveTextContent('application/json')
+    expect(guide).toHaveTextContent('Secret 填上面的 Secret')
+    expect(guide).toHaveTextContent('X-Hub-Signature-256')
+    expect(guide).toHaveTextContent('X-GitHub-Delivery')
+    expect(guide).not.toHaveTextContent('X-AgentLoom-Signature')
+  })
 })

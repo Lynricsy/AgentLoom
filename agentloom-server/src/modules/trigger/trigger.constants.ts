@@ -23,3 +23,13 @@ export const WEBHOOK_SECRET_LENGTH = 48;
 export const WEBHOOK_SIGNATURE_HEADER = 'x-agentloom-signature';
 export const WEBHOOK_TIMESTAMP_HEADER = 'x-agentloom-timestamp';
 export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+
+/** authMode 'github'：GitHub webhook 投递头（Node 已转小写） */
+export const GITHUB_SIGNATURE_HEADER = 'x-hub-signature-256';
+export const GITHUB_EVENT_HEADER = 'x-github-event';
+export const GITHUB_DELIVERY_HEADER = 'x-github-delivery';
+/**
+ * 同一 X-GitHub-Delivery 的去重窗口：窗口内的重复投递（GitHub 页面 Redeliver、网络重放）
+ * 不再启动执行；超过窗口的重放会再次执行。
+ */
+export const GITHUB_DELIVERY_DEDUP_TTL_SECONDS = 24 * 60 * 60;

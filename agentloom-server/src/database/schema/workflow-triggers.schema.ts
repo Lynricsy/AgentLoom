@@ -28,7 +28,7 @@ export interface CronTriggerConfig {
 }
 
 export interface WebhookTriggerConfig {
-  authMode?: 'simple' | 'signed';
+  authMode?: 'simple' | 'signed' | 'github';
   token: string;
   secret: string;
   ipWhitelist: string[];
