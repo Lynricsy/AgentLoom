@@ -59,12 +59,13 @@ export class AgentConversationService {
   private emitConversationEnded(conversation: {
     id: string;
     tenantId: string;
-    createdBy: string;
+    createdBy: string | null;
   }): void {
     const payload = {
       conversationId: conversation.id,
       tenantId: conversation.tenantId,
       organizationId: conversation.tenantId,
+      /** API 来源的对话没有创建人 */
       userId: conversation.createdBy,
     };
 
@@ -266,9 +267,14 @@ export class AgentConversationService {
 
   async listByAgent(
     agentDefinitionId: string,
-    query: { page: number; limit: number; status?: string },
+    query: {
+      page: number;
+      limit: number;
+      status?: string;
+      source?: 'studio' | 'api';
+    },
   ) {
-    const { page, limit, status } = query;
+    const { page, limit, status, source } = query;
     const offset = (page - 1) * limit;
 
     const conditions = [
@@ -282,6 +288,10 @@ export class AgentConversationService {
           status as 'active' | 'paused' | 'ended' | 'failed',
         ),
       );
+    }
+
+    if (source) {
+      conditions.push(eq(agentConversations.source, source));
     }
 
     const whereClause = and(...conditions);

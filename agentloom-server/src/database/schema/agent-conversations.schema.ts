@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   foreignKey,
   pgTable,
   pgEnum,
@@ -10,6 +11,7 @@ import {
   timestamp,
   index,
 } from 'drizzle-orm/pg-core';
+import { agentApiKeys } from './agent-api-keys.schema';
 import { agentDefinitions } from './agent-definitions.schema';
 import { users } from './users.schema';
 import { createDirectTenantPolicies } from './rls-policies';
@@ -19,6 +21,12 @@ export const conversationStatusEnum = pgEnum('conversation_status_enum', [
   'paused',
   'ended',
   'failed',
+]);
+
+/** 对话来源：Studio 用户发起，或第三方经 Agent 专用 API Key 发起 */
+export const conversationSourceEnum = pgEnum('conversation_source_enum', [
+  'studio',
+  'api',
 ]);
 
 export const messageRoleEnum = pgEnum('message_role_enum', [
@@ -59,9 +67,17 @@ export const agentConversations = pgTable(
       .notNull()
       .default({}),
 
-    createdBy: uuid('created_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Studio 对话的创建人；API 对话为 null（以 api_key_id 标识调用方） */
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+
+    source: conversationSourceEnum('source').notNull().default('studio'),
+
+    apiKeyId: uuid('api_key_id').references(() => agentApiKeys.id),
+
+    /** 第三方自己的终端用户标识，平台不解释 */
+    externalUserId: varchar('external_user_id', { length: 255 }),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -79,6 +95,15 @@ export const agentConversations = pgTable(
     index('idx_agent_conversations_tenant_status').on(
       table.tenantId,
       table.status,
+    ),
+    index('idx_agent_conversations_api_key_user_created').on(
+      table.apiKeyId,
+      table.externalUserId,
+      table.createdAt,
+    ),
+    check(
+      'chk_agent_conversations_source_actor',
+      sql`(${table.source} = 'studio' AND ${table.createdBy} IS NOT NULL) OR (${table.source} = 'api' AND ${table.apiKeyId} IS NOT NULL)`,
     ),
     ...createDirectTenantPolicies('agent_conversations'),
   ],

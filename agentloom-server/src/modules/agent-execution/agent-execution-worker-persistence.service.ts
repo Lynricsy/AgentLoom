@@ -706,6 +706,12 @@ export class AgentExecutionWorkerPersistenceService {
       },
     );
 
+    // API 来源的对话没有人类创建人：不注册自进化工具，也就不会出现需要人工审批的写操作。
+    const actorUserId = context.actorUserId;
+    if (!actorUserId) {
+      return;
+    }
+
     params.runtime.registerSessionToolProvider(
       params.sessionId,
       this.selfEvolutionToolsProvider.createSessionToolProvider({
@@ -714,7 +720,7 @@ export class AgentExecutionWorkerPersistenceService {
         tenantId: params.tenantId,
         currentAgentDefinitionId: params.currentAgentDefinitionId,
         runtimeConfig: params.runtimeConfig,
-        actorUserId: context.actorUserId,
+        actorUserId,
         currentAgentName: context.currentAgentName,
       }),
     );

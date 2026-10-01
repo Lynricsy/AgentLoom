@@ -62,9 +62,12 @@ export class ConversationTitleService {
   ): Promise<string | null> {
     try {
       return await runInTenantTransaction(this.db, tenantId, async () => {
-        // 如果没有 userId，从对话记录中获取
+        // 如果没有 userId，从对话记录中获取；API 来源的对话不自动生成标题
         const resolvedUserId =
           userId ?? (await this.resolveUserId(conversationId));
+        if (resolvedUserId === null) {
+          return null;
+        }
 
         // 获取对话的前几条消息用于生成标题
         const messages = await this.tenantDb
@@ -197,12 +200,20 @@ export class ConversationTitleService {
     );
   }
 
-  private async resolveUserId(conversationId: string): Promise<string> {
+  /** 返回 null 表示 API 来源的对话（无人类创建人，不消耗 LLM 生成标题） */
+  private async resolveUserId(conversationId: string): Promise<string | null> {
     const [conv] = await this.tenantDb
-      .select({ createdBy: agentConversations.createdBy })
+      .select({
+        createdBy: agentConversations.createdBy,
+        source: agentConversations.source,
+      })
       .from(agentConversations)
       .where(eq(agentConversations.id, conversationId))
       .limit(1);
+
+    if (conv?.source === 'api') {
+      return null;
+    }
 
     return conv?.createdBy ?? '';
   }

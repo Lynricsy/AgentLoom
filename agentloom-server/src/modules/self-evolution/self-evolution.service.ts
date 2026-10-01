@@ -492,6 +492,10 @@ export class SelfEvolutionService {
       throw new Error(`Conversation ${conversationId} 不存在`);
     }
 
+    if (!conversation.createdBy) {
+      throw new Error('API 来源的对话不支持自进化操作');
+    }
+
     const agentDetail = await this.agentDefinitionService.findDetailById(
       session.agentId,
     );

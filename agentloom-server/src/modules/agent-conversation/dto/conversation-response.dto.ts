@@ -11,7 +11,12 @@ export const ConversationResponseSwaggerSchema = z.object({
   status: z.enum(['active', 'paused', 'ended', 'failed']),
   // 对话元数据来自动态 JSONB，键和值由运行时写入方决定。
   metadata: z.record(z.string(), z.unknown()),
-  createdBy: z.string().uuid(),
+  /** Studio 对话的创建人；API 对话为 null */
+  createdBy: z.string().uuid().nullable(),
+  source: z.enum(['studio', 'api']),
+  /** API 对话所属的 Agent 专用 API Key */
+  apiKeyId: z.string().uuid().nullable(),
+  externalUserId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -61,7 +66,10 @@ export function serializeConversation(
     title: row.title ?? null,
     status: row.status,
     metadata: row.metadata ?? {},
-    createdBy: row.createdBy,
+    createdBy: row.createdBy ?? null,
+    source: row.source,
+    apiKeyId: row.apiKeyId ?? null,
+    externalUserId: row.externalUserId ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

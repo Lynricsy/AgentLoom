@@ -384,6 +384,7 @@ export {
 } from './agent-definitions.schema';
 export {
   conversationStatusEnum,
+  conversationSourceEnum,
   messageContentTypeEnum,
   messageRoleEnum,
   agentConversations,
@@ -393,6 +394,18 @@ export {
   type AgentMessage,
   type NewAgentMessage,
 } from './agent-conversations.schema';
+export {
+  agentApiKeys,
+  type AgentApiKey,
+  type NewAgentApiKey,
+} from './agent-api-keys.schema';
+export {
+  agentApiRunStatusEnum,
+  agentApiRuns,
+  type AgentApiRun,
+  type AgentApiRunError,
+  type NewAgentApiRun,
+} from './agent-api-runs.schema';
 export {
   workspaceSnapshotStatusEnum,
   workspaceSnapshots,

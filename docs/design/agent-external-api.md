@@ -116,11 +116,12 @@ sequenceDiagram
 2. **终态**：在 `persistConversationTurn` 的同一个事务里，按 `user_message_id = ANY(pendingIds)` 把 run 更新为 `completed`，同时写入 `assistant_message_id` 和 `stop_reason`。失败路径（`worker:1323-1432`）更新为 `failed` 并写入部分输出；`stopReason==='cancelled'` 更新为 `cancelled`。事务提交后再 `XADD` 终态事件并 `EXPIRE 3600`。
 3. **崩溃兜底**：`@OnWorkerEvent('failed')`（`worker:997`）把该对话的活跃 run 标记为 `failed`。另外用 BullMQ repeatable job 每 5 分钟清扫一次：`running/queued` 状态且 `created_at < now() - 2h` 的 run 标记为 `failed/run-worker-lost`。2h 大于沙箱单次 prompt 超时 1h（`sandbox-session-runtime.service.ts:17`）。同一个清扫任务还会结束 `source='api'`、`status='active'`、`updated_at` 超过 `APP_AGENT_API_CONVERSATION_IDLE_HOURS`（默认 24）的对话，防止第三方遗留的对话一直占着沙箱。
 4. **跨实例取消**：`AgentExecutionService.cancelExecution` 增加 Redis pub/sub 频道 `__agent_conversation_cancel__`，做法照搬 `AgentToolPermissionSyncService`（`agent-tool-permission-sync.service.ts:28,115-125`）。各实例收到后中止本地的 `activeRun`。Studio 的 socket 取消路径也会因此获得跨实例能力（F12），属于行为增强，不改契约。
-5. **`created_by` 为 null 的消费者**：API 对话的 `created_by` 为 null（见 6.3）。需要处理以下调用点：
-   - `agent-conversation.service.ts:68`：`ended` 事件里的 `userId` 改为可空。下游 `workspace-integration.service.ts:438-449` 本来就没用这个参数（`_userId`）。
-   - `conversation-title.service.ts:56,202`：API 对话不自动生成标题。
-   - `agent-execution-worker-persistence.service.ts:669-720`、`self-evolution.service.ts:485-513`：`source='api'` 时不注册自进化工具（R13）。
-   - 其余消费者（memory、workspace 快照）在步骤 0 里清点。
+5. **`created_by` 为 null 的消费者**：API 对话的 `created_by` 为 null（见 6.3）。步骤 0 已在 `agentloom-server/src` 中清点全部消费者，处理方式如下：
+   - `agent-conversation.service.ts` 的 `emitConversationEnded`：`ended` 事件里的 `userId` 改为 `string | null`。唯一的监听者 `workspace-integration.service.ts` 的 `handleConversationEnded/onConversationEnd` 本来就没用这个参数（`_userId`），这里只改类型。
+   - `conversation-title.service.ts` 的 `resolveUserId`：遇到 `source='api'` 返回 null，`generateTitle` 随即退出，API 对话不消耗 LLM 生成标题。
+   - `agent-execution-worker-persistence.service.ts` 的 `registerSelfEvolutionToolsProvider`：`createdBy` 为 null 时不注册自进化工具（R13）；`self-evolution.service.ts` 的 `buildSessionContext` 遇到这种情况直接抛错，作为兜底。
+   - `dto/conversation-response.dto.ts`：`createdBy` 改为可空，并新增 `source`、`apiKeyId`、`externalUserId` 三个字段；`sdk/openapi.json` 和 `agentloom-api-client` 在步骤 10 再生成。Studio 没有读取 `createdBy`。
+   - 已确认不依赖对话创建人的部分：memory 会话按 `memoryInstanceId + conversation + tenant` 区分；LLM 模型和 Key 按 tenant 解析（`pi-config-input.builder.ts`）；`workspace.service.ts` 的 `createFromSandbox` 只被 JWT 用户和 `workflowExecutions.createdBy` 调用；沙箱会话不记录用户。
 
 ## 6. 数据模型
 
@@ -241,7 +242,7 @@ Key 的创建和吊销用 `@CaptureAuditLog` 记录（actorType=user）。run �
 ## 8. Studio
 
 - 在 Agent 详情页新增“API 访问”标签页，放 Key 列表、创建对话框（明文只显示一次）、吊销操作、curl 和 SSE 示例。这部分页面必须交给 `designer` agent 实现（仓库约定）。
-- 对话列表支持 `source` 筛选，API 来源的对话显示 `API · <keyName>` 徽标（R14）。
+- 对话列表支持 `source` 筛选（`GET /agent-definitions/{agentId}/conversations?source=api`），API 来源的对话显示 `API` 徽标（R14）。
 
 ## 9. 实施计划
 

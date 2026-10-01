@@ -439,7 +439,7 @@ export class WorkspaceIntegrationService {
     conversationId: string,
     tenantId: string,
     _organizationId: string,
-    _userId: string,
+    _userId: string | null,
   ): Promise<void> {
     this.stopFileWatcher(conversationId);
     await this.captureConversationWorkspaceTreeSnapshot(
@@ -488,7 +488,7 @@ export class WorkspaceIntegrationService {
     conversationId: string;
     tenantId: string;
     organizationId: string;
-    userId: string;
+    userId: string | null;
   }): Promise<void> {
     try {
       await this.onConversationEnd(
