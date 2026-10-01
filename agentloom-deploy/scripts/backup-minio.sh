@@ -57,7 +57,7 @@ docker run --rm \
   --network "${COMPOSE_NETWORK:-agentloom-private}" \
   -v "$OUTPUT_DIR:/backup" \
   --entrypoint /bin/sh \
-  "${MC_IMAGE:-minio/mc:latest}" \
+  "${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}" \
   -eu -c '
     mc alias set source "'"$MINIO_SCHEME"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'"
     mc mirror --overwrite "source/'"${APP_MINIO_BUCKET:-agentloom-documents}"'" /backup/'"${APP_MINIO_BUCKET:-agentloom-documents}"'

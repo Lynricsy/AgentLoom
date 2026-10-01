@@ -182,8 +182,9 @@ redis:
 minio:
   enabled: true
   image:
-    repository: minio/minio
-    tag: latest
+    # minio/minio 已从 Docker Hub 下架；使用 Pigsty 社区构建并固定 RELEASE 标签。
+    repository: pgsty/minio
+    tag: RELEASE.2026-08-04T00-00-00Z
     pullPolicy: IfNotPresent
   auth:
     rootUser: agentloom

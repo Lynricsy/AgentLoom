@@ -178,16 +178,14 @@ runtime Pod 以 `privileged: true`、`hostPID: true`、`readOnlyRootFilesystem: 
 | `postgres.persistence.{enabled,existingClaim,storageClassName,size}` | `true` / `""` / `""` / `20Gi` |
 | `redis.enabled` / `image` / `auth.password` / `service.port` | `true` / `redis:7-alpine` / `change-me-redis-password` / `6379` |
 | `redis.persistence.size` | `5Gi` |
-| `minio.enabled` / `image` / `auth.{rootUser,rootPassword}` / `service.{apiPort,consolePort}` | `true` / `minio/minio:latest` / `agentloom`、`change-me-minio-password` / `9000`、`9001` |
+| `minio.enabled` / `image` / `auth.{rootUser,rootPassword}` / `service.{apiPort,consolePort}` | `true` / `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` / `agentloom`、`change-me-minio-password` / `9000`、`9001` |
 | `minio.persistence.size` | `50Gi` |
 | `qdrant.enabled` / `image` / `service.{httpPort,grpcPort}` | `true` / `qdrant/qdrant:v1.17.0` / `6333`、`6334` |
 | `qdrant.persistence.size` | `20Gi` |
 
 设 `*.enabled: false` 改用外部服务时，必须同时填写对应的 `env.shared` 连接变量，否则渲染失败（见上文环境变量表）。
 
-::: warning 已知问题：MinIO 镜像
-`minio.image` 默认 `minio/minio:latest`。2026-10-01 在本仓库维护者的宿主上执行 `docker pull minio/minio:latest` 返回 `pull access denied for minio/minio, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`。若你的集群同样拉取失败，用 `minio.image.repository` / `minio.image.tag` 指向可拉取的 MinIO 镜像；Compose 实跑时使用的替代见 [Docker Compose 部署](/deploy/compose)。
-:::
+`minio/minio` 已从 Docker Hub 下架（2026-09），`quay.io/minio/minio` 也无法匿名拉取，所以 `minio.image` 默认使用 Pigsty 维护的社区构建 `pgsty/minio`，并固定 RELEASE 标签。
 
 ## 多个沙箱运行时节点
 

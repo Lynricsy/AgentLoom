@@ -112,7 +112,7 @@ wait_for_minio() {
     if docker run --rm \
       --network "${COMPOSE_NETWORK:-agentloom-app}" \
       --entrypoint /bin/sh \
-      "${MC_IMAGE:-minio/mc:RELEASE.2025-05-21T01-59-54Z}" \
+      "${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}" \
       -eu -c '
         mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'" >/dev/null 2>&1
       ' >/dev/null 2>&1; then
@@ -153,7 +153,7 @@ docker run --rm \
   --network "${COMPOSE_NETWORK:-agentloom-app}" \
   -v "$MINIO_DIR:/restore:ro" \
   --entrypoint /bin/sh \
-  "${MC_IMAGE:-minio/mc:RELEASE.2025-05-21T01-59-54Z}" \
+  "${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}" \
   -eu -c '
     mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'"
     mc mb --ignore-existing "target/'"${APP_MINIO_BUCKET:-agentloom-documents}"'"
