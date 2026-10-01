@@ -1,0 +1,1361 @@
+openapi: 3.1.0
+info:
+  title: AgentLoom Agent 对外 API
+  version: 1.0.0-draft
+  summary: 第三方以 Agent 专用 API Key 调用已发布 Agent 的契约草案
+  description: |
+    设计草案，配套文档 `docs/design/agent-external-api.md`。
+
+    - 管理接口（`/agent-definitions/{agentId}/api-keys`）由 Studio 以 JWT 调用：请求体 snake_case（沿用
+      platform-api-tokens 约定，经过 Studio ky hook 转换），响应 camelCase。
+    - 对外接口（`/agent-api/**`）由第三方以 `Authorization: Bearer alak_…` 调用：请求与响应均为 camelCase。
+    - 兼容性承诺：v1 内只做加法（新增可选请求字段、新增响应字段、新增 SSE 事件类型）；客户端必须忽略未知字段与未知 SSE 事件。
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AgentLoom
+servers:
+  - url: https://agentloom.ling.plus/api/v1
+    description: 生产
+tags:
+  - name: Agent API Keys
+    description: Studio 侧管理 Agent 专用 API Key
+  - name: Agent API
+    description: 第三方调用已发布 Agent
+security: []
+
+paths:
+  /agent-definitions/{agentId}/api-keys:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    post:
+      operationId: createAgentApiKey
+      tags: [Agent API Keys]
+      summary: 创建 Agent 专用 API Key
+      description: 明文 key 只在本响应中返回一次。每个 Agent 最多 20 个未吊销 Key。角色要求 owner/admin。
+      security:
+        - studioJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentApiKeyRequest'
+            example:
+              name: crm-integration
+              rate_limit_per_minute: 60
+              max_concurrent_runs: 5
+              expires_at: '2027-01-01T00:00:00Z'
+      responses:
+        '201':
+          description: 已创建
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AgentApiKeyWithSecret'
+              example:
+                data:
+                  id: 01928c3e-4b7a-7c3e-9a51-0f7c1d2e3a40
+                  agentDefinitionId: 01928c3e-1111-7c3e-9a51-0f7c1d2e3a40
+                  name: crm-integration
+                  keyPrefix: alak_1a2b3c4d
+                  rateLimitPerMinute: 60
+                  maxConcurrentRuns: 5
+                  lastUsedAt: null
+                  expiresAt: '2027-01-01T00:00:00Z'
+                  revokedAt: null
+                  createdAt: '2026-10-01T08:00:00Z'
+                  key: alak_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+    get:
+      operationId: listAgentApiKeys
+      tags: [Agent API Keys]
+      summary: 列出 Agent 的 API Key
+      description: 角色要求 owner/admin/creator。按 createdAt 倒序；分页沿用仓库 page/page_size 约定。
+      security:
+        - studioJwt: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSizeSnake'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, revoked, all]
+            default: active
+      responses:
+        '200':
+          description: 分页列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentApiKey'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+              example:
+                data:
+                  - id: 01928c3e-4b7a-7c3e-9a51-0f7c1d2e3a40
+                    agentDefinitionId: 01928c3e-1111-7c3e-9a51-0f7c1d2e3a40
+                    name: crm-integration
+                    keyPrefix: alak_1a2b3c4d
+                    rateLimitPerMinute: 60
+                    maxConcurrentRuns: 5
+                    lastUsedAt: '2026-10-01T09:00:00Z'
+                    expiresAt: null
+                    revokedAt: null
+                    createdAt: '2026-10-01T08:00:00Z'
+                meta:
+                  page: 1
+                  pageSize: 20
+                  total: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agent-definitions/{agentId}/api-keys/{keyId}:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+      - name: keyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: revokeAgentApiKey
+      tags: [Agent API Keys]
+      summary: 吊销 API Key
+      description: 软吊销（写 revokedAt），行保留供审计与 run 溯源；重复吊销返回 204。角色要求 owner/admin。
+      security:
+        - studioJwt: []
+      responses:
+        '204':
+          description: 已吊销
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agent-api/agent:
+    get:
+      operationId: getBoundAgent
+      tags: [Agent API]
+      summary: 读取 Key 绑定的 Agent 摘要
+      security:
+        - agentApiKey: []
+      responses:
+        '200':
+          description: Agent 摘要
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BoundAgent'
+              example:
+                data:
+                  id: 01928c3e-1111-7c3e-9a51-0f7c1d2e3a40
+                  name: 客服助手
+                  description: 处理售后问答
+                  status: published
+                  publishedVersion:
+                    id: 01928c3e-2222-7c3e-9a51-0f7c1d2e3a40
+                    label: v3 (published)
+                    publishedAt: '2026-09-30T12:00:00Z'
+                  inputSchema: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations:
+    post:
+      operationId: createConversation
+      tags: [Agent API]
+      summary: 创建对话
+      description: Agent 必须处于 published 状态。对话归属于当前 Key，其他 Key 不可见。
+      security:
+        - agentApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+            example:
+              title: 订单 #1024 售后
+              externalUserId: crm-user-77
+              metadata:
+                orderId: '1024'
+      responses:
+        '201':
+          description: 已创建
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Conversation'
+              example:
+                data:
+                  id: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  title: 订单 #1024 售后
+                  status: active
+                  externalUserId: crm-user-77
+                  metadata:
+                    orderId: '1024'
+                  createdAt: '2026-10-01T09:00:00Z'
+                  updatedAt: '2026-10-01T09:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      operationId: listConversations
+      tags: [Agent API]
+      summary: 列出当前 Key 创建的对话
+      description: 按 createdAt 倒序。offset 分页：并发创建新对话时翻页可能出现重复，客户端按 id 去重。
+      security:
+        - agentApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: externalUserId
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 255
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, ended, failed]
+      responses:
+        '200':
+          description: 分页列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Conversation'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+              example:
+                data:
+                  - id: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                    title: 订单 #1024 售后
+                    status: active
+                    externalUserId: crm-user-77
+                    metadata: {}
+                    createdAt: '2026-10-01T09:00:00Z'
+                    updatedAt: '2026-10-01T09:05:00Z'
+                meta:
+                  page: 1
+                  pageSize: 20
+                  total: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    get:
+      operationId: getConversation
+      tags: [Agent API]
+      summary: 读取对话
+      security:
+        - agentApiKey: []
+      responses:
+        '200':
+          description: 对话
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Conversation'
+              example:
+                data:
+                  id: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  title: 订单 #1024 售后
+                  status: active
+                  externalUserId: crm-user-77
+                  metadata: {}
+                  createdAt: '2026-10-01T09:00:00Z'
+                  updatedAt: '2026-10-01T09:05:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}/end:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    post:
+      operationId: endConversation
+      tags: [Agent API]
+      summary: 结束对话
+      description: 幂等。结束后释放沙箱与工作区；进行中的 run 会被取消。已结束的对话重复调用返回 200。
+      security:
+        - agentApiKey: []
+      responses:
+        '200':
+          description: 已结束
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Conversation'
+              example:
+                data:
+                  id: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  title: 订单 #1024 售后
+                  status: ended
+                  externalUserId: crm-user-77
+                  metadata: {}
+                  createdAt: '2026-10-01T09:00:00Z'
+                  updatedAt: '2026-10-01T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}/messages:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    get:
+      operationId: listConversationMessages
+      tags: [Agent API]
+      summary: 列出对话消息
+      description: 按 createdAt 正序；消息只追加不修改，正序 offset 分页稳定。只返回 user/assistant 角色。
+      security:
+        - agentApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 分页消息
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+              example:
+                data:
+                  - id: 01928c3e-4444-7c3e-9a51-0f7c1d2e3a40
+                    role: user
+                    content: 我的订单还没发货
+                    attachments: []
+                    toolCalls: []
+                    createdAt: '2026-10-01T09:01:00Z'
+                  - id: 01928c3e-5555-7c3e-9a51-0f7c1d2e3a40
+                    role: assistant
+                    content: 已为您查询，订单将在今天发出。
+                    attachments: []
+                    toolCalls:
+                      - id: call_1
+                        tool: query_order
+                        status: completed
+                    createdAt: '2026-10-01T09:01:20Z'
+                meta:
+                  page: 1
+                  pageSize: 20
+                  total: 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    post:
+      operationId: createRun
+      tags: [Agent API]
+      summary: 发送一条用户输入并启动一次 run
+      description: |
+        同一对话同一时刻最多一个 queued/running 的 run，否则 409 `conversation-busy`。
+
+        三种响应模式（按优先级）：
+        1. `Accept: text/event-stream` → 200 SSE 流，首个事件为 `run.created`，终止事件后服务端关闭连接。
+        2. `Prefer: wait=N`（1–60 秒）→ 在 N 秒内结束则 200 返回终态 run（`Preference-Applied: wait=N`）；否则 202。
+        3. 默认 → 202，`Location` 指向 run，客户端轮询 GET 或订阅 events。
+
+        `Idempotency-Key`：同一 Key 下 24 小时内重放同 key 同 body 返回首次创建的 run（状态为当前状态）；
+        同 key 不同 body 返回 422 `idempotency-key-reused`。
+      security:
+        - agentApiKey: []
+      parameters:
+        - name: Prefer
+          in: header
+          required: false
+          description: RFC 7240，仅识别 `wait=<1-60>`。
+          schema:
+            type: string
+            pattern: '^wait=([1-9]|[1-5][0-9]|60)$'
+          example: wait=30
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          example: 3f0b6c1e-order-1024-msg-1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunRequest'
+            example:
+              input:
+                content: 我的订单还没发货
+      responses:
+        '200':
+          description: 等待期内已结束（Prefer wait）或 SSE 流
+          headers:
+            Preference-Applied:
+              description: 仅在 Prefer wait 生效时返回
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Run'
+              example:
+                data:
+                  id: 01928c3e-6666-7c3e-9a51-0f7c1d2e3a40
+                  conversationId: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  status: completed
+                  agentVersionId: 01928c3e-2222-7c3e-9a51-0f7c1d2e3a40
+                  input:
+                    messageId: 01928c3e-4444-7c3e-9a51-0f7c1d2e3a40
+                    content: 我的订单还没发货
+                  output:
+                    messageId: 01928c3e-5555-7c3e-9a51-0f7c1d2e3a40
+                    content: 已为您查询，订单将在今天发出。
+                    toolCalls:
+                      - id: call_1
+                        tool: query_order
+                        status: completed
+                  stopReason: end_turn
+                  error: null
+                  createdAt: '2026-10-01T09:01:00Z'
+                  startedAt: '2026-10-01T09:01:01Z'
+                  completedAt: '2026-10-01T09:01:20Z'
+            text/event-stream:
+              schema:
+                type: string
+                description: 事件格式见 `components.schemas.RunStreamEvent`。
+              example: |
+                id: 1727773261000-0
+                event: run.created
+                data: {"run":{"id":"01928c3e-6666-7c3e-9a51-0f7c1d2e3a40","status":"queued"}}
+
+                id: 1727773262000-0
+                event: message.delta
+                data: {"runId":"01928c3e-6666-7c3e-9a51-0f7c1d2e3a40","index":0,"delta":"已为您查询"}
+
+        '202':
+          description: run 已受理，尚未结束
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Run'
+              example:
+                data:
+                  id: 01928c3e-6666-7c3e-9a51-0f7c1d2e3a40
+                  conversationId: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  status: queued
+                  agentVersionId: null
+                  input:
+                    messageId: 01928c3e-4444-7c3e-9a51-0f7c1d2e3a40
+                    content: 我的订单还没发货
+                  output: null
+                  stopReason: null
+                  error: null
+                  createdAt: '2026-10-01T09:01:00Z'
+                  startedAt: null
+                  completedAt: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      operationId: listRuns
+      tags: [Agent API]
+      summary: 列出对话的 run
+      description: 按 createdAt 倒序。
+      security:
+        - agentApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 分页列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+              example:
+                data: []
+                meta:
+                  page: 1
+                  pageSize: 20
+                  total: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}/runs/{runId}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: getRun
+      tags: [Agent API]
+      summary: 读取 run（轮询入口）
+      security:
+        - agentApiKey: []
+      responses:
+        '200':
+          description: run 当前状态
+          headers:
+            Retry-After:
+              description: 仅在 run 未结束时返回，建议的轮询间隔（秒）
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Run'
+              example:
+                data:
+                  id: 01928c3e-6666-7c3e-9a51-0f7c1d2e3a40
+                  conversationId: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  status: running
+                  agentVersionId: 01928c3e-2222-7c3e-9a51-0f7c1d2e3a40
+                  input:
+                    messageId: 01928c3e-4444-7c3e-9a51-0f7c1d2e3a40
+                    content: 我的订单还没发货
+                  output: null
+                  stopReason: null
+                  error: null
+                  createdAt: '2026-10-01T09:01:00Z'
+                  startedAt: '2026-10-01T09:01:01Z'
+                  completedAt: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}/runs/{runId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/RunId'
+    post:
+      operationId: cancelRun
+      tags: [Agent API]
+      summary: 取消 run
+      description: 幂等；跨实例生效。已 cancelled 返回 202 与当前 run；completed/failed 返回 409 `run-not-cancellable`。
+      security:
+        - agentApiKey: []
+      responses:
+        '202':
+          description: 取消已受理，终态以 run.status 为准
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Run'
+              example:
+                data:
+                  id: 01928c3e-6666-7c3e-9a51-0f7c1d2e3a40
+                  conversationId: 01928c3e-3333-7c3e-9a51-0f7c1d2e3a40
+                  status: running
+                  agentVersionId: 01928c3e-2222-7c3e-9a51-0f7c1d2e3a40
+                  input:
+                    messageId: 01928c3e-4444-7c3e-9a51-0f7c1d2e3a40
+                    content: 我的订单还没发货
+                  output: null
+                  stopReason: null
+                  error: null
+                  createdAt: '2026-10-01T09:01:00Z'
+                  startedAt: '2026-10-01T09:01:01Z'
+                  completedAt: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /agent-api/conversations/{conversationId}/runs/{runId}/events:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: streamRunEvents
+      tags: [Agent API]
+      summary: 订阅 / 断线续传 run 事件流
+      description: |
+        事件保留到 run 终态后 1 小时。带 `Last-Event-ID` 时从其后开始；不带时从头回放。
+        run 已终态且事件已过期 → 410 `run-events-expired`，客户端改用 GET run。
+      security:
+        - agentApiKey: []
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9]+-[0-9]+$'
+          example: 1727773262000-0
+      responses:
+        '200':
+          description: SSE 流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: 事件格式见 `components.schemas.RunStreamEvent`。
+              example: |
+                id: 1727773280000-0
+                event: run.completed
+                data: {"run":{"id":"01928c3e-6666-7c3e-9a51-0f7c1d2e3a40","status":"completed"}}
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    agentApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: 'alak_<64 hex>'
+      description: Agent 专用 API Key，只能访问其绑定的 Agent。
+    studioJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: 默认 20，最大 100；超过最大值按 100 处理。
+      schema:
+        type: integer
+        minimum: 1
+        default: 20
+    PageSizeSnake:
+      name: page_size
+      in: query
+      required: false
+      description: 默认 20，最大 100；超过最大值按 100 处理。
+      schema:
+        type: integer
+        minimum: 1
+        default: 20
+
+  headers:
+    Location:
+      description: 新建或被监视资源的 URI
+      schema:
+        type: string
+        format: uri-reference
+      example: /api/v1/agent-api/conversations/01928c3e-3333-7c3e-9a51-0f7c1d2e3a40/runs/01928c3e-6666-7c3e-9a51-0f7c1d2e3a40
+    RetryAfter:
+      description: 建议的重试 / 轮询间隔（秒）
+      schema:
+        type: integer
+        minimum: 1
+      example: 2
+
+  responses:
+    Unauthorized:
+      description: 缺少凭证，或 Key 无效 / 已吊销 / 已过期
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/agent-api-key-invalid
+            title: Unauthorized
+            status: 401
+            detail: Agent API key is invalid, revoked or expired
+    Forbidden:
+      description: 已认证但角色不足（仅管理接口）
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/insufficient-permissions
+            title: Forbidden
+            status: 403
+            detail: Role creator is not allowed to perform this action
+    NotFound:
+      description: 资源不存在，或不属于当前 Key（不区分，避免泄露）
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/agent-api-conversation-not-found
+            title: Not Found
+            status: 404
+            detail: Conversation not found
+    Conflict:
+      description: |
+        与当前状态冲突。type 取值：agent-not-published、agent-archived、conversation-ended、
+        conversation-busy、run-not-cancellable、agent-api-key-limit-exceeded。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/conversation-busy
+            title: Conflict
+            status: 409
+            detail: Conversation already has an active run
+            activeRunId: 01928c3e-6666-7c3e-9a51-0f7c1d2e3a40
+    ValidationFailed:
+      description: 请求体可解析但取值非法（validation-error），或 idempotency-key-reused
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/validation-error
+            title: Unprocessable Entity
+            status: 422
+            detail: input.content must not be empty
+    TooManyRequests:
+      description: rate-limit-exceeded（Key 或租户每分钟请求数）或 concurrency-limit-exceeded（Key 并发 run 数）
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/rate-limit-exceeded
+            title: Too Many Requests
+            status: 429
+            detail: Rate limit of 60 requests per minute exceeded
+    Gone:
+      description: run 事件已过期
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/run-events-expired
+            title: Gone
+            status: 410
+            detail: Run events are no longer retained; fetch the run instead
+    ServiceUnavailable:
+      description: 沙箱维护中（sandbox-maintenance）
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://agentloom.dev/errors/sandbox-maintenance
+            title: Service Unavailable
+            status: 503
+            detail: Sandbox runtime is under maintenance
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details；客户端只按 type 分支。
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+      additionalProperties: true
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+          minimum: 0
+
+    CreateAgentApiKeyRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        rate_limit_per_minute:
+          type: integer
+          minimum: 1
+          maximum: 6000
+          description: 省略时使用租户 apiRateLimitPerMinute。
+        max_concurrent_runs:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+        expires_at:
+          type: string
+          format: date-time
+
+    AgentApiKey:
+      type: object
+      required:
+        [id, agentDefinitionId, name, keyPrefix, rateLimitPerMinute, maxConcurrentRuns, lastUsedAt, expiresAt, revokedAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        agentDefinitionId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        keyPrefix:
+          type: string
+          pattern: '^alak_[0-9a-f]{8}$'
+        rateLimitPerMinute:
+          type: [integer, 'null']
+        maxConcurrentRuns:
+          type: integer
+        lastUsedAt:
+          type: [string, 'null']
+          format: date-time
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        revokedAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentApiKeyWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/AgentApiKey'
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              pattern: '^alak_[0-9a-f]{64}$'
+              description: 明文 key，仅本次返回。
+
+    BoundAgent:
+      type: object
+      required: [id, name, description, status, publishedVersion, inputSchema]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [draft, published, archived]
+        publishedVersion:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, label, publishedAt]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                label:
+                  type: [string, 'null']
+                publishedAt:
+                  type: string
+                  format: date-time
+        inputSchema:
+          description: Agent 定义上的 inputSchema（JSON Schema），未配置为 null；v1 仅用于展示，不做服务端校验。
+          type: [object, 'null']
+
+    CreateConversationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: 调用方自己的终端用户标识，仅用于筛选与审计，平台不解释。
+        metadata:
+          type: object
+          description: 序列化后不超过 16 KB。
+          additionalProperties: true
+
+    Conversation:
+      type: object
+      required: [id, title, status, externalUserId, metadata, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [active, ended, failed]
+        externalUserId:
+          type: [string, 'null']
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Attachment:
+      type: object
+      required: [kind, fileName, mimeType, sizeBytes]
+      additionalProperties: false
+      description: 与 Studio 对话附件同一校验规则；单个 ≤ 1.5 MB，文本附件 ≤ 200 KB，单次合计 ≤ 10 MB。
+      properties:
+        kind:
+          type: string
+          enum: [image, file]
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        mimeType:
+          type: string
+          minLength: 1
+          maxLength: 255
+        sizeBytes:
+          type: integer
+          minimum: 0
+          maximum: 1500000
+        dataBase64:
+          type: string
+          minLength: 1
+          description: image 必填；file 与 textContent 二选一。
+        textContent:
+          type: string
+          minLength: 1
+
+    CreateRunRequest:
+      type: object
+      required: [input]
+      additionalProperties: false
+      properties:
+        input:
+          type: object
+          required: [content]
+          additionalProperties: false
+          properties:
+            content:
+              type: string
+              minLength: 1
+              maxLength: 100000
+            attachments:
+              type: array
+              maxItems: 10
+              items:
+                $ref: '#/components/schemas/Attachment'
+
+    ToolCallSummary:
+      type: object
+      required: [id, tool, status]
+      properties:
+        id:
+          type: string
+        tool:
+          type: string
+        status:
+          type: string
+          enum: [pending, awaiting_permission, denied, in_progress, completed, failed]
+
+    Message:
+      type: object
+      required: [id, role, content, attachments, toolCalls, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        attachments:
+          type: array
+          description: 只回传元数据，不回传 dataBase64/textContent。
+          items:
+            type: object
+            required: [kind, fileName, mimeType, sizeBytes]
+            properties:
+              kind:
+                type: string
+                enum: [image, file]
+              fileName:
+                type: string
+              mimeType:
+                type: string
+              sizeBytes:
+                type: integer
+        toolCalls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCallSummary'
+        createdAt:
+          type: string
+          format: date-time
+
+    RunError:
+      type: object
+      required: [type, title]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: run-failed / run-expired / run-worker-lost 等
+        title:
+          type: string
+        detail:
+          type: string
+
+    Run:
+      type: object
+      required:
+        [id, conversationId, status, agentVersionId, input, output, stopReason, error, createdAt, startedAt, completedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        agentVersionId:
+          type: [string, 'null']
+          format: uuid
+          description: 实际执行的已发布版本；进入 running 前为 null。
+        input:
+          type: object
+          required: [messageId, content]
+          properties:
+            messageId:
+              type: string
+              format: uuid
+            content:
+              type: string
+        output:
+          description: completed 时一定存在；failed 时可能存在部分输出；其余为 null。
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [messageId, content, toolCalls]
+              properties:
+                messageId:
+                  type: string
+                  format: uuid
+                content:
+                  type: string
+                toolCalls:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ToolCallSummary'
+        stopReason:
+          type: [string, 'null']
+          enum: [end_turn, max_tokens, cancelled, null]
+        error:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/RunError'
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: [string, 'null']
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+
+    RunStreamEvent:
+      description: |
+        SSE 帧：`id` 为 Redis Stream entry id（跨实例单调，可用于 Last-Event-ID），`event` 为下列 type，`data` 为 JSON。
+        服务端每 15 秒发送 `: ping` 注释帧保活。客户端必须忽略未知 event。
+      oneOf:
+        - $ref: '#/components/schemas/RunCreatedEvent'
+        - $ref: '#/components/schemas/RunStatusEvent'
+        - $ref: '#/components/schemas/MessageDeltaEvent'
+        - $ref: '#/components/schemas/ToolCallEvent'
+        - $ref: '#/components/schemas/RunTerminalEvent'
+    RunCreatedEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          const: run.created
+        data:
+          type: object
+          required: [run]
+          properties:
+            run:
+              $ref: '#/components/schemas/Run'
+    RunStatusEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          const: run.status
+        data:
+          type: object
+          required: [runId, status]
+          properties:
+            runId:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [queued, running]
+            phase:
+              type: string
+              enum: [queued, preparing, sandbox_creating, agent_initializing, running]
+    MessageDeltaEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          const: message.delta
+        data:
+          type: object
+          required: [runId, index, delta]
+          properties:
+            runId:
+              type: string
+              format: uuid
+            index:
+              type: integer
+              minimum: 0
+            delta:
+              type: string
+    ToolCallEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          const: tool_call
+        data:
+          type: object
+          required: [runId, toolCallId, tool, status]
+          properties:
+            runId:
+              type: string
+              format: uuid
+            toolCallId:
+              type: string
+            tool:
+              type: string
+            status:
+              type: string
+              enum: [pending, awaiting_permission, denied, in_progress, completed, failed]
+            error:
+              type: string
+    RunTerminalEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+          enum: [run.completed, run.failed, run.cancelled]
+        data:
+          type: object
+          required: [run]
+          properties:
+            run:
+              $ref: '#/components/schemas/Run'

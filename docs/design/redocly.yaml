@@ -1,0 +1,6 @@
+extends:
+  - recommended
+rules:
+  # RunStreamEvent 描述 SSE 帧结构；OpenAPI 3.1 无法把它挂到 text/event-stream 响应上（3.2 才有 itemSchema），
+  # 因此它作为文档用组件存在，未被 $ref 引用属预期。
+  no-unused-components: off
