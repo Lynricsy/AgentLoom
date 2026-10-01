@@ -212,7 +212,9 @@ erDiagram
 | --- | --- |
 | `sandbox_runtime_nodes` | 平台级表，没有 `tenant_id`，不挂策略；隔离由管理 API 的鉴权保证（`agentloom-server/src/database/schema/sandbox-runtime-nodes.schema.ts:8`） |
 | `marketplace_reviews` | 启用 RLS，但四条策略的条件都是 `true`（`agentloom-server/src/database/schema/marketplace-reviews.schema.ts:47`） |
-| `users`、`device_tokens`、`platform_api_tokens`、`revoked_tokens`、`workflow_templates`、`workflow_shares`、`agent_shares` | schema 中没有声明策略 |
+| `users`、`device_tokens`、`platform_api_tokens`、`revoked_tokens`、`workflow_templates` | schema 中没有声明策略 |
+
+`workflow_shares` 与 `agent_shares` 使用 `createDirectTenantPolicies`，只约束管理端（创建者租户）的列表与撤销；匿名访客与其他租户按 `share_token` 读取、导入时走 `ShareService` 的原始连接，不经过租户事务。
 
 其余表都使用 `createDirectTenantPolicies`。
 

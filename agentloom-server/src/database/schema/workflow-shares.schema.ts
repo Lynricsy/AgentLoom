@@ -12,12 +12,14 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { createDirectTenantPolicies } from './rls-policies';
 import { users } from './users.schema';
 import { workflowDefinitions } from './workflow-definitions.schema';
 
 export const shareTypeEnum = pgEnum('share_type', ['read_only', 'copyable']);
 
-// 公开访问通过 TenantMiddleware 排除 + @Public() 实现，管理端走 RLS
+// 公开/跨租户读取一律按 share_token 走服务端特权连接（ShareService.this.db）；
+// 管理端（创建者租户）读写受 tenant_id = get_tenant_id() 约束。
 export const workflowShares = pgTable(
   'workflow_shares',
   {
@@ -70,6 +72,7 @@ export const workflowShares = pgTable(
       'workflow_shares_copy_count_non_negative',
       sql`${table.copyCount} >= 0`,
     ),
+    ...createDirectTenantPolicies('workflow_shares'),
   ],
 );
 

@@ -14,7 +14,10 @@ import {
 import { shareTypeEnum } from './workflow-shares.schema';
 import { users } from './users.schema';
 import { agentDefinitions } from './agent-definitions.schema';
+import { createDirectTenantPolicies } from './rls-policies';
 
+// 公开/跨租户读取一律按 share_token 走服务端特权连接（ShareService.this.db）；
+// 管理端（创建者租户）读写受 tenant_id = get_tenant_id() 约束。
 export const agentShares = pgTable(
   'agent_shares',
   {
@@ -59,6 +62,7 @@ export const agentShares = pgTable(
     index('idx_agent_shares_created_by').on(table.createdBy),
     check('agent_shares_view_count_non_negative', sql`${table.viewCount} >= 0`),
     check('agent_shares_copy_count_non_negative', sql`${table.copyCount} >= 0`),
+    ...createDirectTenantPolicies('agent_shares'),
   ],
 );
 
