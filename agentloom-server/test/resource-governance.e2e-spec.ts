@@ -63,6 +63,10 @@ import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import {
+  createMockRedisClient,
+  type MockRedisClient,
+} from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
@@ -220,32 +224,6 @@ function createMockSupabaseService() {
   };
 }
 
-function createMockRedisClient() {
-  const subscriber = {
-    connect: vi.fn().mockResolvedValue(undefined),
-    subscribe: vi.fn().mockResolvedValue(undefined),
-    unsubscribe: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-    quit: vi.fn().mockResolvedValue('OK'),
-  };
-
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue('OK'),
-    del: vi.fn().mockResolvedValue(0),
-    keys: vi.fn().mockResolvedValue([]),
-    publish: vi.fn().mockResolvedValue(1),
-    subscribe: vi.fn().mockResolvedValue(undefined),
-    unsubscribe: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    quit: vi.fn().mockResolvedValue('OK'),
-    ping: vi.fn().mockResolvedValue('PONG'),
-    duplicate: vi.fn().mockReturnValue(subscriber),
-  };
-}
-
 function createMockRedisCacheService() {
   return {
     get: vi.fn().mockResolvedValue(null),
@@ -390,7 +368,7 @@ describe('Resource Governance E2E', () => {
   let ctx: RlsTestContext | undefined;
   let app: NestFastifyApplication | undefined;
   let drizzleDb: DrizzleDB;
-  let redisClientMock: ReturnType<typeof createMockRedisClient>;
+  let redisClientMock: MockRedisClient;
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
   let nodeSchedulerMock: ReturnType<typeof createMockNodeSchedulerService>;

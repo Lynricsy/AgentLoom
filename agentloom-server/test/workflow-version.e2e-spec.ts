@@ -29,6 +29,10 @@ import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import {
+  createMockRedisClient,
+  type MockRedisClient,
+} from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
@@ -155,17 +159,6 @@ function createMockSupabaseService() {
   };
 }
 
-function createMockRedisClient() {
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue('OK'),
-    del: vi.fn().mockResolvedValue(0),
-    keys: vi.fn().mockResolvedValue([]),
-    quit: vi.fn().mockResolvedValue('OK'),
-    publish: vi.fn().mockResolvedValue(1),
-  };
-}
-
 function createMockRedisCacheService() {
   return {
     get: vi.fn().mockResolvedValue(null),
@@ -214,7 +207,7 @@ describe('WorkflowVersion E2E', () => {
   let ctx: RlsTestContext;
   let app: NestFastifyApplication;
   let drizzleDb: DrizzleDB;
-  let redisClientMock: ReturnType<typeof createMockRedisClient>;
+  let redisClientMock: MockRedisClient;
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
   let executionQueueMock: ReturnType<typeof createMockExecutionQueue>;

@@ -19,6 +19,7 @@ import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { workflowTemplates } from '../src/database/schema';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import { createMockRedisClient } from './support/redis-client.mock';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
@@ -135,14 +136,7 @@ describe('Template E2E', () => {
       .overrideProvider(DRIZZLE)
       .useValue(drizzleClient)
       .overrideProvider(REDIS_CLIENT)
-      .useValue({
-        get: vi.fn().mockResolvedValue(null),
-        set: vi.fn().mockResolvedValue('OK'),
-        del: vi.fn().mockResolvedValue(0),
-        keys: vi.fn().mockResolvedValue([]),
-        quit: vi.fn().mockResolvedValue('OK'),
-        publish: vi.fn().mockResolvedValue(1),
-      })
+      .useValue(createMockRedisClient())
       .overrideProvider(RedisCacheService)
       .useValue({
         get: vi.fn().mockResolvedValue(null),

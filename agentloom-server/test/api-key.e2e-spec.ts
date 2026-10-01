@@ -25,6 +25,7 @@ import {
 import { AppModule } from '../src/app.module';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import { createMockRedisClient } from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { ApiKeyRevokedException } from '../src/modules/api-key/api-key.exceptions';
@@ -70,17 +71,6 @@ function createMockSupabaseService() {
     refreshToken: vi.fn(),
     signOut: vi.fn(),
     getUser: vi.fn(),
-  };
-}
-
-function createMockRedisClient() {
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue('OK'),
-    del: vi.fn().mockResolvedValue(0),
-    keys: vi.fn().mockResolvedValue([]),
-    quit: vi.fn().mockResolvedValue('OK'),
-    publish: vi.fn().mockResolvedValue(1),
   };
 }
 

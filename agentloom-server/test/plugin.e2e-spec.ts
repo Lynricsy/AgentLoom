@@ -28,6 +28,7 @@ import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import { createMockRedisClient } from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE } from '../src/database/database.module';
 import { StorageService } from '../src/infrastructure/storage/storage.service';
@@ -70,25 +71,6 @@ type SignedFixture = {
   fingerprint: string;
   publicKey: string;
 };
-
-function createMockRedisClient() {
-  // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接。
-  const subscriber = {
-    subscribe: vi.fn().mockResolvedValue(undefined),
-    unsubscribe: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
-    quit: vi.fn().mockResolvedValue('OK'),
-  };
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue('OK'),
-    del: vi.fn().mockResolvedValue(0),
-    keys: vi.fn().mockResolvedValue([]),
-    quit: vi.fn().mockResolvedValue('OK'),
-    publish: vi.fn().mockResolvedValue(1),
-    duplicate: vi.fn().mockReturnValue(subscriber),
-  };
-}
 
 function createMockRedisCacheService() {
   return {

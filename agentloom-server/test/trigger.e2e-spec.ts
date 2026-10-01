@@ -26,6 +26,10 @@ import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import {
+  createMockRedisClient,
+  type MockRedisClient,
+} from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
@@ -134,24 +138,6 @@ function createRedisKeyStore() {
   };
 }
 
-function createMockRedisClient() {
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue('OK'),
-    del: vi.fn().mockResolvedValue(0),
-    keys: vi.fn().mockResolvedValue([]),
-    quit: vi.fn().mockResolvedValue('OK'),
-    publish: vi.fn().mockResolvedValue(1),
-    // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接
-    duplicate: vi.fn().mockReturnValue({
-      subscribe: vi.fn().mockResolvedValue(undefined),
-      unsubscribe: vi.fn().mockResolvedValue(undefined),
-      on: vi.fn(),
-      quit: vi.fn().mockResolvedValue('OK'),
-    }),
-  };
-}
-
 function createMockRedisCacheService() {
   return {
     get: vi.fn().mockResolvedValue(null),
@@ -210,7 +196,7 @@ describe('Trigger E2E', () => {
   let ctx: RlsTestContext;
   let app: NestFastifyApplication;
   let drizzleDb: DrizzleDB;
-  let redisClientMock: ReturnType<typeof createMockRedisClient>;
+  let redisClientMock: MockRedisClient;
   const redisKeyStore = createRedisKeyStore();
   let redisCacheMock: ReturnType<typeof createMockRedisCacheService>;
   let redisPubSubMock: ReturnType<typeof createMockRedisPubSubService>;
