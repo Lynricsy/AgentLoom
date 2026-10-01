@@ -30,10 +30,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
-    reply
-      .status(problem.status)
-      .header('Content-Type', 'application/problem+json')
-      .send(problem);
+    reply.status(problem.status);
+
+    if (exception instanceof DomainException && exception.headers) {
+      for (const [name, value] of Object.entries(exception.headers)) {
+        reply.header(name, value);
+      }
+    }
+
+    reply.header('Content-Type', 'application/problem+json').send(problem);
   }
 
   private buildProblemDetails(

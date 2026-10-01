@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type ExecutionContext } from '@nestjs/common';
 import { ModuleRef, Reflector } from '@nestjs/core';
 import {
   InjectThrottlerOptions,
@@ -11,6 +11,15 @@ import {
 } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { validate as isUuid } from 'uuid';
+import {
+  AgentApiKeyInvalidException,
+  RateLimitExceededException,
+} from '../../modules/agent-api/agent-api.exceptions';
+import { AgentApiKeyService } from '../../modules/agent-api/agent-api-key.service';
+import {
+  AGENT_API_KEY_PREFIX,
+  type AgentApiKeyContext,
+} from '../../modules/agent-api/agent-api.types';
 import { PlatformApiTokenService } from '../../modules/platform-api-token/platform-api-token.service';
 import { ResourceGovernanceService } from '../../modules/resource-governance/resource-governance.service';
 import { ResourceGovernanceDecisionBlockedException } from '../../modules/resource-governance/resource-governance.exceptions';
@@ -32,6 +41,8 @@ type TrackerRequest = Record<string, unknown> & {
     sub?: string;
   };
   apiKeyPrefix?: string;
+  /** 节流阶段解析出的 Agent API Key；null 表示 alak_ Key 无效（回退 IP 计数，由 AgentApiKeyGuard 返回 401） */
+  throttlerAgentApiKey?: AgentApiKeyContext | null;
   ip?: string;
   headers?: RequestHeaders;
 };
@@ -173,6 +184,7 @@ function extractJwtTenantId(
 export class CustomThrottlerGuard extends ThrottlerGuard {
   private platformApiTokenService?: PlatformApiTokenService;
   private resourceGovernanceService?: ResourceGovernanceService;
+  private agentApiKeyService?: AgentApiKeyService;
 
   constructor(
     @InjectThrottlerOptions()
@@ -215,14 +227,23 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       }
     }
 
+    // Agent Key 必须先于 tracker 解析：tracker 依赖校验结果
+    const agentApiKey = await this.resolveAgentApiKey(req);
     const tracker = await getTracker(req, context);
-    const tenantId = await this.resolveTenantId(req);
+    const tenantId = agentApiKey?.tenantId ?? (await this.resolveTenantId(req));
     const resourceGovernanceService = this.getResourceGovernanceService();
     const runtimeState = tenantId
       ? await resourceGovernanceService.resolveRuntimeStateForTenant(tenantId)
       : null;
-    const effectiveLimit = runtimeState?.quota.apiRateLimitPerMinute ?? limit;
-    const rateLimitTracker = tenantId ? `tenant:${tenantId}` : tracker;
+    const effectiveLimit =
+      agentApiKey?.rateLimitPerMinute ??
+      runtimeState?.quota.apiRateLimitPerMinute ??
+      limit;
+    // Agent Key 按 Key 独立计数，不并入租户共享桶；租户日配额仍按 Key 所属租户计数
+    const rateLimitTracker =
+      !agentApiKey && tenantId ? `tenant:${tenantId}` : tracker;
+    const blockedApiKeyPrefix =
+      req.apiKeyPrefix ?? agentApiKey?.keyPrefix ?? null;
 
     if (
       tenantId &&
@@ -264,7 +285,7 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
           actorType: actor.actorType,
           block,
           metadata: {
-            apiKeyPrefix: req.apiKeyPrefix ?? null,
+            apiKeyPrefix: blockedApiKeyPrefix,
             tracker,
           },
         });
@@ -302,7 +323,9 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
           action: 'api_request',
           category: 'api_rate_limit',
           scope: 'api',
-          reason: 'tenant API minute rate limit has been exceeded',
+          reason: agentApiKey
+            ? 'agent API key minute rate limit has been exceeded'
+            : 'tenant API minute rate limit has been exceeded',
           organizationId: runtimeState.organizationId,
           tenantControl: runtimeState.governance.tenantControl,
           metadata: {
@@ -319,11 +342,15 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
           actorType: actor.actorType,
           block,
           metadata: {
-            apiKeyPrefix: req.apiKeyPrefix ?? null,
+            apiKeyPrefix: blockedApiKeyPrefix,
             tracker,
           },
         });
-        throw new ResourceGovernanceDecisionBlockedException(block);
+
+        // 对外 API 契约固定为 rate-limit-exceeded；Studio/平台 Token 维持资源治理错误
+        if (!agentApiKey) {
+          throw new ResourceGovernanceDecisionBlockedException(block);
+        }
       }
 
       const throttlerLimitDetail: ThrottlerLimitDetail = {
@@ -354,7 +381,21 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     return true;
   }
 
+  /** 所有被节流拦截的请求统一输出 RFC 9457 rate-limit-exceeded（带 Retry-After） */
+  protected override async throwThrottlingException(
+    _context: ExecutionContext,
+    throttlerLimitDetail: ThrottlerLimitDetail,
+  ): Promise<void> {
+    throw new RateLimitExceededException(
+      throttlerLimitDetail.timeToBlockExpire,
+    );
+  }
+
   protected override async getTracker(req: TrackerRequest): Promise<string> {
+    if (req.throttlerAgentApiKey) {
+      return `agentkey:${req.throttlerAgentApiKey.keyPrefix}`;
+    }
+
     const apiKeyPrefix = extractApiKeyPrefix(req.headers) ?? req.apiKeyPrefix;
 
     if (typeof apiKeyPrefix === 'string' && apiKeyPrefix.length > 0) {
@@ -381,6 +422,48 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     }
 
     return this.platformApiTokenService;
+  }
+
+  private getAgentApiKeyService(): AgentApiKeyService {
+    if (!this.agentApiKeyService) {
+      this.agentApiKeyService = this.moduleRef.get(AgentApiKeyService, {
+        strict: false,
+      });
+    }
+
+    return this.agentApiKeyService;
+  }
+
+  /**
+   * 解析 `Authorization: Bearer alak_…`。结果缓存在请求上，多个命名节流器只查一次库。
+   * Key 无效时返回 null（回退 IP 计数），由 AgentApiKeyGuard 负责返回 401。
+   */
+  private async resolveAgentApiKey(
+    req: TrackerRequest,
+  ): Promise<AgentApiKeyContext | null> {
+    if (req.throttlerAgentApiKey !== undefined) {
+      return req.throttlerAgentApiKey;
+    }
+
+    const authorization = getSingleHeaderValue(req.headers, 'authorization');
+
+    if (!authorization?.startsWith(`Bearer ${AGENT_API_KEY_PREFIX}`)) {
+      return null;
+    }
+
+    try {
+      req.throttlerAgentApiKey = await this.getAgentApiKeyService().validate(
+        authorization.slice('Bearer '.length).trim(),
+      );
+    } catch (error) {
+      if (!(error instanceof AgentApiKeyInvalidException)) {
+        throw error;
+      }
+
+      req.throttlerAgentApiKey = null;
+    }
+
+    return req.throttlerAgentApiKey;
   }
 
   private getResourceGovernanceService(): ResourceGovernanceService {
@@ -447,7 +530,10 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       };
     }
 
-    if (typeof req.apiKeyPrefix === 'string' && req.apiKeyPrefix.length > 0) {
+    if (
+      req.throttlerAgentApiKey ||
+      (typeof req.apiKeyPrefix === 'string' && req.apiKeyPrefix.length > 0)
+    ) {
       return {
         actorId: null,
         actorType: 'service',

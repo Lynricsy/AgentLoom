@@ -10,6 +10,11 @@ import type {
 
 import { CustomThrottlerGuard } from '../custom-throttler.guard';
 import { PlatformApiTokenService } from '../../../modules/platform-api-token/platform-api-token.service';
+import { AgentApiKeyService } from '../../../modules/agent-api/agent-api-key.service';
+import {
+  AgentApiKeyInvalidException,
+  RateLimitExceededException,
+} from '../../../modules/agent-api/agent-api.exceptions';
 import { ResourceGovernanceService } from '../../../modules/resource-governance/resource-governance.service';
 import type { ResourceGovernanceStateResponseDto } from '../../../modules/resource-governance/dto/resource-governance-response.dto';
 import { ResourceGovernanceDecisionBlockedException } from '../../../modules/resource-governance/resource-governance.exceptions';
@@ -79,6 +84,24 @@ const resourceGovernanceService: Record<string, Mock> = {
   recordBlockedDecision: vi.fn(),
 };
 
+const agentApiKeyService: Record<string, Mock> = {
+  validate: vi.fn(),
+};
+
+const AGENT_RAW_KEY = `alak_${'cd'.repeat(32)}`;
+const AGENT_KEY_PREFIX = AGENT_RAW_KEY.slice(0, 13);
+
+function createAgentKeyContext(rateLimitPerMinute: number | null) {
+  return {
+    keyId: '019391d4-e000-7000-8000-000000000005',
+    tenantId: TENANT_ID,
+    agentDefinitionId: '019391d4-f000-7000-8000-000000000006',
+    keyPrefix: AGENT_KEY_PREFIX,
+    maxConcurrentRuns: 5,
+    rateLimitPerMinute,
+  };
+}
+
 const moduleRef = {
   get: vi.fn((token: unknown) => {
     if (token === PlatformApiTokenService) {
@@ -89,6 +112,9 @@ const moduleRef = {
       return resourceGovernanceService as unknown as ResourceGovernanceServiceLike;
     }
 
+    if (token === AgentApiKeyService) {
+      return agentApiKeyService;
+    }
     throw new Error(`Unexpected provider token: ${String(token)}`);
   }),
 };
@@ -641,14 +667,11 @@ describe('CustomThrottlerGuard', () => {
     expect(res.header).not.toHaveBeenCalled();
   });
 
-  it('delegates anonymous rate-limit failures to the base throttling exception', async () => {
+  it('匿名请求超限时返回 rate-limit-exceeded 429 并带 Retry-After', async () => {
     const guard = createGuard();
     const req: GuardRequest = { headers: {}, ip: '192.0.2.1' };
     const res = createResponse();
     const props = createRequestProps(req, res);
-    const throttled = new Error('base throttled');
-    const throwThrottlingException = vi.fn().mockRejectedValue(throttled);
-    Object.assign(guard, { throwThrottlingException });
     storageService.increment.mockResolvedValueOnce({
       totalHits: 101,
       timeToExpire: 8,
@@ -656,17 +679,185 @@ describe('CustomThrottlerGuard', () => {
       timeToBlockExpire: 8,
     });
 
-    await expect(guard.handleRequestForTest(props)).rejects.toBe(throttled);
+    const error = await guard
+      .handleRequestForTest(props)
+      .catch((e: unknown) => e);
 
-    expect(throwThrottlingException).toHaveBeenCalledWith(
-      props.context,
-      expect.objectContaining({
-        tracker: 'jwt:user-1',
-        totalHits: 101,
-        isBlocked: true,
-      }),
+    expect(error).toBeInstanceOf(RateLimitExceededException);
+    expect((error as RateLimitExceededException).getStatus()).toBe(429);
+    expect((error as RateLimitExceededException).type).toBe(
+      'https://agentloom.dev/errors/rate-limit-exceeded',
     );
+    expect((error as RateLimitExceededException).headers).toEqual({
+      'Retry-After': '8',
+    });
     expect(res.header).toHaveBeenCalledWith('Retry-After', 8);
+  });
+
+  describe('Agent API Key（Bearer alak_）', () => {
+    function createAgentKeyRequest(): GuardRequest {
+      return {
+        headers: { authorization: `Bearer ${AGENT_RAW_KEY}` },
+        ip: '198.51.100.7',
+      };
+    }
+
+    function createTrackerAwareProps(req: GuardRequest, res: HeaderWriter) {
+      const guard = createGuard();
+      const props = createRequestProps(req, res, {
+        getTracker: vi.fn((request: GuardRequest) =>
+          guard.getTrackerForTest(request),
+        ),
+        generateKey: vi.fn((_, tracker: string) => `minute:${tracker}`),
+      });
+      return { guard, props };
+    }
+
+    it('按 Key 独立计数，Key 自身限额优先于租户分钟配额', async () => {
+      const req = createAgentKeyRequest();
+      const { guard, props } = createTrackerAwareProps(req, createResponse());
+      agentApiKeyService.validate.mockResolvedValueOnce(
+        createAgentKeyContext(30),
+      );
+      resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+        createRuntimeState({ apiRateLimitPerMinute: 500 }),
+      );
+      storageService.increment.mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+
+      await expect(guard.handleRequestForTest(props)).resolves.toBe(true);
+
+      expect(agentApiKeyService.validate).toHaveBeenCalledWith(AGENT_RAW_KEY);
+      expect(storageService.increment).toHaveBeenCalledWith(
+        `minute:agentkey:${AGENT_KEY_PREFIX}`,
+        60_000,
+        30,
+        60_000,
+        'default',
+      );
+      expect(platformApiTokenService.validateToken).not.toHaveBeenCalled();
+    });
+
+    it('Key 未配置限额时使用 Key 所属租户的分钟配额，并计入租户日配额', async () => {
+      const req = createAgentKeyRequest();
+      const { guard, props } = createTrackerAwareProps(req, createResponse());
+      agentApiKeyService.validate.mockResolvedValueOnce(
+        createAgentKeyContext(null),
+      );
+      resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+        createRuntimeState({
+          apiRateLimitPerMinute: 12,
+          dailyApiCallLimit: 1000,
+        }),
+      );
+      storageService.increment
+        .mockResolvedValueOnce({
+          totalHits: 3,
+          timeToExpire: 86_400,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        })
+        .mockResolvedValueOnce({
+          totalHits: 1,
+          timeToExpire: 60,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        });
+
+      await expect(guard.handleRequestForTest(props)).resolves.toBe(true);
+
+      expect(
+        resourceGovernanceService.resolveRuntimeStateForTenant,
+      ).toHaveBeenCalledWith(TENANT_ID);
+      expect(storageService.increment).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining(`resource-governance:daily-api:${TENANT_ID}:`),
+        expect.any(Number),
+        1000,
+        expect.any(Number),
+        'default-daily-api-quota',
+      );
+      expect(storageService.increment).toHaveBeenNthCalledWith(
+        2,
+        `minute:agentkey:${AGENT_KEY_PREFIX}`,
+        60_000,
+        12,
+        60_000,
+        'default',
+      );
+    });
+
+    it('无效 alak_ Key 不让节流器抛错，回退按 IP 计数', async () => {
+      const req = createAgentKeyRequest();
+      const { guard, props } = createTrackerAwareProps(req, createResponse());
+      agentApiKeyService.validate.mockRejectedValueOnce(
+        new AgentApiKeyInvalidException(),
+      );
+      storageService.increment.mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+
+      await expect(guard.handleRequestForTest(props)).resolves.toBe(true);
+
+      expect(storageService.increment).toHaveBeenCalledWith(
+        'minute:198.51.100.7',
+        60_000,
+        100,
+        60_000,
+        'default',
+      );
+      expect(
+        resourceGovernanceService.resolveRuntimeStateForTenant,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('Key 超限时返回 rate-limit-exceeded 并以 service 身份记录拦截', async () => {
+      const req = createAgentKeyRequest();
+      const res = createResponse();
+      const { guard, props } = createTrackerAwareProps(req, res);
+      agentApiKeyService.validate.mockResolvedValueOnce(
+        createAgentKeyContext(2),
+      );
+      resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+        createRuntimeState({ apiRateLimitPerMinute: 100 }),
+      );
+      storageService.increment.mockResolvedValueOnce({
+        totalHits: 3,
+        timeToExpire: 40,
+        isBlocked: true,
+        timeToBlockExpire: 40,
+      });
+
+      const error = await guard
+        .handleRequestForTest(props)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(RateLimitExceededException);
+      expect((error as RateLimitExceededException).headers).toEqual({
+        'Retry-After': '40',
+      });
+      expect(res.header).toHaveBeenCalledWith('X-RateLimit-Limit', 2);
+      expect(
+        resourceGovernanceService.recordBlockedDecision,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          actorId: null,
+          actorType: 'service',
+          metadata: {
+            apiKeyPrefix: AGENT_KEY_PREFIX,
+            tracker: `agentkey:${AGENT_KEY_PREFIX}`,
+          },
+        }),
+      );
+    });
   });
 
   it('short-circuits matching ignored user agents before tenant or storage work', async () => {

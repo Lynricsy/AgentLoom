@@ -20,6 +20,7 @@ import type {
   ProblemDetails,
 } from '../../types/problem-details.type';
 import { AllExceptionsFilter } from '../all-exceptions.filter';
+import { RateLimitExceededException } from '../../../modules/agent-api/agent-api.exceptions';
 
 type RequestMock = Pick<FastifyRequest, 'url'>;
 
@@ -233,6 +234,19 @@ describe('AllExceptionsFilter', () => {
       currentVersion: 3,
     });
     expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('限流异常输出 rate-limit-exceeded problem 并写入 Retry-After 头', () => {
+    filter.catch(new RateLimitExceededException(17), host);
+
+    expect(reply.status).toHaveBeenCalledWith(HttpStatus.TOO_MANY_REQUESTS);
+    expect(reply.header).toHaveBeenCalledWith('Retry-After', '17');
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'https://agentloom.dev/errors/rate-limit-exceeded',
+        status: HttpStatus.TOO_MANY_REQUESTS,
+      }),
+    );
   });
 
   it('将字符串 HttpException 响应映射为 detail', () => {
