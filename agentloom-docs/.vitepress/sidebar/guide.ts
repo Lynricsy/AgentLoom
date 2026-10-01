@@ -1,6 +1,7 @@
 import type { DefaultTheme } from 'vitepress'
 
 // 用户指南侧边栏：新增/移动 guide/ 页面时同步本文件
+// 节点参考按 agentloom-studio/src/features/canvas/components/nodeCategories.ts 的分类顺序分组
 const guide: DefaultTheme.SidebarItem[] = [
   { text: '用户指南', link: '/guide/' },
   {
@@ -36,26 +37,76 @@ const guide: DefaultTheme.SidebarItem[] = [
       { text: '与 Agent 对话', link: '/guide/agents/conversations' },
       { text: 'Agent 记忆', link: '/guide/agents/memory' },
       { text: '在工作流中使用 Agent', link: '/guide/agents/in-workflows' },
+      { text: '通过 API 调用 Agent', link: '/guide/agents/api-access' },
     ],
   },
   {
     text: '节点参考',
     collapsed: true,
     items: [
-      { text: '节点概述', link: '/guide/nodes/' },
-      { text: 'Agent 节点', link: '/guide/nodes/agent' },
-      { text: '智能路由', link: '/guide/nodes/smart-routing' },
-      { text: '文本输入', link: '/guide/nodes/text-input' },
-      { text: '文本输出', link: '/guide/nodes/text-output' },
-      { text: 'JSON 输出', link: '/guide/nodes/json-output' },
-      { text: '条件分支', link: '/guide/nodes/condition' },
-      { text: '触发器', link: '/guide/nodes/trigger' },
-      { text: '可复用块', link: '/guide/nodes/reusable-block' },
-      { text: 'HTTP 请求', link: '/guide/nodes/http-tool' },
-      { text: 'MCP 工具', link: '/guide/nodes/mcp-tool' },
-      { text: '代码沙箱', link: '/guide/nodes/sandbox' },
-      { text: '知识库节点', link: '/guide/nodes/knowledge' },
-      { text: '技能节点', link: '/guide/nodes/skill' },
+      { text: '节点总览', link: '/guide/nodes/' },
+      {
+        text: 'Agent',
+        collapsed: true,
+        items: [
+          { text: 'LLM 模型', link: '/guide/nodes/llm-model' },
+          { text: '智能路由', link: '/guide/nodes/smart-routing' },
+          { text: 'Agent', link: '/guide/nodes/agent' },
+          { text: 'Skill', link: '/guide/nodes/skill' },
+        ],
+      },
+      {
+        text: 'Tool',
+        collapsed: true,
+        items: [
+          { text: 'HTTP Request', link: '/guide/nodes/http-tool' },
+          { text: 'Code Executor', link: '/guide/nodes/code-tool' },
+          { text: 'MCP Tool', link: '/guide/nodes/mcp-tool' },
+          { text: 'Sandbox', link: '/guide/nodes/sandbox' },
+          { text: '输入预处理器', link: '/guide/nodes/input-preprocessor' },
+          { text: 'Workspace', link: '/guide/nodes/workspace' },
+        ],
+      },
+      {
+        text: 'Trigger',
+        collapsed: true,
+        items: [{ text: '触发器', link: '/guide/nodes/trigger' }],
+      },
+      {
+        text: 'Knowledge',
+        collapsed: true,
+        items: [{ text: 'Knowledge Base', link: '/guide/nodes/knowledge-base' }],
+      },
+      {
+        text: 'Memory',
+        collapsed: true,
+        items: [{ text: 'Memory', link: '/guide/nodes/memory' }],
+      },
+      {
+        text: 'Output',
+        collapsed: true,
+        items: [
+          { text: 'Text', link: '/guide/nodes/text' },
+          { text: 'Text Output', link: '/guide/nodes/text-output' },
+          { text: 'JSON Output', link: '/guide/nodes/json-output' },
+        ],
+      },
+      {
+        text: 'Control',
+        collapsed: true,
+        items: [
+          { text: 'Condition', link: '/guide/nodes/condition' },
+          { text: 'Loop', link: '/guide/nodes/loop' },
+          { text: 'Iteration', link: '/guide/nodes/iteration' },
+          { text: 'Merge', link: '/guide/nodes/merge' },
+          { text: 'Reusable Block', link: '/guide/nodes/reusable-block' },
+        ],
+      },
+      {
+        text: 'Plugin',
+        collapsed: true,
+        items: [{ text: '插件节点', link: '/guide/nodes/plugin' }],
+      },
     ],
   },
   {
@@ -88,13 +139,20 @@ const guide: DefaultTheme.SidebarItem[] = [
     ],
   },
   {
+    text: '生成应用',
+    collapsed: true,
+    items: [{ text: '用自然语言生成应用', link: '/guide/generated-apps/' }],
+  },
+  {
     text: '团队协作',
     collapsed: true,
     items: [
       { text: '协作概述', link: '/guide/collaboration/' },
       { text: '组织与工作区', link: '/guide/collaboration/workspace' },
       { text: '角色与权限', link: '/guide/collaboration/roles' },
+      { text: '自治策略', link: '/guide/collaboration/autonomy-policy' },
       { text: '市场', link: '/guide/collaboration/marketplace' },
+      { text: '开发者控制台', link: '/guide/collaboration/developer-console' },
     ],
   },
   {
@@ -139,7 +197,7 @@ const guide: DefaultTheme.SidebarItem[] = [
     text: '故障排查',
     collapsed: true,
     items: [
-      { text: '常见问题', link: '/guide/troubleshooting/' },
+      { text: '排查入口', link: '/guide/troubleshooting/' },
       { text: 'FAQ', link: '/guide/troubleshooting/faq' },
       { text: '错误参考', link: '/guide/troubleshooting/errors' },
     ],
