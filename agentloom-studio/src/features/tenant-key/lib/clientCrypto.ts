@@ -42,12 +42,14 @@ export async function generateRsaKeyPair(): Promise<GeneratedKeyPair> {
 
 export async function decryptWithPrivateKey(
   payload: EncryptedPayload,
-  privateKey: string | ArrayBuffer | Uint8Array,
+  privateKey: CryptoKey | string | ArrayBuffer | Uint8Array,
 ): Promise<string> {
   const resolvedPrivateKey =
-    typeof privateKey === 'string'
-      ? await importPrivateKeyPem(privateKey, { extractable: false })
-      : await importPrivateKeyPkcs8(toArrayBuffer(privateKey), false)
+    privateKey instanceof CryptoKey
+      ? privateKey
+      : typeof privateKey === 'string'
+        ? await importPrivateKeyPem(privateKey, { extractable: false })
+        : await importPrivateKeyPkcs8(toArrayBuffer(privateKey), false)
 
   const encryptedDek = base64ToBuffer(payload.encryptedSessionKey)
   const dek = await crypto.subtle.decrypt(

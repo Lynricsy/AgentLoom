@@ -21,14 +21,14 @@ export function useDecryptContent(): DecryptResult {
       setIsDecrypting(true)
 
       try {
-        const privateKeyPkcs8 = await getPrivateKey(payload.keyFingerprint)
+        const privateKey = await getPrivateKey(payload.keyFingerprint)
 
-        if (!privateKeyPkcs8) {
+        if (!privateKey) {
           setError('需要私钥才能查看加密内容。请在加密设置中导入对应的私钥。')
           return null
         }
 
-        const plaintext = await decryptWithPrivateKey(payload, privateKeyPkcs8)
+        const plaintext = await decryptWithPrivateKey(payload, privateKey)
         return plaintext
       } catch (err) {
         const message =

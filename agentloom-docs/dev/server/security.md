@@ -99,7 +99,7 @@ sequenceDiagram
 - **算法**：`LlmEncryptionService`（`agentloom-server/src/modules/llm/llm-encryption.service.ts`）的算法标识为 `RSA-OAEP-4096+AES-256-GCM`。每次加密生成随机 32 字节 DEK 与 12 字节 IV，用 AES-256-GCM 加密明文，AAD 为 `<tenantId>:<timestamp>`；DEK 用租户公钥以 RSA-OAEP（SHA-256）加密。输出字段：`ciphertext`、`encryptedSessionKey`、`iv`、`authTag`、`aad`、`keyFingerprint`、`algorithm`。
 - **加密范围**：`AgentTaskWorker` 加密 LLM 输出（`agentloom-server/src/modules/execution/agent-task.worker.ts`，`content` 置为 `[ENCRYPTED]`）；`EvidenceService` 只加密 `agent_decision` 与 `tool_output` 两类证据。`LlmEncryptionService.isE2EEEnabled` 为假（组织未配置公钥）时不加密。
 - **公钥管理**（`agentloom-server/src/modules/tenant-key/`）：公钥至少 4096 位，拒绝私钥 PEM（`agentloom-server/src/modules/tenant-key/rsa-key-utils.ts`）；指纹为 SPKI DER 的 SHA-256。表 `tenant_encryption_keys` 状态为 `active` / `rotating` / `revoked`，组织 + 指纹唯一，部分唯一索引保证每个组织至多一个 `active`（`agentloom-server/src/database/schema/tenant-encryption-keys.schema.ts`）。已有 active key 时再次上传会被拒绝，换钥走 `POST /api/v1/tenant-keys/:id/rotate`：旧 key 置为 `rotating`，新 key 成为 `active`。上传、轮换、删除要求 `owner` 或 `admin`；查询要求 `owner`、`admin`、`creator` 或 `operator`（`viewer` 不可）。
-- **私钥**：Studio 在浏览器内生成密钥对，PKCS8 字节存入 IndexedDB，解密时以 non-extractable 方式导入（`agentloom-studio/src/features/tenant-key/lib/clientCrypto.ts`、`agentloom-studio/src/features/tenant-key/lib/keyStorage.ts`）。私钥不上传服务端。
+- **私钥**：Studio 在浏览器内生成密钥对，以 `extractable=false` 导入为 `CryptoKey` 后结构化克隆存入 IndexedDB（数据库 agentloom-keystore 的 private-keys 存储），页面脚本只能用它解密、无法导出字节；备份只在生成时下载 PEM（`agentloom-studio/src/features/tenant-key/lib/clientCrypto.ts`、`agentloom-studio/src/features/tenant-key/lib/keyStorage.ts`）。旧版保存 PKCS#8 字节的记录由 `migrateLegacyPrivateKeys` 在 Studio 启动时、以及 `getPrivateKey` 读取时迁移；导入或写回失败的记录原样保留并记 `console.error`，从不自动删除。私钥不上传服务端。
 
 ## 服务端密钥加密
 

@@ -20,6 +20,7 @@ export {
   deletePrivateKey,
   getPrivateKey,
   listStoredFingerprints,
+  migrateLegacyPrivateKeys,
   storePrivateKey,
 } from './lib/keyStorage'
 
