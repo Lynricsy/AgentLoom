@@ -1,4 +1,6 @@
-name: agentloom-supabase
+# 不要在 .env 中设置 COMPOSE_PROJECT_NAME：它会覆盖本文件与主 compose 的 name，
+# 把两个栈并进同一个 project（互报 orphan，--remove-orphans 会删掉对方的容器）。
+name: ${AGENTLOOM_SUPABASE_PROJECT_NAME:-agentloom-supabase}
 
 services:
   supabase-auth:

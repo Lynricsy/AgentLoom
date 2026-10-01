@@ -26,7 +26,7 @@ GoTrue 的固定行为（写在 compose 文件中，不经变量）：允许注�
 2. GoTrue 首次启动时在 `auth` schema 建表，其中包括 `auth.users`。
 3. server 的数据库迁移给 `users.supabase_user_id` 加了指向 `auth.users(id)` 的外键，因此迁移必须在 GoTrue 首次启动之后执行，否则报 `relation "auth.users" does not exist`。
 
-`./scripts/init-db.sh` 在一次运行里先做第 1 步、再执行迁移，所以在空数据库上第一次运行时迁移失败；启动 Supabase 栈后再运行一次即成功。[Docker Compose 部署](/deploy/compose) 按这个顺序写。
+`./scripts/init-db.sh` 按这个顺序执行：创建角色与 `auth` schema → 若 `auth.users` 不存在，执行 `docker compose -f docker-compose.supabase.yml up -d --wait` 并等待 GoTrue 建表 → 执行迁移。因此首次部署只需运行一次 init-db，它会顺带启动整个 Supabase 栈；`auth.users` 已存在时（再次运行）跳过启动。
 
 server 会读取和删除 `auth.sessions` 中的行（`agentloom-server/src/modules/auth/auth.service.ts`）。Compose 默认的 `APP_DATABASE_URL` 使用 `POSTGRES_USER`，它是 PostgreSQL 镜像创建的超级用户，GoTrue 建的表也归它所有，不需要额外授权。若你把 `APP_DATABASE_URL` 换成非超级用户的角色，按 `./scripts/init-db.sh` 的提示执行：
 
@@ -37,15 +37,11 @@ docker compose exec -T postgres sh -lc \
 
 `<业务角色>` 换成 `APP_DATABASE_URL` 中的用户名。
 
-## 一个 Compose project
+## 两个 Compose project
 
-`docker-compose.supabase.yml` 顶部写有 `name: agentloom-supabase`，但 Compose 在 `agentloom-deploy/` 下运行时会读取 `.env` 中的 `COMPOSE_PROJECT_NAME`（模板值 `agentloom-private`），它优先于文件内的 `name:`。结果是两个 compose 文件的容器落在同一个 project 里，各自执行 `up` 时会打印对方的容器为孤儿：
+主栈与 Supabase 栈是两个独立的 project，名字分别来自 `.env` 的 `AGENTLOOM_PROJECT_NAME`（默认 `agentloom-private`）与 `AGENTLOOM_SUPABASE_PROJECT_NAME`（默认 `agentloom-supabase`），在各自 compose 文件顶部的 `name:` 中引用。
 
-```text
-level=warning msg="Found orphan containers (docs-verify-deploydocs-postgres-1) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
-```
-
-（上面的 project 名来自验证时的覆盖值。）这条警告不影响运行。不要对任一 compose 文件加 `--remove-orphans`，否则会删掉另一个文件的容器。
+**不要**在 `.env` 中设置 `COMPOSE_PROJECT_NAME`：Compose 让它优先于文件内的 `name:`，两个 compose 文件会落进同一个 project，各自 `up` 时把对方的容器报为孤儿，加 `--remove-orphans` 会删掉对方的容器。已有部署的迁移步骤见 [Docker Compose 部署](/deploy/compose#升级)。
 
 ## 浏览器如何访问 GoTrue
 

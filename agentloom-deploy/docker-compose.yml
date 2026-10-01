@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-agentloom-private}
+name: ${AGENTLOOM_PROJECT_NAME:-agentloom-private}
 
 x-server-app: &server-app
   image: ${SERVER_IMAGE:-agentloom/server:private-local}
