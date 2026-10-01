@@ -13,6 +13,8 @@ import {
   Download,
   FolderInput,
   Share2,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 import { Badge, type BadgeProps } from "@/shared/ui/badge";
@@ -21,6 +23,43 @@ import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import type { WorkflowStatus } from "@/features/workflow";
 import { CreateVersionDialog } from "@/features/workflow";
 import { ArchiveDialog } from "@/features/workflow";
+import { useCanvasActions, useCanvasHistory } from "../../stores/canvasStore";
+
+/** 撤销 / 重做：历史为空时禁用；快捷键见 useCanvasKeyboardShortcuts */
+const CanvasHistoryButtons = memo(function CanvasHistoryButtons() {
+  const { canUndo, canRedo } = useCanvasHistory();
+  const { undo, redo } = useCanvasActions();
+
+  return (
+    <>
+      <TooltipHint label="撤销（Ctrl/⌘+Z）">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="撤销"
+          onClick={undo}
+          disabled={!canUndo}
+          data-testid="btn-canvas-undo"
+        >
+          <Undo2 className="h-4 w-4" />
+        </Button>
+      </TooltipHint>
+      <TooltipHint label="重做（Shift+Ctrl/⌘+Z 或 Ctrl+Y）">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="重做"
+          onClick={redo}
+          disabled={!canRedo}
+          data-testid="btn-canvas-redo"
+        >
+          <Redo2 className="h-4 w-4" />
+        </Button>
+      </TooltipHint>
+      <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+    </>
+  );
+});
 
 interface VersionToolbarProps {
   workflowId: string;
@@ -110,6 +149,8 @@ export const VersionToolbar = memo(function VersionToolbar({
         </Badge>
 
         <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+
+        {!isArchived && <CanvasHistoryButtons />}
 
         {!isArchived && (
           <TooltipHint label="保存当前画布为版本快照">
@@ -244,7 +285,9 @@ export const VersionToolbar = memo(function VersionToolbar({
           </Button>
         )}
 
-        {(canPublish || (isPublished && onPublishToMarketplace) || (!isArchived && onRun)) && (
+        {(canPublish ||
+          (isPublished && onPublishToMarketplace) ||
+          (!isArchived && onRun)) && (
           <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
         )}
 

@@ -46,7 +46,7 @@ flowchart TB
 
 ## 画布草稿：canvasStore
 
-`agentloom-studio/src/features/canvas/stores/canvasStore.ts` 中的 `useCanvasStore` 持有节点、边、视口、选中状态与 `isDirty` 标记，中间件为 `devtools`、`subscribeWithSelector`、`immer`。它是画布的本地草稿，不是服务端数据的缓存：服务端版本由 TanStack Query 持有，草稿通过自动保存回写。
+`agentloom-studio/src/features/canvas/stores/canvasStore.ts` 中的 `useCanvasStore` 持有节点、边、视口、选中状态与 `isDirty` 标记，中间件由外到内为 `devtools`、`subscribeWithSelector`、`temporal`（zundo）、`immer`。它是画布的本地草稿，不是服务端数据的缓存：服务端版本由 TanStack Query 持有，草稿通过自动保存回写。
 
 action 按职责分组（以 `CanvasActions` 接口为准）：
 
@@ -58,6 +58,7 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 | 连线字段映射 | `openFieldMapping`、`closeFieldMapping`、`updateEdgeData`、`updateFieldMapping`、`batchUpdateFieldMappings`、`saveMappingSnapshot`、`undoFieldMapping`、`refreshEdgeCompatibility` |
 | 视口 | `setViewport`（不标脏）、`commitViewport`（标脏） |
 | 与服务端同步 | `applyServerSnapshot`、`markSaved`、`advanceVersion`、`setIsSaving`、`reset` |
+| 撤销与重做 | `undo`、`redo` |
 | 搜索与辅助 | `toggleSearch`、`setSearchQuery`、`nextSearchResult`、`prevSearchResult`、`clearSearch`、`toggleMiniMap`、`setHoveredNodeId` |
 | 校验提示 | `setNodeValidationError`、`clearNodeValidationErrors` |
 
@@ -71,6 +72,20 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 - 已归档的工作流不自动保存。
 
 `VITE_AUTOSAVE_DEBOUNCE_MS` 经 `agentloom-studio/src/shared/lib/runtimeEnv.ts` 的 `readRuntimeEnv` 按变量名读取。直接写 `Number(import.meta.env.VITE_AUTOSAVE_DEBOUNCE_MS)` 会让压缩器在构建期把镜像占位符折叠成常量，容器启动时的替换因此失效。新增运行时变量同样走 `readRuntimeEnv`。
+
+## 撤销与重做
+
+> 本节回答：哪些编辑会进入历史栈，为什么撤销不会和服务端版本冲突？
+
+`useCanvasStore` 用 zundo 的 `temporal` 维护历史栈，`useCanvasStore.temporal` 是独立的历史 store，组件通过 `useCanvasHistory()` 读取 `canUndo` / `canRedo`。
+
+- **只记录图结构。** `partialize` 只取 `nodes` 与 `edges`，并去掉 React Flow 写在元素上的交互态 `selected`、`dragging`、`resizing`。视口、选中、`isDirty`、`version`、保存状态与校验提示都不进历史。`equality` 逐元素比较，忽略 React Flow 测量出的 `measured`，所以选中、尺寸测量、`markSaved` / `setIsSaving` 这类变更不产生历史步。
+- **一次拖拽一步。** 节点拖拽或缩放期间（store 中有节点 `dragging` 或 `resizing` 为 `true`），`handleSet` 只记下手势开始前的图，不提交中间帧；手势结束（React Flow 发出 `dragging: false` 的位置变更）时把开始前的图作为一步提交，位置没变则不提交。
+- **派生更新并入上一步。** `refreshEdgeCompatibility` 是类型引擎对已有连线的异步重算，在暂停跟踪（`pause` / `resume`）下写入，不单独成为一步。
+- **加载即清空。** `applyServerSnapshot` 与 `reset` 在暂停跟踪下写入，然后清空历史，因此历史不会跨越服务端版本；撤销只会回到本次加载之后的编辑。
+- **跳转后照常保存。** `undo` / `redo` 恢复图结构后清空选中、关闭指向已不存在连线的映射面板，并把 `isDirty` 置为 `true`，由自动保存按正常路径回写。历史上限 `CANVAS_HISTORY_LIMIT` 为 100 步。
+
+快捷键在 `agentloom-studio/src/features/canvas/hooks/useCanvasKeyboardShortcuts.ts`：Ctrl/Cmd+Z 撤销，Shift+Ctrl/Cmd+Z 与 Ctrl+Y 重做；只读画布、焦点在 input / textarea / select / contenteditable 内时不拦截。字段映射面板打开时 Ctrl/Cmd+Z 让给 `useFieldMappingInteractions`，撤销的是 `fieldMappingUndoStack` 中的映射编辑。工具栏 `VersionToolbar` 的「撤销」「重做」按钮在历史为空时禁用。
 
 ## 服务端快照与本地草稿
 

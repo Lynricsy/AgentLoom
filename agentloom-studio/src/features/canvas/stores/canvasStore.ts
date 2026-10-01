@@ -1,8 +1,9 @@
-import { create } from "zustand";
+import { create, useStore } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { devtools, subscribeWithSelector } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 import { enableMapSet } from "immer";
+import { temporal } from "zundo";
 import {
   applyNodeChanges,
   applyEdgeChanges,
@@ -82,6 +83,12 @@ enableMapSet();
 
 const MAX_UNDO_STACK_SIZE = 10;
 
+/** 画布撤销/重做历史栈的最大步数 */
+const CANVAS_HISTORY_LIMIT = 100;
+
+/** React Flow 写在节点/边上的交互态，不属于图结构，不进历史 */
+const TRANSIENT_ELEMENT_KEYS = ["selected", "dragging", "resizing"] as const;
+
 interface FieldMappingSnapshot {
   edgeId: string;
   mappings: FieldMapping[];
@@ -108,6 +115,93 @@ interface CanvasState {
   hoveredNodeId: string | null;
   nodeValidationErrors: Record<string, boolean>;
   fieldMappingUndoStack: FieldMappingSnapshot[];
+}
+
+/** 历史栈只记录图结构：服务端快照元数据、保存状态、选中、视口都不进历史 */
+type CanvasHistoryState = Pick<CanvasState, "nodes" | "edges">;
+
+function omitTransientFlags<T extends object>(element: T): T {
+  if (!TRANSIENT_ELEMENT_KEYS.some((key) => key in element)) {
+    return element;
+  }
+  const copy = { ...element };
+  for (const key of TRANSIENT_ELEMENT_KEYS) {
+    Reflect.deleteProperty(copy, key);
+  }
+  return copy;
+}
+
+function toCanvasHistoryState(state: CanvasState): CanvasHistoryState {
+  return {
+    nodes: state.nodes.map(omitTransientFlags),
+    edges: state.edges.map(omitTransientFlags),
+  };
+}
+
+function isSamePoint(a: unknown, b: unknown): boolean {
+  return (
+    typeof a === "object" &&
+    a !== null &&
+    typeof b === "object" &&
+    b !== null &&
+    "x" in a &&
+    "y" in a &&
+    "x" in b &&
+    "y" in b &&
+    a.x === b.x &&
+    a.y === b.y
+  );
+}
+
+/**
+ * immer 对未改动的子对象保持引用不变，因此逐键 `===` 即可判断结构是否变化；
+ * `measured` 是 React Flow 测量出的尺寸，不代表用户编辑。
+ */
+function isSameHistoryElement(a: object, b: object): boolean {
+  if (a === b) {
+    return true;
+  }
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (key === "measured") {
+      continue;
+    }
+    const left: unknown = Reflect.get(a, key);
+    const right: unknown = Reflect.get(b, key);
+    if (left === right || (key === "position" && isSamePoint(left, right))) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function isSameElementList(
+  a: readonly object[],
+  b: readonly object[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((element, index) => isSameHistoryElement(element, b[index]!))
+  );
+}
+
+function isCanvasHistoryState(value: unknown): value is CanvasHistoryState {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "nodes" in value &&
+    "edges" in value
+  );
+}
+
+/** 拖拽或缩放过程中的中间帧合并为一步：记录手势开始前的图，结束时一次提交 */
+let pendingGestureStart: CanvasHistoryState | null = null;
+
+function isCanvasGestureActive(state: CanvasState): boolean {
+  return state.nodes.some(
+    (node) => node.dragging === true || node.resizing === true,
+  );
 }
 
 interface CanvasActions {
@@ -154,6 +248,8 @@ interface CanvasActions {
     advanceVersion: (version: number) => void;
     setIsSaving: (saving: boolean) => void;
     reset: () => void;
+    undo: () => void;
+    redo: () => void;
     toggleSearch: () => void;
     setSearchQuery: (query: string) => void;
     nextSearchResult: () => void;
@@ -198,1248 +294,1399 @@ function createInitialState(): CanvasState {
 export const useCanvasStore = create<CanvasState & CanvasActions>()(
   devtools(
     subscribeWithSelector(
-      immer((set) => ({
-        ...createInitialState(),
+      temporal(
+        immer((set) => ({
+          ...createInitialState(),
 
-        actions: {
-          onNodesChange: (changes) =>
-            set((state) => {
-              // 钳制 compound 子节点拖拽位置到循环体区域内
-              const clampedChanges = changes.map((change) => {
-                if (change.type !== "position" || !change.position) {
+          actions: {
+            onNodesChange: (changes) =>
+              set((state) => {
+                // 钳制 compound 子节点拖拽位置到循环体区域内
+                const clampedChanges = changes.map((change) => {
+                  if (change.type !== "position" || !change.position) {
+                    return change;
+                  }
+
+                  const node = state.nodes.find((n) => n.id === change.id);
+                  if (!node?.parentId) {
+                    return change;
+                  }
+
+                  const parent = state.nodes.find(
+                    (n) => n.id === node.parentId,
+                  );
+                  if (
+                    !parent ||
+                    !isCompoundContainerNodeType(parent.data.nodeType) ||
+                    parent.data.config?.isCollapsed === true
+                  ) {
+                    return change;
+                  }
+
+                  const extent = buildCompoundChildExtent({
+                    inputPortCount: parent.data.inputPorts.length,
+                    outputPortCount: parent.data.outputPorts.length,
+                    width: readCompoundNodeDimension(parent, "width"),
+                    height: readCompoundNodeDimension(parent, "height"),
+                  });
+
+                  const clamped = clampPositionToExtent(
+                    change.position,
+                    extent,
+                    {
+                      childWidth: readCompoundNodeDimension(node, "width"),
+                      childHeight: readCompoundNodeDimension(node, "height"),
+                    },
+                  );
+                  if (
+                    clamped.x !== change.position.x ||
+                    clamped.y !== change.position.y
+                  ) {
+                    return { ...change, position: clamped };
+                  }
+
                   return change;
-                }
-
-                const node = state.nodes.find((n) => n.id === change.id);
-                if (!node?.parentId) {
-                  return change;
-                }
-
-                const parent = state.nodes.find((n) => n.id === node.parentId);
-                if (
-                  !parent ||
-                  !isCompoundContainerNodeType(parent.data.nodeType) ||
-                  parent.data.config?.isCollapsed === true
-                ) {
-                  return change;
-                }
-
-                const extent = buildCompoundChildExtent({
-                  inputPortCount: parent.data.inputPorts.length,
-                  outputPortCount: parent.data.outputPorts.length,
-                  width: readCompoundNodeDimension(parent, "width"),
-                  height: readCompoundNodeDimension(parent, "height"),
                 });
 
-                const clamped = clampPositionToExtent(change.position, extent, {
-                  childWidth: readCompoundNodeDimension(node, "width"),
-                  childHeight: readCompoundNodeDimension(node, "height"),
-                });
-                if (
-                  clamped.x !== change.position.x ||
-                  clamped.y !== change.position.y
-                ) {
-                  return { ...change, position: clamped };
-                }
-
-                return change;
-              });
-
-              const selectionChanges = clampedChanges.filter(
-                (
-                  change,
-                ): change is NodeChange<CanvasNode> & {
-                  type: "select";
-                  selected: boolean;
-                } => change.type === "select",
-              );
-              const removedNodeIds = clampedChanges
-                .filter(
-                  (
-                    change,
-                  ): change is NodeChange<CanvasNode> & { type: "remove" } =>
-                    change.type === "remove",
-                )
-                .map((change) => change.id);
-
-              state.nodes = applyNodeChanges(clampedChanges, state.nodes);
-
-              // compound 节点 resize 后重新同步子节点 extent
-              const resizedCompoundIds = clampedChanges
-                .filter(
+                const selectionChanges = clampedChanges.filter(
                   (
                     change,
                   ): change is NodeChange<CanvasNode> & {
-                    type: "dimensions";
-                    id: string;
-                    resizing?: boolean;
-                  } => change.type === "dimensions",
-                )
-                .map((change) => change.id)
-                .filter((id) => {
-                  const n = state.nodes.find((node) => node.id === id);
-                  return n && isCompoundContainerNodeType(n.data.nodeType);
-                });
-
-              for (const compoundId of resizedCompoundIds) {
-                syncCompoundParentLayout(state.nodes, compoundId);
-              }
-              if (removedNodeIds.length > 0) {
-                for (const nodeId of removedNodeIds) {
-                  delete state.nodeValidationErrors[nodeId];
-                }
-              }
-              const isDirtyChange = clampedChanges.some(
-                (c) =>
-                  c.type === "remove" ||
-                  c.type === "add" ||
-                  (c.type === "position" && c.dragging === false) ||
-                  (c.type === "dimensions" &&
-                    "resizing" in c &&
-                    c.resizing === false),
-              );
-              if (isDirtyChange) {
-                state.isDirty = true;
-              }
-
-              if (selectionChanges.length > 0 || removedNodeIds.length > 0) {
-                const nextSelectedNodeIds = new Set(
-                  state.nodes
-                    .filter((node) => node.selected)
-                    .map((node) => node.id),
+                    type: "select";
+                    selected: boolean;
+                  } => change.type === "select",
                 );
-                const lastSelectedChange = [...selectionChanges]
-                  .reverse()
-                  .find((change) => change.selected);
+                const removedNodeIds = clampedChanges
+                  .filter(
+                    (
+                      change,
+                    ): change is NodeChange<CanvasNode> & { type: "remove" } =>
+                      change.type === "remove",
+                  )
+                  .map((change) => change.id);
 
-                state.selectedNodeIds = nextSelectedNodeIds;
+                state.nodes = applyNodeChanges(clampedChanges, state.nodes);
 
-                if (nextSelectedNodeIds.size === 0) {
-                  state.selectedNodeId = null;
-                } else if (lastSelectedChange) {
-                  state.selectedNodeId = lastSelectedChange.id;
-                  state.selectedEdgeId = null;
-                } else if (
-                  !state.selectedNodeId ||
-                  !nextSelectedNodeIds.has(state.selectedNodeId)
-                ) {
-                  state.selectedNodeId =
-                    Array.from(nextSelectedNodeIds).at(-1) ?? null;
+                // compound 节点 resize 后重新同步子节点 extent
+                const resizedCompoundIds = clampedChanges
+                  .filter(
+                    (
+                      change,
+                    ): change is NodeChange<CanvasNode> & {
+                      type: "dimensions";
+                      id: string;
+                      resizing?: boolean;
+                    } => change.type === "dimensions",
+                  )
+                  .map((change) => change.id)
+                  .filter((id) => {
+                    const n = state.nodes.find((node) => node.id === id);
+                    return n && isCompoundContainerNodeType(n.data.nodeType);
+                  });
+
+                for (const compoundId of resizedCompoundIds) {
+                  syncCompoundParentLayout(state.nodes, compoundId);
                 }
-              }
-            }),
-
-          onEdgesChange: (changes) =>
-            set((state) => {
-              // 拦截不兼容端口类型的 add 变更（v12 通过 onEdgesChange 自动添加边）
-              const filteredChanges = changes.filter((c) => {
-                if (c.type !== "add") {
-                  return true;
+                if (removedNodeIds.length > 0) {
+                  for (const nodeId of removedNodeIds) {
+                    delete state.nodeValidationErrors[nodeId];
+                  }
+                }
+                const isDirtyChange = clampedChanges.some(
+                  (c) =>
+                    c.type === "remove" ||
+                    c.type === "add" ||
+                    (c.type === "position" && c.dragging === false) ||
+                    (c.type === "dimensions" &&
+                      "resizing" in c &&
+                      c.resizing === false),
+                );
+                if (isDirtyChange) {
+                  state.isDirty = true;
                 }
 
-                const edge = c.item;
-                const sourceNode = state.nodes.find(
-                  (n) => n.id === edge.source,
-                );
-                const targetNode = state.nodes.find(
-                  (n) => n.id === edge.target,
-                );
-                if (!sourceNode || !targetNode) {
-                  return true;
+                if (selectionChanges.length > 0 || removedNodeIds.length > 0) {
+                  const nextSelectedNodeIds = new Set(
+                    state.nodes
+                      .filter((node) => node.selected)
+                      .map((node) => node.id),
+                  );
+                  const lastSelectedChange = [...selectionChanges]
+                    .reverse()
+                    .find((change) => change.selected);
+
+                  state.selectedNodeIds = nextSelectedNodeIds;
+
+                  if (nextSelectedNodeIds.size === 0) {
+                    state.selectedNodeId = null;
+                  } else if (lastSelectedChange) {
+                    state.selectedNodeId = lastSelectedChange.id;
+                    state.selectedEdgeId = null;
+                  } else if (
+                    !state.selectedNodeId ||
+                    !nextSelectedNodeIds.has(state.selectedNodeId)
+                  ) {
+                    state.selectedNodeId =
+                      Array.from(nextSelectedNodeIds).at(-1) ?? null;
+                  }
                 }
+              }),
 
-                const sourcePort = sourceNode.data.outputPorts.find(
-                  (p) => p.id === edge.sourceHandle,
-                );
-                const targetPort = targetNode.data.inputPorts.find(
-                  (p) => p.id === edge.targetHandle,
-                );
-                if (!sourcePort || !targetPort) {
-                  return true;
-                }
+            onEdgesChange: (changes) =>
+              set((state) => {
+                // 拦截不兼容端口类型的 add 变更（v12 通过 onEdgesChange 自动添加边）
+                const filteredChanges = changes.filter((c) => {
+                  if (c.type !== "add") {
+                    return true;
+                  }
 
-                return arePortDataTypesCompatible(
-                  sourcePort.dataType,
-                  targetPort.dataType,
-                );
-              });
-
-              const removedIds = filteredChanges
-                .filter(
-                  (c): c is EdgeChange<CanvasEdge> & { type: "remove" } =>
-                    c.type === "remove",
-                )
-                .map((c) => c.id);
-
-              if (removedIds.length > 0) {
-                const removedEdges = state.edges.filter((e) =>
-                  removedIds.includes(e.id),
-                );
-                for (const edge of removedEdges) {
+                  const edge = c.item;
+                  const sourceNode = state.nodes.find(
+                    (n) => n.id === edge.source,
+                  );
                   const targetNode = state.nodes.find(
                     (n) => n.id === edge.target,
                   );
-                  if (targetNode && isAgentNodeType(targetNode.data.nodeType)) {
-                    const agentData = targetNode.data as AgentNodeData;
-                    const handle = edge.targetHandle;
-                    if (handle === "tools") {
-                      agentData.toolBindings = (
-                        agentData.toolBindings ?? []
-                      ).filter((id) => id !== edge.source);
-                    } else if (handle === "knowledge") {
-                      agentData.knowledgeBindings = (
-                        agentData.knowledgeBindings ?? []
-                      ).filter((id) => id !== edge.source);
-                    } else if (handle === "model-in") {
-                      agentData.modelConfig = {
-                        ...agentData.modelConfig,
-                        connectedModelNodeId: null,
-                      };
+                  if (!sourceNode || !targetNode) {
+                    return true;
+                  }
+
+                  const sourcePort = sourceNode.data.outputPorts.find(
+                    (p) => p.id === edge.sourceHandle,
+                  );
+                  const targetPort = targetNode.data.inputPorts.find(
+                    (p) => p.id === edge.targetHandle,
+                  );
+                  if (!sourcePort || !targetPort) {
+                    return true;
+                  }
+
+                  return arePortDataTypesCompatible(
+                    sourcePort.dataType,
+                    targetPort.dataType,
+                  );
+                });
+
+                const removedIds = filteredChanges
+                  .filter(
+                    (c): c is EdgeChange<CanvasEdge> & { type: "remove" } =>
+                      c.type === "remove",
+                  )
+                  .map((c) => c.id);
+
+                if (removedIds.length > 0) {
+                  const removedEdges = state.edges.filter((e) =>
+                    removedIds.includes(e.id),
+                  );
+                  for (const edge of removedEdges) {
+                    const targetNode = state.nodes.find(
+                      (n) => n.id === edge.target,
+                    );
+                    if (
+                      targetNode &&
+                      isAgentNodeType(targetNode.data.nodeType)
+                    ) {
+                      const agentData = targetNode.data as AgentNodeData;
+                      const handle = edge.targetHandle;
+                      if (handle === "tools") {
+                        agentData.toolBindings = (
+                          agentData.toolBindings ?? []
+                        ).filter((id) => id !== edge.source);
+                      } else if (handle === "knowledge") {
+                        agentData.knowledgeBindings = (
+                          agentData.knowledgeBindings ?? []
+                        ).filter((id) => id !== edge.source);
+                      } else if (handle === "model-in") {
+                        agentData.modelConfig = {
+                          ...agentData.modelConfig,
+                          connectedModelNodeId: null,
+                        };
+                      }
                     }
                   }
                 }
-              }
 
-              state.edges = applyEdgeChanges(filteredChanges, state.edges);
-              const isDirtyChange = filteredChanges.some(
-                (c) => c.type === "remove" || c.type === "add",
-              );
-              if (isDirtyChange) {
+                state.edges = applyEdgeChanges(filteredChanges, state.edges);
+                const isDirtyChange = filteredChanges.some(
+                  (c) => c.type === "remove" || c.type === "add",
+                );
+                if (isDirtyChange) {
+                  state.isDirty = true;
+                }
+                if (removedIds.length > 0) {
+                  if (
+                    state.selectedEdgeId &&
+                    removedIds.includes(state.selectedEdgeId)
+                  ) {
+                    state.selectedEdgeId = null;
+                  }
+                  if (
+                    state.mappingPanelEdgeId &&
+                    removedIds.includes(state.mappingPanelEdgeId)
+                  ) {
+                    state.mappingPanelEdgeId = null;
+                  }
+                }
+              }),
+
+            createConnection: (connection, edgeData) =>
+              set((state) => {
+                if (!connection.source || !connection.target) {
+                  return;
+                }
+
+                const duplicateEdge = state.edges.some(
+                  (edge) =>
+                    edge.source === connection.source &&
+                    edge.target === connection.target &&
+                    edge.sourceHandle === connection.sourceHandle &&
+                    edge.targetHandle === connection.targetHandle,
+                );
+
+                if (duplicateEdge) {
+                  return;
+                }
+
+                state.edges.push({
+                  id: createEdgeId(),
+                  type: "smart",
+                  source: connection.source,
+                  target: connection.target,
+                  sourceHandle: connection.sourceHandle ?? undefined,
+                  targetHandle: connection.targetHandle ?? undefined,
+                  data: edgeData,
+                });
                 state.isDirty = true;
-              }
-              if (removedIds.length > 0) {
+
+                const targetNode = state.nodes.find(
+                  (n) => n.id === connection.target,
+                );
+                if (targetNode && isAgentNodeType(targetNode.data.nodeType)) {
+                  const agentData = targetNode.data as AgentNodeData;
+                  const handle = connection.targetHandle;
+                  if (handle === "tools") {
+                    agentData.toolBindings = [
+                      ...(agentData.toolBindings ?? []),
+                      connection.source,
+                    ];
+                  } else if (handle === "knowledge") {
+                    agentData.knowledgeBindings = [
+                      ...(agentData.knowledgeBindings ?? []),
+                      connection.source,
+                    ];
+                  } else if (handle === "model-in") {
+                    agentData.modelConfig = {
+                      ...agentData.modelConfig,
+                      connectedModelNodeId: connection.source,
+                    };
+                  }
+                }
+              }),
+
+            addNode: (input) =>
+              set((state) => {
+                const config = getNodeTypeConfig(input.nodeType);
+                const nextResultOutputKey =
+                  input.parentId && input.nodeType === "result"
+                    ? (() => {
+                        const siblingKeys = state.nodes
+                          .filter(
+                            (node) =>
+                              node.parentId === input.parentId &&
+                              node.data.nodeType === "result",
+                          )
+                          .map((node) => {
+                            const outputKey = node.data.config?.outputKey;
+                            return typeof outputKey === "string" &&
+                              outputKey.trim().length > 0
+                              ? outputKey.trim()
+                              : "result";
+                          });
+                        if (!siblingKeys.includes("result")) {
+                          return "result";
+                        }
+
+                        let suffix = 2;
+                        while (siblingKeys.includes(`result_${suffix}`)) {
+                          suffix += 1;
+                        }
+                        return `result_${suffix}`;
+                      })()
+                    : null;
+                const nextConfig = (input.config ??
+                  (input.nodeType === "iteration"
+                    ? createDefaultIterationNodeConfig()
+                    : input.nodeType === "loop"
+                      ? createDefaultLoopCompoundNodeConfig()
+                      : input.nodeType === "result" && nextResultOutputKey
+                        ? { outputKey: nextResultOutputKey }
+                        : {})) as Record<string, unknown>;
+                const nextInputPorts =
+                  input.inputPorts ??
+                  (input.nodeType === "iteration"
+                    ? buildIterationInputPorts()
+                    : input.nodeType === "loop"
+                      ? buildLoopInputPorts()
+                      : config.inputPorts);
+                const node: CanvasNode = {
+                  id: input.id,
+                  type: input.category,
+                  position: input.position,
+                  ...(input.parentId ? { parentId: input.parentId } : {}),
+                  ...(input.extent ? { extent: input.extent } : {}),
+                  ...(input.expandParent !== undefined
+                    ? { expandParent: input.expandParent }
+                    : {}),
+                  ...(input.hidden !== undefined
+                    ? { hidden: input.hidden }
+                    : {}),
+                  ...(input.style ? { style: input.style } : {}),
+                  data: {
+                    label: input.label ?? input.blockName ?? config.label,
+                    nodeType: input.nodeType,
+                    category: input.category,
+                    description: input.description ?? config.description,
+                    config: nextConfig,
+                    inputPorts: clonePortDefinitions(nextInputPorts),
+                    outputPorts: clonePortDefinitions(
+                      input.outputPorts ?? config.outputPorts,
+                    ),
+                    ...(input.mcpToolDefinitionId
+                      ? { mcpToolDefinitionId: input.mcpToolDefinitionId }
+                      : {}),
+                    ...(input.nodeType === "plugin"
+                      ? {
+                          pluginId: input.pluginId ?? "",
+                          pluginName:
+                            input.pluginName ?? input.label ?? config.label,
+                          pluginVersion: input.pluginVersion ?? "",
+                          pluginNodeType: input.pluginNodeType ?? "",
+                          pluginConfigSchema: input.pluginConfigSchema,
+                          pluginConfig: input.pluginConfig ?? {},
+                        }
+                      : {}),
+                    ...(isAgentNodeType(input.nodeType)
+                      ? createDefaultAgentNodeData()
+                      : {}),
+                    ...(input.blockId ? { blockId: input.blockId } : {}),
+                    ...(input.blockName ? { blockName: input.blockName } : {}),
+                    ...(input.blockDefinition
+                      ? { blockDefinition: input.blockDefinition }
+                      : {}),
+                    ...(input.nodeType === "reusable-block"
+                      ? { isExpanded: input.isExpanded ?? false }
+                      : {}),
+                  },
+                };
+                state.nodes.push(node);
+
+                if (
+                  input.nodeType === "loop" ||
+                  input.nodeType === "iteration"
+                ) {
+                  const extraInputIds = node.data.inputPorts
+                    .filter((port) => port.id.startsWith("input-"))
+                    .map((port) => port.id);
+                  const startNodeType =
+                    input.nodeType === "loop"
+                      ? "loop-start"
+                      : "iteration-start";
+                  const portLabels =
+                    nextConfig.portLabels &&
+                    typeof nextConfig.portLabels === "object" &&
+                    !Array.isArray(nextConfig.portLabels)
+                      ? (nextConfig.portLabels as Record<string, string>)
+                      : undefined;
+                  const startNodeOutputPorts =
+                    input.nodeType === "loop"
+                      ? buildLoopStartOutputPorts(
+                          extraInputIds,
+                          createDefaultLoopStartNodeConfig(),
+                          portLabels,
+                        )
+                      : buildIterationStartOutputPorts(
+                          extraInputIds,
+                          createDefaultIterationStartNodeConfig(),
+                          portLabels,
+                        );
+                  const startNodeConfigMeta = getNodeTypeConfig(startNodeType);
+                  const startNodePosition = getCompoundInitialChildPosition({
+                    inputPortCount: node.data.inputPorts.length,
+                    outputPortCount: node.data.outputPorts.length,
+                  });
+
+                  state.nodes.push({
+                    id: createNodeId(),
+                    type: "control",
+                    parentId: input.id,
+                    position: startNodePosition,
+                    data: {
+                      label: startNodeConfigMeta.label,
+                      nodeType: startNodeType,
+                      category: "control",
+                      description: startNodeConfigMeta.description,
+                      config:
+                        input.nodeType === "loop"
+                          ? ({
+                              ...createDefaultLoopStartNodeConfig(),
+                            } as Record<string, unknown>)
+                          : ({
+                              ...createDefaultIterationStartNodeConfig(),
+                            } as Record<string, unknown>),
+                      inputPorts: clonePortDefinitions(
+                        startNodeConfigMeta.inputPorts,
+                      ),
+                      outputPorts: clonePortDefinitions(startNodeOutputPorts),
+                    },
+                  });
+                }
+
+                if (input.parentId && input.nodeType === "result") {
+                  syncCompoundParentOutputPorts(state.nodes, input.parentId);
+                }
+
+                if (
+                  input.nodeType === "loop" ||
+                  input.nodeType === "iteration"
+                ) {
+                  syncCompoundParentLayout(state.nodes, input.id);
+                } else if (input.parentId) {
+                  syncCompoundParentLayout(state.nodes, input.parentId);
+                }
+
+                state.isDirty = true;
+              }),
+
+            deleteSelectedNode: () =>
+              set((state) => {
+                if (!state.selectedNodeId) return;
+                const selectedNode = state.nodes.find(
+                  (node) => node.id === state.selectedNodeId,
+                );
+                if (
+                  selectedNode?.data.nodeType === "loop-start" ||
+                  selectedNode?.data.nodeType === "iteration-start"
+                ) {
+                  return;
+                }
+
+                const nodeIdsToDelete = collectDescendantNodeIds(state.nodes, [
+                  state.selectedNodeId,
+                ]);
+                const nextSelectedNodeIds = new Set(state.selectedNodeIds);
+                for (const nodeId of nodeIdsToDelete) {
+                  nextSelectedNodeIds.delete(nodeId);
+                }
+                const removedEdgeIds = new Set(
+                  state.edges
+                    .filter(
+                      (edge) =>
+                        nodeIdsToDelete.has(edge.source) ||
+                        nodeIdsToDelete.has(edge.target),
+                    )
+                    .map((edge) => edge.id),
+                );
+                const affectedParentIds = state.nodes
+                  .filter(
+                    (node) => node.parentId && nodeIdsToDelete.has(node.id),
+                  )
+                  .map((node) => node.parentId as string);
+                state.nodes = state.nodes.filter(
+                  (n) => !nodeIdsToDelete.has(n.id),
+                );
+                state.edges = state.edges.filter(
+                  (e) =>
+                    !nodeIdsToDelete.has(e.source) &&
+                    !nodeIdsToDelete.has(e.target),
+                );
+                for (const parentId of affectedParentIds) {
+                  syncCompoundParentOutputPorts(state.nodes, parentId);
+                  syncCompoundParentLayout(state.nodes, parentId);
+                }
+                state.selectedNodeIds = nextSelectedNodeIds;
+                state.selectedNodeId =
+                  Array.from(nextSelectedNodeIds).at(-1) ?? null;
                 if (
                   state.selectedEdgeId &&
-                  removedIds.includes(state.selectedEdgeId)
+                  removedEdgeIds.has(state.selectedEdgeId)
                 ) {
                   state.selectedEdgeId = null;
                 }
                 if (
                   state.mappingPanelEdgeId &&
-                  removedIds.includes(state.mappingPanelEdgeId)
+                  removedEdgeIds.has(state.mappingPanelEdgeId)
                 ) {
                   state.mappingPanelEdgeId = null;
                 }
-              }
-            }),
-
-          createConnection: (connection, edgeData) =>
-            set((state) => {
-              if (!connection.source || !connection.target) {
-                return;
-              }
-
-              const duplicateEdge = state.edges.some(
-                (edge) =>
-                  edge.source === connection.source &&
-                  edge.target === connection.target &&
-                  edge.sourceHandle === connection.sourceHandle &&
-                  edge.targetHandle === connection.targetHandle,
-              );
-
-              if (duplicateEdge) {
-                return;
-              }
-
-              state.edges.push({
-                id: createEdgeId(),
-                type: "smart",
-                source: connection.source,
-                target: connection.target,
-                sourceHandle: connection.sourceHandle ?? undefined,
-                targetHandle: connection.targetHandle ?? undefined,
-                data: edgeData,
-              });
-              state.isDirty = true;
-
-              const targetNode = state.nodes.find(
-                (n) => n.id === connection.target,
-              );
-              if (targetNode && isAgentNodeType(targetNode.data.nodeType)) {
-                const agentData = targetNode.data as AgentNodeData;
-                const handle = connection.targetHandle;
-                if (handle === "tools") {
-                  agentData.toolBindings = [
-                    ...(agentData.toolBindings ?? []),
-                    connection.source,
-                  ];
-                } else if (handle === "knowledge") {
-                  agentData.knowledgeBindings = [
-                    ...(agentData.knowledgeBindings ?? []),
-                    connection.source,
-                  ];
-                } else if (handle === "model-in") {
-                  agentData.modelConfig = {
-                    ...agentData.modelConfig,
-                    connectedModelNodeId: connection.source,
-                  };
+                for (const nodeId of nodeIdsToDelete) {
+                  delete state.nodeValidationErrors[nodeId];
                 }
-              }
-            }),
+                state.isDirty = true;
+              }),
 
-          addNode: (input) =>
-            set((state) => {
-              const config = getNodeTypeConfig(input.nodeType);
-              const nextResultOutputKey =
-                input.parentId && input.nodeType === "result"
-                  ? (() => {
-                      const siblingKeys = state.nodes
-                        .filter(
-                          (node) =>
-                            node.parentId === input.parentId &&
-                            node.data.nodeType === "result",
-                        )
-                        .map((node) => {
-                          const outputKey = node.data.config?.outputKey;
-                          return typeof outputKey === "string" &&
-                            outputKey.trim().length > 0
-                            ? outputKey.trim()
-                            : "result";
-                        });
-                      if (!siblingKeys.includes("result")) {
-                        return "result";
-                      }
+            toggleNodeSelection: (nodeId) =>
+              set((state) => {
+                const nextSelectedNodeIds = new Set(state.selectedNodeIds);
+                const wasSelected = nextSelectedNodeIds.has(nodeId);
 
-                      let suffix = 2;
-                      while (siblingKeys.includes(`result_${suffix}`)) {
-                        suffix += 1;
-                      }
-                      return `result_${suffix}`;
-                    })()
-                  : null;
-              const nextConfig = (input.config ??
-                (input.nodeType === "iteration"
-                  ? createDefaultIterationNodeConfig()
-                  : input.nodeType === "loop"
-                    ? createDefaultLoopCompoundNodeConfig()
-                    : input.nodeType === "result" && nextResultOutputKey
-                      ? { outputKey: nextResultOutputKey }
-                      : {})) as Record<string, unknown>;
-              const nextInputPorts =
-                input.inputPorts ??
-                (input.nodeType === "iteration"
-                  ? buildIterationInputPorts()
-                  : input.nodeType === "loop"
-                    ? buildLoopInputPorts()
-                    : config.inputPorts);
-              const node: CanvasNode = {
-                id: input.id,
-                type: input.category,
-                position: input.position,
-                ...(input.parentId ? { parentId: input.parentId } : {}),
-                ...(input.extent ? { extent: input.extent } : {}),
-                ...(input.expandParent !== undefined
-                  ? { expandParent: input.expandParent }
-                  : {}),
-                ...(input.hidden !== undefined ? { hidden: input.hidden } : {}),
-                ...(input.style ? { style: input.style } : {}),
-                data: {
-                  label: input.label ?? input.blockName ?? config.label,
-                  nodeType: input.nodeType,
-                  category: input.category,
-                  description: input.description ?? config.description,
-                  config: nextConfig,
-                  inputPorts: clonePortDefinitions(nextInputPorts),
-                  outputPorts: clonePortDefinitions(
-                    input.outputPorts ?? config.outputPorts,
-                  ),
-                  ...(input.mcpToolDefinitionId
-                    ? { mcpToolDefinitionId: input.mcpToolDefinitionId }
-                    : {}),
-                  ...(input.nodeType === "plugin"
-                    ? {
-                        pluginId: input.pluginId ?? "",
-                        pluginName:
-                          input.pluginName ?? input.label ?? config.label,
-                        pluginVersion: input.pluginVersion ?? "",
-                        pluginNodeType: input.pluginNodeType ?? "",
-                        pluginConfigSchema: input.pluginConfigSchema,
-                        pluginConfig: input.pluginConfig ?? {},
-                      }
-                    : {}),
-                  ...(isAgentNodeType(input.nodeType)
-                    ? createDefaultAgentNodeData()
-                    : {}),
-                  ...(input.blockId ? { blockId: input.blockId } : {}),
-                  ...(input.blockName ? { blockName: input.blockName } : {}),
-                  ...(input.blockDefinition
-                    ? { blockDefinition: input.blockDefinition }
-                    : {}),
-                  ...(input.nodeType === "reusable-block"
-                    ? { isExpanded: input.isExpanded ?? false }
-                    : {}),
-                },
-              };
-              state.nodes.push(node);
+                if (wasSelected) {
+                  nextSelectedNodeIds.delete(nodeId);
+                } else {
+                  nextSelectedNodeIds.add(nodeId);
+                }
 
-              if (input.nodeType === "loop" || input.nodeType === "iteration") {
-                const extraInputIds = node.data.inputPorts
-                  .filter((port) => port.id.startsWith("input-"))
-                  .map((port) => port.id);
-                const startNodeType =
-                  input.nodeType === "loop" ? "loop-start" : "iteration-start";
-                const portLabels =
-                  nextConfig.portLabels &&
-                  typeof nextConfig.portLabels === "object" &&
-                  !Array.isArray(nextConfig.portLabels)
-                    ? (nextConfig.portLabels as Record<string, string>)
-                    : undefined;
-                const startNodeOutputPorts =
-                  input.nodeType === "loop"
-                    ? buildLoopStartOutputPorts(
-                        extraInputIds,
-                        createDefaultLoopStartNodeConfig(),
-                        portLabels,
-                      )
-                    : buildIterationStartOutputPorts(
-                        extraInputIds,
-                        createDefaultIterationStartNodeConfig(),
-                        portLabels,
-                      );
-                const startNodeConfigMeta = getNodeTypeConfig(startNodeType);
-                const startNodePosition = getCompoundInitialChildPosition({
-                  inputPortCount: node.data.inputPorts.length,
-                  outputPortCount: node.data.outputPorts.length,
-                });
-
-                state.nodes.push({
-                  id: createNodeId(),
-                  type: "control",
-                  parentId: input.id,
-                  position: startNodePosition,
-                  data: {
-                    label: startNodeConfigMeta.label,
-                    nodeType: startNodeType,
-                    category: "control",
-                    description: startNodeConfigMeta.description,
-                    config:
-                      input.nodeType === "loop"
-                        ? ({
-                            ...createDefaultLoopStartNodeConfig(),
-                          } as Record<string, unknown>)
-                        : ({
-                            ...createDefaultIterationStartNodeConfig(),
-                          } as Record<string, unknown>),
-                    inputPorts: clonePortDefinitions(
-                      startNodeConfigMeta.inputPorts,
-                    ),
-                    outputPorts: clonePortDefinitions(startNodeOutputPorts),
-                  },
-                });
-              }
-
-              if (input.parentId && input.nodeType === "result") {
-                syncCompoundParentOutputPorts(state.nodes, input.parentId);
-              }
-
-              if (input.nodeType === "loop" || input.nodeType === "iteration") {
-                syncCompoundParentLayout(state.nodes, input.id);
-              } else if (input.parentId) {
-                syncCompoundParentLayout(state.nodes, input.parentId);
-              }
-
-              state.isDirty = true;
-            }),
-
-          deleteSelectedNode: () =>
-            set((state) => {
-              if (!state.selectedNodeId) return;
-              const selectedNode = state.nodes.find(
-                (node) => node.id === state.selectedNodeId,
-              );
-              if (
-                selectedNode?.data.nodeType === "loop-start" ||
-                selectedNode?.data.nodeType === "iteration-start"
-              ) {
-                return;
-              }
-
-              const nodeIdsToDelete = collectDescendantNodeIds(state.nodes, [
-                state.selectedNodeId,
-              ]);
-              const nextSelectedNodeIds = new Set(state.selectedNodeIds);
-              for (const nodeId of nodeIdsToDelete) {
-                nextSelectedNodeIds.delete(nodeId);
-              }
-              const removedEdgeIds = new Set(
-                state.edges
-                  .filter(
-                    (edge) =>
-                      nodeIdsToDelete.has(edge.source) ||
-                      nodeIdsToDelete.has(edge.target),
-                  )
-                  .map((edge) => edge.id),
-              );
-              const affectedParentIds = state.nodes
-                .filter((node) => node.parentId && nodeIdsToDelete.has(node.id))
-                .map((node) => node.parentId as string);
-              state.nodes = state.nodes.filter(
-                (n) => !nodeIdsToDelete.has(n.id),
-              );
-              state.edges = state.edges.filter(
-                (e) =>
-                  !nodeIdsToDelete.has(e.source) &&
-                  !nodeIdsToDelete.has(e.target),
-              );
-              for (const parentId of affectedParentIds) {
-                syncCompoundParentOutputPorts(state.nodes, parentId);
-                syncCompoundParentLayout(state.nodes, parentId);
-              }
-              state.selectedNodeIds = nextSelectedNodeIds;
-              state.selectedNodeId =
-                Array.from(nextSelectedNodeIds).at(-1) ?? null;
-              if (
-                state.selectedEdgeId &&
-                removedEdgeIds.has(state.selectedEdgeId)
-              ) {
+                state.selectedNodeIds = nextSelectedNodeIds;
+                state.selectedNodeId = wasSelected
+                  ? (Array.from(nextSelectedNodeIds).at(-1) ?? null)
+                  : nodeId;
                 state.selectedEdgeId = null;
-              }
-              if (
-                state.mappingPanelEdgeId &&
-                removedEdgeIds.has(state.mappingPanelEdgeId)
-              ) {
-                state.mappingPanelEdgeId = null;
-              }
-              for (const nodeId of nodeIdsToDelete) {
-                delete state.nodeValidationErrors[nodeId];
-              }
-              state.isDirty = true;
-            }),
+              }),
 
-          toggleNodeSelection: (nodeId) =>
-            set((state) => {
-              const nextSelectedNodeIds = new Set(state.selectedNodeIds);
-              const wasSelected = nextSelectedNodeIds.has(nodeId);
-
-              if (wasSelected) {
-                nextSelectedNodeIds.delete(nodeId);
-              } else {
-                nextSelectedNodeIds.add(nodeId);
-              }
-
-              state.selectedNodeIds = nextSelectedNodeIds;
-              state.selectedNodeId = wasSelected
-                ? (Array.from(nextSelectedNodeIds).at(-1) ?? null)
-                : nodeId;
-              state.selectedEdgeId = null;
-            }),
-
-          selectNodes: (nodeIds) =>
-            set((state) => {
-              state.selectedNodeIds = new Set(nodeIds);
-              state.selectedNodeId =
-                nodeIds.length > 0 ? nodeIds[nodeIds.length - 1]! : null;
-              state.selectedEdgeId = null;
-            }),
-
-          clearSelection: () =>
-            set((state) => {
-              state.selectedNodeIds = new Set();
-              state.selectedNodeId = null;
-              state.selectedEdgeId = null;
-            }),
-
-          deleteSelectedNodes: () =>
-            set((state) => {
-              if (state.selectedNodeIds.size === 0) return;
-
-              const protectedNodeIds = new Set(
-                state.nodes
-                  .filter(
-                    (node) =>
-                      state.selectedNodeIds.has(node.id) &&
-                      (node.data.nodeType === "loop-start" ||
-                        node.data.nodeType === "iteration-start"),
-                  )
-                  .map((node) => node.id),
-              );
-              const requestedNodeIds = Array.from(state.selectedNodeIds).filter(
-                (nodeId) => !protectedNodeIds.has(nodeId),
-              );
-              const nodeIdsToDelete = collectDescendantNodeIds(
-                state.nodes,
-                requestedNodeIds,
-              );
-              if (nodeIdsToDelete.size === 0) return;
-              const removedEdgeIds = new Set(
-                state.edges
-                  .filter(
-                    (edge) =>
-                      nodeIdsToDelete.has(edge.source) ||
-                      nodeIdsToDelete.has(edge.target),
-                  )
-                  .map((edge) => edge.id),
-              );
-              const affectedParentIds = state.nodes
-                .filter((node) => node.parentId && nodeIdsToDelete.has(node.id))
-                .map((node) => node.parentId as string);
-
-              state.nodes = state.nodes.filter(
-                (node) => !nodeIdsToDelete.has(node.id),
-              );
-              state.edges = state.edges.filter(
-                (edge) =>
-                  !nodeIdsToDelete.has(edge.source) &&
-                  !nodeIdsToDelete.has(edge.target),
-              );
-              for (const parentId of affectedParentIds) {
-                syncCompoundParentOutputPorts(state.nodes, parentId);
-                syncCompoundParentLayout(state.nodes, parentId);
-              }
-
-              for (const nodeId of nodeIdsToDelete) {
-                delete state.nodeValidationErrors[nodeId];
-              }
-
-              state.selectedNodeIds = new Set();
-              state.selectedNodeId = null;
-
-              if (
-                state.selectedEdgeId &&
-                removedEdgeIds.has(state.selectedEdgeId)
-              ) {
+            selectNodes: (nodeIds) =>
+              set((state) => {
+                state.selectedNodeIds = new Set(nodeIds);
+                state.selectedNodeId =
+                  nodeIds.length > 0 ? nodeIds[nodeIds.length - 1]! : null;
                 state.selectedEdgeId = null;
-              }
-              if (
-                state.mappingPanelEdgeId &&
-                removedEdgeIds.has(state.mappingPanelEdgeId)
-              ) {
-                state.mappingPanelEdgeId = null;
-              }
+              }),
 
-              state.isDirty = true;
-            }),
-
-          applyEncapsulation: ({ nodes, edges, blockNodeId }) =>
-            set((state) => {
-              const nextNodeIds = new Set(nodes.map((node) => node.id));
-              const nextEdgeIds = new Set(edges.map((edge) => edge.id));
-              const removedNodeIds = state.nodes
-                .map((node) => node.id)
-                .filter((id) => !nextNodeIds.has(id));
-
-              state.nodes = nodes;
-              state.edges = edges;
-
-              const parentId = nodes.find(
-                (node) => node.id === blockNodeId,
-              )?.parentId;
-              if (parentId) {
-                syncCompoundParentOutputPorts(state.nodes, parentId);
-                syncCompoundParentLayout(state.nodes, parentId);
-              }
-
-              for (const nodeId of removedNodeIds) {
-                delete state.nodeValidationErrors[nodeId];
-              }
-              if (state.selectedEdgeId && !nextEdgeIds.has(state.selectedEdgeId)) {
-                state.selectedEdgeId = null;
-              }
-              if (
-                state.mappingPanelEdgeId &&
-                !nextEdgeIds.has(state.mappingPanelEdgeId)
-              ) {
-                state.mappingPanelEdgeId = null;
-              }
-              state.selectedNodeId = blockNodeId;
-              state.selectedNodeIds = new Set([blockNodeId]);
-              state.isDirty = true;
-            }),
-
-          selectNode: (nodeId) =>
-            set((state) => {
-              state.selectedNodeId = nodeId;
-              state.selectedNodeIds = nodeId ? new Set([nodeId]) : new Set();
-              if (nodeId) state.selectedEdgeId = null;
-            }),
-
-          selectEdge: (edgeId) =>
-            set((state) => {
-              state.selectedEdgeId = edgeId;
-              if (edgeId) {
-                state.selectedNodeId = null;
+            clearSelection: () =>
+              set((state) => {
                 state.selectedNodeIds = new Set();
-              }
-            }),
+                state.selectedNodeId = null;
+                state.selectedEdgeId = null;
+              }),
 
-          openFieldMapping: (edgeId) =>
-            set((state) => {
-              state.mappingPanelEdgeId = edgeId;
-              state.selectedEdgeId = edgeId;
-              state.selectedNodeId = null;
-              state.selectedNodeIds = new Set();
-            }),
+            deleteSelectedNodes: () =>
+              set((state) => {
+                if (state.selectedNodeIds.size === 0) return;
 
-          closeFieldMapping: () =>
-            set((state) => {
-              state.mappingPanelEdgeId = null;
-            }),
-
-          updateEdgeData: (edgeId, patch) =>
-            set((state) => {
-              const edge = state.edges.find((e) => e.id === edgeId);
-              if (!edge) return;
-              edge.data = {
-                ...(edge.data ?? createDefaultEdgeData()),
-                ...patch,
-              };
-              state.isDirty = true;
-            }),
-
-          refreshEdgeCompatibility: (updates) =>
-            set((state) => {
-              if (updates.length === 0) {
-                return;
-              }
-
-              let touched = false;
-              for (const update of updates) {
-                const edge = state.edges.find(
-                  (candidate) => candidate.id === update.edgeId,
-                );
-                if (!edge) {
-                  continue;
-                }
-
-                edge.data = update.edgeData;
-                touched = true;
-              }
-
-              if (touched) {
-                state.isDirty = true;
-              }
-            }),
-
-          updateFieldMapping: (edgeId, mappings) =>
-            set((state) => {
-              const edge = state.edges.find((e) => e.id === edgeId);
-              if (!edge) return;
-              const data = edge.data ?? createDefaultEdgeData();
-              data.fieldMapping = mappings;
-              data.mappingSummary = {
-                autoMatchedCount: mappings.filter((m) => m.autoRecommended)
-                  .length,
-                manualCount: mappings.filter((m) => !m.autoRecommended).length,
-                requiredUnmappedCount: data.missingFields.filter(
-                  (f) =>
-                    f.required &&
-                    !mappings.some((m) => m.targetField === f.path),
-                ).length,
-              };
-              edge.data = data;
-              state.isDirty = true;
-            }),
-
-          batchUpdateFieldMappings: (edgeId, mappings) =>
-            set(
-              (state) => {
-                const edge = state.edges.find((e) => e.id === edgeId);
-                if (!edge) return;
-                const data = edge.data ?? createDefaultEdgeData();
-                data.fieldMapping = mappings;
-                data.mappingSummary = {
-                  autoMatchedCount: mappings.filter((m) => m.autoRecommended)
-                    .length,
-                  manualCount: mappings.filter((m) => !m.autoRecommended)
-                    .length,
-                  requiredUnmappedCount: data.missingFields.filter(
-                    (f) =>
-                      f.required &&
-                      !mappings.some((m) => m.targetField === f.path),
-                  ).length,
-                };
-                edge.data = data;
-                state.isDirty = true;
-              },
-              false,
-              "store/batchUpdateFieldMappings",
-            ),
-
-          saveMappingSnapshot: (edgeId) =>
-            set(
-              (state) => {
-                const edge = state.edges.find((e) => e.id === edgeId);
-                if (!edge?.data) return;
-                const snapshot: FieldMappingSnapshot = {
-                  edgeId,
-                  mappings: [...edge.data.fieldMapping],
-                };
-                state.fieldMappingUndoStack.push(snapshot);
-                if (state.fieldMappingUndoStack.length > MAX_UNDO_STACK_SIZE) {
-                  state.fieldMappingUndoStack.splice(
-                    0,
-                    state.fieldMappingUndoStack.length - MAX_UNDO_STACK_SIZE,
-                  );
-                }
-              },
-              false,
-              "store/saveMappingSnapshot",
-            ),
-
-          undoFieldMapping: (edgeId) =>
-            set(
-              (state) => {
-                const lastIndex = findLastIndex(
-                  state.fieldMappingUndoStack,
-                  (s) => s.edgeId === edgeId,
-                );
-                if (lastIndex === -1) return;
-                const snapshot = state.fieldMappingUndoStack[lastIndex]!;
-                state.fieldMappingUndoStack.splice(lastIndex, 1);
-
-                const edge = state.edges.find((e) => e.id === edgeId);
-                if (!edge) return;
-                const data = edge.data ?? createDefaultEdgeData();
-                const mappings = snapshot.mappings;
-                data.fieldMapping = mappings;
-                data.mappingSummary = {
-                  autoMatchedCount: mappings.filter((m) => m.autoRecommended)
-                    .length,
-                  manualCount: mappings.filter((m) => !m.autoRecommended)
-                    .length,
-                  requiredUnmappedCount: data.missingFields.filter(
-                    (f) =>
-                      f.required &&
-                      !mappings.some((m) => m.targetField === f.path),
-                  ).length,
-                };
-                edge.data = data;
-                state.isDirty = true;
-              },
-              false,
-              "store/undoFieldMapping",
-            ),
-
-          setViewport: (viewport) =>
-            set((state) => {
-              state.viewport = viewport;
-            }),
-
-          commitViewport: (viewport) =>
-            set((state) => {
-              state.viewport = viewport;
-              state.isDirty = true;
-            }),
-
-          applyServerSnapshot: ({
-            nodes,
-            edges,
-            viewport,
-            workflowId,
-            version,
-            inputSchema,
-          }) => {
-            invalidateEdgeCompatibilityRefreshVersion();
-
-            set((state) => {
-              const rawNodesById = new Map(
-                nodes.map((node) => [node.id, node]),
-              );
-              state.nodes = nodes.map((n) => {
-                const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType);
-                const agentNodeDefaults = isAgentNodeType(n.data.nodeType)
-                  ? createDefaultAgentNodeData()
-                  : null;
-                const agentNodeData = agentNodeDefaults
-                  ? (n.data as Partial<AgentNodeData>)
-                  : null;
-                let inputPorts = Array.isArray(n.data.inputPorts)
-                  ? hydratePortDefinitions(
-                      n.data.inputPorts,
-                      typeConfig?.inputPorts ?? [],
+                const protectedNodeIds = new Set(
+                  state.nodes
+                    .filter(
+                      (node) =>
+                        state.selectedNodeIds.has(node.id) &&
+                        (node.data.nodeType === "loop-start" ||
+                          node.data.nodeType === "iteration-start"),
                     )
-                  : typeConfig
-                    ? clonePortDefinitions(typeConfig.inputPorts)
-                    : [];
-                let outputPorts = Array.isArray(n.data.outputPorts)
-                  ? hydratePortDefinitions(
-                      n.data.outputPorts,
-                      typeConfig?.outputPorts ?? [],
+                    .map((node) => node.id),
+                );
+                const requestedNodeIds = Array.from(
+                  state.selectedNodeIds,
+                ).filter((nodeId) => !protectedNodeIds.has(nodeId));
+                const nodeIdsToDelete = collectDescendantNodeIds(
+                  state.nodes,
+                  requestedNodeIds,
+                );
+                if (nodeIdsToDelete.size === 0) return;
+                const removedEdgeIds = new Set(
+                  state.edges
+                    .filter(
+                      (edge) =>
+                        nodeIdsToDelete.has(edge.source) ||
+                        nodeIdsToDelete.has(edge.target),
                     )
-                  : typeConfig
-                    ? clonePortDefinitions(typeConfig.outputPorts)
-                    : [];
+                    .map((edge) => edge.id),
+                );
+                const affectedParentIds = state.nodes
+                  .filter(
+                    (node) => node.parentId && nodeIdsToDelete.has(node.id),
+                  )
+                  .map((node) => node.parentId as string);
 
-                // 条件节点: 从 config.branches 推导输出端口（兼容旧格式迁移）
-                if (n.data.nodeType === "condition") {
-                  const condConfig = migrateConditionConfig(
-                    n.data.config ?? {},
-                  );
-                  const currentValuePorts =
-                    getConditionValueInputPorts(inputPorts);
-                  const normalizedPortIds = currentValuePorts.map(
-                    (port, index) =>
-                      port.id.startsWith("input-") ? port.id : `input-${index}`,
-                  );
-                  inputPorts = buildConditionInputPorts(
-                    Math.max(1, normalizedPortIds.length),
-                    normalizedPortIds.length > 0
-                      ? normalizedPortIds
-                      : undefined,
-                  );
-                  outputPorts = buildConditionOutputPorts(condConfig.branches);
+                state.nodes = state.nodes.filter(
+                  (node) => !nodeIdsToDelete.has(node.id),
+                );
+                state.edges = state.edges.filter(
+                  (edge) =>
+                    !nodeIdsToDelete.has(edge.source) &&
+                    !nodeIdsToDelete.has(edge.target),
+                );
+                for (const parentId of affectedParentIds) {
+                  syncCompoundParentOutputPorts(state.nodes, parentId);
+                  syncCompoundParentLayout(state.nodes, parentId);
                 }
 
-                // 合并节点: 从 config.inputCount 推导输入端口
-                if (n.data.nodeType === "merge") {
-                  const mergeConfig = parseMergeNodeConfig(n.data.config ?? {});
-                  inputPorts = buildMergeInputPorts(
-                    mergeConfig.inputCount,
-                    mergeConfig.portLabels,
-                  );
+                for (const nodeId of nodeIdsToDelete) {
+                  delete state.nodeValidationErrors[nodeId];
                 }
 
-                // 手动触发器: 从 inputSchema 或 config.outputFields 推导输出端口
-                if (n.data.nodeType === "manual-trigger") {
-                  const schemaFields = inputSchema?.fields;
-                  if (schemaFields && schemaFields.length > 0) {
-                    const triggerFields =
-                      inputSchemaFieldsToOutputFields(schemaFields);
-                    outputPorts = buildManualTriggerOutputPorts(triggerFields);
-                    // 同步 outputFields 到 config 以便后续编辑
-                    n.data.config = {
-                      ...(n.data.config ?? {}),
-                      outputFields: triggerFields,
-                    };
-                  } else {
-                    const triggerConfig = parseManualTriggerConfig(
-                      n.data.config ?? {},
-                    );
-                    if (triggerConfig.outputFields.length > 0) {
-                      outputPorts = buildManualTriggerOutputPorts(
-                        triggerConfig.outputFields,
-                      );
-                    }
-                  }
-                }
+                state.selectedNodeIds = new Set();
+                state.selectedNodeId = null;
 
                 if (
-                  (n.data.nodeType === "loop-start" ||
-                    n.data.nodeType === "iteration-start") &&
-                  n.parentId
+                  state.selectedEdgeId &&
+                  removedEdgeIds.has(state.selectedEdgeId)
                 ) {
-                  const parentNode = rawNodesById.get(n.parentId);
-                  const parentInputPorts = Array.isArray(
-                    parentNode?.data?.inputPorts,
-                  )
-                    ? parentNode.data.inputPorts
-                    : [];
-                  const extraInputIds = parentInputPorts
-                    .filter((port) => port.id.startsWith("input-"))
-                    .map((port) => port.id);
-                  const parentConfig =
-                    parentNode?.data?.config &&
-                    typeof parentNode.data.config === "object" &&
-                    !Array.isArray(parentNode.data.config)
-                      ? (parentNode.data.config as Record<string, unknown>)
-                      : undefined;
-                  const parentPortLabels =
-                    parentConfig?.portLabels &&
-                    typeof parentConfig.portLabels === "object" &&
-                    !Array.isArray(parentConfig.portLabels)
-                      ? (parentConfig.portLabels as Record<string, string>)
-                      : undefined;
-
-                  outputPorts =
-                    n.data.nodeType === "loop-start"
-                      ? buildLoopStartOutputPorts(
-                          extraInputIds,
-                          {
-                            ...createDefaultLoopStartNodeConfig(),
-                            ...(n.data.config ?? {}),
-                          } as ReturnType<
-                            typeof createDefaultLoopStartNodeConfig
-                          >,
-                          parentPortLabels,
-                        )
-                      : buildIterationStartOutputPorts(
-                          extraInputIds,
-                          {
-                            ...createDefaultIterationStartNodeConfig(),
-                            ...(n.data.config ?? {}),
-                          } as ReturnType<
-                            typeof createDefaultIterationStartNodeConfig
-                          >,
-                          parentPortLabels,
-                        );
+                  state.selectedEdgeId = null;
+                }
+                if (
+                  state.mappingPanelEdgeId &&
+                  removedEdgeIds.has(state.mappingPanelEdgeId)
+                ) {
+                  state.mappingPanelEdgeId = null;
                 }
 
-                ({ inputPorts, outputPorts } = ensureExecPortsForHydration(
-                  n.data.nodeType,
-                  typeConfig,
-                  inputPorts,
-                  outputPorts,
-                ));
+                state.isDirty = true;
+              }),
 
-                return {
-                  ...n,
-                  data: {
-                    ...(agentNodeDefaults ?? {}),
-                    ...n.data,
-                    config:
-                      n.data.nodeType === "text"
-                        ? normalizeTextNodeConfig(
-                            n.data as Record<string, unknown>,
-                          )
-                        : n.data.config ?? {},
-                    inputPorts,
-                    outputPorts,
-                    ...(agentNodeDefaults && agentNodeData
-                      ? {
-                          modelConfig: agentNodeData.modelConfig
-                            ? { ...agentNodeData.modelConfig }
-                            : agentNodeDefaults.modelConfig,
-                          autonomyConfig: {
-                            ...agentNodeDefaults.autonomyConfig,
-                            ...(agentNodeData.autonomyConfig ?? {}),
-                          },
-                          outputFormatStrategy:
-                            agentNodeData.outputFormatStrategy
-                              ? { ...agentNodeData.outputFormatStrategy }
-                              : agentNodeDefaults.outputFormatStrategy,
-                          toolBindings: Array.isArray(
-                            agentNodeData.toolBindings,
-                          )
-                            ? [...agentNodeData.toolBindings]
-                            : [...agentNodeDefaults.toolBindings],
-                          knowledgeBindings: Array.isArray(
-                            agentNodeData.knowledgeBindings,
-                          )
-                            ? [...agentNodeData.knowledgeBindings]
-                            : [...agentNodeDefaults.knowledgeBindings],
-                        }
-                      : {}),
-                  },
+            applyEncapsulation: ({ nodes, edges, blockNodeId }) =>
+              set((state) => {
+                const nextNodeIds = new Set(nodes.map((node) => node.id));
+                const nextEdgeIds = new Set(edges.map((edge) => edge.id));
+                const removedNodeIds = state.nodes
+                  .map((node) => node.id)
+                  .filter((id) => !nextNodeIds.has(id));
+
+                state.nodes = nodes;
+                state.edges = edges;
+
+                const parentId = nodes.find(
+                  (node) => node.id === blockNodeId,
+                )?.parentId;
+                if (parentId) {
+                  syncCompoundParentOutputPorts(state.nodes, parentId);
+                  syncCompoundParentLayout(state.nodes, parentId);
+                }
+
+                for (const nodeId of removedNodeIds) {
+                  delete state.nodeValidationErrors[nodeId];
+                }
+                if (
+                  state.selectedEdgeId &&
+                  !nextEdgeIds.has(state.selectedEdgeId)
+                ) {
+                  state.selectedEdgeId = null;
+                }
+                if (
+                  state.mappingPanelEdgeId &&
+                  !nextEdgeIds.has(state.mappingPanelEdgeId)
+                ) {
+                  state.mappingPanelEdgeId = null;
+                }
+                state.selectedNodeId = blockNodeId;
+                state.selectedNodeIds = new Set([blockNodeId]);
+                state.isDirty = true;
+              }),
+
+            selectNode: (nodeId) =>
+              set((state) => {
+                state.selectedNodeId = nodeId;
+                state.selectedNodeIds = nodeId ? new Set([nodeId]) : new Set();
+                if (nodeId) state.selectedEdgeId = null;
+              }),
+
+            selectEdge: (edgeId) =>
+              set((state) => {
+                state.selectedEdgeId = edgeId;
+                if (edgeId) {
+                  state.selectedNodeId = null;
+                  state.selectedNodeIds = new Set();
+                }
+              }),
+
+            openFieldMapping: (edgeId) =>
+              set((state) => {
+                state.mappingPanelEdgeId = edgeId;
+                state.selectedEdgeId = edgeId;
+                state.selectedNodeId = null;
+                state.selectedNodeIds = new Set();
+              }),
+
+            closeFieldMapping: () =>
+              set((state) => {
+                state.mappingPanelEdgeId = null;
+              }),
+
+            updateEdgeData: (edgeId, patch) =>
+              set((state) => {
+                const edge = state.edges.find((e) => e.id === edgeId);
+                if (!edge) return;
+                edge.data = {
+                  ...(edge.data ?? createDefaultEdgeData()),
+                  ...patch,
                 };
-              });
-              for (const node of state.nodes) {
-                if (!isCompoundContainerNodeType(node.data.nodeType)) {
-                  continue;
-                }
+                state.isDirty = true;
+              }),
 
-                syncCompoundParentOutputPorts(state.nodes, node.id);
-                syncCompoundParentLayout(state.nodes, node.id);
+            refreshEdgeCompatibility: (updates) =>
+              // 兼容性刷新是上一步编辑的派生结果，并入那一步，不单独成为历史
+              runWithoutHistory(() =>
+                set((state) => {
+                  if (updates.length === 0) {
+                    return;
+                  }
+
+                  let touched = false;
+                  for (const update of updates) {
+                    const edge = state.edges.find(
+                      (candidate) => candidate.id === update.edgeId,
+                    );
+                    if (!edge) {
+                      continue;
+                    }
+
+                    edge.data = update.edgeData;
+                    touched = true;
+                  }
+
+                  if (touched) {
+                    state.isDirty = true;
+                  }
+                }),
+              ),
+
+            updateFieldMapping: (edgeId, mappings) =>
+              set((state) => {
+                const edge = state.edges.find((e) => e.id === edgeId);
+                if (!edge) return;
+                const data = edge.data ?? createDefaultEdgeData();
+                data.fieldMapping = mappings;
+                data.mappingSummary = {
+                  autoMatchedCount: mappings.filter((m) => m.autoRecommended)
+                    .length,
+                  manualCount: mappings.filter((m) => !m.autoRecommended)
+                    .length,
+                  requiredUnmappedCount: data.missingFields.filter(
+                    (f) =>
+                      f.required &&
+                      !mappings.some((m) => m.targetField === f.path),
+                  ).length,
+                };
+                edge.data = data;
+                state.isDirty = true;
+              }),
+
+            batchUpdateFieldMappings: (edgeId, mappings) =>
+              set(
+                (state) => {
+                  const edge = state.edges.find((e) => e.id === edgeId);
+                  if (!edge) return;
+                  const data = edge.data ?? createDefaultEdgeData();
+                  data.fieldMapping = mappings;
+                  data.mappingSummary = {
+                    autoMatchedCount: mappings.filter((m) => m.autoRecommended)
+                      .length,
+                    manualCount: mappings.filter((m) => !m.autoRecommended)
+                      .length,
+                    requiredUnmappedCount: data.missingFields.filter(
+                      (f) =>
+                        f.required &&
+                        !mappings.some((m) => m.targetField === f.path),
+                    ).length,
+                  };
+                  edge.data = data;
+                  state.isDirty = true;
+                },
+                false,
+                "store/batchUpdateFieldMappings",
+              ),
+
+            saveMappingSnapshot: (edgeId) =>
+              set(
+                (state) => {
+                  const edge = state.edges.find((e) => e.id === edgeId);
+                  if (!edge?.data) return;
+                  const snapshot: FieldMappingSnapshot = {
+                    edgeId,
+                    mappings: [...edge.data.fieldMapping],
+                  };
+                  state.fieldMappingUndoStack.push(snapshot);
+                  if (
+                    state.fieldMappingUndoStack.length > MAX_UNDO_STACK_SIZE
+                  ) {
+                    state.fieldMappingUndoStack.splice(
+                      0,
+                      state.fieldMappingUndoStack.length - MAX_UNDO_STACK_SIZE,
+                    );
+                  }
+                },
+                false,
+                "store/saveMappingSnapshot",
+              ),
+
+            undoFieldMapping: (edgeId) =>
+              set(
+                (state) => {
+                  const lastIndex = findLastIndex(
+                    state.fieldMappingUndoStack,
+                    (s) => s.edgeId === edgeId,
+                  );
+                  if (lastIndex === -1) return;
+                  const snapshot = state.fieldMappingUndoStack[lastIndex]!;
+                  state.fieldMappingUndoStack.splice(lastIndex, 1);
+
+                  const edge = state.edges.find((e) => e.id === edgeId);
+                  if (!edge) return;
+                  const data = edge.data ?? createDefaultEdgeData();
+                  const mappings = snapshot.mappings;
+                  data.fieldMapping = mappings;
+                  data.mappingSummary = {
+                    autoMatchedCount: mappings.filter((m) => m.autoRecommended)
+                      .length,
+                    manualCount: mappings.filter((m) => !m.autoRecommended)
+                      .length,
+                    requiredUnmappedCount: data.missingFields.filter(
+                      (f) =>
+                        f.required &&
+                        !mappings.some((m) => m.targetField === f.path),
+                    ).length,
+                  };
+                  edge.data = data;
+                  state.isDirty = true;
+                },
+                false,
+                "store/undoFieldMapping",
+              ),
+
+            setViewport: (viewport) =>
+              set((state) => {
+                state.viewport = viewport;
+              }),
+
+            commitViewport: (viewport) =>
+              set((state) => {
+                state.viewport = viewport;
+                state.isDirty = true;
+              }),
+
+            applyServerSnapshot: ({
+              nodes,
+              edges,
+              viewport,
+              workflowId,
+              version,
+              inputSchema,
+            }) => {
+              invalidateEdgeCompatibilityRefreshVersion();
+
+              runWithoutHistory(() =>
+                set((state) => {
+                  const rawNodesById = new Map(
+                    nodes.map((node) => [node.id, node]),
+                  );
+                  state.nodes = nodes.map((n) => {
+                    const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType);
+                    const agentNodeDefaults = isAgentNodeType(n.data.nodeType)
+                      ? createDefaultAgentNodeData()
+                      : null;
+                    const agentNodeData = agentNodeDefaults
+                      ? (n.data as Partial<AgentNodeData>)
+                      : null;
+                    let inputPorts = Array.isArray(n.data.inputPorts)
+                      ? hydratePortDefinitions(
+                          n.data.inputPorts,
+                          typeConfig?.inputPorts ?? [],
+                        )
+                      : typeConfig
+                        ? clonePortDefinitions(typeConfig.inputPorts)
+                        : [];
+                    let outputPorts = Array.isArray(n.data.outputPorts)
+                      ? hydratePortDefinitions(
+                          n.data.outputPorts,
+                          typeConfig?.outputPorts ?? [],
+                        )
+                      : typeConfig
+                        ? clonePortDefinitions(typeConfig.outputPorts)
+                        : [];
+
+                    // 条件节点: 从 config.branches 推导输出端口（兼容旧格式迁移）
+                    if (n.data.nodeType === "condition") {
+                      const condConfig = migrateConditionConfig(
+                        n.data.config ?? {},
+                      );
+                      const currentValuePorts =
+                        getConditionValueInputPorts(inputPorts);
+                      const normalizedPortIds = currentValuePorts.map(
+                        (port, index) =>
+                          port.id.startsWith("input-")
+                            ? port.id
+                            : `input-${index}`,
+                      );
+                      inputPorts = buildConditionInputPorts(
+                        Math.max(1, normalizedPortIds.length),
+                        normalizedPortIds.length > 0
+                          ? normalizedPortIds
+                          : undefined,
+                      );
+                      outputPorts = buildConditionOutputPorts(
+                        condConfig.branches,
+                      );
+                    }
+
+                    // 合并节点: 从 config.inputCount 推导输入端口
+                    if (n.data.nodeType === "merge") {
+                      const mergeConfig = parseMergeNodeConfig(
+                        n.data.config ?? {},
+                      );
+                      inputPorts = buildMergeInputPorts(
+                        mergeConfig.inputCount,
+                        mergeConfig.portLabels,
+                      );
+                    }
+
+                    // 手动触发器: 从 inputSchema 或 config.outputFields 推导输出端口
+                    if (n.data.nodeType === "manual-trigger") {
+                      const schemaFields = inputSchema?.fields;
+                      if (schemaFields && schemaFields.length > 0) {
+                        const triggerFields =
+                          inputSchemaFieldsToOutputFields(schemaFields);
+                        outputPorts =
+                          buildManualTriggerOutputPorts(triggerFields);
+                        // 同步 outputFields 到 config 以便后续编辑
+                        n.data.config = {
+                          ...(n.data.config ?? {}),
+                          outputFields: triggerFields,
+                        };
+                      } else {
+                        const triggerConfig = parseManualTriggerConfig(
+                          n.data.config ?? {},
+                        );
+                        if (triggerConfig.outputFields.length > 0) {
+                          outputPorts = buildManualTriggerOutputPorts(
+                            triggerConfig.outputFields,
+                          );
+                        }
+                      }
+                    }
+
+                    if (
+                      (n.data.nodeType === "loop-start" ||
+                        n.data.nodeType === "iteration-start") &&
+                      n.parentId
+                    ) {
+                      const parentNode = rawNodesById.get(n.parentId);
+                      const parentInputPorts = Array.isArray(
+                        parentNode?.data?.inputPorts,
+                      )
+                        ? parentNode.data.inputPorts
+                        : [];
+                      const extraInputIds = parentInputPorts
+                        .filter((port) => port.id.startsWith("input-"))
+                        .map((port) => port.id);
+                      const parentConfig =
+                        parentNode?.data?.config &&
+                        typeof parentNode.data.config === "object" &&
+                        !Array.isArray(parentNode.data.config)
+                          ? (parentNode.data.config as Record<string, unknown>)
+                          : undefined;
+                      const parentPortLabels =
+                        parentConfig?.portLabels &&
+                        typeof parentConfig.portLabels === "object" &&
+                        !Array.isArray(parentConfig.portLabels)
+                          ? (parentConfig.portLabels as Record<string, string>)
+                          : undefined;
+
+                      outputPorts =
+                        n.data.nodeType === "loop-start"
+                          ? buildLoopStartOutputPorts(
+                              extraInputIds,
+                              {
+                                ...createDefaultLoopStartNodeConfig(),
+                                ...(n.data.config ?? {}),
+                              } as ReturnType<
+                                typeof createDefaultLoopStartNodeConfig
+                              >,
+                              parentPortLabels,
+                            )
+                          : buildIterationStartOutputPorts(
+                              extraInputIds,
+                              {
+                                ...createDefaultIterationStartNodeConfig(),
+                                ...(n.data.config ?? {}),
+                              } as ReturnType<
+                                typeof createDefaultIterationStartNodeConfig
+                              >,
+                              parentPortLabels,
+                            );
+                    }
+
+                    ({ inputPorts, outputPorts } = ensureExecPortsForHydration(
+                      n.data.nodeType,
+                      typeConfig,
+                      inputPorts,
+                      outputPorts,
+                    ));
+
+                    return {
+                      ...n,
+                      data: {
+                        ...(agentNodeDefaults ?? {}),
+                        ...n.data,
+                        config:
+                          n.data.nodeType === "text"
+                            ? normalizeTextNodeConfig(
+                                n.data as Record<string, unknown>,
+                              )
+                            : (n.data.config ?? {}),
+                        inputPorts,
+                        outputPorts,
+                        ...(agentNodeDefaults && agentNodeData
+                          ? {
+                              modelConfig: agentNodeData.modelConfig
+                                ? { ...agentNodeData.modelConfig }
+                                : agentNodeDefaults.modelConfig,
+                              autonomyConfig: {
+                                ...agentNodeDefaults.autonomyConfig,
+                                ...(agentNodeData.autonomyConfig ?? {}),
+                              },
+                              outputFormatStrategy:
+                                agentNodeData.outputFormatStrategy
+                                  ? { ...agentNodeData.outputFormatStrategy }
+                                  : agentNodeDefaults.outputFormatStrategy,
+                              toolBindings: Array.isArray(
+                                agentNodeData.toolBindings,
+                              )
+                                ? [...agentNodeData.toolBindings]
+                                : [...agentNodeDefaults.toolBindings],
+                              knowledgeBindings: Array.isArray(
+                                agentNodeData.knowledgeBindings,
+                              )
+                                ? [...agentNodeData.knowledgeBindings]
+                                : [...agentNodeDefaults.knowledgeBindings],
+                            }
+                          : {}),
+                      },
+                    };
+                  });
+                  for (const node of state.nodes) {
+                    if (!isCompoundContainerNodeType(node.data.nodeType)) {
+                      continue;
+                    }
+
+                    syncCompoundParentOutputPorts(state.nodes, node.id);
+                    syncCompoundParentLayout(state.nodes, node.id);
+                  }
+                  state.edges = edges.map((e) => ({
+                    ...e,
+                    data: { ...createDefaultEdgeData(), ...(e.data ?? {}) },
+                  }));
+                  state.viewport = viewport ?? { x: 0, y: 0, zoom: 1 };
+                  state.workflowId = workflowId;
+                  state.version = version;
+                  state.isDirty = false;
+                  state.selectedNodeId = null;
+                  state.selectedNodeIds = new Set();
+                  state.selectedEdgeId = null;
+                  state.mappingPanelEdgeId = null;
+                  state.nodeValidationErrors = {};
+                }),
+              );
+              clearCanvasHistory();
+            },
+
+            markSaved: (version) =>
+              set((state) => {
+                state.isDirty = false;
+                state.lastSavedAt = new Date();
+                state.isSaving = false;
+                state.version = version;
+              }),
+
+            advanceVersion: (version) =>
+              set((state) => {
+                state.version = version;
+                state.isSaving = false;
+              }),
+
+            setIsSaving: (saving) =>
+              set((state) => {
+                state.isSaving = saving;
+              }),
+
+            reset: () => {
+              invalidateEdgeCompatibilityRefreshVersion();
+
+              runWithoutHistory(() =>
+                set((state) => {
+                  Object.assign(state, createInitialState());
+                }),
+              );
+              clearCanvasHistory();
+            },
+
+            undo: () => {
+              const history = useCanvasStore.temporal.getState();
+              if (history.pastStates.length === 0) {
+                return;
               }
-              state.edges = edges.map((e) => ({
-                ...e,
-                data: { ...createDefaultEdgeData(), ...(e.data ?? {}) },
-              }));
-              state.viewport = viewport ?? { x: 0, y: 0, zoom: 1 };
-              state.workflowId = workflowId;
-              state.version = version;
-              state.isDirty = false;
-              state.selectedNodeId = null;
-              state.selectedNodeIds = new Set();
-              state.selectedEdgeId = null;
-              state.mappingPanelEdgeId = null;
-              state.nodeValidationErrors = {};
-            });
-          },
+              history.undo();
+              set(syncAfterHistoryJump);
+            },
 
-          markSaved: (version) =>
-            set((state) => {
-              state.isDirty = false;
-              state.lastSavedAt = new Date();
-              state.isSaving = false;
-              state.version = version;
-            }),
+            redo: () => {
+              const history = useCanvasStore.temporal.getState();
+              if (history.futureStates.length === 0) {
+                return;
+              }
+              history.redo();
+              set(syncAfterHistoryJump);
+            },
 
-          advanceVersion: (version) =>
-            set((state) => {
-              state.version = version;
-              state.isSaving = false;
-            }),
+            toggleSearch: () =>
+              set((state) => {
+                state.isSearchOpen = !state.isSearchOpen;
+                if (!state.isSearchOpen) {
+                  state.searchQuery = "";
+                  state.searchMatchIds = [];
+                  state.currentSearchIndex = -1;
+                }
+              }),
 
-          setIsSaving: (saving) =>
-            set((state) => {
-              state.isSaving = saving;
-            }),
+            setSearchQuery: (query) =>
+              set((state) => {
+                state.searchQuery = query;
+                if (!query.trim()) {
+                  state.searchMatchIds = [];
+                  state.currentSearchIndex = -1;
+                  return;
+                }
+                const lowerQuery = query.toLowerCase();
+                state.searchMatchIds = state.nodes
+                  .filter((n) => matchesSearchQuery(n, lowerQuery))
+                  .map((n) => n.id);
+                state.currentSearchIndex =
+                  state.searchMatchIds.length > 0 ? 0 : -1;
+              }),
 
-          reset: () => {
-            invalidateEdgeCompatibilityRefreshVersion();
+            nextSearchResult: () =>
+              set((state) => {
+                if (state.searchMatchIds.length === 0) return;
+                state.currentSearchIndex =
+                  (state.currentSearchIndex + 1) % state.searchMatchIds.length;
+              }),
 
-            set((state) => {
-              Object.assign(state, createInitialState());
-            });
-          },
+            prevSearchResult: () =>
+              set((state) => {
+                if (state.searchMatchIds.length === 0) return;
+                state.currentSearchIndex =
+                  (state.currentSearchIndex - 1 + state.searchMatchIds.length) %
+                  state.searchMatchIds.length;
+              }),
 
-          toggleSearch: () =>
-            set((state) => {
-              state.isSearchOpen = !state.isSearchOpen;
-              if (!state.isSearchOpen) {
+            clearSearch: () =>
+              set((state) => {
+                state.isSearchOpen = false;
                 state.searchQuery = "";
                 state.searchMatchIds = [];
                 state.currentSearchIndex = -1;
-              }
-            }),
+              }),
 
-          setSearchQuery: (query) =>
-            set((state) => {
-              state.searchQuery = query;
-              if (!query.trim()) {
-                state.searchMatchIds = [];
-                state.currentSearchIndex = -1;
-                return;
-              }
-              const lowerQuery = query.toLowerCase();
-              state.searchMatchIds = state.nodes
-                .filter((n) => matchesSearchQuery(n, lowerQuery))
-                .map((n) => n.id);
-              state.currentSearchIndex =
-                state.searchMatchIds.length > 0 ? 0 : -1;
-            }),
+            toggleMiniMap: () =>
+              set((state) => {
+                state.isMiniMapCollapsed = !state.isMiniMapCollapsed;
+              }),
 
-          nextSearchResult: () =>
-            set((state) => {
-              if (state.searchMatchIds.length === 0) return;
-              state.currentSearchIndex =
-                (state.currentSearchIndex + 1) % state.searchMatchIds.length;
-            }),
+            setHoveredNodeId: (nodeId) =>
+              set((state) => {
+                state.hoveredNodeId = nodeId;
+              }),
 
-          prevSearchResult: () =>
-            set((state) => {
-              if (state.searchMatchIds.length === 0) return;
-              state.currentSearchIndex =
-                (state.currentSearchIndex - 1 + state.searchMatchIds.length) %
-                state.searchMatchIds.length;
-            }),
+            updateNodeData: (nodeId, patch) => {
+              let shouldRevalidate = false;
+              let revalidationVersion = 0;
 
-          clearSearch: () =>
-            set((state) => {
-              state.isSearchOpen = false;
-              state.searchQuery = "";
-              state.searchMatchIds = [];
-              state.currentSearchIndex = -1;
-            }),
+              set((state) => {
+                const node = state.nodes.find((n) => n.id === nodeId);
+                if (!node) return;
 
-          toggleMiniMap: () =>
-            set((state) => {
-              state.isMiniMapCollapsed = !state.isMiniMapCollapsed;
-            }),
-
-          setHoveredNodeId: (nodeId) =>
-            set((state) => {
-              state.hoveredNodeId = nodeId;
-            }),
-
-          updateNodeData: (nodeId, patch) => {
-            let shouldRevalidate = false;
-            let revalidationVersion = 0;
-
-            set((state) => {
-              const node = state.nodes.find((n) => n.id === nodeId);
-              if (!node) return;
-
-              const previousInputPortIds = collectPortIds(node.data.inputPorts);
-              const previousOutputPortIds = collectPortIds(
-                node.data.outputPorts,
-              );
-              const previousSignature = getNodePortContractSignature({
-                inputPorts: node.data.inputPorts,
-                outputPorts: node.data.outputPorts,
-              });
-              const nextNodeData = {
-                ...node.data,
-                ...patch,
-              };
-              const nextInputPortIds = collectPortIds(nextNodeData.inputPorts);
-              const nextOutputPortIds = collectPortIds(
-                nextNodeData.outputPorts,
-              );
-              const nextSignature = getNodePortContractSignature({
-                inputPorts: nextNodeData.inputPorts,
-                outputPorts: nextNodeData.outputPorts,
-              });
-
-              Object.assign(node.data, patch);
-              state.isDirty = true;
-
-              if (isCompoundContainerNodeType(node.data.nodeType)) {
-                syncCompoundParentLayout(state.nodes, nodeId);
-              }
-
-              if (previousSignature !== nextSignature) {
-                const removedInputHandles = [...previousInputPortIds].filter(
-                  (portId) => !nextInputPortIds.has(portId),
+                const previousInputPortIds = collectPortIds(
+                  node.data.inputPorts,
                 );
-                const removedOutputHandles = [...previousOutputPortIds].filter(
-                  (portId) => !nextOutputPortIds.has(portId),
+                const previousOutputPortIds = collectPortIds(
+                  node.data.outputPorts,
                 );
+                const previousSignature = getNodePortContractSignature({
+                  inputPorts: node.data.inputPorts,
+                  outputPorts: node.data.outputPorts,
+                });
+                const nextNodeData = {
+                  ...node.data,
+                  ...patch,
+                };
+                const nextInputPortIds = collectPortIds(
+                  nextNodeData.inputPorts,
+                );
+                const nextOutputPortIds = collectPortIds(
+                  nextNodeData.outputPorts,
+                );
+                const nextSignature = getNodePortContractSignature({
+                  inputPorts: nextNodeData.inputPorts,
+                  outputPorts: nextNodeData.outputPorts,
+                });
 
-                if (
-                  removedInputHandles.length > 0 ||
-                  removedOutputHandles.length > 0
-                ) {
-                  const removedEdgeIds = new Set(
-                    state.edges
-                      .filter(
-                        (edge) =>
-                          (edge.target === nodeId &&
-                            removedInputHandles.includes(
-                              edge.targetHandle ?? "",
-                            )) ||
-                          (edge.source === nodeId &&
-                            removedOutputHandles.includes(
-                              edge.sourceHandle ?? "",
-                            )),
-                      )
-                      .map((edge) => edge.id),
+                Object.assign(node.data, patch);
+                state.isDirty = true;
+
+                if (isCompoundContainerNodeType(node.data.nodeType)) {
+                  syncCompoundParentLayout(state.nodes, nodeId);
+                }
+
+                if (previousSignature !== nextSignature) {
+                  const removedInputHandles = [...previousInputPortIds].filter(
+                    (portId) => !nextInputPortIds.has(portId),
                   );
+                  const removedOutputHandles = [
+                    ...previousOutputPortIds,
+                  ].filter((portId) => !nextOutputPortIds.has(portId));
 
-                  if (removedEdgeIds.size > 0) {
-                    state.edges = state.edges.filter(
-                      (edge) => !removedEdgeIds.has(edge.id),
+                  if (
+                    removedInputHandles.length > 0 ||
+                    removedOutputHandles.length > 0
+                  ) {
+                    const removedEdgeIds = new Set(
+                      state.edges
+                        .filter(
+                          (edge) =>
+                            (edge.target === nodeId &&
+                              removedInputHandles.includes(
+                                edge.targetHandle ?? "",
+                              )) ||
+                            (edge.source === nodeId &&
+                              removedOutputHandles.includes(
+                                edge.sourceHandle ?? "",
+                              )),
+                        )
+                        .map((edge) => edge.id),
                     );
-                    if (
-                      state.selectedEdgeId &&
-                      removedEdgeIds.has(state.selectedEdgeId)
-                    ) {
-                      state.selectedEdgeId = null;
-                    }
-                    if (
-                      state.mappingPanelEdgeId &&
-                      removedEdgeIds.has(state.mappingPanelEdgeId)
-                    ) {
-                      state.mappingPanelEdgeId = null;
+
+                    if (removedEdgeIds.size > 0) {
+                      state.edges = state.edges.filter(
+                        (edge) => !removedEdgeIds.has(edge.id),
+                      );
+                      if (
+                        state.selectedEdgeId &&
+                        removedEdgeIds.has(state.selectedEdgeId)
+                      ) {
+                        state.selectedEdgeId = null;
+                      }
+                      if (
+                        state.mappingPanelEdgeId &&
+                        removedEdgeIds.has(state.mappingPanelEdgeId)
+                      ) {
+                        state.mappingPanelEdgeId = null;
+                      }
                     }
                   }
                 }
+
+                if (previousSignature !== nextSignature) {
+                  shouldRevalidate = true;
+                  revalidationVersion = nextEdgeCompatibilityRefreshVersion();
+                }
+              });
+
+              if (shouldRevalidate) {
+                void revalidateConnectedEdges(
+                  useCanvasStore,
+                  nodeId,
+                  revalidationVersion,
+                );
               }
+            },
 
-              if (previousSignature !== nextSignature) {
-                shouldRevalidate = true;
-                revalidationVersion = nextEdgeCompatibilityRefreshVersion();
-              }
-            });
+            setNodeValidationError: (nodeId, hasErrors) =>
+              set((state) => {
+                if (hasErrors) {
+                  state.nodeValidationErrors[nodeId] = true;
+                } else {
+                  delete state.nodeValidationErrors[nodeId];
+                }
+              }),
 
-            if (shouldRevalidate) {
-              void revalidateConnectedEdges(
-                useCanvasStore,
-                nodeId,
-                revalidationVersion,
-              );
-            }
-          },
-
-          setNodeValidationError: (nodeId, hasErrors) =>
-            set((state) => {
-              if (hasErrors) {
-                state.nodeValidationErrors[nodeId] = true;
-              } else {
+            clearNodeValidationErrors: (nodeId) =>
+              set((state) => {
                 delete state.nodeValidationErrors[nodeId];
-              }
-            }),
-
-          clearNodeValidationErrors: (nodeId) =>
-            set((state) => {
-              delete state.nodeValidationErrors[nodeId];
-            }),
+              }),
+          },
+        })),
+        {
+          partialize: toCanvasHistoryState,
+          limit: CANVAS_HISTORY_LIMIT,
+          // 手势进行中或刚结束时交给 handleSet 决定是否提交
+          equality: (pastState, currentState) =>
+            pendingGestureStart === null &&
+            isSameElementList(pastState.nodes, currentState.nodes) &&
+            isSameElementList(pastState.edges, currentState.edges),
+          handleSet: (handleSet) => (pastState) => {
+            if (!isCanvasHistoryState(pastState)) {
+              handleSet(pastState);
+              return;
+            }
+            const currentState = useCanvasStore.getState();
+            if (isCanvasGestureActive(currentState)) {
+              pendingGestureStart ??= pastState;
+              return;
+            }
+            const gestureStart = pendingGestureStart;
+            pendingGestureStart = null;
+            const committedPast = gestureStart ?? pastState;
+            const current = toCanvasHistoryState(currentState);
+            if (
+              isSameElementList(committedPast.nodes, current.nodes) &&
+              isSameElementList(committedPast.edges, current.edges)
+            ) {
+              return;
+            }
+            handleSet(committedPast);
+          },
         },
-      })),
+      ),
     ),
     { name: "CanvasStore" },
   ),
 );
+
+function runWithoutHistory(run: () => void): void {
+  const history = useCanvasStore.temporal.getState();
+  if (!history.isTracking) {
+    run();
+    return;
+  }
+  history.pause();
+  try {
+    run();
+  } finally {
+    history.resume();
+  }
+}
+
+function clearCanvasHistory(): void {
+  pendingGestureStart = null;
+  useCanvasStore.temporal.getState().clear();
+}
+
+/**
+ * 历史快照不含选中态；跳转后清空选择，关闭指向已不存在的边的映射面板，
+ * 并像普通编辑一样标记 dirty，交给自动保存。
+ */
+function syncAfterHistoryJump(state: CanvasState): void {
+  const nodeIds = new Set(state.nodes.map((node) => node.id));
+  state.selectedNodeId = null;
+  state.selectedNodeIds = new Set();
+  state.selectedEdgeId = null;
+  if (
+    state.mappingPanelEdgeId &&
+    !state.edges.some((edge) => edge.id === state.mappingPanelEdgeId)
+  ) {
+    state.mappingPanelEdgeId = null;
+  }
+  for (const nodeId of Object.keys(state.nodeValidationErrors)) {
+    if (!nodeIds.has(nodeId)) {
+      delete state.nodeValidationErrors[nodeId];
+    }
+  }
+  state.isDirty = true;
+}
+
+export const useCanvasHistory = () =>
+  useStore(
+    useCanvasStore.temporal,
+    useShallow((s) => ({
+      canUndo: s.pastStates.length > 0,
+      canRedo: s.futureStates.length > 0,
+    })),
+  );
 
 export const useCanvasNodes = () => useCanvasStore((s) => s.nodes);
 

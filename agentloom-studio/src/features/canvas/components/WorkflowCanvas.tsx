@@ -55,10 +55,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     onEdgesChange,
     onNodesChange,
     openFieldMapping,
+    redo,
     selectEdge,
     selectNode,
     setViewport,
     toggleSearch,
+    undo,
   } = useCanvasActions()
   const { resolvedTheme } = useTheme()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
@@ -128,6 +130,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     toggleSearch,
     deleteSelectedNode,
     deleteSelectedNodes,
+    undo,
+    redo,
   })
 
   const {

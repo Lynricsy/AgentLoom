@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useCanvasStore } from '../../stores/canvasStore';
 import { VersionToolbar } from './VersionToolbar';
 
 vi.mock('@/features/workflow', () => ({
@@ -82,6 +83,34 @@ describe('VersionToolbar', () => {
   });
 
   describe('按钮交互', () => {
+    it('撤销/重做按钮随历史栈启用，点击后回退和恢复画布', () => {
+      act(() => useCanvasStore.getState().actions.reset());
+      render(<VersionToolbar {...defaultProps} />);
+      const undoButton = screen.getByRole('button', { name: '撤销' });
+      const redoButton = screen.getByRole('button', { name: '重做' });
+      expect(undoButton).toBeDisabled();
+      expect(redoButton).toBeDisabled();
+
+      act(() =>
+        useCanvasStore.getState().actions.addNode({
+          id: 'text-1',
+          nodeType: 'text',
+          category: 'output',
+          position: { x: 0, y: 0 },
+          label: 'Text',
+        }),
+      );
+      expect(undoButton).toBeEnabled();
+
+      fireEvent.click(undoButton);
+      expect(useCanvasStore.getState().nodes).toHaveLength(0);
+      expect(undoButton).toBeDisabled();
+      expect(redoButton).toBeEnabled();
+
+      fireEvent.click(redoButton);
+      expect(useCanvasStore.getState().nodes).toHaveLength(1);
+    });
+
     it('点击版本历史调用 onOpenVersionHistory', () => {
       render(<VersionToolbar {...defaultProps} />);
 

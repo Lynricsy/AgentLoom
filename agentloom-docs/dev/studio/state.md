@@ -23,7 +23,7 @@ REST 快照只在进入页面时灌入 store 一次，之后由 socket 事件推
 
 | Store | 文件 | 中间件 | 内容 |
 | --- | --- | --- | --- |
-| `useCanvasStore` | `agentloom-studio/src/features/canvas/stores/canvasStore.ts` | devtools、subscribeWithSelector、immer | 工作流画布草稿，见 [画布](/dev/studio/canvas) |
+| `useCanvasStore` | `agentloom-studio/src/features/canvas/stores/canvasStore.ts` | devtools、subscribeWithSelector、temporal（zundo）、immer | 工作流画布草稿；`useCanvasStore.temporal` 是只含 `nodes` / `edges` 的撤销/重做历史栈，见 [画布](/dev/studio/canvas#撤销与重做) |
 | `useAgentCanvasStore` | `agentloom-studio/src/features/agent-canvas/stores/agent-canvas.store.ts` | devtools、subscribeWithSelector、immer | Agent 编排画布草稿 |
 | `useAgentConversationStore` | `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts` | devtools、subscribeWithSelector、immer | 对话的实时消息流与 `/agent-conversation` 连接 |
 | `useExecutionStore` | `agentloom-studio/src/features/execution/stores/executionStore.ts` | devtools、subscribeWithSelector、immer | 执行的节点实时状态与最近事件 |
