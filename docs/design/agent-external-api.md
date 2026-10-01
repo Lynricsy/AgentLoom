@@ -225,8 +225,14 @@ Key 格式：`alak_` 加 `randomBytes(32).hex`，共 69 个字符。它不以 `a
 
 ### 7.3 限流与并发
 
-- 节流器识别 `Bearer alak_` 后，tracker 记为 `agentkey:<keyPrefix>`，limit 取 `key.rate_limit_per_minute`，为空时取租户的 `apiRateLimitPerMinute`。租户的 `dailyApiCallLimit` 照常计数。Key 查询结果放在进程内缓存，TTL 30s，并订阅吊销事件主动失效，保证满足 R1 的“1 秒内生效”。
-- 并发控制：创建 run 时，在同一个短事务里统计该 Key 处于 `queued/running` 的 run 数，达到 `max_concurrent_runs` 就返回 429，`Retry-After: 5`。
+- 节流器识别 `Bearer alak_` 后，tracker 记为 `agentkey:<keyPrefix>`，limit 取 `key.rate_limit_per_minute`，为空时取租户的 `apiRateLimitPerMinute`。租户的 `dailyApiCallLimit` 照常计数。Key 不做进程内缓存：每个请求都按 `key_hash` 查库（与平台 Token 现状一致，走唯一索引），这样吊销立即生效，满足 R1。
+- 并发控制：只在短事务里先 COUNT 再 INSERT 是不够的。在 READ COMMITTED 下，同一 Key 的两个请求如果落在不同对话上，会同时读到“低于上限”然后都插入成功；对话级的部分唯一索引只能防同一对话，挡不住这种情况。因此创建 run 的短事务按以下顺序执行：
+  1. `SELECT id, max_concurrent_runs FROM agent_api_keys WHERE id = $keyId FOR UPDATE`：锁住 Key 行，把同一 Key 的建 run 请求串行化。RLS 的 update policy 来自 `createDirectTenantPolicies`，`authenticated` 角色可以加这个锁。
+  2. `SELECT count(*) FROM agent_api_runs WHERE api_key_id = $keyId AND status IN ('queued','running')`，达到 `max_concurrent_runs` 就回滚，返回 429 `concurrency-limit-exceeded`，`Retry-After: 5`。
+  3. 插入用户消息和 run。这一步触发对话级部分唯一索引冲突时，映射为 409 `conversation-busy`。
+  4. 提交事务，锁随之释放。
+  - 锁只覆盖这一个短事务，不覆盖入队、XADD、SSE。不同 Key 之间互不阻塞。
+  - worker 把 run 改为终态时不需要拿这把锁：终态只会让计数变小，最坏情况只是多拒绝一次，不会超发。
 
 ### 7.4 审计
 
@@ -288,7 +294,7 @@ Key 的创建和吊销用 `@CaptureAuditLog` 记录（actorType=user）。run �
 **步骤 9：对外 controller**
 - 依赖：步骤 3、6、7、8。
 - 内容：实现第 7 节全部接口；用 `reply.hijack()` 输出 SSE；实现 `Prefer: wait` 和 `Idempotency-Key`；把 `agent-api` 路径加入 `TenantMiddleware` 的 exclude 列表（`app.module.ts:170-186`）。
-- 验收：`pnpm test -- agent-api.controller agent-api.service` 通过；随后 `pnpm openapi:export`，用 `npx @redocly/cli@latest lint sdk/openapi.json` 检查导出结果与本草案没有冲突。
+- 验收：`pnpm test -- agent-api.controller agent-api.service` 通过；`pnpm test:e2e -- agent-api-concurrency` 通过：在 Testcontainers 的真实 Postgres 上，把某个 Key 的 `max_concurrent_runs` 设为 2，同一个 Key 在 6 个不同对话上用 `Promise.all` 并行建 run，断言恰好 2 个成功、4 个返回 `concurrency-limit-exceeded`，且库里该 Key 的 queued/running 行数为 2；同一对话并行建 2 个 run 时恰好 1 个成功、1 个返回 `conversation-busy`。最后执行 `pnpm openapi:export`，再用 `npx @redocly/cli@latest lint sdk/openapi.json` 确认导出结果与本草案没有冲突。
 
 **步骤 10：契约再生成**
 - 依赖：步骤 9。
