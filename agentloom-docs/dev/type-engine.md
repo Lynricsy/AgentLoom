@@ -16,15 +16,9 @@ docType: reference
 
 ## 转换规则
 
-权威表在 `agentloom-type-engine/src/checker/compatibility.rs` 的 `CompatibilityChecker::default()`；`agentloom-contracts/src/port-compatibility.ts` 的 `PORT_DATA_TYPE_TRANSFORM_RULES` 是它的 wire 镜像，server 执行期守卫与 Studio 画布同步守卫从镜像派生，`agentloom-contracts/src/port-compatibility.test.ts` 逐条比对两边（含顺序）。
+权威表在 `agentloom-type-engine/src/checker/compatibility.rs` 的 `CompatibilityChecker::default()`；`agentloom-contracts/src/port-compatibility.ts` 的 `PORT_DATA_TYPE_TRANSFORM_RULES` 是它的 wire 镜像（规则清单见上方生成表），server 执行期守卫与 Studio 画布同步守卫从镜像派生，`agentloom-contracts/src/port-compatibility.test.ts` 逐条比对两边（含顺序）。
 
-| 源 → 目标 | `reason_key` / `reasonKey` | `transform_fn` / `transformFn` |
-| --- | --- | --- |
-| `text` → `json` | `text_to_json_parse` | `parse_json` |
-| `json` → `text` | `json_to_text_stringify` | `stringify_json` |
-| `skill` → `text` | `skill_to_text_degrade` | `extract_skill_text` |
-
-`json` 与 `array` 之间没有转换规则。新增规则先改 Rust、重建 `pkg/`，再改 contracts 镜像。
+规则只决定哪些跨类型连线合法：server 在 `agentloom-server/src/modules/execution/execution.exceptions.ts` 中用 `isPortDataTypeCompatible` 校验连线，没有实现 `parse_json` 等变换函数，执行期下游节点收到的是上游原值。新增规则先改 Rust、重建 `pkg/`，再改 contracts 镜像。
 
 ## 兼容等级
 

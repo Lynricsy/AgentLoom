@@ -59,7 +59,7 @@ Agent 定义的 `runtime_mode` 列决定一个 Agent 在哪里运行（`agentloo
 
 节点之间通过端口传值。每个端口带一个数据类型，取值全集定义在 `agentloom-contracts/src/port-data-type.ts`，Rust 类型引擎、插件 SDK、Studio、server 四处的镜像由契约测试机械比对。其中 `exec` 与 `volume` 用于画布上的控制流与工作区挂载连线。取值与兼容矩阵见 [类型引擎](/dev/type-engine)。
 
-连线时，类型引擎给出四级兼容结果（`agentloom-type-engine/src/checker/compatibility.rs` 中的 `CompatibilityLevel`）：`Exact`（类型相同）、`Transform`（按转换规则自动转换）、`Partial`（可连接但可能丢信息）、`Incompatible`（画布拒绝连线）。类型引擎编译为 WASM，在 Studio 的 Web Worker 中运行，所以连线校验不需要请求 server。
+连线时，类型引擎给出四级兼容结果（`agentloom-type-engine/src/checker/compatibility.rs` 中的 `CompatibilityLevel`）：`Exact`（类型相同）、`Transform`（存在跨类型变换规则，允许连线）、`Partial`（可连接但可能丢信息）、`Incompatible`（画布拒绝连线）。server 执行期只按同一张规则表校验连线，不执行变换函数，下游节点收到上游原值。类型引擎编译为 WASM，在 Studio 的 Web Worker 中运行，所以连线校验不需要请求 server。
 
 ## DAG 调度
 
