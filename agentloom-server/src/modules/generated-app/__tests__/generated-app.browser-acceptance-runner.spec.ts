@@ -516,7 +516,7 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
   it('disabled 模式应失败并明确停止 Gate 6-7', () => {
     const runner = new GeneratedAppGate5BrowserAcceptanceRunner(
       createConfigService({
-        APP_GENERATED_APP_GATE5_EXECUTOR_MODE: 'disabled',
+        GENERATED_APP_GATE5_EXECUTOR_MODE: 'disabled',
       }),
     );
     const plans = buildGate5Plans('disabled-browser-acceptance');

@@ -20,6 +20,16 @@ const optionalUrlFromEnv = (message: string) =>
 const optionalNonEmptyStringFromEnv = (message: string) =>
   z.preprocess(emptyStringToUndefined, z.string().min(1, message).optional());
 
+const positiveNumberFromEnv = (defaultValue: number) =>
+  z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().positive().default(defaultValue),
+  );
+
+/** Gate 执行模式取值由各 runner 归一化（大小写、别名），schema 只负责声明与空串归一 */
+const optionalStringFromEnv = () =>
+  z.preprocess(emptyStringToUndefined, z.string().optional());
+
 const baseEnvSchema = z.object({
   APP_PORT: z.coerce.number().default(3000),
   /**
@@ -109,7 +119,27 @@ const baseEnvSchema = z.object({
    * 这是有意的安全默认。private 模式只有一个租户，无条件放行。
    */
   APP_SANDBOX_NODE_ADMIN_TENANT_IDS: z.string().default(''),
+  /** 沙箱内 guest 回调 server 工具执行端点的 API 基址；缺省时按容器主机名推断 */
+  APP_SANDBOX_CALLBACK_BASE_URL: optionalUrlFromEnv('无效的沙箱回调 URL'),
+  /** Agent 对外 API 对话空闲多少小时后由维护任务自动结束 */
+  APP_AGENT_API_CONVERSATION_IDLE_HOURS: positiveNumberFromEnv(24),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
+  /** Firebase 服务账号 JSON；缺省时推送通知禁用 */
+  FIREBASE_SERVICE_ACCOUNT:
+    optionalNonEmptyStringFromEnv('Firebase 服务账号不能为空'),
+
+  /**
+   * 生成应用门禁。名称不带 `APP_` 前缀：Gate 5 的 `requiredEnvironment` 证据
+   * 字面量 `GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e` 已是持久化契约。
+   */
+  GENERATED_APP_WORKSPACE_ROOT: optionalStringFromEnv(),
+  GENERATED_APP_GATE3_EXECUTOR_MODE: optionalStringFromEnv(),
+  GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS: positiveNumberFromEnv(30_000),
+  GENERATED_APP_GATE4_EXECUTOR_MODE: optionalStringFromEnv(),
+  GENERATED_APP_GATE5_EXECUTOR_MODE: optionalStringFromEnv(),
+  GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON: optionalStringFromEnv(),
+  GENERATED_APP_GATE6_EXECUTOR_MODE: optionalStringFromEnv(),
+  GENERATED_APP_GATE7_EXECUTOR_MODE: optionalStringFromEnv(),
 });
 
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {

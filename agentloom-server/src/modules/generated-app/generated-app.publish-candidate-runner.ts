@@ -75,7 +75,6 @@ export class GeneratedAppGate7PublishCandidateRunner {
   getExecutorMode(): GeneratedAppGate7ExecutorMode {
     const rawMode =
       this.configService.get<string>('GENERATED_APP_GATE7_EXECUTOR_MODE') ??
-      this.configService.get<string>('APP_GENERATED_APP_GATE7_EXECUTOR_MODE') ??
       'real';
     const normalizedMode = rawMode.trim().toLowerCase();
 

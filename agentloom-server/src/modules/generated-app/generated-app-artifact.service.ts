@@ -239,9 +239,9 @@ export class GeneratedAppArtifactService {
   ) {}
 
   public resolveWorkspaceRoot(): string {
-    const configuredRoot =
-      this.configService.get<string>('GENERATED_APP_WORKSPACE_ROOT') ??
-      this.configService.get<string>('APP_GENERATED_APP_WORKSPACE_ROOT');
+    const configuredRoot = this.configService.get<string>(
+      'GENERATED_APP_WORKSPACE_ROOT',
+    );
 
     return resolve(
       configuredRoot && configuredRoot.trim().length > 0

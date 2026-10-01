@@ -128,7 +128,6 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
   getExecutorMode(): GeneratedAppGate5ExecutorMode {
     const rawMode =
       this.configService.get<string>('GENERATED_APP_GATE5_EXECUTOR_MODE') ??
-      this.configService.get<string>('APP_GENERATED_APP_GATE5_EXECUTOR_MODE') ??
       'real';
     const normalizedMode = rawMode.trim().toLowerCase();
 
@@ -827,13 +826,9 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
   }
 
   private resolveRealBrowserAvailability(): GeneratedAppGate5RealBrowserAvailability {
-    const forcedUnavailableReason =
-      this.configService.get<string>(
-        'GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON',
-      ) ??
-      this.configService.get<string>(
-        'APP_GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON',
-      );
+    const forcedUnavailableReason = this.configService.get<string>(
+      'GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON',
+    );
 
     if (forcedUnavailableReason?.trim()) {
       return {

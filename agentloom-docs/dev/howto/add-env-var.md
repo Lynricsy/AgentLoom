@@ -23,6 +23,8 @@ APP_WIDGET_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
 
 没有默认值的字段即为必填。读取处用注入的 `ConfigService` 的 `get()`（参照 `agentloom-server/src/app.module.ts` 中读取 `APP_REDIS_URL` 的写法），不要直接读 `process.env`，否则 schema 的默认值与校验不生效。
 
+漏掉这一步时单测会失败：`agentloom-server/src/config/__tests__/env.schema.spec.ts` 的「server 代码读取的环境变量都在 envSchema 中声明」扫描 `agentloom-server/src` 中以字面量读取的键（`configService.get('…')` 与 `process.env.APP_…`），列出所有未在 `envSchema` 中声明的键。
+
 ### 2. 写进 `.env.example`
 
 在 `agentloom-server/.env.example` 中加一行，并在它正上方用连续的 `#` 注释写说明——生成器把这段注释作为配置参考中的「说明」列：

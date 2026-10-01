@@ -820,7 +820,6 @@ export class ShareService {
   private getBaseUrl(): string {
     const baseUrl =
       this.configService.get<string>('APP_FRONTEND_URL') ??
-      this.configService.get<string>('APP_BASE_URL') ??
       process.env.APP_FRONTEND_URL ??
       'http://localhost:5173';
 

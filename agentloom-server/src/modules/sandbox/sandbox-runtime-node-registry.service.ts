@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import { Agent, fetch as undiciFetch } from 'undici';
 
+import type { EnvConfig } from '../../config/env.schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { SandboxRuntimeNode } from '../../database/schema';
@@ -71,7 +73,10 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
   private cacheLoadedAt = 0;
   private readonly dispatchers = new Map<string, Agent>();
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly config: ConfigService<EnvConfig, true>,
+  ) {}
 
   /**
    * 首启引导：仅当注册表为空时，用 env 播种 `default` 节点。
@@ -86,13 +91,13 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
       .limit(1);
     if (existing.length > 0) return;
 
-    const baseUrl = (
-      process.env.APP_FIRECRACKER_RUNTIME_URL ??
-      'https://firecracker-runtime:8443'
-    )
+    const baseUrl = this.config
+      .get('APP_FIRECRACKER_RUNTIME_URL', { infer: true })
       .trim()
       .replace(/\/+$/, '');
-    const serverName = process.env.APP_FIRECRACKER_RUNTIME_SERVER_NAME || null;
+    const serverName = this.config.get('APP_FIRECRACKER_RUNTIME_SERVER_NAME', {
+      infer: true,
+    });
     const inserted = await this.db
       .insert(schema.sandboxRuntimeNodes)
       .values({ id: 'default', baseUrl, serverName, status: 'active' })
@@ -284,16 +289,13 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
     const dispatcher = new Agent({
       connect: {
         ca: readFileSync(
-          process.env.APP_FIRECRACKER_RUNTIME_CA ??
-            '/run/secrets/firecracker-client/ca.crt',
+          this.config.get('APP_FIRECRACKER_RUNTIME_CA', { infer: true }),
         ),
         cert: readFileSync(
-          process.env.APP_FIRECRACKER_RUNTIME_CERT ??
-            '/run/secrets/firecracker-client/tls.crt',
+          this.config.get('APP_FIRECRACKER_RUNTIME_CERT', { infer: true }),
         ),
         key: readFileSync(
-          process.env.APP_FIRECRACKER_RUNTIME_KEY ??
-            '/run/secrets/firecracker-client/tls.key',
+          this.config.get('APP_FIRECRACKER_RUNTIME_KEY', { infer: true }),
         ),
         rejectUnauthorized: true,
         servername: node.serverName || new URL(node.baseUrl).hostname,
@@ -309,16 +311,14 @@ export class SandboxRuntimeNodeRegistryService implements OnModuleInit {
   /**
    * 节点是跨租户共享的物理基础设施，任意租户 admin 都能改会导致越权。
    * private 部署只有一个租户，直接放行；saas 需显式白名单，默认空 = 全部拒绝。
-   *
-   * 必须判「显式等于 private」而非「不等于 saas」：`APP_DEPLOYMENT_MODE` 的
-   * 默认值 `saas` 由 Zod 在 config validate 里合成，只进 ConfigService 的内部
-   * 存储，**不会**回写 process.env。合法地省略该变量时 process.env 读到
-   * undefined，用 `!== 'saas'` 会让每个租户的 owner/admin 都绕过白名单。
-   * 未显式声明 private 就按 saas 处理，方向上 fail-closed。
+   * `APP_DEPLOYMENT_MODE` 省略时 schema 默认 saas，非法值在启动校验即被拒绝。
    */
   assertNodeAdmin(tenantId: string): void {
-    if (process.env.APP_DEPLOYMENT_MODE === 'private') return;
-    const allowed = (process.env.APP_SANDBOX_NODE_ADMIN_TENANT_IDS ?? '')
+    if (this.config.get('APP_DEPLOYMENT_MODE', { infer: true }) === 'private') {
+      return;
+    }
+    const allowed = this.config
+      .get('APP_SANDBOX_NODE_ADMIN_TENANT_IDS', { infer: true })
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean);

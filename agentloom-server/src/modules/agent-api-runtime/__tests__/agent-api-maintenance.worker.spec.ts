@@ -54,7 +54,7 @@ describe('AgentApiMaintenanceWorker', () => {
       .mockReturnValueOnce(idempotencyUpdate)
       .mockReturnValueOnce(conversationsUpdate);
     runService.publishTerminal.mockResolvedValue(undefined);
-    configService.get.mockReturnValue(undefined);
+    configService.get.mockReturnValue(24);
     worker = new AgentApiMaintenanceWorker(
       db as never,
       runService as never,
@@ -96,7 +96,7 @@ describe('AgentApiMaintenanceWorker', () => {
   });
 
   it('结束空闲的 API 对话并发出与 Studio 同形的 ended 事件', async () => {
-    configService.get.mockReturnValue('6');
+    configService.get.mockReturnValue(6);
 
     await worker.process({ name: AGENT_API_MAINTENANCE_JOB_NAME } as never);
 
@@ -112,16 +112,6 @@ describe('AgentApiMaintenanceWorker', () => {
       organizationId: 'tenant-1',
       userId: null,
     });
-  });
-
-  it('空闲时长未配置或非法时使用默认 24 小时', async () => {
-    configService.get.mockReturnValue('abc');
-
-    await worker.process({ name: AGENT_API_MAINTENANCE_JOB_NAME } as never);
-
-    expect(
-      renderWhere(conversationsUpdate.where.mock.calls[0][0]).params,
-    ).toEqual(['api', 'active', 24]);
   });
 
   it('单个租户发布终态失败不影响后续清扫', async () => {

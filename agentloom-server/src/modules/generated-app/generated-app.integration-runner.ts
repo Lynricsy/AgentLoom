@@ -221,7 +221,6 @@ export class GeneratedAppGate4IntegrationRunner {
   getExecutorMode(): GeneratedAppGate4ExecutorMode {
     const rawMode =
       this.configService.get<string>('GENERATED_APP_GATE4_EXECUTOR_MODE') ??
-      this.configService.get<string>('APP_GENERATED_APP_GATE4_EXECUTOR_MODE') ??
       'real';
     const normalizedMode = rawMode.trim().toLowerCase();
 

@@ -275,7 +275,6 @@ export class GeneratedAppGate3WorkspaceRunner {
   getExecutorMode(): GeneratedAppGate3ExecutorMode {
     const rawMode =
       this.configService.get<string>('GENERATED_APP_GATE3_EXECUTOR_MODE') ??
-      this.configService.get<string>('APP_GENERATED_APP_GATE3_EXECUTOR_MODE') ??
       'real';
     const normalizedMode = rawMode.trim().toLowerCase();
 
@@ -2205,9 +2204,9 @@ export class GeneratedAppGate3WorkspaceRunner {
   }
 
   private resolveWorkspaceRoot(): string {
-    const configuredRoot =
-      this.configService.get<string>('GENERATED_APP_WORKSPACE_ROOT') ??
-      this.configService.get<string>('APP_GENERATED_APP_WORKSPACE_ROOT');
+    const configuredRoot = this.configService.get<string>(
+      'GENERATED_APP_WORKSPACE_ROOT',
+    );
 
     return resolve(
       configuredRoot && configuredRoot.trim().length > 0
@@ -2290,13 +2289,9 @@ export class GeneratedAppGate3WorkspaceRunner {
   }
 
   private resolveCommandTimeoutMs(): number {
-    const rawTimeout =
-      this.configService.get<string>(
-        'GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS',
-      ) ??
-      this.configService.get<string>(
-        'APP_GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS',
-      );
+    const rawTimeout = this.configService.get<string | number>(
+      'GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS',
+    );
     const parsed = rawTimeout ? Number(rawTimeout) : 30_000;
 
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;

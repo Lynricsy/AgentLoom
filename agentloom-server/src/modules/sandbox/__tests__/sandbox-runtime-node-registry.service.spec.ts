@@ -19,6 +19,9 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, readFileSync: vi.fn(() => Buffer.from('test-pem')) };
 });
 
+import { ConfigService } from '@nestjs/config';
+
+import { envSchema, type EnvConfig } from '../../../config/env.schema';
 import type { DrizzleDB } from '../../../database/database.module';
 import type { SandboxRuntimeNode } from '../../../database/schema';
 import {
@@ -35,6 +38,21 @@ import {
 } from '../sandbox.exceptions';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
+
+/** 与 AppConfigModule 相同：env 先过 envSchema，默认值由 schema 合成。 */
+const BASE_ENV: Record<string, string> = {
+  APP_DEPLOYMENT_MODE: 'private',
+  APP_DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/agentloom',
+  APP_SUPABASE_URL: 'https://example.supabase.co',
+  APP_SUPABASE_ANON_KEY: 'anon-key',
+  APP_SUPABASE_SERVICE_KEY: 'service-key',
+  APP_JWT_SECRET: 'jwt-secret',
+  APP_REDIS_URL: 'redis://localhost:6379',
+  APP_MASTER_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+  APP_OAUTH_REDIRECT_URL: 'http://localhost:3000/api/v1/auth/oauth/callback',
+  APP_FRONTEND_URL: 'http://localhost:5173',
+  APP_FIRECRACKER_RUNTIME_URL: 'https://seed-manager:8443/',
+};
 
 function makeNode(
   id: string,
@@ -111,8 +129,17 @@ function createDb(): DbStub {
   return stub;
 }
 
-function createService(db: DbStub): SandboxRuntimeNodeRegistryService {
-  return new SandboxRuntimeNodeRegistryService(db as unknown as DrizzleDB);
+function createService(
+  db: DbStub,
+  env: Record<string, string | undefined> = {},
+): SandboxRuntimeNodeRegistryService {
+  const config = new ConfigService<EnvConfig, true>(
+    envSchema.parse({ ...BASE_ENV, ...env }),
+  );
+  return new SandboxRuntimeNodeRegistryService(
+    db as unknown as DrizzleDB,
+    config,
+  );
 }
 
 function capacityResponse(vmsUsed = 0): Response {
@@ -135,10 +162,6 @@ describe('SandboxRuntimeNodeRegistryService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     undiciMocks.agentOptions.length = 0;
-    process.env.APP_DEPLOYMENT_MODE = 'private';
-    process.env.APP_FIRECRACKER_RUNTIME_URL = 'https://seed-manager:8443/';
-    process.env.APP_FIRECRACKER_RUNTIME_SERVER_NAME = 'firecracker-runtime';
-    delete process.env.APP_SANDBOX_NODE_ADMIN_TENANT_IDS;
   });
 
   describe('首启引导', () => {
@@ -158,6 +181,25 @@ describe('SandboxRuntimeNodeRegistryService', () => {
         serverName: 'firecracker-runtime',
         status: 'active',
       });
+    });
+
+    it('未配置 SERVER_NAME 时按 schema 默认值 firecracker-runtime 播种', async () => {
+      const db = createDb();
+      db.selectResults.push([]);
+      db.insertResults.push([{ id: 'default' }]);
+      const service = createService(db, {
+        APP_FIRECRACKER_RUNTIME_URL: 'https://10.0.0.5:8443',
+      });
+
+      await service.onModuleInit();
+
+      const chain = db.insert.mock.results[0]?.value as { values: Mock };
+      expect(chain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseUrl: 'https://10.0.0.5:8443',
+          serverName: 'firecracker-runtime',
+        }),
+      );
     });
 
     it('表非空时绝不回写，避免 env 覆盖 DB 真相', async () => {
@@ -499,8 +541,9 @@ describe('SandboxRuntimeNodeRegistryService', () => {
     });
 
     it('saas 默认全部拒绝', () => {
-      process.env.APP_DEPLOYMENT_MODE = 'saas';
-      const service = createService(createDb());
+      const service = createService(createDb(), {
+        APP_DEPLOYMENT_MODE: 'saas',
+      });
 
       expect(() => service.assertNodeAdmin(TENANT_ID)).toThrow(
         SandboxNodeAdminForbiddenException,
@@ -508,9 +551,10 @@ describe('SandboxRuntimeNodeRegistryService', () => {
     });
 
     it('saas 白名单命中时放行，未命中仍拒绝', () => {
-      process.env.APP_DEPLOYMENT_MODE = 'saas';
-      process.env.APP_SANDBOX_NODE_ADMIN_TENANT_IDS = ` other , ${TENANT_ID} `;
-      const service = createService(createDb());
+      const service = createService(createDb(), {
+        APP_DEPLOYMENT_MODE: 'saas',
+        APP_SANDBOX_NODE_ADMIN_TENANT_IDS: ` other , ${TENANT_ID} `,
+      });
 
       expect(() => service.assertNodeAdmin(TENANT_ID)).not.toThrow();
       expect(() => service.assertNodeAdmin('someone-else')).toThrow(
@@ -518,14 +562,10 @@ describe('SandboxRuntimeNodeRegistryService', () => {
       );
     });
 
-    /**
-     * `APP_DEPLOYMENT_MODE` 的默认值 saas 由 Zod 合成，只进 ConfigService，
-     * 不回写 process.env——合法省略该变量时读到的是 undefined。若按
-     * 「不等于 saas 就放行」实现，任意租户 owner/admin 都能操纵全局节点池。
-     */
-    it('变量缺省时按 saas 处理，仍然拒绝（fail-closed）', () => {
-      delete process.env.APP_DEPLOYMENT_MODE;
-      const service = createService(createDb());
+    it('变量缺省时按 schema 默认 saas 处理，仍然拒绝（fail-closed）', () => {
+      const service = createService(createDb(), {
+        APP_DEPLOYMENT_MODE: undefined,
+      });
 
       expect(() => service.assertNodeAdmin(TENANT_ID)).toThrow(
         SandboxNodeAdminForbiddenException,
@@ -533,9 +573,10 @@ describe('SandboxRuntimeNodeRegistryService', () => {
     });
 
     it('变量缺省 + 白名单命中才放行', () => {
-      delete process.env.APP_DEPLOYMENT_MODE;
-      process.env.APP_SANDBOX_NODE_ADMIN_TENANT_IDS = TENANT_ID;
-      const service = createService(createDb());
+      const service = createService(createDb(), {
+        APP_DEPLOYMENT_MODE: undefined,
+        APP_SANDBOX_NODE_ADMIN_TENANT_IDS: TENANT_ID,
+      });
 
       expect(() => service.assertNodeAdmin(TENANT_ID)).not.toThrow();
       expect(() => service.assertNodeAdmin('someone-else')).toThrow(
@@ -543,13 +584,10 @@ describe('SandboxRuntimeNodeRegistryService', () => {
       );
     });
 
-    it('非法/未知 mode 值也不放行', () => {
-      process.env.APP_DEPLOYMENT_MODE = 'PRIVATE';
-      const service = createService(createDb());
-
-      expect(() => service.assertNodeAdmin(TENANT_ID)).toThrow(
-        SandboxNodeAdminForbiddenException,
-      );
+    it('非法 mode 值在启动校验即被拒绝，服务无法构造', () => {
+      expect(() =>
+        createService(createDb(), { APP_DEPLOYMENT_MODE: 'PRIVATE' }),
+      ).toThrow();
     });
   });
 });

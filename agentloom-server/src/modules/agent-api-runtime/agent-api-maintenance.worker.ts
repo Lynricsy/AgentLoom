@@ -5,13 +5,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Job } from 'bullmq';
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 
+import type { EnvConfig } from '../../config/env.schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { agentApiRuns } from '../../database/schema/agent-api-runs.schema';
 import { agentConversations } from '../../database/schema/agent-conversations.schema';
 import { AgentApiRunService } from './agent-api-run.service';
 import {
-  AGENT_API_CONVERSATION_IDLE_HOURS_DEFAULT,
-  AGENT_API_CONVERSATION_IDLE_HOURS_ENV,
   AGENT_API_IDEMPOTENCY_RETENTION_HOURS,
   AGENT_API_MAINTENANCE_JOB_NAME,
   AGENT_API_MAINTENANCE_QUEUE,
@@ -34,7 +33,7 @@ export class AgentApiMaintenanceWorker extends WorkerHost {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly runService: AgentApiRunService,
     private readonly eventEmitter: EventEmitter2,
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService<EnvConfig, true>,
   ) {
     super();
   }
@@ -112,7 +111,14 @@ export class AgentApiMaintenanceWorker extends WorkerHost {
         and(
           eq(agentConversations.source, 'api'),
           eq(agentConversations.status, 'active'),
-          lt(agentConversations.updatedAt, hoursAgo(this.resolveIdleHours())),
+          lt(
+            agentConversations.updatedAt,
+            hoursAgo(
+              this.configService.get('APP_AGENT_API_CONVERSATION_IDLE_HOURS', {
+                infer: true,
+              }),
+            ),
+          ),
         ),
       )
       .returning({
@@ -131,22 +137,8 @@ export class AgentApiMaintenanceWorker extends WorkerHost {
     }
 
     if (endedConversations.length > 0) {
-      this.logger.log(
-        `已结束 ${endedConversations.length} 个空闲的 API 对话`,
-      );
+      this.logger.log(`已结束 ${endedConversations.length} 个空闲的 API 对话`);
     }
-  }
-
-  private resolveIdleHours(): number {
-    const configured = Number(
-      this.configService.get<string | number>(
-        AGENT_API_CONVERSATION_IDLE_HOURS_ENV,
-      ),
-    );
-
-    return Number.isFinite(configured) && configured > 0
-      ? configured
-      : AGENT_API_CONVERSATION_IDLE_HOURS_DEFAULT;
   }
 }
 

@@ -243,7 +243,7 @@ describe('GeneratedAppGate4IntegrationRunner', () => {
   it('disabled 模式应失败并明确禁止继续后续门禁', () => {
     const runner = new GeneratedAppGate4IntegrationRunner(
       createConfigService({
-        APP_GENERATED_APP_GATE4_EXECUTOR_MODE: 'disabled',
+        GENERATED_APP_GATE4_EXECUTOR_MODE: 'disabled',
       }),
     );
     const plans = buildGate4Plans('disabled-integration');

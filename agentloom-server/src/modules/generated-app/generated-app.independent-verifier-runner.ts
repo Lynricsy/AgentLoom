@@ -95,7 +95,6 @@ export class GeneratedAppGate6IndependentVerifierRunner {
   getExecutorMode(): GeneratedAppGate6ExecutorMode {
     const rawMode =
       this.configService.get<string>('GENERATED_APP_GATE6_EXECUTOR_MODE') ??
-      this.configService.get<string>('APP_GENERATED_APP_GATE6_EXECUTOR_MODE') ??
       'real';
     const normalizedMode = rawMode.trim().toLowerCase();
 

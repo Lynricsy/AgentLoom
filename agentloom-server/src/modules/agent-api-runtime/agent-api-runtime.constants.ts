@@ -32,10 +32,6 @@ export const AGENT_API_STALE_RUN_HOURS = 2;
 /** 幂等记录保留时长，之后清空 `idempotency_key` / `request_hash` */
 export const AGENT_API_IDEMPOTENCY_RETENTION_HOURS = 24;
 
-export const AGENT_API_CONVERSATION_IDLE_HOURS_ENV =
-  'APP_AGENT_API_CONVERSATION_IDLE_HOURS';
-export const AGENT_API_CONVERSATION_IDLE_HOURS_DEFAULT = 24;
-
 export const AGENT_API_RUN_WORKER_LOST_ERROR: AgentApiRunError = {
   type: 'https://agentloom.dev/errors/run-worker-lost',
   title: 'Run worker lost',

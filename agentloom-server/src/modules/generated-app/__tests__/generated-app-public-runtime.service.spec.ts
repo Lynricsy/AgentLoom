@@ -3207,7 +3207,7 @@ describe('public migrated scenarios', () => {
     expect(response.publicShareUrl).toContain(token);
   });
 
-  it('公开链接写入零行时不应返回伪成功，且 APP_BASE_URL 应作为 DTO 地址回退', async () => {
+  it('公开链接写入零行时不应返回伪成功', async () => {
     const app = createGeneratedApp({
       status: 'publish_candidate',
       readiness: createPublishCandidateReadiness(),
@@ -3218,32 +3218,6 @@ describe('public migrated scenarios', () => {
     await expect(
       service.enablePublicShare(TENANT_ID, USER_ID, APP_ID),
     ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
-
-    const token = 'c'.repeat(64);
-    const configService = createConfigService({
-      APP_FRONTEND_URL: undefined,
-      APP_BASE_URL: 'https://api.example.test///',
-    });
-    const fallbackService = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      configService,
-    );
-    mockTenantDb.select.mockReturnValueOnce(
-      createSelectChain([
-        createGeneratedApp({
-          status: 'published',
-          readiness: createPublishCandidateReadiness(),
-          publicShareEnabled: true,
-          publicShareToken: token,
-        }),
-      ]),
-    );
-
-    const response = await fallbackService.findOne(TENANT_ID, APP_ID);
-
-    expect(response.publicShareUrl).toBe(
-      `https://api.example.test/generated-apps/public/${token}`,
-    );
   });
 
   it('公开提交省略 input 时按必填契约拒绝，且不落 submission', async () => {
