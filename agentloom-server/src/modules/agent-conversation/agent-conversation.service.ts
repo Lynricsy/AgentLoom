@@ -193,6 +193,22 @@ export class AgentConversationService {
     return message;
   }
 
+  /**
+   * 在调用方事务内写入一条用户消息（附件按 Studio 对话同一规则校验），不发出任何事件。
+   * 供需要与其他写入同事务提交、并自行决定派发时机的调用方（对外 API 建 run）使用。
+   */
+  async insertUserMessage(
+    dbClient: ConversationDbClient,
+    conversationId: string,
+    tenantId: string,
+    dto: Omit<SendMessageDto, 'role'>,
+  ) {
+    return this.insertMessageRecord(dbClient, conversationId, tenantId, {
+      ...dto,
+      role: 'user',
+    });
+  }
+
   async create(
     agentDefinitionId: string,
     tenantId: string,

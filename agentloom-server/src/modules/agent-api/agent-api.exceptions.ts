@@ -164,3 +164,28 @@ export class RunEventsExpiredException extends DomainException {
     });
   }
 }
+
+/** 请求可解析但取值非法（与全局 Zod 校验错误同一 type） */
+export class AgentApiValidationException extends DomainException {
+  constructor(field: string, message: string) {
+    super({
+      type: `${ERROR_TYPE_BASE}validation-error`,
+      title: 'Unprocessable Entity',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: message,
+      errors: [{ field, message }],
+    });
+  }
+}
+
+export class RunDispatchFailedException extends DomainException {
+  constructor(runId: string) {
+    super({
+      type: `${ERROR_TYPE_BASE}run-dispatch-failed`,
+      title: 'Service Unavailable',
+      status: HttpStatus.SERVICE_UNAVAILABLE,
+      detail: `Run ${runId} could not be dispatched for execution and has been marked failed`,
+      headers: retryAfterHeader(5),
+    });
+  }
+}

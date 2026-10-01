@@ -301,4 +301,33 @@ describe('AgentExecutionService', () => {
     );
     expect(abort.signal.aborted).toBe(false);
   });
+
+  it('abortExecution 跨实例中止活跃 loop，但不结束对话', async () => {
+    const otherInstance = createService(bus.client());
+    await otherInstance.onModuleInit();
+    const abort = new AbortController();
+    service.registerActiveRun('conversation-1', abort);
+
+    await otherInstance.abortExecution('conversation-1');
+
+    expect(abort.signal.aborted).toBe(true);
+    expect(mockConversationService.cancel).not.toHaveBeenCalled();
+    await otherInstance.onModuleDestroy();
+  });
+
+  it('dispatchExecution 把派发失败抛给调用方，已派发的 message-sent 事件不再重复入队', async () => {
+    process.env.APP_SANDBOX_MAINTENANCE_MODE = 'true';
+    await expect(
+      service.dispatchExecution('conversation-1', 'tenant-1'),
+    ).rejects.toMatchObject({ status: 503 });
+
+    delete process.env.APP_SANDBOX_MAINTENANCE_MODE;
+    await service.handleMessageSent({
+      conversationId: 'conversation-1',
+      tenantId: 'tenant-1',
+      messageId: 'message-1',
+      executionDispatched: true,
+    });
+    expect(mockQueue.add).not.toHaveBeenCalled();
+  });
 });

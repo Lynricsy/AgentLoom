@@ -51,6 +51,14 @@ export interface AgentConversationExecutionJobData {
   tenantId: string;
 }
 
+export interface AgentConversationMessageSentEvent {
+  conversationId: string;
+  tenantId: string;
+  messageId: string;
+  /** 发送方已调用 `dispatchExecution` 完成派发，监听器不再重复派发 */
+  executionDispatched?: boolean;
+}
+
 export interface AgentConversationActiveRun {
   abort: AbortController;
   notify: () => void;
@@ -112,11 +120,13 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
   }
 
   @OnEvent('agent-conversation.message-sent')
-  async handleMessageSent(payload: {
-    conversationId: string;
-    tenantId: string;
-    messageId: string;
-  }): Promise<void> {
+  async handleMessageSent(
+    payload: AgentConversationMessageSentEvent,
+  ): Promise<void> {
+    if (payload.executionDispatched) {
+      return;
+    }
+
     this.logger.debug(
       `Received message-sent event for conversation ${payload.conversationId}, dispatching execution`,
     );
@@ -124,6 +134,18 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
       payload.conversationId,
       payload.tenantId,
     );
+  }
+
+  /**
+   * 同步派发对话执行，派发失败（维护模式、入队失败）直接抛给调用方。
+   * `@OnEvent` 监听器的异常会被事件总线吞掉，需要感知派发结果的调用方（对外 API）改走这里，
+   * 随后发出的 message-sent 事件须带 `executionDispatched: true`，避免重复派发。
+   */
+  async dispatchExecution(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    await this.dispatchConversationExecution(conversationId, tenantId);
   }
 
   async startConversation(
@@ -163,8 +185,15 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
       await this.conversationService.cancel(conversationId);
     });
 
+    await this.abortExecution(conversationId);
+  }
+
+  /**
+   * 只中止正在执行的 loop，不改变对话状态（对外 API 取消单个 run 时对话仍可继续使用）。
+   * 本实例直接中止，其余实例经频道中止（本实例收到自己的消息时已无未中止的 loop）。
+   */
+  async abortExecution(conversationId: string): Promise<void> {
     await this.dispatchAfterCommit(async () => {
-      // 本实例直接中止，其余实例经频道中止（本实例收到自己的消息时已无未中止的 loop）
       this.abortLocalRun(conversationId);
       await this.redis.publish(
         AGENT_CONVERSATION_CANCEL_CHANNEL,

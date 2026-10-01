@@ -114,6 +114,8 @@ export class SandboxMaintenanceException extends DomainException {
       title: '沙箱运行时正在维护',
       status: HttpStatus.SERVICE_UNAVAILABLE,
       detail: `Cannot ${action} sandbox while runtime maintenance mode is enabled`,
+      // 维护属于可重试的暂时状态，提示客户端重试间隔
+      headers: { 'Retry-After': '30' },
     });
   }
 }

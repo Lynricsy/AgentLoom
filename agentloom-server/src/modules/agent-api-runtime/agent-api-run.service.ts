@@ -286,6 +286,38 @@ export class AgentApiRunService {
     });
   }
 
+  /**
+   * 把单个 queued run 标记为 cancelled 并发布终态事件（对外 API 取消尚未开始执行的 run）。
+   * run 已离开 queued（例如刚被 worker 标记 running）时不做改动并返回 false。
+   */
+  async cancelQueuedRun(params: {
+    tenantId: string;
+    conversationId: string;
+    runId: string;
+  }): Promise<boolean> {
+    const runIds = await this.settleActiveRuns(
+      params.tenantId,
+      params.conversationId,
+      { status: 'cancelled', stopReason: 'cancelled', error: null },
+      { runId: params.runId, statuses: ['queued'] },
+    );
+
+    return runIds.length > 0;
+  }
+
+  /** 把对话全部 queued run 标记为 cancelled（running 的由执行进程在中止后自行终结） */
+  async cancelQueuedRuns(params: {
+    tenantId: string;
+    conversationId: string;
+  }): Promise<void> {
+    await this.settleActiveRuns(
+      params.tenantId,
+      params.conversationId,
+      { status: 'cancelled', stopReason: 'cancelled', error: null },
+      { statuses: ['queued'] },
+    );
+  }
+
   private async settleActiveRuns(
     tenantId: string,
     conversationId: string,
@@ -294,7 +326,11 @@ export class AgentApiRunService {
       stopReason?: string;
       error: AgentApiRunError | null;
     },
-  ): Promise<void> {
+    filter: {
+      runId?: string;
+      statuses?: readonly (typeof ACTIVE_RUN_STATUSES)[number][];
+    } = {},
+  ): Promise<string[]> {
     const rows = await runInTenantTransaction(this.db, tenantId, async (tx) =>
       tx
         .update(agentApiRuns)
@@ -302,16 +338,18 @@ export class AgentApiRunService {
         .where(
           and(
             eq(agentApiRuns.conversationId, conversationId),
-            inArray(agentApiRuns.status, [...ACTIVE_RUN_STATUSES]),
+            inArray(agentApiRuns.status, [
+              ...(filter.statuses ?? ACTIVE_RUN_STATUSES),
+            ]),
+            filter.runId ? eq(agentApiRuns.id, filter.runId) : undefined,
           ),
         )
         .returning({ id: agentApiRuns.id }),
     );
 
-    await this.publishTerminal(
-      tenantId,
-      rows.map((row) => row.id),
-    );
+    const runIds = rows.map((row) => row.id);
+    await this.publishTerminal(tenantId, runIds);
+    return runIds;
   }
 
   /** 事件流是旁路：写入失败只记录日志，数据库状态才是 run 的真相 */
