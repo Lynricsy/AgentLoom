@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useAuthLoading, useIsAuthenticated } from '@/features/auth'
+import { useAuthLoading, useAuthStore, useIsAuthenticated } from '@/features/auth'
 import { BrandMark } from '@/shared/components/brand'
 import { fadeInUp } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
@@ -50,6 +51,7 @@ export function AcceptInvitationPage() {
   const isAuthenticated = useIsAuthenticated()
   const isAuthLoading = useAuthLoading()
   const acceptMutation = useAcceptOrganizationInvitation()
+  const queryClient = useQueryClient()
 
   const [error, setError] = useState<string | null>(null)
   // 邀请一次性消费，StrictMode 双渲染或重渲染都不能重复 POST
@@ -75,6 +77,10 @@ export function AcceptInvitationPage() {
     void (async () => {
       try {
         const result = await acceptMutation.mutateAsync(token)
+        // 服务端已把 current_organization_id 切到新组织：刷新 session 拿到新 tenant claim，
+        // 再清空按旧租户缓存的查询，避免工作台短暂展示上一个组织的数据
+        await useAuthStore.getState().refreshAndCheckTenant()
+        queryClient.clear()
         notify({
           title: '已加入组织',
           description: `欢迎加入「${result.organization.name}」。`,

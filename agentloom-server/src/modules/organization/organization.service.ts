@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -13,6 +13,7 @@ import {
   OrganizationNotFoundException,
   OrganizationSlugConflictException,
   InvitationNotFoundException,
+  InvitationEmailMismatchException,
   InvitationExpiredOrUsedException,
   PendingInvitationExistsException,
   AlreadyOrganizationMemberException,
@@ -262,6 +263,18 @@ export class OrganizationService {
       throw new InvitationExpiredOrUsedException();
     }
 
+    // 邀请只对受邀邮箱有效：链接一旦外泄，其他登录用户不能凭 token 以该角色加入
+    const acceptingUser = await this.tenantDb.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+    if (
+      !acceptingUser ||
+      acceptingUser.email.trim().toLowerCase() !==
+        invitation.email.trim().toLowerCase()
+    ) {
+      throw new InvitationEmailMismatchException();
+    }
+
     const existingMember =
       await this.tenantDb.query.organizationMembers.findFirst({
         where: and(
@@ -294,15 +307,14 @@ export class OrganizationService {
         })
         .returning();
 
-      // 接受邀请后必须落地 current_organization_id：custom_access_token_hook
-      // 依赖 users.current_organization_id 推导 tenant_id/tenant_role claim，
-      // 缺失会让新成员的 JWT 恒为 tenant_id=null，被 TenantMiddleware 判定
-      // 缺少租户上下文（400 tenant-required），成员实际无法使用组织。
-      // 已选中组织的用户不覆盖，避免抢占其当前正在使用的租户。
+      // 接受邀请即切换到该组织：custom_access_token_hook 依赖
+      // users.current_organization_id 推导 tenant_id/tenant_role claim，Studio 接受后
+      // refreshSession 拿到新组织的 token。已有组织的用户同样切换——接受邀请是明确意图，
+      // 否则新成员在没有组织切换器的情况下永远进不了该组织。
       await tx
         .update(users)
         .set({ currentOrganizationId: invitation.organizationId })
-        .where(and(eq(users.id, userId), isNull(users.currentOrganizationId)));
+        .where(eq(users.id, userId));
 
       const organization = await tx.query.organizations.findFirst({
         where: eq(organizations.id, invitation.organizationId),

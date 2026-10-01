@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
   isAuthenticated: vi.fn(() => true),
   isAuthLoading: vi.fn(() => false),
+  calls: [] as string[],
+  refreshAndCheckTenant: vi.fn(),
+  clearQueries: vi.fn(),
   /** mutateAsync 被 mock 后不再驱动 react-query 状态，isSuccess 由用例显式控制 */
   acceptState: { isSuccess: false },
 }))
@@ -19,6 +22,13 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/features/auth', () => ({
   useIsAuthenticated: () => mocks.isAuthenticated(),
   useAuthLoading: () => mocks.isAuthLoading(),
+  useAuthStore: {
+    getState: () => ({ refreshAndCheckTenant: mocks.refreshAndCheckTenant }),
+  },
+}))
+
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({ clear: mocks.clearQueries }),
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -43,6 +53,15 @@ describe('AcceptInvitationPage', () => {
     mocks.acceptState.isSuccess = false
     mocks.isAuthenticated.mockReturnValue(true)
     mocks.isAuthLoading.mockReturnValue(false)
+    mocks.calls.length = 0
+    mocks.refreshAndCheckTenant.mockImplementation(async () => {
+      mocks.calls.push('refresh')
+      return { success: true, tenantId: 'tenant-new' }
+    })
+    mocks.clearQueries.mockImplementation(() => mocks.calls.push('clear'))
+    mocks.navigate.mockImplementation(async () => {
+      mocks.calls.push('navigate')
+    })
     Object.defineProperty(window, 'location', {
       writable: true,
       value: { pathname: '/invitations/inv-token', search: '', href: '' },
@@ -86,6 +105,8 @@ describe('AcceptInvitationPage', () => {
     expect(mocks.notify).toHaveBeenCalledWith(
       expect.objectContaining({ title: '已加入组织', variant: 'success' }),
     )
+    // 先刷新 session 拿到新组织的 tenant claim，再清空旧租户缓存，最后进入工作台
+    expect(mocks.calls).toEqual(['refresh', 'clear', 'navigate'])
   })
 
   it('邀请失效时展示错误卡而不跳转', async () => {

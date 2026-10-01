@@ -37,16 +37,21 @@ describe('InviteMemberDialog', () => {
     )
 
     await user.type(screen.getByLabelText('邮箱'), 'not-an-email')
-    await user.click(screen.getByRole('button', { name: '发送邀请' }))
+    await user.click(screen.getByRole('button', { name: '生成邀请链接' }))
 
     expect(await screen.findByText('请输入有效的邮箱地址。')).toBeInTheDocument()
     expect(mocks.invite).not.toHaveBeenCalled()
   })
 
-  it('邀请成功后提示并关闭对话框', async () => {
+  it('邀请创建后展示可复制的邀请链接，提示「邀请已创建」且不再声称已发送邮件', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
-    mocks.invite.mockResolvedValue({ id: 'inv-1' })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    mocks.invite.mockResolvedValue({ id: 'inv-1', token: 'tok-abc' })
 
     render(
       <InviteMemberDialog
@@ -61,7 +66,7 @@ describe('InviteMemberDialog', () => {
     await user.click(screen.getByLabelText('邀请角色'))
     await user.click(await screen.findByText('管理员'))
 
-    await user.click(screen.getByRole('button', { name: '发送邀请' }))
+    await user.click(screen.getByRole('button', { name: '生成邀请链接' }))
 
     await waitFor(() =>
       expect(mocks.invite).toHaveBeenCalledWith({
@@ -70,14 +75,23 @@ describe('InviteMemberDialog', () => {
       }),
     )
     expect(mocks.notify).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '邀请已发送', variant: 'success' }),
+      expect.objectContaining({ title: '邀请已创建', variant: 'success' }),
     )
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(mocks.notify).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: '邀请已发送' }),
+    )
+
+    const link = `${window.location.origin}/invitations/tok-abc`
+    expect(await screen.findByLabelText('邀请链接')).toHaveValue(link)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+
+    await user.click(screen.getByRole('button', { name: '复制链接' }))
+    expect(writeText).toHaveBeenCalledWith(link)
   })
 
   it('默认角色为访客', async () => {
     const user = userEvent.setup()
-    mocks.invite.mockResolvedValue({ id: 'inv-2' })
+    mocks.invite.mockResolvedValue({ id: 'inv-2', token: 'tok-2' })
 
     render(
       <InviteMemberDialog organizationId="org-1" open onOpenChange={vi.fn()} />,
@@ -86,7 +100,7 @@ describe('InviteMemberDialog', () => {
     expect(screen.getByLabelText('邀请角色')).toHaveTextContent('访客')
 
     await user.type(screen.getByLabelText('邮箱'), 'viewer@acme.dev')
-    await user.click(screen.getByRole('button', { name: '发送邀请' }))
+    await user.click(screen.getByRole('button', { name: '生成邀请链接' }))
 
     await waitFor(() =>
       expect(mocks.invite).toHaveBeenCalledWith({
@@ -112,7 +126,7 @@ describe('InviteMemberDialog', () => {
     )
 
     await user.type(screen.getByLabelText('邮箱'), 'dup@acme.dev')
-    await user.click(screen.getByRole('button', { name: '发送邀请' }))
+    await user.click(screen.getByRole('button', { name: '生成邀请链接' }))
 
     expect(await screen.findByText('该邮箱已有待处理邀请')).toBeInTheDocument()
     expect(mocks.notify).toHaveBeenCalledWith(

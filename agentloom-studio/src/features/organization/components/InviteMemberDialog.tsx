@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Mail } from 'lucide-react'
+import { Copy, Loader2, Mail } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -47,15 +47,35 @@ export function InviteMemberDialog({
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<OrganizationRole>('viewer')
   const [error, setError] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
 
-  // 每次打开都回到初始状态，避免上一次的报错与邮箱残留
+  // 每次打开都回到初始状态，避免上一次的报错、邮箱与邀请链接残留
   useEffect(() => {
     if (open) {
       setEmail('')
       setRole('viewer')
       setError(null)
+      setInviteLink(null)
     }
   }, [open])
+
+  const handleCopyLink = async () => {
+    if (!inviteLink) return
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+      notify({
+        title: '邀请链接已复制',
+        description: '把链接发给受邀成员即可。',
+        variant: 'success',
+      })
+    } catch {
+      notify({
+        title: '复制失败',
+        description: '请手动选中链接复制。',
+        variant: 'warning',
+      })
+    }
+  }
 
   const handleSubmit = async () => {
     const trimmed = email.trim()
@@ -68,13 +88,14 @@ export function InviteMemberDialog({
     setError(null)
 
     try {
-      await inviteMutation.mutateAsync({ email: trimmed, role })
+      const invitation = await inviteMutation.mutateAsync({ email: trimmed, role })
+      // 服务端不发送邮件：邀请链接是唯一的送达方式，由邀请人复制给对方
+      setInviteLink(`${window.location.origin}/invitations/${invitation.token}`)
       notify({
-        title: '邀请已发送',
-        description: `已向 ${trimmed} 发送加入邀请，接受后即成为「${ORGANIZATION_ROLE_LABELS[role]}」。`,
+        title: '邀请已创建',
+        description: `请把邀请链接发给 ${trimmed}，对方用该邮箱登录并打开链接后即成为「${ORGANIZATION_ROLE_LABELS[role]}」。`,
         variant: 'success',
       })
-      onOpenChange(false)
     } catch (err) {
       const message = await resolveOrganizationErrorMessage(
         err,
@@ -91,7 +112,7 @@ export function InviteMemberDialog({
         <DialogHeader>
           <DialogTitle>邀请成员</DialogTitle>
           <DialogDescription>
-            向对方邮箱发送邀请链接，接受后按所选角色加入组织。
+            生成一次性邀请链接（7 天有效），复制发给对方；对方需用受邀邮箱登录后打开。
           </DialogDescription>
         </DialogHeader>
 
@@ -144,6 +165,24 @@ export function InviteMemberDialog({
             </p>
           </div>
 
+          {inviteLink ? (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="invite-member-link"
+                className="text-xs font-medium text-muted"
+              >
+                邀请链接
+              </label>
+              <div className="flex gap-2">
+                <Input id="invite-member-link" readOnly value={inviteLink} />
+                <Button variant="outline" onClick={() => void handleCopyLink()}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  复制链接
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           {error ? (
             <p className="text-xs font-medium text-error">{error}</p>
           ) : null}
@@ -164,7 +203,7 @@ export function InviteMemberDialog({
             {inviteMutation.isPending ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
             ) : null}
-            发送邀请
+            生成邀请链接
           </Button>
         </DialogFooter>
       </DialogContent>

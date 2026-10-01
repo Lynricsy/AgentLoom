@@ -56,6 +56,17 @@ export class InvitationExpiredOrUsedException extends DomainException {
   }
 }
 
+export class InvitationEmailMismatchException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/invitation-email-mismatch',
+      title: '邀请邮箱不匹配',
+      status: HttpStatus.FORBIDDEN,
+      detail: '该邀请发给了其他邮箱，请使用受邀邮箱登录后再打开邀请链接',
+    });
+  }
+}
+
 export class PendingInvitationExistsException extends DomainException {
   constructor(email: string) {
     super({

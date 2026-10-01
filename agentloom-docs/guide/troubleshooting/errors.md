@@ -54,6 +54,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `insufficient-organization-permission` | 403 | 当前角色不能执行该组织管理操作 | 同上 |
 | `sole-owner-constraint` | 409 | 组织必须至少保留一个 owner | 先把另一位成员设为 owner |
 | `invitation-expired-or-used` | 410 | 邀请已过期或已被使用 | 请管理员重新邀请 |
+| `invitation-email-mismatch` | 403 | 当前登录账号的邮箱与邀请邮箱不一致 | 退出后用受邀邮箱登录，再打开邀请链接 |
 | `pending-invitation-exists` | 409 | 已有一份待接受的邀请 | 等待对方接受或撤回原邀请 |
 | `already-organization-member` | 409 | 对方已是组织成员 | 无需再次邀请 |
 
@@ -149,8 +150,8 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `api-key-invalid` | 401 | 请求头中的 API Token 无效 | 确认使用 `X-Api-Key` 头，值为完整的 `al_` 开头 Token |
 | `platform-api-token-expired` | 401 | API Token 已过期 | 新建一个 Token |
 | `platform-api-token-limit-exceeded` | 409 | 你在当前组织的 API Token 数量已达上限 | 吊销不再使用的 Token，见 [API Token](/guide/integrations/api-keys) |
-
 | `insufficient-scope` | 403 | API Token 的作用域不包含该接口所需的权限，或该接口尚未声明权限 | 新建一个包含所需作用域的 Token，或留空作用域以继承账号权限，见 [API Token](/guide/integrations/api-keys) |
+
 ## 生成应用、分享与导入
 
 | type | HTTP 状态 | 含义 | 处理建议 |

@@ -790,6 +790,12 @@ describe('OrganizationService', () => {
   });
 
   describe('acceptInvitation', () => {
+    beforeEach(() => {
+      db.query.users.findFirst.mockResolvedValue(
+        createUserRecord({ id: TARGET_USER_ID, email: 'Invitee@Example.com' }),
+      );
+    });
+
     it('正常接受邀请并创建成员', async () => {
       const invitation = createInvitationRecord({ role: 'admin' });
       const org = createOrganizationRecord();
@@ -825,7 +831,7 @@ describe('OrganizationService', () => {
       });
     });
 
-    it('接受邀请时把 currentOrganizationId 落到尚未选择组织的用户上', async () => {
+    it('接受邀请后无条件把 currentOrganizationId 切到该组织（含已选择其他组织的用户）', async () => {
       const invitation = createInvitationRecord({ role: 'viewer' });
       const org = createOrganizationRecord();
       const member = createMemberRecord({
@@ -847,7 +853,29 @@ describe('OrganizationService', () => {
       expect(userUpdateChain.set).toHaveBeenCalledWith({
         currentOrganizationId: ORG_ID,
       });
-      expect(userUpdateChain.where).toHaveBeenCalledTimes(1);
+      // 只按用户 id 过滤，不再附带 current_organization_id IS NULL
+      expect(userUpdateChain.where).toHaveBeenCalledWith(
+        eq(users.id, TARGET_USER_ID),
+      );
+    });
+
+    it('登录用户邮箱与受邀邮箱不一致时拒绝接受', async () => {
+      db.query.users.findFirst.mockResolvedValue(
+        createUserRecord({
+          id: TARGET_USER_ID,
+          email: 'someone-else@example.com',
+        }),
+      );
+      db.query.organizationInvitations.findFirst.mockResolvedValue(
+        createInvitationRecord(),
+      );
+
+      await expect(
+        service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/invitation-email-mismatch',
+      });
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it('邀请不存在时抛出 InvitationNotFoundException', async () => {
