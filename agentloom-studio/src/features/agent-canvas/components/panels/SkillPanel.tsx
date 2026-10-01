@@ -1,11 +1,12 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { BookOpenText, Search, Check } from 'lucide-react'
-import { useSkills } from '@/features/skill'
+import { useSkill, useSkills } from '@/features/skill'
 import type { SkillListItem } from '@/features/skill'
 
 interface SkillPanelProps {
   config: Record<string, unknown>
   onApply: (config: Record<string, unknown>) => void
+  onValidationChange?: (hasErrors: boolean) => void
 }
 
 function parseSkillConfig(config: Record<string, unknown>) {
@@ -22,9 +23,22 @@ function parseSkillConfig(config: Record<string, unknown>) {
 export const SkillPanel = memo(function SkillPanel({
   config,
   onApply,
+  onValidationChange,
 }: SkillPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const skill = parseSkillConfig(config)
+  // 运行时 resolveSkillsForAgent 会静默跳过不存在/非 active 的技能，必须在画布上暴露
+  const selectedSkillQuery = useSkill(skill.skillId)
+  const isSelectedSkillUnavailable =
+    Boolean(skill.skillId) &&
+    (selectedSkillQuery.isError ||
+      (selectedSkillQuery.data != null &&
+        selectedSkillQuery.data.status !== 'active'))
+  const hasErrors = !skill.skillId || isSelectedSkillUnavailable
+
+  useEffect(() => {
+    onValidationChange?.(hasErrors)
+  }, [hasErrors, onValidationChange])
 
   const { data: skillsResponse, isLoading } = useSkills({
     status: 'active',
@@ -84,6 +98,11 @@ export const SkillPanel = memo(function SkillPanel({
               清除
             </button>
           </div>
+          {isSelectedSkillUnavailable && (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              该 Skill 已删除或停用，运行时会被跳过，请重新选择
+            </p>
+          )}
         </div>
       )}
 

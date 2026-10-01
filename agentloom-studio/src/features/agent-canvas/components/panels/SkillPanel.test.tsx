@@ -6,10 +6,12 @@ import { SkillPanel } from './SkillPanel'
 
 const mocks = vi.hoisted(() => ({
   useSkills: vi.fn(),
+  useSkill: vi.fn(),
 }))
 
 vi.mock('@/features/skill', () => ({
   useSkills: mocks.useSkills,
+  useSkill: mocks.useSkill,
 }))
 
 function createSkill(overrides: Partial<Skill> = {}): Skill {
@@ -37,6 +39,7 @@ function createSkill(overrides: Partial<Skill> = {}): Skill {
 describe('SkillPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.useSkill.mockReturnValue({ data: undefined, isError: false })
   })
 
   it('在加载中时显示占位状态', () => {
@@ -106,5 +109,46 @@ describe('SkillPanel', () => {
       skillName: '',
       skillDescription: '',
     })
+  })
+
+  it.each([
+    ['已停用', { data: createSkill({ id: 'skill-9', status: 'archived' }), isError: false }],
+    ['已删除（404）', { data: undefined, isError: true }],
+  ])('已选 skill %s 时提示重新选择并上报校验错误', (_label, query) => {
+    mocks.useSkills.mockReturnValue({ data: { data: [createSkill()] }, isLoading: false })
+    mocks.useSkill.mockReturnValue(query)
+    const onValidationChange = vi.fn()
+
+    render(
+      <SkillPanel
+        config={{ skillId: 'skill-9', skillName: '旧技能' }}
+        onApply={vi.fn()}
+        onValidationChange={onValidationChange}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('已删除或停用')
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+  })
+
+  it('未选择 skill 时上报校验错误，选中可用 skill 后清除', () => {
+    mocks.useSkills.mockReturnValue({ data: { data: [createSkill()] }, isLoading: false })
+    const onValidationChange = vi.fn()
+
+    const { rerender } = render(
+      <SkillPanel config={{}} onApply={vi.fn()} onValidationChange={onValidationChange} />,
+    )
+    expect(onValidationChange).toHaveBeenLastCalledWith(true)
+
+    mocks.useSkill.mockReturnValue({ data: createSkill(), isError: false })
+    rerender(
+      <SkillPanel
+        config={{ skillId: 'skill-1', skillName: '代码审查助手' }}
+        onApply={vi.fn()}
+        onValidationChange={onValidationChange}
+      />,
+    )
+    expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

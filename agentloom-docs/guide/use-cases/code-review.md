@@ -31,7 +31,7 @@ docType: howto
 4. 在 Agent Main 的「原生工具」中确认「终端执行」已开启。
 5. 发布 Agent。
 
-技能挂在 Agent 画布上，而不是工作流画布：工作流画布的 Skill 节点只提供「技能 ID」文本框，需要手动填写技能的 ID；填错或技能未激活时节点不会报错，只在输出中带 `warning` 字段，见 [Skill 节点](/guide/nodes/skill)。
+技能挂在 Agent 画布上，而不是工作流画布：这样无论在哪里调用这个 Agent 都会带上它。所选技能后来被删除或停用时，Skill 面板会提示并把节点标为配置错误；运行时节点不会失败，只在输出中带 `warning` 字段，见 [Skill 节点](/guide/nodes/skill)。
 
 沙箱默认不能访问私有网段，访问 `github.com` 这类公网地址不受影响。需要访问内网 Git 服务时，由部署方配置 `FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS`，见 [Firecracker 沙箱](/deploy/firecracker)。
 

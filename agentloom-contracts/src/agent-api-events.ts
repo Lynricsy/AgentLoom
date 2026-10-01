@@ -6,7 +6,9 @@ import { z } from 'zod';
  * - 服务端：执行进程把事件映射为本文件定义的形状后写入 Redis Stream，HTTP 进程原样转发为 SSE 帧；
  *   SSE 的 `event:` 行等于下面的 `event` 字段，`data:` 行是 `data` 字段的 JSON。
  * - 第三方：必须忽略未知 `event`，v1 内只做加法。
- * - 与 `docs/design/agent-external-api.openapi.yaml` 的 `Run` / `RunStreamEvent` 一一对应。
+ * - 本文件是唯一真相源：`AgentApiRunSchema` 经 server `AgentApiRunEnvelopeSwaggerDto` 导出到
+ *   `agentloom-server/sdk/openapi.json`；SSE 事件不进 OpenAPI，以本文件为准（对外说明见
+ *   `agentloom-docs/api/agent-api.md`）。
  */
 
 export const AGENT_API_RUN_STATUSES = [

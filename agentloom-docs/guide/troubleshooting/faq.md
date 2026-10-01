@@ -40,7 +40,7 @@ docType: howto
 
 1. Text Output 的「文本」端口是否有连线。没有值时节点输出空字符串，不报错。
 2. 上游 Agent 节点是否选择了已发布的 Agent，以及该版本的 Agent 画布上是否连接了模型。
-3. 上游是 Skill 节点时，查看它的输出是否带 `warning` 字段：技能 ID 错误或技能未激活时，Skill 节点照常完成，但不提供任何技能，见 [Skill 节点](/guide/nodes/skill)。
+3. 上游是 Skill 节点时，查看它的输出是否带 `warning` 字段：所选技能被删除或停用时，Skill 节点照常完成，但不提供任何技能，见 [Skill 节点](/guide/nodes/skill)。
 
 ### 节点停在「等待干预」
 

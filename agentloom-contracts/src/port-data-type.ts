@@ -5,7 +5,7 @@ import { z } from 'zod';
  *
  * 取值规则：agentloom-server、agentloom-studio、agentloom-type-engine
  * (`src/types/port.rs`)、agentloom-plugin-sdk (`src/types/port.ts`) 四处实际使用值的并集。
- * 任何一端新增取值必须先加到这里，`port-data-type-sync.test.ts` 是机械闸门。
+ * 任何一端新增取值必须先加到这里，同目录 `port-data-type.test.ts`（「PortDataType 跨端同步」）是机械闸门。
  */
 export const PORT_DATA_TYPES = [
   'model',

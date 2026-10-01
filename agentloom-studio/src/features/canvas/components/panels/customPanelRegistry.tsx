@@ -171,10 +171,12 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
     ),
   },
   'skill': {
-    render: ({ node, onConfigChange }) => (
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
       <SkillPanel
         config={node.data.config}
         onApply={(config) => onConfigChange({ config })}
+        onValidationChange={onValidationChange}
       />
     ),
   },
