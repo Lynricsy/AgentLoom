@@ -40,8 +40,8 @@ curl http://localhost:8080/api/v1/health
 ./firecracker/firecracker-smoke.sh
 docker compose --profile tools run --rm server-migrator pnpm db:migrate
 ./scripts/backup-postgres.sh
-COMPOSE_NETWORK=agentloom-app ./scripts/backup-minio.sh
-./scripts/restore.sh --postgres-dump "$PWD/backups/postgres/agentloom-postgres-<timestamp>.dump" --minio-dir "$PWD/backups/minio/agentloom-minio-<timestamp>"
+./scripts/backup-minio.sh
+./scripts/restore.sh --postgres-dump backups/postgres/agentloom-postgres-<timestamp>.dump --minio-dir backups/minio/agentloom-minio-<timestamp>
 ```
 
 ## 文档

@@ -69,7 +69,8 @@ if [[ ! -s "$OUTPUT_FILE" ]]; then
   exit 1
 fi
 
-sha256sum "$OUTPUT_FILE" > "$CHECKSUM_FILE"
+# 校验和文件只记录文件名，备份目录整体搬到别处后 `sha256sum -c` 仍可用。
+(cd "$(dirname "$OUTPUT_FILE")" && sha256sum "$OUTPUT_BASENAME") > "$CHECKSUM_FILE"
 verify_dump
 write_metadata
 prune_old_backups

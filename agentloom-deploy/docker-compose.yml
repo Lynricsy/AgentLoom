@@ -451,17 +451,19 @@ volumes:
   qdrant_data:
   firecracker_state:
 
+# 网络名带固定前缀（默认 agentloom-*），备份/恢复脚本据此定位 MinIO 所在网络；
+# 同一宿主跑多套部署时改 AGENTLOOM_NETWORK_PREFIX 避免撞名。
 networks:
   frontend_net:
-    name: agentloom-frontend
+    name: ${AGENTLOOM_NETWORK_PREFIX:-agentloom}-frontend
   app_net:
-    name: agentloom-app
+    name: ${AGENTLOOM_NETWORK_PREFIX:-agentloom}-app
     internal: true
   data_net:
-    name: agentloom-data
+    name: ${AGENTLOOM_NETWORK_PREFIX:-agentloom}-data
     internal: true
   sandbox_egress_net:
-    name: agentloom-sandbox-egress
+    name: ${AGENTLOOM_NETWORK_PREFIX:-agentloom}-sandbox-egress
   supabase_net:
     name: ${SUPABASE_NETWORK:-supabase-shared}
     external: true

@@ -42,6 +42,10 @@ if [[ ! -d "$MINIO_DIR" ]]; then
   exit 1
 fi
 
+# docker run -v 只接受绝对路径（相对路径会被当成命名卷），在任何破坏性操作前规范化。
+POSTGRES_DUMP="$(cd "$(dirname "$POSTGRES_DUMP")" && pwd)/$(basename "$POSTGRES_DUMP")"
+MINIO_DIR="$(cd "$MINIO_DIR" && pwd)"
+
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -55,8 +59,28 @@ if [[ "${APP_MINIO_USE_SSL:-false}" == "true" ]]; then
   MINIO_SCHEME=https
 fi
 
+# MinIO 所在网络：docker-compose.yml 的 app_net，名字为 <AGENTLOOM_NETWORK_PREFIX>-app。
+COMPOSE_NETWORK=${COMPOSE_NETWORK:-${AGENTLOOM_NETWORK_PREFIX:-agentloom}-app}
+MC_IMAGE=${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}
+BUCKET=${APP_MINIO_BUCKET:-agentloom-documents}
+
 compose() {
   docker compose "${COMPOSE_ARGS[@]}" "$@"
+}
+
+# shellcheck source=lib/db.sh
+source "$DEPLOY_DIR/scripts/lib/db.sh"
+
+run_mc() {
+  docker run --rm \
+    --network "$COMPOSE_NETWORK" \
+    -v "$MINIO_DIR:/restore:ro" \
+    --entrypoint /bin/sh \
+    "$MC_IMAGE" \
+    -eu -c '
+      mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'" >/dev/null
+      '"$1"'
+    '
 }
 
 verify_postgres_dump() {
@@ -64,13 +88,20 @@ verify_postgres_dump() {
   local dump_file
   local checksum_file
 
-  dump_dir=$(cd "$(dirname "$POSTGRES_DUMP")" && pwd)
+  dump_dir=$(dirname "$POSTGRES_DUMP")
   dump_file=$(basename "$POSTGRES_DUMP")
   checksum_file="$POSTGRES_DUMP.sha256"
 
   if [[ -f "$checksum_file" ]]; then
     printf '校验 PostgreSQL dump 校验和：%s\n' "$checksum_file"
-    (cd "$dump_dir" && sha256sum -c "$dump_file.sha256") >/dev/null
+    # 只取哈希值比对，兼容旧版写入绝对路径的 .sha256（备份被移动后路径失效）。
+    local expected actual
+    expected=$(awk '{print $1; exit}' "$checksum_file")
+    actual=$(sha256sum "$POSTGRES_DUMP" | awk '{print $1}')
+    if [[ "$expected" != "$actual" ]]; then
+      printf 'PostgreSQL dump 校验和不匹配：%s\n' "$POSTGRES_DUMP" >&2
+      return 1
+    fi
   else
     printf '未找到 PostgreSQL dump 校验和文件，继续执行结构校验：%s\n' "$checksum_file"
   fi
@@ -83,46 +114,25 @@ verify_postgres_dump() {
 }
 
 verify_minio_snapshot() {
-  local bucket_dir="$MINIO_DIR/${APP_MINIO_BUCKET:-agentloom-documents}"
+  local bucket_dir="$MINIO_DIR/$BUCKET"
   if [[ ! -d "$bucket_dir" ]]; then
     printf 'MinIO 备份目录中缺少 bucket 快照：%s\n' "$bucket_dir" >&2
     return 1
   fi
 }
 
-wait_for_postgres() {
-  local retries=30
-  local attempt=1
-  while (( attempt <= retries )); do
-    if compose exec -T postgres sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 2
-    attempt=$((attempt + 1))
-  done
-
-  printf 'PostgreSQL 未在预期时间内就绪。\n' >&2
-  return 1
-}
-
 wait_for_minio() {
   local retries=30
   local attempt=1
   while (( attempt <= retries )); do
-    if docker run --rm \
-      --network "${COMPOSE_NETWORK:-agentloom-app}" \
-      --entrypoint /bin/sh \
-      "${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}" \
-      -eu -c '
-        mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'" >/dev/null 2>&1
-      ' >/dev/null 2>&1; then
+    if run_mc 'mc ls target >/dev/null' >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
     attempt=$((attempt + 1))
   done
 
-  printf 'MinIO 未在预期时间内就绪。\n' >&2
+  printf 'MinIO 未在预期时间内就绪（网络 %s，镜像 %s）。\n' "$COMPOSE_NETWORK" "$MC_IMAGE" >&2
   return 1
 }
 
@@ -130,13 +140,15 @@ printf '执行恢复前校验...\n'
 verify_postgres_dump
 verify_minio_snapshot
 
-printf '停止应用层容器，避免恢复期间产生新写入...\n'
-compose stop reverse-proxy studio server worker >/dev/null 2>&1 || true
-
 printf '启动 PostgreSQL 与 MinIO ...\n'
 compose up -d postgres minio
 wait_for_postgres
+# 用与正式恢复完全相同的网络、镜像与挂载探测一次：任何一项不可用都在删库之前失败。
 wait_for_minio
+run_mc 'test -d "/restore/'"$BUCKET"'"'
+
+printf '停止应用层容器，避免恢复期间产生新写入...\n'
+compose stop reverse-proxy studio server worker >/dev/null 2>&1 || true
 
 printf '恢复 PostgreSQL：%s\n' "$POSTGRES_DUMP"
 compose exec -T postgres sh -lc '
@@ -146,22 +158,19 @@ compose exec -T postgres sh -lc '
   dropdb --if-exists -U "$POSTGRES_USER" "$POSTGRES_DB"
   createdb -U "$POSTGRES_USER" "$POSTGRES_DB"
 ' >/dev/null
-compose exec -T postgres sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$POSTGRES_DUMP"
+# dump 中的属主与 GRANT（例如 authenticated 角色的表权限，RLS 请求依赖它）必须原样恢复，
+# 所以不加 --no-owner/--no-privileges；为此先确保这些集群级角色存在（新数据卷上没有）。
+ensure_supabase_roles >/dev/null
+compose exec -T postgres sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore --exit-on-error --single-transaction -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < "$POSTGRES_DUMP"
 
 printf '恢复 MinIO：%s\n' "$MINIO_DIR"
-docker run --rm \
-  --network "${COMPOSE_NETWORK:-agentloom-app}" \
-  -v "$MINIO_DIR:/restore:ro" \
-  --entrypoint /bin/sh \
-  "${MC_IMAGE:-pgsty/mc:RELEASE.2026-09-16T00-00-00Z}" \
-  -eu -c '
-    mc alias set target "'"${MINIO_SCHEME}"'://'"${APP_MINIO_ENDPOINT:-minio}"':'"${APP_MINIO_PORT:-9000}"'" "'"${APP_MINIO_ACCESS_KEY:-agentloom}"'" "'"${APP_MINIO_SECRET_KEY:-change-me-minio-password}"'"
-    mc mb --ignore-existing "target/'"${APP_MINIO_BUCKET:-agentloom-documents}"'"
-    mc mirror --overwrite --remove /restore/'"${APP_MINIO_BUCKET:-agentloom-documents}"' "target/'"${APP_MINIO_BUCKET:-agentloom-documents}"'"
-  '
+run_mc '
+  mc mb --ignore-existing "target/'"$BUCKET"'"
+  mc mirror --overwrite --remove "/restore/'"$BUCKET"'" "target/'"$BUCKET"'"
+'
 
 printf '重新启动应用层容器...\n'
-compose up -d server worker studio reverse-proxy
+compose up -d --wait server worker studio reverse-proxy
 
 printf '执行恢复后烟雾检查...\n'
 compose exec -T postgres sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1"' >/dev/null

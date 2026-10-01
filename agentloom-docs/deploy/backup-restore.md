@@ -6,7 +6,7 @@ docType: howto
 
 为 Compose 部署备份 PostgreSQL 与 MinIO、按小时自动执行，并在数据损坏或迁移服务器时恢复。脚本在 `agentloom-deploy/scripts/`，定时器在 `agentloom-deploy/systemd/`。Helm Chart 不包含备份资产。
 
-本页命令在 2026-10-01 对一套运行中的 Compose 部署实跑过（project 名被覆盖为 `docs-verify-deploydocs`，部署目录 `/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy`），输出原样粘贴；systemd 单元未安装验证。
+本页命令在 2026-10-01 对一套运行中的 Compose 部署实跑过（「备份 PostgreSQL」一节的输出来自 project `docs-verify-deploydocs`、部署目录 `/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy`；「备份 MinIO」与「恢复」两节的输出来自 project `fixlab-deploy`、部署目录 `/root/Projects/Ling/fixlab-deploy/agentloom-deploy`），输出原样粘贴；systemd 单元未安装验证。
 
 ## 备份范围
 
@@ -41,7 +41,7 @@ PostgreSQL 备份完成：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-de
 元数据文件：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/postgres/agentloom-postgres-20261001-180000.dump.meta
 ```
 
-产物在 `backups/postgres/`：`agentloom-postgres-<YYYYmmdd-HHMMSS>.dump`、同名 `.sha256`（`sha256sum` 输出，记录的是 dump 的绝对路径）与 `.meta`（创建时间、格式、库名、恢复命令）。dump 写出后脚本用 `POSTGRES_IMAGE` 中的 `pg_restore --list` 校验可读，然后删除 `backups/postgres/` 下修改时间超过 `POSTGRES_BACKUP_RETENTION_DAYS` 天（默认 7）的旧产物。
+产物在 `backups/postgres/`：`agentloom-postgres-<YYYYmmdd-HHMMSS>.dump`、同名 `.sha256`（只记录文件名，整个备份目录搬到别处后仍可校验）与 `.meta`（创建时间、格式、库名、恢复命令）。dump 写出后脚本用 `POSTGRES_IMAGE` 中的 `pg_restore --list` 校验可读，然后删除 `backups/postgres/` 下修改时间超过 `POSTGRES_BACKUP_RETENTION_DAYS` 天（默认 7）的旧产物。
 
 可覆盖的变量：
 
@@ -57,44 +57,29 @@ PostgreSQL 备份完成：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-de
 ## 备份 MinIO
 
 ```bash
-COMPOSE_NETWORK=agentloom-app ./scripts/backup-minio.sh
+./scripts/backup-minio.sh
 ```
 
 ```text
 启动 MinIO（若尚未运行）...
- Container docs-verify-deploydocs-minio-1 Running
-导出 MinIO bucket agentloom-documents 到 /var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/minio/agentloom-minio-20261001-180300 ...
+导出 MinIO bucket agentloom-documents 到 /root/Projects/Ling/fixlab-deploy/agentloom-deploy/backups/minio/agentloom-minio-t1 ...
 Added `source` successfully.
 `source/agentloom-documents/verify/hello.txt` -> `/backup/agentloom-documents/verify/hello.txt`
 ┌───────┬─────────────┬──────────┬────────────┐
 │ Total │ Transferred │ Duration │ Speed      │
-│ 6 B   │ 6 B         │ 00m00s   │ 2.74 KiB/s │
+│ 6 B   │ 6 B         │ 00m00s   │ 2.33 KiB/s │
 └───────┴─────────────┴──────────┴────────────┘
-MinIO 备份完成：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/minio/agentloom-minio-20261001-180300
-元数据文件：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/minio/agentloom-minio-20261001-180300/backup.meta
+MinIO 备份完成：/root/Projects/Ling/fixlab-deploy/agentloom-deploy/backups/minio/agentloom-minio-t1
+元数据文件：/root/Projects/Ling/fixlab-deploy/agentloom-deploy/backups/minio/agentloom-minio-t1/backup.meta
 ```
+
+（验证时用 `TIMESTAMP=t1` 固定了目录名，省略了 `Container … Running/Healthy` 行。）
 
 产物是目录 `backups/minio/agentloom-minio-<YYYYmmdd-HHMMSS>/`，内含 `<bucket>/` 镜像与 `backup.meta`。超过 `MINIO_BACKUP_RETENTION_DAYS` 天（默认 7）的旧目录被删除。
 
-::: warning 已知问题：MinIO 备份
+脚本用 `docker run --network <AGENTLOOM_NETWORK_PREFIX>-app`（默认 `agentloom-app`，即 MinIO 所在的 `app_net`）运行 `mc`。bucket 不存在时 `mc ls` 失败并退出；bucket 为空时得到一个空的 `<bucket>/` 目录，备份照常完成（新部署在第一个文件上传之前的定时备份不会失败）。
 
-- **网络名**：脚本用 `docker run --network "${COMPOSE_NETWORK:-agentloom-private}"` 连接 MinIO，而 MinIO 所在网络是 `agentloom-app`。不设置 `COMPOSE_NETWORK` 时失败：
-
-  ```text
-  docker: Error response from daemon: failed to set up container networking: network agentloom-private not found
-  ```
-
-  因此上面的命令显式传 `COMPOSE_NETWORK=agentloom-app`。`agentloom-deploy/systemd/agentloom-backup-minio.service` 没有设置该变量，安装前在 `ExecStart` 的命令中加上它。`agentloom-deploy/scripts/restore.sh` 的默认值是 `agentloom-app`，两个脚本默认不一致。
-- **空 bucket**：bucket 中没有对象时 `mc mirror` 不创建目录，脚本以失败退出，不写 `backup.meta`：
-
-  ```text
-  MinIO 备份目录中缺少 bucket 快照：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/minio/agentloom-minio-20261001-180200/agentloom-documents
-  ```
-
-  新部署在用户上传第一个文件之前，定时 MinIO 备份会一直失败。
-:::
-
-可覆盖的变量：`BACKUP_ROOT`（默认 `agentloom-deploy/` 下的 `backups/minio`）、`TIMESTAMP`、`OUTPUT_DIR`（默认 `$BACKUP_ROOT/agentloom-minio-$TIMESTAMP`）、`METADATA_FILE`、`MINIO_BACKUP_RETENTION_DAYS`、`COMPOSE_NETWORK`、`MC_IMAGE`（`.env` 未设置时脚本内默认 `minio/mc:latest`）。
+可覆盖的变量：`BACKUP_ROOT`（默认 `agentloom-deploy/` 下的 `backups/minio`）、`TIMESTAMP`、`OUTPUT_DIR`（默认 `$BACKUP_ROOT/agentloom-minio-$TIMESTAMP`，相对路径会被转换为绝对路径）、`METADATA_FILE`、`MINIO_BACKUP_RETENTION_DAYS`、`COMPOSE_NETWORK`（默认 `<AGENTLOOM_NETWORK_PREFIX>-app`）、`MC_IMAGE`（`.env` 未设置时脚本内默认 `pgsty/mc:RELEASE.2026-09-16T00-00-00Z`）。
 
 ## 安装定时备份
 
@@ -113,7 +98,7 @@ MinIO 备份完成：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/
    sudo cp systemd/agentloom-backup-*.service systemd/agentloom-backup-*.timer /etc/systemd/system/
    ```
 
-2. 部署目录不是 `/opt/agentloom/agentloom-deploy` 时，编辑两个 service 的 `AGENTLOOM_DEPLOY_DIR`；在 MinIO service 的 `ExecStart` 中加入 `COMPOSE_NETWORK=agentloom-app`（见上方已知问题）。
+2. 部署目录不是 `/opt/agentloom/agentloom-deploy` 时，编辑两个 service 的 `AGENTLOOM_DEPLOY_DIR`。
 3. 启用：
 
    ```bash
@@ -136,70 +121,46 @@ MinIO 备份完成：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/
 用法：./scripts/restore.sh --postgres-dump <dump-file> --minio-dir <backup-dir>
 ```
 
-执行顺序：校验 dump 的 `.sha256`（文件存在时）与 `pg_restore --list` 可读性、检查 MinIO 目录中有 `<bucket>/` → 停止 `reverse-proxy`、`studio`、`server`、`worker` → 启动 `postgres` 与 `minio` → 终止库上的连接、`dropdb` 后 `createdb`、`pg_restore --no-owner --no-privileges` → 以 `mc mirror --overwrite --remove` 把备份目录同步回 bucket（备份中没有的对象会被删除）→ 重新启动应用容器 → 检查数据库、server `/api/v1/health` 与入口 `/healthz`。
+执行顺序：
 
-两个参数都传**绝对路径**：
+1. 把两个参数转换为绝对路径；校验 dump 的 `.sha256`（文件存在时，只比较哈希值）与 `pg_restore --list` 可读性；检查 MinIO 目录中有 `<bucket>/`。
+2. 启动 `postgres` 与 `minio`，用正式恢复相同的网络、`MC_IMAGE` 与挂载运行一次 `mc` 探测。网络、镜像或挂载任一不可用时在这里失败退出，数据库与应用容器都未被改动。
+3. 停止 `reverse-proxy`、`studio`、`server`、`worker`。
+4. 终止库上的连接，`dropdb` 后 `createdb`；确保 Supabase 兼容角色（`supabase_auth_admin`、`authenticated`、`anon`、`service_role`、`postgres`）存在并补上数据库级授权；`pg_restore --exit-on-error --single-transaction` 原样恢复属主与 `GRANT`（server 的按租户请求以 `authenticated` 角色访问表，依赖这些授权）。
+5. 以 `mc mirror --overwrite --remove` 把备份目录同步回 bucket（备份中没有的对象会被删除）。
+6. `docker compose up -d --wait` 重新启动应用容器，检查数据库、server `/api/v1/health` 与入口 `/healthz`。
 
 ```bash
 ./scripts/restore.sh \
-  --postgres-dump "$PWD/backups/postgres/agentloom-postgres-20261001-180000.dump" \
-  --minio-dir "$PWD/backups/minio/agentloom-minio-20261001-180300"
+  --postgres-dump backups/postgres/agentloom-postgres-t1.dump \
+  --minio-dir backups/minio/agentloom-minio-t1
 ```
 
 ```text
 执行恢复前校验...
-校验 PostgreSQL dump 校验和：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/postgres/agentloom-postgres-20261001-180000.dump.sha256
+校验 PostgreSQL dump 校验和：/root/Projects/Ling/fixlab-deploy/agentloom-deploy/backups/postgres/agentloom-postgres-t1.dump.sha256
 校验 PostgreSQL dump 结构可恢复...
-停止应用层容器，避免恢复期间产生新写入...
 启动 PostgreSQL 与 MinIO ...
- Container docs-verify-deploydocs-postgres-1 Running
- Container docs-verify-deploydocs-minio-1 Running
-恢复 PostgreSQL：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/postgres/agentloom-postgres-20261001-180000.dump
-恢复 MinIO：/var/tmp/docs-verify-deploydocs/AgentLoom/agentloom-deploy/backups/minio/agentloom-minio-20261001-180300
-Added `target` successfully.
+停止应用层容器，避免恢复期间产生新写入...
+恢复 PostgreSQL：/root/Projects/Ling/fixlab-deploy/agentloom-deploy/backups/postgres/agentloom-postgres-t1.dump
+恢复 MinIO：/root/Projects/Ling/fixlab-deploy/agentloom-deploy/backups/minio/agentloom-minio-t1
 Bucket created successfully `target/agentloom-documents`.
-`/restore/agentloom-documents/verify/hello.txt` -> `target/agentloom-documents/verify/hello.txt`
-┌───────┬─────────────┬──────────┬─────────┐
-│ Total │ Transferred │ Duration │ Speed   │
-│ 6 B   │ 6 B         │ 00m00s   │ 489 B/s │
-└───────┴─────────────┴──────────┴─────────┘
+┌───────┬─────────────┬──────────┬───────┐
+│ Total │ Transferred │ Duration │ Speed │
+│ 0 B   │ 0 B         │ 00m00s   │ 0 B/s │
+└───────┴─────────────┴──────────┴───────┘
 重新启动应用层容器...
 执行恢复后烟雾检查...
 恢复完成：数据库、对象存储与基础健康检查均已通过。
 ```
 
-（「重新启动应用层容器」之后的容器启动行已省略。）恢复期间入口不可用，验证时整个过程约 17 秒。
+（省略了 `Container …` 行；bucket 中的对象与备份一致，所以 `mc mirror` 传输量为 0。）恢复后用同一账号登录并请求按租户访问的接口：`GET /api/v1/organizations/current`、`/api/v1/sandbox-nodes`、`/api/v1/agent-definitions` 均返回 200，`has_table_privilege('authenticated','organizations','SELECT')` 为 `t`。
 
-::: warning 已知问题：恢复
+恢复会终止 GoTrue 持有的数据库连接，恢复完成后的**第一次**登录可能返回 500（GoTrue 日志 `terminating connection due to administrator command (SQLSTATE 57P01)`），重试即成功。
 
-- **相对路径**：`--minio-dir` 用相对路径时，脚本在 PostgreSQL **已经被删除重建、应用容器已停止**之后才失败：
+把 `COMPOSE_NETWORK` 设成不存在的网络时，脚本在第 2 步退出（`MinIO 未在预期时间内就绪（网络 fixlab-deploy-nonexist，…）`），`organizations` 表中的数据保持不变。
 
-  ```text
-  docker: Error response from daemon: create backups/minio/agentloom-minio-20261001-180300: "backups/minio/agentloom-minio-20261001-180300" includes invalid characters for a local volume name, only "[a-zA-Z0-9][a-zA-Z0-9_.-]" are allowed. If you intended to pass a host directory, use absolute path
-  ```
-
-  失败后用绝对路径重跑整条命令即可恢复。`.sha256` 文件记录的是备份时的绝对路径，把备份拷到其他位置或其他服务器后校验和检查会失败；此时删除或重写 `.sha256` 再恢复。
-- **权限丢失**：`pg_restore --no-privileges` 丢弃了 dump 中的全部 `GRANT`（例如 `GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.organizations TO authenticated;`）。脚本自带的健康检查仍然通过，但按租户访问数据的请求返回 500，server 日志为：
-
-  ```text
-  cause: PostgresError: permission denied for table organizations
-  ```
-
-  恢复完成后，用同一份 dump 只回放权限条目：
-
-  ```bash
-  docker compose exec -T postgres sh -lc '
-    cat > /tmp/restore.dump &&
-    pg_restore --list /tmp/restore.dump | grep " ACL " > /tmp/acl.list &&
-    PGPASSWORD="$POSTGRES_PASSWORD" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" -L /tmp/acl.list /tmp/restore.dump;
-    rm -f /tmp/restore.dump /tmp/acl.list
-  ' < "$PWD/backups/postgres/agentloom-postgres-20261001-180000.dump"
-  ```
-
-  命令无输出、退出码为 0。验证时此前返回 500 的 `GET /api/v1/sandbox-nodes` 随后返回 200。
-:::
-
-`restore.sh` 读取的变量：`COMPOSE_FILE`、`ENV_FILE`、`COMPOSE_NETWORK`（默认 `agentloom-app`）、`MC_IMAGE`、`POSTGRES_IMAGE`，以及 `.env` 中的 `APP_MINIO_ENDPOINT`、`APP_MINIO_PORT`、`APP_MINIO_ACCESS_KEY`、`APP_MINIO_SECRET_KEY`、`APP_MINIO_BUCKET`、`APP_MINIO_USE_SSL`。
+`restore.sh` 读取的变量：`COMPOSE_FILE`、`ENV_FILE`、`COMPOSE_NETWORK`（默认 `<AGENTLOOM_NETWORK_PREFIX>-app`）、`MC_IMAGE`、`POSTGRES_IMAGE`，以及 `.env` 中的 `APP_MINIO_ENDPOINT`、`APP_MINIO_PORT`、`APP_MINIO_ACCESS_KEY`、`APP_MINIO_SECRET_KEY`、`APP_MINIO_BUCKET`、`APP_MINIO_USE_SSL`。
 
 ## 相关
 
