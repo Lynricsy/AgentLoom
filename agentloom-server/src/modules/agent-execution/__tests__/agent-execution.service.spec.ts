@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import {
   AgentExecutionService,
+  AGENT_CONVERSATION_CANCEL_CHANNEL,
   AGENT_CONVERSATION_EXECUTION_JOB,
 } from '../agent-execution.service';
 
@@ -28,8 +29,62 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   ),
 }));
 
+interface FakeRedisClient {
+  publish: Mock<(channel: string, message: string) => Promise<number>>;
+  duplicate: () => unknown;
+}
+
+type MessageHandler = (channel: string, message: string) => void;
+
+/** 进程内模拟的 Redis pub/sub：同一 bus 上的多个 client 代表多个服务实例 */
+class FakeRedisBus {
+  private readonly subscribers = new Set<{
+    channels: Set<string>;
+    handlers: MessageHandler[];
+  }>();
+
+  client(): FakeRedisClient {
+    return {
+      publish: vi.fn(async (channel: string, message: string) => {
+        const receivers = [...this.subscribers].filter((subscriber) =>
+          subscriber.channels.has(channel),
+        );
+        for (const receiver of receivers) {
+          for (const handler of receiver.handlers) {
+            handler(channel, message);
+          }
+        }
+        return receivers.length;
+      }),
+      duplicate: () => this.subscriberClient(),
+    };
+  }
+
+  private subscriberClient() {
+    const state = { channels: new Set<string>(), handlers: [] as MessageHandler[] };
+    this.subscribers.add(state);
+    return {
+      status: 'ready',
+      on: (event: string, handler: MessageHandler) => {
+        if (event === 'message') {
+          state.handlers.push(handler);
+        }
+      },
+      subscribe: async (...channels: string[]) => {
+        channels.forEach((channel) => state.channels.add(channel));
+      },
+      unsubscribe: async (...channels: string[]) => {
+        channels.forEach((channel) => state.channels.delete(channel));
+      },
+      quit: async () => {
+        this.subscribers.delete(state);
+      },
+    };
+  }
+}
+
 type ServiceInternals = {
-  getConversationIdentityOrThrow: ReturnType<typeof vi.fn>;
+  getConversationIdentityOrThrow: Mock;
 };
 
 type ConversationIdentity = {
@@ -40,18 +95,17 @@ type ConversationIdentity = {
 
 describe('AgentExecutionService', () => {
   let service: AgentExecutionService;
+  let bus: FakeRedisBus;
+  let redis: FakeRedisClient;
 
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    delete process.env.APP_SANDBOX_MAINTENANCE_MODE;
-
-    service = new AgentExecutionService(
+  function createService(client: FakeRedisClient) {
+    const instance = new AgentExecutionService(
       {} as never,
       mockQueue as never,
       mockConversationService as never,
+      client as never,
     );
-    mockQueue.getJob.mockResolvedValue(null);
-    const serviceInternals = service as unknown as ServiceInternals;
+    const serviceInternals = instance as unknown as ServiceInternals;
     serviceInternals.getConversationIdentityOrThrow = vi
       .fn<() => Promise<ConversationIdentity>>()
       .mockResolvedValue({
@@ -59,6 +113,22 @@ describe('AgentExecutionService', () => {
         tenantId: 'tenant-1',
         status: 'active',
       });
+    return instance;
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    delete process.env.APP_SANDBOX_MAINTENANCE_MODE;
+
+    bus = new FakeRedisBus();
+    redis = bus.client();
+    service = createService(redis);
+    await service.onModuleInit();
+    mockQueue.getJob.mockResolvedValue(null);
+  });
+
+  afterEach(async () => {
+    await service.onModuleDestroy();
   });
 
   it('startConversation 会写入首条消息并入队执行任务', async () => {
@@ -195,5 +265,40 @@ describe('AgentExecutionService', () => {
     );
     expect(abortSpy).toHaveBeenCalledTimes(1);
     expect(notifySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('取消请求发到另一个实例时，经频道中止本实例的活跃 loop', async () => {
+    mockConversationService.cancel.mockResolvedValue({ data: {} });
+    const otherInstance = createService(bus.client());
+    await otherInstance.onModuleInit();
+
+    const abort = new AbortController();
+    const handle = service.registerActiveRun('conversation-1', abort);
+    const notifySpy = vi.spyOn(handle!, 'notify');
+
+    await otherInstance.cancelExecution('conversation-1');
+
+    expect(abort.signal.aborted).toBe(true);
+    expect(notifySpy).toHaveBeenCalledTimes(1);
+    await otherInstance.onModuleDestroy();
+  });
+
+  it('本地没有活跃 loop 时仍会广播取消，频道上的非法消息被忽略', async () => {
+    mockConversationService.cancel.mockResolvedValue({ data: {} });
+    const abort = new AbortController();
+    service.registerActiveRun('conversation-2', abort);
+
+    await redis.publish(AGENT_CONVERSATION_CANCEL_CHANNEL, 'not-json');
+    await redis.publish(
+      AGENT_CONVERSATION_CANCEL_CHANNEL,
+      JSON.stringify({ conversationId: 42 }),
+    );
+    await service.cancelExecution('conversation-1');
+
+    expect(redis.publish).toHaveBeenLastCalledWith(
+      AGENT_CONVERSATION_CANCEL_CHANNEL,
+      JSON.stringify({ conversationId: 'conversation-1' }),
+    );
+    expect(abort.signal.aborted).toBe(false);
   });
 });

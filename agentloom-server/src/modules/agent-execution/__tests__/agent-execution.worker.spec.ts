@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { Logger } from '@nestjs/common';
 
 import { AgentExecutionWorker } from '../agent-execution.worker';
+import { AgentExecutionWorkerPersistenceService } from '../agent-execution-worker-persistence.service';
 import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
 import type { LlmService } from '../../llm/llm.service';
 
@@ -113,6 +114,10 @@ const {
   },
 }));
 
+const { afterCommitHooks } = vi.hoisted(() => ({
+  afterCommitHooks: [] as Array<() => Promise<void>>,
+}));
+
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
     async (
@@ -121,6 +126,9 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
       operation: (dbClient: unknown) => Promise<unknown>,
     ) => operation(db),
   ),
+  registerAfterCommitHook: vi.fn((hook: () => Promise<void>) => {
+    afterCommitHooks.push(hook);
+  }),
 }));
 
 function createAsyncIterable<T>(items: readonly T[]): AsyncIterable<T> {
@@ -3494,6 +3502,331 @@ describe('AgentExecutionWorker', () => {
           error: 'sandbox unavailable',
         }),
       );
+    });
+  });
+
+  describe('Agent API run 生命周期', () => {
+    const mockAgentApiRunService = {
+      markRunning: vi.fn(),
+      finalizeTurnInTransaction: vi.fn(),
+      publishTerminal: vi.fn(),
+      failActiveRuns: vi.fn(),
+      cancelActiveRuns: vi.fn(),
+    };
+    let apiWorker: AgentExecutionWorker;
+    let apiInternals: WorkerInternals;
+
+    const turnResult = (overrides: Record<string, unknown> = {}) => ({
+      assistantText: '部分输出',
+      toolCalls: [],
+      toolResults: [],
+      stopReason: 'end_turn',
+      segments: [],
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      afterCommitHooks.length = 0;
+      mockAgentApiRunService.markRunning.mockReset().mockResolvedValue('run-1');
+      mockAgentApiRunService.finalizeTurnInTransaction
+        .mockReset()
+        .mockResolvedValue(['run-1']);
+      mockAgentApiRunService.publishTerminal
+        .mockReset()
+        .mockResolvedValue(undefined);
+      mockAgentApiRunService.failActiveRuns
+        .mockReset()
+        .mockResolvedValue(undefined);
+      mockAgentApiRunService.cancelActiveRuns
+        .mockReset()
+        .mockResolvedValue(undefined);
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+      apiWorker = new AgentExecutionWorker(
+        mockDb as never,
+        mockRuntime as never,
+        mockAdapterFactory as never,
+        mockExecutionService as never,
+        mockEventBridge as never,
+        mockSandboxService as never,
+        mockWorkspaceIntegrationService as never,
+        mockAgentDefinitionService as never,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        mockAgentApiRunService as never,
+      );
+      apiInternals = apiWorker as unknown as WorkerInternals;
+    });
+
+    it('取到待处理消息后、运行轮次前以已发布版本标记 run 为 running', async () => {
+      const calls: string[] = [];
+      setupLoopMocks(apiInternals, {
+        context: makeActiveContext({ publishedVersionId: 'version-1' }),
+        pendingMessages: [
+          [
+            { id: 'msg-1', content: 'a', createdAt: new Date() },
+            { id: 'msg-2', content: 'b', createdAt: new Date() },
+          ],
+          [],
+        ],
+      });
+      mockAgentApiRunService.markRunning.mockImplementation(async () => {
+        calls.push('markRunning');
+        return 'run-1';
+      });
+      apiInternals.runConversationTurn = vi.fn(async () => {
+        calls.push('turn');
+        return turnResult();
+      });
+
+      await apiWorker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockAgentApiRunService.markRunning).toHaveBeenCalledWith({
+        tenantId: 't-1',
+        conversationId: 'c-1',
+        pendingMessageIds: ['msg-1', 'msg-2'],
+        agentVersionId: 'version-1',
+      });
+      expect(calls).toEqual(['markRunning', 'turn']);
+      expect(mockAgentApiRunService.failActiveRuns).not.toHaveBeenCalled();
+      expect(mockAgentApiRunService.cancelActiveRuns).not.toHaveBeenCalled();
+    });
+
+    it('准备阶段失败时把活跃 run 标记为 run-failed 并带上错误信息', async () => {
+      apiInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(makeActiveContext());
+      apiInternals.prepareRuntimeSession = vi
+        .fn()
+        .mockRejectedValue(new Error('Runtime init failed'));
+      apiInternals.safeUpdateExecutionMetadata = vi.fn().mockResolvedValue({});
+
+      await expect(apiWorker.executeAgentLoop('c-1', 't-1')).rejects.toThrow(
+        'Runtime init failed',
+      );
+
+      expect(mockAgentApiRunService.failActiveRuns).toHaveBeenCalledWith({
+        tenantId: 't-1',
+        conversationId: 'c-1',
+        error: {
+          type: 'https://agentloom.dev/errors/run-failed',
+          title: 'Run failed',
+          detail: 'Runtime init failed',
+        },
+      });
+    });
+
+    it('对话已结束（被取消）时把排队中的 run 标记为 cancelled', async () => {
+      setupLoopMocks(apiInternals, {
+        context: makeActiveContext({
+          conversation: {
+            id: 'c-1',
+            agentDefinitionId: 'agent-1',
+            tenantId: 't-1',
+            status: 'ended',
+            metadata: {},
+          },
+        }),
+      });
+
+      await apiWorker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockAgentApiRunService.cancelActiveRuns).toHaveBeenCalledWith({
+        tenantId: 't-1',
+        conversationId: 'c-1',
+      });
+    });
+
+    it('job 失败事件把遗留的活跃 run 标记为 run-worker-lost', async () => {
+      apiWorker.onFailed(
+        createJob('execute-agent-loop', {
+          conversationId: 'c-1',
+          tenantId: 't-1',
+        }),
+        new Error('job stalled more than allowable limit'),
+      );
+
+      await vi.waitFor(() =>
+        expect(mockAgentApiRunService.failActiveRuns).toHaveBeenCalledWith({
+          tenantId: 't-1',
+          conversationId: 'c-1',
+          error: {
+            type: 'https://agentloom.dev/errors/run-worker-lost',
+            title: 'Run worker lost',
+          },
+        }),
+      );
+    });
+
+    describe('persistConversationTurn()', () => {
+      const insertChain = {
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn(),
+      };
+      const updateChain = {
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn(),
+      };
+      const persistenceDb = {
+        insert: vi.fn(() => insertChain),
+        update: vi.fn(() => updateChain),
+      };
+      let persistence: AgentExecutionWorkerPersistenceService;
+
+      beforeEach(() => {
+        insertChain.returning
+          .mockReset()
+          .mockResolvedValue([{ id: 'assistant-1' }]);
+        updateChain.where.mockReset().mockResolvedValue(undefined);
+        persistence = new AgentExecutionWorkerPersistenceService(
+          persistenceDb as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          mockAgentApiRunService as never,
+        );
+        // 会话 metadata 读取与 run 终结无关；它是 private 方法，经测试接缝返回空 metadata
+        const metadataSeam = persistence as unknown as {
+          loadConversationMetadata: () => Promise<Record<string, unknown>>;
+        };
+        vi.spyOn(metadataSeam, 'loadConversationMetadata').mockResolvedValue(
+          {},
+        );
+      });
+
+      const pending = [
+        {
+          id: 'msg-1',
+          content: 'a',
+          contentType: 'text',
+          metadata: {},
+          createdAt: new Date(),
+        },
+      ];
+
+      it('同事务终结 run，提交后才发布终态事件', async () => {
+        await persistence.persistConversationTurn(
+          'c-1',
+          't-1',
+          pending,
+          turnResult() as never,
+          'session-1',
+        );
+
+        expect(
+          mockAgentApiRunService.finalizeTurnInTransaction,
+        ).toHaveBeenCalledWith(persistenceDb, {
+          conversationId: 'c-1',
+          pendingMessageIds: ['msg-1'],
+          assistantMessageId: 'assistant-1',
+          stopReason: 'end_turn',
+        });
+        expect(mockAgentApiRunService.publishTerminal).not.toHaveBeenCalled();
+
+        await Promise.all(afterCommitHooks.map((hook) => hook()));
+
+        expect(mockAgentApiRunService.publishTerminal).toHaveBeenCalledWith(
+          't-1',
+          ['run-1'],
+        );
+      });
+
+      it('cancelled 轮次不写 assistant 消息，但 run 仍按 cancelled 终结', async () => {
+        await persistence.persistConversationTurn(
+          'c-1',
+          't-1',
+          pending,
+          turnResult({ stopReason: 'cancelled' }) as never,
+          'session-1',
+        );
+
+        expect(persistenceDb.insert).not.toHaveBeenCalled();
+        expect(
+          mockAgentApiRunService.finalizeTurnInTransaction,
+        ).toHaveBeenCalledWith(persistenceDb, {
+          conversationId: 'c-1',
+          pendingMessageIds: ['msg-1'],
+          assistantMessageId: null,
+          stopReason: 'cancelled',
+        });
+      });
+
+      it('失败轮次的部分输出写入后 run 带 run-failed 终结；取消导致的中断记为 cancelled', async () => {
+        await persistence.persistConversationTurn(
+          'c-1',
+          't-1',
+          pending,
+          turnResult() as never,
+          'session-1',
+          { incomplete: true, errorMessage: 'provider 502' },
+        );
+        await persistence.persistConversationTurn(
+          'c-1',
+          't-1',
+          pending,
+          turnResult() as never,
+          'session-1',
+          { incomplete: true, errorMessage: 'aborted', aborted: true },
+        );
+
+        expect(
+          mockAgentApiRunService.finalizeTurnInTransaction.mock.calls.map(
+            ([, params]) => params,
+          ),
+        ).toEqual([
+          {
+            conversationId: 'c-1',
+            pendingMessageIds: ['msg-1'],
+            assistantMessageId: 'assistant-1',
+            stopReason: 'end_turn',
+            failure: {
+              type: 'https://agentloom.dev/errors/run-failed',
+              title: 'Run failed',
+              detail: 'provider 502',
+            },
+          },
+          expect.objectContaining({ stopReason: 'cancelled' }),
+        ]);
+      });
+
+      it('Studio 对话（无 run）不注册提交后回调', async () => {
+        mockAgentApiRunService.finalizeTurnInTransaction.mockResolvedValue([]);
+
+        await persistence.persistConversationTurn(
+          'c-1',
+          't-1',
+          pending,
+          turnResult() as never,
+          'session-1',
+        );
+
+        expect(afterCommitHooks).toHaveLength(0);
+      });
     });
   });
 });

@@ -2,12 +2,16 @@ import { Module, type Provider } from '@nestjs/common';
 import { BullModule, getQueueToken } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import type { Queue } from 'bullmq';
+import type Redis from 'ioredis';
 
+import { REDIS_CLIENT } from '../../common/redis/redis.constants';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   AGENT_RUNTIME_FACTORY,
   type AgentAdapterFactory,
 } from '../agent/agent-adapter.factory';
+import { AgentApiRunService } from '../agent-api-runtime/agent-api-run.service';
+import { AgentApiRuntimeModule } from '../agent-api-runtime/agent-api-runtime.module';
 import { AgentModule } from '../agent/agent.module';
 import {
   AGENT_RUNTIME,
@@ -52,11 +56,14 @@ const agentExecutionServiceProvider: Provider = {
     db: DrizzleDB,
     executionQueue: Queue,
     conversationService: AgentConversationService,
-  ) => new AgentExecutionService(db, executionQueue, conversationService),
+    redis: Redis,
+  ) =>
+    new AgentExecutionService(db, executionQueue, conversationService, redis),
   inject: [
     DRIZZLE,
     getQueueToken(AGENT_CONVERSATION_EXECUTION_QUEUE),
     AgentConversationService,
+    REDIS_CLIENT,
   ],
 };
 
@@ -81,6 +88,7 @@ const agentExecutionWorkerProvider: Provider = {
     conversationTitleService?: ConversationTitleService,
     selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     smartRoutingService?: SmartRoutingService,
+    agentApiRunService?: AgentApiRunService,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -101,6 +109,7 @@ const agentExecutionWorkerProvider: Provider = {
       conversationTitleService,
       selfEvolutionToolsProvider,
       smartRoutingService,
+      agentApiRunService,
     ),
   inject: [
     DRIZZLE,
@@ -121,6 +130,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: ConversationTitleService, optional: true },
     { token: SelfEvolutionToolsProvider, optional: true },
     { token: SmartRoutingService, optional: true },
+    AgentApiRunService,
   ],
 };
 
@@ -138,6 +148,7 @@ const agentExecutionWorkerProvider: Provider = {
     SkillModule,
     LlmModule,
     SelfEvolutionModule,
+    AgentApiRuntimeModule,
     BullModule.registerQueue({
       name: AGENT_CONVERSATION_EXECUTION_QUEUE,
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,

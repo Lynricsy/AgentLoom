@@ -18,6 +18,11 @@ import {
 } from '../../database/schema/agent-definitions.schema';
 import { isRecoverableAgentRuntimeErrorMessage } from '../agent/agent-runtime-error.utils';
 import { memorySessions, type MemorySession } from '../../database/schema';
+import { AgentApiRunService } from '../agent-api-runtime/agent-api-run.service';
+import {
+  AGENT_API_RUN_WORKER_LOST_ERROR,
+  buildAgentApiRunFailedError,
+} from '../agent-api-runtime/agent-api-runtime.constants';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
 import type {
@@ -933,6 +938,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly conversationTitleService?: ConversationTitleService,
     private readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     private readonly smartRoutingService?: SmartRoutingService,
+    private readonly agentApiRunService?: AgentApiRunService,
     @Optional()
     injectedPersistenceService?: AgentExecutionWorkerPersistenceService,
     @Optional()
@@ -960,6 +966,7 @@ export class AgentExecutionWorker extends WorkerHost {
         conversationTitleService,
         selfEvolutionToolsProvider,
         smartRoutingService,
+        agentApiRunService,
       );
     this.runtimeService =
       injectedRuntimeService ??
@@ -1007,6 +1014,23 @@ export class AgentExecutionWorker extends WorkerHost {
       `Agent conversation job failed for ${job.data.conversationId}: ${error.message}`,
       error.stack,
     );
+
+    // job 失败（含执行进程崩溃后 stalled 超限）时，遗留的活跃 run 一律终结
+    void this.agentApiRunService
+      ?.failActiveRuns({
+        tenantId: job.data.tenantId,
+        conversationId: job.data.conversationId,
+        error: AGENT_API_RUN_WORKER_LOST_ERROR,
+      })
+      .catch((settleError: unknown) => {
+        this.logger.warn(
+          `Failed to fail agent API runs for ${job.data.conversationId}: ${
+            settleError instanceof Error
+              ? settleError.message
+              : String(settleError)
+          }`,
+        );
+      });
   }
 
   async executeAgentLoop(
@@ -1027,6 +1051,7 @@ export class AgentExecutionWorker extends WorkerHost {
     }
 
     let runtime: IAgentRuntime | null = null;
+    let failureDetail: string | undefined;
     let session: AgentSession | null = null;
     let executionMetadata: ConversationExecutionMetadata = {};
     let conversationMetadata: Record<string, unknown> = {};
@@ -1255,6 +1280,13 @@ export class AgentExecutionWorker extends WorkerHost {
           break;
         }
 
+        await this.agentApiRunService?.markRunning({
+          tenantId,
+          conversationId,
+          pendingMessageIds: currentPendingMessages.map((message) => message.id),
+          agentVersionId: context.publishedVersionId ?? null,
+        });
+
         const historyMessages =
           executionMetadata.lastProcessedMessageId && shouldRebuildHistoryOnce
             ? await this.runtimeService.loadConversationHistoryMessages(
@@ -1325,6 +1357,7 @@ export class AgentExecutionWorker extends WorkerHost {
       const errorSummary =
         this.runtimeService.describeConversationExecutionError(error);
       const errorMessage = errorSummary.errorMessage;
+      failureDetail = errorMessage;
 
       if (
         error instanceof ConversationTurnFailedError &&
@@ -1349,6 +1382,7 @@ export class AgentExecutionWorker extends WorkerHost {
                 ...(errorSummary.rawErrorMessage
                   ? { rawErrorMessage: errorSummary.rawErrorMessage }
                   : {}),
+                ...(abort.signal.aborted ? { aborted: true } : {}),
               },
             );
           if (conversationHasSandbox) {
@@ -1440,6 +1474,12 @@ export class AgentExecutionWorker extends WorkerHost {
       return;
     } finally {
       this.executionService.clearActiveRun(conversationId, abort);
+      await this.settleAgentApiRuns(
+        tenantId,
+        conversationId,
+        terminalStatus,
+        failureDetail,
+      );
     }
 
     await this.persistenceService.safeUpdateExecutionMetadata(
@@ -1478,5 +1518,41 @@ export class AgentExecutionWorker extends WorkerHost {
       status: terminalStatus,
       executionType: 'conversation',
     });
+  }
+
+  /**
+   * loop 以失败或取消结束时，终结仍处于 queued/running 的 API run
+   * （准备阶段失败、轮次中途抛错未能持久化、取消发生在轮次之外等情况）。
+   */
+  private async settleAgentApiRuns(
+    tenantId: string,
+    conversationId: string,
+    terminalStatus: 'completed' | 'cancelled' | 'failed',
+    failureDetail: string | undefined,
+  ): Promise<void> {
+    if (!this.agentApiRunService || terminalStatus === 'completed') {
+      return;
+    }
+
+    try {
+      if (terminalStatus === 'failed') {
+        await this.agentApiRunService.failActiveRuns({
+          tenantId,
+          conversationId,
+          error: buildAgentApiRunFailedError(failureDetail),
+        });
+      } else {
+        await this.agentApiRunService.cancelActiveRuns({
+          tenantId,
+          conversationId,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to settle agent API runs for ${conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 }

@@ -7,7 +7,10 @@ import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 
-import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import {
+  registerAfterCommitHook,
+  runInTenantTransaction,
+} from '../../common/interceptors/tenant-transaction.context';
 import type { DrizzleDB } from '../../database/database.module';
 import {
   agentConversations,
@@ -21,6 +24,8 @@ import {
 } from '../../database/schema/agent-definitions.schema';
 import { isRecoverableAgentRuntimeErrorMessage } from '../agent/agent-runtime-error.utils';
 import { memorySessions, type MemorySession } from '../../database/schema';
+import { AgentApiRunService } from '../agent-api-runtime/agent-api-run.service';
+import { buildAgentApiRunFailedError } from '../agent-api-runtime/agent-api-runtime.constants';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
 import type {
@@ -207,6 +212,7 @@ export class AgentExecutionWorkerPersistenceService {
     protected readonly conversationTitleService?: ConversationTitleService,
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     protected readonly smartRoutingService?: SmartRoutingService,
+    protected readonly agentApiRunService?: AgentApiRunService,
   ) {}
 
   public async persistConversationTurn(
@@ -220,6 +226,8 @@ export class AgentExecutionWorkerPersistenceService {
       errorMessage?: string;
       errorCode?: string;
       rawErrorMessage?: string;
+      /** 轮次因取消而中断：保留部分输出，但 API run 记为 cancelled */
+      aborted?: boolean;
     },
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
@@ -286,6 +294,37 @@ export class AgentExecutionWorkerPersistenceService {
           .returning({ id: agentMessages.id });
 
         lastAssistantMessageId = assistantMessage.id;
+      }
+
+      // API run 与本轮消息同事务进入终态；cancelled 轮次没有 assistant 消息也要终结
+      if (this.agentApiRunService && pendingMessages.length > 0) {
+        const agentApiRunService = this.agentApiRunService;
+        const finalizedRunIds =
+          await agentApiRunService.finalizeTurnInTransaction(dbClient, {
+            conversationId,
+            pendingMessageIds: pendingMessages.map((message) => message.id),
+            assistantMessageId: lastAssistantMessageId ?? null,
+            stopReason: options?.aborted ? 'cancelled' : turnResult.stopReason,
+            ...(options?.incomplete
+              ? { failure: buildAgentApiRunFailedError(options.errorMessage) }
+              : {}),
+          });
+        if (finalizedRunIds.length > 0) {
+          registerAfterCommitHook(async () => {
+            try {
+              await agentApiRunService.publishTerminal(
+                tenantId,
+                finalizedRunIds,
+              );
+            } catch (error) {
+              this.logger.warn(
+                `Failed to publish agent API run terminal events for ${conversationId}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          });
+        }
       }
 
       const lastProcessedMessageId = pendingMessages.at(-1)?.id;

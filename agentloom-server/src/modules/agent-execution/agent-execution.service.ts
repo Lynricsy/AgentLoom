@@ -1,7 +1,14 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
 import { and, eq } from 'drizzle-orm';
+import type Redis from 'ioredis';
 import type { ConversationSnapshotMessage } from '@agentloom/contracts';
 
 import {
@@ -9,6 +16,10 @@ import {
   registerAfterCommitHook,
   runInTenantTransaction,
 } from '../../common/interceptors/tenant-transaction.context';
+import {
+  safeQuitRedis,
+  safeUnsubscribeRedis,
+} from '../../common/redis/redis-shutdown.util';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type { DrizzleDB } from '../../database/database.module';
 import {
@@ -32,6 +43,9 @@ export const AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS = {
 
 export const AGENT_CONVERSATION_IDLE_WAIT_MS = 5_000;
 
+/** 跨实例取消频道：任一实例发起取消，所有实例（含自身）中止本地的活跃 loop */
+export const AGENT_CONVERSATION_CANCEL_CHANNEL = '__agent_conversation_cancel__';
+
 export interface AgentConversationExecutionJobData {
   conversationId: string;
   tenantId: string;
@@ -53,19 +67,49 @@ type ConversationIdentity = {
 };
 
 @Injectable()
-export class AgentExecutionService {
+export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentExecutionService.name);
   private readonly activeRuns = new Map<string, AgentConversationActiveRun>();
   private readonly notificationWaiters = new Map<
     string,
     Set<NotificationWaiter>
   >();
+  private subscriber: Redis | null = null;
 
   constructor(
     private readonly db: DrizzleDB,
     private readonly executionQueue: Queue,
     private readonly conversationService: AgentConversationService,
+    private readonly redis: Redis,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const subscriber = this.redis.duplicate();
+    this.subscriber = subscriber;
+    subscriber.on('message', (channel: string, rawMessage: string) => {
+      if (channel !== AGENT_CONVERSATION_CANCEL_CHANNEL) {
+        return;
+      }
+
+      const conversationId = this.parseCancelMessage(rawMessage);
+      if (conversationId) {
+        this.abortLocalRun(conversationId);
+      }
+    });
+    await subscriber.subscribe(AGENT_CONVERSATION_CANCEL_CHANNEL);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (!this.subscriber) {
+      return;
+    }
+
+    await safeUnsubscribeRedis(
+      this.subscriber,
+      AGENT_CONVERSATION_CANCEL_CHANNEL,
+    );
+    await safeQuitRedis(this.subscriber);
+  }
 
   @OnEvent('agent-conversation.message-sent')
   async handleMessageSent(payload: {
@@ -120,14 +164,36 @@ export class AgentExecutionService {
     });
 
     await this.dispatchAfterCommit(async () => {
-      const activeRun = this.activeRuns.get(conversationId);
-      if (!activeRun) {
-        return;
-      }
-
-      activeRun.abort.abort();
-      activeRun.notify();
+      // 本实例直接中止，其余实例经频道中止（本实例收到自己的消息时已无未中止的 loop）
+      this.abortLocalRun(conversationId);
+      await this.redis.publish(
+        AGENT_CONVERSATION_CANCEL_CHANNEL,
+        JSON.stringify({ conversationId }),
+      );
     });
+  }
+
+  private abortLocalRun(conversationId: string): void {
+    const activeRun = this.activeRuns.get(conversationId);
+    if (!activeRun || activeRun.abort.signal.aborted) {
+      return;
+    }
+
+    activeRun.abort.abort();
+    activeRun.notify();
+  }
+
+  private parseCancelMessage(rawMessage: string): string | null {
+    try {
+      const parsed = JSON.parse(rawMessage) as { conversationId?: unknown };
+      return typeof parsed.conversationId === 'string' &&
+        parsed.conversationId.length > 0
+        ? parsed.conversationId
+        : null;
+    } catch {
+      this.logger.warn('忽略无法解析的对话取消消息');
+      return null;
+    }
   }
 
   registerActiveRun(
