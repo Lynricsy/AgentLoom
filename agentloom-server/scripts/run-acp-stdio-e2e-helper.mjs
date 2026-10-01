@@ -586,6 +586,26 @@ async function runScenario() {
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    // SandboxRuntimeNodeRegistryService.onModuleInit 启动时查询并播种该平台表（迁移 0077）
+    await sql.unsafe(`
+      DO $$
+      BEGIN
+        CREATE TYPE sandbox_runtime_node_status_enum AS ENUM ('active', 'draining', 'disabled');
+      EXCEPTION
+        WHEN duplicate_object THEN NULL;
+      END
+      $$;
+    `);
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS sandbox_runtime_nodes (
+        id varchar(32) PRIMARY KEY,
+        base_url varchar(256) NOT NULL,
+        server_name varchar(128),
+        status sandbox_runtime_node_status_enum NOT NULL DEFAULT 'active',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
     await sql.unsafe(
       `GRANT SELECT, INSERT, UPDATE, DELETE ON revoked_tokens TO authenticated`,
     );
