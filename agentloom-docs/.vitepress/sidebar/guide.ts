@@ -148,7 +148,7 @@ const guide: DefaultTheme.SidebarItem[] = [
     collapsed: true,
     items: [
       { text: '协作概述', link: '/guide/collaboration/' },
-      { text: '组织与工作区', link: '/guide/collaboration/workspace' },
+      { text: '管理组织成员', link: '/guide/collaboration/workspace' },
       { text: '角色与权限', link: '/guide/collaboration/roles' },
       { text: '自治策略', link: '/guide/collaboration/autonomy-policy' },
       { text: '市场', link: '/guide/collaboration/marketplace' },
@@ -166,11 +166,11 @@ const guide: DefaultTheme.SidebarItem[] = [
     ],
   },
   {
-    text: '账户设置',
+    text: '账户与设置',
     collapsed: true,
     items: [
-      { text: '账户概述', link: '/guide/account/' },
-      { text: '安全设置', link: '/guide/account/security' },
+      { text: '账户与设置', link: '/guide/account/' },
+      { text: '账户安全', link: '/guide/account/security' },
       { text: '通知', link: '/guide/account/notifications' },
     ],
   },
