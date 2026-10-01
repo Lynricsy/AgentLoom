@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 import type { RoutingCandidate } from '../../core/routing-candidate';
 import type { RoutingContext } from '../../core/routing-context';
@@ -67,22 +67,43 @@ describe('RandomRouter', () => {
     }
   });
 
-  it('应该在 100 次调用中近似均匀分布（3 个候选）', async () => {
-    const candidates = makeCandidates(3);
-    const counts: Record<string, number> = {};
+  describe('Math.random 到候选的映射', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
 
-    for (let i = 0; i < 100; i++) {
-      const decision = await router.routeSingle(candidates, baseContext);
-      const selected = decision.selectedModelId!;
-      counts[selected] = (counts[selected] ?? 0) + 1;
-    }
+    it('[0, 1) 上等距的随机数把每个候选选中相同次数（3 个候选）', async () => {
+      const candidates = makeCandidates(3);
+      const samples = 99;
+      let call = 0;
+      // 等距取样 (i + 0.5) / samples 覆盖整个 [0, 1)，替代真随机：真随机下 100 次里
+      // 某个候选少于 20 次的概率约 0.4%，断言会偶发失败
+      vi.spyOn(Math, 'random').mockImplementation(
+        () => (call++ + 0.5) / samples,
+      );
+      const counts: Record<string, number> = {};
 
-    // 每个候选应该被选中 20-50 次（宽松范围避免 flaky）
-    for (const candidate of candidates) {
-      const count = counts[candidate.id] ?? 0;
-      expect(count).toBeGreaterThanOrEqual(20);
-      expect(count).toBeLessThanOrEqual(50);
-    }
+      for (let i = 0; i < samples; i++) {
+        const decision = await router.routeSingle(candidates, baseContext);
+        const selected = decision.selectedModelId!;
+        counts[selected] = (counts[selected] ?? 0) + 1;
+      }
+
+      expect(counts).toEqual({ 'model-0': 33, 'model-1': 33, 'model-2': 33 });
+    });
+
+    it('随机数取到区间两端时仍落在首尾候选上', async () => {
+      const candidates = makeCandidates(3);
+      vi.spyOn(Math, 'random')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(1 - Number.EPSILON);
+
+      const first = await router.routeSingle(candidates, baseContext);
+      const last = await router.routeSingle(candidates, baseContext);
+
+      expect(first.selectedModelId).toBe('model-0');
+      expect(last.selectedModelId).toBe('model-2');
+    });
   });
 
   it('单个候选时应该始终选择该候选', async () => {
