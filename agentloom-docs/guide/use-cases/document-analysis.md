@@ -102,7 +102,7 @@ Agent 结束后，服务端把回复解析为 JSON 并按 Schema 校验，通过
 ## 已知限制
 
 - 配置了「Schema」时，Agent 的回复不是合法 JSON 或不符合 Schema 都会让 Agent 节点失败（错误以 `Agent 回复不符合输出 Schema` 等开头），工作流随之失败；在系统提示词中强调「只输出 JSON」可以降低这种情况。
-- 画布上 `text` 与 `json` 之间的「转换」连线不会在服务端做格式转换，下游节点收到的是原值。例如 Agent「回复」连到 JSON Output 时，JSON Output 收到的是字符串，会被包装为 `{ "value": "<回复文本>" }`。
+- 如果改把 Agent 的「回复」（文本）连到 JSON Output，服务端会先按 `parse_json` 把回复解析为 JSON；回复不是合法 JSON 时 JSON Output 收到原始字符串（包装为 `{ "value": "<回复文本>" }`），执行详情中该节点带有 `port-value-transform-failed` 告警。
 
 ## 相关
 

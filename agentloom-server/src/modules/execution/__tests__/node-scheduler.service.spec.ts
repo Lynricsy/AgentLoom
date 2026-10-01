@@ -70,6 +70,7 @@ import type {
   ReactFlowEdge,
   ReactFlowNode,
 } from '../../../database/schema';
+import type { PortTransformWarning } from '../port-value-transform.util';
 import type { DagExecutionPlan } from '../dag-resolver.service';
 import {
   NODE_EXECUTION_PROVIDERS,
@@ -523,6 +524,173 @@ describe('facade migrated scenarios', () => {
           makeStep({ nodeId: 'node-a', status: 'completed', result: null }),
         ]),
       ).toThrow(NodeInputResolutionException);
+    });
+
+    describe('跨类型连线按 PORT_DATA_TYPE_TRANSFORM_RULES 变换上游值', () => {
+      const textSource = makeNode('pre', 'input-preprocessor', {
+        outputPorts: [{ id: 'text-out', dataType: 'text' }],
+      });
+      const jsonTarget = makeNode('out', 'json-output', {
+        inputPorts: [{ id: 'json-in', dataType: 'json' }],
+      });
+      const textEdge = [makeEdge('pre', 'out', 'text-out', 'json-in')];
+      const textStep = (text: string) =>
+        makeStep({
+          nodeId: 'pre',
+          nodeType: 'input-preprocessor',
+          status: 'completed',
+          result: { text, 'text-out': text },
+        });
+
+      it('text → json：下游拿到 parse_json 解析后的对象', () => {
+        expect(
+          service.resolveNodeInput(
+            'out',
+            textEdge,
+            [textStep('{"score": 0.9, "tags": ["a"]}')],
+            [textSource, jsonTarget],
+          ),
+        ).toEqual({ 'json-in': { score: 0.9, tags: ['a'] } });
+      });
+
+      it('text → json：文本不是合法 JSON 时透传原值并收集告警，不抛错', () => {
+        const warnings: PortTransformWarning[] = [];
+
+        expect(
+          service.resolveNodeInput(
+            'out',
+            textEdge,
+            [textStep('not json')],
+            [textSource, jsonTarget],
+            warnings,
+          ),
+        ).toEqual({ 'json-in': 'not json' });
+        expect(warnings).toEqual([
+          expect.objectContaining({
+            type: 'port-value-transform-failed',
+            transformFn: 'parse_json',
+            sourceNodeId: 'pre',
+            sourcePortId: 'text-out',
+            targetNodeId: 'out',
+            targetPortId: 'json-in',
+            message: expect.stringContaining('文本不是合法 JSON'),
+          }),
+        ]);
+      });
+
+      it('scheduleNode：变换失败时把告警写入步骤 checkpointData.warnings，节点照常派发', async () => {
+        const steps = [
+          textStep('not json'),
+          makeStep({
+            id: 'step-out',
+            nodeId: 'out',
+            nodeType: 'json-output',
+            status: 'pending',
+          }),
+        ];
+        const setSpy = vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        });
+        db.update.mockReturnValue({ set: setSpy });
+        const dispatch = vi
+          .spyOn(nodeDispatcher, 'dispatch')
+          .mockResolvedValue(true);
+        const onNodeFailed = vi
+          .spyOn(service, 'onNodeFailed')
+          .mockResolvedValue(undefined);
+
+        await service.scheduleNode(
+          EXECUTION_ID,
+          'out',
+          TENANT_ID,
+          makeSnapshot([textSource, jsonTarget], textEdge),
+          steps,
+          { skipLatestState: true },
+        );
+
+        expect(setSpy).toHaveBeenCalledWith({
+          input: { 'json-in': 'not json' },
+          checkpointData: {
+            warnings: [
+              expect.objectContaining({
+                type: 'port-value-transform-failed',
+                transformFn: 'parse_json',
+              }),
+            ],
+          },
+        });
+        expect(dispatch).toHaveBeenCalledWith(
+          expect.objectContaining({
+            input: { 'json-in': 'not json' },
+            step: expect.objectContaining({
+              checkpointData: { warnings: [expect.any(Object)] },
+            }),
+          }),
+        );
+        expect(onNodeFailed).not.toHaveBeenCalled();
+      });
+
+      it('json → text：下游拿到 stringify_json 序列化后的字符串', () => {
+        const nodes = [
+          makeNode('pre', 'input-preprocessor', {
+            outputPorts: [{ id: 'json-out', dataType: 'json' }],
+          }),
+          makeNode('agent', 'agent', {
+            inputPorts: [{ id: 'text-in', dataType: 'text' }],
+          }),
+        ];
+        const steps = [
+          makeStep({
+            nodeId: 'pre',
+            nodeType: 'input-preprocessor',
+            status: 'completed',
+            result: { 'json-out': { a: 1 } },
+          }),
+        ];
+
+        expect(
+          service.resolveNodeInput(
+            'agent',
+            [makeEdge('pre', 'agent', 'json-out', 'text-in')],
+            steps,
+            nodes,
+          ),
+        ).toEqual({ 'text-in': '{"a":1}' });
+      });
+
+      it('skill → text：下游拿到 extract_skill_text 提取的技能正文', () => {
+        const nodes = [
+          makeNode('skill', 'skill', {
+            outputPorts: [{ id: 'skill-out', dataType: 'skill' }],
+          }),
+          makeNode('agent', 'agent', {
+            inputPorts: [{ id: 'text-in', dataType: 'text' }],
+          }),
+        ];
+        const skillOutput = {
+          skills: [
+            { id: 's1', name: 'Review', description: 'd1', content: 'R1' },
+            { id: 's2', name: 'Lint', description: 'd2', content: null },
+          ],
+        };
+        const steps = [
+          makeStep({
+            nodeId: 'skill',
+            nodeType: 'skill',
+            status: 'completed',
+            result: { ...skillOutput, 'skill-out': skillOutput },
+          }),
+        ];
+
+        expect(
+          service.resolveNodeInput(
+            'agent',
+            [makeEdge('skill', 'agent', 'skill-out', 'text-in')],
+            steps,
+            nodes,
+          ),
+        ).toEqual({ 'text-in': '# Review\n\nR1\n\n# Lint\n\nd2' });
+      });
     });
   });
 

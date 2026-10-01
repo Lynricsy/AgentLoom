@@ -18,7 +18,7 @@ docType: reference
 
 权威表在 `agentloom-type-engine/src/checker/compatibility.rs` 的 `CompatibilityChecker::default()`；`agentloom-contracts/src/port-compatibility.ts` 的 `PORT_DATA_TYPE_TRANSFORM_RULES` 是它的 wire 镜像（规则清单见上方生成表），server 执行期守卫与 Studio 画布同步守卫从镜像派生，`agentloom-contracts/src/port-compatibility.test.ts` 逐条比对两边（含顺序）。
 
-规则只决定哪些跨类型连线合法：server 在 `agentloom-server/src/modules/execution/execution.exceptions.ts` 中用 `isPortDataTypeCompatible` 校验连线，没有实现 `parse_json` 等变换函数，执行期下游节点收到的是上游原值。新增规则先改 Rust、重建 `pkg/`，再改 contracts 镜像。
+server 在 `agentloom-server/src/modules/execution/execution.exceptions.ts` 中用 `isPortDataTypeCompatible` 校验连线，并在 `agentloom-server/src/modules/execution/node-scheduler.service.ts` 的 `resolveNodeInput` 中按规则的 `transformFn` 变换上游值（实现在 `agentloom-server/src/modules/execution/port-value-transform.util.ts`）。变换失败时下游收到上游原值，告警写入下游步骤的 `checkpointData.warnings`（`type: port-value-transform-failed`）并记录服务端日志，节点不失败。contracts 新增规则而 server 没有实现时，`port-value-transform.util.spec.ts` 会失败。新增规则先改 Rust、重建 `pkg/`，再改 contracts 镜像。
 
 ## 兼容等级
 

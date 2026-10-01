@@ -39,7 +39,13 @@ import {
   InvalidStepTransitionException,
   NodeTypeMismatchException,
   isPortTypeCompatible,
+  type TypeMismatchDetail,
 } from './execution.exceptions';
+import {
+  PORT_VALUE_TRANSFORMS,
+  findPortTransformFn,
+  type PortTransformWarning,
+} from './port-value-transform.util';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
@@ -288,12 +294,14 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     if (step.status !== 'pending') return;
 
     let input: Record<string, unknown>;
+    const transformWarnings: PortTransformWarning[] = [];
     try {
       input = this.resolveNodeInput(
         nodeId,
         resolvedSnapshot.edges,
         resolvedSteps,
         resolvedSnapshot.nodes,
+        transformWarnings,
       );
     } catch (error) {
       if (error instanceof InvalidStepTransitionException) throw error;
@@ -320,10 +328,28 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       return;
     }
 
+    // 变换告警随 input 一起落库，挂在 checkpointData.warnings 上，执行详情可见；
+    // 同时交给执行器的 step 副本，保证执行器基于 step.checkpointData 改写时不丢失告警。
+    const dispatchStep =
+      transformWarnings.length > 0
+        ? {
+            ...step,
+            checkpointData: {
+              ...(step.checkpointData ?? {}),
+              warnings: transformWarnings,
+            },
+          }
+        : step;
+
     // 保存 input 并转为 queued
     await this.tenantDb
       .update(schema.executionSteps)
-      .set({ input })
+      .set({
+        input,
+        ...(dispatchStep !== step
+          ? { checkpointData: dispatchStep.checkpointData }
+          : {}),
+      })
       .where(eq(schema.executionSteps.id, step.id));
 
     const sandboxBinding = getExecutionSandboxBinding(
@@ -342,7 +368,7 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     const dispatched = await this.nodeDispatcher.dispatch({
       executionId,
       tenantId,
-      step,
+      step: dispatchStep,
       input,
       snapshot: resolvedSnapshot,
       steps: resolvedSteps,
@@ -417,12 +443,15 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
   /**
    * 解析节点输入：收集所有入边对应源节点的 result。
    * 被跳过的源节点不提供输入，根节点返回空对象。
+   * 两端端口 dataType 不同且命中 PORT_DATA_TYPE_TRANSFORM_RULES 时，先按 transformFn 变换上游值；
+   * 变换失败时透传原值，并把告警追加到 `warnings`（调用方写入步骤 checkpointData）。
    */
   resolveNodeInput(
     nodeId: string,
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
     nodes: schema.ReactFlowNode[] = [],
+    warnings: PortTransformWarning[] = [],
   ): Record<string, unknown> {
     const incomingEdges = edges.filter((e) => e.target === nodeId);
     if (incomingEdges.length === 0) return {};
@@ -442,18 +471,21 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
         throw new NodeInputResolutionException(nodeId);
       }
 
-      this.checkEdgePortTypeCompatibility(edge, nodes);
+      const edgePortTypes = this.checkEdgePortTypeCompatibility(edge, nodes);
 
       const sourceHandle = readEdgeHandle(edge, 'source');
       const targetHandle = readEdgeHandle(edge, 'target');
 
       if (targetHandle) {
+        const value = sourceHandle
+          ? resolveSourceHandleValue(sourceStep, sourceHandle)
+          : sourceStep.result;
         setValueAtPath(
           input,
           targetHandle,
-          sourceHandle
-            ? resolveSourceHandleValue(sourceStep, sourceHandle)
-            : sourceStep.result,
+          edgePortTypes
+            ? this.applyEdgePortTransform(value, edgePortTypes, warnings)
+            : value,
         );
         continue;
       }
@@ -505,17 +537,21 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     return dynamicPorts?.find((p) => p.name === handle)?.dataType;
   }
 
+  /**
+   * 校验边两端端口 dataType 是否兼容；两端类型都可解析时返回该边的端口类型信息，
+   * 供 resolveNodeInput 决定是否执行跨类型变换。任一端缺类型时返回 undefined（no-op）。
+   */
   private checkEdgePortTypeCompatibility(
     edge: ReactFlowEdge,
     nodes: schema.ReactFlowNode[],
-  ): void {
+  ): TypeMismatchDetail | undefined {
     const sourceHandle = readEdgeHandle(edge, 'source');
     const targetHandle = readEdgeHandle(edge, 'target');
-    if (!sourceHandle || !targetHandle) return;
+    if (!sourceHandle || !targetHandle) return undefined;
 
     const sourceNode = nodes.find((n) => n.id === edge.source);
     const targetNode = nodes.find((n) => n.id === edge.target);
-    if (!sourceNode || !targetNode) return;
+    if (!sourceNode || !targetNode) return undefined;
 
     const sourceType = this.resolvePortDataType(
       sourceNode,
@@ -527,18 +563,56 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       targetHandle,
       'target',
     );
-    if (!sourceType || !targetType) return;
+    if (!sourceType || !targetType) return undefined;
 
+    const detail: TypeMismatchDetail = {
+      sourceNodeId: edge.source,
+      targetNodeId: edge.target,
+      sourcePortId: sourceHandle,
+      targetPortId: targetHandle,
+      sourceType,
+      targetType,
+      edgeId: edge.id,
+    };
     if (!isPortTypeCompatible(sourceType, targetType)) {
-      throw new NodeTypeMismatchException({
-        sourceNodeId: edge.source,
-        targetNodeId: edge.target,
-        sourcePortId: sourceHandle,
-        targetPortId: targetHandle,
-        sourceType,
-        targetType,
-        edgeId: edge.id,
-      });
+      throw new NodeTypeMismatchException(detail);
+    }
+    return detail;
+  }
+
+  /**
+   * 按边两端端口类型执行跨类型变换。变换失败（例如文本不是合法 JSON）时透传原值并
+   * 记一条告警：连线在画布上合法，失败只说明这次上游值不满足变换前提，不应让下游节点失败。
+   */
+  private applyEdgePortTransform(
+    value: unknown,
+    edgePortTypes: TypeMismatchDetail,
+    warnings: PortTransformWarning[],
+  ): unknown {
+    const transformFn = findPortTransformFn(
+      edgePortTypes.sourceType,
+      edgePortTypes.targetType,
+    );
+    if (!transformFn) return value;
+
+    try {
+      const transform = PORT_VALUE_TRANSFORMS[transformFn];
+      if (!transform) {
+        throw new Error('服务端未实现该变换函数');
+      }
+      return transform(value);
+    } catch (error) {
+      const warning: PortTransformWarning = {
+        type: 'port-value-transform-failed',
+        message: `${transformFn} 失败，下游收到上游原值：${error instanceof Error ? error.message : String(error)}`,
+        transformFn,
+        ...edgePortTypes,
+      };
+      this.logger.warn(
+        `节点 ${edgePortTypes.targetNodeId} 输入端口 ${edgePortTypes.targetPortId} ${warning.message}`,
+      );
+      warnings.push(warning);
+      return value;
     }
   }
 
