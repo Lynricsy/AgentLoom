@@ -1,219 +1,110 @@
-# 画布编辑器
+---
+docType: explanation
+---
 
-画布编辑器是 Studio 的核心，用户在此构建 DAG 工作流。基于 `@xyflow/react` v12 实现，支持 22 种节点类型、12 种端口数据类型、3 级 LOD 缩放和实时兼容性检查。
+# 画布
 
-## 节点类型体系
+工作流画布如何把节点注册表、本地草稿、自动保存与端口兼容性检查串在一起？本页解释 `agentloom-studio/src/features/canvas/` 的运行机制。节点类型本身的说明见 [节点参考](/guide/nodes/)。
 
-画布定义了 **8 大类别、22 种节点类型**：
+## 节点从哪里来
 
-```mermaid
-graph TD
-    Root[节点类型体系]
-    Root --> Agent[🤖 Agent 智能体]
-    Root --> Tool[🔧 Tool 工具]
-    Root --> Trigger[⚡ Trigger 触发器]
-    Root --> Knowledge[📚 Knowledge 知识]
-    Root --> Output[📤 Output 输出]
-    Root --> Control[🔀 Control 控制]
-    Root --> Plugin[🧩 Plugin 插件]
-    Root --> Memory[🧠 Memory 记忆]
+画布上能放的节点由 `agentloom-studio/src/features/canvas/types/nodeTypeRegistry.ts` 决定：`NODE_TYPES` 是类型全集，`NODE_TYPE_REGISTRY` 为每个类型给出 label、描述、分类、输入/输出端口与配置项 schema；`DYNAMIC_ONLY_NODE_TYPES` 中的类型只在运行时生成，不出现在节点面板里。面板分组的名称与顺序来自 `agentloom-studio/src/features/canvas/components/nodeCategories.ts`。新增节点类型的步骤见 [新增节点类型](/dev/howto/add-node-type)。
 
-    Agent --> llm-model[llm-model<br/>模型节点]
-    Agent --> agent-node[agent<br/>Agent 节点]
-    Agent --> smart-routing-node[smart-routing<br/>智能路由]
-    Agent --> skill-node[skill<br/>Skill 节点]
-
-    Tool --> http-tool[http-tool<br/>HTTP 工具]
-    Tool --> code-tool[code-tool<br/>代码工具]
-    Tool --> mcp-tool[mcp-tool<br/>MCP 工具]
-    Tool --> sandbox[sandbox<br/>沙箱]
-    Tool --> input-preprocessor[input-preprocessor<br/>输入预处理]
-    Tool --> workspace-node[workspace<br/>工作区]
-
-    Trigger --> manual-trigger[manual-trigger<br/>手动触发]
-    Trigger --> schedule-trigger[schedule-trigger<br/>定时触发]
-    Trigger --> webhook-trigger[webhook-trigger<br/>Webhook 触发]
-    Trigger --> api-event-trigger[api-event-trigger<br/>API 事件触发]
-
-    Knowledge --> knowledge-base[knowledge-base<br/>知识库]
-
-    Output --> text-output[text-output<br/>文本输出]
-    Output --> json-output[json-output<br/>JSON 输出]
-
-    Control --> condition[condition<br/>条件分支]
-    Control --> loop[loop<br/>循环]
-    Control --> reusable-block[reusable-block<br/>可复用块]
-
-    Plugin --> plugin-node[plugin<br/>插件节点]
-
-    Memory --> memory-node[memory<br/>Agent 记忆]
-```
-
-### 节点类型详述
-
-| 类别          | 节点               | 输入端口                     | 输出端口      | 说明                               |
-| ------------- | ------------------ | ---------------------------- | ------------- | ---------------------------------- |
-| **Agent**     | `llm-model`        | —                            | model         | 模型配置节点，输出 model 端口      |
-|               | `agent`            | text, model, tool, knowledge, sandbox | text, json | 独立 Agent 定义节点                |
-|               | `smart-routing`    | model (多个)                 | model         | 智能路由，6 种策略选择最优模型     |
-|               | `skill`            | skill                        | skill         | Skill 行为注入节点                 |
-| **Tool**      | `http-tool`        | json                         | json          | HTTP API 调用                      |
-|               | `code-tool`        | json                         | json          | 沙箱代码执行                       |
-|               | `mcp-tool`         | json                         | json, tool    | MCP 协议工具集成                   |
-|               | `sandbox`          | text                         | sandbox       | ACP 沙箱终端                       |
-|               | `input-preprocessor` | json                       | json          | 输入数据预处理与格式化             |
-|               | `workspace`        | exec                         | volume        | 工作区存储卷管理                   |
-| **Trigger**   | `manual-trigger`   | —                            | text          | 手动触发入口                       |
-|               | `schedule-trigger` | —                            | text          | Cron 定时触发                      |
-|               | `webhook-trigger`  | —                            | json          | Webhook 回调触发                   |
-|               | `api-event-trigger`| —                            | json          | API 事件触发                       |
-| **Knowledge** | `knowledge-base`   | text                         | knowledge     | 向量知识库检索                     |
-| **Output**    | `text-output`      | text                         | —             | 文本结果输出                       |
-|               | `json-output`      | json                         | —             | 结构化数据输出                     |
-| **Control**   | `condition`        | json                         | json (多分支) | 条件分支路由                       |
-|               | `loop`             | json                         | json          | 循环执行                           |
-|               | `reusable-block`   | (动态)                       | (动态)        | 子工作流引用                       |
-| **Plugin**    | `plugin`           | (动态)                       | (动态)        | 第三方插件节点                     |
-| **Memory**    | `memory`           | text                         | json          | Agent 记忆图谱节点                 |
-
-## 端口数据类型
-
-画布使用 **12 种端口数据类型**，其中 10 种为 canonical 类型（与 Server 和 [Type Engine](/dev/type-engine/) 三端统一），3 种为 Studio 扩展类型：
-
-| 类型        | 说明         | 典型场景               |
-| ----------- | ------------ | ---------------------- |
-| `model`     | LLM 模型配置 | llm-model → agent |
-| `text`      | 纯文本       | 触发器 → Agent → 输出  |
-| `json`      | 结构化 JSON  | 工具输入/输出          |
-| `image`     | 图像数据     | 多模态 Agent 输入      |
-| `audio`     | 音频数据     | 语音相关处理           |
-| `tool`      | 工具引用     | mcp-tool → agent   |
-| `sandbox`   | 沙箱会话     | sandbox → Agent        |
-| `knowledge` | 知识库引用   | knowledge-base → Agent |
-| `skill`     | Skill 行为注入 | skill → agent     |
-| `agent`     | Agent 引用   | agent → 工作流节点     |
-| `exec`      | 执行控制流   | 节点执行依赖控制       |
-| `volume`    | 工作区存储卷 | workspace → sandbox    |
-
-### 兼容性检查
-
-连线时 [Type Engine](/dev/type-engine/) 实时计算端口兼容性，分为 4 个等级：
-
-| 等级           | 可视化      | 含义                   |
-| -------------- | ----------- | ---------------------- |
-| `EXACT`        | L0 默认样式 | 类型完全匹配           |
-| `TRANSFORM`    | L1 提示标记 | 需要隐式转换           |
-| `PARTIAL`      | L1 提示标记 | 部分兼容，可能丢失信息 |
-| `INCOMPATIBLE` | 红色错误    | 不可连接               |
-
-::: info Legacy 兼容
-`mcpToolMapping` 对 legacy `number` / `boolean` 类型自动回退为 `json`，保持向后兼容。
-:::
-
-## LOD 缩放系统
-
-画布实现 **3 级 LOD（Level of Detail）** 渲染，根据缩放级别动态切换节点渲染精度：
-
-| 缩放级别         | LOD 等级    | 渲染内容                               |
-| ---------------- | ----------- | -------------------------------------- |
-| zoom ≥ 0.7       | **Full**    | 完整节点配置面板、端口标签、状态指示器 |
-| 0.4 ≤ zoom < 0.7 | **Compact** | 紧凑布局，仅显示节点名、图标和端口     |
-| zoom < 0.4       | **Minimal** | 最小化展示，仅图标和连线               |
-
-LOD 切换使用 `React.memo` 避免非必要重渲染，在大型工作流（50+ 节点）下保持流畅。
-
-## SmartEdge 连线
-
-连线基于 SmartEdge 自定义实现：
-
-- **智能路径计算** — 自动绕过节点，避免视觉遮挡
-- **粒子动画** — 执行中的连线显示流动粒子效果，指示数据方向
-- **兼容性着色** — 根据端口兼容性等级显示不同颜色
-
-## 组件架构
+## 组件结构
 
 ```mermaid
-graph TB
-    WCP[WorkflowCanvasPage]
-    WC[WorkflowCanvas<br/>728 行]
-    CN[CanvasNode<br/>React.memo]
+flowchart TB
+    Page["WorkflowCanvasPage<br/>加载工作流、灌入快照、自动保存"]
+    Canvas["WorkflowCanvas<br/>ReactFlow 实例、连线校验"]
+    Node["CanvasNode<br/>按类型分派节点主体"]
+    Port["TypedPort<br/>类型化端口"]
+    Edge["SmartEdge<br/>兼容性着色"]
+    Panel["NodeConfigPanel<br/>右侧配置面板"]
+    Form["DynamicConfigForm<br/>按 configSchema 渲染"]
 
-    WCP --> WC
-    WC --> CN
-    CN --> Shell[CanvasNodeShell<br/>外壳容器]
-    CN --> Card[CanvasNodeCard<br/>卡片内容]
-    CN --> Port[TypedPort<br/>类型化端口]
-    CN --> Body[节点 Body<br/>23 种实现]
-
-    WC --> Overlay1[CompatibilityPreviewOverlay<br/>兼容性预览]
-    WC --> Overlay2[ConnectionStateOverlay<br/>连接状态]
-    WC --> Overlay3[NodeInfoOverlay<br/>节点信息]
-
-    CN -.-> Panel[NodeConfigPanel<br/>配置面板]
-    Panel --> DynForm[DynamicConfigForm<br/>动态表单]
-    Panel --> AgentPanel[AgentNodeConfigPanel<br/>已发布 Agent 选择]
+    Page --> Canvas
+    Canvas --> Node
+    Node --> Port
+    Canvas --> Edge
+    Page --> Panel
+    Panel --> Form
 ```
 
-### 关键组件说明
+| 组件 | 文件 |
+| --- | --- |
+| `WorkflowCanvasPage` | `agentloom-studio/src/features/canvas/components/WorkflowCanvasPage.tsx` |
+| `WorkflowCanvas` | `agentloom-studio/src/features/canvas/components/WorkflowCanvas.tsx` |
+| `CanvasNode` | `agentloom-studio/src/features/canvas/components/CanvasNode.tsx` |
+| `TypedPort` | `agentloom-studio/src/features/canvas/components/TypedPort.tsx` |
+| `SmartEdge` | `agentloom-studio/src/features/canvas/components/edges/SmartEdge.tsx` |
+| `NodeConfigPanel` | `agentloom-studio/src/features/canvas/components/panels/NodeConfigPanel.tsx` |
+| `DynamicConfigForm` | `agentloom-studio/src/features/canvas/components/panels/DynamicConfigForm.tsx` |
+| `agent` 节点专用面板 | `agentloom-studio/src/features/canvas/components/panels/AgentNodeConfigPanel.tsx` |
+| 叠加层 | `agentloom-studio/src/features/canvas/components/overlays/` 下的 `CompatibilityPreview`、`ConnectionStateOverlay`、`NodeInfoCard` |
 
-| 组件                  | 行数 | 职责                                              |
-| --------------------- | ---- | ------------------------------------------------- |
-| `WorkflowCanvas`      | ~728 | 画布容器，管理 ReactFlow 实例、事件监听、连线逻辑 |
-| `CanvasNode`          | —    | React.memo 包裹，根据节点类型分发到对应 Body      |
-| `CanvasNodeShell`     | —    | 统一外壳：阴影、选中态、拖拽                      |
-| `TypedPort`           | —    | 类型化端口渲染，显示端口颜色与标签                |
-| `NodeConfigPanel`     | —    | 右侧配置面板，选中节点时弹出                      |
-| `AgentNodeConfigPanel` | —    | `agent` 节点专用面板，选择已发布的 Agent Definition、版本与输入映射 |
+**细节层级**：`agentloom-studio/src/features/canvas/hooks/useLevelOfDetail.ts` 按缩放比例切换节点渲染精度：缩放 ≥ 0.7 为 full，0.4 到 0.7 为 compact，低于 0.4 为 minimal。节点越多、缩放越小，渲染的 DOM 越少。
 
-### Overlay 层
+## 画布草稿：canvasStore
 
-画布叠加 3 个 Overlay 提供实时视觉反馈：
+`agentloom-studio/src/features/canvas/stores/canvasStore.ts` 中的 `useCanvasStore` 持有节点、边、视口、选中状态与 `isDirty` 标记，中间件为 `devtools`、`subscribeWithSelector`、`immer`。它是画布的本地草稿，不是服务端数据的缓存：服务端版本由 TanStack Query 持有，草稿通过自动保存回写。
 
-- **CompatibilityPreviewOverlay** — 拖拽连线时，高亮可连接端口并显示兼容性等级
-- **ConnectionStateOverlay** — 显示当前连线状态（连接中 / 断开 / 错误）
-- **NodeInfoOverlay** — 悬停节点时显示快速信息卡片
+action 按职责分组（以 `CanvasActions` 接口为准）：
 
-## CanvasStore
+| 职责 | action |
+| --- | --- |
+| ReactFlow 变更 | `onNodesChange`、`onEdgesChange`、`createConnection`、`addNode`、`updateNodeData` |
+| 删除与选择 | `deleteSelectedNode`、`deleteSelectedNodes`、`selectNode`、`selectNodes`、`toggleNodeSelection`、`clearSelection`、`selectEdge` |
+| 连线字段映射 | `openFieldMapping`、`closeFieldMapping`、`updateEdgeData`、`updateFieldMapping`、`batchUpdateFieldMappings`、`saveMappingSnapshot`、`undoFieldMapping`、`refreshEdgeCompatibility` |
+| 视口 | `setViewport`（不标脏）、`commitViewport`（标脏） |
+| 与服务端同步 | `applyServerSnapshot`、`markSaved`、`advanceVersion`、`setIsSaving`、`reset` |
+| 搜索与辅助 | `toggleSearch`、`setSearchQuery`、`nextSearchResult`、`prevSearchResult`、`clearSearch`、`toggleMiniMap`、`setHoveredNodeId` |
+| 校验提示 | `setNodeValidationError`、`clearNodeValidationErrors` |
 
-画布状态由 `canvasStore`（Zustand，~535 行）统一管理。
+## 自动保存
 
-### 核心状态
+`agentloom-studio/src/features/canvas/hooks/useAutoSave.ts` 订阅 store 的节点、边、视口与 `isDirty`，防抖 2000 毫秒（常量 `AUTOSAVE_DEBOUNCE_MS`，写在源码里）后调用 `useUpdateWorkflow`，即 `PATCH workflow-definitions/:id`，请求体为 `{ nodes, edges, viewport, version }`，字段保持 camelCase。
 
-```typescript
-interface CanvasState {
-  nodes: Node[]; // ReactFlow 节点数组
-  edges: Edge[]; // ReactFlow 连线数组
-  selectedNodeId: string | null;
-  viewport: Viewport; // { x, y, zoom }
-  isDirty: boolean; // 是否有未保存修改
-  // ...更多状态字段
-}
+- 请求带上当前 `version`，server 用它做乐观并发控制。
+- 成功后，若保存期间没有新的编辑，调用 `markSaved(version)` 清除脏标记；若有新编辑，只调用 `advanceVersion(version)` 推进版本号，让下一次保存不因版本落后被拒。
+- 失败时提示「自动保存失败」或「自动保存失败，修改已保留在本地」，草稿不丢。
+- 已归档的工作流不自动保存。
+
+`agentloom-studio/.env.example` 与部署模板中声明的 `VITE_AUTOSAVE_DEBOUNCE_MS` 目前没有被 Studio 源码读取，改防抖时长要改 `AUTOSAVE_DEBOUNCE_MS`。
+
+## 服务端快照与本地草稿
+
+`WorkflowCanvasPage` 只在工作流 id 或 `version` 与 store 中不同时调用 `applyServerSnapshot` 覆盖草稿。如果是同一个工作流且画布有未保存修改，它跳过服务端快照并提示「已保留本地未保存修改」。这样，自动保存成功后 TanStack Query 写回的数据不会把用户在保存期间做的编辑冲掉。
+
+## 连线兼容性检查
+
+拖出连线时，画布需要立刻知道两个端口能否相连。检查在 Web Worker 里的 WASM 中完成，主线程不阻塞，也不请求 server：
+
+```mermaid
+sequenceDiagram
+    participant C as WorkflowCanvas
+    participant S as TypeEngineService
+    participant R as TypeEngineRuntime
+    participant W as runtime.worker
+    C->>S: warmup()（画布挂载时）
+    S->>R: 初始化 Worker
+    R->>W: init
+    W->>W: fetch agentloom_type_engine_bg.wasm<br/>instantiateStreaming，失败退回 arrayBuffer
+    C->>S: evaluateCompatibility(源端口, 目标端口)
+    S->>R: 请求（带缓存与同请求合并）
+    R->>W: checkCompatibility
+    W-->>R: 兼容等级
+    R-->>S: 结果
+    S-->>C: 结果；Worker 出错或超时则走 fallback
 ```
 
-### 关键 Action
+| 文件 | 作用 |
+| --- | --- |
+| `agentloom-studio/src/features/canvas/lib/typeEngine/service.ts` | `TypeEngineService`：`warmup`、`getCachedCompatibility`（同步读缓存）、`evaluateCompatibility`（异步，异常时退回 fallback） |
+| `agentloom-studio/src/features/canvas/lib/typeEngine/runtime.ts` | 创建 Worker、结果缓存、同请求合并、请求超时 4000 毫秒 |
+| `agentloom-studio/src/features/canvas/lib/typeEngine/runtime.worker.ts` | 加载 `agentloom-type-engine/pkg/agentloom_type_engine_bg.wasm` 并调用 `checkCompatibility` |
+| `agentloom-studio/src/features/canvas/lib/typeEngine/contracts.ts` | 主线程与 Worker 之间的消息类型、序列化后的端口定义 |
+| `agentloom-studio/src/features/canvas/lib/typeEngine/serialize.ts` | 把画布端口序列化为 WASM 的输入 |
+| `agentloom-studio/src/features/canvas/lib/typeEngine/fallback.ts` | Worker 不可用时的兜底判断，规则取自 `@agentloom/contracts` 的 `PORT_DATA_TYPE_TRANSFORM_RULES` |
+| `agentloom-studio/src/features/canvas/lib/connectionCompatibility.ts` | 画布侧入口：同步读缓存结果供拖线高亮，异步评估供落线校验 |
 
-| Action                     | 说明                       |
-| -------------------------- | -------------------------- |
-| `addNode(type, position)`  | 添加节点到画布             |
-| `removeNode(id)`           | 删除节点及关联连线         |
-| `updateNodeData(id, data)` | 更新节点配置               |
-| `addEdge(connection)`      | 添加连线（触发兼容性检查） |
-| `setViewport(viewport)`    | 更新视口状态               |
-| `saveToServer()`           | 持久化到服务端             |
-
-### 自动保存
-
-canvasStore 使用 `subscribe()` 监听状态变更，配合 **2 秒 debounce** 自动触发持久化：
-
-```text
-用户编辑 → canvasStore 更新 → isDirty=true
-                             → 2s debounce
-                             → PUT /workflow-versions/:id
-                             → isDirty=false
-```
-
-## 相关文档
-
-- [状态管理](./state) — canvasStore 与其他 Store 的协作
-- [WASM 集成](/dev/type-engine/wasm) — 端口兼容性检查的底层实现
-- [类型引擎](/dev/type-engine/) — 兼容性规则详解
+兼容等级与转换规则见 [类型引擎](/dev/type-engine)。
