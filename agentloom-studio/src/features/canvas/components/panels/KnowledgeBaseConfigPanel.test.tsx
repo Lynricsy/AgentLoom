@@ -142,16 +142,20 @@ describe('KnowledgeBaseConfigPanel', () => {
     fireEvent.focus(select)
     fireEvent.blur(select)
 
+    // onBlur 校验经 zodResolver 异步完成：错误文本在提交阶段出现，onValidationChange 由之后的
+    // passive effect 调用。两者不在同一时刻可见，必须一起放进 waitFor 等待，不能先等文本再同步断言回调。
     await waitFor(() => {
       expect(screen.getByText('此字段为必填项')).toBeInTheDocument()
+      expect(onValidationChange).toHaveBeenLastCalledWith(true)
     })
-    expect(onValidationChange).toHaveBeenLastCalledWith(true)
 
     await user.click(select)
     await user.click(await screen.findByRole('option', { name: /产品手册库/ }))
 
-    expect(screen.queryByText('此字段为必填项')).not.toBeInTheDocument()
-    expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    await waitFor(() => {
+      expect(screen.queryByText('此字段为必填项')).not.toBeInTheDocument()
+      expect(onValidationChange).toHaveBeenLastCalledWith(false)
+    })
   })
 
   it('shows a warning when the configured knowledge base is no longer available', () => {

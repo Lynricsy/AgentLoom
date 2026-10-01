@@ -222,21 +222,29 @@ describe('AuditLogPage', () => {
 
   it('creates an evidence export from the current applied filters instead of unsaved draft edits', async () => {
     const user = userEvent.setup()
+    // 用例验证的是「已应用筛选 vs 未应用草稿」，不是逐字输入。user.type 每个字符都会派发
+    // keydown/keypress/input/keyup，并重渲染整页（约 80 次）；CPU 争用下仅输入阶段就超过 10s。
+    // paste 每个字段只派发一次 input 事件，受控输入的 onChange 路径不变。
+    const fill = async (label: string, value: string) => {
+      const input = screen.getByLabelText(label)
+      await user.clear(input)
+      await user.click(input)
+      await user.paste(value)
+    }
 
     render(<AuditLogPage />)
 
-    await user.type(screen.getByLabelText('事件类型'), 'workflow.updated')
-    await user.type(screen.getByLabelText('资源类型'), 'workflow_definition')
-    await user.type(screen.getByLabelText('资源 ID'), 'wf-77')
-    await user.type(screen.getByLabelText('执行 ID'), 'exec-77')
+    await fill('事件类型', 'workflow.updated')
+    await fill('资源类型', 'workflow_definition')
+    await fill('资源 ID', 'wf-77')
+    await fill('执行 ID', 'exec-77')
     await user.click(screen.getByLabelText('操作人类型'))
     await user.click(await screen.findByRole('option', { name: 'user' }))
-    await user.type(screen.getByLabelText('操作人 ID'), 'user-77')
+    await fill('操作人 ID', 'user-77')
     await user.click(screen.getByRole('button', { name: '应用筛选' }))
 
-    const eventTypeInput = screen.getByLabelText('事件类型')
-    await user.clear(eventTypeInput)
-    await user.type(eventTypeInput, 'workflow.deleted')
+    await fill('事件类型', 'workflow.deleted')
+    expect(screen.getByLabelText('事件类型')).toHaveValue('workflow.deleted')
 
     await user.click(screen.getByRole('button', { name: '创建证据导出' }))
 
