@@ -123,8 +123,15 @@ export class PluginSandboxService {
     return {
       allowedHosts,
       allowedPaths: {},
-      maxMemoryPages: DEFAULT_SANDBOX_CONFIG.maxMemoryPages,
-      timeoutMs: DEFAULT_SANDBOX_CONFIG.timeoutMs,
+      // manifest 只能收紧：resolveNumericLimit 把超限值 clamp 到平台上限，非法值回退默认
+      maxMemoryPages: this.resolveNumericLimit(
+        sandbox.maxMemoryPages,
+        DEFAULT_SANDBOX_CONFIG.maxMemoryPages,
+      ),
+      timeoutMs: this.resolveNumericLimit(
+        sandbox.timeoutMs,
+        DEFAULT_SANDBOX_CONFIG.timeoutMs,
+      ),
       useWasi: DEFAULT_SANDBOX_CONFIG.useWasi,
     };
   }

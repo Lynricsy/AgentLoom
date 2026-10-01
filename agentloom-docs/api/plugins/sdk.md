@@ -24,8 +24,8 @@ docType: reference
 | `repository` | string | 否 | 仓库地址 |
 | `wasmEntry` | string | 注册时必填 | 归档内 `.wasm` 文件的相对路径；`build --wasm` 写为 `dist/plugin.wasm` |
 | `sandbox.allowedHosts` | string[] | 否 | 允许访问的主机；仅当 `permissions` 含 `network:outbound` 时服务端采用 |
-| `sandbox.maxMemoryPages` | number | 否 | SDK 接受该字段，**服务端当前不采用**，固定使用平台默认值 |
-| `sandbox.timeoutMs` | number | 否 | 同上，服务端当前不采用 |
+| `sandbox.maxMemoryPages` | number | 否 | 只能收紧：小于平台上限 `4096` 时采用，超过上限或非正数时按 `4096` 处理 |
+| `sandbox.timeoutMs` | number | 否 | 只能收紧：小于平台上限 `30000` 毫秒时采用，超过上限或非正数时按 `30000` 处理 |
 | `signature` | string | — | `publish` 写入：Base64 的 RSA-PSS 签名 |
 | `contentHash` | string | — | `publish` 写入：64 位十六进制 SHA-256 |
 | `developerKeyFingerprint` | string | — | `publish` 写入：公钥 SPKI DER 的 SHA-256 十六进制 |

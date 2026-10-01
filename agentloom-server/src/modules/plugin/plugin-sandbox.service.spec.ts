@@ -298,7 +298,7 @@ describe('PluginSandboxService', () => {
       });
     });
 
-    it('未声明 network:outbound 时应保持默认 deny-all', () => {
+    it('未声明 network:outbound 时网络保持 deny-all，但数值限制仍按 manifest 收紧', () => {
       const config = service.buildSandboxConfig({
         permissions: [],
         sandbox: {
@@ -311,8 +311,8 @@ describe('PluginSandboxService', () => {
       expect(config).toEqual({
         allowedHosts: [],
         allowedPaths: {},
-        maxMemoryPages: 4096,
-        timeoutMs: 30_000,
+        maxMemoryPages: 2048,
+        timeoutMs: 10_000,
         useWasi: false,
       });
     });
@@ -333,13 +333,13 @@ describe('PluginSandboxService', () => {
       expect(config).toEqual({
         allowedHosts: ['api.example.com', 'cdn.example.com'],
         allowedPaths: {},
-        maxMemoryPages: 4096,
-        timeoutMs: 30_000,
+        maxMemoryPages: 2048,
+        timeoutMs: 10_000,
         useWasi: false,
       });
     });
 
-    it('应忽略非法字段并保留平台默认限制', () => {
+    it('应忽略非法字段，非法数值回退平台默认限制', () => {
       const config = service.buildSandboxConfig({
         permissions: ['network:outbound'],
         sandbox: {
@@ -356,9 +356,26 @@ describe('PluginSandboxService', () => {
         allowedHosts: ['api.example.com'],
         allowedPaths: {},
         maxMemoryPages: 4096,
-        timeoutMs: 30_000,
+        timeoutMs: 10_000,
         useWasi: false,
       });
+    });
+
+    it('manifest 数值超过平台上限时 clamp 到上限，非正数回退默认', () => {
+      expect(
+        service.buildSandboxConfig({
+          sandbox: { maxMemoryPages: 65_536, timeoutMs: 600_000 },
+        }),
+      ).toEqual(
+        expect.objectContaining({ maxMemoryPages: 4096, timeoutMs: 30_000 }),
+      );
+      expect(
+        service.buildSandboxConfig({
+          sandbox: { maxMemoryPages: 0, timeoutMs: -1 },
+        }),
+      ).toEqual(
+        expect.objectContaining({ maxMemoryPages: 4096, timeoutMs: 30_000 }),
+      );
     });
   });
 });

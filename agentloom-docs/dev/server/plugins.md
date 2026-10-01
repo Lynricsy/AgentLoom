@@ -91,7 +91,7 @@ sequenceDiagram
 
 限制只能收紧，不能放宽：
 
-1. `buildSandboxConfig(manifest)` 从 manifest 只取网络白名单：manifest `permissions` 含 `network:outbound` 时才采用 `sandbox.allowedHosts`；`timeoutMs` 与 `maxMemoryPages` 始终取默认值，manifest 中 `sandbox` 的这两项不会生效。
+1. `buildSandboxConfig(manifest)` 读取 manifest：`permissions` 含 `network:outbound` 时采用 `sandbox.allowedHosts`；`sandbox.timeoutMs` 与 `sandbox.maxMemoryPages` 经 `resolveNumericLimit` 取与默认值的较小者，非正数或非数值回退默认值。
 2. Worker 用节点 `pluginConfig` 中的 `timeoutMs`、`maxMemoryPages` 取较小值，`allowedHosts` 取与 manifest 白名单的交集。
 3. `mergeSandboxConfig` 再以 `Math.min(值, 默认值)` 封顶。
 
