@@ -16,6 +16,192 @@ export interface AddGlossaryKeywordDto {
 /**
  * 
  * @export
+ * @interface AgentApiBoundAgentEnvelopeSwaggerDto
+ */
+export interface AgentApiBoundAgentEnvelopeSwaggerDto {
+    /**
+     * 
+     * @type {AgentApiBoundAgentEnvelopeSwaggerDtoData}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDto
+     */
+    data: AgentApiBoundAgentEnvelopeSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiBoundAgentEnvelopeSwaggerDtoData
+ */
+export interface AgentApiBoundAgentEnvelopeSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoData
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoData
+     */
+    description: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoData
+     */
+    status: AgentApiBoundAgentEnvelopeSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoData
+     */
+    publishedVersion: AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoData
+     */
+    inputSchema: { [key: string]: any; } | null;
+}
+
+
+/**
+ * @export
+ */
+export const AgentApiBoundAgentEnvelopeSwaggerDtoDataStatusEnum = {
+    Draft: 'draft',
+    Published: 'published',
+    Archived: 'archived'
+} as const;
+export type AgentApiBoundAgentEnvelopeSwaggerDtoDataStatusEnum = typeof AgentApiBoundAgentEnvelopeSwaggerDtoDataStatusEnum[keyof typeof AgentApiBoundAgentEnvelopeSwaggerDtoDataStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion
+ */
+export interface AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion
+     */
+    label: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiBoundAgentEnvelopeSwaggerDtoDataPublishedVersion
+     */
+    publishedAt: string;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiConversationEnvelopeSwaggerDto
+ */
+export interface AgentApiConversationEnvelopeSwaggerDto {
+    /**
+     * 
+     * @type {AgentApiConversationEnvelopeSwaggerDtoData}
+     * @memberof AgentApiConversationEnvelopeSwaggerDto
+     */
+    data: AgentApiConversationEnvelopeSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiConversationEnvelopeSwaggerDtoData
+ */
+export interface AgentApiConversationEnvelopeSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    title: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    status: AgentApiConversationEnvelopeSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    externalUserId: string | null;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    metadata: { [key: string]: any; };
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiConversationEnvelopeSwaggerDtoData
+     */
+    updatedAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const AgentApiConversationEnvelopeSwaggerDtoDataStatusEnum = {
+    Active: 'active',
+    Ended: 'ended',
+    Failed: 'failed'
+} as const;
+export type AgentApiConversationEnvelopeSwaggerDtoDataStatusEnum = typeof AgentApiConversationEnvelopeSwaggerDtoDataStatusEnum[keyof typeof AgentApiConversationEnvelopeSwaggerDtoDataStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentApiConversationListSwaggerDto
+ */
+export interface AgentApiConversationListSwaggerDto {
+    /**
+     * 
+     * @type {Array<AgentApiConversationEnvelopeSwaggerDtoData>}
+     * @memberof AgentApiConversationListSwaggerDto
+     */
+    data: Array<AgentApiConversationEnvelopeSwaggerDtoData>;
+    /**
+     * 
+     * @type {AgentApiKeyListResponseSwaggerDtoMeta}
+     * @memberof AgentApiConversationListSwaggerDto
+     */
+    meta: AgentApiKeyListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
  * @interface AgentApiKeyCreateEnvelopeSwaggerDto
  */
 export interface AgentApiKeyCreateEnvelopeSwaggerDto {
@@ -209,6 +395,359 @@ export interface AgentApiKeyListResponseSwaggerDtoMeta {
      * @memberof AgentApiKeyListResponseSwaggerDtoMeta
      */
     total: number;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiMessageListSwaggerDto
+ */
+export interface AgentApiMessageListSwaggerDto {
+    /**
+     * 
+     * @type {Array<AgentApiMessageListSwaggerDtoDataInner>}
+     * @memberof AgentApiMessageListSwaggerDto
+     */
+    data: Array<AgentApiMessageListSwaggerDtoDataInner>;
+    /**
+     * 
+     * @type {AgentApiKeyListResponseSwaggerDtoMeta}
+     * @memberof AgentApiMessageListSwaggerDto
+     */
+    meta: AgentApiKeyListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiMessageListSwaggerDtoDataInner
+ */
+export interface AgentApiMessageListSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInner
+     */
+    role: AgentApiMessageListSwaggerDtoDataInnerRoleEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInner
+     */
+    content: string;
+    /**
+     * 
+     * @type {Array<AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner>}
+     * @memberof AgentApiMessageListSwaggerDtoDataInner
+     */
+    attachments: Array<AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner>;
+    /**
+     * 
+     * @type {Array<AgentApiMessageListSwaggerDtoDataInnerToolCallsInner>}
+     * @memberof AgentApiMessageListSwaggerDtoDataInner
+     */
+    toolCalls: Array<AgentApiMessageListSwaggerDtoDataInnerToolCallsInner>;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInner
+     */
+    createdAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const AgentApiMessageListSwaggerDtoDataInnerRoleEnum = {
+    User: 'user',
+    Assistant: 'assistant'
+} as const;
+export type AgentApiMessageListSwaggerDtoDataInnerRoleEnum = typeof AgentApiMessageListSwaggerDtoDataInnerRoleEnum[keyof typeof AgentApiMessageListSwaggerDtoDataInnerRoleEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner
+ */
+export interface AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner
+     */
+    kind: AgentApiMessageListSwaggerDtoDataInnerAttachmentsInnerKindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner
+     */
+    fileName: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner
+     */
+    mimeType: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerAttachmentsInner
+     */
+    sizeBytes: number;
+}
+
+
+/**
+ * @export
+ */
+export const AgentApiMessageListSwaggerDtoDataInnerAttachmentsInnerKindEnum = {
+    Image: 'image',
+    File: 'file'
+} as const;
+export type AgentApiMessageListSwaggerDtoDataInnerAttachmentsInnerKindEnum = typeof AgentApiMessageListSwaggerDtoDataInnerAttachmentsInnerKindEnum[keyof typeof AgentApiMessageListSwaggerDtoDataInnerAttachmentsInnerKindEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentApiMessageListSwaggerDtoDataInnerToolCallsInner
+ */
+export interface AgentApiMessageListSwaggerDtoDataInnerToolCallsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerToolCallsInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerToolCallsInner
+     */
+    tool: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiMessageListSwaggerDtoDataInnerToolCallsInner
+     */
+    status: AgentApiMessageListSwaggerDtoDataInnerToolCallsInnerStatusEnum;
+}
+
+
+/**
+ * @export
+ */
+export const AgentApiMessageListSwaggerDtoDataInnerToolCallsInnerStatusEnum = {
+    Pending: 'pending',
+    AwaitingPermission: 'awaiting_permission',
+    Denied: 'denied',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type AgentApiMessageListSwaggerDtoDataInnerToolCallsInnerStatusEnum = typeof AgentApiMessageListSwaggerDtoDataInnerToolCallsInnerStatusEnum[keyof typeof AgentApiMessageListSwaggerDtoDataInnerToolCallsInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentApiRunEnvelopeSwaggerDto
+ */
+export interface AgentApiRunEnvelopeSwaggerDto {
+    /**
+     * 
+     * @type {AgentApiRunEnvelopeSwaggerDtoData}
+     * @memberof AgentApiRunEnvelopeSwaggerDto
+     */
+    data: AgentApiRunEnvelopeSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiRunEnvelopeSwaggerDtoData
+ */
+export interface AgentApiRunEnvelopeSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    conversationId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    status: AgentApiRunEnvelopeSwaggerDtoDataStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    agentVersionId: string | null;
+    /**
+     * 
+     * @type {AgentApiRunEnvelopeSwaggerDtoDataInput}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    input: AgentApiRunEnvelopeSwaggerDtoDataInput;
+    /**
+     * 
+     * @type {AgentApiRunEnvelopeSwaggerDtoDataOutput}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    output: AgentApiRunEnvelopeSwaggerDtoDataOutput | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    stopReason: AgentApiRunEnvelopeSwaggerDtoDataStopReasonEnum | null;
+    /**
+     * 
+     * @type {AgentApiRunEnvelopeSwaggerDtoDataError}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    error: AgentApiRunEnvelopeSwaggerDtoDataError | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    startedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoData
+     */
+    completedAt: string | null;
+}
+
+
+/**
+ * @export
+ */
+export const AgentApiRunEnvelopeSwaggerDtoDataStatusEnum = {
+    Queued: 'queued',
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled'
+} as const;
+export type AgentApiRunEnvelopeSwaggerDtoDataStatusEnum = typeof AgentApiRunEnvelopeSwaggerDtoDataStatusEnum[keyof typeof AgentApiRunEnvelopeSwaggerDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const AgentApiRunEnvelopeSwaggerDtoDataStopReasonEnum = {
+    EndTurn: 'end_turn',
+    MaxTokens: 'max_tokens',
+    Cancelled: 'cancelled'
+} as const;
+export type AgentApiRunEnvelopeSwaggerDtoDataStopReasonEnum = typeof AgentApiRunEnvelopeSwaggerDtoDataStopReasonEnum[keyof typeof AgentApiRunEnvelopeSwaggerDtoDataStopReasonEnum];
+
+/**
+ * 
+ * @export
+ * @interface AgentApiRunEnvelopeSwaggerDtoDataError
+ */
+export interface AgentApiRunEnvelopeSwaggerDtoDataError {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataError
+     */
+    type: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataError
+     */
+    title: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataError
+     */
+    detail?: string;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiRunEnvelopeSwaggerDtoDataInput
+ */
+export interface AgentApiRunEnvelopeSwaggerDtoDataInput {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataInput
+     */
+    messageId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataInput
+     */
+    content: string;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiRunEnvelopeSwaggerDtoDataOutput
+ */
+export interface AgentApiRunEnvelopeSwaggerDtoDataOutput {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataOutput
+     */
+    messageId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataOutput
+     */
+    content: string;
+    /**
+     * 
+     * @type {Array<AgentApiMessageListSwaggerDtoDataInnerToolCallsInner>}
+     * @memberof AgentApiRunEnvelopeSwaggerDtoDataOutput
+     */
+    toolCalls: Array<AgentApiMessageListSwaggerDtoDataInnerToolCallsInner>;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiRunListSwaggerDto
+ */
+export interface AgentApiRunListSwaggerDto {
+    /**
+     * 
+     * @type {Array<AgentApiRunEnvelopeSwaggerDtoData>}
+     * @memberof AgentApiRunListSwaggerDto
+     */
+    data: Array<AgentApiRunEnvelopeSwaggerDtoData>;
+    /**
+     * 
+     * @type {AgentApiKeyListResponseSwaggerDtoMeta}
+     * @memberof AgentApiRunListSwaggerDto
+     */
+    meta: AgentApiKeyListResponseSwaggerDtoMeta;
 }
 /**
  * 
@@ -1349,6 +1888,31 @@ export interface ConversationListResponseSwaggerDtoMeta {
 /**
  * 
  * @export
+ * @interface CreateAgentApiConversationSwaggerDto
+ */
+export interface CreateAgentApiConversationSwaggerDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiConversationSwaggerDto
+     */
+    title?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiConversationSwaggerDto
+     */
+    externalUserId?: string;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof CreateAgentApiConversationSwaggerDto
+     */
+    metadata?: { [key: string]: any; };
+}
+/**
+ * 
+ * @export
  * @interface CreateAgentApiKeySwaggerDto
  */
 export interface CreateAgentApiKeySwaggerDto {
@@ -1377,6 +1941,92 @@ export interface CreateAgentApiKeySwaggerDto {
      */
     expiresAt?: string;
 }
+/**
+ * 
+ * @export
+ * @interface CreateAgentApiRunSwaggerDto
+ */
+export interface CreateAgentApiRunSwaggerDto {
+    /**
+     * 
+     * @type {CreateAgentApiRunSwaggerDtoInput}
+     * @memberof CreateAgentApiRunSwaggerDto
+     */
+    input: CreateAgentApiRunSwaggerDtoInput;
+}
+/**
+ * 
+ * @export
+ * @interface CreateAgentApiRunSwaggerDtoInput
+ */
+export interface CreateAgentApiRunSwaggerDtoInput {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiRunSwaggerDtoInput
+     */
+    content: string;
+    /**
+     * 
+     * @type {Array<CreateAgentApiRunSwaggerDtoInputAttachmentsInner>}
+     * @memberof CreateAgentApiRunSwaggerDtoInput
+     */
+    attachments?: Array<CreateAgentApiRunSwaggerDtoInputAttachmentsInner>;
+}
+/**
+ * 
+ * @export
+ * @interface CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+ */
+export interface CreateAgentApiRunSwaggerDtoInputAttachmentsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+     */
+    kind: CreateAgentApiRunSwaggerDtoInputAttachmentsInnerKindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+     */
+    fileName: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+     */
+    mimeType: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+     */
+    sizeBytes: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+     */
+    dataBase64?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiRunSwaggerDtoInputAttachmentsInner
+     */
+    textContent?: string;
+}
+
+
+/**
+ * @export
+ */
+export const CreateAgentApiRunSwaggerDtoInputAttachmentsInnerKindEnum = {
+    Image: 'image',
+    File: 'file'
+} as const;
+export type CreateAgentApiRunSwaggerDtoInputAttachmentsInnerKindEnum = typeof CreateAgentApiRunSwaggerDtoInputAttachmentsInnerKindEnum[keyof typeof CreateAgentApiRunSwaggerDtoInputAttachmentsInnerKindEnum];
+
 /**
  * 
  * @export
