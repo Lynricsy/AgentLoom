@@ -1,0 +1,233 @@
+/* AgentLoom 图解入门手册 · 打印样式（A4 纵向，每个 .page 即一页） */
+@page { size: A4; margin: 0; }
+
+:root {
+  --ink: #14123a;
+  --ink-2: #3b3a5c;
+  --muted: #667085;
+  --line: #e6e8f2;
+  --paper: #fbfbfe;
+  --night: #0b0c2a;
+  --indigo: #6366f1;
+  --indigo-d: #4f46e5;
+  --violet: #8b5cf6;
+  --teal: #14b8a6;
+  --sky: #0ea5e9;
+  --lime: #a3e635;
+  --amber: #f59e0b;
+  --rose: #f43f5e;
+  --green: #10b981;
+  --pink: #ec4899;
+  --fuchsia: #d946ef;
+  --grad: linear-gradient(100deg, #6366f1 0%, #8b5cf6 35%, #14b8a6 70%, #a3e635 100%);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  font-family: "Noto Sans CJK SC", "Noto Sans", sans-serif;
+  color: var(--ink);
+  font-size: 10pt;
+  line-height: 1.7;
+  background: #d9dbe5;
+}
+svg text { font-family: "Noto Sans CJK SC", "Noto Sans", sans-serif; }
+.mono, svg .mono { font-family: "Noto Sans Mono", monospace; }
+
+.page {
+  width: 210mm;
+  height: 297mm;
+  position: relative;
+  overflow: hidden;
+  background: var(--paper);
+  padding: 21mm 17mm 18mm;
+  break-after: page;
+}
+.page:last-child { break-after: auto; }
+@media screen { .page { margin: 8mm auto; box-shadow: 0 10px 40px rgba(20, 18, 58, .18); } }
+
+/* 页眉页脚 */
+.runhead {
+  position: absolute; top: 8.5mm; left: 17mm; right: 17mm;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 7.5pt; color: #9aa0b8; letter-spacing: .12em;
+}
+.runhead .brand { display: flex; align-items: center; gap: 2mm; font-weight: 700; color: #7c80a0; }
+.runhead .brand img { width: 5mm; height: 5mm; }
+.runfoot {
+  position: absolute; bottom: 8mm; left: 17mm; right: 17mm;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 7.5pt; color: #9aa0b8;
+}
+.runfoot .num { font-weight: 800; color: var(--indigo); font-size: 9pt; }
+.runhead::after, .runfoot::before { content: none; }
+.hairline { position: absolute; left: 17mm; right: 17mm; top: 13.5mm; height: 1px; background: linear-gradient(90deg, #6366f155, #14b8a622, transparent); }
+
+/* 标题系统 */
+.kicker {
+  display: inline-flex; align-items: center; gap: 2.5mm;
+  font-size: 8.5pt; font-weight: 800; letter-spacing: .24em; color: var(--indigo);
+}
+.kicker .no {
+  font-size: 9pt; color: #fff; background: var(--grad);
+  padding: .3mm 2.4mm; border-radius: 10mm; letter-spacing: .05em;
+}
+h1, h2 { font-family: "Noto Serif CJK SC", serif; font-weight: 900; letter-spacing: .01em; }
+h2 { font-size: 24pt; line-height: 1.25; margin: 2.5mm 0 2.5mm; }
+/* 荧光笔式高亮：避免 background-clip:text 在 PDF 中产生描边伪影 */
+h2 .hl {
+  color: var(--indigo-d);
+  background: linear-gradient(90deg, rgba(99, 102, 241, .20), rgba(20, 184, 166, .22), rgba(163, 230, 53, .30)) no-repeat 0 88% / 100% 36%;
+  padding: 0 .5mm;
+}
+h3 { font-size: 12pt; font-weight: 800; line-height: 1.4; margin-bottom: 1.5mm; }
+h4 { font-size: 10pt; font-weight: 800; line-height: 1.4; }
+.lead { font-size: 11pt; color: var(--ink-2); line-height: 1.75; max-width: 160mm; }
+.small { font-size: 8.5pt; color: var(--muted); line-height: 1.6; }
+.tiny { font-size: 7.5pt; color: var(--muted); }
+p + p { margin-top: 1.5mm; }
+b, strong { font-weight: 800; }
+.c-indigo { color: var(--indigo); } .c-teal { color: var(--teal); } .c-violet { color: var(--violet); }
+
+/* 布局 */
+.grid { display: grid; gap: 4mm; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.mt1 { margin-top: 1.5mm; } .mt2 { margin-top: 3mm; } .mt3 { margin-top: 5mm; } .mt4 { margin-top: 7mm; } .mt5 { margin-top: 9mm; }
+.row { display: flex; gap: 3mm; align-items: center; }
+
+/* 卡片 */
+.card {
+  background: #fff; border: 1px solid var(--line); border-radius: 3.5mm;
+  padding: 4mm 4.5mm;
+  box-shadow: 0 1px 0 rgba(20, 18, 58, .03), 0 8px 22px -14px rgba(79, 70, 229, .35);
+}
+.card.tint { background: linear-gradient(160deg, #ffffff 0%, #f4f3ff 100%); }
+.card.dark { background: var(--night); color: #e6e7ff; border-color: #22245a; }
+.card .ico {
+  width: 9mm; height: 9mm; border-radius: 2.6mm; display: grid; place-items: center;
+  margin-bottom: 2mm; color: #fff;
+}
+.card .ico svg { width: 5mm; height: 5mm; }
+.card p { font-size: 8.8pt; color: var(--ink-2); line-height: 1.65; }
+.card.dark p { color: #b9bce6; }
+
+.strip { border-left: 1.2mm solid var(--indigo); padding-left: 3.5mm; }
+
+/* 标签 */
+.chip {
+  display: inline-flex; align-items: center; gap: 1.2mm;
+  font-size: 7.8pt; font-weight: 600; line-height: 1;
+  padding: 1.3mm 2.2mm; border-radius: 10mm;
+  background: #eef0ff; color: #3f3ba8; margin: 0 1mm 1.2mm 0; white-space: nowrap;
+}
+.chip i { width: 1.8mm; height: 1.8mm; border-radius: 50%; display: inline-block; }
+.chip.mono { font-family: "Noto Sans Mono", monospace; font-weight: 500; }
+.chip.ghost { background: transparent; border: 1px solid #d9dcf0; color: var(--ink-2); }
+
+/* 图标 */
+.i { width: 1em; height: 1em; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -.12em; }
+
+/* 图片 */
+.figure { border-radius: 4mm; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.figure img { display: block; width: 100%; }
+.caption { font-size: 7.8pt; color: var(--muted); margin-top: 1.6mm; text-align: center; letter-spacing: .02em; }
+.svgwrap svg { display: block; width: 100%; height: auto; }
+
+/* 表格 */
+table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 8.6pt; }
+table.t th { text-align: left; font-weight: 800; color: #fff; background: var(--ink); padding: 2mm 3mm; }
+table.t td { padding: 2mm 3mm; border-bottom: 1px solid var(--line); background: #fff; vertical-align: top; color: var(--ink-2); }
+table.t tr:nth-child(even) td { background: #f8f8fe; }
+table.t td:first-child { font-weight: 700; color: var(--ink); }
+table.t.center th:not(:first-child), table.t.center td:not(:first-child) { text-align: center; }
+table.t.center td:not(:first-child) { color: var(--indigo-d); font-weight: 800; }
+
+/* 编号步骤 */
+.step { display: flex; gap: 3.5mm; align-items: flex-start; }
+.step .n {
+  flex: none; width: 8mm; height: 8mm; border-radius: 50%;
+  background: var(--grad); color: #fff; font-weight: 900; font-size: 10pt;
+  display: grid; place-items: center;
+}
+
+/* 引用块 */
+.quote {
+  font-family: "Noto Serif CJK SC", serif; font-size: 12.5pt; font-weight: 700; line-height: 1.6;
+  padding: 5mm 6mm; border-radius: 3.5mm; color: #2a2870;
+  background: linear-gradient(120deg, #eef0ff, #e9fbf7);
+}
+
+/* 数字条 */
+.stats {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: #fff; border: 1px solid var(--line); border-radius: 3.5mm; padding: 3.5mm 2mm;
+}
+.stats div { text-align: center; border-right: 1px dashed #dfe2f3; }
+.stats div:last-child { border-right: 0; }
+.stats b { display: block; font-size: 19pt; font-weight: 900; line-height: 1.1; color: var(--indigo-d); }
+.stats span { font-size: 8pt; color: var(--muted); }
+
+/* 流程条 */
+.flowline { display: flex; align-items: center; justify-content: space-between; }
+.flowline span {
+  display: inline-flex; align-items: center; gap: 1.2mm; white-space: nowrap;
+  font-size: 8.3pt; font-weight: 700; color: var(--ink);
+  background: #fff; border: 1px solid #dfe2f3; border-radius: 10mm; padding: 1.4mm 2.2mm 1.4mm 1.4mm;
+}
+.flowline span i {
+  font-style: normal; width: 4.2mm; height: 4.2mm; border-radius: 50%; display: grid; place-items: center;
+  background: var(--indigo); color: #fff; font-size: 7pt; font-weight: 900;
+}
+.flowline em { font-style: normal; color: #a5b4fc; font-weight: 900; }
+
+/* ======== 封面 ======== */
+.cover { background: var(--night); color: #fff; padding: 0; }
+.cover .art { position: absolute; left: 0; right: 0; bottom: 0; height: 150mm; }
+.cover .art img { width: 100%; height: 100%; object-fit: cover; object-position: 58% 50%; }
+.cover .art::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 60mm; z-index: 1;
+  background: linear-gradient(180deg, var(--night) 0%, rgba(11, 12, 42, 0) 100%);
+}
+.cover .top { position: absolute; left: 20mm; right: 20mm; top: 22mm; z-index: 2; }
+.cover .logo { display: flex; align-items: center; gap: 3mm; font-weight: 800; letter-spacing: .3em; font-size: 8.5pt; color: #a5a8e8; }
+.cover .logo img { width: 12mm; height: 12mm; }
+.cover h1 {
+  font-family: "Noto Sans CJK SC", sans-serif; font-weight: 900; font-size: 50pt; line-height: 1.05;
+  margin-top: 16mm; letter-spacing: -.01em; color: #ffffff;
+}
+.cover h1 span, .backtitle span { color: #7ef0d8; }
+.backtitle { font-size: 30pt; font-weight: 900; line-height: 1.1; color: #fff; }
+
+/* 紧凑卡片组 */
+.compact .card { padding: 3mm 4mm; }
+.compact .card .ico { width: 7.5mm; height: 7.5mm; margin-bottom: 1.2mm; border-radius: 2.2mm; }
+.compact .card .ico svg { width: 4.2mm; height: 4.2mm; }
+.cover .sub { font-family: "Noto Serif CJK SC", serif; font-size: 20pt; font-weight: 700; margin-top: 4mm; color: #e9eaff; }
+.cover .tag { font-size: 11.5pt; color: #b3b6e6; margin-top: 6mm; line-height: 1.8; max-width: 150mm; }
+.cover .badge {
+  display: inline-block; margin-top: 8mm; font-size: 8.5pt; letter-spacing: .18em; font-weight: 700;
+  border: 1px solid #4a4ea0; color: #c9cbff; padding: 1.6mm 4mm; border-radius: 10mm;
+}
+.cover .foot {
+  position: absolute; left: 20mm; right: 20mm; bottom: 12mm; z-index: 2;
+  display: flex; justify-content: space-between; font-size: 8pt; color: #b9bce6; letter-spacing: .12em;
+}
+
+/* 目录 */
+.toc a { display: flex; align-items: baseline; gap: 3mm; color: inherit; text-decoration: none; padding: 2.4mm 0; border-bottom: 1px dashed #dfe2f3; font-size: 9.8pt; }
+.toc .tn { font-weight: 900; color: var(--indigo); width: 7mm; font-size: 9pt; }
+.toc .tt { flex: 1; font-weight: 700; }
+.toc .tp { font-weight: 800; color: #9aa0b8; font-size: 8.5pt; }
+
+/* 尾页 */
+.backband {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 92mm;
+  background: var(--night); color: #fff; padding: 14mm 17mm;
+  overflow: hidden;
+}
+.backband::before {
+  content: ""; position: absolute; right: -30mm; top: -40mm; width: 140mm; height: 140mm; border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, .45), rgba(20, 184, 166, .12) 55%, transparent 70%);
+}

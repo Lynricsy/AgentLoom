@@ -36,6 +36,7 @@ AgentLoom/
 ├── agentloom-deploy/          # Docker Compose, Helm, env templates, ops scripts
 ├── agentloom-type-engine/     # Rust/WASM port compatibility engine
 ├── agentloom-firecracker-runtime/ # Go runtime manager and guest daemon
+├── brochure/                  # Illustrated intro brochure (HTML/CSS source; build.sh → A4 PDF)
 ├── agentloom_mobile/          # Flutter mobile application
 ├── pnpm-workspace.yaml        # Workspace members, catalog, overrides, allowBuilds
 └── package.json               # Workspace orchestration scripts
