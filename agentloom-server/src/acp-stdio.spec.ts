@@ -3,10 +3,12 @@ import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 
-const { createApplicationContext, createInterfaceMock } = vi.hoisted(() => ({
-  createApplicationContext: vi.fn(),
-  createInterfaceMock: vi.fn(),
-}));
+const { createApplicationContext, createInterfaceMock, StubStdioModule } =
+  vi.hoisted(() => ({
+    createApplicationContext: vi.fn(),
+    createInterfaceMock: vi.fn(),
+    StubStdioModule: class StubStdioModule {},
+  }));
 
 vi.mock('@nestjs/core', async (importOriginal) => {
   const actual = await importOriginal<typeof NestCoreModule>();
@@ -20,6 +22,14 @@ vi.mock('@nestjs/core', async (importOriginal) => {
 });
 vi.mock('node:readline', () => ({
   createInterface: createInterfaceMock,
+}));
+// NestFactory.createApplicationContext 已被 mock，真实模块图不会被实例化；
+// 用桩替换 AcpStdioModule / AcpGatewayService，避免每个用例 resetModules 后冷加载整个 server 模块图。
+vi.mock('./modules/acp-gateway/acp-stdio.module', () => ({
+  AcpStdioModule: StubStdioModule,
+}));
+vi.mock('./modules/acp-gateway/acp-gateway.service', () => ({
+  AcpGatewayService: class AcpGatewayService {},
 }));
 
 const REQUIRED_ENV = {
@@ -66,9 +76,7 @@ async function loadStdioEntrypoint() {
   await import('./acp-stdio.js');
 }
 
-// 每个用例都会 resetModules 后重新 import 整个 Nest 入口模块图，
-// 冷缓存下单次 bootstrap 的 transform 时间远超 vitest 默认 5s testTimeout。
-describe('ACP stdio bootstrap', { timeout: 30_000 }, () => {
+describe('ACP stdio bootstrap', () => {
   let readline: FakeReadline;
   let writes: string[];
   let signalHandlers: Record<string, () => void>;
@@ -177,10 +185,10 @@ describe('ACP stdio bootstrap', { timeout: 30_000 }, () => {
 
     await loadStdioEntrypoint();
     await flush();
-    expect(createApplicationContext).toHaveBeenCalledWith(
-      expect.any(Function),
-      { abortOnError: false, logger: false },
-    );
+    expect(createApplicationContext).toHaveBeenCalledWith(StubStdioModule, {
+      abortOnError: false,
+      logger: false,
+    });
     expect(createInterfaceMock).toHaveBeenCalledWith({
       input: process.stdin,
       crlfDelay: Infinity,
