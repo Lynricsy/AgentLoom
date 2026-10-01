@@ -33,7 +33,7 @@ docType: howto
 运行时填写的值作为本次执行的输入参数，由触发器节点的「触发数据」端口（`json`）输出，键名为各字段的字段 ID。常见接法：
 
 - 把 [Manual Trigger](/guide/nodes/trigger) 的「触发数据」连到 [Agent](/guide/nodes/agent) 的「上下文」端口，Agent 推理时可以参考全部输入。
-- 需要把某个字段作为 Agent 的输入文本时，先用 [输入预处理器](/guide/nodes/input-preprocessor) 取出字段（例如模板模式 `{{json-in.topic}}`），再把它的「文本」输出连到 Agent 的「文本」端口。
+- 需要把某个字段作为 Agent 的输入文本时，先用 [输入预处理器](/guide/nodes/input-preprocessor) 取出字段（例如模板模式 <code v-pre>{{json-in.topic}}</code>），再把它的「文本」输出连到 Agent 的「文本」端口。
 
 ## 下一步
 

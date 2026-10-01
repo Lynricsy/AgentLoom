@@ -17,7 +17,7 @@ docType: howto
 | 检索 Top K | 默认 8，最小 1 |
 | 相似度阈值 | 0 到 1；留空表示不限制（默认） |
 | 重排策略 | 「关闭重排」（默认）或「Cohere Rerank」（可设 Cohere 模型与重排 Top N） |
-| Query Orchestration | 「直接查询」（默认）或「HyDE」（可选 HyDE 模型，默认使用默认聊天模型；HyDE Prompt Template 支持 `{{query}}` 占位符，留空使用系统默认提示词） |
+| Query Orchestration | 「直接查询」（默认）或「HyDE」（可选 HyDE 模型，默认使用默认聊天模型；HyDE Prompt Template 支持 <code v-pre>{{query}}</code> 占位符，留空使用系统默认提示词） |
 
 ## 让新策略对已有文档生效
 
