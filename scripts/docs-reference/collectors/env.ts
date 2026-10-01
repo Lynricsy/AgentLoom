@@ -113,12 +113,39 @@ function templateArtifact(path: string, source: string, intro: string): Artifact
   return { path, content: doc(intro, table(['变量', '模板值', '说明'], rows)) };
 }
 
+/** Compose 文件中出现、但 .env.template 未声明的插值变量：`${KEY}` / `${KEY:-默认}` / `${KEY:?提示}` */
+function composeOnlyRows(templateKeys: Set<string>): string[][] {
+  const found = new Map<string, { rule: string; files: string[] }>();
+  const composeFiles = walk(repoPath('agentloom-deploy'), (f) => /\/docker-compose[^/]*\.ya?ml$/.test(f));
+  for (const file of composeFiles) {
+    for (const m of read(file).matchAll(/\$\{([A-Z][A-Z0-9_]*)(?:(:?[-?])([^}]*))?\}/g)) {
+      const key = m[1];
+      if (templateKeys.has(key)) continue;
+      const entry = found.get(key) ?? { rule: '', files: [] };
+      if (!entry.rule && m[2]) entry.rule = m[2].endsWith('?') ? `必填（${m[3]}）` : `默认 ${code(m[3] === '' ? '""' : m[3])}`;
+      if (!entry.files.includes(rel(file))) entry.files.push(rel(file));
+      found.set(key, entry);
+    }
+  }
+  return [...found]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, e]) => [code(key), cell(e.rule), e.files.map(code).join('<br>')]);
+}
+
 export function envDeployArtifact(): Artifact {
-  return templateArtifact(
-    'env-deploy.md',
-    DEPLOY_ENV_TEMPLATE,
-    '来源：`agentloom-deploy/.env.template`（Docker Compose 部署的完整变量合同；`./scripts/generate-secrets.sh` 由它生成 `.env`）。说明取自变量上方注释。',
-  );
+  const entries = parseEnvFile(DEPLOY_ENV_TEMPLATE);
+  return {
+    path: 'env-deploy.md',
+    content: doc(
+      '来源：`agentloom-deploy/.env.template`（Docker Compose 部署的变量合同；`agentloom-deploy/scripts/generate-secrets.sh` 复制它生成 `.env` 并填充密钥）。说明取自变量上方注释。',
+      table(
+        ['变量', '模板值', '说明'],
+        entries.map((e) => [code(e.key), e.value === '' ? '' : code(e.value), cell(e.comment)]),
+      ),
+      '**仅在 Compose 文件中出现的插值变量**（`.env.template` 未声明；未设置时按 Compose 中的默认值或报错）：',
+      table(['变量', 'Compose 规则', '出现文件'], composeOnlyRows(new Set(entries.map((e) => e.key)))),
+    ),
+  };
 }
 
 export function envStudioArtifact(): Artifact {

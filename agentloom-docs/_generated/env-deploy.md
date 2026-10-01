@@ -1,6 +1,6 @@
 <!-- 由 scripts/docs-reference/generate.ts 生成，勿手改；运行 pnpm docs:gen -->
 
-来源：`agentloom-deploy/.env.template`（Docker Compose 部署的完整变量合同；`./scripts/generate-secrets.sh` 由它生成 `.env`）。说明取自变量上方注释。
+来源：`agentloom-deploy/.env.template`（Docker Compose 部署的变量合同；`agentloom-deploy/scripts/generate-secrets.sh` 复制它生成 `.env` 并填充密钥）。说明取自变量上方注释。
 
 | 变量 | 模板值 | 说明 |
 | --- | --- | --- |
@@ -83,3 +83,26 @@
 | `SUPABASE_GITHUB_ENABLED` | `false` |  |
 | `SUPABASE_GITHUB_CLIENT_ID` |  |  |
 | `SUPABASE_GITHUB_SECRET` |  |  |
+
+**仅在 Compose 文件中出现的插值变量**（`.env.template` 未声明；未设置时按 Compose 中的默认值或报错）：
+
+| 变量 | Compose 规则 | 出现文件 |
+| --- | --- | --- |
+| `APP_FIRECRACKER_RUNTIME_SERVER_NAME` | 默认 `firecracker-runtime` | `agentloom-deploy/docker-compose.yml` |
+| `APP_FIRECRACKER_RUNTIME_URL` | 默认 `https://firecracker-runtime:8443` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_ALLOW_SWAP` | 默认 `false` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_CALLBACK_ALLOWED_HOSTS` | 默认 `server,worker` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_CLIENT_CA_FILE` | 默认 `./secrets/firecracker/client-ca.crt` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_CLIENT_CERT_FILE` | 默认 `./secrets/firecracker/app-client.crt` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_CLIENT_KEY_FILE` | 默认 `./secrets/firecracker/app-client.key` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_ENV` | 默认 `production` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_GUEST_CA_FILE` | 默认 `./secrets/firecracker/guest-ca.crt` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_GUEST_CA_KEY_FILE` | 默认 `./secrets/firecracker/guest-ca.key` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_GUEST_SERVER_NAME` | 默认 `agentloom-guest` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_HEALTH_CLIENT_CERT_FILE` | 默认 `./secrets/firecracker/health-client.crt` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_HEALTH_CLIENT_KEY_FILE` | 默认 `./secrets/firecracker/health-client.key` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_MANAGER_CA_FILE` | 默认 `./secrets/firecracker/manager-ca.crt` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_MANAGER_CERT_FILE` | 默认 `./secrets/firecracker/manager.crt` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_MANAGER_KEY_FILE` | 默认 `./secrets/firecracker/manager.key` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_RUNTIME_CPU_LIMIT` | 默认 `24` | `agentloom-deploy/docker-compose.yml` |
+| `FIRECRACKER_RUNTIME_MEMORY_LIMIT` | 默认 `48G` | `agentloom-deploy/docker-compose.yml` |
