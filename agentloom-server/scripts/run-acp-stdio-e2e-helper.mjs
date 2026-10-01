@@ -9,6 +9,7 @@ import postgres from 'postgres';
 
 const SERVER_DIR = process.env.ACP_TEST_SERVER_DIR ?? process.cwd();
 const DATABASE_URL = process.env.ACP_TEST_DATABASE_URL;
+const REDIS_URL = process.env.ACP_TEST_REDIS_URL;
 const TEST_JWT_SECRET =
   process.env.ACP_TEST_JWT_SECRET ?? 'test-e2e-jwt-secret';
 const TEST_TENANT_ID =
@@ -62,6 +63,10 @@ if (!DATABASE_URL) {
   throw new Error('ACP_TEST_DATABASE_URL is required');
 }
 
+if (!REDIS_URL) {
+  throw new Error('ACP_TEST_REDIS_URL is required');
+}
+
 function createAccessToken(payload) {
   return jwt.sign(
     {
@@ -105,7 +110,7 @@ function createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot) {
     APP_DEPLOYMENT_MODE: 'private',
     APP_DATABASE_URL: databaseUrl,
     APP_JWT_SECRET: TEST_JWT_SECRET,
-    APP_REDIS_URL: 'redis://localhost:6379',
+    APP_REDIS_URL: REDIS_URL,
     APP_MASTER_ENCRYPTION_KEY: TEST_MASTER_ENCRYPTION_KEY,
     APP_OAUTH_REDIRECT_URL: 'http://localhost:3000/auth/callback',
     APP_FRONTEND_URL: 'http://localhost:5173',

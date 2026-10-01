@@ -198,6 +198,8 @@ function createAcpHelperEnv(databaseUrl: string): NodeJS.ProcessEnv {
     NODE_ENV: 'test',
     ACP_TEST_SERVER_DIR: SERVER_DIR,
     ACP_TEST_DATABASE_URL: databaseUrl,
+    // setup-e2e.ts 已按 E2E_REDIS_URL 设置 APP_REDIS_URL；helper 只继承白名单变量，需显式传入
+    ACP_TEST_REDIS_URL: process.env.APP_REDIS_URL,
     ACP_TEST_JWT_SECRET: TEST_JWT_SECRET,
     ACP_TEST_TENANT_ID: TEST_TENANT_ID,
     ACP_TEST_ORG_ID: TEST_ORG_ID,
