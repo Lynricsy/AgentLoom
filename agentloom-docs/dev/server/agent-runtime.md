@@ -131,6 +131,48 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 
 技能解析失败只记录 warning 并退回基础提示词，不会中断执行。sandbox 运行态下，对话 worker 还会把技能载荷连同模型与 MCP 配置组装为 `PiConfigInput`，随 sandbox 创建任务一起提交（`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:875-911`）。
 
+## 对话跨实例派发
+
+对话执行队列 `agent-conversation-execution` 以 conversationId 作为 jobId，同一对话同一时刻只有一个 loop，它可能运行在任一 server / worker 实例上。新消息、取消请求可能落在另一个实例，`AgentExecutionService`（`agentloom-server/src/modules/agent-execution/agent-execution.service.ts`）用两个 Redis pub/sub 频道把它们送到 loop 所在实例，所有实例在 `onModuleInit` 时订阅：
+
+| 频道 | 常量 | 发布时机 | 收到后 |
+| --- | --- | --- | --- |
+| `__agent_conversation_cancel__` | `AGENT_CONVERSATION_CANCEL_CHANNEL` | `abortExecution`：先中止本实例的 loop，再发布 | 中止本实例上该对话的活跃 loop |
+| `__agent_conversation_notify__` | `AGENT_CONVERSATION_NOTIFY_CHANNEL` | 派发时发现该对话的 job 处于 `active` 状态 | 唤醒本实例上空闲等待新消息的 loop |
+
+派发顺序（`dispatchConversationExecution`，在租户事务提交后执行）：本实例有活跃 loop 时直接唤醒；否则查已有 job，`completed` / `failed` 的先删除再入队，`active` 的经通知频道唤醒、不重复入队，其余状态直接跳过。
+
+loop 可能恰好在唤醒消息到达前因空闲超时退出，此时新消息无人处理。`AgentExecutionWorker.onCompleted`（`agentloom-server/src/modules/agent-execution/agent-execution.worker.ts`）在每个对话 job 完成后检查：对话仍为 `active`、运行状态为 `idle`，且存在 `lastProcessedMessageId` 之后的用户消息时，重新调用 `dispatchExecution` 补发。
+
+## Agent 对外 API 运行链
+
+第三方通过 `/api/v1/agent-api/**` 调用已发布的 Agent；调用方文档见 [/api/agent-api](/api/agent-api)，设计背景见 [ADR 0001](/dev/decisions/0001-agent-external-api)。这条链路复用上节的对话执行，只在外围增加 run、事件流和清扫。
+
+```mermaid
+sequenceDiagram
+    participant C as 调用方
+    participant A as 接收请求的实例
+    participant DB as PostgreSQL
+    participant W as 执行对话的实例
+    participant R as Redis Stream
+
+    C->>A: POST …/conversations/:id/runs（Bearer alak_…）
+    A->>DB: 短事务：锁 Key 行、并发检查、写用户消息与 queued run
+    A->>R: 提交后写 run.created，派发对话执行
+    W->>DB: markRunning：queued → running
+    W->>R: AgentApiEventMirrorListener 写入对外事件
+    C->>A: GET …/runs/:runId/events（Last-Event-ID）
+    A->>R: XREAD 读取并以 SSE 转发
+    W->>R: 终态事件，流设置过期
+```
+
+- **鉴权与事务**：`agentloom-server/src/modules/agent-api/agent-api.controller.ts` 同时声明 `@Public()` 与 `@UseGuards(AgentApiKeyGuard)`。守卫只设置 `request.agentApiKey`，不设置 `request.user`，所以全局 `TenantTransactionInterceptor` 不为这些请求开事务；`AgentApiService`（`agentloom-server/src/modules/agent-api/agent-api.service.ts`）在需要读写数据库处各自调用 `runInTenantTransaction`，以 Key 所属租户开短事务。SSE 长连接因此不会占住数据库事务。
+- **run**：每次调用写一条 `agent_api_runs`（`agentloom-server/src/database/schema/agent-api-runs.schema.ts`）。建 run 的事务中先以 `SELECT … FOR UPDATE` 锁住 `agent_api_keys` 中该 Key 的行，使同一 Key 的建 run 请求串行，再统计该 Key `queued` / `running` 的 run 数：达到 `maxConcurrentRuns` 返回 `concurrency-limit-exceeded`；同一对话已有 `queued` / `running` 的 run 时返回 `conversation-busy`。带 `Idempotency-Key` 的请求在持锁后再查一次幂等记录。
+- **认领**：执行对话的 worker 取到待处理消息、开始一轮之前，调用 `AgentApiRunService.markRunning`（`agentloom-server/src/modules/agent-api-runtime/agent-api-run.service.ts`）把对应 run 置为 `running`；同一事务中找出已在执行前被取消或失败的 run 输入，从本轮剔除。Studio 发送的消息没有 run，不受影响。
+- **事件流**：`AgentApiEventMirrorListener`（`agentloom-server/src/modules/agent-api-runtime/agent-api-event-mirror.listener.ts`）运行在执行对话的进程内，监听对话执行事件，只处理本进程登记过 run 的对话，把事件映射为对外 run 事件后 `XADD` 到 Redis Stream `agentloom:agent-api:run:{runId}:events`（`buildAgentApiRunEventsKey`，长度近似上限 `AGENT_API_RUN_EVENTS_MAXLEN`）。终态事件只由 run 服务在事务提交后写入。监听器吞掉自身异常，不影响 worker。
+- **SSE**：任一实例都能响应 `GET …/runs/:runId/events`。`AgentApiEventStreamService`（`agentloom-server/src/modules/agent-api-runtime/agent-api-event-stream.service.ts`）每个进程只用一条 Redis 读连接，所有订阅共享一个 `XREAD BLOCK` 循环。SSE 帧的 `id` 是 Stream entry id，客户端以 `Last-Event-ID` 续传，不带时从头回放。run 进入终态后流保留 `AGENT_API_RUN_EVENTS_TTL_SECONDS`（3600 秒），过期后返回 `run-events-expired`（410）。
+- **清扫**：`agent-api-maintenance` 队列每 5 分钟执行一次 `AgentApiMaintenanceWorker`（`agentloom-server/src/modules/agent-api-runtime/agent-api-maintenance.worker.ts`）：创建超过 `AGENT_API_STALE_RUN_HOURS`（2 小时）仍为 `queued` / `running` 的 run 视为执行进程已丢失，标记为 `failed`（`run-worker-lost`）并发布终态；清除创建超过 24 小时的幂等键；把超过空闲时长（环境变量 APP_AGENT_API_CONVERSATION_IDLE_HOURS，默认 24 小时，未列入 env schema 与模板）未更新的 API 来源对话置为 `ended`。常量见 `agentloom-server/src/modules/agent-api-runtime/agent-api-runtime.constants.ts`。
+
 ## 相关
 
 - [/dev/server/queues](/dev/server/queues)：`sandbox-lifecycle` 等队列
