@@ -1,653 +1,265 @@
-# 数据库架构
-
-AgentLoom 使用 **Drizzle ORM** + **PostgreSQL**（Supabase 托管），采用 schema-first 声明式模型定义。
-
-## 技术栈概览
-
-| 组件   | 技术                        | 说明                   |
-| ------ | --------------------------- | ---------------------- |
-| ORM    | Drizzle ORM                 | 类型安全、schema-first |
-| 数据库 | PostgreSQL (Supabase)       | 含 RLS 策略            |
-| 迁移   | Drizzle Kit                 | 声明式 diff + SQL 生成 |
-| 连接池 | `drizzle-orm/node-postgres` | pg Pool                |
-
-## Schema 文件总览
-
-`agentloom-server/src/database/schema/` 下共有 **55 个** schema 定义文件，按业务域划分为 6 个领域：
-
-### 核心工作流域
-
-| 表名                   | 说明                           |
-| ---------------------- | ------------------------------ |
-| `workflow_definitions` | 工作流定义（画布节点/边/视口） |
-| `workflow_versions`    | 版本快照（不可变 snapshot）    |
-| `workflow_executions`  | 执行实例（含定义快照）         |
-| `execution_steps`      | 执行步骤（DAG 节点级）         |
-| `execution_records`    | Agent 执行记录                 |
-| `reusable_blocks`      | 可复用节点模板                 |
-
-### 认证与租户域
-
-| 表名                       | 说明                         |
-| -------------------------- | ---------------------------- |
-| `users`                    | 用户（关联 Supabase Auth）   |
-| `organizations`            | 组织（自动生成 tenant_id）   |
-| `organization_members`     | 组织成员（5 级角色）         |
-| `organization_invitations` | 邀请（token + 过期）         |
-| `tenant_encryption_keys`   | E2EE 公钥历史（append-only） |
-| `org_autonomy_policies`    | 组织级自主策略               |
-| `revoked_tokens`           | 令牌黑名单                   |
-
-### 插件域
-
-| 表名                    | 说明                          |
-| ----------------------- | ----------------------------- |
-| `plugins`               | 插件注册元数据（WASM bundle） |
-| `plugin_developer_keys` | 开发者 RSA 公钥               |
-| `plugin_usage_records`  | 使用量计量                    |
-| `plugin_earnings`       | 收益结算周期                  |
-
-### 审计与证据域
-
-| 表名                   | 说明                 |
-| ---------------------- | -------------------- |
-| `audit_logs`           | 审计日志（热表）     |
-| `audit_log_archives`   | 审计日志归档（冷表） |
-| `evidence_records`     | 证据链（含加密）     |
-| `evidence_export_jobs` | 证据导出任务         |
-| `sandbox_logs`         | 沙箱操作日志         |
-
-### 平台与市场域
-
-| 表名                       | 说明                             |
-| -------------------------- | -------------------------------- |
-| `marketplace_listings`     | 市场上架（workflow/plugin）      |
-| `marketplace_reviews`      | 用户评价                         |
-| `workflow_shares`          | 分享链接（公开短链）             |
-| `workflow_templates`       | 系统预置模板                     |
-| `workflow_triggers`        | 触发器（cron/webhook/api_event） |
-| `workflow_trigger_history` | 触发执行历史                     |
-
-### Agent 与工具配置域
-
-| 表名                       | 说明               |
-| -------------------------- | ------------------ |
-| `llm_model_configs`        | LLM 模型配置       |
-| `mcp_server_configs`       | MCP Server 配置    |
-| `tool_definitions`         | 工具定义           |
-| `routing_decisions`        | 智能路由决策记录   |
-| `intervention_policies`    | 介入策略           |
-| `optimization_suggestions` | Agent 配置优化建议 |
-
-### 治理与运维域
-
-| 表名                            | 说明                 |
-| ------------------------------- | -------------------- |
-| `tenant_quotas`                 | 租户配额（7 个指标） |
-| `execution_governance_controls` | 执行治理暂停控制     |
-| `private_deployment_settings`   | 私有部署配置         |
-| `platform_api_tokens`           | API Key 管理         |
-| `api_keys`                      | 通用 API 密钥        |
-| `notifications`                 | 通知记录             |
-| `device_tokens`                 | 设备推送令牌         |
-
-### 知识库域
-
-| 表名              | 说明               |
-| ----------------- | ------------------ |
-| `knowledge_bases` | 知识库             |
-| `document_chunks` | 文档分块（向量化） |
-
-### Agent 记忆域
-
-| 表名                       | 说明                                                                   |
-| -------------------------- | ---------------------------------------------------------------------- |
-| `agent_memory_instances`   | 记忆实例（name/description/config/status/occ_version, direct-tenant RLS） |
-| `memory_nodes`             | 记忆图节点（instance_id/content_type/metadata/disclosure_level）       |
-| `memory_edges`             | 记忆图边（instance_id/parent_node_id/child_node_id/name/priority, 循环检测） |
-| `memory_paths`             | URI 路径绑定（instance_id/domain/path_string/node_id）                 |
-| `memory_versions`          | 节点版本历史（node_id/content/version/review_status/deprecated/migrated_to） |
-| `memory_sessions`          | 记忆会话（双 FK: execution_id OR agent_conversation_id + CHECK, 对齐 sandbox_sessions） |
-| `memory_glossary_keywords` | 词汇表关键词（Aho-Corasick 自动标注）                                  |
-
-### Skill 与执行遥测域
-
-| 表名                       | 说明                                                              |
-| -------------------------- | ----------------------------------------------------------------- |
-| `skills`                   | Skill 定义（tenantId/slug/name/description/content/frontmatter/isBuiltin/status, sentinel UUID 标记内置） |
-| `workspace_snapshots`      | 工作区快照（文件状态快照，支持 Agent 对话与工作流执行）           |
-| `agent_execution_records`  | Agent 执行遥测（step_telemetry/execution_summary 两类记录，payload check 互斥） |
-
-### ACP 会话域
-
-| 表名                        | 说明           |
-| --------------------------- | -------------- |
-| `acp_conversation_sessions` | ACP 会话持久化 |
-| `sandbox_sessions`          | 沙箱会话       |
-
+---
+docType: reference
 ---
 
-## ER 关系图
+# 数据库
 
-为保证可读性，按业务域拆分为 6 个 ER 图。
+服务端用 Drizzle ORM 声明 PostgreSQL schema，schema 文件位于 `agentloom-server/src/database/schema/`，由 `agentloom-server/src/database/schema/index.ts` 统一导出；迁移由 Drizzle Kit 生成到 `agentloom-server/src/database/migrations/`（见 `agentloom-server/drizzle.config.ts`）。
 
-### 1. 核心工作流域
+本页前半部分是参考（表清单、外键关系图），后半部分「租户隔离为什么放在数据库层」是解释。
 
-```mermaid
-erDiagram
-    workflow_definitions {
-        uuid id PK
-        uuid tenant_id
-        varchar name
-        varchar slug
-        jsonb nodes "ReactFlowNode[]"
-        jsonb edges "ReactFlowEdge[]"
-        jsonb input_schema
-        int version "OCC 乐观锁"
-        enum status "draft|published|archived"
-        uuid published_version_id FK
-        uuid created_by FK
-        uuid updated_by FK
-    }
+## 表清单
 
-    workflow_versions {
-        uuid id PK
-        uuid workflow_definition_id FK
-        uuid tenant_id
-        int version_number
-        varchar label
-        jsonb snapshot "不可变快照"
-        timestamp published_at
-        timestamp archived_at
-        uuid created_by FK
-    }
+<!--@include: ../../_generated/tables.md-->
 
-    workflow_executions {
-        uuid id PK
-        uuid workflow_definition_id FK
-        uuid workflow_version_id FK
-        uuid tenant_id
-        enum status "pending|running|paused|completed|failed|cancelled"
-        enum trigger_type "manual|api|webhook|system"
-        jsonb input_params
-        jsonb definition_snapshot
-        int total_steps
-        int completed_steps
-        uuid created_by FK
-    }
+## 外键关系图
 
-    execution_steps {
-        uuid id PK
-        uuid execution_id FK
-        text node_id
-        int step_order
-        enum status "pending|queued|running|waiting_intervention|completed|failed|skipped|cancelled"
-        jsonb node_type
-        jsonb input
-        jsonb result
-        int attempt_count
-        jsonb checkpoint_data
-        boolean is_encrypted
-    }
+以下各图只画 schema 中用 `.references(` 声明的外键，按业务域拆分；同一张表可能出现在多张图里。约定：
 
-    workflow_definitions ||--o{ workflow_versions : "has versions"
-    workflow_definitions ||--o{ workflow_executions : "has executions"
-    workflow_executions ||--o{ execution_steps : "contains steps"
-    workflow_versions ||--o{ workflow_executions : "snapshot source"
-```
+- 关系线的标签是子表上的外键列。`||` 表示外键列 `NOT NULL`，`|o` 表示可空；`o|` 在子表一侧表示该外键列上有唯一索引（一对一）。
+- 绝大多数表都有 `created_by` / `updated_by` 等指向 `users.id` 的外键，除「身份与组织」图外均省略。
+- 各表的 `tenant_id` 列是普通 `uuid`，不是外键；例外是 `router_models.tenant_id` 与 `provider_health_status.tenant_id`，它们引用 `organizations.tenant_id`。
+- 没有任何外键的表不出现在图中：`acp_conversation_sessions`、`audit_logs`、`audit_log_archives`、`optimization_suggestions`、`revoked_tokens`、`sandbox_runtime_nodes`、`workflow_templates`。
+- `users.supabase_user_id` 引用 Supabase 的 `auth.users.id`（不在本仓库 schema 内，图中省略）。
 
-### 2. 认证与租户域
+### 身份与组织
 
 ```mermaid
 erDiagram
-    users {
-        uuid id PK
-        uuid supabase_user_id UK "auth.users FK"
-        varchar email UK
-        varchar display_name
-        varchar avatar_url
-        boolean is_active
-        uuid current_organization_id
-    }
-
-    organizations {
-        uuid id PK
-        varchar name
-        varchar slug UK
-        uuid tenant_id UK "自动生成"
-        uuid owner_id FK
-        varchar description
-        jsonb settings
-        boolean is_active
-    }
-
-    organization_members {
-        uuid id PK
-        uuid organization_id FK
-        uuid user_id FK
-        enum role "owner|admin|creator|operator|viewer"
-        uuid invited_by FK
-        timestamp joined_at
-    }
-
-    organization_invitations {
-        uuid id PK
-        uuid organization_id FK
-        varchar email
-        enum role
-        varchar token UK
-        enum status "pending|accepted|expired|cancelled"
-        timestamp expires_at
-    }
-
-    tenant_encryption_keys {
-        uuid id PK
-        uuid organization_id FK
-        uuid tenant_id
-        text public_key "RSA-4096"
-        varchar key_fingerprint
-        enum status "active|rotating|revoked"
-    }
-
-    users ||--o{ organization_members : "belongs to"
-    organizations ||--o{ organization_members : "has members"
-    organizations ||--o{ organization_invitations : "has invitations"
-    organizations ||--o{ tenant_encryption_keys : "has keys"
-    users ||--o| organizations : "owns"
+    users ||--o{ organizations : "owner_id"
+    organizations ||--o{ organization_members : "organization_id"
+    users ||--o{ organization_members : "user_id"
+    users |o--o{ organization_members : "invited_by"
+    organizations ||--o{ organization_invitations : "organization_id"
+    users ||--o{ organization_invitations : "invited_by"
+    users |o--o{ organization_invitations : "accepted_by"
+    organizations ||--o{ tenant_encryption_keys : "organization_id"
+    organizations ||--o{ organization_autonomy_policies : "organization_id"
+    organizations ||--o| tenant_quotas : "organization_id"
+    organizations ||--o{ execution_governance_controls : "organization_id"
+    organizations ||--o| private_deployment_settings : "organization_id"
+    organizations ||--o{ api_keys : "organization_id"
+    users ||--o{ api_keys : "user_id"
+    users ||--o{ platform_api_tokens : "user_id"
+    users ||--o{ device_tokens : "user_id"
+    users ||--o{ notifications : "user_id"
+    users ||--o{ notification_preferences : "user_id"
+    users ||--o{ user_preferences : "user_id"
 ```
 
-### 3. 插件域
+`tenant_encryption_keys` 在 `organization_id` 上有一个仅覆盖 `status = 'active'` 的部分唯一索引，因此一个组织可以有多条历史密钥、但只有一条活跃密钥（`agentloom-server/src/database/schema/tenant-encryption-keys.schema.ts:51`）。
+
+### 工作流与执行
 
 ```mermaid
 erDiagram
-    plugins {
-        uuid id PK
-        uuid tenant_id
-        uuid org_id FK
-        varchar plugin_id "外部标识"
-        varchar name
-        varchar version
-        enum status "registered|active|disabled|error"
-        jsonb manifest
-        jsonb node_definitions "节点定义[]"
-        varchar wasm_bundle_url
-        text signature "RSA-PSS"
-        varchar content_hash "SHA-256"
-        int occ_version
-    }
-
-    plugin_developer_keys {
-        uuid id PK
-        uuid org_id FK
-        uuid user_id FK
-        text public_key "RSA 公钥"
-        varchar key_fingerprint UK
-        varchar label
-        enum status "active|revoked"
-    }
-
-    plugin_usage_records {
-        uuid id PK
-        uuid tenant_id
-        uuid plugin_db_id FK
-        uuid execution_id
-        uuid executed_by FK
-        numeric billing_amount
-        numeric execution_duration_ms
-        numeric input_tokens
-        numeric output_tokens
-    }
-
-    plugin_earnings {
-        uuid id PK
-        uuid plugin_db_id FK
-        uuid org_id FK
-        timestamp period_start
-        timestamp period_end
-        int total_executions
-        numeric total_revenue "18,8"
-        numeric developer_share "70%"
-        numeric platform_share "30%"
-        numeric listing_commission "15%"
-        enum payout_status "pending|processing|completed|failed"
-    }
-
-    plugins ||--o{ plugin_usage_records : "usage tracking"
-    plugins ||--o{ plugin_earnings : "revenue settlement"
-    plugin_developer_keys }o--|| organizations : "belongs to"
-    plugins }o--|| organizations : "installed in"
+    workflow_definitions ||--o{ workflow_versions : "workflow_definition_id"
+    workflow_definitions ||--o{ workflow_executions : "workflow_definition_id"
+    workflow_versions ||--o{ workflow_executions : "workflow_version_id"
+    workflow_executions ||--o{ execution_steps : "execution_id"
+    workflow_executions ||--o{ agent_execution_records : "execution_id"
+    execution_steps |o--o{ agent_execution_records : "step_id"
+    workflow_executions ||--o{ evidence_records : "execution_id"
+    execution_steps ||--o{ evidence_records : "step_id"
+    evidence_records |o--o{ evidence_records : "parent_evidence_id"
+    execution_steps ||--o{ routing_decisions : "execution_step_id"
+    workflow_definitions ||--o{ workflow_shares : "workflow_definition_id"
+    workflow_definitions ||--o{ workflow_triggers : "workflow_definition_id"
+    workflow_triggers ||--o{ workflow_trigger_history : "trigger_id"
+    workflow_definitions ||--o{ intervention_policies : "workflow_id"
+    organizations ||--o{ reusable_blocks : "org_id"
 ```
 
-### 4. 审计与证据域
+`workflow_definitions.published_version_id` 指向已发布版本，但 schema 中没有为它声明外键（`agentloom-server/src/database/schema/workflow-definitions.schema.ts:109`）。
+
+### Agent 与对话
 
 ```mermaid
 erDiagram
-    audit_logs {
-        uuid id PK
-        uuid tenant_id
-        uuid actor_id FK "nullable"
-        enum actor_type "user|system|service"
-        text event_type
-        text resource_type
-        text resource_id
-        uuid execution_id FK "nullable"
-        text summary
-        jsonb before "变更前快照"
-        jsonb after "变更后快照"
-        jsonb metadata
-        timestamp created_at
-    }
-
-    audit_log_archives {
-        uuid id PK
-        uuid tenant_id
-        uuid actor_id FK
-        enum actor_type "user|system|service"
-        text event_type
-        text resource_type
-        text resource_id
-        text summary
-        jsonb before
-        jsonb after
-        jsonb metadata
-        timestamp created_at "按此归档"
-    }
-
-    evidence_records {
-        uuid id PK
-        uuid execution_id FK
-        uuid step_id FK
-        uuid tenant_id
-        enum source_type "rag_retrieval|agent_decision|tool_output|user_input|intervention|node_error"
-        jsonb packet "EvidencePacket"
-        varchar content_hash "SHA-256"
-        uuid parent_evidence_id FK "自引用链"
-        boolean is_encrypted
-        jsonb encryption_metadata
-    }
-
-    audit_logs ||--|| audit_log_archives : "retention 归档"
-    evidence_records }o--|| workflow_executions : "belongs to"
-    evidence_records }o--o| evidence_records : "parent chain"
+    agent_definitions ||--o{ agent_versions : "agent_definition_id"
+    agent_definitions ||--o{ agent_shares : "agent_definition_id"
+    agent_definitions ||--o{ agent_conversations : "agent_definition_id"
+    agent_conversations ||--o{ agent_messages : "conversation_id"
+    agent_messages |o--o{ agent_messages : "parent_message_id"
+    workspace_snapshots |o--o{ agent_definitions : "workspace_snapshot_id"
+    agent_definitions ||--o{ agent_api_keys : "agent_definition_id"
+    agent_api_keys |o--o{ agent_conversations : "api_key_id"
+    agent_api_keys ||--o{ agent_api_runs : "api_key_id"
+    agent_conversations ||--o{ agent_api_runs : "conversation_id"
+    agent_messages ||--o| agent_api_runs : "user_message_id"
+    agent_messages |o--o{ agent_api_runs : "assistant_message_id"
 ```
 
-### 5. 平台与市场域
+`agent_api_runs` 在 `conversation_id` 上的唯一索引只覆盖 `queued` / `running` 状态，即同一对话同时只有一个进行中的 run（`agentloom-server/src/database/schema/agent-api-runs.schema.ts:86`）。
+
+### 沙箱运行时与工作区
 
 ```mermaid
 erDiagram
-    marketplace_listings {
-        uuid id PK
-        uuid workflow_version_id FK "nullable"
-        uuid plugin_db_id FK "nullable"
-        enum listing_type "workflow|plugin"
-        enum pricing_model "free|per_execution"
-        numeric price_per_execution
-        varchar title
-        text summary
-        text tags "text[]"
-        enum category "analysis|content|development|automation|reporting"
-        enum status "pending_review|review_failed|listed|unlisted"
-        int use_count
-        numeric avg_rating
-    }
-
-    workflow_shares {
-        uuid id PK
-        uuid workflow_definition_id FK
-        uuid tenant_id
-        text share_token UK
-        enum share_type "read_only|copyable"
-        uuid created_by FK
-        timestamp expires_at
-        boolean is_revoked
-        int view_count
-        int copy_count
-    }
-
-    workflow_triggers {
-        uuid id PK
-        uuid workflow_definition_id FK
-        uuid tenant_id
-        varchar name
-        enum type "cron|webhook|api_event"
-        jsonb config
-        boolean is_enabled
-        timestamp last_triggered_at
-        timestamp next_fire_at
-        int trigger_count
-    }
-
-    workflow_trigger_history {
-        uuid id PK
-        uuid trigger_id FK
-        uuid tenant_id
-        enum status "success|failed|skipped|signature_failed"
-        uuid execution_id
-        text error_message
-        jsonb payload
-    }
-
-    workflow_triggers ||--o{ workflow_trigger_history : "has history"
-    marketplace_listings }o--o| workflow_versions : "lists version"
-    marketplace_listings }o--o| plugins : "lists plugin"
-    workflow_shares }o--|| workflow_definitions : "shares"
-    workflow_triggers }o--|| workflow_definitions : "triggers"
+    workflow_executions |o--o{ sandbox_sessions : "execution_id"
+    agent_conversations |o--o{ sandbox_sessions : "agent_conversation_id"
+    sandbox_sessions ||--o{ sandbox_logs : "session_id"
+    sandbox_sessions ||--o{ sandbox_runtime_migrations : "sandbox_session_id"
+    organizations ||--o{ workspace_snapshots : "organization_id"
+    workspace_snapshots ||--o| workspace_runtime_leases : "workspace_id"
+    sandbox_sessions ||--o{ workspace_runtime_leases : "sandbox_session_id"
 ```
 
-### 6. Agent 记忆域
+`sandbox_runtime_nodes` 与 `sandbox_sessions` 之间没有外键：节点标识编码在 `sandbox_sessions.runtime_handle` 的前缀里（`agentloom-server/src/database/schema/sandbox-runtime-nodes.schema.ts:16`）。
+
+### Agent 记忆
 
 ```mermaid
 erDiagram
-    agent_memory_instances {
-        uuid id PK
-        uuid tenant_id
-        varchar name
-        text description
-        jsonb config
-        enum status "active|archived"
-        int occ_version
-    }
-
-    memory_nodes {
-        uuid id PK
-        uuid instance_id FK
-        varchar content_type
-        jsonb metadata
-        enum disclosure_level "public|internal|confidential"
-    }
-
-    memory_edges {
-        uuid id PK
-        uuid instance_id FK
-        uuid parent_node_id FK
-        uuid child_node_id FK
-        varchar name
-        int priority "循环检测"
-    }
-
-    memory_paths {
-        uuid id PK
-        uuid instance_id FK
-        varchar domain
-        text path_string
-        uuid node_id FK
-    }
-
-    memory_versions {
-        uuid id PK
-        uuid node_id FK
-        text content
-        int version
-        boolean deprecated
-        uuid migrated_to
-        enum review_status "pending|approved|rejected"
-        text patch_summary
-    }
-
-    memory_sessions {
-        uuid id PK
-        uuid instance_id FK
-        uuid execution_id FK "nullable"
-        uuid agent_conversation_id FK "nullable, CHECK 至少一个非空"
-    }
-
-    memory_glossary_keywords {
-        uuid id PK
-        uuid instance_id FK
-        varchar keyword
-        text description "Aho-Corasick 自动标注"
-    }
-
-    agent_memory_instances ||--o{ memory_nodes : "has nodes"
-    agent_memory_instances ||--o{ memory_edges : "has edges"
-    agent_memory_instances ||--o{ memory_paths : "has paths"
-    agent_memory_instances ||--o{ memory_sessions : "has sessions"
-    agent_memory_instances ||--o{ memory_glossary_keywords : "has keywords"
-    memory_nodes ||--o{ memory_versions : "has versions"
-    memory_nodes ||--o{ memory_paths : "bound to"
-    memory_nodes ||--o{ memory_edges : "parent"
-    memory_nodes ||--o{ memory_edges : "child"
+    agent_memory_instances ||--o{ memory_nodes : "instance_id"
+    agent_memory_instances ||--o{ memory_edges : "instance_id"
+    memory_nodes ||--o{ memory_edges : "parent_node_id"
+    memory_nodes ||--o{ memory_edges : "child_node_id"
+    agent_memory_instances ||--o{ memory_paths : "instance_id"
+    memory_nodes ||--o{ memory_paths : "node_id"
+    memory_edges |o--o{ memory_paths : "edge_id"
+    memory_nodes ||--o{ memory_versions : "node_id"
+    memory_versions |o--o{ memory_versions : "migrated_to"
+    agent_memory_instances ||--o{ memory_glossary_keywords : "instance_id"
+    memory_nodes ||--o{ memory_glossary_keywords : "node_id"
+    agent_memory_instances ||--o{ memory_sessions : "memory_instance_id"
+    workflow_executions |o--o{ memory_sessions : "execution_id"
+    agent_conversations |o--o{ memory_sessions : "agent_conversation_id"
 ```
 
----
-
-## 行级安全策略 (RLS)
-
-AgentLoom 在 PostgreSQL 层实现 **3 种 RLS 策略类型**，确保租户数据隔离：
-
-### 策略类型
-
-#### 1. 直接租户策略 (`createDirectTenantPolicies`)
-
-最常用的策略。表中直接包含 `tenant_id` 列，RLS 策略检查：
-
-```sql
--- 4 条策略：SELECT / INSERT / UPDATE / DELETE
-tenant_id = get_tenant_id()
-```
-
-**适用表**：`workflow_definitions`、`workflow_executions`、`organizations`、`plugins`、`plugin_developer_keys`、`plugin_usage_records`、`plugin_earnings`、`marketplace_listings`、`workflow_triggers`、`tenant_quotas`、`evidence_records`、`tenant_encryption_keys` 等大多数表。
-
-#### 2. 关联租户策略 (`createJoinTenantPolicies`)
-
-表本身无 `tenant_id`（或通过外键间接关联），使用 `EXISTS` 子查询检查父表的 `tenant_id`：
-
-```sql
--- 4 条策略：SELECT / INSERT / UPDATE / DELETE
-EXISTS (
-  SELECT 1 FROM parent_table
-  WHERE parent_table.id = this_table.fk_column
-    AND parent_table.tenant_id = get_tenant_id()
-)
-```
-
-**适用表**：
-
-- `organization_members` — 通过 `organizations` 关联
-- `organization_invitations` — 通过 `organizations` 关联
-- `execution_steps` — 通过 `workflow_executions` 关联
-
-#### 3. 仅追加策略 (`createAppendOnlyTenantPolicies`)
-
-仅允许 `SELECT` 和 `INSERT`，禁止 `UPDATE` 和 `DELETE`，保证数据不可篡改：
-
-```sql
--- 2 条策略：仅 SELECT + INSERT
-tenant_id = get_tenant_id()
-```
-
-**适用表**：`audit_logs`、`audit_log_archives`
-
-### 无 RLS 表
-
-部分表不使用 RLS，原因各异：
-
-| 表名                  | 原因                                 |
-| --------------------- | ------------------------------------ |
-| `users`               | 用户级，无租户概念                   |
-| `workflow_templates`  | 系统级预置模板，全局共享             |
-| `device_tokens`       | 用户级，通过 `user_id` 控制          |
-| `platform_api_tokens` | 用户级，通过 `user_id` 控制          |
-| `workflow_shares`     | 公开访问，通过 TenantMiddleware 排除 |
-
-### 辅助函数
-
-RLS 策略依赖 `rls-helpers.ts` 中定义的 PostgreSQL 函数：
-
-- **`get_tenant_id()`** — 从当前会话变量提取租户 ID
-- **`set_tenant_id(uuid)`** — 在事务开始时设置租户上下文
-
-服务层通过 `TenantTransactionInterceptor` 在每个请求的数据库事务中自动调用 `set_tenant_id()`。
-
----
-
-## 迁移工作流
-
-AgentLoom 使用 Drizzle Kit 管理数据库迁移：
-
-```bash
-# 1. 从 schema 变更生成迁移 SQL
-pnpm db:generate
-
-# 2. 执行迁移
-pnpm db:migrate
-
-# 3. 填充种子数据（5 个预置模板 + 5 个内置 Skill，基于 slug upsert）
-pnpm db:seed
-
-# 可视化 Schema 浏览
-pnpm db:studio
-```
-
-### 迁移流程
+### 模型、路由与知识库
 
 ```mermaid
-flowchart LR
-    A["修改 schema/*.ts"] --> B["pnpm db:generate"]
-    B --> C["生成 SQL 迁移文件"]
-    C --> D["pnpm db:migrate"]
-    D --> E["应用到 PostgreSQL"]
-    E --> F["pnpm db:seed"]
-    F --> G["upsert 5 个预置模板 + 5 个内置 Skill"]
+erDiagram
+    organizations ||--o{ llm_providers : "org_id"
+    api_keys |o--o{ llm_providers : "api_key_id"
+    organizations ||--o{ llm_model_configs : "org_id"
+    llm_providers ||--o{ llm_model_configs : "provider_id"
+    llm_model_configs ||--o{ router_models : "model_id"
+    router_models ||--o{ routing_benchmarks : "model_id"
+    router_models |o--o{ provider_health_status : "model_id"
+    llm_model_configs |o--o{ routing_decisions : "selected_model_id"
+    llm_model_configs |o--o{ user_preferences : "title_model_config_id"
+    llm_model_configs |o--o{ knowledge_bases : "embedding_model_config_id"
+    knowledge_bases ||--o{ documents : "knowledge_base_id"
+    documents ||--o{ knowledge_nodes : "document_id"
+    knowledge_bases ||--o{ knowledge_nodes : "knowledge_base_id"
+    organizations ||--o{ mcp_server_configs : "organization_id"
+    organizations ||--o{ tool_definitions : "organization_id"
+    mcp_server_configs |o--o{ tool_definitions : "mcp_server_config_id"
 ```
 
-### 注意事项
+### 插件与市场
 
-- **声明式 diff**：Drizzle Kit 对比当前 schema 定义与已有迁移，自动生成增量 SQL
-- **种子数据**：基于 `slug` 字段 upsert，支持幂等重跑
-- **无 down migration**：Drizzle Kit 默认不生成回滚迁移，需手动处理
-- **OCC 乐观锁**：`workflow_definitions.version` 和 `plugins.occ_version` 使用整数版本号实现乐观并发控制
+```mermaid
+erDiagram
+    organizations ||--o{ plugins : "org_id"
+    organizations ||--o{ plugin_developer_keys : "org_id"
+    plugins ||--o{ plugin_usage_records : "plugin_db_id"
+    plugins ||--o{ plugin_earnings : "plugin_db_id"
+    organizations ||--o{ plugin_earnings : "org_id"
+    workflow_versions |o--o| marketplace_listings : "workflow_version_id"
+    plugins |o--o| marketplace_listings : "plugin_db_id"
+    marketplace_listings ||--o{ marketplace_reviews : "listing_id"
+```
 
----
+`marketplace_listings` 的两个外键列各有一个 `IS NOT NULL` 条件的部分唯一索引，因此一个工作流版本或一个插件最多对应一条上架记录（`agentloom-server/src/database/schema/marketplace-listings.schema.ts:173`）。
 
-## 特殊数据模型
+### 生成式应用
 
-### Append-Only 历史模型
+```mermaid
+erDiagram
+    agent_definitions |o--o{ generated_apps : "agent_definition_id"
+    workflow_definitions |o--o{ generated_apps : "workflow_definition_id"
+    generated_apps ||--o{ generated_app_submissions : "generated_app_id"
+    generated_apps ||--o{ generated_app_generation_runs : "generated_app_id"
+    generated_apps ||--o{ generated_app_repair_attempts : "generated_app_id"
+    generated_app_generation_runs ||--o{ generated_app_repair_attempts : "generation_run_id"
+    generated_apps ||--o{ generated_app_gate_runs : "generated_app_id"
+    generated_app_generation_runs |o--o{ generated_app_gate_runs : "generation_run_id"
+    generated_app_repair_attempts |o--o{ generated_app_gate_runs : "repair_attempt_id"
+```
 
-`tenant_encryption_keys` 使用 append-only 设计：
+生成式应用的业务流程见 [/dev/server/generated-apps](/dev/server/generated-apps)。
 
-- `organization_id + key_fingerprint` 联合唯一约束
-- `status = 'active'` 上的 partial unique index（确保每组织仅一个活跃密钥）
-- 密钥轮换通过新增记录 + 旧记录标记 `revoked` 实现
+## 行级安全（RLS）
 
-### 审计日志双表架构
+### 策略工厂
 
-| 表                   | 用途 | 特点                         |
-| -------------------- | ---- | ---------------------------- |
-| `audit_logs`         | 热表 | 近期数据，高频查询           |
-| `audit_log_archives` | 冷表 | 归档数据，retention 策略迁移 |
+策略在 schema 的表回调里声明，三个工厂函数定义在 `agentloom-server/src/database/schema/rls-policies.ts`，生成的策略都授予 Supabase 的 `authenticated` 角色：
 
-归档由 `audit-log-retention` BullMQ 任务驱动，在原始事务中执行 copy-then-delete。读取侧使用 `(created_at, id)` 做 hot/archive merged recall 与去重。
+| 工厂函数 | 生成的策略 | 条件 | 用法 |
+| --- | --- | --- | --- |
+| `createDirectTenantPolicies(tableName)` | `<table>_select_policy`、`_insert_policy`、`_update_policy`、`_delete_policy` | `tenant_id = get_tenant_id()` | 表自身有 `tenant_id` 列；默认选择 |
+| `createAppendOnlyTenantPolicies(tableName)` | 只有 `_select_policy`、`_insert_policy` | `tenant_id = get_tenant_id()` | 只追加的表：`audit_logs`、`audit_log_archives` |
+| `createJoinTenantPolicies(tableName, fkColumn, parentTable, parentPk = 'id')` | 四条，同上 | `EXISTS (SELECT 1 FROM <parentTable> WHERE <parentTable>.<parentPk> = <table>.<fkColumn> AND <parentTable>.tenant_id = get_tenant_id())` | 表没有 `tenant_id`、靠外键归属父表：`organization_members`、`organization_invitations`、`execution_steps`、`routing_benchmarks`、`sandbox_logs` |
 
-### JSONB 复合字段
+`createDirectTenantPolicies` 的用法是在 `pgTable` 第三个参数返回的数组里展开，例如 `agentloom-server/src/database/schema/organizations.schema.ts:62`：
 
-多个表使用 JSONB 存储结构化数据：
+```ts
+(table) => [
+  uniqueIndex('idx_organizations_tenant_id').on(table.tenantId),
+  // 展开为 SELECT / INSERT / UPDATE / DELETE 四条策略
+  ...createDirectTenantPolicies('organizations'),
+],
+```
 
-| 字段                              | 类型说明                                   |
-| --------------------------------- | ------------------------------------------ |
-| `workflow_definitions.nodes`      | `ReactFlowNode[]` — 画布节点               |
-| `workflow_definitions.edges`      | `ReactFlowEdge[]` — 画布连线               |
-| `workflow_versions.snapshot`      | `WorkflowVersionSnapshot` — 不可变版本快照 |
-| `execution_steps.checkpoint_data` | 包含 session、tool 权限等运行时上下文      |
-| `plugins.manifest`                | 插件清单（端口、配置 schema 等）           |
-| `evidence_records.packet`         | `EvidencePacket` — 结构化证据包            |
+`get_tenant_id()` 是迁移中创建的 SQL 函数（`agentloom-server/src/database/migrations/0005_lazy_tomorrow_man.sql`），返回 `NULLIF(current_setting('app.current_tenant', true), '')::uuid`；schema 侧通过 `agentloom-server/src/database/schema/rls-helpers.ts` 中的 `getTenantId` 引用它。会话变量未设置时函数返回 `NULL`，所有 `tenant_id = get_tenant_id()` 条件都不成立。
+
+### 不走租户策略的表
+
+| 表 | schema 中的处理 |
+| --- | --- |
+| `sandbox_runtime_nodes` | 平台级表，没有 `tenant_id`，不挂策略；隔离由管理 API 的鉴权保证（`agentloom-server/src/database/schema/sandbox-runtime-nodes.schema.ts:8`） |
+| `marketplace_reviews` | 启用 RLS，但四条策略的条件都是 `true`（`agentloom-server/src/database/schema/marketplace-reviews.schema.ts:47`） |
+| `users`、`device_tokens`、`platform_api_tokens`、`revoked_tokens`、`workflow_templates`、`workflow_shares`、`agent_shares` | schema 中没有声明策略 |
+
+其余表都使用 `createDirectTenantPolicies`。
+
+### 租户事务
+
+RLS 只在租户事务里生效。`runInTenantTransaction(db, tenantId, operation)`（`agentloom-server/src/common/interceptors/tenant-transaction.context.ts:31`）开启事务后依次执行：
+
+1. `SET LOCAL ROLE authenticated`，让策略的目标角色生效；
+2. `SELECT set_config('app.current_tenant', <tenantId>, true)`，第三个参数 `true` 使设置只在本事务内有效；
+3. 把事务对象放进 `AsyncLocalStorage`，嵌套调用复用同一事务。
+
+HTTP 请求由 `TenantTransactionInterceptor`（`agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts`）在 `request.user.tenantId` 存在时包一层租户事务，事务提交后才返回响应。Service 通过 `getTenantDb(db)`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）拿到当前事务对象；不在租户事务中时拿到的是原始连接，RLS 不生效（公开路由走这条路径）。Worker 等非 HTTP 入口自行调用 `runInTenantTransaction`。
+
+需要在事务提交后才执行的副作用（例如入队）用 `registerAfterCommitHook` 注册，它只能在租户事务内调用。
+
+因为事务内切换到了 `authenticated` 角色，新建的受 RLS 保护的表还需要在迁移里 `GRANT SELECT, INSERT, UPDATE, DELETE ... TO "authenticated"`，否则查询会报 `permission denied`（42501）。`agentloom-server/src/database/migrations/0053_grant_authenticated_missing_tables.sql` 是为遗漏表补授权的迁移。
+
+## 迁移流程
+
+`agentloom-server/drizzle.config.ts` 指定 schema 入口 `./src/database/schema/index.ts`、输出目录 `./src/database/migrations`，并开启 `strict` 与 Supabase 角色实体（`entities.roles.provider: 'supabase'`）。`agentloom-server/package.json` 中的相关脚本：
+
+| 脚本 | 执行 |
+| --- | --- |
+| `db:generate` | `drizzle-kit generate`：对比 schema 与 `migrations/meta/` 中的快照，生成下一个编号的 SQL 迁移与快照 |
+| `db:migrate` | `drizzle-kit migrate`：按 `migrations/meta/_journal.json` 的顺序应用未执行的迁移，连接串读 `APP_DATABASE_URL` |
+| `db:seed` | `tsx drizzle/seed/templates.ts` |
+| `db:push`、`db:studio` | Drizzle Kit 的 push 与 Studio |
+
+修改 schema 的流程：
+
+1. 修改 `agentloom-server/src/database/schema/` 下的 `*.schema.ts`；新表需要在 `index.ts` 中导出。
+2. 运行 `db:generate`，检查生成的 SQL：外键、索引、RLS 策略，以及新 RLS 表的 `GRANT ... TO "authenticated"`（生成器不会产生这句，需要手工补到迁移里）。
+3. 迁移文件中的语句用 `--> statement-breakpoint` 分隔。手写或补充语句时保持这个分隔：数据库 E2E 测试按该标记切分并逐条执行迁移（`agentloom-server/test/rls/rls-test-utils.ts`）。
+4. 运行 `db:migrate` 应用。
+
+Drizzle Kit 不生成回滚迁移；需要撤销时写一个新的正向迁移，例如 `agentloom-server/src/database/migrations/0056_known_cammi.sql` 用 `DROP TABLE "document_chunks" CASCADE` 删除了旧的分块表。
+
+本地启动数据库与执行脚本的命令见仓库 README 与 [/dev/setup](/dev/setup)。
+
+## 租户隔离为什么放在数据库层
+
+> 本页回答：为什么租户隔离由 PostgreSQL RLS 执行，而不是只靠 Service 层的 `WHERE tenant_id = ?`？
+
+Service 层过滤依赖每条查询都记得带条件。RLS 把条件挂在表上：只要请求跑在租户事务里，漏写过滤的查询返回空集，而不是别的租户的数据。代价是两条约束：所有业务查询必须拿 `getTenantDb(db)` 返回的事务对象，否则绕过了 RLS；新表除了声明策略，还要给 `authenticated` 授权。
+
+租户上下文用事务级会话变量（`set_config(..., true)`）而不是连接级变量，是因为连接来自连接池：事务结束后设置自动失效，下一个借到这条连接的请求不会继承上一个租户。
+
+`createJoinTenantPolicies` 用于子表不冗余 `tenant_id` 的情况，代价是每次访问都要做一次 `EXISTS` 子查询；多数表选择冗余 `tenant_id` 列并使用 `createDirectTenantPolicies`。`createAppendOnlyTenantPolicies` 不生成 UPDATE/DELETE 策略，`authenticated` 角色因此无法修改或删除审计记录；审计归档任务在不切换角色的原始连接上执行 copy-then-delete（见 [/dev/server/queues](/dev/server/queues) 中的 `audit-log-retention`）。
+
+整体的请求链路与鉴权见 [/dev/server/request-pipeline](/dev/server/request-pipeline) 和 [/dev/server/security](/dev/server/security)。

@@ -1,323 +1,73 @@
-# 任务队列
-
-AgentLoom 使用 **BullMQ** + **Redis** 实现异步任务处理，涵盖工作流执行、插件运行、通知推送等核心场景。
-
-## 架构概览
-
-```mermaid
-flowchart TB
-    subgraph Producers ["生产者"]
-        ES[ExecutionService]
-        PS[PluginService]
-        NS[NotificationService]
-        TS[TriggerService]
-        OS[OptimizationService]
-        AS[AuditLogService]
-        EaS[EarningsService]
-        SS[SandboxService]
-        KS[KnowledgeService]
-    end
-
-    subgraph Redis ["Redis (BullMQ)"]
-        Q1[execution-queue]
-        Q2[agent-task-queue]
-        Q3[plugin-execution]
-        Q4[trigger-scheduler]
-        Q5[notification]
-        Q6[earnings-settlement]
-        Q7[optimization-analysis]
-        Q8[audit-log-retention]
-        Q9[sandbox-lifecycle-queue]
-        Q10[document-processing-queue]
-        Q11[document-indexing-queue]
-        Q12[agent-conversation-queue]
-        Q13[smart-routing-learning]
-    end
-
-    subgraph Workers ["消费者"]
-        W1[ExecutionWorker]
-        W2[AgentTaskWorker]
-        W3[PluginExecutionWorker]
-        W4[TriggerSchedulerProcessor]
-        W5[NotificationProcessor]
-        W6[EarningsSettlementWorker]
-        W7[OptimizationAnalysisWorker]
-        W8[AuditLogRetentionWorker]
-        W9[SandboxLifecycleWorker]
-        W10[DocumentProcessingWorker]
-        W11[DocumentIndexingWorker]
-        W12[AgentConversationWorker]
-        W13[SmartRoutingLearningWorker]
-    end
-
-    ES --> Q1 --> W1
-    ES --> Q2 --> W2
-    PS --> Q3 --> W3
-    TS --> Q4 --> W4
-    NS --> Q5 --> W5
-    EaS --> Q6 --> W6
-    OS --> Q7 --> W7
-    AS --> Q8 --> W8
-    SS --> Q9 --> W9
-    KS --> Q10 --> W10
-    KS --> Q11 --> W11
-    ES --> Q12 --> W12
-    SS --> Q13 --> W13
-```
-
-## 队列详情
-
-### 1. execution-queue（执行编排）
-
-| 属性   | 值                                                       |
-| ------ | -------------------------------------------------------- |
-| Worker | `ExecutionWorker`                                        |
-| 重试   | 1 次                                                     |
-| 职责   | 接收工作流执行请求，解析 DAG 拓扑，按步骤入队 agent-task |
-
-**处理流程**：
-
-1. 接收 `workflowExecutionId`
-2. 加载 `definition_snapshot`，解析节点 DAG
-3. 按拓扑序逐步提交 `agent-task-queue`
-4. 监听步骤完成事件，推进下一批节点
-5. 所有节点完成后标记执行为 `completed`
-
-### 2. agent-task-queue（Agent 节点执行）
-
-| 属性   | 值                                                |
-| ------ | ------------------------------------------------- |
-| Worker | `AgentTaskWorker`                                 |
-| 重试   | 3 次，指数退避 2s                                 |
-| 并发   | 支持并行执行                                      |
-| 职责   | 执行单个 Agent 节点：LLM 调用、工具调用、加密输出 |
-
-**关键特性**：
-
-- LLM 输出在完成路径使用 `LlmEncryptionService` 执行 hybrid RSA-OAEP + AES-256-GCM 加密
-- 支持 `waiting_intervention` 状态，等待人工审批
-- 处理 `intervention-timeout` 延时任务：超时后执行策略配置的 `approve/reject/escalate` 动作
-- `MAX_ESCALATION_ATTEMPTS = 3`
-
-### 3. plugin-execution（插件执行）
-
-| 属性   | 值                            |
-| ------ | ----------------------------- |
-| Worker | `PluginExecutionWorker`       |
-| 重试   | 3 次，指数退避 2s             |
-| 职责   | 在 Extism WASM 沙箱中执行插件 |
-
-**安全限制**：
-
-- `timeoutMs = 30000`（30 秒硬限制）
-- `maxMemoryPages = 4096`
-- `runInWorker: true`（独立 Worker 线程）
-- 执行成功后 fire-and-forget 调用 `PluginUsageService.recordUsage()`
-
-### 4. trigger-scheduler（触发器调度）
-
-| 属性   | 值                                           |
-| ------ | -------------------------------------------- |
-| Worker | `TriggerSchedulerProcessor`                  |
-| 重试   | 3 次，指数退避 2s                            |
-| 职责   | 处理 cron/webhook/api_event 触发的工作流执行 |
-
-**触发类型**：
-
-- **cron**：定时调度，更新 `next_fire_at`
-- **webhook**：签名验证，失败记录 `signature_failed` 历史
-- **api_event**：仅预览（preview-only），不可创建/编辑/启用
-
-执行创建在租户事务提交后才入队。
-
-### 5. notification（通知推送）
-
-| 属性   | 值                       |
-| ------ | ------------------------ |
-| Worker | `NotificationProcessor`  |
-| 重试   | 3 次，指数退避 1s        |
-| 职责   | Fan-out 推送通知到多通道 |
-
-**通知类型**：`completed` / `failed` / `intervention_required`
-
-**通道**：
-
-- `in_app` — 应用内通知 + Socket.IO `/notification` 实时推送
-- `email` — 邮件通知
-- `push` — 设备推送
-
-### 6. earnings-settlement（收益结算）
-
-| 属性   | 值                                 |
-| ------ | ---------------------------------- |
-| Worker | `EarningsSettlementWorker`         |
-| 重试   | 1 次                               |
-| 职责   | 按周期汇总插件使用量，计算收益分成 |
-
-**分成模型**：
-
-| 项目         | 比例         |
-| ------------ | ------------ |
-| 总收入       | 100%         |
-| 开发者毛收入 | 70%          |
-| 上架佣金     | 毛收入 × 15% |
-| 开发者净收入 | ≈59.5%       |
-| 平台份额     | 30%          |
-
-含幂等性检查，防止重复结算。
-
-### 7. optimization-analysis（优化分析）
-
-| 属性   | 值                                               |
-| ------ | ------------------------------------------------ |
-| Worker | `OptimizationAnalysisWorker`                     |
-| 重试   | 1 次                                             |
-| 调度   | `0 2 * * 1`（UTC 每周一凌晨 2 点）               |
-| 职责   | 分析 `agent_execution_records`，生成配置优化建议 |
-
-**建议类型**：
-
-- `model_downgrade` — 模型降级建议
-- `timeout_adjustment` — 超时调整
-- `tool_pruning` — 工具裁剪
-- `autonomy_upgrade` — 自主性升级
-
-使用 `upsertJobScheduler()` 注册固定 scheduler ID。
-
-分析器持续生成这四类建议，但采纳入口对四类都返回 409（详见模块文档「优化建议 4 类」）。去重只比对同节点同类型的 `pending` 记录，因此建议被忽略后，只要执行特征不变，下一轮仍会重新生成。
-
-### 8. audit-log-retention（审计日志归档）
-
-| 属性   | 值                                   |
-| ------ | ------------------------------------ |
-| Worker | `AuditLogRetentionWorker`            |
-| 重试   | 1 次                                 |
-| 调度   | `upsertJobScheduler()` 单例任务      |
-| 职责   | hot 表 → archive 表 copy-then-delete |
-
-在原始 base DB 事务中执行（绕过 RLS），读取侧继续 tenant-aware。
-
-### 9. sandbox-lifecycle-queue（沙箱生命周期）
-
-| 属性   | 值                             |
-| ------ | ------------------------------ |
-| Worker | `SandboxLifecycleWorker`       |
-| 重试   | 3 次，指数退避                 |
-| 职责   | 沙箱会话的创建、清理与过期回收 |
-
-### 10. document-processing-queue（文档处理）
-
-| 属性   | 值                         |
-| ------ | -------------------------- |
-| Worker | `DocumentProcessingWorker` |
-| 职责   | 知识库文档解析与分块       |
-
-### 11. document-indexing-queue（文档索引）
-
-| 属性   | 值                            |
-| ------ | ----------------------------- |
-| Worker | `DocumentIndexingWorker`      |
-| 职责   | 将文档分块向量化并写入 Qdrant |
-
-### 12. agent-conversation-queue（Agent 对话执行）
-
-| 属性   | 值                                                 |
-| ------ | -------------------------------------------------- |
-| Worker | `AgentConversationWorker`                          |
-| 重试   | 3 次，指数退避（2s base）                          |
-| 职责   | Agent 对话消息执行（独立于 agent-task-queue 工作流节点执行） |
-
-Agent 对话场景与工作流节点执行分离，拥有独立队列和 Worker。通过 `/agent-conversation` Socket.IO namespace 推送实时事件。
-
-### 13. smart-routing-learning（智能路由学习）
-
-| 属性   | 值                                             |
-| ------ | ---------------------------------------------- |
-| Worker | `SmartRoutingLearningWorker`                   |
-| 重试   | 1 次                                           |
-| 职责   | 处理路由决策反馈，更新 MLP/Elo/KNN 在线学习模型 |
-
-异步处理执行完成后的路由决策评分反馈，供 `SmartRoutingModule` 的 `learning/` 子模块进行在线模型训练。
-
+---
+docType: reference
 ---
 
-## 重试与死信队列
+# 异步任务队列
 
-### 重试策略
+服务端的异步任务全部跑在 BullMQ 上，Redis 连接在 `agentloom-server/src/app.module.ts` 的 `BullModule.forRootAsync` 中由 `APP_REDIS_URL` 解析。每个队列由所属模块用 `BullModule.registerQueue` 注册，Worker 类用 `@Processor(<队列常量>)` 绑定。
 
-| 队列                  | 重试次数 | 退避策略 | 基础延迟 |
-| --------------------- | -------- | -------- | -------- |
-| execution-queue       | 1        | —        | —        |
-| agent-task-queue      | 3        | 指数退避 | 2s       |
-| plugin-execution      | 3        | 指数退避 | 2s       |
-| trigger-scheduler     | 3        | 指数退避 | 2s       |
-| notification          | 3        | 指数退避 | 1s       |
-| earnings-settlement   | 1        | —        | —        |
-| optimization-analysis | 1        | —        | —        |
-| audit-log-retention   | 1        | —        | —        |
-| sandbox-lifecycle     | 3        | 指数退避 | —        |
-| agent-conversation    | 3        | 指数退避 | 2s       |
-| smart-routing-learning| 1        | —        | —        |
+## 队列清单
 
-### 死信队列 (DLQ)
+<!--@include: ../../_generated/queues.md-->
 
-BullMQ 重试耗尽后任务进入 `failed` 状态。AgentLoom 提供 DLQ 管理 API 支持：
+## 重试与保留策略
 
-- 查询失败任务列表
-- 重试失败任务
-- 清理过期失败任务
+下表是每个队列注册时的 `defaultJobOptions`，以及个别 `queue.add(...)` 调用的覆盖值。路径均相对 `agentloom-server/src/modules/`。未写 `backoff` 的队列失败后立即重试；未写 `attempts` 时为 BullMQ 默认值 1（不重试）。`removeOnComplete` / `removeOnFail` 为整数时表示保留的最近任务数。
 
----
+| 队列 | attempts | backoff | removeOnComplete / removeOnFail | 定义处 | 单次入队的覆盖 |
+| --- | --- | --- | --- | --- | --- |
+| `workflow-execution` | 1 | — | 1000 / 5000 | `execution/execution.constants.ts`（`EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS`） | `jobId` 为 executionId |
+| `agent-task` | 4 | exponential 2000ms | 1000 / 5000 | `execution/execution.constants.ts`（`AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS`） | 介入超时任务 attempts 1 + delay（`execution/node-scheduler.service.ts`）；FALLBACK_CHAIN 子 Agent 与回退重排 attempts 1（`execution/node-executors/sub-agent-node.executor.ts`、`execution/agent-task.worker.ts`） |
+| `agent-conversation-execution` | 1 | — | 1000 / 5000 | `agent-execution/agent-execution.service.ts`（`AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS`） | `jobId` 为 conversationId |
+| `audit-log-retention` | 1 | — | `{count:10}` / `{count:50}` | `evidence/audit-log-retention.constants.ts` | — |
+| `evidence-export` | 3 | — | `{count:20}` / `{count:50}` | `evidence/evidence-export.constants.ts` | `jobId` 为 `evidence-export-<id>`，事务提交后入队（`evidence/evidence-export.service.ts`） |
+| `evidence-export-cleanup` | 1 | — | `{count:10}` / `{count:50}` | `evidence/evidence-export.constants.ts` | — |
+| `document-processing` | 队列默认 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | 每次入队都设 attempts `DOCUMENT_PROCESSING_MAX_ATTEMPTS`（3，`knowledge/knowledge.constants.ts`）+ exponential 2000ms（`knowledge/document.service.ts`） |
+| `document-indexing` | 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | — |
+| `notification` | 3 | exponential 1000ms | 100 / 500 | `notification/notification.constants.ts` | `jobId` 为 notification id，事务提交后入队 |
+| `optimization-analysis` | 1 | — | `{count:10}` / `{count:50}` | `optimization-suggestion/optimization-analysis.constants.ts` | — |
+| `plugin-execution` | 3 | exponential 2000ms | 1000 / 5000 | `plugin/plugin.constants.ts`（`pluginExecutionQueueDefaultJobOptions`） | — |
+| `earnings-settlement` | 3 | exponential 5000ms | 100 / 500 | `plugin/plugin.constants.ts`（`earningsSettlementQueueDefaultJobOptions`） | — |
+| `sandbox-lifecycle` | 3 | exponential 1000ms | 1000 / 5000 | `sandbox/sandbox.module.ts`（内联） | 超时检查、对话空闲结束检查、租约续期均 attempts 1（`sandbox/sandbox-lifecycle.producer.ts`） |
+| `routing-learning` | 3 | exponential 2000ms | 100 / 500 | `smart-routing/learning/routing-learning.types.ts` | `jobId` 为 routingDecisionId |
+| `trigger-scheduler` | 3 | exponential 2000ms | 100 / 500 | `trigger/trigger.constants.ts` | — |
+| `agent-api-maintenance` | 1 | — | 100 / 500 | `agent-api-runtime/agent-api-runtime.constants.ts` | — |
 
-## 周期调度任务
+同一队列可能在多个模块中被重复注册（如 `agent-task` 在 `monitoring` 模块中注册用于只读统计、`routing-learning` 在 `smart-routing` 模块中再次注册），这些注册不带 `defaultJobOptions`；生产者所在模块的注册决定默认值。
 
-两个队列使用 `upsertJobScheduler()` 注册周期性任务：
+### `agent-task` 的失败决策
 
-| 任务                  | 队列                  | 调度表达式  | 说明               |
-| --------------------- | --------------------- | ----------- | ------------------ |
-| optimization-analysis | optimization-analysis | `0 2 * * 1` | 每周一 UTC 2:00    |
-| audit-log-retention   | audit-log-retention   | 单例调度    | retention 策略驱动 |
+`agent-task` 失败时不直接交给 BullMQ 重试，而由 `decideAgentTaskFailure`（`agentloom-server/src/modules/execution/agent-task-failure-policy.ts`）按以下顺序决定：
 
-`upsertJobScheduler()` 确保集群环境下仅运行一个调度实例，使用固定 scheduler ID 实现幂等注册。
+1. **retry**：已尝试次数 + 1 小于 `attempts`，交给 BullMQ 按退避重试。
+2. **fallback**：非认证失败，且智能路由还有下一个候选模型时，以 attempts 1 重新入队，换用下一个模型。
+3. **requeue_recoverable**：失败被判定为运行时可恢复，且累计次数小于 `MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS`（120）时，延迟 `RECOVERABLE_RUNTIME_FAILURE_REQUEUE_DELAY_MS`（30000ms）重新入队。
+4. **fail**：标记失败；任务留在 BullMQ 的 failed 集合，即下文的 DLQ。
 
----
+## 周期任务
 
-## 工作流执行编排流程
+周期任务用 `Queue.upsertJobScheduler` 注册，调度器生成的任务继承队列的 `defaultJobOptions`。
 
-```mermaid
-sequenceDiagram
-    participant Client as Studio / API
-    participant ES as ExecutionService
-    participant RG as ResourceGovernance
-    participant EQ as execution-queue
-    participant EW as ExecutionWorker
-    participant AQ as agent-task-queue
-    participant AW as AgentTaskWorker
-    participant GW as ExecutionGateway
+| 队列 | 调度器 id | 周期 | 定义处（相对 `agentloom-server/src/modules/`） |
+| --- | --- | --- | --- |
+| `audit-log-retention` | `audit-log-retention-daily` | cron `0 3 * * *` UTC | `evidence/audit-log-retention.constants.ts`、`evidence/audit-log-retention.scheduler.ts` |
+| `evidence-export-cleanup` | `evidence-export-cleanup-hourly` | cron `0 * * * *` UTC | `evidence/evidence-export.constants.ts`、`evidence/evidence-export.cleanup.scheduler.ts` |
+| `optimization-analysis` | `optimization-analysis-weekly` | cron `0 2 * * 1` UTC | `optimization-suggestion/optimization-analysis.scheduler.ts` |
+| `earnings-settlement` | `dispatch-plugin-earnings-settlement` | cron `0 3 1 * *` UTC（派发上一自然月的结算） | `plugin/plugin.constants.ts`、`plugin/earnings-settlement.scheduler.ts` |
+| `trigger-scheduler` | 每个 cron 触发器一个，id 为 trigger id | 触发器配置的 `expression` 与 `timezone` | `trigger/trigger-scheduler.service.ts` |
+| `agent-api-maintenance` | `agent-api-maintenance-sweep` | 每 5 分钟 | `agent-api-runtime/agent-api-runtime.constants.ts`、`agent-api-runtime/agent-api-maintenance.scheduler.ts` |
+| `sandbox-lifecycle` | 每个会话一个 `sandbox-workspace-lease-renew-<sessionId>` | 每 60 秒，会话结束时移除 | `sandbox/sandbox-lifecycle.producer.ts` |
 
-    Client->>ES: POST /workflow-definitions/:id/run
-    ES->>RG: 资源治理准入检查
-    RG-->>ES: 通过/阻断(409)
-    ES->>EQ: 入队执行任务
-    EQ->>EW: 消费
-    EW->>EW: 解析 DAG 拓扑
-    loop 按拓扑序执行
-        EW->>AQ: 入队 Agent 节点任务
-        AQ->>AW: 消费
-        AW->>AW: LLM 调用 + 工具执行
-        AW->>GW: 广播 execution.node.* 事件
-        AW-->>EW: 步骤完成
-    end
-    EW->>GW: 广播 execution.status.changed
-    EW-->>ES: 执行完成
-```
+## 死信队列（DLQ）
 
-### 治理准入
+DLQ 不是独立队列，而是 `agent-task` 队列中 BullMQ 的 failed 集合，只覆盖 `agent-task`。管理端点定义在 `agentloom-server/src/modules/execution/execution.controller.ts`，均要求 `owner` 或 `admin`：
 
-`ExecutionService.runWorkflow()` 在写入 `workflow_executions` 前调用资源治理准入判断：
+| 方法与路径 | 行为 | 成功响应 |
+| --- | --- | --- |
+| `GET /api/v1/dlq?page=1&limit=20` | 读取 failed 集合，按 `job.data.tenantId` 过滤为当前租户后在内存中分页；每项含 `jobId`、`name`、`data`、`failedReason`、`attemptsMade`、`timestamp`、`finishedOn`、`processedOn` | 200 |
+| `POST /api/v1/dlq/:jobId/retry` | 调用 `job.retry()` 重新执行 | 202，`{ data: { jobId, status: 'retrying' } }` |
+| `POST /api/v1/dlq/:jobId/discard` | 调用 `job.remove()` 删除 | 200，`{ data: { jobId, status: 'discarded' } }` |
 
-- **并发执行数** — `tenant_quotas.maxConcurrentExecutions`
-- **日执行量** — `tenant_quotas.dailyExecutionLimit`
-- **治理暂停状态** — `execution_governance_controls` 检查
+任务不存在或不属于当前租户时返回 404（`DeadLetterJobNotFoundException`，`agentloom-server/src/modules/execution/execution.exceptions.ts`）。实现见 `agentloom-server/src/modules/execution/execution.service.ts`。
 
-阻断时统一使用 `ResourceGovernanceDecisionBlockedException`（409 状态码），并写正式审计。
+其他队列失败的任务同样留在各自的 failed 集合中，保留数量由上表 `removeOnFail` 决定，没有对外的查询或重试端点。

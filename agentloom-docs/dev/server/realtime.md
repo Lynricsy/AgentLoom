@@ -1,444 +1,225 @@
-# 实时通信协议
-
-AgentLoom 使用 **Socket.IO** 实现服务端到客户端的实时事件推送，涵盖工作流执行、Agent 对话、通知推送、Agent 记忆和知识库更新五个命名空间。
-
-## 命名空间概览
-
-| 命名空间                 | 认证                      | 用途                    | 状态     |
-| ------------------------ | ------------------------- | ----------------------- | -------- |
-| `/execution`             | WsJwtGuard + MFA + 黑名单 | 工作流执行进度推送      | 正式协议 |
-| `/agent-conversation`    | WsJwtGuard + MFA + 黑名单 | Agent 对话实时事件推送  | 正式协议 |
-| `/notification`          | JWT 认证                  | 通知推送 + 未读计数     | 正式协议 |
-| `/memory`                | WsJwtGuard + MFA + 黑名单 | Agent 记忆图拓扑事件    | 正式协议 |
-| `/knowledge`             | 无                        | 知识库更新              | 隐式契约 |
-
+---
+docType: reference
 ---
 
-## /execution 命名空间
+# 实时通信（Socket.IO）
 
-最核心的实时协议，用于向 Studio 推送工作流执行的全过程状态变化。
+> 本页回答：服务端的实时事件从哪里产生、经过哪些环节到达 Socket.IO 房间，客户端如何认证、订阅和断线续传？为什么事件要先经过 EventBridge 再由 Gateway 发出？
 
-### 事件信封
+服务端的实时推送全部走 Socket.IO，每个领域一个命名空间（namespace），每个命名空间由一个 NestJS `@WebSocketGateway` 实现。前半部分是参考（命名空间、认证、信封、订阅消息、回放、常量），后半部分解释设计取舍。事件名的完整清单由生成器产出，见[事件清单](#事件清单)。
 
-所有事件使用统一的 `ExecutionEvent<T>` 类型信封：
+## 参考
 
-```typescript
-interface ExecutionEvent<T> {
-  eventId: number; // 单调递增 ID（用于断线重连）
-  executionId: string; // 工作流执行 ID
-  timestamp: string; // ISO 8601 时间戳
-  type: string; // 事件类型
-  payload: T; // 业务载荷（类型参数化）
-}
-```
+### 命名空间与房间
 
-**`eventId` 保证**：
+| 命名空间 | Gateway 源文件 | 房间名 | 订阅 / 退订消息（client → server） | 订阅 ack |
+| --- | --- | --- | --- | --- |
+| `/execution` | `agentloom-server/src/modules/execution/execution.gateway.ts` | `execution:{tenantId}:{executionId}` | `execution:subscribe` / `execution:unsubscribe`；旧别名 `subscribe`、`join` / `unsubscribe`、`leave` | `{ status: 'subscribed' \| 'error', error?, currentState }` |
+| `/agent-conversation` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` | `conversation:{tenantId}:{conversationId}` | `conversation:subscribe` / `conversation:unsubscribe`；另有 `conversation:message`、`conversation:cancel` | `{ status, error?, lastEventId? }` |
+| `/memory` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` | `memory:{tenantId}:{instanceId}` | `memory:subscribe` / `memory:unsubscribe` | `{ status, instanceId?, error? }` |
+| `/notification` | `agentloom-server/src/modules/notification/notification.gateway.ts` | `tenant:{tenantId}:user:{userId}` | 连接即自动加入；`notification:subscribe` / `notification:unsubscribe` 可重复加入/退出 | `{ status: 'subscribed' \| 'unsubscribed' \| 'error' }` |
+| `/knowledge` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` | `knowledge:{tenantId}:{knowledgeBaseId}` | `join` / `leave`，载荷 `{ knowledgeBaseId, tenantId? }` | `{ status: 'joined' \| 'left' \| 'error', knowledgeBaseId?, error? }` |
 
-- 每个执行实例内**单调递增**
-- 客户端可通过 `lastEventId` 实现断线续传
-- 不跨执行实例共享
+房间名里的 `tenantId` 一律取自 JWT，不取自客户端载荷。`/execution`、`/agent-conversation`、`/knowledge` 允许载荷里带 `tenantId` 作为回声，但与 JWT 不一致时直接返回 `FORBIDDEN`（`agentloom-server/src/modules/knowledge/knowledge.gateway.ts:217`）。订阅失败的 `error` 取值为 `FORBIDDEN`、`INVALID_PAYLOAD`，`/execution` 另有 `NOT_FOUND`（执行不存在）。
 
-### /execution 房间模型
-
-```text
-execution:{tenantId}:{executionId}
-```
-
-客户端订阅特定执行的事件时，加入对应的 Socket.IO room。
-
-### 订阅协议
-
-#### 订阅事件
-
-```typescript
-// 客户端 → 服务端
-socket.emit(
-  "execution:subscribe",
-  {
-    executionId: "uuid-xxx",
-  },
-  (ack: { success: boolean; error?: string }) => {
-    // ACK 回调确认订阅结果
-  },
-);
-```
-
-#### 取消订阅
-
-```typescript
-// 客户端 → 服务端
-socket.emit(
-  "execution:unsubscribe",
-  {
-    executionId: "uuid-xxx",
-  },
-  (ack: { success: boolean }) => {
-    // ACK 回调确认
-  },
-);
-```
-
-> **兼容性**：服务端同时支持 `subscribe`/`join`（别名）和 `unsubscribe`/`leave`（别名）。
-
-### /execution 事件类型
-
-#### 节点级事件
-
-| 事件名                                 | 载荷           | 说明                 |
-| -------------------------------------- | -------------- | -------------------- |
-| `execution.node.status-changed`        | 节点状态变更   | 步骤状态转换         |
-| `execution.node.agent-event`           | Agent 运行事件 | LLM 调用、工具执行等 |
-| `execution.node.retrying`              | 重试信息       | 含重试次数、延迟     |
-| `execution.node.output-chunk`          | 流式输出块     | LLM 流式响应分块     |
-| `execution.node.intervention-required` | 介入请求       | 需要人工审批         |
-| `execution.node.intervention-resolved` | 介入结果       | 审批通过/拒绝        |
-
-#### 执行级事件
-
-| 事件名                     | 载荷         | 说明                   |
-| -------------------------- | ------------ | ---------------------- |
-| `execution.status.changed` | 执行状态变更 | 全局 6 状态转换        |
-| `execution.state.snapshot` | 完整状态快照 | 用于断线重连后状态同步 |
-
-### 背压控制
-
-服务端实现双层流量控制：
-
-#### 1. 背压队列
-
-| 参数                             | 值    | 说明     |
-| -------------------------------- | ----- | -------- |
-| `BACKPRESSURE_QUEUE_LIMIT`       | 500   | 队列上限 |
-| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100ms | 排水间隔 |
-
-当事件产生速率超过排水速率时：
-
-- 事件入队等待
-- 队列满时丢弃最旧事件
-- 终态事件（completed/failed/cancelled）强制立即广播
-
-#### 2. 节流合并
-
-| 参数     | 值           | 说明                         |
-| -------- | ------------ | ---------------------------- |
-| 合并窗口 | 50ms         | ThrottleService merge window |
-| 速率桶   | 100 events/s | 每秒最大事件数               |
-
-同一节点在 50ms 窗口内的多次状态变更会被合并为一次广播。
-
-### 终态清理流程
-
-当执行到达终态（completed/failed/cancelled）时：
-
-```mermaid
-sequenceDiagram
-    participant EW as ExecutionWorker
-    participant GW as ExecutionGateway
-    participant Client as Studio
-
-    EW->>GW: 执行到达终态
-    GW->>GW: 1. flush 背压队列
-    GW->>GW: 2. forceFlush output_chunk
-    GW->>Client: 3. 广播终态事件
-    Note over GW: 4. 30s ring buffer 保留
-    GW->>GW: 5. 清理 room
-```
-
-### 断线重连
-
-客户端支持 `lastEventId` 增量回放：
-
-```typescript
-// 重连后发送 lastEventId
-socket.emit(
-  "execution:subscribe",
-  {
-    executionId: "uuid-xxx",
-    lastEventId: 42, // 上次收到的最大 eventId
-  },
-  (ack) => {
-    // 服务端回放 eventId > 42 的所有事件
-  },
-);
-```
+所有 Gateway 的 `cors` 均为 `{ origin: '*' }`。
 
 ### 认证
 
-| 层级     | 机制                    |
-| -------- | ----------------------- |
-| 连接认证 | `WsJwtGuard` — JWT 验证 |
-| MFA 校验 | 多因素认证检查          |
-| 黑名单   | 令牌撤销检查            |
-| 认证失败 | 关闭连接，code `4001`   |
+每个命名空间都使用同一套两层认证：
 
----
+1. **握手中间件**：各 Gateway 的 `afterInit()` 通过 `server.use()` 注册中间件，在握手阶段校验令牌，失败即拒绝连接。
+2. **`WsJwtGuard`**：类级 `@UseGuards(WsJwtGuard)`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）保护每个 `@SubscribeMessage` 处理器。握手中间件已写入 `socket.data.user` 时，守卫直接放行（`agentloom-server/src/common/guards/ws-jwt.guard.ts:31`）。
 
-## /notification 命名空间
+握手中间件的检查顺序：
 
-用于推送应用内通知和未读计数同步。
+| 步骤 | 失败时的错误消息 |
+| --- | --- |
+| 从 `handshake.auth.token` 或 `Authorization: Bearer` 头取令牌 | `Authentication required` |
+| 令牌黑名单（`TokenBlacklistService`） | `Token has been revoked` |
+| `jwt.verify`：HS256、`audience: 'authenticated'`，密钥为 `APP_JWT_SECRET` | `Invalid or expired token` |
+| 拒绝 `type: 'mfa_pending'` 的令牌 | `MFA verification required` |
+| `sub`、`aud`、`exp`、`iat` 齐全 | `Invalid token claims` |
 
-### /notification 房间模型
+握手错误带 `data: { code: 4001, reason }`，客户端从 `err.data.code` 读取（常量 `WS_CLOSE_AUTH_FAILURE`，各 Gateway 文件顶部定义）。
 
-```text
-tenant:{tenantId}:user:{userId}
-```
+`/notification` 多一步：把 JWT 的 `sub`（Supabase 用户 ID）经 `UserIdentityResolverService` 解析为内部用户 ID 写入 `socket.data.user.sub`，原始值保存在 `supabaseUserId`；解析失败返回 `User account not found`（`agentloom-server/src/modules/notification/notification.gateway.ts:75`）。其余命名空间的 `sub` 保持 JWT 原值。
 
-每个用户在其租户下拥有独立的通知 room。
-
-### /notification 事件类型
-
-| 事件名                      | 方向            | 说明         |
-| --------------------------- | --------------- | ------------ |
-| `notification.new`          | 服务端 → 客户端 | 新通知推送   |
-| `notification.unread-count` | 服务端 → 客户端 | 未读数量同步 |
-
-### 通知触发
-
-通知由 BullMQ `notification` 队列的 `NotificationProcessor` 处理，支持三种通道：
-
-| 通道     | 说明                                     |
-| -------- | ---------------------------------------- |
-| `in_app` | 写入 `notifications` 表 + Socket.IO 推送 |
-| `email`  | 邮件通知                                 |
-| `push`   | 设备推送（通过 `device_tokens`）         |
-
-通知类型包括：`completed`（执行完成）、`failed`（执行失败）、`intervention_required`（需要介入）。
-
----
-
-## /knowledge 命名空间
-
-用于知识库文档处理进度的实时更新。
-
-::: warning 隐式契约
-`/knowledge` 命名空间目前为隐式契约状态，未配置认证守卫（no auth guard），未来可能会正式化。
+::: tip /knowledge 与其他命名空间同等认证
+`KnowledgeGateway` 使用 `@UseGuards(WsJwtGuard)`（`agentloom-server/src/modules/knowledge/knowledge.gateway.ts:70`），握手中间件与 `/execution`、`/memory` 相同。未携带令牌的连接在握手阶段即被拒绝，Studio 的 `agentloom-studio/src/features/knowledge/hooks/useKnowledgeBaseSocket.ts` 在没有令牌时不建立连接。
 :::
 
----
+### 事件信封
 
-## /agent-conversation 命名空间
-
-Agent 对话的实时事件推送通道，与 `/execution` namespace 对称，复用 EventBridge 模式实现对话级事件分发。
-
-### /agent-conversation 认证
-
-| 层级     | 机制                    |
-| -------- | ----------------------- |
-| 连接认证 | `WsJwtGuard` — JWT 验证 |
-| MFA 校验 | 多因素认证检查          |
-| 黑名单   | 令牌撤销检查            |
-| 认证失败 | 关闭连接，code `4001`   |
-
-### /agent-conversation 事件信封
-
-复用 typed `ExecutionEvent<T>` 信封结构，包含单调递增 `eventId`，支持断线重连回放。
-
-### /agent-conversation 订阅协议
+`/execution` 的每个事件都是 `ExecutionEvent<T>`，定义在 `agentloom-contracts/src/execution-events.ts`（服务端规范定义在 `agentloom-server/src/modules/execution/types/execution-event.types.ts`）。线上字段为 camelCase：
 
 ```typescript
-// 订阅对话事件
-socket.emit(
-  "conversation:subscribe",
-  {
-    conversationId: "uuid-xxx",
-    lastEventId: 0, // 可选，断线续传
-  },
-  (ack: { success: boolean; error?: string }) => {
-    // ACK 回调确认
-  },
-);
-
-// 取消订阅
-socket.emit(
-  "conversation:unsubscribe",
-  {
-    conversationId: "uuid-xxx",
-  },
-  (ack: { success: boolean }) => {
-    // ACK 回调确认
-  },
-);
+interface ExecutionEvent<T extends ExecutionEventName = ExecutionEventName> {
+  readonly eventId: number; // 每个 execution 内单调递增
+  readonly event: T; // 事件名，与 Socket.IO 事件名相同
+  readonly timestamp: string; // ISO 8601
+  readonly executionId: string;
+  readonly tenantId: string;
+  readonly data: ExecutionEventPayloadMap[T]; // 按事件名区分的载荷
+}
 ```
 
-### /agent-conversation 事件类型
+- `eventId` 由 `EventBridgeService.nextEventId()` 按 `executionId` 计数，从 1 开始（`agentloom-server/src/modules/execution/services/event-bridge.service.ts:529`）。
+- 载荷 schema 按事件名登记在 `EXECUTION_EVENT_PAYLOAD_SCHEMAS`；需要逐字段校验时调用 `parseExecutionEvent()`。
+- 其他命名空间的信封不同：
+  - `/agent-conversation`：`{ conversationId, tenantId, timestamp, eventId, ...载荷 }`，`eventId` 读自 EventBridge 中该 `conversationId` 的当前计数（`agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts:904`）。回放时下发的是原始 `ExecutionEvent`。
+  - `/memory`：`{ eventId, timestamp, type, data }`，`eventId` 来自 Gateway 级的单一计数器，跨实例共享（`agentloom-server/src/modules/agent-memory/memory.gateway.ts:409`）。
+  - `/notification`、`/knowledge`：直接发送业务对象，没有 `eventId`。
 
-| 事件名                                     | 说明                                      |
-| ------------------------------------------ | ----------------------------------------- |
-| `conversation.message.created`             | 新消息（用户或 Agent）                    |
-| `conversation.agent.status-changed`        | Agent 状态变更（thinking/responding 等）  |
-| `conversation.agent.output-chunk`          | Agent 流式输出分块                        |
-| `conversation.agent.tool-call`             | Agent 工具调用事件                        |
-| `conversation.subagent.event`              | 子代理事件路由                            |
+### /execution：从领域事件到 Socket
 
-### 子代理事件路由
+```mermaid
+sequenceDiagram
+    participant Domain as 执行引擎 / Worker
+    participant EB as EventBridgeService
+    participant EE as EventEmitter2
+    participant GW as ExecutionGateway
+    participant Room as execution:{tenantId}:{executionId}
 
-`AgentConversationGateway` 通过 `handleSubAgentEvent()` 将子代理执行事件路由到父对话房间。当工作流 `agent` 节点通过 `WorkflowAgentAdapter` 桥接执行时，子 Agent 产生的实时事件会同时推送到对应的父级对话订阅者。
-
----
-
-## /memory 命名空间
-
-Agent 记忆系统的实时事件推送通道，用于图拓扑节点、边和版本的 CRUD 操作通知。
-
-### /memory 认证
-
-| 层级     | 机制                    |
-| -------- | ----------------------- |
-| 连接认证 | `WsJwtGuard` — JWT 验证 |
-| MFA 校验 | 多因素认证检查          |
-| 黑名单   | 令牌撤销检查            |
-| 认证失败 | 关闭连接，code `4001`   |
-
-### /memory 房间模型
-
-```text
-memory:{tenantId}:{instanceId}
+    Domain->>EB: emitStepStatusChanged() 等
+    EB->>EB: createEnvelope()：eventId+1
+    EB->>EB: bufferEvent()：写入环形缓冲区
+    EB->>EE: emit('execution.gateway.broadcast', intent)
+    EE->>GW: @OnEvent 处理广播意图
+    GW->>GW: ThrottleService.tryConsume()
+    alt 令牌可用
+        GW->>Room: server.to(room).emit(event, envelope)
+    else 令牌耗尽
+        GW->>GW: enqueueEvent()，每 100ms 排空
+    end
 ```
 
-每个记忆实例拥有独立的 room，客户端订阅特定记忆实例的变更事件。
+`EventBridgeService`（`agentloom-server/src/modules/execution/services/event-bridge.service.ts`）不持有 Socket.IO 服务器，只向 `EventEmitter2` 发出广播意图；`ExecutionGateway` 用 `@OnEvent` 订阅这些意图。意图名定义在 `ExecutionBroadcastIntent`：
 
-### /memory 订阅协议
+| 意图 | 值 | Gateway 行为 |
+| --- | --- | --- |
+| `BROADCAST` | `execution.gateway.broadcast` | 经令牌桶与背压队列发送 |
+| `BROADCAST_IMMEDIATELY` | `execution.gateway.broadcast_immediately` | 跳过令牌桶直接发送 |
+| `FLUSH_QUEUE` | `execution.gateway.flush_queue` | 一次性发出该执行积压的事件 |
+| `CLEAR_QUEUE` | `execution.gateway.clear_queue` | 丢弃该执行的积压与排空定时器 |
 
-```typescript
-// 订阅记忆实例事件
-socket.emit(
-  "memory:subscribe",
-  {
-    instanceId: "uuid-xxx",
-    lastEventId: 0, // 可选，断线续传
-  },
-  (ack: { success: boolean; error?: string }) => {
-    // ACK 回调确认
-  },
-);
+部分 `emit*` 方法还会以事件名（如 `execution.node.agent-event`）在 `EventEmitter2` 上发出领域事件，供 `AgentConversationGateway` 等进程内监听者使用；这条通道与发往 Socket 的广播意图互相独立。
 
-// 取消订阅
-socket.emit(
-  "memory:unsubscribe",
-  {
-    instanceId: "uuid-xxx",
-  },
-  (ack: { success: boolean }) => {
-    // ACK 回调确认
-  },
-);
-```
+#### 流量控制常量
 
-### /memory 事件类型
+| 常量 | 值 | 定义处 | 作用 |
+| --- | --- | --- | --- |
+| `EVENT_BUFFER_CAPACITY` | 500 | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:53` | 每个执行的回放环形缓冲区上限，超出丢最旧 |
+| `TERMINAL_EVENT_RETENTION_MS` | 30 000 ms | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:54` | 终态后保留计数器与缓冲区的时长 |
+| `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/execution/execution.gateway.ts:41` | 每个执行的背压队列上限，满时丢最旧并记 warn |
+| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/execution/execution.gateway.ts:44` | 背压队列排空定时器间隔 |
+| `ThrottleService.RATE_LIMIT` | 100 | `agentloom-server/src/modules/execution/services/throttle.service.ts:44` | 令牌桶容量与每秒补充量（按执行计） |
+| `ThrottleService.MERGE_WINDOW_MS` | 50 ms | `agentloom-server/src/modules/execution/services/throttle.service.ts:45` | 同一 `stepId` 输出块的合并窗口 |
 
-| 事件名                      | 说明                          |
-| --------------------------- | ----------------------------- |
-| `memory.node.created`       | 记忆节点创建                  |
-| `memory.node.updated`       | 记忆节点内容更新              |
-| `memory.node.deleted`       | 记忆节点删除                  |
-| `memory.version.created`    | 节点新版本创建                |
-| `memory.version.rollback`   | 节点版本回滚                  |
-| `memory.review.submitted`   | 版本审核状态提交              |
+合并窗口由 `ThrottleService.bufferOutputChunk()` 启用；当前生产代码没有调用它（调用方只有 `agentloom-server/src/modules/execution/__tests__/throttle.service.spec.ts`），`emitOutputChunk()` 产生的输出块与其他事件一样逐条走令牌桶。
 
-### /memory 背压与断线回放
+#### 终态处理
 
-| 参数             | 值               | 说明                        |
-| ---------------- | ---------------- | --------------------------- |
-| 队列上限         | 500 事件/实例    | per-instance 背压队列       |
-| 排水间隔         | 100ms            | drain interval              |
-| 最大回放         | 1000 事件/实例   | 断线重连 `lastEventId` 回放 |
+`emitExecutionStatusChanged()` 收到 `completed`、`failed`、`cancelled` 时依次：
 
-服务层在操作终态后通过 `flushMemoryQueue()` 立即排空队列，确保终态事件不被延迟。
+1. 发出 `FLUSH_QUEUE`，并对 `ThrottleService` 中待合并的输出块 `forceFlush()`，逐块立即广播；
+2. 立即广播终态事件（不经令牌桶）；
+3. 清理该执行的令牌桶，发出 `CLEAR_QUEUE`；
+4. 30 秒后调用 `clearExecution()`，删除计数器与环形缓冲区。之后同一 `executionId` 的 `eventId` 重新从 1 开始。
 
----
+#### 订阅与断线续传
 
-## 客户端集成
+`execution:subscribe` 的载荷为 `{ executionId, lastEventId?, tenantId? }`。服务端先通过 `StateReplayService.getExecutionSnapshot()` 取快照（取不到则返回 `FORBIDDEN` 或 `NOT_FOUND`），加入房间后按下面的规则补发（`agentloom-server/src/modules/execution/execution.gateway.ts:425`）：
 
-### Studio 集成示例
+- 带 `lastEventId`，且不小于服务端当前 `eventId`：不补发。
+- 带 `lastEventId`，且环形缓冲区仍覆盖缺口：逐条补发 `eventId > lastEventId` 的事件。
+- 其他情况：发送 `execution.state.snapshot`，再补发缓冲区中仍处于 `queued`、`running`、`waiting_intervention` 状态的步骤的节点级事件。
+
+ack 的 `currentState` 总是携带快照。
 
 ```typescript
 import { io } from "socket.io-client";
 
-// 建立连接
-const socket = io("/execution", {
-  auth: { token: "jwt-token" },
-  transports: ["websocket"],
-});
+// token 为 Supabase 签发的访问令牌；executionId、lastEventId 由调用方提供
+const socket = io("/execution", { auth: { token } });
 
-// 订阅执行
 socket.emit(
   "execution:subscribe",
-  {
-    executionId,
-    lastEventId: lastKnownEventId,
-  },
-  (ack) => {
-    if (!ack.success) console.error(ack.error);
+  { executionId, lastEventId },
+  (ack: { status: "subscribed" | "error"; error?: string }) => {
+    if (ack.status === "error") console.error(ack.error);
   },
 );
 
-// 监听事件
-socket.on(
-  "execution.node.status-changed",
-  (event: ExecutionEvent<NodeStatusPayload>) => {
-    console.log(`节点 ${event.payload.nodeId} → ${event.payload.status}`);
-  },
-);
-
-socket.on(
-  "execution.status.changed",
-  (event: ExecutionEvent<StatusPayload>) => {
-    console.log(`执行 ${event.executionId} → ${event.payload.status}`);
-  },
-);
-
-// 断线重连
-socket.on("reconnect", () => {
-  socket.emit("execution:subscribe", {
-    executionId,
-    lastEventId: maxReceivedEventId,
-  });
+socket.on("execution.node.status-changed", (event) => {
+  // event 为 ExecutionEvent，记录 event.eventId 供重连时作为 lastEventId
 });
 ```
 
-### 移动端集成
+### /agent-conversation
 
-Flutter 客户端通过 `socket_io_client` 包连接 `/execution` 命名空间，使用 JWT 认证，支持断线重连和 `lastEventId` 回放。
+`AgentConversationGateway` 不调用 EventBridge 的广播意图，而是用 `@OnEvent` 监听 EventBridge 在 `EventEmitter2` 上发出的领域事件（以及 `workspace.file_change`、`conversation.subagent.event`、`conversation.subagent.status`、`conversation.title.updated`），按 `executionType === 'conversation'` 过滤后映射为 `conversation.*` 事件，发往 `conversation:{tenantId}:{conversationId}`。对话执行的 `executionId` 即 `conversationId`，因此计数器与环形缓冲区与 `/execution` 共用 EventBridge。
 
----
+该 Gateway 有自己的背压队列（同为 500 / 100 ms，`agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts:90`），并复用 `ThrottleService` 令牌桶。
 
-## 协议总结
+`conversation:subscribe` 的载荷为 `{ conversationId, lastEventId?, tenantId? }`。带 `lastEventId` 时：
 
-```mermaid
-flowchart LR
-    subgraph Server
-        EG[ExecutionGateway]
-        ACG[AgentConversationGateway]
-        NG[NotificationGateway]
-        MG[MemoryGateway]
-        KG[KnowledgeGateway]
-    end
+- 服务端计数器不小于 `lastEventId` 且缓冲区仍覆盖缺口：把缓冲区中的 `ExecutionEvent` 逐条映射为对话事件补发；遇到终态的 `execution.status.changed` 时紧跟一条 `conversation.agent.done`。ack 的 `lastEventId` 为补发完成时的服务端计数。
+- 否则（计数器回退或缓冲区已不覆盖）：发送 `conversation.state.snapshot`（常量 `CONVERSATION_STATE_SNAPSHOT_EVENT`，`agentloom-contracts/src/conversation-events.ts`），其中 `lastEventId` 为新的游标起点，`reason` 为 `replay-buffer-gap`。此时 ack 不带 `lastEventId`。
 
-    subgraph Namespaces
-        E["/execution<br/>JWT+MFA+黑名单"]
-        AC["/agent-conversation<br/>JWT+MFA+黑名单"]
-        N["/notification<br/>JWT 认证"]
-        M["/memory<br/>JWT+MFA+黑名单"]
-        K["/knowledge<br/>隐式契约"]
-    end
+`conversation:message`（`{ conversationId, content, contentType?, metadata? }`）调用 `AgentExecutionService.injectMessage()`，`conversation:cancel`（`{ conversationId }`）调用 `cancelExecution()`，两者 ack 为 `{ status: 'ok' | 'error', error? }`。
 
-    subgraph Clients
-        Studio[Studio Web]
-        Mobile[Flutter Mobile]
-    end
+### /memory
 
-    EG --> E
-    ACG --> AC
-    NG --> N
-    MG --> M
-    KG --> K
+`MemoryGateway` 由服务层直接调用 `emitNodeCreated()` 等方法发事件，不经 EventBridge 与 `ThrottleService`。
 
-    E -->|"ExecutionEvent&lt;T&gt;"| Studio
-    E -->|"ExecutionEvent&lt;T&gt;"| Mobile
-    AC -->|"对话事件"| Studio
-    AC -->|"对话事件"| Mobile
-    N -->|"notification.new"| Studio
-    N -->|"notification.new"| Mobile
-    M -->|"memory.*"| Studio
-    K -->|"知识库更新"| Studio
-```
+| 常量 | 值 | 定义处 |
+| --- | --- | --- |
+| `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:23` |
+| `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:26` |
+| `REPLAY_BUFFER_LIMIT` | 1000 | `agentloom-server/src/modules/agent-memory/memory.gateway.ts:29` |
+
+- 背压队列只在已有积压时才入队，排空时一次发完，没有令牌桶限速。
+- 断线续传的游标从**握手查询参数** `lastEventId` 读取（`client.handshake.query.lastEventId`），不在 `memory:subscribe` 载荷里；订阅成功后补发该实例回放缓冲区中 `eventId` 更大的事件。
+- `flushMemoryQueue()`、`clearMemoryQueue()` 是公开方法，当前只有 `agentloom-server/src/modules/agent-memory/services/__tests__/memory.gateway.spec.ts` 调用。
+
+### /notification
+
+`NotificationProcessor`（`agentloom-server/src/modules/notification/notification.processor.ts`）处理 `notification` 队列任务时调用 `NotificationGateway.sendToUser()` 和 `sendUnreadCount()`，分别发出 `notification.new`（通知行对象）与 `notification.unread-count`（`{ count }`）。站内推送受用户 `in_app` 偏好与通知体内 `notifyChannels` 控制；设备推送由 `PushNotificationService` 处理，不经 Socket.IO。
+
+### /knowledge
+
+`KnowledgeGateway` 的发送方法由文档上传、处理、索引流程调用（`agentloom-server/src/modules/knowledge/document.service.ts`、`agentloom-server/src/modules/knowledge/document-processing.worker.ts`、`agentloom-server/src/modules/knowledge/document-indexing.worker.ts`、`agentloom-server/src/modules/knowledge/knowledge-base.controller.ts`）：
+
+| 方法 | 事件 | 载荷类型 |
+| --- | --- | --- |
+| `emitDocumentStatusChanged()` | `document:status-changed` | `DocumentStatusEvent`（状态 `uploaded` / `processing` / `ready` / `failed`，可带进度阶段） |
+| `emitKnowledgeBaseUpdated()` | `knowledge-base:updated` | `{ knowledgeBaseId }` |
+
+### 多实例：Redis adapter
+
+`agentloom-server/src/main.ts` 用 `RedisIoAdapter`（`agentloom-server/src/common/adapters/redis-io.adapter.ts`）作为 WebSocket 适配器。它用 `APP_REDIS_URL` 创建独立的 pub/sub 两个 ioredis 客户端，连接成功后为每个命名空间服务器挂上 `@socket.io/redis-adapter`，使 `server.to(room).emit()` 跨进程生效。连接失败时只记 warn，服务以单实例模式继续运行。
+
+适配器还把 `maxHttpBufferSize` 提高到至少 `MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES`（`agentloom-server/src/modules/agent-conversation/conversation-attachment.ts`），以容纳带 base64 附件的对话消息。
+
+### 事件清单
+
+生成列：命名空间 | 方向 | 事件 | 来源文件。
+
+<!--@include: ../../_generated/socket-events.md-->
+
+## 设计说明
+
+### 为什么 EventBridge 不直接持有 Socket 服务器
+
+`EventBridgeService` 被执行引擎、Worker、子代理桥接等大量模块注入。如果它直接依赖 `ExecutionGateway`，这些模块都会间接依赖 WebSocket 层，而 stdio 入口（`agentloom-server/src/acp-stdio.ts`）这类不启动 Socket.IO 的进程图也要装配 Gateway。改为向 `EventEmitter2` 发出意图后，EventBridge 只负责编号、缓冲和终态清理；是否真正发往 Socket、以多快的速度发，由 Gateway 决定。同一份领域事件还能被 `AgentConversationGateway`、证据模块等多个监听者消费，而不必互相知道对方。
+
+### 为什么编号与缓冲放在 EventBridge，限速放在 Gateway
+
+断线续传要求"编号"和"缓冲"看到的是同一个序列：先编号再入缓冲区，二者都在 `broadcast()` 里同步完成，补发时才能保证没有空洞。限速只影响"何时送达"，不改变序列，因此放在 Gateway 的背压队列里；队列满时丢最旧事件，客户端仍可凭 `eventId` 的跳跃发现缺口并通过重新订阅取回。
+
+### 回放能力的边界
+
+计数器、环形缓冲区、背压队列都是进程内的 `Map`。Redis adapter 只同步房间广播，不同步这些状态：客户端重连到另一个实例时，该实例的缓冲区里没有这次执行的事件，订阅会落到快照路径。快照路径（`execution.state.snapshot`、`conversation.state.snapshot`）因此是正确性的兜底，增量补发只是在同一进程内省带宽。
+
+相关页面：[请求管线](/dev/server/request-pipeline)、[安全模型](/dev/server/security)、[队列](/dev/server/queues)、[添加 Socket 事件](/dev/howto/add-socket-event)。

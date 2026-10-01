@@ -1,203 +1,183 @@
-# 中间件与守卫链
+---
+docType: explanation
+---
 
-AgentLoom 服务端通过 **6 层中间件/守卫链** + 2 个全局横切组件处理每个 HTTP 请求，确保多租户隔离、认证鉴权和速率控制。
+# 请求管线
 
-## 请求处理流程
+> 本页回答：一个 HTTP 请求或 WebSocket 连接在到达 controller / gateway 之前经过哪些层，这些层为什么按现在的顺序排列？
+
+对外错误格式、认证头写法等调用方契约在 [/api/](/api/)；租户隔离、令牌与加密的设计在 [/dev/server/security](/dev/server/security)。本页只讲服务端内部的执行顺序。
+
+## HTTP 请求的执行顺序
+
+Nest 对每个 HTTP 请求按固定阶段执行：Middleware → Guards → Interceptors（前半段）→ Pipes → Handler → Interceptors（后半段）→ Exception Filters。同一阶段内的全局组件按注册顺序执行。
+
+AgentLoom 在各阶段注册的全局组件：
+
+| 阶段 | 组件 | 注册位置 |
+| --- | --- | --- |
+| Middleware | `TenantMiddleware` | `agentloom-server/src/app.module.ts:171` 的 `configure()`，`forRoutes('*')` 并排除公开路由 |
+| Guards | `CustomThrottlerGuard` → `AuthGuard` → `TenantGuard` → `RolesGuard` | `agentloom-server/src/app.module.ts:152`，`APP_GUARD` 按声明顺序 |
+| Interceptors | `TenantTransactionInterceptor`（外层）→ `AuditLogInterceptor`（内层） | `agentloom-server/src/app.module.ts:148`、`agentloom-server/src/modules/evidence/evidence.module.ts:70` |
+| Pipes | `ZodValidationPipe` | `agentloom-server/src/main.ts:51`，`app.useGlobalPipes` |
+| Exception Filters | `AllExceptionsFilter` | `agentloom-server/src/main.ts:50`，`app.useGlobalFilters` |
+
+两个 interceptor 分属不同模块。Nest 扫描模块时根模块 `AppModule` 先于它导入的 `EvidenceModule` 登记，跨模块的 `APP_INTERCEPTOR` 按登记顺序加入全局列表，列表靠前者包在外层。因此 `TenantTransactionInterceptor` 包住 `AuditLogInterceptor`，审计记录的写入发生在租户事务的上下文之内。这一顺序是用与上述两模块同构的最小 Nest 应用（`@nestjs/core` 11.2.3）运行确认的，不是由显式配置保证的：调整 `AppModule` 的 provider 或改为在其他模块注册，顺序都可能变化。
+
+controller 或方法上用 `@UseGuards()` 声明的守卫排在全部全局守卫之后执行，例如 `/agent-api` 的 `AgentApiKeyGuard`。
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant C as 客户端
-    participant F as AllExceptionsFilter
-    participant TM as TenantMiddleware
-    participant ZP as ZodValidationPipe
-    participant TTI as TenantTransactionInterceptor
-    participant CTG as CustomThrottlerGuard
+    participant M as TenantMiddleware
+    participant TG as CustomThrottlerGuard
     participant AG as AuthGuard
-    participant TG as TenantGuard
+    participant TNG as TenantGuard
     participant RG as RolesGuard
-    participant CT as Controller
+    participant TI as TenantTransactionInterceptor
+    participant AI as AuditLogInterceptor
+    participant P as ZodValidationPipe
+    participant H as Controller
+    participant F as AllExceptionsFilter
 
-    C->>F: HTTP 请求
-    Note over F: 全局异常捕获（包裹整个链路）
-
-    F->>TM: 1. 租户识别
-    Note over TM: 从 JWT 无验证提取 tenantId<br/>X-Api-Key 请求跳过
-
-    TM->>TTI: 2. 租户事务
-    Note over TTI: AsyncLocalStorage 注入<br/>Drizzle 租户级事务
-
-    TTI->>CTG: 3. 速率限制
-    Note over CTG: 100 req/min 默认<br/>租户级覆盖配额<br/>429 + Retry-After
-
-    CTG->>AG: 4. 身份认证
-    Note over AG: JWT 优先<br/>→ X-Api-Key 回退<br/>SHA-256 hash 查验
-
-    AG->>TG: 5. 租户校验
-    Note over TG: 验证 UUID tenantId<br/>@Public() 跳过
-
-    TG->>RG: 6. 角色鉴权
-    Note over RG: Redis 缓存 RBAC<br/>owner>admin>creator><br/>operator>viewer
-
-    RG->>ZP: Zod DTO 校验
-    ZP->>CT: 请求到达 Controller
-
-    CT-->>C: 响应
-    Note over F: 异常统一格式化返回
+    C->>M: HTTP 请求
+    Note over M: 不验签解码 JWT，写入 req.tenantId
+    M->>TG: next()
+    Note over TG: 分钟限流 + 租户日配额
+    TG->>AG: 通过
+    Note over AG: @Public() 跳过；Bearer JWT 或 X-Api-Key，写入 req.user
+    AG->>TNG: 通过
+    Note over TNG: 仅对带 @Roles() 的路由校验 tenantId
+    TNG->>RG: 通过
+    Note over RG: 按 @Roles() 列表比对成员角色
+    RG->>TI: 通过
+    Note over TI: req.user.tenantId 存在时开启租户事务
+    TI->>AI: next.handle()
+    AI->>P: next.handle()
+    P->>H: 校验后的参数
+    H-->>AI: 返回值
+    Note over AI: 带 @CaptureAuditLog() 的路由写审计记录
+    AI-->>TI: 返回值
+    Note over TI: 事务提交后才发出响应
+    TI-->>C: 响应
+    Note over F: 任一层抛出的异常都由它转成 problem+json
 ```
 
-## 各层详解
+### 为什么是这个顺序
 
-### 1. TenantMiddleware
+- **限流在认证之前。** `CustomThrottlerGuard` 先于 `AuthGuard`，无效令牌发起的请求也会被计数，认证失败不能绕开限流。代价是限流阶段拿不到已验证的身份，所以它需要自己识别调用方（见下文），而这正是 `TenantMiddleware` 存在的原因。
+- **中间件只做不验签的租户提取。** 限流守卫要按租户共享计数桶，此时 `AuthGuard` 还没运行，`req.user` 不存在。`TenantMiddleware` 解码 JWT payload 取出 `tenantId`，供限流阶段使用。验签由随后的 `AuthGuard` 完成，伪造的 `tenantId` 最多把请求计入别的租户的限流桶，拿不到数据访问权限。
+- **租户事务在守卫之后。** `TenantTransactionInterceptor` 读取的是 `AuthGuard` 写入的 `req.user.tenantId`，而不是中间件写入的 `req.tenantId`，所以数据库会话只会绑定到验签通过的租户。Nest 的 interceptor 本来就排在 guard 之后，不需要额外配置。
+- **校验在事务之内。** `ZodValidationPipe` 在 interceptor 前半段之后、handler 之前运行，校验失败抛出的异常沿 interceptor 链向外传播，`TenantTransactionInterceptor` 据此回滚事务，再由 `AllExceptionsFilter` 输出错误。
 
-**位置**：`src/common/middleware/tenant.middleware.ts`
+## 各层的行为
 
-租户识别中间件，是请求链路的第一道关卡。
+### TenantMiddleware
 
-| 特性         | 说明                                                                        |
-| ------------ | --------------------------------------------------------------------------- |
-| 提取方式     | 从 JWT payload 无验证提取 `tenantId`（仅解码，不校验签名）                  |
-| API Key 处理 | 当请求携带 `X-Api-Key` 头时跳过（租户 ID 在 AuthGuard 中由 API Token 解析） |
-| 注入位置     | `req.tenantId`                                                              |
+源文件：`agentloom-server/src/common/middleware/tenant.middleware.ts`
 
-::: tip 为什么不验证 JWT 签名？
-TenantMiddleware 只需要提取租户 ID 用于后续事务隔离，真正的 JWT 签名验证在 AuthGuard 中执行。这避免了重复验签的性能开销。
-:::
+- 请求带 `X-Api-Key` 头时直接跳过，平台 API Token 的租户由 `AuthGuard` 写入。
+- 否则从 `Authorization: Bearer <jwt>` 中 base64url 解码 payload，读取 `tenantId` 或 `tenant_id`，是合法 UUID 才写入 `req.tenantId`。解码失败静默放行。
+- 不校验签名、不拒绝请求。
+- 在 `agentloom-server/src/app.module.ts:174` 排除的路由上不运行：`templates`、`marketplace/browse`、`generated-apps/public`、`s`、`webhooks`、`agent-api` 及其子路径。
 
-### 2. TenantTransactionInterceptor
+### CustomThrottlerGuard
 
-**位置**：`src/common/interceptors/tenant-transaction.interceptor.ts`
+源文件：`agentloom-server/src/common/guards/custom-throttler.guard.ts`；默认配额在 `agentloom-server/src/app.module.ts:74`：名为 `default` 的节流器，`ttl: 60_000`、`limit: 100`，即每分钟 100 次。计数存储在 `APP_REDIS_URL` 指向的 Redis（`ThrottlerStorageRedisService`）。
 
-确保每个请求在正确的租户事务上下文中执行。
+它继承 `@nestjs/throttler` 的 `ThrottlerGuard`，覆盖了调用方识别与上限计算：
 
-| 特性     | 说明                                                  |
-| -------- | ----------------------------------------------------- |
-| 存储机制 | `AsyncLocalStorage` 请求级隔离                        |
-| 事务管理 | Drizzle ORM 租户级事务包裹                            |
-| 辅助函数 | `runInTenantTransaction()` 供业务代码获取当前租户事务 |
+1. **识别 Agent API Key。** `Authorization` 以 `Bearer alak_` 开头时，先调用 `AgentApiKeyService.validate()`，结果缓存在请求对象上。Key 无效时不在这里报错，回退为按 IP 计数，由后面的 `AgentApiKeyGuard` 返回 401。
+2. **tracker（计数键）优先级**（`getTracker`）：有效的 Agent API Key → `agentkey:<keyPrefix>`；`X-Api-Key` 以 `al_` 开头 → `apikey:<前缀>`（`al_` 加 8 个字符）；可解码出 `sub` 的 JWT → `jwt:<sub>`；否则 → 客户端 IP。
+3. **租户共享桶。** 能解析出租户（来自 Agent Key、`TenantMiddleware`、JWT payload，或用 `X-Api-Key` 查库）且不是 Agent Key 请求时，计数键改为 `tenant:<tenantId>`，同一租户的所有成员共用一个分钟桶。Agent Key 始终按 Key 独立计数。
+4. **有效上限**：Agent Key 自身的 `rateLimitPerMinute` → 租户配额的 `apiRateLimitPerMinute` → 默认 100。
+5. **租户日配额。** 租户配额设置了 `dailyApiCallLimit` 时，另按 UTC 自然日计数，超出抛 `ResourceGovernanceDecisionBlockedException`（409）。
+6. **超限响应。** 写 `Retry-After` 与限流响应头。有租户上下文的平台请求（JWT / `al_` Token）抛 `ResourceGovernanceDecisionBlockedException`（分钟限流为 429，并写入资源治理拦截记录）；Agent Key 请求和无租户的请求抛 `RateLimitExceededException`，problem type 为 `rate-limit-exceeded`、状态 429。
 
-### 3. CustomThrottlerGuard
+跳过限流用 `@nestjs/throttler` 自带的 `@SkipThrottle()`，例如 `agentloom-server/src/modules/health/health.controller.ts`。
 
-**位置**：`src/common/guards/custom-throttler.guard.ts`
+### AuthGuard
 
-基于 `@nestjs/throttler` 的租户感知限流守卫。
+源文件：`agentloom-server/src/common/guards/auth.guard.ts`
 
-| 特性     | 说明                                                                   |
-| -------- | ---------------------------------------------------------------------- |
-| 默认限制 | 100 req/min（`ThrottlerModule { ttl: 60_000, limit: 100 }`）           |
-| 租户覆盖 | 从 `tenant_quotas` 读取 `apiRateLimitPerMinute` 和 `dailyApiCallLimit` |
-| 追踪键   | `apikey:{prefix}` / `jwt:{sub}` / `req.ip`（三级优先级）               |
-| 存储     | Redis                                                                  |
-| 响应     | 分钟限流 → `429` + `Retry-After` + `X-RateLimit-*` 头                  |
-| 日配额   | 超出 → `409` 治理阻断                                                  |
+- 路由或 controller 标了 `@Public()`（`agentloom-server/src/common/decorators/public.decorator.ts`）时直接放行。
+- **带 `Authorization: Bearer …` 时只走 JWT 分支**，不会回退到 API Key：
+  1. 在 `revoked_tokens` 表中按令牌 SHA-256 查吊销记录，命中返回 401 `token-revoked`。
+  2. 用 `APP_JWT_SECRET` 以 HS256 验签，要求 `aud` 为 `authenticated`。过期返回 `token-expired`，其他失败返回 `token-invalid`。
+  3. payload 的 `type` 为 `mfa_pending`（登录第一步签发的临时令牌）时返回 403 `mfa-required`。
+  4. 用 `UserIdentityResolverService` 把 Supabase 用户 ID 换成应用内用户 ID：`req.user.sub` 是应用用户 ID，原始值保存在 `req.user.supabaseUserId`。找不到应用用户返回 401。
+  5. `req.authMethod = 'jwt'`。
+- **没有 Bearer、但有 `X-Api-Key` 时走平台 API Token 分支**：`PlatformApiTokenService.validateToken()` 校验 `al_` 前缀、按 SHA-256 查记录、检查吊销与过期，并从成员表读取角色。成功后 `req.user.tenantId`、`req.tenantId`、`req.apiKeyPrefix` 被写入，`req.authMethod = 'api_key'`，异步更新 `lastUsedAt`。
+- 两者都没有时返回 401 `token-missing`。
+- `alak_` Agent API Key 不由它识别。`/agent-api` 的 controller 同时声明 `@Public()` 与 `@UseGuards(AgentApiKeyGuard)`（`agentloom-server/src/modules/agent-api/agent-api.controller.ts:104`）：全局守卫全部放行，随后 `AgentApiKeyGuard`（`agentloom-server/src/modules/agent-api/agent-api-key.guard.ts`）校验 `Bearer alak_…`，只写入 `req.agentApiKey`，不写 `req.user`。
 
-### 4. AuthGuard
+### TenantGuard
 
-**位置**：`src/common/guards/auth.guard.ts`
+源文件：`agentloom-server/src/common/guards/tenant.guard.ts`
 
-双重认证守卫，是安全链的核心。
+只对声明了 `@Roles()` 的非公开路由生效：`req.user.tenantId` 缺失抛 `TenantRequiredException`，不是 UUID 抛 `InvalidTenantContextException`。没有 `@Roles()` 的路由直接放行。
 
-```text
-请求 → 检查 JWT
-         ├── JWT 有效 → 设置 req.user + req.authMethod = 'jwt'
-         └── JWT 无效/缺失 → 检查 X-Api-Key
-                                ├── API Key 有效 → SHA-256 hash 查验
-                                │                  → revoked/expired 检查
-                                │                  → 设置 req.user + req.authMethod = 'api_key'
-                                └── 均无效 → 401 Unauthorized
-```
+### RolesGuard
 
-| 特性         | 说明                                                                |
-| ------------ | ------------------------------------------------------------------- |
-| JWT 来源     | Supabase Auth                                                       |
-| API Key 格式 | `al_` 前缀 + 随机字符串                                             |
-| API Key 存储 | SHA-256 hash（不存储明文）                                          |
-| 懒加载       | `ModuleRef.get({strict: false})` 按需加载 `PlatformApiTokenService` |
-| 输出         | `req.user`、`req.tenantId`、`req.authMethod`                        |
+源文件：`agentloom-server/src/common/guards/roles.guard.ts`；装饰器 `agentloom-server/src/common/decorators/roles.decorator.ts`
 
-::: warning @Public() 装饰器
-标记 `@Public()` 的端点将跳过 AuthGuard 认证检查，但仍会经过 TenantMiddleware 和限流。
-:::
+- 没有 `@Roles()` 或标了 `@Public()` 时放行。
+- 重复检查 `tenantId`，然后用 `RbacCacheService.getUserRole(tenantId, userId)` 读取成员角色（Redis 缓存，未命中时查 `organization_members`）。
+- **按列表精确匹配**：`requiredRoles.includes(userRole)`。角色之间没有隐式继承，允许 `operator` 的路由也要允许更高角色时，必须把它们都写进 `@Roles(...)`。角色的含义见 [/dev/server/security](/dev/server/security#rbac-角色)。
 
-### 5. TenantGuard
+### TenantTransactionInterceptor
 
-**位置**：`src/common/guards/tenant.guard.ts`
+源文件：`agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts`，事务实现在 `agentloom-server/src/common/interceptors/tenant-transaction.context.ts`。
 
-租户归属校验守卫。
+- `req.user.tenantId` 不存在（公开路由、`/agent-api`）时直接放行，不开事务。
+- 否则调用 `runInTenantTransaction()`：开启事务，执行 `SET LOCAL ROLE authenticated` 和 `set_config('app.current_tenant', <tenantId>, true)`，把事务对象放进 `AsyncLocalStorage`。服务代码通过 `getTenantDb()`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）取到这个事务，RLS 策略据此过滤。
+- handler 的返回值在事务**提交之后**才发给客户端；`registerAfterCommitHook()` 注册的回调在提交后执行。
 
-| 特性     | 说明                                           |
-| -------- | ---------------------------------------------- |
-| 校验内容 | `req.tenantId` 必须为有效 UUID                 |
-| 跳过条件 | `@Public()` 装饰器或无 `@Roles()` 装饰器的端点 |
-| 作用     | 确保已认证用户只能访问其所属租户的资源         |
+RLS 策略本身见 [/dev/server/security](/dev/server/security#数据库行级安全)。
 
-### 6. RolesGuard
+### AuditLogInterceptor
 
-**位置**：`src/common/guards/roles.guard.ts`
+源文件：`agentloom-server/src/modules/evidence/audit-log.interceptor.ts`
 
-基于 Redis 缓存的 RBAC 角色守卫。
-
-| 特性     | 说明                                                                  |
-| -------- | --------------------------------------------------------------------- |
-| 角色层级 | `owner` > `admin` > `creator` > `operator` > `viewer`                 |
-| 缓存     | `RbacCacheService.getUserRole()` Redis 缓存查询                       |
-| 匹配规则 | 向上兼容 — 要求 `operator` 权限时，`creator`/`admin`/`owner` 均可通过 |
-
-#### 角色权限矩阵
-
-| 角色       | 工作流 CRUD | 执行 | 组织管理 | 资源治理 | 插件安装 |
-| ---------- | ----------- | ---- | -------- | -------- | -------- |
-| `owner`    | ✅          | ✅   | ✅       | ✅       | ✅       |
-| `admin`    | ✅          | ✅   | ✅       | ✅       | ✅       |
-| `creator`  | ✅          | ✅   | ❌       | ❌       | ✅       |
-| `operator` | 只读        | ✅   | ❌       | ❌       | ✅       |
-| `viewer`   | 只读        | 只读 | ❌       | ❌       | ❌       |
-
-## 全局横切组件
-
-除了 6 层链路外，还有两个全局组件贯穿所有请求：
-
-### AllExceptionsFilter
-
-**位置**：`src/common/filters/all-exceptions.filter.ts`
-
-全局异常过滤器，捕获所有未处理异常并格式化为统一的 JSON 错误响应。
-
-| 异常类型                                     | HTTP 状态码    |
-| -------------------------------------------- | -------------- |
-| `HttpException`                              | 保持原始状态码 |
-| `ResourceGovernanceDecisionBlockedException` | `409` 或 `429` |
-| 未知异常                                     | `500`          |
+只处理 HTTP 请求，且只对带 `@CaptureAuditLog()`（`agentloom-server/src/modules/evidence/audit-log.capture.ts`）的路由生效：handler 成功返回后用配置的 `buildRecord` 生成审计记录并写入。写入失败只记 warn 日志，不影响响应。
 
 ### ZodValidationPipe
 
-**位置**：`src/common/pipes/zod-validation.pipe.ts`
+源文件：`agentloom-server/src/common/pipes/zod-validation.pipe.ts`，即 `nestjs-zod` 的 `createZodValidationPipe()`。
 
-全局参数校验管道，使用 Zod schema 替代 class-validator 进行 DTO 校验。
+全局 pipe 对用 `createZodDto` 定义的 DTO 参数做解析与转换。也可以在参数上显式写 `new ZodValidationPipe(schema)`。schema 带 transform 时不要在全局 pipe 之外再挂一道显式 pipe，否则已转换的值会被二次校验（见 `agentloom-server/src/modules/sandbox/sandbox-node.controller.ts:95` 的注释）。
 
-## 常用装饰器
+### AllExceptionsFilter
 
-| 装饰器                                      | 说明                                                                 |
-| ------------------------------------------- | -------------------------------------------------------------------- |
-| `@CurrentUser()`                            | 注入当前认证用户对象                                                 |
-| `@Roles('admin', 'owner')`                  | 声明端点所需最低角色                                                 |
-| `@Public()`                                 | 标记公开端点，跳过认证                                               |
-| `@SkipThrottle({ default: true })`          | 跳过限流（v6 语法：`Record<string, boolean>`），用于 HealthController 等 |
-| `@CaptureAuditLog(config)`                  | Opt-in HTTP 请求审计捕获，将请求/响应写入审计日志                    |
+源文件：`agentloom-server/src/common/filters/all-exceptions.filter.ts`
 
-## WebSocket 守卫
+`@Catch()` 捕获所有异常，统一输出 `Content-Type: application/problem+json`（RFC 9457）。`type` 以 `https://agentloom.dev/errors/` 为前缀：
 
-### WsJwtGuard
+- `ZodValidationException` → 422 `validation-error`，`errors` 列出字段与消息；
+- `DomainException` 及其子类 → 使用异常自带的 `type`、状态码和扩展字段，并写入异常携带的响应头（例如限流的 `Retry-After`）；
+- 其他 `HttpException` → `http-error`，保留原状态码；
+- 未知异常 → 500 `internal-server-error`。
 
-**位置**：`src/common/guards/ws-jwt.guard.ts`
+错误响应的字段与各 `type` 的对外含义只在 [/api/](/api/) 维护。
 
-Socket.IO WebSocket 连接的 JWT + MFA 认证守卫。在连接握手阶段执行：
+## WebSocket 连接的鉴权
 
-| 步骤 | 说明                                                         |
-| ---- | ------------------------------------------------------------ |
-| 1    | 从握手 `auth.token` 或 query 参数提取 JWT                    |
-| 2    | 验证 JWT 签名有效性                                          |
-| 3    | 检查 JWT 黑名单（Redis）                                     |
-| 4    | 若用户已启用 MFA，校验 MFA 会话凭证                          |
-| 5    | 通过后将 `user` 和 `tenantId` 附加到 socket `data`           |
+Socket.IO 连接不经过上面的 HTTP 管线：中间件、全局守卫、interceptor 和 filter 都不作用于握手。每个 gateway 自己负责鉴权，而且都用两层：
 
-所有 Socket.IO namespace（`/execution`、`/agent-conversation`、`/notification`、`/knowledge`、`/memory`）均使用此守卫。
+1. **握手阶段**：`afterInit()` 里用 `server.use()` 给本 namespace 注册 Socket.IO 中间件。令牌取自 `handshake.auth.token`，或 `Authorization: Bearer` 头；依次检查 `revoked_tokens` 吊销记录、HS256 验签（`aud` 为 `authenticated`）、拒绝 `mfa_pending` 令牌、要求 `sub`/`aud`/`exp`/`iat` 齐全，然后把身份写入 `socket.data.user`。任一步失败，连接在握手阶段被拒绝。
+2. **消息阶段**：class 上的 `@UseGuards(WsJwtGuard)` 作用于每个 `@SubscribeMessage` 处理器。`WsJwtGuard`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）发现 `socket.data.user` 已存在就直接放行；只有握手没有写入身份时，才自己完成同样的校验，并解析应用用户 ID。
+
+| Namespace | Gateway 源文件 | 握手中间件 | `WsJwtGuard` | `socket.data.user.sub` |
+| --- | --- | --- | --- | --- |
+| `/execution` | `agentloom-server/src/modules/execution/execution.gateway.ts` | `afterInit`（`:171`） | class 级（`:84`） | JWT 原始 `sub`（Supabase 用户 ID） |
+| `/agent-conversation` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` | `afterInit`（`:136`） | class 级（`:98`） | JWT 原始 `sub` |
+| `/memory` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` | `afterInit`（`:135`） | class 级（`:93`） | JWT 原始 `sub` |
+| `/knowledge` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` | `afterInit`（`:89`） | class 级（`:70`） | JWT 原始 `sub` |
+| `/notification` | `agentloom-server/src/modules/notification/notification.gateway.ts` | `afterInit`（`:40`） | class 级（`:25`） | 应用用户 ID（握手时经 `UserIdentityResolverService` 解析，原始值存为 `supabaseUserId`） |
+
+`/notification` 的 `handleConnection()` 还会把连接加入以 `tenantId` 与用户 ID 组成的房间；其余 gateway 的 `handleConnection()` 只记录日志，房间在订阅消息里按服务端解析出的 `tenantId` 加入。
+
+由于握手中间件总会先写入 `socket.data.user`，除 `/notification` 外的 namespace 中 `WsJwtGuard` 的身份解析分支实际不会执行，`socket.data.user.sub` 保持 Supabase 用户 ID，与 HTTP 侧 `req.user.sub`（应用用户 ID）不一致。按用户 ID 做房间或权限判断的代码需要注意这一点。
+
+事件名与载荷见 [/dev/server/realtime](/dev/server/realtime)。

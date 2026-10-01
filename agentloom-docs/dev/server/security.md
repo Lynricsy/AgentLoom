@@ -1,277 +1,114 @@
-# 安全与加密
+---
+docType: explanation
+---
 
-AgentLoom 采用多层安全架构，包括端到端加密 (E2EE)、多租户行级安全 (RLS)、双重认证和 API Token 管理。
+# 安全模型
 
-## 端到端加密 (E2EE)
+> 本页回答：服务端用哪些机制识别调用者、隔离租户数据、保护密钥与敏感内容，每种机制的边界在哪里？
 
-AgentLoom 对 LLM 输出和敏感证据数据实施端到端加密，确保即使数据库泄露，密文也无法被解读。
+守卫与拦截器的执行顺序、限流算法见 [请求处理链路](/dev/server/request-pipeline)；本页只讲各机制本身。对外凭证的用法见 [API 与集成](/api/)。
 
-### 加密架构
+## 调用者身份
+
+服务端接受三种凭证，彼此不互相回退：
+
+| 凭证 | 传递方式 | 校验位置 | 可访问范围 |
+| --- | --- | --- | --- |
+| Supabase JWT | `Authorization: Bearer <jwt>` | `AuthGuard`（HTTP）、`WsJwtGuard` 与各 gateway 握手中间件（Socket.IO）、`agentloom-server/src/modules/acp-gateway/acp-authentication.service.ts`（ACP） | 全部非公开路由 |
+| 平台 API Token（`al_` 前缀） | `X-Api-Key: al_…` | `AuthGuard` 调用 `PlatformApiTokenService.validateToken` | 普通 REST 路由，按 token 的 scopes 与签发者角色 |
+| Agent API Key（`alak_` 前缀） | `Authorization: Bearer alak_…` | `AgentApiKeyGuard`（`agentloom-server/src/modules/agent-api/agent-api-key.guard.ts`） | 仅 `/api/v1/agent-api/*` |
+
+请求带 `Bearer` 头时，`AuthGuard` 只走 JWT 分支；JWT 无效即返回 401，不会再尝试 `X-Api-Key`。`AuthGuard` 不识别 `alak_`：`/agent-api` 控制器声明 `@Public()` 跳过全局认证，再用自己的 `AgentApiKeyGuard`。
+
+### JWT 校验与吊销
+
+JWT 以 `APP_JWT_SECRET` 按 HS256 验签，要求 `aud=authenticated`。验签前先查吊销表：`TokenBlacklistService`（`agentloom-server/src/common/services/token-blacklist.service.ts`）把 token 的 SHA-256 哈希与过期时间写入数据库表 `revoked_tokens`，不使用 Redis。
+
+写入 `revoked_tokens` 的唯一入口是 `POST /api/v1/auth/logout`。会话管理接口 `DELETE /api/v1/auth/sessions/:id` 与 `POST /api/v1/auth/sessions/revoke-all` 只删除 Supabase `auth.sessions` 中的行，不吊销已签发的 access token；这些 token 在过期前仍能通过验签。
+
+验签成功后，`UserIdentityResolver` 把 Supabase `sub` 换成应用内用户 ID，写入 `req.user`。
+
+### MFA
+
+用户绑定了已验证的 TOTP 因子时，`POST /api/v1/auth/login` 先签发 `type: 'mfa_pending'`、有效期 5 分钟的临时 JWT；客户端用它调用 `POST /api/v1/auth/mfa/login/verify` 换取正式令牌。`AuthGuard`、`WsJwtGuard`、各 gateway 握手中间件和 ACP `authenticate` 都拒绝 `mfa_pending` 令牌（HTTP 返回 403 `mfa-required`）。TOTP 绑定与解绑路由在 `agentloom-server/src/modules/auth/mfa.controller.ts`。
+
+### OAuth
+
+`POST /api/v1/auth/oauth/:provider` 发起登录，`provider` 取值为 `google` 或 `github`（`agentloom-server/src/modules/auth/dto/oauth.dto.ts`）；回调为 `GET /api/v1/auth/oauth/callback`，部署时由 `APP_OAUTH_REDIRECT_URL` 指向它。请求带 `platform=mobile` 时，回调结果以深链 `agentloom://auth/callback?…` 交给移动端，失败时为 `agentloom://auth/callback?error=oauth_callback_failed`（`agentloom-server/src/modules/auth/oauth.service.ts`、`agentloom-server/src/modules/auth/oauth.controller.ts`）。
+
+## 平台 API Token
+
+`agentloom-server/src/modules/platform-api-token/platform-api-token.service.ts`：
+
+- 明文为 `al_` 加 32 字节随机数的 hex，只在创建响应中返回一次；数据库存 SHA-256 哈希，另存 `al_` 加 8 位的 `tokenPrefix` 供展示和限流识别。
+- 每个用户在每个租户下最多持有 20 个未吊销的 token。
+- 校验检查前缀、哈希、吊销标记与过期时间，角色从 `RbacCacheService` 读取，即 token 继承签发者当前的组织角色。
+- 管理路由前缀为 `/api/v1/platform-api-tokens`。
+
+## Agent API Key
+
+`agentloom-server/src/modules/agent-api/agent-api-key.service.ts`：明文为 `alak_` 加 32 字节随机数的 hex，存 SHA-256 哈希，`keyPrefix` 为 `alak_` 加 8 位；每个 Agent 最多 `MAX_ACTIVE_AGENT_API_KEYS_PER_AGENT`（20）个有效 key。管理路由为 `/api/v1/agent-definitions/:agentId/api-keys`。`AgentApiKeyGuard` 只在请求上挂 `agentApiKey`，不设置 `req.user`，因此这类请求不进入租户事务拦截器，服务层自行按 key 所属租户查询。
+
+## RBAC 角色
+
+组织角色定义为 `OrgRole`（`agentloom-server/src/common/types/org-role.type.ts`），数据库枚举 `org_role` 取值 `owner`、`admin`、`creator`、`operator`、`viewer`。
+
+- 路由用 `@Roles(...)` 声明允许的角色；`RolesGuard` 用 `requiredRoles.includes(userRole)` 精确匹配，角色之间**没有继承**。允许 `operator` 的路由若也要允许 `owner`，必须把两者都写进 `@Roles`。
+- 未声明 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查。
+- 用户在组织中的角色由 `RbacCacheService`（`agentloom-server/src/common/services/rbac-cache.service.ts`）缓存在 Redis；未命中时查询 `organization_members` 关联 `organizations`。角色变更调用 `invalidateUserRole` 删除缓存并通过 Redis pub/sub 通知其他实例。
+- `agentloom-server/src/common/types/rbac-permissions.ts` 中的 `RBAC_PERMISSION_MATRIX` / `hasPermission` 当前没有生产代码调用，权限以各路由的 `@Roles` 为准。
+
+## 数据库行级安全
+
+租户隔离最终由 PostgreSQL RLS 保证，应用层的过滤条件只是第一道防线。
+
+- 数据库函数 `get_tenant_id()` 定义为 `NULLIF(current_setting('app.current_tenant', true), '')::uuid`（迁移 `agentloom-server/src/database/migrations/0005_lazy_tomorrow_man.sql`；schema 侧引用在 `agentloom-server/src/database/schema/rls-helpers.ts`）。
+- 策略工厂在 `agentloom-server/src/database/schema/rls-policies.ts`，策略都授予 `authenticated` 角色：
+  - `createDirectTenantPolicies(table)`：select / insert / update / delete 四条策略，条件 `tenant_id = get_tenant_id()`。带 `tenant_id` 列的业务表默认使用它。
+  - `createAppendOnlyTenantPolicies(table)`：只有 select / insert，用于 `audit_logs` 与 `audit_log_archives`。
+  - `createJoinTenantPolicies(...)`：用于没有 `tenant_id` 列、通过父表关联判定租户的子表。
+- 租户事务：`TenantTransactionInterceptor` 对已认证请求开启事务，在事务内执行 `SET LOCAL ROLE authenticated` 与 `set_config('app.current_tenant', <tenantId>, true)`（`agentloom-server/src/common/interceptors/tenant-transaction.context.ts`）。事务提交后响应才发出。服务代码通过 `getTenantDb(this.db)` 取得当前事务连接。
+- 不在请求链里的代码（BullMQ worker、定时任务、事件监听器）没有拦截器建立的事务。`getTenantDb()`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）在事务上下文之外直接返回基础连接，不做角色切换，因此这类代码要么自行调用 `runInTenantTransaction`，要么在查询中显式带租户条件。
+
+哪些表没有租户策略、迁移中 `GRANT` 的约定见 [数据库](/dev/server/database)。
+
+## 端到端加密（E2EE）
+
+E2EE 让数据库中保存的 LLM 输出与部分证据只有持有租户私钥的浏览器能解密。
 
 ```mermaid
 sequenceDiagram
-    participant S as Studio (浏览器)
+    participant S as Studio（浏览器）
     participant SV as Server
     participant DB as PostgreSQL
 
-    Note over S: 生成 RSA-4096 密钥对
-
-    S->>SV: 上传公钥
-    SV->>DB: 存入 tenant_encryption_keys<br/>(append-only)
-
-    Note over SV: Agent 任务执行...
-
-    SV->>DB: 读取租户 active 公钥
-    Note over SV: LlmEncryptionService<br/>混合加密 LLM 输出
-
-    SV->>DB: 存储密文
-
-    S->>SV: 请求加密数据
-    SV->>S: 返回密文
-    Note over S: 使用 IndexedDB 中的<br/>PKCS8 私钥解密
+    S->>S: 生成 RSA-OAEP 4096 密钥对，私钥存 IndexedDB
+    S->>SV: POST /api/v1/tenant-keys（公钥）
+    SV->>DB: tenant_encryption_keys（status=active）
+    Note over SV: Agent 任务完成 / 证据写入
+    SV->>DB: 读取组织 active 公钥
+    SV->>SV: LlmEncryptionService 混合加密
+    SV->>DB: 保存密文，明文字段置为 [ENCRYPTED]
+    S->>SV: 读取记录
+    SV-->>S: 密文
+    S->>S: 用私钥解密
 ```
 
-### 混合加密方案
+- **算法**：`LlmEncryptionService`（`agentloom-server/src/modules/llm/llm-encryption.service.ts`）的算法标识为 `RSA-OAEP-4096+AES-256-GCM`。每次加密生成随机 32 字节 DEK 与 12 字节 IV，用 AES-256-GCM 加密明文，AAD 为 `<tenantId>:<timestamp>`；DEK 用租户公钥以 RSA-OAEP（SHA-256）加密。输出字段：`ciphertext`、`encryptedSessionKey`、`iv`、`authTag`、`aad`、`keyFingerprint`、`algorithm`。
+- **加密范围**：`AgentTaskWorker` 加密 LLM 输出（`agentloom-server/src/modules/execution/agent-task.worker.ts`，`content` 置为 `[ENCRYPTED]`）；`EvidenceService` 只加密 `agent_decision` 与 `tool_output` 两类证据。`LlmEncryptionService.isE2EEEnabled` 为假（组织未配置公钥）时不加密。
+- **公钥管理**（`agentloom-server/src/modules/tenant-key/`）：公钥至少 4096 位，拒绝私钥 PEM（`agentloom-server/src/modules/tenant-key/rsa-key-utils.ts`）；指纹为 SPKI DER 的 SHA-256。表 `tenant_encryption_keys` 状态为 `active` / `rotating` / `revoked`，组织 + 指纹唯一，部分唯一索引保证每个组织至多一个 `active`（`agentloom-server/src/database/schema/tenant-encryption-keys.schema.ts`）。已有 active key 时再次上传会被拒绝，换钥走 `POST /api/v1/tenant-keys/:id/rotate`：旧 key 置为 `rotating`，新 key 成为 `active`。上传、轮换、删除要求 `owner` 或 `admin`；查询要求 `owner`、`admin`、`creator` 或 `operator`（`viewer` 不可）。
+- **私钥**：Studio 在浏览器内生成密钥对，PKCS8 字节存入 IndexedDB，解密时以 non-extractable 方式导入（`agentloom-studio/src/features/tenant-key/lib/clientCrypto.ts`、`agentloom-studio/src/features/tenant-key/lib/keyStorage.ts`）。私钥不上传服务端。
 
-采用 **RSA-OAEP + AES-256-GCM** 混合加密：
+## 服务端密钥加密
 
-| 步骤                | 算法                | 说明                                         |
-| ------------------- | ------------------- | -------------------------------------------- |
-| 1. 生成随机对称密钥 | AES-256             | 每次加密生成新密钥                           |
-| 2. 加密数据         | AES-256-GCM         | 使用对称密钥加密明文，附带认证标签           |
-| 3. 加密对称密钥     | RSA-OAEP (4096-bit) | 使用租户公钥加密 AES 密钥                    |
-| 4. 打包密文         | —                   | 组合加密后的 AES 密钥 + IV + 认证标签 + 密文 |
+LLM 提供商 API Key、MCP 服务凭据、私有部署配置中的密钥等**由服务端自己需要读取**的机密，使用信封加密，与租户 E2EE 无关：
 
-### 密钥管理
+- KEK 为 `APP_MASTER_ENCRYPTION_KEY`，必须是 Base64 编码的 32 字节值（`agentloom-server/src/config/env.schema.ts` 中有校验）。
+- `EncryptionService`（`agentloom-server/src/modules/api-key/encryption.service.ts`）每条数据生成随机 DEK，用 AES-256-GCM 加密数据，再用 KEK 以 AES-GCM 加密 DEK。
+- 调用方：`agentloom-server/src/modules/api-key/api-key.service.ts`、`agentloom-server/src/modules/mcp/mcp.service.ts`、`agentloom-server/src/modules/private-deployment/private-deployment.service.ts`。
 
-#### 服务端 — `TenantKeyModule`
+更换 `APP_MASTER_ENCRYPTION_KEY` 会使已存密文无法解密。
 
-- **表结构**：`tenant_encryption_keys`
-  - `organization_id + key_fingerprint` 唯一约束
-  - 单一 `active` 部分唯一索引（每个组织仅一个活跃密钥）
-  - **Append-only** 历史模型，不删除旧密钥
-- **API**：
-  - `POST /tenant-keys` — 上传新公钥
-  - `GET /tenant-keys/active` — 获取当前活跃公钥
-- **轮转**：上传新公钥后自动设为 active，旧密钥保留用于解密历史数据
+## Webhook 签名
 
-#### 客户端 — Studio
-
-- **私钥存储**：PKCS8 二进制格式存入 IndexedDB
-- **导入方式**：`crypto.subtle.importKey()` → non-extractable `CryptoKey`
-- **安全保证**：私钥永不离开浏览器，不可通过 JS 读取
-
-### 加密覆盖范围
-
-| 组件              | 加密时机         | 加密内容                             |
-| ----------------- | ---------------- | ------------------------------------ |
-| `AgentTaskWorker` | Agent 任务完成时 | LLM 输出内容                         |
-| `EvidenceService` | 证据记录时       | `agent_decision`、`tool_output` 证据 |
-
-## 多租户隔离
-
-AgentLoom 使用三层多租户隔离策略：
-
-### 1. 数据库级 — PostgreSQL RLS
-
-所有业务表启用行级安全策略 (Row-Level Security)，通过 `organization_id` 列实现租户数据隔离。
-
-::: info Direct-Tenant RLS 模式
-部分敏感表（如 `tenant_encryption_keys`、`tenant_quotas`、`private_deployment_settings`）使用 direct-tenant RLS + authenticated DML grant，确保即使绕过应用层也无法跨租户访问。
-:::
-
-### 2. 应用级 — 租户事务
-
-`TenantTransactionInterceptor` 通过 `AsyncLocalStorage` 将每个请求绑定到租户事务上下文：
-
-```text
-请求 → TenantMiddleware(提取 tenantId)
-     → TenantTransactionInterceptor(创建租户事务)
-     → 业务代码(通过 runInTenantTransaction() 获取事务)
-     → 自动提交/回滚
-```
-
-### 3. 请求级 — TenantGuard
-
-`TenantGuard` 验证请求中的 `tenantId` 为有效 UUID，防止租户 ID 伪造。
-
-## 认证体系
-
-### 双重认证策略
-
-`AuthGuard` 支持两种认证方式，按优先级尝试：
-
-```mermaid
-flowchart TD
-    A[HTTP 请求] --> B{携带 JWT?}
-    B -->|是| C[验证 JWT 签名]
-    C -->|有效| D[设置 authMethod = jwt]
-    C -->|无效| E{携带 X-Api-Key?}
-    B -->|否| E
-    E -->|是| F[SHA-256 hash 查找]
-    F --> G{Token 有效?}
-    G -->|是| H[检查 revoked/expired]
-    H -->|通过| I[设置 authMethod = api_key]
-    H -->|未通过| J[401 Unauthorized]
-    G -->|否| J
-    E -->|否| J
-    D --> K[请求继续]
-    I --> K
-```
-
-### JWT 认证 (主要)
-
-- **提供方**：Supabase Auth
-- **传输**：`Authorization: Bearer <token>`
-- **用途**：Studio 和移动端用户交互式登录
-
-### API Key 认证 (回退)
-
-- **传输**：`X-Api-Key: al_xxxxx`
-- **存储**：SHA-256 hash（不存储明文）
-- **管理**：`PlatformApiTokenModule`
-
-## API Token 管理
-
-### Token 生命周期
-
-| 操作 | API                      | 权限              |
-| ---- | ------------------------ | ----------------- |
-| 创建 | `POST /api-tokens`       | `owner` / `admin` |
-| 列表 | `GET /api-tokens`        | `owner` / `admin` |
-| 吊销 | `DELETE /api-tokens/:id` | `owner` / `admin` |
-
-### Token 规格
-
-| 属性     | 说明                                             |
-| -------- | ------------------------------------------------ |
-| 前缀     | `al_`（AgentLoom 标识）                          |
-| 存储方式 | SHA-256 hash（创建时返回一次明文，之后不可恢复） |
-| 租户限额 | 每个组织最多 20 个 Token                         |
-| 过期检查 | 每次认证时校验                                   |
-| 吊销状态 | `revoked` 标记，立即生效                         |
-
-### 安全实践
-
-::: warning 明文仅返回一次
-API Token 创建时响应中包含完整明文，之后服务端仅存储 SHA-256 hash。丢失明文后无法恢复，需重新创建。
-:::
-
-## RBAC 角色体系
-
-### 角色层级
-
-```text
-owner → admin → creator → operator → viewer
-```
-
-角色采用**向上兼容**策略：要求 `operator` 权限的端点，`creator`、`admin`、`owner` 均可访问。
-
-### 角色定义
-
-| 角色       | 典型用户     | 核心权限                                       |
-| ---------- | ------------ | ---------------------------------------------- |
-| `owner`    | 组织创建者   | 完整管理权限，包括组织设置、资源治理、私有部署 |
-| `admin`    | 组织管理员   | 等同 owner，但不可转移组织所有权               |
-| `creator`  | 工作流开发者 | 工作流和 Agent 的完整 CRUD，可执行和安装插件   |
-| `operator` | 运营人员     | 只读查看工作流，可触发执行和安装插件           |
-| `viewer`   | 只读访客     | 只读查看工作流和执行记录                       |
-
-### 缓存策略
-
-角色信息通过 `RbacCacheService` 缓存在 Redis 中，避免每次请求查询数据库。角色变更时主动失效缓存。
-
-## 速率限制
-
-### 默认限制
-
-| 维度          | 默认值                  | 超限响应                                                  |
-| ------------- | ----------------------- | --------------------------------------------------------- |
-| 每分钟请求数  | 100 req/min             | `429 Too Many Requests` + `Retry-After` + `X-RateLimit-*` |
-| 每日 API 调用 | 由 `tenant_quotas` 配置 | `409 Conflict`（治理阻断）                                |
-
-### 租户级覆盖
-
-组织管理员可通过 [资源治理](/dev/server/modules#资源治理-7-维度) 自定义限流配额，覆盖默认值。
-
-### 追踪键优先级
-
-1. `apikey:{prefix}` — API Key 请求
-2. `jwt:{sub}` — JWT 认证请求
-3. `req.ip` — 未认证请求
-
-## MFA 多因素认证
-
-AgentLoom 支持 TOTP（基于时间的一次性密码）作为第二认证因子，由 Supabase Auth 底层驱动。
-
-### TOTP 生命周期
-
-| 阶段     | 说明                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------- |
-| 注册     | 用户通过 `MfaEnrollDialog` 扫描 QR 码并输入验证码确认绑定                                           |
-| 验证     | 登录时若账户已启用 MFA，弹出 `MfaVerifyDialog` 要求输入当前 TOTP 码                                 |
-| 撤销     | 在 `/settings/security` 页面解除 TOTP 绑定                                                         |
-
-### WebSocket MFA 校验
-
-`WsJwtGuard` 在 Socket.IO 连接建立时不仅校验 JWT 签名，还会验证 MFA 状态。若用户已启用 MFA 但连接握手未携带有效的 MFA 会话凭证，连接将被拒绝。
-
-## OAuth 第三方登录
-
-### 支持的 Provider
-
-| Provider | 回调处理                                            |
-| -------- | --------------------------------------------------- |
-| Google   | Supabase Auth PKCE 流程，`/auth/callback` 处理回调  |
-| GitHub   | Supabase Auth PKCE 流程，`/auth/callback` 处理回调  |
-
-### 移动端重定向
-
-移动端 OAuth 请求携带 `?platform=mobile` 参数，认证完成后重定向至深链：
-
-```text
-agentloom://auth/callback?access_token=...&refresh_token=...
-```
-
-移动端通过 `url_launcher` 发起 OAuth，通过深链接收回调 token。
-
-## 会话管理
-
-### 会话列表
-
-用户可在 `/settings/security` 页面查看当前所有活跃会话（包括设备信息、IP 地址、最后活跃时间）。
-
-### 会话撤销
-
-| 操作           | 说明                                           |
-| -------------- | ---------------------------------------------- |
-| 撤销指定会话   | 主动踢出特定设备的登录状态                     |
-| 撤销全部会话   | 登出所有设备（当前设备除外）                   |
-| 密码修改后撤销 | 修改密码后自动撤销其它所有会话                 |
-
-## JWT 黑名单
-
-### 机制
-
-用户登出或会话被撤销时，对应 JWT 的 `jti`（JWT ID）被加入 Redis 黑名单。`AuthGuard` 在验证 JWT 签名后额外检查黑名单，命中则拒绝请求。
-
-### 存储
-
-| 属性       | 说明                                    |
-| ---------- | --------------------------------------- |
-| 存储后端   | Redis                                   |
-| Key 格式   | `jwt:blacklist:{jti}`                   |
-| TTL        | 与 JWT 剩余有效期一致（到期后自动清除） |
-| 写入时机   | 登出、会话撤销、密码修改                |
-
-## 执行治理准入
-
-`ExecutionService.runWorkflow()` 在创建执行记录前，会调用资源治理准入判断：
-
-| 检查项     | 阻断条件                                       | 响应                                                 |
-| ---------- | ---------------------------------------------- | ---------------------------------------------------- |
-| 并发执行数 | 超出租户配额                                   | `409` + `ResourceGovernanceDecisionBlockedException` |
-| 日执行量   | 超出每日上限                                   | `409`                                                |
-| 治理暂停   | `execution_governance_controls` 有活跃暂停记录 | `409`                                                |
-
-所有治理阻断均写入正式审计日志，并通过 `EventEmitter2` 驱动通知。
+入站 Webhook 的签名模式使用 HMAC-SHA256，签名串为 `<timestamp>.<rawBody>`，比较使用常数时间比较（`agentloom-server/src/modules/trigger/webhook.service.ts`）。请求头、容忍窗口和示例脚本见 [Webhook](/api/webhooks)。
