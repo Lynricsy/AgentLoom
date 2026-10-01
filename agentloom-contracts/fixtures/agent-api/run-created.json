@@ -1,0 +1,21 @@
+{
+  "event": "run.created",
+  "data": {
+    "run": {
+      "id": "01928c3e-6666-7c3e-9a51-0f7c1d2e3a40",
+      "conversationId": "01928c3e-3333-7c3e-9a51-0f7c1d2e3a40",
+      "status": "queued",
+      "agentVersionId": null,
+      "input": {
+        "messageId": "01928c3e-4444-7c3e-9a51-0f7c1d2e3a40",
+        "content": "我的订单还没发货"
+      },
+      "output": null,
+      "stopReason": null,
+      "error": null,
+      "createdAt": "2026-10-01T09:01:00.000Z",
+      "startedAt": null,
+      "completedAt": null
+    }
+  }
+}

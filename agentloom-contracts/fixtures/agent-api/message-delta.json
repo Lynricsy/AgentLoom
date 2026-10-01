@@ -1,0 +1,8 @@
+{
+  "event": "message.delta",
+  "data": {
+    "runId": "01928c3e-6666-7c3e-9a51-0f7c1d2e3a40",
+    "index": 0,
+    "delta": "已为您查询"
+  }
+}

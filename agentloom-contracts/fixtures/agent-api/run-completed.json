@@ -1,0 +1,31 @@
+{
+  "event": "run.completed",
+  "data": {
+    "run": {
+      "id": "01928c3e-6666-7c3e-9a51-0f7c1d2e3a40",
+      "conversationId": "01928c3e-3333-7c3e-9a51-0f7c1d2e3a40",
+      "status": "completed",
+      "agentVersionId": "01928c3e-2222-7c3e-9a51-0f7c1d2e3a40",
+      "input": {
+        "messageId": "01928c3e-4444-7c3e-9a51-0f7c1d2e3a40",
+        "content": "我的订单还没发货"
+      },
+      "output": {
+        "messageId": "01928c3e-5555-7c3e-9a51-0f7c1d2e3a40",
+        "content": "已为您查询，订单将在今天发出。",
+        "toolCalls": [
+          {
+            "id": "call_1",
+            "tool": "query_order",
+            "status": "completed"
+          }
+        ]
+      },
+      "stopReason": "end_turn",
+      "error": null,
+      "createdAt": "2026-10-01T09:01:00.000Z",
+      "startedAt": "2026-10-01T09:01:01.000Z",
+      "completedAt": "2026-10-01T09:01:20.000Z"
+    }
+  }
+}

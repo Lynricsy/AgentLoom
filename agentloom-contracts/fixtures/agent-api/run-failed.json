@@ -1,0 +1,25 @@
+{
+  "event": "run.failed",
+  "data": {
+    "run": {
+      "id": "01928c3e-6666-7c3e-9a51-0f7c1d2e3a40",
+      "conversationId": "01928c3e-3333-7c3e-9a51-0f7c1d2e3a40",
+      "status": "failed",
+      "agentVersionId": "01928c3e-2222-7c3e-9a51-0f7c1d2e3a40",
+      "input": {
+        "messageId": "01928c3e-4444-7c3e-9a51-0f7c1d2e3a40",
+        "content": "我的订单还没发货"
+      },
+      "output": null,
+      "stopReason": null,
+      "error": {
+        "type": "https://agentloom.dev/errors/run-worker-lost",
+        "title": "Run worker lost",
+        "detail": "执行进程异常退出"
+      },
+      "createdAt": "2026-10-01T09:01:00.000Z",
+      "startedAt": "2026-10-01T09:01:01.000Z",
+      "completedAt": "2026-10-01T11:01:01.000Z"
+    }
+  }
+}
