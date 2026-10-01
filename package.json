@@ -6,9 +6,14 @@
 		"test:all": "pnpm -r run test",
 		"typecheck:all": "pnpm -r run typecheck",
 		"build:all": "pnpm -r run build",
-		"contracts:regen": "pnpm --filter agentloom-server run openapi:export && pnpm --filter agentloom-server run sdk:generate:models && pnpm --filter @agentloom/api-client run sync && pnpm --filter @agentloom/api-client run build"
+		"contracts:regen": "pnpm --filter agentloom-server run openapi:export && pnpm --filter agentloom-server run sdk:generate:models && pnpm --filter @agentloom/api-client run sync && pnpm --filter @agentloom/api-client run build",
+		"docs:gen": "tsx scripts/docs-reference/generate.ts",
+		"docs:check": "tsx scripts/docs-reference/generate.ts --check"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.30.0"
+	},
+	"devDependencies": {
+		"tsx": "^4"
 	}
 }

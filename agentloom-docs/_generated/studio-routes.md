@@ -1,0 +1,62 @@
+<!-- 由 scripts/docs-reference/generate.ts 生成，勿手改；运行 pnpm docs:gen -->
+
+来源：`agentloom-studio/src/app/routes/**/*.tsx` 中 `createRoute({ path })`（TanStack Router 手动路由树，`$param` 记为 `:param`）。
+
+| URL | 路由文件（相对 `src/app/routes/`） |
+| --- | --- |
+| `/` | `index.tsx` |
+| `/agents/:agentId/conversations/:conversationId` | `agents/agents.$agentId.conversations.$conversationId.tsx` |
+| `/agents/:agentId/conversations/new` | `agents/agents.$agentId.conversations.new.tsx` |
+| `/agents/:agentId` | `agents/agents.$agentId.tsx` |
+| `/agents/` | `agents/agents.index.tsx` |
+| `/auth/callback` | `auth/callback.tsx` |
+| `/developer-console/earnings` | `developer-console/earnings.tsx` |
+| `/developer-console/keys` | `developer-console/keys.tsx` |
+| `/discover` | `discover.tsx` |
+| `/executions/:executionId/steps/:stepId/agent` | `executions/$executionId.steps.$stepId.agent.tsx` |
+| `/executions/:executionId` | `executions/$executionId.tsx` |
+| `/generated-apps/:appId` | `generated-apps.$appId.tsx` |
+| `/generated-apps/public/:token` | `generated-apps.public.$token.tsx` |
+| `/generated-apps` | `generated-apps.tsx` |
+| `/invitations/:token` | `invitations.$token.tsx` |
+| `/login` | `auth/login.tsx` |
+| `/marketplace/my-listings` | `marketplace.my-listings.tsx` |
+| `/marketplace` | `marketplace.tsx` |
+| `/memory/:id/audit` | `memory.$id.audit.tsx` |
+| `/memory/:id/graph` | `memory.$id.graph.tsx` |
+| `/memory/:id/settings` | `memory.$id.settings.tsx` |
+| `/memory/:id` | `memory.$id.tsx` |
+| `/memory` | `memory.tsx` |
+| `/notifications` | `notifications.tsx` |
+| `/onboarding` | `onboarding.tsx` |
+| `/register` | `auth/register.tsx` |
+| `/resources/knowledge-bases/:knowledgeBaseId` | `resources/knowledge-bases.$knowledgeBaseId.tsx` |
+| `/resources/knowledge-bases` | `resources/knowledge-bases.tsx` |
+| `/resources/llm-models` | `resources/llm-models.tsx` |
+| `/resources/mcp-servers/:serverId` | `resources/mcp-servers.$serverId.tsx` |
+| `/resources/mcp-servers` | `resources/mcp-servers.tsx` |
+| `/resources/memory-instances/:instanceId/browse` | `resources/memory-instances.$instanceId.browse.tsx` |
+| `/resources/memory-instances` | `resources/memory-instances.tsx` |
+| `/resources/plugins/:pluginId/usage` | `resources/plugins.$pluginId.usage.tsx` |
+| `/resources/plugins` | `resources/plugins.tsx` |
+| `/resources/sandboxes` | `resources/sandboxes.tsx` |
+| `/resources/skills` | `resources/skills.tsx` |
+| `/resources/workspaces/:workspaceId` | `resources/workspaces.$workspaceId.tsx` |
+| `/resources/workspaces` | `resources/workspaces.tsx` |
+| `/s/:token` | `share.$token.tsx` |
+| `/settings/` | `settings/index.tsx` |
+| `/settings/api-tokens` | `settings/api-tokens.tsx` |
+| `/settings/audit-logs` | `settings/audit-logs.tsx` |
+| `/settings/encryption` | `settings/encryption.tsx` |
+| `/settings/monitoring` | `settings/monitoring.tsx` |
+| `/settings/notifications` | `settings/notifications.tsx` |
+| `/settings/organization` | `settings/organization.tsx` |
+| `/settings/preferences` | `settings/preferences.tsx` |
+| `/settings/private-deployment` | `settings/private-deployment.tsx` |
+| `/settings/resource-quotas` | `settings/resource-quotas.tsx` |
+| `/settings/security/autonomy-policy` | `settings/security/autonomy-policy.tsx` |
+| `/settings/security` | `settings/security.tsx` |
+| `/settings/skills` | `skills.tsx` |
+| `/templates` | `templates.tsx` |
+| `/workflows/:workflowId` | `workflows/$workflowId.tsx` |
+| `/workflows/` | `workflows/workflows.index.tsx` |

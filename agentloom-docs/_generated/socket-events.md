@@ -1,0 +1,56 @@
+<!-- 由 scripts/docs-reference/generate.ts 生成，勿手改；运行 pnpm docs:gen -->
+
+来源：`agentloom-server/src/modules/**/*.gateway.ts`。client→server 为 `@SubscribeMessage` 事件；server→client 为 gateway 内事件名常量、`.emit()` 字面量，以及 `/execution` 的 `EXECUTION_EVENT_NAMES`（`agentloom-contracts/src/execution-events.ts`）。
+
+| 命名空间 | 方向 | 事件 | 来源文件 |
+| --- | --- | --- | --- |
+| `/agent-conversation` | server→client | `conversation.agent.done` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.agent.message_chunk` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.agent.thinking` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.agent.tool_call` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.agent.tool_result` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.sandbox.file_change` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.sandbox.terminal_output` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.state.snapshot` | `agentloom-contracts/src` |
+| `/agent-conversation` | server→client | `conversation.status.changed` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.subagent.status` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.title.updated` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | client→server | `conversation:cancel` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | client→server | `conversation:message` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | client→server | `conversation:subscribe` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | client→server | `conversation:unsubscribe` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/execution` | server→client | `execution.node.agent-event` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.intervention-required` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.intervention-resolved` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.output-chunk` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.retrying` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.status-changed` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.tool-call-status` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.tool-permission-required` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.tool-permission-resolved` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.state.snapshot` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/execution` | server→client | `execution.status.changed` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | client→server | `execution:subscribe` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/execution` | client→server | `execution:unsubscribe` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/execution` | client→server | `join` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/execution` | client→server | `leave` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/execution` | client→server | `subscribe` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/execution` | client→server | `unsubscribe` | `agentloom-server/src/modules/execution/execution.gateway.ts` |
+| `/knowledge` | server→client | `document:status-changed` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` |
+| `/knowledge` | server→client | `knowledge-base:updated` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` |
+| `/knowledge` | client→server | `join` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` |
+| `/knowledge` | client→server | `leave` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` |
+| `/memory` | server→client | `memory.edge.created` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.edge.deleted` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.node.created` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.node.deleted` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.node.updated` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.review.submitted` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.version.created` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | server→client | `memory.version.rollback` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | client→server | `memory:subscribe` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/memory` | client→server | `memory:unsubscribe` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` |
+| `/notification` | server→client | `notification.new` | `agentloom-server/src/modules/notification/notification.gateway.ts` |
+| `/notification` | server→client | `notification.unread-count` | `agentloom-server/src/modules/notification/notification.gateway.ts` |
+| `/notification` | client→server | `notification:subscribe` | `agentloom-server/src/modules/notification/notification.gateway.ts` |
+| `/notification` | client→server | `notification:unsubscribe` | `agentloom-server/src/modules/notification/notification.gateway.ts` |
