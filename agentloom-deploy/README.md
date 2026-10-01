@@ -27,14 +27,12 @@
 ./firecracker/build-artifacts.sh
 docker network create supabase-shared
 ./scripts/init-db.sh
-docker compose -f docker-compose.supabase.yml up -d
-./scripts/init-db.sh
 docker compose up -d --build
 curl http://localhost:8080/healthz
 curl http://localhost:8080/api/v1/health
 ```
 
-`init-db.sh` 第一次运行时迁移因 `auth.users` 尚不存在而失败，启动 Supabase 后再运行一次。干净检出上还有几处需要绕过的已知问题，按文档站的部署教程操作。
+`init-db.sh` 依次执行：构建 server 镜像 → 启动 PostgreSQL 并创建 Supabase 兼容角色与 `auth` schema → 启动 Supabase 认证栈并等待 GoTrue 建好 `auth.users` → 执行迁移。
 
 ```bash
 ./firecracker/firecracker-smoke.sh
