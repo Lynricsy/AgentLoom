@@ -6,19 +6,12 @@ docType: tutorial
 
 本教程从一份干净的检出开始，在本机跑起 server（`http://localhost:3000`）与 Studio（`http://localhost:5173`），并注册第一个账号。依赖服务（PostgreSQL、Redis、MinIO、Qdrant、自托管 Supabase 认证）全部用 Docker 运行，server 与 Studio 在宿主机上以开发模式运行，改代码即时生效。
 
-::: warning 已知问题
-
-- **MinIO 官方镜像无法拉取。** 本轮验证时 `docker pull minio/minio` 返回 `pull access denied for minio/minio, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`，因此下文使用 `pgsty/minio:latest`（MinIO 的社区构建）。部署模板 `agentloom-deploy/.env.template` 中的默认 MinIO 镜像同样受影响，见 [Compose 部署](/deploy/compose)。
-- **浏览器登录在本地开发时失败。** 第 9 步在 Studio 登录页提交后显示「Failed to fetch」。原因：supabase-js 的 CORS 预检请求带 `x-supabase-api-version` 头，而 `agentloom-deploy/supabase/kong.yml` 中 cors 插件的 `headers` 列表不含它，Kong 的预检响应只允许 `Accept,Authorization,Content-Type,apikey,x-client-info`。修复建议（未应用）：在该列表中加一行 `- x-supabase-api-version`。在临时副本中加上这一行后，同一账号登录成功并进入 `/onboarding`。Compose 部署中 Studio 与 `/auth/` 同源，不受影响。
-
-:::
-
 ## 前置条件
 
-- Node.js 22 与 corepack（随 Node 发行），用于启用 pnpm。
+- Node.js 22 与 corepack（随 Node 22 发行），用于启用 pnpm。pnpm 版本由根 `package.json` 的 `packageManager` 字段固定为 `pnpm@10.34.6`，`corepack enable` 后自动使用该版本；不用 corepack 时自行安装 pnpm ≥ 10.26（`pnpm-workspace.yaml` 的 `allowBuilds` 从 10.26 起才生效，更早的版本会跳过 esbuild、`@swc/core`、tree-sitter 等依赖的构建脚本）。
 - Docker 24 及以上，带 Compose v2 插件（`docker compose version` 有输出）。
 - `openssl` 与 `curl`。
-- 本机端口 3000、5173、5432、6379、9000、6333、6334、8000 空闲。
+- 本机端口 3000、5173、5432、6379、9000、6333、6334、8000 空闲（Qdrant 与 Studio 的端口可覆盖，见第 3、9 步）。
 
 以下命令都在仓库根目录执行，除非步骤中先 `cd` 到某个包。本教程选择 `APP_DEPLOYMENT_MODE=private`（私有部署模式），本地不需要连接任何外部 SaaS 服务。
 
@@ -34,7 +27,7 @@ pnpm install
 最后一行形如：
 
 ```text
-Done in 6.1s using pnpm v12.8.1
+Done in 6.1s using pnpm v10.34.6
 ```
 
 安装过程中 `agentloom-contracts`、`agentloom-api-client`、`agentloom-plugin-sdk` 会被构建，server 与 Studio 依赖它们的产物。
@@ -81,12 +74,18 @@ docker run -d --name agentloom-local-redis -p 6379:6379 redis:7-alpine
 
 docker run -d --name agentloom-local-minio -p 9000:9000 \
   -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-  pgsty/minio:latest server /data
+  pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
 
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-`docker-compose.dev.yml` 只定义 Qdrant（6333/6334）。MinIO 使用 server 的默认凭据 `minioadmin`，所以 server 的 `.env` 不需要再写 MinIO 配置。
+`docker-compose.dev.yml` 只定义 Qdrant，宿主端口默认 6333/6334，被占用时用环境变量覆盖：
+
+```bash
+QDRANT_HTTP_PORT=16333 QDRANT_GRPC_PORT=16334 docker compose -f docker-compose.dev.yml up -d
+```
+
+MinIO 使用 server 的默认凭据 `minioadmin`，所以 server 的 `.env` 不需要再写 MinIO 配置。MinIO 官方 Docker Hub 镜像已下架，这里与部署模板一样使用 Pigsty 维护的社区构建 `pgsty/minio`，并固定 RELEASE 标签。
 
 检查：
 
@@ -255,7 +254,7 @@ pnpm dev
   ➜  Local:   http://localhost:5173/
 ```
 
-Vite 把 `/api` 与 `/socket.io` 代理到 `http://localhost:3000`（`agentloom-studio/vite.config.ts`）。
+Vite 把 `/api` 与 `/socket.io` 代理到 `http://localhost:3000`（`agentloom-studio/vite.config.ts`）。端口 5173 被占用或 server 不在 3000 时，在 Studio 目录的 `.env` 中修改 `STUDIO_DEV_PORT` 与 `STUDIO_DEV_API_TARGET`（`cp .env.example .env` 已带上默认值），它们只影响开发服务器，不进入构建产物。
 
 浏览器打开 `http://localhost:5173/register`，页面标题「创建账号」，填写「邮箱」「密码」「确认密码」（密码至少 8 位，含大写字母、小写字母与数字），点击「注册」。表单提交到 `POST /api/v1/auth/register`；本地 GoTrue 开启了自动确认，不需要确认邮件。用 curl 调同一个接口可以直接看到结果：
 
@@ -267,7 +266,7 @@ curl -s -X POST http://localhost:3000/api/v1/auth/register \
 
 响应以 `{"data":{"user":{"id":` 开头，包含 `user` 与 `tokens` 两部分，说明账号已在 Supabase 与 AgentLoom 中创建。
 
-随后在 `http://localhost:5173/login` 用该账号登录。登录成功后进入 `/onboarding`，页面显示「欢迎使用 AgentLoom」。当前仓库配置下这一步会显示「Failed to fetch」，原因与修复建议见页首「已知问题」。
+随后在 `http://localhost:5173/login` 用该账号登录。登录成功后进入 `/onboarding`，页面显示「欢迎使用 AgentLoom」。浏览器直连 Kong（`http://localhost:8000`）时，supabase-js 的 CORS 预检会带 `x-supabase-api-version` 头，`agentloom-deploy/supabase/kong.yml` 的 cors 插件已放行该头。
 
 ## 可选：不使用沙箱运行 Agent
 

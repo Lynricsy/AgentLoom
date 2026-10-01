@@ -8,3 +8,5 @@
 | `VITE_AUTOSAVE_DEBOUNCE_MS` | `2000` | 自动保存防抖间隔（毫秒） |
 | `VITE_SUPABASE_URL` | `https://your-project-id.supabase.co` | Supabase 配置（认证所需） |
 | `VITE_SUPABASE_ANON_KEY` | `your-anon-key` |  |
+| `STUDIO_DEV_PORT` | `5173` | 本地开发服务器端口（仅 pnpm dev 使用，不进入构建产物） |
+| `STUDIO_DEV_API_TARGET` | `http://localhost:3000` | 本地开发时 /api 与 /socket.io 的代理目标（server 地址） |

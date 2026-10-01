@@ -103,10 +103,10 @@ index.html → src/main.tsx → AppProviders → RouterProvider → RootLayout �
 | --- | --- | --- |
 | `plugins` | `react()`、`tailwindcss()` | React 与 Tailwind CSS 4 插件 |
 | `resolve.alias` | `@` → `src` | Vite 与 Vitest 共用的路径别名 |
-| `server.port` | `5173` | 开发服务器端口 |
+| `server.port` | `STUDIO_DEV_PORT`，默认 `5173` | 开发服务器端口 |
 | `server.fs.allow` | 包的上一级目录 | 允许读取 monorepo 中其他包的文件（类型引擎 worker 加载 `agentloom-type-engine/pkg/` 下的 WASM） |
-| `server.proxy['/api']` | `http://localhost:3000` | REST 请求转发到 server |
-| `server.proxy['/socket.io']` | `http://localhost:3000`，`ws: true` | Socket.IO 握手与 WebSocket 转发到 server |
+| `server.proxy['/api']` | `STUDIO_DEV_API_TARGET`，默认 `http://localhost:3000` | REST 请求转发到 server |
+| `server.proxy['/socket.io']` | 同上，`ws: true` | Socket.IO 握手与 WebSocket 转发到 server |
 | `test.environment` | `jsdom` | 测试 DOM 环境 |
 | `test.setupFiles` | `./src/test-setup.ts` | 全局测试初始化 |
 | `test.include` | `src/**/*.test.{ts,tsx}` | 测试文件匹配 |
