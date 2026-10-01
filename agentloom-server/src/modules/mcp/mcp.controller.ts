@@ -22,7 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   DiscoverMcpToolsDto,
@@ -45,7 +45,7 @@ export class McpController {
 
   @Post('test')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '测试 MCP 服务器连接' })
   @ApiResponse({ status: 200, description: '连接测试成功' })
   @ApiResponse({ status: 400, description: '请求参数无效' })
@@ -58,7 +58,7 @@ export class McpController {
 
   @Post('discover')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '从 MCP 服务器发现工具列表' })
   @ApiResponse({ status: 200, description: '工具发现成功' })
   @ApiResponse({ status: 400, description: '请求参数无效' })
@@ -70,7 +70,7 @@ export class McpController {
   }
 
   @Post('import')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '从 MCP 服务器导入工具' })
   @ApiResponse({ status: 201, description: '工具导入成功' })
   @ApiResponse({ status: 400, description: '请求参数无效' })
@@ -87,7 +87,7 @@ export class McpController {
 
   @Post('configs/:mcpServerConfigId/test')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '测试已保存的 MCP 服务器配置连接' })
   @ApiParam({ name: 'mcpServerConfigId', description: 'MCP 服务器配置 ID' })
   @ApiResponse({ status: 200, description: '连接测试成功' })
@@ -107,7 +107,7 @@ export class McpController {
 
   @Post('configs/:mcpServerConfigId/rediscover')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '重新从已保存的 MCP 服务器配置发现工具' })
   @ApiParam({ name: 'mcpServerConfigId', description: 'MCP 服务器配置 ID' })
   @ApiResponse({ status: 200, description: '工具重新发现成功' })
@@ -126,7 +126,7 @@ export class McpController {
   }
 
   @Post('configs/:mcpServerConfigId/reimport')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '重新从已保存的 MCP 服务器配置导入工具' })
   @ApiParam({ name: 'mcpServerConfigId', description: 'MCP 服务器配置 ID' })
   @ApiResponse({ status: 201, description: '工具重新导入成功' })
@@ -148,7 +148,7 @@ export class McpController {
   }
 
   @Post('tools/:toolDefinitionId/deactivate')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '停用已导入的 MCP 工具' })
   @ApiParam({ name: 'toolDefinitionId', description: '工具定义 ID' })
   @ApiResponse({ status: 201, description: '工具停用成功' })
@@ -167,7 +167,7 @@ export class McpController {
   }
 
   @Get('tools')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:read')
   @ApiOperation({ summary: '获取工具定义列表' })
   @ApiQuery({
     name: 'source',
@@ -187,7 +187,7 @@ export class McpController {
   }
 
   @Get('configs')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:read')
   @ApiOperation({ summary: '分页查询已保存的 MCP 服务器配置列表' })
   @ApiResponse({ status: 200, description: 'MCP 服务器配置列表' })
   @ApiResponse({ status: 401, description: '未授权' })
@@ -201,7 +201,7 @@ export class McpController {
   }
 
   @Get('configs/:id')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:read')
   @ApiOperation({ summary: '获取 MCP 服务器配置详情（含工具列表）' })
   @ApiParam({ name: 'id', description: 'MCP 服务器配置 ID' })
   @ApiResponse({ status: 200, description: 'MCP 服务器配置详情' })
@@ -217,7 +217,7 @@ export class McpController {
   }
 
   @Patch('configs/:id')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @ApiOperation({ summary: '更新 MCP 服务器配置元数据' })
   @ApiParam({ name: 'id', description: 'MCP 服务器配置 ID' })
   @ApiResponse({ status: 200, description: 'MCP 服务器配置更新成功' })
@@ -236,7 +236,7 @@ export class McpController {
   }
 
   @Delete('configs/:id')
-  @Roles('owner', 'admin')
+  @RequirePermission('mcp:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除 MCP 服务器配置' })
   @ApiParam({ name: 'id', description: 'MCP 服务器配置 ID' })

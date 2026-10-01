@@ -14,7 +14,7 @@ import { runInTenantTransaction } from '../../common/interceptors/tenant-transac
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { and, eq } from 'drizzle-orm';
 import { DomainException } from '../../common/exceptions/domain.exception';
-import type { OrgRole } from '../../common/types/org-role.type';
+import type { OrgRole } from '@agentloom/contracts';
 import {
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,

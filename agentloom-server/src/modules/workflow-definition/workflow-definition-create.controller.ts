@@ -16,7 +16,7 @@ import { type z } from 'zod';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
 import {
   CaptureAuditLog,
@@ -51,7 +51,7 @@ export class WorkflowDefinitionCreateController {
   ) {}
 
   @Get()
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('workflow:read')
   @ApiOperation({ summary: '查询工作流定义列表' })
   @ApiResponse({
     status: 200,
@@ -66,7 +66,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Get(':id')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('workflow:read')
   @ApiOperation({ summary: '查询工作流定义详情' })
   @ApiResponse({
     status: 200,
@@ -83,7 +83,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Get(':workflowId/export')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('workflow:export')
   @CaptureAuditLog(auditLogCaptureConfigs.exportWorkflow)
   @ApiOperation({ summary: '导出工作流定义' })
   @ApiResponse({ status: 200, description: '工作流导出成功' })
@@ -96,7 +96,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Post()
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('workflow:edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建工作流定义' })
   @ApiResponse({ status: 201, description: '工作流定义创建成功' })
@@ -114,7 +114,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Post('import/validate')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('workflow:export')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '校验导入工作流文件' })
   @ApiResponse({ status: 200, description: '导入文件校验结果' })
@@ -125,7 +125,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Post('import')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('workflow:edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '导入工作流定义' })
   @ApiResponse({ status: 201, description: '工作流定义导入成功' })
@@ -140,7 +140,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Patch(':id')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('workflow:edit')
   @ApiOperation({ summary: '更新工作流定义' })
   @ApiResponse({ status: 200, description: '工作流定义更新成功' })
   @ApiResponse({ status: 404, description: '工作流定义不存在' })
@@ -160,7 +160,7 @@ export class WorkflowDefinitionCreateController {
   }
 
   @Delete(':id')
-  @Roles('owner', 'admin')
+  @RequirePermission('workflow:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除（归档）工作流定义' })
   @ApiResponse({ status: 204, description: '工作流定义删除成功' })

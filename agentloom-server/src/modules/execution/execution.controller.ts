@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { ExecutionStep } from '../../database/schema/execution-steps.schema';
@@ -65,7 +65,7 @@ export class ExecutionController {
 
   @Post(['workflow-definitions/:workflowId/run', 'workflows/:workflowId/run'])
   @HttpCode(HttpStatus.ACCEPTED)
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('workflow:run')
   @ApiOperation({ summary: '启动工作流执行' })
   @ApiResponse({
     status: 202,
@@ -90,7 +90,7 @@ export class ExecutionController {
 
   @Get('executions/:executionId')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('execution:read')
   @ApiOperation({ summary: '获取执行详情' })
   @ApiResponse({
     status: 200,
@@ -110,7 +110,7 @@ export class ExecutionController {
     'workflows/:workflowId/executions',
   ])
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('execution:read')
   @ApiOperation({ summary: '获取工作流执行历史' })
   @ApiResponse({
     status: 200,
@@ -136,7 +136,7 @@ export class ExecutionController {
 
   @Post('executions/:executionId/cancel')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('execution:control')
   @ApiOperation({ summary: '取消执行' })
   @ApiResponse({ status: 200, description: '执行已取消' })
   @ApiResponse({ status: 404, description: '执行不存在' })
@@ -154,7 +154,7 @@ export class ExecutionController {
 
   @Post('executions/:executionId/resume')
   @HttpCode(HttpStatus.ACCEPTED)
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('execution:control')
   @ApiOperation({ summary: '恢复失败的执行' })
   @ApiResponse({ status: 202, description: '执行恢复已启动' })
   @ApiResponse({ status: 404, description: '执行不存在' })
@@ -175,7 +175,7 @@ export class ExecutionController {
 
   @Post('executions/:executionId/steps/:stepId/intervene')
   @HttpCode(HttpStatus.ACCEPTED)
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('execution:control')
   @ApiOperation({ summary: '对等待干预的步骤提交反馈' })
   @ApiResponse({ status: 202, description: '干预反馈已接受' })
   @ApiResponse({ status: 409, description: '步骤状态不允许干预' })
@@ -210,7 +210,7 @@ export class ExecutionController {
 
   @Post('executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve')
   @HttpCode(HttpStatus.ACCEPTED)
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('execution:control')
   @CaptureAuditLog(auditLogCaptureConfigs.resolveToolPermission)
   @ApiOperation({ summary: '解析工具调用权限（批准/拒绝）' })
   @ApiResponse({ status: 202, description: '权限解析已接受' })
@@ -241,7 +241,7 @@ export class ExecutionController {
   }
 
   @Get('executions/:executionId/steps/:stepId/workspace/tree')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('execution:read')
   @ApiOperation({ summary: '获取 workflow agent 步骤的工作区文件树' })
   @ApiResponse({ status: 200, description: '工作区文件树' })
   async getStepWorkspaceTree(
@@ -257,7 +257,7 @@ export class ExecutionController {
   }
 
   @Get('executions/:executionId/steps/:stepId/workspace/files/*')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('execution:read')
   @ApiOperation({ summary: '读取 workflow agent 步骤工作区中的文件内容' })
   @ApiResponse({ status: 200, description: '文件内容' })
   async getStepWorkspaceFile(
@@ -275,7 +275,7 @@ export class ExecutionController {
   }
 
   @Get('dlq')
-  @Roles('owner', 'admin')
+  @RequirePermission('execution:dlq')
   @ApiOperation({ summary: '查询死信队列中的失败任务' })
   @ApiResponse({ status: 200, description: '返回失败任务列表' })
   async listDeadLetterJobs(
@@ -292,7 +292,7 @@ export class ExecutionController {
 
   @Post('dlq/:jobId/retry')
   @HttpCode(HttpStatus.ACCEPTED)
-  @Roles('owner', 'admin')
+  @RequirePermission('execution:dlq')
   @ApiOperation({ summary: '重试死信队列中的失败任务' })
   @ApiResponse({ status: 202, description: '任务已重新入队' })
   async retryDeadLetterJob(
@@ -305,7 +305,7 @@ export class ExecutionController {
 
   @Post('dlq/:jobId/discard')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin')
+  @RequirePermission('execution:dlq')
   @ApiOperation({ summary: '丢弃死信队列中的失败任务' })
   @ApiResponse({ status: 200, description: '任务已丢弃' })
   async discardDeadLetterJob(
@@ -320,7 +320,7 @@ export class ExecutionController {
 
   @Get('executions/:executionId/pty/sessions')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('execution:read')
   @ApiOperation({ summary: '获取执行关联沙箱的 PTY 会话列表' })
   @ApiResponse({ status: 200, description: 'PTY 会话列表' })
   @ApiResponse({ status: 503, description: '沙箱不可用' })
@@ -344,7 +344,7 @@ export class ExecutionController {
 
   @Post('executions/:executionId/pty/buffer-dump')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('execution:read')
   @ApiOperation({ summary: '获取执行关联沙箱的 PTY buffer 数据' })
   @ApiResponse({ status: 200, description: 'PTY buffer 数据' })
   @ApiResponse({ status: 503, description: '沙箱不可用' })
@@ -375,7 +375,7 @@ export class ExecutionController {
 
   @Post('executions/:executionId/pty/write')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('execution:control')
   @ApiOperation({ summary: '向执行关联沙箱的 PTY 会话写入数据' })
   @ApiResponse({ status: 200, description: 'PTY 写入成功' })
   @ApiResponse({ status: 503, description: '沙箱不可用' })

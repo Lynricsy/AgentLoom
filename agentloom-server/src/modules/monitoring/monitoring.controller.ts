@@ -10,7 +10,7 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import {
   MonitoringDashboardEnvelopeDto,
   type MonitoringDashboardDto,
@@ -28,7 +28,7 @@ export class MonitoringController {
 
   @Get('organizations/:id/monitoring')
   @HttpCode(HttpStatus.OK)
-  @Roles('owner', 'admin')
+  @RequirePermission('monitoring:read')
   @ApiOperation({ summary: '获取当前组织的只读运行监控仪表板' })
   @ApiResponse({
     status: 200,

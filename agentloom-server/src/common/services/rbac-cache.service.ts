@@ -9,7 +9,7 @@ import { RedisCacheService } from '../redis/redis-cache.service';
 import { redisKey, RedisDomain } from '../redis/redis-key.util';
 import { RedisPubSubService } from '../redis/redis-pubsub.service';
 import { RBAC_CACHE_TTL } from '../redis/redis.constants';
-import type { OrgRole } from '../types/org-role.type';
+import type { OrgRole } from '@agentloom/contracts';
 
 @Injectable()
 export class RbacCacheService {

@@ -13,7 +13,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateLlmModelConfigDto } from './dto/create-llm-model-config.dto';
 import { UpdateLlmModelConfigDto } from './dto/update-llm-model-config.dto';
 import { LlmService } from './llm.service';
@@ -24,7 +24,7 @@ export class LlmController {
   constructor(private readonly llmService: LlmService) {}
 
   @Post()
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建 LLM 模型配置' })
   @ApiResponse({ status: 201, description: 'LLM 模型配置创建成功' })
@@ -39,7 +39,7 @@ export class LlmController {
   }
 
   @Get()
-  @Roles('owner', 'admin', 'viewer')
+  @RequirePermission('llm:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取所有 LLM 模型配置' })
   @ApiResponse({ status: 200, description: '返回 LLM 模型配置列表' })
@@ -49,7 +49,7 @@ export class LlmController {
   }
 
   @Get(':id')
-  @Roles('owner', 'admin', 'viewer')
+  @RequirePermission('llm:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取指定 LLM 模型配置' })
   @ApiResponse({ status: 200, description: '返回 LLM 模型配置详情' })
@@ -60,7 +60,7 @@ export class LlmController {
   }
 
   @Patch(':id')
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '更新 LLM 模型配置' })
   @ApiResponse({ status: 200, description: 'LLM 模型配置更新成功' })
@@ -76,7 +76,7 @@ export class LlmController {
   }
 
   @Delete(':id')
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除 LLM 模型配置' })
   @ApiResponse({ status: 204, description: 'LLM 模型配置删除成功' })

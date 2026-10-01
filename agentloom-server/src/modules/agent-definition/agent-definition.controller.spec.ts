@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { AgentDefinitionController } from './agent-definition.controller';
 import type { AgentDefinitionService } from './agent-definition.service';
 
@@ -23,7 +22,7 @@ const VERSION_DTO = {
 };
 
 describe('AgentDefinitionController rollback', () => {
-  it('应由 owner/admin 调用 service 并返回目标版本信封', async () => {
+  it('应调用 service 并返回目标版本信封', async () => {
     const service = {
       rollback: vi.fn().mockResolvedValue(VERSION_DTO),
     };
@@ -39,11 +38,5 @@ describe('AgentDefinitionController rollback', () => {
       'user-1',
     );
     expect(result).toEqual({ data: VERSION_DTO });
-    expect(
-      Reflect.getMetadata(
-        ROLES_KEY,
-        AgentDefinitionController.prototype.rollback,
-      ),
-    ).toEqual(['owner', 'admin']);
   });
 });

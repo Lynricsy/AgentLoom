@@ -2,7 +2,6 @@ import 'reflect-metadata';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { ListAuditLogsQuerySchema } from '../dto/audit-log.dto';
 import { AuditLogController } from '../audit-log.controller';
 
@@ -24,13 +23,6 @@ describe('AuditLogController', () => {
   beforeEach(() => {
     service = createMockAuditLogService();
     controller = new AuditLogController(service as never);
-  });
-
-  it('should declare owner/admin runtime roles at controller level', () => {
-    expect(Reflect.getMetadata(ROLES_KEY, AuditLogController)).toEqual([
-      'owner',
-      'admin',
-    ]);
   });
 
   it('should normalize snake_case query aliases into page/pageSize filters', () => {

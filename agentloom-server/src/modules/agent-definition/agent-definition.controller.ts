@@ -15,7 +15,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { type z } from 'zod';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AgentDefinitionService } from './agent-definition.service';
 import {
@@ -47,7 +47,7 @@ export class AgentDefinitionController {
   ) {}
 
   @Post()
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('agent:edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建 Agent 定义' })
   @ApiResponse({ status: 201, description: 'Agent 定义创建成功' })
@@ -61,7 +61,7 @@ export class AgentDefinitionController {
   }
 
   @Get()
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('agent:read')
   @ApiOperation({ summary: '获取 Agent 定义列表' })
   @ApiResponse({
     status: 200,
@@ -76,7 +76,7 @@ export class AgentDefinitionController {
   }
 
   @Get(':id')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('agent:read')
   @ApiOperation({ summary: '获取 Agent 定义详情' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({
@@ -93,7 +93,7 @@ export class AgentDefinitionController {
   }
 
   @Put(':id')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('agent:edit')
   @ApiOperation({ summary: '更新 Agent 定义（含 OCC 版本校验）' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: 'Agent 定义更新成功' })
@@ -110,7 +110,7 @@ export class AgentDefinitionController {
   }
 
   @Delete(':id')
-  @Roles('owner', 'admin')
+  @RequirePermission('agent:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '归档 Agent 定义（软删除）' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
@@ -124,7 +124,7 @@ export class AgentDefinitionController {
   }
 
   @Put(':id/canvas')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('agent:edit')
   @ApiOperation({ summary: '保存 Agent 画布（nodes/edges/viewport）' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: '画布保存成功' })
@@ -141,7 +141,7 @@ export class AgentDefinitionController {
   }
 
   @Post(':id/compile')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('agent:edit')
   @ApiOperation({ summary: '编译 Agent 画布为 AgentRuntimeConfig' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: '编译结果' })
@@ -152,7 +152,7 @@ export class AgentDefinitionController {
   }
 
   @Post(':id/versions')
-  @Roles('owner', 'admin')
+  @RequirePermission('agent:manage')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建 Agent 版本快照' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
@@ -174,7 +174,7 @@ export class AgentDefinitionController {
   }
 
   @Get(':id/versions')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('agent:read')
   @ApiOperation({ summary: '获取 Agent 版本列表' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: 'Agent 版本列表' })
@@ -191,7 +191,7 @@ export class AgentDefinitionController {
   }
 
   @Post(':id/versions/:versionId/rollback')
-  @Roles('owner', 'admin')
+  @RequirePermission('agent:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '将 Agent 编辑草稿恢复到指定版本' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
@@ -214,7 +214,7 @@ export class AgentDefinitionController {
   }
 
   @Post(':id/publish')
-  @Roles('owner', 'admin')
+  @RequirePermission('agent:manage')
   @ApiOperation({ summary: '发布 Agent 定义' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: '发布成功' })

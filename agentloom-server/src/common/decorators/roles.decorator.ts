@@ -1,5 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
-import type { OrgRole } from '../types/org-role.type';
+import type { OrgRole } from '@agentloom/contracts';
 
 export const ROLES_KEY = 'roles';
 

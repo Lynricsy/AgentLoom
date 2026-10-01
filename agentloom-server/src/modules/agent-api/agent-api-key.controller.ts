@@ -22,7 +22,7 @@ import type { FastifyReply } from 'fastify';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { API_GLOBAL_PREFIX } from '../../openapi/swagger-document';
 import { CaptureAuditLog } from '../evidence/audit-log.capture';
@@ -49,7 +49,7 @@ export class AgentApiKeyController {
   constructor(private readonly agentApiKeyService: AgentApiKeyService) {}
 
   @Post()
-  @Roles('owner', 'admin')
+  @RequirePermission('agent-api-key:manage')
   @HttpCode(HttpStatus.CREATED)
   @CaptureAuditLog(agentApiKeyAuditConfigs.create)
   @ApiOperation({ summary: '创建 Agent 专用 API Key（明文仅返回一次）' })
@@ -86,7 +86,7 @@ export class AgentApiKeyController {
   }
 
   @Get()
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('agent-api-key:read')
   @ApiOperation({ summary: '分页列出 Agent 的 API Key' })
   @ApiResponse({
     status: 200,
@@ -104,7 +104,7 @@ export class AgentApiKeyController {
   }
 
   @Delete(':keyId')
-  @Roles('owner', 'admin')
+  @RequirePermission('agent-api-key:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @CaptureAuditLog(agentApiKeyAuditConfigs.revoke)
   @ApiOperation({ summary: '吊销 API Key（幂等）' })

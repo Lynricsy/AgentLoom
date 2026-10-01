@@ -48,9 +48,9 @@ sequenceDiagram
     TG->>AG: 通过
     Note over AG: @Public() 跳过；Bearer JWT 或 X-Api-Key，写入 req.user
     AG->>TNG: 通过
-    Note over TNG: 仅对带 @Roles() 的路由校验 tenantId
+    Note over TNG: 仅对声明了 @RequirePermission() 或 @Roles() 的路由校验 tenantId
     TNG->>RG: 通过
-    Note over RG: 按 @Roles() 列表比对成员角色
+    Note over RG: @RequirePermission() 查权限矩阵，否则按 @Roles() 列表比对成员角色
     RG->>TI: 通过
     Note over TI: req.user.tenantId 存在时开启租户事务
     TI->>AI: next.handle()
@@ -116,15 +116,17 @@ sequenceDiagram
 
 源文件：`agentloom-server/src/common/guards/tenant.guard.ts`
 
-只对声明了 `@Roles()` 的非公开路由生效：`req.user.tenantId` 缺失抛 `TenantRequiredException`，不是 UUID 抛 `InvalidTenantContextException`。没有 `@Roles()` 的路由直接放行。
+只对声明了 `@RequirePermission()` 或 `@Roles()` 的非公开路由生效：`req.user.tenantId` 缺失抛 `TenantRequiredException`，不是 UUID 抛 `InvalidTenantContextException`。两者都没有的路由直接放行。
 
 ### RolesGuard
 
-源文件：`agentloom-server/src/common/guards/roles.guard.ts`；装饰器 `agentloom-server/src/common/decorators/roles.decorator.ts`
+源文件：`agentloom-server/src/common/guards/roles.guard.ts`；装饰器 `agentloom-server/src/common/decorators/require-permission.decorator.ts`、`agentloom-server/src/common/decorators/roles.decorator.ts`
 
-- 没有 `@Roles()` 或标了 `@Public()` 时放行。
+- 路由的访问要求由 `resolveRouteAccess()` 解析：`@RequirePermission(permission)` 与 `@Roles(...)` 各自方法级覆盖类级，`@RequirePermission` 优先，其角色集合取自 `agentloom-contracts/src/rbac.ts` 的 `RBAC_PERMISSION_MATRIX`。`TenantGuard` 与路由访问快照测试共用这个函数。
+- 两者都没有或标了 `@Public()` 时放行。
 - 重复检查 `tenantId`，然后用 `RbacCacheService.getUserRole(tenantId, userId)` 读取成员角色（Redis 缓存，未命中时查 `organization_members`）。
-- **按列表精确匹配**：`requiredRoles.includes(userRole)`。角色之间没有隐式继承，允许 `operator` 的路由也要允许更高角色时，必须把它们都写进 `@Roles(...)`。角色的含义见 [/dev/server/security](/dev/server/security#rbac-角色)。
+- **按集合精确匹配**：成员角色必须在解析出的角色集合中。角色之间没有隐式继承，矩阵中每个权限显式列出允许的角色。角色的含义见 [/dev/server/security](/dev/server/security#rbac-角色)。
+- 全部路由的有效访问集合由 `agentloom-server/src/common/guards/__tests__/route-access.snapshot.spec.ts` 生成快照（`__snapshots__/route-access.json`）；改动 `@Roles`、`@RequirePermission` 或矩阵后，快照 diff 必须只包含有意的变化。
 
 ### TenantTransactionInterceptor
 

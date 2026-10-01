@@ -36,6 +36,7 @@ import {
 } from "../api/mcpMutations";
 import { McpImportDialog } from "./McpImportDialog";
 import { McpServerEditDialog } from "./McpServerEditDialog";
+import { useCanManageMcp } from "../hooks/useCanManageMcp";
 import {
   SERVER_STATUS_META,
   TRANSPORT_LABEL,
@@ -94,6 +95,7 @@ interface McpServerDetailPageProps {
 
 export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
   const { notify } = useToast();
+  const canManage = useCanManageMcp();
   const navigate = useNavigate();
   const { data: detail, isLoading, error } = useMcpServerConfig(serverId);
 
@@ -303,26 +305,33 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
               <ArrowLeft className="mr-1 h-4 w-4" />
               返回
             </Button>
-            <Button
-              variant="outline"
-              disabled={rediscoverMutation.isPending}
-              onClick={() => void handleRediscover()}
-            >
-              {rediscoverMutation.isPending ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-1.5 h-4 w-4" />
-              )}
-              重新发现工具
-            </Button>
-            <Button variant="outline" onClick={openReimportDialog}>
-              <Download className="mr-1.5 h-4 w-4" />
-              重新导入工具
-            </Button>
-            <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
-              <Pencil className="mr-1.5 h-4 w-4" />
-              编辑
-            </Button>
+            {canManage ? (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={rediscoverMutation.isPending}
+                  onClick={() => void handleRediscover()}
+                >
+                  {rediscoverMutation.isPending ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                  )}
+                  重新发现工具
+                </Button>
+                <Button variant="outline" onClick={openReimportDialog}>
+                  <Download className="mr-1.5 h-4 w-4" />
+                  重新导入工具
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditDialogOpen(true)}
+                >
+                  <Pencil className="mr-1.5 h-4 w-4" />
+                  编辑
+                </Button>
+              </>
+            ) : null}
           </>
         }
       />
@@ -355,10 +364,12 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
           description={
             hasSearch
               ? "换个关键词试试，搜索会匹配工具名称与描述。"
-              : "点击「重新发现工具」从服务器拉取最新的工具定义。"
+              : canManage
+                ? "点击「重新发现工具」从服务器拉取最新的工具定义。"
+                : "这个服务器还没有导入工具，请联系组织管理员同步。"
           }
           action={
-            hasSearch ? null : (
+            hasSearch || !canManage ? null : (
               <Button
                 size="sm"
                 variant="outline"
@@ -458,17 +469,21 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                   </p>
                 ) : null}
 
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <Button
-                    aria-label={`停用 ${tool.title ?? tool.name}`}
-                    disabled={!tool.isActive}
-                    onClick={(event) => openDeactivateDialog(event, tool)}
-                    variant="outline"
-                    size="sm"
-                  >
-                    {tool.isActive ? `停用 ${tool.title ?? tool.name}` : "已停用"}
-                  </Button>
-                </div>
+                {canManage ? (
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Button
+                      aria-label={`停用 ${tool.title ?? tool.name}`}
+                      disabled={!tool.isActive}
+                      onClick={(event) => openDeactivateDialog(event, tool)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {tool.isActive
+                        ? `停用 ${tool.title ?? tool.name}`
+                        : "已停用"}
+                    </Button>
+                  </div>
+                ) : null}
               </article>
             </Card>
           ))}

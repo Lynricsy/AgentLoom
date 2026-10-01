@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { PrivateCloudController } from '../private-cloud.controller';
 import type { PrivateCloudService } from '../private-cloud.service';
 
@@ -18,16 +17,6 @@ const PRIVATE_CLOUD_MODELS = [
   { id: 'model-b', name: 'model-b', ownedBy: 'unknown' },
 ];
 
-function getRoles(target: object, methodName: string): string[] | undefined {
-  const descriptor = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(target),
-    methodName,
-  );
-  if (!descriptor?.value) return undefined;
-  return Reflect.getMetadata(ROLES_KEY, descriptor.value) as
-    string[] | undefined;
-}
-
 describe('PrivateCloudController', () => {
   let controller: PrivateCloudController;
   let service: Record<string, ReturnType<typeof vi.fn>>;
@@ -41,26 +30,6 @@ describe('PrivateCloudController', () => {
     controller = new PrivateCloudController(
       service as unknown as PrivateCloudService,
     );
-  });
-
-  describe('角色权限', () => {
-    it('testConnection 应需要 owner、admin、creator 和 operator', () => {
-      const roles = getRoles(controller, 'testConnection');
-
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'creator', 'operator']),
-      );
-      expect(roles).not.toContain('viewer');
-    });
-
-    it('fetchModels 应需要 owner、admin、creator 和 operator', () => {
-      const roles = getRoles(controller, 'fetchModels');
-
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'creator', 'operator']),
-      );
-      expect(roles).not.toContain('viewer');
-    });
   });
 
   describe('testConnection', () => {

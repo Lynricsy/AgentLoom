@@ -18,7 +18,7 @@ Studio 的全局导航由左侧侧边栏提供；小屏幕上侧边栏收进左�
 | 探索 | 模板 | `/templates` | 从模板创建工作流 | | [使用模板](/guide/workflows/templates) |
 | 探索 | 开发者 | `/developer-console/earnings` | 开发者控制台（进入收益页） | owner、admin | [开发者控制台](/guide/collaboration/developer-console) |
 | 探索 | 开发者 | `/developer-console/keys` | 开发者控制台（进入签名密钥页） | creator | [开发者控制台](/guide/collaboration/developer-console) |
-| 资源 | MCP 服务 | `/resources/mcp-servers` | 接入与管理 MCP Server | | [MCP 工具](/guide/integrations/mcp-tools) |
+| 资源 | MCP 服务 | `/resources/mcp-servers` | 接入与管理 MCP Server（creator 只读） | owner、admin、creator | [MCP 工具](/guide/integrations/mcp-tools) |
 | 资源 | LLM 模型 | `/resources/llm-models` | 管理模型配置与 Provider 凭据 | | [LLM 模型节点](/guide/nodes/llm-model) |
 | 资源 | 技能 | `/resources/skills` | 管理技能 | | [技能](/guide/skills/) |
 | 资源 | 知识库 | `/resources/knowledge-bases` | 创建知识库、上传文档 | | [知识库](/guide/knowledge-base/) |
@@ -26,8 +26,8 @@ Studio 的全局导航由左侧侧边栏提供；小屏幕上侧边栏收进左�
 | 资源 | 工作区 | `/resources/workspaces` | 管理持久化工作区 | | [Workspace 节点](/guide/nodes/workspace) |
 | 资源 | 沙箱 | `/resources/sandboxes` | 管理持久沙箱 | | [Sandbox 节点](/guide/nodes/sandbox) |
 | 资源 | 插件 | `/resources/plugins` | 安装、启用插件并查看用量 | | [使用插件](/guide/integrations/plugins) |
-| 运维 | 监控 | `/settings/monitoring` | 运行监控 | | |
-| 运维 | 审计日志 | `/settings/audit-logs` | 查看组织内操作记录 | | |
+| 运维 | 监控 | `/settings/monitoring` | 运行监控 | owner、admin | |
+| 运维 | 审计日志 | `/settings/audit-logs` | 查看组织内操作记录 | owner、admin | |
 | 运维 | 通知 | `/notifications` | 通知中心 | | [通知](/guide/account/notifications) |
 
 侧边栏底部依次是「设置」（进入 `/settings`）、通知入口和用户菜单。用户菜单中可切换「主题」（浅色、深色、系统）和「退出登录」。

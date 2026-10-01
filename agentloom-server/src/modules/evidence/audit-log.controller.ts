@@ -9,14 +9,14 @@ import {
 } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { ListAuditLogsQueryDto } from './dto/audit-log.dto';
 import { AuditLogService } from './audit-log.service';
 
 @ApiTags('Audit Logs')
 @ApiBearerAuth()
 @ApiSecurity('X-Api-Key')
-@Roles('owner', 'admin')
+@RequirePermission('audit:read')
 @Controller('audit-logs')
 export class AuditLogController {
   constructor(private readonly auditLogService: AuditLogService) {}

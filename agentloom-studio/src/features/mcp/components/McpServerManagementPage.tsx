@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, useMemo, type MouseEvent } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  type MouseEvent,
+} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -62,6 +68,7 @@ import {
 } from "../api/mcpMutations";
 import { McpImportDialog } from "./McpImportDialog";
 import { McpServerEditDialog } from "./McpServerEditDialog";
+import { useCanManageMcp } from "../hooks/useCanManageMcp";
 import {
   TRANSPORT_LABEL,
   TRANSPORT_TONE,
@@ -146,6 +153,7 @@ function ServerRowActions({
  */
 export function McpServerManagementPage() {
   const { notify } = useToast();
+  const canManage = useCanManageMcp();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -407,36 +415,38 @@ export function McpServerManagementPage() {
         // 不用 sr-only：绝对定位元素会逃出 DataTable 的横向滚动容器，撑破小屏文档宽度
         header: "操作",
         className: "w-px whitespace-nowrap text-right",
-        cell: (server) => (
-          <div
-            className="flex items-center justify-end gap-1"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {/* <sm 只留图标：整行本身可点进详情，文字按钮会把主文本列压得过窄 */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="px-2 sm:px-3"
-              disabled={testMutation.isPending}
-              aria-label={`测试连接 ${server.name}`}
-              onClick={() => void handleTest(server)}
+        cell: (server) =>
+          canManage ? (
+            <div
+              className="flex items-center justify-end gap-1"
+              onClick={(event) => event.stopPropagation()}
             >
-              <Play className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">测试</span>
-            </Button>
-            <ServerRowActions
-              server={server}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onRediscover={(target) => void handleRediscover(target)}
-              onReimport={handleReimport}
-              onConvertSource={(target) => void handleConvertSource(target)}
-            />
-          </div>
-        ),
+              {/* <sm 只留图标：整行本身可点进详情，文字按钮会把主文本列压得过窄 */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="px-2 sm:px-3"
+                disabled={testMutation.isPending}
+                aria-label={`测试连接 ${server.name}`}
+                onClick={() => void handleTest(server)}
+              >
+                <Play className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">测试</span>
+              </Button>
+              <ServerRowActions
+                server={server}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onRediscover={(target) => void handleRediscover(target)}
+                onReimport={handleReimport}
+                onConvertSource={(target) => void handleConvertSource(target)}
+              />
+            </div>
+          ) : null,
       },
     ],
     [
+      canManage,
       handleConvertSource,
       handleDelete,
       handleEdit,
@@ -455,15 +465,17 @@ export function McpServerManagementPage() {
         title="MCP Servers"
         description="管理已导入的 MCP 服务器配置，测试连接状态与工具同步"
         actions={
-          <Button
-            onClick={(e) => {
-              setImportRestoreFocus(e.currentTarget);
-              setImportDialogOpen(true);
-            }}
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            导入新的
-          </Button>
+          canManage ? (
+            <Button
+              onClick={(e) => {
+                setImportRestoreFocus(e.currentTarget);
+                setImportDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              导入新的
+            </Button>
+          ) : null
         }
       />
 
@@ -545,7 +557,7 @@ export function McpServerManagementPage() {
                   : "导入 MCP 服务器后，其工具会同步到画布的 Imported Tools 分组。"
               }
               action={
-                hasFilters ? null : (
+                hasFilters || !canManage ? null : (
                   <Button
                     size="sm"
                     onClick={(e) => {

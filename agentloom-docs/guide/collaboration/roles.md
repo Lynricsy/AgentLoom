@@ -68,10 +68,11 @@ docType: reference
 | 查看沙箱 | 全部 |
 | 新建、启动、停止、删除沙箱 | owner、admin、creator |
 | 登记沙箱运行节点 | owner、admin |
-| 查看 LLM 模型与提供方 | owner、admin、viewer |
+| 查看 LLM 模型与提供方 | 全部 |
 | 新建、修改、删除 LLM 模型与提供方 | owner、admin |
 | 测试 LLM 连接、发现模型 | owner、admin、creator、operator |
-| 查看与管理 MCP 服务 | owner、admin |
+| 查看 MCP 服务与工具（凭据只显示键名） | owner、admin、creator |
+| 接入、测试、导入、修改、删除 MCP 服务 | owner、admin |
 | 查看插件与用量 | 全部 |
 | 注册插件 | owner、admin、creator |
 | 启用、停用、删除插件 | owner、admin |

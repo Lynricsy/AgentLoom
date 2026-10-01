@@ -53,12 +53,12 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 
 ## RBAC 角色
 
-组织角色定义为 `OrgRole`（`agentloom-server/src/common/types/org-role.type.ts`），数据库枚举 `org_role` 取值 `owner`、`admin`、`creator`、`operator`、`viewer`。
+组织角色与权限矩阵定义在 `agentloom-contracts/src/rbac.ts`（`ORG_ROLES`、`RBAC_PERMISSION_MATRIX`、`hasPermission`），server 与 Studio 共用；数据库枚举 `org_role` 取值 `owner`、`admin`、`creator`、`operator`、`viewer`。
 
-- 路由用 `@Roles(...)` 声明允许的角色；`RolesGuard` 用 `requiredRoles.includes(userRole)` 精确匹配，角色之间**没有继承**。允许 `operator` 的路由若也要允许 `owner`，必须把两者都写进 `@Roles`。
-- 未声明 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查。
+- 路由用 `@RequirePermission(permission)` 声明所需权限，`RolesGuard` 取矩阵中该权限的角色集合判定；尚未迁移的路由仍用 `@Roles(...)` 列出角色。两者都是方法级覆盖类级，`@RequirePermission` 优先于 `@Roles`。角色之间**没有继承**，矩阵为每个权限显式列出允许的角色。
+- 未声明 `@RequirePermission` 或 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查。
+- 每条路由的有效角色集合由 `agentloom-server/src/common/guards/__tests__/route-access.snapshot.spec.ts` 固定在快照中；放宽或收紧任何路由都要更新快照。
 - 用户在组织中的角色由 `RbacCacheService`（`agentloom-server/src/common/services/rbac-cache.service.ts`）缓存在 Redis；未命中时查询 `organization_members` 关联 `organizations`。角色变更调用 `invalidateUserRole` 删除缓存并通过 Redis pub/sub 通知其他实例。
-- `agentloom-server/src/common/types/rbac-permissions.ts` 中的 `RBAC_PERMISSION_MATRIX` / `hasPermission` 当前没有生产代码调用，权限以各路由的 `@Roles` 为准。
 
 ## 数据库行级安全
 

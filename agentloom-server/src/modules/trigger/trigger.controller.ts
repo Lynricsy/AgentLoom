@@ -15,7 +15,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import type {
   ApiEventTriggerConfig,
   CronTriggerConfig,
@@ -53,7 +53,7 @@ export class TriggerController {
   ) {}
 
   @Post()
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('trigger:edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建工作流触发器' })
   @ApiResponse({ status: 201, description: '触发器创建成功' })
@@ -80,7 +80,7 @@ export class TriggerController {
   }
 
   @Get()
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('trigger:read')
   @ApiOperation({ summary: '查询工作流触发器列表' })
   @ApiResponse({ status: 200, description: '触发器列表' })
   async findAll(
@@ -93,7 +93,7 @@ export class TriggerController {
   }
 
   @Get(':triggerId')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('trigger:read')
   @ApiOperation({ summary: '获取触发器详情' })
   @ApiResponse({ status: 200, description: '触发器详情' })
   @ApiResponse({ status: 404, description: '触发器不存在' })
@@ -111,7 +111,7 @@ export class TriggerController {
   }
 
   @Patch(':triggerId')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('trigger:edit')
   @ApiOperation({ summary: '更新触发器' })
   @ApiResponse({ status: 200, description: '触发器更新成功' })
   @ApiResponse({ status: 404, description: '触发器不存在' })
@@ -144,7 +144,7 @@ export class TriggerController {
   }
 
   @Delete(':triggerId')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('trigger:edit')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除触发器' })
   @ApiResponse({ status: 204, description: '触发器删除成功' })
@@ -168,7 +168,7 @@ export class TriggerController {
   }
 
   @Patch(':triggerId/toggle')
-  @Roles('owner', 'admin', 'creator')
+  @RequirePermission('trigger:edit')
   @ApiOperation({ summary: '切换触发器启用状态' })
   @ApiResponse({ status: 200, description: '触发器状态切换成功' })
   @ApiResponse({ status: 404, description: '触发器不存在' })
@@ -199,7 +199,7 @@ export class TriggerController {
   }
 
   @Get(':triggerId/history')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('trigger:read')
   @ApiOperation({ summary: '查询触发器执行历史' })
   @ApiResponse({ status: 200, description: '触发器执行历史' })
   async findHistory(

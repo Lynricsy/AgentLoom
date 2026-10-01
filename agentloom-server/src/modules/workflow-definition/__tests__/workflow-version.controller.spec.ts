@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import type { VersionResponseDto } from '../dto/version-response.dto';
 import { WorkflowVersionController } from '../workflow-version.controller';
 import type { WorkflowVersionService } from '../workflow-version.service';
@@ -34,12 +33,6 @@ const MOCK_INPUT_SCHEMA = {
   fields: [],
 };
 
-function getRoles(controller: object, method: string): string[] | undefined {
-  const handler = (controller as Record<string, unknown>)[method] as
-    ((...args: never[]) => unknown) | undefined;
-  return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
-}
-
 describe('WorkflowVersionController', () => {
   let controller: WorkflowVersionController;
   let service: Record<string, ReturnType<typeof vi.fn>>;
@@ -69,55 +62,6 @@ describe('WorkflowVersionController', () => {
       service as unknown as WorkflowVersionService,
     );
   };
-
-  describe('角色元数据', () => {
-    setup();
-
-    it('createVersion 应当要求 owner 或 admin', () => {
-      expect(getRoles(controller, 'createVersion')).toEqual(['owner', 'admin']);
-    });
-
-    it('listVersions 应当允许所有可读组织角色', () => {
-      expect(getRoles(controller, 'listVersions')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-        'operator',
-        'viewer',
-      ]);
-    });
-
-    it('rollback 应当要求 owner 或 admin', () => {
-      expect(getRoles(controller, 'rollback')).toEqual(['owner', 'admin']);
-    });
-
-    it('publish 应当要求 owner 或 admin', () => {
-      expect(getRoles(controller, 'publish')).toEqual(['owner', 'admin']);
-    });
-
-    it('archive 应当要求 owner 或 admin', () => {
-      expect(getRoles(controller, 'archive')).toEqual(['owner', 'admin']);
-    });
-
-    it('getPublishedVersion 应当允许所有可读组织角色', () => {
-      expect(getRoles(controller, 'getPublishedVersion')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-        'operator',
-        'viewer',
-      ]);
-    });
-
-    it('getInputSchema 应当允许 operator 及以上角色', () => {
-      expect(getRoles(controller, 'getInputSchema')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-        'operator',
-      ]);
-    });
-  });
 
   describe('createVersion', () => {
     it('应当调用 service 并返回 { data }', async () => {

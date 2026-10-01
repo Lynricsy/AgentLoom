@@ -1812,10 +1812,17 @@ describe('McpService', () => {
       });
       expect(rowsChain.limit).toHaveBeenCalledWith(2);
       expect(rowsChain.offset).toHaveBeenCalledWith(2);
+      const {
+        encryptedData: _encryptedData,
+        encryptedDek: _encryptedDek,
+        iv: _iv,
+        authTag: _authTag,
+        ...publicConfig
+      } = config;
       expect(result).toEqual({
         data: [
           {
-            ...config,
+            ...publicConfig,
             toolCount: 4,
             sourceKind: 'share_imported',
           },

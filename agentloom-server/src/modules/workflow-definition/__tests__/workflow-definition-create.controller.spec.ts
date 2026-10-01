@@ -5,7 +5,6 @@ vi.mock('@anatine/zod-nestjs', async () => {
   return { createZodDto };
 });
 
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 import { WorkflowDefinitionCreateController } from '../workflow-definition-create.controller';
@@ -39,14 +38,6 @@ function createImportEnvelope() {
   };
 }
 
-function getRoles(
-  controller: WorkflowDefinitionCreateController,
-  methodName: string,
-): string[] | undefined {
-  const handler = Object.getPrototypeOf(controller)[methodName];
-  return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
-}
-
 function setup() {
   const service = {
     create: vi.fn(),
@@ -64,53 +55,6 @@ function setup() {
 }
 
 describe('WorkflowDefinitionCreateController', () => {
-  describe('角色元数据', () => {
-    it('findAll 应要求 owner/admin/creator/operator/viewer 角色', () => {
-      const { controller } = setup();
-      expect(getRoles(controller, 'findAll')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-        'operator',
-        'viewer',
-      ]);
-    });
-
-    it('findById 应要求 owner/admin/creator/operator/viewer 角色', () => {
-      const { controller } = setup();
-      expect(getRoles(controller, 'findById')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-        'operator',
-        'viewer',
-      ]);
-    });
-
-    it('create 应要求 owner/admin/creator 角色', () => {
-      const { controller } = setup();
-      expect(getRoles(controller, 'create')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-      ]);
-    });
-
-    it('update 应要求 owner/admin/creator 角色', () => {
-      const { controller } = setup();
-      expect(getRoles(controller, 'update')).toEqual([
-        'owner',
-        'admin',
-        'creator',
-      ]);
-    });
-
-    it('remove 应要求 owner/admin 角色', () => {
-      const { controller } = setup();
-      expect(getRoles(controller, 'remove')).toEqual(['owner', 'admin']);
-    });
-  });
-
   describe('findAll', () => {
     it('应调用 service.findAllDefinitions 并返回分页响应', async () => {
       const { service, controller } = setup();

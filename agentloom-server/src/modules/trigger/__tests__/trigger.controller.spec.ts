@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { TriggerNotFoundException } from '../trigger.exceptions';
 import { TriggerController } from '../trigger.controller';
 
@@ -258,30 +257,5 @@ describe('TriggerController', () => {
     await expect(
       controller.findById(WORKFLOW_ID, TRIGGER_ID, TENANT_ID),
     ).rejects.toThrow(TriggerNotFoundException);
-  });
-
-  it('应为读接口声明 Viewer+ 角色，为写接口声明 Creator+ 角色', () => {
-    const readMethods = ['findAll', 'findById', 'findHistory'] as const;
-    const writeMethods = ['create', 'update', 'remove', 'toggle'] as const;
-
-    for (const methodName of readMethods) {
-      const descriptor = Object.getOwnPropertyDescriptor(
-        TriggerController.prototype,
-        methodName,
-      );
-      expect(
-        Reflect.getMetadata(ROLES_KEY, descriptor?.value as object),
-      ).toEqual(['owner', 'admin', 'creator', 'operator', 'viewer']);
-    }
-
-    for (const methodName of writeMethods) {
-      const descriptor = Object.getOwnPropertyDescriptor(
-        TriggerController.prototype,
-        methodName,
-      );
-      expect(
-        Reflect.getMetadata(ROLES_KEY, descriptor?.value as object),
-      ).toEqual(['owner', 'admin', 'creator']);
-    }
   });
 });

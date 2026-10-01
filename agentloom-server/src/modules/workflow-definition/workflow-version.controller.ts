@@ -13,7 +13,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateVersionDto } from './dto/create-version.dto';
 import { ListVersionsQueryDto } from './dto/list-versions-query.dto';
 import { PublishWorkflowDto } from './dto/publish-workflow.dto';
@@ -32,7 +32,7 @@ export class WorkflowVersionController {
   ) {}
 
   @Post('versions')
-  @Roles('owner', 'admin')
+  @RequirePermission('workflow:manage')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建工作流版本快照' })
   @ApiResponse({ status: 201, description: '版本快照创建成功' })
@@ -52,7 +52,7 @@ export class WorkflowVersionController {
   }
 
   @Get('versions')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('workflow:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取工作流版本列表' })
   @ApiResponse({ status: 200, description: '版本列表获取成功' })
@@ -73,7 +73,7 @@ export class WorkflowVersionController {
   }
 
   @Post('versions/:versionId/rollback')
-  @Roles('owner', 'admin')
+  @RequirePermission('workflow:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '回滚到指定版本' })
   @ApiResponse({ status: 200, description: '回滚成功' })
@@ -93,7 +93,7 @@ export class WorkflowVersionController {
   }
 
   @Post('publish')
-  @Roles('owner', 'admin')
+  @RequirePermission('workflow:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '发布工作流' })
   @ApiResponse({ status: 200, description: '工作流发布成功' })
@@ -109,7 +109,7 @@ export class WorkflowVersionController {
   }
 
   @Post('archive')
-  @Roles('owner', 'admin')
+  @RequirePermission('workflow:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '归档工作流' })
   @ApiResponse({ status: 204, description: '工作流归档成功' })
@@ -123,7 +123,7 @@ export class WorkflowVersionController {
   }
 
   @Get('published-version')
-  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @RequirePermission('workflow:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取已发布的工作流版本' })
   @ApiResponse({ status: 200, description: '已发布版本获取成功' })
@@ -140,7 +140,7 @@ export class WorkflowVersionController {
   }
 
   @Get('input-schema')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('workflow:run')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取工作流输入参数 schema' })
   @ApiResponse({ status: 200, description: '输入参数 schema 获取成功' })

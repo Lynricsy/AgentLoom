@@ -12,7 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { WsAuthService } from '../../common/services/ws-auth.service';
-import type { OrgRole } from '../../common/types/org-role.type';
+import type { OrgRole } from '@agentloom/contracts';
 import { ThrottleService } from '../execution/services/throttle.service';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import { ExecutionEventName } from '../execution/types/execution-event.types';

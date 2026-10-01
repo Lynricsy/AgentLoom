@@ -3,13 +3,12 @@ import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { validate as isUuid } from 'uuid';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { ROLES_KEY } from '../decorators/roles.decorator';
 import {
   InvalidTenantContextException,
   TenantRequiredException,
 } from '../exceptions/auth.exceptions';
-import type { OrgRole } from '../types/org-role.type';
 import type { JwtPayload } from './auth.guard';
+import { resolveRequiredRoles } from './roles.guard';
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -24,9 +23,7 @@ export class TenantGuard implements CanActivate {
 
     if (isPublic) return true;
 
-    const requiredRoles = this.reflector.getAllAndOverride<
-      OrgRole[] | undefined
-    >(ROLES_KEY, targets);
+    const requiredRoles = resolveRequiredRoles(this.reflector, targets);
 
     if (!requiredRoles?.length) {
       return true;

@@ -54,6 +54,21 @@ type DiscoveredMcpTool = Awaited<
   ReturnType<Client['listTools']>
 >['tools'][number];
 type SavedMcpConfig = typeof mcpServerConfigs.$inferSelect;
+/** 对外响应形态：剔除信封加密的密文、DEK、IV 与 AuthTag，凭据只以 key 名出现（详情接口）。 */
+export type PublicMcpConfig = Omit<
+  SavedMcpConfig,
+  'encryptedData' | 'encryptedDek' | 'iv' | 'authTag'
+>;
+
+function toPublicMcpConfig({
+  encryptedData: _encryptedData,
+  encryptedDek: _encryptedDek,
+  iv: _iv,
+  authTag: _authTag,
+  ...publicConfig
+}: SavedMcpConfig): PublicMcpConfig {
+  return publicConfig;
+}
 type McpOperation =
   '连接测试' | '工具发现' | '工具导入' | '运行时工具发现' | '运行时工具调用';
 type McpToolListingOperation = '工具发现' | '工具导入' | '运行时工具发现';
@@ -291,7 +306,7 @@ export class McpService {
     tenantId: string,
     query: McpServerConfigQueryType,
   ): Promise<{
-    data: (SavedMcpConfig & {
+    data: (PublicMcpConfig & {
       toolCount: number;
       sourceKind: ResourceSourceKind;
     })[];
@@ -377,7 +392,7 @@ export class McpService {
     );
 
     const data = rows.map((row) => ({
-      ...row,
+      ...toPublicMcpConfig(row),
       toolCount: toolCountMap.get(row.id) ?? 0,
       sourceKind: sourceKindMap.get(row.id) ?? 'manual',
     }));
@@ -411,14 +426,7 @@ export class McpService {
     const credentials = this.decryptStoredCredentials(config);
     const credentialKeys = credentials ? Object.keys(credentials) : [];
 
-    // 去掉加密二进制字段
-    const {
-      encryptedData: _ed,
-      encryptedDek: _ek,
-      iv: _iv,
-      authTag: _at,
-      ...safeConfig
-    } = config;
+    const safeConfig = toPublicMcpConfig(config);
     const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
       'mcp_server_config',
       [configId],
@@ -436,7 +444,7 @@ export class McpService {
     tenantId: string,
     configId: string,
     data: UpdateMcpServerConfigType,
-  ): Promise<SavedMcpConfig & { sourceKind: ResourceSourceKind }> {
+  ): Promise<PublicMcpConfig & { sourceKind: ResourceSourceKind }> {
     await this.getSavedConfigOrThrow(configId, tenantId);
 
     const setClause: Record<string, unknown> = {
@@ -497,7 +505,7 @@ export class McpService {
     );
 
     return {
-      ...updated,
+      ...toPublicMcpConfig(updated),
       sourceKind: sourceKindMap.get(configId) ?? 'manual',
     };
   }

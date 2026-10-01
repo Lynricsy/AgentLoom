@@ -567,4 +567,43 @@ describe('LLM Model E2E', () => {
       ]),
     );
   });
+
+  it.each(['creator', 'operator'] as const)(
+    '%s 可以读取组织的模型配置与提供商（建 Agent 选模型所需），但不能新建模型',
+    async (role) => {
+      const owner = await seedTenant(`llm-read-${role}-owner`);
+      const model = await createModel(owner.headers);
+      const member = createTestUser(`llm-read-${role}`);
+      await seedAppUser(ctx.adminSql, member.id, member.email);
+      await seedMember(
+        ctx.adminSql,
+        owner.organizationId,
+        member.id,
+        role,
+        owner.user.id,
+      );
+      const headers = authHeaders(
+        withTenantContext(member, owner.tenantId, role),
+      );
+
+      const models = await request(app.getHttpServer())
+        .get('/api/v1/llm-models')
+        .set(headers);
+      expect(models.status).toBe(200);
+      expect(models.body.data).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: model.id })]),
+      );
+
+      const providers = await request(app.getHttpServer())
+        .get(`/api/v1/llm-providers/${model.providerId}`)
+        .set(headers);
+      expect(providers.status).toBe(200);
+
+      const create = await request(app.getHttpServer())
+        .post('/api/v1/llm-models')
+        .set(headers)
+        .send(createModelPayload({ providerId: model.providerId }));
+      expect(create.status).toBe(403);
+    },
+  );
 });

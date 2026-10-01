@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { McpController } from '../mcp.controller';
 import type {
   DiscoverMcpToolsDto,
@@ -7,15 +6,6 @@ import type {
   TestMcpConnectionDto,
 } from '../dto';
 import type { McpService } from '../mcp.service';
-
-function getRoles(
-  controller: object,
-  methodName: string,
-): string[] | undefined {
-  const handler = (controller as Record<string, unknown>)[methodName] as
-    ((...args: never[]) => unknown) | undefined;
-  return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
-}
 
 function getCallableMethod<TArgs extends unknown[], TResult>(
   target: object,
@@ -139,52 +129,6 @@ describe('McpController', () => {
     };
 
     controller = new McpController(service as unknown as McpService);
-  });
-
-  describe('角色元数据', () => {
-    it('testConnection 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'testConnection')).toEqual([
-        'owner',
-        'admin',
-      ]);
-    });
-
-    it('discoverTools 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'discoverTools')).toEqual(['owner', 'admin']);
-    });
-
-    it('testSavedConfigConnection 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'testSavedConfigConnection')).toEqual([
-        'owner',
-        'admin',
-      ]);
-    });
-
-    it('importTools 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'importTools')).toEqual(['owner', 'admin']);
-    });
-
-    it('listTools 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'listTools')).toEqual(['owner', 'admin']);
-    });
-
-    it('rediscoverTools 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'rediscoverTools')).toEqual([
-        'owner',
-        'admin',
-      ]);
-    });
-
-    it('reimportTools 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'reimportTools')).toEqual(['owner', 'admin']);
-    });
-
-    it('deactivateTool 应当需要 owner 和 admin 角色', () => {
-      expect(getRoles(controller, 'deactivateTool')).toEqual([
-        'owner',
-        'admin',
-      ]);
-    });
   });
 
   describe('testConnection', () => {

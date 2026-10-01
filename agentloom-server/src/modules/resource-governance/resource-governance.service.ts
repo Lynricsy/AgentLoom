@@ -7,7 +7,7 @@ import {
   runInTenantTransaction,
 } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import type { OrgRole } from '../../common/types/org-role.type';
+import type { OrgRole } from '@agentloom/contracts';
 import type { DrizzleDB } from '../../database/database.module';
 import {
   type AuditActorType,

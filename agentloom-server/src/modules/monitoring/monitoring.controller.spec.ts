@@ -1,22 +1,12 @@
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DECORATORS } from '@nestjs/swagger';
-import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { MonitoringController } from './monitoring.controller';
 import type { MonitoringService } from './monitoring.service';
 
 const ORGANIZATION_ID = '019577a0-0000-7000-8000-000000001001';
 const TENANT_ID = '019577a0-0000-7000-8000-000000001005';
 const USER_ID = '019577a0-0000-7000-8000-000000001002';
-
-function getMethodRoles(methodName: keyof MonitoringController) {
-  const handler = Object.getOwnPropertyDescriptor(
-    MonitoringController.prototype,
-    methodName,
-  )?.value;
-
-  return handler ? Reflect.getMetadata(ROLES_KEY, handler) : undefined;
-}
 
 describe('MonitoringController', () => {
   let controller: MonitoringController;
@@ -32,10 +22,6 @@ describe('MonitoringController', () => {
     controller = new MonitoringController(
       service as unknown as MonitoringService,
     );
-  });
-
-  it('applies owner/admin roles to the monitoring handler', () => {
-    expect(getMethodRoles('getDashboard')).toEqual(['owner', 'admin']);
   });
 
   it('passes org, tenant, user, and window through to the service and wraps the response', async () => {

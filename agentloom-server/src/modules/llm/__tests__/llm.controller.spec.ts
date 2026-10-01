@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
 import { LlmController } from '../llm.controller';
 import { LlmProviderController } from '../llm-provider.controller';
 import type { LlmProviderService } from '../llm-provider.service';
@@ -29,16 +28,6 @@ const MOCK_CONFIG = {
   updatedAt: new Date('2025-01-01'),
 };
 
-function getRoles(target: object, methodName: string): string[] | undefined {
-  const descriptor = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(target),
-    methodName,
-  );
-  if (!descriptor?.value) return undefined;
-  return Reflect.getMetadata(ROLES_KEY, descriptor.value) as
-    string[] | undefined;
-}
-
 // ---------------------------------------------------------------------------
 // LlmController 测试
 // ---------------------------------------------------------------------------
@@ -60,40 +49,6 @@ describe('LlmController', () => {
   });
 
   // ========== 角色元数据验证 ==========
-
-  describe('角色权限', () => {
-    it('create 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'create');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-      expect(roles).not.toContain('viewer');
-    });
-
-    it('findAll 应需要 owner、admin 或 viewer', () => {
-      const roles = getRoles(controller, 'findAll');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'viewer']),
-      );
-    });
-
-    it('findById 应需要 owner、admin 或 viewer', () => {
-      const roles = getRoles(controller, 'findById');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'viewer']),
-      );
-    });
-
-    it('update 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'update');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-      expect(roles).not.toContain('viewer');
-    });
-
-    it('delete 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'delete');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-      expect(roles).not.toContain('viewer');
-    });
-  });
 
   // ========== 方法调用验证 ==========
 
@@ -208,73 +163,6 @@ describe('LlmProviderController', () => {
   });
 
   // ========== 角色元数据验证 ==========
-
-  describe('角色权限', () => {
-    it('findAll 应需要 owner、admin 或 viewer', () => {
-      const roles = getRoles(controller, 'findAll');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'viewer']),
-      );
-    });
-
-    it('findById 应需要 owner、admin 或 viewer', () => {
-      const roles = getRoles(controller, 'findById');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'viewer']),
-      );
-    });
-
-    it('create 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'create');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-      expect(roles).not.toContain('viewer');
-    });
-
-    it('update 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'update');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-      expect(roles).not.toContain('viewer');
-    });
-
-    it('delete 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'delete');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-      expect(roles).not.toContain('viewer');
-    });
-
-    it('resetBaseUrl 应需要 owner 或 admin', () => {
-      const roles = getRoles(controller, 'resetBaseUrl');
-      expect(roles).toEqual(expect.arrayContaining(['owner', 'admin']));
-    });
-
-    it('testConnection 应需要 owner、admin、creator 或 operator', () => {
-      const roles = getRoles(controller, 'testConnection');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'creator', 'operator']),
-      );
-    });
-
-    it('discoverModels 应需要 owner、admin、creator 或 operator', () => {
-      const roles = getRoles(controller, 'discoverModels');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'creator', 'operator']),
-      );
-    });
-
-    it('searchLiteLLMModels 应需要 owner、admin、creator 或 operator', () => {
-      const roles = getRoles(controller, 'searchLiteLLMModels');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'creator', 'operator']),
-      );
-    });
-
-    it('lookupModelMetadata 应需要 owner、admin、creator 或 operator', () => {
-      const roles = getRoles(controller, 'lookupModelMetadata');
-      expect(roles).toEqual(
-        expect.arrayContaining(['owner', 'admin', 'creator', 'operator']),
-      );
-    });
-  });
 
   // ========== CRUD 方法调用验证 ==========
 

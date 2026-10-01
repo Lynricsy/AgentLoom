@@ -3,7 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { TestConnectionDto } from './dto/test-connection.dto';
 import { FetchPrivateCloudModelsDto } from './dto/private-cloud-models.dto';
 import { PrivateCloudService } from './private-cloud.service';
@@ -14,7 +14,7 @@ export class PrivateCloudController {
   constructor(private readonly privateCloudService: PrivateCloudService) {}
 
   @Post('test-connection')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('llm:use')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '测试私有云端点连接' })
   @ApiResponse({ status: 200, description: '连接测试成功' })
@@ -33,7 +33,7 @@ export class PrivateCloudController {
   }
 
   @Post('private-cloud/models')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('llm:use')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取私有云端点可用模型列表' })
   @ApiResponse({ status: 200, description: '返回模型列表' })

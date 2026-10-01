@@ -14,7 +14,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateLlmProviderDto } from './dto/create-llm-provider.dto';
 import { TestProviderConnectionDto } from './dto/test-provider-connection.dto';
 import { UpdateLlmProviderDto } from './dto/update-llm-provider.dto';
@@ -34,7 +34,7 @@ export class LlmProviderController {
   // =========================================================================
 
   @Get('metadata/lookup')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('llm:use')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '查询 LiteLLM 模型元数据' })
   @ApiResponse({ status: 200, description: '返回模型元数据（可能为 null）' })
@@ -54,7 +54,7 @@ export class LlmProviderController {
   // =========================================================================
 
   @Get()
-  @Roles('owner', 'admin', 'viewer')
+  @RequirePermission('llm:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '列出组织下所有 LLM 提供商' })
   @ApiResponse({ status: 200, description: '返回 LLM 提供商列表' })
@@ -64,7 +64,7 @@ export class LlmProviderController {
   }
 
   @Get(':id')
-  @Roles('owner', 'admin', 'viewer')
+  @RequirePermission('llm:read')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取指定 LLM 提供商详情' })
   @ApiResponse({ status: 200, description: '返回 LLM 提供商详情' })
@@ -75,7 +75,7 @@ export class LlmProviderController {
   }
 
   @Post()
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建自定义 LLM 提供商' })
   @ApiResponse({ status: 201, description: 'LLM 提供商创建成功' })
@@ -90,7 +90,7 @@ export class LlmProviderController {
   }
 
   @Patch(':id')
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '更新 LLM 提供商' })
   @ApiResponse({ status: 200, description: 'LLM 提供商更新成功' })
@@ -112,7 +112,7 @@ export class LlmProviderController {
   }
 
   @Delete(':id')
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除自定义 LLM 提供商' })
   @ApiResponse({ status: 204, description: 'LLM 提供商删除成功' })
@@ -127,7 +127,7 @@ export class LlmProviderController {
   // =========================================================================
 
   @Post(':id/reset-base-url')
-  @Roles('owner', 'admin')
+  @RequirePermission('llm:manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '重置提供商 Base URL 为默认值' })
   @ApiResponse({ status: 200, description: 'Base URL 已重置' })
@@ -141,7 +141,7 @@ export class LlmProviderController {
   }
 
   @Post(':id/test-connection')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('llm:use')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '测试提供商连接' })
   @ApiResponse({ status: 200, description: '返回连接测试结果' })
@@ -162,7 +162,7 @@ export class LlmProviderController {
   }
 
   @Post(':id/discover-models')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('llm:use')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '发现提供商可用模型' })
   @ApiResponse({ status: 200, description: '返回发现的模型列表' })
@@ -182,7 +182,7 @@ export class LlmProviderController {
   // =========================================================================
 
   @Get(':id/litellm-models')
-  @Roles('owner', 'admin', 'creator', 'operator')
+  @RequirePermission('llm:use')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '搜索提供商在 LiteLLM 中的模型元数据' })
   @ApiResponse({ status: 200, description: '返回 LiteLLM 模型元数据列表' })
