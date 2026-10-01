@@ -27,6 +27,7 @@ services:
             - Content-Type
             - apikey
             - x-client-info
+            - x-supabase-api-version
           exposed_headers:
             - X-Total-Count
           credentials: true
