@@ -16,9 +16,9 @@ AgentLoom 在各阶段注册的全局组件：
 
 | 阶段 | 组件 | 注册位置 |
 | --- | --- | --- |
-| Middleware | `TenantMiddleware` | `agentloom-server/src/app.module.ts:171` 的 `configure()`，`forRoutes('*')` 并排除公开路由 |
-| Guards | `CustomThrottlerGuard` → `AuthGuard` → `TenantGuard` → `RolesGuard` | `agentloom-server/src/app.module.ts:152`，`APP_GUARD` 按声明顺序 |
-| Interceptors | `TenantTransactionInterceptor`（外层）→ `AuditLogInterceptor`（内层） | `agentloom-server/src/app.module.ts:148`、`agentloom-server/src/modules/evidence/evidence.module.ts:70` |
+| Middleware | `TenantMiddleware` | `agentloom-server/src/app.module.ts:177` 的 `configure()`，`forRoutes('*')` 并排除公开路由 |
+| Guards | `CustomThrottlerGuard` → `AuthGuard` → `TenantGuard` → `RolesGuard` → `ApiScopeGuard` | `agentloom-server/src/app.module.ts:153-174`，`APP_GUARD` 按声明顺序 |
+| Interceptors | `TenantTransactionInterceptor`（外层）→ `AuditLogInterceptor`（内层） | `agentloom-server/src/app.module.ts:150`、`agentloom-server/src/modules/evidence/evidence.module.ts:70` |
 | Pipes | `ZodValidationPipe` | `agentloom-server/src/main.ts:51`，`app.useGlobalPipes` |
 | Exception Filters | `AllExceptionsFilter` | `agentloom-server/src/main.ts:50`，`app.useGlobalFilters` |
 
@@ -35,6 +35,7 @@ sequenceDiagram
     participant AG as AuthGuard
     participant TNG as TenantGuard
     participant RG as RolesGuard
+    participant SG as ApiScopeGuard
     participant TI as TenantTransactionInterceptor
     participant AI as AuditLogInterceptor
     participant P as ZodValidationPipe
@@ -51,7 +52,9 @@ sequenceDiagram
     Note over TNG: 仅对声明了 @RequirePermission() 或 @Roles() 的路由校验 tenantId
     TNG->>RG: 通过
     Note over RG: @RequirePermission() 查权限矩阵，否则按 @Roles() 列表比对成员角色
-    RG->>TI: 通过
+    RG->>SG: 通过
+    Note over SG: 仅 X-Api-Key 且 scopes 非空时，校验路由权限在 scopes 内
+    SG->>TI: 通过
     Note over TI: req.user.tenantId 存在时开启租户事务
     TI->>AI: next.handle()
     AI->>P: next.handle()
@@ -122,11 +125,18 @@ sequenceDiagram
 
 源文件：`agentloom-server/src/common/guards/roles.guard.ts`；装饰器 `agentloom-server/src/common/decorators/require-permission.decorator.ts`、`agentloom-server/src/common/decorators/roles.decorator.ts`
 
-- 路由的访问要求由 `resolveRouteAccess()` 解析：`@RequirePermission(permission)` 与 `@Roles(...)` 各自方法级覆盖类级，`@RequirePermission` 优先，其角色集合取自 `agentloom-contracts/src/rbac.ts` 的 `RBAC_PERMISSION_MATRIX`。`TenantGuard` 与路由访问快照测试共用这个函数。
+- 路由的访问要求由 `resolveRouteAccess()` 解析：`@RequirePermission(permission)` 与 `@Roles(...)` 各自方法级覆盖类级，`@RequirePermission` 优先，其角色集合取自 `agentloom-contracts/src/rbac.ts` 的 `RBAC_PERMISSION_MATRIX`。`TenantGuard`、`ApiScopeGuard` 与路由访问快照测试共用这个函数。
 - 两者都没有或标了 `@Public()` 时放行。
 - 重复检查 `tenantId`，然后用 `RbacCacheService.getUserRole(tenantId, userId)` 读取成员角色（Redis 缓存，未命中时查 `organization_members`）。
 - **按集合精确匹配**：成员角色必须在解析出的角色集合中。角色之间没有隐式继承，矩阵中每个权限显式列出允许的角色。角色的含义见 [/dev/server/security](/dev/server/security#rbac-角色)。
 - 全部路由的有效访问集合由 `agentloom-server/src/common/guards/__tests__/route-access.snapshot.spec.ts` 生成快照（`__snapshots__/route-access.json`）；改动 `@Roles`、`@RequirePermission` 或矩阵后，快照 diff 必须只包含有意的变化。
+
+### ApiScopeGuard
+
+源文件：`agentloom-server/src/common/guards/api-scope.guard.ts`
+
+- 只对 `req.authMethod === 'api_key'` 且 `req.apiKeyScopes` 非空的请求生效；JWT 会话与 `scopes` 为 `null` 的平台 API Token 直接放行。`AuthGuard` 用 `parsePlatformApiScopes()` 把 Token 的 `scopes` 解析为权限数组写入 `req.apiKeyScopes`，词表外的历史取值被忽略。
+- 路由的 `@RequirePermission` 权限不在 `scopes` 中，或路由只声明了 `@Roles`、没有声明权限时，返回 403 `insufficient-scope`（默认拒绝）。排在 `RolesGuard` 之后：角色决定上限，`scopes` 只能收窄。
 
 ### TenantTransactionInterceptor
 

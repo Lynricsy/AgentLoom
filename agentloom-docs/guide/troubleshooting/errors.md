@@ -150,6 +150,7 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `platform-api-token-expired` | 401 | API Token 已过期 | 新建一个 Token |
 | `platform-api-token-limit-exceeded` | 409 | 你在当前组织的 API Token 数量已达上限 | 吊销不再使用的 Token，见 [API Token](/guide/integrations/api-keys) |
 
+| `insufficient-scope` | 403 | API Token 的作用域不包含该接口所需的权限，或该接口尚未声明权限 | 新建一个包含所需作用域的 Token，或留空作用域以继承账号权限，见 [API Token](/guide/integrations/api-keys) |
 ## 生成应用、分享与导入
 
 | type | HTTP 状态 | 含义 | 处理建议 |

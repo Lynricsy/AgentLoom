@@ -60,6 +60,7 @@ import { AgentApiModule } from './modules/agent-api/agent-api.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { ApiScopeGuard } from './common/guards/api-scope.guard';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { TenantTransactionInterceptor } from './common/interceptors/tenant-transaction.interceptor';
 import { RbacCacheService } from './common/services/rbac-cache.service';
@@ -166,6 +167,11 @@ function createThrottlerOptions(configService: ConfigService) {
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      // 必须在 RolesGuard 之后：角色是上限，API Token 作用域只能再收窄
+      provide: APP_GUARD,
+      useClass: ApiScopeGuard,
     },
   ],
 })

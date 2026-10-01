@@ -78,7 +78,8 @@ flowchart LR
     G1 --> G2["AuthGuard<br/>JWT → X-Api-Key"]
     G2 --> G3["TenantGuard"]
     G3 --> G4["RolesGuard<br/>权限矩阵 / @Roles"]
-    G4 --> I["拦截器<br/>TenantTransactionInterceptor<br/>AuditLogInterceptor"]
+    G4 --> G5["ApiScopeGuard<br/>API Token scopes"]
+    G5 --> I["拦截器<br/>TenantTransactionInterceptor<br/>AuditLogInterceptor"]
     I --> P["ZodValidationPipe"]
     P --> H["controller → service"]
     H -.->|"抛出异常"| F["AllExceptionsFilter<br/>problem+json"]
@@ -90,6 +91,7 @@ flowchart LR
 | `CustomThrottlerGuard` | `agentloom-server/src/common/guards/custom-throttler.guard.ts` | Redis 存储的限流，默认 100 次 / 60 秒；识别 `al_` 与 `alak_` 两种 Key |
 | `AuthGuard` | `agentloom-server/src/common/guards/auth.guard.ts` | 先验 `Authorization: Bearer` JWT，再验 `X-Api-Key` 平台 Token；`@Public()` 路由跳过 |
 | `TenantGuard`、`RolesGuard` | `agentloom-server/src/common/guards/` | 租户归属与角色校验；`@RequirePermission` 查 `agentloom-contracts/src/rbac.ts` 的权限矩阵，未迁移的路由按 `@Roles` |
+| `ApiScopeGuard` | `agentloom-server/src/common/guards/api-scope.guard.ts` | 平台 API Token 限定了 `scopes` 时，路由所需权限必须在其中 |
 | `TenantTransactionInterceptor` | `agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts` | 把处理器包进租户事务，使 RLS 生效；`request.user` 不存在时放行 |
 | `AuditLogInterceptor` | `agentloom-server/src/modules/evidence/audit-log.interceptor.ts` | 由 `EvidenceModule` 以 `APP_INTERCEPTOR` 注册，记录审计日志 |
 | `AllExceptionsFilter` | `agentloom-server/src/common/filters/all-exceptions.filter.ts` | 输出 RFC 9457 `application/problem+json` |

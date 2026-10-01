@@ -1468,4 +1468,58 @@ describe('Trigger E2E', () => {
       'success',
     ]);
   });
+
+  describe('Platform API Token scopes', () => {
+    async function seedApiToken(
+      owner: { user: TestUser; tenantId: string },
+      scopes: string | null,
+    ) {
+      const rawToken = `al_${crypto.randomBytes(32).toString('hex')}`;
+      await ctx.adminSql`
+        INSERT INTO "platform_api_tokens" (
+          id, user_id, tenant_id, name, token_hash, token_prefix, scopes
+        ) VALUES (
+          ${crypto.randomUUID()}::uuid,
+          ${owner.user.id}::uuid,
+          ${owner.tenantId}::uuid,
+          ${'scope-test'},
+          ${crypto.createHash('sha256').update(rawToken).digest('hex')},
+          ${rawToken.slice(0, 11)},
+          ${scopes}
+        )
+      `;
+      return rawToken;
+    }
+
+    it('只有 workflow:read 的 token 不能启动工作流，但可以读取；scopes 为 NULL 的历史 token 仍放行', async () => {
+      const owner = await seedTenant('scope-owner');
+      const { workflowId } = await seedExecutableWorkflow({
+        tenantId: owner.tenantId,
+        organizationId: owner.organizationId,
+        createdBy: owner.user.id,
+      });
+      const readOnlyToken = await seedApiToken(owner, 'workflow:read');
+      const legacyToken = await seedApiToken(owner, null);
+
+      const runWithReadOnly = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflowId}/run`)
+        .set('x-api-key', readOnlyToken)
+        .send({ inputParams: {} });
+      expect(runWithReadOnly.status).toBe(403);
+      expect(runWithReadOnly.body).toMatchObject({
+        type: 'https://agentloom.dev/errors/insufficient-scope',
+      });
+
+      const readWithReadOnly = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflowId}`)
+        .set('x-api-key', readOnlyToken);
+      expect(readWithReadOnly.status).toBe(200);
+
+      const runWithLegacy = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflowId}/run`)
+        .set('x-api-key', legacyToken)
+        .send({ inputParams: {} });
+      expect(runWithLegacy.status).toBe(202);
+    });
+  });
 });

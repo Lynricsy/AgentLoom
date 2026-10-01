@@ -20,7 +20,7 @@ docType: reference
 | 实时事件 | `agentloom-contracts/src/conversation-events.ts` | 对话断线兜底事件 `conversation.state.snapshot` |
 | Agent 配置 | `agentloom-contracts/src/agent-runtime-config.ts` | `AGENT_RUNTIME_MODES`（`sandbox` \| `no_sandbox`）、模型、工具、知识库、路由、沙箱配置与递归子 Agent |
 | 对外 API | `agentloom-contracts/src/agent-api-events.ts` | `/api/v1/agent-api/**` 的 run 资源与 SSE 事件，见 [Agent API](/api/agent-api) |
-| 权限 | `agentloom-contracts/src/rbac.ts` | `ORG_ROLES`、`OrgRole`、`RBAC_PERMISSION_MATRIX`、`Permission`、`PERMISSIONS`、`hasPermission()`；server 的 `@RequirePermission` / `RolesGuard` 与 Studio 导航过滤共用这一份矩阵 |
+| 权限 | `agentloom-contracts/src/rbac.ts` | `ORG_ROLES`、`OrgRole`、`RBAC_PERMISSION_MATRIX`、`Permission`、`PERMISSIONS`、`hasPermission()`、`parsePlatformApiScopes()`；server 的 `@RequirePermission` / `RolesGuard` / `ApiScopeGuard` 与 Studio 导航过滤共用这一份矩阵，平台 API Token 的 `scopes` 取值也是这里的权限名 |
 | fixtures | `agentloom-contracts/fixtures/` | 合法 server wire JSON，随包发布（`./fixtures/*` 导出），供 contracts、server、Studio、mobile 的契约测试读取 |
 
 Socket 事件信封与载荷保持 camelCase，不套用 REST 的大小写转换。server 的部分模块路径会再导出 contracts 的类型；定义源只在本包，不要在 server 再声明同名契约。

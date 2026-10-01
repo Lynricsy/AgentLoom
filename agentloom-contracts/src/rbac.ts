@@ -68,7 +68,33 @@ export type Permission = keyof typeof RBAC_PERMISSION_MATRIX;
 
 export const PERMISSIONS = Object.keys(RBAC_PERMISSION_MATRIX) as Permission[];
 
+export function isPermission(value: string): value is Permission {
+  return Object.hasOwn(RBAC_PERMISSION_MATRIX, value);
+}
+
 export function hasPermission(role: OrgRole, permission: Permission): boolean {
   return (RBAC_PERMISSION_MATRIX[permission] as readonly OrgRole[]).includes(role);
 }
 
+/**
+ * 解析 API Token 的 scopes 字符串：空格或逗号分隔，去重并按 PERMISSIONS 顺序输出。
+ * `null` / 空串表示未限定（继承所有者全部权限）；`invalid` 列出词表外的条目。
+ */
+export function parsePlatformApiScopes(raw: string | null | undefined): {
+  scopes: Permission[] | null;
+  invalid: string[];
+} {
+  const entries = (raw ?? '')
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (entries.length === 0) {
+    return { scopes: null, invalid: [] };
+  }
+
+  return {
+    scopes: PERMISSIONS.filter((permission) => entries.includes(permission)),
+    invalid: entries.filter((entry) => !isPermission(entry)),
+  };
+}

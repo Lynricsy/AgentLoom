@@ -7,6 +7,7 @@ import {
 import { ModuleRef, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest } from 'fastify';
+import { parsePlatformApiScopes, type Permission } from '@agentloom/contracts';
 import * as jwt from 'jsonwebtoken';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { MfaRequiredException } from '../exceptions/auth.exceptions';
@@ -35,6 +36,8 @@ type RequestWithAuthContext = FastifyRequest & {
   tenantId?: string;
   authMethod: AuthMethod;
   apiKeyPrefix?: string;
+  /** null = 未限定作用域（继承所有者全部权限），由 ApiScopeGuard 消费 */
+  apiKeyScopes?: Permission[] | null;
 };
 
 @Injectable()
@@ -195,6 +198,8 @@ export class AuthGuard implements CanActivate {
 
       this.setRequestAuth(request, payload, 'api_key', {
         apiKeyPrefix: validated.tokenPrefix,
+        // 词表外的历史条目不授予任何权限
+        apiKeyScopes: parsePlatformApiScopes(validated.scopes).scopes,
       });
 
       tokenService.updateLastUsedAt(validated.tokenId).catch((err) => {
@@ -224,6 +229,7 @@ export class AuthGuard implements CanActivate {
     authMethod: AuthMethod,
     options: {
       apiKeyPrefix?: string;
+      apiKeyScopes?: Permission[] | null;
     } = {},
   ): void {
     const req = request as RequestWithAuthContext;
@@ -233,10 +239,12 @@ export class AuthGuard implements CanActivate {
     if (authMethod === 'api_key' && payload.tenantId) {
       req.tenantId = payload.tenantId;
       req.apiKeyPrefix = options.apiKeyPrefix;
+      req.apiKeyScopes = options.apiKeyScopes ?? null;
       return;
     }
 
     delete req.apiKeyPrefix;
+    delete req.apiKeyScopes;
   }
 
   private isJwtPayloadObject(

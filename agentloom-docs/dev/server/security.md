@@ -45,6 +45,7 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 - 明文为 `al_` 加 32 字节随机数的 hex，只在创建响应中返回一次；数据库存 SHA-256 哈希，另存 `al_` 加 8 位的 `tokenPrefix` 供展示和限流识别。
 - 每个用户在每个租户下最多持有 20 个未吊销的 token。
 - 校验检查前缀、哈希、吊销标记与过期时间，角色从 `RbacCacheService` 读取，即 token 继承签发者当前的组织角色。
+- `scopes` 只接受权限名（`agentloom-contracts/src/rbac.ts` 的 `PERMISSIONS`），空格或逗号分隔，词表外的值在创建时返回 422。留空（`null`）表示继承签发者角色的全部权限。限定了 scopes 的 token 由 `ApiScopeGuard`（`agentloom-server/src/common/guards/api-scope.guard.ts`，排在 `RolesGuard` 之后）检查：路由的 `@RequirePermission` 必须在 scopes 内；只声明 `@Roles` 的路由一律拒绝，返回 403 `insufficient-scope`。
 - 管理路由前缀为 `/api/v1/platform-api-tokens`。
 
 ## Agent API Key
@@ -53,7 +54,7 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 
 ## RBAC 角色
 
-组织角色与权限矩阵定义在 `agentloom-contracts/src/rbac.ts`（`ORG_ROLES`、`RBAC_PERMISSION_MATRIX`、`hasPermission`），server 与 Studio 共用；数据库枚举 `org_role` 取值 `owner`、`admin`、`creator`、`operator`、`viewer`。
+组织角色与权限矩阵定义在 `agentloom-contracts/src/rbac.ts`（`ORG_ROLES`、`RBAC_PERMISSION_MATRIX`、`hasPermission`），server、Studio 与平台 API Token 的 scopes 共用；数据库枚举 `org_role` 取值 `owner`、`admin`、`creator`、`operator`、`viewer`。
 
 - 路由用 `@RequirePermission(permission)` 声明所需权限，`RolesGuard` 取矩阵中该权限的角色集合判定；尚未迁移的路由仍用 `@Roles(...)` 列出角色。两者都是方法级覆盖类级，`@RequirePermission` 优先于 `@Roles`。角色之间**没有继承**，矩阵为每个权限显式列出允许的角色。
 - 未声明 `@RequirePermission` 或 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查。

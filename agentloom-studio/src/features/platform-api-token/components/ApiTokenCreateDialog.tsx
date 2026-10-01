@@ -1,7 +1,8 @@
-import { useRef, useState, type FormEvent } from 'react'
-import { Check, Copy, ShieldAlert } from 'lucide-react'
+import { useRef, useState, type FormEvent } from "react";
+import { Check, Copy, ShieldAlert } from "lucide-react";
+import { PERMISSIONS } from "@agentloom/contracts";
 
-import { Button } from '@/shared/ui/button'
+import { Button } from "@/shared/ui/button";
 import {
   Dialog,
   DialogBody,
@@ -10,140 +11,142 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/shared/ui/dialog'
-import { Input } from '@/shared/ui/input'
-import { useToast } from '@/shared/ui/toast'
+} from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
+import { useToast } from "@/shared/ui/toast";
 
-import { useCreatePlatformApiToken } from '../api/platformApiTokenQueries'
-import type { CreatedPlatformApiToken } from '../types'
+import { useCreatePlatformApiToken } from "../api/platformApiTokenQueries";
+import type { CreatedPlatformApiToken } from "../types";
 
 interface ApiTokenCreateDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 interface FormState {
-  name: string
-  scopes: string
-  expiresAt: string
+  name: string;
+  scopes: string;
+  expiresAt: string;
 }
 
-const EMPTY_FORM: FormState = { name: '', scopes: '', expiresAt: '' }
+const EMPTY_FORM: FormState = { name: "", scopes: "", expiresAt: "" };
 
-const NAME_MAX_LENGTH = 255
-const SCOPES_MAX_LENGTH = 1024
+const NAME_MAX_LENGTH = 255;
+const SCOPES_MAX_LENGTH = 1024;
 
 /** `datetime-local` 的本地时间字符串转 ISO；非法输入返回 undefined */
 function toIsoDateTime(value: string): string | undefined {
   if (!value.trim()) {
-    return undefined
+    return undefined;
   }
 
-  const parsed = new Date(value)
+  const parsed = new Date(value);
 
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
 /** `navigator.clipboard` 不可用时选中文本，让用户手动 Ctrl/Cmd + C */
 function selectElementText(element: HTMLElement | null): boolean {
-  const selection = globalThis.getSelection?.()
+  const selection = globalThis.getSelection?.();
 
-  if (!element || !selection || typeof document.createRange !== 'function') {
-    return false
+  if (!element || !selection || typeof document.createRange !== "function") {
+    return false;
   }
 
-  const range = document.createRange()
-  range.selectNodeContents(element)
-  selection.removeAllRanges()
-  selection.addRange(range)
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
 
-  return true
+  return true;
 }
 
 export function ApiTokenCreateDialog({
   open,
   onOpenChange,
 }: ApiTokenCreateDialogProps) {
-  const { notify } = useToast()
-  const createMutation = useCreatePlatformApiToken()
+  const { notify } = useToast();
+  const createMutation = useCreatePlatformApiToken();
 
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
-  const [nameError, setNameError] = useState<string | null>(null)
-  const [created, setCreated] = useState<CreatedPlatformApiToken | null>(null)
-  const [copied, setCopied] = useState(false)
-  const tokenRef = useRef<HTMLElement>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [created, setCreated] = useState<CreatedPlatformApiToken | null>(null);
+  const [copied, setCopied] = useState(false);
+  const tokenRef = useRef<HTMLElement>(null);
 
   function handleOpenChange(next: boolean) {
     if (!next) {
       // 关闭即销毁明文 token：这是它在前端存在的唯一生命周期
-      setForm(EMPTY_FORM)
-      setNameError(null)
-      setCreated(null)
-      setCopied(false)
+      setForm(EMPTY_FORM);
+      setNameError(null);
+      setCreated(null);
+      setCopied(false);
     }
 
-    onOpenChange(next)
+    onOpenChange(next);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+    event.preventDefault();
 
-    const name = form.name.trim()
+    const name = form.name.trim();
 
     if (!name) {
-      setNameError('请填写 Token 名称')
-      return
+      setNameError("请填写 Token 名称");
+      return;
     }
 
-    setNameError(null)
+    setNameError(null);
 
-    const scopes = form.scopes.trim()
+    const scopes = form.scopes.trim();
 
     try {
       const token = await createMutation.mutateAsync({
         name,
         scopes: scopes || undefined,
         expiresAt: toIsoDateTime(form.expiresAt),
-      })
+      });
 
-      setCreated(token)
+      setCreated(token);
       notify({
-        variant: 'success',
-        title: 'Token 已创建',
+        variant: "success",
+        title: "Token 已创建",
         description: `「${token.name}」已生成，请立即复制保存。`,
-      })
+      });
     } catch (error) {
       notify({
-        variant: 'error',
-        title: '创建失败',
+        variant: "error",
+        title: "创建失败",
         description:
-          error instanceof Error ? error.message : '创建 API Token 时发生未知错误。',
-      })
+          error instanceof Error
+            ? error.message
+            : "创建 API Token 时发生未知错误。",
+      });
     }
   }
 
   async function handleCopy() {
     if (!created) {
-      return
+      return;
     }
 
     try {
       if (!navigator.clipboard?.writeText) {
-        throw new Error('clipboard unavailable')
+        throw new Error("clipboard unavailable");
       }
 
-      await navigator.clipboard.writeText(created.token)
-      setCopied(true)
-      notify({ variant: 'success', description: 'Token 已复制到剪贴板。' })
+      await navigator.clipboard.writeText(created.token);
+      setCopied(true);
+      notify({ variant: "success", description: "Token 已复制到剪贴板。" });
     } catch {
-      const selected = selectElementText(tokenRef.current)
+      const selected = selectElementText(tokenRef.current);
       notify({
-        variant: 'warning',
-        title: '无法自动复制',
+        variant: "warning",
+        title: "无法自动复制",
         description: selected
-          ? '当前浏览器不允许自动复制，已为你选中 Token，请按 Ctrl / Cmd + C 手动复制。'
-          : '当前浏览器不允许自动复制，请手动选中下方 Token 后复制。',
-      })
+          ? "当前浏览器不允许自动复制，已为你选中 Token，请按 Ctrl / Cmd + C 手动复制。"
+          : "当前浏览器不允许自动复制，请手动选中下方 Token 后复制。",
+      });
     }
   }
 
@@ -210,7 +213,8 @@ export function ApiTokenCreateDialog({
             <DialogHeader>
               <DialogTitle>创建 API Token</DialogTitle>
               <DialogDescription>
-                用于以你的身份调用 AgentLoom 开放接口，请按最小权限原则限定作用域与有效期。
+                用于以你的身份调用 AgentLoom
+                开放接口，请按最小权限原则限定作用域与有效期。
               </DialogDescription>
             </DialogHeader>
 
@@ -229,16 +233,21 @@ export function ApiTokenCreateDialog({
                   placeholder="例如：CI 部署流水线"
                   aria-invalid={nameError ? true : undefined}
                   onChange={(event) => {
-                    setForm((current) => ({ ...current, name: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }));
                     if (nameError) {
-                      setNameError(null)
+                      setNameError(null);
                     }
                   }}
                 />
                 {nameError ? (
                   <p className="text-xs font-medium text-error">{nameError}</p>
                 ) : (
-                  <p className="text-xs text-muted">便于日后在列表中辨认用途。</p>
+                  <p className="text-xs text-muted">
+                    便于日后在列表中辨认用途。
+                  </p>
                 )}
               </div>
 
@@ -254,13 +263,17 @@ export function ApiTokenCreateDialog({
                   id="api-token-scopes"
                   value={form.scopes}
                   maxLength={SCOPES_MAX_LENGTH}
-                  placeholder="workflow:read,execution:write"
+                  placeholder="workflow:read workflow:run"
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, scopes: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      scopes: event.target.value,
+                    }))
                   }
                 />
                 <p className="text-xs text-muted">
-                  以英文逗号分隔；留空表示继承你当前账号的全部权限。
+                  空格或逗号分隔，可选：{PERMISSIONS.join("、")}。填写后 Token
+                  只能调用声明了对应作用域的接口；留空表示继承你当前账号的全部权限。
                 </p>
               </div>
 
@@ -283,7 +296,9 @@ export function ApiTokenCreateDialog({
                     }))
                   }
                 />
-                <p className="text-xs text-muted">留空表示长期有效，直至被撤销。</p>
+                <p className="text-xs text-muted">
+                  留空表示长期有效，直至被撤销。
+                </p>
               </div>
             </DialogBody>
 
@@ -296,12 +311,12 @@ export function ApiTokenCreateDialog({
                 取消
               </Button>
               <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? '创建中…' : '创建 Token'}
+                {createMutation.isPending ? "创建中…" : "创建 Token"}
               </Button>
             </DialogFooter>
           </form>
         )}
       </DialogContent>
     </Dialog>
-  )
+  );
 }

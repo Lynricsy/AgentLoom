@@ -39,10 +39,16 @@ curl -s http://localhost:3000/api/v1/health
 
 ### 平台 API Token
 
-- 以创建者身份调用，权限等于创建者在该组织中的当前角色（每次请求时解析，不在 Token 中固化）。
+- 以创建者身份调用，权限等于创建者在该组织中的当前角色（每次请求时解析，不在 Token 中固化），再由 `scopes` 收窄。
 - 明文只在创建响应的 `data.token` 中返回一次，服务端只保存 SHA-256 哈希。
 - 每个用户在每个组织最多保留 20 个 Token。
-- 创建请求体字段：`name`（必填）、`scopes`（可选字符串，最长 1024）、`expires_at`（可选，ISO 8601）。`scopes` 只做存储与展示，服务端不据此限制权限。
+- 创建请求体字段：`name`（必填）、`scopes`（可选字符串）、`expires_at`（可选，ISO 8601）。
+- `scopes` 的取值是权限名（`agentloom-contracts/src/rbac.ts` 中 `RBAC_PERMISSION_MATRIX` 的键，如 `workflow:read`、`workflow:run`），以空格或逗号分隔；含未知取值时返回 422，保存时按词表顺序规范化为空格分隔。留空（`null`）表示继承创建者角色的全部权限。
+- 限定了 `scopes` 的 Token 只能调用所需权限在 `scopes` 内的接口；所需权限不在其中、或接口尚未声明所需权限时，返回 403 `insufficient-scope`。例如只有 `workflow:read` 的 Token 启动工作流：
+
+  ```json
+  {"type":"https://agentloom.dev/errors/insufficient-scope","title":"API Token 作用域不足","status":403,"detail":"缺少作用域：workflow:run","instance":"/api/v1/workflow-definitions/353d0225-d3a0-4502-bf91-fbf2ad817fa5/run","requiredScope":"workflow:run","grantedScopes":["workflow:read"]}
+  ```
 
 ```bash
 curl -s http://localhost:3000/api/v1/platform-api-tokens \
@@ -82,6 +88,7 @@ curl -s "http://localhost:3000/api/v1/workflow-definitions?pageSize=1" \
 | `agent-api-key-invalid` | 401 | Agent API Key 无效、已吊销或已过期 |
 | `tenant-required` | 400 | 令牌没有组织上下文 |
 | `insufficient-permissions` | 403 | 角色不满足接口要求 |
+| `insufficient-scope` | 403 | 平台 API Token 的 `scopes` 不含接口所需权限，或接口未声明所需权限 |
 
 ## 字段命名
 
