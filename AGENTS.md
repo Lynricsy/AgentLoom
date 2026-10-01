@@ -27,6 +27,8 @@ server ──mTLS──→ agentloom-firecracker-runtime × N 节点（Go runtim
 - **类型流**：server DTO/OpenAPI → `agentloom-server/sdk/typescript-models` → `agentloom-api-client/src/models.ts`。根命令 `pnpm contracts:regen` 一键再生成（需要 Redis 可达）。
 - **Agent 双运行态**：`no_sandbox` 走 `InProcessAgentAdapter → PiAgentCoreAdapter`（pi-agent-core 进程内）；`sandbox` 走 Firecracker guest 内 pi-coding-agent。`SandboxModule` 将 `SANDBOX_RUNTIME_DRIVER` 绑定到 `FirecrackerRuntimeService`（undici mTLS 调 manager）；server/worker 不持有 KVM/网络/cgroup 特权。
 - **沙箱节点路由**：运行时节点登记在 `sandbox_runtime_nodes`（平台级表，无 tenant_id / 无 RLS），经 `/api/v1/sandbox-nodes` 管理。`sandbox_sessions.runtime_handle` 为复合格式 `<nodeId>/<managerHandle>`，因此所有按 handle 定位的 driver 方法无需改接口即可路由回原节点；创建时按各节点 `GET /v1/capacity` 探针择优（空闲内存比降序，503/不可达换下一节点）。全节点共用同一套 client 证书。
+- **Agent 对外 API**：第三方以 Agent 专用 Key（`agent_api_keys`，`Authorization: Bearer alak_…`，只绑定一个 Agent）调用 `/api/v1/agent-api/**`。该 controller 为 `@Public()` + `AgentApiKeyGuard`，不设置 `request.user`，因此不走全局租户事务拦截器，service 内用 `runInTenantTransaction` 短事务。一次调用对应一条 `agent_api_runs`（每对话至多一个 queued/running；建 run 时 `SELECT … FOR UPDATE` 锁 Key 行后计数实现并发上限）。执行进程的 `AgentApiEventMirrorListener` 把对话执行事件映射为对外事件写入 Redis Stream `agentloom:agent-api:run:{runId}:events`，任一实例经 SSE 转发并支持 `Last-Event-ID` 续传；`agent-api-maintenance` 队列清扫失联 run 与闲置 API 对话。API 来源对话 `agent_conversations.source='api'`、`created_by` 为 null，不注册自进化工具、不自动生成标题。
+- **对话跨实例派发**：`AgentExecutionService` 经 Redis 频道 `__agent_conversation_cancel__` 跨实例中止、`__agent_conversation_notify__` 跨实例唤醒空闲 loop；`AgentExecutionWorker.onCompleted` 在 job 完成后补发未处理消息，避免 loop 退出窗口内到达的消息滞留。
 - **响应契约**：list/detail 响应由 Zod schema（`...SwaggerSchema` + `createZodDto`）单一定义，手写类型改为 `z.infer` 导出；响应 schema 不得复用带 `.default()` 的请求 schema。
 
 ## Key Directories
