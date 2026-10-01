@@ -1,290 +1,102 @@
-# 插件 CLI
-
-`@agentloom/plugin-cli` 是 AgentLoom 插件开发的命令行工具，提供脚手架创建、构建打包、密钥管理、开发调试和签名发布 5 个核心命令。
-
-## 基本信息
-
-| 属性     | 值                                                                               |
-| -------- | -------------------------------------------------------------------------------- |
-| 包名     | `@agentloom/plugin-cli`                                                          |
-| 版本     | `0.1.0`                                                                          |
-| 入口命令 | `agentloom-plugin`                                                               |
-| 核心依赖 | `commander ^12`、`prompts ^2.4`、`archiver ^7`、`chokidar ^3.6`、`express ^4.18` |
-
-## 安装
-
-```bash
-npm install -g @agentloom/plugin-cli
-```
-
-## 命令概览
-
-| 命令            | 说明                                    | 核心参数       |
-| --------------- | --------------------------------------- | -------------- |
-| `create <name>` | 创建 TypeScript 或 Rust/Extism 插件项目 | `--wasm`       |
-| `build`         | 构建并打包 `.alp`                       | `-o`、`--wasm` |
-| `keys generate` | 生成 RSA 密钥对                         | `-o`、`-b`     |
-| `dev`           | 启动 TypeScript 本地预览服务器          | `-p`           |
-| `publish`       | 签名并生成可注册的 `.alp`（不负责上传） | `-k`、`-o`     |
-
+---
+docType: reference
 ---
 
-## `create` — 创建插件项目
+# Plugin CLI
 
-交互式创建一个新的插件项目脚手架。默认生成仅用于 `dev` 本地预览的 TypeScript
-项目；加 `--wasm` 生成正式服务端运行所需的 Rust/Extism 项目。
+`@agentloom/plugin-cli`（源码 `agentloom-plugin-cli/`）提供命令 `agentloom-plugin`。包目前不在 npm 上发布，构建与使用方式：
 
 ```bash
-agentloom-plugin create <name> [--wasm]
+pnpm --filter @agentloom/plugin-cli build
+alias agentloom-plugin="node $PWD/agentloom-plugin-cli/dist/cli.js"
 ```
 
-### 交互提示
+| 命令 | 作用 |
+| --- | --- |
+| `create <name> [--wasm]` | 创建插件项目 |
+| `build [-o <dir>] [--wasm]` | 打包 `.alp` |
+| `keys generate [-o <dir>] [-b <bits>]` | 生成 RSA 签名密钥对 |
+| `dev [-p <port>]` | 启动 TypeScript 本地预览服务器 |
+| `publish -k <path> [-o <dir>]` | 签名已构建的 `.alp`，不上传 |
 
-| 字段        | 说明       | 默认值 |
-| ----------- | ---------- | ------ |
-| Author      | 作者名     | —      |
-| Description | 插件描述   | —      |
-| License     | 开源许可证 | MIT    |
+## `create`
 
-### 生成文件
+`agentloom-plugin create <name> [--wasm]`
 
-默认 TypeScript 脚手架包含 `manifest.json`、`package.json`、`tsconfig.json`、
-`src/index.ts` 和 `tests/index.test.ts`。Rust/Extism 脚手架使用
-`agentloom-plugin create <name> --wasm` 创建，包含：
+交互询问「作者名称」「插件描述」「许可证」（默认 `MIT`），在当前目录下创建 `<name>`（转为小写、非字母数字替换为 `-`）。目录已存在时报错退出。
+
+| 选项 | 生成内容 |
+| --- | --- |
+| `--wasm` | `Cargo.toml`、`src/lib.rs`（Extism `execute` 导出，示例节点 `example.echo`）、`node-definitions.json`、`manifest.json`（含 `wasmEntry: "dist/plugin.wasm"`）、`package.json`、`README.md`。可注册到平台 |
+| 不带 | `src/index.ts`（空节点列表）、`tests/index.test.ts`、`tsconfig.json`、`manifest.json`、`package.json`。仅供 `dev` 本地预览 |
+
+两种项目的 `manifest.json` 都以 `com.agentloom.<name>` 为 `id`、`0.1.0` 为 `version`，并写入 `keywords`。TypeScript 项目的 `package.json` 依赖 `"@agentloom/plugin-sdk": "file:../agentloom-plugin-sdk"`，因此项目目录的上一级需要有 `agentloom-plugin-sdk`（放在仓库根目录下，或在上一级建一个指向它的符号链接）。
+
+## `build`
+
+`agentloom-plugin build [-o <dir>] [--wasm]`
+
+| 选项 | 默认 | 说明 |
+| --- | --- | --- |
+| `-o, --output <dir>` | `build` | 输出目录 |
+| `--wasm` | 关 | 构建 WASM 插件 |
+
+- `--wasm`：要求存在 `Cargo.toml` 与非空且合法的 `node-definitions.json`；`dist/plugin.wasm` 不存在时执行 `cargo build --target wasm32-unknown-unknown --release` 并复制产物，已存在时跳过编译。
+- 不带 `--wasm`：执行 `npx tsc`，从 `dist/index.js` 读取节点定义；结束时提示该产物不能注册到服务端。
+- 输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、`node-definitions.json`、`dist/`、`package.json`，以及存在时的 `README.md`。
+
+## `keys generate`
+
+`agentloom-plugin keys generate [-o <dir>] [-b <bits>]`
+
+| 选项 | 默认 | 说明 |
+| --- | --- | --- |
+| `-o, --output <dir>` | `./keys` | 输出目录 |
+| `-b, --bits <bits>` | `2048` | 仅支持 `2048`、`3072`、`4096` |
+
+写出 `public.pem`（SPKI）与 `private.pem`（PKCS#8，权限 `0600`），打印公钥指纹。`private.pem` 已存在时报错，不覆盖。
+
+## `dev`
+
+`agentloom-plugin dev [-p <port>]`，端口默认 `4400`。
+
+只服务 TypeScript 项目：启动时导入 `dist/index.js`（或 `package.json` 的 `main`），所以先构建。没有构建产物时：
 
 ```text
-<name>/
-├── Cargo.toml
-├── manifest.json              # wasmEntry: dist/plugin.wasm
-├── node-definitions.json      # 至少一个合法节点定义
-├── package.json
-├── README.md
-└── src/
-    └── lib.rs                 # Extism execute export
+Error: 未找到插件入口文件，请先构建插件（例如生成 dist/index.js）或确认 package.json.main 配置正确。
 ```
 
-### create 示例
+| 端点 | 说明 |
+| --- | --- |
+| `GET /manifest` | 返回 `manifest.json` |
+| `GET /nodes` | 返回节点定义（不含 `execute`） |
+| `POST /nodes/:type/execute` | 请求体 `{ "inputs": {…}, "config": {…} }`，调用节点的 `execute`；未知类型 404，执行抛错 500 |
+
+`dev` 不编译 TypeScript。它监听 `src/` 的变化并重新导入 `dist/index.js`：修改代码后先执行 `npx tsc`，再保存一次 `src/` 下的文件触发重载。
+
+以下输出来自一个节点类型为 `text-upper` 的预览项目（先 `pnpm install` 与 `agentloom-plugin build`，再 `agentloom-plugin dev`）：
 
 ```bash
-# TypeScript：仅供 dev 本地预览
-agentloom-plugin create text-processor
-
-# Rust/Extism：用于构建可注册的正式插件
-agentloom-plugin create text-processor --wasm
+curl -s http://localhost:4400/nodes
+curl -s -X POST http://localhost:4400/nodes/text-upper/execute \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs":{"text":"hello agentloom"},"config":{"prefix":">> "}}'
 ```
-
-生成的 `manifest.json`：
-
-```json
-{
-  "id": "com.agentloom.text-processor",
-  "name": "text-processor",
-  "version": "1.0.0",
-  "author": "your-name",
-  "description": "A text processor plugin",
-  "license": "MIT",
-  "minPlatformVersion": "0.1.0",
-  "permissions": []
-}
-```
-
----
-
-## `build` — 构建打包
-
-创建 `.alp` 归档。正式服务端插件必须使用 `--wasm`；默认 TypeScript 构建仅供
-`agentloom-plugin dev` 本地预览，CLI 会在构建成功后输出明确警告。
-
-```bash
-agentloom-plugin build [options]
-```
-
-### build 参数
-
-| 参数                 | 说明                                      | 默认值   |
-| -------------------- | ----------------------------------------- | -------- |
-| `-o, --output <dir>` | 输出目录                                  | `build/` |
-| `--wasm`             | 打包正式 WASM；无预置产物时运行 cargo     | `false`  |
-
-### WASM 节点定义要求
-
-项目根目录必须存在非空的 `node-definitions.json`。每个节点使用与 SDK 相同的
-节点 schema；端口 `dataType` 必须取自 14 值 `PortDataType`。文件缺失、数组为空、
-节点字段非法或 `type` 重复都会终止构建，并在运行 cargo 前给出修复提示。
-
-### 归档内容
-
-可注册的 `.alp` 是 ZIP 归档，至少包含：
 
 ```text
-{pluginId}-{version}.alp
-├── manifest.json
-├── node-definitions.json
-└── dist/
-    └── plugin.wasm       # manifest.wasmEntry 指向此文件
+[{"type":"text-upper","label":"文本转大写","category":"transform","description":"将输入文本转换为大写形式","inputPorts":[{"id":"text","label":"文本","dataType":"text","required":true}],"outputPorts":[{"id":"result","label":"结果","dataType":"text"}]}]
+{"outputs":{"result":">> HELLO AGENTLOOM"}}
 ```
 
-### build 示例
+（实跑时端口用 `-p` 改成了其他值，输出与端口无关。）
 
-```bash
-# TypeScript 本地预览产物；不能注册到服务端
-agentloom-plugin build
+## `publish`
 
-# 正式 WASM 构建
-agentloom-plugin build --wasm
+`agentloom-plugin publish -k <path> [-o <dir>]`
 
-# 指定输出目录
-agentloom-plugin build --wasm -o dist/
-```
+| 选项 | 默认 | 说明 |
+| --- | --- | --- |
+| `-k, --key <path>` | 无，必填 | 签名私钥；缺少时打印提示并以退出码 1 结束 |
+| `-o, --output <dir>` | `build` | `.alp` 所在目录 |
 
----
-
-## `keys` — 密钥管理
-
-生成用于插件签名的 RSA 密钥对。
-
-```bash
-agentloom-plugin keys generate [options]
-```
-
-### keys 参数
-
-| 参数                  | 说明         | 默认值  |
-| --------------------- | ------------ | ------- |
-| `-o, --output <dir>`  | 输出目录     | `keys/` |
-| `-b, --bits <number>` | RSA 密钥长度 | `2048`  |
-
-### 支持的密钥长度
-
-- `2048` — 最低要求，默认值
-- `3072` — 推荐用于生产
-- `4096` — 最高安全级别
-
-### 输出文件
-
-```text
-keys/
-├── public.pem       # 公钥（注册到平台）
-└── private.pem      # 私钥（本地保管，用于签名）
-```
-
-### 密钥指纹
-
-生成完成后会输出密钥指纹（SPKI DER 的 SHA-256），用于在平台上关联开发者身份。
-
-### keys 示例
-
-```bash
-# 默认 2048 位
-agentloom-plugin keys generate
-
-# 4096 位，输出到自定义目录
-agentloom-plugin keys generate -b 4096 -o my-keys/
-```
-
-::: warning 安全提醒
-**私钥必须妥善保管！** 不要将 `private.pem` 提交到版本控制系统。建议在 `.gitignore` 中添加 `keys/private.pem`。
-:::
-
----
-
-## `dev` — 开发调试
-
-启动本地开发服务器，支持文件监听和热重载。
-
-```bash
-agentloom-plugin dev [options]
-```
-
-### dev 参数
-
-| 参数                  | 说明       | 默认值 |
-| --------------------- | ---------- | ------ |
-| `-p, --port <number>` | 服务器端口 | `4400` |
-
-### 开发服务器端点
-
-| 方法   | 路径                   | 说明             |
-| ------ | ---------------------- | ---------------- |
-| `GET`  | `/manifest`            | 返回插件清单     |
-| `GET`  | `/nodes`               | 返回所有节点定义 |
-| `POST` | `/nodes/:type/execute` | 执行指定类型节点 |
-
-### 工作原理
-
-1. **Express 服务器** — 启动 HTTP 服务器，端口默认 `4400`
-2. **Chokidar 监听** — 监听 `src/` 目录下的文件变更
-3. **自动重载** — 文件变更时自动重新加载插件
-
-### dev 示例
-
-```bash
-# 默认端口 4400
-agentloom-plugin dev
-
-# 自定义端口
-agentloom-plugin dev -p 3000
-```
-
-测试节点执行：
-
-```bash
-curl -X POST http://localhost:4400/nodes/text-to-uppercase/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "inputs": { "text-in": "hello world" },
-    "config": { "prefix": "[", "suffix": "]" }
-  }'
-```
-
----
-
-## `publish` — 签名归档
-
-对已构建的 `.alp` 包进行 RSA-PSS 签名，生成可注册归档。该命令是
-**sign-only**：不会上传或发布市场 listing；签名完成后须前往 Studio
-插件管理页上传。
-
-```bash
-agentloom-plugin publish -k <private-key-path> [options]
-```
-
-### publish 参数
-
-| 参数                 | 说明                       | 默认值   |
-| -------------------- | -------------------------- | -------- |
-| `-k, --key <path>`   | 签名私钥路径；必须显式提供 | 无       |
-| `-o, --output <dir>` | `.alp` 所在目录            | `build/` |
-
-### 签名流程
-
-```mermaid
-flowchart TD
-    A["读取 .alp 归档"] --> B["signArchive()\nRSA-PSS SHA-256 签名"]
-    B --> C["computeContentHash()\n计算内容哈希"]
-    C --> D["computeKeyFingerprint()\n计算密钥指纹"]
-    D --> E["注入到 manifest.json\nsignature / contentHash / fingerprint"]
-    E --> F["自验证\nverifyArchiveSignature()"]
-    F -->|通过| G["覆写 .alp 归档"]
-    F -->|失败| H["报错退出"]
-```
-
-### 注入的清单字段
-
-签名后，`manifest.json` 会被注入以下字段：
-
-| 字段                      | 说明                          |
-| ------------------------- | ----------------------------- |
-| `signature`               | Base64 编码的 RSA-PSS 签名    |
-| `contentHash`             | 规范化归档载荷的 SHA-256 哈希 |
-| `developerKeyFingerprint` | 开发者公钥的指纹              |
-
-### publish 示例
-
-```bash
-agentloom-plugin publish -k my-keys/private.pem
-```
-
-`publish` 会在签名后自动自验证，但不会上传文件。将生成的 `.alp` 通过 Studio
-插件管理页上传；服务端注册要求清单有非空 `wasmEntry`，归档中存在对应文件，
-且文件以 WASM 魔数 `00 61 73 6d` 开头。
+读取 `<output>/<id>-<version>.alp`，用 SDK 的 `signArchive` 签名，把 `signature`、`contentHash`、`developerKeyFingerprint` 写回归档内的 `manifest.json`，自验证通过后覆盖原文件。它不上传；上传与注册见 [开发教程](/api/plugins/tutorial#_7-上传并启用插件)。

@@ -1,124 +1,62 @@
-# 插件生态
+---
+docType: explanation
+---
 
-AgentLoom 插件生态提供完整的扩展能力，允许开发者创建自定义节点类型并将其发布到插件市场。本章节涵盖插件系统的设计理念、开发工具链和服务端运行时。
+# 插件体系
 
-## 生态组件
+**一个第三方写的节点，要经过哪些环节才能在别人的画布上运行，平台又凭什么信任它？** 本页回答这个问题。动手开发从 [开发教程](/api/plugins/tutorial) 开始。
 
-| 组件                | 包名                        | 说明                                               |
-| ------------------- | --------------------------- | -------------------------------------------------- |
-| **Plugin SDK**      | `@agentloom/plugin-sdk`     | 类型定义、校验工具、签名模块，ESM + CJS 双输出     |
-| **Plugin CLI**      | `@agentloom/plugin-cli`     | 脚手架生成、构建打包、密钥管理、开发调试、签名发布 |
-| **Plugin Template** | `agentloom-plugin-template` | 参考示例插件（text-to-uppercase）                  |
-| **Server 插件系统** | `agentloom-server/plugin`   | .alp 注册、RSA-PSS 验签、WASM 沙箱、收益结算       |
+## 插件是什么
 
-## 插件生命周期
+插件是一组自定义节点。每个节点声明输入端口、输出端口与配置项，端口的 `dataType` 与内置节点共用同一套端口类型（见 [端口类型](/guide/getting-started/)），因此插件节点可以和内置节点直接连线。
 
-从开发到上线收益的完整链路：
+插件打包成 `.alp` 文件（ZIP 归档），内含：
+
+- `manifest.json`：插件 ID、版本、作者、权限与签名信息；
+- `node-definitions.json`：节点定义；
+- `dist/plugin.wasm`：节点的执行代码（Extism 规范的 WebAssembly 模块）。
+
+## 两种运行形态
+
+| 形态 | 写法 | 在哪里运行 | 用途 |
+| --- | --- | --- | --- |
+| WASM | Rust + `extism-pdk`，导出 `execute` 函数 | AgentLoom 服务端的 Extism 沙箱 | 唯一能注册到平台、在工作流中执行的形态 |
+| TypeScript | 节点对象上的 `execute(context)` 方法 | 开发者本机的 `agentloom-plugin dev` 服务器 | 本地调试节点定义与逻辑，不能注册 |
+
+服务端只执行 WASM，原因是它需要在多租户环境里限制插件能做的事：WASM 模块默认没有文件系统与网络访问，内存与执行时间有上限，只有声明了 `network:outbound` 权限的插件才能访问清单里列出的主机。TypeScript 代码一旦在服务端进程里执行就拿到了整个 Node.js 运行时，无法做同等隔离。
+
+两种形态的执行契约不同：TypeScript 预览接收上下文对象、返回 `{ outputs: {…} }`；WASM 接收 `{ nodeType, inputs, config }` 的 JSON，直接返回端口对象，例如 `{"result":"hello"}`。细节见 [Plugin SDK](/api/plugins/sdk#wasm-执行契约)。
+
+## 信任从签名开始
 
 ```mermaid
 flowchart LR
-    A["🔑 密钥生成\nkeys generate"] --> B["📦 脚手架创建\ncreate"]
-    B --> C["🛠️ 本地开发\ndev (watch + :4400)"]
-    C --> D["🔨 WASM 构建打包\nbuild --wasm → .alp"]
-    D --> E["✍️ 签名归档\npublish (RSA-PSS)"]
-    E --> F["📤 Studio 上传\n插件管理页"]
-    F --> G["✅ 服务端验签 + WASM 门禁\nverify + contentHash + magic"]
-    G --> H["🏪 市场上架\nmarketplace listing"]
-    H --> I["⚡ WASM 沙箱执行\nExtism (30s / 256MB)"]
-    I --> J["📊 使用量记录\nplugin_usage_records"]
-    J --> K["💰 收益结算\n70/30 分成"]
-
-    style A fill:#e8f5e9
-    style E fill:#fff3e0
-    style G fill:#e3f2fd
-    style I fill:#fce4ec
-    style K fill:#f3e5f5
+    K["keys generate<br/>开发者密钥对"] --> R["Studio 开发者 → 密钥<br/>注册公钥"]
+    B["build --wasm<br/>打包 .alp"] --> P["publish<br/>私钥签名"]
+    P --> U["Studio 资源 → 插件<br/>上传 .alp"]
+    R --> U
+    U --> V["服务端验签与 WASM 检查"]
+    V --> E["节点出现在画布"]
+    E --> M["可选：上架插件市场"]
 ```
 
-## 插件架构
+- 开发者在本地生成 RSA 密钥对，把公钥注册到组织；私钥只留在本地。
+- `agentloom-plugin publish` 用私钥对归档的规范化内容做 RSA-PSS（SHA-256）签名，把签名、内容哈希和公钥指纹写回 `manifest.json`。它只签名，不上传。
+- 上传时服务端按指纹找到已注册且未撤销的公钥，重新计算哈希并验签；任何文件在签名后被改动都会失败。撤销一把公钥后，用它签名的插件包不再通过验签。
+- 服务端还要求清单的 `wasmEntry` 指向归档内真实存在、以 WASM 魔数开头的文件，所以 TypeScript 产物在这一步被拒绝。
 
-### 核心概念
+服务端验签管线、沙箱参数与执行队列的实现见 [服务端插件系统](/dev/server/plugins)。
 
-**插件（Plugin）** 是一个包含清单文件和自定义节点的可部署单元：
+## 从注册到收益
 
-- **清单（Manifest）** — 元数据描述：id、版本、权限、签名信息
-- **自定义节点（Custom Node）** — 画布中可使用的新节点类型，定义输入/输出端口和执行逻辑
-- **端口类型（Port Data Type）** — 平台统一的 14 种数据类型：`model | text | json | array | image | audio | tool | sandbox | knowledge | skill | agent | memory | exec | volume`
+注册后的插件只在本组织可用。要给其他组织使用，在插件市场提交上架；按次计费的插件被调用时记录用量，平台每月结算开发者收益。上架、定价与分成见 [市场与收益](/api/plugins/marketplace)。
 
-### 权限模型
+## 相关包
 
-插件通过 `permissions` 字段声明所需权限，平台在注册时校验：
+| 目录 | 包名 | 作用 |
+| --- | --- | --- |
+| `agentloom-plugin-sdk/` | `@agentloom/plugin-sdk` | 类型、清单与节点校验、签名与验签函数 |
+| `agentloom-plugin-cli/` | `@agentloom/plugin-cli` | `agentloom-plugin` 命令：脚手架、本地预览、打包、密钥、签名 |
+| `agentloom-plugin-template/` | — | TypeScript 预览形态的示例插件（文本转大写） |
 
-| 权限标识           | 说明             |
-| ------------------ | ---------------- |
-| `network:outbound` | 允许外部网络访问 |
-| `storage:read`     | 读取存储         |
-| `storage:write`    | 写入存储         |
-| `knowledge:read`   | 读取知识库       |
-| `knowledge:write`  | 写入知识库       |
-| `llm:invoke`       | 调用 LLM 模型    |
-
-### 节点分类
-
-自定义节点支持 5 种类别：
-
-| 类别     | 标识         | 适用场景               |
-| -------- | ------------ | ---------------------- |
-| 转换器   | `transform`  | 数据格式转换、文本处理 |
-| 过滤器   | `filter`     | 条件过滤、数据筛选     |
-| 聚合器   | `aggregator` | 数据合并、统计汇总     |
-| 连接器   | `connector`  | 外部系统集成           |
-| 通用工具 | `utility`    | 其他辅助功能           |
-
-## 安全机制
-
-插件生态的安全保障贯穿全链路：
-
-1. **开发签名** — 开发者使用 RSA 私钥对 `.alp` 包进行 RSA-PSS 签名
-2. **注册验签与门禁** — 服务端验证签名、内容哈希、非空 `wasmEntry`、归档路径和 WASM 魔数
-3. **WASM 沙箱** — 正式服务端唯一运行时，使用 Extism 隔离执行
-4. **权限声明** — 最小权限原则，仅授予声明的权限
-
-## 收益模型
-
-插件采用按执行计费 + 收益分成的模式：
-
-```text
-总收入 × 70% = 开发者毛收入
-开发者毛收入 × 15% = 上架佣金
-开发者净收入 = 毛收入 - 佣金 ≈ 总收入的 59.5%
-平台份额 = 总收入 × 30%
-```
-
-## 快速开始
-
-```bash
-# 1. 安装 CLI
-npm install -g @agentloom/plugin-cli
-
-# 2. 生成密钥对
-agentloom-plugin keys generate
-
-# 3. 创建正式 WASM 插件项目
-agentloom-plugin create my-plugin --wasm
-
-# 4. 编写 Rust 逻辑与 node-definitions.json
-cd my-plugin
-
-# 5. 构建、签名；publish 不上传
-agentloom-plugin build --wasm
-agentloom-plugin publish -k keys/private.pem
-
-# 6. 前往 Studio 插件管理页上传生成的 .alp
-```
-
-详细步骤请参阅 [开发教程](./tutorial)。
-
-## 章节导航
-
-| 章节                        | 内容                                      |
-| --------------------------- | ----------------------------------------- |
-| [插件 SDK](./sdk)           | SDK 类型定义、辅助函数、签名模块 API      |
-| [插件 CLI](./cli)           | CLI 5 个命令详细用法和参数说明            |
-| [开发教程](./tutorial)      | 基于模板的端到端插件开发教程              |
-| [服务端系统](./marketplace) | 注册验签、WASM 沙箱、使用量记录、收益结算 |
+这两个包目前不在 npm 上发布，从本仓库构建使用，见 [开发教程](/api/plugins/tutorial#前提)。

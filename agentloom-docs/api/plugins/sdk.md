@@ -1,358 +1,105 @@
-# 插件 SDK
+---
+docType: reference
+---
 
-`@agentloom/plugin-sdk` 是 AgentLoom 插件开发的核心依赖，提供类型定义、校验工具、辅助函数和签名模块。
+# Plugin SDK
 
-## 基本信息
+`@agentloom/plugin-sdk`（源码 `agentloom-plugin-sdk/`）导出插件的类型、运行时校验 schema、辅助函数与签名函数。包目前不在 npm 上发布；插件项目以 `file:` 依赖引用仓库中的目录。包内依赖 Zod 3（与服务端的 Zod 4 分开），插件项目需要校验 schema 时也用 Zod 3。
 
-| 属性     | 值                                                                   |
-| -------- | -------------------------------------------------------------------- |
-| 包名     | `@agentloom/plugin-sdk`                                              |
-| 版本     | `0.1.0`                                                              |
-| 运行时   | Node.js                                                              |
-| 输出格式 | ESM (`index.js`) + CJS (`index.cjs`) + 类型声明 (`.d.ts` / `.d.cts`) |
-| 构建工具 | `tsup`                                                               |
-| 核心依赖 | `zod ^3.23.0`、`jszip ^3.10.1`、`semver ^7.6.0`                      |
+## 清单 `PluginManifest`
 
-::: tip Zod 版本说明
-SDK 使用 **Zod 3.x**（非 4.x），这是面向插件生态兼容性的有意选择。确保你的插件项目也使用 Zod 3.x。
-:::
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `id` | string | 是 | 反向域名格式，`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`；脚手架生成 `com.agentloom.<name>` |
+| `name` | string | 是 | 非空 |
+| `version` | string | 是 | semver |
+| `author` | string | 是 | 非空 |
+| `description` | string | 是 | 非空 |
+| `license` | string | 是 | 非空 |
+| `minPlatformVersion` | string | 是 | semver |
+| `permissions` | `PluginPermission[]` | 是 | 见下表，可为空数组 |
+| `keywords` | string[] | 否 | 每项非空 |
+| `icon` | string | 否 | 图标路径或 URL |
+| `homepage` | string | 否 | 主页地址 |
+| `repository` | string | 否 | 仓库地址 |
+| `wasmEntry` | string | 注册时必填 | 归档内 `.wasm` 文件的相对路径；`build --wasm` 写为 `dist/plugin.wasm` |
+| `sandbox.allowedHosts` | string[] | 否 | 允许访问的主机；仅当 `permissions` 含 `network:outbound` 时服务端采用 |
+| `sandbox.maxMemoryPages` | number | 否 | SDK 接受该字段，**服务端当前不采用**，固定使用平台默认值 |
+| `sandbox.timeoutMs` | number | 否 | 同上，服务端当前不采用 |
+| `signature` | string | — | `publish` 写入：Base64 的 RSA-PSS 签名 |
+| `contentHash` | string | — | `publish` 写入：64 位十六进制 SHA-256 |
+| `developerKeyFingerprint` | string | — | `publish` 写入：公钥 SPKI DER 的 SHA-256 十六进制 |
 
-## 安装
+服务端沙箱的实际限制见 [服务端插件系统](/dev/server/plugins)。
 
-```bash
-npm install @agentloom/plugin-sdk
-# 或
-pnpm add @agentloom/plugin-sdk
-```
+### `PluginPermission`
 
-## 模块结构
+`network:outbound`、`storage:read`、`storage:write`、`knowledge:read`、`knowledge:write`、`llm:invoke`。常量 `PLUGIN_PERMISSIONS` 为全集。
 
-SDK 通过根入口导出四个子模块：
+## 节点 `CustomNodeDefinition`
 
-```text
-@agentloom/plugin-sdk
-├── types       # 类型定义
-├── validation  # Zod 校验 schema
-├── helpers     # 辅助函数与类型守卫
-└── signing     # RSA-PSS 签名与验证
-```
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `type` | string | 节点类型标识，插件内唯一 |
+| `label` | string | 画布显示名 |
+| `category` | `CustomNodeCategory` | `transform`、`filter`、`aggregator`、`connector`、`utility`（常量 `CUSTOM_NODE_CATEGORIES`） |
+| `description` | string | 说明 |
+| `inputPorts` / `outputPorts` | `PortDefinition[]` | 端口 |
+| `configSchema` | object | 可选，JSON Schema 风格的配置定义 |
+| `execute(context)` | function | 仅用于 `agentloom-plugin dev` 本地预览，服务端不调用 |
 
-## 类型定义
+WASM 项目在 `node-definitions.json` 里写同样结构的数组（不含 `execute`）。
 
-### 端口类型 — `PortDataType`
+### `PortDefinition`
 
-平台统一的 14 种端口数据类型：
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | string | 端口 ID，也是执行时 `inputs` / 输出对象的键 |
+| `label` | string | 显示名 |
+| `dataType` | `PortDataType` | 取值与平台端口类型一致，常量 `PORT_DATA_TYPES`；清单见 [端口类型](/guide/getting-started/) |
+| `required` | boolean | 可选 |
+| `description` | string | 可选 |
 
-```typescript
-type PortDataType =
-  | 'model'
-  | 'text'
-  | 'json'
-  | 'array'
-  | 'image'
-  | 'audio'
-  | 'tool'
-  | 'sandbox'
-  | 'knowledge'
-  | 'skill'
-  | 'agent'
-  | 'memory'
-  | 'exec'
-  | 'volume';
-```
+## WASM 执行契约
 
-### 端口定义 — `PortDefinition`
+- 服务端调用导出函数 `execute`；画布上该插件节点的配置里设置了 `functionName` 时改调该函数。
+- 输入：JSON 字符串 `{"nodeType":"<节点 type>","inputs":{…},"config":{…}}`。
+- 输出：以输出端口 ID 为键的 JSON 对象，例如 `{"result":"hello"}`。不要包成 `{"outputs":{…}}`。
+- 失败：通过 Extism 错误返回，不要返回伪装成功的输出。
 
-```typescript
-interface PortDefinition {
-  /** 端口唯一标识 */
-  id: string;
-  /** 显示标签 */
-  label: string;
-  /** 数据类型 */
-  dataType: PortDataType;
-  /** 是否必需，默认 true */
-  required?: boolean;
-  /** 端口描述 */
-  description?: string;
-}
-```
+## 本地预览契约
 
-### 插件清单 — `PluginManifest`
+`execute(context: NodeExecutionContext): Promise<NodeExecutionResult>`
 
-```typescript
-interface PluginManifest {
-  /** 插件唯一 ID，格式：com.agentloom.{name} */
-  id: string;
-  /** 插件名称 */
-  name: string;
-  /** 语义化版本号 */
-  version: string;
-  /** 作者 */
-  author: string;
-  /** 描述 */
-  description: string;
-  /** 开源许可证 */
-  license: string;
-  /** 最低平台版本要求 */
-  minPlatformVersion: string;
-  /** 声明的权限列表 */
-  permissions: PluginPermission[];
+| `NodeExecutionContext` 字段 | 说明 |
+| --- | --- |
+| `inputs` | 输入端口值 |
+| `config` | 节点配置 |
+| `logger` | `debug` / `info` / `warn` / `error` |
+| `metadata` | `{ executionId, stepId, nodeId }`，预览服务器每次生成随机 UUID |
 
-  // 签名相关（可选，publish 时自动注入）
-  signature?: string;
-  contentHash?: string;
-  developerKeyFingerprint?: string;
-  wasmEntry?: string;
-  sandbox?: object;
-}
-```
-
-正式注册时 `wasmEntry` 必须是非空的安全相对路径，且归档内对应文件必须通过
-WASM 魔数校验。该字段在 SDK 类型中保持可选，仅用于兼容 `dev` 的 TypeScript
-本地预览清单。
-
-### 插件权限 — `PluginPermission`
-
-```typescript
-type PluginPermission =
-  | 'network:outbound'
-  | 'storage:read'
-  | 'storage:write'
-  | 'knowledge:read'
-  | 'knowledge:write'
-  | 'llm:invoke';
-```
-
-### 节点类别 — `CustomNodeCategory`
-
-```typescript
-type CustomNodeCategory =
-  'transform' | 'filter' | 'aggregator' | 'connector' | 'utility';
-```
-
-### 自定义节点定义 — `CustomNodeDefinition`
-
-```typescript
-interface CustomNodeDefinition {
-  /** 节点类型标识 */
-  type: string;
-  /** 显示标签 */
-  label: string;
-  /** 节点类别 */
-  category: CustomNodeCategory;
-  /** 节点描述 */
-  description: string;
-  /** 输入端口 */
-  inputPorts: PortDefinition[];
-  /** 输出端口 */
-  outputPorts: PortDefinition[];
-  /** 配置 schema（JSON Schema 格式） */
-  configSchema?: JsonSchemaDefinition;
-  /** 执行函数 */
-  execute: (context: NodeExecutionContext) => Promise<NodeExecutionResult>;
-}
-```
-
-### 执行上下文 — `NodeExecutionContext`
-
-```typescript
-interface NodeExecutionContext {
-  /** 输入端口数据，key 为端口 id */
-  inputs: Record<string, unknown>;
-  /** 节点配置 */
-  config: Record<string, unknown>;
-  /** 日志记录器 */
-  logger: PluginLogger;
-  /** 执行元数据 */
-  metadata: {
-    executionId: string;
-    stepId: string;
-    nodeId: string;
-  };
-}
-```
-
-### 执行结果 — `NodeExecutionResult`
-
-```typescript
-interface NodeExecutionResult {
-  /** 输出端口数据，key 为端口 id */
-  outputs: Record<string, unknown>;
-  /** 附加元数据 */
-  metadata?: Record<string, unknown>;
-}
-```
-
-`NodeExecutionContext`、`NodeExecutionResult` 以及 TypeScript
-`execute(context)` 只用于 `agentloom-plugin dev` 本地预览，不是正式服务端执行
-契约。正式服务端只执行 WASM，并遵循下述 ABI。
-
-## WASM ABI
-
-- 导出函数默认为 `execute`；可由清单的 `pluginConfig.functionName` 覆盖。
-- 输入是 JSON envelope：`{"nodeType":"example.echo","inputs":{},"config":{}}`。
-- 输出必须是端口输出直出对象，例如 `{"result":"hello"}`。
-- 禁止返回 `{"outputs":{"result":"hello"}}` 包装；该结构只属于 TypeScript
-  本地预览 API。
-- 执行错误必须通过 Extism error 返回，不能伪装成成功输出。
-
-### 日志记录器 — `PluginLogger`
-
-```typescript
-interface PluginLogger {
-  debug: (message: string, ...args: unknown[]) => void;
-  info: (message: string, ...args: unknown[]) => void;
-  warn: (message: string, ...args: unknown[]) => void;
-  error: (message: string, ...args: unknown[]) => void;
-}
-```
-
-### 插件接口 — `AgentLoomPlugin`
-
-```typescript
-interface AgentLoomPlugin {
-  /** 插件清单 */
-  manifest: PluginManifest;
-  /** 自定义节点列表 */
-  nodes: CustomNodeDefinition[];
-  /** 插件激活钩子 */
-  activate: () => Promise<void>;
-  /** 插件停用钩子 */
-  deactivate: () => Promise<void>;
-}
-```
+`NodeExecutionResult` 为 `{ outputs, metadata? }`。插件对象 `AgentLoomPlugin` 为 `{ manifest, nodes, activate(), deactivate() }`。
 
 ## 辅助函数
 
-### 端口定义辅助
+| 函数 | 说明 |
+| --- | --- |
+| `defineInputPort(options)` / `defineOutputPort(options)` | 返回 `PortDefinition`；输出端口不接受 `required` |
+| `defineNode(definition)` | 返回浅冻结（`Object.freeze`）的节点定义 |
+| `isPortDataType(value)` / `isValidPermission(value)` / `isPluginManifest(value)` | 类型守卫 |
+| `validateManifest(manifest)` | 返回 `{ valid: true, errors: [] }` 或 `{ valid: false, errors: string[] }` |
+| `PluginManifestSchema`、`CustomNodeDefinitionSchema`、`PortDefinitionSchema` 等 | Zod 3 schema |
 
-```typescript
-import { defineInputPort, defineOutputPort } from '@agentloom/plugin-sdk';
+## 签名函数
 
-// 定义输入端口
-const textInput = defineInputPort({
-  id: 'text-in',
-  label: '文本输入',
-  dataType: 'text',
-  required: true,
-  description: '待处理的文本内容',
-});
+| 函数 | 签名 | 说明 |
+| --- | --- | --- |
+| `signArchive` | `(data, privateKeyPem) => Promise<string>` | 对规范化载荷做 RSA-PSS / SHA-256 签名，salt 长度等于摘要长度，返回 Base64 |
+| `verifyArchiveSignature` | `(data, signatureBase64, publicKeyPem) => Promise<boolean>` | 验签；任何错误返回 `false`，不抛异常 |
+| `computeContentHash` | `(data) => Promise<string>` | 规范化载荷的 SHA-256 十六进制 |
+| `createCanonicalArchivePayload` | `(data) => Promise<Buffer>` | 规范化载荷：去掉清单中的 `signature`、`contentHash`、`developerKeyFingerprint`，键深度排序，其余文件逐个取 SHA-256 并按路径排序 |
+| `computeKeyFingerprint` | `(publicKeyPem) => string` | 公钥 SPKI DER 的 SHA-256 十六进制（同步） |
+| `readArchiveManifest` | `(data) => Promise<object>` | 读取归档内 `manifest.json` |
+| `updateArchiveManifest` | `(data, manifest) => Promise<Buffer>` | 替换 `manifest.json`，返回新归档 |
 
-// 定义输出端口
-const textOutput = defineOutputPort({
-  id: 'text-out',
-  label: '文本输出',
-  dataType: 'text',
-  description: '处理后的文本',
-});
-```
-
-### 节点定义辅助
-
-```typescript
-import { defineNode } from '@agentloom/plugin-sdk';
-
-const myNode = defineNode({
-  type: 'my-transform',
-  label: '我的转换器',
-  category: 'transform',
-  description: '自定义文本转换',
-  inputPorts: [textInput],
-  outputPorts: [textOutput],
-  async execute(context) {
-    const text = String(context.inputs['text-in']);
-    return { outputs: { 'text-out': text.toUpperCase() } };
-  },
-});
-```
-
-::: info
-`defineNode` 返回一个 `Object.freeze` 冻结的节点定义对象，确保不可变性。
-:::
-
-### 类型守卫
-
-```typescript
-import {
-  isPortDataType,
-  isValidPermission,
-  isPluginManifest,
-} from '@agentloom/plugin-sdk';
-
-isPortDataType('text'); // true
-isPortDataType('unknown'); // false
-isValidPermission('llm:invoke'); // true
-isPluginManifest(someObject); // boolean
-```
-
-## 签名模块
-
-签名模块提供 `.alp` 插件包的 RSA-PSS 签名和验证能力。
-
-### 签名流程
-
-```typescript
-import { signArchive, computeContentHash } from '@agentloom/plugin-sdk';
-
-// 读取 .alp 文件
-const alpData = fs.readFileSync('my-plugin.alp');
-const privateKey = fs.readFileSync('keys/private.pem', 'utf-8');
-
-// 计算内容哈希
-const contentHash = await computeContentHash(alpData);
-
-// 签名
-const signature = await signArchive(alpData, privateKey);
-```
-
-### 验证流程
-
-```typescript
-import { verifyArchiveSignature } from '@agentloom/plugin-sdk';
-
-const publicKey = fs.readFileSync('keys/public.pem', 'utf-8');
-
-const isValid = await verifyArchiveSignature(
-  alpData,
-  signatureBase64,
-  publicKey,
-);
-// 验证失败时返回 false（不抛异常）
-```
-
-### 归档工具函数
-
-```typescript
-import {
-  readArchiveManifest,
-  updateArchiveManifest,
-  createCanonicalArchivePayload,
-  computeSha256Hex,
-  computeKeyFingerprint,
-} from '@agentloom/plugin-sdk';
-
-// 读取 .alp 内的 manifest.json
-const manifest = await readArchiveManifest(alpData);
-
-// 更新 .alp 内的 manifest
-const newAlpData = await updateArchiveManifest(alpData, updatedManifest);
-
-// 创建规范化归档载荷（用于签名/验签）
-// 自动剥离签名元数据字段、深排序 key、逐文件 SHA-256
-const canonicalPayload = await createCanonicalArchivePayload(alpData);
-
-// 计算密钥指纹（SPKI DER 的 SHA-256）
-const fingerprint = await computeKeyFingerprint(publicKeyPem);
-```
-
-### 签名算法细节
-
-| 参数             | 值                               |
-| ---------------- | -------------------------------- |
-| 算法             | RSA-PSS                          |
-| 哈希             | SHA-256                          |
-| 签名 salt length | `DIGEST`                         |
-| 验证 salt length | `DIGEST`                         |
-| 规范化           | 深排序 JSON key + 逐文件 SHA-256 |
-| 密钥指纹         | SPKI DER 的 SHA-256 hex          |
+`data` 为 `.alp` 文件内容（`Buffer` 或 `Uint8Array`）。因为规范化载荷排除了签名字段，把签名写回清单不会改变内容哈希。

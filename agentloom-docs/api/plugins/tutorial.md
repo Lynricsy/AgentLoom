@@ -1,381 +1,260 @@
-# 开发教程
+---
+docType: tutorial
+---
 
-本教程先用 TypeScript `execute(context)` 完成本地 `dev` 预览，再说明如何切换到 Rust/Extism WASM 正式产物。TypeScript 路径不能注册到服务端。
+# 开发第一个插件
 
-## 前置条件
+本教程从零做出一个 WASM 插件：它提供节点「文本回显」，给输入文本加上可配置的前缀。完成后，插件以「已启用」状态注册在你的组织里，节点可以在画布上使用。
 
-- Node.js >= 18
-- 已全局安装 `@agentloom/plugin-cli`
+第一次执行第 5 步时 cargo 要下载并编译 `extism-pdk` 等依赖，耗时取决于网络。
+
+## 前提
+
+- Node.js 22 与 pnpm（`corepack enable` 后可用）。
+- Rust 工具链（[rustup](https://rustup.rs/) 安装），以及 WASM 编译目标：
+
+  ```bash
+  rustup target add wasm32-unknown-unknown
+  ```
+
+- 本仓库的检出，并已在仓库根目录执行过 `pnpm install`。`@agentloom/plugin-cli` 与 `@agentloom/plugin-sdk` 不在 npm 上发布，CLI 从源码构建。
+- 一个 AgentLoom 账号，在目标组织中的角色为 `owner`、`admin` 或 `creator`；`curl` 与 `jq`。
+- 两个环境变量：
+
+  ```bash
+  export AGENTLOOM_API=https://agentloom.ling.plus/api/v1   # 自托管时换成你的域名
+  export JWT='<Studio 登录后的 access token>'
+  ```
+
+本页的输出来自一次完整实跑，平台端是本地运行的 `agentloom-server`；输出里的绝对路径是那次实跑的工作目录，你的会不同。
+
+## 1. 构建 CLI
+
+在仓库根目录：
 
 ```bash
-npm install -g @agentloom/plugin-cli
+pnpm --filter @agentloom/plugin-cli build
+alias agentloom-plugin="node $PWD/agentloom-plugin-cli/dist/cli.js"
+agentloom-plugin --help
 ```
-
-## 第一步：生成密钥对
-
-在开始开发之前，先生成用于插件签名的 RSA 密钥对：
-
-```bash
-agentloom-plugin keys generate -b 2048
-```
-
-输出：
 
 ```text
-✅ RSA key pair generated successfully!
-   Public key:  keys/public.pem
-   Private key: keys/private.pem
-   Fingerprint: a1b2c3d4e5f6...
+Usage: agentloom-plugin [options] [command]
+
+AgentLoom Plugin Development CLI
+
+Options:
+  -V, --version            output the version number
+  -h, --help               display help for command
+
+Commands:
+  create [options] <name>  创建新的 AgentLoom 插件项目
+  dev [options]            启动插件本地开发服务器
+  build [options]          构建 AgentLoom 插件归档
+  keys                     管理插件签名密钥
+  publish [options]        签名插件包，生成可注册的 .alp（上传经 Studio 插件管理页）
+  help [command]           display help for command
 ```
 
-::: warning
-请妥善保管 `private.pem`，不要提交到版本控制。将 `public.pem` 后续注册到 AgentLoom 平台的开发者密钥管理中。
-:::
+后续命令都在同一个终端里执行，`alias` 只对当前终端有效。
 
-## 第二步：创建本地预览项目
+## 2. 生成签名密钥
+
+换到一个放插件项目的工作目录（仓库外任意位置），生成 RSA 密钥对：
 
 ```bash
-agentloom-plugin create text-to-uppercase
+mkdir -p ~/agentloom-plugins && cd ~/agentloom-plugins
+agentloom-plugin keys generate
 ```
-
-该默认脚手架仅服务于 TypeScript 本地预览。正式插件应改用
-`agentloom-plugin create text-to-uppercase --wasm` 生成 Rust/Extism 项目。
-
-按照交互提示输入：
 
 ```text
-? Author: your-name
-? Description: 将文本转换为大写
-? License: MIT
+🔑 签名密钥对已生成
+公钥: /tmp/docs-verify-apidocs/work2/keys/public.pem
+私钥: /tmp/docs-verify-apidocs/work2/keys/private.pem
+指纹: 4f341d413d57a12e87e3c4d088654163e466d7f3bbe6c0c67b8f6248c27d5262
+📋 请将 public.pem 的内容注册到 AgentLoom 平台。
+⚠️  请妥善保管私钥，不要提交到版本控制。
 ```
 
-生成的项目结构：
+`keys/private.pem` 用来签名，只留在本机；`keys/public.pem` 在第 6 步注册到平台。记下指纹，第 6 步会再见到它。
+
+## 3. 创建项目
+
+```bash
+agentloom-plugin create text-prefix --wasm
+```
+
+按提示输入作者与描述，许可证直接回车用默认值：
 
 ```text
-text-to-uppercase/
-├── manifest.json
-├── package.json
-├── tsconfig.json
-├── src/
-│   └── index.ts
-└── tests/
-    └── index.test.ts
+✔ 作者名称 … Docs Team
+✔ 插件描述 … 给文本加前缀的示例插件
+✔ 许可证 … MIT
+✨ 插件脚手架已创建：/tmp/docs-verify-apidocs/work2/text-prefix
+下一步：cd text-prefix && agentloom-plugin build --wasm
 ```
-
-## 第三步：安装 SDK
 
 ```bash
-cd text-to-uppercase
-npm install @agentloom/plugin-sdk
+find text-prefix -type f | sort
+cd text-prefix
 ```
-
-## 第四步：编写插件逻辑
-
-编辑 `src/index.ts`，实现文本转大写节点：
-
-```typescript
-import type {
-  AgentLoomPlugin,
-  PluginManifest,
-  CustomNodeDefinition,
-} from '@agentloom/plugin-sdk';
-import {
-  defineInputPort,
-  defineOutputPort,
-  defineNode,
-} from '@agentloom/plugin-sdk';
-import manifest from '../manifest.json';
-
-// 定义输入端口
-const textInput = defineInputPort({
-  id: 'text-in',
-  label: '文本输入',
-  dataType: 'text',
-  required: true,
-  description: '待转换的文本',
-});
-
-// 定义输出端口
-const textOutput = defineOutputPort({
-  id: 'text-out',
-  label: '文本输出',
-  dataType: 'text',
-  description: '转换后的大写文本',
-});
-
-// 定义节点
-const uppercaseNode = defineNode({
-  type: 'text-to-uppercase',
-  label: '文本转大写',
-  category: 'transform',
-  description: '将输入文本转换为大写形式',
-  inputPorts: [textInput],
-  outputPorts: [textOutput],
-  // 配置 schema：支持前缀和后缀
-  configSchema: {
-    type: 'object',
-    properties: {
-      prefix: {
-        type: 'string',
-        description: '添加到结果前面的前缀',
-      },
-      suffix: {
-        type: 'string',
-        description: '添加到结果后面的后缀',
-      },
-    },
-  },
-  // 执行函数
-  async execute(context) {
-    const text = String(context.inputs['text-in'] ?? '');
-    const upper = text.toUpperCase();
-
-    const prefix = String(context.config.prefix ?? '');
-    const suffix = String(context.config.suffix ?? '');
-    const result = `${prefix}${upper}${suffix}`;
-
-    context.logger.info(`转换完成: "${text}" → "${result}"`);
-
-    return {
-      outputs: { 'text-out': result },
-    };
-  },
-});
-
-// 导出插件
-const plugin: AgentLoomPlugin = {
-  manifest: manifest as PluginManifest,
-  nodes: [uppercaseNode],
-  async activate() {
-    console.log('text-to-uppercase 插件已激活');
-  },
-  async deactivate() {
-    console.log('text-to-uppercase 插件已停用');
-  },
-};
-
-export default plugin;
-```
-
-### 关键概念说明
-
-| 概念                                   | 说明                                            |
-| -------------------------------------- | ----------------------------------------------- |
-| `defineInputPort` / `defineOutputPort` | 端口定义辅助函数，自动注入方向标记              |
-| `defineNode`                           | 节点定义辅助函数，返回冻结对象确保不可变性      |
-| `configSchema`                         | JSON Schema 格式的配置定义，在画布中渲染为表��� |
-| `context.inputs`                       | 输入端口数据，key 为端口 id                     |
-| `context.config`                       | 用户在画布中配置的参数                          |
-| `context.logger`                       | 平台提供的日志记录器                            |
-
-以上 `execute(context)` 和 `{ outputs: ... }` 返回值仅属于 TypeScript `dev`
-本地预览契约。WASM ABI 接收 `{nodeType, inputs, config}` envelope，并直接返回
-端口对象（例如 `{"text-out":"HELLO"}`），禁止 `{outputs: ...}` 包装。
-
-## 第五步：编写测试
-
-编辑 `tests/index.test.ts`：
-
-```typescript
-import { describe, it, expect } from 'vitest';
-import plugin from '../src/index';
-
-describe('text-to-uppercase', () => {
-  it('插件清单 ID 正确', () => {
-    expect(plugin.manifest.id).toBe('com.agentloom.text-to-uppercase');
-  });
-
-  it('注册了 1 个节点', () => {
-    expect(plugin.nodes).toHaveLength(1);
-  });
-
-  it('基本转换', async () => {
-    const node = plugin.nodes[0];
-    const result = await node.execute({
-      inputs: { 'text-in': 'hello world' },
-      config: {},
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-      },
-      metadata: { executionId: 'e1', stepId: 's1', nodeId: 'n1' },
-    });
-    expect(result.outputs['text-out']).toBe('HELLO WORLD');
-  });
-
-  it('支持前缀和后缀', async () => {
-    const node = plugin.nodes[0];
-    const result = await node.execute({
-      inputs: { 'text-in': 'test' },
-      config: { prefix: '[', suffix: ']' },
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-      },
-      metadata: { executionId: 'e1', stepId: 's1', nodeId: 'n1' },
-    });
-    expect(result.outputs['text-out']).toBe('[TEST]');
-  });
-
-  it('处理空输入', async () => {
-    const node = plugin.nodes[0];
-    const result = await node.execute({
-      inputs: { 'text-in': '' },
-      config: {},
-      logger: {
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-      },
-      metadata: { executionId: 'e1', stepId: 's1', nodeId: 'n1' },
-    });
-    expect(result.outputs['text-out']).toBe('');
-  });
-});
-```
-
-运行测试：
-
-```bash
-npx vitest run
-```
-
-## 第六步：本地开发调试
-
-启动开发服务器：
-
-```bash
-agentloom-plugin dev
-```
-
-输出：
 
 ```text
-🚀 Plugin dev server running at http://localhost:4400
-   Watching src/ for changes...
+text-prefix/Cargo.toml
+text-prefix/README.md
+text-prefix/manifest.json
+text-prefix/node-definitions.json
+text-prefix/package.json
+text-prefix/src/lib.rs
 ```
 
-### 测试端点
+## 4. 看懂节点的两半
 
-查看清单：
+节点由两个文件共同定义。`node-definitions.json` 声明节点在画布上的样子：类型 `example.echo`、输入端口 `text`、输出端口 `result`、配置项 `prefix`：
 
 ```bash
-curl http://localhost:4400/manifest
+jq '.[0] | {type, label, inputPorts: [.inputPorts[].id], outputPorts: [.outputPorts[].id], config: (.configSchema.properties | keys)}' node-definitions.json
 ```
-
-查看节点列表：
-
-```bash
-curl http://localhost:4400/nodes
-```
-
-执行节点：
-
-```bash
-curl -X POST http://localhost:4400/nodes/text-to-uppercase/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "inputs": { "text-in": "hello agentloom" },
-    "config": { "prefix": ">>", "suffix": "<<" }
-  }'
-```
-
-返回：
 
 ```json
 {
-  "outputs": { "text-out": ">>HELLO AGENTLOOM<<" }
+  "type": "example.echo",
+  "label": "文本回显",
+  "inputPorts": [
+    "text"
+  ],
+  "outputPorts": [
+    "result"
+  ],
+  "config": [
+    "prefix"
+  ]
 }
 ```
 
-修改 `src/index.ts` 中的代码后，服务器会自动重新加载。
+`src/lib.rs` 是执行逻辑。平台调用导出函数 `execute`，传入 `{"nodeType","inputs","config"}` 的 JSON，函数返回以输出端口 ID 为键的 JSON：
 
-## 第七步：构建正式 `.alp` 包
+```rust
+match envelope.node_type.as_str() {
+    "example.echo" => {
+        let text = envelope
+            .inputs
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::msg("example.echo 要求 inputs.text 为字符串"))?;
+        let prefix = envelope
+            .config
+            .get("prefix")
+            .and_then(Value::as_str)
+            .unwrap_or("");
 
-服务端注册只接受 WASM。使用 `create --wasm` 生成的 Rust/Extism 项目，将逻辑和
-节点定义迁移到 `src/lib.rs` 与根目录 `node-definitions.json` 后执行：
+        // 返回端口输出直出对象，禁止包装成 {"outputs": {...}}。
+        Ok(json!({ "result": format!("{prefix}{text}") }).to_string())
+    }
+    node_type => Err(Error::msg(format!("不支持的 nodeType: {node_type}")).into()),
+}
+```
+
+本教程不改代码，直接构建。
+
+## 5. 构建并签名
 
 ```bash
 agentloom-plugin build --wasm
 ```
 
-若 `dist/plugin.wasm` 尚不存在，CLI 会执行
-`cargo build --target wasm32-unknown-unknown --release`（需先
-`rustup target add wasm32-unknown-unknown`），把
-`target/wasm32-unknown-unknown/release/<crate>.wasm` 复制为 `dist/plugin.wasm`；
-随后把 `manifest.json`、`node-definitions.json` 和 WASM 产物写入 `.alp`。
-
-## 第八步：签名归档
-
-```bash
-agentloom-plugin publish -k keys/private.pem
-```
-
-`-k` 没有默认值，必须显式指定。`publish` 只签名并生成可注册的 `.alp`，不会上传。
-
-输出：
+CLI 执行 `cargo build --target wasm32-unknown-unknown --release`，把产物复制为 `dist/plugin.wasm` 并打包：
 
 ```text
-✍️  Signing archive...
-   Computing content hash...
-   Signing with RSA-PSS SHA-256...
-   Self-verifying signature...
-✅ Archive signed and verified!
-   Output: build/com.agentloom.text-to-uppercase-1.0.0.alp
+📦 插件构建完成
+文件: /tmp/docs-verify-apidocs/work2/text-prefix/build/com.agentloom.text-prefix-0.1.0.alp
+大小: 90171 bytes
+版本: 0.1.0
+节点数: 1
 ```
 
-## 第九步：在 Studio 注册
-
-前往 AgentLoom Studio 的插件管理页，上传签名后的 `.alp`。服务端会：
-
-1. 提取 `manifest.json` 与 `node-definitions.json`
-2. 使用开发者公钥验证 RSA-PSS 签名并校验内容哈希
-3. 要求非空且安全的 `wasmEntry`
-4. 确认归档内存在该 WASM，并校验魔数 `00 61 73 6d`
-5. 注册插件到数据库
-
-## 完整流程图
-
-```mermaid
-flowchart TD
-    A["🔑 keys generate\n生成密钥对"] --> B["📦 create\n创建项目脚手架"]
-    B --> C["📝 编写插件逻辑\nsrc/index.ts"]
-    C --> D["🧪 编写测试\nvitest run"]
-    D --> E["🛠️ dev\n本地调试 (端口 4400)"]
-    E --> F{"调试通过?"}
-    F -->|否| C
-    F -->|是| G["🔨 build --wasm\nWASM + 节点定义打包"]
-    G --> H["✍️ publish\n仅 RSA-PSS 签名"]
-    H --> I["📤 Studio 插件管理页\n上传 .alp"]
-    I --> J["🏪 市场上架"]
-
-    style A fill:#e8f5e9
-    style E fill:#e3f2fd
-    style H fill:#fff3e0
-    style J fill:#f3e5f5
-```
-
-## 常见问题
-
-### 构建失败
-
-确保 `tsconfig.json` 中的 `outDir` 设置为 `dist/`，且 `manifest.json` 位于项目根目录。
-
-### 签名验证失败
-
-- 检查是否使用了正确的私钥
-- 确保 `.alp` 文件未被修改
-- 确认平台上注册的公钥与本地密钥对匹配
-
-### 开发服务器端口冲突
-
-使用 `-p` 参数指定其他端口：
+用第 2 步的私钥签名：
 
 ```bash
-agentloom-plugin dev -p 5500
+agentloom-plugin publish -k ../keys/private.pem
+```
+
+```text
+✅ 插件签名完成
+归档: /tmp/docs-verify-apidocs/work2/text-prefix/build/com.agentloom.text-prefix-0.1.0.alp
+签名: ShvCNF8YmVZXuYZ/Ahgy0tZG2cIiFF5Y...
+内容哈希: 27bdeddda0d3f3e81e5d390f6df1c3f4eca70c16c4fc90909bc5001ba6be9f53
+密钥指纹: 4f341d413d57a12e87e3c4d088654163e466d7f3bbe6c0c67b8f6248c27d5262
+
+请通过 Studio 插件管理页上传已签名的 .alp 文件
+```
+
+`publish` 只把签名写进归档里的 `manifest.json`，不上传任何东西。
+
+## 6. 注册公钥
+
+```bash
+jq -n --rawfile key ../keys/public.pem '{label: "我的笔记本", publicKey: $key}' \
+  | curl -s "$AGENTLOOM_API/plugins/developer-keys" \
+      -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' -d @- \
+  | jq '{id, label, keyFingerprint, status}'
+```
+
+```json
+{
+  "id": "01a0f6ee-a158-7ddb-9199-12bfa11b1ce7",
+  "label": "我的笔记本",
+  "keyFingerprint": "4f341d413d57a12e87e3c4d088654163e466d7f3bbe6c0c67b8f6248c27d5262",
+  "status": "active"
+}
+```
+
+`keyFingerprint` 与第 2 步的指纹相同。
+
+## 7. 上传并启用插件
+
+```bash
+curl -s "$AGENTLOOM_API/plugins" \
+  -H "Authorization: Bearer $JWT" \
+  -F status=active \
+  -F file=@build/com.agentloom.text-prefix-0.1.0.alp \
+  | jq '.data | {pluginId, version, status, nodes: [.nodeDefinitions[].type]}'
+```
+
+```json
+{
+  "pluginId": "com.agentloom.text-prefix",
+  "version": "0.1.0",
+  "status": "active",
+  "nodes": [
+    "example.echo"
+  ]
+}
+```
+
+插件已注册并启用。在 Studio 打开任意工作流，节点面板的「Plugin」分组里出现「文本回显」。
+
+第 6、7 步在 Studio 中的等价操作：侧边栏「开发者」进入密钥页点「注册公钥」；侧边栏「资源 → 插件」点「注册插件」，勾选「注册后立即启用」后点「上传并注册」。
+
+## 接下来
+
+- 修改 `src/lib.rs` 与 `node-definitions.json` 后发布新版本：先改 `manifest.json` 的 `version`，删除 `dist/plugin.wasm`（它存在时 `build --wasm` 跳过编译），再执行第 5、7 步。同一组织里同一插件 ID 与版本只能注册一次，重复上传返回 409 `plugin-already-exists`。
+- 清单字段、节点定义与签名函数：[Plugin SDK](/api/plugins/sdk)。
+- 各命令的参数与本地预览服务器：[Plugin CLI](/api/plugins/cli)。
+- 上架到插件市场：[市场与收益](/api/plugins/marketplace)。
+
+## 出错时
+
+| 现象 | 原因 |
+| --- | --- |
+| `build --wasm` 失败，cargo 报告缺少 `wasm32-unknown-unknown` 目标 | 没有执行 `rustup target add wasm32-unknown-unknown` |
+| 上传返回 401 `plugin-signature-invalid` | 签名后归档被改动过，或签名用的私钥对应的公钥未在本组织注册 / 已撤销；重新执行 `publish` 后上传 |
+| 上传返回 400 `plugin-signature-missing` | 没有执行 `publish` |
+| 上传返回 422 `plugin-validation-failed`，`插件缺少 wasmEntry` | 上传的是 TypeScript 预览项目的归档；只有 `create --wasm` 项目能注册 |
+| 上传返回 409 `plugin-already-exists` | 该版本已注册，提升 `version` 后重新构建 |
+
+签名后改动归档的实际响应：
+
+```text
+{"type":"https://agentloom.dev/errors/plugin-signature-invalid","title":"Plugin Signature Invalid","status":401,"detail":"插件 \"com.agentloom.text-prefix\" 的签名验证失败。归档可能已被篡改或使用了错误的签名密钥。","instance":"/api/v1/plugins"}
 ```

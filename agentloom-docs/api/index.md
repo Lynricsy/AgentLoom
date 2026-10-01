@@ -1,245 +1,205 @@
 ---
-title: API 参考
+docType: reference
 ---
 
-# API 参考
+# API 约定
 
-AgentLoom 提供完整的 RESTful API，让你可以通过编程方式管理和操作平台上的所有资源。
+AgentLoom 的 HTTP API 共用的地址、凭证、字段命名、响应信封、错误格式与限流规则。每个端点的参数与响应结构见 [REST 参考](/api/rest)。
 
-## API 概览
+本页的请求与输出来自本地 `agentloom-server`（`APP_DEPLOYMENT_MODE=private`）的实际运行；示例中的 ID 与 Token 是那次运行的值，换成你自己的即可。
 
-### 基础信息
+## 基础地址
 
-| 项目 | 说明 |
-|------|------|
-| 基础 URL | `https://agentloom.ling.plus/api/v1/` |
-| 协议 | HTTPS |
-| 数据格式 | JSON |
-| 字符编码 | UTF-8 |
-| API 规范 | OpenAPI 3.0 |
+| 项 | 值 |
+| --- | --- |
+| 生产环境 | `https://agentloom.ling.plus/api/v1` |
+| 自托管 | `https://<你的域名>/api/v1`（反向代理把 `/api/` 转发到 server，见 [反向代理](/deploy/reverse-proxy)） |
+| 本地开发 | `http://localhost:3000/api/v1` |
+| 健康检查 | `GET /api/v1/health`，无需凭证，不计入限流 |
 
-### 主要接口分组
-
-AgentLoom API 覆盖以下功能模块：
-
-- **工作流管理** -- 创建、查询、更新、删除工作流定义和版本
-- **工作流执行** -- 触发执行、查询执行状态和结果
-- **Agent 管理** -- Agent 定义的 CRUD 和版本管理
-- **Agent 对话** -- 创建对话、发送消息、获取消息历史
-- **知识库** -- 知识库和文档的管理
-- **触发器** -- 触发器的配置和管理
-- **技能** -- 技能的查询和管理
-- **组织与成员** -- 组织管理和成员角色设置
-- **市场** -- 浏览、搜索和安装市场资源
-- **平台 API Token** -- API Key 的创建、查看和撤销
-
-## 认证方式
-
-AgentLoom API 支持两种认证方式，你可以根据使用场景选择合适的方式。
-
-### 方式一：JWT Token（适合浏览器/前端应用）
-
-通过 Supabase Auth 认证获取 JWT Token，通过 `Authorization` 请求头传递：
-
+```bash
+curl -s http://localhost:3000/api/v1/health
 ```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-JWT Token 包含用户身份、租户信息和角色权限。Token 过期后需要通过 Supabase Auth 的 refresh 机制获取新 Token。
-
-### 方式二：API Key（适合服务端/自动化集成）
-
-在 AgentLoom 设置中创建 API Key，通过 `X-Api-Key` 请求头传递：
-
-```
-X-Api-Key: al_a1b2c3d4e5f6...
-```
-
-API Key 的特点：
-- 以 `al_` 为前缀，便于识别
-- 使用 SHA-256 hash 存储，平台不保存明文
-- 创建时仅显示一次完整密钥，请妥善保存
-- 可以随时撤销
-
-::: tip 认证优先级
-当请求同时包含 JWT Token 和 API Key 时，系统会优先使用 JWT Token 进行认证。如果 JWT Token 无效，会尝试使用 API Key 作为备选。
-:::
-
-## 请求格式
-
-### 请求头
-
-所有 API 请求应包含以下请求头：
-
-| 请求头 | 说明 | 示例 |
-|--------|------|------|
-| `Content-Type` | 请求体格式 | `application/json` |
-| `Authorization` 或 `X-Api-Key` | 认证信息 | 见上方认证方式 |
-| `Accept` | 期望的响应格式 | `application/json` |
-
-### 请求体
-
-POST 和 PUT 请求使用 JSON 格式的请求体：
 
 ```json
-{
-  "name": "我的工作流",
-  "description": "这是一个示例工作流"
-}
+{"status":"ok","timestamp":"2026-10-01T09:36:45.657Z"}
 ```
 
-### 查询参数
+## 凭证
 
-GET 请求的过滤、排序和分页通过查询参数传递：
+| 凭证 | 请求头 | 可调用范围 | 获取方式 |
+| --- | --- | --- | --- |
+| 用户会话 JWT | `Authorization: Bearer <access_token>` | 除 `/agent-api/*` 外的全部受保护接口 | Studio 登录后的会话；或 `POST /api/v1/auth/login`，取响应 `data.tokens.access_token` |
+| 平台 API Token | `X-Api-Key: al_<64 位十六进制>` | 同 JWT | Studio「设置 → API Token」（`/settings/api-tokens`），或 `POST /api/v1/platform-api-tokens` |
+| Agent API Key | `Authorization: Bearer alak_<64 位十六进制>` | 仅 `/api/v1/agent-api/*`，且只能访问创建它的那个 Agent | Agent 版本工具栏「API 访问」，见 [Agent 对外 API](/api/agent-api) |
 
+### 用户会话 JWT
+
+由 Supabase Auth 签发，HS256 签名，`aud` 为 `authenticated`。server 用 `APP_JWT_SECRET` 验签，所以它必须等于 Supabase 的 JWT secret。令牌中的 `tenant_id` 与 `tenant_role` 声明由 Supabase 的 access token hook 写入，决定请求落在哪个组织、以什么角色执行；缺少 `tenant_id` 的令牌访问需要角色的接口时返回 400 `tenant-required`。
+
+### 平台 API Token
+
+- 以创建者身份调用，权限等于创建者在该组织中的当前角色（每次请求时解析，不在 Token 中固化）。
+- 明文只在创建响应的 `data.token` 中返回一次，服务端只保存 SHA-256 哈希。
+- 每个用户在每个组织最多保留 20 个 Token。
+- 创建请求体字段：`name`（必填）、`scopes`（可选字符串，最长 1024）、`expires_at`（可选，ISO 8601）。`scopes` 只做存储与展示，服务端不据此限制权限。
+
+```bash
+curl -s http://localhost:3000/api/v1/platform-api-tokens \
+  -H "Authorization: Bearer $JWT" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"CI 脚本","scopes":"workflow:read"}'
 ```
-GET /api/v1/workflow-definitions?page=1&pageSize=20&search=关键词
-```
-
-## 响应格式
-
-### 成功响应
-
-成功的 API 响应通常包含 `data` 字段：
 
 ```json
-{
-  "data": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "我的工作流",
-    "createdAt": "2026-03-20T08:00:00.000Z"
-  }
-}
+{"data":{"id":"01a0f6e0-a59e-7d71-95d9-9a58748317fc","name":"CI 脚本","tokenPrefix":"al_6488f319","scopes":"workflow:read","lastUsedAt":null,"expiresAt":null,"isRevoked":false,"createdAt":"2026-10-01T09:51:52.734Z","token":"al_6488f319<其余 56 位已省略>"}}
 ```
 
-列表接口还包含分页元数据：
+### 同时携带两种头
+
+只要请求带有 `Authorization: Bearer …`，server 就按 JWT 校验，忽略 `X-Api-Key`；JWT 无效时直接返回 401，不会改用 API Token。
+
+```bash
+curl -s "http://localhost:3000/api/v1/workflow-definitions?pageSize=1" \
+  -H "Authorization: Bearer bad.token" \
+  -H "X-Api-Key: $AGENTLOOM_API_TOKEN"
+```
 
 ```json
-{
-  "data": [...],
-  "meta": {
-    "page": 1,
-    "pageSize": 20,
-    "total": 42,
-    "totalPages": 3
-  }
-}
+{"type":"https://agentloom.dev/errors/token-invalid","title":"Unauthorized","status":401,"detail":"Token signature is invalid or token is malformed","instance":"/api/v1/workflow-definitions?pageSize=1"}
 ```
 
-### 错误响应
+### 认证错误
 
-错误响应包含错误信息：
+| `type` 后缀 | 状态码 | 条件 |
+| --- | --- | --- |
+| `token-missing` | 401 | 两种请求头都没有 |
+| `token-invalid` | 401 | JWT 签名错误、格式错误或缺少必需声明 |
+| `token-expired` | 401 | JWT 已过期 |
+| `token-revoked` | 401 | JWT 已注销 |
+| `platform-api-token-invalid` | 401 | API Token 不存在或已吊销 |
+| `platform-api-token-expired` | 401 | API Token 超过 `expires_at` |
+| `agent-api-key-invalid` | 401 | Agent API Key 无效、已吊销或已过期 |
+| `tenant-required` | 400 | 令牌没有组织上下文 |
+| `insufficient-permissions` | 403 | 角色不满足接口要求 |
+
+## 字段命名
+
+server 不做大小写转换：请求体与查询参数的字段名就是各接口 DTO 里声明的名字，以 [REST 参考](/api/rest) 为准。
+
+- **响应体**：由数据库行直接序列化，字段为 camelCase（`tenantId`、`createdAt`、`publishedVersionId`）。少数接口自行组装响应，例如 `POST /api/v1/auth/login` 返回 `access_token`、`refresh_token`。
+- **请求体**：两种写法并存。较新的接口与对外接口用 camelCase（如 `PATCH /workflow-definitions/:id` 的 `inputSchema`、`/agent-api/*` 全部字段）；部分管理接口用 snake_case（如 `POST /workflow-definitions` 的 `template_slug`、`POST /agent-definitions/:agentId/api-keys` 的 `max_concurrent_runs`、`POST /platform-api-tokens` 的 `expires_at`）。
+- 声明了 `.strict()` 的 DTO 对未知字段返回 422；未声明的 DTO 会**静默丢弃**未知字段。写错大小写不一定报错。
+
+同一个工作流上的两组请求：
+
+```bash
+# 创建：DTO 声明的是 template_slug，camelCase 的 templateSlug 被静默丢弃
+curl -s -w '\n%{http_code}\n' http://localhost:3000/api/v1/workflow-definitions \
+  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+  -d '{"name":"大小写验证 A","templateSlug":"no-such-template"}'
+curl -s -w '\n%{http_code}\n' http://localhost:3000/api/v1/workflow-definitions \
+  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+  -d '{"name":"大小写验证 B","template_slug":"no-such-template"}'
+```
+
+```text
+{"data":{"id":"01a0f6d4-d723-7e4a-b46c-79832d812d83","tenantId":"01a0f6d2-bbf5-7c10-a65a-5b5c196594ce","name":"大小写验证 A","slug":"大小写验证-a","description":null,"icon":null,"nodes":[],"edges":[],"viewport":{"x":0,"y":0,"zoom":1},"metadata":{},"inputSchema":null,"version":1,"status":"draft","publishedVersionId":null,"createdBy":"11111111-1111-4111-8111-111111111111","updatedBy":"11111111-1111-4111-8111-111111111111","createdAt":"2026-10-01T09:38:58.975Z","updatedAt":"2026-10-01T09:38:58.975Z"}}
+201
+{"type":"https://agentloom.dev/errors/template-not-found","title":"Template Not Found","status":404,"detail":"Template with slug 'no-such-template' was not found.","instance":"/api/v1/workflow-definitions"}
+404
+```
+
+```bash
+# 更新：DTO 为 strict camelCase，snake_case 字段返回 422
+WF_ID=01a0f6d4-d723-7e4a-b46c-79832d812d83
+curl -s -w '\n%{http_code}\n' -X PATCH http://localhost:3000/api/v1/workflow-definitions/$WF_ID \
+  -H "Authorization: Bearer $JWT" -H 'Content-Type: application/json' \
+  -d '{"version":2,"input_schema":{"fields":[]}}'
+```
+
+```text
+{"type":"https://agentloom.dev/errors/validation-error","title":"Validation Error","status":422,"detail":"Request validation failed","instance":"/api/v1/workflow-definitions/01a0f6d4-d723-7e4a-b46c-79832d812d83","errors":[{"field":"","message":"Unrecognized key: \"input_schema\""}]}
+422
+```
+
+Studio 的 API 客户端（`agentloom-studio/src/shared/api/client.ts`）在 `afterResponse` 钩子里把响应键转成 camelCase，请求体不自动转换：需要 snake_case 的接口由调用处显式调用 `toSnakeBody()`。
+
+## 响应信封
+
+| 形状 | 使用场景 |
+| --- | --- |
+| `{"data": {…}}` | 单个资源 |
+| `{"data": […], "meta": {…}}` | 分页列表；`meta` 含 `page`、`pageSize`、`total`，多数列表还有 `totalPages` |
+| 裸对象 | 少数接口直接返回结果对象，例如 `POST /api/v1/webhooks/:token`、`POST /api/v1/api-events`、`/plugins/developer-keys`、`/plugins/marketplace/earnings/*`、`/health` |
+| `204` 无响应体 | 删除、吊销类操作 |
+
+列表请求：
+
+```bash
+curl -s "http://localhost:3000/api/v1/workflow-definitions" -H "Authorization: Bearer $JWT"
+```
 
 ```json
-{
-  "statusCode": 400,
-  "message": "Validation failed",
-  "error": "Bad Request"
-}
+{"data":[],"meta":{"total":0,"page":1,"pageSize":20,"totalPages":0}}
 ```
 
-常见错误代码的含义请参考 [错误参考](/guide/troubleshooting/errors) 页面。
+## 错误格式
 
-## 限流说明
+所有错误响应为 RFC 9457 Problem Details，`Content-Type: application/problem+json`：
 
-为了保护平台稳定性，API 请求受到以下限流规则约束：
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 错误类型 URI，前缀固定为 `https://agentloom.dev/errors/`；按它分支处理，不要按 `title` 或 `detail` |
+| `title` | 简短标题 |
+| `status` | HTTP 状态码 |
+| `detail` | 本次错误的具体说明 |
+| `instance` | 请求路径 |
+| `errors` | 可选，`[{ "field", "message" }]`，校验错误时出现 |
+| 其他扩展字段 | 个别错误附带上下文，例如 `conversation-busy` 的 `activeRunId` |
 
-### 默认限流
+- 请求体或查询参数校验失败：422，`type` 为 `…/validation-error`。
+- 未被领域异常覆盖的框架错误：`…/http-error`；未处理异常：500 `…/internal-server-error`。
+- 全部错误类型见 [错误参考](/guide/troubleshooting/errors)。
 
-| 限流规则 | 限制 |
-|----------|------|
-| 全局请求频率 | 100 次/分钟 |
-| 日 API 调用量 | 可由管理员在资源配额中配置 |
+## 限流
 
-### 限流响应头
+每分钟窗口计数，默认 100 次。成功响应带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（秒）；被拦截时状态码 429，另带 `Retry-After`（秒）。
 
-当接近或触发限流时，响应中会包含以下头信息：
+| 调用方 | 计数桶 | 上限来源 | 超限时的 `type` |
+| --- | --- | --- | --- |
+| 带组织上下文的 JWT 或平台 API Token | 整个组织共用 | 组织资源配额 `apiRateLimitPerMinute`，未设置时 100 | `resource-governance-decision-blocked` |
+| Agent API Key | 每个 Key 独立 | Key 的 `rate_limit_per_minute`，未设置时同所属组织 | `rate-limit-exceeded` |
+| 无凭证的公开接口（如 Webhook） | 按来源 IP | 100 | `rate-limit-exceeded` |
 
-| 响应头 | 说明 |
-|--------|------|
-| `X-RateLimit-Limit` | 当前时间窗口的请求限制 |
-| `X-RateLimit-Remaining` | 剩余可用请求数 |
-| `X-RateLimit-Reset` | 限流重置的时间戳 |
-| `Retry-After` | 限流触发时，建议等待的秒数 |
+组织还可以配置每日调用总量 `dailyApiCallLimit`，超出后同样返回 `resource-governance-decision-blocked`，次日 UTC 0 点重置。
 
-### 限流触发
+组织请求超限（输出截断了 `block` 扩展字段）：
 
-当触发限流时，API 返回 HTTP 429 状态码：
+```text
+HTTP/1.1 429 Too Many Requests
+retry-after: 60
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 0
+x-ratelimit-reset: 60
+content-type: application/problem+json; charset=utf-8
 
-```json
-{
-  "statusCode": 429,
-  "message": "Too Many Requests"
-}
+{"type":"https://agentloom.dev/errors/resource-governance-decision-blocked","title":"资源治理决策被阻止","status":429,"detail":"组织 01a0f6d2-bbf5-79f0-9744-fb059f425613 的配额指标 apiRateLimitPerMinute 已阻止 api_request：当前值 104，限制值 100","instance":"/api/v1/workflow-definitions?pageSize=1","errors":[{"field":"apiRateLimitPerMinute","message":"当前资源治理限制阻止了该决策"}],"block":{"decision":"blocked","action":"api_request","category":"api_rate_limit"}}
 ```
 
-**处理建议**：
-- 实现指数退避重试策略
-- 在客户端缓存不经常变化的数据
-- 批量操作代替多次单独请求
+无凭证请求超限：
 
-## SDK 支持
+```text
+HTTP/1.1 429 Too Many Requests
+retry-after: 60
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 0
+x-ratelimit-reset: 60
+content-type: application/problem+json; charset=utf-8
 
-AgentLoom 支持自动生成 TypeScript 和 Python SDK，基于 OpenAPI 3.0 规范。
-
-### TypeScript SDK
-
-```typescript
-import { AgentLoomClient } from '@agentloom/sdk';
-
-const client = new AgentLoomClient({
-  baseUrl: 'https://agentloom.ling.plus/api/v1',
-  apiKey: 'al_your_api_key_here',
-});
-
-// 列出工作流
-const workflows = await client.workflowDefinitions.list({
-  page: 1,
-  pageSize: 10,
-});
-
-// 触发执行
-const execution = await client.workflowDefinitions.run('workflow-id', {
-  inputs: { query: 'Hello' },
-});
+{"type":"https://agentloom.dev/errors/rate-limit-exceeded","title":"Too Many Requests","status":429,"detail":"Rate limit exceeded, retry later","instance":"/api/v1/webhooks/nope"}
 ```
 
-### Python SDK
+## 实时事件
 
-```python
-from agentloom import AgentLoomClient
-
-client = AgentLoomClient(
-    base_url="https://agentloom.ling.plus/api/v1",
-    api_key="al_your_api_key_here",
-)
-
-# 列出工作流
-workflows = client.workflow_definitions.list(page=1, page_size=10)
-
-# 触发执行
-execution = client.workflow_definitions.run(
-    "workflow-id",
-    inputs={"query": "Hello"},
-)
-```
-
-## 实时通信
-
-除了 REST API，AgentLoom 还通过 Socket.IO 提供实时事件推送：
-
-| Namespace | 用途 |
-|-----------|------|
-| `/execution` | 工作流执行状态和节点事件推送 |
-| `/agent-conversation` | Agent 对话实时消息推送 |
-| `/notification` | 系统通知推送 |
-| `/knowledge` | 知识库操作事件推送 |
-| `/memory` | Agent 记忆操作事件推送 |
-
-Socket.IO 连接同样需要通过 JWT Token 进行认证。
-
-## 完整 API 规范
-
-以下是 AgentLoom 的完整 OpenAPI 3.0 规范。你可以浏览所有可用的接口、参数和响应格式。
-
-<OASpec />
+Studio 使用的 Socket.IO 事件不属于对外 HTTP API，命名空间与事件清单见 [实时通道](/dev/server/realtime)。对外场景请用 [Agent 对外 API](/api/agent-api) 的 SSE 流或轮询。
