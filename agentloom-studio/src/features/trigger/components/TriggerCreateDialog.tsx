@@ -399,6 +399,7 @@ export function TriggerCreateDialog({
               <WebhookSecretDisplay
                 token={createdWebhookTrigger.config.token}
                 secret={createdWebhookTrigger.config.secret}
+                authMode={createdWebhookTrigger.config.authMode ?? 'signed'}
               />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
