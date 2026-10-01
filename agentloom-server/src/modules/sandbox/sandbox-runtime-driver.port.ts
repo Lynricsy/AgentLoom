@@ -2,7 +2,6 @@ import type { Readable } from 'node:stream';
 import type { RequestInit } from 'undici';
 
 import type { SandboxConfig } from '../../database/schema';
-import type { PiConfigInput } from './pi-config-generator.service';
 
 export const SANDBOX_RUNTIME_DRIVER = Symbol('SANDBOX_RUNTIME_DRIVER');
 
@@ -41,11 +40,6 @@ export interface RuntimeExecExitInfo {
   pid: number | null;
 }
 
-export interface CreateRuntimePiContext {
-  piConfigInput?: PiConfigInput;
-  conversationId?: string;
-}
-
 export interface DeleteRuntimeOptions {
   removeVolumes?: boolean;
 }
@@ -54,7 +48,6 @@ export interface SandboxRuntimeDriver {
   createRuntime(
     sessionId: string,
     config: SandboxConfig,
-    piContext?: CreateRuntimePiContext,
   ): Promise<{ runtimeHandle: string }>;
   startRuntime(runtimeHandle: string): Promise<void>;
   stopRuntime(runtimeHandle: string): Promise<void>;

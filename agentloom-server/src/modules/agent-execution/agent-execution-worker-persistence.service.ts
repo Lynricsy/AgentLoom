@@ -53,8 +53,6 @@ import {
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import type { PreparationPhase } from '../execution/types/execution-event.types';
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
-import { LlmService } from '../llm/llm.service';
-import { McpService } from '../mcp/mcp.service';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
@@ -66,6 +64,7 @@ import {
 } from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import type { SkillPromptPayload } from '../skill/skill.types';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
 import { AgentTurnEventAccumulator } from '../agent/shared/agent-turn-event-accumulator';
 import { bindMemoryToolSession } from '../agent/shared/memory-tool-session-binder';
@@ -116,8 +115,8 @@ import {
   resolveConfiguredSkillIds as resolveConfiguredSkillIdsForConversation,
   resolveSkillAugmentedPrompt,
   resolveSkillPayloadsForGraph,
+  type SkillAugmentedPrompt,
 } from './conversation-skill-resolution';
-import { buildPiConfigInput } from './pi-config-input.builder';
 import {
   applyConversationInputPreprocessors,
   estimateConversationTokenCount,
@@ -202,13 +201,11 @@ export class AgentExecutionWorkerPersistenceService {
     protected readonly sandboxService: SandboxService,
     protected readonly workspaceIntegrationService: WorkspaceIntegrationService,
     protected readonly agentDefinitionService: AgentDefinitionService,
-    protected readonly llmService?: LlmService,
     protected readonly memoryToolsService?: MemoryToolsService,
     protected readonly memoryFusionService?: MemoryFusionService,
     protected readonly memoryResourceProvider?: MemoryResourceProvider,
     protected readonly skillResolverService?: SkillResolverService,
     protected readonly subAgentToolsProvider?: SubAgentToolsProvider,
-    protected readonly mcpService?: McpService,
     protected readonly conversationTitleService?: ConversationTitleService,
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     protected readonly smartRoutingService?: SmartRoutingService,
@@ -577,7 +574,7 @@ export class AgentExecutionWorkerPersistenceService {
 
   public async resolveConversationSkillPrompt(
     context: ConversationExecutionContext,
-  ): Promise<string | undefined> {
+  ): Promise<SkillAugmentedPrompt> {
     return resolveSkillAugmentedPrompt(
       {
         tenantId: context.conversation.tenantId,
@@ -598,7 +595,7 @@ export class AgentExecutionWorkerPersistenceService {
    */
   public async resolveSkillPayloads(
     context: ConversationExecutionContext,
-  ): Promise<import('../skill/skill.types').SkillPromptPayload[]> {
+  ): Promise<SkillPromptPayload[]> {
     return resolveSkillPayloadsForGraph(
       {
         tenantId: context.conversation.tenantId,
@@ -873,45 +870,15 @@ export class AgentExecutionWorkerPersistenceService {
       runtime = this.adapterFactory.selectAdapter(usesSandboxRuntime);
 
       if (runtimeConfig.runtimeMode === 'sandbox') {
-        const skillPayloads = await resolveSkillPayloadsForGraph(
-          {
-            tenantId: params.parentContext.tenantId,
-            agentDefinitionId: params.agentDefinition.id,
-            skillIds: runtimeConfig.skillIds,
-            nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
-            edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
-          },
-          this.skillResolverService,
-          this.logger,
-        );
-        const piConfigInput = await buildPiConfigInput(
-          {
-            tenantId: params.parentContext.tenantId,
-            runtimeConfig,
-            systemPrompt: appendOutputSchemaToSystemPrompt(
-              resolveSubAgentSystemPrompt(
-                graphSystemPrompt,
-                params.subAgentRef,
-              ),
-              runtimeConfig.outputSchema,
-            ),
-            skillPayloads,
-          },
-          this.llmService,
-          this.mcpService,
-          this.db,
-          this.logger,
-        );
         await this.sandboxService.createSandboxSession({
           sandboxNodeId: null,
           config: runtimeConfig.sandboxConfig!,
           tenantId: params.parentContext.tenantId,
           agentConversationId: conversationId,
-          piConfigInput,
         });
       }
 
-      const baseSystemPrompt = await resolveSkillAugmentedPrompt(
+      const skillPrompt = await resolveSkillAugmentedPrompt(
         {
           tenantId: params.parentContext.tenantId,
           agentDefinitionId: params.agentDefinition.id,
@@ -928,7 +895,7 @@ export class AgentExecutionWorkerPersistenceService {
       );
       const systemPrompt = await this.resolveConversationSystemPrompt(
         memorySessionIds,
-        baseSystemPrompt,
+        skillPrompt.systemPrompt,
       );
 
       const nextSessionId = randomUUID();
@@ -936,6 +903,11 @@ export class AgentExecutionWorkerPersistenceService {
         runtime,
         nextSessionId,
         memorySessionIds,
+      );
+      this.registerLoadSkillToolProvider(
+        runtime,
+        nextSessionId,
+        skillPrompt.skills,
       );
       await this.registerSelfEvolutionToolsProvider({
         runtime,
@@ -1227,6 +1199,25 @@ export class AgentExecutionWorkerPersistenceService {
       sessionId,
       memorySessionIds,
     });
+  }
+
+  public registerLoadSkillToolProvider(
+    runtime: IAgentRuntime,
+    sessionId: string,
+    skills: SkillPromptPayload[],
+  ): void {
+    if (
+      skills.length === 0 ||
+      !this.skillResolverService ||
+      !runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    runtime.registerSessionToolProvider(
+      sessionId,
+      this.skillResolverService.createLoadSkillToolProvider(skills),
+    );
   }
 
   public async cleanupConversationMemorySessions(

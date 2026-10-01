@@ -7,7 +7,6 @@ import type { SandboxConfig, SandboxRuntimeNode } from '../../database/schema';
 import type {
   RuntimeProcess,
   RuntimeStats,
-  CreateRuntimePiContext,
   RuntimeExecCreateOptions,
   RuntimeExecExitInfo,
   RuntimeExecHandle,
@@ -53,7 +52,6 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
   async createRuntime(
     sessionId: string,
     config: SandboxConfig,
-    _piContext?: CreateRuntimePiContext,
   ): Promise<{ runtimeHandle: string }> {
     const candidates = await this.pickNodes(config);
     const body = JSON.stringify({

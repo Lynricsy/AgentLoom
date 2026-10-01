@@ -38,6 +38,7 @@ import type {
   StopReason,
 } from '../agent/types/agent-event.types';
 import type { AgentSession } from '../agent/types/agent-session.types';
+import type { SkillInput } from '../sandbox/pi-config-generator.service';
 import type {
   ContentBlock,
   TextContentBlock,
@@ -58,8 +59,6 @@ import {
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import type { PreparationPhase } from '../execution/types/execution-event.types';
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
-import { LlmService } from '../llm/llm.service';
-import { McpService } from '../mcp/mcp.service';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
@@ -121,8 +120,8 @@ import {
   resolveConfiguredSkillIds as resolveConfiguredSkillIdsForConversation,
   resolveSkillAugmentedPrompt,
   resolveSkillPayloadsForGraph,
+  toSkillInput,
 } from './conversation-skill-resolution';
-import { buildPiConfigInput } from './pi-config-input.builder';
 import {
   applyConversationInputPreprocessors,
   estimateConversationTokenCount,
@@ -227,13 +226,11 @@ export class AgentExecutionWorkerRuntimeService {
     protected readonly sandboxService: SandboxService,
     protected readonly workspaceIntegrationService: WorkspaceIntegrationService,
     protected readonly agentDefinitionService: AgentDefinitionService,
-    protected readonly llmService?: LlmService,
     protected readonly memoryToolsService?: MemoryToolsService,
     protected readonly memoryFusionService?: MemoryFusionService,
     protected readonly memoryResourceProvider?: MemoryResourceProvider,
     protected readonly skillResolverService?: SkillResolverService,
     protected readonly subAgentToolsProvider?: SubAgentToolsProvider,
-    protected readonly mcpService?: McpService,
     protected readonly conversationTitleService?: ConversationTitleService,
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     protected readonly smartRoutingService?: SmartRoutingService,
@@ -496,21 +493,11 @@ export class AgentExecutionWorkerRuntimeService {
       );
 
     let sandboxReused = false;
+    let sandboxSkills: SkillInput[] | undefined;
     if (hasSandboxRuntime) {
-      const skillPayloads =
-        await this.persistence.resolveSkillPayloads(context);
-      const piConfigInput = await buildPiConfigInput(
-        {
-          tenantId,
-          runtimeConfig: context.runtimeConfig,
-          systemPrompt: context.systemPrompt,
-          skillPayloads,
-        },
-        this.llmService,
-        this.mcpService,
-        this.db,
-        this.logger,
-      );
+      sandboxSkills = (
+        await this.persistence.resolveSkillPayloads(context)
+      ).map(toSkillInput);
 
       const existingSession = await this.sandboxService.findByConversationId(
         conversationId,
@@ -531,7 +518,6 @@ export class AgentExecutionWorkerRuntimeService {
         config: context.runtimeConfig.sandboxConfig!,
         tenantId,
         agentConversationId: conversationId,
-        piConfigInput,
       });
     }
 
@@ -554,6 +540,13 @@ export class AgentExecutionWorkerRuntimeService {
           session.id,
           memorySessionIds,
         );
+        if (!hasSandboxRuntime) {
+          this.persistence.registerLoadSkillToolProvider(
+            runtime,
+            session.id,
+            await this.persistence.resolveSkillPayloads(context),
+          );
+        }
         await this.persistence.registerSelfEvolutionToolsProvider({
           runtime,
           sessionId: session.id,
@@ -595,13 +588,13 @@ export class AgentExecutionWorkerRuntimeService {
       }
     }
 
-    // For sandbox path, skills are passed as independent files via piConfigInput
-    // so the system prompt should not include skill content.
-    // For non-sandbox path, embed skills into the system prompt as before.
+    // sandbox 运行态：技能随 guest session files 下发，由 pi 的 read 工具按需读取，
+    // 系统提示词不含技能；no_sandbox 运行态：技能内联进系统提示词，并注册 load_skill。
+    const skillPrompt = hasSandboxRuntime
+      ? { systemPrompt: context.systemPrompt, skills: [] }
+      : await this.persistence.resolveConversationSkillPrompt(context);
     const baseSystemPrompt = appendOutputSchemaToSystemPrompt(
-      hasSandboxRuntime
-        ? context.systemPrompt
-        : await this.persistence.resolveConversationSkillPrompt(context),
+      skillPrompt.systemPrompt,
       context.runtimeConfig.outputSchema,
     );
 
@@ -615,6 +608,11 @@ export class AgentExecutionWorkerRuntimeService {
       runtime,
       nextSessionId,
       memorySessionIds,
+    );
+    this.persistence.registerLoadSkillToolProvider(
+      runtime,
+      nextSessionId,
+      skillPrompt.skills,
     );
     await this.persistence.registerSelfEvolutionToolsProvider({
       runtime,
@@ -648,7 +646,10 @@ export class AgentExecutionWorkerRuntimeService {
         systemPrompt,
         runtimeConfig: context.runtimeConfig,
         ...(hasSandboxRuntime
-          ? { serverSandbox: { agentConversationId: conversationId } }
+          ? {
+              serverSandbox: { agentConversationId: conversationId },
+              ...(sandboxSkills?.length ? { skills: sandboxSkills } : {}),
+            }
           : {}),
         context: {
           tenantId,

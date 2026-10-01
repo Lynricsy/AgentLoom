@@ -50,8 +50,6 @@ import {
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import type { PreparationPhase } from '../execution/types/execution-event.types';
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
-import { LlmService } from '../llm/llm.service';
-import { McpService } from '../mcp/mcp.service';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
@@ -114,7 +112,6 @@ import {
   resolveSkillAugmentedPrompt,
   resolveSkillPayloadsForGraph,
 } from './conversation-skill-resolution';
-import { buildPiConfigInput } from './pi-config-input.builder';
 import {
   applyConversationInputPreprocessors,
   estimateConversationTokenCount,
@@ -928,13 +925,11 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly sandboxService: SandboxService,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly agentDefinitionService: AgentDefinitionService,
-    private readonly llmService?: LlmService,
     private readonly memoryToolsService?: MemoryToolsService,
     private readonly memoryFusionService?: MemoryFusionService,
     private readonly memoryResourceProvider?: MemoryResourceProvider,
     private readonly skillResolverService?: SkillResolverService,
     private readonly subAgentToolsProvider?: SubAgentToolsProvider,
-    private readonly mcpService?: McpService,
     private readonly conversationTitleService?: ConversationTitleService,
     private readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     private readonly smartRoutingService?: SmartRoutingService,
@@ -956,13 +951,11 @@ export class AgentExecutionWorker extends WorkerHost {
         sandboxService,
         workspaceIntegrationService,
         agentDefinitionService,
-        llmService,
         memoryToolsService,
         memoryFusionService,
         memoryResourceProvider,
         skillResolverService,
         subAgentToolsProvider,
-        mcpService,
         conversationTitleService,
         selfEvolutionToolsProvider,
         smartRoutingService,
@@ -980,13 +973,11 @@ export class AgentExecutionWorker extends WorkerHost {
         sandboxService,
         workspaceIntegrationService,
         agentDefinitionService,
-        llmService,
         memoryToolsService,
         memoryFusionService,
         memoryResourceProvider,
         skillResolverService,
         subAgentToolsProvider,
-        mcpService,
         conversationTitleService,
         selfEvolutionToolsProvider,
         smartRoutingService,

@@ -38,6 +38,7 @@ export interface SkillSummary {
 export interface SkillPromptPayload {
   id: string;
   name: string;
+  slug?: string;
   description: string;
   content: string | null;
   files?: Record<string, string>;

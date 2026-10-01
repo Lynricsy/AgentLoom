@@ -106,10 +106,6 @@ export class SandboxLifecycleWorker extends WorkerHost {
       const container = await this.runtimeDriver.createRuntime(
         sessionId,
         config,
-        {
-          piConfigInput: data.piConfigInput,
-          conversationId: data.agentConversationId,
-        },
       );
       runtimeHandle = container.runtimeHandle;
 

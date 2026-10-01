@@ -3,7 +3,6 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, type Job } from 'bullmq';
 
 import type { SandboxConfig } from '../../database/schema';
-import type { PiConfigInput } from './pi-config-generator.service';
 import {
   SANDBOX_LIFECYCLE_QUEUE,
   type SandboxLifecycleBinding,
@@ -29,14 +28,12 @@ export class SandboxLifecycleProducer {
     sandboxNodeId?: string;
     config: SandboxConfig;
     tenantId: string;
-    piConfigInput?: PiConfigInput;
   }): Promise<Job<SandboxLifecycleJobData>> {
     return this.queue.add('sandbox-create', {
       sessionId: params.sessionId,
       tenantId: params.tenantId,
       jobType: 'create',
       config: params.config,
-      ...(params.piConfigInput ? { piConfigInput: params.piConfigInput } : {}),
       ...this.buildBinding(params),
     });
   }

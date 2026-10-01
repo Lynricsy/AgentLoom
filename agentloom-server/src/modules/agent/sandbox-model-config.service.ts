@@ -18,11 +18,17 @@ import {
   PiConfigGeneratorService,
   resolvePiProviderApiKeyEnv,
   type PiModelConfig,
+  type SkillInput,
 } from '../sandbox/pi-config-generator.service';
 import {
   SANDBOX_RUNTIME_DRIVER,
   type SandboxRuntimeDriver,
 } from '../sandbox/sandbox-runtime-driver.port';
+import {
+  SANDBOX_SESSION_FILE_MAX_BYTES,
+  SANDBOX_SESSION_TOTAL_MAX_BYTES,
+  SandboxSkillPayloadTooLargeException,
+} from '../sandbox/sandbox.exceptions';
 import type { AgentSession, McpServerConfig } from './types';
 
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
@@ -69,6 +75,7 @@ export class SandboxModelConfigService {
     session: AgentSession;
     runtimeConfig?: AgentRuntimeConfig;
     mcpServers?: Readonly<Record<string, McpServerConfig>>;
+    skills?: readonly SkillInput[];
   }): Promise<Record<string, unknown>> {
     const payload: Record<string, unknown> = {};
     const systemPrompt = this.normalizeOptionalString(
@@ -87,6 +94,43 @@ export class SandboxModelConfigService {
       payload['nativeToolPolicy'] = params.runtimeConfig.nativeToolPolicy;
     }
 
+    // guest 把 files 写进 session agentDir，pi 的 DefaultResourceLoader 从
+    // `<agentDir>/skills/<name>/SKILL.md` 发现技能并在系统提示词列出（read 工具按需加载）
+    if (params.skills?.length) {
+      if (!this.piConfigGenerator) {
+        throw new Error(
+          'PiConfigGeneratorService 未注入，无法把技能写入沙箱会话',
+        );
+      }
+      const skillDirs = this.piConfigGenerator.generateSkillFiles({
+        skills: [...params.skills],
+      });
+      const files: Record<string, string> = Object.fromEntries(
+        Object.entries(skillDirs).flatMap(([dirName, files]) =>
+          Object.entries(files).map(([fileName, content]) => [
+            `skills/${dirName}/${fileName}`,
+            content,
+          ]),
+        ),
+      );
+      // guest 写文件前按同样上限校验，超限会让会话创建失败；在 server 端提前拒绝并给出原因
+      let totalBytes = 0;
+      for (const [path, content] of Object.entries(files)) {
+        const bytes = Buffer.byteLength(content);
+        if (bytes > SANDBOX_SESSION_FILE_MAX_BYTES) {
+          throw new SandboxSkillPayloadTooLargeException(
+            `技能文件 ${path} 为 ${bytes} 字节，超过沙箱单文件上限 ${SANDBOX_SESSION_FILE_MAX_BYTES} 字节`,
+          );
+        }
+        totalBytes += bytes;
+      }
+      if (totalBytes > SANDBOX_SESSION_TOTAL_MAX_BYTES) {
+        throw new SandboxSkillPayloadTooLargeException(
+          `技能文件合计 ${totalBytes} 字节，超过沙箱会话上限 ${SANDBOX_SESSION_TOTAL_MAX_BYTES} 字节`,
+        );
+      }
+      payload['files'] = files;
+    }
     const piConfig = await this.resolveSessionPiConfig(
       params.session,
       params.runtimeConfig,

@@ -817,6 +817,7 @@ export class AgentTaskWorker extends WorkerHost {
         nodeData,
       );
     const llmCallStartedAt = Date.now();
+    const upstreamSkills = this.supportService.extractUpstreamSkills(input);
 
     try {
       if (intervention) {
@@ -838,6 +839,11 @@ export class AgentTaskWorker extends WorkerHost {
           runtime,
           sessionId,
           memorySessionIds,
+        );
+        this.supportService.registerLoadSkillToolProvider(
+          runtime,
+          sessionId,
+          upstreamSkills,
         );
         const toolLoopState =
           this.supportService.loadToolLoopStateFromCheckpoint(step);
@@ -906,8 +912,6 @@ export class AgentTaskWorker extends WorkerHost {
 
         const isExistingSession = Boolean(sessionId);
         if (!sessionId) {
-          const upstreamSkills =
-            this.supportService.extractUpstreamSkills(input);
           let enrichedBasePrompt =
             typeof nodeData.systemPrompt === 'string'
               ? nodeData.systemPrompt
@@ -937,6 +941,11 @@ export class AgentTaskWorker extends WorkerHost {
             runtime,
             nextSessionId,
             memorySessionIds,
+          );
+          this.supportService.registerLoadSkillToolProvider(
+            runtime,
+            nextSessionId,
+            upstreamSkills,
           );
           let session;
           try {
@@ -975,6 +984,11 @@ export class AgentTaskWorker extends WorkerHost {
             runtime,
             sessionId,
             memorySessionIds,
+          );
+          this.supportService.registerLoadSkillToolProvider(
+            runtime,
+            sessionId,
+            upstreamSkills,
           );
         }
 

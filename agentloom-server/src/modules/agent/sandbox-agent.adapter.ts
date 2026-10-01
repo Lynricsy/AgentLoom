@@ -193,6 +193,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           session,
           runtimeConfig: params.runtimeConfig,
           mcpServers: params.mcpServers,
+          skills: params.skills,
         });
         await this.modelConfig.initializeContainerSession(
           sandbox.runtimeHandle,

@@ -23,6 +23,7 @@ docType: howto
 | 内置文件读写、编辑、终端工具 | 有，可在 Agent Main 的「原生工具」中逐项开关 | 无 |
 | 画布上的 Sandbox、Workspace 节点 | 可用 | 不可用，Agent Main 没有「沙箱」端口 |
 | 调用子 Agent | 可调用有沙箱或无沙箱子 Agent | 只能调用无沙箱子 Agent；调用有沙箱子 Agent 时运行失败，错误为 `无 sandbox Agent 不支持调用有 sandbox 的子 Agent` |
+| 技能的加载方式 | 技能文件写入沙箱会话目录，Agent 用「文件读取」工具按需读取；关闭「文件读取」后 Agent 看不到技能 | 技能内容写入系统提示词；技能正文合计超过 50 KiB 时只写摘要，Agent 通过 `load_skill` 工具按需加载 |
 
 ## 连接模型与系统提示词
 

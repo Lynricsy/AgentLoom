@@ -117,7 +117,6 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       mockSubAgentToolsProvider as never,
     );
   });

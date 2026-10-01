@@ -26,7 +26,6 @@ import {
   SandboxStatsUnavailableException,
 } from './sandbox.exceptions';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
-import type { PiConfigInput } from './pi-config-generator.service';
 import {
   SANDBOX_RUNTIME_DRIVER,
   type RuntimeProcess,
@@ -53,7 +52,6 @@ type CreateSandboxSessionParams = {
   config: SandboxConfig;
   tenantId: string;
   agentConversationId?: string;
-  piConfigInput?: PiConfigInput;
 };
 
 type ActiveSandboxLookupParams = {
@@ -109,7 +107,6 @@ export class SandboxService {
     config,
     tenantId,
     agentConversationId,
-    piConfigInput,
   }: CreateSandboxSessionParams): Promise<SandboxSession> {
     this.assertRuntimeAvailable('create');
     const existing = await this.findActiveSession({
@@ -162,7 +159,6 @@ export class SandboxService {
       ...(session.sandboxNodeId
         ? { sandboxNodeId: session.sandboxNodeId }
         : {}),
-      ...(piConfigInput ? { piConfigInput } : {}),
     });
 
     this.logger.log(

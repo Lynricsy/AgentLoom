@@ -6,6 +6,8 @@ import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { ContentBlock } from '../../agent/types/content-block.types';
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { SubAgentToolsProvider } from '../../agent-execution/subagent';
+import { SkillResolverService } from '../../skill/skill-resolver.service';
+import type { SkillPromptPayload } from '../../skill/skill.types';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 
 const { mockResolveSubAgent } = vi.hoisted(() => ({
@@ -158,6 +160,9 @@ describe('WorkflowAgentAdapter', () => {
   const mockSkillResolverService = {
     resolveSkillsForAgent: vi.fn(),
     buildSkillAugmentedPrompt: vi.fn(),
+    createLoadSkillToolProvider: vi.fn((skills: SkillPromptPayload[]) =>
+      new SkillResolverService({} as never).createLoadSkillToolProvider(skills),
+    ),
   };
   let updateWhereMock: ReturnType<typeof vi.fn>;
   let updateSetMock: ReturnType<typeof vi.fn>;
@@ -692,6 +697,16 @@ describe('WorkflowAgentAdapter', () => {
         expect.objectContaining({ id: 'skill-upstream-2', name: '上游技能二' }),
       ]),
     );
+    const providerTools = await Promise.all(
+      [...sessionProviders.values()].map((provider) => provider()),
+    );
+    const loadSkillTool = providerTools.find(
+      (tools) => 'load_skill' in tools,
+    )?.load_skill;
+    expect(loadSkillTool?.execute).toBeTypeOf('function');
+    expect(
+      await loadSkillTool!.execute!({ name: '上游技能二' }, {} as never),
+    ).toBe('UPSTREAM_SKILL_TWO');
     expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         systemPrompt: 'augmented-system-prompt',

@@ -2,6 +2,8 @@
  * Sandbox 模型配置服务回归：直接验证 payload 边界与 guest session 初始化错误语义。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PiConfigGeneratorService } from '../../sandbox/pi-config-generator.service';
+import { SandboxSkillPayloadTooLargeException } from '../../sandbox/sandbox.exceptions';
 import { SandboxModelConfigService } from '../sandbox-model-config.service';
 
 const session = {
@@ -41,6 +43,72 @@ describe('SandboxModelConfigService', () => {
       mcpServers: { search: { url: 'https://mcp.test' } },
       nativeToolPolicy: { bash: false },
     });
+  });
+
+  it('技能写成 guest session files，供 pi 从 agentDir/skills 自动发现', async () => {
+    const withGenerator = new SandboxModelConfigService(
+      {} as never,
+      runtimeDriver as never,
+      undefined,
+      new PiConfigGeneratorService(),
+    );
+
+    const payload = await withGenerator.buildContainerSessionPayload({
+      session: session as never,
+      skills: [
+        {
+          name: 'Code Review',
+          description: 'Review diffs',
+          files: {
+            'SKILL.md': '---\nname: legacy\n---\nCheck error handling.',
+            'refs/checklist.md': '- tests',
+          },
+        },
+      ],
+    });
+
+    expect(payload.files).toEqual({
+      'skills/code-review/SKILL.md':
+        '---\nname: code-review\ndescription: Review diffs\n---\n\nCheck error handling.',
+      'skills/code-review/refs/checklist.md': '- tests',
+    });
+  });
+
+  it('有技能但缺少 pi generator 时显式失败，而不是静默丢弃技能', async () => {
+    await expect(
+      service.buildContainerSessionPayload({
+        session: session as never,
+        skills: [{ name: 's', description: 'd', files: { 'SKILL.md': 'x' } }],
+      }),
+    ).rejects.toThrow('PiConfigGeneratorService');
+  });
+
+  // guest 上限：agentloom-deploy/sandbox/src/session-config.ts 单文件 1 MiB、总计 16 MiB
+  it.each([
+    ['单文件超过 1 MiB', { 'SKILL.md': 'x'.repeat(1024 * 1024 + 1) }],
+    [
+      '总量超过 16 MiB',
+      Object.fromEntries(
+        Array.from({ length: 17 }, (_, index) => [
+          `refs/part-${index}.md`,
+          'x'.repeat(1024 * 1024 - 64),
+        ]),
+      ),
+    ],
+  ])('技能%s时在创建会话前拒绝', async (_label, files) => {
+    const withGenerator = new SandboxModelConfigService(
+      {} as never,
+      runtimeDriver as never,
+      undefined,
+      new PiConfigGeneratorService(),
+    );
+
+    await expect(
+      withGenerator.buildContainerSessionPayload({
+        session: session as never,
+        skills: [{ name: 'Huge', description: 'd', files }],
+      }),
+    ).rejects.toBeInstanceOf(SandboxSkillPayloadTooLargeException);
   });
 
   it('容器初始化使用短超时并在 ok 时完成', async () => {

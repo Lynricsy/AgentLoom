@@ -30,10 +30,6 @@ import { AgentMemoryModule } from '../agent-memory/agent-memory.module';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryResourceProvider } from '../agent-memory/memory-resource.provider';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
-import { LlmModule } from '../llm/llm.module';
-import { LlmService } from '../llm/llm.service';
-import { McpModule } from '../mcp/mcp.module';
-import { McpService } from '../mcp/mcp.service';
 import { SelfEvolutionModule } from '../self-evolution/self-evolution.module';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
@@ -79,13 +75,11 @@ const agentExecutionWorkerProvider: Provider = {
     sandboxService: SandboxService,
     workspaceIntegrationService: WorkspaceIntegrationService,
     agentDefinitionService: AgentDefinitionService,
-    llmService?: LlmService,
     memoryToolsService?: MemoryToolsService,
     memoryFusionService?: MemoryFusionService,
     memoryResourceProvider?: MemoryResourceProvider,
     skillResolverService?: SkillResolverService,
     subAgentToolsProvider?: SubAgentToolsProvider,
-    mcpService?: McpService,
     conversationTitleService?: ConversationTitleService,
     selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     smartRoutingService?: SmartRoutingService,
@@ -100,13 +94,11 @@ const agentExecutionWorkerProvider: Provider = {
       sandboxService,
       workspaceIntegrationService,
       agentDefinitionService,
-      llmService,
       memoryToolsService,
       memoryFusionService,
       memoryResourceProvider,
       skillResolverService,
       subAgentToolsProvider,
-      mcpService,
       conversationTitleService,
       selfEvolutionToolsProvider,
       smartRoutingService,
@@ -121,13 +113,11 @@ const agentExecutionWorkerProvider: Provider = {
     SandboxService,
     WorkspaceIntegrationService,
     AgentDefinitionService,
-    { token: LlmService, optional: true },
     { token: MemoryToolsService, optional: true },
     { token: MemoryFusionService, optional: true },
     { token: MemoryResourceProvider, optional: true },
     { token: SkillResolverService, optional: true },
     { token: SubAgentToolsProvider, optional: true },
-    { token: McpService, optional: true },
     { token: ConversationTitleService, optional: true },
     { token: SelfEvolutionToolsProvider, optional: true },
     { token: SmartRoutingService, optional: true },
@@ -144,10 +134,8 @@ const agentExecutionWorkerProvider: Provider = {
     ExecutionModule,
     SandboxModule,
     AgentMemoryModule,
-    McpModule,
     SmartRoutingModule,
     SkillModule,
-    LlmModule,
     SelfEvolutionModule,
     AgentApiRuntimeModule,
     BullModule.registerQueue({

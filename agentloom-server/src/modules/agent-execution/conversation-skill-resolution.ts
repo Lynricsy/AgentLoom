@@ -1,11 +1,26 @@
 import type { Logger } from '@nestjs/common';
 
 import type { AgentVersionSnapshot } from '../../database/schema/agent-definitions.schema';
+import type { SkillInput } from '../sandbox/pi-config-generator.service';
 import type { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import { normalizeOptionalString } from './conversation-execution-metadata';
 
 type WarningLogger = Pick<Logger, 'warn'>;
+
+/** sandbox 运行态把技能作为 guest 会话 files 下发前的形状转换。 */
+export function toSkillInput(skill: SkillPromptPayload): SkillInput {
+  const files =
+    skill.files && Object.keys(skill.files).length > 0
+      ? skill.files
+      : { 'SKILL.md': skill.content ?? '' };
+
+  return {
+    name: skill.name,
+    description: skill.description,
+    files,
+  };
+}
 
 type SkillResolutionParams = {
   tenantId: string;
@@ -47,13 +62,20 @@ export async function resolveSkillPayloadsForGraph(
   }
 }
 
+export type SkillAugmentedPrompt = {
+  systemPrompt: string | undefined;
+  /** 已注入提示词的技能；调用方需据此注册 `load_skill` 工具。 */
+  skills: SkillPromptPayload[];
+};
+
 export async function resolveSkillAugmentedPrompt(
   params: SkillResolutionParams & { baseSystemPrompt?: string },
   skillResolverService: SkillResolverService | undefined,
   logger: WarningLogger,
-): Promise<string | undefined> {
+): Promise<SkillAugmentedPrompt> {
+  const unchanged = { systemPrompt: params.baseSystemPrompt, skills: [] };
   if (!skillResolverService) {
-    return params.baseSystemPrompt;
+    return unchanged;
   }
 
   const skillIds = resolveConfiguredSkillIds(
@@ -63,7 +85,7 @@ export async function resolveSkillAugmentedPrompt(
   );
 
   if (!skillIds.length) {
-    return params.baseSystemPrompt;
+    return unchanged;
   }
 
   try {
@@ -73,19 +95,19 @@ export async function resolveSkillAugmentedPrompt(
     );
 
     if (!skills.length) {
-      return params.baseSystemPrompt;
+      return unchanged;
     }
 
     const augmentedPrompt = skillResolverService
       .buildSkillAugmentedPrompt(params.baseSystemPrompt ?? '', skills)
       .trim();
 
-    return augmentedPrompt || undefined;
+    return { systemPrompt: augmentedPrompt || undefined, skills };
   } catch (error) {
     logger.warn(
       `Failed to resolve skills for agent ${params.agentDefinitionId}: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return params.baseSystemPrompt;
+    return unchanged;
   }
 }
 

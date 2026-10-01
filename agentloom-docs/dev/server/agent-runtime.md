@@ -6,7 +6,7 @@ docType: explanation
 
 > 本页回答：为什么 Agent 有两种运行态，它们各自在哪个进程、哪台机器上执行？
 
-Agent 定义上的 `runtime_mode` 列决定一次对话或一个工作流 agent 节点由谁执行模型循环与工具调用。枚举 `agent_runtime_mode_enum` 只有 `sandbox` 与 `no_sandbox` 两个值，列默认 `sandbox`（`agentloom-server/src/database/schema/agent-definitions.schema.ts:30-52`）。版本快照里的 `runtimeMode` 优先于定义上的值，其余情况一律按 `sandbox` 处理（`resolveAgentRuntimeMode`，`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:627-639`）。
+Agent 定义上的 `runtime_mode` 列决定一次对话或一个工作流 agent 节点由谁执行模型循环与工具调用。枚举 `agent_runtime_mode_enum` 只有 `sandbox` 与 `no_sandbox` 两个值，列默认 `sandbox`（`agentloom-server/src/database/schema/agent-definitions.schema.ts:30-52`）。版本快照里的 `runtimeMode` 优先于定义上的值，其余情况一律按 `sandbox` 处理（`resolveAgentRuntimeMode`，`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:629-641`）。
 
 两种运行态的差别在于 Agent 能否碰到一个可写的文件系统和终端：
 
@@ -106,7 +106,7 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 | 进程内 | `no_sandbox` | 进程内执行 |
 | 进程内 | `sandbox` | 拒绝，抛出「无 sandbox Agent 不支持调用有 sandbox 的子 Agent」 |
 
-对话路径的判定在 `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:830-864`，工作流路径的判定在 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts:182-218`。拒绝最后一种组合的原因是：进程内父 Agent 没有可交给子 Agent 的 VM 绑定。
+对话路径的判定在 `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:832-866`，工作流路径的判定在 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts:183-219`。拒绝最后一种组合的原因是：进程内父 Agent 没有可交给子 Agent 的 VM 绑定。
 
 ## 工作流中的 agent 节点
 
@@ -115,21 +115,31 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 `WorkflowAgentAdapter.execute` 依次：
 
 1. 加载 Agent 定义或指定版本快照，编译出运行时配置与运行态。
-2. 合并上游节点经端口传入的 MCP 工具绑定、知识库绑定、输出 schema 和技能（`resolveWorkflowExtensions`，同文件 `:600-658`）。
+2. 合并上游节点经端口传入的 MCP 工具绑定、知识库绑定、输出 schema 和技能（`resolveWorkflowExtensions`，同文件 `:613-648`）。
 3. 按上一节的规则决定运行态；`sandbox` 运行态时确保执行级 sandbox 绑定存在（`ensureSandboxBinding`）。
 4. 选择 `IAgentRuntime`，注册子 Agent 工具，然后驱动工具轮次；工具轮次上限 `MAX_TOOL_ROUNDS` 为 `10`（同文件 `:83`），超出即失败。
 5. 运行期间按 `PROGRESS_CHECKPOINT_INTERVAL_MS`（400 ms）把进度写回执行步骤 checkpoint。
 
 ## Skills 注入
 
-技能以系统提示词的形式进入 Agent，两种运行态都走同一套逻辑。技能来源有两处：运行时配置中的 `skillIds`，以及画布上通过 `skills-in` 句柄连到 `agent-main` 节点的 `skill` 节点（`extractConversationSkillIds`，`agentloom-server/src/modules/agent-execution/conversation-skill-resolution.ts:92-125`）；工作流中还会合并上游节点传入的技能。
+技能来源有两处：运行时配置中的 `skillIds`，以及画布上通过 `skills-in` 句柄连到 `agent-main` 节点的 `skill` 节点（`extractConversationSkillIds`，`agentloom-server/src/modules/agent-execution/conversation-skill-resolution.ts`）；工作流中还会合并上游 Skill 节点输出的技能。
 
-`SkillResolverService`（`agentloom-server/src/modules/skill/skill-resolver.service.ts`）负责两步：
+`SkillResolverService`（`agentloom-server/src/modules/skill/skill-resolver.service.ts`）提供三项能力：
 
-- `resolveSkillsForAgent` 只保留 `status` 为 `active` 的技能，按传入 id 的顺序返回名称、描述、正文和文件表。
-- `buildSkillAugmentedPrompt` 在基础系统提示词后追加 `<available_skills>` 摘要；当全部技能正文总长不超过 `SKILL_CONTENT_SIZE_THRESHOLD`（50 KiB）时，再以 `<skill name="…">` 块追加完整正文，超过时只保留摘要。
+- `resolveSkillsForAgent` 只保留 `status` 为 `active` 的技能，按传入 id 的顺序返回名称、slug、描述、正文和文件表。
+- `buildSkillAugmentedPrompt` 在基础系统提示词后追加 `<available_skills>` 摘要，并提示模型用 `load_skill` 工具加载技能；当全部技能正文总长不超过 `SKILL_CONTENT_SIZE_THRESHOLD`（50 KiB）时，再以 `<skill name="…">` 块追加完整正文，超过时只保留摘要。
+- `createLoadSkillToolProvider` 生成会话工具 `load_skill`（`LOAD_SKILL_TOOL_NAME`）：入参 `name`（技能名称或 slug，不区分大小写）与可选的 `file`（附带文件路径），返回 SKILL.md 全文及附带文件清单，或指定附带文件的内容。它只在调用方传入的、已注入提示词的技能里查找，不回查技能库，所以请求未绑定的技能只会得到错误文本。
 
-技能解析失败只记录 warning 并退回基础提示词，不会中断执行。sandbox 运行态下，对话 worker 还会把技能载荷连同模型与 MCP 配置组装为 `PiConfigInput`，随 sandbox 创建任务一起提交（`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:875-911`）。
+两种运行态的技能投递方式不同：
+
+| 路径 | 技能进入 Agent 的方式 |
+| --- | --- |
+| 对话，`no_sandbox` | 提示词内联 + 注册 `load_skill`（新建会话与恢复会话都注册，`agentloom-server/src/modules/agent-execution/agent-execution-worker-runtime.service.ts`） |
+| 对话，`sandbox` | 不进系统提示词。技能随 guest 会话请求的 `files` 下发为 `skills/<dir>/SKILL.md` 等文件（`SandboxModelConfigService.buildContainerSessionPayload`），由 pi 在会话 agentDir 中发现，并在系统提示词中提示模型用 read 工具读取。原生工具策略关闭读取时技能不可见。单文件超过 `SANDBOX_SESSION_FILE_MAX_BYTES`（1 MiB）或总量超过 `SANDBOX_SESSION_TOTAL_MAX_BYTES`（16 MiB）时，server 在下发前以 422 `sandbox-skill-payload-too-large` 拒绝（`agentloom-server/src/modules/sandbox/sandbox.exceptions.ts`） |
+| 子 Agent（两种运行态） | 提示词内联 + 注册 `load_skill`（`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`）；sandbox 运行态的 `load_skill` 经服务端工具回调执行 |
+| 工作流 agent 节点 | `WorkflowAgentAdapter` 合并 `skillIds` 与上游技能后内联 + 注册 `load_skill`；`agent-task.worker.ts` 对上游技能同样内联 + 注册 `load_skill` |
+
+技能解析失败只记录 warning 并退回基础提示词，不会中断执行。
 
 ## 对话跨实例派发
 

@@ -30,6 +30,7 @@ import {
   resolveConfiguredSkillIds,
   resolveSkillAugmentedPrompt,
   resolveSkillPayloadsForGraph,
+  toSkillInput,
 } from '../conversation-skill-resolution';
 import {
   buildConversationTurnResult,
@@ -37,19 +38,6 @@ import {
   mergeToolCallEvent,
   turnResultHasPersistableOutput,
 } from '../conversation-turn-values';
-import {
-  buildPiConfigInput,
-  extractEnabledMcpServerConfigIds,
-  resolvePiMcpServerKey,
-  resolvePiModelBaseUrl,
-  resolvePiModelConfig,
-  resolvePiMcpServers,
-  resolvePiRuntimeModelBaseUrl,
-  sanitizePiMcpServerKey,
-  toPiModelConfig,
-  toPiModelConfigFromRuntimeModelConfig,
-  toSkillInput,
-} from '../pi-config-input.builder';
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
@@ -387,7 +375,10 @@ describe('conversation skill resolution helpers', () => {
         service as never,
         logger,
       ),
-    ).resolves.toBe('augmented prompt');
+    ).resolves.toEqual({
+      systemPrompt: 'augmented prompt',
+      skills: [{ name: 'Search' }],
+    });
     expect(service.buildSkillAugmentedPrompt).toHaveBeenCalledWith('base', [
       { name: 'Search' },
     ]);
@@ -398,7 +389,7 @@ describe('conversation skill resolution helpers', () => {
         service as never,
         logger,
       ),
-    ).resolves.toBe('base');
+    ).resolves.toEqual({ systemPrompt: 'base', skills: [] });
     service.resolveSkillsForAgent.mockResolvedValueOnce([{ name: 'Search' }]);
     service.buildSkillAugmentedPrompt.mockReturnValueOnce('  ');
     await expect(
@@ -407,7 +398,10 @@ describe('conversation skill resolution helpers', () => {
         service as never,
         logger,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      systemPrompt: undefined,
+      skills: [{ name: 'Search' }],
+    });
     service.resolveSkillsForAgent.mockRejectedValueOnce(
       new Error('skill store unavailable'),
     );
@@ -421,262 +415,23 @@ describe('conversation skill resolution helpers', () => {
         service as never,
         logger,
       ),
-    ).resolves.toBe('base');
+    ).resolves.toEqual({ systemPrompt: 'base', skills: [] });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('offline'),
     );
   });
-});
 
-describe('Pi runtime config helpers', () => {
-  const logger = { warn: vi.fn() };
-  const resolvedModel = {
-    modelId: 'model-name',
-    orgId: 'org-1',
-    tenantId: 'tenant-1',
-    parameters: {},
-    provider: {
-      slug: 'provider',
-      apiProtocol: 'openai_chat',
-      apiKeyId: 'key-1',
-      baseUrl: ' https://provider.example/v1 ',
-      defaultBaseUrl: 'https://default.example/v1',
-    },
-  };
-
-  it('maps resolved and snapshot model configs with endpoint precedence', () => {
-    expect(resolvePiModelBaseUrl(resolvedModel as never)).toBe(
-      'https://provider.example/v1',
-    );
-    const providerWithoutUrl = {
-      slug: 'provider',
-      apiProtocol: 'openai_chat',
-      apiKeyId: 'key-1',
-      baseUrl: null,
-      defaultBaseUrl: null,
-    };
+  it('converts skill payloads into guest session files, falling back to SKILL.md content', () => {
     expect(
-      resolvePiModelBaseUrl({
-        ...resolvedModel,
-        provider: { ...providerWithoutUrl, baseUrl: ' ' },
-        parameters: { baseURL: ' https://parameter.example/v1 ' },
+      toSkillInput({
+        name: 'Search',
+        description: 'find things',
+        content: 'instructions',
       } as never),
-    ).toBe('https://parameter.example/v1');
-    expect(
-      resolvePiModelBaseUrl({
-        ...resolvedModel,
-        provider: providerWithoutUrl,
-        parameters: [],
-      } as never),
-    ).toBeUndefined();
-    expect(toPiModelConfig(resolvedModel as never)).toEqual({
-      provider: 'provider',
-      model: 'model-name',
-      apiProtocol: 'openai_chat',
-      apiBaseUrl: 'https://provider.example/v1',
-      apiKeyId: 'key-1',
-      organizationId: 'org-1',
-      tenantId: 'tenant-1',
-    });
-    const snapshot = {
-      provider: ' private ',
-      modelName: ' snapshot-model ',
-      modelId: 'id-fallback',
-      endpointUrl: ' https://snapshot.example/v1 ',
-      apiProtocol: ' openai_responses ',
-      apiKeyId: null,
-      authMethod: ' bearer ',
-    } as never;
-    expect(resolvePiRuntimeModelBaseUrl(snapshot)).toBe(
-      'https://snapshot.example/v1',
-    );
-    expect(toPiModelConfigFromRuntimeModelConfig(snapshot)).toEqual({
-      provider: 'private',
-      model: 'snapshot-model',
-      apiProtocol: 'openai_responses',
-      apiBaseUrl: 'https://snapshot.example/v1',
-      apiKeyId: null,
-      authMethod: 'bearer',
-    });
-    expect(
-      resolvePiRuntimeModelBaseUrl({
-        customParameters: { apiBaseUrl: ' custom ' },
-      } as never),
-    ).toBe('custom');
-    expect(
-      resolvePiRuntimeModelBaseUrl({ customParameters: [] } as never),
-    ).toBeUndefined();
-    expect(
-      toPiModelConfigFromRuntimeModelConfig({
-        provider: '',
-        modelId: 'm',
-      } as never),
-    ).toBeUndefined();
-  });
-
-  it('uses database model config first and falls back only when snapshot is usable', async () => {
-    const llm = { findById: vi.fn().mockResolvedValue(resolvedModel) };
-    await expect(
-      resolvePiModelConfig(
-        {
-          modelConfig: { modelId: 'id', provider: 'p', modelName: 'fallback' },
-        } as never,
-        'tenant-1',
-        llm as never,
-        logger,
-      ),
-    ).resolves.toMatchObject({ provider: 'provider', model: 'model-name' });
-    expect(llm.findById).toHaveBeenCalledWith('id', 'tenant-1');
-    llm.findById.mockRejectedValueOnce(new Error('deleted'));
-    await expect(
-      resolvePiModelConfig(
-        {
-          modelConfig: {
-            modelId: 'id',
-            provider: 'snapshot',
-            modelName: 'fallback',
-          },
-        } as never,
-        'tenant-1',
-        llm as never,
-        logger,
-      ),
-    ).resolves.toMatchObject({ provider: 'snapshot', model: 'fallback' });
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('falling back'),
-    );
-    llm.findById.mockRejectedValueOnce(new Error('deleted'));
-    await expect(
-      resolvePiModelConfig(
-        { modelConfig: { modelId: 'id' } } as never,
-        'tenant-1',
-        llm as never,
-        logger,
-      ),
-    ).rejects.toThrow('deleted');
-    await expect(
-      resolvePiModelConfig(
-        { modelConfig: { provider: 'p', modelName: 'm' } } as never,
-        'tenant-1',
-        undefined,
-        logger,
-      ),
-    ).resolves.toMatchObject({ provider: 'p', model: 'm' });
-  });
-
-  it('extracts enabled unique MCP ids and creates stable collision-free keys', () => {
-    expect(extractEnabledMcpServerConfigIds(undefined)).toEqual([]);
-    expect(
-      extractEnabledMcpServerConfigIds([
-        { enabled: false, mcpServerConfigId: 'disabled' },
-        { enabled: true },
-        { enabled: true, mcpServerConfigId: '  alpha  ' },
-        { mcpServerConfigId: 'alpha' },
-        { mcpServerConfigId: '' },
-      ] as never),
-    ).toEqual(['alpha']);
-    expect(sanitizePiMcpServerKey(undefined)).toBeUndefined();
-    expect(sanitizePiMcpServerKey('  Docs & Search  ')).toBe('Docs_Search');
-    expect(sanitizePiMcpServerKey('!!!')).toBeUndefined();
-    expect(resolvePiMcpServerKey('config-1', 'Docs Search', {})).toBe(
-      'Docs_Search',
-    );
-    expect(
-      resolvePiMcpServerKey('config-1', 'Docs Search', {
-        Docs_Search: {},
-        Docs_Search_2: {},
-      }),
-    ).toBe('Docs_Search_3');
-    expect(resolvePiMcpServerKey('!!!', '---', { '---': {} })).toBe('---_2');
-  });
-
-  it('resolves available MCP servers, isolates failures, and omits empty results', async () => {
-    const where = vi.fn().mockResolvedValue([
-      { id: 'one', name: 'Docs' },
-      { id: 'two', name: 'Docs' },
-    ]);
-    const db = {
-      select: vi
-        .fn()
-        .mockReturnValue({ from: vi.fn().mockReturnValue({ where }) }),
-    };
-    const mcp = {
-      resolveRuntimeConnection: vi
-        .fn()
-        .mockResolvedValueOnce({ transport: 'stdio', command: 'one' })
-        .mockRejectedValueOnce(new Error('secret missing')),
-    };
-    const config = {
-      tools: [{ mcpServerConfigId: 'one' }, { mcpServerConfigId: 'two' }],
-    } as never;
-    await expect(
-      resolvePiMcpServers(
-        config,
-        'tenant-1',
-        mcp as never,
-        db as never,
-        logger,
-      ),
-    ).resolves.toEqual({ Docs: { transport: 'stdio', command: 'one' } });
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('secret missing'),
-    );
-    await expect(
-      resolvePiMcpServers(config, 'tenant-1', undefined, db as never, logger),
-    ).resolves.toBeUndefined();
-    await expect(
-      resolvePiMcpServers(
-        { tools: [] } as never,
-        'tenant-1',
-        mcp as never,
-        db as never,
-        logger,
-      ),
-    ).resolves.toBeUndefined();
-    mcp.resolveRuntimeConnection.mockReset().mockRejectedValue('offline');
-    await expect(
-      resolvePiMcpServers(
-        config,
-        'tenant-1',
-        mcp as never,
-        db as never,
-        logger,
-      ),
-    ).resolves.toBeUndefined();
-  });
-
-  it('builds the observable Pi config and skill file fallbacks', async () => {
-    const config = await buildPiConfigInput(
-      {
-        tenantId: 'tenant-1',
-        runtimeConfig: {
-          modelConfig: { provider: 'snapshot', modelName: 'model' },
-          tools: [],
-        } as never,
-        systemPrompt: 'system',
-        skillPayloads: [
-          {
-            name: 'Search',
-            description: 'find things',
-            content: 'instructions',
-          },
-        ] as never,
-      },
-      undefined,
-      undefined,
-      { select: vi.fn() } as never,
-      logger,
-    );
-    expect(config).toEqual({
-      systemPrompt: 'system',
-      modelConfig: { provider: 'snapshot', model: 'model' },
-      skills: [
-        {
-          name: 'Search',
-          description: 'find things',
-          files: { 'SKILL.md': 'instructions' },
-        },
-      ],
+    ).toEqual({
+      name: 'Search',
+      description: 'find things',
+      files: { 'SKILL.md': 'instructions' },
     });
     expect(
       toSkillInput({

@@ -202,7 +202,6 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockRuntimeDriver.createRuntime).toHaveBeenCalledWith(
         's1',
         DEFAULT_CONFIG,
-        { piConfigInput: undefined, conversationId: undefined },
       );
       expect(mockUpdate).toHaveBeenCalled();
       expect(mockSet).toHaveBeenCalledWith(

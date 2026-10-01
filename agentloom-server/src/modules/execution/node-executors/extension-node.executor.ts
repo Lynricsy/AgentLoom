@@ -196,6 +196,7 @@ export class ExtensionNodeExecutor implements NodeExecutor {
       const skillPayloads = skills.map((skill) => ({
         id: skill.id,
         name: skill.name,
+        ...(skill.slug ? { slug: skill.slug } : {}),
         description: skill.description || '',
         content: skill.content,
       }));

@@ -301,6 +301,8 @@ describe('SkillResolverService', () => {
       expect(result).toContain('<available_skills>');
       expect(result).not.toContain('<skill name="Large">');
       expect(result).not.toContain(largeContent);
+      expect(result).toContain('`load_skill`');
+      expect(result).not.toContain('skill tool');
     });
 
     it('treats null content as zero size', () => {
@@ -325,6 +327,70 @@ describe('SkillResolverService', () => {
 
       expect(result).toContain('<available_skills>');
       expect(result).not.toContain('<skill name="A">');
+    });
+  });
+
+  // ─── createLoadSkillToolProvider ───────────────────────────────────────
+  describe('createLoadSkillToolProvider', () => {
+    const boundSkills: SkillPromptPayload[] = [
+      {
+        id: 'id-1',
+        name: 'Code Review',
+        slug: 'code-review',
+        description: 'Review code',
+        content: null,
+        files: {
+          'SKILL.md': '# Code Review\nFull instructions',
+          'checklist.md': '- check tests',
+        },
+      },
+      {
+        id: 'id-2',
+        name: 'Inline',
+        description: 'Inline only',
+        content: 'inline body',
+      },
+    ];
+
+    async function loadSkill(
+      skills: SkillPromptPayload[],
+      input: Record<string, unknown>,
+    ): Promise<unknown> {
+      const tools = await resolver.createLoadSkillToolProvider(skills)();
+      const loadSkillTool = tools.load_skill;
+      expect(loadSkillTool?.execute).toBeTypeOf('function');
+      return loadSkillTool!.execute!(input, {
+        toolCallId: 'call-1',
+        messages: [],
+      } as never);
+    }
+
+    it('按 slug 或名称（不区分大小写）加载已绑定技能的完整正文', async () => {
+      const bySlug = await loadSkill(boundSkills, { name: 'code-review' });
+      expect(bySlug).toContain('# Code Review\nFull instructions');
+      expect(bySlug).toContain('checklist.md');
+
+      await expect(
+        loadSkill(boundSkills, { name: '  inline ' }),
+      ).resolves.toContain('inline body');
+      await expect(
+        loadSkill(boundSkills, { name: 'Code Review', file: 'checklist.md' }),
+      ).resolves.toBe('- check tests');
+    });
+
+    it('拒绝未绑定的技能与不存在的附带文件，且不回查技能库', async () => {
+      const unbound = await loadSkill(boundSkills, { name: 'secret-skill' });
+      expect(unbound).toMatch(/not bound/);
+      expect(unbound).toContain('code-review');
+      expect(unbound).not.toContain('Full instructions');
+
+      const missingFile = await loadSkill(boundSkills, {
+        name: 'code-review',
+        file: '../other/SKILL.md',
+      });
+      expect(missingFile).toMatch(/has no file/);
+      expect(skillService.findByIds).not.toHaveBeenCalled();
+      expect(skillService.getSkillFileMap).not.toHaveBeenCalled();
     });
   });
 });

@@ -362,7 +362,11 @@ export class PiConfigGeneratorService {
         '---',
       ].join('\n');
 
-      const skillBody = skill.files['SKILL.md'] ?? '';
+      // 上传/内置的 SKILL.md 自带 frontmatter；保留它会让正文里出现第二段 frontmatter
+      const skillBody = (skill.files['SKILL.md'] ?? '').replace(
+        /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/,
+        '',
+      );
       const skillMd = `${frontmatter}\n\n${skillBody}`;
 
       const files: Record<string, string> = { 'SKILL.md': skillMd };

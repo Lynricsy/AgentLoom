@@ -181,6 +181,7 @@ export class WorkflowAgentAdapter {
     const {
       runtimeConfig: runtimeConfigWithExtensions,
       systemPrompt,
+      skills,
       sanitizedInput,
     } = await this.resolveWorkflowExtensions({
       tenantId: params.tenantId,
@@ -245,6 +246,18 @@ export class WorkflowAgentAdapter {
       emitEvents,
       visitedIds,
     });
+    if (
+      skills.length > 0 &&
+      this.dependencies.skillResolverService &&
+      runtime.registerSessionToolProvider
+    ) {
+      runtime.registerSessionToolProvider(
+        nextSessionId,
+        this.dependencies.skillResolverService.createLoadSkillToolProvider(
+          skills,
+        ),
+      );
+    }
 
     const subAgentEnvelope = params.subAgentInvocation
       ? this.createSubAgentEnvelope(params.subAgentInvocation, currentDepth)
@@ -623,6 +636,7 @@ export class WorkflowAgentAdapter {
     input: Record<string, unknown>;
   }): Promise<
     CompiledWorkflowAgentDefinition & {
+      skills: SkillPromptPayload[];
       sanitizedInput: Record<string, unknown>;
     }
   > {
@@ -635,17 +649,20 @@ export class WorkflowAgentAdapter {
         params.compiledDefinition.systemPrompt,
       runtimeConfig.outputSchema,
     );
-    const systemPrompt = await this.resolveSkillAugmentedPrompt({
-      tenantId: params.tenantId,
-      baseSystemPrompt,
-      runtimeConfig,
-      input: params.input,
-    });
+    const builtInSkills = await this.resolveConfiguredSkills(
+      params.tenantId,
+      runtimeConfig.skillIds,
+    );
+    const skills = this.mergeSkillPayloads(
+      builtInSkills,
+      this.extractUpstreamSkills(params.input),
+    );
 
     return {
       runtimeMode: params.compiledDefinition.runtimeMode,
       runtimeConfig,
-      systemPrompt,
+      systemPrompt: this.buildSkillAugmentedPrompt(baseSystemPrompt, skills),
+      skills,
       sanitizedInput: this.sanitizePromptInput(params.input),
     };
   }
@@ -718,35 +735,26 @@ export class WorkflowAgentAdapter {
     return bindings;
   }
 
-  private async resolveSkillAugmentedPrompt(params: {
-    tenantId: string;
-    baseSystemPrompt?: string;
-    runtimeConfig: AgentRuntimeConfig;
-    input: Record<string, unknown>;
-  }): Promise<string | undefined> {
-    const builtInSkills = await this.resolveConfiguredSkills(
-      params.tenantId,
-      params.runtimeConfig.skillIds,
-    );
-    const upstreamSkills = this.extractUpstreamSkills(params.input);
-    const mergedSkills = this.mergeSkillPayloads(builtInSkills, upstreamSkills);
-
-    if (mergedSkills.length === 0) {
-      return params.baseSystemPrompt;
+  private buildSkillAugmentedPrompt(
+    baseSystemPrompt: string | undefined,
+    skills: SkillPromptPayload[],
+  ): string | undefined {
+    if (skills.length === 0) {
+      return baseSystemPrompt;
     }
 
     if (this.dependencies.skillResolverService) {
       return this.dependencies.skillResolverService.buildSkillAugmentedPrompt(
-        params.baseSystemPrompt ?? '',
-        mergedSkills,
+        baseSystemPrompt ?? '',
+        skills,
       );
     }
 
-    const skillSections = mergedSkills
+    const skillSections = skills
       .map((skill) => skill.content?.trim())
       .filter((content): content is string => Boolean(content));
 
-    return [params.baseSystemPrompt, ...skillSections]
+    return [baseSystemPrompt, ...skillSections]
       .filter((value): value is string => Boolean(value && value.trim()))
       .join('\n\n');
   }
@@ -814,6 +822,9 @@ export class WorkflowAgentAdapter {
         skills.push({
           id: skillRecord.id,
           name: skillRecord.name,
+          ...(typeof skillRecord.slug === 'string'
+            ? { slug: skillRecord.slug }
+            : {}),
           description:
             typeof skillRecord.description === 'string'
               ? skillRecord.description

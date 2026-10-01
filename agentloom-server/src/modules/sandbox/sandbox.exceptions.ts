@@ -2,6 +2,21 @@ import { HttpStatus } from '@nestjs/common';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
 
+/** guest `session-config.ts` 的 MAX_CONFIG_FILE_BYTES / MAX_CONFIG_TOTAL_BYTES */
+export const SANDBOX_SESSION_FILE_MAX_BYTES = 1024 * 1024;
+export const SANDBOX_SESSION_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
+
+export class SandboxSkillPayloadTooLargeException extends DomainException {
+  constructor(detail: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-skill-payload-too-large',
+      title: '技能文件超出沙箱会话上限',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail,
+    });
+  }
+}
+
 export class SandboxCreationException extends DomainException {
   constructor(reason: string) {
     super({

@@ -1,5 +1,6 @@
 import type { ContentBlock } from './content-block.types';
 import type { AgentRuntimeConfig } from '../../agent-definition/agent-runtime-config.interface';
+import type { SkillInput } from '../../sandbox/pi-config-generator.service';
 
 export type McpTransportType = 'stdio' | 'sse' | 'streamable_http';
 
@@ -77,4 +78,6 @@ export interface CreateSessionParams {
   readonly runtimeConfig?: AgentRuntimeConfig;
   /** 初始上下文数据（在 workflow 模式下映射为 SessionContext.workflowState） */
   readonly context?: Record<string, unknown>;
+  /** sandbox 运行态：写入 guest session 的 `skills/<name>/`，由 pi 自动发现；no_sandbox 忽略 */
+  readonly skills?: readonly SkillInput[];
 }

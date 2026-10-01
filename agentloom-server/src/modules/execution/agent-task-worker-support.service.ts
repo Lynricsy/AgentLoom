@@ -420,6 +420,9 @@ export class AgentTaskWorkerSupportService {
             skills.push({
               id: skillRecord.id,
               name: skillRecord.name,
+              ...(typeof skillRecord.slug === 'string'
+                ? { slug: skillRecord.slug }
+                : {}),
               description:
                 typeof skillRecord.description === 'string'
                   ? skillRecord.description
@@ -535,6 +538,26 @@ export class AgentTaskWorkerSupportService {
       sessionId,
       memorySessionIds,
     });
+  }
+
+  public registerLoadSkillToolProvider(
+    runtime: IAgentRuntime,
+    sessionId: string | null | undefined,
+    skills: SkillPromptPayload[],
+  ): void {
+    if (
+      !sessionId ||
+      skills.length === 0 ||
+      !this.skillResolverService ||
+      !runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    runtime.registerSessionToolProvider(
+      sessionId,
+      this.skillResolverService.createLoadSkillToolProvider(skills),
+    );
   }
 
   public cleanupMemoryToolsProvider(

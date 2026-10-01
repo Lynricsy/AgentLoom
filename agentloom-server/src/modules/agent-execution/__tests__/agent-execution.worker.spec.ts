@@ -4,7 +4,8 @@ import { Logger } from '@nestjs/common';
 import { AgentExecutionWorker } from '../agent-execution.worker';
 import { AgentExecutionWorkerPersistenceService } from '../agent-execution-worker-persistence.service';
 import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
-import type { LlmService } from '../../llm/llm.service';
+import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
+import { SkillResolverService } from '../../skill/skill-resolver.service';
 
 const {
   mockDb,
@@ -17,12 +18,10 @@ const {
   mockSandboxService,
   mockWorkspaceIntegrationService,
   mockAgentDefinitionService,
-  mockLlmService,
   mockMemoryToolsService,
   mockMemoryFusionService,
   mockMemoryResourceProvider,
   mockSkillResolverService,
-  mockMcpService,
   mockSelfEvolutionToolsProvider,
   mockConversationTitleService,
   mockSmartRoutingService,
@@ -84,9 +83,6 @@ const {
     compileCanvas: vi.fn(),
     buildRuntimeConfigFromNodes: vi.fn(),
   },
-  mockLlmService: {
-    findById: vi.fn(),
-  },
   mockMemoryToolsService: {
     createSessionToolProvider: vi.fn(),
   },
@@ -100,9 +96,7 @@ const {
   mockSkillResolverService: {
     resolveSkillsForAgent: vi.fn(),
     buildSkillAugmentedPrompt: vi.fn(),
-  },
-  mockMcpService: {
-    resolveRuntimeConnection: vi.fn(),
+    createLoadSkillToolProvider: vi.fn(),
   },
   mockConversationTitleService: {
     generateTitle: vi.fn(),
@@ -333,44 +327,6 @@ describe('AgentExecutionWorker', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockAdapterFactory.selectAdapter.mockReturnValue(mockSandboxRuntime);
-    mockLlmService.findById.mockReset().mockResolvedValue({
-      id: 'model-1',
-      orgId: 'org-1',
-      tenantId: 'tenant-1',
-      name: 'CodeHub Claude',
-      providerId: 'provider-1',
-      modelId: 'claude-opus-4-6',
-      modelType: 'chat',
-      isEnabled: true,
-      capabilities: {},
-      contextWindow: null,
-      maxOutputTokens: null,
-      pricing: null,
-      metadataSource: null,
-      embeddingDimensions: null,
-      parameters: { baseUrl: 'https://models.example.test/v1' },
-      timeoutMs: 120000,
-      isDefault: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      provider: {
-        id: 'provider-1',
-        orgId: 'org-1',
-        tenantId: 'tenant-1',
-        slug: 'private_cloud',
-        name: 'Private Cloud',
-        iconUrl: null,
-        baseUrl: 'https://models.example.test/v1',
-        defaultBaseUrl: null,
-        isBuiltin: false,
-        isEnabled: true,
-        apiProtocol: 'openai_chat',
-        apiKeyId: 'api-key-1',
-        sortOrder: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
     mockDb.select.mockReset().mockReturnValue(mockDbSelectChain);
     mockDbSelectChain.from.mockReset().mockReturnThis();
     mockDbSelectChain.where.mockReset().mockResolvedValue([]);
@@ -398,7 +354,7 @@ describe('AgentExecutionWorker', () => {
     mockMemoryResourceProvider.destroy.mockReset();
     mockSkillResolverService.resolveSkillsForAgent.mockReset();
     mockSkillResolverService.buildSkillAugmentedPrompt.mockReset();
-    mockMcpService.resolveRuntimeConnection.mockReset();
+    mockSkillResolverService.createLoadSkillToolProvider.mockReset();
     mockConversationTitleService.generateTitle
       .mockReset()
       .mockResolvedValue('自动标题');
@@ -414,13 +370,11 @@ describe('AgentExecutionWorker', () => {
       mockSandboxService as never,
       mockWorkspaceIntegrationService as never,
       mockAgentDefinitionService as never,
-      mockLlmService as unknown as LlmService,
       mockMemoryToolsService as never,
       mockMemoryFusionService as never,
       mockMemoryResourceProvider as never,
       mockSkillResolverService as never,
       undefined,
-      mockMcpService as never,
       mockConversationTitleService as never,
       mockSelfEvolutionToolsProvider as never,
       mockSmartRoutingService as never,
@@ -1685,44 +1639,6 @@ describe('AgentExecutionWorker', () => {
       mockSandboxRuntime.createSession.mockResolvedValue(
         makeSession({ id: 'sandbox-session-1' }),
       );
-      mockLlmService.findById.mockResolvedValue({
-        id: 'model-1',
-        orgId: 'org-1',
-        tenantId: 'tenant-1',
-        name: 'CodeHub Claude',
-        providerId: 'provider-1',
-        modelId: 'claude-opus-4-6',
-        modelType: 'chat',
-        isEnabled: true,
-        capabilities: {},
-        contextWindow: null,
-        maxOutputTokens: null,
-        pricing: null,
-        metadataSource: null,
-        embeddingDimensions: null,
-        parameters: { baseUrl: 'https://models.example.test/v1' },
-        timeoutMs: 120000,
-        isDefault: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        provider: {
-          id: 'provider-1',
-          orgId: 'org-1',
-          tenantId: 'tenant-1',
-          slug: 'private_cloud',
-          name: 'Private Cloud',
-          iconUrl: null,
-          baseUrl: 'https://models.example.test/v1',
-          defaultBaseUrl: null,
-          isBuiltin: false,
-          isEnabled: true,
-          apiProtocol: 'openai_chat',
-          apiKeyId: 'api-key-1',
-          sortOrder: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
 
       const result = await runtimeSessionWorker.prepareRuntimeSession(
         makeActiveContext({
@@ -1744,18 +1660,6 @@ describe('AgentExecutionWorker', () => {
           sandboxNodeId: null,
           tenantId: 'tenant-1',
           agentConversationId: 'conversation-1',
-          piConfigInput: expect.objectContaining({
-            systemPrompt: 'system',
-            modelConfig: expect.objectContaining({
-              provider: 'private_cloud',
-              model: 'claude-opus-4-6',
-              apiProtocol: 'openai_chat',
-              apiBaseUrl: 'https://models.example.test/v1',
-              apiKeyId: 'api-key-1',
-              organizationId: 'org-1',
-              tenantId: 'tenant-1',
-            }),
-          }),
         }),
       );
       expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
@@ -1796,44 +1700,6 @@ describe('AgentExecutionWorker', () => {
         evaluatedModels: [],
         latencyMs: 7,
       });
-      mockLlmService.findById.mockImplementation(async (id: string) => ({
-        id,
-        orgId: 'org-1',
-        tenantId: 'tenant-1',
-        name: `Model ${id}`,
-        providerId: 'provider-1',
-        modelId: id === 'model-2' ? 'claude-sonnet-4-6' : 'claude-opus-4-6',
-        modelType: 'chat',
-        isEnabled: true,
-        capabilities: {},
-        contextWindow: null,
-        maxOutputTokens: null,
-        pricing: null,
-        metadataSource: null,
-        embeddingDimensions: null,
-        parameters: { baseUrl: 'https://models.example.test/v1' },
-        timeoutMs: 120000,
-        isDefault: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        provider: {
-          id: 'provider-1',
-          orgId: 'org-1',
-          tenantId: 'tenant-1',
-          slug: 'private_cloud',
-          name: 'Private Cloud',
-          iconUrl: null,
-          baseUrl: 'https://models.example.test/v1',
-          defaultBaseUrl: null,
-          isBuiltin: false,
-          isEnabled: true,
-          apiProtocol: 'openai_chat',
-          apiKeyId: 'api-key-1',
-          sortOrder: 0,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      }));
       mockSandboxRuntime.createSession.mockResolvedValue(
         makeSession({ id: 'sandbox-session-routing' }),
       );
@@ -1865,15 +1731,6 @@ describe('AgentExecutionWorker', () => {
         'FALLBACK_CHAIN',
         'tenant-1',
       );
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          piConfigInput: expect.objectContaining({
-            modelConfig: expect.objectContaining({
-              model: 'claude-sonnet-4-6',
-            }),
-          }),
-        }),
-      );
       expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
         expect.objectContaining({
           llmModelConfigId: 'model-2',
@@ -1886,134 +1743,7 @@ describe('AgentExecutionWorker', () => {
       );
     });
 
-    it('会把启用的 MCP 绑定编译进 piConfigInput.mcpServers', async () => {
-      const runtimeSessionWorker = worker as unknown as {
-        prepareRuntimeSession: (
-          context: Record<string, unknown>,
-          conversationId: string,
-          tenantId: string,
-          parentAbortSignal: AbortSignal,
-          subAgentTracker: { abortControllers: Map<string, AbortController> },
-          currentAgentDefinitionId: string,
-        ) => Promise<{
-          runtime: typeof mockSandboxRuntime;
-          session: ReturnType<typeof makeSession>;
-        }>;
-      };
-
-      mockDbSelectChain.where.mockResolvedValue([
-        { id: 'mcp-config-1', name: 'WebSearch' },
-      ]);
-      mockMcpService.resolveRuntimeConnection.mockResolvedValue({
-        transportType: 'sse',
-        url: 'https://mcp.example.com/sse',
-        headers: { Authorization: 'Bearer test-token' },
-      });
-      mockSandboxRuntime.createSession.mockResolvedValue(
-        makeSession({ id: 'sandbox-session-mcp' }),
-      );
-
-      await runtimeSessionWorker.prepareRuntimeSession(
-        makeActiveContext({
-          runtimeConfig: {
-            sandboxConfig: { image: 'agentloom/sandbox:latest' },
-            modelConfig: { modelId: 'model-1' },
-            tools: [
-              {
-                toolId: 'tool-1',
-                name: 'fast_search',
-                enabled: true,
-                toolType: 'mcp',
-                mcpServerConfigId: 'mcp-config-1',
-              },
-            ],
-          },
-        }),
-        'conversation-1',
-        'tenant-1',
-        new AbortController().signal,
-        { abortControllers: new Map() },
-        'agent-1',
-      );
-
-      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
-        'mcp-config-1',
-        'tenant-1',
-      );
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          piConfigInput: expect.objectContaining({
-            mcpServers: {
-              WebSearch: {
-                transportType: 'sse',
-                url: 'https://mcp.example.com/sse',
-                headers: { Authorization: 'Bearer test-token' },
-              },
-            },
-          }),
-        }),
-      );
-    });
-
-    it('llmService 查找失败时应回退到节点快照中的模型配置', async () => {
-      const runtimeSessionWorker = worker as unknown as {
-        prepareRuntimeSession: (
-          context: Record<string, unknown>,
-          conversationId: string,
-          tenantId: string,
-          parentAbortSignal: AbortSignal,
-          subAgentTracker: { abortControllers: Map<string, AbortController> },
-          currentAgentDefinitionId: string,
-        ) => Promise<{
-          runtime: typeof mockSandboxRuntime;
-          session: ReturnType<typeof makeSession>;
-        }>;
-      };
-
-      mockLlmService.findById.mockRejectedValueOnce(new Error('not found'));
-      mockSandboxRuntime.createSession.mockResolvedValue(
-        makeSession({ id: 'sandbox-session-runtime-fallback' }),
-      );
-
-      await runtimeSessionWorker.prepareRuntimeSession(
-        makeActiveContext({
-          runtimeConfig: {
-            sandboxConfig: { image: 'agentloom/sandbox:latest' },
-            modelConfig: {
-              modelId: 'cfg-missing',
-              provider: 'openai',
-              apiProtocol: 'openai_responses',
-              modelName: 'gpt-5.4',
-              apiKeyId: 'api-key-inline',
-              endpointUrl: 'https://runtime.example.com/v1',
-              authMethod: 'api_key',
-            },
-          },
-        }),
-        'conversation-1',
-        'tenant-1',
-        new AbortController().signal,
-        { abortControllers: new Map() },
-        'agent-1',
-      );
-
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          piConfigInput: expect.objectContaining({
-            modelConfig: expect.objectContaining({
-              provider: 'openai',
-              apiProtocol: 'openai_responses',
-              model: 'gpt-5.4',
-              apiBaseUrl: 'https://runtime.example.com/v1',
-              apiKeyId: 'api-key-inline',
-              authMethod: 'api_key',
-            }),
-          }),
-        }),
-      );
-    });
-
-    it('runtimeConfig.skillIds 存在时应把 skill 编译进 piConfigInput', async () => {
+    it('runtimeConfig.skillIds 存在时应把 skill 交给 sandbox 会话创建（落到 guest session files）', async () => {
       const runtimeSessionWorker = worker as unknown as {
         prepareRuntimeSession: (
           context: Record<string, unknown>,
@@ -2073,20 +1803,18 @@ describe('AgentExecutionWorker', () => {
       expect(
         mockSkillResolverService.resolveSkillsForAgent,
       ).toHaveBeenCalledWith('tenant-1', ['skill-1']);
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
+      expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          piConfigInput: expect.objectContaining({
-            skills: [
-              {
-                name: 'E2E Skill',
-                description: '用于验证 skill 文件编译',
-                files: {
-                  'SKILL.md': '# Skill Body',
-                  'resource-management.md': '## Resource management',
-                },
+          skills: [
+            {
+              name: 'E2E Skill',
+              description: '用于验证 skill 文件编译',
+              files: {
+                'SKILL.md': '# Skill Body',
+                'resource-management.md': '## Resource management',
               },
-            ],
-          }),
+            },
+          ],
         }),
       );
     });
@@ -2165,6 +1893,81 @@ describe('AgentExecutionWorker', () => {
       expect(mockSandboxRuntime.createSession).not.toHaveBeenCalled();
       expect(mockRuntime.createSession).toHaveBeenCalledTimes(1);
       expect(runtimeSession.runtime).toBe(mockRuntime);
+    });
+
+    it('无 sandbox 对话会为注入提示词的技能注册 load_skill 工具，只能加载已绑定技能', async () => {
+      const runtimeSessionWorker = worker as unknown as {
+        prepareRuntimeSession: (
+          context: Record<string, unknown>,
+          conversationId: string,
+          tenantId: string,
+          parentAbortSignal: AbortSignal,
+          subAgentTracker: { abortControllers: Map<string, AbortController> },
+          currentAgentDefinitionId: string,
+        ) => Promise<unknown>;
+      };
+      const realResolver = new SkillResolverService({} as never);
+      mockAdapterFactory.selectAdapter.mockImplementation((hasSandbox) =>
+        hasSandbox ? mockSandboxRuntime : mockRuntime,
+      );
+      mockSkillResolverService.resolveSkillsForAgent.mockResolvedValue([
+        {
+          id: 'skill-1',
+          name: 'Large Skill',
+          slug: 'large-skill',
+          description: '超过 50 KiB 的技能',
+          content: 'LARGE_SKILL_BODY',
+        },
+      ]);
+      mockSkillResolverService.buildSkillAugmentedPrompt.mockReturnValue(
+        'augmented-prompt',
+      );
+      mockSkillResolverService.createLoadSkillToolProvider.mockImplementation(
+        (skills) => realResolver.createLoadSkillToolProvider(skills),
+      );
+      const registeredProviders = new Map<string, SessionToolProvider[]>();
+      mockRuntime.registerSessionToolProvider.mockImplementation(
+        (sessionId: string, provider: SessionToolProvider) => {
+          registeredProviders.set(sessionId, [
+            ...(registeredProviders.get(sessionId) ?? []),
+            provider,
+          ]);
+        },
+      );
+
+      await runtimeSessionWorker.prepareRuntimeSession(
+        makeActiveContext({
+          hasSandbox: false,
+          runtimeConfig: {
+            runtimeMode: 'no_sandbox',
+            modelConfig: { modelId: 'model-1' },
+            skillIds: ['skill-1'],
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
+      );
+
+      const createParams = mockRuntime.createSession.mock.calls[0]?.[0];
+      expect(createParams?.systemPrompt).toContain('augmented-prompt');
+      const providerTools = await Promise.all(
+        (registeredProviders.get(createParams?.sessionId) ?? []).map(
+          (provider) => provider(),
+        ),
+      );
+      const loadSkillTool = providerTools.find(
+        (tools) => 'load_skill' in tools,
+      )?.load_skill;
+      expect(loadSkillTool?.execute).toBeTypeOf('function');
+      expect(
+        await loadSkillTool!.execute!({ name: 'large-skill' }, {} as never),
+      ).toBe('LARGE_SKILL_BODY');
+      expect(
+        await loadSkillTool!.execute!({ name: 'other-skill' }, {} as never),
+      ).toMatch(/not bound/);
     });
   });
 
@@ -3639,8 +3442,6 @@ describe('AgentExecutionWorker', () => {
         undefined,
         undefined,
         undefined,
-        undefined,
-        undefined,
         mockAgentApiRunService as never,
       );
       apiInternals = apiWorker as unknown as WorkerInternals;
@@ -3826,8 +3627,6 @@ describe('AgentExecutionWorker', () => {
           {} as never,
           {} as never,
           {} as never,
-          undefined,
-          undefined,
           undefined,
           undefined,
           undefined,

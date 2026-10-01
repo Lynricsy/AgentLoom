@@ -22,7 +22,6 @@ import {
   type SandboxRuntimeDriver,
 } from '../../sandbox/sandbox-runtime-driver.port';
 import type { SandboxConfig } from '../../../database/schema';
-import type { CreateRuntimePiContext } from '../../sandbox/sandbox-runtime-driver.port';
 
 const GUEST_WORKSPACE_ROOT = '/workspace';
 
@@ -42,7 +41,6 @@ export class AcpTestSandboxRuntime implements SandboxRuntimeDriver {
   async createRuntime(
     sessionId: string,
     _config: SandboxConfig,
-    _piContext?: CreateRuntimePiContext,
   ): Promise<{ runtimeHandle: string }> {
     return { runtimeHandle: sessionId };
   }
