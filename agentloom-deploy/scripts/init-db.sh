@@ -34,21 +34,6 @@ wait_for_postgres() {
   return 1
 }
 
-check_pi_tarballs() {
-  local pi_tarballs_dir="$DEPLOY_DIR/docker/.pi-tarballs"
-  if [[ ! -d "$pi_tarballs_dir" ]] || [[ -z "$(ls -A "$pi_tarballs_dir" 2>/dev/null)" ]]; then
-    printf '⚠ .pi-tarballs 目录不存在或为空: %s\n' "$pi_tarballs_dir"
-    if [[ -f "$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh" ]]; then
-      printf '  正在运行 prepare-pi-tarballs.sh（默认从 GitHub 拉取 pi-mono，可用 PI_MONO_DIR/PI_MONO_REF 覆盖）...\n'
-      bash "$DEPLOY_DIR/scripts/prepare-pi-tarballs.sh"
-    else
-      printf '  跳过 pi-tarballs 准备（脚本不存在）。Server 构建可能失败。\n'
-    fi
-  else
-    printf '✓ .pi-tarballs 目录存在且非空\n'
-  fi
-}
-
 bootstrap_auth_prerequisites() {
   printf '为 vanilla PostgreSQL 初始化 Supabase 兼容角色、auth schema 与 auth.users ...\n'
   compose exec -T postgres sh -lc 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<"SQL"
@@ -85,8 +70,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON SEQUENCES TO '"$POSTGRES_US
 -- 启动 Supabase 后需执行: GRANT SELECT, DELETE ON auth.sessions TO $POSTGRES_USER;
 SQL'
 }
-
-check_pi_tarballs
 
 printf '构建 server 镜像（server/worker 共用镜像）...\n'
 compose build server

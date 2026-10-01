@@ -43,11 +43,8 @@ agentloom-deploy/systemd/
 agentloom-deploy/kubernetes/
 agentloom-deploy/envs/
 
-# 沙箱镜像独立构建
+# sandbox 源码只经 firecracker/build-artifacts.sh 进入 rootfs，不进入任何镜像构建上下文
 agentloom-deploy/sandbox/
-
-# Pi tarballs 在 .gitignore 中已忽略，确保不泄漏
-# （实际构建前需要 prepare-pi-tarballs.sh 生成）
 
 # ── 文档与设计资产 ──────────────────────────
 *.md

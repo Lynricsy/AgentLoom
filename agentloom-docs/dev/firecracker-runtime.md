@@ -110,7 +110,7 @@ guestd 自身的运行时 API：
 | GET | `/v1/runtime/stats` | `stats` |
 | GET | `/v1/runtime/processes` | `processes` |
 
-Node 沙箱服务的源码在 `agentloom-deploy/sandbox/`（包名 `@agentloom/sandbox`）：Fastify 服务包装 pi-coding-agent 的 AgentSession，`agentloom-deploy/sandbox/src/server.ts` 注册 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/pty/*`、`/health` 等路由，监听 `SANDBOX_LISTEN_SOCKET` 指定的 unix socket；远程工具回调的令牌头常量在 `agentloom-deploy/sandbox/src/remote-tools.ts`。`agentloom-deploy/firecracker/build-artifacts.sh` 在该目录执行 `npm ci`、`npm run typecheck`、`npm run build`，把 `dist/` 复制进 rootfs 的 `/opt/agentloom-sandbox/`。同目录的 `agentloom-deploy/sandbox/Dockerfile` 与 `agentloom-deploy/sandbox/build.sh` 构建 Docker 镜像，不参与 Firecracker 产物。
+Node 沙箱服务的源码在 `agentloom-deploy/sandbox/`（包名 `@agentloom/sandbox`）：Fastify 服务包装 pi-coding-agent 的 AgentSession，`agentloom-deploy/sandbox/src/server.ts` 注册 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/pty/*`、`/health` 等路由，监听 `SANDBOX_LISTEN_SOCKET` 指定的 unix socket；远程工具回调的令牌头常量在 `agentloom-deploy/sandbox/src/remote-tools.ts`。`agentloom-deploy/firecracker/build-artifacts.sh` 在该目录按已跟踪的 `package-lock.json` 执行 `npm ci`、`npm run typecheck`、`npm run build`，把 `dist/` 复制进 rootfs 的 `/opt/agentloom-sandbox/`；这是该服务唯一的发布形态。
 
 agentloom-guestd 读取的环境变量（`guest.RunMain`）：`AGENTLOOM_GUESTD_LISTEN`（默认 `:8443`）、`SANDBOX_LISTEN_SOCKET`（默认 `/run/agentloom/agent.sock`）、`AGENTLOOM_NODE_ENTRY`（默认 `/opt/agentloom-sandbox/dist/server.js`）、`AGENTLOOM_GUESTD_DEV_MODE`（为 `true` 时不取 MMDS、不启用 TLS，令牌取 `AGENTLOOM_GUEST_TOKEN`）。
 

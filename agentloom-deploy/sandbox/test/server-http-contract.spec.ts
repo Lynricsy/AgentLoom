@@ -7,7 +7,6 @@ import {
   afterAll,
   beforeEach,
 } from 'vitest';
-import { execSync } from 'node:child_process';
 
 vi.mock('@earendil-works/pi-coding-agent', () => ({}));
 
@@ -65,30 +64,6 @@ function createMockSession(): MockSession {
     dispose: vi.fn(),
   };
 }
-
-function checkDockerAvailable(): boolean {
-  try {
-    execSync('docker info', { stdio: 'ignore', timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function checkSandboxImageExists(): boolean {
-  try {
-    execSync('docker image inspect agentloom/sandbox:latest', {
-      stdio: 'ignore',
-      timeout: 5000,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const isDockerAvailable = checkDockerAvailable();
-const isSandboxImageAvailable = isDockerAvailable && checkSandboxImageExists();
 
 function parseSseEvents(body: string): SseEventEnvelope[] {
   return body
@@ -737,120 +712,3 @@ describe('Sandbox HTTP Contract (in-process)', () => {
     });
   });
 });
-
-describe.skipIf(!isSandboxImageAvailable)(
-  'Sandbox Docker Container (requires Docker + agentloom/sandbox:latest)',
-  () => {
-    let containerId: string;
-    let containerPort: number;
-    const CONTAINER_STARTUP_TIMEOUT = 15_000;
-
-    beforeAll(async () => {
-      const output = execSync(
-        'docker run -d --rm -p 0:8080 -v /tmp/sandbox-test-workspace:/workspace agentloom/sandbox:latest',
-        { encoding: 'utf-8', timeout: 10_000 },
-      ).trim();
-      containerId = output;
-
-      const portOutput = execSync(`docker port ${containerId} 8080/tcp`, {
-        encoding: 'utf-8',
-        timeout: 5000,
-      }).trim();
-      const portMatch = portOutput.match(/:(\d+)$/);
-      if (!portMatch) {
-        throw new Error(`Failed to parse container port from: ${portOutput}`);
-      }
-      containerPort = parseInt(portMatch[1], 10);
-
-      const deadline = Date.now() + CONTAINER_STARTUP_TIMEOUT;
-      while (Date.now() < deadline) {
-        try {
-          const res = await fetch(`http://127.0.0.1:${containerPort}/health`);
-          if (res.ok) break;
-        } catch {
-          /* waiting for startup */
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }, 30_000);
-
-    afterAll(() => {
-      if (containerId) {
-        try {
-          execSync(`docker stop ${containerId}`, {
-            stdio: 'ignore',
-            timeout: 10_000,
-          });
-        } catch {
-          /* intentional: container may already be stopped */
-        }
-      }
-      try {
-        execSync('rm -rf /tmp/sandbox-test-workspace', {
-          stdio: 'ignore',
-        });
-      } catch {
-        /* intentional: ignore cleanup failure */
-      }
-    }, 15_000);
-
-    it('GET /health 应返回 healthy（/workspace 已挂载）', async () => {
-      const res = await fetch(`http://127.0.0.1:${containerPort}/health`);
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body).toEqual({ status: 'healthy' });
-    });
-
-    it('POST /v1/session 应创建容器内会话', async () => {
-      const res = await fetch(`http://127.0.0.1:${containerPort}/v1/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-
-      if (res.status === 200) {
-        const body = await res.json();
-        expect(body).toHaveProperty('sessionId');
-      } else {
-        expect(res.status).toBe(500);
-      }
-    });
-
-    it('POST /v1/prompt 无效 session 应返回 400 或 404', async () => {
-      const res = await fetch(`http://127.0.0.1:${containerPort}/v1/prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'nonexistent',
-          text: 'hello',
-        }),
-      });
-
-      expect([400, 404]).toContain(res.status);
-    });
-
-    it('POST /v1/abort 无效 session 应返回 400 或 404', async () => {
-      const res = await fetch(`http://127.0.0.1:${containerPort}/v1/abort`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: 'nonexistent' }),
-      });
-
-      expect([400, 404]).toContain(res.status);
-    });
-  },
-);
-
-describe.skipIf(isDockerAvailable)(
-  'Sandbox Docker Container (Docker not available)',
-  () => {
-    it.skip('需要 Docker daemon 运行', () => {});
-  },
-);
-
-describe.skipIf(isSandboxImageAvailable || !isDockerAvailable)(
-  'Sandbox Docker Container (image not built)',
-  () => {
-    it.skip('需要构建 agentloom/sandbox:latest 镜像', () => {});
-  },
-);
