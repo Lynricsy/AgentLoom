@@ -19,12 +19,12 @@ docType: explanation
 | `docs` | `agentloom/docs:private-local` | 本文档站，容器内 nginx 监听 8081，路径前缀 `/documentation/` | 常驻 |
 | `server` | `agentloom/server:private-local` | NestJS API 与 Socket.IO，监听 3000 | 常驻 |
 | `worker` | 同 server 镜像 | 与 server 同一入口 `node dist/src/main.js`，不接入 `agentloom-frontend`，入口不会把请求转给它 | 常驻 |
-| `firecracker-runtime` | `agentloom/firecracker-runtime:1.16.1` | 沙箱 microVM 的 runtime manager，特权容器，mTLS 监听 8443，见 [Firecracker 沙箱](/deploy/firecracker) | 常驻 |
+| `firecracker-runtime` | `agentloom/firecracker-runtime:1.16.1` | 沙箱 microVM 的 runtime manager，特权容器，mTLS 监听 8443，见 [Firecracker 沙箱](/deploy/firecracker) | profile `sandbox`（`.env.template` 默认启用） |
 | `postgres` | `postgres:16-alpine` | 业务数据库；自托管 Supabase 也用这个库 | 常驻 |
 | `redis` | `redis:7-alpine` | BullMQ 队列与缓存，开启 AOF | 常驻 |
-| `minio` | `minio/minio:RELEASE.2025-02-28T09-55-16Z` | 对象存储，默认 bucket `agentloom-documents` | 常驻 |
+| `minio` | `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` | 对象存储，默认 bucket `agentloom-documents` | 常驻 |
 | `qdrant` | `qdrant/qdrant:v1.17.0` | 向量库 | 常驻 |
-| `createbuckets` | `minio/mc:RELEASE.2025-05-21T01-59-54Z` | 创建 bucket 后退出 | 一次性 |
+| `createbuckets` | `pgsty/mc:RELEASE.2026-09-16T00-00-00Z` | 创建 bucket 后退出 | 一次性 |
 | `server-migrator` | server 镜像的 `migrator` 构建阶段 | 执行 `pnpm db:migrate` / `pnpm db:seed` | profile `tools` |
 | `sandbox-cutover` | 同 runtime 镜像，入口 `/usr/local/bin/sandbox-cutover` | 旧 Docker 沙箱迁移到 Firecracker；唯一挂载宿主 Docker socket 的服务 | profile `migration` |
 
@@ -40,7 +40,7 @@ docType: explanation
 
 ## 启动依赖
 
-`depends_on` 全部使用 `condition: service_healthy`：
+`depends_on` 全部使用 `condition: service_healthy`，其中 server/worker 对 `firecracker-runtime` 的依赖带 `required: false`（图中虚线）：
 
 ```mermaid
 flowchart LR
@@ -48,33 +48,33 @@ flowchart LR
   RD[redis] --> S
   MN[minio] --> S
   QD[qdrant] --> S
-  FC[firecracker-runtime] --> S
+  FC[firecracker-runtime] -.-> S
   PG --> W[worker]
   RD --> W
   MN --> W
   QD --> W
-  FC --> W
+  FC -.-> W
   S --> RP[reverse-proxy]
   ST[studio] --> RP
   DC[docs] --> RP
   MN --> CB[createbuckets]
 ```
 
-`server` 与 `worker` 都要等 `firecracker-runtime` 健康后才会创建；`reverse-proxy` 又要等 `server`。因此 **firecracker-runtime 的健康检查不通过时，server、worker 与入口都不会启动**，Web 入口整体不可用。firecracker-runtime 的健康检查是带 mTLS 客户端证书的 `GET https://firecracker-runtime:8443/readyz`，它通过的前提是宿主满足 KVM、TUN、cgroup v2、内核与 swap 等预检条件（见 [Firecracker 沙箱](/deploy/firecracker)）。没有可用 KVM 的宿主无法按本仓库的 Compose 文件跑起 Web 入口。
+`reverse-proxy` 要等 `server` 健康。`firecracker-runtime` 属于 profile `sandbox`：profile 未启用时不创建它；启用后 server/worker 先等它健康，健康检查（带 mTLS 客户端证书的 `GET https://firecracker-runtime:8443/readyz`）失败时 Compose 打印 `optional dependency "firecracker-runtime" failed to start` 警告后照常启动 server/worker，Web 入口可用，只有 sandbox 运行态的 Agent 不可用。没有可用 KVM 的宿主按 [不启用沙箱](/deploy/firecracker#不启用沙箱) 关闭该 profile。
 
 ## 网络
 
-Compose 声明了 5 个网络，`name:` 写死为全局名称，不随 Compose project 名变化：
+Compose 声明了 5 个网络。主栈 4 个网络名带前缀 `AGENTLOOM_NETWORK_PREFIX`（默认 `agentloom`），不随 Compose project 名变化；备份与恢复脚本按 `<前缀>-app` 找到 MinIO：
 
 | 网络键 | Docker 网络名 | internal | 成员 |
 | --- | --- | --- | --- |
-| `frontend_net` | `agentloom-frontend` | 否 | reverse-proxy、studio、docs、server |
-| `app_net` | `agentloom-app` | 是 | server、worker、firecracker-runtime、postgres、redis、minio、qdrant、createbuckets、server-migrator、sandbox-cutover |
-| `data_net` | `agentloom-data` | 是 | postgres、server-migrator |
-| `sandbox_egress_net` | `agentloom-sandbox-egress` | 否 | firecracker-runtime（guest 出站） |
+| `frontend_net` | `<前缀>-frontend`（默认 `agentloom-frontend`） | 否 | reverse-proxy、studio、docs、server |
+| `app_net` | `<前缀>-app`（默认 `agentloom-app`） | 是 | server、worker、firecracker-runtime、postgres、redis、minio、qdrant、createbuckets、server-migrator、sandbox-cutover |
+| `data_net` | `<前缀>-data`（默认 `agentloom-data`） | 是 | postgres、server-migrator |
+| `sandbox_egress_net` | `<前缀>-sandbox-egress`（默认 `agentloom-sandbox-egress`） | 否 | firecracker-runtime（guest 出站） |
 | `supabase_net` | `${SUPABASE_NETWORK:-supabase-shared}`，external | 由 `docker network create` 决定 | reverse-proxy、server、worker、postgres、server-migrator、sandbox-cutover，以及 Supabase 栈的三个服务 |
 
-`supabase_net` 是 external 网络，主 Compose 与 Supabase Compose 都不会创建它，首次部署必须先执行 `docker network create supabase-shared`。因为网络名是全局的，同一台 Docker 宿主上只能运行一套这样的栈。
+`supabase_net` 是 external 网络，主 Compose 与 Supabase Compose 都不会创建它，首次部署必须先执行 `docker network create supabase-shared`。同一台 Docker 宿主上运行第二套栈时，改 `AGENTLOOM_PROJECT_NAME`、`AGENTLOOM_SUPABASE_PROJECT_NAME`、`AGENTLOOM_NETWORK_PREFIX`、`SUPABASE_NETWORK` 与各宿主端口变量即可。
 
 ```mermaid
 flowchart TB

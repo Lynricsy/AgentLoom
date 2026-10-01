@@ -44,4 +44,4 @@ docker compose --profile tools run --rm server-migrator pnpm db:migrate
 
 ## 文档
 
-详细步骤、变量参考与已知问题见文档站「部署运维」分区：<https://agentloom.ling.plus/documentation/deploy/>（源文件 `agentloom-docs/deploy/`）。
+详细步骤与变量参考见文档站「部署运维」分区：<https://agentloom.ling.plus/documentation/deploy/>（源文件 `agentloom-docs/deploy/`）。

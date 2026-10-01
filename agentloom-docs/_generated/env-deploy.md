@@ -4,7 +4,9 @@
 
 | 变量 | 模板值 | 说明 |
 | --- | --- | --- |
-| `COMPOSE_PROJECT_NAME` | `agentloom-private` |  |
+| `AGENTLOOM_PROJECT_NAME` | `agentloom-private` | 两个 compose 文件各自的 project 名。不要设置 COMPOSE_PROJECT_NAME： 它优先于文件内的 name:，会把主栈与 Supabase 栈并进同一个 project。 |
+| `AGENTLOOM_SUPABASE_PROJECT_NAME` | `agentloom-supabase` |  |
+| `AGENTLOOM_NETWORK_PREFIX` | `agentloom` | 主栈 4 个网络名的前缀（<前缀>-frontend/-app/-data/-sandbox-egress）；备份/恢复脚本据此找到 MinIO 网络。 |
 | `NGINX_HTTP_PORT` | `8080` |  |
 | `MINIO_CONSOLE_PORT` | `9001` |  |
 | `QDRANT_HTTP_PORT` | `6333` |  |
@@ -14,9 +16,9 @@
 | `NGINX_IMAGE` | `openresty/openresty:alpine` |  |
 | `POSTGRES_IMAGE` | `postgres:16-alpine` |  |
 | `REDIS_IMAGE` | `redis:7-alpine` |  |
-| `MINIO_IMAGE` | `minio/minio:RELEASE.2025-02-28T09-55-16Z` |  |
+| `MINIO_IMAGE` | `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` | MinIO 官方 Docker Hub 仓库（minio/minio、minio/mc）已于 2026-09 下架，quay.io/minio 匿名不可拉取； 改用 Pigsty 维护的社区构建（https://github.com/pgsty/minio），固定 RELEASE 标签。 |
 | `QDRANT_IMAGE` | `qdrant/qdrant:v1.17.0` |  |
-| `MC_IMAGE` | `minio/mc:RELEASE.2025-05-21T01-59-54Z` |  |
+| `MC_IMAGE` | `pgsty/mc:RELEASE.2026-09-16T00-00-00Z` |  |
 | `RUN_DB_SEED` | `false` |  |
 | `POSTGRES_BACKUP_RETENTION_DAYS` | `7` |  |
 | `MINIO_BACKUP_RETENTION_DAYS` | `7` |  |
@@ -36,7 +38,8 @@
 | `APP_MINIO_USE_SSL` | `false` |  |
 | `APP_MINIO_BUCKET` | `agentloom-documents` |  |
 | `APP_QDRANT_URL` | `http://qdrant:6333` |  |
-| `FIRECRACKER_RUNTIME_IMAGE` | `agentloom/firecracker-runtime:1.16.1` | Sandbox 由 Firecracker runtime manager 通过 KVM microVM 承载。 单机 compose 即单节点；跨服务器部署时每台宿主机各跑一个 runtime 容器， 用 scripts/generate-firecracker-pki.sh add-node 签发证书后经 /api/v1/sandbox-nodes 注册（详见 README「沙箱运行时节点」）。 首次部署前运行 scripts/generate-firecracker-pki.sh 和 firecracker/build-artifacts.sh。 |
+| `COMPOSE_PROFILES` | `sandbox` | Sandbox 由 Firecracker runtime manager 通过 KVM microVM 承载。 单机 compose 即单节点；跨服务器部署时每台宿主机各跑一个 runtime 容器， 用 scripts/generate-firecracker-pki.sh add-node 签发证书后经 /api/v1/sandbox-nodes 注册（详见 README「沙箱运行时节点」）。 首次部署前运行 scripts/generate-firecracker-pki.sh 和 firecracker/build-artifacts.sh。 firecracker-runtime 属于 compose profile `sandbox`。server/worker 对它是可选依赖：runtime 预检失败或 未启用 sandbox profile 时 server/worker 照常启动，仅 sandbox 运行态的 Agent 不可用（no_sandbox 不受影响）。 宿主不满足预检（KVM、内核 6.18.x、关闭 swap 等）时去掉 sandbox，省掉一个反复重启的容器。 |
+| `FIRECRACKER_RUNTIME_IMAGE` | `agentloom/firecracker-runtime:1.16.1` |  |
 | `FIRECRACKER_GUEST_CIDR` | `172.30.0.0/16` |  |
 | `FIRECRACKER_GATEWAY` | `172.30.0.1` |  |
 | `FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS` |  | 默认拒绝所有私网；仅在 private LLM/MCP 确有需要时填逗号分隔 IPv4 CIDR。 |

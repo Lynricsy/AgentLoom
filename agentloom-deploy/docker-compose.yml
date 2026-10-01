@@ -54,8 +54,12 @@ x-server-app: &server-app
       condition: service_healthy
     qdrant:
       condition: service_healthy
+    # runtime 在 profile `sandbox` 下。required: false：profile 未启用时不启动 runtime；
+    # 启用后先等它健康，预检失败（unhealthy）时 compose 打印 optional dependency 警告后仍启动 server/worker，
+    # 此时只有 sandbox 运行态的 Agent 不可用。
     firecracker-runtime:
       condition: service_healthy
+      required: false
 
 x-studio-app: &studio-app
   image: ${STUDIO_IMAGE:-agentloom/studio:private-local}
@@ -215,6 +219,7 @@ services:
       start_period: 30s
 
   firecracker-runtime:
+    profiles: ['sandbox']
     image: ${FIRECRACKER_RUNTIME_IMAGE:-agentloom/firecracker-runtime:1.16.1}
     build:
       context: ..

@@ -10,7 +10,7 @@ Agent 以 `sandbox` 运行模式执行时，代码跑在 Firecracker microVM 里
 
 ## 宿主预检
 
-runtime manager 启动时执行预检（`agentloom-firecracker-runtime/internal/preflight/check.go`），任一项不通过即退出，容器不会健康，server 与 worker 也不会启动（见 [部署拓扑](/deploy/#启动依赖)）：
+runtime manager 启动时执行预检（`agentloom-firecracker-runtime/internal/preflight/check.go`），任一项不通过即退出，容器不会健康。runtime 属于 Compose profile `sandbox`（`.env.template` 默认 `COMPOSE_PROFILES=sandbox`），server 与 worker 对它是可选依赖（`required: false`）：预检失败时 Compose 打印 `optional dependency "firecracker-runtime" failed to start` 警告后照常启动 server 与 worker，只有 sandbox 运行态的 Agent 不可用（见 [部署拓扑](/deploy/#启动依赖)）：
 
 | 检查 | 要求 | 放宽方式 |
 | --- | --- | --- |
@@ -25,7 +25,7 @@ runtime manager 启动时执行预检（`agentloom-firecracker-runtime/internal/
 | 状态目录 | `FIRECRACKER_STATE_ROOT` 可创建、不含符号链接 | 无 |
 | 产物 | `manifest.json` 版本正确，每个文件的 SHA-256 与清单一致，`vmlinux` 是 x86-64 ELF | 重新构建产物 |
 
-预检通过时日志打印 `"msg":"Firecracker preflight passed"` 及各项结果；放宽项出现在 `warnings` 中。实际输出见 [Docker Compose 部署](/deploy/compose#_9-验证)。`FIRECRACKER_ENV`、`FIRECRACKER_ALLOW_SWAP` 只在 `agentloom-deploy/docker-compose.yml` 中有默认值（`production`、`false`），不在 `.env.template` 里；Helm 模板不设置这两个变量。
+预检通过时日志打印 `"msg":"Firecracker preflight passed"` 及各项结果；放宽项出现在 `warnings` 中。实际输出见 [Docker Compose 部署](/deploy/compose#_8-检查沙箱运行时)。`FIRECRACKER_ENV`、`FIRECRACKER_ALLOW_SWAP` 只在 `agentloom-deploy/docker-compose.yml` 中有默认值（`production`、`false`），不在 `.env.template` 里；Helm 模板不设置这两个变量。
 
 ## 1. 生成证书
 
@@ -60,24 +60,7 @@ Compose 通过 8 个 secret 把文件交给容器（`agentloom-deploy/docker-com
 
 脚本要求 Linux x86_64 与 `curl`、`docker`、`go`、`jq`、`mke2fs`、`npm`、`od`、`sha256sum`、`tar`、`tr`。步骤：下载并校验 SHA-256 → 构建 `agentloom-deploy/sandbox`（`npm ci`、typecheck、build）与 Go 程序 `agentloom-guestd` → 用 `agentloom-deploy/firecracker/rootfs.Dockerfile` 构建 ext4 rootfs → 用 `agentloom-deploy/firecracker/kernel-builder.Dockerfile` 编译内核与 initramfs → 写 `firecracker/artifacts/manifest.json`（记录当前 `git rev-parse HEAD`）。guest 内的 `agentloom-guestd` 由 `agentloom-deploy/firecracker/systemd/agentloom-guestd.service` 启动。
 
-::: warning 已知问题：`npm ci` 缺少 lockfile
-`agentloom-deploy/sandbox/` 的 `package-lock.json` 被 `agentloom-deploy/sandbox/.gitignore` 忽略、不在仓库中，干净检出上脚本在 `npm ci` 处失败：
-
-```text
-npm error code EUSAGE
-npm error
-npm error The `npm ci` command can only install with an existing
-npm error package-lock.json with lockfileVersion >= 1. Run an install with npm@5
-npm error or later to generate a package-lock.json file, then try again.
-```
-
-2026-10-01 验证时先执行下面的命令生成 lockfile，再运行 `./firecracker/build-artifacts.sh`，后者约 4 分钟成功结束：
-
-```bash
-(cd sandbox && npm install --package-lock-only --ignore-scripts)
-```
-
-:::
+`agentloom-deploy/sandbox/package-lock.json` 随仓库跟踪，脚本中的两次 `npm ci`（构建 sandbox、在 rootfs 中只装生产依赖）都按它安装，产物可复现。升级 sandbox 依赖时在该目录运行 `npm install` 并提交更新后的 lockfile。
 
 runtime 镜像由 `agentloom-deploy/firecracker/runtime-manager.Dockerfile` 构建，把 `firecracker/artifacts/` 与 `firecracker/network/` 复制进镜像。两种方式任选：
 
@@ -109,6 +92,16 @@ runtime 健康后运行冒烟脚本。它通过 `docker compose exec firecracker
 ```text
 Firecracker KVM smoke passed for 79c5559e-e8b1-457a-9afc-fee6c7ef252e
 ```
+
+## 不启用沙箱
+
+宿主不满足 [宿主预检](#宿主预检)（没有 KVM、内核不是 6.18.x、开着 swap 等）时，在 `agentloom-deploy/` 下的 `.env` 中把 `COMPOSE_PROFILES=sandbox` 改为空值 `COMPOSE_PROFILES=`，然后：
+
+```bash
+docker compose up -d
+```
+
+Compose 不再创建 `firecracker-runtime` 容器，其余服务照常运行；`GET /api/v1/sandbox-nodes` 中的 `default` 节点显示 `"healthy": false`。此时只能使用 `no_sandbox` 运行态的 Agent。server 与 worker 仍挂载 Firecracker 客户端证书作为 Compose secret，所以上文第 1 步「生成证书」仍要执行，第 2 步「构建产物与镜像」可以跳过。之前已经启动过的 runtime 容器用 `docker compose --profile sandbox stop firecracker-runtime` 停止。
 
 ## 多节点
 
@@ -225,4 +218,4 @@ PostgreSQL 与 MinIO 备份不包含 `firecracker_state` 卷中的 microVM 磁�
 
 ## 为什么是 microVM
 
-Agent 在沙箱里执行任意代码、安装依赖、访问网络。容器与宿主共享内核，一次内核漏洞就能越过隔离；Firecracker 给每个沙箱一个独立的客户机内核，只暴露最小的虚拟设备集，再由 jailer 把 VMM 进程放进 chroot 与 cgroup。网络侧，每台 VM 一个 tap 设备，nftables 规则（`agentloom-deploy/firecracker/network/agentloom-firecracker.nft.template`）只放行 DNS 与 80/443 出站，拒绝私网、链路本地、元数据地址与伪造源地址；guest 对 manager 的回调走单独的 18080 中继。代价是宿主必须有 KVM，且只能运行在 x86_64 Linux 上，这也是 Compose 部署把 KVM 列为前置条件的原因。
+Agent 在沙箱里执行任意代码、安装依赖、访问网络。容器与宿主共享内核，一次内核漏洞就能越过隔离；Firecracker 给每个沙箱一个独立的客户机内核，只暴露最小的虚拟设备集，再由 jailer 把 VMM 进程放进 chroot 与 cgroup。网络侧，每台 VM 一个 tap 设备，nftables 规则（`agentloom-deploy/firecracker/network/agentloom-firecracker.nft.template`）只放行 DNS 与 80/443 出站，拒绝私网、链路本地、元数据地址与伪造源地址；guest 对 manager 的回调走单独的 18080 中继。代价是宿主必须有 KVM，且只能运行在 x86_64 Linux 上，所以 runtime 放在 Compose profile `sandbox` 里，不满足条件的宿主可以只跑 `no_sandbox` Agent。
