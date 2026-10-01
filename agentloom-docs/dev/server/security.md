@@ -24,7 +24,9 @@ docType: explanation
 
 JWT 以 `APP_JWT_SECRET` 按 HS256 验签，要求 `aud=authenticated`。验签前先查吊销表：`TokenBlacklistService`（`agentloom-server/src/common/services/token-blacklist.service.ts`）把 token 的 SHA-256 哈希与过期时间写入数据库表 `revoked_tokens`，不使用 Redis。
 
-写入 `revoked_tokens` 的唯一入口是 `POST /api/v1/auth/logout`。会话管理接口 `DELETE /api/v1/auth/sessions/:id` 与 `POST /api/v1/auth/sessions/revoke-all` 只删除 Supabase `auth.sessions` 中的行，不吊销已签发的 access token；这些 token 在过期前仍能通过验签。
+GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token 在校验时，同一条 SQL 同时检查 `revoked_tokens` 与 `auth.sessions`：会话行不存在或已过 `not_after` 即视为吊销（`token-revoked`）。因此 `DELETE /api/v1/auth/sessions/:id`、`POST /api/v1/auth/sessions/revoke-all`、GoTrue 侧登出与会话超时都会让该会话已签发的 access token 立即失效；`POST /api/v1/auth/logout` 另外把当前 token 写入 `revoked_tokens`。`session_id` 不是 UUID 时直接按吊销处理。
+
+`auth.sessions` 不可读（表不存在、权限不足、查询失败）时 fail-closed：返回 503 `https://agentloom.dev/errors/session-verification-unavailable`，不退化为只查哈希黑名单。应用的 `APP_DATABASE_URL` 必须能读到 GoTrue 的 `auth.sessions`。HTTP `AuthGuard`、Socket.IO 握手与 ACP 认证共用这一检查。
 
 验签成功后，`UserIdentityResolver` 把 Supabase `sub` 换成应用内用户 ID，写入 `req.user`。
 

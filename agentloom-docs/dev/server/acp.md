@@ -72,7 +72,7 @@ flowchart LR
 
 ### `authenticate`
 
-`token` 由 `agentloom-server/src/modules/acp-gateway/acp-authentication.service.ts` 校验，规则与 HTTP 侧 JWT 分支相同：先查 `revoked_tokens` 吊销表，再以 `APP_JWT_SECRET` 按 HS256、`aud=authenticated` 验签，拒绝 `mfa_pending` 令牌。失败以 `DomainException` 抛出，经路由器转换为 `-32000`（`data.type` 为 `token-revoked`、`token-expired`、`token-invalid` 或 MFA 要求）。ACP 不接受平台 API Token（`al_`）或 Agent API Key（`alak_`）。
+`token` 由 `agentloom-server/src/modules/acp-gateway/acp-authentication.service.ts` 校验，规则与 HTTP 侧 JWT 分支相同：先查吊销与会话存活（`revoked_tokens` 与 `auth.sessions`，见 [/dev/server/security](/dev/server/security)），再以 `APP_JWT_SECRET` 按 HS256、`aud=authenticated` 验签，拒绝 `mfa_pending` 令牌。失败以 `DomainException` 抛出，经路由器转换为 `-32000`（`data.type` 为 `token-revoked`、`session-verification-unavailable`、`token-expired`、`token-invalid` 或 MFA 要求）。ACP 不接受平台 API Token（`al_`）或 Agent API Key（`alak_`）。
 
 ### 会话与持久化
 

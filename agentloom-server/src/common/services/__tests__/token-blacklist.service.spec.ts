@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { createHash } from 'node:crypto';
+import * as jwt from 'jsonwebtoken';
 import { TokenBlacklistService } from '../token-blacklist.service';
-import { DRIZZLE } from '../../../database/database.module';
+import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -140,6 +141,39 @@ describe('TokenBlacklistService (DB-backed)', () => {
       const result = await service.isBlacklisted('unknown-token');
 
       expect(result).toBe(false);
+    });
+
+    it('session_id 不是 UUID 时按已吊销处理，不查询会话表', async () => {
+      const execute = vi.fn();
+      const scoped = new TokenBlacklistService({
+        execute,
+        query: { revokedTokens: { findFirst: mockFindFirst } },
+      } as unknown as DrizzleDB);
+      const token = jwt.sign({ sub: 'u', session_id: 'not-a-uuid' }, 's');
+
+      await expect(scoped.isBlacklisted(token)).resolves.toBe(true);
+      expect(execute).not.toHaveBeenCalled();
+      expect(mockFindFirst).not.toHaveBeenCalled();
+    });
+
+    it('auth.sessions 不可读时 fail-closed：抛 503，不退回只按哈希判断', async () => {
+      const execute = vi
+        .fn()
+        .mockRejectedValue(new Error('relation "auth.sessions" does not exist'));
+      const scoped = new TokenBlacklistService({
+        execute,
+        query: { revokedTokens: { findFirst: mockFindFirst } },
+      } as unknown as DrizzleDB);
+      const token = jwt.sign(
+        { sub: 'u', session_id: '0190a5d2-6c3f-7000-8000-000000000001' },
+        's',
+      );
+
+      await expect(scoped.isBlacklisted(token)).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/session-verification-unavailable',
+        status: 503,
+      });
+      expect(mockFindFirst).not.toHaveBeenCalled();
     });
   });
 

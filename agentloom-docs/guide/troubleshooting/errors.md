@@ -41,6 +41,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `aal2-required` | 403 | 该操作要求本次登录已完成双因素验证 | 退出后重新登录并完成两步验证 |
 | `session-revoke-current` | 400 | 不能在会话列表中注销当前会话 | 使用「退出登录」 |
 | `auth-unavailable` | 503 | 认证服务当前不可用 | 稍后重试；持续出现时联系部署管理员 |
+| `session-verification-unavailable` | 503 | 服务端暂时无法确认登录会话是否仍有效 | 稍后重试；持续出现时联系部署管理员 |
 
 账户安全设置见[账户安全](/guide/account/security)。
 
