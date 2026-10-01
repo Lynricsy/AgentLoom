@@ -62,12 +62,18 @@ cd agentloom-server
 pnpm test:e2e -- guard-chain
 ```
 
-E2E 的 Postgres 由 Testcontainers 启动，Redis 需要自备：`agentloom-server/test/setup-e2e.ts` 把 `APP_REDIS_URL` 设为 `E2E_REDIS_URL`，未设置时为 `redis://127.0.0.1:6379`。本机 6379 被其他服务占用时，另起一个 Redis 并指定地址：
+E2E 的 Postgres 由 Testcontainers 启动，Redis 需要自备且必须可达：覆盖 `REDIS_CLIENT` 只替换了应用自己的连接，未被覆盖的 BullMQ 队列（如 `AgentApiMaintenanceScheduler.onModuleInit` 的 `upsertJobScheduler`）和 ACP stdio 子进程仍直连 `APP_REDIS_URL`，连不上时 `beforeAll` 会一直重连到超时。
+
+`agentloom-server/test/setup-e2e.ts` 把 `APP_REDIS_URL` 设为 `E2E_REDIS_URL`，未设置时为 `redis://127.0.0.1:6379`。spec 不要再自行覆盖 `APP_REDIS_URL`；`acp-stdio.e2e-spec.ts` 经 `ACP_TEST_REDIS_URL` 把同一地址传给 `agentloom-server/scripts/run-acp-stdio-e2e-helper.mjs` 启动的子进程。本机 6379 被其他服务占用时，另起一个 Redis 并指定地址：
 
 ```bash
 docker run -d --name agentloom-e2e-redis -p 127.0.0.1:46379:6379 redis:7-alpine
 E2E_REDIS_URL=redis://127.0.0.1:46379 pnpm test:e2e -- trigger
 ```
+
+需要覆盖 `REDIS_CLIENT` 的 spec 统一用 `agentloom-server/test/support/redis-client.mock.ts` 的 `createMockRedisClient()`，不要在 spec 里另写一份：启动路径会调用 `redis.duplicate()`（`AgentExecutionService.onModuleInit` 的订阅连接），缺少它时 `app.init()` 直接抛 `this.redis.duplicate is not a function`。特定行为（如 `set` 的 NX 语义）在 spec 内对返回对象的 `vi.fn()` 继续打桩。
+
+用 `vi.mock('ioredis')` 完全打桩 Redis 的 spec 还必须覆盖全部队列：遍历 `agentloom-server/test/support/bullmq-queues.ts` 的 `BULLMQ_QUEUE_NAMES` 覆盖 `getQueueToken(name)`。`vi.mock` 管不到 bullmq 内部的 ioredis，漏掉的队列会连真实 Redis。新增 `BullModule.registerQueue` 时同步加进这个列表。
 
 ### 覆盖率
 
