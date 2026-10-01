@@ -79,6 +79,7 @@ function knownEnvNames(): Set<string> {
     ...walk(repoPath('agentloom-server/src'), (f) => f.endsWith('.ts')),
     ...walk(repoPath('agentloom-studio/src'), (f) => /\.tsx?$/.test(f)),
     repoPath('agentloom-studio/vite.config.ts'),
+    ...walk(repoPath('agentloom-docs/scripts'), (f) => /\.m?[jt]s$/.test(f)),
   ];
   for (const file of sources) {
     if (!existsSync(file)) continue;
