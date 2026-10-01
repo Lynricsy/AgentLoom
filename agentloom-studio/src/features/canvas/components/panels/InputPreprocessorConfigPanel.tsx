@@ -123,14 +123,16 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
           value={parsed.expression}
           onChange={handleExpression}
           rows={6}
+          // 服务端以端口 ID 为键组装 input（如 { "text-in": ..., "json-in": ... }），
+          // 脚本由 vm.Script 求值、结果取最后一个表达式的值，顶层 return 是语法错误。
           placeholder={
             parsed.transformType === 'jmespath'
-              ? '例：data.items[?status==`active`]'
+              ? '例："json-in".items[?status==`active`]'
               : parsed.transformType === 'jsonata'
-                ? '例：$.items.{ "id": id, "name": name }'
+                ? '例：`json-in`.items.{ "id": id, "name": name }'
                 : parsed.transformType === 'template'
-                  ? '例：Hello, {{name}}!'
-                  : '例：return input.trim().toUpperCase()'
+                  ? '例：Hello, {{json-in.name}}!'
+                  : "例：input['text-in'].trim().toUpperCase()"
           }
           className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
         />
