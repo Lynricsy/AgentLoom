@@ -76,6 +76,8 @@ server {
 
 `proxy_buffering off` 与长超时让 SSE 和 Socket.IO 长连接穿过外层代理。启用公网域名后，同时把 `APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`SUPABASE_SITE_URL`、`SUPABASE_GOTRUE_EXTERNAL_URL` 改成 HTTPS 域名，见 [配置参考](/deploy/configuration)。
 
+外层代理用 `$proxy_add_x_forwarded_for` 追加了一层地址，因此在 `.env` 中把 `APP_TRUST_PROXY_HOPS` 改为 `2`，server 才能取到真实的客户端地址，见 [配置参考](/deploy/configuration) 中「来源 IP 与可信代理」。
+
 ## 相关
 
 - [部署拓扑](/deploy/)：端口与网络

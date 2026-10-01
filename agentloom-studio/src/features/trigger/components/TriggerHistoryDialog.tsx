@@ -20,6 +20,7 @@ const statusLabels: Record<TriggerHistoryStatus, string> = {
   failed: '失败',
   skipped: '跳过',
   signature_failed: '签名失败',
+  ip_rejected: 'IP 被拒',
 }
 
 const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
@@ -27,6 +28,7 @@ const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
   failed: 'border-error/30 bg-error/10 text-error',
   skipped: 'border-border bg-muted/10 text-muted-foreground',
   signature_failed: 'border-warning/30 bg-warning/10 text-warning',
+  ip_rejected: 'border-error/30 bg-error/10 text-error',
 }
 
 interface TriggerHistoryDialogProps {
@@ -159,6 +161,7 @@ export function TriggerHistoryDialog({
                   <SelectItem value="failed">失败</SelectItem>
                   <SelectItem value="skipped">跳过</SelectItem>
                   <SelectItem value="signature_failed">签名失败</SelectItem>
+                  <SelectItem value="ip_rejected">IP 被拒</SelectItem>
                 </SelectContent>
               </Select>
             </div>

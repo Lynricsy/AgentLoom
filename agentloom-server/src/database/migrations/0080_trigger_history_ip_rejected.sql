@@ -1,0 +1,1 @@
+ALTER TYPE "public"."trigger_history_status_enum" ADD VALUE 'ip_rejected';

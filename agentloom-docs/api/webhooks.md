@@ -118,7 +118,7 @@ node send-webhook.mjs
 
 ## Webhook：其他规则
 
-- **IP 白名单**：触发器的 `ipWhitelist` 非空时，来源 IP 必须在列表中，否则同样返回 401 `INVALID_SIGNATURE`。来源 IP 取 `X-Forwarded-For` 的第一个值，没有该头时取连接地址。
+- **IP 白名单**：触发器的 `ipWhitelist` 非空时，来源 IP 必须匹配其中一项（单个地址或 CIDR 网段），否则返回 403 problem+json `https://agentloom.dev/errors/webhook-ip-not-allowed`，触发历史状态为 `ip_rejected`。IP 白名单先于签名校验，可与任一 `authMode` 叠加。来源 IP 是 server 按 `APP_TRUST_PROXY_HOPS`（可信反向代理层数，见 [配置](/deploy/configuration)）从 `X-Forwarded-For` 末尾取得的地址；调用方自填的 `X-Forwarded-For` 前段不生效。
 - **token 不存在或触发器已停用**：404 `trigger-not-found`。
 - **每个工作流**最多 10 个触发器（各类型合计）。
 - 202 只表示执行已创建；执行结果在 Studio 的执行记录中查看，或用 `GET /api/v1/executions/:executionId`（需要凭证）查询。

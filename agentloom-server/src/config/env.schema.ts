@@ -22,6 +22,12 @@ const optionalNonEmptyStringFromEnv = (message: string) =>
 
 const baseEnvSchema = z.object({
   APP_PORT: z.coerce.number().default(3000),
+  /**
+   * server 前方可信反向代理的跳数，直接映射 Fastify `trustProxy`。
+   * 0 = 不信任任何 X-Forwarded-For（直连部署）；compose/nginx 单层代理为 1；
+   * 外层再加一层 TLS 终止代理时为 2。决定 request.ip（Webhook IP 白名单、匿名限流）。
+   */
+  APP_TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
   APP_NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),

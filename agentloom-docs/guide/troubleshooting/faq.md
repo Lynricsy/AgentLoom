@@ -56,9 +56,10 @@ docType: howto
 | --- | --- | --- |
 | 202 | 已接受，执行已启动 | 在「查看执行记录」中查看这次执行 |
 | 404 | URL 中的 Token 不对，或触发器已停用 | 核对触发器卡片上的「Webhook 入口」，确认触发器为「已启用」 |
-| 401 | Signed 模式下签名或时间戳校验失败，或请求来源不在 IP 白名单中 | 核对签名方法，见 [Webhook 与 API 事件](/api/webhooks) |
+| 403 | 请求来源不在触发器的 IP 白名单中 | 把调用方出口 IP 或网段加入白名单，见 [Webhook 触发](/guide/triggers/webhook) |
+| 401 | Signed 模式下签名或时间戳校验失败 | 核对签名方法，见 [Webhook 与 API 事件](/api/webhooks) |
 
-触发器卡片上的「历史记录」打开「触发历史记录」，可按成功、失败、签名失败、跳过筛选每次调用的结果。
+触发器卡片上的「历史记录」打开「触发历史记录」，可按成功、失败、签名失败、IP 被拒、跳过筛选每次调用的结果。
 
 GitHub 等自带签名头（如 `X-Hub-Signature-256`）的来源不能使用 Signed 模式，因为 AgentLoom 校验的是自己的签名头，见[代码审查](/guide/use-cases/code-review)。
 

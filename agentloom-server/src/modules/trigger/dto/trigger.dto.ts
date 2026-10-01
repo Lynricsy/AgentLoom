@@ -1,6 +1,8 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import { isValidIpAllowlistEntry } from '../ip-allowlist.util';
+
 export const TriggerTypeSchema = z.enum(['cron', 'webhook', 'api_event']);
 export type TriggerType = z.infer<typeof TriggerTypeSchema>;
 
@@ -19,22 +21,23 @@ export const CronConfigSchema = z
 export const WebhookAuthModeSchema = z.enum(['simple', 'signed']);
 export type WebhookAuthMode = z.infer<typeof WebhookAuthModeSchema>;
 
+const IpAllowlistSchema = z.array(
+  z.string().trim().refine(isValidIpAllowlistEntry, {
+    message: '无效的 IP 地址或 CIDR 网段',
+  }),
+);
+
 export const WebhookConfigCreateSchema = z
   .object({
     authMode: WebhookAuthModeSchema.default('simple'),
-    ipWhitelist: z
-      .array(z.string().ip({ message: '无效的 IP 地址' }))
-      .optional()
-      .default([]),
+    ipWhitelist: IpAllowlistSchema.optional().default([]),
   })
   .strict();
 
 export const WebhookConfigUpdateSchema = z
   .object({
     authMode: WebhookAuthModeSchema.optional(),
-    ipWhitelist: z
-      .array(z.string().ip({ message: '无效的 IP 地址' }))
-      .optional(),
+    ipWhitelist: IpAllowlistSchema.optional(),
   })
   .strict();
 
@@ -153,6 +156,7 @@ export const TriggerHistoryStatusSchema = z.enum([
   'failed',
   'skipped',
   'signature_failed',
+  'ip_rejected',
 ]);
 
 export const QueryTriggerHistorySchema = z.object({

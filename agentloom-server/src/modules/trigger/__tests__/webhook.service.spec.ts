@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIZZLE } from '../../../database/database.module';
 import {
   TriggerNotFoundException,
+  WebhookIpNotAllowedException,
   WebhookVerificationFailedException,
 } from '../trigger.exceptions';
 import { WebhookService } from '../webhook.service';
@@ -129,7 +130,38 @@ describe('WebhookService', () => {
     ).not.toThrow();
 
     expect(() => service.checkIpWhitelist(webhookTrigger, '10.0.0.1')).toThrow(
-      WebhookVerificationFailedException,
+      WebhookIpNotAllowedException,
+    );
+  });
+
+  it('IP 白名单应支持 IPv4 / IPv6 CIDR，并对网段外地址与缺失 IP 拒绝', () => {
+    const cidrTrigger = {
+      ...webhookTrigger,
+      config: {
+        ...webhookTrigger.config,
+        ipWhitelist: ['10.0.0.0/8', '2001:db8::/32', '192.168.1.10'],
+      },
+    };
+
+    for (const allowed of [
+      '10.255.1.2',
+      '::ffff:10.1.2.3',
+      '2001:db8:abcd::1',
+      '192.168.1.10',
+    ]) {
+      expect(() =>
+        service.checkIpWhitelist(cidrTrigger, allowed),
+      ).not.toThrow();
+    }
+
+    for (const rejected of ['11.0.0.1', '2001:db9::1', '192.168.1.11']) {
+      expect(() => service.checkIpWhitelist(cidrTrigger, rejected)).toThrow(
+        WebhookIpNotAllowedException,
+      );
+    }
+
+    expect(() => service.checkIpWhitelist(cidrTrigger, undefined)).toThrow(
+      WebhookIpNotAllowedException,
     );
   });
 });

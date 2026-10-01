@@ -41,6 +41,9 @@ env:
     APP_MASTER_ENCRYPTION_KEY: REPLACE_WITH_BASE64_32_BYTES
     APP_OAUTH_REDIRECT_URL: https://agentloom.example.com/api/v1/auth/oauth/callback
     APP_FRONTEND_URL: https://agentloom.example.com
+    # server 前方可信反向代理跳数：Ingress Controller 直连 server 为 1；
+    # Ingress 前再有一层终止 TLS 的负载均衡且其追加 X-Forwarded-For 时改为 2。
+    APP_TRUST_PROXY_HOPS: "1"
     APP_SUPABASE_URL: ""
     APP_SUPABASE_ANON_KEY: ""
     APP_SUPABASE_SERVICE_KEY: ""

@@ -28,7 +28,7 @@ import {
   QueryTriggerHistoryDto,
   UpdateTriggerDto,
   WebhookConfigSchema,
-} from './trigger-dto.compat';
+} from './dto/trigger.dto';
 import { TriggerHistoryService } from './trigger-history.service';
 import { TriggerSchedulerService } from './trigger-scheduler.service';
 import { TriggerService } from './trigger.service';

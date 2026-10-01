@@ -7,7 +7,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { WorkflowTrigger } from '../../database/schema/workflow-triggers.schema';
-import { CronConfigSchema } from './trigger-dto.compat';
+import { CronConfigSchema } from './dto/trigger.dto';
 import { TRIGGER_CRON_JOB, TRIGGER_QUEUE } from './trigger.constants';
 
 export type TriggerCronJobData = {

@@ -5,10 +5,12 @@ import { and, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { WorkflowTrigger } from '../../database/schema/workflow-triggers.schema';
-import { WebhookConfigSchema } from './trigger-dto.compat';
+import { WebhookConfigSchema } from './dto/trigger.dto';
+import { isIpAllowed } from './ip-allowlist.util';
 import { WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS } from './trigger.constants';
 import {
   TriggerNotFoundException,
+  WebhookIpNotAllowedException,
   WebhookVerificationFailedException,
 } from './trigger.exceptions';
 
@@ -78,34 +80,8 @@ export class WebhookService {
   ): void {
     const config = WebhookConfigSchema.parse(trigger.config);
 
-    if (config.ipWhitelist.length === 0) {
-      return;
+    if (!isIpAllowed(config.ipWhitelist, clientIp)) {
+      throw new WebhookIpNotAllowedException(clientIp);
     }
-
-    const normalizedClientIp = this.normalizeIp(clientIp);
-    const normalizedWhitelist = config.ipWhitelist.map((ip) =>
-      this.normalizeIp(ip),
-    );
-
-    if (
-      !normalizedClientIp ||
-      !normalizedWhitelist.includes(normalizedClientIp)
-    ) {
-      throw new WebhookVerificationFailedException(
-        'Webhook 来源 IP 不在白名单中',
-      );
-    }
-  }
-
-  private normalizeIp(ip: string | undefined): string | undefined {
-    if (!ip) {
-      return undefined;
-    }
-
-    if (ip.startsWith('::ffff:')) {
-      return ip.slice(7);
-    }
-
-    return ip;
   }
 }

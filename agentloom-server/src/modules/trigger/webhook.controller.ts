@@ -14,7 +14,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { ExecutionService } from '../execution/execution.service';
-import { WebhookConfigSchema } from './trigger-dto.compat';
+import { WebhookConfigSchema } from './dto/trigger.dto';
 import { TriggerHistoryService } from './trigger-history.service';
 import { TriggerService } from './trigger.service';
 import {
@@ -24,6 +24,7 @@ import {
 } from './trigger.constants';
 import {
   TriggerNotFoundException,
+  WebhookIpNotAllowedException,
   WebhookVerificationFailedException,
 } from './trigger.exceptions';
 import { WebhookService } from './webhook.service';
@@ -63,7 +64,8 @@ export class WebhookController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: '接收公开 webhook 触发请求' })
   @ApiResponse({ status: 202, description: 'Webhook 已接受处理' })
-  @ApiResponse({ status: 401, description: 'Webhook 验证失败' })
+  @ApiResponse({ status: 401, description: 'Webhook 签名验证失败' })
+  @ApiResponse({ status: 403, description: '来源 IP 不在白名单中' })
   async handleWebhook(
     @Param('token') token: string,
     @Req() request: WebhookRequest,
@@ -71,11 +73,30 @@ export class WebhookController {
   ): Promise<WebhookAcceptedResponse | typeof INVALID_SIGNATURE_RESPONSE> {
     const trigger = await this.webhookService.findTriggerByToken(token);
     const rawBody = request.rawBody;
-    const clientIp = this.getClientIp(request);
+    // request.ip 由 Fastify trustProxy（APP_TRUST_PROXY_HOPS）解析；不得直接读取
+    // X-Forwarded-For 首项——它由客户端任意填写，nginx 只会在末尾追加真实来源。
+    const clientIp = request.ip;
     const requestBody = this.parseRequestBody(request);
 
     if (!trigger.isEnabled) {
       throw new TriggerNotFoundException(token);
+    }
+
+    try {
+      this.webhookService.checkIpWhitelist(trigger, clientIp);
+    } catch (error) {
+      if (error instanceof WebhookIpNotAllowedException) {
+        await runInTenantTransaction(this.db, trigger.tenantId, async () => {
+          await this.triggerHistoryService.record(trigger.tenantId, {
+            triggerId: trigger.id,
+            status: 'ip_rejected',
+            errorMessage: this.getErrorMessage(error),
+            payload: this.buildPayload(clientIp, requestBody),
+          });
+        });
+      }
+
+      throw error;
     }
 
     try {
@@ -102,8 +123,6 @@ export class WebhookController {
           timestampHeader,
         );
       }
-
-      this.webhookService.checkIpWhitelist(trigger, clientIp);
     } catch (error) {
       if (error instanceof WebhookVerificationFailedException) {
         await runInTenantTransaction(this.db, trigger.tenantId, async () => {
@@ -240,17 +259,6 @@ export class WebhookController {
     }
 
     return value;
-  }
-
-  private getClientIp(request: WebhookRequest): string | undefined {
-    const forwardedFor = request.headers['x-forwarded-for'];
-    const headerValue = this.getHeaderValue(forwardedFor);
-
-    if (headerValue) {
-      return headerValue.split(',')[0]?.trim();
-    }
-
-    return request.ip;
   }
 
   private getErrorMessage(error: unknown): string {

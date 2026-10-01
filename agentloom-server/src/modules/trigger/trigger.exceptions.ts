@@ -53,6 +53,21 @@ export class WebhookVerificationFailedException extends DomainException {
   }
 }
 
+/**
+ * 来源 IP 不在白名单：身份（签名）之外的访问控制拒绝，用 403 与签名失败的 401 区分，
+ * 调用方据此判断是该修签名还是该放行出口 IP。
+ */
+export class WebhookIpNotAllowedException extends DomainException {
+  constructor(clientIp: string | undefined) {
+    super({
+      type: 'https://agentloom.dev/errors/webhook-ip-not-allowed',
+      title: 'Webhook 来源 IP 不允许',
+      status: HttpStatus.FORBIDDEN,
+      detail: `来源 IP ${clientIp ?? '未知'} 不在该 Webhook 的 IP 白名单中`,
+    });
+  }
+}
+
 export class WorkflowNotPublishedException extends DomainException {
   constructor(workflowId: string) {
     super({

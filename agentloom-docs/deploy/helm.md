@@ -127,6 +127,7 @@ Ingress 只有三条 `Prefix` 路径：`/api` 与 `/socket.io` 到 server Servic
 | `env.shared.APP_PORT` / `APP_NODE_ENV` / `APP_DEPLOYMENT_MODE` / `APP_MINIO_USE_SSL` / `APP_MINIO_BUCKET` | ConfigMap | `"3000"` / `production` / `private` / `"false"` / `agentloom-documents` |
 | `env.server.APP_JWT_SECRET` / `APP_MASTER_ENCRYPTION_KEY` / `APP_SUPABASE_*` / `APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY` / `FIREBASE_SERVICE_ACCOUNT` | Secret | 原样写入 |
 | `env.server.APP_OAUTH_REDIRECT_URL` / `APP_FRONTEND_URL` | ConfigMap | 原样写入 |
+| `env.server.APP_TRUST_PROXY_HOPS` | ConfigMap | `"1"`：Ingress Controller 直连 server；Ingress 前还有一层追加 `X-Forwarded-For` 的负载均衡时改为 `"2"`，见 [配置参考](/deploy/configuration) |
 | `env.studio.VITE_API_BASE_URL` / `VITE_AUTOSAVE_DEBOUNCE_MS` | studio ConfigMap | `/api/v1` / `"500"` |
 
 `APP_SANDBOX_CALLBACK_BASE_URL` 不在 values 中：模板为 server 写 `http://<release>-agentloom-server:3000/api/v1`，为 worker 写 `http://<release>-agentloom-worker:3000/api/v1`。studio ConfigMap 只有两个键，`VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY` 不由 Chart 提供。

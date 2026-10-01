@@ -1,53 +1,21 @@
-import { memo, useCallback, useState, type ChangeEvent } from 'react'
+import { memo, useState } from 'react'
 import { Copy, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select'
 import { useCanvasStore } from '../../stores/canvasStore'
 import { useTriggers, isWebhookConfig, hasWebhookSecret } from '@/features/trigger'
 import { buildWebhookUrl } from '@/features/trigger'
 
 type AuthMode = 'simple' | 'signed'
 
-interface WebhookTriggerConfigPanelProps {
-  config: Record<string, unknown>
-  onApply: (patch: Record<string, unknown>) => void
+const AUTH_MODE_LABELS: Record<AuthMode, string> = {
+  simple: '简单模式（仅校验 Token 与 IP 白名单）',
+  signed: '签名验证（HMAC-SHA256 + 时间戳）',
 }
 
-interface WebhookTriggerConfigLocal {
-  authMode: AuthMode
-  ipWhitelist: string
-}
-
-const AUTH_MODE_META: Record<AuthMode, { label: string; description: string }> = {
-  simple: {
-    label: '简单模式',
-    description: '仅使用 URL Token 鉴权，适合简单集成',
-  },
-  signed: {
-    label: '签名验证',
-    description: '需要 HMAC-SHA256 签名，适合高安全场景',
-  },
-}
-
-function parseWebhookTriggerConfig(config: Record<string, unknown>): WebhookTriggerConfigLocal {
-  const authMode = config.authMode
-  return {
-    authMode:
-      authMode === 'simple' || authMode === 'signed' ? authMode : 'simple',
-    ipWhitelist: typeof config.ipWhitelist === 'string' ? config.ipWhitelist : '',
-  }
-}
-
-export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel({
-  config,
-  onApply,
-}: WebhookTriggerConfigPanelProps) {
-  const parsed = parseWebhookTriggerConfig(config)
+/**
+ * 画布节点只展示已部署 Webhook 触发器的生效配置。鉴权模式与 IP 白名单的唯一编辑入口是
+ * 「工作流设置 → 触发器」：节点 data.config 不会同步到 workflow_triggers，在这里编辑不生效。
+ */
+export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel() {
   const workflowId = useCanvasStore((s) => s.workflowId)
 
   const { data: triggersResult } = useTriggers(workflowId ?? '', { type: 'webhook' })
@@ -56,31 +24,6 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
     deployedTrigger && isWebhookConfig(deployedTrigger.config)
       ? deployedTrigger.config
       : null
-  const deployedAuthMode = deployedWebhookConfig?.authMode ?? 'signed'
-
-  const applyPatch = useCallback(
-    (patch: Partial<WebhookTriggerConfigLocal>) => {
-      const next = { ...parseWebhookTriggerConfig(config), ...patch }
-      onApply({ config: next })
-    },
-    [config, onApply],
-  )
-
-  const handleAuthModeChange = useCallback(
-    (value: string) => {
-      applyPatch({ authMode: value as AuthMode })
-    },
-    [applyPatch],
-  )
-
-  const handleIpWhitelistChange = useCallback(
-    (e: ChangeEvent<HTMLTextAreaElement>) => {
-      applyPatch({ ipWhitelist: e.target.value })
-    },
-    [applyPatch],
-  )
-
-  const currentMeta = AUTH_MODE_META[parsed.authMode]
 
   return (
     <div className="space-y-4 px-4 py-4" data-testid="webhook-trigger-config-panel">
@@ -89,74 +32,24 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
         <span className="text-xs font-medium text-foreground">Webhook 触发器</span>
       </div>
 
-      {/* 已部署凭证 */}
       {deployedWebhookConfig && deployedTrigger ? (
         <DeployedWebhookInfo
           token={deployedWebhookConfig.token}
           secret={hasWebhookSecret(deployedTrigger.config) ? deployedTrigger.config.secret : null}
-          authMode={deployedAuthMode}
+          // 历史触发器缺省 authMode 时服务端按 signed 处理
+          authMode={deployedWebhookConfig.authMode ?? 'signed'}
+          ipWhitelist={deployedWebhookConfig.ipWhitelist}
           isEnabled={deployedTrigger.isEnabled}
         />
       ) : (
         <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-          工作流发布后将生成 Webhook URL
+          尚未创建 Webhook 触发器。发布工作流后，在「工作流设置 → 触发器」中创建，即可获得 Webhook URL。
         </div>
       )}
 
-      {/* 鉴权模式 */}
-      <div>
-        <label
-          htmlFor="webhook-auth-mode"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          鉴权模式
-        </label>
-        <Select value={parsed.authMode} onValueChange={handleAuthModeChange}>
-          <SelectTrigger id="webhook-auth-mode" aria-label="鉴权模式">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="simple">{AUTH_MODE_META.simple.label}</SelectItem>
-            <SelectItem value="signed">{AUTH_MODE_META.signed.label}</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {currentMeta.description}
-        </p>
-      </div>
-
-      {/* IP 白名单 */}
-      <div>
-        <label
-          htmlFor="webhook-ip-whitelist"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          IP 白名单（可选）
-        </label>
-        <textarea
-          id="webhook-ip-whitelist"
-          value={parsed.ipWhitelist}
-          onChange={handleIpWhitelistChange}
-          rows={4}
-          placeholder={'每行一个 IP 地址，例：\n192.168.1.0/24\n10.0.0.1'}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          留空表示允许所有来源，支持 CIDR 格式
-        </p>
-      </div>
-
-      {/* 使用说明 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
-        <p className="font-medium text-foreground">使用说明</p>
-        <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-          <li>外部系统通过 POST 请求发送 JSON 载荷触发工作流</li>
-          <li>载荷数据将作为 payload 端口的输出传递给下游节点</li>
-          {parsed.authMode === 'signed' && (
-            <li>调用方需使用 Secret 计算 HMAC-SHA256 签名</li>
-          )}
-        </ul>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        鉴权模式与 IP 白名单在「工作流设置 → 触发器」中编辑。
+      </p>
     </div>
   )
 })
@@ -167,10 +60,17 @@ interface DeployedWebhookInfoProps {
   token: string
   secret: string | null
   authMode: AuthMode
+  ipWhitelist: readonly string[]
   isEnabled: boolean
 }
 
-function DeployedWebhookInfo({ token, secret, authMode, isEnabled }: DeployedWebhookInfoProps) {
+function DeployedWebhookInfo({
+  token,
+  secret,
+  authMode,
+  ipWhitelist,
+  isEnabled,
+}: DeployedWebhookInfoProps) {
   const webhookUrl = buildWebhookUrl(token)
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
@@ -207,6 +107,19 @@ function DeployedWebhookInfo({ token, secret, authMode, isEnabled }: DeployedWeb
         copied={copiedField === 'url'}
         onCopy={() => void handleCopy(webhookUrl, 'url')}
       />
+
+      <dl className="space-y-1 text-[10px]">
+        <div>
+          <dt className="font-medium text-muted-foreground">鉴权模式</dt>
+          <dd className="text-foreground/80">{AUTH_MODE_LABELS[authMode]}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-muted-foreground">IP 白名单</dt>
+          <dd className="font-mono text-foreground/80" data-testid="webhook-ip-allowlist">
+            {ipWhitelist.length > 0 ? ipWhitelist.join(', ') : '不限制'}
+          </dd>
+        </div>
+      </dl>
 
       {/* Signed 模式下展示 Secret */}
       {authMode === 'signed' && secret ? (

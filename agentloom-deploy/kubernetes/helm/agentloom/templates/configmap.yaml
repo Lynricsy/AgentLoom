@@ -15,6 +15,7 @@ data:
   APP_QDRANT_URL: {{ include "agentloom.qdrantUrl" . | quote }}
   APP_OAUTH_REDIRECT_URL: {{ .Values.env.server.APP_OAUTH_REDIRECT_URL | quote }}
   APP_FRONTEND_URL: {{ .Values.env.server.APP_FRONTEND_URL | quote }}
+  APP_TRUST_PROXY_HOPS: {{ .Values.env.server.APP_TRUST_PROXY_HOPS | quote }}
   APP_FIRECRACKER_RUNTIME_URL: {{ default (printf "https://%s:%v" (include "agentloom.firecrackerRuntimeFullname" .) .Values.firecrackerRuntime.service.port) .Values.env.shared.APP_FIRECRACKER_RUNTIME_URL | quote }}
   APP_FIRECRACKER_RUNTIME_CA: {{ .Values.env.shared.APP_FIRECRACKER_RUNTIME_CA | quote }}
   APP_FIRECRACKER_RUNTIME_CERT: {{ .Values.env.shared.APP_FIRECRACKER_RUNTIME_CERT | quote }}

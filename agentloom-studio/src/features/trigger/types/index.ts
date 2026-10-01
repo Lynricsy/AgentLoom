@@ -10,7 +10,12 @@ import type {
 
 export type TriggerType = CreateTriggerDtoTypeEnum
 
-export type TriggerHistoryStatus = 'success' | 'failed' | 'skipped' | 'signature_failed'
+export type TriggerHistoryStatus =
+  | 'success'
+  | 'failed'
+  | 'skipped'
+  | 'signature_failed'
+  | 'ip_rejected'
 
 export interface CronTriggerConfig {
   expression: string

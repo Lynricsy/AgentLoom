@@ -5,6 +5,7 @@
 | 变量 | 必填 | 默认值 | 取值 | 说明 |
 | --- | --- | --- | --- | --- |
 | `APP_PORT` | 否 | `3000` |  | 应用配置 |
+| `APP_TRUST_PROXY_HOPS` | 否 | `0` |  | server 前方可信反向代理跳数（Fastify trustProxy）；本地直连保持 0，compose/nginx 后为 1 |
 | `APP_NODE_ENV` | 否 | `development` | `development` / `production` / `test` |  |
 | `APP_DEPLOYMENT_MODE` | 否 | `saas` | `saas` / `private` |  |
 | `APP_DATABASE_URL` | 是 |  |  | 数据库连接 |

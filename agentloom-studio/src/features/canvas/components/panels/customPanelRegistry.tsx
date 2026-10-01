@@ -301,12 +301,7 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
     ),
   },
   'webhook-trigger': {
-    render: ({ node, onConfigChange }) => (
-      <WebhookTriggerConfigPanel
-        config={node.data.config}
-        onApply={onConfigChange}
-      />
-    ),
+    render: () => <WebhookTriggerConfigPanel />,
   },
   'api-event-trigger': {
     render: ({ node, onConfigChange }) => (

@@ -474,15 +474,10 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         description: "Webhook 请求携带的 JSON Body 数据",
       }),
     ],
+    // 鉴权模式与 IP 白名单属于 workflow_triggers 记录，在「工作流设置 → 触发器」编辑，不存节点配置
     configSchema: {
       type: "object",
-      properties: {
-        authMode: createConfigField("string", "鉴权模式", {
-          enum: ["simple", "signed"],
-          default: "simple",
-        }),
-        ipWhitelist: createConfigField("string", "IP 白名单"),
-      },
+      properties: {},
       required: [],
     },
   },

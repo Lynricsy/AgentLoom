@@ -21,7 +21,7 @@ import {
   type CreateTriggerDto,
   type QueryTriggerDto,
   type UpdateTriggerDto,
-} from './trigger-dto.compat';
+} from './dto/trigger.dto';
 import {
   MAX_TRIGGERS_PER_WORKFLOW,
   WEBHOOK_SECRET_LENGTH,

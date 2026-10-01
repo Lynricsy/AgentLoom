@@ -5310,7 +5310,8 @@
                 "success",
                 "failed",
                 "skipped",
-                "signature_failed"
+                "signature_failed",
+                "ip_rejected"
               ]
             }
           }
@@ -5344,7 +5345,10 @@
             "description": "Webhook 已接受处理"
           },
           "401": {
-            "description": "Webhook 验证失败"
+            "description": "Webhook 签名验证失败"
+          },
+          "403": {
+            "description": "来源 IP 不在白名单中"
           }
         },
         "summary": "接收公开 webhook 触发请求",

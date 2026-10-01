@@ -107,7 +107,7 @@ export function NodeBodyRenderer({
       ) : data.nodeType === "schedule-trigger" ? (
         <ScheduleTriggerNodeBody config={data.config} />
       ) : data.nodeType === "webhook-trigger" ? (
-        <WebhookTriggerNodeBody config={data.config} />
+        <WebhookTriggerNodeBody />
       ) : data.nodeType === "api-event-trigger" ? (
         <ApiEventTriggerNodeBody config={data.config} />
       ) : data.nodeType === "text" ? (

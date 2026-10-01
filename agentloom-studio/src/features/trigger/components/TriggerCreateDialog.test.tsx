@@ -174,6 +174,48 @@ describe('TriggerCreateDialog', () => {
     })
   })
 
+  it('Webhook IP 白名单接受每行一个或逗号分隔的 IP 与 CIDR，非法条目阻止提交', async () => {
+    createMutateAsyncMock.mockResolvedValue(makeTrigger('webhook'))
+
+    render(
+      <TriggerCreateDialog
+        workflowId="workflow-1"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Webhook/ }))
+    fireEvent.change(screen.getByLabelText('触发器名称'), {
+      target: { value: 'CIDR Webhook' },
+    })
+    fireEvent.change(screen.getByLabelText('IP 白名单'), {
+      target: { value: '10.0.0.0/33' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '创建触发器' }))
+
+    expect(
+      await screen.findByText('IP 地址或 CIDR 格式不正确：10.0.0.0/33'),
+    ).toBeInTheDocument()
+    expect(createMutateAsyncMock).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('IP 白名单'), {
+      target: { value: '203.0.113.10\n10.0.0.0/8, 2001:db8::/32\n' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '创建触发器' }))
+
+    await waitFor(() => {
+      expect(createMutateAsyncMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: {
+            authMode: 'simple',
+            ipWhitelist: ['203.0.113.10', '10.0.0.0/8', '2001:db8::/32'],
+          },
+        }),
+      )
+    })
+  })
+
   it('创建 API Event 时按当前选中的类型构造 payload', async () => {
     createMutateAsyncMock.mockResolvedValue(makeTrigger('api_event'))
 

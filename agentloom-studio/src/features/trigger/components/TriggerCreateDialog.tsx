@@ -10,6 +10,7 @@ import {
   useCreateTrigger,
   useUpdateTrigger,
 } from '../api/triggerQueries'
+import { isValidIpAllowlistEntry, parseIpAllowlist } from '../lib/ipAllowlist'
 import {
   hasWebhookSecret,
   isApiEventConfig,
@@ -101,14 +102,14 @@ const formSchema = z
     }
 
     if (values.type === 'webhook') {
-      const ipList = parseIpWhitelist(values.webhook.ipWhitelist)
-      const invalidIp = ipList.find((item) => !isValidIpAddress(item))
+      const ipList = parseIpAllowlist(values.webhook.ipWhitelist)
+      const invalidIp = ipList.find((item) => !isValidIpAllowlistEntry(item))
 
       if (invalidIp) {
         ctx.addIssue({
           code: 'custom',
           path: ['webhook', 'ipWhitelist'],
-          message: `IP 地址格式不正确：${invalidIp}`,
+          message: `IP 地址或 CIDR 格式不正确：${invalidIp}`,
         })
       }
     }
@@ -133,39 +134,6 @@ const formSchema = z
   })
 
 export type TriggerDialogFormValues = z.infer<typeof formSchema>
-
-const ipv4Pattern =
-  /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
-
-function isValidIpAddress(value: string): boolean {
-  const trimmed = value.trim()
-
-  if (!trimmed) {
-    return false
-  }
-
-  if (ipv4Pattern.test(trimmed)) {
-    return true
-  }
-
-  if (!trimmed.includes(':')) {
-    return false
-  }
-
-  try {
-    const parsed = new URL(`http://[${trimmed}]`)
-    return parsed.hostname === `[${trimmed}]`
-  } catch {
-    return false
-  }
-}
-
-function parseIpWhitelist(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-}
 
 function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
   const defaultValues: TriggerDialogFormValues = {
@@ -212,7 +180,7 @@ function buildFormValues(trigger?: Trigger | null): TriggerDialogFormValues {
     nextValues.webhook = {
       // 历史触发器可能没有 authMode，服务端对该情况按 signed 处理，回填须保持一致
       authMode: trigger.config.authMode ?? 'signed',
-      ipWhitelist: trigger.config.ipWhitelist.join(', '),
+      ipWhitelist: trigger.config.ipWhitelist.join('\n'),
     }
   }
 
@@ -267,7 +235,7 @@ function buildConfigByType(
   if (type === 'webhook') {
     return {
       authMode: values.webhook.authMode,
-      ipWhitelist: parseIpWhitelist(values.webhook.ipWhitelist),
+      ipWhitelist: parseIpAllowlist(values.webhook.ipWhitelist),
     }
   }
 

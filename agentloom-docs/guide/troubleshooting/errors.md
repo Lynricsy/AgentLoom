@@ -84,7 +84,8 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | type | HTTP 状态 | 含义 | 处理建议 |
 | --- | --- | --- | --- |
 | `trigger-not-found` | 404 | 触发器不存在。Webhook 地址中的 Token 错误或触发器已停用时也返回此错误 | 核对「Webhook 入口」，确认触发器为「已启用」 |
-| `webhook-verification-failed` | 401 | Webhook 签名、时间戳或 IP 白名单校验失败 | 核对签名算法与 secret，或把调用方 IP 加入白名单，见 [Webhook 与 API 事件](/api/webhooks) |
+| `webhook-verification-failed` | 401 | Webhook 签名或时间戳校验失败。公开 Webhook 入口对此返回 `INVALID_SIGNATURE` JSON，不是 problem+json | 核对签名算法与 secret，见 [Webhook 与 API 事件](/api/webhooks) |
+| `webhook-ip-not-allowed` | 403 | 来源 IP 不在该 Webhook 的 IP 白名单中 | 把调用方出口 IP 或网段加入白名单，见 [Webhook 触发](/guide/triggers/webhook) |
 | `trigger-limit-exceeded` | 409 | 该工作流的触发器数量已达上限 | 删除不再使用的触发器 |
 | `trigger-type-preview-only` | 409 | 该触发器类型目前只能预览，不能创建、编辑或启用 | 改用其他触发器类型 |
 

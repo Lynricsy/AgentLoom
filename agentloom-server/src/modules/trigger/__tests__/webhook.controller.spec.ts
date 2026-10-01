@@ -8,6 +8,7 @@ import { runInTenantTransaction } from '../../../common/interceptors/tenant-tran
 import { WebhookController } from '../webhook.controller';
 import {
   TriggerNotFoundException,
+  WebhookIpNotAllowedException,
   WebhookVerificationFailedException,
 } from '../trigger.exceptions';
 
@@ -220,6 +221,37 @@ describe('WebhookController', () => {
     );
     expect(executionService.runWorkflow).not.toHaveBeenCalled();
     expect(triggerService.markTriggered).not.toHaveBeenCalled();
+  });
+
+  it('来源 IP 被拒时应抛 403 异常、记录 ip_rejected，且不进入验签', async () => {
+    const reply = createMockReply();
+
+    webhookService.findTriggerByToken.mockResolvedValue(webhookTrigger);
+    webhookService.checkIpWhitelist.mockImplementation(() => {
+      throw new WebhookIpNotAllowedException('10.0.0.9');
+    });
+    triggerHistoryService.record.mockResolvedValue(undefined);
+
+    const result = controller.handleWebhook(
+      'webhook-token',
+      createMockRequest({ ip: '10.0.0.9' }),
+      reply as never,
+    );
+
+    await expect(result).rejects.toBeInstanceOf(WebhookIpNotAllowedException);
+    await expect(result).rejects.toMatchObject({
+      type: 'https://agentloom.dev/errors/webhook-ip-not-allowed',
+    });
+    await expect(result).rejects.toHaveProperty('status', 403);
+    expect(triggerHistoryService.record).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({
+        triggerId: TRIGGER_ID,
+        status: 'ip_rejected',
+      }),
+    );
+    expect(webhookService.verifySignature).not.toHaveBeenCalled();
+    expect(executionService.runWorkflow).not.toHaveBeenCalled();
   });
 
   it('应为 webhook 路由声明 Public 元数据', () => {

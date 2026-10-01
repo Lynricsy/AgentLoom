@@ -15,10 +15,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
 
 import { Test } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import * as crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import type { JSONValue } from 'postgres';
@@ -34,6 +31,7 @@ import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import * as schema from '../src/database/schema';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
+import { createAppFastifyAdapter } from '../src/common/http/fastify-adapter.factory';
 import { EXECUTION_QUEUE } from '../src/modules/execution/execution.constants';
 import {
   MAX_TRIGGERS_PER_WORKFLOW,
@@ -124,6 +122,13 @@ function createMockRedisClient() {
     keys: vi.fn().mockResolvedValue([]),
     quit: vi.fn().mockResolvedValue('OK'),
     publish: vi.fn().mockResolvedValue(1),
+    // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接
+    duplicate: vi.fn().mockReturnValue({
+      subscribe: vi.fn().mockResolvedValue(undefined),
+      unsubscribe: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      quit: vi.fn().mockResolvedValue('OK'),
+    }),
   };
 }
 
@@ -142,13 +147,6 @@ function createMockRedisPubSubService() {
     publish: vi.fn().mockResolvedValue(undefined),
     onModuleInit: vi.fn().mockResolvedValue(undefined),
     onModuleDestroy: vi.fn().mockResolvedValue(undefined),
-    // AgentExecutionService.onModuleInit 会 duplicate() 出订阅连接
-    duplicate: vi.fn().mockReturnValue({
-      subscribe: vi.fn().mockResolvedValue(undefined),
-      unsubscribe: vi.fn().mockResolvedValue(undefined),
-      on: vi.fn(),
-      quit: vi.fn().mockResolvedValue('OK'),
-    }),
   };
 }
 
@@ -200,6 +198,8 @@ describe('Trigger E2E', () => {
 
   beforeAll(async () => {
     process.env.APP_JWT_SECRET = JWT_SECRET;
+    // 与 compose 部署一致：server 前只有一层 reverse-proxy
+    process.env.APP_TRUST_PROXY_HOPS = '1';
 
     ctx = await createRlsTestContext();
     drizzleDb = ctx.db;
@@ -225,7 +225,7 @@ describe('Trigger E2E', () => {
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(
-      new FastifyAdapter(),
+      createAppFastifyAdapter(),
       { rawBody: true },
     );
     app.setGlobalPrefix('api/v1');
@@ -1270,5 +1270,69 @@ describe('Trigger E2E', () => {
       limit: MAX_TRIGGERS_PER_WORKFLOW,
       workflowId,
     });
+  });
+
+  it('webhook IP 白名单应接受 CIDR，按可信代理追加的地址判定，网段外返回 403 并记录 ip_rejected', async () => {
+    const owner = await seedTenant('trigger-webhook-cidr');
+    const { workflowId } = await seedExecutableWorkflow({
+      tenantId: owner.tenantId,
+      organizationId: owner.organizationId,
+      createdBy: owner.user.id,
+    });
+    const createResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
+      .set(owner.headers)
+      .send({
+        name: 'CIDR Webhook',
+        type: 'webhook',
+        config: {
+          authMode: 'simple',
+          ipWhitelist: ['203.0.113.0/24', '2001:db8::/32'],
+        },
+        isEnabled: true,
+      });
+
+    expect(createResponse.status).toBe(201);
+    const token = createResponse.body.data.config.token as string;
+    const triggerId = createResponse.body.data.id as string;
+
+    // reverse-proxy(172.18.0.5) 用 $proxy_add_x_forwarded_for 把真实来源追加在末尾
+    const allowed = await app.inject({
+      method: 'POST',
+      url: `/api/v1/webhooks/${token}`,
+      remoteAddress: '172.18.0.5',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': '203.0.113.7',
+      },
+      payload: { hello: 'cidr' },
+    });
+    expect(allowed.statusCode).toBe(202);
+
+    // 客户端伪造 X-Forwarded-For 首项为白名单地址，真实来源 198.51.100.9 被代理追加在末尾
+    const spoofed = await app.inject({
+      method: 'POST',
+      url: `/api/v1/webhooks/${token}`,
+      remoteAddress: '172.18.0.5',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': '203.0.113.7, 198.51.100.9',
+      },
+      payload: { hello: 'spoof' },
+    });
+    expect(spoofed.statusCode).toBe(403);
+    expect(spoofed.json()).toMatchObject({
+      type: 'https://agentloom.dev/errors/webhook-ip-not-allowed',
+      status: 403,
+    });
+
+    const historyRows = await drizzleDb
+      .select()
+      .from(schema.workflowTriggerHistory)
+      .where(eq(schema.workflowTriggerHistory.triggerId, triggerId));
+    expect(historyRows.map((row) => row.status).sort()).toEqual([
+      'ip_rejected',
+      'success',
+    ]);
   });
 });

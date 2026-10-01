@@ -9,7 +9,7 @@ import {
   QueryTriggerHistorySchema,
   type QueryTriggerHistoryDto,
   type TriggerHistoryStatus,
-} from './trigger-dto.compat';
+} from './dto/trigger.dto';
 
 export type RecordTriggerHistoryInput = {
   triggerId: string;

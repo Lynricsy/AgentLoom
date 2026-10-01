@@ -63,6 +63,19 @@ docType: reference
 | `SUPABASE_SITE_URL` | `https://agentloom.example.com` |
 | `SUPABASE_GOTRUE_EXTERNAL_URL` | GoTrue 对外地址，见 [自托管 Supabase](/deploy/supabase) |
 
+### 来源 IP 与可信代理
+
+server 用 `APP_TRUST_PROXY_HOPS` 判断请求的来源 IP：它是 server 前方可信反向代理的层数，server 从 `X-Forwarded-For` 末尾跳过这么多层代理追加的地址，取到的就是客户端地址。调用方自己写在 `X-Forwarded-For` 前面的值不会被采信。Webhook 的 IP 白名单与匿名请求的限流都按这个地址判断。
+
+| 部署方式 | 值 |
+| --- | --- |
+| 本地直连 server（`pnpm start:dev`） | `0`（server 默认值） |
+| Compose，只有自带的 `reverse-proxy` | `1`（`.env.template` 与 `docker-compose.yml` 的默认值） |
+| Compose，宿主上再套一层终止 TLS 的代理（见 [反向代理](/deploy/reverse-proxy)） | `2` |
+| Helm，Ingress Controller 直连 server | `1`（`values.yaml` 的默认值） |
+
+值小于实际代理层数时，来源 IP 是某一层代理的地址，配置了 IP 白名单的 Webhook 会对所有调用返回 403；值大于实际层数时，调用方可以伪造来源 IP。
+
 ### Studio 运行时变量
 
 Studio 镜像（`agentloom-deploy/docker/studio.Dockerfile`）构建时把四个 Vite 变量设为占位符，容器启动时由 `/docker-entrypoint.d/40-runtime-env.sh` 在 `/usr/share/nginx/html` 下所有 `.html`、`.js`、`.css` 文件中替换：

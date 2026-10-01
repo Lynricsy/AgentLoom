@@ -129,20 +129,24 @@ export function WebhookConfigForm({
         </RadioGroup>
       </fieldset>
 
-      <label htmlFor="webhook-ip-whitelist" className="block space-y-2">
-        <Label>IP 白名单</Label>
-        <Input
+      <div className="space-y-2">
+        <label htmlFor="webhook-ip-whitelist" className="block">
+          <Label>IP 白名单</Label>
+        </label>
+        <textarea
           id="webhook-ip-whitelist"
-          placeholder="多个 IP 使用逗号分隔，例如：192.168.1.10, 10.0.0.5"
+          rows={4}
+          placeholder={'每行一个 IP 或 CIDR 网段，也可用逗号分隔，例如：\n203.0.113.10\n10.0.0.0/8'}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
           {...register('webhook.ipWhitelist')}
         />
         <p className="text-xs text-muted-foreground">
-          留空表示不限制来源 IP。Token 由服务端生成并长期保留；secret 仅会在首次创建成功后展示一次。
+          留空表示不限制来源 IP，支持 IPv4 / IPv6 与 CIDR。来源 IP 不在白名单时请求返回 403。Token 由服务端生成并长期保留；secret 仅会在首次创建成功后展示一次。
         </p>
         {errors.webhook?.ipWhitelist && (
           <p className="text-xs text-error">{errors.webhook.ipWhitelist.message}</p>
         )}
-      </label>
+      </div>
 
       {webhookConfig ? (
         <div className="space-y-3 rounded-xl border border-border/70 bg-background/60 p-4">
