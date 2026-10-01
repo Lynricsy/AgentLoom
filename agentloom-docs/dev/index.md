@@ -47,7 +47,7 @@ AgentLoom 由以下子系统协作构成：
 - **AgentLoom Type Engine** — Rust 编写的 WASM 类型引擎，负责端口数据类型兼容性校验
 - **AgentLoom Plugin SDK / CLI** — 插件开发工具链，支持 WASM 沙箱运行
 
-> 详细的系统架构请参阅 [架构总览](/zh/guide/architecture)。
+> 详细的系统架构请参阅 [架构总览](/dev/architecture)。
 
 ## 文档导航
 
@@ -55,32 +55,32 @@ AgentLoom 由以下子系统协作构成：
 
 ### 入门指南
 
-- [快速开始](/zh/guide/getting-started) — 环境准备、项目启动、开发模式
-- [架构总览](/zh/guide/architecture) — 系统架构图、技术栈、多租户设计
-- [核心概念](/zh/guide/concepts) — 工作流定义与执行、节点类型、端口数据类型、DAG 调度
+- [快速开始](/dev/setup) — 环境准备、项目启动、开发模式
+- [架构总览](/dev/architecture) — 系统架构图、技术栈、多租户设计
+- [核心概念](/dev/concepts) — 工作流定义与执行、节点类型、端口数据类型、DAG 调度
 
 ### 深入各子系统
 
-- [服务端架构](/zh/server/) — NestJS 模块组织、数据库 Schema、消息队列、Socket.IO 协议
-- [工作室前端](/zh/studio/) — React 组件体系、画布引擎、状态管理、Feature-Slice 架构
-- [类型引擎](/zh/type-engine/) — Rust WASM 编译、类型兼容性规则、Studio 集成方式
+- [服务端架构](/dev/server/) — NestJS 模块组织、数据库 Schema、消息队列、Socket.IO 协议
+- [工作室前端](/dev/studio/) — React 组件体系、画布引擎、状态管理、Feature-Slice 架构
+- [类型引擎](/dev/type-engine/) — Rust WASM 编译、类型兼容性规则、Studio 集成方式
 
 ### 生态系统
 
-- [插件开发](/zh/plugins/) — SDK 使用、CLI 脚手架、WASM 沙箱机制
-- [移动端](/zh/mobile/) — Flutter 应用架构、Riverpod 状态管理
+- [插件开发](/api/plugins/) — SDK 使用、CLI 脚手架、WASM 沙箱机制
+- [移动端](/dev/mobile/) — Flutter 应用架构、Riverpod 状态管理
 
 ### 运维与部署
 
-- [API 参考](/zh/api/) — OpenAPI 文档、SDK 生成、认证方式
-- [部署运维](/zh/deployment/) — Docker Compose、Helm Charts、私有化部署
+- [API 参考](/api/rest) — OpenAPI 文档、SDK 生成、认证方式
+- [部署运维](/deploy/) — Docker Compose、Helm Charts、私有化部署
 
 ## 适合谁阅读？
 
 | 角色           | 推荐路径                                                                      |
 | -------------- | ----------------------------------------------------------------------------- |
-| **初次了解**   | 本页 → [快速开始](/zh/guide/getting-started) → [核心概念](/zh/guide/concepts) |
-| **前端开发者** | [快速开始](/zh/guide/getting-started) → [工作室前端](/zh/studio/)             |
-| **后端开发者** | [快速开始](/zh/guide/getting-started) → [服务端架构](/zh/server/)             |
-| **插件开发者** | [核心概念](/zh/guide/concepts) → [插件开发](/zh/plugins/)                     |
-| **运维人员**   | [架构总览](/zh/guide/architecture) → [部署运维](/zh/deployment/)              |
+| **初次了解**   | 本页 → [快速开始](/dev/setup) → [核心概念](/dev/concepts) |
+| **前端开发者** | [快速开始](/dev/setup) → [工作室前端](/dev/studio/)             |
+| **后端开发者** | [快速开始](/dev/setup) → [服务端架构](/dev/server/)             |
+| **插件开发者** | [核心概念](/dev/concepts) → [插件开发](/api/plugins/)                     |
+| **运维人员**   | [架构总览](/dev/architecture) → [部署运维](/deploy/)              |

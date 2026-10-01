@@ -192,7 +192,7 @@ owner → admin → creator → operator → viewer
 
 ### 租户级覆盖
 
-组织管理员可通过 [资源治理](/zh/server/modules#资源治理-7-维度) 自定义限流配额，覆盖默认值。
+组织管理员可通过 [资源治理](/dev/server/modules#资源治理-7-维度) 自定义限流配额，覆盖默认值。
 
 ### 追踪键优先级
 

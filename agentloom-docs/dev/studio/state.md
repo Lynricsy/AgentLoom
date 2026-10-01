@@ -244,4 +244,4 @@ Agent 对话实时消息通道，与 `/execution` namespace 对称，复用 Even
 
 - [画布编辑器](./canvas) — canvasStore 详细状态与 Action
 - [功能模块](./features) — 各 feature 的具体状态使用
-- [WASM 集成](./wasm) — TypeEngine 与 canvasStore 的协作
+- [WASM 集成](/dev/type-engine/wasm) — TypeEngine 与 canvasStore 的协作

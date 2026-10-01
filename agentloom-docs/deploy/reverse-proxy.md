@@ -4,7 +4,7 @@ AgentLoom 在两个场景中使用 Nginx：**应用反向代理**（Docker Compo
 
 ## 应用反向代理
 
-Docker Compose 中的 `reverse-proxy` 服务使用内置的 `nginx.conf`，负责将请求路由到 Studio 和 Server。详见 [Docker Compose 部署](./docker)。
+Docker Compose 中的 `reverse-proxy` 服务使用内置的 `nginx.conf`，负责将请求路由到 Studio 和 Server。详见 [Docker Compose 部署](./compose)。
 
 核心路由规则：
 
@@ -61,7 +61,7 @@ server {
 ```
 
 ::: tip cleanUrls 兼容
-AgentLoom 文档站配置了 `cleanUrls: true`，URL 不包含 `.html` 后缀。`try_files` 的 `$uri.html` 规则确保 `/zh/guide/getting-started` 能正确映射到 `getting-started.html`。
+AgentLoom 文档站配置了 `cleanUrls: true`，URL 不包含 `.html` 后缀。`try_files` 的 `$uri.html` 规则确保 `/dev/setup` 能正确映射到 `getting-started.html`。
 :::
 
 ### 静态资源缓存

@@ -18,7 +18,7 @@ await init();
 ```
 
 ::: tip Studio 集成方式
-在 Studio 中，WASM 加载由 `TypeEngineRuntime` 管理，运行在 Web Worker 中。开发者无需手动调用 `init()`。详见 [Studio WASM 集成](/zh/studio/wasm)。
+在 Studio 中，WASM 加载由 `TypeEngineRuntime` 管理，运行在 Web Worker 中。开发者无需手动调用 `init()`。详见 [Studio WASM 集成](/dev/type-engine/wasm)。
 :::
 
 ## checkCompatibility

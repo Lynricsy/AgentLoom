@@ -121,4 +121,4 @@ agentloom-plugin publish -k keys/private.pem
 | [插件 SDK](./sdk)           | SDK 类型定义、辅助函数、签名模块 API      |
 | [插件 CLI](./cli)           | CLI 5 个命令详细用法和参数说明            |
 | [开发教程](./tutorial)      | 基于模板的端到端插件开发教程              |
-| [服务端系统](./server-side) | 注册验签、WASM 沙箱、使用量记录、收益结算 |
+| [服务端系统](./marketplace) | 注册验签、WASM 沙箱、使用量记录、收益结算 |

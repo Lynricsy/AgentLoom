@@ -1,47 +1,36 @@
-import { fileURLToPath } from 'url'
-import { dirname, resolve } from 'path'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'fs'
+/**
+ * 构建/预览前同步 OpenAPI spec：
+ * agentloom-server/sdk/openapi.json → public/openapi.json
+ * 源文件缺失时直接失败，不生成空 stub（空 stub 会让 REST 参考页静默变空）。
+ */
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const SOURCE = resolve(__dirname, '../../agentloom-server/sdk/openapi.json')
+const TARGET = resolve(__dirname, '../public/openapi.json')
+const SERVER_URL = process.env.DOCS_OPENAPI_SERVER_URL ?? 'https://agentloom.ling.plus/api/v1'
 
-const srcPath = resolve(__dirname, '../../agentloom-server/sdk/openapi.json')
-const destDir = resolve(__dirname, '../public')
-const destPath = resolve(destDir, 'openapi.json')
-
-/** 默认的文档预览基础 URL */
-const DEFAULT_BASE_URL = 'http://localhost:3000'
-
-mkdirSync(destDir, { recursive: true })
-
-if (!existsSync(srcPath)) {
-  console.warn('⚠️  OpenAPI source not found:', srcPath)
-  console.warn('⚠️  Generating stub spec — run `pnpm openapi:export` in agentloom-server for full API docs.')
-  const stub = {
-    openapi: '3.0.0',
-    info: { title: 'AgentLoom API', version: '0.0.0' },
-    servers: [{ url: DEFAULT_BASE_URL, description: 'Local Development' }],
-    paths: {},
-  }
-  writeFileSync(destPath, JSON.stringify(stub, null, 2))
-  process.exit(0)
+if (!existsSync(SOURCE)) {
+  console.error(`[sync-openapi] 找不到 ${SOURCE}`)
+  console.error('[sync-openapi] 先在 agentloom-server 运行 pnpm openapi:export')
+  process.exit(1)
 }
 
-// 读取原始 spec 并规范化 servers[].url 为绝对 URL
-// vitepress-openapi 内部使用 URL.canParse() 校验，相对路径 (如 /api/v1) 会触发错误
-const spec = JSON.parse(readFileSync(srcPath, 'utf-8'))
+const spec = JSON.parse(await readFile(SOURCE, 'utf-8'))
 
-if (Array.isArray(spec.servers)) {
-  for (const server of spec.servers) {
-    if (server.url && !URL.canParse(server.url)) {
-      const absolute = new URL(server.url, DEFAULT_BASE_URL).href
-      console.log(`  ↳ 规范化 server URL: ${server.url} → ${absolute}`)
-      server.url = absolute
-    }
-  }
-}
+// 第一个 server 指向文档站展示的 API 地址；其余相对地址补全为生产域名
+const servers = (spec.servers ?? []).map((s) => ({
+  ...s,
+  url: s.url.startsWith('/') ? `https://agentloom.ling.plus${s.url}` : s.url,
+}))
+if (servers.length === 0) servers.push({ url: SERVER_URL })
+else servers[0] = { ...servers[0], url: SERVER_URL }
+spec.servers = servers
 
-writeFileSync(destPath, JSON.stringify(spec, null, 2))
-
-const sizeKb = (statSync(destPath).size / 1024).toFixed(1)
-console.log(`✅ OpenAPI spec synced → ${destPath} (${sizeKb} KB)`)
+await mkdir(dirname(TARGET), { recursive: true })
+const json = JSON.stringify(spec, null, 2)
+await writeFile(TARGET, json)
+console.log(`[sync-openapi] ${SOURCE} → ${TARGET} (${(json.length / 1024).toFixed(1)} KB)`)

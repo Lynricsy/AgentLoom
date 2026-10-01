@@ -307,7 +307,7 @@ Key 的创建和吊销用 `@CaptureAuditLog` 记录（actorType=user）。run �
 
 **步骤 12：端到端冒烟与文档**
 - 依赖：步骤 9、11。
-- 内容：在双实例的 docker compose 环境（server 加 worker）里用 curl 依次验证 R5–R10：用 SSE 发起 run、断线后带 Last-Event-ID 续传、`Prefer: wait`、并发请求触发 409、跨实例取消。新增 `agentloom-docs/zh/api/agent-api.md` 并加入侧边栏；更新根 `AGENTS.md` 的架构段落。
+- 内容：在双实例的 docker compose 环境（server 加 worker）里用 curl 依次验证 R5–R10：用 SSE 发起 run、断线后带 Last-Event-ID 续传、`Prefer: wait`、并发请求触发 409、跨实例取消。新增 `agentloom-docs/api/restagent-api.md` 并加入侧边栏；更新根 `AGENTS.md` 的架构段落。
 - 验收：curl 输出与 R5–R10 逐条对得上；在 `agentloom-docs` 中 `pnpm build` 退出码为 0。
 
 **可并行的步骤**：步骤 1 和 7 不依赖其他步骤，可以与步骤 0 → 2 → 3 这条主链并行，它们和主链不改同一个文件。步骤 4 与 5 都只依赖步骤 3 或 2，改动的文件互不重叠，也可以并行。其余步骤按依赖顺序串行。

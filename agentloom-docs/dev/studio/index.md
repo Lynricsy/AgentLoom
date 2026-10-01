@@ -140,4 +140,4 @@ Studio 使用 TanStack Router 管理路由，包含 27 个路由页面：
 - [画布编辑器](./canvas) — 节点、连线、LOD 与交互
 - [状态���理](./state) — Zustand 状态、TanStack Query、表单
 - [功能模块](./features) — 35 个 feature 详解
-- [WASM 集成](./wasm) — 类型引擎 Web Worker 架构
+- [WASM 集成](/dev/type-engine/wasm) — 类型引擎 Web Worker 架构

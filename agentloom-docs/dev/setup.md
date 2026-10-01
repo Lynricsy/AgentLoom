@@ -235,7 +235,7 @@ dart run build_runner build  # 代码生成
 
 环境搭建完成后，建议继续阅读：
 
-- [架构总览](/zh/guide/architecture) — 了解各子系统如何协作
-- [核心概念](/zh/guide/concepts) — 掌握工作流、节点、端口等关键概念
-- [服务端架构](/zh/server/) — 深入了解后端模块设计
-- [工作室前端](/zh/studio/) — 探索画布编辑器实现
+- [架构总览](/dev/architecture) — 了解各子系统如何协作
+- [核心概念](/dev/concepts) — 掌握工作流、节点、端口等关键概念
+- [服务端架构](/dev/server/) — 深入了解后端模块设计
+- [工作室前端](/dev/studio/) — 探索画布编辑器实现

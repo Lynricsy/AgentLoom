@@ -219,7 +219,7 @@ flowchart TB
 Studio 的 `mcpToolMapping` 兼容 legacy `number` / `boolean` 类型，自动回退映射为 `json`。
 :::
 
-> 类型引擎的详细规则请参阅 [类型引擎文档](/zh/type-engine/)。
+> 类型引擎的详细规则请参阅 [类型引擎文档](/dev/type-engine/)。
 
 ## Agent 运行时
 
@@ -375,7 +375,7 @@ AgentLoom 内置多项企业级运维和治理能力：
 
 ## 下一步
 
-- [服务端架构](/zh/server/) — 了解 30 个 NestJS 模块的详细职责
-- [工作室前端](/zh/studio/) — 探索画布编辑器与 Feature-Slice 架构
-- [类型引擎](/zh/type-engine/) — 深入了解 Rust WASM 类型兼容性规则
-- [插件开发](/zh/plugins/) — 使用 SDK 开发自定义插件
+- [服务端架构](/dev/server/) — 了解 30 个 NestJS 模块的详细职责
+- [工作室前端](/dev/studio/) — 探索画布编辑器与 Feature-Slice 架构
+- [类型引擎](/dev/type-engine/) — 深入了解 Rust WASM 类型兼容性规则
+- [插件开发](/api/plugins/) — 使用 SDK 开发自定义插件

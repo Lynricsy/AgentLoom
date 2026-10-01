@@ -6,7 +6,7 @@ AgentLoom 支持多种部署模式，适用于从开发调试到企业级生产�
 
 | 模式                        | 适用场景           | 复杂度        |
 | --------------------------- | ------------------ | ------------- |
-| [Docker Compose](./docker)  | 单机部署、小团队   | ⭐ 低         |
+| [Docker Compose](./compose)  | 单机部署、小团队   | ⭐ 低         |
 | [Kubernetes / Helm](./helm) | 集群部署、弹性伸缩 | ⭐⭐⭐ 高     |
 | 裸机部署                    | 特殊合规要求       | ⭐⭐⭐⭐ 极高 |
 
@@ -183,10 +183,10 @@ VITE_AUTOSAVE_DEBOUNCE_MS=1000
 
 | 文档                             | 内容                           |
 | -------------------------------- | ------------------------------ |
-| [Docker Compose 部署](./docker)  | 完整的 Docker Compose 部署指南 |
+| [Docker Compose 部署](./compose)  | 完整的 Docker Compose 部署指南 |
 | [Kubernetes / Helm 部署](./helm) | Helm Chart 安装与配置          |
-| [备份与恢复](./backup)           | 数据备份策略与灾难恢复         |
-| [Nginx 文档站托管](./nginx)      | VitePress 文档站的 Nginx 配置  |
+| [备份与恢复](./backup-restore)           | 数据备份策略与灾难恢复         |
+| [Nginx 文档站托管](./reverse-proxy)      | VitePress 文档站的 Nginx 配置  |
 
 ## 相关管理功能
 

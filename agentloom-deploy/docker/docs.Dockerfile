@@ -1,6 +1,5 @@
 # Build context: project root. Call with: -f agentloom-deploy/docker/docs.Dockerfile .
-# scripts/sync-openapi.mjs falls back to a stub spec when agentloom-server/sdk/openapi.json
-# is absent — no COPY needed for the build to succeed.
+# scripts/sync-openapi.mjs 读取 agentloom-server/sdk/openapi.json，缺失即构建失败。
 
 FROM node:22-bookworm-slim AS build
 
@@ -14,9 +13,10 @@ RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 
 WORKDIR /workspace
 
-COPY agentloom-user-docs ./agentloom-user-docs
+COPY agentloom-docs ./agentloom-docs
+COPY agentloom-server/sdk/openapi.json ./agentloom-server/sdk/openapi.json
 
-WORKDIR /workspace/agentloom-user-docs
+WORKDIR /workspace/agentloom-docs
 RUN pnpm install --frozen-lockfile
 
 # git is installed but .git is excluded by .dockerignore — init a dummy repo
@@ -29,7 +29,7 @@ RUN pnpm build
 # ─────────────────────────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
-COPY --from=build /workspace/agentloom-user-docs/.vitepress/dist /usr/share/nginx/html/documentation
+COPY --from=build /workspace/agentloom-docs/.vitepress/dist /usr/share/nginx/html/documentation
 
 RUN rm -f /etc/nginx/conf.d/default.conf && printf '%s\n' \
   'server {' \

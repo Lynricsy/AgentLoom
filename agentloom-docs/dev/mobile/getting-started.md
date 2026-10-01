@@ -231,5 +231,5 @@ cd agentloom-server
 pnpm install && pnpm start:dev
 ```
 
-参考 [服务端文档](/zh/server/) 了解完整的后端配置。
+参考 [服务端文档](/dev/server/) 了解完整的后端配置。
 :::

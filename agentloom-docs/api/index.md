@@ -138,7 +138,7 @@ GET /api/v1/workflow-definitions?page=1&pageSize=20&search=关键词
 }
 ```
 
-常见错误代码的含义请参考 [错误参考](../troubleshooting/errors) 页面。
+常见错误代码的含义请参考 [错误参考](/guide/troubleshooting/errors) 页面。
 
 ## 限流说明
 

@@ -78,7 +78,7 @@ graph TD
 
 ## 端口数据类型
 
-画布使用 **12 种端口数据类型**，其中 10 种为 canonical 类型（与 Server 和 [Type Engine](/zh/type-engine/) 三端统一），3 种为 Studio 扩展类型：
+画布使用 **12 种端口数据类型**，其中 10 种为 canonical 类型（与 Server 和 [Type Engine](/dev/type-engine/) 三端统一），3 种为 Studio 扩展类型：
 
 | 类型        | 说明         | 典型场景               |
 | ----------- | ------------ | ---------------------- |
@@ -97,7 +97,7 @@ graph TD
 
 ### 兼容性检查
 
-连线时 [Type Engine](/zh/type-engine/) 实时计算端口兼容性，分为 4 个等级：
+连线时 [Type Engine](/dev/type-engine/) 实时计算端口兼容性，分为 4 个等级：
 
 | 等级           | 可视化      | 含义                   |
 | -------------- | ----------- | ---------------------- |
@@ -215,5 +215,5 @@ canvasStore 使用 `subscribe()` 监听状态变更，配合 **2 秒 debounce** 
 ## 相关文档
 
 - [状态管理](./state) — canvasStore 与其他 Store 的协作
-- [WASM 集成](./wasm) — 端口兼容性检查的底层实现
-- [类型引擎](/zh/type-engine/) — 兼容性规则详解
+- [WASM 集成](/dev/type-engine/wasm) — 端口兼容性检查的底层实现
+- [类型引擎](/dev/type-engine/) — 兼容性规则详解

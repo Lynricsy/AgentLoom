@@ -70,19 +70,12 @@ $RECYCLE.BIN/
 # Agent / 工具运行时 (Agent / Tool Runtime)
 # ──────────────────────────────────────────────
 .sisyphus/
-_bmad/
-_bmad-output/
 SubmitDocs/
-bmad-opencode/
 AgentLogs/
-.autobmad-logs/
-.autobmad-state.json
-.autobmad-state.json.bak
 .opencode/
 .claude/
 .cursor/
 .omc/
-.bmad-opencode/
 
 
 # ──────────────────────────────────────────────

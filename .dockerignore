@@ -32,17 +32,10 @@
 .opencode/
 .sisyphus/
 AgentLogs/
-.autobmad-logs/
-.autobmad-state.json
-.bmad-opencode/
 
 # ── 非构建用子项目 ──────────────────────────
 # Flutter 移动端（不参与 Docker 构建）
 agentloom_mobile/
-
-# BMAD agent 系统（不参与 Docker 构建）
-_bmad/
-_bmad-output/
 
 # 部署目录本身不进入子包构建（nginx.conf 通过 volume mount）
 agentloom-deploy/backups/
@@ -62,6 +55,7 @@ agentloom-deploy/sandbox/
 !agentloom-server/README.md
 design_pic/
 *.png
+!agentloom-docs/public/brand/*.png
 *.jpg
 *.jpeg
 

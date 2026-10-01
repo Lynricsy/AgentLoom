@@ -82,7 +82,7 @@ flowchart LR
 | **Socket.IO** `/agent-conversation` | Agent 对话实时推送，与 `/execution` 对称 | JWT + MFA                   |
 | **Socket.IO** `/memory`       | Agent 记忆图谱实时操作                        | JWT                         |
 
-> Socket.IO `/execution` 使用 typed `ExecutionEvent<T>` 信封，含单调递增 `eventId`，支持断线后按 `lastEventId` 增量回放。详见 [服务端 Socket.IO 协议](/zh/server/)。
+> Socket.IO `/execution` 使用 typed `ExecutionEvent<T>` 信封，含单调递增 `eventId`，支持断线后按 `lastEventId` 增量回放。详见 [服务端 Socket.IO 协议](/dev/server/)。
 
 ## 包结构
 
@@ -187,7 +187,7 @@ flowchart LR
 owner > admin > creator > operator > viewer
 ```
 
-每个角色继承低级角色的所有权限，详细的权限矩阵请参阅 [服务端架构](/zh/server/)。
+每个角色继承低级角色的所有权限，详细的权限矩阵请参阅 [服务端架构](/dev/server/)。
 
 ## 安全架构
 
@@ -230,7 +230,7 @@ API Key 使用 `al_` 前缀 + SHA-256 哈希存储，通过 `PlatformApiTokenMod
 
 ## 下一步
 
-- [核心概念](/zh/guide/concepts) — 理解工作流、节点、端口等核心抽象
-- [服务端架构](/zh/server/) — 30 个 NestJS 模块的详细设计
-- [工作室前端](/zh/studio/) — 画布引擎与 Feature-Slice 架构
-- [类型引擎](/zh/type-engine/) — Rust WASM 类型兼容性引擎
+- [核心概念](/dev/concepts) — 理解工作流、节点、端口等核心抽象
+- [服务端架构](/dev/server/) — 30 个 NestJS 模块的详细设计
+- [工作室前端](/dev/studio/) — 画布引擎与 Feature-Slice 架构
+- [类型引擎](/dev/type-engine/) — Rust WASM 类型兼容性引擎

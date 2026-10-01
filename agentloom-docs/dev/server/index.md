@@ -48,15 +48,15 @@ agentloom-server/src/
 
 | 领域                                        | 模块数 | 说明                                     |
 | ------------------------------------------- | ------ | ---------------------------------------- |
-| [核心工作流](/zh/server/modules#核心工作流) | 4      | 工作流定义、执行引擎、执行记录、可复用块 |
-| [AI 服务](/zh/server/modules#ai-服务)       | 5      | Agent、LLM、MCP 工具、智能路由、知识库   |
-| [平台服务](/zh/server/modules#平台服务)     | 9      | 认证、组织、通知、模板、分享、市场等     |
-| [企业运维](/zh/server/modules#企业运维)     | 6      | 资源治理、监控、审计、优化建议、私有部署 |
-| [插件生态](/zh/server/modules#插件生态)     | 1      | WASM 沙箱插件注册与执行                  |
-| [ACP 网关](/zh/server/modules#acp-网关)     | 1      | ACP 协议适配与 stdio 网关                |
-| [基础设施](/zh/server/modules#基础设施)     | 4      | 沙箱、健康检查、触发器、API Key          |
+| [核心工作流](/dev/server/modules#核心工作流) | 4      | 工作流定义、执行引擎、执行记录、可复用块 |
+| [AI 服务](/dev/server/modules#ai-服务)       | 5      | Agent、LLM、MCP 工具、智能路由、知识库   |
+| [平台服务](/dev/server/modules#平台服务)     | 9      | 认证、组织、通知、模板、分享、市场等     |
+| [企业运维](/dev/server/modules#企业运维)     | 6      | 资源治理、监控、审计、优化建议、私有部署 |
+| [插件生态](/dev/server/modules#插件生态)     | 1      | WASM 沙箱插件注册与执行                  |
+| [ACP 网关](/dev/server/modules#acp-网关)     | 1      | ACP 协议适配与 stdio 网关                |
+| [基础设施](/dev/server/modules#基础设施)     | 4      | 沙箱、健康检查、触发器、API Key          |
 
-> 详见 [模块架构](/zh/server/modules) 获取每个模块的完整说明。
+> 详见 [模块架构](/dev/server/modules) 获取每个模块的完整说明。
 
 ## 请求处理链路
 
@@ -69,7 +69,7 @@ agentloom-server/src/
 
 全局还有 `AllExceptionsFilter`（统一错误格式）和 `ZodValidationPipe`（DTO 校验）作为横切层。
 
-> 详见 [中间件与守卫链](/zh/server/middleware) 获取完整流程图与实现细节。
+> 详见 [中间件与守卫链](/dev/server/request-pipeline) 获取完整流程图与实现细节。
 
 ## 安全架构
 
@@ -79,7 +79,7 @@ agentloom-server/src/
 - **RBAC 角色体系**：`owner > admin > creator > operator > viewer`
 - **租户级限流**：100 req/min 默认 + 每日 API 配额 + 资源治理准入
 
-> 详见 [安全与加密](/zh/server/security) 获取 E2EE 流程和 API Token 管理细节。
+> 详见 [安全与加密](/dev/server/security) 获取 E2EE 流程和 API Token 管理细节。
 
 ## 异步任务队列
 

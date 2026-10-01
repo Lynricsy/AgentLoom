@@ -68,7 +68,7 @@ docker compose -f agentloom-deploy/docker-compose.yml --profile migration run --
 - shell 脚本使用 Bash、`set -euo pipefail`、可覆盖的 `COMPOSE_FILE`/`ENV_FILE`；破坏性恢复必须先验证输入，并在停止写入者后执行。
 - server Dockerfile 必须在 workspace install 前复制含 `prepare` 的内部包完整源码，production prune 保留 `--ignore-scripts`，并整体复制 workspace 以维持符号链接。
 - studio 镜像在启动时替换 `__VITE_*__` 占位符；新增浏览器运行时变量需同时更新 build args、替换脚本、Compose 和环境模板。
-- docs 镜像输出到 `/documentation`，nginx 监听 8081；不要把它当作根路径站点。
+- docs 镜像由 `agentloom-docs/` 单站构建（同时 COPY `agentloom-server/sdk/openapi.json`），输出到 `/documentation`，nginx 监听 8081；不要把它当作根路径站点。
 
 ## Firecracker Artifacts & Runtime
 
