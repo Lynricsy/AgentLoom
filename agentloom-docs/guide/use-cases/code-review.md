@@ -1,225 +1,85 @@
 ---
-title: 自动化代码审查
+docType: howto
 ---
 
-# 自动化代码审查
+# 代码审查
 
-本教程将带你搭建一个自动化代码审查系统。当团队成员在 GitHub 上提交 Pull Request 时，AgentLoom 会自动触发代码审查 Agent，在沙箱环境中分析代码变更并生成审查报告。
+本页搭建一个 GitHub Pull Request 事件触发的审查工作流：GitHub 把 PR 事件 POST 到 Webhook 地址，一个带沙箱、加载了内置技能 code-review 的 Agent 下载 diff 并写出审查意见。
 
-## 你将学到什么
+## 前提
 
-- 创建配备代码审查技能的 Agent
-- 为 Agent 配置沙箱环境
-- 搭建包含 Agent 节点和沙箱节点的工作流
-- 连接 GitHub Webhook 实现自动触发
-- 查看自动生成的代码审查结果
+- 满足[用例](/guide/use-cases/)页列出的共同前提，包括部署启用了沙箱运行时。
+- 对一个**公开** GitHub 仓库有管理员权限，能配置 Webhook。Agent 通过 PR 事件中的 `diff_url` 下载 diff；私有仓库的 diff 需要额外的访问凭据，本页不涉及。
+- AgentLoom 的 Webhook 地址能从公网访问。
 
-## 前置条件
+## 1. 创建审查 Agent
 
-- 已注册并登录 AgentLoom 平台
-- 拥有 creator 或以上角色权限
-- 组织已配置至少一个 LLM 模型提供商
-- 拥有一个 GitHub 仓库的管理员权限（用于配置 Webhook）
-- 了解基本的 Git 和 Pull Request 概念
+按[创建 Agent](/guide/agents/creating)新建 Agent，「运行形态」保持默认的「有沙箱」，Agent 才能用终端下载 diff。在 Agent 画布上：
 
-## 场景说明
-
-代码审查是软件开发中的重要环节，但人工审查耗时且容易遗漏。通过 AgentLoom，你可以让 AI Agent 自动完成初步的代码审查，检查代码质量、安全漏洞和最佳实践合规性，为人工审查提供参考。
-
-## 第一步：启用代码审查技能
-
-AgentLoom 内置了 6 个技能，其中"code-review"技能专为代码审查场景设计。
-
-1. 进入 **设置** > **技能管理** 页面。
-
-2. 在技能列表中找到 **code-review** 技能。内置技能会标记为"内置"标签。
-
-3. 确认该技能的状态为"已启用"。如果未启用，点击切换按钮启用它。
-
-4. 你可以点击技能名称查看详情，了解该技能会指导 Agent 关注哪些代码审查维度：
-   - 正确性与逻辑验证
-   - 安全漏洞检测（注入攻击、权限控制、敏感数据暴露等）
-   - 性能问题识别（N+1 查询、不必要的嵌套循环等）
-   - 代码风格与最佳实践
-
-::: tip 关于内置技能
-内置技能由系统预置，不可删除但可以启停。除了 code-review 外，还有 documentation、test-generation、refactoring、debugging 和 self-evolution 等技能可供使用。
-:::
-
-## 第二步：创建代码审查 Agent
-
-1. 进入 **Agent** 页面，点击 **创建 Agent**。
-
-2. 填写基本信息：
-   - **名称**：代码审查助手
-   - **描述**：自动审查 Pull Request 代码变更，识别质量和安全问题
-
-3. 设置系统提示词：
-
-   ```
-   你是一个资深的代码审查专家。你的任务是：
-   1. 仔细分析提交的代码变更
-   2. 从代码质量、安全性、性能、可维护性四个维度进行审查
-   3. 对每个发现的问题给出具体的位置、严重程度和修复建议
-   4. 最后给出整体评价和是否建议合并的结论
-
-   输出格式：
-   ## 审查摘要
-   [一句话总结审查结果]
-
-   ## 发现的问题
-   ### 严重问题
-   - [问题描述 + 文件位置 + 修复建议]
-
-   ### 一般问题
-   - [问题描述 + 文件位置 + 修复建议]
-
-   ### 建议优化
-   - [优化建议]
-
-   ## 结论
-   [是否建议合并 + 总体评价]
-   ```
-
-4. 选择一个适合代码理解的 LLM 模型。对于代码审查场景，推荐选择推理能力较强的模型。
-
-5. 将 Agent 的运行模式设置为 **sandbox**，以便工作流可以向它连接沙箱。
-
-6. 保存并发布 Agent。只有已发布的 Agent 才能在工作流中选择。
-
-## 第三步：搭建代码审查工作流
-
-1. 进入 **工作流** 页面，点击 **创建工作流**。
-
-2. 输入名称"自动代码审查"，进入画布编辑器。
-
-3. **添加触发器节点**：
-   - 拖拽一个 **触发器** 节点到画布
-   - 选择触发类型为 **Webhook**
-   - 记录下生成的 Webhook URL 和 Secret
-
-4. **添加文本输入节点**：
-   - 拖拽一个 **文本输入** 节点到画布
-   - 配置变量名为 `prContent`
-   - 连接：触发器的 `exec` 输出 --> 文本输入的 `exec` 输入
-
-5. **添加沙箱节点**：
-   - 拖拽一个 **代码沙箱** 节点到画布
-   - 沙箱提供了隔离的执行环境，Agent 可以在其中安全地分析代码
-   - 配置沙箱资源参数：
-     - **CPU**：1 核（默认值，对代码审查足够）
-     - **内存**：512 MB
-     - **超时**：2 分钟
-
-6. **添加技能节点**：
-   - 拖拽一个 **技能** 节点到画布
-   - 在配置面板中选择 **code-review** 技能
-   - 这会将代码审查的专业指导注入到 Agent 的系统提示中
-
-7. **添加 Agent 节点**：
-   - 拖拽一个 **Agent** 节点到画布
-   - 在配置面板中选择第二步发布的"代码审查助手"
-   - 连接端口：
-     - 文本输入节点的「文本」输出 --> Agent 节点的「文本」输入
-     - 沙箱节点的「沙箱」输出 --> Agent 节点的「沙箱」输入
-     - 技能节点的「Skill」输出 --> Agent 节点的「Skills」输入
-
-8. **添加文本输出节点**：
-   - 拖拽一个 **文本输出** 节点
-   - 连接：Agent 节点的「回复」输出 --> 文本输出节点的「文本」输入
-
-9. 完整的工作流结构：
+1. 连接一个「LLM 模型」到 Agent Main 的「模型」端口。
+2. 添加一个「Text」节点连到「系统提示词」端口，例如：
 
    ```text
-   触发器「exec」 --> 文本输入「exec」
-   文本输入「文本」 --> Agent「文本」；Agent「回复」 --> 文本输出「文本」
-   沙箱「沙箱」 --> Agent「沙箱」
-   技能「Skill」 --> Agent「Skills」
+   你是代码审查员。输入的上下文是一个 GitHub pull_request 事件。
+   1. 如果 action 不是 opened 或 synchronize，只回复“跳过：<action>”。
+   2. 否则在终端执行 curl -sL <pull_request.diff_url> 下载 diff。
+   3. 按严重问题、一般问题、优化建议三类列出发现，每条写明文件、位置与修改建议。
+   4. 最后给出是否建议合并的结论。
    ```
 
-10. 保存工作流。
+3. 从「高级」分组添加「Skill」节点，在面板的「搜索 Skill...」中选择内置技能 `code-review`，把它连到 Agent Main 的「Skills」端口。内置技能的内容见[内置技能](/guide/skills/built-in)。
+4. 在 Agent Main 的「原生工具」中确认「终端执行」已开启。
+5. 发布 Agent。
 
-## 第四步：连接 GitHub Webhook
+技能挂在 Agent 画布上，而不是工作流画布：工作流画布的 Skill 节点只提供「技能 ID」文本框，需要手动填写技能的 ID；填错或技能未激活时节点不会报错，只在输出中带 `warning` 字段，见 [Skill 节点](/guide/nodes/skill)。
 
-现在将 GitHub 仓库的 Webhook 配置为指向你的工作流。
+沙箱默认不能访问私有网段，访问 `github.com` 这类公网地址不受影响。需要访问内网 Git 服务时，由部署方配置 `FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS`，见 [Firecracker 沙箱](/deploy/firecracker)。
 
-1. 打开你的 GitHub 仓库页面，进入 **Settings** > **Webhooks**。
+## 2. 搭建工作流
 
-2. 点击 **Add webhook**。
+新建工作流，添加并连接以下节点：
 
-3. 配置 Webhook：
-   - **Payload URL**：粘贴第三步中生成的 Webhook URL
-   - **Content type**：选择 `application/json`
-   - **Secret**：粘贴第三步中的 Secret（用于签名验证）
-   - **Which events would you like to trigger this webhook?**：选择 "Let me select individual events"，然后勾选 **Pull requests**
+| 节点 | 配置 | 连线 |
+| --- | --- | --- |
+| Webhook | 默认 | 「触发数据」→ Agent「上下文」 |
+| Text | 写入「审查这个 Pull Request。」 | 「文本」→ Agent「文本」 |
+| Sandbox | 「生命周期模式」选「临时」，资源保持默认 | 「沙箱」→ Agent「沙箱」 |
+| Agent | 「选择 Agent」选第 1 步发布的 Agent | 「回复」→ Text Output「文本」 |
+| Text Output | 无 | — |
 
-4. 点击 **Add webhook** 保存配置。
+Agent 收到的输入是「文本」端口的内容，后面附上其余输入端口（包括「上下文」中的整个 PR 事件）的 JSON。
 
-5. GitHub 会发送一个 ping 事件来验证连接。你可以在 Webhook 的 **Recent Deliveries** 中查看是否成功。
+## 3. 发布并创建 Webhook 触发器
 
-::: tip GitHub 事件适配
-AgentLoom 内置了 GitHub Webhook 适配器（GithubWebhookAdapter），支持 HMAC-SHA256 签名验证。系统会自动识别 GitHub 发送的事件格式。
-:::
+1. 在工具栏点击「发布」并完成发布，面板显示「工作流已成功发布」。
+2. 点击工具栏「触发器」→「新增触发器」，类型选「Webhook」，填写「触发器名称」。
+3. 鉴权方式选「Simple：仅校验 Token 与 IP 白名单」，点击「创建触发器」。
 
-## 第五步：发布并测试
+触发器卡片的「Webhook 入口」就是 GitHub 要调用的 URL。
 
-1. 回到 AgentLoom Studio，点击画布工具栏的 **发布** 按钮，发布工作流。
+必须用 Simple 模式：Signed 模式要求请求带 `x-agentloom-signature` 与 `x-agentloom-timestamp` 签名头，GitHub 发送的是 `X-Hub-Signature-256`，签名校验会失败。Simple 模式下 URL 中的 Token 就是凭据，不要公开这个 URL；可以在「IP 白名单」中填入 GitHub 公布的 Webhook 出口地址段，进一步限制来源。签名算法见 [Webhook 与 API 事件](/api/webhooks)。
 
-2. 在 GitHub 仓库中创建一个测试 Pull Request：
-   - 创建一个新分支
-   - 做一些代码修改
-   - 提交 PR
+## 4. 在 GitHub 配置 Webhook
 
-3. PR 创建后，GitHub 会自动向你的 Webhook URL 发送事件。
+在仓库的 **Settings → Webhooks → Add webhook** 中：
 
-4. 回到 AgentLoom Studio，在工作流的执行记录中查看是否有新的执行实例。
+- **Payload URL**：「Webhook 入口」的 URL。
+- **Content type**：`application/json`。请求体的顶层字段会成为本次执行的输入参数，`application/x-www-form-urlencoded` 格式下 PR 事件不会以 JSON 对象传入。
+- **Secret**：留空。AgentLoom 的 Webhook 入口不校验 GitHub 签名。
+- **Which events**：选 **Let me select individual events**，只勾选 **Pull requests**。
 
-5. 点击执行记录，查看代码审查 Agent 的输出结果。
+保存后 GitHub 立即发送一次 `ping` 事件，AgentLoom 为它启动一次执行；Agent 按提示词第 1 条回复跳过。GitHub 的 **Recent Deliveries** 中该次投递的响应码为 202。
 
-## 第六步：查看审查结果
+## 5. 触发并查看结果
 
-执行完成后，在文本输出节点中你将看到类似这样的审查报告：
+在仓库中新建一个 Pull Request。
 
-```
-## 审查摘要
-本次 PR 新增了用户认证模块，整体代码质量良好，但发现 2 个安全相关问题需要修复。
+GitHub 投递 `pull_request` 事件（`action` 为 `opened`），工作流「查看执行记录」中出现一条新执行。点击进入执行调试页，选中 Agent 节点后点击「打开 Agent 运行视图」，可以看到 Agent 执行 `curl` 下载 diff 的终端输出与审查过程；审查意见在 Text Output 节点的输出中。
 
-## 发现的问题
-### 严重问题
-- 文件 auth/login.ts 第 45 行：密码比较使用了 == 而非时间恒定的比较函数，
-  可能导致时序攻击。建议使用 crypto.timingSafeEqual() 替代。
+同一个 PR 的每次推送（`synchronize`）、关闭（`closed`）等动作都会再触发一次执行，每次都会启动一个沙箱。
 
-### 一般问题
-- 文件 auth/session.ts 第 23 行：Session Token 的有效期设置为 30 天，
-  建议缩短至 7 天或更短，并实现 refresh token 机制。
+## 相关
 
-### 建议优化
-- auth/middleware.ts 中的错误处理可以更具体，区分"未认证"和"权限不足"
-  两种情况返回不同的状态码。
-
-## 结论
-建议修复严重问题后再合并。整体代码结构清晰，命名规范，值得肯定。
-```
-
-## 完成
-
-你已经成功搭建了一个自动化代码审查系统。核心要点回顾：
-
-- 内置的 code-review 技能为 Agent 提供了专业的代码审查指导
-- 沙箱节点为 Agent 提供了安全的代码分析环境
-- GitHub Webhook 实现了 PR 创建后的自动触发
-- Agent 能够从安全性、性能、代码质量等多个维度进行审查
-
-### 进阶建议
-
-- **多技能组合**：同时启用 test-generation 技能，让 Agent 在审查的同时建议需要补充的测试用例
-- **自定义审查规则**：创建自定义技能，加入你团队特有的代码规范
-- **结果通知**：在工作流中添加 HTTP 请求节点，将审查结果自动发送到 Slack 或飞书
-- **多仓库支持**：为不同仓库创建不同的审查工作流，配置各自的审查重点
-
-### 相关文档
-
-- [Agent 概述](../agents/) -- 深入了解 Agent 的完整功能
-- [代码沙箱节点](../nodes/sandbox) -- 了解沙箱环境的配置选项
-- [内置技能](../skills/built-in) -- 了解所有内置技能的功能
-- [Webhook 触发](../triggers/webhook) -- 了解 Webhook 触发的高级配置
+- [Webhook 触发](/guide/triggers/webhook)
+- [Sandbox 节点](/guide/nodes/sandbox)
+- [调试工作流](/guide/workflows/debugging)
