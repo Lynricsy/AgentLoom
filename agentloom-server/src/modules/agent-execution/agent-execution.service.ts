@@ -46,6 +46,12 @@ export const AGENT_CONVERSATION_IDLE_WAIT_MS = 5_000;
 /** 跨实例取消频道：任一实例发起取消，所有实例（含自身）中止本地的活跃 loop */
 export const AGENT_CONVERSATION_CANCEL_CHANNEL = '__agent_conversation_cancel__';
 
+/**
+ * 跨实例唤醒频道：新消息到达时，若 loop 正在其他实例空闲等待，经此频道唤醒它，
+ * 否则要等对方空闲超时退出、job 完成后由 worker 补发派发，多出一个空闲等待周期的延迟。
+ */
+export const AGENT_CONVERSATION_NOTIFY_CHANNEL = '__agent_conversation_notify__';
+
 export interface AgentConversationExecutionJobData {
   conversationId: string;
   tenantId: string;
@@ -95,16 +101,28 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     const subscriber = this.redis.duplicate();
     this.subscriber = subscriber;
     subscriber.on('message', (channel: string, rawMessage: string) => {
-      if (channel !== AGENT_CONVERSATION_CANCEL_CHANNEL) {
+      if (
+        channel !== AGENT_CONVERSATION_CANCEL_CHANNEL &&
+        channel !== AGENT_CONVERSATION_NOTIFY_CHANNEL
+      ) {
         return;
       }
 
-      const conversationId = this.parseCancelMessage(rawMessage);
-      if (conversationId) {
+      const conversationId = this.parseConversationMessage(rawMessage);
+      if (!conversationId) {
+        return;
+      }
+
+      if (channel === AGENT_CONVERSATION_CANCEL_CHANNEL) {
         this.abortLocalRun(conversationId);
+      } else {
+        this.activeRuns.get(conversationId)?.notify();
       }
     });
-    await subscriber.subscribe(AGENT_CONVERSATION_CANCEL_CHANNEL);
+    await subscriber.subscribe(
+      AGENT_CONVERSATION_CANCEL_CHANNEL,
+      AGENT_CONVERSATION_NOTIFY_CHANNEL,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -115,6 +133,10 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     await safeUnsubscribeRedis(
       this.subscriber,
       AGENT_CONVERSATION_CANCEL_CHANNEL,
+    );
+    await safeUnsubscribeRedis(
+      this.subscriber,
+      AGENT_CONVERSATION_NOTIFY_CHANNEL,
     );
     await safeQuitRedis(this.subscriber);
   }
@@ -212,7 +234,7 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     activeRun.notify();
   }
 
-  private parseCancelMessage(rawMessage: string): string | null {
+  private parseConversationMessage(rawMessage: string): string | null {
     try {
       const parsed = JSON.parse(rawMessage) as { conversationId?: unknown };
       return typeof parsed.conversationId === 'string' &&
@@ -220,7 +242,7 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
         ? parsed.conversationId
         : null;
     } catch {
-      this.logger.warn('忽略无法解析的对话取消消息');
+      this.logger.warn('忽略无法解析的对话频道消息');
       return null;
     }
   }
@@ -366,6 +388,14 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
       if (state === 'completed' || state === 'failed') {
         await existingJob.remove();
       } else {
+        // loop 可能正在其他实例空闲等待：唤醒它。若它已在退出途中，
+        // 由 worker 在 job 完成后检查未处理消息并补发派发（AgentExecutionWorker.onCompleted）。
+        if (state === 'active') {
+          await this.redis.publish(
+            AGENT_CONVERSATION_NOTIFY_CHANNEL,
+            JSON.stringify({ conversationId }),
+          );
+        }
         this.logger.debug(
           `Skipped queueing agent conversation execution for ${conversationId} because job already exists in state ${state}`,
         );

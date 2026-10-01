@@ -57,6 +57,7 @@ const {
     registerActiveRun: vi.fn(),
     clearActiveRun: vi.fn(),
     waitForNotification: vi.fn(),
+    dispatchExecution: vi.fn(),
   },
   mockEventBridge: {
     emitExecutionStatusChanged: vi.fn(),
@@ -531,6 +532,77 @@ describe('AgentExecutionWorker', () => {
         tenantId: 't-1',
       });
       expect(() => worker.onFailed(job, new Error('test error'))).not.toThrow();
+    });
+  });
+
+  describe('onCompleted()', () => {
+    function mockConversationRow(row: {
+      status: string;
+      metadata: Record<string, unknown>;
+    }) {
+      mockDb.select.mockReturnValue({
+        from: () => ({ where: () => ({ limit: async () => [row] }) }),
+      });
+    }
+
+    function spyPendingMessages(count: number) {
+      // 补发逻辑直接调用内部 runtime service，测试只能替换它的待处理消息查询
+      const internals = worker as unknown as {
+        runtimeService: {
+          loadPendingUserMessages: (...args: unknown[]) => Promise<unknown[]>;
+        };
+      };
+      return vi
+        .spyOn(internals.runtimeService, 'loadPendingUserMessages')
+        .mockResolvedValue(
+          Array.from({ length: count }, (_, index) => ({ id: `m-${index}` })),
+        );
+    }
+
+    const completedJob = () =>
+      createJob('execute-agent-loop', { conversationId: 'c-1', tenantId: 't-1' });
+
+    it('loop 空闲退出后仍有未处理消息时重新派发（覆盖退出窗口内到达的消息）', async () => {
+      mockConversationRow({
+        status: 'active',
+        metadata: {
+          execution: { runningState: 'idle', lastProcessedMessageId: 'm-old' },
+        },
+      });
+      const pendingSpy = spyPendingMessages(1);
+
+      await worker.onCompleted(completedJob());
+
+      expect(pendingSpy).toHaveBeenCalledWith('c-1', 't-1', 'm-old');
+      expect(mockExecutionService.dispatchExecution).toHaveBeenCalledWith(
+        'c-1',
+        't-1',
+      );
+    });
+
+    it('没有未处理消息时不派发', async () => {
+      mockConversationRow({
+        status: 'active',
+        metadata: { execution: { runningState: 'idle' } },
+      });
+      spyPendingMessages(0);
+
+      await worker.onCompleted(completedJob());
+
+      expect(mockExecutionService.dispatchExecution).not.toHaveBeenCalled();
+    });
+
+    it('loop 以取消结束时不自动重跑遗留消息', async () => {
+      mockConversationRow({
+        status: 'active',
+        metadata: { execution: { runningState: 'cancelled' } },
+      });
+      const pendingSpy = spyPendingMessages(1);
+
+      await worker.onCompleted(completedJob());
+
+      expect(pendingSpy).not.toHaveBeenCalled();
+      expect(mockExecutionService.dispatchExecution).not.toHaveBeenCalled();
     });
   });
 

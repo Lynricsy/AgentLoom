@@ -1033,6 +1033,74 @@ export class AgentExecutionWorker extends WorkerHost {
       });
   }
 
+  /**
+   * 补发派发：loop 空闲超时退出到 job 完成之间，job 仍处于 active，此时到达的消息会被
+   * 派发方跳过入队（它只会唤醒，而 loop 已不再等待），消息就此滞留。
+   * 派发方在消息提交后才检查 job 状态，因此“派发方看到 job 已完成并自行入队”与
+   * “这里在 job 完成后查到未处理消息”至少有一方成立，消息不会丢失。
+   * 只对正常空闲结束（runningState=idle）的 loop 补发：取消/失败留下的未处理消息不应被自动重跑。
+   */
+  @OnWorkerEvent('completed')
+  async onCompleted(
+    job: Job<AgentConversationExecutionJobData> | undefined,
+  ): Promise<void> {
+    if (!job || job.name !== AGENT_CONVERSATION_EXECUTION_JOB) {
+      return;
+    }
+
+    const { conversationId, tenantId } = job.data;
+    try {
+      await this.redispatchPendingMessages(conversationId, tenantId);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to redispatch pending messages for ${conversationId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async redispatchPendingMessages(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const [conversation] = await runInTenantTransaction(
+      this.db,
+      tenantId,
+      async (dbClient) =>
+        dbClient
+          .select({
+            status: agentConversations.status,
+            metadata: agentConversations.metadata,
+          })
+          .from(agentConversations)
+          .where(eq(agentConversations.id, conversationId))
+          .limit(1),
+    );
+    if (!conversation || conversation.status !== 'active') {
+      return;
+    }
+
+    const executionMetadata = readExecutionMetadata(conversation.metadata);
+    if (executionMetadata.runningState !== 'idle') {
+      return;
+    }
+
+    const pendingMessages = await this.runtimeService.loadPendingUserMessages(
+      conversationId,
+      tenantId,
+      executionMetadata.lastProcessedMessageId,
+    );
+    if (pendingMessages.length === 0) {
+      return;
+    }
+
+    this.logger.debug(
+      `Redispatching ${pendingMessages.length} pending message(s) for ${conversationId} after loop exit`,
+    );
+    await this.executionService.dispatchExecution(conversationId, tenantId);
+  }
+
   async executeAgentLoop(
     conversationId: string,
     tenantId: string,

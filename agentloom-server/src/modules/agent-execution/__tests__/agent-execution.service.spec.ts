@@ -246,6 +246,29 @@ describe('AgentExecutionService', () => {
     expect(mockQueue.add).not.toHaveBeenCalled();
   });
 
+  it('job 在另一个实例运行时，新消息经频道唤醒那个实例空闲等待中的 loop', async () => {
+    const otherInstance = createService(bus.client());
+    await otherInstance.onModuleInit();
+    mockQueue.getJob.mockResolvedValue({
+      getState: vi.fn().mockResolvedValue('active'),
+      remove: vi.fn(),
+    });
+
+    const abort = new AbortController();
+    service.registerActiveRun('conversation-1', abort);
+    const waiting = service.waitForNotification(
+      'conversation-1',
+      abort.signal,
+      60_000,
+    );
+
+    await otherInstance.dispatchExecution('conversation-1', 'tenant-1');
+
+    await expect(waiting).resolves.toBe('notified');
+    expect(mockQueue.add).not.toHaveBeenCalled();
+    await otherInstance.onModuleDestroy();
+  });
+
   it('cancelExecution 会结束会话并中止活跃 loop', async () => {
     mockConversationService.cancel.mockResolvedValue({ data: {} });
 
