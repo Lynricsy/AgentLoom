@@ -83,6 +83,13 @@ export function resolveSourceHandleValue(
       return sourceHandle === 'memory-out' || sourceHandle === 'memory-out-0'
         ? sourceStep.result
         : undefined;
+    case 'code-tool':
+      if (sourceHandle === 'result-out') {
+        return sourceStep.result.output;
+      }
+      return sourceHandle === 'stdout-out'
+        ? sourceStep.result.stdout
+        : undefined;
     case 'merge':
       return sourceHandle === 'merged-out' || sourceHandle === 'merged'
         ? sourceStep.result

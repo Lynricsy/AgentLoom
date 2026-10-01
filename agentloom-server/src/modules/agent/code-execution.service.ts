@@ -152,17 +152,12 @@ export class CodeExecutionService {
       'import json, sys',
       `input = json.loads(${JSON.stringify(inputJson)})`,
       'output = None',
-      '__stdout_parts = []',
-      '__orig_print = print',
-      'def print(*args, **kwargs):',
-      '    __stdout_parts.append(" ".join(str(a) for a in args))',
-      '    __orig_print(*args, **kwargs)',
       'try:',
       indentedCode,
       'except Exception as __e:',
       '    sys.stderr.write(str(__e))',
       '    sys.exit(1)',
-      `sys.stdout.write('\\n${RESULT_START_MARKER}' + json.dumps({"output": output, "stdout": "\\n".join(__stdout_parts)}) + '${RESULT_END_MARKER}')`,
+      `sys.stdout.write('\\n${RESULT_START_MARKER}' + json.dumps({"output": output}) + '${RESULT_END_MARKER}')`,
     ].join('\n');
 
     const tmpDir = join(tmpdir(), `agentloom-code-${randomUUID()}`);
@@ -212,11 +207,8 @@ export class CodeExecutionService {
     return [
       `const input = ${inputJson};`,
       'let output = undefined;',
-      'const __stdout_parts = [];',
-      'const __origLog = console.log;',
-      'console.log = (...args) => { __stdout_parts.push(args.map(String).join(" ")); __origLog(...args); };',
       userCode,
-      `process.stdout.write('\\n${RESULT_START_MARKER}' + JSON.stringify({ output, stdout: __stdout_parts.join('\\n') }) + '${RESULT_END_MARKER}');`,
+      `process.stdout.write('\\n${RESULT_START_MARKER}' + JSON.stringify({ output }) + '${RESULT_END_MARKER}');`,
     ].join('\n');
   }
 
@@ -435,8 +427,8 @@ export class CodeExecutionService {
   // ---------------------------------------------------------------------------
 
   /**
-   * 从 stdout 中提取 __RESULT_START__...__RESULT_END__ 之间的结构化结果。
-   * 标记之前的部分视为"真正的 stdout"。
+   * 从 stdout 中提取 __RESULT_START__...__RESULT_END__ 之间的 `{ output }`。
+   * 标记之前的部分就是用户代码的完整 stdout（console.log / print 直接写入进程 stdout）。
    */
   private parseStructuredOutput(rawStdout: string): {
     output: unknown;
@@ -458,19 +450,8 @@ export class CodeExecutionService {
 
     try {
       const parsed: unknown = JSON.parse(jsonStr);
-      if (
-        typeof parsed === 'object' &&
-        parsed !== null &&
-        'output' in parsed &&
-        'stdout' in parsed
-      ) {
-        const result = parsed as { output: unknown; stdout: string };
-        // 优先使用包装器捕获的 stdout（更准确），但如果标记之前有内容则合并
-        const capturedStdout = result.stdout ?? '';
-        const combinedStdout = realStdout
-          ? `${realStdout}\n${capturedStdout}`
-          : capturedStdout;
-        return { output: result.output, stdout: combinedStdout };
+      if (typeof parsed === 'object' && parsed !== null && 'output' in parsed) {
+        return { output: parsed.output, stdout: realStdout };
       }
       return { output: parsed, stdout: realStdout };
     } catch {

@@ -37,7 +37,7 @@ docType: howto
 
 几种常见情况：
 
-- **下游收到空值**：检查连线是否接在正确的端口上。[Code Executor](/guide/nodes/code-tool) 的「返回值」「stdout」端口当前不会向下游传值。
+- **下游收到空值**：检查连线是否接在正确的端口上。[Code Executor](/guide/nodes/code-tool) 的「返回值」为空时，确认代码把结果赋给了 `output` 变量。
 - **文本连到 JSON 端口，下游收到的仍是字符串**：跨类型连线会在运行时转换数据，转换失败时下游收到原值，该节点步骤的 `checkpointData.warnings` 中有一条 `port-value-transform-failed` 告警，说明哪条连线、哪个变换函数失败。常见原因是上游文本不是合法 JSON（例如 Agent 回复带有说明文字）。
 - **节点没有运行，状态为已跳过**：它只连在 [Condition](/guide/nodes/condition) 未命中的分支后面，或它的所有上游都被跳过。在执行调试页对照 Condition 节点的输入检查条件规则。
 - **Skill 或 MCP Tool 节点完成了但 Agent 没用上**：这两个节点缺少配置时不会失败，只在输出中带 `warning` 字段，检查它们的输出。

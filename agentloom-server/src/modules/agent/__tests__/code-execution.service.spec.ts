@@ -101,9 +101,7 @@ describe('CodeExecutionService', () => {
     'executes %s and extracts wrapper output',
     async (language, command, leadingArgs) => {
       queueProcess({
-        stdout: [
-          marked({ output: { answer: 42 }, stdout: 'captured' }, 'printed\n'),
-        ],
+        stdout: [marked({ output: { answer: 42 } }, 'printed\n')],
       });
 
       const result = await service.execute({
@@ -119,7 +117,7 @@ describe('CodeExecutionService', () => {
       expect(result).toMatchObject({
         success: true,
         output: { answer: 42 },
-        stdout: 'printed\ncaptured',
+        stdout: 'printed',
         stderr: '',
       });
       const [spawnCommand, args, options] = hoisted.spawn.mock.calls[0] as [
@@ -349,8 +347,8 @@ describe('CodeExecutionService', () => {
   it.each([
     [marked(17), 17, ''],
     [marked({ value: true }, 'prefix'), { value: true }, 'prefix'],
-    [marked({ output: 'value', stdout: null }), 'value', ''],
-    [marked({ output: 'value', stdout: 'captured' }), 'value', 'captured'],
+    [marked({ output: 'value' }), 'value', ''],
+    [marked({ output: 'value' }, 'printed\n'), 'value', 'printed'],
   ] as const)(
     'extracts structured payload variant %#',
     async (stdout, output, visibleStdout) => {

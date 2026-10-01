@@ -339,7 +339,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         description: "执行流出口，代码执行完成后触发下游节点",
       }),
       createPort("result-out", "返回值", "output", "json", {
-        description: "代码中 return 语句返回的 JSON 结果",
+        description:
+          "代码赋值给 output 变量的值（JavaScript / TypeScript / Python）；Bash 取 stdout 最后一行 JSON",
       }),
       createPort("stdout-out", "stdout", "output", "text", {
         description: "代码执行过程中 console.log / print 输出的文本内容",

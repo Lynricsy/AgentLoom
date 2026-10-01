@@ -417,6 +417,66 @@ describe('code migrated scenarios', () => {
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
+    it('code-tool 完成后下游可经 result-out / stdout-out 读到返回值与 stdout', async () => {
+      const steps = [
+        makeStep({
+          id: 'step-c',
+          nodeId: 'C',
+          status: 'pending',
+          nodeType: 'code-tool',
+          nodeData: {
+            config: { language: 'javascript', code: 'output = { ok: true }' },
+          },
+        }),
+      ];
+      const codeSnapshot = makeSnapshot([makeNode('C', 'code-tool')], []);
+      mockCodeExecutionService.execute.mockResolvedValue({
+        success: true,
+        output: { ok: true },
+        stdout: 'done',
+        stderr: '',
+        executionTimeMs: 3,
+      });
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'C',
+        TENANT_ID,
+        codeSnapshot,
+        steps,
+      );
+
+      const completedPatch = mockStateMachine.updateStepStatus.mock.calls.find(
+        (call: unknown[]) => call[1] === 'step-c' && call[2] === 'completed',
+      )?.[3];
+      const persistedResult =
+        completedPatch &&
+        typeof completedPatch === 'object' &&
+        'result' in completedPatch
+          ? completedPatch.result
+          : undefined;
+      const completedStep = makeStep({
+        id: 'step-c',
+        nodeId: 'C',
+        status: 'completed',
+        nodeType: 'code-tool',
+        result: persistedResult,
+      });
+
+      expect(
+        service.resolveNodeInput(
+          'D',
+          [
+            makeEdge('C', 'D', 'result-out', 'json-in'),
+            makeEdge('C', 'D', 'stdout-out', 'text-in'),
+          ],
+          [completedStep],
+        ),
+      ).toEqual({ 'json-in': { ok: true }, 'text-in': 'done' });
+    });
+
     it('code-tool 执行 success:false 时应写 failed 并保留诊断输出', async () => {
       const steps = [
         makeStep({
