@@ -1,241 +1,290 @@
-# 快速开始
+---
+docType: tutorial
+---
 
-本页将引导你在本地搭建 AgentLoom 开发环境，从零启动服务端与前端工作台。
+# 搭建本地开发环境
 
-## 环境要求
+本教程从一份干净的检出开始，在本机跑起 server（`http://localhost:3000`）与 Studio（`http://localhost:5173`），并注册第一个账号。依赖服务（PostgreSQL、Redis、MinIO、Qdrant、自托管 Supabase 认证）全部用 Docker 运行，server 与 Studio 在宿主机上以开发模式运行，改代码即时生效。
 
-在开始之前，请确保你的开发机器已安装以下工具：
+::: warning 已知问题
 
-| 工具           | 最低版本 | 说明                             |
-| -------------- | -------- | -------------------------------- |
-| **Node.js**    | 20+      | 推荐使用 LTS 版本                |
-| **pnpm**       | 9+       | 各子包独立管理依赖               |
-| **Docker**     | 24+      | 用于运行 Qdrant 等基础设施       |
-| **PostgreSQL** | 15+      | 主数据库（或使用 Supabase 托管） |
-| **Redis**      | 7+       | BullMQ 消息队列                  |
+- **MinIO 官方镜像无法拉取。** 本轮验证时 `docker pull minio/minio` 返回 `pull access denied for minio/minio, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`，因此下文使用 `pgsty/minio:latest`（MinIO 的社区构建）。部署模板 `agentloom-deploy/.env.template` 中的默认 MinIO 镜像同样受影响，见 [Compose 部署](/deploy/compose)。
+- **浏览器登录在本地开发时失败。** 第 9 步在 Studio 登录页提交后显示「Failed to fetch」。原因：supabase-js 的 CORS 预检请求带 `x-supabase-api-version` 头，而 `agentloom-deploy/supabase/kong.yml` 中 cors 插件的 `headers` 列表不含它，Kong 的预检响应只允许 `Accept,Authorization,Content-Type,apikey,x-client-info`。修复建议（未应用）：在该列表中加一行 `- x-supabase-api-version`。在临时副本中加上这一行后，同一账号登录成功并进入 `/onboarding`。Compose 部署中 Studio 与 `/auth/` 同源，不受影响。
 
-**可选工具：**
-
-| 工具                     | 用途               |
-| ------------------------ | ------------------ |
-| **Rust + wasm-pack**     | 修改类型引擎时需要 |
-| **Flutter 3.41.2 (FVM)** | 移动端开发         |
-
-## 克隆项目
-
-```bash
-git clone <your-repo-url> agentloom
-cd agentloom
-```
-
-::: tip 项目结构
-AgentLoom 是**非标准 monorepo**，各子包独立管理 `package.json` 和 lockfile，无 pnpm-workspace.yaml。你需要分别进入各子包安装依赖。
 :::
 
-## 启动基础设施
+## 前置条件
 
-项目提供了 `docker-compose.dev.yml`，包含 Qdrant 向量数据库。PostgreSQL、Redis、MinIO 需要自行部署或使用云服务。
+- Node.js 22 与 corepack（随 Node 发行），用于启用 pnpm。
+- Docker 24 及以上，带 Compose v2 插件（`docker compose version` 有输出）。
+- `openssl` 与 `curl`。
+- 本机端口 3000、5173、5432、6379、9000、6333、6334、8000 空闲。
 
-```bash
-# 启动 Qdrant
-docker compose -f docker-compose.dev.yml up -d
-```
+以下命令都在仓库根目录执行，除非步骤中先 `cd` 到某个包。本教程选择 `APP_DEPLOYMENT_MODE=private`（私有部署模式），本地不需要连接任何外部 SaaS 服务。
 
-确保以下服务可访问：
+## 1. 安装 JS 依赖
 
-| 服务       | 默认地址         | 说明                     |
-| ---------- | ---------------- | ------------------------ |
-| PostgreSQL | `localhost:5432` | 可使用 Supabase 托管实例 |
-| Redis      | `localhost:6379` | BullMQ 队列              |
-| Qdrant     | `localhost:6333` | 向量检索                 |
-| MinIO      | `localhost:9000` | 对象存储                 |
-
-## 配置服务端
-
-### 1. 安装服务端依赖
+整个仓库只在根目录安装一次，workspace 成员共用：
 
 ```bash
-cd agentloom-server
+corepack enable
 pnpm install
 ```
 
-### 2. 配置服务端环境变量
+最后一行形如：
 
-复制环境变量模板并编辑：
-
-```bash
-cp .env.example .env
+```text
+Done in 6.1s using pnpm v12.8.1
 ```
 
-以下是关键配置项：
+安装过程中 `agentloom-contracts`、`agentloom-api-client`、`agentloom-plugin-sdk` 会被构建，server 与 Studio 依赖它们的产物。
+
+## 2. 生成本地密钥
+
+部署脚本可以一次生成数据库密码、JWT 密钥、加密主密钥和 Supabase 的 anon/service key（后两者用 JWT 密钥签发，必须配套）：
 
 ```bash
-# 基础配置
-APP_PORT=3000
-APP_NODE_ENV=development
+./agentloom-deploy/scripts/generate-secrets.sh
+```
 
-# 数据库连接
-APP_DATABASE_URL=postgresql://user:password@localhost:5432/agentloom
+```text
+🔐 正在生成密钥...
 
-# Supabase（认证服务）
-APP_SUPABASE_URL=https://your-project.supabase.co
-APP_SUPABASE_ANON_KEY=your-anon-key
-APP_SUPABASE_SERVICE_KEY=your-service-key
+✅ 密钥已生成并写入: /path/to/AgentLoom/agentloom-deploy/.env
+```
 
-# JWT 密钥
-APP_JWT_SECRET=your-jwt-secret
+输出中的路径是你的仓库所在位置；脚本随后打印各密钥的前几位摘要。文件已存在时脚本拒绝覆盖并退出，需要重新生成就先删除它。
 
-# Redis
+后续步骤从这个文件取值。在同一个终端里定义一个取值函数（用绝对路径，`cd` 到子目录后仍可用）：
+
+```bash
+DEPLOY_ENV="$PWD/agentloom-deploy/.env"
+get() { grep "^$1=" "$DEPLOY_ENV" | cut -d= -f2-; }
+```
+
+不要 `source` 整个部署 `.env`：其中的 `APP_*` 指向容器主机名，进入 shell 环境后会覆盖 server 自己的 `.env`。
+
+## 3. 启动 PostgreSQL、Redis、MinIO 与 Qdrant
+
+PostgreSQL 必须挂在 `supabase-shared` 网络上并带别名 `postgres`，下一步的 Supabase 认证服务按这个名字连接数据库：
+
+```bash
+docker network create supabase-shared
+
+docker run -d --name agentloom-local-postgres \
+  --network supabase-shared --network-alias postgres \
+  -e POSTGRES_USER=agentloom -e POSTGRES_DB=agentloom \
+  -e POSTGRES_PASSWORD="$(get POSTGRES_PASSWORD)" \
+  -p 5432:5432 postgres:16-alpine
+
+docker run -d --name agentloom-local-redis -p 6379:6379 redis:7-alpine
+
+docker run -d --name agentloom-local-minio -p 9000:9000 \
+  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+  pgsty/minio:latest server /data
+
+docker compose -f docker-compose.dev.yml up -d
+```
+
+`docker-compose.dev.yml` 只定义 Qdrant（6333/6334）。MinIO 使用 server 的默认凭据 `minioadmin`，所以 server 的 `.env` 不需要再写 MinIO 配置。
+
+检查：
+
+```bash
+docker ps --format '{{.Names}} {{.Status}}'
+```
+
+列出 `agentloom-local-postgres`、`agentloom-local-redis`、`agentloom-local-minio` 与 Qdrant 容器，状态均为 `Up`。
+
+## 4. 为 Supabase 认证准备数据库
+
+Supabase 认证服务（GoTrue）与 AgentLoom 的迁移都需要 Supabase 约定的角色与 `auth` schema。原版 PostgreSQL 没有它们，先创建（与 `agentloom-deploy/scripts/init-db.sh` 中的引导 SQL 相同）：
+
+```bash
+docker exec -i agentloom-local-postgres psql -v ON_ERROR_STOP=1 -U agentloom -d agentloom <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    CREATE ROLE supabase_auth_admin LOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+    CREATE ROLE postgres LOGIN SUPERUSER;
+  END IF;
+END
+$$;
+
+GRANT ALL ON DATABASE agentloom TO supabase_auth_admin;
+
+CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
+GRANT USAGE ON SCHEMA auth TO agentloom, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON TABLES TO agentloom, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON FUNCTIONS TO agentloom, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON SEQUENCES TO agentloom, anon, authenticated, service_role;
+SQL
+```
+
+```text
+DO
+GRANT
+CREATE SCHEMA
+GRANT
+ALTER DEFAULT PRIVILEGES
+ALTER DEFAULT PRIVILEGES
+ALTER DEFAULT PRIVILEGES
+```
+
+## 5. 启动 Supabase 认证服务
+
+即使是私有部署模式，注册与登录也经过 Supabase 认证（server 在 Supabase 配置缺失时拒绝认证请求）。启动 GoTrue 与 Kong 网关：
+
+```bash
+docker compose -f agentloom-deploy/docker-compose.supabase.yml --env-file agentloom-deploy/.env up -d
+```
+
+GoTrue 首次启动时在 `auth` schema 中建表，之后 AgentLoom 的迁移会引用 `auth.users`，所以这一步必须在迁移之前。检查 Kong 转发到 GoTrue：
+
+```bash
+curl -s http://localhost:8000/auth/v1/health
+```
+
+```json
+{"version":"v2.175.0","name":"GoTrue","description":"GoTrue is a user registration and authentication API"}
+```
+
+## 6. 配置 server
+
+server 启动时用 `agentloom-server/src/config/env.schema.ts` 校验环境变量，缺少必填项会直接退出。全部变量及默认值见 [配置参考](/deploy/configuration)，样例文件是 `agentloom-server/.env.example`。本地只需写下必填项和认证配置：
+
+```bash
+cd agentloom-server
+cat > .env <<EOF
+APP_DEPLOYMENT_MODE=private
+APP_DATABASE_URL=postgresql://agentloom:$(get POSTGRES_PASSWORD)@localhost:5432/agentloom
 APP_REDIS_URL=redis://localhost:6379
-
-# 加密主密钥（256-bit Base64）
-APP_MASTER_ENCRYPTION_KEY=  # 使用 openssl rand -base64 32 生成
-
-# 前端地址（CORS 白名单）
+APP_JWT_SECRET=$(get APP_JWT_SECRET)
+APP_MASTER_ENCRYPTION_KEY=$(get APP_MASTER_ENCRYPTION_KEY)
+APP_OAUTH_REDIRECT_URL=http://localhost:3000/api/v1/auth/oauth/callback
 APP_FRONTEND_URL=http://localhost:5173
-
-# MinIO 对象存储
-APP_MINIO_ENDPOINT=localhost
-APP_MINIO_PORT=9000
-APP_MINIO_ACCESS_KEY=minioadmin
-APP_MINIO_SECRET_KEY=minioadmin
-APP_MINIO_USE_SSL=false
-APP_MINIO_BUCKET=agentloom
-
-# Qdrant 向量数据库
-APP_QDRANT_URL=http://localhost:6333
+APP_SUPABASE_URL=http://localhost:8000
+APP_SUPABASE_ANON_KEY=$(get APP_SUPABASE_ANON_KEY)
+APP_SUPABASE_SERVICE_KEY=$(get APP_SUPABASE_SERVICE_KEY)
+EOF
 ```
 
-::: warning 安全提示
-`APP_MASTER_ENCRYPTION_KEY` 用于 E2EE 体系的主密钥派生，务必使用强随机值并妥善保管。
-:::
+各项的含义：
 
-### 3. 初始化服务端数据库
+| 变量 | 说明 |
+| --- | --- |
+| `APP_DATABASE_URL` | 第 3 步的 PostgreSQL |
+| `APP_REDIS_URL` | 第 3 步的 Redis，BullMQ 与 Socket.IO adapter 共用 |
+| `APP_JWT_SECRET` | 必须与 GoTrue 使用的 `SUPABASE_JWT_SECRET` 相同，server 用它校验 Supabase 签发的 access token |
+| `APP_MASTER_ENCRYPTION_KEY` | Base64 编码、解码后恰好 32 字节；脚本用 `openssl rand -base64 32` 生成 |
+| `APP_OAUTH_REDIRECT_URL`、`APP_FRONTEND_URL` | OAuth 回调地址与 Studio 地址（也用于 CORS） |
+| `APP_DEPLOYMENT_MODE` | `private` 时三项 `APP_SUPABASE_*` 要么全填要么全空；全空则无法登录 |
+| `APP_SUPABASE_URL`、`APP_SUPABASE_ANON_KEY`、`APP_SUPABASE_SERVICE_KEY` | 第 5 步的 Kong 地址与脚本生成的 key |
+
+## 7. 建表并写入种子数据
 
 ```bash
-# 生成 Drizzle 迁移文件
-pnpm db:generate
-
-# 执行迁移
 pnpm db:migrate
+```
 
-# （可选）填充种子数据，包含 5 个预置工作流模板 + 5 个内置 Skill
+drizzle-kit 自动读取当前目录的 `.env`。最后一行：
+
+```text
+[✓] migrations applied successfully!
+```
+
+种子脚本不读 `.env`，先把它导入当前 shell：
+
+```bash
+set -a; . ./.env; set +a
 pnpm db:seed
 ```
 
-### 4. 启动服务端开发服务器
+输出中依次出现 `Seeding LLM providers...`、`Seeding workflow templates...`、`Seeding routing benchmarks...`、`Seeding skills...`，每段以 `Done —` 开头的一行结束。
+
+## 8. 启动 server
 
 ```bash
 pnpm start:dev
 ```
 
-服务端将在 `http://localhost:3000` 启动（watch mode 自动重载）。
+编译完成后日志出现：
 
-## 配置前端工作台
+```text
+[Nest] LOG [NestApplication] Nest application successfully started
+```
 
-### 1. 安装前端依赖
+另开一个终端检查健康：
+
+```bash
+curl -s http://localhost:3000/api/v1/health
+```
+
+```json
+{"status":"ok","timestamp":"2026-10-01T10:05:03.894Z"}
+```
+
+Swagger UI 在 `http://localhost:3000/docs`。
+
+## 9. 启动 Studio 并注册账号
+
+另开一个终端，在仓库根：
 
 ```bash
 cd agentloom-studio
-pnpm install
-```
-
-### 2. 配置前端环境变量
-
-```bash
 cp .env.example .env
-```
-
-关键配置：
-
-```bash
-# API 基础路径
-VITE_API_BASE_URL=/api/v1
-
-# 自动保存防抖间隔（毫秒）
-VITE_AUTOSAVE_DEBOUNCE_MS=500
-
-# Supabase（与服务端使用同一项目）
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-### 3. 启动前端开发服务器
-
-```bash
+sed -i "s|^VITE_SUPABASE_URL=.*|VITE_SUPABASE_URL=http://localhost:8000|" .env
+sed -i "s|^VITE_SUPABASE_ANON_KEY=.*|VITE_SUPABASE_ANON_KEY=$(grep '^APP_SUPABASE_ANON_KEY=' ../agentloom-deploy/.env | cut -d= -f2-)|" .env
 pnpm dev
 ```
 
-前端工作台将在 `http://localhost:5173` 启动。在浏览器中打开即可看到 AgentLoom Studio 画布编辑器。
+```text
+  VITE v8.2.2  ready in 193 ms
 
-## 验证安装
-
-当服务端和前端都成功启动后，你可以：
-
-1. 访问 `http://localhost:5173` 打开 Studio 工作台
-2. 访问 `http://localhost:3000/api/health` 验证服务端健康状态
-3. 使用 Drizzle Studio 查看数据库：`pnpm db:studio`（在 agentloom-server 目录下）
-
-## 常用开发命令
-
-### 服务端
-
-```bash
-cd agentloom-server
-pnpm start:dev          # 开发模式（watch）
-pnpm start:acp:stdio    # ACP stdio 独立入口
-pnpm test               # 单元测试
-pnpm test:e2e           # E2E 测试（需 Docker）
-pnpm test:cov           # 覆盖率报告（80% 阈值）
-pnpm db:generate        # 生成迁移文件
-pnpm db:migrate         # 执行迁移
-pnpm db:seed            # 填充种子数据
-pnpm db:studio          # Drizzle Studio
-pnpm openapi:export     # 导出 OpenAPI 3.0 规范
-pnpm sdk:generate       # 生成 TypeScript + Python SDK
+  ➜  Local:   http://localhost:5173/
 ```
 
-### 前端工作台
+Vite 把 `/api` 与 `/socket.io` 代理到 `http://localhost:3000`（`agentloom-studio/vite.config.ts`）。
+
+浏览器打开 `http://localhost:5173/register`，页面标题「创建账号」，填写「邮箱」「密码」「确认密码」（密码至少 8 位，含大写字母、小写字母与数字），点击「注册」。表单提交到 `POST /api/v1/auth/register`；本地 GoTrue 开启了自动确认，不需要确认邮件。用 curl 调同一个接口可以直接看到结果：
 
 ```bash
-cd agentloom-studio
-pnpm dev                # 开发模式
-pnpm test               # 单元测试
-pnpm typecheck          # TypeScript 类型检查
-pnpm build              # 生产构建
+curl -s -X POST http://localhost:3000/api/v1/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"dev@example.com","password":"DevPassw0rd"}'
 ```
 
-### 类型引擎（需 Rust 工具链）
+响应以 `{"data":{"user":{"id":` 开头，包含 `user` 与 `tokens` 两部分，说明账号已在 Supabase 与 AgentLoom 中创建。
+
+随后在 `http://localhost:5173/login` 用该账号登录。登录成功后进入 `/onboarding`，页面显示「欢迎使用 AgentLoom」。当前仓库配置下这一步会显示「Failed to fetch」，原因与修复建议见页首「已知问题」。
+
+## 可选：不使用沙箱运行 Agent
+
+Agent 的 `sandbox` 运行态需要 Firecracker 运行时（KVM 宿主机、PKI 证书），本地开发通常不具备。创建 Agent 时选择 `no_sandbox` 运行态，Agent 在 server 进程内运行，不需要任何沙箱组件；两种运行态的区别见 [核心概念](/dev/concepts)。需要在本地验证沙箱时，按 [Firecracker 部署](/deploy/firecracker) 准备宿主机。
+
+## 停止与清理
 
 ```bash
-cd agentloom-type-engine
-cargo test              # 运行测试
-cargo bench             # 性能基准测试
-wasm-pack build --target bundler --release  # 构建 WASM 产物
+docker compose -f agentloom-deploy/docker-compose.supabase.yml --env-file agentloom-deploy/.env down
+docker compose -f docker-compose.dev.yml down
+docker rm -f agentloom-local-postgres agentloom-local-redis agentloom-local-minio
+docker network rm supabase-shared
 ```
 
-### 沙箱容器镜像
-
-```bash
-cd agentloom-deploy/sandbox
-bash build.sh           # 构建 agentloom/sandbox:latest 沙箱容器镜像
-```
-
-### 移动端（需 Flutter 3.41.2）
-
-```bash
-cd agentloom_mobile
-flutter pub get         # 安装依赖
-flutter analyze         # 静态分析
-flutter test            # 单元测试
-dart run build_runner build  # 代码生成
-```
+数据库数据保存在 `agentloom-local-postgres` 容器内，删除容器即清空；下次从第 3 步重新开始。
 
 ## 下一步
 
-环境搭建完成后，建议继续阅读：
-
-- [架构总览](/dev/architecture) — 了解各子系统如何协作
-- [核心概念](/dev/concepts) — 掌握工作流、节点、端口等关键概念
-- [服务端架构](/dev/server/) — 深入了解后端模块设计
-- [工作室前端](/dev/studio/) — 探索画布编辑器实现
+- [系统架构](/dev/architecture)：一个请求和一次运行经过哪些组件。
+- [运行与编写测试](/dev/testing)：提交前要跑的命令。
