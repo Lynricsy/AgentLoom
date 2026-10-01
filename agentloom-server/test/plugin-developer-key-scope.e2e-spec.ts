@@ -73,7 +73,14 @@ describe('PluginDeveloperKeyService 按调用者限定密钥范围 (testcontaine
     await seedAppUser(context.adminSql, adminId, `admin-${adminId}@ex.com`);
     await seedAppUser(context.adminSql, creatorAId, `a-${creatorAId}@ex.com`);
     await seedAppUser(context.adminSql, creatorBId, `b-${creatorBId}@ex.com`);
-    await seedOrg(context.adminSql, orgId, 'Org', `org-${orgId}`, adminId, tenantId);
+    await seedOrg(
+      context.adminSql,
+      orgId,
+      'Org',
+      `org-${orgId}`,
+      adminId,
+      tenantId,
+    );
     await seedMember(context.adminSql, orgId, adminId, 'admin', adminId);
     await seedMember(context.adminSql, orgId, creatorAId, 'creator', adminId);
     await seedMember(context.adminSql, orgId, creatorBId, 'creator', adminId);

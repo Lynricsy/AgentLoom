@@ -10,7 +10,15 @@ import { Test } from '@nestjs/testing';
 import * as jwt from 'jsonwebtoken';
 import type { Namespace } from 'socket.io';
 import { io, type Socket } from 'socket.io-client';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import type { JwtPayload } from '../src/common/guards/auth.guard';
 import { WsJwtGuard } from '../src/common/guards/ws-jwt.guard';

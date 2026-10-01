@@ -168,143 +168,152 @@ const SHARE_KINDS: ShareKind[] = [
   },
 ];
 
-describe.each(SHARE_KINDS)('$tableName RLS isolation (testcontainers)', (kind) => {
-  let context: RlsTestContext;
-  let tenantOneId: string;
-  let tenantTwoId: string;
-  let userOneId: string;
-  let userTwoId: string;
-  let resourceOneId: string;
-  let shareOneToken: string;
+describe.each(SHARE_KINDS)(
+  '$tableName RLS isolation (testcontainers)',
+  (kind) => {
+    let context: RlsTestContext;
+    let tenantOneId: string;
+    let tenantTwoId: string;
+    let userOneId: string;
+    let userTwoId: string;
+    let resourceOneId: string;
+    let shareOneToken: string;
 
-  beforeAll(async () => {
-    context = await createRlsTestContext();
-    // Supabase 托管库对 public 新表默认 GRANT ALL TO authenticated。
-    // 显式授予同等权限，让测试只回答“表级 RLS 是否挡住其他租户”。
-    await context.adminSql.unsafe(
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON "${kind.tableName}" TO "authenticated"`,
-    );
-  }, 180_000);
+    beforeAll(async () => {
+      context = await createRlsTestContext();
+      // Supabase 托管库对 public 新表默认 GRANT ALL TO authenticated。
+      // 显式授予同等权限，让测试只回答“表级 RLS 是否挡住其他租户”。
+      await context.adminSql.unsafe(
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON "${kind.tableName}" TO "authenticated"`,
+      );
+    }, 180_000);
 
-  afterAll(async () => {
-    await context?.close();
-  });
+    afterAll(async () => {
+      await context?.close();
+    });
 
-  beforeEach(async () => {
-    await context.adminSql`DELETE FROM agent_shares`;
-    await context.adminSql`DELETE FROM workflow_shares`;
-    await context.adminSql`DELETE FROM agent_definitions`;
-    await context.reset();
+    beforeEach(async () => {
+      await context.adminSql`DELETE FROM agent_shares`;
+      await context.adminSql`DELETE FROM workflow_shares`;
+      await context.adminSql`DELETE FROM agent_definitions`;
+      await context.reset();
 
-    userOneId = crypto.randomUUID();
-    userTwoId = crypto.randomUUID();
-    tenantOneId = crypto.randomUUID();
-    tenantTwoId = crypto.randomUUID();
-    await seedAppUser(context.adminSql, userOneId, `u1-${userOneId}@ex.com`);
-    await seedAppUser(context.adminSql, userTwoId, `u2-${userTwoId}@ex.com`);
+      userOneId = crypto.randomUUID();
+      userTwoId = crypto.randomUUID();
+      tenantOneId = crypto.randomUUID();
+      tenantTwoId = crypto.randomUUID();
+      await seedAppUser(context.adminSql, userOneId, `u1-${userOneId}@ex.com`);
+      await seedAppUser(context.adminSql, userTwoId, `u2-${userTwoId}@ex.com`);
 
-    resourceOneId = await kind.seedPublishedResource(
-      context,
-      tenantOneId,
-      userOneId,
-    );
-    shareOneToken = crypto.randomBytes(32).toString('hex');
-    await context.adminSql.unsafe(
-      `INSERT INTO "${kind.tableName}" (${kind.resourceColumn}, tenant_id, share_token, share_type, created_by)
+      resourceOneId = await kind.seedPublishedResource(
+        context,
+        tenantOneId,
+        userOneId,
+      );
+      shareOneToken = crypto.randomBytes(32).toString('hex');
+      await context.adminSql.unsafe(
+        `INSERT INTO "${kind.tableName}" (${kind.resourceColumn}, tenant_id, share_token, share_type, created_by)
        VALUES ($1::uuid, $2::uuid, $3, 'copyable', $4::uuid)`,
-      [resourceOneId, tenantOneId, shareOneToken, userOneId],
-    );
-  });
+        [resourceOneId, tenantOneId, shareOneToken, userOneId],
+      );
+    });
 
-  it('启用 RLS 并带四条租户策略', async () => {
-    const [table] = await context.adminSql<{ relrowsecurity: boolean }[]>`
+    it('启用 RLS 并带四条租户策略', async () => {
+      const [table] = await context.adminSql<{ relrowsecurity: boolean }[]>`
       SELECT relrowsecurity FROM pg_class WHERE relname = ${kind.tableName}
     `;
-    const policies = await context.adminSql<{ policyname: string }[]>`
+      const policies = await context.adminSql<{ policyname: string }[]>`
       SELECT policyname FROM pg_policies WHERE tablename = ${kind.tableName}
       ORDER BY policyname
     `;
 
-    expect(table?.relrowsecurity).toBe(true);
-    expect(policies.map((row) => row.policyname)).toEqual(
-      ['delete', 'insert', 'select', 'update'].map(
-        (op) => `${kind.tableName}_${op}_policy`,
-      ),
-    );
-  });
-
-  it('T2 读不到 T1 的分享行（含 share_token）', async () => {
-    const rows = await withTenantContext(context.db, tenantTwoId, (db) =>
-      db.select().from(kind.table),
-    );
-
-    expect(rows).toEqual([]);
-  });
-
-  it('T1 只读到自己的分享行', async () => {
-    const rows = await withTenantContext(context.db, tenantOneId, (db) =>
-      db.select().from(kind.table),
-    );
-
-    expect(rows.map((row) => row.shareToken)).toEqual([shareOneToken]);
-  });
-
-  it('T2 不能写入 tenant_id=T1 的分享', async () => {
-    let caught: unknown;
-    try {
-      await withTenantContext(context.db, tenantTwoId, (db) =>
-        db.execute(
-          `INSERT INTO "${kind.tableName}" (${kind.resourceColumn}, tenant_id, share_token, created_by)
-           VALUES ('${resourceOneId}', '${tenantOneId}', '${crypto.randomUUID()}', '${userTwoId}')`,
+      expect(table?.relrowsecurity).toBe(true);
+      expect(policies.map((row) => row.policyname)).toEqual(
+        ['delete', 'insert', 'select', 'update'].map(
+          (op) => `${kind.tableName}_${op}_policy`,
         ),
       );
-    } catch (error) {
-      caught = error;
-    }
+    });
 
-    expect(getErrorText(caught)).toMatch(/row-level security/i);
-  });
+    it('T2 读不到 T1 的分享行（含 share_token）', async () => {
+      const rows = await withTenantContext(context.db, tenantTwoId, (db) =>
+        db.select().from(kind.table),
+      );
 
-  it('T2 无法撤销 T1 的分享', async () => {
-    const updated = await withTenantContext(context.db, tenantTwoId, (db) =>
-      db
-        .update(kind.table)
-        .set({ isRevoked: true })
-        .returning({ id: kind.table.id }),
-    );
+      expect(rows).toEqual([]);
+    });
 
-    expect(updated).toEqual([]);
-    const [row] = await context.adminSql.unsafe<{ is_revoked: boolean }[]>(
-      `SELECT is_revoked FROM "${kind.tableName}" WHERE share_token = $1`,
-      [shareOneToken],
-    );
-    expect(row?.is_revoked).toBe(false);
-  });
+    it('T1 只读到自己的分享行', async () => {
+      const rows = await withTenantContext(context.db, tenantOneId, (db) =>
+        db.select().from(kind.table),
+      );
 
-  it('分享流程不受影响：T1 创建/列表，匿名与 T2 按 token 访问，T1 撤销', async () => {
-    const service = new ShareService(context.db, configService);
+      expect(rows.map((row) => row.shareToken)).toEqual([shareOneToken]);
+    });
 
-    const created = await runInTenantTransaction(context.db, tenantOneId, () =>
-      kind.createShare(service, tenantOneId, userOneId, resourceOneId),
-    );
+    it('T2 不能写入 tenant_id=T1 的分享', async () => {
+      let caught: unknown;
+      try {
+        await withTenantContext(context.db, tenantTwoId, (db) =>
+          db.execute(
+            `INSERT INTO "${kind.tableName}" (${kind.resourceColumn}, tenant_id, share_token, created_by)
+           VALUES ('${resourceOneId}', '${tenantOneId}', '${crypto.randomUUID()}', '${userTwoId}')`,
+          ),
+        );
+      } catch (error) {
+        caught = error;
+      }
 
-    const listed = await runInTenantTransaction(context.db, tenantOneId, () =>
-      kind.listShareIds(service, tenantOneId, resourceOneId),
-    );
-    expect(listed).toContain(created.id);
+      expect(getErrorText(caught)).toMatch(/row-level security/i);
+    });
 
-    await expect(service.getPublicShare(created.shareToken)).resolves.toBeTruthy();
+    it('T2 无法撤销 T1 的分享', async () => {
+      const updated = await withTenantContext(context.db, tenantTwoId, (db) =>
+        db
+          .update(kind.table)
+          .set({ isRevoked: true })
+          .returning({ id: kind.table.id }),
+      );
 
-    const crossTenant = await runInTenantTransaction(
-      context.db,
-      tenantTwoId,
-      () => kind.getByToken(service, created.shareToken),
-    );
-    expect(crossTenant.tenantId).toBe(tenantOneId);
+      expect(updated).toEqual([]);
+      const [row] = await context.adminSql.unsafe<{ is_revoked: boolean }[]>(
+        `SELECT is_revoked FROM "${kind.tableName}" WHERE share_token = $1`,
+        [shareOneToken],
+      );
+      expect(row?.is_revoked).toBe(false);
+    });
 
-    await runInTenantTransaction(context.db, tenantOneId, () =>
-      kind.revoke(service, tenantOneId, created.id),
-    );
-    await expect(kind.getByToken(service, created.shareToken)).rejects.toThrow();
-  });
-});
+    it('分享流程不受影响：T1 创建/列表，匿名与 T2 按 token 访问，T1 撤销', async () => {
+      const service = new ShareService(context.db, configService);
+
+      const created = await runInTenantTransaction(
+        context.db,
+        tenantOneId,
+        () => kind.createShare(service, tenantOneId, userOneId, resourceOneId),
+      );
+
+      const listed = await runInTenantTransaction(context.db, tenantOneId, () =>
+        kind.listShareIds(service, tenantOneId, resourceOneId),
+      );
+      expect(listed).toContain(created.id);
+
+      await expect(
+        service.getPublicShare(created.shareToken),
+      ).resolves.toBeTruthy();
+
+      const crossTenant = await runInTenantTransaction(
+        context.db,
+        tenantTwoId,
+        () => kind.getByToken(service, created.shareToken),
+      );
+      expect(crossTenant.tenantId).toBe(tenantOneId);
+
+      await runInTenantTransaction(context.db, tenantOneId, () =>
+        kind.revoke(service, tenantOneId, created.id),
+      );
+      await expect(
+        kind.getByToken(service, created.shareToken),
+      ).rejects.toThrow();
+    });
+  },
+);

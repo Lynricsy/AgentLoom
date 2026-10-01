@@ -1711,7 +1711,10 @@ describe('AgentTaskWorker', () => {
       };
 
       async function resolveIntervention(
-        intervention: Pick<InterventionResolution, 'action' | 'modifiedContent'>,
+        intervention: Pick<
+          InterventionResolution,
+          'action' | 'modifiedContent'
+        >,
       ) {
         mockDb.select.mockReturnValue(
           createSelectChain(

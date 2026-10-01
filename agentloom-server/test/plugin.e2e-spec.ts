@@ -464,7 +464,13 @@ describe('Plugin trust chain (E2E)', () => {
     const creatorId = crypto.randomUUID();
     const creatorEmail = `plugin-creator-${crypto.randomUUID().slice(0, 8)}@example.com`;
     await seedAppUser(ctx.adminSql, creatorId, creatorEmail);
-    await seedMember(ctx.adminSql, owner.orgId, creatorId, 'creator', owner.userId);
+    await seedMember(
+      ctx.adminSql,
+      owner.orgId,
+      creatorId,
+      'creator',
+      owner.userId,
+    );
     await ctx.adminSql`UPDATE users SET current_organization_id = ${owner.orgId}::uuid WHERE id = ${creatorId}::uuid`;
     const creator: TestTenant = {
       ...owner,

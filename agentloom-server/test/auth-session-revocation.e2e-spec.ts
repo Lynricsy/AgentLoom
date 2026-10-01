@@ -87,11 +87,7 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
       blacklist,
       { get: () => resolver } as unknown as ModuleRef,
     );
-    authService = new AuthService(
-      {} as SupabaseService,
-      context.db,
-      blacklist,
-    );
+    authService = new AuthService({} as SupabaseService, context.db, blacklist);
   }, 180_000);
 
   afterAll(async () => {
@@ -122,16 +118,22 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
   it('DELETE /auth/sessions/:id 之后，该会话签发的 token 被 AuthGuard 拒绝', async () => {
     const other = await addSession();
     expect(
-      await rejectionType(guard.canActivate(createHttpContext(other.token).context)),
+      await rejectionType(
+        guard.canActivate(createHttpContext(other.token).context),
+      ),
     ).toBe('accepted');
 
     await authService.revokeSession(currentToken, other.sessionId);
 
     expect(
-      await rejectionType(guard.canActivate(createHttpContext(other.token).context)),
+      await rejectionType(
+        guard.canActivate(createHttpContext(other.token).context),
+      ),
     ).toBe('https://agentloom.dev/errors/token-revoked');
     expect(
-      await rejectionType(guard.canActivate(createHttpContext(currentToken).context)),
+      await rejectionType(
+        guard.canActivate(createHttpContext(currentToken).context),
+      ),
     ).toBe('accepted');
   });
 
@@ -143,11 +145,15 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
 
     for (const token of [a.token, b.token]) {
       expect(
-        await rejectionType(guard.canActivate(createHttpContext(token).context)),
+        await rejectionType(
+          guard.canActivate(createHttpContext(token).context),
+        ),
       ).toBe('https://agentloom.dev/errors/token-revoked');
     }
     expect(
-      await rejectionType(guard.canActivate(createHttpContext(currentToken).context)),
+      await rejectionType(
+        guard.canActivate(createHttpContext(currentToken).context),
+      ),
     ).toBe('accepted');
   });
 
@@ -159,7 +165,9 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
     `;
 
     expect(
-      await rejectionType(guard.canActivate(createHttpContext(expired.token).context)),
+      await rejectionType(
+        guard.canActivate(createHttpContext(expired.token).context),
+      ),
     ).toBe('https://agentloom.dev/errors/token-revoked');
   });
 
@@ -167,7 +175,9 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
     await context.adminSql`ALTER TABLE auth.sessions RENAME TO sessions_hidden`;
     try {
       expect(
-        await rejectionType(guard.canActivate(createHttpContext(currentToken).context)),
+        await rejectionType(
+          guard.canActivate(createHttpContext(currentToken).context),
+        ),
       ).toBe('https://agentloom.dev/errors/session-verification-unavailable');
     } finally {
       await context.adminSql`ALTER TABLE auth.sessions_hidden RENAME TO sessions`;

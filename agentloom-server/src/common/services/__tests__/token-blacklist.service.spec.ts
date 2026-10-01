@@ -159,7 +159,9 @@ describe('TokenBlacklistService (DB-backed)', () => {
     it('auth.sessions 不可读时 fail-closed：抛 503，不退回只按哈希判断', async () => {
       const execute = vi
         .fn()
-        .mockRejectedValue(new Error('relation "auth.sessions" does not exist'));
+        .mockRejectedValue(
+          new Error('relation "auth.sessions" does not exist'),
+        );
       const scoped = new TokenBlacklistService({
         execute,
         query: { revokedTokens: { findFirst: mockFindFirst } },

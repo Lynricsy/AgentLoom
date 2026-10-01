@@ -286,9 +286,7 @@ describe('PluginDeveloperKeyService', () => {
 
       await expect(
         service.findById(ORG_ID, KEY_ID, ADMIN_ACTOR),
-      ).rejects.toBeInstanceOf(
-        PluginDeveloperKeyNotFoundException,
-      );
+      ).rejects.toBeInstanceOf(PluginDeveloperKeyNotFoundException);
     });
   });
 
@@ -329,9 +327,7 @@ describe('PluginDeveloperKeyService', () => {
 
       await expect(
         service.revokeKey(ORG_ID, KEY_ID, ADMIN_ACTOR),
-      ).rejects.toBeInstanceOf(
-        PluginDeveloperKeyInvalidException,
-      );
+      ).rejects.toBeInstanceOf(PluginDeveloperKeyInvalidException);
 
       expect(db.update).not.toHaveBeenCalled();
     });

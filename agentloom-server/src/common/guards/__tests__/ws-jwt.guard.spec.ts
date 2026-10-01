@@ -69,7 +69,9 @@ describe('WsJwtGuard', () => {
 
     guard = new WsJwtGuard(
       new WsAuthService(
-        { get: vi.fn().mockReturnValue(JWT_SECRET) } as unknown as ConfigService,
+        {
+          get: vi.fn().mockReturnValue(JWT_SECRET),
+        } as unknown as ConfigService,
         tokenBlacklist as unknown as TokenBlacklistService,
         userIdentityResolver as unknown as UserIdentityResolverService,
       ),

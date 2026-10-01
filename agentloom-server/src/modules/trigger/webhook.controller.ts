@@ -414,7 +414,9 @@ export class WebhookController {
     body: unknown,
     github: GithubDelivery | null,
   ): Record<string, unknown> {
-    const params = this.isRecord(body) ? { ...body } : { payload: body ?? null };
+    const params = this.isRecord(body)
+      ? { ...body }
+      : { payload: body ?? null };
 
     if (!github) {
       return params;

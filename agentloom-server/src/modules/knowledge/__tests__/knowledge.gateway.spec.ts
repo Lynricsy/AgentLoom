@@ -23,7 +23,11 @@ function createGateway() {
   } as unknown as UserIdentityResolverService;
 
   return new KnowledgeGateway(
-    new WsAuthService(configService, tokenBlacklistService, userIdentityResolver),
+    new WsAuthService(
+      configService,
+      tokenBlacklistService,
+      userIdentityResolver,
+    ),
   );
 }
 
