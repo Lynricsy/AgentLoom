@@ -1,8 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
-
-const ERROR_TYPE_BASE = 'https://agentloom.dev/errors/';
+import { problemType } from '../../common/exceptions/problem-type';
 
 function retryAfterHeader(seconds: number): Record<string, string> {
   return { 'Retry-After': String(Math.max(1, Math.ceil(seconds))) };
@@ -11,7 +10,7 @@ function retryAfterHeader(seconds: number): Record<string, string> {
 export class AgentApiKeyInvalidException extends DomainException {
   constructor() {
     super({
-      type: `${ERROR_TYPE_BASE}agent-api-key-invalid`,
+      type: problemType('agent-api-key-invalid'),
       title: 'Unauthorized',
       status: HttpStatus.UNAUTHORIZED,
       detail: 'Agent API key is invalid, revoked or expired',
@@ -22,7 +21,7 @@ export class AgentApiKeyInvalidException extends DomainException {
 export class AgentApiKeyNotFoundException extends DomainException {
   constructor(keyId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}agent-api-key-not-found`,
+      type: problemType('agent-api-key-not-found'),
       title: 'Agent API Key 不存在',
       status: HttpStatus.NOT_FOUND,
       detail: `Agent API Key ${keyId} 不存在或无权访问`,
@@ -33,7 +32,7 @@ export class AgentApiKeyNotFoundException extends DomainException {
 export class AgentApiKeyLimitExceededException extends DomainException {
   constructor(limit: number) {
     super({
-      type: `${ERROR_TYPE_BASE}agent-api-key-limit-exceeded`,
+      type: problemType('agent-api-key-limit-exceeded'),
       title: 'Agent API Key 数量超限',
       status: HttpStatus.CONFLICT,
       detail: `每个 Agent 最多保留 ${limit} 个未吊销的 API Key`,
@@ -44,7 +43,7 @@ export class AgentApiKeyLimitExceededException extends DomainException {
 export class AgentNotPublishedException extends DomainException {
   constructor(agentId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}agent-not-published`,
+      type: problemType('agent-not-published'),
       title: 'Conflict',
       status: HttpStatus.CONFLICT,
       detail: `Agent ${agentId} is not published`,
@@ -55,7 +54,7 @@ export class AgentNotPublishedException extends DomainException {
 export class AgentApiAgentArchivedException extends DomainException {
   constructor(agentId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}agent-archived`,
+      type: problemType('agent-archived'),
       title: 'Conflict',
       status: HttpStatus.CONFLICT,
       detail: `Agent ${agentId} is archived`,
@@ -66,7 +65,7 @@ export class AgentApiAgentArchivedException extends DomainException {
 export class AgentApiConversationNotFoundException extends DomainException {
   constructor(conversationId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}agent-api-conversation-not-found`,
+      type: problemType('agent-api-conversation-not-found'),
       title: 'Not Found',
       status: HttpStatus.NOT_FOUND,
       detail: `Conversation ${conversationId} not found`,
@@ -77,7 +76,7 @@ export class AgentApiConversationNotFoundException extends DomainException {
 export class AgentApiRunNotFoundException extends DomainException {
   constructor(runId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}agent-api-run-not-found`,
+      type: problemType('agent-api-run-not-found'),
       title: 'Not Found',
       status: HttpStatus.NOT_FOUND,
       detail: `Run ${runId} not found`,
@@ -88,7 +87,7 @@ export class AgentApiRunNotFoundException extends DomainException {
 export class ConversationEndedException extends DomainException {
   constructor(conversationId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}conversation-ended`,
+      type: problemType('conversation-ended'),
       title: 'Conflict',
       status: HttpStatus.CONFLICT,
       detail: `Conversation ${conversationId} has ended`,
@@ -99,7 +98,7 @@ export class ConversationEndedException extends DomainException {
 export class ConversationBusyException extends DomainException {
   constructor(activeRunId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}conversation-busy`,
+      type: problemType('conversation-busy'),
       title: 'Conflict',
       status: HttpStatus.CONFLICT,
       detail: 'Conversation already has an active run',
@@ -111,7 +110,7 @@ export class ConversationBusyException extends DomainException {
 export class RunNotCancellableException extends DomainException {
   constructor(runId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}run-not-cancellable`,
+      type: problemType('run-not-cancellable'),
       title: 'Conflict',
       status: HttpStatus.CONFLICT,
       detail: `Run ${runId} has already finished and cannot be cancelled`,
@@ -122,7 +121,7 @@ export class RunNotCancellableException extends DomainException {
 export class IdempotencyKeyReusedException extends DomainException {
   constructor() {
     super({
-      type: `${ERROR_TYPE_BASE}idempotency-key-reused`,
+      type: problemType('idempotency-key-reused'),
       title: 'Unprocessable Entity',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: 'Idempotency-Key was already used with a different request body',
@@ -133,7 +132,7 @@ export class IdempotencyKeyReusedException extends DomainException {
 export class ConcurrencyLimitExceededException extends DomainException {
   constructor(retryAfterSeconds: number) {
     super({
-      type: `${ERROR_TYPE_BASE}concurrency-limit-exceeded`,
+      type: problemType('concurrency-limit-exceeded'),
       title: 'Too Many Requests',
       status: HttpStatus.TOO_MANY_REQUESTS,
       detail: 'Concurrent run limit of this API key has been reached',
@@ -145,7 +144,7 @@ export class ConcurrencyLimitExceededException extends DomainException {
 export class RateLimitExceededException extends DomainException {
   constructor(retryAfterSeconds: number) {
     super({
-      type: `${ERROR_TYPE_BASE}rate-limit-exceeded`,
+      type: problemType('rate-limit-exceeded'),
       title: 'Too Many Requests',
       status: HttpStatus.TOO_MANY_REQUESTS,
       detail: 'Rate limit exceeded, retry later',
@@ -157,7 +156,7 @@ export class RateLimitExceededException extends DomainException {
 export class RunEventsExpiredException extends DomainException {
   constructor(runId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}run-events-expired`,
+      type: problemType('run-events-expired'),
       title: 'Gone',
       status: HttpStatus.GONE,
       detail: `Events of run ${runId} are no longer retained; fetch the run instead`,
@@ -169,7 +168,7 @@ export class RunEventsExpiredException extends DomainException {
 export class AgentApiValidationException extends DomainException {
   constructor(field: string, message: string) {
     super({
-      type: `${ERROR_TYPE_BASE}validation-error`,
+      type: problemType('validation-error'),
       title: 'Unprocessable Entity',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: message,
@@ -181,7 +180,7 @@ export class AgentApiValidationException extends DomainException {
 export class RunDispatchFailedException extends DomainException {
   constructor(runId: string) {
     super({
-      type: `${ERROR_TYPE_BASE}run-dispatch-failed`,
+      type: problemType('run-dispatch-failed'),
       title: 'Service Unavailable',
       status: HttpStatus.SERVICE_UNAVAILABLE,
       detail: `Run ${runId} could not be dispatched for execution and has been marked failed`,

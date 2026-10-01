@@ -194,7 +194,7 @@ describe('OptimizationSuggestionController', () => {
 
     it('应透传 service.applySuggestion 的异常', async () => {
       const error = new DomainException({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-not-found',
         title: 'Suggestion Not Found',
         status: 404,
         detail: 'missing',
@@ -229,7 +229,7 @@ describe('OptimizationSuggestionController', () => {
 
     it('应透传 service.dismissSuggestion 的冲突异常', async () => {
       const error = new DomainException({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         title: 'Suggestion Status Conflict',
         status: 409,
         detail: 'conflict',

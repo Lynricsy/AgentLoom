@@ -10,6 +10,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodValidationException } from 'nestjs-zod';
 import { z } from 'zod';
 import { DomainException } from '../exceptions/domain.exception';
+import { problemType } from '../exceptions/problem-type';
 import type { ProblemDetails } from '../types/problem-details.type';
 
 @Catch()
@@ -48,7 +49,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof ZodValidationException) {
       const zodError = exception.getZodError() as z.ZodError | undefined;
       return {
-        type: 'https://agentloom.dev/errors/validation-error',
+        type: problemType('validation-error'),
         title: 'Validation Error',
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         detail: 'Request validation failed',
@@ -84,7 +85,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
             exception.message);
 
       return {
-        type: 'https://agentloom.dev/errors/http-error',
+        type: problemType('http-error'),
         title: HttpStatus[status] ?? 'Error',
         status,
         detail,
@@ -95,7 +96,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     this.logger.error('Unhandled exception', exception);
 
     return {
-      type: 'https://agentloom.dev/errors/internal-server-error',
+      type: problemType('internal-server-error'),
       title: 'Internal Server Error',
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       detail: 'An unexpected error occurred',

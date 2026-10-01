@@ -194,10 +194,11 @@ void main() {
   });
 
   group('onError - 401 不可恢复错误 → 强制登出', () {
+    // server 返回 RFC 9457 完整 URI（agentloom-server/src/common/guards/auth.guard.ts）
     for (final errorType in [
-      'token-revoked',
-      'token-invalid',
-      'token-missing',
+      'https://agentloom.dev/errors/token-revoked',
+      'https://agentloom.dev/errors/token-invalid',
+      'https://agentloom.dev/errors/token-missing',
     ]) {
       test('$errorType → 清除 tokens + 强制登出', () async {
         final err = DioException(
@@ -216,6 +217,24 @@ void main() {
         expect(handler.nextError, same(err));
       });
     }
+  });
+
+  group('onError - 401 非 agentloom 前缀的同名 slug 不触发强制登出', () {
+    test('https://example.com/errors/token-revoked → 走 refresh 流程', () async {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+      final err = DioException(
+        requestOptions: RequestOptions(path: '/test'),
+        response: Response(
+          statusCode: 401,
+          data: {'type': 'https://example.com/errors/token-revoked'},
+          requestOptions: RequestOptions(path: '/test'),
+        ),
+      );
+
+      await callOnErrorAndWait(err);
+
+      verify(() => mockTokenStorage.readTokens()).called(1);
+    });
   });
 
   group('onError - 401 token-expired → refresh 流程', () {

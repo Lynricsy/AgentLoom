@@ -337,7 +337,7 @@ describe('OptimizationSuggestionsPanel', () => {
       (_id: string, options?: { onError?: (error: unknown) => void | Promise<void> }) => {
         void options?.onError?.(
           createHttpError({
-            type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+            type: 'https://agentloom.dev/errors/optimization-suggestion-policy-blocked',
             title: 'Suggestion Blocked By Organization Policy',
             status: 422,
             detail: '组织自治上限禁止处理该建议。',

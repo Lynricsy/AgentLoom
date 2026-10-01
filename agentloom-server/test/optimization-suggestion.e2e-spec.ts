@@ -755,7 +755,7 @@ describe('OptimizationSuggestion E2E', () => {
       // 旧用例期待 201 并写回画布会制造已生效的假象，409 且不写任何节点才是当前契约。
       expect(response.status).toBe(409);
       expect(response.body).toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_APPLICABLE',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-not-applicable',
         title: '优化建议当前不可采纳',
         status: 409,
       });
@@ -847,7 +847,7 @@ describe('OptimizationSuggestion E2E', () => {
 
       expect(response.status).toBe(409);
       expect(response.body).toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         title: 'Suggestion Status Conflict',
         status: 409,
         detail: `Optimization suggestion ${suggestion.id} is already applied`,
@@ -925,7 +925,7 @@ describe('OptimizationSuggestion E2E', () => {
 
       expect(response.status).toBe(409);
       expect(response.body).toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         title: 'Suggestion Status Conflict',
         status: 409,
         detail: `Optimization suggestion ${suggestion.id} is already dismissed`,
@@ -1081,7 +1081,7 @@ describe('OptimizationSuggestion E2E', () => {
 
       expect(crossTenantApplyResponse.status).toBe(404);
       expect(crossTenantApplyResponse.body).toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-not-found',
         title: 'Suggestion Not Found',
         status: 404,
         detail: `Optimization suggestion ${tenantTwoSuggestion.id} not found`,

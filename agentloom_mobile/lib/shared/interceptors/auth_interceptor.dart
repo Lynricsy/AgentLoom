@@ -54,10 +54,9 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
 
     final errorType = _extractErrorType(err.response);
 
-    // token-revoked / token-invalid / token-missing → 强制登出，不尝试 refresh
-    if (errorType == 'token-revoked' ||
-        errorType == 'token-invalid' ||
-        errorType == 'token-missing') {
+    // token-revoked / token-invalid / token-missing → 强制登出，不尝试 refresh。
+    // server 返回 RFC 9457 完整 URI，必须按完整值比较。
+    if (_forceLogoutErrorTypes.contains(errorType)) {
       await tokenStorage.clearTokens();
       await onForceLogout();
       return handler.next(err);
@@ -107,6 +106,13 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
     requestOptions.headers['Authorization'] = 'Bearer $accessToken';
     return retryRequest(requestOptions);
   }
+
+  static const _problemTypeBase = 'https://agentloom.dev/errors/';
+  static const _forceLogoutErrorTypes = {
+    '${_problemTypeBase}token-revoked',
+    '${_problemTypeBase}token-invalid',
+    '${_problemTypeBase}token-missing',
+  };
 
   /// 从 401 响应体中提取错误类型
   String? _extractErrorType(Response<dynamic>? response) {

@@ -1,13 +1,12 @@
 import { HttpStatus } from '@nestjs/common';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
-
-const BASE_URL = 'https://agentloom.dev/errors';
+import { problemType } from '../../common/exceptions/problem-type';
 
 export class PluginNotFoundException extends DomainException {
   constructor(id: string) {
     super({
-      type: `${BASE_URL}/plugin-not-found`,
+      type: problemType('plugin-not-found'),
       title: '插件不存在',
       status: HttpStatus.NOT_FOUND,
       detail: `插件 ${id} 不存在`,
@@ -18,7 +17,7 @@ export class PluginNotFoundException extends DomainException {
 export class PluginAlreadyExistsException extends DomainException {
   constructor(pluginId: string) {
     super({
-      type: `${BASE_URL}/plugin-already-exists`,
+      type: problemType('plugin-already-exists'),
       title: '插件已存在',
       status: HttpStatus.CONFLICT,
       detail: `插件 ${pluginId} 已在当前组织中注册`,
@@ -29,7 +28,7 @@ export class PluginAlreadyExistsException extends DomainException {
 export class PluginVersionConflictException extends DomainException {
   constructor(id: string, currentVersion: number) {
     super({
-      type: `${BASE_URL}/plugin-version-conflict`,
+      type: problemType('plugin-version-conflict'),
       title: '插件版本冲突',
       status: HttpStatus.CONFLICT,
       detail: `插件 ${id} 已被其他用户修改，请刷新后重试`,
@@ -49,7 +48,7 @@ export class PluginVersionConflictException extends DomainException {
 export class PluginInactiveException extends DomainException {
   constructor(id: string) {
     super({
-      type: `${BASE_URL}/plugin-inactive`,
+      type: problemType('plugin-inactive'),
       title: '插件不可用',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `插件 ${id} 当前未处于激活状态`,
@@ -62,7 +61,7 @@ export class PluginValidationException extends DomainException {
     const messages = Array.isArray(message) ? message : [message];
 
     super({
-      type: `${BASE_URL}/plugin-validation-failed`,
+      type: problemType('plugin-validation-failed'),
       title: '插件校验失败',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: messages.join('\n'),
@@ -79,7 +78,7 @@ export class PluginValidationException extends DomainException {
 export class PluginFileTooLargeException extends DomainException {
   constructor() {
     super({
-      type: `${BASE_URL}/plugin-file-too-large`,
+      type: problemType('plugin-file-too-large'),
       title: '插件文件过大',
       status: HttpStatus.PAYLOAD_TOO_LARGE,
       detail: '插件文件大小不能超过 50MB',
@@ -90,7 +89,7 @@ export class PluginFileTooLargeException extends DomainException {
 export class PluginSignatureMissingException extends DomainException {
   constructor(pluginId: string) {
     super({
-      type: `${BASE_URL}/plugin-signature-missing`,
+      type: problemType('plugin-signature-missing'),
       title: 'Plugin Signature Missing',
       status: HttpStatus.BAD_REQUEST,
       detail: `插件 "${pluginId}" 缺少签名信息。所有插件必须进行代码签名。`,
@@ -101,7 +100,7 @@ export class PluginSignatureMissingException extends DomainException {
 export class PluginSignatureInvalidException extends DomainException {
   constructor(pluginId: string) {
     super({
-      type: `${BASE_URL}/plugin-signature-invalid`,
+      type: problemType('plugin-signature-invalid'),
       title: 'Plugin Signature Invalid',
       status: HttpStatus.UNAUTHORIZED,
       detail: `插件 "${pluginId}" 的签名验证失败。归档可能已被篡改或使用了错误的签名密钥。`,
@@ -113,7 +112,7 @@ export class PluginSignatureInvalidException extends DomainException {
 export class PluginSignerMismatchException extends DomainException {
   constructor(pluginId: string) {
     super({
-      type: `${BASE_URL}/plugin-signer-mismatch`,
+      type: problemType('plugin-signer-mismatch'),
       title: 'Plugin Signer Mismatch',
       status: HttpStatus.FORBIDDEN,
       detail: `插件 "${pluginId}" 的签名公钥不属于当前上传者，只能用自己注册的开发者密钥签名发布。`,
@@ -124,7 +123,7 @@ export class PluginSignerMismatchException extends DomainException {
 export class PluginDeveloperKeyInvalidException extends DomainException {
   constructor(detail?: string) {
     super({
-      type: `${BASE_URL}/plugin-developer-key-invalid`,
+      type: problemType('plugin-developer-key-invalid'),
       title: 'Plugin Developer Key Invalid',
       status: HttpStatus.BAD_REQUEST,
       detail:
@@ -137,7 +136,7 @@ export class PluginDeveloperKeyInvalidException extends DomainException {
 export class PluginDeveloperKeyNotFoundException extends DomainException {
   constructor(id: string) {
     super({
-      type: `${BASE_URL}/plugin-developer-key-not-found`,
+      type: problemType('plugin-developer-key-not-found'),
       title: 'Plugin Developer Key Not Found',
       status: HttpStatus.NOT_FOUND,
       detail: `开发者密钥 ${id} 不存在或不属于当前组织`,
@@ -148,7 +147,7 @@ export class PluginDeveloperKeyNotFoundException extends DomainException {
 export class PluginExecutionTimeoutException extends DomainException {
   constructor(pluginId: string, timeoutMs: number) {
     super({
-      type: `${BASE_URL}/plugin-execution-timeout`,
+      type: problemType('plugin-execution-timeout'),
       title: 'Plugin Execution Timeout',
       status: HttpStatus.GATEWAY_TIMEOUT,
       detail: `插件 "${pluginId}" 执行超时 (${timeoutMs}ms)。请检查插件逻辑或增加超时配置。`,
@@ -159,7 +158,7 @@ export class PluginExecutionTimeoutException extends DomainException {
 export class PluginResourceExhaustedException extends DomainException {
   constructor(pluginId: string, resource: string) {
     super({
-      type: `${BASE_URL}/plugin-resource-exhausted`,
+      type: problemType('plugin-resource-exhausted'),
       title: 'Plugin Resource Exhausted',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `插件 "${pluginId}" 超出 ${resource} 限制。请优化插件以减少资源消耗。`,
@@ -170,7 +169,7 @@ export class PluginResourceExhaustedException extends DomainException {
 export class PluginPermissionDeniedException extends DomainException {
   constructor(pluginId: string, detail?: string) {
     super({
-      type: `${BASE_URL}/plugin-permission-denied`,
+      type: problemType('plugin-permission-denied'),
       title: 'Plugin Permission Denied',
       status: HttpStatus.FORBIDDEN,
       detail: detail ?? `插件 "${pluginId}" 尝试访问未授权的资源。`,
@@ -181,7 +180,7 @@ export class PluginPermissionDeniedException extends DomainException {
 export class PluginSandboxException extends DomainException {
   constructor(pluginId: string, detail?: string) {
     super({
-      type: `${BASE_URL}/plugin-sandbox-error`,
+      type: problemType('plugin-sandbox-error'),
       title: 'Plugin Sandbox Error',
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       detail: detail ?? `插件 "${pluginId}" 在沙箱中执行时发生错误。`,
@@ -192,7 +191,7 @@ export class PluginSandboxException extends DomainException {
 export class PluginUsageLedgerException extends DomainException {
   constructor(pluginId: string, detail?: string) {
     super({
-      type: `${BASE_URL}/plugin-usage-ledger-error`,
+      type: problemType('plugin-usage-ledger-error'),
       title: 'Plugin Usage Ledger Error',
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       detail: detail ?? `插件 "${pluginId}" 的用量落账失败，执行结果已回滚。`,
@@ -208,7 +207,7 @@ export class PluginEarningsPayoutTransitionException extends DomainException {
     detail?: string,
   ) {
     super({
-      type: `${BASE_URL}/plugin-earnings-payout-transition-invalid`,
+      type: problemType('plugin-earnings-payout-transition-invalid'),
       title: '插件收益打款状态迁移非法',
       status: HttpStatus.CONFLICT,
       detail:

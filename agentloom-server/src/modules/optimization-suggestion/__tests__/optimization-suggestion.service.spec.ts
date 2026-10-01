@@ -274,7 +274,7 @@ describe('OptimizationSuggestionService', () => {
       db.select.mockReturnValue(createSelectWhereResolved([]));
 
       await expect(service.findById(SUGGESTION_ID)).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-not-found',
         status: 404,
       } as Record<string, unknown>);
     });
@@ -303,7 +303,7 @@ describe('OptimizationSuggestionService', () => {
         await expect(
           service.applySuggestion(SUGGESTION_ID, USER_ID),
         ).rejects.toMatchObject({
-          type: 'OPTIMIZATION_SUGGESTION_NOT_APPLICABLE',
+          type: 'https://agentloom.dev/errors/optimization-suggestion-not-applicable',
           status: 409,
           // 断语义而非逐字文案：必须说清「采纳无效果」且指向 Agent Definition
           detail: expect.stringContaining('采纳后不会产生任何效果') as unknown,
@@ -338,7 +338,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.applySuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-policy-blocked',
         status: 422,
         detail: expect.stringContaining('MANUAL_CONFIRM'),
       } as Record<string, unknown>);
@@ -353,7 +353,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.applySuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-not-found',
         status: 404,
       } as Record<string, unknown>);
     });
@@ -366,7 +366,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.applySuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         status: 409,
       } as Record<string, unknown>);
     });
@@ -602,7 +602,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.applySuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NODE_NOT_FOUND',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-node-not-found',
         status: 404,
       } as Record<string, unknown>);
     });
@@ -655,7 +655,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.applySuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         status: 409,
         detail: `Optimization suggestion ${SUGGESTION_ID} is already dismissed`,
       } as Record<string, unknown>);
@@ -698,7 +698,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.applySuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-policy-blocked',
         status: 422,
         detail: expect.stringContaining('RULE_BASED'),
       } as Record<string, unknown>);
@@ -755,7 +755,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.dismissSuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-not-found',
         status: 404,
       } as Record<string, unknown>);
     });
@@ -768,7 +768,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.dismissSuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         status: 409,
       } as Record<string, unknown>);
     });
@@ -787,7 +787,7 @@ describe('OptimizationSuggestionService', () => {
       await expect(
         service.dismissSuggestion(SUGGESTION_ID, USER_ID),
       ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: 'https://agentloom.dev/errors/optimization-suggestion-status-conflict',
         status: 409,
         detail: `Optimization suggestion ${SUGGESTION_ID} is already applied`,
       } as Record<string, unknown>);

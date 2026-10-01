@@ -6,7 +6,7 @@ docType: reference
 
 AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）响应体，字段为 `type`、`title`、`status`、`detail`、`instance`；请求体校验失败时另有 `errors` 数组，逐项给出 `field` 与 `message`。Studio 中的错误提示通常显示 `title` 或 `detail`。响应格式的完整说明见 [API 概览](/api/)。
 
-本页按功能列出用户最常遇到的 `type`。表中省略公共前缀 `https://agentloom.dev/errors/`，例如 `workflow-not-published` 的完整值是 `https://agentloom.dev/errors/workflow-not-published`；不使用该前缀的类型写出完整值。
+本页按功能列出用户最常遇到的 `type`。所有类型都使用公共前缀 `https://agentloom.dev/errors/`，表中省略前缀，例如 `workflow-not-published` 的完整值是 `https://agentloom.dev/errors/workflow-not-published`。
 
 本页没有列全。遇到表中没有的 `type` 时，取前缀之后的部分在 `agentloom-server/src` 中搜索，定义它的异常类（多在各模块的 `*.exceptions.ts` 中）会给出状态码与 `detail` 文案。
 
@@ -105,17 +105,15 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 
 ## 知识库
 
-本组类型不带公共前缀，表中为完整值。
-
 | type | HTTP 状态 | 含义 | 处理建议 |
 | --- | --- | --- | --- |
-| `knowledge-base/not-found` | 404 | 知识库不存在 | 确认知识库未被删除 |
-| `knowledge-base/embedding-model-not-configured` | 422 | 知识库没有可用的 Embedding 模型 | 按[检索配置](/guide/knowledge-base/retrieval)选择 Embedding 模型 |
-| `document/unsupported-file-type` | 422 | 文件类型不受支持 | 改用 PDF、TXT、Markdown 或 DOCX |
-| `document/file-too-large` | 422 | 文件超过大小上限 | 拆分文件后分别上传 |
-| `document/empty-file` | 422 | 文件为空 | 检查文件内容 |
-| `document/parse-failed` | 422 | 文档解析失败 | 确认文件未损坏，或转换格式后重新上传 |
-| `document/chunk-failed` | 500 | 文档切分失败 | 重新上传；持续出现时联系部署管理员 |
+| `knowledge-base-not-found` | 404 | 知识库不存在 | 确认知识库未被删除 |
+| `knowledge-base-embedding-model-not-configured` | 422 | 知识库没有可用的 Embedding 模型 | 按[检索配置](/guide/knowledge-base/retrieval)选择 Embedding 模型 |
+| `document-unsupported-file-type` | 422 | 文件类型不受支持 | 改用 PDF、TXT、Markdown 或 DOCX |
+| `document-file-too-large` | 422 | 文件超过大小上限 | 拆分文件后分别上传 |
+| `document-empty-file` | 422 | 文件为空 | 检查文件内容 |
+| `document-parse-failed` | 422 | 文档解析失败 | 确认文件未损坏，或转换格式后重新上传 |
+| `document-chunk-failed` | 500 | 文档切分失败 | 重新上传；持续出现时联系部署管理员 |
 
 ## 模型、MCP 与智能路由
 

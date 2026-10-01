@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AnalysisMetadata } from '../../database/schema/optimization-suggestions.schema';
 
 import { DomainException } from '../../common/exceptions/domain.exception';
+import { problemType } from '../../common/exceptions/problem-type';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -173,7 +174,7 @@ export class OptimizationSuggestionService {
 
     if (!workflowDefinition) {
       throw new DomainException({
-        type: 'OPTIMIZATION_SUGGESTION_WORKFLOW_NOT_FOUND',
+        type: problemType('optimization-suggestion-workflow-not-found'),
         title: 'Workflow Not Found',
         status: 404,
         detail: `Workflow definition ${suggestion.workflowDefinitionId} not found`,
@@ -248,7 +249,7 @@ export class OptimizationSuggestionService {
         }
 
         throw new DomainException({
-          type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+          type: problemType('optimization-suggestion-status-conflict'),
           title: 'Suggestion Status Conflict',
           status: 409,
           detail: `Optimization suggestion ${id} is already ${latestSuggestion.status}`,
@@ -294,7 +295,7 @@ export class OptimizationSuggestionService {
       }
 
       throw new DomainException({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        type: problemType('optimization-suggestion-status-conflict'),
         title: 'Suggestion Status Conflict',
         status: 409,
         detail: `Optimization suggestion ${id} is already ${latestSuggestion.status}`,
@@ -461,7 +462,7 @@ export class OptimizationSuggestionService {
 
     if (!matched) {
       throw new DomainException({
-        type: 'OPTIMIZATION_SUGGESTION_NODE_NOT_FOUND',
+        type: problemType('optimization-suggestion-node-not-found'),
         title: 'Suggestion Node Not Found',
         status: 404,
         detail: `Workflow node ${suggestion.nodeId} not found in workflow ${workflowDefinition.id}`,
@@ -511,7 +512,7 @@ export class OptimizationSuggestionService {
     }
 
     throw new DomainException({
-      type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+      type: problemType('optimization-suggestion-status-conflict'),
       title: 'Suggestion Status Conflict',
       status: 409,
       detail: `Optimization suggestion ${suggestion.id} is already ${suggestion.status}`,
@@ -524,7 +525,7 @@ export class OptimizationSuggestionService {
     }
 
     throw new DomainException({
-      type: 'OPTIMIZATION_SUGGESTION_NOT_APPLICABLE',
+      type: problemType('optimization-suggestion-not-applicable'),
       title: '优化建议当前不可采纳',
       status: 409,
       detail:
@@ -620,7 +621,7 @@ export class OptimizationSuggestionService {
       `Optimization suggestion ${suggestion.id} is blocked by the current organization autonomy policy`;
 
     return new DomainException({
-      type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+      type: problemType('optimization-suggestion-policy-blocked'),
       title: 'Suggestion Blocked By Organization Policy',
       status: 422,
       detail,
@@ -675,7 +676,7 @@ export class OptimizationSuggestionService {
 
   private createSuggestionNotFoundException(id: string): DomainException {
     return new DomainException({
-      type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+      type: problemType('optimization-suggestion-not-found'),
       title: 'Suggestion Not Found',
       status: 404,
       detail: `Optimization suggestion ${id} not found`,

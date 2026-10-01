@@ -1,10 +1,11 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import { problemType } from '../../common/exceptions/problem-type';
 
 export class KnowledgeBaseNotFoundException extends DomainException {
   constructor(id: string) {
     super({
-      type: 'knowledge-base/not-found',
+      type: problemType('knowledge-base-not-found'),
       title: '知识库不存在',
       status: HttpStatus.NOT_FOUND,
       detail: `未找到 ID 为 ${id} 的知识库`,
@@ -15,7 +16,7 @@ export class KnowledgeBaseNotFoundException extends DomainException {
 export class DocumentNotFoundException extends DomainException {
   constructor(id: string) {
     super({
-      type: 'document/not-found',
+      type: problemType('document-not-found'),
       title: '文档不存在',
       status: HttpStatus.NOT_FOUND,
       detail: `未找到 ID 为 ${id} 的文档`,
@@ -26,7 +27,7 @@ export class DocumentNotFoundException extends DomainException {
 export class DocumentContentNotFoundException extends DomainException {
   constructor(id: string) {
     super({
-      type: 'document/content-not-found',
+      type: problemType('document-content-not-found'),
       title: '文档内容不存在',
       status: HttpStatus.NOT_FOUND,
       detail: `未找到 ID 为 ${id} 的文档内容（可能已被删除或尚未完成上传）`,
@@ -37,7 +38,7 @@ export class DocumentContentNotFoundException extends DomainException {
 export class DocumentContentUnavailableException extends DomainException {
   constructor(id: string, reason: string) {
     super({
-      type: 'document/content-unavailable',
+      type: problemType('document-content-unavailable'),
       title: '文档内容暂不可用',
       status: HttpStatus.SERVICE_UNAVAILABLE,
       detail: `获取文档 ${id} 的内容失败: ${reason}`,
@@ -48,7 +49,7 @@ export class DocumentContentUnavailableException extends DomainException {
 export class UnsupportedFileTypeException extends DomainException {
   constructor(fileName: string) {
     super({
-      type: 'document/unsupported-file-type',
+      type: problemType('document-unsupported-file-type'),
       title: '不支持的文件类型',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `文件 "${fileName}" 的类型不受支持`,
@@ -59,7 +60,7 @@ export class UnsupportedFileTypeException extends DomainException {
 export class FileTooLargeException extends DomainException {
   constructor(maxSizeMB: number) {
     super({
-      type: 'document/file-too-large',
+      type: problemType('document-file-too-large'),
       title: '文件过大',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `文件大小超过最大限制 ${maxSizeMB}MB`,
@@ -70,7 +71,7 @@ export class FileTooLargeException extends DomainException {
 export class EmptyFileException extends DomainException {
   constructor() {
     super({
-      type: 'document/empty-file',
+      type: problemType('document-empty-file'),
       title: '空文件',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: '不允许上传空文件',
@@ -81,7 +82,7 @@ export class EmptyFileException extends DomainException {
 export class DocumentParseException extends DomainException {
   constructor(fileName: string, reason: string) {
     super({
-      type: 'document/parse-failed',
+      type: problemType('document-parse-failed'),
       title: '文档解析失败',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `文件 "${fileName}" 解析失败: ${reason}`,
@@ -92,7 +93,7 @@ export class DocumentParseException extends DomainException {
 export class DocumentChunkException extends DomainException {
   constructor(documentId: string, reason: string) {
     super({
-      type: 'document/chunk-failed',
+      type: problemType('document-chunk-failed'),
       title: '文档分块失败',
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       detail: `文档 ${documentId} 分块失败: ${reason}`,
@@ -110,7 +111,7 @@ export class DocumentChunkException extends DomainException {
 export class KnowledgeEmbeddingModelNotConfiguredException extends DomainException {
   constructor(context?: string) {
     super({
-      type: 'knowledge-base/embedding-model-not-configured',
+      type: problemType('knowledge-base-embedding-model-not-configured'),
       title: '缺少可用的 Embedding 模型配置',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `当前租户没有可用的 Embedding 模型配置${

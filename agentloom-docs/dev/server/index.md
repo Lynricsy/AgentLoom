@@ -183,7 +183,7 @@ agentloom-server/src/
 
 #### 优化建议当前不可采纳
 
-建议类型有 `model_downgrade`、`timeout_adjustment`、`tool_pruning`、`autonomy_upgrade`，但 `APPLICABLE_SUGGESTION_TYPES` 是空集合（`agentloom-server/src/modules/optimization-suggestion/optimization-suggestion.service.ts:37`）。`POST /optimization-suggestions/:id/apply` 读出建议并检查状态后，在读取工作流和写入任何数据之前返回 409 `OPTIMIZATION_SUGGESTION_NOT_APPLICABLE`：这些建议改写的字段不参与工作流 `agent` 节点的执行。忽略（`POST /optimization-suggestions/:id/dismiss`）不受影响。
+建议类型有 `model_downgrade`、`timeout_adjustment`、`tool_pruning`、`autonomy_upgrade`，但 `APPLICABLE_SUGGESTION_TYPES` 是空集合（`agentloom-server/src/modules/optimization-suggestion/optimization-suggestion.service.ts:37`）。`POST /optimization-suggestions/:id/apply` 读出建议并检查状态后，在读取工作流和写入任何数据之前返回 409 `optimization-suggestion-not-applicable`：这些建议改写的字段不参与工作流 `agent` 节点的执行。忽略（`POST /optimization-suggestions/:id/dismiss`）不受影响。
 
 ### 沙箱与运行环境
 

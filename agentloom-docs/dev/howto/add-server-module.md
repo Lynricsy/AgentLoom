@@ -42,17 +42,18 @@ export class CreateWidgetDto extends createZodDto(CreateWidgetSchema) {}
 
 ## 3. 定义领域异常
 
-错误一律继承 `agentloom-server/src/common/exceptions/domain.exception.ts` 的 `DomainException`，由 `AllExceptionsFilter` 输出 problem+json。`type` 使用 `https://agentloom.dev/errors/` 前缀：
+错误一律继承 `agentloom-server/src/common/exceptions/domain.exception.ts` 的 `DomainException`，由 `AllExceptionsFilter` 输出 problem+json。`type` 用 `agentloom-server/src/common/exceptions/problem-type.ts` 的 `problemType('<kebab-case slug>')` 生成，它补上唯一前缀 `https://agentloom.dev/errors/`：
 
 ```ts
 // agentloom-server/src/modules/widget/widget.exceptions.ts
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import { problemType } from '../../common/exceptions/problem-type';
 
 export class WidgetNotFoundException extends DomainException {
   constructor(widgetId: string) {
     super({
-      type: 'https://agentloom.dev/errors/widget-not-found',
+      type: problemType('widget-not-found'),
       title: 'Widget 不存在',
       status: HttpStatus.NOT_FOUND,
       detail: `Widget ${widgetId} 不存在`,
@@ -60,6 +61,8 @@ export class WidgetNotFoundException extends DomainException {
   }
 }
 ```
+
+`agentloom-server/src/common/exceptions/problem-type.spec.ts` 用 AST 扫描所有 `DomainException` 的 `type`，只接受 `problemType()` 调用或以该前缀开头的字面量，其他写法会让单测失败。
 
 ## 4. 定义数据表并挂 RLS
 
