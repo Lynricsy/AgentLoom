@@ -199,6 +199,18 @@ export class NodeTypeMismatchException extends DomainException {
   }
 }
 
+/** 执行前展平可复用块失败：块定义缺失，或外部连线引用的块端口无法映射到块内节点。 */
+export class ReusableBlockExpansionException extends DomainException {
+  constructor(blockNodeId: string, reason: string) {
+    super({
+      type: 'https://agentloom.dev/errors/reusable-block-expansion-failed',
+      title: '可复用块无法展开',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `可复用块节点 ${blockNodeId}：${reason}`,
+    });
+  }
+}
+
 /**
  * 端口类型兼容性检查。
  *

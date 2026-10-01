@@ -3572,13 +3572,17 @@ export const CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum = {
     Model: 'model',
     Text: 'text',
     Json: 'json',
+    Array: 'array',
     Image: 'image',
     Audio: 'audio',
     Tool: 'tool',
     Sandbox: 'sandbox',
     Knowledge: 'knowledge',
     Skill: 'skill',
-    Memory: 'memory'
+    Agent: 'agent',
+    Memory: 'memory',
+    Exec: 'exec',
+    Volume: 'volume'
 } as const;
 export type CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum = typeof CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum[keyof typeof CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum];
 

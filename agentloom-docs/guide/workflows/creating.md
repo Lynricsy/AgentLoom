@@ -21,7 +21,7 @@ docType: howto
 
 - 循环起点、迭代起点：拖入 [Loop](/guide/nodes/loop) / [Iteration](/guide/nodes/iteration) 容器时自动创建。
 - Loop State、Result、Break、Continue：选中 Loop 或 Iteration 容器后出现在「Compound 内部节点」分组。
-- Reusable Block：从节点面板「My Blocks」标签导入，见 [Reusable Block](/guide/nodes/reusable-block)。
+- Reusable Block：在画布上把已选节点「封装为可复用块」，或从节点面板「My Blocks」标签拖入，见 [Reusable Block](/guide/nodes/reusable-block)。
 - 插件节点：从 Plugins 分组拖出，见 [插件节点](/guide/nodes/plugin)。
 
 每个节点的端口与行为见 [节点参考](/guide/nodes/)。

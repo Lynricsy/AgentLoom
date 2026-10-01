@@ -40,7 +40,7 @@ import {
   attachExecutionRuntimeMeta,
   isTrackedExecutionStep,
 } from './compound-runtime.util';
-import { normalizeWorkflowNodesAndEdges } from '../workflow-definition/utils/normalize-workflow-graph.utils';
+import { buildExecutableWorkflowGraph } from './reusable-block-expansion.util';
 import { SandboxMaintenanceException } from '../sandbox/sandbox.exceptions';
 
 export interface ExecutionJobData {
@@ -405,7 +405,7 @@ export class ExecutionService {
   private buildDraftExecutionSnapshot(
     workflow: typeof schema.workflowDefinitions.$inferSelect,
   ): schema.WorkflowExecution['definitionSnapshot'] {
-    const normalizedGraph = normalizeWorkflowNodesAndEdges(
+    const normalizedGraph = buildExecutableWorkflowGraph(
       workflow.nodes ?? [],
       workflow.edges ?? [],
     );
@@ -519,7 +519,7 @@ export class ExecutionService {
     const definitionSnapshot = useDraftDefinition
       ? this.buildDraftExecutionSnapshot(workflow)
       : (() => {
-          const normalizedGraph = normalizeWorkflowNodesAndEdges(
+          const normalizedGraph = buildExecutableWorkflowGraph(
             publishedVersion.snapshot.nodes,
             publishedVersion.snapshot.edges,
           );

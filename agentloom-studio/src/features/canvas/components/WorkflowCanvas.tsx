@@ -3,14 +3,15 @@ import { useReactFlow, type Viewport } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import { useTheme } from '@/shared/hooks/use-theme'
 import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query'
-import { useToast } from '@/shared/ui/toast'
 import type { WorkflowStatus } from '@/features/workflow'
+import { BlockCreateDialog } from './BlockCreateDialog'
 import { CanvasOverlayLayer } from './CanvasOverlayLayer'
 import { CanvasSurface } from './CanvasSurface'
 import type { CompatibilityPreviewHandle } from './overlays/CompatibilityPreview'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu'
 import { useCanvasKeyboardShortcuts } from '../hooks/useCanvasKeyboardShortcuts'
+import { useEncapsulateSelection } from '../hooks/useEncapsulateSelection'
 import { useConnectionInteraction } from '../hooks/useConnectionInteraction'
 import { useConnectionValidation } from '../hooks/useConnectionValidation'
 import { useExecutionHighlight } from '../hooks/useExecutionHighlight'
@@ -59,7 +60,6 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     setViewport,
     toggleSearch,
   } = useCanvasActions()
-  const { notify } = useToast()
   const { resolvedTheme } = useTheme()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
@@ -176,9 +176,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     clearSelection()
   }, [clearSelection, closeContextMenu])
 
-  const handleEncapsulate = useCallback(() => {
-    notify({ description: '封装为块功能将在下一步实现', variant: 'warning' })
-  }, [notify])
+  const encapsulation = useEncapsulateSelection()
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
@@ -247,8 +245,16 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         contextMenuState={contextMenuState}
         selectedNodeCount={selectedNodeCount}
         onCloseContextMenu={closeContextMenu}
-        onEncapsulate={handleEncapsulate}
+        onEncapsulate={encapsulation.openEncapsulation}
       />
+      {encapsulation.analysis ? (
+        <BlockCreateDialog
+          open
+          onOpenChange={encapsulation.onOpenChange}
+          analysis={encapsulation.analysis}
+          onConfirm={encapsulation.onConfirm}
+        />
+      ) : null}
     </div>
   )
 })

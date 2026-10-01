@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useExecutionStore } from '@/features/execution'
+import { toCanvasNodeId, useExecutionStore } from '@/features/execution'
 import type { NodeExecutionState } from '@/features/execution'
 
 /**
@@ -54,7 +54,8 @@ function computeHighlightSets(
       continue
     }
 
-    const inputs = reverseAdj.get(node.nodeId)
+    // 块内步骤（`<blockNodeId>::<inner>`）在画布上表现为块节点本身
+    const inputs = reverseAdj.get(toCanvasNodeId(node.nodeId))
     if (!inputs) {
       continue
     }

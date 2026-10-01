@@ -54,6 +54,7 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 | --- | --- |
 | ReactFlow 变更 | `onNodesChange`、`onEdgesChange`、`createConnection`、`addNode`、`updateNodeData` |
 | 删除与选择 | `deleteSelectedNode`、`deleteSelectedNodes`、`selectNode`、`selectNodes`、`toggleNodeSelection`、`clearSelection`、`selectEdge` |
+| 封装为可复用块 | `applyEncapsulation`（由 `agentloom-studio/src/features/canvas/hooks/useEncapsulateSelection.ts` 在块保存成功后调用） |
 | 连线字段映射 | `openFieldMapping`、`closeFieldMapping`、`updateEdgeData`、`updateFieldMapping`、`batchUpdateFieldMappings`、`saveMappingSnapshot`、`undoFieldMapping`、`refreshEdgeCompatibility` |
 | 视口 | `setViewport`（不标脏）、`commitViewport`（标脏） |
 | 与服务端同步 | `applyServerSnapshot`、`markSaved`、`advanceVersion`、`setIsSaving`、`reset` |
@@ -74,6 +75,12 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 ## 服务端快照与本地草稿
 
 `WorkflowCanvasPage` 只在工作流 id 或 `version` 与 store 中不同时调用 `applyServerSnapshot` 覆盖草稿。如果是同一个工作流且画布有未保存修改，它跳过服务端快照并提示「已保留本地未保存修改」。这样，自动保存成功后 TanStack Query 写回的数据不会把用户在保存期间做的编辑冲掉。
+
+## 可复用块：封装与执行态
+
+右键「封装为可复用块」由 `useEncapsulateSelection` 驱动：`agentloom-studio/src/features/canvas/lib/encapsulation.ts` 的 `resolveEncapsulationSelection` 校验选区（至少两个同层节点，容器连同子节点），`analyzeEncapsulation` 从跨越选区边界的连线派生块端口，`BlockCreateDialog` 编辑名称与端口后 `POST /reusable-blocks` 保存，成功后 `replaceNodesWithBlock` 生成的图经 `applyEncapsulation` 写回草稿。块节点在 `data.blockDefinition` 中内嵌一份定义，server 运行时据此展平（见 [核心概念](/dev/concepts#dag-调度)）。
+
+展平后块节点本身没有执行步骤，块内步骤的 `nodeId` 为 `<blockNodeId>::<innerId>`。`useNodeExecutionState(blockNodeId)` 在没有直接条目时，用 `agentloom-studio/src/features/execution/lib/reusableBlockState.ts` 的 `aggregateReusableBlockState` 按前缀聚合内部步骤状态；执行高亮用 `toCanvasNodeId` 把内部步骤映射回块节点。
 
 ## 连线兼容性检查
 

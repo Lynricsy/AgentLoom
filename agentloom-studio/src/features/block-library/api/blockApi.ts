@@ -1,4 +1,4 @@
-import { apiClient, toSnakeBody } from '@/shared/api/client';
+import { apiClient } from '@/shared/api/client';
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 import type {
   CreateReusableBlockDto,
@@ -71,10 +71,10 @@ export async function fetchBlockById(id: string): Promise<ReusableBlockDetail> {
 export async function createBlock(
   data: CreateBlockData,
 ): Promise<ReusableBlockDetail> {
+  // DTO 字段为 camelCase 且端口 `.strict()`；节点 data 原样入库、执行期按 `nodeType` 识别，
+  // 不能套 toSnakeBody()。
   const response = await apiClient
-    .post('reusable-blocks', {
-      json: toSnakeBody(data),
-    })
+    .post('reusable-blocks', { json: data })
     .json<ApiResponse<ReusableBlockDetail> | ReusableBlockDetail>();
 
   return unwrapBlockDetail(response);
@@ -85,9 +85,7 @@ export async function updateBlock(
   data: UpdateBlockData,
 ): Promise<ReusableBlockDetail> {
   const response = await apiClient
-    .patch(`reusable-blocks/${id}`, {
-      json: toSnakeBody(data),
-    })
+    .patch(`reusable-blocks/${id}`, { json: data })
     .json<ApiResponse<ReusableBlockDetail> | ReusableBlockDetail>();
 
   return unwrapBlockDetail(response);

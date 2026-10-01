@@ -65,7 +65,7 @@ Agent 定义的 `runtime_mode` 列决定一个 Agent 在哪里运行（`agentloo
 
 工作流是有向无环图。一次运行的调度过程：
 
-1. `POST /api/v1/workflow-definitions/:workflowId/run` 创建执行并入队 `workflow-execution`。
+1. `POST /api/v1/workflow-definitions/:workflowId/run` 创建执行并入队 `workflow-execution`。执行快照（`workflow_executions.definition_snapshot`）由 `agentloom-server/src/modules/execution/reusable-block-expansion.util.ts` 的 `buildExecutableWorkflowGraph` 生成：规范化画布图，并把 `reusable-block` 节点展平为其内嵌 `blockDefinition` 中的节点，内部节点 ID 为 `<blockNodeId>::<innerId>`（分隔符 `REUSABLE_BLOCK_INNER_NODE_ID_SEPARATOR`，定义在 `agentloom-contracts/src/workflow-graph.ts`），连到块端口的边按端口的 `sourceNodeId`/`sourcePortId` 改写到内部节点。调度器因此不需要块执行器。
 2. `ExecutionWorker` 调用 `NodeSchedulerService.startExecution`，`DagResolverService` 把图分层，第一层节点并行调度。
 3. 每个节点完成后调用 `onNodeCompleted`：从数据库重读步骤状态，逐个判断后继节点是调度、等待还是跳过；条件节点只放行命中的分支，未命中分支级联跳过；随后保存检查点。
 4. 所有步骤进入终态后，执行状态随之更新。

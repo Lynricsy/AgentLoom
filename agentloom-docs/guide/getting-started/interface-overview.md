@@ -55,7 +55,7 @@ Studio 的全局导航由左侧侧边栏提供；小屏幕上侧边栏收进左�
 
 打开一个工作流（`/workflows/:workflowId`）后：
 
-- **左侧节点面板**：按 Agent、Tool、Trigger、Knowledge、Memory、Output、Control 分组列出节点，启用插件后出现 Plugins 分组；「My Blocks」标签列出导入的可复用块。
+- **左侧节点面板**：按 Agent、Tool、Trigger、Knowledge、Memory、Output、Control 分组列出节点，启用插件后出现 Plugins 分组；「My Blocks」标签列出封装或导入的可复用块。
 - **顶部工具栏**：状态徽章（草稿、已发布、已归档）、保存快照、历史记录、导出、导入、分享、归档，以及「介入策略」「输入参数」「触发器」面板开关、「发布到市场」「发布」「运行」。
 - **右侧配置面板**：点击节点后打开，含「配置」「输出」标签，需要人工介入的节点还有「介入」标签。
 - **底部状态栏**：节点数、连接数、保存状态与执行状态。

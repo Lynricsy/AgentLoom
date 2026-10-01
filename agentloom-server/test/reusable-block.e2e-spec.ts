@@ -34,6 +34,8 @@ import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import * as schema from '../src/database/schema';
 import { EXECUTION_QUEUE } from '../src/modules/execution/execution.constants';
+import { ExecutionService } from '../src/modules/execution/execution.service';
+import { NodeSchedulerService } from '../src/modules/execution/node-scheduler.service';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import {
   createRlsTestContext,
@@ -124,6 +126,14 @@ function createMockSupabaseService() {
 }
 
 function createMockRedisClient() {
+  const subscriber = {
+    connect: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn().mockResolvedValue(undefined),
+    unsubscribe: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+    quit: vi.fn().mockResolvedValue('OK'),
+  };
+
   return {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue('OK'),
@@ -131,6 +141,8 @@ function createMockRedisClient() {
     keys: vi.fn().mockResolvedValue([]),
     quit: vi.fn().mockResolvedValue('OK'),
     publish: vi.fn().mockResolvedValue(1),
+    on: vi.fn(),
+    duplicate: vi.fn().mockReturnValue(subscriber),
   };
 }
 
@@ -528,5 +540,143 @@ describe('ReusableBlock E2E', () => {
     expect(response.body.type).toBe(
       'https://agentloom.dev/errors/validation-error',
     );
+  });
+
+  it('含可复用块的工作流：执行前展平为 blockNodeId::innerId 内部节点，块输出端口的值流到外部下游', async () => {
+    const owner = await seedTenant('reusable-block-run');
+    const workflowId = crypto.randomUUID();
+    await ctx.adminSql`
+      INSERT INTO workflow_definitions (
+        id, tenant_id, name, slug, nodes, edges, viewport, created_by, updated_by
+      )
+      VALUES (
+        ${workflowId}::uuid,
+        ${owner.tenantId}::uuid,
+        '含块工作流',
+        ${`block-run-${crypto.randomUUID().slice(0, 8)}`},
+        ${ctx.adminSql.json([
+          {
+            id: 'src',
+            type: 'output',
+            position: { x: 0, y: 0 },
+            data: {
+              nodeType: 'text',
+              label: 'Text',
+              config: { text: '  hello block  ' },
+            },
+          },
+          {
+            id: 'blk',
+            type: 'control',
+            position: { x: 240, y: 0 },
+            data: {
+              nodeType: 'reusable-block',
+              label: '大写块',
+              blockId: crypto.randomUUID(),
+              blockName: '大写块',
+              blockDefinition: {
+                nodes: [
+                  {
+                    id: 'pre',
+                    type: 'tool',
+                    position: { x: 0, y: 0 },
+                    data: {
+                      nodeType: 'input-preprocessor',
+                      label: '大写',
+                      transformType: 'script',
+                      expression: "input['text-in'].trim().toUpperCase()",
+                    },
+                  },
+                ],
+                edges: [],
+                inputPorts: [
+                  {
+                    id: 'block-in',
+                    label: '文本',
+                    dataType: 'text',
+                    sourceNodeId: 'pre',
+                    sourcePortId: 'text-in',
+                  },
+                ],
+                outputPorts: [
+                  {
+                    id: 'block-out',
+                    label: '文本',
+                    dataType: 'text',
+                    sourceNodeId: 'pre',
+                    sourcePortId: 'text-out',
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: 'out',
+            type: 'output',
+            position: { x: 480, y: 0 },
+            data: { nodeType: 'text-output', label: 'Text Output' },
+          },
+        ])},
+        ${ctx.adminSql.json([
+          {
+            id: 'e-src-blk',
+            source: 'src',
+            sourceHandle: 'text-out',
+            target: 'blk',
+            targetHandle: 'block-in',
+          },
+          {
+            id: 'e-blk-out',
+            source: 'blk',
+            sourceHandle: 'block-out',
+            target: 'out',
+            targetHandle: 'content-in',
+          },
+        ])},
+        ${ctx.adminSql.json({ x: 0, y: 0, zoom: 1 })},
+        ${owner.user.id}::uuid,
+        ${owner.user.id}::uuid
+      )
+    `;
+
+    const publishResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/publish`)
+      .set(owner.headers)
+      .send({ label: 'with-block' });
+    expect(publishResponse.status).toBe(200);
+
+    const runResponse = await request(app.getHttpServer())
+      .post(`/api/v1/workflow-definitions/${workflowId}/run`)
+      .set(owner.headers)
+      .send({});
+    expect(runResponse.status).toBe(202);
+    const executionId = runResponse.body.data.id as string;
+
+    // 执行队列被替换为 mock；按 ExecutionWorker.process 的顺序在进程内驱动调度
+    await app.get(ExecutionService).initializeSteps(executionId);
+    await app
+      .get(NodeSchedulerService)
+      .startExecution(executionId, owner.tenantId);
+
+    const steps = await drizzleDb
+      .select()
+      .from(schema.executionSteps)
+      .where(eq(schema.executionSteps.executionId, executionId));
+    const stepByNode = Object.fromEntries(steps.map((s) => [s.nodeId, s]));
+
+    expect(Object.keys(stepByNode).sort()).toEqual(['blk::pre', 'out', 'src']);
+    expect(stepByNode['blk::pre']).toMatchObject({
+      status: 'completed',
+      result: expect.objectContaining({ 'text-out': 'HELLO BLOCK' }),
+    });
+    expect(stepByNode.out).toMatchObject({
+      status: 'completed',
+      result: { content: 'HELLO BLOCK' },
+    });
+
+    const execution = await drizzleDb.query.workflowExecutions.findFirst({
+      where: eq(schema.workflowExecutions.id, executionId),
+    });
+    expect(execution?.status).toBe('completed');
   });
 });

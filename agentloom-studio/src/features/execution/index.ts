@@ -131,3 +131,4 @@ export {
   useExecutionStore,
 } from './stores/executionStore'
 export type { NodeExecutionState } from './stores/executionStore'
+export { toCanvasNodeId } from './lib/reusableBlockState'

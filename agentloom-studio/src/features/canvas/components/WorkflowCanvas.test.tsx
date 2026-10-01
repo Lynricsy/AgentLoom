@@ -254,6 +254,10 @@ vi.mock('../hooks/useCanvasDrop', () => ({
   }),
 }))
 
+vi.mock('@/features/block-library', () => ({
+  useCreateBlock: () => ({ mutate: vi.fn() }),
+}))
+
 vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: notifyMock }),
 }))

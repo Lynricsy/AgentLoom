@@ -73,6 +73,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `workflow-launch-schema-version-mismatch` | 409 | 启动时使用的输入参数版本与已发布版本不一致 | 刷新页面后重新运行 |
 | `cyclic-graph` | 400 | 工作流图存在环路 | 删除形成环路的连线 |
 | `node-type-mismatch` | 422 | 某条连线两端的端口数据类型不兼容 | 按 `detail` 中的节点与端口修改连线 |
+| `reusable-block-expansion-failed` | 422 | 运行前展开可复用块失败：块缺少内嵌定义、块端口没有映射到块内节点，或连线连到块上不存在的端口 | 从「My Blocks」重新拖入该块，或删除失效连线后重新发布，见 [Reusable Block](/guide/nodes/reusable-block) |
 | `execution-not-found` | 404 | 执行记录不存在 | 确认执行 ID |
 | `execution-not-cancellable` | 409 | 执行已结束，不能取消 | 无需处理 |
 | `execution-not-resumable` | 409 | 只有失败的执行可以恢复；已暂停的执行需先处理人工干预 | 见[调试工作流](/guide/workflows/debugging) |

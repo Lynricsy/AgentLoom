@@ -86,3 +86,11 @@ export type WorkflowGraphNode = z.infer<typeof WorkflowGraphNodeSchema>;
 export type WorkflowGraphEdge = z.infer<typeof WorkflowGraphEdgeSchema>;
 export type WorkflowGraphViewport = z.infer<typeof WorkflowGraphViewportSchema>;
 export type WorkflowGraph = z.infer<typeof WorkflowGraphSchema>;
+
+/**
+ * 可复用块展平后内部节点 ID 的分隔符：`<blockNodeId>::<innerNodeId>`。
+ *
+ * server 在执行前把 reusable-block 节点展平成内部节点（执行步骤的 nodeId 用这个格式），
+ * Studio 按 `<blockNodeId>::` 前缀把内部步骤状态聚合回画布上的块节点。两端必须用同一个值。
+ */
+export const REUSABLE_BLOCK_INNER_NODE_ID_SEPARATOR = '::';

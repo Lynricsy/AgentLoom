@@ -124,6 +124,12 @@ interface CanvasActions {
     selectNodes: (nodeIds: string[]) => void;
     clearSelection: () => void;
     deleteSelectedNodes: () => void;
+    /** 「封装为可复用块」：用封装后的图替换画布，并选中新块节点 */
+    applyEncapsulation: (result: {
+      nodes: CanvasNode[];
+      edges: CanvasEdge[];
+      blockNodeId: string;
+    }) => void;
     selectNode: (nodeId: string | null) => void;
     selectEdge: (edgeId: string | null) => void;
     openFieldMapping: (edgeId: string) => void;
@@ -801,6 +807,42 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 state.mappingPanelEdgeId = null;
               }
 
+              state.isDirty = true;
+            }),
+
+          applyEncapsulation: ({ nodes, edges, blockNodeId }) =>
+            set((state) => {
+              const nextNodeIds = new Set(nodes.map((node) => node.id));
+              const nextEdgeIds = new Set(edges.map((edge) => edge.id));
+              const removedNodeIds = state.nodes
+                .map((node) => node.id)
+                .filter((id) => !nextNodeIds.has(id));
+
+              state.nodes = nodes;
+              state.edges = edges;
+
+              const parentId = nodes.find(
+                (node) => node.id === blockNodeId,
+              )?.parentId;
+              if (parentId) {
+                syncCompoundParentOutputPorts(state.nodes, parentId);
+                syncCompoundParentLayout(state.nodes, parentId);
+              }
+
+              for (const nodeId of removedNodeIds) {
+                delete state.nodeValidationErrors[nodeId];
+              }
+              if (state.selectedEdgeId && !nextEdgeIds.has(state.selectedEdgeId)) {
+                state.selectedEdgeId = null;
+              }
+              if (
+                state.mappingPanelEdgeId &&
+                !nextEdgeIds.has(state.mappingPanelEdgeId)
+              ) {
+                state.mappingPanelEdgeId = null;
+              }
+              state.selectedNodeId = blockNodeId;
+              state.selectedNodeIds = new Set([blockNodeId]);
               state.isDirty = true;
             }),
 

@@ -1,3 +1,4 @@
+import { PORT_DATA_TYPES } from '@agentloom/contracts';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
@@ -15,18 +16,8 @@ export const ReusableBlockCategorySchema = z.enum([
   'reporting',
 ]);
 
-export const ReusableBlockPortDataTypeSchema = z.enum([
-  'model',
-  'text',
-  'json',
-  'image',
-  'audio',
-  'tool',
-  'sandbox',
-  'knowledge',
-  'skill',
-  'memory',
-]);
+/** 块端口由画布「封装为可复用块」从被封装节点的端口派生，可以是任意 canonical 端口类型（含 exec）。 */
+export const ReusableBlockPortDataTypeSchema = z.enum(PORT_DATA_TYPES);
 
 const ReusableBlockNodeSchema = z
   .object({ id: z.string().min(1) })

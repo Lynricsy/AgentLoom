@@ -25,7 +25,6 @@ docType: howto
 | `LLM 模型节点缺少 llmModelConfigId` | [LLM 模型](/guide/nodes/llm-model) | 选择或创建模型配置 |
 | `Workspace node requires workspaceId` | [Workspace](/guide/nodes/workspace) | 选择工作区 |
 | `Knowledge Base node requires knowledgeBaseId` | [Knowledge Base](/guide/nodes/knowledge-base) | 选择知识库 |
-| `不支持的节点类型 "reusable-block"` | [Reusable Block](/guide/nodes/reusable-block) | 服务端暂不执行可复用块，改用块内的节点 |
 
 错误信息以 `https://agentloom.dev/errors/` 开头时，对照 [错误参考](/guide/troubleshooting/errors)。
 

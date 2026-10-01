@@ -1,4 +1,5 @@
 import { castDraft } from 'immer'
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
@@ -36,6 +37,10 @@ import {
   mergeSubAgentStreamMaps,
   normalizePersistedSubAgentStreams,
 } from '../lib/subAgentStreams'
+import {
+  aggregateReusableBlockState,
+  selectReusableBlockInnerStates,
+} from '../lib/reusableBlockState'
 
 export interface InterventionState {
   nodeName?: string
@@ -777,11 +782,27 @@ export const useExecutionProgress = () =>
     })),
   )
 
-export const useNodeExecutionState = (nodeId: string) =>
-  useExecutionStore((s) => s.nodes[nodeId] ?? null)
+const NO_INNER_STATES: NodeExecutionState[] = []
+
+/**
+ * 节点运行状态。可复用块在 server 端被展平，块节点自身没有步骤：
+ * 没有直接条目时，按 `<nodeId>::` 前缀聚合块内步骤的状态。
+ */
+export const useNodeExecutionState = (nodeId: string) => {
+  const direct = useExecutionStore((s) => s.nodes[nodeId] ?? null)
+  const innerStates = useExecutionStore(
+    useShallow((s) =>
+      s.nodes[nodeId] ? NO_INNER_STATES : selectReusableBlockInnerStates(s.nodes, nodeId),
+    ),
+  )
+  return useMemo(
+    () => direct ?? aggregateReusableBlockState(nodeId, innerStates),
+    [direct, innerStates, nodeId],
+  )
+}
 
 export const useNodeIntervention = (nodeId: string) =>
-  useExecutionStore((s) => s.nodes[nodeId]?.intervention ?? null)
+  useNodeExecutionState(nodeId)?.intervention ?? null
 
 export const useAllNodeStates = () =>
   useExecutionStore(useShallow((s) => s.nodes))

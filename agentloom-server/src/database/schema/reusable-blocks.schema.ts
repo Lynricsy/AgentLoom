@@ -1,3 +1,4 @@
+import type { PortDataType } from '@agentloom/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -18,18 +19,7 @@ import { users } from './users.schema';
 export interface BlockPort {
   id: string;
   label: string;
-  dataType:
-    | 'model'
-    | 'text'
-    | 'json'
-    | 'array'
-    | 'image'
-    | 'audio'
-    | 'tool'
-    | 'sandbox'
-    | 'knowledge'
-    | 'skill'
-    | 'memory';
+  dataType: PortDataType;
   sourceNodeId?: string;
   sourcePortId?: string;
 }
