@@ -11,17 +11,17 @@ import { execSync } from 'node:child_process';
 
 vi.mock('@earendil-works/pi-coding-agent', () => ({}));
 
-vi.mock('../../agentloom-deploy/sandbox/src/pty-extension.js', () => ({
+vi.mock('../src/pty-extension.js', () => ({
   createPtyExtension: () => ({
     manager: null,
     register: () => ({}),
   }),
 }));
 
-vi.mock('../../agentloom-deploy/sandbox/src/acp-adapter.js', async () => {
-  const actual = await vi.importActual<
-    typeof import('../../agentloom-deploy/sandbox/src/acp-adapter.js')
-  >('../../agentloom-deploy/sandbox/src/acp-adapter.js');
+vi.mock('../src/acp-adapter.js', async () => {
+  const actual = await vi.importActual<typeof AcpAdapter>(
+    '../src/acp-adapter.js',
+  );
   return {
     ...actual,
     loadSandboxConfig: vi.fn().mockResolvedValue({
@@ -36,9 +36,10 @@ import type {
   SandboxAgentEvent,
   AgentEventListener,
   SseEventEnvelope,
-} from '../../agentloom-deploy/sandbox/src/types.js';
-import type { SessionFactory } from '../../agentloom-deploy/sandbox/src/acp-adapter.js';
-import { createSandboxServer } from '../../agentloom-deploy/sandbox/src/server.js';
+} from '../src/types.js';
+import type { SessionFactory } from '../src/acp-adapter.js';
+import type * as AcpAdapter from '../src/acp-adapter.js';
+import { createSandboxServer } from '../src/server.js';
 
 interface MockSession extends IAgentSession {
   _listeners: AgentEventListener[];

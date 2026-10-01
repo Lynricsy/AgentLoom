@@ -8,10 +8,10 @@ docType: howto
 
 前置条件：已按 [搭建本地开发环境](/dev/setup) 在仓库根执行过 `pnpm install`。server 的 E2E 测试需要本机 Docker 可用（Testcontainers 会自己拉起 PostgreSQL 容器）。Rust、Go、Flutter 包需要各自的工具链：`cargo`、Go 1.25、FVM 管理的 Flutter。
 
-server 的 `pnpm typecheck` 会连带检查 `agentloom-server/test/sandbox-container.e2e-spec.ts` 引用的 `agentloom-deploy/sandbox/src`，而 `agentloom-deploy/sandbox` 是独立 npm 包、不在 pnpm workspace 内。首次运行前在该目录安装依赖，否则会报 `Cannot find module 'fastify'` 等 TS2307：
+`agentloom-deploy/sandbox` 是独立的 npm 包，不在 pnpm workspace 内，`pnpm test:all` 不覆盖它。改动该包时在包目录运行它自己的类型检查与测试（HTTP 契约测试在 `agentloom-deploy/sandbox/test/server-http-contract.spec.ts`）：
 
 ```bash
-cd agentloom-deploy/sandbox && npm install
+cd agentloom-deploy/sandbox && npm ci && npm run typecheck && npm test
 ```
 
 ## 提交前跑全量
