@@ -16,6 +16,203 @@ export interface AddGlossaryKeywordDto {
 /**
  * 
  * @export
+ * @interface AgentApiKeyCreateEnvelopeSwaggerDto
+ */
+export interface AgentApiKeyCreateEnvelopeSwaggerDto {
+    /**
+     * 
+     * @type {AgentApiKeyCreateEnvelopeSwaggerDtoData}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDto
+     */
+    data: AgentApiKeyCreateEnvelopeSwaggerDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiKeyCreateEnvelopeSwaggerDtoData
+ */
+export interface AgentApiKeyCreateEnvelopeSwaggerDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    agentDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    keyPrefix: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    rateLimitPerMinute: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    maxConcurrentRuns: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    lastUsedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    expiresAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    revokedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyCreateEnvelopeSwaggerDtoData
+     */
+    key: string;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiKeyListResponseSwaggerDto
+ */
+export interface AgentApiKeyListResponseSwaggerDto {
+    /**
+     * 
+     * @type {Array<AgentApiKeyListResponseSwaggerDtoDataInner>}
+     * @memberof AgentApiKeyListResponseSwaggerDto
+     */
+    data: Array<AgentApiKeyListResponseSwaggerDtoDataInner>;
+    /**
+     * 
+     * @type {AgentApiKeyListResponseSwaggerDtoMeta}
+     * @memberof AgentApiKeyListResponseSwaggerDto
+     */
+    meta: AgentApiKeyListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiKeyListResponseSwaggerDtoDataInner
+ */
+export interface AgentApiKeyListResponseSwaggerDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    agentDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    keyPrefix: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    rateLimitPerMinute: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    maxConcurrentRuns: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    lastUsedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    expiresAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    revokedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof AgentApiKeyListResponseSwaggerDtoDataInner
+     */
+    createdAt: string;
+}
+/**
+ * 
+ * @export
+ * @interface AgentApiKeyListResponseSwaggerDtoMeta
+ */
+export interface AgentApiKeyListResponseSwaggerDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyListResponseSwaggerDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyListResponseSwaggerDtoMeta
+     */
+    pageSize: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof AgentApiKeyListResponseSwaggerDtoMeta
+     */
+    total: number;
+}
+/**
+ * 
+ * @export
  * @interface AgentDefinitionDetailResponseSwaggerDto
  */
 export interface AgentDefinitionDetailResponseSwaggerDto {
@@ -556,7 +753,25 @@ export interface ConversationDetailResponseSwaggerDtoData {
      * @type {string}
      * @memberof ConversationDetailResponseSwaggerDtoData
      */
-    createdBy: string;
+    createdBy: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    source: ConversationDetailResponseSwaggerDtoDataSourceEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    apiKeyId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationDetailResponseSwaggerDtoData
+     */
+    externalUserId: string | null;
     /**
      * 
      * @type {string}
@@ -588,6 +803,15 @@ export const ConversationDetailResponseSwaggerDtoDataStatusEnum = {
     Failed: 'failed'
 } as const;
 export type ConversationDetailResponseSwaggerDtoDataStatusEnum = typeof ConversationDetailResponseSwaggerDtoDataStatusEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const ConversationDetailResponseSwaggerDtoDataSourceEnum = {
+    Studio: 'studio',
+    Api: 'api'
+} as const;
+export type ConversationDetailResponseSwaggerDtoDataSourceEnum = typeof ConversationDetailResponseSwaggerDtoDataSourceEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataSourceEnum];
 
 /**
  * 
@@ -1037,7 +1261,25 @@ export interface ConversationListResponseSwaggerDtoDataInner {
      * @type {string}
      * @memberof ConversationListResponseSwaggerDtoDataInner
      */
-    createdBy: string;
+    createdBy: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    source: ConversationListResponseSwaggerDtoDataInnerSourceEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    apiKeyId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ConversationListResponseSwaggerDtoDataInner
+     */
+    externalUserId: string | null;
     /**
      * 
      * @type {string}
@@ -1063,6 +1305,15 @@ export const ConversationListResponseSwaggerDtoDataInnerStatusEnum = {
     Failed: 'failed'
 } as const;
 export type ConversationListResponseSwaggerDtoDataInnerStatusEnum = typeof ConversationListResponseSwaggerDtoDataInnerStatusEnum[keyof typeof ConversationListResponseSwaggerDtoDataInnerStatusEnum];
+
+/**
+ * @export
+ */
+export const ConversationListResponseSwaggerDtoDataInnerSourceEnum = {
+    Studio: 'studio',
+    Api: 'api'
+} as const;
+export type ConversationListResponseSwaggerDtoDataInnerSourceEnum = typeof ConversationListResponseSwaggerDtoDataInnerSourceEnum[keyof typeof ConversationListResponseSwaggerDtoDataInnerSourceEnum];
 
 /**
  * 
@@ -1094,6 +1345,37 @@ export interface ConversationListResponseSwaggerDtoMeta {
      * @memberof ConversationListResponseSwaggerDtoMeta
      */
     totalPages: number;
+}
+/**
+ * 
+ * @export
+ * @interface CreateAgentApiKeySwaggerDto
+ */
+export interface CreateAgentApiKeySwaggerDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiKeySwaggerDto
+     */
+    name: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof CreateAgentApiKeySwaggerDto
+     */
+    rateLimitPerMinute?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof CreateAgentApiKeySwaggerDto
+     */
+    maxConcurrentRuns?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateAgentApiKeySwaggerDto
+     */
+    expiresAt?: string;
 }
 /**
  * 
