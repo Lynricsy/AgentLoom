@@ -5,10 +5,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  exists,
+  inArray,
+  isNull,
+  notExists,
+  sql,
+} from 'drizzle-orm';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import type { DrizzleDB } from '../../database/database.module';
+import { agentApiRuns } from '../../database/schema/agent-api-runs.schema';
 import {
   agentConversations,
   agentMessages,
@@ -160,6 +170,23 @@ type ConversationHistoryMessage = {
   metadata: Record<string, unknown>;
   createdAt: Date;
 };
+
+/**
+ * 对外 API 的 run 在开始执行前就已取消或失败时，它的用户消息视为作废：
+ * 调用方已拿到终态，不得在之后的轮次里被处理，也不进入重建的历史。
+ */
+function discardedApiInputQuery(dbClient: DrizzleDB) {
+  return dbClient
+    .select({ one: sql`1` })
+    .from(agentApiRuns)
+    .where(
+      and(
+        eq(agentApiRuns.userMessageId, agentMessages.id),
+        isNull(agentApiRuns.startedAt),
+        inArray(agentApiRuns.status, ['cancelled', 'failed']),
+      ),
+    );
+}
 
 type RuntimeSessionContext = {
   runtime: IAgentRuntime;
@@ -683,13 +710,14 @@ export class AgentExecutionWorkerRuntimeService {
     lastProcessedMessageId?: string,
   ): Promise<PendingMessage[]> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
-      const messages = await dbClient
+      const rows = await dbClient
         .select({
           id: agentMessages.id,
           content: agentMessages.content,
           contentType: agentMessages.contentType,
           metadata: agentMessages.metadata,
           createdAt: agentMessages.createdAt,
+          discarded: exists(discardedApiInputQuery(dbClient)),
         })
         .from(agentMessages)
         .where(
@@ -700,19 +728,15 @@ export class AgentExecutionWorkerRuntimeService {
         )
         .orderBy(asc(agentMessages.createdAt), asc(agentMessages.id));
 
-      if (!lastProcessedMessageId) {
-        return messages;
-      }
+      // 先按完整序列定位 lastProcessed 再剔除作废输入：lastProcessed 本身可能是作废消息
+      const lastProcessedIndex = lastProcessedMessageId
+        ? rows.findIndex((row) => row.id === lastProcessedMessageId)
+        : -1;
 
-      const lastProcessedIndex = messages.findIndex(
-        (message) => message.id === lastProcessedMessageId,
-      );
-
-      if (lastProcessedIndex < 0) {
-        return messages;
-      }
-
-      return messages.slice(lastProcessedIndex + 1);
+      return rows
+        .slice(lastProcessedIndex + 1)
+        .filter((row) => !row.discarded)
+        .map(({ discarded: _discarded, ...message }) => message);
     });
   }
 
@@ -733,7 +757,12 @@ export class AgentExecutionWorkerRuntimeService {
           createdAt: agentMessages.createdAt,
         })
         .from(agentMessages)
-        .where(eq(agentMessages.conversationId, conversationId))
+        .where(
+          and(
+            eq(agentMessages.conversationId, conversationId),
+            notExists(discardedApiInputQuery(dbClient)),
+          ),
+        )
         .orderBy(asc(agentMessages.createdAt), asc(agentMessages.id));
 
       if (!beforeMessageId) {

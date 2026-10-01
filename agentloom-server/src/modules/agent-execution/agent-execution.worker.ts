@@ -1348,12 +1348,24 @@ export class AgentExecutionWorker extends WorkerHost {
           break;
         }
 
-        await this.agentApiRunService?.markRunning({
+        const claim = await this.agentApiRunService?.markRunning({
           tenantId,
           conversationId,
-          pendingMessageIds: currentPendingMessages.map((message) => message.id),
+          pendingMessageIds: currentPendingMessages.map(
+            (message) => message.id,
+          ),
           agentVersionId: context.publishedVersionId ?? null,
         });
+        if (claim && claim.discardedMessageIds.length > 0) {
+          // 批次加载后，部分 API run 已在执行前被取消/判失败：调用方已拿到终态，剔除其输入
+          const discarded = new Set(claim.discardedMessageIds);
+          currentPendingMessages = currentPendingMessages.filter(
+            (message) => !discarded.has(message.id),
+          );
+          if (currentPendingMessages.length === 0) {
+            continue;
+          }
+        }
 
         const historyMessages =
           executionMetadata.lastProcessedMessageId && shouldRebuildHistoryOnce

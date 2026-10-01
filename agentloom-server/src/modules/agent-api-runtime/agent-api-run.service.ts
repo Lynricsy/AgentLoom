@@ -7,7 +7,7 @@ import {
   type AgentApiStreamEvent,
   type AgentApiToolCallSummary,
 } from '@agentloom/contracts';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
@@ -143,23 +143,26 @@ export class AgentApiRunService {
 
   /**
    * worker 取到待处理消息后、运行轮次前调用：把匹配的 queued run 标记为 running。
-   * 返回被标记的 run id；Studio 对话没有 run，结果为 null。
+   *
+   * 同一事务内还会找出本批消息里已在执行前进入终态（取消/失败）的 run 输入，
+   * 返回给 worker 从本轮剔除：批次可能在取消之前加载，调用方已拿到终态，不能再被处理。
+   * Studio 消息没有 run，既不会被认领也不会被剔除。
    */
   async markRunning(params: {
     tenantId: string;
     conversationId: string;
     pendingMessageIds: string[];
     agentVersionId: string | null;
-  }): Promise<string | null> {
+  }): Promise<{ runId: string | null; discardedMessageIds: string[] }> {
     if (params.pendingMessageIds.length === 0) {
-      return null;
+      return { runId: null, discardedMessageIds: [] };
     }
 
-    const rows = await runInTenantTransaction(
+    const { claimed, discarded } = await runInTenantTransaction(
       this.db,
       params.tenantId,
-      async (tx) =>
-        tx
+      async (tx) => {
+        const claimedRows = await tx
           .update(agentApiRuns)
           .set({
             status: 'running',
@@ -168,16 +171,31 @@ export class AgentApiRunService {
           })
           .where(
             and(
+              eq(agentApiRuns.conversationId, params.conversationId),
               inArray(agentApiRuns.userMessageId, params.pendingMessageIds),
               eq(agentApiRuns.status, 'queued'),
             ),
           )
-          .returning({ id: agentApiRuns.id }),
+          .returning({ id: agentApiRuns.id });
+        const discardedRows = await tx
+          .select({ userMessageId: agentApiRuns.userMessageId })
+          .from(agentApiRuns)
+          .where(
+            and(
+              eq(agentApiRuns.conversationId, params.conversationId),
+              inArray(agentApiRuns.userMessageId, params.pendingMessageIds),
+              isNull(agentApiRuns.startedAt),
+              inArray(agentApiRuns.status, ['cancelled', 'failed']),
+            ),
+          );
+        return { claimed: claimedRows, discarded: discardedRows };
+      },
     );
 
-    const runId = rows[0]?.id;
+    const discardedMessageIds = discarded.map((row) => row.userMessageId);
+    const runId = claimed[0]?.id ?? null;
     if (!runId) {
-      return null;
+      return { runId: null, discardedMessageIds };
     }
 
     this.localRuns.set(params.conversationId, runId);
@@ -186,7 +204,7 @@ export class AgentApiRunService {
       data: { runId, status: 'running' },
     });
 
-    return runId;
+    return { runId, discardedMessageIds };
   }
 
   /**

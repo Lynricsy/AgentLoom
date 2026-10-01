@@ -85,15 +85,16 @@ describe('AgentApiRunService', () => {
     it('命中 queued run 时标记 running、登记对话并写入 run.status', async () => {
       const update = createUpdateChain([{ id: RUN_ID }]);
       db.update.mockReturnValue(update);
+      db.select.mockReturnValue(createSelectChain([]));
 
-      const runId = await service.markRunning({
+      const result = await service.markRunning({
         tenantId: TENANT_ID,
         conversationId: CONVERSATION_ID,
         pendingMessageIds: [USER_MESSAGE_ID],
         agentVersionId: 'version-1',
       });
 
-      expect(runId).toBe(RUN_ID);
+      expect(result).toEqual({ runId: RUN_ID, discardedMessageIds: [] });
       expect(update.set).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'running',
@@ -101,6 +102,7 @@ describe('AgentApiRunService', () => {
         }),
       );
       expect(renderWhere(update.where.mock.calls[0][0]).params).toEqual([
+        CONVERSATION_ID,
         USER_MESSAGE_ID,
         'queued',
       ]);
@@ -113,21 +115,49 @@ describe('AgentApiRunService', () => {
 
     it('没有 queued run（Studio 对话）时不登记也不写事件', async () => {
       db.update.mockReturnValue(createUpdateChain([]));
+      db.select.mockReturnValue(createSelectChain([]));
 
-      const runId = await service.markRunning({
+      const result = await service.markRunning({
         tenantId: TENANT_ID,
         conversationId: CONVERSATION_ID,
         pendingMessageIds: [USER_MESSAGE_ID],
         agentVersionId: null,
       });
 
-      expect(runId).toBeNull();
+      expect(result).toEqual({ runId: null, discardedMessageIds: [] });
       expect(service.getLocalRunId(CONVERSATION_ID)).toBeUndefined();
       expect(eventStream.append).not.toHaveBeenCalled();
     });
 
+    it('返回本批中执行前已取消/失败的 run 输入，供 worker 剔除', async () => {
+      db.update.mockReturnValue(createUpdateChain([]));
+      const select = createSelectChain([{ userMessageId: USER_MESSAGE_ID }]);
+      db.select.mockReturnValue(select);
+
+      const result = await service.markRunning({
+        tenantId: TENANT_ID,
+        conversationId: CONVERSATION_ID,
+        pendingMessageIds: [USER_MESSAGE_ID],
+        agentVersionId: null,
+      });
+
+      expect(result).toEqual({
+        runId: null,
+        discardedMessageIds: [USER_MESSAGE_ID],
+      });
+      const where = renderWhere(select.where.mock.calls[0][0]);
+      expect(where.sql).toContain('"started_at" is null');
+      expect(where.params).toEqual([
+        CONVERSATION_ID,
+        USER_MESSAGE_ID,
+        'cancelled',
+        'failed',
+      ]);
+    });
+
     it('事件流写入失败不影响 running 标记', async () => {
       db.update.mockReturnValue(createUpdateChain([{ id: RUN_ID }]));
+      db.select.mockReturnValue(createSelectChain([]));
       eventStream.append.mockRejectedValue(new Error('redis down'));
 
       await expect(
@@ -137,7 +167,7 @@ describe('AgentApiRunService', () => {
           pendingMessageIds: [USER_MESSAGE_ID],
           agentVersionId: null,
         }),
-      ).resolves.toBe(RUN_ID);
+      ).resolves.toEqual({ runId: RUN_ID, discardedMessageIds: [] });
     });
   });
 
@@ -281,7 +311,9 @@ describe('AgentApiRunService', () => {
         output: {
           messageId: ASSISTANT_MESSAGE_ID,
           content: '你好！',
-          toolCalls: [{ id: 'call-1', tool: 'web_search', status: 'completed' }],
+          toolCalls: [
+            { id: 'call-1', tool: 'web_search', status: 'completed' },
+          ],
         },
         stopReason: 'end_turn',
         error: null,

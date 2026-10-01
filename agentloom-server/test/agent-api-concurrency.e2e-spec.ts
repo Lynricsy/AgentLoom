@@ -1,7 +1,15 @@
 import * as crypto from 'node:crypto';
 
 import { and, eq, inArray } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 import { agentApiRuns } from '../src/database/schema/agent-api-runs.schema';
 import { AgentApiEventStreamService } from '../src/modules/agent-api-runtime/agent-api-event-stream.service';
@@ -12,6 +20,7 @@ import {
   type CreateAgentApiRunResult,
 } from '../src/modules/agent-api/agent-api.service';
 import { AgentConversationService } from '../src/modules/agent-conversation/agent-conversation.service';
+import { AgentExecutionWorkerRuntimeService } from '../src/modules/agent-execution/agent-execution-worker-runtime.service';
 import {
   createRlsTestContext,
   seedAppUser,
@@ -210,6 +219,60 @@ describe('Agent API run concurrency (testcontainers)', () => {
       body: { input: { content: '继续' } },
     });
     expect(next.run.status).toBe('queued');
+  });
+
+  it('执行前取消的 run 输入不会被后续轮次处理，也不进入重建历史', async () => {
+    const [conversationId] = await createConversations(1);
+    const { run: cancelledRun } = await service.createRun(
+      fixture.key,
+      conversationId,
+      { body: { input: { content: '已取消的输入' } } },
+    );
+    await service.cancelRun(fixture.key, conversationId, cancelledRun.id);
+    const { run: nextRun } = await service.createRun(
+      fixture.key,
+      conversationId,
+      { body: { input: { content: '新的输入' } } },
+    );
+
+    // 只用到数据库的两个读取方法，其余依赖与本场景无关
+    const runtimeService = new AgentExecutionWorkerRuntimeService(
+      {} as never,
+      context.db,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const pending = await runtimeService.loadPendingUserMessages(
+      conversationId,
+      fixture.tenantId,
+    );
+    expect(pending.map((message) => message.content)).toEqual(['新的输入']);
+    const history = await runtimeService.loadConversationHistoryMessages(
+      conversationId,
+      fixture.tenantId,
+    );
+    expect(history.map((message) => message.content)).toEqual(['新的输入']);
+
+    // worker 的批次若在取消前加载，markRunning 负责剔除已取消的输入
+    const claim = await runService.markRunning({
+      tenantId: fixture.tenantId,
+      conversationId,
+      pendingMessageIds: [
+        cancelledRun.input.messageId,
+        nextRun.input.messageId,
+      ],
+      agentVersionId: null,
+    });
+    expect(claim).toEqual({
+      runId: nextRun.id,
+      discardedMessageIds: [cancelledRun.input.messageId],
+    });
   });
 
   it('其他 Key 创建的对话对当前 Key 不可见', async () => {

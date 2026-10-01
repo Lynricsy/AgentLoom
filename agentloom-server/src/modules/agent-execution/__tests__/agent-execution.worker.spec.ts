@@ -560,7 +560,10 @@ describe('AgentExecutionWorker', () => {
     }
 
     const completedJob = () =>
-      createJob('execute-agent-loop', { conversationId: 'c-1', tenantId: 't-1' });
+      createJob('execute-agent-loop', {
+        conversationId: 'c-1',
+        tenantId: 't-1',
+      });
 
     it('loop 空闲退出后仍有未处理消息时重新派发（覆盖退出窗口内到达的消息）', async () => {
       mockConversationRow({
@@ -3599,7 +3602,9 @@ describe('AgentExecutionWorker', () => {
 
     beforeEach(() => {
       afterCommitHooks.length = 0;
-      mockAgentApiRunService.markRunning.mockReset().mockResolvedValue('run-1');
+      mockAgentApiRunService.markRunning
+        .mockReset()
+        .mockResolvedValue({ runId: 'run-1', discardedMessageIds: [] });
       mockAgentApiRunService.finalizeTurnInTransaction
         .mockReset()
         .mockResolvedValue(['run-1']);
@@ -3655,7 +3660,7 @@ describe('AgentExecutionWorker', () => {
       });
       mockAgentApiRunService.markRunning.mockImplementation(async () => {
         calls.push('markRunning');
-        return 'run-1';
+        return { runId: 'run-1', discardedMessageIds: [] };
       });
       apiInternals.runConversationTurn = vi.fn(async () => {
         calls.push('turn');
@@ -3673,6 +3678,57 @@ describe('AgentExecutionWorker', () => {
       expect(calls).toEqual(['markRunning', 'turn']);
       expect(mockAgentApiRunService.failActiveRuns).not.toHaveBeenCalled();
       expect(mockAgentApiRunService.cancelActiveRuns).not.toHaveBeenCalled();
+    });
+
+    it('批次中已在执行前取消的 API 输入从本轮剔除，其余照常处理', async () => {
+      setupLoopMocks(apiInternals, {
+        context: makeActiveContext(),
+        pendingMessages: [
+          [
+            { id: 'msg-cancelled', content: '已取消', createdAt: new Date() },
+            { id: 'msg-2', content: '新输入', createdAt: new Date() },
+          ],
+          [],
+        ],
+      });
+      mockAgentApiRunService.markRunning.mockResolvedValue({
+        runId: 'run-2',
+        discardedMessageIds: ['msg-cancelled'],
+      });
+      apiInternals.runConversationTurn = vi.fn(async () => turnResult());
+
+      await apiWorker.executeAgentLoop('c-1', 't-1');
+
+      expect(apiInternals.runConversationTurn).toHaveBeenCalledTimes(1);
+      expect(apiInternals.runConversationTurn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'c-1',
+        't-1',
+        [expect.objectContaining({ id: 'msg-2' })],
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('批次全部是已取消的 API 输入时不运行轮次', async () => {
+      setupLoopMocks(apiInternals, {
+        context: makeActiveContext(),
+        pendingMessages: [
+          [{ id: 'msg-cancelled', content: '已取消', createdAt: new Date() }],
+          [],
+        ],
+      });
+      mockAgentApiRunService.markRunning.mockResolvedValue({
+        runId: null,
+        discardedMessageIds: ['msg-cancelled'],
+      });
+      apiInternals.runConversationTurn = vi.fn(async () => turnResult());
+
+      await apiWorker.executeAgentLoop('c-1', 't-1');
+
+      expect(apiInternals.runConversationTurn).not.toHaveBeenCalled();
     });
 
     it('准备阶段失败时把活跃 run 标记为 run-failed 并带上错误信息', async () => {
