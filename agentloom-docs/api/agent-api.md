@@ -320,6 +320,8 @@ content-type: application/json; charset=utf-8
 
 取消不结束对话，之后可以继续提交新 run。对已结束的 run 取消返回 409 `run-not-cancellable`。
 
+在开始执行前（`startedAt` 为 `null`）就被取消或判为 `failed` 的 run，它的输入不会交给 Agent，也不会作为后续 run 的上下文；这条输入仍会出现在 `GET …/messages` 中。已经开始执行后才取消的 run，输入和部分回复都保留在上下文里。
+
 ## 6. 读取历史
 
 | 请求 | 内容 | 排序 |
