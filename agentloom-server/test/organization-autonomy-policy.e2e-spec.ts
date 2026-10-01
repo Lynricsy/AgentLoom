@@ -61,6 +61,7 @@ import {
 import { AppModule } from '../src/app.module';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import { BULLMQ_QUEUE_NAMES } from './support/bullmq-queues';
 import { createMockRedisClient } from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
@@ -70,22 +71,6 @@ import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import * as schema from '../src/database/schema';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
-
-const APP_QUEUE_NAMES = [
-  'workflow-execution',
-  'agent-task',
-  'plugin-execution',
-  'earnings-settlement',
-  'notification',
-  'trigger-scheduler',
-  'sandbox-lifecycle',
-  'optimization-analysis',
-  'audit-log-retention',
-  'evidence-export',
-  'evidence-export-cleanup',
-  'document-processing',
-  'document-indexing',
-] as const;
 
 type OrganizationRole = 'owner' | 'admin' | 'creator' | 'operator' | 'viewer';
 
@@ -334,7 +319,7 @@ describe('Organization Autonomy Policy E2E (testcontainers)', () => {
       .overrideProvider(getOptionsToken())
       .useValue(throttlerOptions);
 
-    for (const queueName of APP_QUEUE_NAMES) {
+    for (const queueName of BULLMQ_QUEUE_NAMES) {
       moduleBuilder = moduleBuilder
         .overrideProvider(getQueueToken(queueName))
         .useValue(queueMock);

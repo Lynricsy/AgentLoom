@@ -63,6 +63,7 @@ import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
+import { BULLMQ_QUEUE_NAMES } from './support/bullmq-queues';
 import {
   createMockRedisClient,
   type MockRedisClient,
@@ -82,22 +83,6 @@ import {
 } from './rls/rls-test-utils';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
-
-const APP_QUEUE_NAMES = [
-  'workflow-execution',
-  'agent-task',
-  'plugin-execution',
-  'earnings-settlement',
-  'notification',
-  'trigger-scheduler',
-  'sandbox-lifecycle',
-  'optimization-analysis',
-  'audit-log-retention',
-  'evidence-export',
-  'evidence-export-cleanup',
-  'document-processing',
-  'document-indexing',
-] as const;
 
 type TestUser = {
   id: string;
@@ -382,7 +367,7 @@ describe('Monitoring E2E', () => {
       .overrideProvider(getOptionsToken())
       .useValue(throttlerOptions);
 
-    for (const queueName of APP_QUEUE_NAMES) {
+    for (const queueName of BULLMQ_QUEUE_NAMES) {
       moduleBuilder = moduleBuilder
         .overrideProvider(getQueueToken(queueName))
         .useValue(queueMock);
