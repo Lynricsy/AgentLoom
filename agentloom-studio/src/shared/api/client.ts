@@ -3,7 +3,7 @@ import { snakeToCamel, camelToSnake } from '@/shared/utils/caseConverter'
 import { supabase } from '@/shared/lib/supabase'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 const AUTH_TOKEN_KEY = 'auth_token'
 
 function readStoredToken(): string | undefined {

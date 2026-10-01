@@ -21,6 +21,7 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
@@ -30,12 +31,23 @@ import { useTitleUpdateCounter } from "../stores/agent-conversation.store";
 import { conversationKeys } from "../api/conversationKeys";
 import { useConversationList } from "../api/conversationQueries";
 import { useDeleteConversation } from "../api/conversationMutations";
-import type { ConversationListItem } from "../api/conversationApi";
+import type {
+  ConversationListItem,
+  ConversationSource,
+} from "../api/conversationApi";
 
 const STORAGE_KEY = "agentloom-conv-sidebar-collapsed";
 
 /** 侧栏在 md 以下强制收起为图标轨道，保证 375px 下正文仍有可用宽度 */
 const SIDEBAR_EXPAND_QUERY = "(min-width: 768px)";
+
+type SourceFilter = "all" | ConversationSource;
+
+const SOURCE_FILTER_OPTIONS: { value: SourceFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "studio", label: "Studio" },
+  { value: "api", label: "API" },
+];
 
 /** 从标题中提取首个 emoji，fallback 到默认 */
 function extractEmoji(title: string | null): string {
@@ -107,8 +119,10 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   const queryClient = useQueryClient();
   const { notify } = useToast();
   const titleUpdateCounter = useTitleUpdateCounter();
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const { data, isLoading, isError, error } = useConversationList(agentId, {
     limit: 50,
+    source: sourceFilter === "all" ? undefined : sourceFilter,
   });
   const deleteMutation = useDeleteConversation(agentId);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -241,6 +255,36 @@ export const ConversationSidebar = memo(function ConversationSidebar({
         )}
       </div>
 
+      {collapsed ? null : (
+        <div
+          role="group"
+          aria-label="按来源筛选对话"
+          className="flex gap-1 border-b border-border px-2 py-1.5"
+          data-testid="conversation-source-filter"
+        >
+          {SOURCE_FILTER_OPTIONS.map((option) => {
+            const isSelected = sourceFilter === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => setSourceFilter(option.value)}
+                className={cn(
+                  "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                  isSelected
+                    ? "bg-surface-elevated text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Conversation List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
@@ -254,7 +298,14 @@ export const ConversationSidebar = memo(function ConversationSidebar({
             <ConversationListSkeleton />
           )
         ) : conversations.length === 0 ? (
-          collapsed ? null : (
+          collapsed ? null : sourceFilter === "api" ? (
+            <EmptyState
+              className="mx-2 mt-4 gap-2 border-0 px-3 py-8"
+              icon={MessagesSquare}
+              title="暂无 API 对话"
+              description="第三方通过 API Key 发起的对话会显示在这里。"
+            />
+          ) : (
             <EmptyState
               className="mx-2 mt-4 gap-2 border-0 px-3 py-8"
               icon={MessagesSquare}
@@ -286,7 +337,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                           ? "bg-primary/12"
                           : "hover:bg-surface-elevated",
                       )}
-                      title={conv.title ?? "未命名"}
+                      title={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
                     >
                       {emoji}
                     </button>
@@ -325,11 +376,21 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       </p>
                       <p
                         className={cn(
-                          "text-[11px]",
+                          "flex items-center gap-1.5 text-[11px]",
                           isActive ? "text-primary/70" : "text-muted-foreground",
                         )}
                       >
                         {formatTime(conv.updatedAt)}
+                        {conv.source === "api" ? (
+                          <Badge
+                            variant="info"
+                            size="sm"
+                            title="第三方通过 API Key 发起的对话"
+                            data-testid="conversation-source-api-badge"
+                          >
+                            API
+                          </Badge>
+                        ) : null}
                       </p>
                     </div>
                   </button>

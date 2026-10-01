@@ -16,6 +16,10 @@ import { AgentCreateVersionDialog } from "@/features/agent";
 import { AgentPublishDialog } from "@/features/agent";
 import { AgentVersionHistoryPanel } from "@/features/agent";
 import { AgentVersionToolbar } from "@/features/agent";
+import {
+  AgentApiAccessSheet,
+  useAgentApiKeyAccess,
+} from "@/features/agent-api-key";
 import { ShareManagementDialog } from "@/features/share";
 import type { ApiError } from "@/shared/types/api";
 import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
@@ -74,6 +78,8 @@ function AgentCanvasPage() {
   const { notify } = useToast();
   /** 小屏（<lg）画布只读浏览，工具条同步收起写操作入口 */
   const isMobileReadOnly = !useMediaQuery(LG_QUERY);
+  /** API Key 列表对 owner/admin/creator 可见，其余角色不展示入口 */
+  const apiKeyAccess = useAgentApiKeyAccess();
 
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isCreateVersionDialogOpen, setIsCreateVersionDialogOpen] =
@@ -81,6 +87,7 @@ function AgentCanvasPage() {
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [publishVersionId, setPublishVersionId] = useState<string | null>(null);
+  const [isApiAccessOpen, setIsApiAccessOpen] = useState(false);
   const reopenVersionHistoryAfterPublishRef = useRef(false);
 
   const handleCanvasSaveError = useCallback(
@@ -176,6 +183,11 @@ function AgentCanvasPage() {
                 onShare={
                   canShare ? () => setIsShareDialogOpen(true) : undefined
                 }
+                onOpenApiAccess={
+                  apiKeyAccess === "none"
+                    ? undefined
+                    : () => setIsApiAccessOpen(true)
+                }
                 isReadOnly={isMobileReadOnly}
               />
             </div>
@@ -212,6 +224,13 @@ function AgentCanvasPage() {
           onOpenChange={setIsShareDialogOpen}
           resourceType="agent"
           resourceId={agentId}
+        />
+
+        <AgentApiAccessSheet
+          open={isApiAccessOpen}
+          onOpenChange={setIsApiAccessOpen}
+          agentId={agentId}
+          agentStatus={agent?.status ?? "draft"}
         />
       </div>
     </ReactFlowProvider>

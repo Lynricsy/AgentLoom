@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { History, Loader2, Save, Share2, Tag, Upload } from "lucide-react";
+import { History, KeyRound, Loader2, Save, Share2, Tag, Upload } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { Badge, type BadgeProps } from "@/shared/ui/badge";
@@ -17,6 +17,8 @@ interface AgentVersionToolbarProps {
   onOpenVersionHistory: () => void;
   onOpenPublish: (versionId?: string) => void;
   onShare?: () => void;
+  /** 传入时显示「API 访问」入口；是否可见由调用方按角色决定 */
+  onOpenApiAccess?: () => void;
   /** 只读浏览（小屏）：只保留状态徽章与历史记录等查看类入口 */
   isReadOnly?: boolean;
   className?: string;
@@ -40,6 +42,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
   onOpenVersionHistory,
   onOpenPublish,
   onShare,
+  onOpenApiAccess,
   isReadOnly = false,
   className,
 }: AgentVersionToolbarProps) {
@@ -121,6 +124,18 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
         >
           <Share2 className="h-3.5 w-3.5" />
           分享
+        </Button>
+      )}
+
+      {onOpenApiAccess && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onOpenApiAccess}
+          data-testid="btn-agent-api-access"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          API 访问
         </Button>
       )}
     </div>

@@ -1,6 +1,7 @@
 import type {
   ConversationListResponseSwaggerDto,
   ConversationListResponseSwaggerDtoDataInner,
+  ConversationListResponseSwaggerDtoDataInnerSourceEnum,
   StartConversationDto,
   UpdateConversationDto,
 } from "@agentloom/api-client";
@@ -10,10 +11,15 @@ import type { SandboxProcess, SandboxStats } from "@/features/sandbox";
 export type ConversationListItem =
   ConversationListResponseSwaggerDtoDataInner;
 
+/** 对话来源：Studio 内发起或第三方经 Agent API Key 发起 */
+export type ConversationSource =
+  ConversationListResponseSwaggerDtoDataInnerSourceEnum;
+
 export interface ListConversationsParams {
   page?: number;
   limit?: number;
   status?: string;
+  source?: ConversationSource;
 }
 
 /**
@@ -37,6 +43,7 @@ export async function listConversations(
   if (params.page) searchParams.page = String(params.page);
   if (params.limit) searchParams.limit = String(params.limit);
   if (params.status) searchParams.status = params.status;
+  if (params.source) searchParams.source = params.source;
 
   return apiClient
     .get(`agent-definitions/${agentId}/conversations`, { searchParams })
