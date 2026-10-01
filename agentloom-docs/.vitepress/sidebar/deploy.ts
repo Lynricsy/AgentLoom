@@ -7,6 +7,9 @@ const deploy: DefaultTheme.SidebarItem[] = [
     items: [
       { text: '部署拓扑', link: '/deploy/' },
       { text: 'Docker Compose 部署', link: '/deploy/compose' },
+      { text: '配置参考', link: '/deploy/configuration' },
+      { text: '自托管 Supabase', link: '/deploy/supabase' },
+      { text: 'Firecracker 沙箱', link: '/deploy/firecracker' },
       { text: 'Helm 部署', link: '/deploy/helm' },
       { text: '备份与恢复', link: '/deploy/backup-restore' },
       { text: '反向代理', link: '/deploy/reverse-proxy' },

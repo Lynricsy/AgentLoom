@@ -1,198 +1,153 @@
-# 部署运维
+---
+docType: explanation
+---
 
-AgentLoom 支持多种部署模式，适用于从开发调试到企业级生产的不同场景。
+# 部署拓扑
 
-## 部署模式
+> 一套私有部署由哪些进程组成，它们之间怎样连通，为什么 server 起不来时整个入口都不可用？
 
-| 模式                        | 适用场景           | 复杂度        |
-| --------------------------- | ------------------ | ------------- |
-| [Docker Compose](./compose)  | 单机部署、小团队   | ⭐ 低         |
-| [Kubernetes / Helm](./helm) | 集群部署、弹性伸缩 | ⭐⭐⭐ 高     |
-| 裸机部署                    | 特殊合规要求       | ⭐⭐⭐⭐ 极高 |
+部署资产全部在 `agentloom-deploy/`。本页描述 Docker Compose 拓扑（以 `agentloom-deploy/docker-compose.yml` 与 `agentloom-deploy/docker-compose.supabase.yml` 为准），以及它与 Helm Chart 的差别。动手部署请从 [Docker Compose 部署](/deploy/compose) 开始。
 
-::: tip 推荐
-对于大多数私有化部署场景，**Docker Compose** 模式是最佳起步方案 — 快速、可预测、运维简单。
-:::
+## 服务
 
-## 基础设施要求
+主 Compose 文件 `agentloom-deploy/docker-compose.yml`：
 
-### 最低配置
+| 服务 | 镜像（默认） | 作用 | 启动方式 |
+| --- | --- | --- | --- |
+| `reverse-proxy` | `openresty/openresty:alpine` | 唯一对外 Web 入口，按路径转发到 studio / server / docs / Supabase Kong，见 [反向代理](/deploy/reverse-proxy) | 常驻 |
+| `studio` | `agentloom/studio:private-local` | Studio 前端静态站，容器内 nginx 监听 8080 | 常驻 |
+| `docs` | `agentloom/docs:private-local` | 本文档站，容器内 nginx 监听 8081，路径前缀 `/documentation/` | 常驻 |
+| `server` | `agentloom/server:private-local` | NestJS API 与 Socket.IO，监听 3000 | 常驻 |
+| `worker` | 同 server 镜像 | 与 server 同一入口 `node dist/src/main.js`，不接入 `agentloom-frontend`，入口不会把请求转给它 | 常驻 |
+| `firecracker-runtime` | `agentloom/firecracker-runtime:1.16.1` | 沙箱 microVM 的 runtime manager，特权容器，mTLS 监听 8443，见 [Firecracker 沙箱](/deploy/firecracker) | 常驻 |
+| `postgres` | `postgres:16-alpine` | 业务数据库；自托管 Supabase 也用这个库 | 常驻 |
+| `redis` | `redis:7-alpine` | BullMQ 队列与缓存，开启 AOF | 常驻 |
+| `minio` | `minio/minio:RELEASE.2025-02-28T09-55-16Z` | 对象存储，默认 bucket `agentloom-documents` | 常驻 |
+| `qdrant` | `qdrant/qdrant:v1.17.0` | 向量库 | 常驻 |
+| `createbuckets` | `minio/mc:RELEASE.2025-05-21T01-59-54Z` | 创建 bucket 后退出 | 一次性 |
+| `server-migrator` | server 镜像的 `migrator` 构建阶段 | 执行 `pnpm db:migrate` / `pnpm db:seed` | profile `tools` |
+| `sandbox-cutover` | 同 runtime 镜像，入口 `/usr/local/bin/sandbox-cutover` | 旧 Docker 沙箱迁移到 Firecracker；唯一挂载宿主 Docker socket 的服务 | profile `migration` |
 
-| 资源     | 要求                                    |
-| -------- | --------------------------------------- |
-| CPU      | 4 vCPU                                  |
-| 内存     | 8 GiB                                   |
-| 磁盘     | 100 GiB SSD                             |
-| 操作系统 | Linux (推荐 Ubuntu 22.04+ / Debian 12+) |
-| Docker   | 24.0+ (含 Compose V2)                   |
+可选的 Supabase 认证栈 `agentloom-deploy/docker-compose.supabase.yml`：
 
-### 推荐生产配置
+| 服务 | 镜像 | 作用 |
+| --- | --- | --- |
+| `supabase-db-ready` | `postgres:16-alpine` | 循环 `pg_isready -h postgres` 直到主栈 PostgreSQL 可连，然后退出 |
+| `supabase-auth` | `supabase/gotrue:v2.175.0` | GoTrue，数据写入主栈 PostgreSQL 的 `auth` schema |
+| `supabase-kong` | `kong:3.9` | 把 `/auth/v1/` 转发到 GoTrue（`agentloom-deploy/supabase/kong.yml`） |
 
-| 资源 | 要求              |
-| ---- | ----------------- |
-| CPU  | 8+ vCPU           |
-| 内存 | 16+ GiB           |
-| 磁盘 | 200+ GiB NVMe SSD |
-| 网络 | 内网带宽 ≥ 1 Gbps |
+`APP_DEPLOYMENT_MODE=private` 且 `APP_SUPABASE_*` 全部留空时 server 也能启动，但邮箱注册与登录会返回认证不可用错误（`agentloom-server/src/modules/auth/supabase/supabase.service.ts` 的 `ensureAvailable`）。用 `./scripts/generate-secrets.sh` 生成的 `.env` 已填好 `APP_SUPABASE_*`，因此按 [Docker Compose 部署](/deploy/compose) 的路径需要启动这套栈。细节见 [自托管 Supabase](/deploy/supabase)。
 
-## 服务架构
+## 启动依赖
 
-AgentLoom 私有化部署包含 9 个核心服务：
+`depends_on` 全部使用 `condition: service_healthy`：
 
 ```mermaid
-graph TD
-    Client([客户端]) --> NX[Nginx 反向代理<br/>端口 8080]
-
-    NX -->|"/ (前端)"| ST[Studio 前端<br/>Nginx + SPA]
-    NX -->|"/api/ & /socket.io/"| SV[Server API<br/>NestJS + Fastify]
-
-    SV --> PG[(PostgreSQL 16)]
-    SV --> RD[(Redis 7)]
-    SV --> MN[(MinIO 对象存储)]
-    SV --> QD[(Qdrant 向量库)]
-
-    WK[Worker 后台任务] --> PG
-    WK --> RD
-    WK --> MN
-    WK --> QD
-
-    style NX fill:#e1f5fe
-    style ST fill:#f3e5f5
-    style SV fill:#e8f5e9
-    style WK fill:#fff3e0
+flowchart LR
+  PG[postgres] --> S[server]
+  RD[redis] --> S
+  MN[minio] --> S
+  QD[qdrant] --> S
+  FC[firecracker-runtime] --> S
+  PG --> W[worker]
+  RD --> W
+  MN --> W
+  QD --> W
+  FC --> W
+  S --> RP[reverse-proxy]
+  ST[studio] --> RP
+  DC[docs] --> RP
+  MN --> CB[createbuckets]
 ```
 
-### 服务说明
+`server` 与 `worker` 都要等 `firecracker-runtime` 健康后才会创建；`reverse-proxy` 又要等 `server`。因此 **firecracker-runtime 的健康检查不通过时，server、worker 与入口都不会启动**，Web 入口整体不可用。firecracker-runtime 的健康检查是带 mTLS 客户端证书的 `GET https://firecracker-runtime:8443/readyz`，它通过的前提是宿主满足 KVM、TUN、cgroup v2、内核与 swap 等预检条件（见 [Firecracker 沙箱](/deploy/firecracker)）。没有可用 KVM 的宿主无法按本仓库的 Compose 文件跑起 Web 入口。
 
-| 服务              | 镜像                    | 说明                               |
-| ----------------- | ----------------------- | ---------------------------------- |
-| **reverse-proxy** | `nginx:1.27-alpine`     | 反向代理，统一入口                 |
-| **studio**        | `agentloom/studio`      | React 前端，Nginx 托管 SPA         |
-| **server**        | `agentloom/server`      | NestJS API 服务                    |
-| **worker**        | `agentloom/server`      | 后台任务处理（与 server 共享镜像） |
-| **postgres**      | `postgres:16-alpine`    | 主数据库                           |
-| **redis**         | `redis:7-alpine`        | 缓存与消息队列 (BullMQ)            |
-| **minio**         | `minio/minio:latest`    | S3 兼容对象存储                    |
-| **qdrant**        | `qdrant/qdrant:v1.17.0` | 向量数据库（知识库 RAG）           |
-| **sandbox**       | `agentloom/sandbox:latest` | 沙箱容器：archlinux + pi-coding-agent + Fastify HTTP，Agent 隔离执行环境 |
+## 网络
 
-::: info Server 与 Worker 的关系
-Server 和 Worker 使用**完全相同的 Docker 镜像和启动命令**，仅通过拓扑分离实现职责划分。这种设计简化了构建流程并确保代码一致性。
-:::
+Compose 声明了 5 个网络，`name:` 写死为全局名称，不随 Compose project 名变化：
 
-## 环境配置模板
+| 网络键 | Docker 网络名 | internal | 成员 |
+| --- | --- | --- | --- |
+| `frontend_net` | `agentloom-frontend` | 否 | reverse-proxy、studio、docs、server |
+| `app_net` | `agentloom-app` | 是 | server、worker、firecracker-runtime、postgres、redis、minio、qdrant、createbuckets、server-migrator、sandbox-cutover |
+| `data_net` | `agentloom-data` | 是 | postgres、server-migrator |
+| `sandbox_egress_net` | `agentloom-sandbox-egress` | 否 | firecracker-runtime（guest 出站） |
+| `supabase_net` | `${SUPABASE_NETWORK:-supabase-shared}`，external | 由 `docker network create` 决定 | reverse-proxy、server、worker、postgres、server-migrator、sandbox-cutover，以及 Supabase 栈的三个服务 |
 
-AgentLoom 使用 `envs/` 目录管理分层环境变量模板：
+`supabase_net` 是 external 网络，主 Compose 与 Supabase Compose 都不会创建它，首次部署必须先执行 `docker network create supabase-shared`。因为网络名是全局的，同一台 Docker 宿主上只能运行一套这样的栈。
 
-| 模板文件 | 用途 |
-|----------|------|
-| `.env.shared.example` | 基础设施（端口、镜像标签、数据库、Redis、MinIO、Qdrant） |
-| `.env.server.example` | Server/Worker 专用（`APP_*` 前缀应用配置 + Supabase + Firebase） |
-| `.env.studio.example` | Studio 前端（`VITE_*` 前缀构建时注入） |
-
-### 1. 基础设置 (.env.shared)
-
-```bash
-# 对外暴露端口
-EXPOSE_PORT=8080
-
-# 镜像标签
-SERVER_IMAGE=agentloom/server:latest
-STUDIO_IMAGE=agentloom/studio:latest
+```mermaid
+flowchart TB
+  subgraph frontend["agentloom-frontend"]
+    RP[reverse-proxy]
+    ST[studio]
+    DC[docs]
+  end
+  subgraph app["agentloom-app（internal）"]
+    W[worker]
+    FC[firecracker-runtime]
+    RD[redis]
+    MN[minio]
+    QD[qdrant]
+  end
+  subgraph shared["supabase-shared（external）"]
+    KG[supabase-kong]
+    GA[supabase-auth]
+  end
+  S[server]
+  PG[postgres]
+  RP --> ST
+  RP --> DC
+  RP --> S
+  RP --> KG
+  KG --> GA
+  GA --> PG
+  S --> PG
+  S --> RD
+  S --> MN
+  S --> QD
+  S --> FC
+  W --> PG
+  W --> FC
+  FC --> EG[agentloom-sandbox-egress → 外网]
 ```
 
-### 2. 共享基础设施 (.env.shared)
+server 同时在 `agentloom-frontend`、`agentloom-app` 与 `supabase-shared` 上；postgres 同时在 `agentloom-app`、`agentloom-data` 与 `supabase-shared` 上，所以 GoTrue 用主机名 `postgres` 访问它。
 
-```bash
-# PostgreSQL（容器初始化用）
-POSTGRES_USER=agentloom
-POSTGRES_PASSWORD=<你的数据库密码>
-POSTGRES_DB=agentloom
+## 端口
 
-# Redis（容器初始化用）
-REDIS_PASSWORD=<你的 Redis 密码>
+| 宿主端口 | 变量 | 容器端口 | 绑定地址 | 说明 |
+| --- | --- | --- | --- | --- |
+| 8080 | `NGINX_HTTP_PORT` | reverse-proxy 80 | 所有接口 | 唯一 Web 入口：Studio、`/api/`、`/socket.io/`、`/documentation/`、`/auth/` |
+| 9001 | `MINIO_CONSOLE_PORT` | minio 9001 | `127.0.0.1` | MinIO 控制台 |
+| 6333 | `QDRANT_HTTP_PORT` | qdrant 6333 | `127.0.0.1` | Qdrant HTTP |
+| 8000 | `SUPABASE_KONG_PORT` | supabase-kong 8000 | 所有接口 | Supabase Kong（Supabase Compose） |
 
-# MinIO（容器初始化用）
-MINIO_ROOT_USER=agentloom
-MINIO_ROOT_PASSWORD=<你的 MinIO 密码>
-```
+以下端口只在 Docker 网络内可达，不映射到宿主：server 3000、studio 8080、docs 8081、firecracker-runtime 8443（仅接受 mTLS）、MinIO API 9000、PostgreSQL 5432、Redis 6379。
 
-### 3. Server 专用配置 (.env.server)
+## 持久化
 
-Server/Worker 共享同一份配置，所有应用级变量使用 **`APP_` 前缀**：
+命名卷 `postgres_data`、`redis_data`、`minio_data`、`qdrant_data`、`firecracker_state`。备份脚本覆盖 PostgreSQL 与 MinIO；`firecracker_state` 中的 microVM 磁盘不在备份范围内，见 [备份与恢复](/deploy/backup-restore)。
 
-```bash
-# 数据库连接（APP_ 前缀）
-APP_DATABASE_URL=postgresql://agentloom:<密码>@postgres:5432/agentloom
-APP_REDIS_URL=redis://:<密码>@redis:6379/0
+## Compose 与 Helm
 
-# MinIO 对象存储
-APP_MINIO_ENDPOINT=minio
-APP_MINIO_PORT=9000
-APP_MINIO_ACCESS_KEY=agentloom
-APP_MINIO_SECRET_KEY=<你的 MinIO 密码>
-APP_MINIO_USE_SSL=false
-APP_MINIO_BUCKET=agentloom
+| 方面 | Docker Compose | Helm（`agentloom-deploy/kubernetes/helm/agentloom/`） |
+| --- | --- | --- |
+| Web 入口 | reverse-proxy（OpenResty），含 `/documentation/` 与 `/auth/` | Ingress，只有 `/api`、`/socket.io`、`/` 三条路径 |
+| 文档站 | `docs` 服务 | 不部署 |
+| Supabase | `docker-compose.supabase.yml` | 不部署，`env.server.APP_SUPABASE_*` 指向外部实例 |
+| 沙箱运行时节点 | 每台宿主一个 `firecracker-runtime` 容器 | StatefulSet，`firecrackerRuntime.replicas` 可大于 1 |
+| 横向扩容 | 不支持 | server / worker / studio 可开 HPA |
+| 备份 | `agentloom-deploy/scripts/` 与 `agentloom-deploy/systemd/` | Chart 不包含 |
 
-# Qdrant 向量数据库
-APP_QDRANT_URL=http://qdrant:6333
+单台服务器、需要文档站与内置认证时用 Compose；已有 Kubernetes 集群、需要多副本 server 或多个沙箱节点时用 Helm，见 [Helm 部署](/deploy/helm)。
 
-# JWT 与加密
-APP_JWT_SECRET=<你的 JWT 密钥>
-APP_MASTER_ENCRYPTION_KEY=<你的加密密钥>
+## 本分区页面
 
-# 部署模式
-APP_DEPLOYMENT_MODE=private
-APP_FRONTEND_URL=http://localhost:8080
-APP_OAUTH_REDIRECT_URL=http://localhost:8080/auth/callback
-
-# Supabase (可选，私有部署可全部留空)
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Firebase 推送通知 (可选)
-FIREBASE_SERVICE_ACCOUNT=
-
-# 私有部署 License
-APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY=<RSA 公钥>
-```
-
-### 4. Studio 前端配置 (.env.studio)
-
-```bash
-# 运行时注入的环境变量
-VITE_API_BASE_URL=http://localhost:8080
-VITE_WS_URL=ws://localhost:8080
-VITE_SUPABASE_URL=<你的 Supabase URL>
-VITE_SUPABASE_ANON_KEY=<你的 Supabase Anon Key>
-VITE_AUTOSAVE_DEBOUNCE_MS=1000
-```
-
-::: warning Supabase 配置约束
-私有部署模式下，Supabase 相关配置要么**全部提供**，要么**全部留空**。不支持部分配置。
-:::
-
-::: tip 环境变量命名规范
-- 基础设施容器初始化变量：直接使用服务名前缀（如 `POSTGRES_*`、`REDIS_*`、`MINIO_*`）
-- Server/Worker 应用配置：统一使用 `APP_` 前缀
-- Studio 前端配置：统一使用 `VITE_` 前缀
-:::
-
-## 运维文档导航
-
-| 文档                             | 内容                           |
-| -------------------------------- | ------------------------------ |
-| [Docker Compose 部署](./compose)  | 完整的 Docker Compose 部署指南 |
-| [Kubernetes / Helm 部署](./helm) | Helm Chart 安装与配置          |
-| [备份与恢复](./backup-restore)           | 数据备份策略与灾难恢复         |
-| [Nginx 文档站托管](./reverse-proxy)      | VitePress 文档站的 Nginx 配置  |
-
-## 相关管理功能
-
-在 AgentLoom Studio 中，以下管理页面与私有部署密切相关：
-
-- **私有部署设置** (`/settings/private-deployment`) — SMTP、LLM 代理、证书、License 配置
-- **资源配额** (`/settings/resource-quotas`) — 并发执行、API 限流、存储预算
-- **运行监控** (`/settings/monitoring`) — 执行状态、治理策略、通知概览
-- **审计日志** (`/settings/audit-logs`) — 操作审计与归档管理
+- [Docker Compose 部署](/deploy/compose)：从空目录到 `/api/v1/health` 返回 200 的完整步骤
+- [配置参考](/deploy/configuration)：`.env`、server、Studio 的全部变量
+- [自托管 Supabase](/deploy/supabase)：GoTrue、Kong、OAuth 回调
+- [Firecracker 沙箱](/deploy/firecracker)：宿主条件、PKI、产物构建、多节点与迁移
+- [Helm 部署](/deploy/helm)：values 键与模板
+- [备份与恢复](/deploy/backup-restore)：脚本、产物与定时器
+- [反向代理](/deploy/reverse-proxy)：路由表与外层 TLS
