@@ -617,4 +617,73 @@ describe('workflow migrated scenarios', () => {
       TENANT_ID,
     );
   });
+
+  it('outputSchema 只交给干预暂停写入 checkpoint，不进入步骤 result', async () => {
+    const outputSchema = { type: 'object', required: ['answer'] };
+    const makeAgentStep = (id: string, autonomyMode: string) =>
+      makeStep({
+        id,
+        nodeId: id,
+        status: 'queued',
+        nodeType: 'agent',
+        nodeData: { agentDefinitionId: 'agent-def-schema', autonomyMode },
+      });
+    mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
+      execute: vi.fn().mockImplementation(async ({ step: executingStep }) => {
+        executingStep.checkpointData = {
+          ...(executingStep.checkpointData ?? {}),
+          sessionId: 'session-schema',
+        };
+        return {
+          content: '{"answer":"42"}',
+          structured: { answer: '42' },
+          outputSchema,
+        };
+      }),
+    });
+    const runtime = {
+      pauseForIntervention: vi.fn().mockResolvedValue(undefined),
+      onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+      onNodeFailed: vi.fn().mockResolvedValue(undefined),
+    } as unknown as NodeSchedulerService;
+
+    const autoStep = makeAgentStep('auto-agent', 'FULL_AUTO');
+    await workflowAgentNodeExecutor.executeWorkflowAgentNode(
+      autoStep,
+      {},
+      TENANT_ID,
+      EXECUTION_ID,
+      [],
+      [autoStep],
+      runtime,
+    );
+    expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      TENANT_ID,
+      autoStep.id,
+      'completed',
+      expect.objectContaining({
+        result: { content: '{"answer":"42"}', structured: { answer: '42' } },
+      }),
+    );
+
+    mockOrganizationAutonomyPolicyService.resolveEffectiveAutonomyMode.mockResolvedValueOnce(
+      'MANUAL_CONFIRM',
+    );
+    const manualStep = makeAgentStep('manual-agent', 'MANUAL_CONFIRM');
+    await workflowAgentNodeExecutor.executeWorkflowAgentNode(
+      manualStep,
+      {},
+      TENANT_ID,
+      EXECUTION_ID,
+      [],
+      [manualStep],
+      runtime,
+    );
+    expect(runtime.pauseForIntervention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partialContent: '{"answer":"42"}',
+        outputSchema,
+      }),
+    );
+  });
 });

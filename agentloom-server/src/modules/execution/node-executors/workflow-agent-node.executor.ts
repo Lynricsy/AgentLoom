@@ -133,6 +133,8 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
             ? { agentVersionId: nodeData.agent_version_id }
             : {}),
       });
+      // outputSchema 只用于干预恢复时重新校验，不进入步骤 result（下游端口与执行详情不需要它）。
+      const { outputSchema, ...stepResult } = result;
       const effectiveAutonomyMode =
         await this.organizationAutonomyPolicyService.resolveEffectiveAutonomyMode(
           tenantId,
@@ -170,6 +172,7 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
             ? { segments: checkpointData.segments }
             : {}),
           ...(result.decision ? { decision: result.decision } : {}),
+          ...(outputSchema ? { outputSchema } : {}),
           executionType: 'workflow',
         });
         return;
@@ -188,7 +191,7 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
         step.id,
         'completed',
         {
-          result,
+          result: stepResult,
           checkpointData: buildWorkflowAgentCheckpointData(
             step.checkpointData,
             executionId,

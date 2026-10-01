@@ -1193,6 +1193,66 @@ describe('WorkflowAgentAdapter', () => {
     });
   });
 
+  describe('配置 outputSchema 时按 Schema 解析回复写入 structured', () => {
+    const outputSchema = {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+    };
+
+    function setupStructuredAgent(reply: string) {
+      setupNoSandboxAgent();
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+        modelConfig: { modelId: 'model-1' },
+        subAgents: [],
+        outputSchema,
+      });
+      mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+      mockSandboxRuntime.prompt.mockReturnValue(
+        emit([
+          { type: 'message_chunk', content: reply },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+      return createAdapter({
+        db,
+        agentRuntime: mockAgentRuntime,
+        runtimeAdapterFactory: mockRuntimeAdapterFactory,
+        agentDefinitionService: mockAgentDefinitionService,
+        sandboxService: mockSandboxService,
+        eventBridge: mockEventBridge,
+      });
+    }
+
+    it('回复（含 ```json 围栏）通过校验时 structured 为解析后的对象', async () => {
+      const adapter = setupStructuredAgent('```json\n{"answer": "42"}\n```');
+
+      const result = await adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { prompt: 'q' },
+        tenantId: TENANT_ID,
+        versionSnapshot: makeSnapshot('no-sandbox-node'),
+      });
+
+      expect(result.structured).toEqual({ answer: '42' });
+    });
+
+    it('回复不符合 Schema 时节点失败，而不是向下游输出空值', async () => {
+      const adapter = setupStructuredAgent('{"answer": 42}');
+
+      await expect(
+        adapter.execute({
+          executionId: EXECUTION_ID,
+          step: makeStep(),
+          input: { prompt: 'q' },
+          tenantId: TENANT_ID,
+          versionSnapshot: makeSnapshot('no-sandbox-node'),
+        }),
+      ).rejects.toThrow('Agent 回复不符合输出 Schema');
+    });
+  });
+
   it('无版本快照时抛出异常', async () => {
     mockAgentDefinitionService.findDetailById.mockResolvedValue({
       id: 'no-snap-agent',

@@ -1703,6 +1703,114 @@ describe('AgentTaskWorker', () => {
       );
     });
 
+    describe('checkpoint 带 outputSchema 时按 Schema 重新校验干预后的最终内容', () => {
+      const outputSchema = {
+        type: 'object',
+        properties: { answer: { type: 'string' } },
+        required: ['answer'],
+      };
+
+      async function resolveIntervention(
+        intervention: Pick<InterventionResolution, 'action' | 'modifiedContent'>,
+      ) {
+        mockDb.select.mockReturnValue(
+          createSelectChain(
+            makeStep({
+              status: 'waiting_intervention',
+              checkpointData: {
+                sessionId: SESSION_ID,
+                partialContent: '{"answer":"42"}',
+                stopReason: 'intervention_required',
+                interventionRequestedAt: REQUESTED_AT,
+                interventionNodeName: 'node-1',
+                outputSchema,
+                intervention: makeInterventionAudit(),
+              },
+            }),
+          ),
+        );
+        await worker.process(
+          createMockJob({
+            data: {
+              executionId: EXECUTION_ID,
+              stepId: STEP_ID,
+              tenantId: TENANT_ID,
+              resumeSessionId: SESSION_ID,
+              intervention: {
+                ...intervention,
+                requestedAt: REQUESTED_AT,
+                resolvedAt: RESOLVED_AT,
+                resolvedByUserId: RESOLVED_BY_USER_ID,
+              },
+            },
+          }),
+        );
+      }
+
+      it('approve：暂停前的回复通过校验后写入 structured', async () => {
+        await resolveIntervention({ action: 'approve' });
+
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          STEP_ID,
+          'completed',
+          expect.objectContaining({
+            result: expect.objectContaining({ structured: { answer: '42' } }),
+          }),
+        );
+      });
+
+      it('modify：修改后的文本通过校验时 structured 取修改后的值', async () => {
+        await resolveIntervention({
+          action: 'modify',
+          modifiedContent: '{"answer":"改过的答案"}',
+        });
+
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          STEP_ID,
+          'completed',
+          expect.objectContaining({
+            result: expect.objectContaining({
+              content: '{"answer":"改过的答案"}',
+              structured: { answer: '改过的答案' },
+            }),
+          }),
+        );
+        expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalled();
+      });
+
+      it('modify：修改后的文本不符合 Schema 时节点失败', async () => {
+        await resolveIntervention({
+          action: 'modify',
+          modifiedContent: '{"answer": 42}',
+        });
+
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          STEP_ID,
+          'failed',
+          expect.objectContaining({
+            errorMessage: expect.objectContaining({
+              message: expect.stringContaining('Agent 回复不符合输出 Schema'),
+            }),
+          }),
+        );
+        expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+          TENANT_ID,
+          STEP_ID,
+          'completed',
+          expect.anything(),
+        );
+        expect(mockNodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+        );
+        expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
+      });
+    });
+
     it('approve 干预会保留结构化 suggestedContent 作为最终输出', async () => {
       const structuredSuggestion = {
         summary: '建议稿',

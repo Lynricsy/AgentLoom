@@ -41,8 +41,8 @@ docType: howto
 | Manual Trigger | 默认 | 执行流出口（无名称端口）→ Agent 执行流入口 |
 | Text（命名为「分析任务」） | 写入本次分析任务，见下方示例 | 「文本」→ Agent「文本」 |
 | Text（命名为「输出 Schema」） | 写入 JSON Schema，见下方示例 | 「文本」→ Agent「Schema」 |
-| Agent | 「选择 Agent」选第 2 步发布的 Agent | 「回复」→ Text Output「文本」 |
-| Text Output | 无 | — |
+| Agent | 「选择 Agent」选第 2 步发布的 Agent | 「结构化」→ JSON Output「JSON」 |
+| JSON Output | 无 | — |
 
 「分析任务」示例：
 
@@ -75,14 +75,14 @@ docType: howto
 }
 ```
 
-「Schema」端口收到的 JSON Schema 会追加到 Agent 本次运行的系统提示词中，要求回复为符合该 Schema 的 JSON，所以 Agent 的「回复」就是 JSON 文本。Text 节点的「文本」连到「Schema」端口时，画布按 `text` → `json` 的转换规则允许这条连线，服务端把文本解析为 JSON Schema；文本不是合法的 JSON 对象时，Schema 被忽略。
+「Schema」端口收到的 JSON Schema 会追加到 Agent 本次运行的系统提示词中，要求回复为符合该 Schema 的 JSON。Text 节点的「文本」连到「Schema」端口时，画布按 `text` → `json` 的转换规则允许这条连线，服务端把文本解析为 JSON Schema；文本不是合法的 JSON 对象时，Schema 被忽略。
 
-把结果接到 Text Output 而不是 Agent 的「结构化」端口：「结构化」端口输出的是 Agent 的决策事件内容，不是按 Schema 生成的 JSON（见文末「已知限制」）。
+Agent 结束后，服务端把回复解析为 JSON 并按 Schema 校验，通过后从「结构化」端口输出该对象，所以这里把「结构化」接到 JSON Output。
 
 ## 4. 运行并查看结果
 
 1. 点击工具栏「运行」。工作流没有输入参数时，对话框提示「当前工作流没有需要填写的字段，确认后将直接启动执行。」，点击「运行」。
-2. 底部状态栏变为「已完成」后，点击 Text Output 节点，在「输出」标签中查看 JSON 结果。
+2. 底部状态栏变为「已完成」后，点击 JSON Output 节点，在「输出」标签中查看按 Schema 校验过的 JSON 结果。
 
 要分析不同的问题，修改「分析任务」节点的文本后再运行。需要每次运行时临时输入任务时，改用[输入参数](/guide/workflows/input-parameters)，再用[输入预处理器](/guide/nodes/input-preprocessor)取出字段连到 Agent 的「文本」端口。
 
@@ -101,11 +101,11 @@ docType: howto
 
 ## 已知限制
 
-- Agent 节点的「结构化」端口读取的是运行结果中的决策字段（`agentloom-server/src/modules/execution/node-output-port.util.ts`），只在 Agent 产生决策事件时有值，不承载按 Schema 生成的 JSON。
+- 配置了「Schema」时，Agent 的回复不是合法 JSON 或不符合 Schema 都会让 Agent 节点失败（错误以 `Agent 回复不符合输出 Schema` 等开头），工作流随之失败；在系统提示词中强调「只输出 JSON」可以降低这种情况。
 - 画布上 `text` 与 `json` 之间的「转换」连线不会在服务端做格式转换，下游节点收到的是原值。例如 Agent「回复」连到 JSON Output 时，JSON Output 收到的是字符串，会被包装为 `{ "value": "<回复文本>" }`。
 
 ## 相关
 
 - [知识库](/guide/knowledge-base/)
 - [Agent 节点](/guide/nodes/agent)
-- [Text Output](/guide/nodes/text-output)
+- [JSON Output](/guide/nodes/json-output)

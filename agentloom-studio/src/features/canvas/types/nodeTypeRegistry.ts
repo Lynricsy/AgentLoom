@@ -1105,7 +1105,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort("structured-out", "结构化", "output", "json", {
         multiple: true,
         maxConnections: null,
-        description: "Agent 按 Schema 约束输出的结构化 JSON 数据",
+        description:
+          "配置输出 Schema 时，Agent 最终回复按 Schema 解析并校验后的 JSON；回复不符合 Schema 时节点失败",
       }),
     ],
     configSchema: EMPTY_CONFIG_SCHEMA,

@@ -38,7 +38,7 @@ export function resolveSourceHandleValue(
         sourceHandle === 'structured' ||
         sourceHandle === 'structured-output'
       ) {
-        return sourceStep.result.decision;
+        return sourceStep.result.structured;
       }
       return undefined;
     case 'manual-trigger':

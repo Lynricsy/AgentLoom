@@ -46,6 +46,7 @@ import {
   AgentExecutionException,
   InterventionNotAllowedException,
 } from './execution.exceptions';
+import { parseAgentStructuredOutput } from './agent-structured-output.util';
 import type {
   InterventionCheckpointRecord,
   InterventionRequiredPayload,
@@ -222,6 +223,41 @@ export class AgentTaskWorkerSupportService {
     const decision = checkpointData.decision;
     if (decision && typeof decision === 'object') {
       result.decision = decision;
+    }
+
+    // 暂停时存入 checkpoint 的输出 Schema：approve / modify 最终采用的内容必须重新通过校验，
+    // 结果写入 structured-out；不符合时节点失败，和未经干预时的 fail-closed 语义一致。
+    const outputSchema = checkpointData.outputSchema;
+    if (this.isRecord(outputSchema)) {
+      try {
+        result.structured = parseAgentStructuredOutput(
+          resolvedContent,
+          outputSchema,
+        );
+      } catch (error) {
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          stepId,
+          'failed',
+          {
+            errorMessage: {
+              message: error instanceof Error ? error.message : String(error),
+              title: '干预后的内容不符合输出 Schema',
+              nodeId: step.nodeId,
+            },
+            checkpointData: {
+              ...checkpointData,
+              intervention: interventionRecord,
+            },
+          },
+        );
+        this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+          executionId,
+          stepId,
+        );
+        await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
+        return;
+      }
     }
 
     await this.stepStateMachine.updateStepStatus(

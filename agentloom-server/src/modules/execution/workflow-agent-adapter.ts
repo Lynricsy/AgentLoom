@@ -53,6 +53,7 @@ import {
   MAX_SUB_AGENT_DEPTH,
 } from './node-handlers/sub-agent.handler';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
+import { parseAgentStructuredOutput } from './agent-structured-output.util';
 import { EventBridgeService } from './services/event-bridge.service';
 import {
   createPersistedSubAgentStream,
@@ -125,6 +126,13 @@ export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
   readonly content: string;
   readonly stopReason?: string;
   readonly decision?: Record<string, unknown>;
+  /** outputSchema 校验通过的结构化回复，对应 structured-out 端口。 */
+  readonly structured?: unknown;
+  /**
+   * 本次生效的输出 Schema（Agent 定义或 schema-in 端口）。不写入步骤 result：
+   * 执行器用它在人工干预暂停时存入 checkpoint，供恢复后重新校验最终内容。
+   */
+  readonly outputSchema?: Record<string, unknown>;
   readonly subAgents?: Record<string, WorkflowAgentExecutionResult>;
 }
 
@@ -473,11 +481,23 @@ export class WorkflowAgentAdapter {
       throw error;
     }
 
+    // 「结构化」端口契约：工作流节点配置了 outputSchema 时，最终回复必须是通过校验的 JSON。
+    // 子 Agent 调用的回复交回父 Agent 作为工具结果，不经过端口，不在这里校验。
+    const outputSchema = params.subAgentInvocation
+      ? undefined
+      : coerceAgentOutputSchema(runtimeConfigWithExtensions.outputSchema);
+    const structured =
+      outputSchema && stopReason === 'end_turn'
+        ? parseAgentStructuredOutput(accumulatedContent, outputSchema)
+        : undefined;
+
     const result: WorkflowAgentExecutionResult = {
       content: accumulatedContent,
       'exec-out': { triggered: true },
       ...(stopReason !== 'end_turn' ? { stopReason } : {}),
       ...(decision ? { decision } : {}),
+      ...(structured !== undefined ? { structured } : {}),
+      ...(outputSchema ? { outputSchema } : {}),
     };
 
     this.logger.debug(

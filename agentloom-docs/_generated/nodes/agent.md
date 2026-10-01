@@ -22,7 +22,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `exec-out` |  | `exec` |  |  | 执行流出口，Agent 完成后触发下游节点 |
 | `agent-out` | 回复 | `text` |  | 不限 | Agent 生成的自然语言文本回复 |
-| `structured-out` | 结构化 | `json` |  | 不限 | Agent 按 Schema 约束输出的结构化 JSON 数据 |
+| `structured-out` | 结构化 | `json` |  | 不限 | 配置输出 Schema 时，Agent 最终回复按 Schema 解析并校验后的 JSON；回复不符合 Schema 时节点失败 |
 
 **配置项**
 

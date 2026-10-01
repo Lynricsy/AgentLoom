@@ -456,7 +456,7 @@ describe('node-output-port.util', () => {
     expect(key).toBe('content');
   });
 
-  it('agent structured handle 映射 decision，其他 handle 不 fallback', () => {
+  it('agent structured handle 映射按 Schema 校验后的 structured，不取干预决策 decision', () => {
     for (const handle of [
       'structured-out',
       'structured',
@@ -464,7 +464,10 @@ describe('node-output-port.util', () => {
     ]) {
       expect(
         resolveSourceHandleValue(
-          step('a', 'chat-agent', { decision: { route: 'a' } }),
+          step('a', 'chat-agent', {
+            structured: { route: 'a' },
+            decision: { suggestedContent: '建议稿' },
+          }),
           handle,
         ),
       ).toEqual({ route: 'a' });

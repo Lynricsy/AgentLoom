@@ -88,6 +88,11 @@ interface PauseForInterventionParams {
   readonly toolCalls?: readonly unknown[];
   readonly segments?: readonly unknown[];
   readonly decision?: Record<string, unknown>;
+  /**
+   * 节点生效的输出 Schema。干预恢复（approve / modify）时用它重新校验最终内容并写入
+   * result.structured，校验失败则节点失败。
+   */
+  readonly outputSchema?: Record<string, unknown>;
   readonly executionType?: 'workflow' | 'conversation';
 }
 
@@ -659,6 +664,9 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
               ? { segments: params.segments }
               : {}),
             ...(params.decision ? { decision: params.decision } : {}),
+            ...(params.outputSchema
+              ? { outputSchema: params.outputSchema }
+              : {}),
           },
           result: {
             content: params.partialContent,
