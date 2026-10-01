@@ -36,9 +36,11 @@ RUN rm -f /etc/nginx/conf.d/default.conf && printf '%s\n' \
   '  listen 8081;' \
   '  server_name _;' \
   '' \
+  '  # VitePress cleanUrls：/documentation/dev/architecture → dev/architecture.html；未知路径返回站点 404 页' \
   '  location /documentation/ {' \
   '    root /usr/share/nginx/html;' \
-  '    try_files $uri $uri/ /documentation/index.html;' \
+  '    try_files $uri $uri.html $uri/ =404;' \
+  '    error_page 404 /documentation/404.html;' \
   '  }' \
   '}' > /etc/nginx/conf.d/default.conf
 
