@@ -39,6 +39,7 @@ const {
       actions,
       loadedPublishedVersionId: undefined,
       terminalEntries: [],
+      harnessTrace: [],
       fileTree: [],
       fileChanges: [],
       sandboxStatus: "idle",
@@ -88,6 +89,7 @@ vi.mock("../stores/agent-conversation.store", () => ({
   useLoadedPublishedVersionId: () =>
     mockConversationState.loadedPublishedVersionId,
   useTerminalEntries: () => mockConversationState.terminalEntries,
+  useHarnessTrace: () => mockConversationState.harnessTrace,
   useFileTree: () => mockConversationState.fileTree,
   useFileChanges: () => mockConversationState.fileChanges,
   useSandboxStatus: () => mockConversationState.sandboxStatus,

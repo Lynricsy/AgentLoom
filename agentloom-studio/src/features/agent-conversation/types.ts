@@ -171,6 +171,17 @@ export interface FileChangePayload {
   content?: string;
 }
 
+/** dsh 会话事件的精简轨迹条目（conversation.agent.harness_trace），只在线展示，不回填 */
+export interface HarnessTraceEntry {
+  id: string;
+  /** dsh 会话事件类型，如 'turn/start'、'step/end'、'tool/call' */
+  kind: string;
+  turn?: number;
+  step?: number;
+  data?: Record<string, unknown>;
+  timestamp: string;
+}
+
 /** Preparation phases during agent conversation sandbox startup. */
 export type PreparationPhase =
   | "queued"

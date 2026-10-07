@@ -71,10 +71,26 @@ interface RegisterAttempt {
  * 代价是绕开了 ky 的 401 自动刷新重试，因此这里自行复刻同样的刷新语义。
  */
 export async function registerPlugin(payload: RegisterPluginPayload): Promise<PluginRecord> {
-  const attempt = await sendPluginArchive(payload, useAuthStore.getState().accessToken)
+  return uploadAlpPackage<PluginRecord>('plugins', payload)
+}
+
+/**
+ * 以 multipart 把 .alp 包 POST 到 `endpoint`（相对 API 前缀），返回响应体 data。
+ * 节点插件（/plugins）与 runtime 插件（/runtime-plugins）共用同一套上传、
+ * 进度与 401 刷新语义。
+ */
+export async function uploadAlpPackage<T>(
+  endpoint: string,
+  payload: RegisterPluginPayload,
+): Promise<T> {
+  const attempt = await sendPluginArchive(
+    endpoint,
+    payload,
+    useAuthStore.getState().accessToken,
+  )
 
   if (attempt.httpStatus !== 401 || isSignatureRejection(attempt.body)) {
-    return unwrapRegisteredPlugin(attempt, payload.onProgress)
+    return unwrapRegisteredPlugin<T>(attempt, payload.onProgress)
   }
 
   // 与 client.ts 的 beforeRetry 同一条路径：401 先刷新 session，再重试一次上传。
@@ -90,8 +106,8 @@ export async function registerPlugin(payload: RegisterPluginPayload): Promise<Pl
   setAuthToken(refreshedToken)
   payload.onProgress?.(0)
 
-  const retried = await sendPluginArchive(payload, refreshedToken)
-  return unwrapRegisteredPlugin(retried, payload.onProgress)
+  const retried = await sendPluginArchive(endpoint, payload, refreshedToken)
+  return unwrapRegisteredPlugin<T>(retried, payload.onProgress)
 }
 
 /** 签名校验失败与鉴权失败都是 401，只有前者不该重试 */
@@ -100,12 +116,12 @@ function isSignatureRejection(body: unknown): boolean {
   return typeof type === 'string' && type.includes('plugin-signature-invalid')
 }
 
-function unwrapRegisteredPlugin(
+function unwrapRegisteredPlugin<T>(
   attempt: RegisterAttempt,
   onProgress: RegisterPluginPayload['onProgress'],
-): PluginRecord {
+): T {
   if (attempt.httpStatus >= 200 && attempt.httpStatus < 300) {
-    const plugin = (attempt.body as { data?: PluginRecord } | null)?.data
+    const plugin = (attempt.body as { data?: T } | null)?.data
     if (!plugin) {
       throw new Error('插件注册响应缺少数据')
     }
@@ -130,6 +146,7 @@ function unwrapRegisteredPlugin(
 
 /** 只有网络层失败才 reject；HTTP 错误码原样返回交给调用方判定 */
 function sendPluginArchive(
+  endpoint: string,
   { file, status, onProgress }: RegisterPluginPayload,
   token: string | undefined,
 ): Promise<RegisterAttempt> {
@@ -150,7 +167,7 @@ function sendPluginArchive(
   })
 
   const request = new XMLHttpRequest()
-  request.open('POST', `${API_BASE_URL}/plugins`)
+  request.open('POST', `${API_BASE_URL}/${endpoint}`)
   request.responseType = 'text'
   // ky 的 beforeRequest 只加 Authorization 这一个头；Content-Type 必须留空，
   // 让浏览器补 multipart boundary。

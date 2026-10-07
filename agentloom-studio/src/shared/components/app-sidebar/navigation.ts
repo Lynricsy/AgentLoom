@@ -164,6 +164,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/resources/plugins",
         matchPrefix: "/resources/plugins",
       },
+      {
+        label: "Runtime 插件",
+        icon: Cpu,
+        to: "/resources/runtime-plugins",
+        matchPrefix: "/resources/runtime-plugins",
+      },
     ],
   },
   {

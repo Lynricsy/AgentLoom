@@ -1343,6 +1343,76 @@ describe("agentConversationStore", () => {
     );
   });
 
+  it("conversation.agent.harness_trace 从 envelope.event 取字段写入 harnessTrace，reset 清空", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("conversation.agent.harness_trace", {
+      conversationId: "conv-1",
+      stepId: "step-1",
+      event: {
+        type: "harness_trace",
+        kind: "tool/call",
+        turn: 1,
+        step: 2,
+        data: { callId: "c1", name: "bash" },
+        timestamp: "2026-10-07T08:00:00.000Z",
+      },
+    });
+    // 缺 kind 的载荷视为无效丢弃
+    emitSocketEvent("conversation.agent.harness_trace", {
+      conversationId: "conv-1",
+      event: { type: "harness_trace", timestamp: "2026-10-07T08:00:01.000Z" },
+    });
+
+    const { harnessTrace } = useAgentConversationStore.getState();
+    expect(harnessTrace).toHaveLength(1);
+    expect(harnessTrace[0]).toEqual({
+      id: expect.any(String),
+      kind: "tool/call",
+      turn: 1,
+      step: 2,
+      data: { callId: "c1", name: "bash" },
+      timestamp: "2026-10-07T08:00:00.000Z",
+    });
+
+    useAgentConversationStore.getState().actions.reset();
+    expect(useAgentConversationStore.getState().harnessTrace).toEqual([]);
+  });
+
+  it("harnessTrace 最多保留 500 条，超出丢弃最早的事件", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    for (let step = 1; step <= 501; step += 1) {
+      emitSocketEvent("conversation.agent.harness_trace", {
+        conversationId: "conv-1",
+        event: {
+          type: "harness_trace",
+          kind: "step/start",
+          turn: 1,
+          step,
+          timestamp: "2026-10-07T08:00:00.000Z",
+        },
+      });
+    }
+
+    const { harnessTrace } = useAgentConversationStore.getState();
+    expect(harnessTrace).toHaveLength(500);
+    expect(harnessTrace[0]?.step).toBe(2);
+    expect(harnessTrace[499]?.step).toBe(501);
+  });
+
   // D-12 回归：重连时服务端缓存有缺口，会下发持久 snapshot；
   // 客户端必须据此补回断线期间丢失的正文，且不能丢掉本地仍在流式的尾部消息。
   it("重连收到 conversation.state.snapshot 时补回缺失正文并保留 live 尾部", () => {

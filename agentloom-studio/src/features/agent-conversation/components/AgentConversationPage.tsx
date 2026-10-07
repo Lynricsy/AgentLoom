@@ -15,6 +15,8 @@ import { ConversationComposer } from "./ConversationComposer";
 import { ConversationLayout } from "./ConversationLayout";
 import { MessageList } from "./MessageList";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
+import { SandboxSidePanelTabs } from "./SandboxSidePanelTabs";
+import { HarnessTracePanel } from "./HarnessTracePanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
 import type { ToolCallData } from "@/shared/components/tool-renderers/types";
@@ -24,6 +26,7 @@ import {
   useConversationActions,
   useLoadedPublishedVersionId,
   useTerminalEntries,
+  useHarnessTrace,
   useFileTree,
   useFileChanges,
   useSandboxStatus,
@@ -74,6 +77,7 @@ export function AgentConversationPage({
   const actions = useConversationActions();
   const loadedPublishedVersionId = useLoadedPublishedVersionId();
   const terminalEntries = useTerminalEntries();
+  const harnessTrace = useHarnessTrace();
   const fileTree = useFileTree();
   const fileChanges = useFileChanges();
   const sandboxStatus = useSandboxStatus();
@@ -357,15 +361,20 @@ export function AgentConversationPage({
             ) : null
           }
           computerPanel={
-            <SandboxComputerPanel
-              conversationId={conversationId}
-              agentName={agentName || "Agent"}
-              terminalEntries={terminalEntries}
-              fileChanges={fileChanges}
-              sandboxStatus={sandboxStatus}
-              isExecuting={isExecuting}
-              suspendPolling={isRestartingConversation}
-              activeToolCall={activeToolCall}
+            <SandboxSidePanelTabs
+              computerPanel={
+                <SandboxComputerPanel
+                  conversationId={conversationId}
+                  agentName={agentName || "Agent"}
+                  terminalEntries={terminalEntries}
+                  fileChanges={fileChanges}
+                  sandboxStatus={sandboxStatus}
+                  isExecuting={isExecuting}
+                  suspendPolling={isRestartingConversation}
+                  activeToolCall={activeToolCall}
+                />
+              }
+              harnessPanel={<HarnessTracePanel entries={harnessTrace} />}
             />
           }
           workspacePanel={

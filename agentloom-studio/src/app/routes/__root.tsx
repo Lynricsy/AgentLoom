@@ -59,6 +59,7 @@ import { workspaceDetailRoute } from "./resources/workspaces.$workspaceId";
 import { sandboxesRoute } from "./resources/sandboxes";
 import { pluginsRoute } from "./resources/plugins";
 import { pluginUsageRoute } from "./resources/plugins.$pluginId.usage";
+import { runtimePluginsRoute } from "./resources/runtime-plugins";
 import { memoryInstanceBrowseRoute } from "./resources/memory-instances.$instanceId.browse";
 import { organizationSettingsRoute } from "./settings/organization";
 import { acceptInvitationRoute } from "./invitations.$token";
@@ -189,6 +190,7 @@ export const routeTree = rootRoute.addChildren([
   sandboxesRoute,
   pluginsRoute,
   pluginUsageRoute,
+  runtimePluginsRoute,
   memoryInstanceBrowseRoute,
   organizationSettingsRoute,
   acceptInvitationRoute,

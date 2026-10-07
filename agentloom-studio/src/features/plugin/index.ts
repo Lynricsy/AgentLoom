@@ -25,6 +25,7 @@ export {
   fetchPluginUsage,
   fetchPluginUsageSummary,
   registerPlugin,
+  uploadAlpPackage,
   updatePluginStatus,
   deletePlugin,
   isPluginPackageFile,

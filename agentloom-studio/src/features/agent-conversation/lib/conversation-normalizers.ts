@@ -8,6 +8,7 @@ import type {
   ConversationMessageContentType,
   ConversationMessageMetadata,
   FileChangePayload,
+  HarnessTraceEntry,
   MessageChunkPayload,
   MessageSegment,
   OutgoingConversationMessage,
@@ -964,6 +965,32 @@ export function normalizeTerminalOutputPayload(
             readString(event.sessionId),
         }
       : {}),
+  };
+}
+
+/**
+ * 解析 conversation.agent.harness_trace：载荷在 envelope 的 `event` 字段
+ * （`{type:'harness_trace', kind, turn?, step?, data?, timestamp}`）。
+ * 缺 kind 视为无效丢弃；子 Agent 的轨迹不进主 Agent 时间线，同样丢弃。
+ */
+export function normalizeHarnessTracePayload(
+  raw: unknown,
+): Omit<HarnessTraceEntry, "id"> | null {
+  const { event, subagent } = unwrapConversationPayload(raw);
+  const kind = readString(event.kind);
+  if (!kind || subagent) {
+    return null;
+  }
+
+  const turn = Number.isInteger(event.turn) ? (event.turn as number) : undefined;
+  const step = Number.isInteger(event.step) ? (event.step as number) : undefined;
+
+  return {
+    kind,
+    ...(turn !== undefined ? { turn } : {}),
+    ...(step !== undefined ? { step } : {}),
+    ...(isRecord(event.data) ? { data: event.data } : {}),
+    timestamp: readString(event.timestamp) ?? new Date().toISOString(),
   };
 }
 

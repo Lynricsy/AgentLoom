@@ -16,6 +16,7 @@ import type {
   FileTreeNode,
   TerminalEntry,
   SandboxStatus,
+  HarnessTraceEntry,
   SubAgentStream,
   SubAgentEventEnvelope,
   SubAgentRunStatus,
@@ -37,6 +38,7 @@ import {
   normalizeConversationHistoryMessage,
   normalizeConversationSnapshotMessages,
   normalizeFileChangePayload,
+  normalizeHarnessTracePayload,
   normalizeMessageChunkPayload,
   normalizeOutgoingConversationMessage,
   normalizeStatusChangedPayload,
@@ -60,6 +62,8 @@ const RECONNECT_DELAY_MS = 5_000;
 const RECONNECT_DELAY_MAX_MS = 30_000;
 const TERMINAL_ENTRY_LIMIT = 200;
 const FILE_CHANGE_LIMIT = 50;
+/** Harness 轨迹只在线展示，保留最近 500 条，超出丢最早 */
+const HARNESS_TRACE_LIMIT = 500;
 /** replay 幂等去重窗口：只需覆盖一次重连补发的跨度，不必记住整场会话。 */
 const SEEN_EVENT_LIMIT = 2_000;
 const inFlightHistoryLoads = new Map<string, Promise<void>>();
@@ -99,6 +103,8 @@ interface AgentConversationState {
   status: ConversationStatus;
   sandboxStatus: SandboxStatus;
   terminalEntries: TerminalEntry[];
+  /** dsh 会话事件轨迹（仅 sandbox 运行态；不随重连 snapshot 回填） */
+  harnessTrace: HarnessTraceEntry[];
   fileTree: FileTreeNode[];
   workspaceSource: WorkspaceViewSource;
   workspaceTreeLoading: boolean;
@@ -170,6 +176,7 @@ function createInitialState(): AgentConversationState {
     status: "idle",
     sandboxStatus: "idle",
     terminalEntries: [],
+    harnessTrace: [],
     fileTree: [],
     workspaceSource: "unavailable",
     workspaceTreeLoading: false,
@@ -688,6 +695,26 @@ export const useAgentConversationStore = create<
                       s.terminalEntries.slice(-TERMINAL_ENTRY_LIMIT);
                   }
                   s.sandboxStatus = "running";
+                });
+              },
+            );
+
+            onEvent(
+              "conversation.agent.harness_trace",
+              (payload: unknown) => {
+                const normalized = normalizeHarnessTracePayload(payload);
+                if (!normalized) {
+                  return;
+                }
+
+                set((s) => {
+                  s.harnessTrace.push({
+                    id: crypto.randomUUID(),
+                    ...normalized,
+                  });
+                  if (s.harnessTrace.length > HARNESS_TRACE_LIMIT) {
+                    s.harnessTrace = s.harnessTrace.slice(-HARNESS_TRACE_LIMIT);
+                  }
                 });
               },
             );
@@ -1242,6 +1269,9 @@ export const useLoadedPublishedVersionId = () =>
 
 export const useTerminalEntries = () =>
   useAgentConversationStore((s) => s.terminalEntries);
+
+export const useHarnessTrace = () =>
+  useAgentConversationStore((s) => s.harnessTrace);
 
 export const useFileTree = () => useAgentConversationStore((s) => s.fileTree);
 
