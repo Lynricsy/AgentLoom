@@ -48,7 +48,7 @@ docType: howto
   disabled: true
 ```
 
-内容必须是 YAML 列表；输入框失焦时校验，不合法时显示「必须是 YAML 列表」或解析错误，此时仍会保存，但保存或发布画布会被拒绝。
+内容必须是 YAML 列表；输入框失焦时校验，不合法时显示「必须是 YAML 列表」或解析错误。草稿仍会保存，但 Studio 保存后的编译与发布会返回 422 `agent-canvas-invalid-harness`。
 
 ## 5. 发布并对话
 
@@ -58,7 +58,7 @@ docType: howto
 
 ## 6. 查看 Harness 事件
 
-对话页右栏顶部有「电脑」与「Harness」两个标签。切到「Harness」，Agent 执行时按轮次（`Turn N`）列出运行时事件，如 `turn/start`、`step/start`、`tool/call`、`tool/result`、`step/end`、`turn/end`：`tool/call` 行显示工具名，`tool/result` 行显示「成功」或「失败」，`turn/end` 行显示结束原因，`assistant/message` 行显示输入与输出 token 数。还没有事件时显示「等待 dsh 事件…」。
+对话页右栏顶部有「电脑」与「Harness」两个标签。切到「Harness」，Agent 执行时按轮次列出运行时事件，每次收到 `turn/start` 开一个新的 `Turn N` 分组；同一对话的每条消息都会起一个新的 dsh 进程，所以每条消息的轮次都从 `Turn 1` 开始，按出现顺序依次往下排。事件包括 `turn/start`、`step/start`、`tool/call`、`tool/result`、`step/end`、`turn/end`：`tool/call` 行显示工具名，`tool/result` 行显示「成功」或「失败」，`turn/end` 行显示结束原因，`assistant/message` 行显示输入与输出 token 数。还没有事件时显示「等待 dsh 事件…」。
 
 这些事件只在页面打开时实时接收，不保存在对话记录里：刷新页面或重新打开对话后，之前的事件不再显示。
 
@@ -66,7 +66,7 @@ docType: howto
 
 | 现象 | 处理 |
 | --- | --- |
-| 保存或发布时报 `agent-canvas-invalid-harness` | 按 `detail` 修正：profile patch 不是 YAML 列表、npm 节点缺版本或包名不合法、已上传插件节点未选择插件 |
+| 编译或发布时报 `agent-canvas-invalid-harness` | 按 `detail` 修正：profile patch 不是 YAML 列表、npm 节点缺版本或包名不合法、已上传插件节点未选择插件、harness 节点用在了无沙箱 Agent 上 |
 | 发布时报 `runtime 插件 <id> 不存在或未启用` | 到「Runtime 插件」页启用该插件，或在节点中重新选择 |
 | 对话开始时报 `runtime 插件 <名称>@<版本> 安装失败: …` | npm 包名或版本不存在，或沙箱无法访问 npm registry |
 | 对话开始时报 `dsh 运行时启动失败: …` | 插件加载失败或 profile patch 写错；错误后附运行时输出，交给插件开发者排查 |
