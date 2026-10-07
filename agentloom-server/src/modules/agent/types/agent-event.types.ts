@@ -97,6 +97,18 @@ export interface PtyKilledEvent {
 export type PtyEvent =
   PtySpawnedEvent | PtyOutputEvent | PtyExitEvent | PtyKilledEvent;
 
+/** sandbox 运行态 dsh 内核的会话事件轨迹（如 turn/start、tool/call），只在线推送 */
+export interface HarnessTraceEvent {
+  readonly type: 'harness_trace';
+  /** dsh 会话事件类型，如 'turn/start'、'step/end'、'tool/call' */
+  readonly kind: string;
+  readonly turn?: number;
+  readonly step?: number;
+  /** 该事件的精简载荷 */
+  readonly data?: Record<string, unknown>;
+  readonly timestamp: string;
+}
+
 export type AgentEvent =
   | PlanEvent
   | MessageChunkEvent
@@ -107,7 +119,8 @@ export type AgentEvent =
   | PtySpawnedEvent
   | PtyOutputEvent
   | PtyExitEvent
-  | PtyKilledEvent;
+  | PtyKilledEvent
+  | HarnessTraceEvent;
 
 export function isPlanEvent(event: AgentEvent): event is PlanEvent {
   return event.type === 'plan';

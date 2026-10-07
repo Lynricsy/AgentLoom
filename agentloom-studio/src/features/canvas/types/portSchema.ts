@@ -107,6 +107,7 @@ export function cloneTypeSchema(schema: TypeSchema): TypeSchema {
     case "memory":
     case "exec":
     case "volume":
+    case "runtime-plugin":
       return {
         ...schema,
         examples: schema.examples ? [...schema.examples] : undefined,

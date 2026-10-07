@@ -210,6 +210,11 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
     colorToken: "var(--color-type-volume)",
     shape: "square",
   },
+  "runtime-plugin": {
+    label: "Runtime Plugin",
+    colorToken: "var(--color-type-runtime-plugin)",
+    shape: "diamond",
+  },
 };
 
 const NODE_CATEGORY_VALUES: ReadonlySet<NodeCategory> = new Set([

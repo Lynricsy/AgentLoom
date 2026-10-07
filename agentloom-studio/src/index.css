@@ -59,6 +59,7 @@
   --color-type-agent: #f97316;
   --color-type-exec: #94a3b8;
   --color-type-volume: #22c55e;
+  --color-type-runtime-plugin: #d946ef;
 
   /* 节点类别色 — 与 NodeCategory 一一对应, 另含三个 nodeType 级别覆盖 */
   --color-node-agent: #8b5cf6;

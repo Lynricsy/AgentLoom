@@ -22,6 +22,8 @@ export type {
   AgentNativeToolPolicy,
   AgentSelfEvolutionPolicy,
   AgentRuntimeConfig,
+  RuntimePluginRef,
+  HarnessConfig,
 } from '@agentloom/contracts';
 
 export {
@@ -34,4 +36,7 @@ export {
   AgentSubAgentRefSchema,
   AgentNativeToolPolicySchema,
   AgentSelfEvolutionPolicySchema,
+  RUNTIME_PLUGIN_SOURCE_KINDS,
+  RuntimePluginRefSchema,
+  HarnessConfigSchema,
 } from '@agentloom/contracts';

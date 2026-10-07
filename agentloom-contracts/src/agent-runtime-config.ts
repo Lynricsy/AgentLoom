@@ -171,6 +171,30 @@ export const AgentSelfEvolutionPolicySchema = z.object({
   sandboxManagement: z.boolean(),
 });
 
+/** runtime 插件来源：已签名上传的插件包，或 npm 上的 dsh bundle（在 VM 内在线安装）。 */
+export const RUNTIME_PLUGIN_SOURCE_KINDS = ['package', 'npm'] as const;
+
+export const RuntimePluginRefSchema = z.object({
+  /** 画布节点 id，用于错误定位 */
+  nodeId: z.string().min(1),
+  source: z.enum(RUNTIME_PLUGIN_SOURCE_KINDS),
+  /** source=package：runtime_plugins.id；source=npm：npm 包名（可带 @scope） */
+  ref: z.string().min(1),
+  /** source=npm 时必填，精确版本或 range */
+  version: z.string().min(1).optional(),
+  /** 传给插件条目的 config（透传给 cordis.patch.yml 的 insert.config） */
+  config: JsonRecordSchema.optional(),
+  enabled: z.boolean().default(true),
+});
+
+/** sandbox 运行态的 Agent 内核（harness）配置，由画布 harness 节点编译而来。 */
+export const HarnessConfigSchema = z.object({
+  engine: z.literal('dsh'),
+  /** 用户 profile 层 cordis.patch.yml 原文（YAML），可空 */
+  profilePatch: z.string().max(65536).optional(),
+  plugins: z.array(RuntimePluginRefSchema).default([]),
+});
+
 export interface AgentSubAgentOverrides {
   systemPrompt?: string;
   modelConfig?: z.infer<typeof AgentModelConfigSchema>;
@@ -247,6 +271,7 @@ export const AgentRuntimeConfigSchema = z.object({
   outputSchema: JsonRecordSchema.optional(),
   nativeToolPolicy: AgentNativeToolPolicySchema.optional(),
   selfEvolutionPolicy: AgentSelfEvolutionPolicySchema.optional(),
+  harness: HarnessConfigSchema.optional(),
 });
 
 export type AgentRuntimeMode = z.infer<typeof AgentRuntimeModeSchema>;
@@ -275,3 +300,5 @@ export type AgentSelfEvolutionPolicy = z.infer<
   typeof AgentSelfEvolutionPolicySchema
 >;
 export type AgentRuntimeConfig = z.infer<typeof AgentRuntimeConfigSchema>;
+export type RuntimePluginRef = z.infer<typeof RuntimePluginRefSchema>;
+export type HarnessConfig = z.infer<typeof HarnessConfigSchema>;

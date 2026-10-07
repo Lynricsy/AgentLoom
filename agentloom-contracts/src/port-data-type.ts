@@ -22,6 +22,7 @@ export const PORT_DATA_TYPES = [
   'memory',
   'exec',
   'volume',
+  'runtime-plugin',
 ] as const;
 
 export const PortDataTypeSchema = z.enum(PORT_DATA_TYPES);

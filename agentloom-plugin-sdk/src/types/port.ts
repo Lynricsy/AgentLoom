@@ -13,6 +13,7 @@ const portDataTypes = [
   'memory',
   'exec',
   'volume',
+  'runtime-plugin',
 ] as const;
 
 /**
@@ -34,7 +35,8 @@ export type PortDataType =
   | 'agent'
   | 'memory'
   | 'exec'
-  | 'volume';
+  | 'volume'
+  | 'runtime-plugin';
 
 /**
  * 所有合法的 {@link PortDataType} 值。

@@ -148,10 +148,11 @@ fn nested_missing_field_uses_dot_path() {
 }
 
 #[test]
-fn exec_and_volume_port_data_types_round_trip_through_serde() {
+fn exec_volume_and_runtime_plugin_port_data_types_round_trip_through_serde() {
     for (port_type, encoded) in [
         (PortDataType::Exec, "\"exec\""),
         (PortDataType::Volume, "\"volume\""),
+        (PortDataType::RuntimePlugin, "\"runtime-plugin\""),
     ] {
         let serialized = serde_json::to_string(&port_type).expect("port type should serialize");
         let deserialized: PortDataType =

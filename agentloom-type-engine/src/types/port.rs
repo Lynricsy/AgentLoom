@@ -7,7 +7,7 @@ use std::fmt;
 /// canonical 定义在 `@agentloom/contracts` 的 `PORT_DATA_TYPES`；本枚举为 Rust 侧镜像，
 /// 新增取值必须先加到 contracts，由 contracts 的 `port-data-type.test.ts` 做机械同步校验。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum PortDataType {
     Model,
     Text,
@@ -23,6 +23,7 @@ pub enum PortDataType {
     Memory,
     Exec,
     Volume,
+    RuntimePlugin,
 }
 
 impl fmt::Display for PortDataType {
@@ -42,6 +43,7 @@ impl fmt::Display for PortDataType {
             Self::Memory => "memory",
             Self::Exec => "exec",
             Self::Volume => "volume",
+            Self::RuntimePlugin => "runtime-plugin",
         };
         formatter.write_str(value)
     }

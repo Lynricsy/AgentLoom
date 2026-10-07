@@ -41,6 +41,7 @@ export const ConversationEventName = {
   AGENT_TOOL_CALL: 'conversation.agent.tool_call',
   AGENT_TOOL_RESULT: 'conversation.agent.tool_result',
   AGENT_DONE: 'conversation.agent.done',
+  AGENT_HARNESS_TRACE: 'conversation.agent.harness_trace',
   SUBAGENT_STATUS: 'conversation.subagent.status',
   SANDBOX_TERMINAL_OUTPUT: 'conversation.sandbox.terminal_output',
   SANDBOX_FILE_CHANGE: 'conversation.sandbox.file_change',
@@ -431,6 +432,9 @@ export class AgentConversationGateway
       case 'file_change':
         conversationEvent = ConversationEventName.SANDBOX_FILE_CHANGE;
         break;
+      case 'harness_trace':
+        conversationEvent = ConversationEventName.AGENT_HARNESS_TRACE;
+        break;
       case 'tool_call':
       case 'done':
         return;
@@ -592,6 +596,9 @@ export class AgentConversationGateway
         break;
       case 'done':
         conversationEvent = ConversationEventName.AGENT_DONE;
+        break;
+      case 'harness_trace':
+        conversationEvent = ConversationEventName.AGENT_HARNESS_TRACE;
         break;
       default:
         conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
@@ -842,6 +849,8 @@ export class AgentConversationGateway
             return ConversationEventName.SANDBOX_TERMINAL_OUTPUT;
           case 'file_change':
             return ConversationEventName.SANDBOX_FILE_CHANGE;
+          case 'harness_trace':
+            return ConversationEventName.AGENT_HARNESS_TRACE;
           default:
             return null;
         }

@@ -29,7 +29,8 @@ type PortDataType =
   | 'agent'
   | 'memory'
   | 'exec'
-  | 'volume';
+  | 'volume'
+  | 'runtime-plugin';
 
 interface BaseTypeSchema {
   kind: PortDataType;
@@ -141,6 +142,7 @@ const PORT_DATA_TYPE_VALUES = new Set<PortDataType>([
   'memory',
   'exec',
   'volume',
+  'runtime-plugin',
 ]);
 
 const NODE_CONFIG_KEY_ALIASES: Record<string, string> = {
@@ -888,6 +890,9 @@ function inferPortDataTypeFromId(portId: string): PortDataType {
     portId.startsWith('text-')
   ) {
     return 'text';
+  }
+  if (portId.startsWith('runtime-plugin') || portId.startsWith('plugins')) {
+    return 'runtime-plugin';
   }
   if (portId.startsWith('volume')) return 'volume';
   if (portId.startsWith('sandbox')) return 'sandbox';

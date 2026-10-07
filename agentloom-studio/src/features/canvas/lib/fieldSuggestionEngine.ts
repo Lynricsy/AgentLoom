@@ -28,6 +28,7 @@ const SCHEMA_TYPE_LABELS: Record<Exclude<PortDataType, 'json'>, string> = {
   memory: '记忆',
   exec: '执行',
   volume: '卷',
+  'runtime-plugin': 'Runtime 插件',
 }
 
 function toCodePoints(value: string): string[] {

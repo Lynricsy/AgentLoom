@@ -164,6 +164,18 @@ export const PtyKilledEventSchema = z.object({
   sessionId: z.string(),
 });
 
+/** sandbox 运行态 dsh 内核的会话事件轨迹（只在线推送，不入回放快照）。 */
+export const HarnessTraceEventSchema = z.object({
+  type: z.literal('harness_trace'),
+  /** dsh 会话事件类型，如 'turn/start'、'step/end'、'tool/call' */
+  kind: z.string(),
+  turn: z.number().int().optional(),
+  step: z.number().int().optional(),
+  /** 该事件的精简载荷（已去掉 message 全文；tool/call 含 callId/name，turn/end 含 reason.kind） */
+  data: z.record(z.string(), z.unknown()).optional(),
+  timestamp: z.string(),
+});
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   PlanEventSchema,
   MessageChunkEventSchema,
@@ -175,6 +187,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   PtyOutputEventSchema,
   PtyExitEventSchema,
   PtyKilledEventSchema,
+  HarnessTraceEventSchema,
 ]);
 
 export const SUB_AGENT_RUN_STATUSES = [
@@ -222,6 +235,7 @@ export type PtySpawnedEvent = z.infer<typeof PtySpawnedEventSchema>;
 export type PtyOutputEvent = z.infer<typeof PtyOutputEventSchema>;
 export type PtyExitEvent = z.infer<typeof PtyExitEventSchema>;
 export type PtyKilledEvent = z.infer<typeof PtyKilledEventSchema>;
+export type HarnessTraceEvent = z.infer<typeof HarnessTraceEventSchema>;
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
 export type SubAgentRunStatus = z.infer<typeof SubAgentRunStatusSchema>;
 export type SubAgentHandle = z.infer<typeof SubAgentHandleSchema>;

@@ -88,6 +88,12 @@ describe('contracts fixtures', () => {
     expect(config.routingConfig?.candidateModelIds).toHaveLength(1);
     expect(config.subAgents?.[0]?.alias).toBe('reviewer');
     expect(config.modelConfig?.modelId).toBeTruthy();
+    expect(config.harness?.engine).toBe('dsh');
+    expect(config.harness?.plugins.map((plugin) => plugin.source)).toEqual([
+      'package',
+      'npm',
+    ]);
+    expect(config.harness?.plugins[1]?.version).toBe('0.2.0-rc.2');
   });
 
   it('旧别名字段不会被当作 canonical 字段接受', () => {

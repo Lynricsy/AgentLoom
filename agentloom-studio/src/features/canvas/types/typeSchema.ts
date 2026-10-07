@@ -13,6 +13,7 @@ export const PORT_DATA_TYPES = [
   'memory',
   'exec',
   'volume',
+  'runtime-plugin',
 ] as const
 
 export type PortDataType = (typeof PORT_DATA_TYPES)[number]

@@ -40,6 +40,7 @@ import {
 } from '../agent-conversation.gateway';
 import type { ConversationSubscribeAck } from '../agent-conversation.gateway';
 import { ExecutionEventName } from '../../execution/types/execution-event.types';
+import type { ExecutionEvent } from '../../execution/types/execution-event.types';
 import type { ConfigService } from '@nestjs/config';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
@@ -624,6 +625,28 @@ describe('AgentConversationGateway', () => {
         );
       });
 
+      it('should map harness_trace to AGENT_HARNESS_TRACE', () => {
+        gateway.handleStepAgentEvent({
+          stepId: 'step-1',
+          event: {
+            type: 'harness_trace',
+            kind: 'tool/call',
+            turn: 1,
+            step: 1,
+            data: { callId: 'c1', name: 'bash' },
+            timestamp: '2026-10-07T00:00:00.000Z',
+          },
+          tenantId: 'tenant-1',
+          executionId: 'conv-1',
+        });
+
+        const emitFn = vi.mocked(server.to).mock.results[0].value.emit;
+        expect(emitFn).toHaveBeenCalledWith(
+          ConversationEventName.AGENT_HARNESS_TRACE,
+          expect.any(Object),
+        );
+      });
+
       it('should ignore unknown event types', () => {
         gateway.handleStepAgentEvent({
           stepId: 'step-1',
@@ -968,7 +991,7 @@ describe('AgentConversationGateway', () => {
   });
 
   describe('ConversationEventName', () => {
-    it('should define all 8 expected event names', () => {
+    it('should define all expected event names', () => {
       expect(ConversationEventName.AGENT_MESSAGE_CHUNK).toBe(
         'conversation.agent.message_chunk',
       );
@@ -982,6 +1005,9 @@ describe('AgentConversationGateway', () => {
         'conversation.agent.tool_result',
       );
       expect(ConversationEventName.AGENT_DONE).toBe('conversation.agent.done');
+      expect(ConversationEventName.AGENT_HARNESS_TRACE).toBe(
+        'conversation.agent.harness_trace',
+      );
       expect(ConversationEventName.SANDBOX_TERMINAL_OUTPUT).toBe(
         'conversation.sandbox.terminal_output',
       );
@@ -1020,6 +1046,33 @@ describe('AgentConversationGateway', () => {
         },
       });
       expect(result).toBe(ConversationEventName.AGENT_THINKING);
+    });
+
+    it('should map STEP_AGENT_EVENT harness_trace payload to AGENT_HARNESS_TRACE', () => {
+      // 私有方法只在测试中经结构化视图访问
+      const mapper = gateway as unknown as {
+        mapExecutionEventToConversation(
+          event: ExecutionEvent,
+        ): ConversationEventName | null;
+      };
+      const result = mapper.mapExecutionEventToConversation({
+        eventId: 2,
+        event: ExecutionEventName.STEP_AGENT_EVENT,
+        timestamp: '2026-10-07T00:00:00.000Z',
+        executionId: 'conv-1',
+        tenantId: 'tenant-1',
+        data: {
+          stepId: 'step-1',
+          event: {
+            type: 'harness_trace',
+            kind: 'turn/end',
+            turn: 1,
+            data: { reason: 'completed' },
+            timestamp: '2026-10-07T00:00:00.000Z',
+          },
+        },
+      });
+      expect(result).toBe(ConversationEventName.AGENT_HARNESS_TRACE);
     });
 
     it('should map NODE_TOOL_CALL_STATUS to AGENT_TOOL_CALL', () => {

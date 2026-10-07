@@ -16,10 +16,10 @@ function read(relativePath: string): string {
 }
 
 function extractQuotedLiterals(body: string): string[] {
-  return [...body.matchAll(/'([a-z]+)'/g)].map((match) => match[1]);
+  return [...body.matchAll(/'([a-z]+(?:-[a-z]+)*)'/g)].map((match) => match[1]);
 }
 
-/** 从 `pub enum PortDataType { ... }` 提取 Rust 变体并转为 serde lowercase 取值。 */
+/** 从 `pub enum PortDataType { ... }` 提取 Rust 变体并转为 serde kebab-case 取值。 */
 function extractRustPortDataTypes(): string[] {
   const source = read('agentloom-type-engine/src/types/port.rs');
   const body = /pub enum PortDataType\s*\{([^}]*)\}/.exec(source)?.[1];
@@ -30,7 +30,7 @@ function extractRustPortDataTypes(): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
-    .map((variant) => variant.toLowerCase());
+    .map((variant) => variant.replace(/(?<!^)([A-Z])/g, '-$1').toLowerCase());
 }
 
 /** 从 plugin-sdk 的 `portDataTypes` 常量数组提取字面量取值。 */

@@ -47,6 +47,7 @@ const BACKEND_TO_FRONTEND_DATA_TYPE: Record<BackendPortDataType, PortDataType> =
   memory: 'memory',
   exec: 'exec',
   volume: 'volume',
+  'runtime-plugin': 'runtime-plugin',
 }
 
 export function mapBackendDataType(backendType: BackendPortDataType): PortDataType {

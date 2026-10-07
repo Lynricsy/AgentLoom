@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import type { DerivedPort, EncapsulationAnalysis } from '../lib/encapsulation'
+import { PORT_DATA_TYPES } from '../types/typeSchema'
 
 const BLOCK_CATEGORY_OPTIONS = [
   { value: 'analysis', label: '分析' },
@@ -27,7 +28,7 @@ const BLOCK_CATEGORY_OPTIONS = [
 const derivedPortSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1, '请输入端口名称'),
-  dataType: z.enum(['model', 'text', 'json', 'array', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill', 'agent', 'memory', 'exec', 'volume']),
+  dataType: z.enum(PORT_DATA_TYPES),
   sourceNodeId: z.string().min(1),
   sourcePortId: z.string().min(1),
 })

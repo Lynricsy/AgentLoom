@@ -109,5 +109,25 @@
     "resourceManagement": true,
     "externalEditing": false,
     "sandboxManagement": false
+  },
+  "harness": {
+    "engine": "dsh",
+    "profilePatch": "- id: compaction-basic\n  config:\n    threshold: 0.8\n",
+    "plugins": [
+      {
+        "nodeId": "runtime-plugin-1",
+        "source": "package",
+        "ref": "0195c3a1-7501-7191-e456-8a3c7f2d4b01",
+        "config": { "greeting": "hello" },
+        "enabled": true
+      },
+      {
+        "nodeId": "runtime-plugin-2",
+        "source": "npm",
+        "ref": "@deepseek-ai/dsh-tool-todo",
+        "version": "0.2.0-rc.2",
+        "enabled": false
+      }
+    ]
   }
 }
