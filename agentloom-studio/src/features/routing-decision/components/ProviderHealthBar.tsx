@@ -54,7 +54,7 @@ export const ProviderHealthBar = memo(function ProviderHealthBar() {
         ) : null}
 
         {!isLoading && !isError && (data?.length ?? 0) === 0 ? (
-          <p className="text-xs text-muted" data-testid="provider-health-empty">
+          <p className="text-xs text-muted-foreground" data-testid="provider-health-empty">
             当前组织还没有提供商熔断记录，说明所有模型调用都未触发失败阈值。
           </p>
         ) : null}
@@ -67,12 +67,12 @@ export const ProviderHealthBar = memo(function ProviderHealthBar() {
               return (
                 <li
                   key={`${status.providerName}:${status.modelId ?? 'all'}`}
-                  className="flex items-center gap-2 rounded-full border border-border bg-surface-elevated py-1 pl-2.5 pr-1.5"
+                  className="flex items-center gap-2 rounded-full border border-border bg-muted py-1 pl-2.5 pr-1.5"
                 >
                   <span className="text-xs font-medium text-foreground">
                     {status.providerName}
                     {status.modelId ? (
-                      <span className="text-muted"> · {status.modelId}</span>
+                      <span className="text-muted-foreground"> · {status.modelId}</span>
                     ) : null}
                   </span>
                   <Badge variant={meta.variant} size="sm">
@@ -80,7 +80,7 @@ export const ProviderHealthBar = memo(function ProviderHealthBar() {
                   </Badge>
                   {status.failureCount > 0 ? (
                     <span
-                      className="text-[10px] text-muted"
+                      className="text-2xs text-muted-foreground"
                       title={`最近失败：${formatRoutingTimestamp(status.lastFailureAt)}`}
                     >
                       失败 {status.failureCount} 次

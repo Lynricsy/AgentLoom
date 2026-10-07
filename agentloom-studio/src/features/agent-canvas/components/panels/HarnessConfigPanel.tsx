@@ -77,7 +77,7 @@ export const HarnessConfigPanel = memo(function HarnessConfigPanel({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-foreground">引擎</span>
-        <div className="rounded-card border border-border bg-surface-elevated px-3 py-2 text-xs text-foreground">
+        <div className="rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground">
           DeepSeek Harness {RUNTIME_PLUGIN_DSH_VERSION}
         </div>
         <p className="text-xs text-muted-foreground">
@@ -125,7 +125,7 @@ export const HarnessConfigPanel = memo(function HarnessConfigPanel({
             {connectedPlugins.map((label, index) => (
               <li
                 key={`${index}-${label}`}
-                className="flex items-center gap-2 rounded-card border border-border bg-surface-elevated px-3 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs"
               >
                 <span className="text-muted-foreground">{index + 1}.</span>
                 <Puzzle className="h-3.5 w-3.5 shrink-0 text-node-plugin" />

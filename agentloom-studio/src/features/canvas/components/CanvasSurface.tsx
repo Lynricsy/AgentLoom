@@ -120,7 +120,7 @@ export function CanvasSurface({
       />
       <Controls
         showInteractive={false}
-        className="!bg-surface-elevated !border-border !shadow-lg"
+        className="!bg-muted !border-border !shadow-lg"
       />
       <CanvasMiniMap />
     </ReactFlow>

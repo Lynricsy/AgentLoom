@@ -130,7 +130,7 @@ function Field({ id, label, optional = false, error, hint, children }: FieldProp
       <label htmlFor={id} className="text-xs font-medium text-foreground">
         {label}
         {optional ? (
-          <span className="ml-1 font-normal text-muted">（可选）</span>
+          <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
         ) : null}
       </label>
       {children}
@@ -139,7 +139,7 @@ function Field({ id, label, optional = false, error, hint, children }: FieldProp
           {error}
         </p>
       ) : (
-        <p id={`${id}-message`} className="text-xs text-muted">
+        <p id={`${id}-message`} className="text-xs text-muted-foreground">
           {hint}
         </p>
       )}
@@ -253,7 +253,7 @@ export function AgentApiKeyCreateDialog({
 
             <DialogBody className="space-y-4">
               <div
-                className="flex gap-2 rounded-card border border-warning/30 bg-warning/10 px-3 py-2.5"
+                className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5"
                 role="alert"
               >
                 <ShieldAlert
@@ -266,12 +266,12 @@ export function AgentApiKeyCreateDialog({
               </div>
 
               <div className="space-y-2">
-                <span className="text-xs font-medium text-muted">{created.name}</span>
+                <span className="text-xs font-medium text-muted-foreground">{created.name}</span>
                 <div className="flex items-start gap-2">
                   <code
                     ref={keyRef}
                     data-testid="agent-api-key-plaintext"
-                    className="min-w-0 flex-1 break-all rounded-card border border-border bg-surface-elevated px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
+                    className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
                   >
                     {created.key}
                   </code>

@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -41,7 +42,7 @@ import {
 import {
   GENERATED_APP_SUBMISSION_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusBadgeVariant,
+  getGeneratedAppSubmissionStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicWorkflowExecutionHandoff,
@@ -97,9 +98,9 @@ function SubmissionStatusBadge({
   status: GeneratedAppSubmissionStatus
 }) {
   return (
-    <Badge variant={getGeneratedAppSubmissionStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppSubmissionStatusTone(status)}>
       {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -121,7 +122,7 @@ function JsonReadOnlyPanel({
   return (
     <div className="min-w-0 space-y-2">
       <h4 className="text-sm font-medium text-foreground">{label}</h4>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
         {stringifyJson(value)}
       </pre>
     </div>
@@ -132,7 +133,7 @@ function ErrorReadOnlyPanel({ value }: { value: string | null }) {
   return (
     <div className="min-w-0 space-y-2">
       <h4 className="text-sm font-medium text-foreground">错误状态</h4>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
         {value?.trim() ? value : '暂无'}
       </pre>
     </div>
@@ -261,7 +262,7 @@ function WorkflowExecutionStatusBlock({
   return (
     <section
       className={cn(
-        'rounded-card border p-3',
+        'rounded-lg border p-3',
         getWorkflowExecutionPanelClass(displayStatus),
       )}
       data-testid="creator-workflow-execution-status"
@@ -548,7 +549,7 @@ export function GeneratedAppSubmissionsPanel({
           正在加载提交记录...
         </p>
         {Array.from({ length: 3 }, (_, index) => (
-          <Skeleton key={index} className="h-14 rounded-card" />
+          <Skeleton key={index} className="h-14 rounded-lg" />
         ))}
       </div>
     )
@@ -556,7 +557,7 @@ export function GeneratedAppSubmissionsPanel({
 
   if (submissionsQuery.isError) {
     return (
-      <div className="flex items-start gap-3 rounded-card border border-error/30 bg-error/5 p-4">
+      <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">
         <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
         <div className="min-w-0 space-y-3">
           <div>
@@ -755,7 +756,7 @@ export function GeneratedAppSubmissionsPanel({
             正在加载提交详情...
           </div>
         ) : detailQuery.isError || !selectedSubmission ? (
-          <div className="flex items-start gap-3 rounded-card border border-error/30 bg-error/5 p-4">
+          <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">
             <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
             <div className="min-w-0 space-y-3">
               <div>
@@ -838,7 +839,7 @@ export function GeneratedAppSubmissionsPanel({
               </Button>
             </div>
 
-            <div className="rounded-card border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
               审计信息仅展示匿名会话、应用版本和时间信息；公开分享
               token 不在创建者详情面板明文展示。
             </div>

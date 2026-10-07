@@ -20,7 +20,7 @@ function renderAt(pathname: string) {
 
 /** 当前高亮项的文案；导航项以 aria-current="page" 标记 */
 async function currentLabels() {
-  await screen.findByText('设置')
+  await screen.findByText('概览')
   return screen
     .getAllByRole('link')
     .filter((el) => el.getAttribute('aria-current') === 'page')
@@ -28,7 +28,7 @@ async function currentLabels() {
 }
 
 describe('SettingsLayout', () => {
-  it('渲染全部设置导航项与返回入口', async () => {
+  it('渲染全部设置导航项', async () => {
     renderAt('/settings')
 
     for (const label of [
@@ -47,7 +47,6 @@ describe('SettingsLayout', () => {
     ]) {
       expect(await screen.findByText(label)).toBeInTheDocument()
     }
-    expect(screen.getByLabelText('返回工作台')).toHaveAttribute('href', '/')
   })
 
   it('个人偏好指向 /settings/preferences', async () => {
@@ -61,7 +60,7 @@ describe('SettingsLayout', () => {
   // 设置页新增时必须同步补导航入口：此断言是「个人偏好」曾长期缺失的回归闸门
   it('导航项数量与设置页总数一致（12 项）', async () => {
     renderAt('/settings')
-    await screen.findByText('设置')
+    await screen.findByText('概览')
     const navLinks = screen.getAllByRole('link').filter((el) => {
       const href = el.getAttribute('href')
       return href !== null && href.startsWith('/settings')

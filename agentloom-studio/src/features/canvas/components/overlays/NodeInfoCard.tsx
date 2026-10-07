@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
 import { useHoveredNodeId } from '../../stores/canvasStore'
 import { getResolvedNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { NODE_CATEGORIES } from '../nodeCategories'
@@ -66,7 +67,8 @@ export const NodeInfoCard = memo(function NodeInfoCard() {
   return (
     <div
       className={cn(
-        'pointer-events-none absolute left-0 top-0 z-[1000] min-w-[180px] max-w-[260px] rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg'
+        CANVAS_FLOATING_CLASS,
+        'pointer-events-none absolute left-0 top-0 z-40 min-w-[180px] max-w-[260px] p-3 text-foreground',
       )}
       style={{
         transform: `translate(${left}px, ${top}px)`,
@@ -76,13 +78,13 @@ export const NodeInfoCard = memo(function NodeInfoCard() {
       <div className="flex items-center gap-2">
         <span
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
-          style={{ backgroundColor: categoryInfo?.color ?? 'var(--color-surface-elevated)' }}
+          style={{ backgroundColor: categoryInfo?.color ?? 'var(--color-muted)' }}
         >
           <NodeIcon className="h-4 w-4 text-black/80" aria-hidden="true" data-testid="node-info-card-icon" />
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{data.label}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{categoryInfo?.label ?? '节点'}</p>
+          <p className="truncate text-2xs text-muted-foreground">{categoryInfo?.label ?? '节点'}</p>
         </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">{typeConfig?.label ?? data.nodeType}</p>

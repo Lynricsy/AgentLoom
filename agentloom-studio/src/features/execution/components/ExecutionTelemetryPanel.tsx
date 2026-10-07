@@ -34,7 +34,7 @@ function formatLatency(value: number): string {
 
 function RecordMeta({ record }: { record: ExecutionRecord }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       <span className="font-medium text-foreground">
         {record.nodeId ?? (record.stepId ? `步骤 ${record.stepId.slice(0, 8)}` : '整次执行')}
       </span>
@@ -68,7 +68,7 @@ function SummaryRecordCard({ record }: { record: ExecutionRecord }) {
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             {metrics.map(([label, value]) => (
               <div key={label} className="min-w-0">
-                <dt className="truncate text-[11px] text-muted">{label}</dt>
+                <dt className="truncate text-2xs text-muted-foreground">{label}</dt>
                 <dd className="truncate text-sm font-medium tabular-nums text-foreground">
                   {value}
                 </dd>
@@ -188,7 +188,7 @@ export const ExecutionTelemetryPanel = memo(function ExecutionTelemetryPanel({
     return (
       <div className="space-y-3" data-testid="execution-telemetry-loading">
         {Array.from({ length: 3 }, (_, index) => (
-          <Skeleton key={index} className="h-28 rounded-card" />
+          <Skeleton key={index} className="h-28 rounded-lg" />
         ))}
       </div>
     )
@@ -234,7 +234,7 @@ export const ExecutionTelemetryPanel = memo(function ExecutionTelemetryPanel({
         </div>
 
         {summaries.length === 0 ? (
-          <p className="text-xs text-muted">当前页没有 execution_summary 记录。</p>
+          <p className="text-xs text-muted-foreground">当前页没有 execution_summary 记录。</p>
         ) : (
           summaries.map((record) => (
             <SummaryRecordCard key={record.id} record={record} />
@@ -251,7 +251,7 @@ export const ExecutionTelemetryPanel = memo(function ExecutionTelemetryPanel({
         </div>
 
         {stepRecords.length === 0 ? (
-          <p className="text-xs text-muted">当前页没有 step_telemetry 记录。</p>
+          <p className="text-xs text-muted-foreground">当前页没有 step_telemetry 记录。</p>
         ) : (
           stepRecords.map((record) => (
             <TelemetryRecordCard key={record.id} record={record} />
@@ -260,7 +260,7 @@ export const ExecutionTelemetryPanel = memo(function ExecutionTelemetryPanel({
       </section>
 
       {hasPrev || hasMore ? (
-        <div className="flex items-center justify-between gap-2 text-xs text-muted">
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>
             共 {numberFormatter.format(meta?.total ?? 0)} 条 · 第 {page} 页
           </span>

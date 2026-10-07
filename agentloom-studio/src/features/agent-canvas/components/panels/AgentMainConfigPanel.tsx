@@ -14,6 +14,8 @@ import type {
   AgentSelfEvolutionPolicy,
 } from '@/features/agent'
 import { Switch } from '@/shared/ui/switch'
+import { cn } from '@/shared/lib/utils'
+import { Card } from '@/shared/ui/card'
 
 interface AgentMainConfigPanelProps {
   config: Record<string, unknown>
@@ -77,19 +79,19 @@ const SectionCard = memo(function SectionCard({
   children,
 }: SectionCardProps) {
   return (
-    <section className="rounded-lg border border-neutral-700 bg-neutral-900/60 p-3">
+    <Card className="p-3">
       <div className="flex items-start gap-2">
-        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
+        <Icon className="mt-0.5 size-4 shrink-0 text-[var(--color-node-agent)]" />
         <div className="min-w-0">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-200">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
             {title}
           </h3>
-          <p className="mt-1 text-xs leading-5 text-neutral-500">{description}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
       </div>
 
       <div className="mt-3 flex flex-col gap-2">{children}</div>
-    </section>
+    </Card>
   )
 })
 
@@ -112,18 +114,17 @@ const ToggleRow = memo(function ToggleRow({
 }: ToggleRowProps) {
   return (
     <div
-      className={`flex items-start justify-between gap-3 rounded-md border px-3 py-2.5 ${
-        disabled
-          ? 'border-neutral-800 bg-neutral-900/60 opacity-60'
-          : 'border-neutral-700 bg-neutral-800/50'
-      }`}
+      className={cn(
+        'flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2.5',
+        disabled && 'opacity-60',
+      )}
     >
       <div className="min-w-0">
-        <div className="flex items-center gap-2 text-sm font-medium text-neutral-200">
-          <Icon className="h-4 w-4 shrink-0 text-cyan-400" />
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Icon className="size-4 shrink-0 text-[var(--color-node-agent)]" />
           <span>{title}</span>
         </div>
-        <p className="mt-1 text-xs leading-5 text-neutral-500">{description}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
       </div>
 
       <Switch
@@ -178,11 +179,11 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
         description="创建后固定，用于决定 Agent 是否拥有沙箱运行时与工作区能力。"
         icon={Cpu}
       >
-        <div className="rounded-md border border-neutral-700 bg-neutral-800/50 px-3 py-3">
-          <div className="text-sm font-medium text-neutral-200">
+        <div className="rounded-md border border-border bg-muted px-3 py-3">
+          <div className="text-sm font-medium text-foreground">
             {runtimeMode === 'sandbox' ? '有沙箱' : '无沙箱'}
           </div>
-          <p className="mt-1 text-xs leading-5 text-neutral-500">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {runtimeMode === 'sandbox'
               ? '当前 Agent 通过 sandbox runtime 运行，可挂载工作区并使用文件/终端内置工具。'
               : '当前 Agent 通过 no_sandbox runtime 运行，不提供内置文件或终端工具；若被有沙箱 Agent 调用为子 Agent，系统会自动授予只读 read 权限。'}

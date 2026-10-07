@@ -1,6 +1,7 @@
 import { memo, useCallback, Suspense, lazy, type ChangeEvent } from 'react'
 import { Code } from 'lucide-react'
 import { useTheme } from '@/shared/hooks/use-theme'
+import { Input } from '@/shared/ui/input'
 import {
   Select,
   SelectContent,
@@ -135,13 +136,12 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
         <label htmlFor="code-description" className="mb-1 block text-xs font-medium text-foreground">
           描述
         </label>
-        <input
+        <Input
           id="code-description"
           type="text"
           value={parsed.description}
           onChange={handleDescription}
           placeholder="简要描述代码功能"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
       </div>
 
@@ -158,10 +158,10 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
               className="flex h-[300px] flex-col gap-2 rounded-md border border-border bg-surface p-4"
               data-testid="code-tool-editor-fallback"
             >
-              <div className="h-4 w-28 animate-pulse rounded bg-muted/60" />
-              <div className="h-3 w-full animate-pulse rounded bg-muted/40" />
-              <div className="h-3 w-5/6 animate-pulse rounded bg-muted/40" />
-              <div className="h-3 w-2/3 animate-pulse rounded bg-muted/40" />
+              <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-full animate-pulse rounded bg-muted" />
+              <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
             </div>
           }
         >
@@ -197,14 +197,14 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
         >
           超时时间（秒）
         </label>
-        <input
+        <Input
           id="code-timeout"
           type="number"
           min={1}
           max={300}
           value={parsed.timeout}
           onChange={handleTimeout}
-          className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="w-24"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           代码执行超时时间，默认 30 秒，最长 300 秒

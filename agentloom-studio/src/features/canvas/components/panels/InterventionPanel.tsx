@@ -1,6 +1,7 @@
 import { memo, useState, useCallback } from 'react'
 import { Check, Pencil, X, AlertTriangle, Loader2 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { Textarea } from '@/shared/ui/textarea'
 import {
   useNodeIntervention,
   useNodeExecutionState,
@@ -124,13 +125,13 @@ export const InterventionPanel = memo(function InterventionPanel({
 
   return (
     <div
-      className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3"
+      className="mt-4 rounded-xl border border-warning/40 bg-warning/5 p-3"
       data-testid="intervention-panel"
     >
       {/* 标题 */}
       <div className="flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-        <h4 className="text-xs font-semibold text-amber-300">需要人工干预</h4>
+        <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+        <h4 className="text-xs font-semibold text-warning">需要人工干预</h4>
       </div>
 
       {/* AI 决策详情 */}
@@ -181,7 +182,7 @@ export const InterventionPanel = memo(function InterventionPanel({
             onClick={handleApprove}
             disabled={isSubmitting}
             data-testid="intervention-approve"
-            className="bg-emerald-600 text-white hover:bg-emerald-500"
+            className="bg-success text-white hover:bg-success/90"
           >
             {isSubmitting ? (
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -223,9 +224,9 @@ export const InterventionPanel = memo(function InterventionPanel({
           >
             修改内容
           </label>
-          <textarea
+          <Textarea
             id="intervention-modified-content"
-            className="w-full rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono text-xs leading-5 text-foreground focus:border-primary/50 focus:outline-none"
+            className="px-2 py-1.5 font-mono text-xs leading-5"
             rows={5}
             value={modifiedContent}
             onChange={(e) => setModifiedContent(e.target.value)}
@@ -237,9 +238,9 @@ export const InterventionPanel = memo(function InterventionPanel({
           >
             反馈（可选）
           </label>
-          <textarea
+          <Textarea
             id="intervention-feedback"
-            className="w-full rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono text-xs leading-5 text-foreground focus:border-primary/50 focus:outline-none"
+            className="px-2 py-1.5 font-mono text-xs leading-5"
             rows={2}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -282,9 +283,9 @@ export const InterventionPanel = memo(function InterventionPanel({
           >
             拒绝原因（可选）
           </label>
-          <textarea
+          <Textarea
             id="intervention-reject-feedback"
-            className="w-full rounded-lg border border-border/70 bg-surface px-2 py-1.5 font-mono text-xs leading-5 text-foreground focus:border-primary/50 focus:outline-none"
+            className="px-2 py-1.5 font-mono text-xs leading-5"
             rows={3}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}

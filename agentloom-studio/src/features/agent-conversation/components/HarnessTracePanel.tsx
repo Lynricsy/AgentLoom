@@ -114,12 +114,12 @@ const TraceRow = memo(function TraceRow({ entry }: { entry: HarnessTraceEntry })
       className="flex items-baseline gap-2 px-3 py-1 text-xs"
       data-testid="harness-trace-row"
     >
-      <span className="w-14 shrink-0 font-mono text-[10px] text-muted-foreground">
+      <span className="w-14 shrink-0 font-mono text-2xs text-muted-foreground">
         {formatTraceTime(entry.timestamp)}
       </span>
       <code className="shrink-0 font-mono text-foreground">{entry.kind}</code>
       {entry.step !== undefined ? (
-        <span className="shrink-0 text-[10px] text-muted-foreground">
+        <span className="shrink-0 text-2xs text-muted-foreground">
           step {entry.step}
         </span>
       ) : null}
@@ -149,10 +149,10 @@ export function HarnessTracePanel({ entries }: HarnessTracePanelProps) {
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface"
+      className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface"
       data-testid="harness-trace-panel"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Cpu className="h-4 w-4 text-primary" />
           <span className="truncate text-sm font-medium text-foreground">
@@ -162,7 +162,7 @@ export function HarnessTracePanel({ entries }: HarnessTracePanelProps) {
             dsh
           </Badge>
         </div>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
+        <span className="shrink-0 text-2xs text-muted-foreground">
           {entries.length} 条事件
         </span>
       </div>
@@ -180,7 +180,7 @@ export function HarnessTracePanel({ entries }: HarnessTracePanelProps) {
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {groups.map((group) => (
             <section key={group.key} className="pb-1">
-              <h4 className="sticky top-0 bg-surface px-3 py-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+              <h4 className="sticky top-0 bg-surface px-3 py-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
                 {group.turn !== undefined ? `Turn ${group.turn}` : "会话"}
               </h4>
               <ol>

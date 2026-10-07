@@ -14,27 +14,24 @@
   --color-primary-hover: #4f46e5;
   --color-primary-glow: rgba(99, 102, 241, 0.08);
   --color-primary-foreground: #ffffff;
-  --color-brand: #6366f1;
-  --color-brand-foreground: #ffffff;
 
-  /* 基础色 (light defaults — :root 和 .dark 各自覆盖) */
+  /* 表面层级 (light defaults — .dark 覆盖)：background < surface < popover */
   --color-background: #f7f8fa;
   --color-foreground: #101828;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f2f4f7;
 
-  /* 文字 */
-  --color-muted: #667085;
-  --color-muted-foreground: #98a2b3;
+  /* 次级表面：hover 底、骨架屏、代码块、表头、well、segmented 底槽 */
+  --color-muted: #f2f4f7;
 
-  /* 边框与输入 */
+  /* 文字层级：次级 (≥4.5:1 对比度) / 三级 (placeholder、disabled、时间戳) */
+  --color-muted-foreground: #667085;
+  --color-subtle-foreground: #98a2b3;
+
+  /* 边框 */
   --color-border: #e4e7ec;
   --color-border-hover: #cfd4dc;
-  --color-input: #e4e7ec;
 
-  /* 卡片与弹出层 */
-  --color-card: #ffffff;
-  --color-card-foreground: #101828;
+  /* 浮层 */
   --color-popover: #ffffff;
   --color-popover-foreground: #101828;
 
@@ -84,54 +81,45 @@
   --font-sans: "Inter Variable", "Noto Sans SC Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
-  /* 圆角层级 */
-  --radius-card: 12px;
-  --radius-panel: 16px;
+  /* 圆角层级 — 覆盖 Tailwind 默认刻度，并移除 2xl/3xl/4xl */
+  --radius-xs: 4px; /* 行内 code、节点内微标签、Checkbox */
+  --radius-sm: 6px; /* 菜单项、Tab 项、Tooltip、Skeleton */
+  --radius-md: 8px; /* 控件：Button / Input / Select / Textarea / NavItem */
+  --radius-lg: 12px; /* 卡片、Popover、Dropdown、Toast、画布节点 */
+  --radius-xl: 16px; /* Dialog / Sheet / Command / 画布浮层面板 */
+  --radius-2xl: initial;
+  --radius-3xl: initial;
+  --radius-4xl: initial;
 
-  /* 阴影层级 (light defaults) */
-  --shadow-node: 0 1px 2px rgba(16, 24, 40, 0.05), 0 2px 4px rgba(16, 24, 40, 0.04), 0 8px 16px -8px rgba(16, 24, 40, 0.08);
-  --shadow-node-selected: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 28px -10px rgba(16, 24, 40, 0.18);
-  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), -4px 0 20px rgba(16, 24, 40, 0.06);
-  --shadow-popover: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 24px -6px rgba(16, 24, 40, 0.14);
+  /* 阴影层级 — 整组重置后只保留 5 级 (light defaults；.dark 覆盖) */
+  --shadow-*: initial;
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05), 0 2px 4px rgba(16, 24, 40, 0.04), 0 8px 16px -8px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 28px -10px rgba(16, 24, 40, 0.18);
+  --shadow-lg: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 24px -6px rgba(16, 24, 40, 0.14);
+  --shadow-xl: 0 8px 12px -4px rgba(16, 24, 40, 0.06), 0 24px 48px -12px rgba(16, 24, 40, 0.22);
+
+  /* 动效缓动 — 与 shared/lib/motion.ts 的 EASE 同值 */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 微标签字号 (11px) */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
 
   /* 间距 */
-  --spacing-toolbar: 44px;
+  --spacing-sidebar: 240px;
+  --spacing-sidebar-collapsed: 64px;
+  --spacing-settings-nav: 224px;
   --spacing-palette-expanded: 220px;
   --spacing-palette-collapsed: 52px;
   --spacing-property-panel: 360px;
-  --spacing-bottom-panel-collapsed: 40px;
-  --spacing-bottom-panel-expanded: 200px;
   --spacing-mapping-panel: 320px;
 }
 
 /* ─── Light theme (default) ──────────────────────────── */
+/* light 值全部由 @theme 输出到 :root，此处只补 @theme 不便表达的部分 */
 :root {
   color-scheme: light;
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-primary-glow: rgba(99, 102, 241, 0.08);
-  --color-primary-foreground: #ffffff;
-  --color-brand: #6366f1;
-  --color-brand-foreground: #ffffff;
-  --color-background: #f7f8fa;
-  --color-foreground: #101828;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #f2f4f7;
-  --color-muted: #667085;
-  --color-muted-foreground: #98a2b3;
-  --color-border: #e4e7ec;
-  --color-border-hover: #cfd4dc;
-  --color-input: #e4e7ec;
-  --color-card: #ffffff;
-  --color-card-foreground: #101828;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #101828;
-  --color-success: #059669;
-  --color-error: #dc2626;
-  --color-warning: #d97706;
-  --color-info: #2563eb;
-  /* 证据/引用命中高亮（区别于 warning 警告语义） */
-  --color-highlight: #eab308;
   --color-brand-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
 }
 
@@ -142,19 +130,14 @@
   --color-primary-hover: #a5b4fc;
   --color-primary-glow: rgba(129, 140, 248, 0.2);
   --color-primary-foreground: #0b0d10;
-  --color-brand: #818cf8;
-  --color-brand-foreground: #0b0d10;
   --color-background: #0b0d10;
   --color-foreground: #e8eaed;
   --color-surface: #14171c;
-  --color-surface-elevated: #1c2027;
-  --color-muted: #9aa3af;
-  --color-muted-foreground: #6b7280;
+  --color-muted: #1c2027;
+  --color-muted-foreground: #9aa3af;
+  --color-subtle-foreground: #6b7280;
   --color-border: #2a2f38;
   --color-border-hover: #3a414d;
-  --color-input: #2a2f38;
-  --color-card: #14171c;
-  --color-card-foreground: #e8eaed;
   --color-popover: #1c2027;
   --color-popover-foreground: #e8eaed;
   --color-success: #34d399;
@@ -179,10 +162,11 @@
   --color-node-skill: #c084fc;
 
   /* 阴影 — 深色用黑色大扩散低透明度 */
-  --shadow-node: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px -2px rgba(0, 0, 0, 0.4);
-  --shadow-node-selected: 0 2px 6px rgba(0, 0, 0, 0.5), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
-  --shadow-panel: -4px 0 24px rgba(0, 0, 0, 0.45);
-  --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px -2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.5), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.65);
 }
 
 body {
@@ -197,15 +181,15 @@ body {
 .prose-agent {
   --tw-prose-body: var(--color-foreground);
   --tw-prose-headings: var(--color-foreground);
-  --tw-prose-lead: var(--color-muted);
+  --tw-prose-lead: var(--color-muted-foreground);
   --tw-prose-links: var(--color-info);
   --tw-prose-bold: var(--color-foreground);
-  --tw-prose-counters: var(--color-muted);
+  --tw-prose-counters: var(--color-muted-foreground);
   --tw-prose-bullets: var(--color-muted-foreground);
   --tw-prose-hr: var(--color-border);
-  --tw-prose-quotes: var(--color-muted);
+  --tw-prose-quotes: var(--color-muted-foreground);
   --tw-prose-quote-borders: var(--color-primary);
-  --tw-prose-captions: var(--color-muted);
+  --tw-prose-captions: var(--color-muted-foreground);
   --tw-prose-code: var(--color-info);
   --tw-prose-pre-code: var(--color-foreground);
   --tw-prose-pre-bg: var(--color-surface);
@@ -255,7 +239,7 @@ body {
   }
 
   & th {
-    background: var(--color-surface-elevated);
+    background: var(--color-muted);
     font-weight: 600;
   }
 
@@ -301,7 +285,7 @@ body {
     var(--node-color, var(--color-border)) 35%,
     var(--color-border)
   );
-  box-shadow: var(--shadow-node);
+  box-shadow: var(--shadow-sm);
   transition:
     border-color 150ms ease-out,
     box-shadow 150ms ease-out,
@@ -314,7 +298,7 @@ body {
     var(--node-color, var(--color-border)) 60%,
     var(--color-border)
   );
-  box-shadow: var(--shadow-node-selected);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 
@@ -329,7 +313,7 @@ body {
         var(--node-color, var(--color-primary)) 20%,
         transparent
       ),
-    var(--shadow-node-selected);
+    var(--shadow-md);
 }
 
 /* 运行中：类别色 conic-gradient 沿边框旋转 */
@@ -400,8 +384,7 @@ body {
 
 /* 头部：类别色 8% 顶部晕染，向下淡出，与卡片圆角对齐 */
 .canvas-node-header {
-  border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0
-    0;
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--node-color, var(--color-primary)) 8%, transparent),
@@ -444,71 +427,6 @@ body {
   animation: typed-port-shake 0.3s ease-in-out;
 }
 
-/* ─── Card hover effects ────────────────────────────── */
-.card-hover-lift {
-  transition:
-    transform 200ms ease-out,
-    box-shadow 200ms ease-out,
-    border-color 200ms ease-out;
-}
-
-.card-hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.12),
-    0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
-}
-
-:root.dark .card-hover-lift:hover {
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
-}
-
-/* ─── Staggered entrance animation ──────────────────── */
-@keyframes card-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.card-stagger-enter {
-  animation: card-fade-in 300ms ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .canvas-node-shell:hover {
-    transform: none;
-  }
-  .canvas-node-shell[data-shell-status="running"]::before {
-    animation: none;
-  }
-  .canvas-node-shell[data-shell-status="failed"] {
-    animation: none;
-  }
-  .typed-port--shake {
-    animation: none;
-  }
-  .card-hover-lift:hover {
-    transform: none;
-  }
-  .card-stagger-enter {
-    animation: none;
-  }
-  .shimmer {
-    animation: none;
-  }
-  .btn-interact {
-    transition: none;
-  }
-}
-
 /* ─── Shimmer skeleton ──────────────────────────────── */
 @keyframes shimmer-sweep {
   0% {
@@ -523,28 +441,12 @@ body {
   background: linear-gradient(
     90deg,
     var(--color-muted) 25%,
-    color-mix(in srgb, var(--color-muted) 60%, var(--color-surface-elevated))
-      50%,
+    var(--color-border) 50%,
     var(--color-muted) 75%
   );
   background-size: 200% 100%;
   animation: shimmer-sweep 1.8s ease-in-out infinite;
-  border-radius: 6px;
-}
-
-/* ─── Button micro-interactions ─────────────────────── */
-.btn-interact {
-  transition:
-    transform 150ms ease-out,
-    box-shadow 150ms ease-out;
-}
-
-.btn-interact:hover {
-  transform: scale(1.02);
-}
-
-.btn-interact:active {
-  transform: scale(0.97);
+  border-radius: var(--radius-sm);
 }
 
 .react-flow {
@@ -553,7 +455,7 @@ body {
   --xy-node-border-color: var(--color-border);
   --xy-node-color: var(--color-foreground);
   --xy-minimap-background-color: var(--color-surface);
-  --xy-controls-button-background-color: var(--color-surface-elevated);
+  --xy-controls-button-background-color: var(--color-muted);
   --xy-controls-button-color: var(--color-foreground);
 }
 
@@ -610,7 +512,7 @@ body {
   background: var(--color-popover);
   color: var(--color-foreground);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--shadow-lg);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -660,9 +562,6 @@ body {
 
 .typed-port-state--idle {
   background: var(--color-surface) !important;
-}
-.typed-port-state--hover {
-  transform: translateY(-50%) scale(1.15) !important;
 }
 /* 已连接端口填实：与空心的未连接端口形成一眼可辨的对比 */
 .typed-port-state--connected {
@@ -794,10 +693,10 @@ body {
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
   border: 1px solid var(--color-border);
   color: var(--color-foreground);
-  box-shadow: var(--shadow-node);
+  box-shadow: var(--shadow-sm);
   opacity: 0;
   transform: translateX(-50%) translateY(-50%);
   transition:
@@ -808,13 +707,13 @@ body {
 
 /* L1 / error 的 pill 常驻显示（由 SmartEdge 决定），并带语义色描边 */
 .edge-badge--l1 {
-  background: color-mix(in srgb, var(--color-compat-l1) 12%, var(--color-surface-elevated));
+  background: color-mix(in srgb, var(--color-compat-l1) 12%, var(--color-muted));
   border-color: color-mix(in srgb, var(--color-compat-l1) 45%, var(--color-border));
   color: var(--color-compat-l1);
 }
 
 .edge-badge--error {
-  background: color-mix(in srgb, var(--color-compat-l3) 12%, var(--color-surface-elevated));
+  background: color-mix(in srgb, var(--color-compat-l3) 12%, var(--color-muted));
   border-color: color-mix(in srgb, var(--color-compat-l3) 45%, var(--color-border));
   color: var(--color-compat-l3);
 }
@@ -904,10 +803,10 @@ body {
   font-size: 12px;
   line-height: 1.4;
   max-width: 220px;
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
   border: 1px solid var(--color-border);
   color: var(--color-foreground);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -961,7 +860,7 @@ body {
 }
 
 .connection-overlay__halo--source {
-  stroke: color-mix(in srgb, var(--color-brand) 75%, white 12%);
+  stroke: color-mix(in srgb, var(--color-primary) 75%, white 12%);
   opacity: 0.5;
 }
 
@@ -985,7 +884,7 @@ body {
 .connection-overlay__label {
   font-size: 11px;
   font-family: var(--font-sans);
-  fill: var(--color-muted);
+  fill: var(--color-muted-foreground);
   text-anchor: middle;
   pointer-events: none;
 }
@@ -1041,7 +940,7 @@ body {
   border-radius: 6px;
   background: transparent;
   border: none;
-  color: var(--color-muted);
+  color: var(--color-muted-foreground);
   cursor: pointer;
   transition:
     color 0.15s ease,
@@ -1050,7 +949,7 @@ body {
 
 .mapping-panel__close:hover {
   color: var(--color-foreground);
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
 }
 
 .mapping-panel__body {
@@ -1065,7 +964,7 @@ body {
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
@@ -1074,7 +973,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--color-muted);
+  color: var(--color-muted-foreground);
 }
 
 .mapping-panel__summary-item--warning {
@@ -1089,7 +988,7 @@ body {
   padding: 4px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-muted);
+  color: var(--color-muted-foreground);
 }
 
 /* 字段树 */
@@ -1108,7 +1007,7 @@ body {
 }
 
 .mapping-field:hover {
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
 }
 
 .mapping-field--selected {
@@ -1126,21 +1025,9 @@ body {
     color-mix(in srgb, var(--color-compat-l1) 45%, transparent);
 }
 
-.mapping-field--required::after {
-  content: "*";
-  color: var(--color-error);
-  font-weight: 700;
-  margin-left: 2px;
-}
-
-.mapping-field--readonly {
-  opacity: 0.6;
-  cursor: default;
-}
-
 .mapping-field__type {
   font-size: 10px;
-  color: var(--color-muted);
+  color: var(--color-muted-foreground);
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -1208,7 +1095,7 @@ body {
   color: var(--exec-color);
   border: 1px solid color-mix(in srgb, var(--exec-color) 40%, transparent);
   background: color-mix(in srgb, var(--exec-color) 16%, var(--color-surface));
-  box-shadow: var(--shadow-node);
+  box-shadow: var(--shadow-sm);
 }
 
 .exec-overlay__retry {
@@ -1241,7 +1128,7 @@ body {
         var(--node-color, var(--color-primary)) 45%,
         transparent
       ),
-    var(--shadow-node-selected);
+    var(--shadow-md);
 }
 
 .canvas-node-shell[data-shell-status="completed"] {
@@ -1282,7 +1169,7 @@ body {
   );
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent),
-    var(--shadow-node-selected);
+    var(--shadow-md);
 }
 
 /* running 节点到其输入源的边：加粗 + 沿用该边自身的类型色发光。
@@ -1292,12 +1179,6 @@ body {
   filter: drop-shadow(
     0 0 5px color-mix(in srgb, var(--edge-glow, var(--color-primary)) 60%, transparent)
   );
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .canvas-node-shell--dep-active {
-    animation: none;
-  }
 }
 
 /* ─── 字段映射：禁止/确认/预览 ──────────────────────────── */
@@ -1411,7 +1292,7 @@ body {
 .apply-all-confirm {
   padding: 10px 12px;
   border-radius: 6px;
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
   border: 1px solid var(--color-border);
   margin-bottom: 8px;
 }
@@ -1457,19 +1338,19 @@ body {
 }
 
 .apply-all-confirm__btn--cancel {
-  background: hsl(from var(--color-muted) h s l / 0.12);
-  color: var(--color-muted);
+  background: hsl(from var(--color-muted-foreground) h s l / 0.12);
+  color: var(--color-muted-foreground);
 }
 
 .apply-all-confirm__btn--cancel:hover {
-  background: hsl(from var(--color-muted) h s l / 0.2);
+  background: hsl(from var(--color-muted-foreground) h s l / 0.2);
 }
 
 /* 批量拖拽预览卡 */
 .batch-preview {
   padding: 10px 12px;
   border-radius: 6px;
-  background: var(--color-surface-elevated);
+  background: var(--color-muted);
   border: 1px solid var(--color-border);
   margin-bottom: 8px;
 }
@@ -1535,8 +1416,8 @@ body {
 }
 
 .batch-preview__match-type--order {
-  background: hsl(from var(--color-muted) h s l / 0.15);
-  color: var(--color-muted);
+  background: hsl(from var(--color-muted-foreground) h s l / 0.15);
+  color: var(--color-muted-foreground);
 }
 
 .batch-preview__compat {
@@ -1586,12 +1467,12 @@ body {
 }
 
 .batch-preview__btn--cancel {
-  background: hsl(from var(--color-muted) h s l / 0.12);
-  color: var(--color-muted);
+  background: hsl(from var(--color-muted-foreground) h s l / 0.12);
+  color: var(--color-muted-foreground);
 }
 
 .batch-preview__btn--cancel:hover {
-  background: hsl(from var(--color-muted) h s l / 0.2);
+  background: hsl(from var(--color-muted-foreground) h s l / 0.2);
 }
 
 .workflow-preview-canvas .react-flow__node,
@@ -1614,8 +1495,24 @@ body {
   cursor: grabbing;
 }
 
-/* ─── 无障碍 & reduced-motion ──────────────────────────── */
+/* ─── 无障碍 & reduced-motion（全站唯一一处） ─────────────── */
 @media (prefers-reduced-motion: reduce) {
+  .canvas-node-shell:hover {
+    transform: none;
+  }
+  .canvas-node-shell[data-shell-status="running"]::before {
+    animation: none;
+  }
+  .canvas-node-shell[data-shell-status="failed"],
+  .canvas-node-shell--dep-active {
+    animation: none;
+  }
+  .typed-port--shake {
+    animation: none;
+  }
+  .shimmer {
+    animation: none;
+  }
   .smart-edge-particle--running {
     animation: none;
     opacity: 0;

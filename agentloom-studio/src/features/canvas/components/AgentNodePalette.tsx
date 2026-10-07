@@ -271,7 +271,7 @@ export const AgentNodePalette = memo(function AgentNodePalette({
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
-          <p className="mb-2 px-2 text-[11px] text-muted-foreground">
+          <p className="mb-2 px-2 text-2xs text-muted-foreground">
             拖拽节点到画布以添加
           </p>
           {filteredGroups.map((group) => {
@@ -332,7 +332,7 @@ const AgentPaletteGroupSection = memo(function AgentPaletteGroupSection({
               disabled={item.isAutoCreated}
               badge={
                 item.isAutoCreated ? (
-                  <span className="inline-flex shrink-0 rounded bg-surface-elevated px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
+                  <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-2xs leading-none text-muted-foreground">
                     自动创建
                   </span>
                 ) : undefined

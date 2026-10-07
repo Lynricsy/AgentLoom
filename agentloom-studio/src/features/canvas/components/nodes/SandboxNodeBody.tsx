@@ -22,30 +22,30 @@ export const SandboxNodeBody = memo(function SandboxNodeBody({ data }: SandboxNo
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <Container className="h-3.5 w-3.5 shrink-0 text-info" />
-        <span className="rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-medium text-info">
+        <span className="rounded-full bg-info/10 px-2 py-0.5 text-2xs font-medium text-info">
           Sandbox
         </span>
         <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium ${
             isPersistent
-              ? 'bg-blue-500/10 text-blue-400'
-              : 'bg-amber-500/10 text-amber-400'
+              ? 'bg-info/10 text-info'
+              : 'bg-warning/10 text-warning'
           }`}
         >
           {isPersistent ? '持久' : '临时'}
         </span>
         {(inputCount > 0 || outputCount > 0) && (
-          <span className="ml-auto shrink-0 text-[10px] text-muted">
+          <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
             {inputCount}入 / {outputCount}出
           </span>
         )}
       </div>
       {isPersistent ? (
-        <span className="text-[10px] text-muted">
+        <span className="text-2xs text-muted-foreground">
           {persistentSandboxName || '未选择沙箱'}
         </span>
       ) : (
-        <span className="text-[10px] text-muted">
+        <span className="text-2xs text-muted-foreground">
           {cpu}C / {memory}M / {disk}G
         </span>
       )}

@@ -50,8 +50,8 @@ export const PluginConfigPanel = memo(function PluginConfigPanel({
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="plugin-config-panel">
       <div className="flex items-start gap-3 rounded-lg border p-3">
-        <div className="rounded-md bg-purple-100 p-2 dark:bg-purple-900/30">
-          <Puzzle className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+        <div className="rounded-md bg-[var(--color-node-plugin)]/15 p-2">
+          <Puzzle className="h-5 w-5 text-[var(--color-node-plugin)]" />
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-medium">{data.pluginName || '未选择插件'}</h4>
@@ -59,7 +59,7 @@ export const PluginConfigPanel = memo(function PluginConfigPanel({
             <p className="text-xs text-muted-foreground mt-0.5">{data.pluginId}</p>
           )}
           {data.pluginVersion && (
-            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 mt-1">
+            <span className="inline-flex items-center rounded-full bg-[var(--color-node-plugin)]/15 px-1.5 py-0.5 text-2xs font-medium text-[var(--color-node-plugin)] mt-1">
               v{data.pluginVersion}
             </span>
           )}

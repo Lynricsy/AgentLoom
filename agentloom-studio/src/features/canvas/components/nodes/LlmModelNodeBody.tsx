@@ -98,7 +98,7 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
       </div>
 
       {isPrivateCloud && llmConfig.endpointUrl ? (
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Server className="h-3 w-3 shrink-0" />
           <span className="truncate">
             {extractHostname(llmConfig.endpointUrl)}

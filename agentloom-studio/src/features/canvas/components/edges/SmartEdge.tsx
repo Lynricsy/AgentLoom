@@ -8,6 +8,7 @@ import {
 } from '@xyflow/react'
 import { Shuffle, X } from 'lucide-react'
 import { useExecutionStore } from '@/features/execution'
+import { Button } from '@/shared/ui/button'
 import { useCanvasActions } from '../../stores/canvasStore'
 import { PORT_DATA_TYPE_META } from '../../types/nodeTypeRegistry'
 import type { PortDataType } from '../../types/typeSchema'
@@ -272,9 +273,10 @@ export const SmartEdge = memo(function SmartEdge({
             data-testid={`edge-badge-${id}`}
             aria-hidden={!badgeVisible}
           >
-            <button
-              type="button"
-              className="edge-badge__summary"
+            <Button
+              variant="ghost"
+              size="xs"
+              className="edge-badge__summary h-auto [&_svg]:size-2.5"
               data-testid={`edge-badge-action-${id}`}
               onClick={handleBadgeClick}
               onMouseEnter={handleMouseEnter}
@@ -292,7 +294,7 @@ export const SmartEdge = memo(function SmartEdge({
                 />
               )}
               <span>{badgeText}</span>
-            </button>
+            </Button>
             {hasWarning && (
               <span
                 className="edge-badge__warning"
@@ -303,9 +305,10 @@ export const SmartEdge = memo(function SmartEdge({
               </span>
             )}
             {selected && (
-              <button
-                type="button"
-                className="edge-badge__delete"
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="edge-badge__delete [&_svg]:size-2.5"
                 data-testid={`edge-delete-${id}`}
                 onClick={handleDelete}
                 onMouseEnter={handleMouseEnter}
@@ -316,7 +319,7 @@ export const SmartEdge = memo(function SmartEdge({
                 tabIndex={badgeTabIndex}
               >
                 <X size={10} />
-              </button>
+              </Button>
             )}
           </div>
         </EdgeLabelRenderer>

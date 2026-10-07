@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { SecuritySettings } from '@/features/auth'
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const securitySettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/security',
   component: SecuritySettings,
 })

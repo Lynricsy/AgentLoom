@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageContainer } from "@/shared/components/page-container";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
@@ -236,7 +237,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
 
   return (
     <div className="min-w-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
+      <PageContainer width="narrow">
         {/* 头部 */}
         <div className="flex items-start gap-3">
           <ProviderIcon
@@ -263,7 +264,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                 </Badge>
               )}
             </div>
-            <p className="truncate text-xs text-muted">{provider.slug}</p>
+            <p className="truncate text-xs text-muted-foreground">{provider.slug}</p>
           </div>
         </div>
 
@@ -308,7 +309,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
             )}
           </div>
           {provider.defaultBaseUrl && (
-            <p className="text-[11px] text-muted">
+            <p className="text-2xs text-muted-foreground">
               默认: {provider.defaultBaseUrl}
             </p>
           )}
@@ -461,7 +462,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
             </div>
           )}
         </Card>
-      </div>
+      </PageContainer>
 
       {/* 删除模型确认对话框 */}
       <AlertDialog

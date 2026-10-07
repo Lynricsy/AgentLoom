@@ -7,6 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
+import { Checkbox } from "@/shared/ui/checkbox";
+import { Textarea } from "@/shared/ui/textarea";
 import { useCanvasActions, useCanvasNodes } from "../../stores/canvasStore";
 import type { PortDefinition } from "../../types/nodeTypeRegistry";
 import {
@@ -120,11 +122,11 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
   );
 
   const handleCollapsedChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (checked: boolean | "indeterminate") => {
       onApply({
         config: {
           ...parsed,
-          isCollapsed: event.target.checked,
+          isCollapsed: checked === true,
         },
       });
     },
@@ -248,14 +250,14 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
         <label className="mb-2 block text-xs font-medium text-foreground">
           默认初始状态
         </label>
-        <textarea
+        <Textarea
           rows={4}
           value={stringifyDefaultState(parsed.defaultState)}
           onChange={handleDefaultStateChange}
           placeholder='可输入 JSON，例如 {"count":0}'
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
+          className="font-mono text-xs leading-relaxed"
         />
-        <p className="mt-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           当 `state-in` 未连线时，循环运行会回退到这里定义的默认 state。
         </p>
       </div>
@@ -280,11 +282,9 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
       </div>
 
       <label className="flex items-center gap-2 text-xs text-foreground">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={parsed.isCollapsed}
-          onChange={handleCollapsedChange}
-          className="h-4 w-4 rounded border border-border"
+          onCheckedChange={handleCollapsedChange}
         />
         <span>保存为收起态</span>
       </label>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Cpu, Loader2, Plus, Server } from "lucide-react";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
-import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { WorkbenchHeader } from "@/shared/components/workbench-header";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
@@ -139,15 +139,25 @@ export function LlmModelManagementPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader
-        className="border-b border-border px-4 py-4 sm:px-6"
-        icon={Cpu}
-        tone="var(--color-type-model)"
+      <WorkbenchHeader
+        leading={
+          <span
+            aria-hidden
+            className="grid size-8 shrink-0 place-items-center rounded-lg"
+            style={{
+              backgroundColor:
+                "color-mix(in srgb, var(--color-type-model) 14%, transparent)",
+              color: "var(--color-type-model)",
+            }}
+          >
+            <Cpu className="size-4" />
+          </span>
+        }
         title="LLM 提供商"
         description="管理 AI 模型提供商和模型配置"
         actions={
-          <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
-            <Plus className="mr-1.5 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={() => setShowCreateDialog(true)}>
+            <Plus />
             添加自定义提供商
           </Button>
         }
@@ -195,10 +205,10 @@ export function LlmModelManagementPage() {
                   className="w-full max-w-3xl space-y-3"
                   data-testid="llm-provider-config-skeleton"
                 >
-                  <Skeleton className="h-9 w-56 rounded-card" />
-                  <Skeleton className="h-10 w-full rounded-card" />
-                  <Skeleton className="h-10 w-full rounded-card" />
-                  <Skeleton className="h-24 w-full rounded-card" />
+                  <Skeleton className="h-9 w-56 rounded-lg" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-24 w-full rounded-lg" />
                 </div>
               ) : providers.length === 0 ? (
                 <EmptyState

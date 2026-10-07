@@ -5,6 +5,7 @@ import { Activity, AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { PageContainer } from '@/shared/components/page-container'
 import { Button, buttonVariants } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -68,8 +69,8 @@ interface SummaryTileProps {
 
 function SummaryTile({ label, value, isLoading }: SummaryTileProps) {
   return (
-    <div className="rounded-card border border-border bg-card p-4">
-      <p className="text-xs text-muted">{label}</p>
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <p className="text-xs text-muted-foreground">{label}</p>
       {isLoading ? (
         <Skeleton className="mt-2 h-6 w-24 rounded-md" />
       ) : (
@@ -118,7 +119,7 @@ export function PluginUsagePage({
         header: '时间 (UTC)',
         className: 'w-44',
         cell: (record) => (
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {DATE_TIME_FORMATTER.format(new Date(record.createdAt))}
           </span>
         ),
@@ -132,7 +133,7 @@ export function PluginUsagePage({
             <p className="truncate font-mono text-xs text-foreground">
               {record.executionId}
             </p>
-            <p className="truncate font-mono text-[11px] text-muted">
+            <p className="truncate font-mono text-2xs text-muted-foreground">
               step {record.stepId}
             </p>
           </div>
@@ -144,7 +145,7 @@ export function PluginUsagePage({
         className: 'w-24',
         hideBelow: 'sm',
         cell: (record) => (
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {formatDuration(record.executionDurationMs)}
           </span>
         ),
@@ -166,11 +167,11 @@ export function PluginUsagePage({
         hideBelow: 'lg',
         cell: (record) =>
           record.sourceListingId ? (
-            <span className="truncate font-mono text-xs text-muted">
+            <span className="truncate font-mono text-xs text-muted-foreground">
               {record.sourceListingId}
             </span>
           ) : (
-            <span className="text-muted">本地插件</span>
+            <span className="text-muted-foreground">本地插件</span>
           ),
       },
     ],
@@ -192,10 +193,7 @@ export function PluginUsagePage({
   )
 
   return (
-    <div
-      className="flex h-full flex-col gap-5 overflow-y-auto p-6"
-      data-testid="plugin-usage-page"
-    >
+    <PageContainer data-testid="plugin-usage-page">
       <PageHeader
         icon={Receipt}
         tone="var(--color-node-plugin)"
@@ -212,11 +210,11 @@ export function PluginUsagePage({
         }
       />
 
-      <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-3 sm:flex-row sm:items-end sm:p-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 sm:flex-row sm:items-end sm:p-4">
         <div className="space-y-1.5">
           <label
             htmlFor="usage-period-start"
-            className="block text-xs font-medium text-muted"
+            className="block text-xs font-medium text-muted-foreground"
           >
             开始日期 (UTC)
           </label>
@@ -232,7 +230,7 @@ export function PluginUsagePage({
         <div className="space-y-1.5">
           <label
             htmlFor="usage-period-end"
-            className="block text-xs font-medium text-muted"
+            className="block text-xs font-medium text-muted-foreground"
           >
             结束日期 (UTC)
           </label>
@@ -312,6 +310,6 @@ export function PluginUsagePage({
           }
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

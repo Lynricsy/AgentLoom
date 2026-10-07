@@ -3,7 +3,11 @@ import { Check, ChevronDown, Loader2, ShieldAlert, X } from 'lucide-react'
 
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { StatusDot } from './StatusBadge'
+import {
+  StatusBadge,
+  StatusDot,
+  type StatusTone,
+} from '@/shared/ui/status-badge'
 
 import {
   useExecutionActions,
@@ -19,32 +23,14 @@ interface ToolCallListProps {
 
 const statusConfig: Record<
   ToolCallStatus,
-  { label: string; className: string }
+  { label: string; tone: StatusTone }
 > = {
-  pending: {
-    label: '等待中',
-    className: 'bg-surface-elevated text-muted',
-  },
-  in_progress: {
-    label: '执行中',
-    className: 'bg-info/15 text-info',
-  },
-  awaiting_permission: {
-    label: '需要授权',
-    className: 'bg-warning/15 text-warning',
-  },
-  completed: {
-    label: '已完成',
-    className: 'bg-success/15 text-success',
-  },
-  failed: {
-    label: '失败',
-    className: 'bg-error/15 text-error',
-  },
-  denied: {
-    label: '已拒绝',
-    className: 'bg-surface-elevated text-muted',
-  },
+  pending: { label: '等待中', tone: 'neutral' },
+  in_progress: { label: '执行中', tone: 'info' },
+  awaiting_permission: { label: '需要授权', tone: 'warning' },
+  completed: { label: '已完成', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+  denied: { label: '已拒绝', tone: 'neutral' },
 }
 
 function formatPermissionCategoryLabel(category?: string): string {
@@ -171,35 +157,38 @@ function ToolCallCard({
 
   return (
     <div
-      className="rounded-card border border-border bg-surface p-3"
+      className="rounded-lg border border-border bg-surface p-3"
       data-testid={`tool-call-${tc.id}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-xs font-semibold text-foreground">
           {tc.tool}
         </span>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${cfg.className}`}
+        <StatusBadge
+          tone={cfg.tone}
+          size="sm"
+          className="shrink-0"
           data-testid={`tool-call-status-${tc.id}`}
         >
           {cfg.label}
-        </span>
+        </StatusBadge>
       </div>
 
       {tc.args && Object.keys(tc.args).length > 0 && (
         <div className="mt-2">
-          <button
-            type="button"
-            className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-foreground"
+          <Button
+            variant="ghost"
+            size="xs"
+            className="h-auto gap-1 px-0 text-2xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
             onClick={() => setArgsExpanded((v) => !v)}
           >
             <ChevronDown
               className={`size-3 transition-transform ${argsExpanded ? '' : '-rotate-90'}`}
             />
             参数
-          </button>
+          </Button>
           {argsExpanded && (
-            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-elevated px-2 py-1.5 font-mono text-[11px] leading-5 text-muted">
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 font-mono text-2xs leading-5 text-muted-foreground">
               {JSON.stringify(tc.args, null, 2)}
             </pre>
           )}
@@ -208,10 +197,10 @@ function ToolCallCard({
 
       {isTerminal && tc.result != null && (
         <div className="mt-2">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted">
+          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             结果
           </p>
-          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-elevated px-2 py-1.5 font-mono text-[11px] leading-5 text-success">
+          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 font-mono text-2xs leading-5 text-success">
             {typeof tc.result === 'string'
               ? tc.result
               : JSON.stringify(tc.result, null, 2)}
@@ -221,10 +210,10 @@ function ToolCallCard({
 
       {isTerminal && tc.error && (
         <div className="mt-2">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-error">
+          <p className="text-2xs font-medium uppercase tracking-wider text-error">
             错误
           </p>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-error/5 px-2 py-1.5 font-mono text-[11px] leading-5 text-error">
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-error/5 px-2 py-1.5 font-mono text-2xs leading-5 text-error">
             {tc.error}
           </pre>
         </div>
@@ -244,7 +233,7 @@ function ToolCallCard({
           {permissionRequest?.description && (
             <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5">
               <ShieldAlert className="mt-0.5 size-3 shrink-0 text-warning" />
-              <p className="text-[11px] leading-4 text-warning">
+              <p className="text-2xs leading-4 text-warning">
                 {permissionRequest.description}
               </p>
             </div>
@@ -253,7 +242,7 @@ function ToolCallCard({
           {(permissionRequest?.sourceLabel ||
             permissionRequest?.targetLabel ||
             permissionRequest?.targetType) && (
-            <div className="grid gap-1 rounded-md border border-border bg-surface-elevated px-2 py-2 text-[11px] text-muted">
+            <div className="grid gap-1 rounded-md border border-border bg-muted px-2 py-2 text-2xs text-muted-foreground">
               {permissionRequest?.sourceLabel && (
                 <div>
                   请求来源:{' '}
@@ -278,13 +267,13 @@ function ToolCallCard({
 
           {permissionRequest?.resourcePaths &&
             permissionRequest.resourcePaths.length > 0 && (
-              <pre className="overflow-x-auto rounded-md border border-border bg-surface-elevated px-2 py-2 text-[11px] leading-5 text-muted">
+              <pre className="overflow-x-auto rounded-md border border-border bg-muted px-2 py-2 text-2xs leading-5 text-muted-foreground">
                 {permissionRequest.resourcePaths.join('\n')}
               </pre>
             )}
 
           {permissionRequest?.approveEffect && (
-            <p className="text-[11px] text-muted">
+            <p className="text-2xs text-muted-foreground">
               批准后:{' '}
               <span className="text-foreground">
                 {permissionRequest.approveEffect}
@@ -293,7 +282,7 @@ function ToolCallCard({
           )}
 
           {permissionRequest?.denyEffect && (
-            <p className="text-[11px] text-muted">
+            <p className="text-2xs text-muted-foreground">
               拒绝后:{' '}
               <span className="text-foreground">
                 {permissionRequest.denyEffect}
@@ -302,7 +291,7 @@ function ToolCallCard({
           )}
 
           {diffPreview && (
-            <pre className="overflow-x-auto rounded-md border border-border bg-surface-elevated px-2 py-2 text-[11px] leading-5 text-muted">
+            <pre className="overflow-x-auto rounded-md border border-border bg-muted px-2 py-2 text-2xs leading-5 text-muted-foreground">
               {diffPreview}
             </pre>
           )}
@@ -407,26 +396,24 @@ export const ToolCallList = memo(function ToolCallList({
 
   return (
     <div className="mt-4" data-testid="tool-call-list">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-2"
+      <Button
+        variant="ghost"
+        className="h-auto w-full justify-between gap-2 px-0 py-0 font-normal hover:bg-transparent"
         onClick={() => setExpanded((v) => !v)}
       >
-        <h4 className="text-xs font-medium uppercase tracking-[0.18em] text-muted">
+        <h4 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
           工具调用
-          <span className="ml-1.5 text-[10px] text-foreground">
+          <span className="ml-1.5 text-2xs text-foreground">
             ({entries.length})
           </span>
         </h4>
         <div className="flex items-center gap-1.5">
-          {hasActive && (
-            <StatusDot className="h-1.5 w-1.5 bg-primary" pulse />
-          )}
+          {hasActive && <StatusDot tone="primary" pulse />}
           <ChevronDown
-            className={`size-3.5 text-muted transition-transform ${expanded ? '' : '-rotate-90'}`}
+            className={`size-3.5 text-muted-foreground transition-transform ${expanded ? '' : '-rotate-90'}`}
           />
         </div>
-      </button>
+      </Button>
 
       {expanded && (
         <div className="mt-2 space-y-2">

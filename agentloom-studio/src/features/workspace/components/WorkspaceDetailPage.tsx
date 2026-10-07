@@ -222,8 +222,8 @@ function DetailStat({
   tone: string;
 }) {
   return (
-    <div className="rounded-card border border-border bg-surface px-4 py-3">
-      <div className="mb-1 flex items-center gap-2 text-xs text-muted">
+    <div className="rounded-lg border border-border bg-surface px-4 py-3">
+      <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span style={{ color: tone }}>{icon}</span>
         <span>{label}</span>
       </div>

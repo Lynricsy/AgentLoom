@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
 import { Copy, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import { useCanvasStore } from '../../stores/canvasStore'
 import {
   buildWebhookUrl,
@@ -46,7 +47,7 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
           isEnabled={deployedTrigger.isEnabled}
         />
       ) : (
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+        <div className="rounded-lg border border-border/60 bg-muted px-3 py-2.5 text-xs text-muted-foreground">
           尚未创建 Webhook 触发器。发布工作流后，在「工作流设置 → 触发器」中创建，即可获得 Webhook URL。
         </div>
       )}
@@ -95,8 +96,8 @@ function DeployedWebhookInfo({
         <span
           className={
             isEnabled
-              ? 'rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success'
-              : 'rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
+              ? 'rounded-full bg-success/15 px-2 py-0.5 text-2xs font-medium text-success'
+              : 'rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground'
           }
         >
           {isEnabled ? '已启用' : '已禁用'}
@@ -112,7 +113,7 @@ function DeployedWebhookInfo({
         onCopy={() => void handleCopy(webhookUrl, 'url')}
       />
 
-      <dl className="space-y-1 text-[10px]">
+      <dl className="space-y-1 text-2xs">
         <div>
           <dt className="font-medium text-muted-foreground">鉴权模式</dt>
           <dd className="text-foreground/80">{AUTH_MODE_LABELS[authMode]}</dd>
@@ -136,7 +137,7 @@ function DeployedWebhookInfo({
             copied={copiedField === 'secret'}
             onCopy={() => void handleCopy(secret, 'secret')}
           />
-          <p className="text-[10px] leading-4 text-muted-foreground">
+          <p className="text-2xs leading-4 text-muted-foreground">
             {authMode === 'github'
               ? '在 GitHub 仓库 Webhook 的 Secret 中填写此密钥'
               : `签名算法: HMAC-SHA256(secret, "{timestamp}.{body}")`}
@@ -165,31 +166,33 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
           {icon}
           {label}
         </span>
         <div className="flex items-center gap-1">
           {masked ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => setRevealed((v) => !v)}
-              className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="h-auto rounded px-1.5 py-0.5 text-2xs font-normal text-muted-foreground hover:text-foreground"
             >
               {revealed ? '隐藏' : '显示'}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={onCopy}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="h-auto gap-1 rounded px-1.5 py-0.5 text-2xs font-normal text-muted-foreground hover:text-foreground [&_svg]:size-2.5"
           >
-            <Copy className="h-2.5 w-2.5" />
+            <Copy />
             {copied ? '已复制' : '复制'}
-          </button>
+          </Button>
         </div>
       </div>
-      <code className="block truncate rounded border border-border/60 bg-surface-elevated px-2 py-1 text-[10px] text-foreground/80">
+      <code className="block truncate rounded border border-border/60 bg-muted px-2 py-1 text-2xs text-foreground/80">
         {displayValue}
       </code>
     </div>

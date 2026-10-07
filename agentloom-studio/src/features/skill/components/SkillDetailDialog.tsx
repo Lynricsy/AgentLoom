@@ -29,7 +29,7 @@ function MetaItem({
   value: string;
 }) {
   return (
-    <div className="flex items-center gap-2 text-xs text-muted">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="shrink-0">{label}</span>
       <span className="text-foreground">{value}</span>
@@ -52,11 +52,11 @@ export function SkillDetailDialog({
         <DialogHeader className="flex-row items-start gap-4">
           <span
             aria-hidden
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-panel"
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-xl"
             style={{
               backgroundColor: isActive
                 ? `color-mix(in srgb, ${SKILL_TONE} 14%, transparent)`
-                : 'var(--color-surface-elevated)',
+                : 'var(--color-muted)',
               color: isActive ? SKILL_TONE : 'var(--color-muted)',
             }}
           >
@@ -80,7 +80,7 @@ export function SkillDetailDialog({
                 </Badge>
               )}
               {skill.slug && (
-                <span className="rounded-md bg-surface-elevated px-2 py-0.5 font-mono text-[11px] text-muted">
+                <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-2xs text-muted-foreground">
                   {skill.slug}
                 </span>
               )}
@@ -92,7 +92,7 @@ export function SkillDetailDialog({
           {skill.content && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">技能内容</h3>
-              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-card border border-border bg-surface-elevated p-3 font-mono text-xs text-muted">
+              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted p-3 font-mono text-xs text-muted-foreground">
                 {skill.content}
               </pre>
             </div>
@@ -101,13 +101,13 @@ export function SkillDetailDialog({
           {skill.frontmatter && Object.keys(skill.frontmatter).length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-foreground">前言元数据</h3>
-              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-card border border-border bg-surface-elevated p-3 font-mono text-xs text-muted">
+              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted p-3 font-mono text-xs text-muted-foreground">
                 {JSON.stringify(skill.frontmatter, null, 2)}
               </pre>
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 rounded-card border border-border bg-surface-elevated p-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted p-4 sm:grid-cols-2">
             <MetaItem icon={FileText} label="文件数" value={`${skill.fileCount} 个`} />
             <MetaItem icon={Hash} label="大小" value={formatSkillBytes(skill.totalSizeBytes)} />
             <MetaItem icon={Hash} label="版本" value={`v${skill.version}`} />

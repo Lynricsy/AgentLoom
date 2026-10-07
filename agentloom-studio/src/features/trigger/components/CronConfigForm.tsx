@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Switch } from '@/shared/ui/switch'
+import { Textarea } from '@/shared/ui/textarea'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
 
 const COMMON_TIMEZONES = [
@@ -79,10 +80,10 @@ export function CronConfigForm({
 
       <label htmlFor="trigger-description" className="block space-y-2">
         <Label>描述</Label>
-        <textarea
+        <Textarea
           id="trigger-description"
           rows={3}
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="resize-none"
           placeholder="说明这个定时触发器的用途"
           {...register('description')}
         />

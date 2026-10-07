@@ -1,7 +1,16 @@
 import { useCallback, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import {
@@ -75,34 +84,16 @@ export function CreateProviderDialog({
   }, [name, baseUrl, apiProtocol, createMutation, notify, onOpenChange]);
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="create-provider-dialog-desc"
-          className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
-        >
-          <div className="flex items-center justify-between">
-            <Dialog.Title className="text-lg font-semibold text-foreground">
-              添加自定义提供商
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
-          <Dialog.Description
-            className="mt-1 text-sm text-muted-foreground"
-            id="create-provider-dialog-desc"
-          >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="md" aria-describedby="create-provider-dialog-desc">
+        <DialogHeader>
+          <DialogTitle>添加自定义提供商</DialogTitle>
+          <DialogDescription id="create-provider-dialog-desc">
             配置自定义 LLM 提供商，通常为 OpenAI 兼容 API。
-          </Dialog.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-5 space-y-4">
+        <DialogBody className="space-y-4">
             <div className="space-y-2">
               <Label>名称</Label>
               <Input
@@ -152,24 +143,23 @@ export function CreateProviderDialog({
                 inputTestId="create-provider-api-key-input"
               />
             </div>
+        </DialogBody>
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button
-                onClick={() => void handleSubmit()}
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending && (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                )}
-                创建
-              </Button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">取消</Button>
+          </DialogClose>
+          <Button
+            onClick={() => void handleSubmit()}
+            disabled={createMutation.isPending}
+          >
+            {createMutation.isPending && (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            )}
+            创建
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

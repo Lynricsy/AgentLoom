@@ -11,6 +11,8 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { AnimatePresence, motion, type TargetAndTransition } from 'motion/react'
 import { X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from './button'
+import { OVERLAY_CLASS } from './overlay'
 import { DUR, EASE, fadeIn } from '@/shared/lib/motion'
 import {
   useControllableOpen,
@@ -41,7 +43,7 @@ export type SheetSide = 'right' | 'left' | 'bottom'
 const SIDE_CLASS: Record<SheetSide, string> = {
   right: 'inset-y-0 right-0 h-full w-full max-w-md border-l',
   left: 'inset-y-0 left-0 h-full w-[min(20rem,85vw)] border-r',
-  bottom: 'inset-x-0 bottom-0 max-h-[85vh] w-full rounded-t-panel border-t',
+  bottom: 'inset-x-0 bottom-0 max-h-[85vh] w-full rounded-t-xl border-t',
 }
 
 interface SideMotion {
@@ -79,7 +81,7 @@ export const SheetContent = forwardRef<
           <DialogPrimitive.Overlay asChild forceMount>
             <motion.div
               {...fadeIn}
-              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
+              className={OVERLAY_CLASS}
             />
           </DialogPrimitive.Overlay>
 
@@ -90,7 +92,7 @@ export const SheetContent = forwardRef<
               exit={sideMotion.exit}
               transition={{ duration: DUR.slow, ease: EASE }}
               className={cn(
-                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-popover',
+                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-xl',
                 SIDE_CLASS[side],
                 className,
               )}
@@ -98,11 +100,15 @@ export const SheetContent = forwardRef<
               {children}
 
               {hideClose ? null : (
-                <DialogPrimitive.Close
-                  aria-label="关闭"
-                  className="absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                >
-                  <X className="h-4 w-4" />
+                <DialogPrimitive.Close asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="关闭"
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                  >
+                    <X />
+                  </Button>
                 </DialogPrimitive.Close>
               )}
             </motion.div>
@@ -172,7 +178,7 @@ export const SheetDescription = forwardRef<
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn('text-sm text-muted', className)}
+      className={cn('text-sm text-muted-foreground', className)}
       {...props}
     />
   )

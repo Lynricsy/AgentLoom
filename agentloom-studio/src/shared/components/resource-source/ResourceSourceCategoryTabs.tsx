@@ -30,7 +30,7 @@ export function ResourceSourceCategoryTabs({
       >
         <TabsList
           aria-label="来源分类"
-          className="w-auto flex-wrap gap-1 rounded-full border border-border/70 bg-muted/40"
+          className="w-auto flex-wrap gap-1 rounded-full border border-border/70 bg-muted"
         >
           {RESOURCE_SOURCE_CATEGORY_OPTIONS.map((option) => (
             <TabsTrigger

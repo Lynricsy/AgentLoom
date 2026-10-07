@@ -58,7 +58,7 @@ export function KnowledgeBaseSettingsForm({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground">检索策略</h2>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-muted-foreground">
             每个知识库独立定义分块、检索、重排与 query orchestration。
           </p>
         </div>

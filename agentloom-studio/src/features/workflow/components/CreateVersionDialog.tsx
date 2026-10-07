@@ -81,7 +81,7 @@ export const CreateVersionDialog = memo(function CreateVersionDialog({
           <DialogBody className="flex flex-col gap-1.5">
             <label htmlFor="version-label">
               <Label>
-                快照标签 <span className="text-muted">（可选）</span>
+                快照标签 <span className="text-muted-foreground">（可选）</span>
               </Label>
             </label>
             <Input

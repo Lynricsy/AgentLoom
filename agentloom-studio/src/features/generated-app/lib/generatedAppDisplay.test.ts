@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   getGeneratedAppPublicShareUnavailableReason,
-  getGeneratedAppReadinessBadgeVariant,
+  getGeneratedAppReadinessStatusTone,
   isGeneratedAppPublicShareEligible,
 } from './generatedAppDisplay'
 import type { GeneratedAppReadiness } from '../types'
@@ -65,13 +65,13 @@ describe('generatedAppDisplay', () => {
 
   it('maps readiness state to badge semantics, downgrading publish candidates that cannot share', () => {
     expect(
-      getGeneratedAppReadinessBadgeVariant(
+      getGeneratedAppReadinessStatusTone(
         makeReadiness({ state: 'publish_candidate', canCreatePublicShare: true }),
       ),
     ).toBe('success')
 
     expect(
-      getGeneratedAppReadinessBadgeVariant(
+      getGeneratedAppReadinessStatusTone(
         makeReadiness({
           state: 'publish_candidate',
           canCreatePublicShare: false,
@@ -80,15 +80,15 @@ describe('generatedAppDisplay', () => {
     ).toBe('warning')
 
     expect(
-      getGeneratedAppReadinessBadgeVariant(makeReadiness({ state: 'trial' })),
+      getGeneratedAppReadinessStatusTone(makeReadiness({ state: 'trial' })),
     ).toBe('warning')
 
     expect(
-      getGeneratedAppReadinessBadgeVariant(makeReadiness({ state: 'blocked' })),
+      getGeneratedAppReadinessStatusTone(makeReadiness({ state: 'blocked' })),
     ).toBe('error')
 
     expect(
-      getGeneratedAppReadinessBadgeVariant(makeReadiness({ state: 'preview' })),
+      getGeneratedAppReadinessStatusTone(makeReadiness({ state: 'preview' })),
     ).toBe('info')
   })
 })

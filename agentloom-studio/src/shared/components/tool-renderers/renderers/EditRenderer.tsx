@@ -1,6 +1,7 @@
 import { memo, useMemo, useState, useCallback, Suspense, lazy } from 'react'
 import { Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
 import { detectLanguage } from '../primitives/CodeViewer'
+import { Button } from '@/shared/ui/button'
 import type { ToolRendererDefinition, ToolRendererProps, ToolSummaryProps } from '../types'
 
 const DiffEditor = lazy(() =>
@@ -61,7 +62,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
   return (
     <div className="grid grid-cols-2 gap-2 font-mono text-xs">
       <div>
-        <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           原始内容
         </div>
         <pre className="overflow-auto rounded-md bg-error/10 p-2 text-error leading-relaxed whitespace-pre-wrap break-all">
@@ -69,7 +70,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
         </pre>
       </div>
       <div>
-        <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           修改后
         </div>
         <pre className="overflow-auto rounded-md bg-success/10 p-2 text-success leading-relaxed whitespace-pre-wrap break-all">
@@ -82,7 +83,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
 
 function DiffEditorFallback() {
   return (
-    <div className="flex items-center justify-center rounded-md bg-background p-8">
+    <div className="flex items-center justify-center rounded-md bg-muted p-8">
       <span className="text-xs text-muted-foreground">正在加载对比编辑器...</span>
     </div>
   )
@@ -186,26 +187,30 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
     <div className="space-y-2">
       {args.edits.length > 1 && (
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-medium text-muted-foreground">
+          <span className="text-2xs font-medium text-muted-foreground">
             第 {currentIndex + 1} / {args.edits.length} 项
           </span>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={handlePrev}
               disabled={currentIndex === 0}
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-30"
+              aria-label="上一项"
+              className="size-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
             >
-              <ChevronLeft className="size-3.5" />
-            </button>
-            <button
-              type="button"
+              <ChevronLeft />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={handleNext}
               disabled={currentIndex >= args.edits.length - 1}
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-30"
+              aria-label="下一项"
+              className="size-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
             >
-              <ChevronRight className="size-3.5" />
-            </button>
+              <ChevronRight />
+            </Button>
           </div>
         </div>
       )}

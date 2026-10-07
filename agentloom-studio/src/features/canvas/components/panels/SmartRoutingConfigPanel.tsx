@@ -45,6 +45,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Button } from '@/shared/ui/button'
+import { Checkbox } from '@/shared/ui/checkbox'
+import { Input } from '@/shared/ui/input'
 import { cn } from '@/shared/lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -132,7 +135,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
             ))}
           </SelectContent>
         </Select>
-        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
       </div>
     )
   }
@@ -145,17 +148,15 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
           htmlFor={fieldId}
           className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
         >
-          <input
+          <Checkbox
             id={fieldId}
-            type="checkbox"
             data-testid={fieldId}
             checked={checked}
-            onChange={(e) => onChange(name, e.target.checked)}
-            className="h-4 w-4 rounded border-border accent-primary"
+            onCheckedChange={(next) => onChange(name, next === true)}
           />
           {label}
         </label>
-        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
       </div>
     )
   }
@@ -167,7 +168,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
         <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
           {label}
         </label>
-        <input
+        <Input
           id={fieldId}
           type="number"
           data-testid={fieldId}
@@ -179,9 +180,9 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
             const v = e.target.value === '' ? undefined : Number(e.target.value)
             onChange(name, v)
           }}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="h-8"
         />
-        {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
       </div>
     )
   }
@@ -192,15 +193,15 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
       <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
-      <input
+      <Input
         id={fieldId}
         type="text"
         data-testid={fieldId}
         value={strVal}
         onChange={(e) => onChange(name, e.target.value)}
-        className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        className="h-8"
       />
-      {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
+      {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
     </div>
   )
 })
@@ -399,7 +400,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             ) : null}
             <span
               className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+                'inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium',
                 STRATEGY_CATEGORY_BG[meta.category],
                 STRATEGY_CATEGORY_COLORS[meta.category],
               )}
@@ -422,7 +423,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                     key={status}
                     data-testid={`provider-health-badge-${status}`}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium',
                       HEALTH_STATUS_STYLES[status].bg,
                       HEALTH_STATUS_STYLES[status].text,
                     )}
@@ -434,7 +435,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             )}
           </div>
           {healthSummary.degraded > 0 || healthSummary.open > 0 ? (
-            <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-[10px] text-warning">
+            <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-2xs text-warning">
               <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>
                 {healthSummary.open > 0
@@ -468,26 +469,28 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             {fallbackPriority.map((portId, index) => (
               <li
                 key={portId}
-                className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
               >
                 <span className="font-mono text-muted-foreground">{index + 1}</span>
                 <span className="flex-1 truncate">{portLabelById.get(portId) ?? portId}</span>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   disabled={index === 0}
                   onClick={() => handleMovePriority(index, 'up')}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <ChevronUp className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   disabled={index === fallbackPriority.length - 1}
                   onClick={() => handleMovePriority(index, 'down')}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <ChevronDown className="h-3 w-3" />
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -502,32 +505,34 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
           {modelInputPorts.map((port) => (
             <li
               key={port.id}
-              className="flex items-center justify-between rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs"
+              className="flex items-center justify-between rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
             >
               <span>{port.label}</span>
               {modelInputPorts.length > MIN_MODEL_PORTS ? (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => handleRemovePort(port.id)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-muted-foreground hover:bg-error/10 hover:text-error"
                   data-testid={`remove-port-${port.id}`}
                 >
                   <Trash2 className="h-3 w-3" />
-                </button>
+                </Button>
               ) : null}
             </li>
           ))}
         </ul>
         {modelInputPorts.length < MAX_MODEL_PORTS ? (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={handleAddPort}
             data-testid="add-model-port"
-            className="flex items-center gap-1 self-start rounded-md border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+            className="self-start border-dashed text-muted-foreground hover:border-primary hover:text-primary"
           >
             <Plus className="h-3 w-3" />
             添加模型端口
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>

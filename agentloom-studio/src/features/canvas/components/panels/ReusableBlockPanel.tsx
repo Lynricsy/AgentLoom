@@ -44,7 +44,7 @@ function PortList({
     <div className="space-y-2">
       <h4 className="text-xs font-medium text-foreground">{title}</h4>
       {ports.length === 0 ? (
-        <p className="rounded-md bg-surface-elevated px-3 py-2 text-xs text-muted-foreground">
+        <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
           无暴露端口
         </p>
       ) : (
@@ -52,10 +52,10 @@ function PortList({
           {ports.map((port) => (
             <li
               key={port.id}
-              className="flex items-center justify-between rounded-md bg-surface-elevated px-2 py-1 text-xs"
+              className="flex items-center justify-between rounded-md bg-muted px-2 py-1 text-xs"
             >
               <span className="text-foreground">{port.label}</span>
-              <span className="text-muted">{port.dataType}</span>
+              <span className="text-muted-foreground">{port.dataType}</span>
             </li>
           ))}
         </ul>
@@ -91,7 +91,7 @@ export const ReusableBlockPanel = memo(function ReusableBlockPanel({
     <div className="space-y-5 px-4 py-4">
       <div className="flex items-center gap-2">
         <Package className="h-4 w-4 text-muted-foreground" />
-        <span className="rounded-full bg-muted/70 px-2 py-0.5 text-xs font-medium text-foreground">
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
           Reusable Block
         </span>
       </div>
@@ -139,7 +139,7 @@ export const ReusableBlockPanel = memo(function ReusableBlockPanel({
         />
       </div>
 
-      <div className="rounded-card border border-border bg-surface-elevated p-3 text-xs">
+      <div className="rounded-lg border border-border bg-muted p-3 text-xs">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">内部节点数</span>
           <span className="font-medium text-foreground">{blockData.blockDefinition.nodes.length} 个节点</span>
@@ -153,7 +153,7 @@ export const ReusableBlockPanel = memo(function ReusableBlockPanel({
       <PortList title="输入端口" ports={blockData.inputPorts} />
       <PortList title="输出端口" ports={blockData.outputPorts} />
 
-      <div className="flex items-center justify-between gap-3 rounded-card border border-border bg-surface-elevated px-3 py-2">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted px-3 py-2">
         <label htmlFor="reusable-block-expanded" className="text-sm font-medium text-foreground">
           查看内部图
         </label>

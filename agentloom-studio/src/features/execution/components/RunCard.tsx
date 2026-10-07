@@ -9,6 +9,7 @@ import {
   getExecutionStartedAt,
 } from '../lib/presentation'
 import { ExecutionStatusBadge } from './StatusBadge'
+import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 
 interface RunCardProps {
@@ -21,31 +22,31 @@ export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
 
   return (
     <Card interactive className="overflow-hidden">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         data-testid={`run-card-${execution.id}`}
-        className="group w-full p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="group block h-auto w-full whitespace-normal rounded-none p-4 text-left font-normal hover:bg-transparent active:scale-100 focus-visible:ring-primary/40"
         onClick={() => void navigate({ to: '/executions/$executionId', params: { executionId: execution.id } })}
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <ExecutionStatusBadge status={execution.status} />
-              <span className="text-xs uppercase tracking-[0.2em] text-muted">
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 Run #{execution.id.slice(0, 8)}
               </span>
             </div>
 
             <div className="grid gap-2 text-sm sm:grid-cols-3">
-              <div className="flex items-center gap-2 text-muted">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock3 className="h-4 w-4 shrink-0" />
                 <span className="truncate">{formatExecutionDateTime(startedAt)}</span>
               </div>
-              <div className="flex items-center gap-2 text-muted">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <TimerReset className="h-4 w-4 shrink-0" />
                 <span className="truncate">{formatExecutionDuration(execution.startedAt, execution.completedAt)}</span>
               </div>
-              <div className="flex items-center gap-2 text-muted">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <Zap className="h-4 w-4 shrink-0" />
                 <span className="truncate">{formatTriggerSource(execution.triggerType)}</span>
               </div>
@@ -53,7 +54,7 @@ export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
           </div>
 
           <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               {execution.completedAt ? `结束于 ${formatExecutionDateTime(execution.completedAt)}` : '查看调试视图'}
             </span>
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-transform group-hover:translate-x-0.5">
@@ -62,7 +63,7 @@ export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
             </span>
           </div>
         </div>
-      </button>
+      </Button>
     </Card>
   )
 })

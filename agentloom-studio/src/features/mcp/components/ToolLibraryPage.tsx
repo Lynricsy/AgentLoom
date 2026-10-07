@@ -1,8 +1,22 @@
 import { useMemo, useRef, useState, type MouseEvent } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import { AlertCircle, Wrench } from "lucide-react";
 import { formatRelativeTime } from "@/features/canvas";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageContainer } from "@/shared/components/page-container";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { useToast } from "@/shared/ui/toast";
 import {
@@ -12,6 +26,8 @@ import {
 import { useMcpTools } from "../api/mcpQueries";
 import { McpImportDialog } from "./McpImportDialog";
 import type { McpToolDefinition } from "../types";
+
+const MCP_TONE = "var(--color-node-tool)";
 
 function formatDateTime(value?: string | null): string {
   if (!value) {
@@ -228,22 +244,18 @@ export function ToolLibraryPage() {
   const hasSearch = search.trim().length > 0;
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-foreground">工具库</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            集中管理组织内已导入的 MCP 工具资产，并让画布中的 Imported Tools
-            与这里保持同步。
-          </p>
-        </div>
-
-        <Button onClick={openImportDialog}>导入 MCP 工具</Button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={Wrench}
+        tone={MCP_TONE}
+        title="工具库"
+        description="集中管理组织内已导入的 MCP 工具资产，并让画布中的 Imported Tools 与这里保持同步。"
+        actions={<Button onClick={openImportDialog}>导入 MCP 工具</Button>}
+      />
 
       {!isLoading && !error ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          <Card className="p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               工具总数
             </p>
@@ -253,8 +265,8 @@ export function ToolLibraryPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               当前工作区已收录的 MCP 工具
             </p>
-          </section>
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          </Card>
+          <Card className="p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               运行状态
             </p>
@@ -264,8 +276,8 @@ export function ToolLibraryPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               已启用 {summary.activeCount} · 已停用 {summary.inactiveCount}
             </p>
-          </section>
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          </Card>
+          <Card className="p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               关联配置
             </p>
@@ -275,8 +287,8 @@ export function ToolLibraryPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               关联了 {summary.serverCount} 个 MCP 服务器配置
             </p>
-          </section>
-          <section className="rounded-2xl border border-border bg-surface-elevated p-4 shadow-sm">
+          </Card>
+          <Card className="p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
               最近更新
             </p>
@@ -290,7 +302,7 @@ export function ToolLibraryPage() {
                 ? formatDateTime(summary.latestUpdatedAt)
                 : "还没有导入记录"}
             </p>
-          </section>
+          </Card>
         </div>
       ) : null}
 
@@ -317,35 +329,35 @@ export function ToolLibraryPage() {
       ) : null}
 
       {error ? (
-        <div className="rounded-2xl border border-error/50 bg-surface-elevated p-6">
-          <h2 className="text-lg font-semibold text-foreground">
-            工具库加载失败
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {error instanceof Error ? error.message : "未知错误"}
-          </p>
-        </div>
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="工具库加载失败"
+          description={error instanceof Error ? error.message : "未知错误"}
+        />
       ) : null}
 
       {!isLoading && !error && visibleTools.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-surface-elevated p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            {hasSearch ? "没有匹配的 MCP 工具" : "还没有导入任何 MCP 工具"}
-          </p>
-        </div>
+        <EmptyState
+          icon={Wrench}
+          tone={MCP_TONE}
+          title={hasSearch ? "没有匹配的 MCP 工具" : "还没有导入任何 MCP 工具"}
+          description={
+            hasSearch
+              ? "换个关键词试试。"
+              : "导入 MCP 工具后，画布的 Imported Tools 分组会自动同步。"
+          }
+        />
       ) : null}
 
       {!isLoading && !error && visibleTools.length > 0 ? (
         <div className="grid gap-4 xl:grid-cols-2">
           {visibleTools.map((tool) => (
-            <article
-              key={tool.id}
-              className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-            >
+            <Card key={tool.id} className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold text-foreground">
+                    <h2 className="text-sm font-semibold text-foreground">
                       {tool.title ?? tool.name}
                     </h2>
                     <Badge
@@ -436,7 +448,7 @@ export function ToolLibraryPage() {
               </div>
 
               {!tool.isActive ? (
-                <p className="mt-4 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
+                <p className="mt-4 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                   该工具已停用，不会再出现在画布的 Imported Tools 分组中。
                 </p>
               ) : null}
@@ -465,7 +477,7 @@ export function ToolLibraryPage() {
                   {tool.isActive ? `停用 ${tool.title ?? tool.name}` : "已停用"}
                 </Button>
               </div>
-            </article>
+            </Card>
           ))}
         </div>
       ) : null}
@@ -487,7 +499,7 @@ export function ToolLibraryPage() {
         serverLabel={dialogState.serverLabel}
       />
 
-      <Dialog.Root
+      <Dialog
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setToolToDeactivate(null);
@@ -495,43 +507,36 @@ export function ToolLibraryPage() {
         }}
         open={Boolean(toolToDeactivate)}
       >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 px-4 backdrop-blur-sm" />
-          <Dialog.Content
-            aria-describedby="mcp-tool-deactivate-description"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
-            onCloseAutoFocus={(event) => {
-              const restoreFocusElement = deactivateRestoreFocusRef.current;
+        <DialogContent
+          size="sm"
+          onCloseAutoFocus={(event) => {
+            const restoreFocusElement = deactivateRestoreFocusRef.current;
 
-              if (restoreFocusElement) {
-                event.preventDefault();
-                restoreFocusElement.focus();
-              }
+            if (restoreFocusElement) {
+              event.preventDefault();
+              restoreFocusElement.focus();
+            }
 
-              deactivateRestoreFocusRef.current = null;
-            }}
-          >
-            <div className="space-y-2">
-              <Dialog.Title className="text-lg font-semibold text-foreground">
-                停用 MCP 工具
-              </Dialog.Title>
-              <Dialog.Description
-                className="text-sm text-muted-foreground"
-                id="mcp-tool-deactivate-description"
-              >
-                停用后，这个工具会从工具库中标记为停用，并从画布的 Imported
-                Tools 中移除。
-              </Dialog.Description>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button onClick={handleDeactivate}>确认停用</Button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </div>
+            deactivateRestoreFocusRef.current = null;
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>停用 MCP 工具</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            <DialogDescription>
+              停用后，这个工具会从工具库中标记为停用，并从画布的 Imported Tools
+              中移除。
+            </DialogDescription>
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button onClick={handleDeactivate}>确认停用</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PageContainer>
   );
 }

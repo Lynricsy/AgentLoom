@@ -17,18 +17,18 @@ export const ApiEventTriggerNodeBody = memo(function ApiEventTriggerNodeBody({
       {hasConfig ? (
         <div className="flex items-center gap-1.5">
           <Radio className="h-3.5 w-3.5 shrink-0 text-warning" />
-          <span className="truncate text-[10px] text-muted-foreground">{eventSource}</span>
-          <span className="text-[10px] text-muted-foreground/40">/</span>
-          <span className="truncate text-[10px] text-muted-foreground">{eventType}</span>
+          <span className="truncate text-2xs text-muted-foreground">{eventSource}</span>
+          <span className="text-2xs text-muted-foreground/40">/</span>
+          <span className="truncate text-2xs text-muted-foreground">{eventType}</span>
         </div>
       ) : (
         <div className="flex items-center gap-1.5">
           <Radio className="h-3.5 w-3.5 shrink-0 text-warning" />
-          <span className="text-[10px] text-muted-foreground/60">未配置</span>
+          <span className="text-2xs text-muted-foreground/60">未配置</span>
         </div>
       )}
       {filterExpression && (
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+        <div className="flex items-center gap-1 text-2xs text-muted-foreground/60">
           <Filter className="h-2.5 w-2.5" />
           <span>已配置过滤</span>
         </div>

@@ -22,7 +22,7 @@ export function FieldMappingPendingCoercion({
         <span>
           {pending.sourceField} → {pending.targetField}
         </span>
-        <span className="text-xs text-muted">
+        <span className="text-xs text-muted-foreground">
           ({pending.sourceType} → {pending.targetType})
         </span>
       </div>

@@ -19,6 +19,8 @@ import { ToolCallList } from '@/features/execution'
 import type { StepStatus } from '@/features/execution'
 import { cn } from '@/shared/lib/utils'
 import { panelSlideRight } from '@/shared/lib/motion'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import type { CanvasNode } from '../../types'
 import { getResolvedNodeTypeConfig } from '../../types/nodeTypeRegistry'
@@ -32,6 +34,10 @@ import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
 import { InterventionPanel } from './InterventionPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 import { OutputContentRenderer } from '../output/OutputContentRenderer'
+import {
+  CANVAS_FLOATING_CLASS,
+  CANVAS_PANEL_HEADER_CLASS,
+} from '../canvasChrome'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -53,11 +59,11 @@ const EXECUTION_STATUS_META: Record<
 > = {
   pending: {
     label: '等待中',
-    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+    badgeClassName: 'border-border bg-muted text-muted-foreground',
   },
   queued: {
     label: '排队中',
-    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+    badgeClassName: 'border-border bg-muted text-muted-foreground',
   },
   running: {
     label: '执行中',
@@ -73,11 +79,11 @@ const EXECUTION_STATUS_META: Record<
   },
   skipped: {
     label: '已跳过',
-    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+    badgeClassName: 'border-border bg-muted text-muted-foreground',
   },
   cancelled: {
     label: '已取消',
-    badgeClassName: 'border-border bg-muted/60 text-muted-foreground',
+    badgeClassName: 'border-border bg-muted text-muted-foreground',
   },
   waiting_intervention: {
     label: '等待干预',
@@ -345,7 +351,8 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
           transition={panelSlideRight.transition}
           style={{ width }}
           className={cn(
-            'relative m-2 flex shrink-0 flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel',
+            CANVAS_FLOATING_CLASS,
+            'relative m-2 flex shrink-0 flex-col overflow-hidden',
             className,
           )}
         >
@@ -369,10 +376,10 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
             )}
           />
 
-          <header className="flex items-start gap-3 border-b border-border px-4 py-3 pl-5">
+          <header className={cn(CANVAS_PANEL_HEADER_CLASS, 'items-start pl-5')}>
             <span
               aria-hidden
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${accentToken} 14%, transparent)`,
                 color: accentToken,
@@ -384,12 +391,12 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
             </span>
 
             <div className="min-w-0 flex-1">
-              <input
+              <Input
                 aria-label="节点名称"
                 data-testid="node-config-panel-title"
                 value={node.data.label}
                 onChange={(event) => handleLabelChange(event.target.value)}
-                className="w-full rounded-md bg-transparent px-1.5 py-0.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-elevated focus-visible:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                className="h-auto border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold shadow-none hover:border-transparent hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted"
               />
               <p className="mt-0.5 truncate px-1.5 text-xs text-muted-foreground">
                 {nodeConfig.isKnownType
@@ -398,14 +405,15 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
               </p>
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={handleClose}
-              className="-mr-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="-mr-1 text-muted-foreground hover:text-foreground"
               aria-label="关闭配置面板"
             >
-              <X className="h-4 w-4" />
-            </button>
+              <X />
+            </Button>
           </header>
 
           <Tabs
@@ -597,9 +605,9 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
 
         <span
           className={cn(
-            'inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
+            'inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-2xs font-medium',
             statusMeta?.badgeClassName ??
-              'border-border bg-muted/60 text-muted-foreground',
+              'border-border bg-muted text-muted-foreground',
           )}
           data-testid="node-execution-status"
         >
@@ -608,7 +616,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
       </div>
 
       {nodeState && (
-        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-card border border-border bg-surface-elevated p-3 text-xs">
+        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted p-3 text-xs">
           <div>
             <dt className="text-muted-foreground">步骤 ID</dt>
             <dd className="mt-1 break-all font-mono text-foreground">
@@ -657,7 +665,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
 
       {nodeState?.errorMessage && (
         <div
-          className="mt-4 rounded-card border border-error/40 bg-error/10 px-3 py-2"
+          className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2"
           data-testid="node-execution-error"
         >
           <p className="text-xs font-medium text-error">执行错误</p>
@@ -674,7 +682,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
           </h4>
 
           {nodeState?.isStreaming && (
-            <span className="text-[11px] font-medium text-primary">
+            <span className="text-2xs font-medium text-primary">
               流式输出中
             </span>
           )}

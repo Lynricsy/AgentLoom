@@ -121,31 +121,31 @@ function TypeMismatchComparison({
   }
 
   return (
-    <div className="rounded-card border border-warning/25 bg-warning/5 p-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-warning">
+    <div className="rounded-lg border border-warning/25 bg-warning/5 p-3">
+      <p className="text-2xs font-medium uppercase tracking-[0.18em] text-warning">
         类型对比
       </p>
 
       <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
         <div className="min-w-0 rounded-lg border border-warning/20 bg-warning/10 p-2">
-          <p className="truncate text-[11px] font-medium text-warning">
+          <p className="truncate text-2xs font-medium text-warning">
             {typeMismatch.sourceType}
           </p>
-          <p className="mt-1 break-all text-[11px] text-muted">
+          <p className="mt-1 break-all text-2xs text-muted-foreground">
             节点 {typeMismatch.sourceNodeId}
             {typeMismatch.sourcePortId ? ` · 端口 ${typeMismatch.sourcePortId}` : ''}
           </p>
         </div>
 
-        <div className="justify-self-center text-sm font-semibold text-muted">
+        <div className="justify-self-center text-sm font-semibold text-muted-foreground">
           →
         </div>
 
         <div className="min-w-0 rounded-lg border border-error/20 bg-error/10 p-2">
-          <p className="truncate text-[11px] font-medium text-error">
+          <p className="truncate text-2xs font-medium text-error">
             {typeMismatch.targetType}
           </p>
-          <p className="mt-1 break-all text-[11px] text-muted">
+          <p className="mt-1 break-all text-2xs text-muted-foreground">
             节点 {typeMismatch.targetNodeId}
             {typeMismatch.targetPortId ? ` · 端口 ${typeMismatch.targetPortId}` : ''}
           </p>
@@ -153,7 +153,7 @@ function TypeMismatchComparison({
       </div>
 
       {typeMismatch.edgeId && (
-        <p className="mt-2 break-all text-[11px] text-muted">
+        <p className="mt-2 break-all text-2xs text-muted-foreground">
           Edge: {typeMismatch.edgeId}
         </p>
       )}
@@ -171,8 +171,8 @@ function FieldErrorList({
   }
 
   return (
-    <div className="rounded-card border border-error/20 bg-surface-elevated p-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
+    <div className="rounded-lg border border-error/20 bg-muted p-3">
+      <p className="text-2xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
         字段错误
       </p>
       <ul className="mt-2 space-y-1.5 text-xs text-foreground">
@@ -182,7 +182,7 @@ function FieldErrorList({
             className="rounded-lg border border-error/15 bg-error/5 px-2.5 py-2"
           >
             <span className="font-medium text-error">{error.field}</span>
-            <span className="mx-1 text-muted">·</span>
+            <span className="mx-1 text-muted-foreground">·</span>
             <span>{error.message}</span>
           </li>
         ))}
@@ -266,7 +266,7 @@ export const FailedNodeError = memo(function FailedNodeError({
   return (
     <div
       className={cn(
-        'rounded-card border border-error/30 bg-error/10 px-4 py-3',
+        'rounded-lg border border-error/30 bg-error/10 px-4 py-3',
         className,
       )}
       data-testid="failed-node-error"
@@ -289,7 +289,7 @@ export const FailedNodeError = memo(function FailedNodeError({
                 />
               </div>
               {rfc.nodeId && (
-                <p className="break-all text-[11px] text-muted">
+                <p className="break-all text-2xs text-muted-foreground">
                   Node: {rfc.nodeId}
                 </p>
               )}
@@ -313,8 +313,8 @@ export const FailedNodeError = memo(function FailedNodeError({
         <FieldErrorList errors={rfc?.errors} />
 
         {!!rfc?.attempts?.length && (
-          <details className="rounded-card border border-error/20 bg-surface-elevated px-3 py-2">
-            <summary className="cursor-pointer text-[11px] font-medium text-muted">
+          <details className="rounded-lg border border-error/20 bg-muted px-3 py-2">
+            <summary className="cursor-pointer text-2xs font-medium text-muted-foreground">
               重试记录（{rfc.attempts.length}）
             </summary>
             <ul className="mt-2 space-y-2 text-xs text-foreground">
@@ -326,7 +326,7 @@ export const FailedNodeError = memo(function FailedNodeError({
                   <p className="font-medium text-error">
                     第 {attempt.attempt} 次 · {formatTimestamp(attempt.timestamp)}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap break-words leading-relaxed text-muted">
+                  <p className="mt-1 whitespace-pre-wrap break-words leading-relaxed text-muted-foreground">
                     {attempt.message}
                   </p>
                 </li>

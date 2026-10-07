@@ -119,7 +119,7 @@ export function DeveloperKeysPage() {
             <p className="truncate text-xs font-medium text-foreground">
               {key.label?.trim() || '未命名密钥'}
             </p>
-            <p className="truncate text-[11px] text-muted sm:hidden">
+            <p className="truncate text-2xs text-muted-foreground sm:hidden">
               {shortenFingerprint(key.keyFingerprint)}
             </p>
           </div>
@@ -132,7 +132,7 @@ export function DeveloperKeysPage() {
         cell: (key) => (
           <span
             title={key.keyFingerprint}
-            className="whitespace-nowrap font-mono text-[11px] text-muted"
+            className="whitespace-nowrap font-mono text-2xs text-muted-foreground"
           >
             {shortenFingerprint(key.keyFingerprint)}
           </span>
@@ -158,11 +158,11 @@ export function DeveloperKeysPage() {
         className: 'w-44',
         cell: (key) => (
           <div className="space-y-0.5">
-            <p className="whitespace-nowrap text-xs text-muted">
+            <p className="whitespace-nowrap text-xs text-muted-foreground">
               {formatTimestamp(key.createdAt)}
             </p>
             {key.status === 'revoked' ? (
-              <p className="whitespace-nowrap text-[11px] text-muted">
+              <p className="whitespace-nowrap text-2xs text-muted-foreground">
                 撤销于 {formatTimestamp(key.revokedAt)}
               </p>
             ) : null}
@@ -185,7 +185,7 @@ export function DeveloperKeysPage() {
               撤销
             </Button>
           ) : (
-            <span className="text-xs text-muted">—</span>
+            <span className="text-xs text-muted-foreground">—</span>
           ),
       },
     ],
@@ -233,7 +233,7 @@ export function DeveloperKeysPage() {
     >
       <div className="space-y-4" data-testid="developer-keys-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             插件包上传时按指纹匹配开发者公钥完成验签，撤销后即刻失效。
           </p>
 

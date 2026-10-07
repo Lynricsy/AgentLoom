@@ -100,7 +100,7 @@ export const WorkflowPreviewCanvas = memo(function WorkflowPreviewCanvas({
           {showControls ? (
             <Controls
               showInteractive={false}
-              className="!border-border !bg-surface-elevated !shadow-lg"
+              className="!border-border !bg-muted !shadow-lg"
             />
           ) : null}
           {showMiniMap ? <MiniMap /> : null}

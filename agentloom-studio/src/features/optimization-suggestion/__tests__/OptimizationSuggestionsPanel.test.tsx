@@ -128,7 +128,7 @@ describe('OptimizationSuggestionsPanel', () => {
     )
 
     const panel = screen.getByTestId('optimization-suggestions-panel')
-    expect(panel.querySelectorAll('.animate-pulse')).toHaveLength(2)
+    expect(panel.querySelectorAll('.shimmer')).toHaveLength(6)
   })
 
   it('shows empty state when no suggestions', () => {

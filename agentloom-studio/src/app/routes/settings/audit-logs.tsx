@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { AuditLogPage } from '@/features/audit-log'
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const auditLogsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/audit-logs',
   component: AuditLogPage,
 })

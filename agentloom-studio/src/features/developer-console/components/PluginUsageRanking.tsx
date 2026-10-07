@@ -1,3 +1,5 @@
+import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import type { PluginUsageRank } from '../api/developer-earnings.api'
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -20,16 +22,16 @@ function SkeletonRows() {
       {SKELETON_KEYS.map((key) => (
         <tr key={key}>
           <td className="px-4 py-3">
-            <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 w-28" />
           </td>
           <td className="px-4 py-3">
-            <div className="h-4 w-16 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 w-16" />
           </td>
           <td className="px-4 py-3">
-            <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 w-20" />
           </td>
           <td className="px-4 py-3">
-            <div className="h-4 w-12 animate-pulse rounded bg-muted" />
+            <Skeleton className="h-4 w-12" />
           </td>
         </tr>
       ))}
@@ -42,7 +44,7 @@ export function PluginUsageRanking({
   isLoading,
 }: PluginUsageRankingProps) {
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <Card>
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-base font-semibold text-foreground">
           插件使用排名
@@ -95,6 +97,6 @@ export function PluginUsageRanking({
           </tbody>
         </table>
       </div>
-    </div>
+    </Card>
   )
 }

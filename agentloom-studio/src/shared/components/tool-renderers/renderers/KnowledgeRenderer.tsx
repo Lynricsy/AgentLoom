@@ -89,7 +89,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
 
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-background p-8 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-muted p-8 text-muted-foreground">
         <BookOpen className="size-5 opacity-40" />
         <span className="text-xs">未找到结果</span>
       </div>
@@ -101,13 +101,13 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
       {entries.map((entry, i) => {
         const source = entry.metadata?.source ?? `result-${i}`
         return (
-          <div key={`${source}-${i}`} className="rounded-lg bg-background p-3 space-y-1">
+          <div key={`${source}-${i}`} className="rounded-lg bg-muted p-3 space-y-1">
             <div className="flex items-center justify-between gap-2">
               <span className="truncate font-mono text-xs text-info">
                 {source}
               </span>
               {entry.score != null && (
-                <span className={cn('shrink-0 text-[10px] font-medium', scoreColor(entry.score))}>
+                <span className={cn('shrink-0 text-2xs font-medium', scoreColor(entry.score))}>
                   {entry.score.toFixed(2)}
                 </span>
               )}

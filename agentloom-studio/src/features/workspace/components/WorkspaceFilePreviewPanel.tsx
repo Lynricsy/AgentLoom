@@ -335,23 +335,23 @@ export const WorkspaceFilePreviewPanel = memo(
 
     return (
       <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
-        <div className="flex items-center gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+        <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
           <FileCode2 className="size-4 text-info/80" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-foreground">
               {fileName || "文件预览"}
             </p>
-            <p className="truncate text-[11px] text-muted-foreground">
+            <p className="truncate text-2xs text-muted-foreground">
               {selectedPath || "选择左侧文件后显示当前内容"}
             </p>
           </div>
           {preview && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {formatWorkspaceSize(preview.size)}
             </span>
           )}
           {textPreview && isDirty && (
-            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning">
               未保存
             </span>
           )}
@@ -507,7 +507,7 @@ export const WorkspaceFilePreviewPanel = memo(
         </div>
 
         {preview && (
-          <div className="border-t border-border bg-surface-elevated/40 px-3 py-2 text-[11px] text-muted-foreground">
+          <div className="border-t border-border bg-muted px-3 py-2 text-2xs text-muted-foreground">
             <div className="flex items-center gap-2">
               {preview.kind === "image" ? (
                 <ImageIcon className="h-3.5 w-3.5" />

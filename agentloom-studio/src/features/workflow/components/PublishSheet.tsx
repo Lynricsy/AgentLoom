@@ -250,7 +250,7 @@ export const PublishSheet = memo(function PublishSheet({
         {publishWarnings ? (
           <>
             <SheetBody className="space-y-4">
-              <div className="flex items-start gap-2 rounded-card border border-success/25 bg-success/10 p-3 text-sm text-success">
+              <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-success">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>工作流已成功发布</span>
               </div>
@@ -267,12 +267,12 @@ export const PublishSheet = memo(function PublishSheet({
                   return (
                     <div
                       key={`${warning.sourceNodeId}-${warning.targetNodeId}-${String(index)}`}
-                      className="overflow-hidden rounded-card border border-warning/25 bg-warning/5"
+                      className="overflow-hidden rounded-lg border border-warning/25 bg-warning/5"
                       data-testid="publish-warning-item"
                     >
-                      <button
-                        type="button"
-                        className="flex w-full items-start gap-2 p-3 text-left text-sm text-foreground transition-colors hover:bg-warning/10"
+                      <Button
+                        variant="ghost"
+                        className="h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-none p-3 text-left font-normal hover:bg-warning/10 [&_svg]:size-3.5"
                         onClick={() => toggleWarning(index)}
                         aria-expanded={expanded}
                         data-testid="publish-warning-toggle"
@@ -283,11 +283,11 @@ export const PublishSheet = memo(function PublishSheet({
                           <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                         )}
                         <span>{warning.message}</span>
-                      </button>
+                      </Button>
 
                       {expanded && (
                         <div
-                          className="border-t border-warning/25 px-3 py-2 text-xs text-muted"
+                          className="border-t border-warning/25 px-3 py-2 text-xs text-muted-foreground"
                           data-testid="publish-warning-detail"
                         >
                           <div className="flex flex-wrap items-center gap-1 font-mono">
@@ -324,7 +324,7 @@ export const PublishSheet = memo(function PublishSheet({
             <SheetBody className="space-y-6">
               {validationErrors.length > 0 && (
                 <div
-                  className="flex items-start gap-2 rounded-card border border-error/25 bg-error/10 p-3 text-sm text-error"
+                  className="flex items-start gap-2 rounded-lg border border-error/25 bg-error/10 p-3 text-sm text-error"
                   data-testid="publish-validation-error"
                 >
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -341,7 +341,7 @@ export const PublishSheet = memo(function PublishSheet({
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="publish-label">
                   <Label>
-                    发布标签 <span className="text-muted">（可选）</span>
+                    发布标签 <span className="text-muted-foreground">（可选）</span>
                   </Label>
                 </label>
                 <Input
@@ -358,7 +358,7 @@ export const PublishSheet = memo(function PublishSheet({
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="publish-release-notes">
                   <Label>
-                    发布说明 <span className="text-muted">（可选）</span>
+                    发布说明 <span className="text-muted-foreground">（可选）</span>
                   </Label>
                 </label>
                 <Textarea
@@ -387,10 +387,10 @@ export const PublishSheet = memo(function PublishSheet({
                       key={option.value}
                       htmlFor={option.id}
                       className={cn(
-                        'flex cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors',
+                        'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
                         versionSource === option.value
                           ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-border-hover hover:bg-surface-elevated',
+                          : 'border-border hover:border-border-hover hover:bg-muted',
                       )}
                       data-testid={option.testId}
                     >
@@ -403,7 +403,7 @@ export const PublishSheet = memo(function PublishSheet({
                         <span className="block text-sm font-medium text-foreground">
                           {option.title}
                         </span>
-                        <span className="mt-0.5 block text-xs text-muted">
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
                           {option.description}
                         </span>
                       </span>
@@ -416,7 +416,7 @@ export const PublishSheet = memo(function PublishSheet({
                 <div className="flex flex-col gap-1.5">
                   <Label id="version-select-label">选择记录</Label>
                   {unpublishedVersions.length === 0 ? (
-                    <p className="text-xs text-muted">暂无可发布记录，请先保存快照</p>
+                    <p className="text-xs text-muted-foreground">暂无可发布记录，请先保存快照</p>
                   ) : (
                     <Select
                       value={selectedVersionId}

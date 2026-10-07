@@ -78,7 +78,7 @@ export function KnowledgeDocumentsPanel({
           <h2 className="text-base font-semibold text-foreground">
             文档与构建状态
           </h2>
-          <p className="text-sm text-muted">
+          <p className="text-sm text-muted-foreground">
             上传文档后会自动进入解析、切分与索引流程。
           </p>
         </div>
@@ -127,7 +127,7 @@ export function KnowledgeDocumentsPanel({
       </div>
 
       {!canUploadDocuments && (
-        <div className="rounded-card border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           当前知识库未配置可用的 Embedding
           模型，上传后的检索质量无法保证。建议先完成策略配置再上传。
         </div>
@@ -139,7 +139,7 @@ export function KnowledgeDocumentsPanel({
             <Skeleton
               key={index}
               data-testid="knowledge-document-skeleton"
-              className="h-24 rounded-card"
+              className="h-24 rounded-lg"
             />
           ))}
 
@@ -181,7 +181,7 @@ export function KnowledgeDocumentsPanel({
             return (
               <div
                 key={document.id}
-                className="rounded-card border border-border bg-surface-elevated p-4"
+                className="rounded-lg border border-border bg-muted p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -199,7 +199,7 @@ export function KnowledgeDocumentsPanel({
                         {getDocumentStatusLabel(effectiveStatus)}
                       </Badge>
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span>{formatFileSize(document.sizeBytes)}</span>
                       <span>·</span>
                       <span>{document.mimeType}</span>
@@ -207,7 +207,7 @@ export function KnowledgeDocumentsPanel({
                       <span>{new Date(document.createdAt).toLocaleString()}</span>
                     </div>
                     {progress && (
-                      <p className="mt-2 text-xs text-muted">
+                      <p className="mt-2 text-xs text-muted-foreground">
                         {PROGRESS_STAGE_LABELS[progress.stage]} ·{' '}
                         {progress.percentage}%
                       </p>
@@ -222,7 +222,7 @@ export function KnowledgeDocumentsPanel({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="shrink-0 text-muted hover:text-error"
+                    className="shrink-0 text-muted-foreground hover:text-error"
                     aria-label={`删除 ${document.fileName}`}
                     onClick={() =>
                       onDeleteDocument(document.id, document.fileName)

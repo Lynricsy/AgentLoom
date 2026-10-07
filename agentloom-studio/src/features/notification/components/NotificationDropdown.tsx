@@ -2,7 +2,6 @@ import { useCallback, useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { cn } from '@/shared/lib/utils'
 import {
   useMarkAllAsRead,
   useMarkAsRead,
@@ -64,11 +63,8 @@ export function NotificationDropdown() {
   }, [markAllAsReadMutation, unreadCount])
 
   return (
-    <div
-      className="absolute right-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border/70 bg-surface-elevated shadow-2xl backdrop-blur"
-      data-testid="notification-dropdown"
-    >
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+    <div data-testid="notification-dropdown">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-foreground">通知中心</p>
           <p className="text-xs text-muted-foreground">最近 20 条消息</p>
@@ -87,7 +83,7 @@ export function NotificationDropdown() {
 
       {isLoading && visibleNotifications.length === 0 ? (
         <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
           加载通知中...
         </div>
       ) : null}
@@ -108,12 +104,7 @@ export function NotificationDropdown() {
       ) : null}
 
       {visibleNotifications.length > 0 ? (
-        <div
-          className={cn(
-            'max-h-96 overflow-y-auto',
-            '[&>*+*]:border-t [&>*+*]:border-border/40',
-          )}
-        >
+        <div className="max-h-96 overflow-y-auto [&>*+*]:border-t [&>*+*]:border-border">
           {visibleNotifications.map((notification) => (
             <NotificationItem
               key={notification.id}
@@ -125,15 +116,15 @@ export function NotificationDropdown() {
         </div>
       ) : null}
 
-      <div className="border-t border-border/60 px-2 py-2">
+      <div className="border-t border-border px-2 py-2">
         <Link
           to="/notifications"
           onClick={() => setDropdownOpen(false)}
-          className="flex items-center justify-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-surface-elevated"
+          className="flex items-center justify-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-muted"
           data-testid="notification-view-all"
         >
           查看全部通知
-          <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          <ArrowRight className="size-3" aria-hidden="true" />
         </Link>
       </div>
     </div>

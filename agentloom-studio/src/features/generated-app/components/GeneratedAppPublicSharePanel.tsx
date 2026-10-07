@@ -152,14 +152,15 @@ export function GeneratedAppPublicSharePanel({
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
               {app.publicShareUrl}
             </span>
-            <button
-              type="button"
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-foreground"
               onClick={handleCopyPublicUrl}
               aria-label={`复制 ${app.appName} 公开链接`}
             >
               <Copy className="h-3.5 w-3.5" />
-            </button>
+            </Button>
             <a
               href={app.publicShareUrl}
               target="_blank"

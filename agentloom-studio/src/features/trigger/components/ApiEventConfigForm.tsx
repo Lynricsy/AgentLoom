@@ -2,6 +2,7 @@ import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from
 import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
+import { Textarea } from '@/shared/ui/textarea'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
 
 interface ApiEventConfigFormProps {
@@ -110,10 +111,10 @@ export function ApiEventConfigForm({
 
       <label htmlFor="api-event-trigger-description" className="block space-y-2">
         <Label>描述</Label>
-        <textarea
+        <Textarea
           id="api-event-trigger-description"
           rows={3}
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="resize-none"
           placeholder="说明事件来源、消费目的与触发条件"
           {...register('description')}
         />

@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { ApiTokenPage } from '@/features/platform-api-token'
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const apiTokensRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/api-tokens',
   component: ApiTokenPage,
 })

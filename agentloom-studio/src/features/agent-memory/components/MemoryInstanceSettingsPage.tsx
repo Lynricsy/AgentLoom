@@ -113,11 +113,11 @@ export function MemoryInstanceSettingsPage({
         data-testid="memory-settings-skeleton"
       >
         <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-card" />
+          <Skeleton className="h-10 w-10 rounded-lg" />
           <Skeleton className="h-4 w-40 rounded" />
         </div>
         {Array.from({ length: 3 }, (_, i) => (
-          <Skeleton key={i} className="h-44 rounded-card" />
+          <Skeleton key={i} className="h-44 rounded-lg" />
         ))}
       </div>
     );
@@ -150,7 +150,7 @@ export function MemoryInstanceSettingsPage({
         <Button
           variant="ghost"
           size="sm"
-          className="-ml-2 self-start text-muted hover:text-foreground"
+          className="-ml-2 self-start text-muted-foreground hover:text-foreground"
           onClick={handleBack}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -235,7 +235,7 @@ export function MemoryInstanceSettingsPage({
               >
                 有效域
               </label>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 每行一个域名，用于限定记忆搜索范围
               </p>
               <Textarea
@@ -256,7 +256,7 @@ export function MemoryInstanceSettingsPage({
               >
                 核心记忆 URI
               </label>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 每行一个 URI，指定始终加载到上下文的核心记忆节点
               </p>
               <Textarea
@@ -315,7 +315,7 @@ export function MemoryInstanceSettingsPage({
                 >
                   自定义系统提示词
                 </label>
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   覆盖默认的系统提示词模板。支持 {'{{memory_context}}'}{' '}
                   等变量占位符。
                 </p>
@@ -329,7 +329,7 @@ export function MemoryInstanceSettingsPage({
                 />
               </div>
             ) : (
-              <p className="text-sm text-muted">
+              <p className="text-sm text-muted-foreground">
                 将使用系统默认的记忆提示词模板。如需定制，请切换到「自定义覆盖」模式。
               </p>
             )}

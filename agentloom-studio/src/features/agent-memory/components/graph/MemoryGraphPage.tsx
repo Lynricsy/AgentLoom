@@ -49,7 +49,7 @@ const NODE_HEIGHT = 120
 
 /** 悬浮 chrome 统一样式 — 圆角面板 + 半透明底 + popover 阴影 */
 const FLOATING_CHROME =
-  'rounded-panel border border-border bg-surface/90 shadow-popover backdrop-blur-md'
+  'rounded-xl border border-border bg-surface/90 shadow-lg backdrop-blur-md'
 
 // ReactFlow v12 NodeTypes/EdgeTypes 泛型约束需要桥接自定义节点类型
 const nodeTypes: NodeTypes = {
@@ -245,11 +245,11 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         className="flex h-full flex-col gap-4 p-6"
         data-testid="memory-graph-loading"
       >
-        <Skeleton className="h-9 w-64 rounded-panel" />
+        <Skeleton className="h-9 w-64 rounded-xl" />
         <div className="grid flex-1 place-items-center">
           <div className="flex flex-col items-center gap-3">
             <Spinner size="lg" />
-            <p className="text-xs text-muted">正在加载记忆图谱…</p>
+            <p className="text-xs text-muted-foreground">正在加载记忆图谱…</p>
           </div>
         </div>
       </div>
@@ -347,20 +347,20 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs text-muted hover:text-foreground"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             onClick={handleBack}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             返回
           </Button>
-          <span className="ml-auto pr-1 text-[11px] text-muted">
+          <span className="ml-auto pr-1 text-2xs text-muted-foreground">
             {data.nodes.length} 节点 · {data.edges.length} 边
           </span>
         </div>
 
         <GraphSearchBar onSearch={setSearchQuery} />
         {searchQuery.trim() && (
-          <p className="pl-1 text-[10px] text-muted">
+          <p className="pl-1 text-2xs text-muted-foreground">
             匹配 {matchCount} 个节点
           </p>
         )}
@@ -376,7 +376,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         <Button
           variant="ghost"
           size="icon-sm"
-          className="h-7 w-7 text-muted hover:text-foreground"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           onClick={() => zoomIn({ duration: 200 })}
           aria-label="放大"
         >
@@ -385,7 +385,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         <Button
           variant="ghost"
           size="icon-sm"
-          className="h-7 w-7 text-muted hover:text-foreground"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           onClick={() => zoomOut({ duration: 200 })}
           aria-label="缩小"
         >
@@ -394,7 +394,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         <Button
           variant="ghost"
           size="icon-sm"
-          className="h-7 w-7 text-muted hover:text-foreground"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           onClick={() => fitView({ padding: 0.2, duration: 300 })}
           aria-label="适应视图"
         >
@@ -403,7 +403,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         <Button
           variant="ghost"
           size="icon-sm"
-          className="h-7 w-7 text-muted hover:text-foreground"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           onClick={() => void handleRefresh()}
           disabled={isRefreshing}
           aria-label="刷新图谱"
@@ -425,7 +425,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         {LEGEND_ENTRIES.map((nodeType) => (
           <span
             key={nodeType}
-            className="flex items-center gap-1.5 text-[10px] text-muted"
+            className="flex items-center gap-1.5 text-2xs text-muted-foreground"
           >
             <span
               aria-hidden

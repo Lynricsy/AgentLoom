@@ -17,6 +17,7 @@ import {
   Redo2,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { CANVAS_FLOATING_CLASS } from "../canvasChrome";
 import { Badge, type BadgeProps } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
@@ -134,7 +135,8 @@ export const VersionToolbar = memo(function VersionToolbar({
     <TooltipProvider delayDuration={300}>
       <div
         className={cn(
-          "flex flex-wrap items-center justify-end gap-1 rounded-panel border border-border bg-surface/90 px-2 py-1.5 shadow-popover backdrop-blur-sm",
+          CANVAS_FLOATING_CLASS,
+          "flex flex-wrap items-center justify-end gap-1 px-2 py-1.5",
           className,
         )}
         data-testid="version-toolbar"

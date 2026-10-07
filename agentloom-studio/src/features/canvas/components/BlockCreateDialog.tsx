@@ -1,10 +1,18 @@
 import { memo, useEffect } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { X } from 'lucide-react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
 import {
@@ -14,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Textarea } from '@/shared/ui/textarea'
 import type { DerivedPort, EncapsulationAnalysis } from '../lib/encapsulation'
 import { PORT_DATA_TYPES } from '../types/typeSchema'
 
@@ -117,32 +126,17 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
   })
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-xl"
-          data-testid="block-create-dialog"
-        >
-          <Dialog.Close asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-3 top-3 h-8 w-8 p-0"
-              aria-label="关闭创建块对话框"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </Dialog.Close>
-
-          <Dialog.Title className="text-base font-semibold text-foreground">
-            创建可复用块
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="lg" data-testid="block-create-dialog">
+        <DialogHeader>
+          <DialogTitle>创建可复用块</DialogTitle>
+          <DialogDescription>
             将当前选中的节点封装为单个可复用块，并允许你在创建前调整端口名称。
-          </Dialog.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          <form onSubmit={onSubmit} className="mt-5 space-y-5">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <DialogBody className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
               <label htmlFor="block-name" className="space-y-2">
                 <Label>块名称</Label>
@@ -176,11 +170,10 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
 
             <label htmlFor="block-description" className="block space-y-2">
               <Label>描述</Label>
-              <textarea
+              <Textarea
                 id="block-description"
                 aria-label="描述"
-                rows={3}
-                className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                className="resize-none"
                 placeholder="描述这个可复用块的用途"
                 {...register('description')}
               />
@@ -213,17 +206,17 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
                 fieldPath="outputPorts"
               />
             </div>
+          </DialogBody>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button type="submit">确认创建</Button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button type="submit">确认创建</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 })
 
@@ -236,7 +229,7 @@ interface PortEditorSectionProps {
 
 function PortEditorSection({ title, ports, register, fieldPath }: PortEditorSectionProps) {
   return (
-    <section className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+    <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
         <span className="text-xs text-muted-foreground">{ports.length} 个</span>
@@ -249,10 +242,10 @@ function PortEditorSection({ title, ports, register, fieldPath }: PortEditorSect
       ) : (
         <div className="space-y-3">
           {ports.map((port, index) => (
-            <div key={port.id} className="rounded-lg border border-border/60 bg-background/70 p-3">
+            <div key={port.id} className="rounded-lg border border-border bg-surface p-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-medium text-muted-foreground">{port.dataType}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {port.sourceNodeId} · {port.sourcePortId}
                 </span>
               </div>

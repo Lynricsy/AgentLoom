@@ -1,6 +1,8 @@
 import { memo } from 'react'
 import { Maximize, RefreshCw } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 
 export type LayoutMode = 'dagre' | 'force'
 
@@ -24,66 +26,63 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 rounded-lg border border-border/60 bg-card/80 p-1',
+        'flex items-center gap-1 rounded-lg border border-border/60 bg-surface/80 p-1',
         className,
       )}
       data-testid="evidence-graph-controls"
     >
-      <button
-        type="button"
-        onClick={() => onLayoutChange('dagre')}
-        className={cn(
-          'rounded px-2 py-1 text-[10px] font-medium transition',
-          layoutMode === 'dagre'
-            ? 'bg-primary/15 text-primary'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        )}
-        aria-label="层级布局"
-        data-testid="layout-dagre"
+      <Tabs
+        value={layoutMode}
+        defaultValue="dagre"
+        onValueChange={(value) => onLayoutChange(value as LayoutMode)}
       >
-        层级
-      </button>
-
-      <button
-        type="button"
-        onClick={() => onLayoutChange('force')}
-        className={cn(
-          'rounded px-2 py-1 text-[10px] font-medium transition',
-          layoutMode === 'force'
-            ? 'bg-primary/15 text-primary'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-        )}
-        aria-label="力导向布局"
-        data-testid="layout-force"
-      >
-        力导向
-      </button>
+        <TabsList className="w-auto p-0.5">
+          <TabsTrigger
+            value="dagre"
+            className="flex-none px-2 py-1 text-2xs"
+            aria-label="层级布局"
+            data-testid="layout-dagre"
+          >
+            层级
+          </TabsTrigger>
+          <TabsTrigger
+            value="force"
+            className="flex-none px-2 py-1 text-2xs"
+            aria-label="力导向布局"
+            data-testid="layout-force"
+          >
+            力导向
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <div className="mx-0.5 h-4 w-px bg-border/60" />
 
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={onFitView}
-        className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground"
         aria-label="适应视图"
         data-testid="fit-view"
       >
-        <Maximize className="h-3.5 w-3.5" />
-      </button>
+        <Maximize />
+      </Button>
 
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={onRefresh}
         disabled={isRefreshing}
         className={cn(
-          'rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground',
+          'text-muted-foreground hover:text-foreground',
           isRefreshing && 'animate-spin',
         )}
         aria-label="刷新"
         data-testid="refresh-graph"
       >
-        <RefreshCw className="h-3.5 w-3.5" />
-      </button>
+        <RefreshCw />
+      </Button>
     </div>
   )
 })

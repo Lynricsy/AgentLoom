@@ -1,9 +1,8 @@
 import type { MouseEvent, ReactNode } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { motion } from "motion/react";
 import { cn } from "@/shared/lib/utils";
-import { DUR, EASE } from "@/shared/lib/motion";
+import { StatusBadge } from "@/shared/ui/status-badge";
 import { COMPACT_STATUS_META } from "./nodeVisualMeta";
 
 type StatusMeta = (typeof COMPACT_STATUS_META)[keyof typeof COMPACT_STATUS_META];
@@ -27,7 +26,7 @@ export function NodeIconChip({
     <span
       data-testid={`canvas-node-icon-${id}`}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[10px]",
+        "inline-flex shrink-0 items-center justify-center rounded-lg",
         size === "full" ? "h-9 w-9" : "h-8 w-8",
       )}
       style={{
@@ -54,27 +53,19 @@ interface NodeStatusBadgeProps {
   isRunning: boolean;
 }
 
-/** 执行状态徽章：小圆点 + 文案，running 时圆点呼吸 */
+/** 执行状态徽章：状态圆点 + 文案，running 时圆点呼吸 */
 function NodeStatusBadge({ id, meta, isRunning }: NodeStatusBadgeProps) {
   return (
-    <span
+    <StatusBadge
       data-testid={`canvas-node-status-badge-${id}`}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none",
-        meta.className,
-      )}
+      tone={meta.tone}
+      size="sm"
+      dot
+      pulse={isRunning}
+      className="shrink-0"
     >
-      {isRunning ? (
-        <motion.span
-          className="h-1.5 w-1.5 rounded-full bg-current"
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: DUR.slow * 4, ease: EASE, repeat: Infinity }}
-        />
-      ) : (
-        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      )}
       {meta.label}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -181,7 +172,7 @@ export function NodeFullHeader({
           className="truncate text-[9px] font-medium uppercase leading-none tracking-[0.1em]"
           style={{
             color:
-              "color-mix(in srgb, var(--node-color, var(--color-primary)) 60%, var(--color-muted))",
+              "color-mix(in srgb, var(--node-color, var(--color-primary)) 60%, var(--color-muted-foreground))",
           }}
         >
           {nodeType}
@@ -194,7 +185,7 @@ export function NodeFullHeader({
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
           ) : null}
         </div>
-        <p className="truncate text-[11px] leading-tight text-muted-foreground">
+        <p className="truncate text-2xs leading-tight text-muted-foreground">
           {subtitle}
         </p>
       </div>

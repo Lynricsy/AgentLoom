@@ -33,7 +33,7 @@ export const RuntimePluginNodeBody = memo(function RuntimePluginNodeBody({
           {label}
         </span>
       </div>
-      <div className="flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap gap-1 text-2xs text-muted-foreground">
         <span className="rounded bg-muted px-1.5 py-0.5">
           {config.source === 'npm' ? 'npm' : '插件包'}
         </span>

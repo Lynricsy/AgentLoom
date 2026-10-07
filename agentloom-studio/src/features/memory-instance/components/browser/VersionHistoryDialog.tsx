@@ -38,7 +38,7 @@ function VersionRow({
   isRollingBack: boolean
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-card border border-border bg-surface p-3">
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-bold text-primary">
         v{version.versionNumber}
       </span>
@@ -52,7 +52,7 @@ function VersionRow({
               最新
             </Badge>
           )}
-          <span className="text-[11px] text-muted">
+          <span className="text-2xs text-muted-foreground">
             {new Date(version.createdAt).toLocaleString('zh-CN', {
               month: '2-digit',
               day: '2-digit',
@@ -62,7 +62,7 @@ function VersionRow({
           </span>
         </div>
         {version.content && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted">{version.content}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{version.content}</p>
         )}
       </div>
       {!isLatest && (
@@ -129,7 +129,7 @@ export function VersionHistoryDialog({
           <DialogTitle className="flex items-center gap-2">
             <History className="h-4 w-4 text-primary" />
             版本历史
-            <span className="text-sm font-normal text-muted">— {nodeName}</span>
+            <span className="text-sm font-normal text-muted-foreground">— {nodeName}</span>
           </DialogTitle>
           <DialogDescription>
             查看和管理记忆节点的版本历史
@@ -140,11 +140,11 @@ export function VersionHistoryDialog({
           {isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }, (_, index) => (
-                <Skeleton key={index} className="h-16 rounded-card" />
+                <Skeleton key={index} className="h-16 rounded-lg" />
               ))}
             </div>
           ) : !versions || versions.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted">暂无版本记录</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">暂无版本记录</p>
           ) : (
             <div className="space-y-2">
               {versions.map((version, i) => (

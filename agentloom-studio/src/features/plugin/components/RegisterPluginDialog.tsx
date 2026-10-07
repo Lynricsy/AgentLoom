@@ -134,8 +134,8 @@ export function RegisterPluginDialog({ open, onOpenChange }: RegisterPluginDialo
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             className={cn(
-              'flex flex-col items-center gap-2 rounded-panel border border-dashed px-6 py-8 text-center transition-colors',
-              isDragging ? 'border-primary bg-primary/5' : 'border-border bg-surface-elevated/40',
+              'flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-8 text-center transition-colors',
+              isDragging ? 'border-primary bg-primary/5' : 'border-border bg-muted',
               isUploading && 'opacity-60',
             )}
           >
@@ -151,39 +151,40 @@ export function RegisterPluginDialog({ open, onOpenChange }: RegisterPluginDialo
                 <span className="truncate text-sm font-medium text-foreground">
                   {file.name}
                 </span>
-                <span className="shrink-0 text-xs text-muted">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {file.size >= BYTES_PER_MB
                     ? `${(file.size / BYTES_PER_MB).toFixed(1)} MB`
                     : `${Math.max(1, Math.round(file.size / 1024))} KB`}
                 </span>
                 {isUploading ? null : (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label="移除已选文件"
                     onClick={() => {
                       setFile(null)
                       setProgress(0)
                     }}
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted transition-colors hover:bg-surface hover:text-foreground"
+                    className="text-muted-foreground hover:bg-surface hover:text-foreground"
                   >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                    <X />
+                  </Button>
                 )}
               </div>
             ) : (
               <p className="text-sm text-foreground">
                 把插件包拖到这里，或
-                <button
-                  type="button"
-                  className="mx-1 text-primary underline-offset-2 hover:underline"
+                <Button
+                  variant="link"
+                  className="mx-1 h-auto p-0 align-baseline"
                   onClick={() => inputRef.current?.click()}
                 >
                   选择文件
-                </button>
+                </Button>
               </p>
             )}
 
-            <p className="text-xs text-muted">仅支持 {PLUGIN_PACKAGE_EXTENSION} 插件包</p>
+            <p className="text-xs text-muted-foreground">仅支持 {PLUGIN_PACKAGE_EXTENSION} 插件包</p>
 
             <input
               ref={inputRef}
@@ -200,7 +201,7 @@ export function RegisterPluginDialog({ open, onOpenChange }: RegisterPluginDialo
 
           {isUploading ? (
             <div className="space-y-1.5" data-testid="plugin-upload-progress">
-              <div className="flex items-center justify-between text-xs text-muted">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <Spinner size="sm" />
                   {progress >= 100 ? '正在校验签名…' : '正在上传…'}
@@ -214,7 +215,7 @@ export function RegisterPluginDialog({ open, onOpenChange }: RegisterPluginDialo
           {error ? (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-card border border-error/25 bg-error/10 px-3 py-2 text-xs text-error"
+              className="flex items-start gap-2 rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-xs text-error"
             >
               <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{error}</span>
@@ -229,7 +230,7 @@ export function RegisterPluginDialog({ open, onOpenChange }: RegisterPluginDialo
             />
             <span>
               注册后立即启用
-              <span className="mt-0.5 block text-xs text-muted">
+              <span className="mt-0.5 block text-xs text-muted-foreground">
                 启用后该插件的节点会出现在画布节点面板中。
               </span>
             </span>

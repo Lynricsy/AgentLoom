@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { MonitoringDashboardPage } from '@/features/monitoring'
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const monitoringRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/monitoring',
   component: MonitoringDashboardPage,
 })

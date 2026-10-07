@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState, type DragEvent } from 'react';
 
+import { AlertCircle, Package2 } from 'lucide-react';
+
+import { EmptyState } from '@/shared/components/empty-state/EmptyState';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -122,20 +125,24 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
         ) : null}
 
         {error ? (
-          <div className="rounded-xl border border-error/50 bg-error/5 px-4 py-3">
-            <p className="text-sm font-medium text-foreground">块库加载失败</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {error instanceof Error ? error.message : '未知错误'}
-            </p>
-          </div>
+          <EmptyState
+            icon={AlertCircle}
+            tone="var(--color-error)"
+            title="块库加载失败"
+            description={error instanceof Error ? error.message : '未知错误'}
+          />
         ) : null}
 
         {!isLoading && !error && filteredBlocks.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface px-4 py-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              {hasFilters ? '没有匹配的块' : '还没有保存任何块'}
-            </p>
-          </div>
+          <EmptyState
+            icon={Package2}
+            title={hasFilters ? '没有匹配的块' : '还没有保存任何块'}
+            description={
+              hasFilters
+                ? '换个关键词或分类试试。'
+                : '在画布上选中一组节点，保存为可复用块后会出现在这里。'
+            }
+          />
         ) : null}
 
         {!isLoading && !error && filteredBlocks.length > 0 ? (

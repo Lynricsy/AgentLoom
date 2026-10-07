@@ -65,6 +65,10 @@ export {
   useSelectedEdgeId,
   useSelectedNodeData,
 } from './stores/canvasStore'
+export {
+  CANVAS_FLOATING_CLASS,
+  CANVAS_PANEL_HEADER_CLASS,
+} from './components/canvasChrome'
 export { buildPaletteGroups } from './components/nodeCategories'
 export { NodePalette } from './components/NodePalette'
 export { AgentNodePalette } from './components/AgentNodePalette'

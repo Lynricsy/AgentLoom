@@ -50,7 +50,7 @@ export function MonitoringAlertList({
         <CardContent className="flex items-start gap-3 p-4">
           <span
             aria-hidden="true"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-card bg-surface-elevated text-muted"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"
           >
             <ShieldAlert className="h-4 w-4" />
           </span>
@@ -62,12 +62,12 @@ export function MonitoringAlertList({
               </Badge>
             </div>
             <p className="text-xs font-medium text-foreground">{riskSummary.title}</p>
-            <p className="text-xs leading-relaxed text-muted">{riskSummary.summary}</p>
-            <p className="text-xs leading-relaxed text-muted">{riskSummary.explanation}</p>
-            <p className="text-[11px] text-muted">
+            <p className="text-xs leading-relaxed text-muted-foreground">{riskSummary.summary}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{riskSummary.explanation}</p>
+            <p className="text-2xs text-muted-foreground">
               最近评估时间：{formatMonitoringTimestamp(riskSummary.lastEvaluatedAt)}
             </p>
-            <p className="text-[11px] leading-relaxed text-muted">
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {riskSummary.governancePauseActive
                 ? '当前存在治理暂停信号。治理暂停只会阻止新的执行进入，不等同于 execution paused（人工介入）。'
                 : '当前未检测到租户级治理暂停，但 execution paused（人工介入）仍会在热点列表中单独标识。'}
@@ -85,7 +85,7 @@ export function MonitoringAlertList({
       <Card data-testid="monitoring-alert-list">
         <CardHeader>
           <CardTitle>告警与治理提示</CardTitle>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             所有告警都保持只读，仅提供原因说明与 drill-down 入口，不会在这里直接执行配额修改、治理暂停切换或异常执行终止。
           </p>
         </CardHeader>
@@ -107,7 +107,7 @@ export function MonitoringAlertList({
                 <motion.article
                   key={alert.id}
                   {...staggerList(index)}
-                  className="rounded-card border border-border bg-surface-elevated p-3"
+                  className="rounded-lg border border-border bg-muted p-3"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-2">
@@ -120,9 +120,9 @@ export function MonitoringAlertList({
                           {getAlertCategoryLabel(alert.category)}
                         </Badge>
                       </div>
-                      <p className="text-xs leading-relaxed text-muted">{alert.reason}</p>
+                      <p className="text-xs leading-relaxed text-muted-foreground">{alert.reason}</p>
                     </div>
-                    <span className="shrink-0 text-[11px] text-muted">
+                    <span className="shrink-0 text-2xs text-muted-foreground">
                       触发时间：{formatMonitoringTimestamp(alert.detectedAt)}
                     </span>
                   </div>

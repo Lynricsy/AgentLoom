@@ -19,6 +19,7 @@ import {
 } from '@/features/marketplace'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container'
 import {
   DataTable,
   type DataTableColumn,
@@ -188,7 +189,7 @@ export function PluginManagementPage() {
         cell: (plugin) => (
           <div className="min-w-0">
             <p className="truncate font-medium text-foreground">{plugin.name}</p>
-            <p className="flex items-baseline gap-1 text-xs text-muted">
+            <p className="flex items-baseline gap-1 text-xs text-muted-foreground">
               <span className="truncate">{plugin.pluginId}</span>
               {/* 小屏隐藏了版本列，把版本号并进副标题且不参与截断 */}
               <span className="shrink-0 sm:hidden">v{plugin.version}</span>
@@ -201,7 +202,7 @@ export function PluginManagementPage() {
         header: '版本',
         className: 'w-24',
         hideBelow: 'sm',
-        cell: (plugin) => <span className="text-muted">v{plugin.version}</span>,
+        cell: (plugin) => <span className="text-muted-foreground">v{plugin.version}</span>,
       },
       {
         key: 'status',
@@ -221,7 +222,7 @@ export function PluginManagementPage() {
         cell: (plugin) => (
           <div className="min-w-0">
             <p className="text-foreground">{PLUGIN_ORIGIN_LABEL[getPluginOrigin(plugin)]}</p>
-            <p className="truncate text-xs text-muted">{plugin.author}</p>
+            <p className="truncate text-xs text-muted-foreground">{plugin.author}</p>
           </div>
         ),
       },
@@ -231,7 +232,7 @@ export function PluginManagementPage() {
         className: 'w-40',
         hideBelow: 'lg',
         cell: (plugin) => (
-          <span className="text-muted">
+          <span className="text-muted-foreground">
             {DATE_FORMATTER.format(new Date(plugin.updatedAt))}
           </span>
         ),
@@ -304,7 +305,7 @@ export function PluginManagementPage() {
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`删除 ${plugin.name}`}
-                  className="text-muted hover:text-error"
+                  className="text-muted-foreground hover:text-error"
                   onClick={() => setPendingDelete(plugin)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -320,7 +321,7 @@ export function PluginManagementPage() {
   const hasFilters = search.trim() !== '' || statusFilter !== ''
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Puzzle}
         tone="var(--color-node-plugin)"
@@ -338,7 +339,7 @@ export function PluginManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -465,6 +466,6 @@ export function PluginManagementPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   )
 }

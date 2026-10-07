@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react'
 import { Check, Copy, Wrench } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import type { ToolRendererProps, ToolSummaryProps } from './types'
 
 /**
@@ -45,14 +46,15 @@ function CopyButton({ text }: { text: string }) {
   }, [text])
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-xs"
       onClick={() => void handleCopy()}
-      className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
+      className="size-6 shrink-0 text-muted-foreground hover:bg-border hover:text-foreground [&_svg]:size-3"
       title="复制"
     >
-      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-    </button>
+      {copied ? <Check /> : <Copy />}
+    </Button>
   )
 }
 
@@ -62,12 +64,12 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
         <CopyButton text={formatted} />
       </div>
-      <pre className="overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-muted">
+      <pre className="overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-muted-foreground">
         <code>{formatted}</code>
       </pre>
     </div>
@@ -102,7 +104,7 @@ export const DefaultDetail = memo(function DefaultDetail({
 
       {(state === 'failed' || hasError) && toolCall.error && (
         <div>
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-error">
+          <span className="mb-1 block text-2xs font-medium uppercase tracking-wider text-error">
             错误
           </span>
           <pre

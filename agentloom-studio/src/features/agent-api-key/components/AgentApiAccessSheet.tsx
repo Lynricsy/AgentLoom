@@ -68,7 +68,7 @@ export function AgentApiAccessSheet({
             <>
               {unavailableNotice ? (
                 <div
-                  className="flex gap-2 rounded-card border border-warning/30 bg-warning/10 px-3 py-2.5"
+                  className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5"
                   role="status"
                   data-testid="agent-api-unpublished-notice"
                 >

@@ -103,7 +103,7 @@ export const ExecutionTimelineVertical = memo(
       >
         <div className="border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">执行时间线</h2>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             节点执行顺序、决策详情与证据链
           </p>
         </div>

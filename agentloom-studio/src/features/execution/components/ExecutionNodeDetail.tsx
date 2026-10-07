@@ -22,8 +22,8 @@ function DetailSection({
   children: ReactNode
 }) {
   return (
-    <section className="space-y-3 rounded-card border border-border bg-surface-elevated p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-muted">{title}</h3>
+    <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">{title}</h3>
       {children}
     </section>
   )
@@ -71,18 +71,18 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
           <h2 className="text-sm font-semibold text-foreground">{step.nodeName}</h2>
           <StepStatusBadge status={step.status} />
         </div>
-        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted">{step.nodeType}</p>
+        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.nodeType}</p>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <DetailSection title="节点信息">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div className="min-w-0">
-              <dt className="text-xs text-muted">节点 ID</dt>
+              <dt className="text-xs text-muted-foreground">节点 ID</dt>
               <dd className="mt-1 break-all font-mono text-foreground">{step.nodeId}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-xs text-muted">步骤 ID</dt>
+              <dt className="text-xs text-muted-foreground">步骤 ID</dt>
               <dd className="mt-1 break-all font-mono text-foreground">{step.id}</dd>
             </div>
           </dl>
@@ -92,7 +92,7 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
           {step.input ? (
             <JsonTreeView value={step.input} />
           ) : (
-            <p className="text-sm text-muted">无输入数据</p>
+            <p className="text-sm text-muted-foreground">无输入数据</p>
           )}
         </DetailSection>
 
@@ -100,13 +100,13 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
           {step.output ? (
             <JsonTreeView value={step.output} />
           ) : (
-            <p className="text-sm text-muted">无输出数据</p>
+            <p className="text-sm text-muted-foreground">无输出数据</p>
           )}
         </DetailSection>
 
         {step.errorMessage ? (
           <DetailSection title="错误">
-            <div className="rounded-card border border-error/30 bg-error/10 px-3 py-3 text-sm text-error">
+            <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-3 text-sm text-error">
               {step.errorMessage}
             </div>
           </DetailSection>
@@ -116,7 +116,7 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             {timingRows.map((row) => (
               <div key={row.label}>
-                <dt className="text-xs text-muted">{row.label}</dt>
+                <dt className="text-xs text-muted-foreground">{row.label}</dt>
                 <dd className="mt-1 text-foreground">{row.value}</dd>
               </div>
             ))}
@@ -129,10 +129,10 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
               {step.retryHistory.map((attempt) => (
                 <div
                   key={`${attempt.attempt}-${attempt.timestamp}`}
-                  className="rounded-card border border-border bg-surface px-3 py-3"
+                  className="rounded-lg border border-border bg-surface px-3 py-3"
                 >
                   <p className="text-sm font-medium text-foreground">第 {attempt.attempt} 次尝试</p>
-                  <p className="mt-1 text-xs text-muted">{formatExecutionDateTime(attempt.timestamp)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatExecutionDateTime(attempt.timestamp)}</p>
                   <p className="mt-2 text-sm text-foreground">{attempt.error}</p>
                 </div>
               ))}

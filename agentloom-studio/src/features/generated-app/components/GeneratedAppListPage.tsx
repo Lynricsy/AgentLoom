@@ -14,11 +14,11 @@ import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { staggerList } from '@/shared/lib/motion'
-import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { useToast } from '@/shared/ui/toast'
 import {
   useCreateGeneratedApp,
@@ -30,8 +30,8 @@ import {
   GENERATED_APP_READINESS_LABELS,
   GENERATED_APP_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppReadinessBadgeVariant,
-  getGeneratedAppStatusBadgeVariant,
+  getGeneratedAppReadinessStatusTone,
+  getGeneratedAppStatusTone,
 } from '../lib/generatedAppDisplay'
 import type { GeneratedApp } from '../types'
 
@@ -50,12 +50,15 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
       <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={getGeneratedAppStatusBadgeVariant(app.status)} size="sm">
+            <StatusBadge tone={getGeneratedAppStatusTone(app.status)} size="sm">
               {GENERATED_APP_STATUS_LABELS[app.status]}
-            </Badge>
-            <Badge variant={getGeneratedAppReadinessBadgeVariant(app.readiness)} size="sm">
+            </StatusBadge>
+            <StatusBadge
+              tone={getGeneratedAppReadinessStatusTone(app.readiness)}
+              size="sm"
+            >
               {GENERATED_APP_READINESS_LABELS[app.readiness.state]}
-            </Badge>
+            </StatusBadge>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -63,7 +66,7 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
               <h2 className="break-words text-sm font-semibold text-foreground">
                 {app.appName}
               </h2>
-              <p className="line-clamp-2 break-words text-xs leading-relaxed text-muted">
+              <p className="line-clamp-2 break-words text-xs leading-relaxed text-muted-foreground">
                 {app.description}
               </p>
             </div>
@@ -78,20 +81,20 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
           </div>
 
           <dl className="grid gap-2 sm:grid-cols-3">
-            <div className="min-w-0 rounded-card border border-border bg-surface-elevated p-2.5">
-              <dt className="text-[11px] text-muted">阻断项</dt>
+            <div className="min-w-0 rounded-lg border border-border bg-muted p-2.5">
+              <dt className="text-2xs text-muted-foreground">阻断项</dt>
               <dd className="mt-1 text-xs font-medium tabular-nums text-foreground">
                 {app.readiness.blockingIssueCount}
               </dd>
             </div>
-            <div className="min-w-0 rounded-card border border-border bg-surface-elevated p-2.5">
-              <dt className="text-[11px] text-muted">Warning</dt>
+            <div className="min-w-0 rounded-lg border border-border bg-muted p-2.5">
+              <dt className="text-2xs text-muted-foreground">Warning</dt>
               <dd className="mt-1 text-xs font-medium tabular-nums text-foreground">
                 {app.readiness.warningCount}
               </dd>
             </div>
-            <div className="min-w-0 rounded-card border border-border bg-surface-elevated p-2.5">
-              <dt className="flex items-center gap-1 text-[11px] text-muted">
+            <div className="min-w-0 rounded-lg border border-border bg-muted p-2.5">
+              <dt className="flex items-center gap-1 text-2xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
                 更新时间
               </dt>
@@ -226,7 +229,7 @@ export function GeneratedAppListPage() {
             <form className="space-y-2" onSubmit={handleSubmit}>
               <label
                 htmlFor="generated-app-prompt"
-                className="block text-xs font-medium text-muted"
+                className="block text-xs font-medium text-muted-foreground"
               >
                 一句话描述你要的应用
               </label>
@@ -263,7 +266,7 @@ export function GeneratedAppListPage() {
                 <h2 className="break-words text-xs font-semibold text-foreground">
                   {lastLaunch.appName}
                 </h2>
-                <p className="break-words text-xs leading-relaxed text-muted">
+                <p className="break-words text-xs leading-relaxed text-muted-foreground">
                   {lastLaunch.summary}
                 </p>
               </div>
@@ -281,12 +284,12 @@ export function GeneratedAppListPage() {
 
         {isLoading ? (
           <div className="space-y-3">
-            <p className="flex items-center gap-2 text-xs text-muted">
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Spinner size="sm" />
               正在加载生成应用…
             </p>
             {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-44 rounded-card" />
+              <Skeleton key={index} className="h-44 rounded-lg" />
             ))}
           </div>
         ) : null}
@@ -298,7 +301,7 @@ export function GeneratedAppListPage() {
               <div className="space-y-3">
                 <div className="space-y-1">
                   <h2 className="text-sm font-semibold text-foreground">生成应用加载失败</h2>
-                  <p className="text-xs text-muted">请稍后重试，或刷新页面后重新查看。</p>
+                  <p className="text-xs text-muted-foreground">请稍后重试，或刷新页面后重新查看。</p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => void refetch()}>
                   重新加载
@@ -319,9 +322,9 @@ export function GeneratedAppListPage() {
         {apps.length > 0 ? (
           <section className="space-y-3" aria-label="生成应用列表">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted">共 {meta?.total ?? apps.length} 个生成应用</p>
+              <p className="text-xs text-muted-foreground">共 {meta?.total ?? apps.length} 个生成应用</p>
               {isFetching && !isLoading ? (
-                <span className="inline-flex items-center gap-1 text-xs text-muted">
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <Spinner size="sm" />
                   正在刷新
                 </span>

@@ -75,7 +75,7 @@ const LsDetail = memo(function LsDetail({ toolCall, state }: ToolRendererProps) 
 
   if (entries.length === 0) {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-lg bg-background p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 rounded-lg bg-muted p-6 text-xs text-muted-foreground">
         <FolderOpen className="size-4 opacity-40" />
         空目录
       </div>
@@ -83,7 +83,7 @@ const LsDetail = memo(function LsDetail({ toolCall, state }: ToolRendererProps) 
   }
 
   return (
-    <div className="max-h-[480px] overflow-auto rounded-lg bg-background">
+    <div className="max-h-[480px] overflow-auto rounded-lg bg-muted">
       {entries.map((entry, i) => {
         const isDir = isDirectory(entry)
         return (

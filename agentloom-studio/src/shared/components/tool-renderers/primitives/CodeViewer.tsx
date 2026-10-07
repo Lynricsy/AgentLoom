@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import hljs from "highlight.js/lib/core";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
 import { detectLanguage } from "./codeLanguage";
 
 import "highlight.js/styles/github-dark.css";
@@ -144,42 +145,45 @@ export const CodeViewer = memo(function CodeViewer({
   const lineNumberWidth = String(startLine + lines.length - 1).length;
 
   return (
-    <div className={cn("group relative rounded-lg bg-background", className)}>
+    <div className={cn("group relative rounded-lg bg-muted", className)}>
       {/* Header with language label and copy button */}
       {(resolvedLanguage ?? fileName) && (
         <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <span className="text-[10px] font-medium text-muted-foreground">
+          <span className="text-2xs font-medium text-muted-foreground">
             {fileName ?? resolvedLanguage}
           </span>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => void handleCopy()}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
+            className="h-6 gap-1 px-1.5 text-2xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
           >
             {copied ? (
               <>
-                <Check className="size-3" />
+                <Check />
                 已复制
               </>
             ) : (
               <>
-                <Copy className="size-3" />
+                <Copy />
                 复制
               </>
             )}
-          </button>
+          </Button>
         </div>
       )}
 
       {/* No header: floating copy button */}
       {!resolvedLanguage && !fileName && (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="icon-xs"
           onClick={() => void handleCopy()}
-          className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+          aria-label="复制"
+          className="absolute right-2 top-2 z-10 size-6 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 [&_svg]:size-3"
         >
-          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-        </button>
+          {copied ? <Check /> : <Copy />}
+        </Button>
       )}
 
       {/* Code area */}
@@ -187,9 +191,9 @@ export const CodeViewer = memo(function CodeViewer({
         <table className="w-full border-collapse font-mono text-xs leading-relaxed">
           <tbody>
             {lines.map((line, i) => (
-              <tr key={`${startLine + i}`} className="hover:bg-surface-elevated/50">
+              <tr key={`${startLine + i}`} className="hover:bg-border/40">
                 <td
-                  className="select-none border-r border-border px-3 py-0 text-right align-top text-muted-foreground/40"
+                  className="select-none border-r border-border px-3 py-0 text-right align-top text-subtle-foreground"
                   style={{ minWidth: `${lineNumberWidth + 2}ch` }}
                 >
                   {startLine + i}

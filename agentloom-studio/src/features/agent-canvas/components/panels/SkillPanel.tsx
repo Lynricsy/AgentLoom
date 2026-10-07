@@ -1,5 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { BookOpenText, Search, Check } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { useSkill, useSkills } from '@/features/skill'
 import type { SkillListItem } from '@/features/skill'
 
@@ -75,28 +79,29 @@ export const SkillPanel = memo(function SkillPanel({
   return (
     <div className="flex flex-col gap-3">
       {skill.skillId && (
-        <div className="rounded-md border border-neutral-700 bg-neutral-800/50 p-3">
+        <div className="rounded-lg border border-border bg-muted p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-start gap-2 min-w-0">
-              <BookOpenText className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
+              <BookOpenText className="mt-0.5 size-4 shrink-0 text-[var(--color-node-skill)]" />
               <div className="min-w-0">
-                <p className="text-sm font-medium text-neutral-200 truncate">
+                <p className="text-sm font-medium text-foreground truncate">
                   {skill.skillName || skill.skillId}
                 </p>
                 {skill.skillDescription && (
-                  <p className="mt-1 text-xs text-neutral-400 line-clamp-3">
+                  <p className="mt-1 text-xs text-muted-foreground line-clamp-3">
                     {skill.skillDescription}
                   </p>
                 )}
               </div>
             </div>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={handleClear}
-              className="shrink-0 text-xs text-neutral-500 hover:text-neutral-300 cursor-pointer"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
             >
               清除
-            </button>
+            </Button>
           </div>
           {isSelectedSkillUnavailable && (
             <p role="alert" className="mt-2 text-xs text-destructive">
@@ -107,64 +112,68 @@ export const SkillPanel = memo(function SkillPanel({
       )}
 
       <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
-        <input
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground"
+        />
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="搜索 Skill..."
-          className="w-full rounded-md border border-neutral-700 bg-neutral-800 py-1.5 pl-8 pr-3 text-xs text-neutral-200 placeholder:text-neutral-600 outline-none focus:border-purple-500/50"
+          aria-label="搜索 Skill"
+          className="h-8 pl-8 pr-3 text-xs"
         />
       </div>
 
-      <div className="max-h-64 overflow-y-auto rounded-md border border-neutral-700">
+      <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
         {isLoading ? (
-          <div className="flex items-center justify-center py-6 text-xs text-neutral-500">
+          <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
             加载中...
           </div>
         ) : skills.length === 0 ? (
-          <div className="flex items-center justify-center py-6 text-xs text-neutral-500">
+          <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
             {searchQuery ? '未找到匹配的 Skill' : '暂无可用 Skill'}
           </div>
         ) : (
-          <ul className="divide-y divide-neutral-700/50">
+          <ul className="divide-y divide-border">
             {skills.map((item) => {
               const isSelected = item.id === skill.skillId
               return (
                 <li key={item.id}>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleSelect(item)}
-                    className={`w-full cursor-pointer px-3 py-2.5 text-left transition-colors hover:bg-neutral-700/30 ${
-                      isSelected ? 'bg-purple-500/10' : ''
-                    }`}
+                    className={cn(
+                      'h-auto w-full flex-col items-stretch gap-0 whitespace-normal rounded-none px-3 py-2.5 text-left',
+                      isSelected && 'bg-primary/10 hover:bg-primary/10',
+                    )}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-neutral-200">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium text-foreground">
                         {item.name}
                       </span>
-                      {isSelected && (
-                        <Check className="h-3.5 w-3.5 shrink-0 text-purple-400" />
-                      )}
-                    </div>
+                      {isSelected && <Check className="shrink-0 text-primary" />}
+                    </span>
                     {item.description && (
-                      <p className="mt-0.5 text-[11px] text-neutral-500 line-clamp-2">
+                      <span className="mt-0.5 text-2xs text-muted-foreground line-clamp-2">
                         {item.description}
-                      </p>
+                      </span>
                     )}
                     {item.slug && (
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="rounded-full bg-neutral-700/50 px-1.5 py-0.5 text-[10px] text-neutral-400">
+                      <span className="mt-1 flex items-center gap-2">
+                        <Badge variant="secondary" size="sm">
                           {item.slug}
-                        </span>
+                        </Badge>
                         {item.isBuiltin && (
-                          <span className="rounded-full bg-purple-500/20 px-1.5 py-0.5 text-[10px] text-purple-400">
+                          <Badge tone="var(--color-node-skill)" size="sm">
                             内置
-                          </span>
+                          </Badge>
                         )}
-                      </div>
+                      </span>
                     )}
-                  </button>
+                  </Button>
                 </li>
               )
             })}

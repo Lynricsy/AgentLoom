@@ -6,11 +6,18 @@ import {
   useRef,
   useState,
 } from 'react'
-import * as Popover from '@radix-ui/react-popover'
 import { Search, Trash2, icons, type LucideIcon } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { EmojiMartData, Emoji } from '@emoji-mart/data'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/shared/ui/popover'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { EntityIcon } from '@/shared/components/entity-icon'
 
 // Fluent Emoji 3D CDN 基础 URL
@@ -149,35 +156,22 @@ export const EmojiIconPicker = memo(function EmojiIconPicker({
   )
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         {children ?? (
-          <button
-            type="button"
-            className="flex items-center justify-center rounded-md p-1.5 transition-colors hover:bg-muted/50"
-            aria-label="选择图标"
-          >
+          <Button variant="ghost" size="icon-sm" aria-label="选择图标">
             <EntityIcon icon={value} fallback={fallbackIcon} size={20} />
-          </button>
+          </Button>
         )}
-      </Popover.Trigger>
+      </PopoverTrigger>
 
-      <Popover.Portal>
-        <Popover.Content
-          className="z-50 rounded-lg border border-border bg-popover shadow-lg outline-none"
-          sideOffset={6}
-          align="start"
-          style={{ width: 352 }}
-        >
-          {open && (
-            <PickerContent
-              value={value}
-              onChange={handleChange}
-            />
-          )}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+      <PopoverContent
+        align="start"
+        className="w-[352px] p-0"
+      >
+        <PickerContent value={value} onChange={handleChange} />
+      </PopoverContent>
+    </Popover>
   )
 })
 
@@ -195,71 +189,49 @@ const PickerContent = memo(function PickerContent({
   const [tab, setTab] = useState<TabType>('emoji')
 
   return (
-    <div className="flex flex-col" style={{ height: 380 }}>
-      {/* Tab 栏 */}
-      <div className="flex border-b border-border">
-        <TabButton active={tab === 'emoji'} onClick={() => setTab('emoji')}>
-          表情
-        </TabButton>
-        <TabButton active={tab === 'icon'} onClick={() => setTab('icon')}>
-          图标
-        </TabButton>
-      </div>
+    <Tabs
+      value={tab}
+      defaultValue="emoji"
+      onValueChange={(next) => setTab(next as TabType)}
+      className="flex flex-col"
+    >
+      <div className="flex flex-col" style={{ height: 380 }}>
+        {/* Tab 栏 */}
+        <div className="p-2 pb-0">
+          <TabsList>
+            <TabsTrigger value="emoji">表情</TabsTrigger>
+            <TabsTrigger value="icon">图标</TabsTrigger>
+          </TabsList>
+        </div>
 
-      {/* Tab 内容 */}
-      <div className="min-h-0 flex-1">
-        {tab === 'emoji' ? (
-          <EmojiTab value={value} onChange={onChange} />
-        ) : (
-          <IconTab value={value} onChange={onChange} />
+        {/* Tab 内容 */}
+        <div className="min-h-0 flex-1">
+          <TabsContent value="emoji" className="h-full space-y-0">
+            <EmojiTab value={value} onChange={onChange} />
+          </TabsContent>
+          <TabsContent value="icon" className="h-full space-y-0">
+            <IconTab value={value} onChange={onChange} />
+          </TabsContent>
+        </div>
+
+        {/* 移除按钮 */}
+        {value && (
+          <div className="border-t border-border p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground hover:bg-error/10 hover:text-error"
+              onClick={() => onChange(null)}
+            >
+              <Trash2 />
+              <span>删除图标</span>
+            </Button>
+          </div>
         )}
       </div>
-
-      {/* 移除按钮 */}
-      {value && (
-        <div className="border-t border-border p-2">
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-error"
-            onClick={() => onChange(null)}
-          >
-            <Trash2 size={14} />
-            <span>删除图标</span>
-          </button>
-        </div>
-      )}
-    </div>
+    </Tabs>
   )
 })
-
-// ======================================
-// Tab 按钮
-// ======================================
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'flex-1 px-4 py-2 text-sm font-medium transition-colors',
-        active
-          ? 'border-b-2 border-primary text-foreground'
-          : 'text-muted-foreground hover:text-foreground',
-      )}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  )
-}
 
 // ======================================
 // Emoji Tab
@@ -329,12 +301,12 @@ const EmojiTab = memo(function EmojiTab({
       <div className="p-2">
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
             type="text"
             placeholder="搜索表情..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="h-8 pl-8 pr-3"
           />
         </div>
       </div>
@@ -343,20 +315,19 @@ const EmojiTab = memo(function EmojiTab({
       {!search && data && (
         <div className="flex gap-0.5 overflow-x-auto px-2 pb-1">
           {data.categories.map((cat) => (
-            <button
+            <Button
               key={cat.id}
-              type="button"
+              variant="ghost"
+              size="icon-sm"
               className={cn(
-                'shrink-0 rounded-md px-1.5 py-1 text-sm transition-colors',
-                category === cat.id
-                  ? 'bg-primary/10 text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                'shrink-0 px-1.5 text-sm',
+                category === cat.id && 'bg-primary/10 text-foreground',
               )}
               onClick={() => setCategory(cat.id)}
               title={CATEGORY_NAMES[cat.id] ?? cat.id}
             >
               {CATEGORY_ICONS[cat.id] ?? cat.id}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -465,13 +436,12 @@ const EmojiCell = memo(function EmojiCell({
   const [imgError, setImgError] = useState(false)
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon"
       className={cn(
-        'flex items-center justify-center rounded-md transition-colors',
-        selected
-          ? 'bg-primary/20 ring-1 ring-primary/40'
-          : 'hover:bg-muted/60',
+        'shrink-0',
+        selected && 'bg-primary/20 ring-1 ring-primary/40',
       )}
       style={{ width: EMOJI_CELL_SIZE, height: EMOJI_CELL_SIZE }}
       onClick={onClick}
@@ -492,7 +462,7 @@ const EmojiCell = memo(function EmojiCell({
           onError={() => setImgError(true)}
         />
       )}
-    </button>
+    </Button>
   )
 })
 
@@ -525,12 +495,12 @@ const IconTab = memo(function IconTab({
       <div className="p-2">
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
             type="text"
             placeholder="搜索图标..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            className="h-8 pl-8 pr-3"
           />
         </div>
       </div>
@@ -610,21 +580,20 @@ const LucideIconGrid = memo(function LucideIconGrid({
                 if (!Icon) return null
 
                 return (
-                  <button
+                  <Button
                     key={iconName}
-                    type="button"
+                    variant="ghost"
+                    size="icon"
                     className={cn(
-                      'flex items-center justify-center rounded-md transition-colors',
-                      isSelected
-                        ? 'bg-primary/20 ring-1 ring-primary/40'
-                        : 'hover:bg-muted/60',
+                      'shrink-0',
+                      isSelected && 'bg-primary/20 ring-1 ring-primary/40',
                     )}
                     style={{ width: ICON_CELL_SIZE, height: ICON_CELL_SIZE }}
                     onClick={() => onChange(iconValue)}
                     title={iconName}
                   >
                     <Icon size={20} />
-                  </button>
+                  </Button>
                 )
               })}
             </div>

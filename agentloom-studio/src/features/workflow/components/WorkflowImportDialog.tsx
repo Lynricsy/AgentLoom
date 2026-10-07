@@ -156,46 +156,45 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
               data-testid="import-file-input"
             />
 
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={handleClickUploadZone}
               disabled={isValidating}
               className={cn(
-                'flex w-full flex-col items-center gap-2 rounded-card border-2 border-dashed p-8 text-center transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                'h-auto w-full flex-col gap-2 whitespace-normal rounded-lg border-2 border-dashed p-8 text-center font-normal [&_svg]:size-8',
                 isValidating
-                  ? 'cursor-wait border-border bg-surface-elevated'
-                  : 'cursor-pointer border-border hover:border-primary hover:bg-surface-elevated',
+                  ? 'cursor-wait border-border bg-muted disabled:pointer-events-auto disabled:opacity-100'
+                  : 'cursor-pointer border-border hover:border-primary hover:bg-muted',
               )}
               data-testid="import-upload-zone"
             >
               {isValidating ? (
                 <>
-                  <Loader2 className="h-8 w-8 animate-spin text-muted" />
-                  <span className="text-sm text-muted">验证中...</span>
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">验证中...</span>
                 </>
               ) : (
                 <>
-                  <FileUp className="h-8 w-8 text-muted" />
+                  <FileUp className="h-8 w-8 text-muted-foreground" />
                   <span className="text-sm text-foreground">
                     点击选择文件或拖拽文件到此处
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-muted-foreground">
                     支持 .json 和 .agentloom-workflow.json
                   </span>
                 </>
               )}
-            </button>
+            </Button>
 
             {fileError && (
-              <div className="flex items-start gap-2 rounded-card border border-error/25 bg-error/10 p-3 text-sm text-error">
+              <div className="flex items-start gap-2 rounded-lg border border-error/25 bg-error/10 p-3 text-sm text-error">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{fileError}</span>
               </div>
             )}
 
             {validationErrors.length > 0 && (
-              <div className="space-y-1.5 rounded-card border border-error/25 bg-error/10 p-3">
+              <div className="space-y-1.5 rounded-lg border border-error/25 bg-error/10 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-error">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   文件校验失败
@@ -213,25 +212,25 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
         {step === 'preview' && parsedContent && (
           <>
             <DialogBody className="space-y-4">
-              <div className="flex items-center gap-2 rounded-card border border-success/25 bg-success/10 p-3 text-sm text-success">
+              <div className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-success">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 文件校验通过
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="rounded-card border border-border bg-surface-elevated p-2">
+                <div className="rounded-lg border border-border bg-muted p-2">
                   <div className="text-lg font-semibold text-foreground">{nodeCount}</div>
-                  <div className="text-xs text-muted">节点</div>
+                  <div className="text-xs text-muted-foreground">节点</div>
                 </div>
-                <div className="rounded-card border border-border bg-surface-elevated p-2">
+                <div className="rounded-lg border border-border bg-muted p-2">
                   <div className="text-lg font-semibold text-foreground">{edgeCount}</div>
-                  <div className="text-xs text-muted">连线</div>
+                  <div className="text-xs text-muted-foreground">连线</div>
                 </div>
-                <div className="rounded-card border border-border bg-surface-elevated p-2">
+                <div className="rounded-lg border border-border bg-muted p-2">
                   <div className="truncate text-lg font-semibold text-foreground">
                     {getImportSchemaVersion(parsedContent)}
                   </div>
-                  <div className="text-xs text-muted">版本</div>
+                  <div className="text-xs text-muted-foreground">版本</div>
                 </div>
               </div>
 
@@ -266,7 +265,7 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
               </div>
 
               {importMutation.error && (
-                <div className="flex items-start gap-2 rounded-card border border-error/25 bg-error/10 p-3 text-sm text-error">
+                <div className="flex items-start gap-2 rounded-lg border border-error/25 bg-error/10 p-3 text-sm text-error">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
                     {importMutation.error instanceof Error

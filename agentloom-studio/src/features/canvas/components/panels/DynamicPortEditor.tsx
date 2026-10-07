@@ -1,5 +1,7 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 
 export interface DynamicPortEntry {
   id: string
@@ -66,33 +68,35 @@ export const DynamicPortEditor = memo(function DynamicPortEditor({
       {ports.map((port, index) => (
         <div key={port.id} className="flex items-center gap-2">
           <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40" />
-          <input
+          <Input
             type="text"
             value={port.label}
             onChange={(e) => handleLabelChange(index, e)}
             placeholder={createDefaultLabel(index)}
-            className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/50"
+            className="h-7 min-w-0 flex-1 px-2 py-1 text-xs placeholder:text-subtle-foreground/50"
           />
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => handleRemove(index)}
             disabled={ports.length <= minPorts}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-30"
+            className="h-6 w-6 shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error disabled:opacity-30"
             aria-label={`删除 ${port.label}`}
           >
             <Trash2 className="h-3 w-3" />
-          </button>
+          </Button>
         </div>
       ))}
       {ports.length < maxPorts ? (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="xs"
           onClick={handleAdd}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+          className="h-auto w-full border-dashed px-3 py-1.5 font-normal text-muted-foreground hover:border-primary/40 hover:text-foreground"
         >
           <Plus className="h-3 w-3" />
           {addLabel}
-        </button>
+        </Button>
       ) : null}
     </div>
   )

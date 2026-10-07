@@ -24,7 +24,7 @@ export function MonthlyTrendChart({
   }))
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-lg border border-border bg-surface p-4">
       <h3 className="mb-4 text-base font-semibold text-foreground">
         月度收入趋势
       </h3>

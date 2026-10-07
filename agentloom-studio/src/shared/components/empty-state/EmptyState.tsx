@@ -25,24 +25,24 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-panel border border-dashed border-border px-6 py-14 text-center',
+        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center',
         className,
       )}
     >
       <span
         aria-hidden
-        className="grid h-14 w-14 place-items-center rounded-full"
+        className="grid size-14 place-items-center rounded-full"
         style={{
           backgroundColor: `color-mix(in srgb, ${accent} 12%, transparent)`,
           color: accent,
         }}
       >
-        <Icon className="h-7 w-7" />
+        <Icon className="size-7" />
       </span>
 
       <div className="max-w-md space-y-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
-        {description ? <p className="text-xs text-muted">{description}</p> : null}
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
 
       {action ? <div className="mt-1">{action}</div> : null}

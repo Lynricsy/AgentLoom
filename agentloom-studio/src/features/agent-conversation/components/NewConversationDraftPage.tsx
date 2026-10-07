@@ -6,6 +6,8 @@ import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Spinner } from "@/shared/components/spinner/Spinner";
+import { StatusDot } from "@/shared/ui/status-badge";
+import { WorkbenchHeader } from "@/shared/components/workbench-header";
 import { useAgent } from "@/features/agent";
 import { fetchWorkspaceFileTree } from "@/features/workspace";
 import { useStartConversation } from "../api/conversationMutations";
@@ -154,40 +156,41 @@ export function NewConversationDraftPage({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-        {onBack ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onBack}
-            className="text-muted-foreground"
-            title="返回"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        ) : null}
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${
-              startConversation.isPending
-                ? "bg-warning animate-pulse"
-                : "bg-muted-foreground"
-            }`}
-          />
-          <h1 className="truncate text-sm font-semibold text-foreground">
-            Agent 新对话
-          </h1>
-          <Badge variant="secondary" size="sm" className="shrink-0">
-            {runtimeModeLabel}
-          </Badge>
-        </div>
-        {startConversation.isPending ? (
-          <Badge variant="info" size="sm" className="ml-auto shrink-0">
-            <Spinner size="sm" className="text-info" label="正在创建并发送" />
-            正在创建并发送
-          </Badge>
-        ) : null}
-      </header>
+      <WorkbenchHeader
+        leading={
+          <div className="flex shrink-0 items-center gap-2">
+            {onBack ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onBack}
+                className="text-muted-foreground"
+                title="返回"
+              >
+                <ArrowLeft />
+              </Button>
+            ) : null}
+            <StatusDot
+              tone={startConversation.isPending ? "warning" : "neutral"}
+              pulse={startConversation.isPending}
+            />
+          </div>
+        }
+        title="Agent 新对话"
+        status={
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="secondary" size="sm">
+              {runtimeModeLabel}
+            </Badge>
+            {startConversation.isPending ? (
+              <Badge variant="info" size="sm">
+                <Spinner size="sm" className="text-info" label="正在创建并发送" />
+                正在创建并发送
+              </Badge>
+            ) : null}
+          </div>
+        }
+      />
 
       {error ? (
         <div className="flex items-center gap-2 border-b border-error/20 bg-error/10 px-4 py-2 text-xs text-error">
@@ -236,7 +239,7 @@ export function NewConversationDraftPage({
                 {workspacePreviewId ? (
                   <div
                     data-testid="workspace-snapshot-preview-hint"
-                    className="rounded-card border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                    className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
                   >
                     当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
                   </div>

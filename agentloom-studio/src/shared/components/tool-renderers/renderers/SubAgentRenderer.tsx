@@ -1,6 +1,7 @@
 import { createContext, memo, useContext, useMemo } from "react";
 import { Bot, ExternalLink } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
 import {
   extractSubAgentAlias,
   extractSubAgentHandle,
@@ -83,14 +84,15 @@ function DrillInButton({ handle }: { handle: string }) {
   if (!onDrillIn) return null;
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
+      size="xs"
       onClick={() => onDrillIn(handle)}
-      className="mt-2 flex items-center gap-1.5 rounded-md border border-info/30 px-3 py-1.5 text-xs text-info transition-colors hover:bg-info/10"
+      className="mt-2 border-info/30 bg-transparent text-info shadow-none hover:border-info/30 hover:bg-info/10 hover:text-info [&_svg]:size-3"
     >
-      <ExternalLink className="size-3" />
+      <ExternalLink />
       进入子代理视图
-    </button>
+    </Button>
   );
 }
 
@@ -148,17 +150,17 @@ const CallDetail = memo(function CallDetail({
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg bg-background p-3 space-y-1">
+      <div className="rounded-lg bg-muted p-3 space-y-1">
         <div className="flex items-center gap-2">
           <Bot className="size-4" style={{ color: 'var(--color-node-agent)' }} />
           <span className="text-xs font-medium text-foreground">{alias}</span>
           {handle && (
-            <span className="text-[10px] font-mono text-muted-foreground/50">
+            <span className="text-2xs font-mono text-subtle-foreground">
               {handle}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground">
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5",
@@ -180,10 +182,10 @@ const CallDetail = memo(function CallDetail({
 
       {state === "completed" && output && (
         <div>
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             输出
           </div>
-          <pre className="max-h-[200px] overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
+          <pre className="max-h-[200px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
             {truncate(output, 500)}
           </pre>
         </div>
@@ -212,7 +214,7 @@ const WaitDetail = memo(function WaitDetail({
       {handles.map((h) => (
         <div
           key={h}
-          className="flex items-center justify-between rounded-lg bg-background px-3 py-2"
+          className="flex items-center justify-between rounded-lg bg-muted px-3 py-2"
         >
           <div className="flex items-center gap-2">
             <Bot
@@ -225,7 +227,7 @@ const WaitDetail = memo(function WaitDetail({
         </div>
       ))}
       {state === "completed" && resultStr && (
-        <pre className="max-h-[200px] overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
+        <pre className="max-h-[200px] overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
           {truncate(resultStr, 300)}
         </pre>
       )}
@@ -246,7 +248,7 @@ const StatusDetail = memo(function StatusDetail({
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg bg-background p-3">
+      <div className="rounded-lg bg-muted p-3">
         {args.handle && (
           <div className="flex items-center gap-2">
             <Bot

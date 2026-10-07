@@ -93,7 +93,7 @@ function CodeSnippet({ step, title, description, code }: CodeSnippetProps) {
       <div className="flex items-start gap-2.5">
         <span
           aria-hidden
-          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary"
+          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-2xs font-semibold text-primary"
         >
           {step}
         </span>
@@ -104,12 +104,12 @@ function CodeSnippet({ step, title, description, code }: CodeSnippetProps) {
           >
             {title}
           </h3>
-          <p className="text-xs leading-relaxed text-muted">{description}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{description}</p>
         </div>
       </div>
 
       <div className="relative">
-        <pre className="overflow-x-auto rounded-card border border-border bg-surface-elevated py-3 pr-12 pl-3 text-xs leading-relaxed">
+        <pre className="overflow-x-auto rounded-lg border border-border bg-muted py-3 pr-12 pl-3 text-xs leading-relaxed">
           <code ref={codeRef} className="font-mono text-foreground">
             {code}
           </code>
@@ -117,7 +117,7 @@ function CodeSnippet({ step, title, description, code }: CodeSnippetProps) {
         <Button
           variant="ghost"
           size="icon-sm"
-          className="absolute top-2 right-2 text-muted hover:text-foreground"
+          className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
           aria-label={`复制「${title}」示例`}
           onClick={() => void handleCopy()}
         >
@@ -149,7 +149,7 @@ export function AgentApiUsageGuide() {
 
       <section className="space-y-2 border-t border-border pt-4">
         <h3 className="text-sm font-medium text-foreground">SSE 事件</h3>
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           流中依次出现以下事件，收到 run.completed、run.failed 或 run.cancelled
           后服务端关闭连接。断线后可用 Last-Event-ID 请求
           /runs/&#123;runId&#125;/events 续传。
@@ -157,7 +157,7 @@ export function AgentApiUsageGuide() {
         <ul className="flex flex-wrap gap-1.5" aria-label="SSE 事件类型">
           {SSE_EVENTS.map((event) => (
             <li key={event}>
-              <code className="rounded-md border border-border bg-surface-elevated px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+              <code className="rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-2xs text-foreground">
                 {event}
               </code>
             </li>

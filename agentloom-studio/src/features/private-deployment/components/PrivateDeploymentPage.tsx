@@ -69,12 +69,12 @@ function PrivateDeploymentBlockedState({
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
             <Icon className="h-5 w-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            <p className="text-xs leading-relaxed text-muted">{message}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{message}</p>
             {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
@@ -92,14 +92,14 @@ function PrivateDeploymentOrganizationLoadingState() {
     >
       <PageHeader icon={ServerCog} title="私有部署设置" description={PAGE_DESCRIPTION} />
 
-      <p className="flex items-center gap-2 text-xs text-muted">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <Spinner size="sm" />
         正在确认当前组织…
       </p>
 
       <div className="space-y-3">
-        <Skeleton className="h-28 rounded-card" />
-        <Skeleton className="h-44 rounded-card" />
+        <Skeleton className="h-28 rounded-lg" />
+        <Skeleton className="h-44 rounded-lg" />
       </div>
     </div>
   )
@@ -126,11 +126,11 @@ function PrivateDeploymentContent({
         <PageHeader icon={ServerCog} title="私有部署设置" description="加载私有部署设置中…" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-20 rounded-card" />
+            <Skeleton key={index} className="h-20 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-64 rounded-card" />
-        <Skeleton className="h-64 rounded-card" />
+        <Skeleton className="h-64 rounded-lg" />
+        <Skeleton className="h-64 rounded-lg" />
       </div>
     )
   }
@@ -166,16 +166,16 @@ function PrivateDeploymentContent({
       <Card data-testid="private-deployment-metadata">
         <CardHeader>
           <CardTitle>当前部署模式</CardTitle>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             `deploymentMode` 来自服务端环境，不在前端页面中直接编辑。其余配置项会按分组独立提交。
           </p>
         </CardHeader>
 
         <CardContent className="space-y-3">
-          <div className="flex flex-col gap-3 rounded-card border border-border bg-surface-elevated p-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted p-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1">
               <h3 className="text-xs font-semibold text-foreground">相关操作</h3>
-              <p className="text-[11px] leading-relaxed text-muted">
+              <p className="text-2xs leading-relaxed text-muted-foreground">
                 私有部署配置通常需要联动查看资源治理、运行监控与审计日志，便于统一排查企业运维问题。
               </p>
             </div>
@@ -200,7 +200,7 @@ function PrivateDeploymentContent({
             <MetaTile label="配置版本" value={settings.version} />
           </div>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
             <span>创建人：{formatNullableValue(settings.createdBy)}</span>
             <span>创建时间：{formatTimestamp(settings.createdAt)}</span>
             <span>更新人：{formatNullableValue(settings.updatedBy)}</span>

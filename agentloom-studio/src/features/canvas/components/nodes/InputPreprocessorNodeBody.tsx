@@ -38,21 +38,21 @@ export const InputPreprocessorNodeBody = memo(function InputPreprocessorNodeBody
     <div className="flex flex-col gap-1" data-testid="input-preprocessor-node-body">
       <div className="flex items-center gap-1.5">
         <Filter className="h-3.5 w-3.5 shrink-0 text-type-tool" />
-        <span className="rounded bg-type-tool/15 px-1.5 py-0.5 text-[10px] font-medium text-type-tool">
+        <span className="rounded bg-type-tool/15 px-1.5 py-0.5 text-2xs font-medium text-type-tool">
           {label}
         </span>
         {outputFormat && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
             {outputFormat}
           </span>
         )}
       </div>
       {expression ? (
-        <p className="truncate font-mono text-[10px] text-muted-foreground">
+        <p className="truncate font-mono text-2xs text-muted-foreground">
           {expression.length > 60 ? `${expression.slice(0, 60)}…` : expression}
         </p>
       ) : (
-        <p className="text-[10px] text-muted-foreground/60">未配置表达式</p>
+        <p className="text-2xs text-muted-foreground/60">未配置表达式</p>
       )}
     </div>
   )

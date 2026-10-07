@@ -3,6 +3,7 @@ import { ArrowRightFromLine } from 'lucide-react'
 import { useCanvasActions, useCanvasNodes } from '../../stores/canvasStore'
 import { buildCompoundOutputPorts } from '../../types/controlFlow.types'
 import { useToast } from '@/shared/ui/toast'
+import { Input } from '@/shared/ui/input'
 
 interface ResultConfigPanelProps {
   nodeId: string
@@ -93,14 +94,13 @@ export const ResultConfigPanel = memo(function ResultConfigPanel({
         >
           outputKey
         </label>
-        <input
+        <Input
           id="result-output-key"
           type="text"
           value={outputKey}
           onChange={handleOutputKeyChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
         />
-        <p className="mt-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           父 compound 的外部输出口会直接使用这个 key。
         </p>
       </div>

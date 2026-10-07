@@ -30,7 +30,7 @@ describe('AdoptionStatsBadge', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('shows green badge when adoption rate >= 50%', () => {
+  it('shows success badge when adoption rate >= 50%', () => {
     mockUseAdoptionStats.mockReturnValue({
       data: {
         total: 10,
@@ -49,10 +49,10 @@ describe('AdoptionStatsBadge', () => {
 
     const badge = screen.getByTestId('adoption-stats-badge')
     expect(badge).toHaveTextContent('采纳率: 70% ✓')
-    expect(badge.className).toContain('text-emerald-400')
+    expect(badge.className).toContain('text-success')
   })
 
-  it('shows amber badge when adoption rate < 50%', () => {
+  it('shows warning badge when adoption rate < 50%', () => {
     mockUseAdoptionStats.mockReturnValue({
       data: {
         total: 10,
@@ -71,6 +71,6 @@ describe('AdoptionStatsBadge', () => {
 
     const badge = screen.getByTestId('adoption-stats-badge')
     expect(badge).toHaveTextContent('采纳率: 30% ⚠')
-    expect(badge.className).toContain('text-amber-400')
+    expect(badge.className).toContain('text-warning')
   })
 })

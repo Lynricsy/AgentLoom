@@ -7,6 +7,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import type { AgentGraphEdge as AgentGraphEdgeData } from '../types'
 
 export interface AgentGraphEdgeFlowData
@@ -54,7 +55,7 @@ export const AgentGraphEdge = memo(function AgentGraphEdge({
         id={id}
         path={edgePath}
         className={cn(
-          'transition-all duration-200',
+          'transition-colors duration-200',
           isHighlighted
             ? '!stroke-highlight/80'
             : selected
@@ -68,9 +69,9 @@ export const AgentGraphEdge = memo(function AgentGraphEdge({
         }}
       />
       <EdgeLabelRenderer>
-        <button
-          type="button"
-          className="pointer-events-auto absolute h-6 w-24 rounded-full opacity-0"
+        <Button
+          variant="ghost"
+          className="pointer-events-auto absolute h-6 w-24 rounded-full p-0 opacity-0 hover:bg-transparent"
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
           }}
@@ -85,8 +86,8 @@ export const AgentGraphEdge = memo(function AgentGraphEdge({
         {showTooltip && (
           <div
             className={cn(
-              'pointer-events-auto absolute rounded-lg border px-2.5 py-1.5 text-[10px] shadow-lg',
-              'border-border/60 bg-popover/95 backdrop-blur-sm',
+              'pointer-events-auto absolute rounded-lg border px-2.5 py-1.5 text-2xs shadow-lg',
+              'border-border/60 bg-popover/95',
             )}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,

@@ -89,14 +89,14 @@ export function MonitoringSummaryCards({ summary }: MonitoringSummaryCardsProps)
             <Card className="h-full">
               <CardContent className="flex items-start justify-between gap-3 p-4">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-muted">{card.label}</p>
+                  <p className="text-xs font-medium text-muted-foreground">{card.label}</p>
                   <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
                     {card.value}
                   </p>
                 </div>
                 <span
                   aria-hidden="true"
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
                   style={{
                     backgroundColor: `color-mix(in srgb, ${card.tone} 14%, transparent)`,
                     color: card.tone,

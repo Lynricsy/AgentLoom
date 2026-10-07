@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'rea
 import { createPortal } from 'react-dom'
 import { BookOpen, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 
 const GLOSSARY_TONE = 'var(--color-type-knowledge)'
 
@@ -79,7 +80,7 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
   return createPortal(
     <div
       ref={popupRef}
-      className="fixed z-[100] flex w-72 flex-col overflow-hidden rounded-panel border bg-surface shadow-popover"
+      className="fixed z-50 flex w-72 flex-col overflow-hidden rounded-xl border bg-surface shadow-lg"
       style={{
         ...style,
         borderColor: `color-mix(in srgb, ${GLOSSARY_TONE} 35%, var(--color-border))`,
@@ -90,22 +91,22 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
         <span className="text-xs font-semibold" style={{ color: GLOSSARY_TONE }}>
           {keyword}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           aria-label="关闭词条卡片"
           onClick={onClose}
-          className="ml-auto text-muted transition-colors hover:text-foreground"
+          className="ml-auto h-auto p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_svg]:size-3"
         >
           <X size={12} />
-        </button>
+        </Button>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {nodes.map((node, i) => {
           const isUnlinked = node.uri?.startsWith('unlinked://')
           return (
-            <button
+            <Button
               key={node.uri || i}
-              type="button"
+              variant="ghost"
               onClick={() => {
                 if (isUnlinked) return
                 const match = node.uri?.match(/^([^:]+):\/\/(.*)$/)
@@ -113,16 +114,16 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
                 onClose()
               }}
               className={cn(
-                'group relative w-full rounded-lg px-2.5 py-2 text-left transition-colors',
+                'group relative flex h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-lg px-2.5 py-2 text-left font-normal transition-colors active:scale-100',
                 isUnlinked
-                  ? 'cursor-default opacity-80 bg-muted/40'
+                  ? 'cursor-default opacity-80 bg-muted hover:bg-muted'
                   : 'cursor-pointer hover:bg-muted',
               )}
             >
               <div className="flex items-center justify-between gap-2">
                 <code
                   className={cn(
-                    'block flex-1 truncate font-mono text-[11px]',
+                    'block flex-1 truncate font-mono text-2xs',
                     isUnlinked
                       ? 'text-muted-foreground'
                       : 'text-primary/80 group-hover:text-primary',
@@ -137,11 +138,11 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
                 )}
               </div>
               {node.contentSnippet && (
-                <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground line-clamp-2">
+                <p className="mt-0.5 text-2xs leading-snug text-muted-foreground line-clamp-2">
                   {node.contentSnippet}
                 </p>
               )}
-            </button>
+            </Button>
           )
         })}
       </div>

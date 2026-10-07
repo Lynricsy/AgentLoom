@@ -100,7 +100,7 @@ export function LoginPage() {
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted">或</span>
+              <span className="text-xs text-muted-foreground">或</span>
               <div className="h-px flex-1 bg-border" />
             </div>
           </>
@@ -115,7 +115,7 @@ export function LoginPage() {
           {serverError && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
+              className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <span>{serverError}</span>
@@ -178,7 +178,7 @@ export function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-sm text-muted">
+        <p className="text-sm text-muted-foreground">
           还没有账号？{" "}
           <Link to="/register" className="font-medium text-primary hover:underline">
             立即注册

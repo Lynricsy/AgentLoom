@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
 import {
   Loader2,
-  X,
   Play,
   RefreshCw,
   Zap,
@@ -10,6 +8,16 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import {
   Select,
@@ -19,6 +27,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
+import { Textarea } from "@/shared/ui/textarea";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfig } from "../api/mcpQueries";
 import {
@@ -78,17 +87,17 @@ function TabButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
-      className={`cursor-pointer border-b-2 px-3 pb-2 text-sm font-medium transition-colors ${
+      className={`h-auto cursor-pointer rounded-none border-b-2 px-3 pb-2 pt-0 hover:bg-transparent ${
         active
           ? "border-primary text-primary"
           : "border-transparent text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -268,30 +277,19 @@ export function McpServerEditDialog({
   const canSave = name.trim().length > 0 && !updateMutation.isPending;
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="mcp-edit-desc"
-          className="fixed left-1/2 top-1/2 z-50 flex w-[min(40rem,calc(100vw-2rem))] max-h-[min(44rem,calc(100vh-4rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl"
-        >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        aria-describedby="mcp-edit-desc"
+        className="sm:max-h-[min(44rem,calc(100vh-4rem))]"
+        size="lg"
+      >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 pt-5 pb-0">
-            <Dialog.Title className="text-lg font-semibold text-foreground">
-              编辑 MCP 服务器
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
-          <Dialog.Description className="sr-only" id="mcp-edit-desc">
-            编辑 MCP 服务器配置
-          </Dialog.Description>
+          <DialogHeader className="border-b-0 pb-0">
+            <DialogTitle>编辑 MCP 服务器</DialogTitle>
+            <DialogDescription className="sr-only" id="mcp-edit-desc">
+              编辑 MCP 服务器配置
+            </DialogDescription>
+          </DialogHeader>
 
           {/* Tabs */}
           <div className="flex gap-1 border-b border-border px-6 pt-4">
@@ -313,7 +311,7 @@ export function McpServerEditDialog({
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-5">
+          <DialogBody className="py-5">
             {detailLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -341,10 +339,9 @@ export function McpServerEditDialog({
                   >
                     描述
                   </label>
-                  <textarea
+                  <Textarea
                     id="mcp-edit-desc-input"
                     rows={3}
-                    className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="可选描述"
@@ -431,10 +428,10 @@ export function McpServerEditDialog({
                           ? "当前已配置的环境变量如下所示（值已隐藏）。如需更新请重新输入所有变量。"
                           : "每行一个，格式: KEY=VALUE"}
                       </p>
-                      <textarea
+                      <Textarea
                         id="mcp-edit-env"
                         rows={4}
-                        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="font-mono text-xs"
                         value={credentialText}
                         onChange={(e) => {
                           setCredentialText(e.target.value);
@@ -475,10 +472,10 @@ export function McpServerEditDialog({
                           ? "当前已配置的请求头如下所示（值已隐藏）。如需更新请重新输入。"
                           : "每行一个，格式: Header-Name=Value"}
                       </p>
-                      <textarea
+                      <Textarea
                         id="mcp-edit-headers"
                         rows={4}
-                        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="font-mono text-xs"
                         value={credentialText}
                         onChange={(e) => {
                           setCredentialText(e.target.value);
@@ -556,22 +553,21 @@ export function McpServerEditDialog({
                 )}
               </div>
             )}
-          </div>
+          </DialogBody>
 
           {/* Footer */}
-          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
-            <Dialog.Close asChild>
+          <DialogFooter>
+            <DialogClose asChild>
               <Button variant="outline">取消</Button>
-            </Dialog.Close>
+            </DialogClose>
             <Button disabled={!canSave} onClick={handleSave}>
               {updateMutation.isPending && (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               )}
               保存
             </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

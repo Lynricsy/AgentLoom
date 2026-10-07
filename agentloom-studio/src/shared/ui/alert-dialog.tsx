@@ -1,51 +1,81 @@
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from 'react'
+import {
+  createContext,
+  forwardRef,
+  useContext,
+  type ComponentPropsWithoutRef,
+  type ElementRef,
+  type PropsWithChildren,
+} from 'react'
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
+import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '@/shared/lib/utils'
+import { fadeIn, scaleIn } from '@/shared/lib/motion'
+import { buttonVariants } from './button'
+import { OVERLAY_CLASS } from './overlay'
+import {
+  useControllableOpen,
+  type ControllableOpenProps,
+} from './use-controllable-open'
 
-export const AlertDialog = AlertDialogPrimitive.Root
-export const AlertDialogTrigger = AlertDialogPrimitive.Trigger
+/**
+ * AlertDialog 与 Dialog 同构：都用 `useControllableOpen` 在 React 树里镜像
+ * open 值，再配合 `AnimatePresence` + `forceMount` 驱动进退场。
+ * 原实现依赖 `animate-in/fade-in-0/zoom-in-95` 等 tailwindcss-animate 类，
+ * 而该插件并未安装，因此过去实际上没有任何动画。
+ */
+const AlertDialogOpenContext = createContext(false)
 
-const AlertDialogOverlay = forwardRef<
-  ElementRef<typeof AlertDialogPrimitive.Overlay>,
-  ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
->(function AlertDialogOverlay({ className, ...props }, ref) {
+export type AlertDialogProps = PropsWithChildren<ControllableOpenProps>
+
+export function AlertDialog({ children, ...openProps }: AlertDialogProps) {
+  const [open, setOpen] = useControllableOpen(openProps)
+
   return (
-    <AlertDialogPrimitive.Overlay
-      ref={ref}
-      className={cn(
-        'fixed inset-0 z-50 bg-black/60 backdrop-blur-sm',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        className,
-      )}
-      {...props}
-    />
+    <AlertDialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <AlertDialogOpenContext.Provider value={open}>
+        {children}
+      </AlertDialogOpenContext.Provider>
+    </AlertDialogPrimitive.Root>
   )
-})
+}
+
+export const AlertDialogTrigger = AlertDialogPrimitive.Trigger
 
 export const AlertDialogContent = forwardRef<
   ElementRef<typeof AlertDialogPrimitive.Content>,
   ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(function AlertDialogContent({ className, ...props }, ref) {
+>(function AlertDialogContent({ className, children, ...props }, ref) {
+  const open = useContext(AlertDialogOpenContext)
+
   return (
-    <AlertDialogPrimitive.Portal>
-      <AlertDialogOverlay />
-      <AlertDialogPrimitive.Content
-        ref={ref}
-        className={cn(
-          'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
-          'rounded-xl border border-border/60 bg-background p-6 shadow-xl',
-          'data-[state=open]:animate-in data-[state=closed]:animate-out',
-          'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-          'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-          'data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%]',
-          'data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]',
-          'focus:outline-none',
-          className,
-        )}
-        {...props}
-      />
-    </AlertDialogPrimitive.Portal>
+    <AnimatePresence>
+      {open ? (
+        <AlertDialogPrimitive.Portal forceMount>
+          <AlertDialogPrimitive.Overlay asChild forceMount>
+            <motion.div {...fadeIn} className={OVERLAY_CLASS} />
+          </AlertDialogPrimitive.Overlay>
+
+          <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center p-4">
+            <AlertDialogPrimitive.Content
+              asChild
+              forceMount
+              ref={ref}
+              {...props}
+            >
+              <motion.div
+                {...scaleIn}
+                className={cn(
+                  'pointer-events-auto relative w-full max-w-md rounded-xl border border-border bg-surface p-6 text-foreground shadow-xl focus:outline-none',
+                  className,
+                )}
+              >
+                {children}
+              </motion.div>
+            </AlertDialogPrimitive.Content>
+          </div>
+        </AlertDialogPrimitive.Portal>
+      ) : null}
+    </AnimatePresence>
   )
 })
 
@@ -82,10 +112,7 @@ export const AlertDialogAction = forwardRef<
   return (
     <AlertDialogPrimitive.Action
       ref={ref}
-      className={cn(
-        'inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
+      className={cn(buttonVariants({ variant: 'default' }), className)}
       {...props}
     />
   )
@@ -98,10 +125,7 @@ export const AlertDialogCancel = forwardRef<
   return (
     <AlertDialogPrimitive.Cancel
       ref={ref}
-      className={cn(
-        'inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50',
-        className,
-      )}
+      className={cn(buttonVariants({ variant: 'outline' }), className)}
       {...props}
     />
   )

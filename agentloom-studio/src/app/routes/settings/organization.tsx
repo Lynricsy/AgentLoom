@@ -2,10 +2,10 @@ import { createRoute } from '@tanstack/react-router'
 
 import { OrganizationSettingsPage } from '@/features/organization'
 
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const organizationSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/organization',
   component: OrganizationSettingsPage,
 })

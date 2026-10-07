@@ -1,9 +1,9 @@
 import { createRoute } from '@tanstack/react-router'
 import { PrivateDeploymentPage } from '@/features/private-deployment'
-import { rootRoute } from '../__root'
+import { settingsLayoutRoute } from './layout'
 
 export const privateDeploymentRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => settingsLayoutRoute,
   path: '/settings/private-deployment',
   component: PrivateDeploymentPage,
 })

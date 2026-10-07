@@ -76,7 +76,7 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
         ) : null}
         <span
           className={cn(
-            'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+            'inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium',
             STRATEGY_CATEGORY_BG[category],
             STRATEGY_CATEGORY_COLORS[category],
           )}
@@ -85,7 +85,7 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
         </span>
       </div>
       <div className="flex items-center justify-between">
-        <p className="text-[11px] text-muted-foreground">{modelCount} 个模型</p>
+        <p className="text-2xs text-muted-foreground">{modelCount} 个模型</p>
         {healthData && healthData.length > 0 ? (
           <div className="flex items-center gap-1" data-testid="provider-health-summary">
             {(Object.entries(healthSummary) as [ProviderHealthState, number][]).map(
@@ -93,7 +93,7 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
                 count > 0 ? (
                   <span
                     key={status}
-                    className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground"
+                    className="inline-flex items-center gap-0.5 text-2xs text-muted-foreground"
                     data-testid={`provider-health-badge-${status}`}
                   >
                     <span className={cn('h-1.5 w-1.5 rounded-full', HEALTH_DOT_COLORS[status])} />

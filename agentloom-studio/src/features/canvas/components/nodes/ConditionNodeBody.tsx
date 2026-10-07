@@ -34,8 +34,8 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
       <span
         className={cn(
           'inline-flex shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider',
-          branch.label === 'IF' && 'bg-blue-500/15 text-blue-400',
-          branch.label === 'ELSE IF' && 'bg-amber-500/15 text-amber-400',
+          branch.label === 'IF' && 'bg-info/15 text-info',
+          branch.label === 'ELSE IF' && 'bg-warning/15 text-warning',
         )}
       >
         {branch.label}
@@ -45,14 +45,14 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
       {hasSummary ? (
         <span
           className={cn(
-            'min-w-0 flex-1 truncate text-[10px]',
-            isExpression ? 'font-mono text-amber-300/80' : 'text-muted-foreground',
+            'min-w-0 flex-1 truncate text-2xs',
+            isExpression ? 'font-mono text-warning' : 'text-muted-foreground',
           )}
         >
           {truncate(summary, MAX_SUMMARY_LEN)}
         </span>
       ) : (
-        <span className="flex-1 text-[10px] text-muted-foreground/40">
+        <span className="flex-1 text-2xs text-muted-foreground/40">
           {branch.mode === 'expression' ? '未配置表达式' : '未配置条件'}
         </span>
       )}
@@ -72,16 +72,16 @@ export const ConditionNodeBody = memo(function ConditionNodeBody({
       {/* 标题 */}
       <div className="flex items-center gap-1.5">
         <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-[10px] font-medium text-foreground">
+        <span className="text-2xs font-medium text-foreground">
           条件分支
         </span>
-        <span className="text-[10px] text-muted-foreground/60">
+        <span className="text-2xs text-muted-foreground/60">
           {parsed.branches.length + 1} 路
         </span>
       </div>
 
       {/* 分支列表 */}
-      <div className="rounded border border-border/40 bg-muted/10">
+      <div className="rounded border border-border/40 bg-muted">
         {parsed.branches.map((branch) => (
           <BranchRow
             key={branch.id}
@@ -92,10 +92,10 @@ export const ConditionNodeBody = memo(function ConditionNodeBody({
 
         {/* ELSE 分支（始终存在） */}
         <div className="flex min-h-[20px] items-center gap-1.5 px-1.5 py-0.5">
-          <span className="inline-flex shrink-0 rounded bg-muted/30 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-muted-foreground/70">
+          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-muted-foreground/70">
             ELSE
           </span>
-          <span className="flex-1 text-[10px] text-muted-foreground/40">
+          <span className="flex-1 text-2xs text-muted-foreground/40">
             默认分支
           </span>
         </div>

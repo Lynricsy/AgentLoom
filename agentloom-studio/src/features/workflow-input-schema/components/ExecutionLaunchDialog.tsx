@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { Loader2, MessageSquare, Play, X } from 'lucide-react'
+import { Loader2, MessageSquare, Play } from 'lucide-react'
 import type {
   ConversationPlan,
   WorkflowInputFieldDefinition,
@@ -9,6 +8,15 @@ import type {
 } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
 import { useToast } from '@/shared/ui/toast'
 import {
@@ -238,41 +246,26 @@ export function ExecutionLaunchDialog({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(720px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface p-6 shadow-xl">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <Dialog.Title className="text-lg font-semibold text-foreground">
-                启动工作流
-              </Dialog.Title>
-              <Dialog.Description className="text-sm text-muted-foreground">
-                为「{workflowName}」填写运行参数后启动执行。
-                {preferDraftSchema ? ' 本次运行将使用当前编辑稿。' : ''}
-              </Dialog.Description>
-            </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>启动工作流</DialogTitle>
+          <DialogDescription>
+            为「{workflowName}」填写运行参数后启动执行。
+            {preferDraftSchema ? ' 本次运行将使用当前编辑稿。' : ''}
+          </DialogDescription>
+        </DialogHeader>
 
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                aria-label="关闭"
-                className="rounded-md border border-border bg-background p-2 text-muted-foreground transition hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
-
+        <DialogBody>
           {isLoading ? (
-            <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               正在加载输入 Schema...
             </div>
           ) : null}
 
           {!isLoading && error ? (
-            <div className="mt-6 space-y-3 rounded-xl border border-error/60 bg-error/10 p-4 text-sm text-error">
+            <div className="space-y-3 rounded-xl border border-error/60 bg-error/10 p-4 text-sm text-error">
               <p>读取输入 Schema 失败：{error.message}</p>
               <Button variant="outline" size="sm" onClick={() => void refetch()}>
                 重试
@@ -281,7 +274,7 @@ export function ExecutionLaunchDialog({
           ) : null}
 
           {!isLoading && !error ? (
-            <div className="mt-6 space-y-4">
+            <div className="space-y-4">
               {schema.collectionMode === 'form' ? (
                 <FormStage
                   schema={schema}
@@ -373,7 +366,12 @@ export function ExecutionLaunchDialog({
                 />
               ) : null}
 
-              <div className="flex flex-wrap justify-end gap-3">
+            </div>
+          ) : null}
+        </DialogBody>
+
+        {!isLoading && !error ? (
+              <DialogFooter>
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
                   取消
                 </Button>
@@ -429,12 +427,10 @@ export function ExecutionLaunchDialog({
                     )}
                   </Button>
                 ) : null}
-              </div>
-            </div>
-          ) : null}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+              </DialogFooter>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   )
 }
 

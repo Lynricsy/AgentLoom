@@ -9,7 +9,7 @@ export const WebhookTriggerNodeBody = memo(function WebhookTriggerNodeBody() {
   return (
     <div className="flex items-center gap-1.5" data-testid="webhook-trigger-node-body">
       <Webhook className="h-3.5 w-3.5 shrink-0 text-warning" />
-      <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+      <span className="rounded bg-success/15 px-1.5 py-0.5 text-2xs font-bold text-success">
         POST
       </span>
     </div>

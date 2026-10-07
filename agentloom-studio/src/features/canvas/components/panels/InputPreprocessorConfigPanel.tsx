@@ -7,6 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 
 type InputPreprocessorTransformType = 'jmespath' | 'jsonata' | 'template' | 'script'
 
@@ -118,7 +120,7 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
         >
           转换表达式
         </label>
-        <textarea
+        <Textarea
           id="preprocessor-expression"
           value={parsed.expression}
           onChange={handleExpression}
@@ -134,7 +136,7 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
                   ? '例：Hello, {{json-in.name}}!'
                   : "例：input['text-in'].trim().toUpperCase()"
           }
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
+          className="font-mono"
         />
       </div>
 
@@ -145,20 +147,19 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
         >
           输出格式（可选）
         </label>
-        <input
+        <Input
           id="preprocessor-output-format"
           type="text"
           value={parsed.outputFormat}
           onChange={handleOutputFormat}
           placeholder="例：json / text / csv"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           描述转换结果的格式，供下游节点参考
         </p>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <span>{selectedOption?.label ?? parsed.transformType}</span>
@@ -170,7 +171,7 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
           )}
         </div>
         {parsed.expression && (
-          <p className="break-all font-mono text-muted">
+          <p className="break-all font-mono text-muted-foreground">
             {parsed.expression.length > 80
               ? `${parsed.expression.slice(0, 80)}…`
               : parsed.expression}

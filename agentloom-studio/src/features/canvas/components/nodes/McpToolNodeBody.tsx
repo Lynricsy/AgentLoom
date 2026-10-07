@@ -29,11 +29,11 @@ export const McpToolNodeBody = memo(function McpToolNodeBody({ data }: McpToolNo
   return (
     <div className="flex items-center gap-2">
       <Plug className="h-3.5 w-3.5 shrink-0 text-info" />
-      <span className="rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-medium text-info">
+      <span className="rounded-full bg-info/10 px-2 py-0.5 text-2xs font-medium text-info">
         MCP
       </span>
       <span className="min-w-0 truncate text-xs font-medium">{serverName || serverConfigId}</span>
-      <span className="ml-auto shrink-0 text-[10px] text-muted">
+      <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
         {enabledToolCount} 个工具
       </span>
     </div>

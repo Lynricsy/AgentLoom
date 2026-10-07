@@ -1,7 +1,12 @@
 import { memo, useCallback, type WheelEvent } from 'react';
 import { cn } from '@/shared/lib/utils';
 import type { CanvasNode, CanvasNodeData } from '@/features/canvas';
-import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas';
+import {
+  CANVAS_FLOATING_CLASS,
+  CANVAS_PANEL_HEADER_CLASS,
+  CUSTOM_PANEL_REGISTRY,
+} from '@/features/canvas';
+import { Button } from '@/shared/ui/button';
 import { AgentMainConfigPanel } from './AgentMainConfigPanel';
 import {
   useAgentCanvasSelectedNodeId,
@@ -47,24 +52,28 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   return (
     <div
       className={cn(
-        'absolute top-3 right-3 z-10 flex max-h-[calc(100vh-6rem)] w-80 flex-col overflow-hidden rounded-card border border-border bg-surface/95 shadow-panel backdrop-blur-sm',
+        CANVAS_FLOATING_CLASS,
+        'absolute top-3 right-3 z-30 flex max-h-[calc(100vh-6rem)] w-[var(--spacing-property-panel)] flex-col overflow-hidden',
         className,
       )}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-foreground">
+      <div className={cn(CANVAS_PANEL_HEADER_CLASS, 'shrink-0 justify-between')}>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-sm font-medium text-foreground">
             {nodeData.label}
           </span>
-          <span className="text-xs text-muted">{nodeData.nodeType}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {nodeData.nodeType}
+          </span>
         </div>
-        <button
-          type="button"
-          className="cursor-pointer text-xs text-error transition-colors hover:text-error/80"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="shrink-0 text-error hover:bg-error/10 hover:text-error"
           onClick={deleteSelectedNode}
         >
           删除
-        </button>
+        </Button>
       </div>
 
       <div
@@ -119,7 +128,7 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
       );
     default:
       return (
-        <div className="text-xs text-muted">
+        <div className="text-xs text-muted-foreground">
           暂不支持配置节点类型 <strong>{nodeData.nodeType}</strong>
         </div>
       );

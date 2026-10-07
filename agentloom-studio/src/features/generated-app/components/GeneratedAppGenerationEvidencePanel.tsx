@@ -10,7 +10,6 @@ import {
 import { Pagination } from '@/shared/components/Pagination'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Spinner } from '@/shared/components/spinner/Spinner'
-import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
   Select,
@@ -20,6 +19,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -39,9 +39,9 @@ import {
   GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS,
   GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusBadgeVariant,
-  getGeneratedAppGenerationRunStatusBadgeVariant,
-  getGeneratedAppRepairAttemptStatusBadgeVariant,
+  getGeneratedAppGateStatusTone,
+  getGeneratedAppGenerationRunStatusTone,
+  getGeneratedAppRepairAttemptStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppGateEvidence,
@@ -100,7 +100,7 @@ function InlineErrorState({
   onRetry: () => void
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-card border border-error/30 bg-error/5 p-4">
+    <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">
       <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
       <div className="min-w-0 space-y-3">
         <div>
@@ -127,7 +127,7 @@ function LoadingState({ label, rows = 3 }: { label: string; rows?: number }) {
         {label}
       </p>
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} className="h-12 rounded-card" />
+        <Skeleton key={index} className="h-12 rounded-lg" />
       ))}
     </div>
   )
@@ -139,9 +139,9 @@ function GenerationRunStatusBadge({
   status: GeneratedAppGenerationRunStatus
 }) {
   return (
-    <Badge variant={getGeneratedAppGenerationRunStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppGenerationRunStatusTone(status)}>
       {GENERATED_APP_GENERATION_RUN_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -151,17 +151,17 @@ function RepairAttemptStatusBadge({
   status: GeneratedAppRepairAttemptStatus
 }) {
   return (
-    <Badge variant={getGeneratedAppRepairAttemptStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppRepairAttemptStatusTone(status)}>
       {GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
 function GateRunStatusBadge({ status }: { status: GeneratedAppGateRunStatus }) {
   return (
-    <Badge variant={getGeneratedAppGateStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppGateStatusTone(status)}>
       {GENERATED_APP_GATE_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -202,7 +202,7 @@ function AutomaticRepairAttemptNotice({
   }
 
   return (
-    <div className="rounded-card border border-warning/30 bg-warning/5 p-3 text-xs">
+    <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs">
       <p className="font-medium text-warning">已定位失败 Gate，尚未应用补丁</p>
       <p className="mt-1 break-words text-muted-foreground">
         自动修复循环已把 {attempt.targetGateId}{' '}
@@ -223,7 +223,7 @@ function RepairPlanSummary({
   }
 
   return (
-    <div className="space-y-1 rounded-card border border-border bg-muted/30 p-3 text-xs">
+    <div className="space-y-1 rounded-lg border border-border bg-muted p-3 text-xs">
       {attempt.repairPlan ? (
         <p className="break-words text-muted-foreground">
           修复工作单：{attempt.repairPlan.patchTargets.join('、') || '暂无目标'}
@@ -263,7 +263,7 @@ function EvidenceSummaryList({
         {visibleEvidence.map((item, index) => (
           <li key={`${item.id}-${index}`} className="min-w-0 space-y-0.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <code className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              <code className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                 {item.kind}
               </code>
               <span className="break-words text-xs font-medium text-foreground">

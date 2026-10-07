@@ -13,6 +13,7 @@ import { formatRelativeTime } from "@/features/canvas";
 import { DataTable, type DataTableColumn } from "@/shared/components/data-table/DataTable";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -142,7 +143,7 @@ export function WorkspaceManagementPage() {
           <div className="flex min-w-0 items-center gap-3">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor:
                   "color-mix(in srgb, var(--color-type-volume) 14%, transparent)",
@@ -155,7 +156,7 @@ export function WorkspaceManagementPage() {
               <p className="truncate text-sm font-medium text-foreground">
                 {workspace.name}
               </p>
-              <p className="truncate text-xs text-muted">
+              <p className="truncate text-xs text-muted-foreground">
                 {workspace.description || "暂无描述"}
               </p>
             </div>
@@ -228,7 +229,7 @@ export function WorkspaceManagementPage() {
               variant="ghost"
               size="icon-sm"
               aria-label={`删除工作区 ${workspace.name}`}
-              className="text-muted hover:text-error"
+              className="text-muted-foreground hover:text-error"
               onClick={() => handleDelete(workspace)}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -241,7 +242,7 @@ export function WorkspaceManagementPage() {
   );
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={FolderOpen}
         tone="var(--color-type-volume)"
@@ -257,7 +258,7 @@ export function WorkspaceManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -283,7 +284,7 @@ export function WorkspaceManagementPage() {
         </Select>
       </div>
 
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         默认隐藏工作流执行自动归档出来的快照，仅展示可复用的手动工作区与沙箱快照。
       </p>
 
@@ -371,6 +372,6 @@ export function WorkspaceManagementPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

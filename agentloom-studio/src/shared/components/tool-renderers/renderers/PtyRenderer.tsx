@@ -173,7 +173,7 @@ function KeyValue({ label, value }: { label: string; value: string | number | un
   if (value == null || value === '') return null
   return (
     <div className="flex items-baseline gap-2 py-0.5">
-      <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="shrink-0 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <span className="font-mono text-xs text-foreground/90 break-all">
@@ -191,7 +191,7 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="space-y-0.5 rounded-lg bg-background p-3">
+    <div className="space-y-0.5 rounded-lg bg-muted p-3">
       <KeyValue label="ID" value={result.id} />
       <KeyValue label="命令" value={[args.command, ...(args.args ?? [])].join(' ')} />
       <KeyValue label="CWD" value={result.cwd ?? args.cwd} />
@@ -214,7 +214,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
 
   if (!output) {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-background p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center rounded-lg bg-muted p-6 text-xs text-muted-foreground">
         无输出
       </div>
     )
@@ -224,7 +224,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
     <div className="space-y-2">
       <ConsoleBlock output={output} />
       {result.totalLines != null && (
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-3 text-2xs text-muted-foreground">
           <span>Total: {result.totalLines} lines</span>
           {result.hasMore && <span className="text-warning">还有更多</span>}
         </div>
@@ -240,14 +240,14 @@ const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3">
-      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-lg bg-muted p-3">
+      <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         输入数据
       </div>
       <div className="font-mono text-xs text-foreground/90">
         {visualizeEscapes(args.data)}
       </div>
-      <div className="mt-2 text-[10px] text-muted-foreground">
+      <div className="mt-2 text-2xs text-muted-foreground">
         Session: {args.id}
       </div>
     </div>
@@ -264,17 +264,17 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
 
   if (list.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-background p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center rounded-lg bg-muted p-6 text-xs text-muted-foreground">
         无活跃的 PTY 会话
       </div>
     )
   }
 
   return (
-    <div className="overflow-auto rounded-lg bg-background">
+    <div className="overflow-auto rounded-lg bg-muted">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-border text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-1.5 text-left">状态</th>
             <th className="px-3 py-1.5 text-left">ID</th>
             <th className="px-3 py-1.5 text-left">命令</th>
@@ -313,7 +313,7 @@ const PtyKillDetail = memo(function PtyKillDetail({ toolCall, state }: ToolRende
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3">
+    <div className="rounded-lg bg-muted p-3">
       <div className="flex items-center gap-2 text-xs text-foreground/90">
         <span className="text-error">已终止</span>
         <span className="font-mono">{args.id}</span>

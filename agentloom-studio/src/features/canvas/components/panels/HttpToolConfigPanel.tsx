@@ -1,5 +1,6 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { Globe, Plus, Trash2 } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { Separator } from '@/shared/ui/separator'
@@ -133,18 +134,19 @@ const KeyValueList = memo(function KeyValueList({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-foreground">{label}</span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={handleAdd}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="h-auto gap-1 px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
         >
           <Plus className="h-3 w-3" />
           添加
-        </button>
+        </Button>
       </div>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted">暂无条目</p>
+        <p className="text-xs text-muted-foreground">暂无条目</p>
       ) : (
         <div className="space-y-2">
           {items.map((item, index) => (
@@ -161,14 +163,15 @@ const KeyValueList = memo(function KeyValueList({
                 placeholder={valuePlaceholder}
                 className="h-8 min-w-0 flex-1 text-xs"
               />
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => handleRemove(index)}
                 aria-label={`删除${label}第 ${index + 1} 项`}
-                className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                className="text-muted-foreground hover:bg-error/10 hover:text-error"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -352,7 +355,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
           placeholder='{"key": "value"}'
           className="font-mono"
         />
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           JSON 格式的请求体，适用于 POST / PUT / PATCH 请求
         </p>
       </div>
@@ -512,7 +515,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
           onChange={handleTimeout}
           className="w-24"
         />
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           请求超时时间，默认 30 秒，最长 300 秒
         </p>
       </div>
@@ -533,7 +536,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
             onCheckedChange={handleFailOnHttpError}
           />
         </div>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           默认开启：HTTP 响应状态码非 2xx 时该节点判定为失败。关闭后非 2xx 也视为成功（探测型请求）。
         </p>
       </div>

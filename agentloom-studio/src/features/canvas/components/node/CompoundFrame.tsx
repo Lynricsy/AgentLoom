@@ -56,7 +56,7 @@ export function CompoundFrame({
 
       {lod === "full" ? (
         <div
-          className="pointer-events-none absolute flex flex-col overflow-hidden rounded-card border border-dashed"
+          className="pointer-events-none absolute flex flex-col overflow-hidden rounded-lg border border-dashed"
           style={{
             top: frameInsets.top,
             right: frameInsets.right,
@@ -70,7 +70,7 @@ export function CompoundFrame({
         >
           <div className="flex items-center gap-1.5 px-3 py-1">
             <BodyIcon className="h-3 w-3 text-muted-foreground/60" />
-            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/60">
+            <span className="text-2xs font-medium uppercase tracking-widest text-muted-foreground/60">
               {bodyLabel}
             </span>
           </div>

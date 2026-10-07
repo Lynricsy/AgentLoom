@@ -5,6 +5,7 @@ import { Code2, ShieldAlert } from 'lucide-react'
 import { useAuthToken } from '@/features/auth'
 import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import {
@@ -54,10 +55,7 @@ export function DeveloperConsoleLayout({
   const canViewActiveTab = canAccessDeveloperConsoleTab(role, activeTab)
 
   return (
-    <div
-      className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="developer-console"
-    >
+    <PageContainer data-testid="developer-console">
       <PageHeader
         icon={Code2}
         title="开发者控制台"
@@ -101,6 +99,6 @@ export function DeveloperConsoleLayout({
           )}
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   )
 }

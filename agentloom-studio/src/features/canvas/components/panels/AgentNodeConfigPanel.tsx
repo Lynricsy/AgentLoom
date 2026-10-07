@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Brain, Container, Copy, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import {
   Select,
   SelectContent,
@@ -303,13 +305,13 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
         </label>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
             id="agent-search"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索已发布的 Agent..."
-            className="w-full rounded-md border border-border bg-background pl-8 pr-3 py-2 text-sm"
+            className="pl-8 pr-3"
           />
         </div>
         <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border">
@@ -324,20 +326,21 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
             </div>
           ) : (
             filteredAgents.map((agent) => (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 key={agent.id}
                 onClick={() => handleSelectAgent(agent)}
-                className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
+                className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-none px-3 py-2 text-left text-sm ${
                   agentConfig.selectedAgentId === agent.id
-                    ? 'bg-accent/50 font-medium'
-                    : ''
+                    ? 'bg-muted font-medium'
+                    : 'font-normal'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <Brain className="h-3.5 w-3.5 shrink-0 text-type-model" />
                   <span className="truncate">{agent.name}</span>
-                  <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded-full border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">
                     {agent.runtimeMode === 'sandbox' ? '有沙箱' : '无沙箱'}
                   </span>
                 </div>
@@ -346,7 +349,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                     {agent.description}
                   </p>
                 )}
-              </button>
+              </Button>
             ))
           )}
         </div>
@@ -356,7 +359,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       {(legacyInline.systemPrompt || legacyInline.model) && (
         <div
           data-testid="agent-legacy-inline-config"
-          className="space-y-3 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
+          className="space-y-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
         >
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
@@ -376,16 +379,17 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-foreground">系统提示词</span>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={handleCopyLegacyPrompt}
-                  className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] text-warning transition-colors hover:bg-warning/15"
+                  className="h-6 gap-1 px-2 text-2xs text-warning hover:bg-warning/15 hover:text-warning"
                 >
                   <Copy className="h-3 w-3" />
                   复制
-                </button>
+                </Button>
               </div>
-              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-warning/20 bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-foreground">
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-warning/20 bg-background/60 p-2 font-mono text-2xs leading-relaxed text-foreground">
                 {legacyInline.systemPrompt}
               </pre>
             </div>
@@ -394,7 +398,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           {legacyInline.model && (
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-foreground">模型</span>
-              <span className="truncate font-mono text-[11px] text-foreground">
+              <span className="truncate font-mono text-2xs text-foreground">
                 {legacyInline.model}
               </span>
             </div>
@@ -455,7 +459,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       )}
 
       {/* Sandbox 覆盖提示 */}
-      <div className="flex items-start gap-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <Container className="mt-0.5 h-3.5 w-3.5 shrink-0 text-type-tool" />
         <p className="text-muted-foreground">
           连接 Sandbox 节点将覆盖 Agent 内置的沙箱配置。
@@ -464,7 +468,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
 
       {/* 当前配置摘要 */}
       {agentConfig.selectedAgentId && (
-        <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+        <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
           <p className="font-medium text-foreground">当前配置</p>
           <div className="space-y-1 text-muted-foreground">
             <p>Agent: {agentConfig.agentName || '未知'}</p>
@@ -480,15 +484,16 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           <label htmlFor="input-mapping-add" className="block text-xs font-medium text-foreground">
             输入映射
           </label>
-          <button
+          <Button
             id="input-mapping-add"
-            type="button"
+            variant="ghost"
+            size="xs"
             onClick={handleAddMappingRow}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="gap-1 text-muted-foreground hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
             添加
-          </button>
+          </Button>
         </div>
         {inputMappingEntries.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
@@ -498,28 +503,29 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           <div className="space-y-2">
             {inputMappingEntries.map(({ key, value }) => (
               <div key={key} className="flex items-center gap-2">
-                <input
+                <Input
                   type="text"
                   value={key}
                   onChange={(e) => handleUpdateMappingKey(key, e.target.value)}
                   placeholder="字段名"
-                  className="w-2/5 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                  className="h-8 w-2/5 px-2 text-xs"
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">→</span>
-                <input
+                <Input
                   type="text"
                   value={value}
                   onChange={(e) => handleUpdateMappingValue(key, e.target.value)}
                   placeholder="来源表达式"
-                  className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                  className="h-8 min-w-0 flex-1 px-2 text-xs"
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => handleRemoveMappingRow(key)}
-                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  className="shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>

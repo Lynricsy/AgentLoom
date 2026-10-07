@@ -1,5 +1,6 @@
 import type { WorkflowInputSchema } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -80,7 +81,7 @@ function RendererField({
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
         <span className="block text-xs font-medium text-foreground">{field.label}</span>
-        {field.required ? <span className="text-[11px] text-warning">必填</span> : null}
+        {field.required ? <span className="text-2xs text-warning">必填</span> : null}
       </div>
 
       {field.type === 'text' ? (
@@ -135,7 +136,7 @@ function RendererField({
       ) : null}
 
       {field.type === 'multi_select' ? (
-        <div className="space-y-2 rounded-md border border-input bg-background px-3 py-2">
+        <div className="space-y-2 rounded-md border border-border bg-background px-3 py-2">
           {(field.options ?? []).map((option) => {
             const currentValues = Array.isArray(value)
               ? value.map(String).filter((currentValue) => (field.options ?? []).includes(currentValue))
@@ -144,11 +145,10 @@ function RendererField({
 
             return (
               <label key={option} className="flex items-center gap-2 text-sm text-foreground">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={checked}
-                  onChange={(event) => {
-                    const nextValues = event.target.checked
+                  onCheckedChange={(nextChecked) => {
+                    const nextValues = nextChecked === true
                       ? [...currentValues, option]
                       : currentValues.filter((currentValue) => currentValue !== option)
                     onChange?.(field.id, nextValues)

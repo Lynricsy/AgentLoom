@@ -118,25 +118,24 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
                   const active = runtimeMode === option.value
 
                   return (
-                    <button
+                    <Button
                       key={option.value}
-                      type="button"
+                      variant="outline"
                       aria-pressed={active}
                       onClick={() => setRuntimeMode(option.value)}
                       className={cn(
-                        'rounded-card border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                        active
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-border-hover hover:bg-surface-elevated',
+                        'h-auto flex-col items-start gap-1 whitespace-normal rounded-lg px-3 py-3 text-left',
+                        active &&
+                          'border-primary bg-primary/10 hover:border-primary hover:bg-primary/10',
                       )}
                     >
-                      <div className="text-sm font-medium text-foreground">
+                      <span className="text-sm font-medium text-foreground">
                         {option.title}
-                      </div>
-                      <p className="mt-1 text-xs leading-5 text-muted">
+                      </span>
+                      <span className="text-xs leading-5 text-muted-foreground">
                         {option.description}
-                      </p>
-                    </button>
+                      </span>
+                    </Button>
                   )
                 })}
               </div>

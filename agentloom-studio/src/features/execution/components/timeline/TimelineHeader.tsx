@@ -1,13 +1,13 @@
 import { memo } from 'react'
 
-import { cn } from '@/shared/lib/utils'
+import { StatusDot } from '@/shared/ui/status-badge'
 
 import type { ExecutionStepStatus } from '../../types'
 import {
   formatExecutionDuration,
   stepStatusMeta,
 } from '../../lib/presentation'
-import { StatusDot, StepStatusBadge } from '../StatusBadge'
+import { StepStatusBadge } from '../StatusBadge'
 
 interface TimelineHeaderProps {
   nodeName: string
@@ -33,17 +33,18 @@ export const TimelineHeader = memo(function TimelineHeader({
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <StatusDot
-          className={cn('h-2.5 w-2.5', meta.dotClassName)}
+          tone={meta.tone}
+          className="size-2.5"
           pulse={status === 'running'}
         />
         <p className="truncate text-sm font-semibold text-foreground">{nodeName}</p>
-        <span className="truncate text-[11px] uppercase tracking-[0.18em] text-muted">
+        <span className="truncate text-2xs uppercase tracking-[0.18em] text-muted-foreground">
           {nodeType}
         </span>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <span className="text-xs text-muted">
+        <span className="text-xs text-muted-foreground">
           {formatExecutionDuration(startedAt, completedAt)}
         </span>
         <StepStatusBadge status={status} />

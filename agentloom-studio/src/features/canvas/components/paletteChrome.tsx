@@ -43,6 +43,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import { TooltipHint } from '@/shared/ui/tooltip'
 
 /** 注册表 `icon` 字段（字符串）到 lucide 组件的映射 */
@@ -99,10 +100,14 @@ const CHIP_SIZE_CLASS: Record<NonNullable<PaletteIconChipProps['size']>, string>
   lg: 'h-8 w-8 rounded-lg',
 }
 
+/**
+ * 芯片图标尺寸用 `!` 锁定：芯片会被塞进 `<Button>`（其 base 有 `[&_svg]:size-*`
+ * 的后代规则，特异性高于普通尺寸类），不加 important 会被容器改尺。
+ */
 const CHIP_ICON_CLASS: Record<NonNullable<PaletteIconChipProps['size']>, string> = {
-  sm: 'h-3 w-3',
-  md: 'h-3.5 w-3.5',
-  lg: 'h-4 w-4',
+  sm: 'size-3!',
+  md: 'size-3.5!',
+  lg: 'size-4!',
 }
 
 /** 类别色图标芯片 — 与画布节点头部芯片同源视觉 */
@@ -151,11 +156,11 @@ export const PaletteSectionHeader = memo(function PaletteSectionHeader({
   onToggle,
 }: PaletteSectionHeaderProps) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onToggle}
       aria-expanded={!isCollapsed}
-      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-elevated"
+      className="h-auto w-full justify-start gap-2 rounded-lg px-2 py-1.5 [&_svg]:size-3.5"
     >
       <PaletteIconChip icon={icon} color={color} size="sm" />
       <span className="flex-1 text-left text-xs font-semibold tracking-wide">
@@ -164,11 +169,11 @@ export const PaletteSectionHeader = memo(function PaletteSectionHeader({
       <ChevronDown
         aria-hidden
         className={cn(
-          'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
+          'shrink-0 text-muted-foreground transition-transform duration-150',
           isCollapsed && '-rotate-90',
         )}
       />
-    </button>
+    </Button>
   )
 })
 
@@ -195,16 +200,16 @@ export const PaletteItemButton = memo(function PaletteItemButton({
   onDragStart,
 }: PaletteItemButtonProps) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       draggable={!disabled}
       onDragStart={onDragStart}
       title={description}
       className={cn(
-        'flex w-full items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors',
+        'h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-lg border border-transparent px-2 py-1.5 text-left font-normal active:scale-100',
         disabled
-          ? 'cursor-default opacity-55'
-          : 'cursor-grab hover:border-border hover:bg-surface-elevated active:cursor-grabbing',
+          ? 'cursor-default opacity-55 hover:bg-transparent'
+          : 'cursor-grab hover:border-border hover:bg-muted active:cursor-grabbing',
       )}
     >
       <PaletteIconChip icon={icon} color={color} />
@@ -221,12 +226,12 @@ export const PaletteItemButton = memo(function PaletteItemButton({
           {badge}
         </span>
         {description ? (
-          <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+          <span className="mt-0.5 block text-2xs leading-4 text-muted-foreground">
             {description}
           </span>
         ) : null}
       </span>
-    </button>
+    </Button>
   )
 })
 
@@ -260,20 +265,20 @@ export const PaletteRailItem = memo(function PaletteRailItem({
         </span>
       }
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         draggable={!disabled}
         onDragStart={onDragStart}
         aria-label={label}
         className={cn(
-          'flex items-center justify-center rounded-lg border border-transparent p-1 transition-colors',
+          'h-auto w-auto rounded-lg border border-transparent p-1 active:scale-100',
           disabled
-            ? 'cursor-default opacity-55'
-            : 'cursor-grab hover:border-border hover:bg-surface-elevated active:cursor-grabbing',
+            ? 'cursor-default opacity-55 hover:bg-transparent'
+            : 'cursor-grab hover:border-border hover:bg-muted active:cursor-grabbing',
         )}
       >
         <PaletteIconChip icon={icon} color={color} size="lg" />
-      </button>
+      </Button>
     </TooltipHint>
   )
 })
@@ -294,7 +299,7 @@ export function applyPaletteDragPreview(
 
   const card = document.createElement('div')
   card.className =
-    'pointer-events-none flex w-[188px] items-center gap-2 rounded-card border bg-surface px-3 py-2 shadow-node'
+    'pointer-events-none flex w-[188px] items-center gap-2 rounded-lg border bg-surface px-3 py-2 shadow-sm'
   card.style.position = 'fixed'
   card.style.top = '-1000px'
   card.style.left = '-1000px'

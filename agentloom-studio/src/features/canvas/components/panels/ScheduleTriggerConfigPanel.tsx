@@ -7,6 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 
 interface ScheduleTriggerConfigPanelProps {
   config: Record<string, unknown>
@@ -92,13 +94,13 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
         >
           Cron 表达式 <span className="text-error">*</span>
         </label>
-        <input
+        <Input
           id="schedule-cron"
           type="text"
           value={parsed.cron}
           onChange={handleCronChange}
           placeholder="例：0 * * * *"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
+          className="font-mono"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           标准 5 段 Cron 格式：分 时 日 月 周
@@ -112,18 +114,19 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
         </label>
         <div className="flex flex-wrap gap-2">
           {CRON_PRESETS.map((preset) => (
-            <button
+            <Button
               key={preset.value}
-              type="button"
+              variant="outline"
+              size="xs"
               onClick={() => handlePresetClick(preset.value)}
-              className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+              className={`px-2.5 font-normal ${
                 parsed.cron === preset.value
-                  ? 'border-warning/50 bg-warning/10 text-warning'
-                  : 'border-border bg-background text-muted-foreground hover:border-border/80 hover:bg-muted'
+                  ? 'border-warning/50 bg-warning/10 text-warning hover:border-warning/50 hover:bg-warning/10'
+                  : 'text-muted-foreground'
               }`}
             >
               {preset.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -154,7 +157,7 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
       </div>
 
       {/* 当前配置预览 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           {parsed.cron ? (

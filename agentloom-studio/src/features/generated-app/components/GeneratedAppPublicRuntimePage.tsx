@@ -10,10 +10,12 @@ import {
 } from 'lucide-react'
 
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -22,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Slider } from '@/shared/ui/slider'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { Textarea } from '@/shared/ui/textarea'
 import {
   useCreateGeneratedAppPublicSubmission,
@@ -31,7 +35,7 @@ import {
 import {
   GENERATED_APP_SUBMISSION_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusBadgeVariant,
+  getGeneratedAppSubmissionStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicRuntime,
@@ -92,14 +96,14 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
       className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
       data-testid="generated-app-public-runtime-error"
     >
-      <section className="w-full max-w-xl rounded-panel border border-error/30 bg-error/5 p-6">
+      <section className="w-full max-w-xl rounded-xl border border-error/30 bg-error/5 p-6">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-error" />
           <div className="min-w-0 space-y-4">
             <div className="space-y-2">
-              <h1 className="break-words text-lg font-semibold text-foreground">
+              <h2 className="break-words text-lg font-semibold text-foreground">
                 公开应用不可访问或已关闭
-              </h1>
+              </h2>
               <p className="break-words text-sm text-muted-foreground">
                 这个链接不存在、已被创建者关闭，或应用当前不满足公开访问条件。
               </p>
@@ -120,9 +124,9 @@ function SubmissionStatusBadge({
   status: GeneratedAppPublicSubmission['status']
 }) {
   return (
-    <Badge variant={getGeneratedAppSubmissionStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppSubmissionStatusTone(status)}>
       {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -337,7 +341,7 @@ function WorkflowExecutionStatusPanel({
   return (
     <section
       className={cn(
-        'space-y-3 rounded-card border p-4',
+        'space-y-3 rounded-lg border p-4',
         completed
           ? 'border-success/30 bg-success/5'
           : incomplete
@@ -473,15 +477,13 @@ function RuntimeFormField({
 
       {field.type === 'range' ? (
         <div className="space-y-2">
-          <input
+          <Slider
             id={inputId}
-            type="range"
-            value={stringValue}
+            value={[Number(stringValue)]}
             onChange={(event) => onChange(field.id, event.target.value)}
             min={field.min ?? 1}
             max={field.max ?? 10}
             step={field.step ?? 1}
-            className="w-full accent-primary"
             disabled={disabled}
           />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -523,23 +525,28 @@ function RuntimeFormField({
             const checked = selectedValues.includes(option.value)
 
             return (
-              <label
+              <div
                 key={option.value}
-                className="flex min-w-0 items-center gap-2 border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
+                  id={`${inputId}-${option.value}`}
                   checked={checked}
-                  onChange={(event) => {
-                    const nextValues = event.target.checked
-                      ? [...selectedValues, option.value]
-                      : selectedValues.filter((item) => item !== option.value)
+                  onCheckedChange={(next) => {
+                    const nextValues =
+                      next === true
+                        ? [...selectedValues, option.value]
+                        : selectedValues.filter((item) => item !== option.value)
                     onChange(field.id, nextValues)
                   }}
-                  className="h-4 w-4 shrink-0 accent-primary"
                 />
-                <span className="break-words">{option.label}</span>
-              </label>
+                <label
+                  htmlFor={`${inputId}-${option.value}`}
+                  className="min-w-0 break-words"
+                >
+                  {option.label}
+                </label>
+              </div>
             )
           })}
         </fieldset>
@@ -586,7 +593,7 @@ function PublicSubmissionResult({
 
   return (
     <article
-      className="space-y-5 border border-border bg-surface-elevated p-4"
+      className="space-y-5 border border-border bg-muted p-4"
       data-testid="generated-app-public-submission-result"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -620,7 +627,7 @@ function PublicSubmissionResult({
       ) : null}
 
       {submission.errorMessage ? (
-        <div className="rounded-card border border-error/30 bg-error/5 p-3 text-sm text-error">
+        <div className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">
           {submission.errorMessage}
         </div>
       ) : null}
@@ -800,22 +807,15 @@ function PublicRuntimeSuccess({
       data-testid="generated-app-public-runtime-page"
     >
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-8 sm:px-6 lg:px-8">
-        <header className="space-y-5 pb-6">
+        <div className="space-y-5 pb-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <AppWindow className="h-4 w-4" />
             <span className="truncate">公开应用</span>
           </div>
-          <div className="space-y-3">
-            <h1 className="break-words text-3xl font-semibold text-foreground sm:text-4xl">
-              {app.title}
-            </h1>
-            <p className="max-w-3xl break-words text-base leading-7 text-muted-foreground">
-              {app.description}
-            </p>
-          </div>
-        </header>
+          <PageHeader title={app.title} description={app.description} />
+        </div>
 
-        <section className="border-y border-border bg-surface-elevated px-4 py-4 sm:px-5">
+        <section className="border-y border-border bg-muted px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <p className="break-words text-sm leading-6 text-muted-foreground">

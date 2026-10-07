@@ -21,7 +21,7 @@ export function TriggerList({
   if (triggers.length === 0) {
     return (
       <div
-        className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-background/40 px-6 text-center"
+        className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/40 px-6 text-center"
         data-testid={`trigger-empty-${workflowId}`}
       >
         <h3 className="text-base font-medium text-foreground">未配置触发器</h3>

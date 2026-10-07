@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReviewActions } from '../ReviewActions';
 import type { AuditLogEntry } from '../types';
@@ -132,7 +132,7 @@ describe('ReviewActions', () => {
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
   });
 
-  it('确认对话框取消关闭', () => {
+  it('确认对话框取消关闭', async () => {
     setupMocks();
     const entry = makeEntry();
     render(
@@ -142,7 +142,10 @@ describe('ReviewActions', () => {
     fireEvent.click(screen.getByTestId('approve-btn'));
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByText('取消'));
-    expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument();
+    // AlertDialog 有退场动画，卸载发生在动画结束后
+    await waitFor(() =>
+      expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument(),
+    );
   });
 
   it('确认批准调用 review mutation', () => {

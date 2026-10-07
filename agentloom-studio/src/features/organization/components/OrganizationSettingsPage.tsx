@@ -40,7 +40,7 @@ interface InfoFieldProps {
 function InfoField({ label, children }: InfoFieldProps) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs text-muted">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-1 truncate text-sm text-foreground">{children}</dd>
     </div>
   )
@@ -129,7 +129,7 @@ export function OrganizationSettingsPage() {
               </Badge>
             </div>
             {organization.description ? (
-              <p className="mt-1.5 text-sm text-muted">
+              <p className="mt-1.5 text-sm text-muted-foreground">
                 {organization.description}
               </p>
             ) : null}
@@ -152,7 +152,7 @@ export function OrganizationSettingsPage() {
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-foreground">成员名册</h2>
               {canManage && membersQuery.data?.length ? (
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted-foreground">
                   共 {membersQuery.data.length} 人
                 </span>
               ) : null}

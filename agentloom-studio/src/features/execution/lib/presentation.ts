@@ -1,103 +1,78 @@
-import type { BadgeProps } from '@/shared/ui/badge'
+import type { StatusTone } from '@/shared/ui/status-badge'
 import type { ExecutionStatus, ExecutionStepStatus } from '../types'
 import type { ExecutionResponse } from '../api/executionApi'
 
-/** shared/ui Badge 的语义变体，状态色一律走设计令牌 */
-type StatusVariant = NonNullable<BadgeProps['variant']>
-
 export const executionStatusMeta: Record<ExecutionStatus, {
   label: string
-  variant: StatusVariant
-  /** 状态圆点底色（令牌类） */
-  dotClassName: string
+  tone: StatusTone
 }> = {
-  pending: {
-    label: '等待中',
-    variant: 'secondary',
-    dotClassName: 'bg-muted-foreground',
-  },
-  running: {
-    label: '执行中',
-    variant: 'info',
-    dotClassName: 'bg-info',
-  },
-  paused: {
-    label: '已暂停',
-    variant: 'warning',
-    dotClassName: 'bg-warning',
-  },
-  completed: {
-    label: '已完成',
-    variant: 'success',
-    dotClassName: 'bg-success',
-  },
-  failed: {
-    label: '失败',
-    variant: 'error',
-    dotClassName: 'bg-error',
-  },
-  cancelled: {
-    label: '已取消',
-    variant: 'warning',
-    dotClassName: 'bg-warning',
-  },
+  pending: { label: '等待中', tone: 'neutral' },
+  running: { label: '执行中', tone: 'info' },
+  paused: { label: '已暂停', tone: 'warning' },
+  completed: { label: '已完成', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+  cancelled: { label: '已取消', tone: 'warning' },
 }
 
 export const stepStatusMeta: Record<ExecutionStepStatus, {
   label: string
-  variant: StatusVariant
+  tone: StatusTone
   /** 只读画布节点卡片的描边/底色 */
   nodeClassName: string
-  dotClassName: string
 }> = {
   pending: {
     label: '等待中',
-    variant: 'secondary',
+    tone: 'neutral',
     nodeClassName: 'border-border bg-surface',
-    dotClassName: 'bg-muted-foreground',
   },
   queued: {
     label: '排队中',
-    variant: 'secondary',
+    tone: 'neutral',
     nodeClassName: 'border-border bg-surface',
-    dotClassName: 'bg-muted-foreground',
   },
   running: {
     label: '执行中',
-    variant: 'info',
-    nodeClassName: 'border-info/60 bg-info/5 shadow-node',
-    dotClassName: 'bg-info',
+    tone: 'info',
+    nodeClassName: 'border-info/60 bg-info/5 shadow-sm',
   },
   waiting_for_intervention: {
     label: '等待干预',
-    variant: 'warning',
+    tone: 'warning',
     nodeClassName: 'border-warning/60 bg-warning/5',
-    dotClassName: 'bg-warning',
   },
   completed: {
     label: '已完成',
-    variant: 'success',
+    tone: 'success',
     nodeClassName: 'border-success/60 bg-success/5',
-    dotClassName: 'bg-success',
   },
   failed: {
     label: '失败',
-    variant: 'error',
+    tone: 'error',
     nodeClassName: 'border-error/60 bg-error/5',
-    dotClassName: 'bg-error',
   },
   skipped: {
     label: '已跳过',
-    variant: 'secondary',
+    tone: 'neutral',
     nodeClassName: 'border-dashed border-border bg-background',
-    dotClassName: 'bg-muted-foreground',
   },
   cancelled: {
     label: '已取消',
-    variant: 'warning',
+    tone: 'warning',
     nodeClassName: 'border-warning/50 bg-warning/5',
-    dotClassName: 'bg-warning',
   },
+}
+
+/**
+ * 语气 → 块状填充底色。
+ * StatusDot 只出圆点，时长条/进度条这类块状填充复用同一套语气取色。
+ */
+export const toneFillClass: Record<StatusTone, string> = {
+  neutral: 'bg-muted-foreground',
+  primary: 'bg-primary',
+  success: 'bg-success',
+  warning: 'bg-warning',
+  error: 'bg-error',
+  info: 'bg-info',
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {

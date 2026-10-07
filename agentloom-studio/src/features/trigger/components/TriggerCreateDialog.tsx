@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ArrowLeft, CalendarClock, Loader2, RadioTower, Webhook, X } from 'lucide-react'
+import { ArrowLeft, CalendarClock, Loader2, RadioTower, Webhook } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
 import { useToast } from '@/shared/ui/toast'
 import {
   useCreateTrigger,
@@ -43,21 +52,21 @@ const typeOptions: Array<{
     label: 'Cron 定时器',
     description: '按固定时间计划自动运行工作流。',
     icon: <CalendarClock className="h-5 w-5" />,
-    toneClassName: 'border-sky-500/20 bg-sky-500/10 text-sky-100 hover:border-sky-400/40',
+    toneClassName: 'border-info/20 bg-info/10 text-info hover:border-info/40 hover:bg-info/15',
   },
   {
     value: 'webhook',
     label: 'Webhook',
     description: '为外部系统提供 HTTP 回调入口。',
     icon: <Webhook className="h-5 w-5" />,
-    toneClassName: 'border-violet-500/20 bg-violet-500/10 text-violet-100 hover:border-violet-400/40',
+    toneClassName: 'border-primary/20 bg-primary/10 text-primary hover:border-primary/40 hover:bg-primary/15',
   },
   {
     value: 'api_event',
     label: 'API Event',
     description: '通过事件契约与过滤条件触发工作流执行。',
     icon: <RadioTower className="h-5 w-5" />,
-    toneClassName: 'border-amber-500/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/40',
+    toneClassName: 'border-warning/20 bg-warning/10 text-warning hover:border-warning/40 hover:bg-warning/15',
   },
 ]
 
@@ -372,43 +381,31 @@ export function TriggerCreateDialog({
   })
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleDialogOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <Dialog.Close asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-3 top-3 h-8 w-8 p-0"
-              aria-label="关闭触发器对话框"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </Dialog.Close>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          <DialogDescription>{dialogDescription}</DialogDescription>
+        </DialogHeader>
 
-          <Dialog.Title className="text-base font-semibold text-foreground">
-            {dialogTitle}
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {dialogDescription}
-          </Dialog.Description>
-
-          {createdWebhookTrigger?.type === 'webhook' && hasWebhookSecret(createdWebhookTrigger.config) ? (
-            <div className="mt-5 space-y-5">
+        {createdWebhookTrigger?.type === 'webhook' && hasWebhookSecret(createdWebhookTrigger.config) ? (
+          <>
+            <DialogBody className="space-y-5">
               <WebhookSecretDisplay
                 token={createdWebhookTrigger.config.token}
                 secret={createdWebhookTrigger.config.secret}
                 authMode={createdWebhookTrigger.config.authMode ?? 'signed'}
               />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
-                  完成
-                </Button>
-              </div>
-            </div>
-          ) : selectedType ? (
-            <form onSubmit={onSubmit} className="mt-5 space-y-5">
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => handleDialogOpenChange(false)}>
+                完成
+              </Button>
+            </DialogFooter>
+          </>
+        ) : selectedType ? (
+          <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+            <DialogBody className="space-y-5">
               {!isEditing ? (
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 p-4">
                   <div>
@@ -456,25 +453,26 @@ export function TriggerCreateDialog({
                   errors={errors}
                 />
               ) : null}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Dialog.Close asChild>
-                  <Button variant="outline">取消</Button>
-                </Dialog.Close>
-                <Button type="submit" className="gap-2" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {isEditing ? '保存更改' : '创建触发器'}
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <div className="mt-5 space-y-4">
+            </DialogBody>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">取消</Button>
+              </DialogClose>
+              <Button type="submit" className="gap-2" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {isEditing ? '保存更改' : '创建触发器'}
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <>
+            <DialogBody>
               <div className="grid gap-3 md:grid-cols-3">
                 {typeOptions.map((option) => (
-                  <button
+                  <Button
                     key={option.value}
-                    type="button"
-                    className={`rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${option.toneClassName}`}
+                    variant="ghost"
+                    className={`h-auto flex-col items-start justify-start gap-0 whitespace-normal rounded-xl border p-4 text-left font-normal ${option.toneClassName}`}
                     onClick={() => handleSelectType(option.value)}
                   >
                     <div className="inline-flex items-center gap-2 text-sm font-medium">
@@ -482,19 +480,18 @@ export function TriggerCreateDialog({
                       {option.label}
                     </div>
                     <p className="mt-3 text-sm text-current/80">{option.description}</p>
-                  </button>
+                  </Button>
                 ))}
               </div>
-
-              <div className="flex justify-end">
-                <Dialog.Close asChild>
-                  <Button variant="outline">取消</Button>
-                </Dialog.Close>
-              </div>
-            </div>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+            </DialogBody>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">取消</Button>
+              </DialogClose>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

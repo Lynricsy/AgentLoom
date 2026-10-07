@@ -1,3 +1,4 @@
+import { Button } from '@/shared/ui/button'
 import type { CandidateFieldMapping } from '../../types'
 
 export interface FieldMappingCandidatesProps {
@@ -15,15 +16,16 @@ export function FieldMappingCandidates({
   return (
     <div className="mapping-panel__candidates" data-testid="mapping-candidates-section">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs text-muted">{candidates.length} 个推荐映射</span>
-        <button
-          type="button"
-          className="text-xs text-primary hover:underline"
+        <span className="text-xs text-muted-foreground">{candidates.length} 个推荐映射</span>
+        <Button
+          variant="link"
+          size="xs"
+          className="h-auto p-0"
           data-testid="accept-all-candidates"
           onClick={onAcceptAll}
         >
           全部接受
-        </button>
+        </Button>
       </div>
       {candidates.map((c) => (
         <div
@@ -32,16 +34,17 @@ export function FieldMappingCandidates({
           data-testid={`candidate-${c.targetPath}`}
         >
           <span className="truncate">{c.sourcePath}</span>
-          <span className="shrink-0 text-muted">→</span>
+          <span className="shrink-0 text-muted-foreground">→</span>
           <span className="truncate">{c.targetPath}</span>
-          <button
-            type="button"
-            className="shrink-0 rounded px-1.5 py-0.5 text-xs text-primary hover:bg-primary/10"
+          <Button
+            variant="ghost"
+            size="xs"
+            className="shrink-0 px-1.5 text-primary hover:bg-primary/10 hover:text-primary"
             data-testid={`accept-candidate-${c.targetPath}`}
             onClick={() => onAccept(c)}
           >
             接受
-          </button>
+          </Button>
         </div>
       ))}
     </div>

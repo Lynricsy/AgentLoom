@@ -15,6 +15,7 @@ import { WorkflowPreviewCanvas } from '@/features/canvas'
 import { useCreateWorkflow } from '@/features/workflow'
 import { BrandMark } from '@/shared/components/brand/BrandMark'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -135,7 +136,7 @@ function AgentImportReportCard({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <h2 className="text-sm font-semibold text-foreground">Agent 已导入</h2>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               已创建为 “{result.name}”。下面是这次导入的资源处理结果。
             </p>
           </div>
@@ -148,9 +149,9 @@ function AgentImportReportCard({
           {summaryItems.map((item) => (
             <div
               key={item.label}
-              className="rounded-card border border-border bg-surface-elevated p-3"
+              className="rounded-lg border border-border bg-muted p-3"
             >
-              <div className="text-xs text-muted">{item.label}</div>
+              <div className="text-xs text-muted-foreground">{item.label}</div>
               <div className="mt-1 text-lg font-semibold text-foreground">
                 {item.value}
               </div>
@@ -165,13 +166,13 @@ function AgentImportReportCard({
             return (
               <div
                 key={`${item.resourceType}-${item.targetResourceId ?? item.sourceResourceId ?? index}`}
-                className="flex items-center justify-between gap-3 rounded-card border border-border bg-surface-elevated p-3"
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted p-3"
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-foreground">
                     {item.title}
                   </div>
-                  <div className="text-xs text-muted">{item.message}</div>
+                  <div className="text-xs text-muted-foreground">{item.message}</div>
                 </div>
                 <Badge variant={outcomeMeta.variant}>{outcomeMeta.label}</Badge>
               </div>
@@ -199,7 +200,7 @@ export function PublicSharePage() {
         <CenteredSlot>
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted">加载分享内容...</p>
+            <p className="text-sm text-muted-foreground">加载分享内容...</p>
           </div>
         </CenteredSlot>
       </PublicShareShell>
@@ -235,7 +236,7 @@ export function PublicSharePage() {
                     ? '分享链接已过期'
                     : '加载失败'}
               </h2>
-              <p className="text-sm text-muted">
+              <p className="text-sm text-muted-foreground">
                 {is404
                   ? '该分享链接无效或已被撤销。'
                   : isExpired
@@ -342,7 +343,7 @@ export function PublicSharePage() {
 
   return (
     <PublicShareShell>
-      <header className="shrink-0 border-b border-border bg-surface">
+      <div className="shrink-0 border-b border-border bg-surface">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -357,16 +358,9 @@ export function PublicSharePage() {
               </Badge>
             </div>
 
-            <div>
-              <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-                {data.title}
-              </h1>
-              {description ? (
-                <p className="mt-2 max-w-3xl text-sm text-muted">{description}</p>
-              ) : null}
-            </div>
+            <PageHeader title={data.title} description={description} />
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
               {metaItems.map((item) => (
                 <span key={item.key} className="inline-flex items-center gap-1">
                   {item.icon ? <item.icon className="h-3.5 w-3.5" /> : null}
@@ -394,7 +388,7 @@ export function PublicSharePage() {
             </Button>
           ) : null}
         </div>
-      </header>
+      </div>
 
       {agentImportResult ? (
         <AgentImportReportCard
@@ -405,7 +399,7 @@ export function PublicSharePage() {
 
       <main className="min-h-0 flex-1 overflow-hidden">
         <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-4 py-4 sm:px-6">
-          <div className="min-h-0 flex-1 overflow-hidden rounded-panel border border-border bg-surface shadow-panel">
+          <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
             <WorkflowPreviewCanvas
               className="h-full"
               definition={data.definition}
@@ -426,7 +420,7 @@ export function PublicSharePage() {
       </main>
 
       <footer className="shrink-0 border-t border-border bg-surface px-4 py-2.5 text-center sm:px-6">
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           分享作者：{data.author.displayName}
           {data.author.email ? ` · ${data.author.email}` : ''}
         </p>

@@ -182,7 +182,7 @@ export function ConversationComposer({
 
   return (
     <div className="shrink-0 px-4 pt-2 pb-4">
-      <div className="mx-auto w-full max-w-3xl rounded-panel border border-border bg-surface shadow-popover">
+      <div className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-surface shadow-lg">
         {pendingAttachments.length > 0 ? (
           <div
             className="flex flex-wrap gap-2 border-b border-border px-3 py-3"
@@ -191,7 +191,7 @@ export function ConversationComposer({
             {pendingAttachments.map((attachment, index) => (
               <div
                 key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
-                className="flex min-w-0 max-w-full items-start gap-2 rounded-card border border-border bg-surface-elevated px-3 py-2"
+                className="flex min-w-0 max-w-full items-start gap-2 rounded-lg border border-border bg-muted px-3 py-2"
               >
                 <div className="mt-0.5 rounded-md bg-surface p-2 text-muted-foreground">
                   {attachment.kind === "image" ? (
@@ -204,7 +204,7 @@ export function ConversationComposer({
                   <p className="truncate text-sm font-medium text-foreground">
                     {attachment.fileName}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     {attachment.mimeType} ·{" "}
                     {attachment.sizeBytes < 1024 * 1024
                       ? `${(attachment.sizeBytes / 1024).toFixed(1)} KB`
@@ -286,7 +286,7 @@ export function ConversationComposer({
           </Button>
 
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden text-[11px] text-muted-foreground sm:inline">
+            <span className="hidden text-2xs text-muted-foreground sm:inline">
               Enter 发送 · Shift+Enter 换行
             </span>
 

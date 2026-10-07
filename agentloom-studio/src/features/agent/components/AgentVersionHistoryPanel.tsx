@@ -3,6 +3,8 @@ import { Archive, Clock, History, Tag, Upload, X } from "lucide-react";
 
 import { formatRelativeTime } from "@/features/canvas";
 import { cn } from "@/shared/lib/utils";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 
 import { useAgentVersions } from "../api/agentQueries";
 import type { AgentStatus, AgentVersion } from "../types";
@@ -57,7 +59,7 @@ const VersionItem = memo(function VersionItem({
 
   return (
     <div
-      className="group border-b border-border p-4 transition-colors hover:bg-muted/30"
+      className="group border-b border-border p-4 transition-colors hover:bg-muted"
       data-testid={`agent-version-item-${version.versionNumber}`}
     >
       <div className="flex items-center justify-between">
@@ -74,16 +76,12 @@ const VersionItem = memo(function VersionItem({
         </div>
 
         <div className="flex items-center gap-1">
-          {isPublished && (
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600">
-              当前发布
-            </span>
-          )}
+          {isPublished && <Badge variant="success">当前发布</Badge>}
           {isArchived && (
-            <span className="inline-flex items-center rounded-full bg-gray-500/10 px-2 py-0.5 text-xs font-medium text-gray-500">
-              <Archive className="mr-1 h-3 w-3" />
+            <Badge variant="secondary">
+              <Archive className="size-3" />
               已归档
-            </span>
+            </Badge>
           )}
         </div>
       </div>
@@ -112,7 +110,7 @@ const VersionItem = memo(function VersionItem({
           </div>
 
           {releaseNotes && (
-            <p className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground/80">
+            <p className="rounded-md border border-border/70 bg-muted px-3 py-2 text-xs leading-5 text-foreground/80">
               {releaseNotes}
             </p>
           )}
@@ -120,15 +118,16 @@ const VersionItem = memo(function VersionItem({
 
         {!isAgentArchived && !isPublished && !isArchived && onPublish && (
           <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-primary hover:bg-primary/10"
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-primary hover:bg-primary/10 hover:text-primary"
               onClick={() => onPublish(version.id)}
               data-testid={`publish-agent-version-${version.versionNumber}`}
             >
-              <Upload className="h-3 w-3" />
+              <Upload />
               发布
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -205,19 +204,20 @@ export const AgentVersionHistoryPanel = memo(function AgentVersionHistoryPanel({
       data-testid="agent-version-history-panel"
       aria-label="Agent 历史记录"
     >
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">历史记录</h2>
+      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <History className="size-4 shrink-0 text-muted-foreground" />
+          <h2 className="truncate text-sm font-medium">历史记录</h2>
         </div>
-        <button
-          type="button"
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
           onClick={onClose}
           aria-label="关闭历史记录"
         >
-          <X className="h-4 w-4" />
-        </button>
+          <X />
+        </Button>
       </div>
 
       <div className="flex-1 overflow-y-auto">

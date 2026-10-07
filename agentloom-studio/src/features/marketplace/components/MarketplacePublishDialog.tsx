@@ -78,7 +78,7 @@ const ReviewCheckList = memo(function ReviewCheckList({
               {check.message}
             </p>
             {check.fixHint && (
-              <p className="mt-0.5 text-xs text-muted">{check.fixHint}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{check.fixHint}</p>
             )}
           </div>
         </li>
@@ -209,7 +209,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
         <DialogHeader className="flex-row items-start gap-3">
           <span
             aria-hidden
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-node-tool) 14%, transparent)',
@@ -230,7 +230,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
           <DialogBody className="flex flex-col items-center gap-3 py-12">
             <CheckCircle2 className="h-12 w-12 text-success" />
             <p className="text-lg font-medium text-foreground">提交成功</p>
-            <p className="text-sm text-muted">工作流已通过审核并上架市场</p>
+            <p className="text-sm text-muted-foreground">工作流已通过审核并上架市场</p>
             <Button className="mt-2" onClick={() => onOpenChange(false)}>
               完成
             </Button>
@@ -241,7 +241,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
           <DialogBody className="flex flex-col items-center gap-3 py-12">
             <AlertCircle className="h-12 w-12 text-warning" />
             <p className="text-lg font-medium text-foreground">已存在</p>
-            <p className="text-sm text-muted">该工作流版本已提交到市场</p>
+            <p className="text-sm text-muted-foreground">该工作流版本已提交到市场</p>
             <Button
               variant="outline"
               className="mt-2"
@@ -277,7 +277,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
           >
             <DialogBody className="space-y-4">
               {!publishedVersionId && (
-                <div className="flex items-center gap-2 rounded-card border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   工作流尚未发布，请先发布工作流后再提交到市场
                 </div>
@@ -333,7 +333,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
               <div className="space-y-1.5">
                 <label htmlFor="mp-cover" className="text-sm font-medium text-foreground">
                   封面图片 URL
-                  <span className="ml-1 text-xs font-normal text-muted">(可选)</span>
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
                 </label>
                 <Input
                   id="mp-cover"

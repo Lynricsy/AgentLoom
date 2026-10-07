@@ -2,6 +2,7 @@ import { memo, useCallback, useRef, useState } from 'react'
 import { Bot, Brain, ChevronDown, ChevronRight, User } from 'lucide-react'
 import { motion } from 'motion/react'
 import { DUR, EASE } from '@/shared/lib/motion'
+import { Button } from '@/shared/ui/button'
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer'
 import { ToolCallCard } from '@/shared/components/tool-renderers'
 import type { ToolCallData } from '@/shared/components/tool-renderers/types'
@@ -72,25 +73,25 @@ const ThinkingBlock = memo(function ThinkingBlock({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="rounded-card border border-border bg-surface-elevated px-3 py-2">
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground"
+    <div className="rounded-lg border border-border bg-muted px-3 py-2">
+      <Button
+        variant="ghost"
+        className="h-auto w-full cursor-pointer justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((value) => !value)}
       >
         {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         <Brain className="size-3 text-primary" />
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
-          <span className="ml-auto max-w-[200px] truncate text-[10px] text-muted">
+          <span className="ml-auto max-w-[200px] truncate text-2xs text-muted-foreground">
             {content.slice(0, 60)}...
           </span>
         )}
-      </button>
+      </Button>
 
       {open && (
         <div className="mt-2 border-l-2 border-primary/20 pl-5">
-          <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted">
+          <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
             {content}
           </p>
         </div>
@@ -106,14 +107,14 @@ const UserBubble = memo(function UserBubble({
 }) {
   return (
     <div className="flex flex-row-reverse gap-3 px-4 py-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-elevated text-foreground">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
         <User className="size-4" />
       </div>
       <div className="flex max-w-[80%] flex-col items-end gap-1">
-        <div className="rounded-2xl rounded-br-md bg-surface-elevated px-4 py-2.5 text-sm leading-relaxed text-foreground">
+        <div className="rounded-xl rounded-br-md bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-        <span className="px-1 text-[10px] text-muted">
+        <span className="px-1 text-2xs text-muted-foreground">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -186,7 +187,7 @@ const AssistantMessage = memo(function AssistantMessage({
 
         {message.isStreaming && <TypingIndicator />}
 
-        <span className="block px-1 text-[10px] text-muted">
+        <span className="block px-1 text-2xs text-muted-foreground">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -270,7 +271,7 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
           )}
           {childStreams.length > 0 && (
             <div className="space-y-3 px-4 py-2">
-              <div className="px-1 text-[10px] uppercase tracking-[0.18em] text-muted">
+              <div className="px-1 text-2xs uppercase tracking-[0.18em] text-muted-foreground">
                 子 Agent 瀑布流
               </div>
               {childStreams.map((stream) => (

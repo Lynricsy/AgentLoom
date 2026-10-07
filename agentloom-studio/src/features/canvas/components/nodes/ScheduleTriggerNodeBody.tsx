@@ -14,13 +14,13 @@ export const ScheduleTriggerNodeBody = memo(function ScheduleTriggerNodeBody({
       <div className="flex items-center gap-1.5">
         <Clock className="h-3.5 w-3.5 shrink-0 text-warning" />
         {cron ? (
-          <span className="truncate font-mono text-[10px] text-muted-foreground">{cron}</span>
+          <span className="truncate font-mono text-2xs text-muted-foreground">{cron}</span>
         ) : (
-          <span className="text-[10px] text-muted-foreground/60">未配置</span>
+          <span className="text-2xs text-muted-foreground/60">未配置</span>
         )}
       </div>
       {cron && (
-        <span className="w-fit rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        <span className="w-fit rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
           {timezone}
         </span>
       )}

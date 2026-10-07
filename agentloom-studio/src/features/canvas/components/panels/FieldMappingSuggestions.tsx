@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import { MappingSuggestionCard } from './MappingSuggestionCard'
 import type { ApplyAllConfirmSummary } from '../../hooks/useFieldMappingInteractions'
 import type { MappingSuggestion } from '../../types'
@@ -26,18 +27,19 @@ export function FieldMappingSuggestions({
   return (
     <div className="mapping-panel__suggestions" data-testid="mapping-suggestions-section">
       <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs text-muted">
+        <span className="text-xs text-muted-foreground">
           {suggestionsByTarget.size} 个智能推荐
         </span>
         {hasApplicableSuggestions && (
-          <button
-            type="button"
-            className="text-xs text-primary hover:underline"
+          <Button
+            variant="link"
+            size="xs"
+            className="h-auto p-0"
             data-testid="apply-all-suggestions"
             onClick={onApplyAll}
           >
             应用全部推荐
-          </button>
+          </Button>
         )}
       </div>
 
@@ -56,25 +58,24 @@ export function FieldMappingSuggestions({
               </span>
             )}
           </div>
-          <div className="apply-all-confirm__actions">
-            <button
-              type="button"
+          <div className="flex gap-1.5">
+            <Button
+              size="xs"
               data-testid="apply-all-confirm-btn"
-              className="apply-all-confirm__btn--confirm"
               onClick={onConfirmApplyAll}
             >
-              <Check size={12} />
+              <Check />
               确认
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
               data-testid="apply-all-cancel-btn"
-              className="apply-all-confirm__btn--cancel"
               onClick={onCancelApplyAll}
             >
-              <X size={12} />
+              <X />
               取消
-            </button>
+            </Button>
           </div>
         </div>
       )}

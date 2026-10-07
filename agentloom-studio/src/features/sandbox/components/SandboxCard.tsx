@@ -138,7 +138,7 @@ export const SandboxCard = memo(function SandboxCard({
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor:
                   "color-mix(in srgb, var(--color-type-sandbox) 14%, transparent)",
@@ -163,7 +163,7 @@ export const SandboxCard = memo(function SandboxCard({
         </div>
 
         {/* 配置摘要 */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted-foreground">
           <Badge size="sm" variant={isPersistent ? "info" : "warning"}>
             {isPersistent ? "持久" : "临时"}
           </Badge>
@@ -198,7 +198,7 @@ export const SandboxCard = memo(function SandboxCard({
           stats?.diskUsage != null &&
           stats.diskTotal != null &&
           diskPercent !== null && (
-            <div className="mt-4 text-xs text-muted">
+            <div className="mt-4 text-xs text-muted-foreground">
               <div className="mb-1 flex items-center justify-between">
                 <span>磁盘</span>
                 <span className="font-medium tabular-nums text-foreground">
@@ -206,7 +206,7 @@ export const SandboxCard = memo(function SandboxCard({
                   {formatSandboxBytes(stats.diskTotal)}
                 </span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-surface-elevated">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-success"
                   style={{ width: `${Math.min(100, diskPercent)}%` }}
@@ -215,7 +215,7 @@ export const SandboxCard = memo(function SandboxCard({
             </div>
           )}
 
-        <p className="mt-4 text-xs text-muted">
+        <p className="mt-4 text-xs text-muted-foreground">
           创建于 {formatRelativeTime(new Date(session.createdAt))}
         </p>
       </article>

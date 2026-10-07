@@ -132,7 +132,7 @@ export const FormDescription = forwardRef<
     <p
       ref={ref}
       id={formDescriptionId}
-      className={cn('text-xs text-muted', className)}
+      className={cn('text-xs text-muted-foreground', className)}
       {...props}
     />
   )

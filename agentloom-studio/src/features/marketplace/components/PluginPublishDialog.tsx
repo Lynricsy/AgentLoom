@@ -239,7 +239,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
         <DialogHeader className="flex-row items-start gap-3">
           <span
             aria-hidden
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-node-plugin) 14%, transparent)',
@@ -265,7 +265,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
           >
             <CheckCircle2 className="h-12 w-12 text-success" />
             <p className="text-lg font-medium text-foreground">审核通过</p>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted-foreground">
               {isEdit ? '修改已生效，插件仍在市场上架中' : '插件已上架到市场'}
             </p>
             <Button className="mt-2" onClick={() => onOpenChange(false)}>
@@ -278,7 +278,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
           <DialogBody className="flex flex-col items-center gap-3 py-12">
             <AlertCircle className="h-12 w-12 text-warning" />
             <p className="text-lg font-medium text-foreground">已存在发布记录</p>
-            <p className="text-center text-sm text-muted">{dialogState.detail}</p>
+            <p className="text-center text-sm text-muted-foreground">{dialogState.detail}</p>
             <Button
               variant="outline"
               className="mt-2"
@@ -303,12 +303,12 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
               {failedChecks.map((check) => (
                 <li
                   key={check.code}
-                  className="rounded-card border border-error/25 bg-error/5 p-2.5"
+                  className="rounded-lg border border-error/25 bg-error/5 p-2.5"
                   data-testid="plugin-review-check-item"
                 >
                   <p className="text-xs text-error">{check.message}</p>
                   {check.fixHint && (
-                    <p className="mt-1 text-xs text-muted">{check.fixHint}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{check.fixHint}</p>
                   )}
                 </li>
               ))}
@@ -331,7 +331,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
           >
             <DialogBody className="space-y-4">
               {isEdit && (
-                <div className="flex items-start gap-2 rounded-card border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
                     保存后服务端会重新审查这条发布。若修改后的内容不合规，已上架的插件会被下架。
@@ -390,7 +390,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
                   className="text-sm font-medium text-foreground"
                 >
                   分类
-                  <span className="ml-1 text-xs font-normal text-muted">(可选)</span>
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
                 </label>
                 <Select
                   value={category}

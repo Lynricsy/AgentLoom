@@ -34,13 +34,13 @@ export function FieldMappingList({
             className={`mapping-line${m.autoRecommended ? ' mapping-line--auto' : ''}`}
           >
             <span className="truncate">{m.sourceField}</span>
-            <span className="shrink-0 text-muted">→</span>
+            <span className="shrink-0 text-muted-foreground">→</span>
             <span className="truncate">{m.targetField}</span>
 
             {srcKind && tgtKind && srcKind !== tgtKind && (
               <>
                 <span
-                  className="mapping-line__coercion ml-auto inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning"
+                  className="mapping-line__coercion ml-auto inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning"
                   data-testid={`mapping-line-coercion-${m.targetField}`}
                 >
                   <ArrowRightLeft size={12} />

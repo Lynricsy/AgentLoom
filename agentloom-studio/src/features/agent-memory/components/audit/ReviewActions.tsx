@@ -63,7 +63,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
   if (!entry) {
     return (
       <p
-        className="py-4 text-center text-sm text-muted"
+        className="py-4 text-center text-sm text-muted-foreground"
         data-testid="review-actions-empty"
       >
         选择一条记录以执行审核操作
@@ -114,7 +114,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
           回滚
         </Button>
 
-        <span className="ml-auto flex items-center gap-2 text-xs text-muted">
+        <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
           当前状态
           <Badge size="sm" tone={statusMeta.tone}>
             {statusMeta.label}

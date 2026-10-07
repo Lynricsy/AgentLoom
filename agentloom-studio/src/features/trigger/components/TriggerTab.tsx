@@ -84,13 +84,13 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
   )
 
   return (
-    <section className="flex h-full flex-col rounded-2xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
+    <section className="flex h-full flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
             事件驱动触发器
           </p>
-          <h2 className="text-lg font-semibold text-foreground">触发器管理</h2>
+          <h2 className="text-base font-semibold text-foreground">触发器管理</h2>
           <p className="text-sm text-muted-foreground">
             当前共 {total} 个触发器；已支持 Cron、Webhook、API Event 三种自动触发入口。
           </p>
@@ -102,30 +102,30 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
           title={isPublished ? '新增触发器' : '请先发布工作流后再新增触发器'}
           onClick={() => setIsCreateOpen(true)}
         >
-          <Plus className="h-4 w-4" />
+          <Plus />
           添加触发器
         </Button>
       </div>
 
       {!isPublished ? (
-        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+        <div className="rounded-lg border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
           触发器仅能绑定到已发布的工作流版本。请先发布当前工作流，再启用自动调度入口。
         </div>
       ) : null}
 
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {triggerQuery.isLoading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-border/70 bg-background/30">
+          <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-border bg-muted">
             <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
               正在加载触发器...
             </div>
           </div>
         ) : triggerQuery.isError ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 px-6 text-center">
+          <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-error/20 bg-error/10 px-6 text-center">
             <div>
-              <p className="text-base font-medium text-rose-100">加载失败</p>
-              <p className="mt-2 text-sm text-rose-200/80">
+              <p className="text-base font-medium text-error">加载失败</p>
+              <p className="mt-2 text-sm text-muted-foreground">
                 {triggerQuery.error instanceof Error
                   ? triggerQuery.error.message
                   : '无法加载触发器列表，请稍后重试。'}

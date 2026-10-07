@@ -42,7 +42,6 @@ describe('MappingSuggestionCard', () => {
     )
     const badge = screen.getByTestId('suggestion-confidence')
     expect(badge).toHaveTextContent('中')
-    expect(badge.className).toContain('medium')
   })
 
   it('renders compatibility and concrete type-pair labels', () => {

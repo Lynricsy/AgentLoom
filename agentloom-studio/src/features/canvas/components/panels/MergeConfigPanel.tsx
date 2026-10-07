@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, type ChangeEvent } from 'react'
 import { GitMerge } from 'lucide-react'
+import { Input } from '@/shared/ui/input'
 import {
   Select,
   SelectContent,
@@ -113,7 +114,7 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
             <SelectItem value="merge-by-key">按键合并</SelectItem>
           </SelectContent>
         </Select>
-        <p className="mt-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           {parsed.mode === 'append'
             ? '将所有输入数据按顺序拼接为数组'
             : '按指定键字段合并对象'}
@@ -129,22 +130,21 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
           >
             合并键
           </label>
-          <input
+          <Input
             id="merge-key"
             type="text"
             value={parsed.mergeKey}
             onChange={handleMergeKeyChange}
             placeholder="例: id"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-2xs text-muted-foreground">
             用于匹配合并的键字段名称
           </p>
         </div>
       )}
 
       {/* 输入端口编辑器 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <p className="text-xs font-medium text-foreground">输入端口</p>
         <DynamicPortEditor
           ports={portEntries}
@@ -158,7 +158,7 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
       </div>
 
       {/* 配置摘要 */}
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-col gap-1 text-muted-foreground">
           <span>

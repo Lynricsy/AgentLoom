@@ -156,7 +156,7 @@ export function MemoryInstanceManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -180,7 +180,7 @@ export function MemoryInstanceManagementPage() {
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-40 rounded-card" />
+            <Skeleton key={index} className="h-40 rounded-lg" />
           ))}
         </div>
       ) : isError ? (

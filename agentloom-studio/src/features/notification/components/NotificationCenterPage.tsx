@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Bell, BellOff, CheckCheck } from 'lucide-react'
 import { formatRelativeTime } from '@/features/canvas'
+import { PageContainer } from '@/shared/components'
 import {
   DataTable,
   type DataTableColumn,
@@ -143,7 +144,7 @@ export function NotificationCenterPage() {
                 )}
               </div>
 
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span className="md:hidden">{meta.label}</span>
                 <span className="sm:hidden">
                   {formatRelativeTime(new Date(notification.createdAt))}
@@ -185,7 +186,7 @@ export function NotificationCenterPage() {
       hideBelow: 'sm',
       cell: (notification) => (
         <span
-          className="text-xs text-muted"
+          className="text-xs text-muted-foreground"
           title={new Date(notification.createdAt).toLocaleString('zh-CN')}
         >
           {formatRelativeTime(new Date(notification.createdAt))}
@@ -198,7 +199,7 @@ export function NotificationCenterPage() {
       className: 'w-28 whitespace-nowrap text-right',
       cell: (notification) =>
         notification.isRead ? (
-          <span className="text-xs text-muted">已读</span>
+          <span className="text-xs text-muted-foreground">已读</span>
         ) : (
           <Button
             variant="ghost"
@@ -214,10 +215,7 @@ export function NotificationCenterPage() {
   ]
 
   return (
-    <div
-      className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="notification-center-page"
-    >
+    <PageContainer data-testid="notification-center-page">
       <PageHeader
         icon={Bell}
         title="通知中心"
@@ -230,7 +228,7 @@ export function NotificationCenterPage() {
             disabled={unreadCount === 0 || markAllAsReadMutation.isPending}
             data-testid="mark-all-read"
           >
-            <CheckCheck className="h-4 w-4" />
+            <CheckCheck />
             {markAllAsReadMutation.isPending ? '处理中…' : '全部标记已读'}
           </Button>
         }
@@ -293,6 +291,6 @@ export function NotificationCenterPage() {
           }}
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

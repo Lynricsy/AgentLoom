@@ -12,6 +12,7 @@ import {
   tableRowClass as ROW_CLASS,
 } from '@/shared/ui/table'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { Button } from '@/shared/ui/button'
 
 export interface DataTableColumn<T> {
   /** 列唯一键，同时作为 React key */
@@ -68,7 +69,7 @@ export function DataTable<T>({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-card border border-border bg-surface',
+        'overflow-hidden rounded-lg border border-border bg-surface',
         className,
       )}
     >
@@ -147,31 +148,33 @@ function DataTablePager({
   const to = Math.min(page * pageSize, total)
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
       <span>
         {from}–{to} / 共 {total} 条
       </span>
 
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="rounded-md px-2 py-1 transition-colors hover:bg-surface-elevated hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-40"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
           上一页
-        </button>
+        </Button>
         <span className="px-1 text-foreground">
           {page} / {totalPages}
         </span>
-        <button
-          type="button"
-          className="rounded-md px-2 py-1 transition-colors hover:bg-surface-elevated hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-40"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >
           下一页
-        </button>
+        </Button>
       </div>
     </div>
   )

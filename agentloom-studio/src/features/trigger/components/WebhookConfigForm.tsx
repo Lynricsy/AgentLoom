@@ -4,6 +4,7 @@ import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
 import { Switch } from '@/shared/ui/switch'
+import { Textarea } from '@/shared/ui/textarea'
 import { isWebhookConfig, type Trigger, type WebhookAuthMode } from '../types'
 import { buildWebhookUrl } from './WebhookSecretDisplay'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
@@ -86,10 +87,10 @@ export function WebhookConfigForm({
 
       <label htmlFor="webhook-trigger-description" className="block space-y-2">
         <Label>描述</Label>
-        <textarea
+        <Textarea
           id="webhook-trigger-description"
           rows={3}
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          className="resize-none"
           placeholder="说明这个 webhook 的来源系统与用途"
           {...register('description')}
         />
@@ -123,7 +124,7 @@ export function WebhookConfigForm({
               className={cn(
                 'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
                 authMode === option.value
-                  ? 'border-violet-400/50 bg-violet-500/10'
+                  ? 'border-primary/50 bg-primary/10'
                   : 'border-border/60 bg-background/60 hover:border-border',
               )}
             >
@@ -143,11 +144,11 @@ export function WebhookConfigForm({
         <label htmlFor="webhook-ip-whitelist" className="block">
           <Label>IP 白名单</Label>
         </label>
-        <textarea
+        <Textarea
           id="webhook-ip-whitelist"
           rows={4}
           placeholder={'每行一个 IP 或 CIDR 网段，也可用逗号分隔，例如：\n203.0.113.10\n10.0.0.0/8'}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
+          className="font-mono"
           {...register('webhook.ipWhitelist')}
         />
         <p className="text-xs text-muted-foreground">
@@ -168,7 +169,7 @@ export function WebhookConfigForm({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-200">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
               Webhook URL
             </p>
             <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">
@@ -177,7 +178,7 @@ export function WebhookConfigForm({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-violet-200">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
               Token
             </p>
             <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">

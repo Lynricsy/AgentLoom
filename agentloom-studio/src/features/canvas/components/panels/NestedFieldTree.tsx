@@ -1,5 +1,6 @@
 import { memo, useCallback, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import type { NestedFieldNode } from '../../types'
 import { MAX_NESTED_DEPTH } from '../../lib/nestedFieldTree'
 
@@ -110,10 +111,11 @@ const FieldRow = memo(function FieldRow({
   const content = (
     <>
       {!node.isLeaf && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           data-testid={`toggle-nested-field-${node.path}`}
-          className="nested-field-chevron"
+          className="nested-field-chevron size-auto rounded-xs"
           onClick={handleToggle}
           aria-label={isExpanded ? `收起 ${node.leafKey}` : `展开 ${node.leafKey}`}
         >
@@ -122,12 +124,12 @@ const FieldRow = memo(function FieldRow({
             className={isExpanded ? 'rotate-90' : ''}
             style={{ transition: 'transform 150ms' }}
           />
-        </button>
+        </Button>
       )}
 
       <span className="nested-field-label">
         {node.leafKey}
-        {node.required && <span className="text-red-400 ml-0.5">*</span>}
+        {node.required && <span className="text-error ml-0.5">*</span>}
       </span>
 
       <span className="nested-field-type">{node.schema.kind}</span>
@@ -149,10 +151,10 @@ const FieldRow = memo(function FieldRow({
 
   const suffix = node.isLeaf && renderFieldSuffix ? renderFieldSuffix(node) : null
   const leafButton = node.isLeaf ? (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       data-testid={`nested-field-${node.path}`}
-      className={baseClassName}
+      className={`${baseClassName} h-auto shrink justify-start whitespace-normal font-normal disabled:pointer-events-auto disabled:opacity-100`}
       style={{ paddingLeft: `${indent}px` }}
       draggable={!disableLeafInteraction}
       disabled={disableLeafInteraction}
@@ -165,7 +167,7 @@ const FieldRow = memo(function FieldRow({
       aria-disabled={isForbidden || undefined}
     >
       {content}
-    </button>
+    </Button>
   ) : null
 
   return (

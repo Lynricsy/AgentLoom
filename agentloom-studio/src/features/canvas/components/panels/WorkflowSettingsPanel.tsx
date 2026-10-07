@@ -6,7 +6,9 @@ import { WorkflowInputSchemaTab } from '@/features/workflow-input-schema'
 import type { WorkflowInputSchema } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
 import { fadeInUp } from '@/shared/lib/motion'
+import { Button } from '@/shared/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
+import { CANVAS_FLOATING_CLASS, CANVAS_PANEL_HEADER_CLASS } from '../canvasChrome'
 import type { CanvasNode } from '../../types'
 
 const WORKFLOW_SETTINGS_TABS = ['input-schema', 'triggers', 'intervention-policies'] as const
@@ -49,15 +51,18 @@ export function WorkflowSettingsPanel({
       initial={fadeInUp.initial}
       animate={fadeInUp.animate}
       transition={fadeInUp.transition}
-      className="flex h-[min(76vh,720px)] flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel"
+      className={cn(
+        CANVAS_FLOATING_CLASS,
+        'flex h-[min(76vh,720px)] flex-col overflow-hidden',
+      )}
       data-testid="workflow-settings-panel"
     >
-      <div className="flex items-start gap-3 border-b border-border px-4 py-3">
+      <div className={cn(CANVAS_PANEL_HEADER_CLASS, 'items-start')}>
         <span
           aria-hidden
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-primary/12 text-primary"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary"
         >
-          <Settings2 className="h-4 w-4" />
+          <Settings2 className="size-4" />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -67,15 +72,16 @@ export function WorkflowSettingsPanel({
           </p>
         </div>
 
-        <button
-          type="button"
-          className="-mr-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="-mr-1 shrink-0 text-muted-foreground hover:text-foreground"
           onClick={onClose}
           aria-label="收起工作流设置"
           data-testid="close-workflow-settings-panel"
         >
-          <X className="h-4 w-4" />
-        </button>
+          <X />
+        </Button>
       </div>
 
       <Tabs

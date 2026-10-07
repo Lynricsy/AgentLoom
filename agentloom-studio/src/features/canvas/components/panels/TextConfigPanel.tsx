@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { FileText } from 'lucide-react'
+import { Textarea } from '@/shared/ui/textarea'
 
 interface TextConfigPanelProps {
   config: Record<string, unknown>
@@ -65,14 +66,14 @@ export const TextConfigPanel = memo(function TextConfigPanel({
         >
           文本内容
         </label>
-        <textarea
+        <Textarea
           id="text-node-content"
           value={text}
           onChange={(event) => setText(event.target.value)}
           onBlur={handleBlur}
           rows={10}
           placeholder="输入系统提示词、固定说明或其他可复用文本..."
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm leading-6 text-foreground outline-none focus:border-info"
+          className="font-mono leading-6"
         />
         <p className="mt-2 text-xs text-muted-foreground">
           会自动保存为 `text` 节点内容，可连接到 `system-prompt-in` 或任意文本输入端口。

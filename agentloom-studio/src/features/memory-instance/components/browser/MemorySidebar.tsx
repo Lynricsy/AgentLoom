@@ -252,7 +252,7 @@ function DomainNode({
           {domain.charAt(0).toUpperCase() + domain.slice(1)} Memory
         </span>
         {rootCount !== undefined && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
             {rootCount}
           </span>
         )}
@@ -298,7 +298,7 @@ export function MemorySidebar({
   return (
     <div className="p-3 flex-1 overflow-y-auto">
       <div className="mb-4">
-        <h3 className="mb-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+        <h3 className="mb-2 px-3 text-2xs font-bold uppercase tracking-widest text-muted-foreground/60">
           Domains
         </h3>
         {domains.map((d) => (

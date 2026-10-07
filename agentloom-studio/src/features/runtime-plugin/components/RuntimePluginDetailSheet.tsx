@@ -46,8 +46,8 @@ export function RuntimePluginDetailSheet({
         <SheetBody className="space-y-5">
           {isLoading ? (
             <div className="space-y-3" data-testid="runtime-plugin-detail-skeleton">
-              <Skeleton className="h-16 rounded-card" />
-              <Skeleton className="h-24 rounded-card" />
+              <Skeleton className="h-16 rounded-lg" />
+              <Skeleton className="h-24 rounded-lg" />
             </div>
           ) : isError || !plugin ? (
             <EmptyState
@@ -74,17 +74,17 @@ export function RuntimePluginDetailSheet({
               </dl>
 
               {plugin.description ? (
-                <p className="text-sm leading-relaxed text-muted">{plugin.description}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{plugin.description}</p>
               ) : null}
 
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
+                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   内容哈希（SHA-256）
                 </h3>
                 <code
-                  className="block break-all rounded-card border border-border bg-surface-elevated/40 p-3 text-[11px] text-foreground"
+                  className="block break-all rounded-lg border border-border bg-muted p-3 text-2xs text-foreground"
                   data-testid="runtime-plugin-content-hash"
                 >
                   {plugin.contentHash}
@@ -94,11 +94,11 @@ export function RuntimePluginDetailSheet({
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
+                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   配置 Schema
                 </h3>
                 {plugin.configSchema ? (
-                  <div className="rounded-card border border-border bg-surface-elevated/40 p-3">
+                  <div className="rounded-lg border border-border bg-muted p-3">
                     <JsonTreeView
                       value={plugin.configSchema}
                       defaultExpandedDepth={2}
@@ -106,7 +106,7 @@ export function RuntimePluginDetailSheet({
                     />
                   </div>
                 ) : (
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-muted-foreground">
                     该插件未声明 configSchema，画布节点不提供配置表单。
                   </p>
                 )}
@@ -122,7 +122,7 @@ export function RuntimePluginDetailSheet({
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs text-muted">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 truncate text-foreground">{children}</dd>
     </div>
   )

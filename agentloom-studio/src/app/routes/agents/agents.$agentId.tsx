@@ -10,7 +10,7 @@ import {
   useAgentCanvasStore,
 } from "@/features/agent-canvas";
 import { useAgentCanvasPersistence } from "@/features/agent-canvas";
-import { ReadOnlyCanvasBanner } from "@/features/canvas";
+import { CANVAS_FLOATING_CLASS, ReadOnlyCanvasBanner } from "@/features/canvas";
 import { useAgent } from "@/features/agent";
 import { AgentCreateVersionDialog } from "@/features/agent";
 import { AgentPublishDialog } from "@/features/agent";
@@ -23,6 +23,7 @@ import {
 import { ShareManagementDialog } from "@/features/share";
 import type { ApiError } from "@/shared/types/api";
 import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
+import { cn } from "@/shared/lib/utils";
 import { useToast } from "@/shared/ui/toast";
 
 import { rootRoute } from "../__root";
@@ -53,18 +54,23 @@ function AgentBreadcrumb({
   isDirty: boolean;
 }) {
   return (
-    <nav className="flex items-center gap-2 rounded-md bg-background/80 px-3 py-1.5 text-xs backdrop-blur">
+    <nav
+      className={cn(
+        CANVAS_FLOATING_CLASS,
+        "flex items-center gap-2 px-3 py-1.5 text-xs",
+      )}
+    >
       <Link
         to="/agents"
         className="text-muted-foreground transition-colors hover:text-foreground"
       >
         智能体
       </Link>
-      <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
+      <ChevronRight className="size-3 text-subtle-foreground" />
       <span className="max-w-[220px] truncate font-medium text-foreground">
         {agentName || "加载中…"}
       </span>
-      {isDirty && <span className="text-amber-400 text-[10px]">未保存</span>}
+      {isDirty && <span className="text-2xs text-warning">未保存</span>}
     </nav>
   );
 }
@@ -169,7 +175,10 @@ function AgentCanvasPage() {
 
           <div className="order-2 flex justify-end xl:order-2">
             <div
-              className="pointer-events-auto w-full rounded-2xl border border-border/70 bg-background/85 p-2 shadow-lg backdrop-blur-md xl:w-auto"
+              className={cn(
+                CANVAS_FLOATING_CLASS,
+                "pointer-events-auto w-full p-2 xl:w-auto",
+              )}
               data-testid="agent-toolbar-shell"
             >
               <AgentVersionToolbar

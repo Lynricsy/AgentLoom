@@ -120,12 +120,12 @@ export function InviteMemberDialog({
           <div className="space-y-1.5">
             <label
               htmlFor="invite-member-email"
-              className="text-xs font-medium text-muted"
+              className="text-xs font-medium text-muted-foreground"
             >
               邮箱
             </label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="invite-member-email"
                 type="email"
@@ -141,7 +141,7 @@ export function InviteMemberDialog({
           <div className="space-y-1.5">
             <label
               htmlFor="invite-member-role"
-              className="text-xs font-medium text-muted"
+              className="text-xs font-medium text-muted-foreground"
             >
               角色
             </label>
@@ -160,7 +160,7 @@ export function InviteMemberDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               {ORGANIZATION_ROLE_DESCRIPTIONS[role]}
             </p>
           </div>
@@ -169,7 +169,7 @@ export function InviteMemberDialog({
             <div className="space-y-1.5">
               <label
                 htmlFor="invite-member-link"
-                className="text-xs font-medium text-muted"
+                className="text-xs font-medium text-muted-foreground"
               >
                 邀请链接
               </label>

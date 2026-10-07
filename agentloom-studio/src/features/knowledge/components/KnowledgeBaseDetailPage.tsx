@@ -276,13 +276,13 @@ export function KnowledgeBaseDetailPage({
         className="flex h-full flex-col gap-6 p-6"
         data-testid="knowledge-base-detail-skeleton"
       >
-        <Skeleton className="h-12 w-72 rounded-card" />
+        <Skeleton className="h-12 w-72 rounded-lg" />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-24 rounded-card" />
+            <Skeleton key={index} className="h-24 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="min-h-64 flex-1 rounded-card" />
+        <Skeleton className="min-h-64 flex-1 rounded-lg" />
       </div>
     )
   }
@@ -361,34 +361,34 @@ export function KnowledgeBaseDetailPage({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted">文档规模</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">文档规模</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">
             {knowledgeBase.documentCount}
           </p>
-          <p className="mt-1 text-xs text-muted">已接入文档</p>
+          <p className="mt-1 text-xs text-muted-foreground">已接入文档</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted">节点规模</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">节点规模</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">
             {knowledgeBase.nodeCount}
           </p>
-          <p className="mt-1 text-xs text-muted">当前索引节点数</p>
+          <p className="mt-1 text-xs text-muted-foreground">当前索引节点数</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted">分块策略</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">分块策略</p>
           <p className="mt-2 truncate text-base font-semibold text-foreground">
             {getChunkingStrategyLabel(knowledgeBase.chunkingStrategy)}
           </p>
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-1 text-xs text-muted-foreground">
             检索 Top K {knowledgeBase.retrievalStrategy.topK}
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted">Embedding</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Embedding</p>
           <p className="mt-2 truncate text-base font-semibold text-foreground">
             {selectedEmbeddingModel?.name ?? knowledgeBase.embeddingModel}
           </p>
-          <p className="mt-1 truncate text-xs text-muted">
+          <p className="mt-1 truncate text-xs text-muted-foreground">
             {selectedEmbeddingModel?.modelName ?? '使用知识库当前配置'}
           </p>
         </Card>
@@ -436,7 +436,7 @@ export function KnowledgeBaseDetailPage({
         <div className="flex items-start gap-3">
           <span
             aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-type-knowledge) 14%, transparent)',
@@ -449,7 +449,7 @@ export function KnowledgeBaseDetailPage({
             <h2 className="text-sm font-semibold text-foreground">
               统一工具语义
             </h2>
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 text-sm text-muted-foreground">
               Agent runtime 现在只暴露一个 `search_knowledge` 工具，调用时必须显式传
               `knowledgeBaseIds`，并且这些 ID 只能来自连接到 Agent 的知识库节点。
             </p>

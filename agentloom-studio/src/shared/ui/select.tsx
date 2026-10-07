@@ -50,7 +50,7 @@ export const SelectTrigger = forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        'flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors data-[placeholder]:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+        'flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-xs transition-colors duration-150 data-[placeholder]:text-subtle-foreground hover:border-border-hover focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 aria-invalid:border-error aria-invalid:ring-error/30 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
         className,
       )}
       {...props}
@@ -87,12 +87,12 @@ export const SelectContent = forwardRef<
           animate={scaleIn.animate}
           transition={scaleIn.transition}
           className={cn(
-            'relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-card border border-border bg-popover text-popover-foreground shadow-popover',
+            'relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg',
             position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
             className,
           )}
         >
-          <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted">
+          <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted-foreground">
             <ChevronUp className="h-3.5 w-3.5" />
           </SelectPrimitive.ScrollUpButton>
 
@@ -100,7 +100,7 @@ export const SelectContent = forwardRef<
             {children}
           </SelectPrimitive.Viewport>
 
-          <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted">
+          <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted-foreground">
             <ChevronDown className="h-3.5 w-3.5" />
           </SelectPrimitive.ScrollDownButton>
         </motion.div>
@@ -117,7 +117,7 @@ export const SelectLabel = forwardRef<
     <SelectPrimitive.Label
       ref={ref}
       className={cn(
-        'px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground',
+        'px-2 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground',
         className,
       )}
       {...props}
@@ -133,7 +133,7 @@ export const SelectItem = forwardRef<
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        'relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md py-1.5 pl-2 pr-8 text-sm text-foreground outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-primary/12 data-[highlighted]:text-primary data-[disabled]:opacity-50',
+        'relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm text-foreground outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[disabled]:opacity-50',
         className,
       )}
       {...props}

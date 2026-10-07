@@ -1,5 +1,6 @@
 import { ChevronRight, Folder, FileText, AlertTriangle, Link2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import { PriorityBadge } from './PriorityBadge'
 import type { MemoryNode } from '../../types'
 
@@ -15,12 +16,12 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
   const isCrossDomain = Boolean(node.domain) && node.domain !== currentDomain
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
       onClick={onClick}
       className={cn(
-        'group relative flex h-full w-full flex-col items-start overflow-hidden rounded-card border bg-surface p-5 text-left shadow-node transition-all duration-150 hover:-translate-y-0.5 hover:shadow-node-selected',
-        isCrossDomain ? 'border-transparent' : 'border-border hover:border-border-hover',
+        'group relative flex h-full w-full flex-col items-start justify-start gap-0 overflow-hidden whitespace-normal rounded-lg bg-surface p-5 text-left font-normal shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-surface hover:shadow-md [&_svg]:size-[18px] [&_p_svg]:size-[11px] [&_h3~span_svg]:size-[9px] [&>svg:last-child]:size-3.5',
+        isCrossDomain ? 'border-transparent hover:border-transparent' : 'border-border hover:border-border-hover',
       )}
       style={
         isCrossDomain
@@ -33,7 +34,7 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
       <div className="mb-3 flex w-full items-center gap-3">
         <span
           aria-hidden
-          className="flex shrink-0 items-center justify-center rounded-card bg-surface-elevated p-2 text-muted transition-colors group-hover:bg-primary/10 group-hover:text-primary"
+          className="flex shrink-0 items-center justify-center rounded-lg bg-muted p-2 text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary"
         >
           {node.approxChildrenCount > 0 ? <Folder size={18} /> : <FileText size={18} />}
         </span>
@@ -43,7 +44,7 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
           </h3>
           {isCrossDomain && (
             <span
-              className="mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px]"
+              className="mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-2xs"
               style={{
                 border: `1px solid color-mix(in srgb, ${CROSS_DOMAIN_TONE} 30%, transparent)`,
                 backgroundColor: `color-mix(in srgb, ${CROSS_DOMAIN_TONE} 12%, transparent)`,
@@ -60,7 +61,7 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
 
       {node.disclosure && (
         <p
-          className="mb-2 flex w-full items-start gap-1 text-[11px] leading-snug line-clamp-2"
+          className="mb-2 flex w-full items-start gap-1 text-2xs leading-snug line-clamp-2"
           style={{ color: 'var(--color-warning)' }}
         >
           <AlertTriangle size={11} className="mt-0.5 shrink-0" />
@@ -70,11 +71,11 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
 
       <div className="w-full flex-1">
         {node.contentSnippet ? (
-          <p className="line-clamp-3 text-xs leading-relaxed text-muted">
+          <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">
             {node.contentSnippet}
           </p>
         ) : (
-          <p className="text-xs italic text-muted opacity-60">暂无预览</p>
+          <p className="text-xs italic text-muted-foreground opacity-60">暂无预览</p>
         )}
       </div>
 
@@ -82,6 +83,6 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
         size={14}
         className="absolute bottom-4 right-4 text-primary opacity-0 transition-opacity group-hover:opacity-100"
       />
-    </button>
+    </Button>
   )
 }

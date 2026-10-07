@@ -318,7 +318,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       data-testid={`canvas-node-${id}`}
       data-selected={selected ? "true" : "false"}
       className={cn(
-        "canvas-node-shell relative rounded-card border bg-surface text-foreground",
+        "canvas-node-shell relative rounded-lg border bg-surface text-foreground",
         isCompoundContainer && "h-full w-full",
         lod === "full" && !isCompoundContainer && "min-w-[200px] max-w-[268px]",
         lod === "full" &&
@@ -354,7 +354,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           data-testid={`canvas-node-shell-accent-${id}`}
           data-shell-status={shellStatus}
           className={cn(
-            "pointer-events-none absolute inset-y-2 left-0 z-[1] w-1 rounded-full",
+            "pointer-events-none absolute inset-y-2 left-0 z-10 w-1 rounded-full",
             shellAccentClassName,
           )}
         />

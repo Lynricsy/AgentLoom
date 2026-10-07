@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo } from "react";
 import { ListOrdered } from "lucide-react";
+import { Checkbox } from "@/shared/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -94,11 +95,11 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
   );
 
   const handleCollapsedChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (checked: boolean | "indeterminate") => {
       onApply({
         config: {
           ...parsed,
-          isCollapsed: event.target.checked,
+          isCollapsed: checked === true,
         },
       });
     },
@@ -232,11 +233,9 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
       </div>
 
       <label className="flex items-center gap-2 text-xs text-foreground">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={parsed.isCollapsed}
-          onChange={handleCollapsedChange}
-          className="h-4 w-4 rounded border border-border"
+          onCheckedChange={handleCollapsedChange}
         />
         <span>保存为收起态</span>
       </label>

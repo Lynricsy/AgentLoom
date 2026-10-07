@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { BellRing } from 'lucide-react'
+import { PageContainer } from '@/shared/components'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
@@ -92,28 +93,22 @@ export function NotificationPreferencesPage() {
 
   if (isLoading) {
     return (
-      <div
-        className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-        data-testid="notification-preferences-page"
-      >
+      <PageContainer width="narrow" data-testid="notification-preferences-page">
         <PageHeader icon={BellRing} title="通知偏好" description="加载通知偏好中…" />
         <Card>
           <CardContent className="space-y-3 p-4">
             {Array.from({ length: 6 }, (_, index) => (
-              <Skeleton key={index} className="h-10 rounded-card" />
+              <Skeleton key={index} className="h-10 rounded-lg" />
             ))}
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     )
   }
 
   if (isError) {
     return (
-      <div
-        className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-        data-testid="notification-preferences-page"
-      >
+      <PageContainer width="narrow" data-testid="notification-preferences-page">
         <PageHeader icon={BellRing} title="通知偏好" description={PAGE_DESCRIPTION} />
         <Card className="border-error/40">
           <CardContent className="space-y-3 p-5">
@@ -131,22 +126,19 @@ export function NotificationPreferencesPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="notification-preferences-page"
-    >
+    <PageContainer width="narrow" data-testid="notification-preferences-page">
       <PageHeader
         icon={BellRing}
         title="通知偏好"
         description={PAGE_DESCRIPTION}
         actions={
           upsertMutation.isPending ? (
-            <span className="flex items-center gap-2 text-xs text-muted">
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <Spinner size="sm" label="保存中" />
               保存中
             </span>
@@ -162,7 +154,7 @@ export function NotificationPreferencesPage() {
               {NOTIFICATION_CHANNELS.map((channel) => (
                 <TableHead key={channel.value} className="w-28 text-center">
                   <span className="block text-foreground">{channel.label}</span>
-                  <span className="block text-[11px] font-normal text-muted">
+                  <span className="block text-2xs font-normal text-muted-foreground">
                     {channel.description}
                   </span>
                 </TableHead>
@@ -181,7 +173,7 @@ export function NotificationPreferencesPage() {
                       {meta?.label ?? type}
                     </span>
                     {meta ? (
-                      <span className="mt-0.5 block text-xs text-muted">
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
                         {meta.description}
                       </span>
                     ) : null}
@@ -213,9 +205,9 @@ export function NotificationPreferencesPage() {
         </Table>
       </Card>
 
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         未显式设置过的渠道默认开启；关闭后该类型的对应渠道提醒将不再送达。
       </p>
-    </div>
+    </PageContainer>
   )
 }

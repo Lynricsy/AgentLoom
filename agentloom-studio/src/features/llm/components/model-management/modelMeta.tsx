@@ -14,10 +14,10 @@ export const PROTOCOL_LABELS: Record<ApiProtocol, string> = {
 type ModelMetaTone = "neutral" | "primary" | "info" | "success" | "warning";
 
 const MODEL_META_CHIP_BASE =
-  "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-medium leading-none shadow-sm";
+  "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-2xs font-medium leading-none shadow-sm";
 
 const MODEL_META_CHIP_TONE_CLASS: Record<ModelMetaTone, string> = {
-  neutral: "border-border bg-surface-elevated text-muted",
+  neutral: "border-border bg-muted text-muted-foreground",
   primary: "border-primary/35 bg-primary/10 text-primary",
   info: "border-info/35 bg-info/12 text-info",
   success: "border-success/35 bg-success/12 text-success",
@@ -125,7 +125,7 @@ export function ModelMetaChip({
       className={cn(
         MODEL_META_CHIP_BASE,
         MODEL_META_CHIP_TONE_CLASS[tone],
-        compact && "px-2 py-0.5 text-[10px]",
+        compact && "px-2 py-0.5 text-2xs",
         numeric && "[font-variant-numeric:tabular-nums]",
       )}
       title={title}

@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { staggerList } from "@/shared/lib/motion";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -194,7 +195,7 @@ export function SandboxManagementPage() {
     search.trim() !== "" || statusFilter !== "" || lifecycleFilter !== "";
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Container}
         tone="var(--color-type-sandbox)"
@@ -210,7 +211,7 @@ export function SandboxManagementPage() {
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -285,14 +286,14 @@ export function SandboxManagementPage() {
         </div>
       </div>
 
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         默认只显示真正可复用的资源型沙箱；对话和执行过程里的会话沙箱可按需切换查看。
       </p>
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-44 rounded-card" />
+            <Skeleton key={index} className="h-44 rounded-lg" />
           ))}
         </div>
       ) : isError ? (
@@ -387,6 +388,6 @@ export function SandboxManagementPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

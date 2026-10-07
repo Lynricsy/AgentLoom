@@ -1,6 +1,8 @@
 import { memo, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronUp, GitBranch, Plus, Trash2 } from 'lucide-react'
 import { useToast } from '@/shared/ui/toast'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { cn } from '@/shared/lib/utils'
 import type { PortDefinition } from '../../types/nodeTypeRegistry'
 import {
@@ -67,55 +69,58 @@ const BranchSection = memo(function BranchSection({
   }, [branch.mode, index, onUpdate])
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-lg border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
         <span
           className={cn(
-            'inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+            'inline-flex shrink-0 rounded px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wider',
             branch.label === 'IF'
-              ? 'bg-blue-500/15 text-blue-400'
-              : 'bg-amber-500/15 text-amber-400',
+              ? 'bg-info/15 text-info'
+              : 'bg-warning/15 text-warning',
           )}
         >
           {branch.label}
         </span>
 
-        <span className="flex-1 text-[10px] text-muted-foreground">
+        <span className="flex-1 text-2xs text-muted-foreground">
           {branch.mode === 'expression'
             ? branch.expression || '未配置表达式'
             : `${branch.conditions.rules.length} 条条件`}
         </span>
 
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => onMoveUp(index)}
             disabled={isFirst}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
             aria-label="上移分支"
           >
             <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => onMoveDown(index)}
             disabled={isLast}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
             aria-label="下移分支"
           >
             <ChevronDown className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </div>
 
         {canDelete && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => onRemove(index)}
-            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-error/10 hover:text-error"
+            className="shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error"
             aria-label="删除分支"
           >
             <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         )}
       </div>
 
@@ -405,22 +410,23 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
         </span>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-foreground">输入端口</p>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               条件左值统一引用输入端口；表达式模式使用 `ports[n]`。
             </p>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={handleAddInputPort}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted"
+            className="gap-1 text-2xs font-normal"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>添加输入</span>
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-1.5">
@@ -431,51 +437,54 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="text"
                     value={port.label}
                     onChange={(e) => handleRenameInputPort(port.id, e.target.value)}
                     placeholder={`输入 ${index + 1}`}
-                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
+                    className="h-auto min-w-0 flex-1 rounded border-transparent bg-transparent px-1 py-0.5 text-xs font-medium shadow-none hover:border-border"
                   />
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     ports[{index + 1}]
                   </span>
                 </div>
-                <p className="mt-0.5 px-1 text-[10px] text-muted-foreground">
+                <p className="mt-0.5 px-1 text-2xs text-muted-foreground">
                   {availablePorts[index]?.dataTypeLabel
                     ? `当前已连接 ${availablePorts[index]?.dataTypeLabel} 输入`
                     : '当前未连接上游，默认按整值比较'}
                 </p>
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => handleMoveInputPort(index, -1)}
                 disabled={index === 0}
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 aria-label="上移输入端口"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => handleMoveInputPort(index, 1)}
                 disabled={index === valueInputPorts.length - 1}
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 aria-label="下移输入端口"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => handleRemoveInputPort(port.id)}
                 disabled={valueInputPorts.length <= 1}
-                className="rounded p-1 text-muted-foreground hover:bg-error/10 hover:text-error disabled:pointer-events-none disabled:opacity-30"
+                className="text-muted-foreground hover:bg-error/10 hover:text-error disabled:opacity-30"
                 aria-label="删除输入端口"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -497,21 +506,22 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
         ))}
       </div>
 
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={handleAddBranch}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+        className="w-full gap-2 rounded-lg border-dashed font-normal text-muted-foreground hover:border-foreground/30 hover:text-foreground"
       >
         <Plus className="h-4 w-4" />
         <span>添加 ELSE IF 分支</span>
-      </button>
+      </Button>
 
-      <div className="rounded-lg border border-border bg-card px-3 py-2">
+      <div className="rounded-lg border border-border bg-surface px-3 py-2">
         <div className="flex min-h-[20px] items-center gap-1.5">
-          <span className="inline-flex shrink-0 rounded bg-muted/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
+          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
             ELSE
           </span>
-          <span className="flex-1 text-[10px] text-muted-foreground">
+          <span className="flex-1 text-2xs text-muted-foreground">
             默认分支，当前面所有条件都不匹配时进入
           </span>
         </div>

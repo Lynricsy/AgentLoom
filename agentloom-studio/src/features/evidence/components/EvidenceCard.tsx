@@ -51,11 +51,11 @@ const sourceTypeConfig: Record<
   node_error: { icon: AlertTriangle, label: '节点错误', color: 'text-error' },
 }
 
-const cardVariants = cva('rounded-card border p-3 transition-colors', {
+const cardVariants = cva('rounded-lg border p-3 transition-colors', {
   variants: {
     selected: {
-      true: 'border-primary bg-primary/5 shadow-node',
-      false: 'border-border bg-surface hover:border-border-hover hover:bg-surface-elevated',
+      true: 'border-primary bg-primary/5 shadow-sm',
+      false: 'border-border bg-surface hover:border-border-hover hover:bg-muted',
     },
   },
   defaultVariants: {
@@ -126,12 +126,12 @@ function renderTypeMismatchPreview(
   }
 
   return (
-    <div className="rounded-lg border border-warning/20 bg-warning/10 p-2 text-[11px] text-warning">
+    <div className="rounded-lg border border-warning/20 bg-warning/10 p-2 text-2xs text-warning">
       <p className="font-medium uppercase tracking-wide">类型不匹配</p>
       <p className="mt-1 break-words">
         {typeMismatch.sourceType} → {typeMismatch.targetType}
       </p>
-      <p className="mt-1 break-all text-muted">
+      <p className="mt-1 break-all text-muted-foreground">
         {typeMismatch.sourceNodeId}
         {typeMismatch.sourcePortId ? ` · ${typeMismatch.sourcePortId}` : ''}
         {' → '}
@@ -144,7 +144,7 @@ function renderTypeMismatchPreview(
 
 function renderJsonPreview(value: unknown): ReactNode {
   return (
-    <pre className="max-h-40 overflow-auto rounded-lg bg-surface-elevated p-2 text-[11px] leading-relaxed text-muted">
+    <pre className="max-h-40 overflow-auto rounded-lg bg-muted p-2 text-2xs leading-relaxed text-muted-foreground">
       {stringifyValue(value)}
     </pre>
   )
@@ -166,9 +166,9 @@ function renderStructuredDetails(
     case 'rag_retrieval': {
       const { semanticLocation, retrievedContent } = record.packet
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted">
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
           <div className="rounded-lg bg-info/5 p-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-info">
+            <p className="text-2xs font-medium uppercase tracking-wide text-info">
               语义上下文
             </p>
             <p className="mt-1 line-clamp-3 leading-relaxed">
@@ -177,10 +177,10 @@ function renderStructuredDetails(
           </div>
           {retrievedContent && retrievedContent !== node.packetSummary?.excerpt && (
             <details className="rounded-lg border border-border px-2 py-1.5">
-              <summary className="cursor-pointer text-[11px] font-medium text-foreground">
+              <summary className="cursor-pointer text-2xs font-medium text-foreground">
                 查看缓存片段
               </summary>
-              <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-muted">
+              <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-muted-foreground">
                 {retrievedContent}
               </p>
             </details>
@@ -205,30 +205,30 @@ function renderStructuredDetails(
             <Badge variant="secondary" size="sm">
               {agentDecision.autonomyMode}
             </Badge>
-            <span className="text-muted">{agentDecision.agentName}</span>
+            <span className="text-muted-foreground">{agentDecision.agentName}</span>
           </div>
 
           {confidence != null && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted">
+              <div className="flex items-center justify-between text-2xs text-muted-foreground">
                 <span>置信度</span>
                 <span>{agentDecision.confidence}</span>
               </div>
-              <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-elevated">
+              <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <span className="h-full bg-node-agent" style={{ width: `${confidence}%` }} />
               </span>
             </div>
           )}
 
           <div className="space-y-1">
-            <p className="text-[11px] font-medium text-foreground">推理</p>
-            <div className="rounded-lg bg-surface-elevated p-2 text-muted">
+            <p className="text-2xs font-medium text-foreground">推理</p>
+            <div className="rounded-lg bg-muted p-2 text-muted-foreground">
               <ReactMarkdown
                 skipHtml
                 components={{
                   p: ({ children }) => <p className="whitespace-pre-wrap leading-relaxed">{children}</p>,
                   code: ({ children }) => (
-                    <code className="rounded bg-surface px-1 py-0.5 font-mono text-[11px] text-foreground">
+                    <code className="rounded bg-surface px-1 py-0.5 font-mono text-2xs text-foreground">
                       {children}
                     </code>
                   ),
@@ -241,10 +241,10 @@ function renderStructuredDetails(
 
           {!!agentDecision.alternatives?.length && (
             <details className="rounded-lg border border-border px-2 py-1.5">
-              <summary className="cursor-pointer text-[11px] font-medium text-foreground">
+              <summary className="cursor-pointer text-2xs font-medium text-foreground">
                 备选方案（{agentDecision.alternatives.length}）
               </summary>
-              <ul className="mt-2 space-y-1 text-muted">
+              <ul className="mt-2 space-y-1 text-muted-foreground">
                 {agentDecision.alternatives.map((alternative) => (
                   <li key={alternative} className="leading-relaxed">
                     • {alternative}
@@ -280,7 +280,7 @@ function renderStructuredDetails(
 
     case 'user_input':
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted">
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
           {renderJsonPreview(record.packet.userInput.content)}
           <p>记录时间：{formatTimestamp(record.createdAt)}</p>
         </div>
@@ -290,7 +290,7 @@ function renderStructuredDetails(
       const { intervention } = record.packet
 
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted">
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="warning" size="sm">
               {formatInterventionAction(intervention.action)}
@@ -310,7 +310,7 @@ function renderStructuredDetails(
       const { nodeError } = record.packet
 
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted">
+        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="error" size="sm">
               {formatErrorTypeLabel(nodeError.errorType ?? nodeError.errorTitle)}
@@ -441,9 +441,9 @@ export const EvidenceCard = memo(function EvidenceCard({
         <div
           className="min-w-0 flex-1 text-left"
         >
-          <button
-            type="button"
-            className="w-full text-left"
+          <Button
+            variant="ghost"
+            className="block h-auto w-full whitespace-normal p-0 text-left hover:bg-transparent"
             onClick={() => onSelect?.(node.evidenceId)}
             data-testid={`evidence-card-${node.evidenceId}`}
           >
@@ -461,34 +461,34 @@ export const EvidenceCard = memo(function EvidenceCard({
             </div>
 
             {node.packetSummary?.excerpt && (
-              <p className="mt-2 line-clamp-2 break-words text-xs leading-relaxed text-muted">
+              <p className="mt-2 line-clamp-2 break-words text-xs leading-relaxed text-muted-foreground">
                 {node.packetSummary.excerpt}
               </p>
             )}
 
             {detailQuery.isLoading && (
-              <p className="mt-3 text-[11px] text-muted">加载证据详情中…</p>
+              <p className="mt-3 text-2xs text-muted-foreground">加载证据详情中…</p>
             )}
 
             {detailQuery.error && (
-              <p className="mt-3 text-[11px] text-error">证据详情加载失败</p>
+              <p className="mt-3 text-2xs text-error">证据详情加载失败</p>
             )}
-          </button>
+          </Button>
 
           {isEncrypted && !decryptedContent && (
             <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">
-              <p className="text-[11px] font-medium text-warning">🔒 已加密</p>
+              <p className="text-2xs font-medium text-warning">🔒 已加密</p>
               {decryptError ? (
-                <p className="mt-1 break-words text-[11px] text-error">{decryptError}</p>
+                <p className="mt-1 break-words text-2xs text-error">{decryptError}</p>
               ) : (
-                <p className="mt-1 text-[11px] text-muted">
+                <p className="mt-1 text-2xs text-muted-foreground">
                   此证据内容已加密保护
                 </p>
               )}
               <Button
                 variant="outline"
                 size="sm"
-                className="mt-2 h-7 text-[11px]"
+                className="mt-2 h-7 text-2xs"
                 onClick={(e) => {
                   e.stopPropagation()
                   void handleDecrypt()
@@ -507,8 +507,8 @@ export const EvidenceCard = memo(function EvidenceCard({
 
           {isEncrypted && decryptedContent && (
             <div className="mt-3 space-y-1">
-              <p className="text-[10px] font-medium text-success">已解密内容</p>
-              <pre className="max-h-40 overflow-auto rounded-lg bg-surface-elevated p-2 text-[11px] leading-relaxed text-muted">
+              <p className="text-2xs font-medium text-success">已解密内容</p>
+              <pre className="max-h-40 overflow-auto rounded-lg bg-muted p-2 text-2xs leading-relaxed text-muted-foreground">
                 {decryptedContent}
               </pre>
             </div>
@@ -539,21 +539,21 @@ export const EvidenceCard = memo(function EvidenceCard({
 
       {snapshotVisible && node.originalSnapshot && (
         <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">
-          <p className="text-[11px] font-medium text-warning">缓存快照</p>
-          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted">
+          <p className="text-2xs font-medium text-warning">缓存快照</p>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-2xs leading-relaxed text-muted-foreground">
             {node.originalSnapshot}
           </pre>
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-muted">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
         {node.sourceType === 'rag_retrieval' && (
           <>
             {metadata.relevanceScore != null && (
               <span>相关度 {String(metadata.relevanceScore)}</span>
             )}
             {relevancePercent != null && (
-              <span className="flex h-1.5 w-24 overflow-hidden rounded-full bg-surface-elevated">
+              <span className="flex h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                 <span className="h-full bg-primary" style={{ width: `${relevancePercent}%` }} />
               </span>
             )}

@@ -1,7 +1,16 @@
-import { useCallback, useRef, useState } from 'react'
-import { LogOut, Monitor, Moon, Sun } from 'lucide-react'
+import { useCallback } from 'react'
+import { Check, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import { useTheme, type Theme } from '@/shared/hooks/use-theme'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { Button } from '@/shared/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/shared/ui/dropdown-menu'
 
 const THEME_OPTIONS: { value: Theme; icon: typeof Sun; label: string }[] = [
   { value: 'light', icon: Sun, label: '浅色' },
@@ -10,8 +19,6 @@ const THEME_OPTIONS: { value: Theme; icon: typeof Sun; label: string }[] = [
 ]
 
 export function UserMenu({ collapsed }: { collapsed: boolean }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const { theme, setTheme } = useTheme()
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
@@ -24,83 +31,67 @@ export function UserMenu({ collapsed }: { collapsed: boolean }) {
   const initial = displayName.charAt(0).toUpperCase()
 
   const handleSignOut = useCallback(async () => {
-    setOpen(false)
     await signOut()
   }, [signOut])
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 px-2 text-muted-foreground hover:text-foreground"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+            {initial}
+          </span>
+          {collapsed ? null : (
+            <span className="truncate text-left text-foreground">
+              {displayName}
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-56"
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
-          {initial}
-        </span>
-        {!collapsed && (
-          <span className="truncate text-left text-foreground">{displayName}</span>
-        )}
-      </button>
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span className="truncate text-sm font-medium text-foreground">
+            {displayName}
+          </span>
+          {user?.email ? (
+            <span className="truncate text-xs font-normal text-muted-foreground">
+              {user.email}
+            </span>
+          ) : null}
+        </DropdownMenuLabel>
 
-      {open && (
-        <>
-          {/* backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
-          {/* popover */}
-          <div
-            className={`absolute z-50 w-56 rounded-xl border border-border bg-surface-elevated p-2 shadow-xl backdrop-blur-xl ${
-              collapsed ? 'bottom-0 left-14' : 'bottom-12 left-2'
-            }`}
+        <DropdownMenuSeparator />
+
+        {THEME_OPTIONS.map(({ value, icon: Icon, label }) => (
+          <DropdownMenuItem
+            key={value}
+            onSelect={() => setTheme(value)}
+            className="justify-between"
           >
-            {/* user info */}
-            <div className="mb-2 border-b border-border px-2 pb-2">
-              <p className="truncate text-sm font-medium text-foreground">
-                {displayName}
-              </p>
-              {user?.email && (
-                <p className="truncate text-xs text-muted">{user.email}</p>
-              )}
-            </div>
+            <span className="flex items-center gap-2">
+              <Icon className="size-4" />
+              {label}
+            </span>
+            {theme === value ? <Check className="size-4" /> : null}
+          </DropdownMenuItem>
+        ))}
 
-            {/* theme switcher */}
-            <div className="mb-2 border-b border-border pb-2">
-              <p className="mb-1.5 px-2 text-xs font-medium text-muted">主题</p>
-              <div className="flex gap-1 px-1">
-                {THEME_OPTIONS.map(({ value, icon: Icon, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setTheme(value)}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors ${
-                      theme === value
-                        ? 'bg-primary/15 text-primary'
-                        : 'text-muted hover:bg-surface hover:text-foreground'
-                    }`}
-                    title={label}
-                  >
-                    <Icon size={14} />
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+        <DropdownMenuSeparator />
 
-            {/* logout */}
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-error transition-colors hover:bg-error/10"
-            >
-              <LogOut size={14} />
-              <span>退出登录</span>
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+        <DropdownMenuItem destructive onSelect={handleSignOut}>
+          <LogOut className="size-4" />
+          退出登录
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

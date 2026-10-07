@@ -96,12 +96,12 @@ export function WebhookSecretDisplay({
   return (
     <section
       className={cn(
-        'space-y-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4',
+        'space-y-4 rounded-xl border border-primary/30 bg-primary/10 p-4',
         className,
       )}
     >
       <div className="space-y-1">
-        <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-violet-200">
+        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em] text-primary">
           <KeyRound className="h-3.5 w-3.5" />
           Webhook 凭证
         </div>
@@ -138,7 +138,7 @@ export function WebhookSecretDisplay({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-[11px] text-violet-100 hover:bg-violet-500/20"
+            className="h-7 px-2 text-2xs text-primary hover:bg-primary/20"
             onClick={() => setIsSecretVisible((current) => !current)}
           >
             {isSecretVisible ? '隐藏' : '显示'}
@@ -169,7 +169,7 @@ export function WebhookSecretDisplay({
               ；请求体必须与参与签名的字节完全一致
             </li>
           </ol>
-          <pre className="mt-3 overflow-x-auto rounded-md bg-black/30 px-3 py-2 text-[11px] leading-5 text-violet-50">
+          <pre className="mt-3 overflow-x-auto rounded-md bg-muted px-3 py-2 text-2xs leading-5 text-foreground">
             {buildSignedCurlExample(webhookUrl)}
           </pre>
         </div>
@@ -238,7 +238,7 @@ function CredentialField({
     <div className="space-y-2 rounded-lg border border-border/60 bg-background/60 p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
-          <span className="text-violet-200">{icon}</span>
+          <span className="text-primary">{icon}</span>
           {label}
         </div>
         <div className="flex items-center gap-2">
@@ -247,7 +247,7 @@ function CredentialField({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 gap-1 px-2 text-[11px]"
+            className="h-7 gap-1 px-2 text-2xs"
             onClick={() => void onCopy(value, copyLabel)}
           >
             <Copy className="h-3.5 w-3.5" />
@@ -255,7 +255,7 @@ function CredentialField({
           </Button>
         </div>
       </div>
-      <code className="block overflow-x-auto rounded-md bg-black/30 px-3 py-2 text-xs text-violet-50">
+      <code className="block overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs text-foreground">
         {displayValue ?? value}
       </code>
     </div>

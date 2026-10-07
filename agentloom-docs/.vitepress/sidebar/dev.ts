@@ -35,6 +35,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: 'Studio 结构', link: '/dev/studio/' },
       { text: '画布', link: '/dev/studio/canvas' },
       { text: '状态管理', link: '/dev/studio/state' },
+      { text: '设计系统', link: '/dev/studio/design-system' },
     ],
   },
   {

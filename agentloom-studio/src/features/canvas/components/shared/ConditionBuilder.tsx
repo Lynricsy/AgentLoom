@@ -8,6 +8,9 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { Code, Eye, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -109,18 +112,19 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
       {index > 0 && (
         <div className="flex items-center gap-2 px-1">
           <div className="h-px flex-1 bg-border/50" />
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={onLogicToggle}
             className={cn(
-              'rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors',
+              'h-auto rounded px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider',
               logic === 'and'
-                ? 'bg-info/15 text-info hover:bg-info/25'
-                : 'bg-warning/15 text-warning hover:bg-warning/25',
+                ? 'bg-info/15 text-info hover:bg-info/25 hover:text-info'
+                : 'bg-warning/15 text-warning hover:bg-warning/25 hover:text-warning',
             )}
           >
             {logic === 'and' ? 'AND' : 'OR'}
-          </button>
+          </Button>
           <div className="h-px flex-1 bg-border/50" />
         </div>
       )}
@@ -150,13 +154,13 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
           </SelectContent>
         </Select>
 
-        <input
+        <Input
           type="text"
           value={supportsFieldPath ? rule.fieldPath : ''}
           onChange={handleFieldPathChange}
           disabled={!supportsFieldPath}
           placeholder={supportsFieldPath ? '字段路径（可选）' : '该输入只支持整值比较'}
-          className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-8 min-w-0 px-2 text-xs"
         />
 
         <Select value={rule.operator} onValueChange={handleOperatorChange}>
@@ -176,32 +180,33 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
         </Select>
 
         {operatorMeta.requiresValue ? (
-          <input
+          <Input
             type="text"
             value={rule.value}
             onChange={handleValueChange}
             placeholder="值"
-            className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
+            className="h-8 min-w-0 px-2 text-xs"
           />
         ) : (
-          <div className="h-8 rounded-md border border-dashed border-border/50 bg-muted/10 px-2 text-xs leading-8 text-muted-foreground">
+          <div className="h-8 rounded-md border border-dashed border-border/50 bg-muted px-2 text-xs leading-8 text-muted-foreground">
             当前运算符不需要右值
           </div>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={handleRemove}
           disabled={totalRules <= 1}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+          className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
           aria-label="删除条件"
         >
           <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
 
       {selectedPort && (
-        <p className="px-1 text-[10px] text-muted-foreground">
+        <p className="px-1 text-2xs text-muted-foreground">
           左值来源：{selectedPort.portRef}
           {selectedPort.dataTypeLabel ? ` · 当前输入类型 ${selectedPort.dataTypeLabel}` : ''}
         </p>
@@ -282,10 +287,11 @@ export const ConditionBuilder = memo(function ConditionBuilder({
     <div className="space-y-2">
       {showModeToggle && onModeToggle && (
         <div className="flex justify-end">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={onModeToggle}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="h-auto gap-1 px-2 py-1 text-2xs text-muted-foreground hover:text-foreground"
           >
             {mode === 'visual' ? (
               <>
@@ -298,20 +304,20 @@ export const ConditionBuilder = memo(function ConditionBuilder({
                 <span>可视化模式</span>
               </>
             )}
-          </button>
+          </Button>
         </div>
       )}
 
       {(isExpressionMode || mode === 'expression') && (
         <div className="space-y-1.5">
-          <textarea
+          <Textarea
             value={expression ?? ''}
             onChange={handleExpressionInputChange}
             rows={3}
             placeholder={'例: ports[1] === "ready"\n例: ports[2].score > 80 && ports[3]'}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed"
+            className="font-mono text-xs leading-relaxed"
           />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             表达式左值统一使用 `ports[n]`。`ports[1]` 表示第 1 个输入端口，结构化输入可继续写字段路径。
           </p>
         </div>
@@ -333,14 +339,15 @@ export const ConditionBuilder = memo(function ConditionBuilder({
             />
           ))}
 
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={handleAddRule}
-            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-border py-1.5 text-[10px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+            className="h-auto w-full gap-1 border-dashed py-1.5 text-2xs font-normal text-muted-foreground hover:border-foreground/30 hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
             <span>添加条件</span>
-          </button>
+          </Button>
         </div>
       )}
     </div>

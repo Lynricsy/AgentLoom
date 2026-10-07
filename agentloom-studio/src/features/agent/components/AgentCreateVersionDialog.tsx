@@ -96,7 +96,7 @@ export const AgentCreateVersionDialog = memo(function AgentCreateVersionDialog({
           <DialogBody className="flex flex-col gap-1.5">
             <label htmlFor="agent-version-label">
               <Label>
-                版本标签 <span className="text-muted">（可选）</span>
+                版本标签 <span className="text-muted-foreground">（可选）</span>
               </Label>
             </label>
             <Input

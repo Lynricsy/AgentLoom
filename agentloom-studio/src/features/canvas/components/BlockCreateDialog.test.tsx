@@ -75,7 +75,11 @@ vi.mock('@radix-ui/react-dialog', async () => {
     )
   }
 
-  return { Root, Portal, Overlay, Content, Title, Description, Close }
+  function Trigger(props: Record<string, unknown>) {
+    return React.createElement('button', { type: 'button', ...props })
+  }
+
+  return { Root, Portal, Overlay, Content, Title, Description, Close, Trigger }
 })
 
 function makeAnalysis(): EncapsulationAnalysis {

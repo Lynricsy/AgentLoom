@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate } from '@tanstack/react-router'
-import { Clock3, ExternalLink, Loader2, X } from 'lucide-react'
+import { Clock3, ExternalLink, Loader2 } from 'lucide-react'
 import { Pagination } from '@/shared/components/Pagination'
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -26,7 +33,7 @@ const statusLabels: Record<TriggerHistoryStatus, string> = {
 const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
   success: 'border-success/30 bg-success/10 text-success',
   failed: 'border-error/30 bg-error/10 text-error',
-  skipped: 'border-border bg-muted/10 text-muted-foreground',
+  skipped: 'border-border bg-muted text-muted-foreground',
   signature_failed: 'border-warning/30 bg-warning/10 text-warning',
   ip_rejected: 'border-error/30 bg-error/10 text-error',
 }
@@ -112,29 +119,17 @@ export function TriggerHistoryDialog({
   const totalPages = meta?.totalPages ?? 1
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[80vh] w-full max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-border bg-surface p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <Dialog.Close asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-3 top-3 h-8 w-8 p-0"
-              aria-label="关闭触发历史对话框"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </Dialog.Close>
-
-          <Dialog.Title className="text-base font-semibold text-foreground">
-            触发历史记录
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="xl" className="sm:max-h-[80vh]">
+        <DialogHeader>
+          <DialogTitle>触发历史记录</DialogTitle>
+          <DialogDescription>
             {trigger ? `查看「${trigger.name}」最近的执行与投递结果。` : '查看触发器执行记录。'}
-          </Dialog.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-5 flex flex-col gap-3 rounded-xl border border-border/70 bg-background/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <DialogBody className="flex min-h-0 flex-col">
+          <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-background/40 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 筛选条件
@@ -202,7 +197,7 @@ export function TriggerHistoryDialog({
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             className={cn(
-                              'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em]',
+                              'inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em]',
                               statusBadgeClassNames[record.status],
                             )}
                           >
@@ -222,14 +217,14 @@ export function TriggerHistoryDialog({
                           <div>
                             <span className="font-medium text-foreground">执行 ID：</span>{' '}
                             {record.executionId ? (
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1 text-primary transition hover:text-primary/80"
+                              <Button
+                                variant="link"
+                                className="h-auto gap-1 p-0 font-normal hover:text-primary/80"
                                 onClick={() => handleViewExecution(record)}
                               >
                                 <code className="text-xs">{record.executionId}</code>
                                 <ExternalLink className="h-3.5 w-3.5" />
-                              </button>
+                              </Button>
                             ) : (
                               '—'
                             )}
@@ -271,8 +266,8 @@ export function TriggerHistoryDialog({
               />
             </div>
           ) : null}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   )
 }

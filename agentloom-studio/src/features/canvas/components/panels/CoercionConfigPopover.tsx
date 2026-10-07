@@ -1,6 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import * as Popover from '@radix-ui/react-popover'
 import { Check, Settings2, X } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Label } from '@/shared/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
 import type { CoercionStrategy, PortDataType, TypeCoercionConfig } from '../../types'
 import { getAvailableStrategies, getStrategyLabel } from '../../lib/coercionStrategies'
 
@@ -120,97 +124,101 @@ export const CoercionConfigPopover = memo(function CoercionConfigPopover({
   const activeConfig = mode === 'confirm' ? stagedConfig : value
 
   return (
-    <Popover.Root open={open} onOpenChange={handleOpenChange}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
           data-testid="coercion-config-trigger"
-          className={`coercion-trigger${value ? ' coercion-trigger--active' : ''}`}
+          className={value ? 'text-warning' : 'text-muted-foreground'}
           aria-label="配置类型转换"
         >
-          <Settings2 size={14} />
-        </button>
-      </Popover.Trigger>
+          <Settings2 />
+        </Button>
+      </PopoverTrigger>
 
-      <Popover.Portal>
-        <Popover.Content
-          data-testid="coercion-config-popover"
-          className="coercion-popover"
-          sideOffset={4}
-          align="start"
-        >
-          <div className="coercion-popover-header">
-            <span className="coercion-popover-title">类型转换</span>
-            <span className="coercion-popover-types">
-              {sourceType} → {targetType}
-            </span>
+      <PopoverContent
+        data-testid="coercion-config-popover"
+        className="w-64 space-y-2 p-3"
+        sideOffset={4}
+        align="start"
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold text-foreground">类型转换</span>
+          <span className="truncate font-mono text-2xs text-muted-foreground">
+            {sourceType} → {targetType}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-0.5" role="listbox" aria-label="转换策略">
+          {strategies.map((strategy) => (
+            <Button
+              key={strategy}
+              variant="ghost"
+              size="sm"
+              role="option"
+              aria-selected={activeConfig?.strategy === strategy}
+              data-testid={`coercion-strategy-${strategy}`}
+              className={cn(
+                'justify-start font-normal',
+                activeConfig?.strategy === strategy &&
+                  'bg-primary/10 font-medium text-primary hover:bg-primary/15',
+              )}
+              onClick={() => handleSelect(strategy)}
+            >
+              {getStrategyLabel(strategy)}
+            </Button>
+          ))}
+        </div>
+
+        {activeConfig && hasParams(activeConfig.strategy) && (
+          <CoercionParamsInput
+            strategy={activeConfig.strategy}
+            params={activeConfig.params}
+            onChange={handleParamChange}
+          />
+        )}
+
+        {mode === 'confirm' ? (
+          <div className="flex gap-2 pt-1" data-testid="coercion-confirm-actions">
+            <Button
+              size="sm"
+              data-testid="coercion-confirm-btn"
+              className="flex-1"
+              onClick={handleConfirm}
+              disabled={!stagedConfig}
+              aria-label="确认转换配置"
+            >
+              <Check />
+              <span>确认</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="coercion-cancel-btn"
+              className="flex-1"
+              onClick={handleCancel}
+              aria-label="取消转换配置"
+            >
+              <X />
+              <span>取消</span>
+            </Button>
           </div>
-
-          <div className="coercion-strategy-list" role="listbox" aria-label="转换策略">
-            {strategies.map((strategy) => (
-              <button
-                key={strategy}
-                type="button"
-                role="option"
-                aria-selected={activeConfig?.strategy === strategy}
-                data-testid={`coercion-strategy-${strategy}`}
-                className={`coercion-strategy-item${activeConfig?.strategy === strategy ? ' coercion-strategy-item--selected' : ''}`}
-                onClick={() => handleSelect(strategy)}
-              >
-                {getStrategyLabel(strategy)}
-              </button>
-            ))}
-          </div>
-
-          {activeConfig && hasParams(activeConfig.strategy) && (
-            <CoercionParamsInput
-              strategy={activeConfig.strategy}
-              params={activeConfig.params}
-              onChange={handleParamChange}
-            />
-          )}
-
-          {mode === 'confirm' ? (
-            <div className="coercion-confirm-actions" data-testid="coercion-confirm-actions">
-              <button
-                type="button"
-                data-testid="coercion-confirm-btn"
-                className="coercion-confirm-btn"
-                onClick={handleConfirm}
-                disabled={!stagedConfig}
-                aria-label="确认转换配置"
-              >
-                <Check size={14} />
-                <span>确认</span>
-              </button>
-              <button
-                type="button"
-                data-testid="coercion-cancel-btn"
-                className="coercion-cancel-btn"
-                onClick={handleCancel}
-                aria-label="取消转换配置"
-              >
-                <X size={14} />
-                <span>取消</span>
-              </button>
-            </div>
-          ) : (
-            activeConfig && (
-              <button
-                type="button"
-                data-testid="coercion-clear"
-                className="coercion-clear-btn"
-                onClick={handleClear}
-              >
-                清除转换
-              </button>
-            )
-          )}
-
-          <Popover.Arrow className="coercion-popover-arrow" />
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+        ) : (
+          activeConfig && (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="coercion-clear"
+              className="w-full hover:bg-error/10 hover:text-error"
+              onClick={handleClear}
+            >
+              清除转换
+            </Button>
+          )
+        )}
+      </PopoverContent>
+    </Popover>
   )
 })
 
@@ -224,9 +232,11 @@ function CoercionParamsInput({ strategy, params, onChange }: CoercionParamsInput
   if (strategy === 'toFixed') {
     const precision = (params?.precision as number) ?? 2
     return (
-      <div className="coercion-param" data-testid="coercion-param-toFixed">
-        <label htmlFor="coercion-precision">精度</label>
-        <input
+      <div className="space-y-1.5" data-testid="coercion-param-toFixed">
+        <label htmlFor="coercion-precision">
+          <Label>精度</Label>
+        </label>
+        <Input
           id="coercion-precision"
           data-testid="coercion-precision-input"
           type="number"
@@ -234,7 +244,7 @@ function CoercionParamsInput({ strategy, params, onChange }: CoercionParamsInput
           max={20}
           value={precision}
           onChange={(e) => onChange({ ...params, precision: Number(e.target.value) })}
-          className="coercion-param-input"
+          className="h-8"
         />
       </div>
     )
@@ -243,15 +253,17 @@ function CoercionParamsInput({ strategy, params, onChange }: CoercionParamsInput
   if (strategy === 'join') {
     const separator = (params?.separator as string) ?? ','
     return (
-      <div className="coercion-param" data-testid="coercion-param-join">
-        <label htmlFor="coercion-separator">分隔符</label>
-        <input
+      <div className="space-y-1.5" data-testid="coercion-param-join">
+        <label htmlFor="coercion-separator">
+          <Label>分隔符</Label>
+        </label>
+        <Input
           id="coercion-separator"
           data-testid="coercion-separator-input"
           type="text"
           value={separator}
           onChange={(e) => onChange({ ...params, separator: e.target.value })}
-          className="coercion-param-input"
+          className="h-8"
         />
       </div>
     )

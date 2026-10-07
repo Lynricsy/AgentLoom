@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import Convert from 'ansi-to-html'
 import { Check, Copy } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 
 const ansiConverter = new Convert({
   newline: true,
@@ -80,18 +81,20 @@ export const ConsoleBlock = memo(function ConsoleBlock({
   return (
     <div
       className={cn(
-        'group relative rounded-lg bg-background font-mono text-sm',
+        'group relative rounded-lg bg-muted font-mono text-sm',
         className,
       )}
     >
       {/* Copy button */}
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="icon-xs"
         onClick={() => void handleCopy()}
-        className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+        aria-label="复制"
+        className="absolute right-2 top-2 z-10 size-6 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 [&_svg]:size-3"
       >
-        {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-      </button>
+        {copied ? <Check /> : <Copy />}
+      </Button>
 
       <div className="overflow-auto p-3" style={{ maxHeight }}>
         {/* Command line */}
@@ -106,7 +109,7 @@ export const ConsoleBlock = memo(function ConsoleBlock({
         <div
           className={cn(
             'whitespace-pre-wrap break-all leading-relaxed',
-            isError ? 'text-error' : 'text-muted',
+            isError ? 'text-error' : 'text-muted-foreground',
           )}
           dangerouslySetInnerHTML={{ __html: outputHtml }}
         />

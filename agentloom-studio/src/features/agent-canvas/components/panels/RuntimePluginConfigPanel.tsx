@@ -241,7 +241,7 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
 
           {isSelectedPluginUnavailable && (
             <div
-              className="space-y-2 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
+              className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
               data-testid="runtime-plugin-unavailable-warning"
             >
               <p className="font-medium text-warning">
@@ -271,7 +271,7 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
 
           {parsed.runtimePluginId && unsupportedFields.length > 0 && (
             <div
-              className="space-y-1 rounded-card border border-border bg-surface-elevated p-3 text-xs text-muted-foreground"
+              className="space-y-1 rounded-lg border border-border bg-muted p-3 text-xs text-muted-foreground"
               data-testid="runtime-plugin-unsupported-fields"
             >
               {unsupportedFields.map((field) => (

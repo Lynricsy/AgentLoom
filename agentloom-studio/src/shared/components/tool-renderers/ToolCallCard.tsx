@@ -256,11 +256,11 @@ export const ToolCallCard = memo(function ToolCallCard({
       data-testid={`tool-call-card-${toolCall.id}`}
     >
       {/* Collapsed header / summary row */}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={toggleExpanded}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-elevated/60"
+        className="h-auto w-full justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal"
       >
         {expanded ? (
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
@@ -284,13 +284,13 @@ export const ToolCallCard = memo(function ToolCallCard({
         </div>
 
         {duration ? (
-          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
             {duration}
           </span>
         ) : null}
 
         <StatusBadge state={state} awaitingPermission={isAwaitingPermission} />
-      </button>
+      </Button>
 
       {/* Permission approval buttons (shown when awaiting permission) */}
       {isAwaitingPermission && onResolvePermission && (
@@ -313,7 +313,7 @@ export const ToolCallCard = memo(function ToolCallCard({
           {(toolCall.permissionSourceLabel ||
             toolCall.permissionTargetLabel ||
             toolCall.permissionTargetType) && (
-            <div className="mt-2 grid gap-1 rounded-md border border-border/60 bg-surface px-2.5 py-2 text-[11px] text-muted-foreground">
+            <div className="mt-2 grid gap-1 rounded-md border border-border/60 bg-surface px-2.5 py-2 text-2xs text-muted-foreground">
               {toolCall.permissionSourceLabel && (
                 <div>
                   请求来源:{' '}
@@ -336,7 +336,7 @@ export const ToolCallCard = memo(function ToolCallCard({
           )}
 
           {toolCall.permissionApproveEffect && (
-            <p className="mt-2 text-[11px] text-muted-foreground">
+            <p className="mt-2 text-2xs text-muted-foreground">
               批准后:{' '}
               <span className="text-foreground">
                 {toolCall.permissionApproveEffect}
@@ -345,7 +345,7 @@ export const ToolCallCard = memo(function ToolCallCard({
           )}
 
           {toolCall.permissionDenyEffect && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               拒绝后:{' '}
               <span className="text-foreground">{toolCall.permissionDenyEffect}</span>
             </p>
@@ -353,19 +353,19 @@ export const ToolCallCard = memo(function ToolCallCard({
 
           {toolCall.permissionResourcePaths &&
             toolCall.permissionResourcePaths.length > 0 && (
-              <pre className="mt-2 overflow-x-auto rounded-md bg-surface-elevated px-2.5 py-2 text-[11px] text-muted-foreground">
+              <pre className="mt-2 overflow-x-auto rounded-md bg-muted px-2.5 py-2 text-2xs text-muted-foreground">
                 {toolCall.permissionResourcePaths.join('\n')}
               </pre>
             )}
 
           {diffPreview && (
-            <pre className="mt-2 overflow-x-auto rounded-md border border-border/60 bg-surface-elevated px-2.5 py-2 text-[11px] text-muted-foreground">
+            <pre className="mt-2 overflow-x-auto rounded-md border border-border/60 bg-muted px-2.5 py-2 text-2xs text-muted-foreground">
               {diffPreview}
             </pre>
           )}
 
           <div className="mt-3 flex items-center gap-2">
-            <span className="text-[10px] font-medium text-warning">需要授权</span>
+            <span className="text-2xs font-medium text-warning">需要授权</span>
           </div>
 
           <div className="mt-2 flex flex-wrap gap-2">

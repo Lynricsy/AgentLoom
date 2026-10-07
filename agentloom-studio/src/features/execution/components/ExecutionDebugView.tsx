@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, MessageSquare, TriangleAlert, Workflow } from 'lucide-react'
+import { ArrowLeft, MessageSquare, TriangleAlert } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useLiveExecutionDetail } from '../hooks/useLiveExecutionDetail'
 import { ReadonlyCanvas } from './ReadonlyCanvas'
@@ -23,7 +23,7 @@ import { Badge } from '@/shared/ui/badge'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
-import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { WorkbenchHeader } from '@/shared/components/workbench-header'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { fadeIn } from '@/shared/lib/motion'
 import { EvidenceReferencePanel } from '@/features/evidence'
@@ -178,29 +178,38 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
     void navigate({ to: '/' })
   }, [execution?.workflowDefinitionId, navigate])
 
+  const backButton = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={goBackToWorkflow}
+      aria-label="返回工作流"
+      data-testid="execution-debug-back"
+    >
+      <ArrowLeft />
+    </Button>
+  )
+
   if (isLoading) {
     return (
       <div
-        className="flex h-full w-full flex-col gap-4 bg-background p-5"
+        className="flex h-full w-full flex-col bg-background"
         data-testid="execution-debug-loading"
       >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-card" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-40 rounded-full" />
-              <Skeleton className="h-3 w-56 rounded-full" />
-            </div>
+        <WorkbenchHeader
+          title="执行调试"
+          leading={backButton}
+          status={<Skeleton className="h-6 w-24 rounded-full" />}
+        />
+
+        <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+          <Skeleton className="h-9 w-64 rounded-lg" />
+
+          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[38fr_34fr_28fr]">
+            <Skeleton className="h-full min-h-[240px] rounded-xl" />
+            <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
+            <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
           </div>
-          <Skeleton className="h-8 w-32 rounded-full" />
-        </div>
-
-        <Skeleton className="h-9 w-64 rounded-card" />
-
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[38fr_34fr_28fr]">
-          <Skeleton className="h-full min-h-[240px] rounded-panel" />
-          <Skeleton className="hidden h-full min-h-[240px] rounded-panel lg:block" />
-          <Skeleton className="hidden h-full min-h-[240px] rounded-panel lg:block" />
         </div>
       </div>
     )
@@ -209,21 +218,25 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   if (error || !execution) {
     return (
       <div
-        className="flex h-full w-full items-center justify-center bg-background p-6"
+        className="flex h-full w-full flex-col bg-background"
         data-testid="execution-debug-error"
       >
-        <EmptyState
-          icon={TriangleAlert}
-          tone="var(--color-error)"
-          title="加载执行详情失败"
-          description={error?.message ?? '未找到执行详情'}
-          action={
-            <Button variant="outline" size="sm" onClick={goBackToWorkflow}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              返回工作流
-            </Button>
-          }
-        />
+        <WorkbenchHeader title="执行调试" leading={backButton} />
+
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <EmptyState
+            icon={TriangleAlert}
+            tone="var(--color-error)"
+            title="加载执行详情失败"
+            description={error?.message ?? '未找到执行详情'}
+            action={
+              <Button variant="outline" size="sm" onClick={goBackToWorkflow}>
+                <ArrowLeft />
+                返回工作流
+              </Button>
+            }
+          />
+        </div>
       </div>
     )
   }
@@ -246,37 +259,26 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
         })
       }}
     >
-      <MessageSquare className="mr-2 size-4" />
+      <MessageSquare />
       打开 Agent 运行视图
     </Button>
   ) : null
 
   return (
     <div className="flex h-full w-full flex-col bg-background" data-testid="execution-debug-view">
-      <div className="border-b border-border px-5 py-4">
-        <PageHeader
-          icon={Workflow}
-          title="执行调试"
-          description={`Run #${execution.id.slice(0, 8)} · ${formatExecutionDateTime(startedAt)}`}
-          actions={
-            <>
-              <ExecutionStatusBadge status={execution.status} />
-              <Badge variant="outline">
-                耗时 {formatExecutionDuration(execution.startedAt, execution.completedAt)}
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goBackToWorkflow}
-                data-testid="execution-debug-back"
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                返回工作流
-              </Button>
-            </>
-          }
-        />
-      </div>
+      <WorkbenchHeader
+        title="执行调试"
+        description={`Run #${execution.id.slice(0, 8)} · ${formatExecutionDateTime(startedAt)}`}
+        leading={backButton}
+        status={
+          <div className="flex shrink-0 items-center gap-2">
+            <ExecutionStatusBadge status={execution.status} />
+            <Badge variant="outline" className="hidden sm:inline-flex">
+              耗时 {formatExecutionDuration(execution.startedAt, execution.completedAt)}
+            </Badge>
+          </div>
+        }
+      />
 
       <Tabs defaultValue="debug" value={activeTab} onValueChange={handleTabChange} className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center gap-3 overflow-x-auto border-b border-border px-5 py-2">
@@ -306,10 +308,10 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               />
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-label="调整画布与时间线宽度"
-              className="mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors hover:bg-primary"
+              className="mx-3 h-auto w-1 shrink-0 cursor-col-resize rounded-full bg-border p-0 hover:bg-primary"
               onMouseDown={() => {
                 activeHandleRef.current = 'left'
               }}
@@ -327,10 +329,10 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               />
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               aria-label="调整时间线与详情宽度"
-              className="mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors hover:bg-primary"
+              className="mx-3 h-auto w-1 shrink-0 cursor-col-resize rounded-full bg-border p-0 hover:bg-primary"
               onMouseDown={() => {
                 activeHandleRef.current = 'right'
               }}

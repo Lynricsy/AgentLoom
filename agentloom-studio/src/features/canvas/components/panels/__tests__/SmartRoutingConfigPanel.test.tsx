@@ -348,10 +348,10 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      const input = screen.getByTestId('strategy-param-enableExploration') as HTMLInputElement
+      const input = screen.getByTestId('strategy-param-enableExploration')
       expect(input).toBeInTheDocument()
-      expect(input.type).toBe('checkbox')
-      expect(input.checked).toBe(true)
+      expect(input).toHaveAttribute('role', 'checkbox')
+      expect(input).toBeChecked()
     })
 
     it('renders enum field as select from config schema', () => {

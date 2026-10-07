@@ -78,9 +78,9 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
         <SheetBody className="space-y-5">
           {isLoading ? (
             <div className="space-y-3" data-testid="plugin-detail-skeleton">
-              <Skeleton className="h-16 rounded-card" />
-              <Skeleton className="h-24 rounded-card" />
-              <Skeleton className="h-40 rounded-card" />
+              <Skeleton className="h-16 rounded-lg" />
+              <Skeleton className="h-24 rounded-lg" />
+              <Skeleton className="h-40 rounded-lg" />
             </div>
           ) : isError || !plugin ? (
             <EmptyState
@@ -103,7 +103,7 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               </dl>
 
               {plugin.description ? (
-                <p className="text-sm leading-relaxed text-muted">{plugin.description}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{plugin.description}</p>
               ) : null}
 
               {marketplaceSource ? (
@@ -119,11 +119,11 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
+                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   权限申请
                 </h3>
                 {plugin.permissions.length === 0 ? (
-                  <p className="text-xs text-muted">未申请任何额外权限。</p>
+                  <p className="text-xs text-muted-foreground">未申请任何额外权限。</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {plugin.permissions.map((permission) => (
@@ -138,17 +138,17 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
+                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   节点定义（{plugin.nodeDefinitions.length}）
                 </h3>
                 {plugin.nodeDefinitions.length === 0 ? (
-                  <p className="text-xs text-muted">该插件未导出画布节点。</p>
+                  <p className="text-xs text-muted-foreground">该插件未导出画布节点。</p>
                 ) : (
                   <ul className="space-y-2">
                     {plugin.nodeDefinitions.map((node) => (
                       <li
                         key={node.type}
-                        className="rounded-card border border-border bg-surface-elevated/40 p-3"
+                        className="rounded-lg border border-border bg-muted p-3"
                       >
                         <NodeSummary node={node} />
                       </li>
@@ -160,10 +160,10 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
+                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   插件清单
                 </h3>
-                <div className="rounded-card border border-border bg-surface-elevated/40 p-3">
+                <div className="rounded-lg border border-border bg-muted p-3">
                   <JsonTreeView
                     value={plugin.manifest}
                     defaultExpandedDepth={1}
@@ -261,12 +261,12 @@ function MarketplaceSourceSection({
 
   return (
     <section className="space-y-3" data-testid="plugin-marketplace-source">
-      <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
+      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         来自市场
       </h3>
 
       <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
-        <Store className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+        <Store className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 break-words">
           {source.listingTitle ?? '未记录上架名称'}
         </span>
@@ -308,7 +308,7 @@ function MarketplaceSourceSection({
             <PowerOff className="h-3.5 w-3.5" aria-hidden />
             卸载（停用副本）
           </Button>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             卸载只把副本置为停用：插件记录与已上传产物都保留，随时可在插件管理页重新启用。
           </p>
         </div>
@@ -367,7 +367,7 @@ function UpgradeRow({
 }) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted" data-testid="plugin-upgrade-status">
+      <p className="text-xs text-muted-foreground" data-testid="plugin-upgrade-status">
         正在检查新版本…
       </p>
     )
@@ -375,7 +375,7 @@ function UpgradeRow({
 
   if (isError || !status) {
     return (
-      <p className="text-xs text-muted" data-testid="plugin-upgrade-status">
+      <p className="text-xs text-muted-foreground" data-testid="plugin-upgrade-status">
         暂时取不到升级信息，稍后重试。
       </p>
     )
@@ -407,12 +407,12 @@ function UpgradeRow({
             升级到 {target}
           </Button>
         ) : (
-          <span className="text-xs text-muted" data-testid="plugin-upgrade-status">
+          <span className="text-xs text-muted-foreground" data-testid="plugin-upgrade-status">
             有新版本 {target}，需要 owner/admin 执行升级。
           </span>
         )}
         {currentVersion ? (
-          <span className="text-xs text-muted">当前 v{currentVersion}</span>
+          <span className="text-xs text-muted-foreground">当前 v{currentVersion}</span>
         ) : null}
       </div>
     )
@@ -420,14 +420,14 @@ function UpgradeRow({
 
   if (reason === 'up_to_date') {
     return (
-      <p className="text-xs text-muted" data-testid="plugin-upgrade-status">
+      <p className="text-xs text-muted-foreground" data-testid="plugin-upgrade-status">
         {currentVersion ? `已是最新版本 v${currentVersion}。` : '已是最新版本。'}
       </p>
     )
   }
 
   return (
-    <p className="text-xs text-muted" data-testid="plugin-upgrade-status">
+    <p className="text-xs text-muted-foreground" data-testid="plugin-upgrade-status">
       {UPGRADE_BLOCKED_MESSAGE[reason]}
     </p>
   )
@@ -445,7 +445,7 @@ const UPGRADE_BLOCKED_MESSAGE: Record<
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs text-muted">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 truncate text-foreground">{children}</dd>
     </div>
   )
@@ -459,14 +459,14 @@ function NodeSummary({ node }: { node: PluginNodeDefinition }) {
         <Badge variant="secondary" size="sm">
           {node.category}
         </Badge>
-        <code className="text-[11px] text-muted">{node.type}</code>
+        <code className="text-2xs text-muted-foreground">{node.type}</code>
       </div>
 
       {node.description ? (
-        <p className="mt-1 text-xs leading-relaxed text-muted">{node.description}</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{node.description}</p>
       ) : null}
 
-      <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+      <div className="mt-2 flex items-center gap-2 text-2xs text-muted-foreground">
         <span>{node.inputPorts.length} 入参</span>
         <ArrowRight className="h-3 w-3" aria-hidden />
         <span>{node.outputPorts.length} 出参</span>

@@ -130,13 +130,13 @@ export function DeveloperKeyRegisterDialog({
             </DialogHeader>
 
             <DialogBody className="space-y-4">
-              <div className="flex items-start gap-3 rounded-card border border-success/25 bg-success/10 p-3">
+              <div className="flex items-start gap-3 rounded-lg border border-success/25 bg-success/10 p-3">
                 <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 <div className="min-w-0 space-y-1">
                   <p className="text-xs font-medium text-foreground">
                     {registeredKey.label?.trim() || '未命名密钥'}
                   </p>
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-muted-foreground">
                     公钥已保存，可随时在列表中撤销。
                   </p>
                 </div>
@@ -150,7 +150,7 @@ export function DeveloperKeyRegisterDialog({
                 <div className="flex items-start gap-2">
                   <code
                     data-testid="developer-key-fingerprint"
-                    className="min-w-0 flex-1 break-all rounded-card border border-border bg-surface-elevated px-3 py-2 font-mono text-xs text-foreground"
+                    className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs text-foreground"
                   >
                     {registeredKey.keyFingerprint}
                   </code>
@@ -199,7 +199,7 @@ export function DeveloperKeyRegisterDialog({
                   placeholder="例如：CI 签名密钥"
                   onChange={(event) => setLabel(event.target.value)}
                 />
-                <p className="text-xs text-muted">
+                <p className="text-xs text-muted-foreground">
                   用于区分多台构建机或多个成员的密钥。
                 </p>
               </div>
@@ -238,7 +238,7 @@ export function DeveloperKeyRegisterDialog({
                     {formError}
                   </p>
                 ) : (
-                  <p className="text-xs text-muted">
+                  <p className="text-xs text-muted-foreground">
                     只接受公钥，请勿粘贴私钥内容。
                   </p>
                 )}

@@ -49,31 +49,6 @@ vi.mock('@tanstack/router-devtools', () => ({
   TanStackRouterDevtools: () => null,
 }));
 
-vi.mock('../index', () => ({ indexRoute: {} }));
-vi.mock('../workflows/$workflowId', () => ({ workflowCanvasRoute: {} }));
-vi.mock('../resources/knowledge-bases.$knowledgeBaseId', () => ({ resourceKnowledgeBaseDetailRoute: {} }));
-vi.mock('../executions/$executionId', () => ({ executionDebugRoute: {} }));
-vi.mock('../executions/$executionId.steps.$stepId.agent', () => ({ executionAgentViewerRoute: {} }));
-vi.mock('../settings/tool-library', () => ({ toolLibraryRoute: {} }));
-vi.mock('../settings/audit-logs', () => ({ auditLogsRoute: {} }));
-vi.mock('../templates', () => ({ templatesRoute: {} }));
-vi.mock('../generated-apps.public.$token', () => ({
-  generatedAppPublicRuntimeRoute: {},
-}));
-vi.mock('../marketplace', () => ({ marketplaceRoute: {} }));
-vi.mock('../marketplace.my-listings', () => ({ marketplaceMyListingsRoute: {} }));
-vi.mock('../share.$token', () => ({ shareTokenRoute: {} }));
-vi.mock('../settings/encryption', () => ({ encryptionSettingsRoute: {} }));
-vi.mock('../developer-console/earnings', () => ({ developerEarningsRoute: {} }));
-vi.mock('../settings/security/autonomy-policy', () => ({ organizationAutonomyPolicyRoute: {} }));
-vi.mock('../settings/resource-quotas', () => ({ resourceGovernanceRoute: {} }));
-vi.mock('../settings/monitoring', () => ({ monitoringRoute: {} }));
-vi.mock('../settings/private-deployment', () => ({ privateDeploymentRoute: {} }));
-vi.mock('../settings/security', () => ({ securitySettingsRoute: {} }));
-vi.mock('../auth/callback', () => ({ authCallbackRoute: {} }));
-vi.mock('../auth/login', () => ({ loginRoute: {} }));
-vi.mock('../auth/register', () => ({ registerRoute: {} }));
-
 import { RootLayout } from '../__root';
 
 describe('RootLayout auth guard', () => {

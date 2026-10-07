@@ -132,7 +132,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         cell: (row) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
-            <code className="truncate font-mono text-xs text-muted">
+            <code className="truncate font-mono text-xs text-muted-foreground">
               {row.keyPrefix}…
             </code>
           </div>
@@ -149,7 +149,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
                 ? '组织默认速率'
                 : `${COUNT_FORMAT.format(row.rateLimitPerMinute)} 次/分钟`}
             </span>
-            <span className="text-muted">
+            <span className="text-muted-foreground">
               并发 {COUNT_FORMAT.format(row.maxConcurrentRuns)} 个 run
             </span>
           </div>
@@ -160,7 +160,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         header: '最后使用',
         hideBelow: 'md',
         cell: (row) => (
-          <span className="whitespace-nowrap text-xs text-muted">
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
             {row.lastUsedAt ? formatTimestamp(row.lastUsedAt) : '从未使用'}
           </span>
         ),
@@ -175,7 +175,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
           return (
             <div className="flex flex-col items-start gap-0.5">
               <Badge variant={badge.variant}>{badge.label}</Badge>
-              <span className="whitespace-nowrap text-[11px] text-muted">
+              <span className="whitespace-nowrap text-2xs text-muted-foreground">
                 {state === 'revoked' && row.revokedAt
                   ? `吊销于 ${formatTimestamp(row.revokedAt)}`
                   : row.expiresAt
@@ -225,11 +225,11 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
     <div className="space-y-4" data-testid="agent-api-key-list">
       {canManage ? null : (
         <div
-          className="flex gap-2 rounded-card border border-border bg-surface-elevated px-3 py-2.5"
+          className="flex gap-2 rounded-lg border border-border bg-muted px-3 py-2.5"
           data-testid="agent-api-key-readonly-notice"
         >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
-          <p className="text-xs leading-relaxed text-muted">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <p className="text-xs leading-relaxed text-muted-foreground">
             你当前只有查看权限。创建与吊销 API Key 需要组织的 owner 或 admin 角色。
           </p>
         </div>
@@ -256,7 +256,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         </Select>
 
         {meta ? (
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             共 {COUNT_FORMAT.format(meta.total)} 个
           </span>
         ) : null}

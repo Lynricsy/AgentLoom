@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { Pagination } from '@/shared/components/Pagination'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import {
   Dialog,
   DialogBody,
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
 import { useToast } from '@/shared/ui/toast'
 import type { PaginatedResponse } from '@/shared/types/api'
 import { useUpdatePayoutStatus } from '../api/developer-earnings.queries'
@@ -32,23 +34,11 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 const numberFormatter = new Intl.NumberFormat('en-US')
 
 const STATUS_CONFIG = {
-  pending: {
-    label: '待处理',
-    className: 'bg-yellow-500/20 text-yellow-400',
-  },
-  processing: {
-    label: '处理中',
-    className: 'bg-blue-500/20 text-blue-400',
-  },
-  completed: {
-    label: '已完成',
-    className: 'bg-green-500/20 text-green-400',
-  },
-  failed: {
-    label: '失败',
-    className: 'bg-red-500/20 text-red-400',
-  },
-} as const
+  pending: { label: '待处理', tone: 'warning' },
+  processing: { label: '处理中', tone: 'info' },
+  completed: { label: '已完成', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+} as const satisfies Record<PayoutStatus, { label: string; tone: StatusTone }>
 
 /** 迁移动作文案按「当前状态 → 目标状态」取，避免把 failed→processing 也叫「标记处理中」 */
 const TRANSITION_LABEL: Record<PayoutStatus, Partial<Record<PayoutStatus, string>>> =
@@ -153,7 +143,7 @@ export function SettlementHistory({
   )
 
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <Card>
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-base font-semibold text-foreground">结算历史</h3>
       </div>
@@ -216,11 +206,9 @@ export function SettlementHistory({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusConfig.className}`}
-                      >
+                      <StatusBadge tone={statusConfig.tone}>
                         {statusConfig.label}
-                      </span>
+                      </StatusBadge>
                     </td>
                     {canManagePayouts ? (
                       <td className="px-4 py-3">
@@ -297,7 +285,7 @@ export function SettlementHistory({
               className="text-sm font-medium text-foreground"
             >
               打款凭证号
-              <span className="ml-1 text-xs font-normal text-muted">(可选)</span>
+              <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
             </label>
             <Input
               id="payout-reference"
@@ -332,6 +320,6 @@ export function SettlementHistory({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   )
 }

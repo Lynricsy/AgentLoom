@@ -11,7 +11,7 @@ import type { PortDefinition } from "../../types/nodeTypeRegistry";
 import { TypedPort } from "../TypedPort";
 import { getMinimalHandleOffsets } from "./nodeVisualMeta";
 
-const PORT_LABEL_CLASS = "truncate text-[11px] text-muted-foreground";
+const PORT_LABEL_CLASS = "truncate text-2xs text-muted-foreground";
 
 function PortLabel({
   port,
@@ -131,7 +131,7 @@ export function MinimalPortAnchors({
   return (
     <div
       className={cn(
-        "absolute inset-y-2 z-[2] w-0",
+        "absolute inset-y-2 z-20 w-0",
         isInput ? "left-0" : "right-0",
       )}
     >

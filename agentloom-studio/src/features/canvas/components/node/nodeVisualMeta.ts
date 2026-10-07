@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { getLlmConfigState } from "@/features/llm";
 import type { StepStatus } from "@/features/execution";
+import type { StatusTone } from "@/shared/ui/status-badge";
 import type { NodeCategory } from "../../types";
 
 /** 节点注册表 `icon` 字符串 → lucide 组件 */
@@ -83,46 +84,20 @@ export type NodeShellStatus =
   | "failed"
   | "waiting_intervention";
 
+/** 节点执行状态 → 统一状态语气（配色由 shared/ui 的 StatusBadge 负责） */
 export const COMPACT_STATUS_META: Record<
   StepStatus | "idle",
-  { label: string; className: string }
+  { label: string; tone: StatusTone }
 > = {
-  idle: {
-    label: "空闲",
-    className: "border-border bg-muted/50 text-muted-foreground",
-  },
-  pending: {
-    label: "等待中",
-    className: "border-border bg-muted/50 text-muted-foreground",
-  },
-  queued: {
-    label: "排队中",
-    className: "border-info/30 bg-info/10 text-info",
-  },
-  running: {
-    label: "运行中",
-    className: "border-primary/30 bg-primary/10 text-primary",
-  },
-  completed: {
-    label: "已完成",
-    className: "border-success/30 bg-success/10 text-success",
-  },
-  failed: {
-    label: "失败",
-    className: "border-error/30 bg-error/10 text-error",
-  },
-  waiting_intervention: {
-    label: "待干预",
-    className: "border-warning/30 bg-warning/10 text-warning",
-  },
-  skipped: {
-    label: "已跳过",
-    className: "border-border bg-muted/50 text-muted-foreground",
-  },
-  cancelled: {
-    label: "已取消",
-    className: "border-border bg-muted/50 text-muted-foreground",
-  },
+  idle: { label: "空闲", tone: "neutral" },
+  pending: { label: "等待中", tone: "neutral" },
+  queued: { label: "排队中", tone: "info" },
+  running: { label: "运行中", tone: "primary" },
+  completed: { label: "已完成", tone: "success" },
+  failed: { label: "失败", tone: "error" },
+  waiting_intervention: { label: "待干预", tone: "warning" },
+  skipped: { label: "已跳过", tone: "neutral" },
+  cancelled: { label: "已取消", tone: "neutral" },
 };
 
 /** 8 个 NodeCategory 的类别色令牌 */

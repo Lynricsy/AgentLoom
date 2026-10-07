@@ -266,20 +266,22 @@ export const ConversationSidebar = memo(function ConversationSidebar({
             const isSelected = sourceFilter === option.value;
 
             return (
-              <button
+              <Button
                 key={option.value}
                 type="button"
+                variant={isSelected ? "secondary" : "ghost"}
+                size="xs"
                 aria-pressed={isSelected}
                 onClick={() => setSourceFilter(option.value)}
                 className={cn(
-                  "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                  "flex-1",
                   isSelected
-                    ? "bg-surface-elevated text-foreground"
+                    ? "text-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {option.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -328,19 +330,18 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               if (collapsed) {
                 return (
                   <li key={conv.id}>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => handleSelect(conv)}
                       className={cn(
-                        "flex w-full items-center justify-center rounded-md p-2 text-lg transition-colors",
-                        isActive
-                          ? "bg-primary/12"
-                          : "hover:bg-surface-elevated",
+                        "w-full text-lg",
+                        isActive && "bg-primary/12 hover:bg-primary/12",
                       )}
                       title={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
                     >
                       {emoji}
-                    </button>
+                    </Button>
                   </li>
                 );
               }
@@ -359,14 +360,14 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-primary"
                     />
                   ) : null}
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
                     onClick={() => handleSelect(conv)}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-md py-1.5 pr-9 pl-2.5 text-left transition-colors",
+                      "h-auto w-full justify-start gap-2 py-1.5 pr-9 pl-2.5 text-left font-normal",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-surface-elevated",
+                        ? "bg-primary/10 text-primary hover:bg-primary/10"
+                        : "text-foreground",
                     )}
                   >
                     <span className="shrink-0 text-base">{emoji}</span>
@@ -376,7 +377,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       </p>
                       <p
                         className={cn(
-                          "flex items-center gap-1.5 text-[11px]",
+                          "flex items-center gap-1.5 text-2xs",
                           isActive ? "text-primary/70" : "text-muted-foreground",
                         )}
                       >
@@ -393,7 +394,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                         ) : null}
                       </p>
                     </div>
-                  </button>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"

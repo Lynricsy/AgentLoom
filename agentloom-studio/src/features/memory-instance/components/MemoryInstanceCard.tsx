@@ -79,7 +79,7 @@ export const MemoryInstanceCard = memo(function MemoryInstanceCard({
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${MEMORY_TONE} 14%, transparent)`,
                 color: MEMORY_TONE,
@@ -103,7 +103,7 @@ export const MemoryInstanceCard = memo(function MemoryInstanceCard({
         </div>
 
         {instance.description && (
-          <p className="mt-2 line-clamp-2 text-xs text-muted">
+          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
             {instance.description}
           </p>
         )}
@@ -118,7 +118,7 @@ export const MemoryInstanceCard = memo(function MemoryInstanceCard({
           </div>
         )}
 
-        <div className="mt-4 flex items-center justify-between text-xs text-muted">
+        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
               <Network className="h-3 w-3" />

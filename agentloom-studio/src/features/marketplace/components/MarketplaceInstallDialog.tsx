@@ -147,7 +147,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
           >
             <CheckCircle2 className="h-12 w-12 text-success" />
             <p className="text-lg font-medium text-foreground">安装成功</p>
-            <p className="text-center text-sm text-muted">
+            <p className="text-center text-sm text-muted-foreground">
               {`「${installedPluginName}」已进入插件库，启用后即可在画布中使用它的节点。`}
             </p>
             <div className="mt-2 flex flex-wrap justify-center gap-2">
@@ -193,7 +193,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
                   htmlFor="install-description"
                   className="block text-sm font-medium text-foreground"
                 >
-                  描述 <span className="font-normal text-muted">(可选)</span>
+                  描述 <span className="font-normal text-muted-foreground">(可选)</span>
                 </label>
                 <Textarea
                   id="install-description"

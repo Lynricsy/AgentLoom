@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useNotificationStore } from '../stores/notificationStore'
@@ -42,12 +42,15 @@ describe('NotificationBell', () => {
     render(<NotificationBell />)
 
     await user.click(screen.getByTestId('notification-bell'))
-    expect(screen.getByTestId('notification-dropdown')).toBeInTheDocument()
+    expect(await screen.findByTestId('notification-dropdown')).toBeInTheDocument()
     expect(useNotificationStore.getState().isDropdownOpen).toBe(true)
 
     await user.click(screen.getByTestId('notification-bell'))
-    expect(screen.queryByTestId('notification-dropdown')).not.toBeInTheDocument()
     expect(useNotificationStore.getState().isDropdownOpen).toBe(false)
+    // 浮层有退场动画，卸载是异步的
+    await waitFor(() => {
+      expect(screen.queryByTestId('notification-dropdown')).not.toBeInTheDocument()
+    })
   })
 
   it('未读数为 0 时不显示徽标', () => {

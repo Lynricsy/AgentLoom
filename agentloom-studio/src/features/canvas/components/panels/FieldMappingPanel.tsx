@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react'
 import { X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import { FieldMappingBatchPreview } from './FieldMappingBatchPreview'
 import { FieldMappingCandidates } from './FieldMappingCandidates'
 import { FieldMappingList } from './FieldMappingList'
@@ -79,14 +80,15 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       const sourceForThis = targetToSource.get(node.path)
       if (!sourceForThis || isReadonly) return null
       return (
-        <button
-          type="button"
-          className="shrink-0 rounded p-0.5 text-muted hover:text-error"
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="h-5 w-5 shrink-0 text-muted-foreground hover:text-error"
           aria-label={`删除 ${node.leafKey} 映射`}
           onClick={() => handleRemoveMapping(node.path)}
         >
           <X size={12} />
-        </button>
+        </Button>
       )
     },
     [targetToSource, isReadonly, handleRemoveMapping],
@@ -175,14 +177,15 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
             />
           )}
 
-          <button
-            type="button"
-            className="mt-2 text-xs text-muted hover:text-primary"
+          <Button
+            variant="link"
+            size="xs"
+            className="mt-2 h-auto px-0 font-normal text-muted-foreground hover:text-primary hover:no-underline"
             data-testid="mapping-undo"
             onClick={interactions.handleUndo}
           >
             撤销
-          </button>
+          </Button>
         </div>
       )}
     </aside>

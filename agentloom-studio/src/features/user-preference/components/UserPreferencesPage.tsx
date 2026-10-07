@@ -65,7 +65,7 @@ export function UserPreferencesPage() {
       <Card>
         <CardHeader>
           <CardTitle>对话标题生成</CardTitle>
-          <p className="text-xs leading-relaxed text-muted">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             为自动生成对话标题单独指定一个 LLM 模型，不设置时使用组织默认模型。
           </p>
         </CardHeader>
@@ -79,7 +79,7 @@ export function UserPreferencesPage() {
           ) : (
             <div className="space-y-1.5">
               <label
-                className="block text-xs font-medium text-muted"
+                className="block text-xs font-medium text-muted-foreground"
                 htmlFor="title-model-select"
               >
                 标题生成模型
@@ -97,7 +97,7 @@ export function UserPreferencesPage() {
                 />
                 {updateMutation.isPending ? <Spinner size="sm" /> : null}
               </div>
-              <p className="text-[11px] leading-relaxed text-muted">
+              <p className="text-2xs leading-relaxed text-muted-foreground">
                 选择「使用组织默认」可清除当前偏好，恢复使用组织级默认设置。
               </p>
             </div>

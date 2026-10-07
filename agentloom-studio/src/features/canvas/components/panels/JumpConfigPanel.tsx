@@ -1,6 +1,9 @@
 import { memo, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronUp, CircleOff, FastForward, Plus, Trash2 } from 'lucide-react'
 import { useToast } from '@/shared/ui/toast'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -216,7 +219,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         <span className="text-xs font-medium text-foreground">{actionMeta.title}</span>
       </div>
 
-      <p className="text-[11px] leading-5 text-muted-foreground">
+      <p className="text-2xs leading-5 text-muted-foreground">
         {actionMeta.description}
       </p>
 
@@ -238,26 +241,22 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         </Select>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-foreground">表达式输入端口</p>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               通过 `ports[n]` 引用，例如 `ports[1].status === &quot;skip&quot;`。
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleAddInputPort}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-foreground hover:bg-muted"
-          >
-            <Plus className="h-3.5 w-3.5" />
+          <Button variant="outline" size="xs" onClick={handleAddInputPort}>
+            <Plus />
             <span>添加输入</span>
-          </button>
+          </Button>
         </div>
 
         {extraInputIds.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             当前没有额外输入端口；如需条件触发，请先添加输入。
           </p>
         ) : (
@@ -268,40 +267,43 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                 className="flex items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <input
+                  <Input
                     type="text"
                     value={parsed.portLabels?.[portId] ?? `输入 ${index + 1}`}
                     onChange={(e) => handleRenameInputPort(portId, e.target.value, index)}
                     placeholder={`输入 ${index + 1}`}
-                    className="min-w-0 w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
+                    className="h-7 border-transparent bg-transparent px-1 text-xs font-medium shadow-none hover:border-border"
                   />
-                  <p className="px-1 text-[10px] font-mono text-muted-foreground">
+                  <p className="px-1 text-2xs font-mono text-muted-foreground">
                     {`ports[${index + 1}]`} · {portId}
                   </p>
                 </div>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => handleMoveInputPort(index, -1)}
                   disabled={index === 0}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
+                  <ChevronUp />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => handleMoveInputPort(index, 1)}
                   disabled={index === extraInputIds.length - 1}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                 >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
+                  <ChevronDown />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => handleRemoveInputPort(portId)}
-                  className="rounded p-1 text-muted-foreground hover:bg-error/10 hover:text-error"
+                  className="text-muted-foreground hover:bg-error/10 hover:text-error"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                  <Trash2 />
+                </Button>
               </div>
             ))}
           </div>
@@ -316,13 +318,13 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
           >
             表达式
           </label>
-          <textarea
+          <Textarea
             id={`${nodeType}-expression`}
             rows={4}
             value={parsed.expression}
             onChange={handleExpressionChange}
             placeholder="例如：ports[1] === 'skip'"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
+            className="font-mono text-xs leading-relaxed"
           />
         </div>
       ) : null}

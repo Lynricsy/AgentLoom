@@ -105,9 +105,9 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
   return (
     <article
       className={cn(
-        'relative h-full w-full rounded-panel border px-3 py-2 text-left shadow-node transition-colors',
+        'relative h-full w-full rounded-xl border px-3 py-2 text-left shadow-sm transition-colors',
         data.isCompoundContainer
-          ? 'overflow-hidden border-dashed bg-surface-elevated'
+          ? 'overflow-hidden border-dashed bg-muted'
           : 'min-w-[180px]',
         statusMeta.nodeClassName,
         data.isSelected &&
@@ -117,15 +117,15 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
       {data.isCompoundContainer ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-3 bottom-3 top-[72px] rounded-card border border-dashed border-border"
+          className="pointer-events-none absolute inset-x-3 bottom-3 top-[72px] rounded-lg border border-dashed border-border"
         />
       ) : null}
 
-      <div className="relative z-[1] flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{data.label}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-muted">
+            <p className="truncate text-2xs uppercase tracking-[0.18em] text-muted-foreground">
               {data.nodeType}
             </p>
             {data.isCompoundContainer ? (
@@ -139,7 +139,7 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
       </div>
 
       {data.summary ? (
-        <p className="relative z-[1] mt-3 text-[11px] leading-4 text-muted">
+        <p className="relative mt-3 text-2xs leading-4 text-muted-foreground">
           {data.summary}
         </p>
       ) : null}
@@ -272,7 +272,7 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <Controls
           showInteractive={false}
-          className="!border-border !bg-surface-elevated !shadow-lg"
+          className="!border-border !bg-muted !shadow-lg"
         />
       </ReactFlow>
     </Card>

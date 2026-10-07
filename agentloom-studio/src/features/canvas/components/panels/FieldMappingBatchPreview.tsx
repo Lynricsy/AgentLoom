@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import type { BatchPreviewState } from '../../lib/fieldMappingBatch'
 import type { CompatibilityLabel } from '../../types'
 
@@ -39,7 +40,7 @@ export function FieldMappingBatchPreview({
             data-testid={`batch-preview-item-${item.targetField}`}
           >
             <span className="truncate">{item.sourceField}</span>
-            <span className="shrink-0 text-muted">→</span>
+            <span className="shrink-0 text-muted-foreground">→</span>
             <span className="truncate">{item.targetField}</span>
             <span className={`batch-preview__match-type batch-preview__match-type--${item.matchType}`}>
               {MATCH_TYPE_TEXT[item.matchType]}
@@ -52,35 +53,34 @@ export function FieldMappingBatchPreview({
 
         {preview.unmatchedSources.length > 0 && (
           <div
-            className="batch-preview__unmatched flex flex-col gap-1 rounded border border-dashed border-warning/30 bg-warning/5 px-2 py-1.5 text-[11px] text-foreground"
+            className="batch-preview__unmatched flex flex-col gap-1 rounded border border-dashed border-warning/30 bg-warning/5 px-2 py-1.5 text-2xs text-foreground"
             data-testid="batch-preview-unmatched"
           >
-            <span className="batch-preview__unmatched-title text-[10px] font-semibold text-warning">
+            <span className="batch-preview__unmatched-title text-2xs font-semibold text-warning">
               未匹配来源
             </span>
             <span>{preview.unmatchedSources.join('、')}</span>
           </div>
         )}
       </div>
-      <div className="batch-preview__actions">
-        <button
-          type="button"
+      <div className="flex gap-1.5">
+        <Button
+          size="xs"
           data-testid="batch-preview-confirm"
-          className="batch-preview__btn--confirm"
           onClick={onConfirm}
         >
-          <Check size={12} />
+          <Check />
           确认映射
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
           data-testid="batch-preview-cancel"
-          className="batch-preview__btn--cancel"
           onClick={onCancel}
         >
-          <X size={12} />
+          <X />
           取消
-        </button>
+        </Button>
       </div>
     </div>
   )

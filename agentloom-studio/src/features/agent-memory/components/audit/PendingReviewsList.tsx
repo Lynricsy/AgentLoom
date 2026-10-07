@@ -74,45 +74,53 @@ export function PendingReviewsList({
 
   return (
     <div className="space-y-3" data-testid="pending-reviews-list">
-      <p className="text-sm font-medium text-muted">
+      <p className="text-sm font-medium text-muted-foreground">
         共 {sortedReviews.length} 项待审核
       </p>
 
       {sortedReviews.map((review, index) => (
-        <motion.button
-          key={review.id}
-          type="button"
-          {...staggerList(index)}
-          className="block w-full rounded-card border border-border bg-card p-4 text-left shadow-node transition-all duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-node-selected focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          onClick={() => onSelectReview?.(review)}
-          data-testid={`pending-review-${review.id}`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-medium text-foreground">
-                {review.nodeName}
-              </span>
-              <Badge size="sm" tone={OPERATION_TONES[review.operationType]}>
-                {OPERATION_LABELS[review.operationType]}
+        <motion.div key={review.id} {...staggerList(index)}>
+          <Card
+            interactive
+            role="button"
+            tabIndex={0}
+            className="p-4"
+            onClick={() => onSelectReview?.(review)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onSelectReview?.(review);
+              }
+            }}
+            data-testid={`pending-review-${review.id}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium text-foreground">
+                  {review.nodeName}
+                </span>
+                <Badge size="sm" tone={OPERATION_TONES[review.operationType]}>
+                  {OPERATION_LABELS[review.operationType]}
+                </Badge>
+              </div>
+              <Badge size="sm" tone={REVIEW_STATUS_META.pending.tone}>
+                {REVIEW_STATUS_META.pending.label}
               </Badge>
             </div>
-            <Badge size="sm" tone={REVIEW_STATUS_META.pending.tone}>
-              {REVIEW_STATUS_META.pending.label}
-            </Badge>
-          </div>
 
-          {review.changeSummary && (
-            <p className="mt-2 line-clamp-2 text-sm text-muted">
-              {review.changeSummary}
-            </p>
-          )}
+            {review.changeSummary && (
+              <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                {review.changeSummary}
+              </p>
+            )}
 
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-            <span>v{review.versionNumber}</span>
-            <span>{review.actor}</span>
-            <span>{formatTimestamp(review.createdAt)}</span>
-          </div>
-        </motion.button>
+            <div className="mt-2 flex items-center gap-3 text-2xs text-muted-foreground">
+              <span>v{review.versionNumber}</span>
+              <span>{review.actor}</span>
+              <span>{formatTimestamp(review.createdAt)}</span>
+            </div>
+          </Card>
+        </motion.div>
       ))}
     </div>
   );

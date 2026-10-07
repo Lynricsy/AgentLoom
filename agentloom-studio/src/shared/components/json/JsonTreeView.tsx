@@ -50,7 +50,7 @@ function JsonTreeNode({
     return (
       <details
         open={depth < defaultExpandedDepth}
-        className="rounded-xl border border-border/60 bg-background/60 px-3 py-2"
+        className="rounded-lg border border-border bg-muted px-3 py-2"
       >
         <summary className="cursor-pointer text-xs font-medium text-foreground">
           {name ?? 'Array'} [{value.length}]
@@ -77,7 +77,7 @@ function JsonTreeNode({
     return (
       <details
         open={depth < defaultExpandedDepth}
-        className="rounded-xl border border-border/60 bg-background/60 px-3 py-2"
+        className="rounded-lg border border-border bg-muted px-3 py-2"
       >
         <summary className="cursor-pointer text-xs font-medium text-foreground">
           {name ?? 'Object'} {'{'}

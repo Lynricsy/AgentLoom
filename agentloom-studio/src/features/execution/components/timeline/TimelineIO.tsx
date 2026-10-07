@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { JsonTreeView } from '@/shared/components/json'
+import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
 
 import {
@@ -101,9 +102,9 @@ export const TimelineIO = memo(function TimelineIO({
 
   return (
     <div className={cn('space-y-1', className)} data-testid="timeline-io">
-      <button
-        type="button"
-        className="flex w-full flex-wrap items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground"
+      <Button
+        variant="ghost"
+        className="h-auto w-full flex-wrap justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={(e) => {
           e.stopPropagation()
           setExpanded((prev) => !prev)
@@ -111,9 +112,9 @@ export const TimelineIO = memo(function TimelineIO({
         data-testid="timeline-io-toggle"
       >
         {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5" />
+          <ChevronDown className="size-3.5" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
+          <ChevronRight className="size-3.5" />
         )}
         <span data-testid="timeline-io-input-preview">输入预览：{inputPreview}</span>
         <span className="mx-1">·</span>
@@ -126,15 +127,15 @@ export const TimelineIO = memo(function TimelineIO({
             <span className="text-warning">重试 {retryCount} 次</span>
           </>
         )}
-      </button>
+      </Button>
 
       {expanded && (
         <div
           className="grid gap-2 sm:grid-cols-2"
           data-testid="timeline-io-expanded"
         >
-          <div className="min-w-0 rounded-card border border-border bg-surface-elevated p-3">
-            <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted">
+          <div className="min-w-0 rounded-lg border border-border bg-muted p-3">
+            <p className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
               输入
             </p>
             <div className="max-h-[300px] overflow-auto">
@@ -151,8 +152,8 @@ export const TimelineIO = memo(function TimelineIO({
               />
             </div>
           </div>
-          <div className="min-w-0 rounded-card border border-border bg-surface-elevated p-3">
-            <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted">
+          <div className="min-w-0 rounded-lg border border-border bg-muted p-3">
+            <p className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
               输出
             </p>
             <div className="max-h-[300px] overflow-auto">
@@ -170,7 +171,7 @@ export const TimelineIO = memo(function TimelineIO({
             </div>
           </div>
           <div
-            className="grid gap-2 text-[11px] text-muted sm:col-span-2 sm:grid-cols-4"
+            className="grid gap-2 text-2xs text-muted-foreground sm:col-span-2 sm:grid-cols-4"
             data-testid="timeline-io-meta"
           >
             <span>开始：{formatClockTime(startedAt)}</span>

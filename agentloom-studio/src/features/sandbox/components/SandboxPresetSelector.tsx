@@ -40,15 +40,15 @@ const PresetCard = memo(function PresetCard({
 }) {
   return (
     <div className="relative">
-      <button
-        type="button"
+      <Button
+        variant="outline"
         onClick={onSelect}
         className={cn(
-          "w-full rounded-lg border px-3 text-left transition-colors",
+          "h-auto w-full flex-col items-stretch gap-0 whitespace-normal rounded-lg px-3 text-left font-normal shadow-none [&_svg]:size-2.5",
           compact ? "py-2" : "py-2.5",
           isSelected
-            ? "border-primary bg-primary/5"
-            : "border-border bg-surface-elevated hover:border-primary/50",
+            ? "border-primary bg-primary/5 hover:border-primary hover:bg-primary/5"
+            : "border-border bg-muted hover:border-primary/50 hover:bg-muted",
         )}
       >
         <span
@@ -59,13 +59,13 @@ const PresetCard = memo(function PresetCard({
         >
           {preset.name}
           {preset.isBuiltin && (
-            <span className="ml-1 text-[10px] text-muted-foreground">
+            <span className="ml-1 text-2xs text-muted-foreground">
               (内置)
             </span>
           )}
         </span>
 
-        <span className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+        <span className="mt-1 flex items-center gap-2 text-2xs text-muted-foreground">
           <span className="inline-flex items-center gap-0.5">
             <Cpu className="h-2.5 w-2.5" />
             {preset.cpu}核
@@ -79,29 +79,31 @@ const PresetCard = memo(function PresetCard({
             {preset.disk}GB
           </span>
         </span>
-      </button>
+      </Button>
 
       {!preset.isBuiltin && (onStartRename || onRemove) && (
         <div className="absolute right-2 top-2 flex items-center gap-1">
           {onStartRename && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label={`${preset.name} 重命名`}
               onClick={onStartRename}
-              className="rounded-full bg-surface-elevated p-1 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground"
+              className="h-5 w-5 rounded-full bg-muted text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground [&_svg]:size-3"
             >
-              <Pencil className="h-3 w-3" />
-            </button>
+              <Pencil />
+            </Button>
           )}
           {onRemove && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label={`${preset.name} 删除`}
               onClick={onRemove}
-              className="rounded-full bg-surface-elevated p-1 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground"
+              className="h-5 w-5 rounded-full bg-muted text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground [&_svg]:size-3"
             >
-              <X className="h-3 w-3" />
-            </button>
+              <X />
+            </Button>
           )}
         </div>
       )}
@@ -173,17 +175,18 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
           配置预设
         </label>
         {canSave && !showSaveForm && (
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="xs"
             onClick={() => {
               clearRename();
               setShowSaveForm(true);
             }}
-            className="inline-flex items-center gap-1 text-[11px] text-primary transition-colors hover:text-primary/80"
+            className="h-auto gap-1 p-0 text-2xs font-normal hover:text-primary/80 hover:no-underline [&_svg]:size-3"
           >
-            <Plus className="h-3 w-3" />
+            <Plus />
             保存为预设
-          </button>
+          </Button>
         )}
       </div>
 

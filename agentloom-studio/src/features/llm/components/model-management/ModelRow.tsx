@@ -23,7 +23,7 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
   );
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-colors hover:border-border/80">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-3 transition-colors hover:border-border/80">
       {/* 启用开关 */}
       <Switch
         checked={model.isEnabled}
@@ -85,7 +85,7 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0 text-muted hover:text-error"
+          className="h-7 w-7 p-0 text-muted-foreground hover:text-error"
           onClick={() => onDelete(model)}
           title="删除"
         >

@@ -168,7 +168,7 @@ export function OrganizationMembersTable({
       key: 'displayName',
       header: '显示名',
       hideBelow: 'sm',
-      cell: (member) => member.displayName ?? <span className="text-muted">未设置</span>,
+      cell: (member) => member.displayName ?? <span className="text-muted-foreground">未设置</span>,
     },
     {
       key: 'role',
@@ -207,7 +207,7 @@ export function OrganizationMembersTable({
       key: 'createdAt',
       header: '加入时间',
       hideBelow: 'md',
-      className: 'text-muted',
+      className: 'text-muted-foreground',
       cell: (member) => formatJoinedAt(member.createdAt),
     },
     ...(canManage
