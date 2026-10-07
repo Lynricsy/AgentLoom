@@ -53,7 +53,8 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
     <div
       className={cn(
         CANVAS_FLOATING_CLASS,
-        'absolute top-3 right-3 z-30 flex max-h-[calc(100vh-6rem)] w-[var(--spacing-property-panel)] flex-col overflow-hidden',
+        // 顶部工具栏（agents.$agentId.tsx 的 agent-top-overlay，同为 z-30）占据右上角，面板须从其下方开始
+        'absolute top-20 right-3 z-30 flex max-h-[calc(100%-6rem)] w-[var(--spacing-property-panel)] flex-col overflow-hidden',
         className,
       )}
     >

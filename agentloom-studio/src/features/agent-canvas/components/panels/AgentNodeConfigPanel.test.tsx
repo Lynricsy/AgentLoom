@@ -100,7 +100,7 @@ describe('AgentNodeConfigPanel', () => {
     );
     expect(screen.getByTestId('agent-node-config-scroll').parentElement).toHaveClass(
       'flex',
-      'max-h-[calc(100vh-6rem)]',
+      'max-h-[calc(100%-6rem)]',
       'flex-col',
       'overflow-hidden',
     );
