@@ -198,6 +198,75 @@ describe('createPluginProject', () => {
     expect(readme).toContain('agentloom-plugin publish -k <key>');
     expect(readme).toContain('Studio');
   });
+
+  it('create --runtime 生成 dsh runtime 插件脚手架与 runtime 清单', () => {
+    const targetDir = createTempRoot();
+    const result = createPluginProject({
+      name: 'Demo RT',
+      author: 'AgentLoom Team',
+      description: 'Runtime plugin',
+      license: 'MIT',
+      targetDir,
+      runtime: true,
+    });
+
+    for (const relativePath of [
+      'README.md',
+      'cordis.patch.yml',
+      'manifest.json',
+      'package.json',
+      'tsconfig.json',
+      join('src', 'index.ts'),
+    ]) {
+      expect(existsSync(join(result.projectDir, relativePath))).toBe(true);
+    }
+    expect(existsSync(join(result.projectDir, 'node-definitions.json'))).toBe(
+      false,
+    );
+
+    const manifest = readJson<Record<string, unknown>>(result.manifestPath);
+    const packageJson = readJson<Record<string, unknown>>(
+      result.packageJsonPath,
+    );
+    const patch = readFileSync(
+      join(result.projectDir, 'cordis.patch.yml'),
+      'utf8',
+    );
+    const source = readFileSync(
+      join(result.projectDir, 'src', 'index.ts'),
+      'utf8',
+    );
+
+    expect(manifest.kind).toBe('runtime');
+    expect(manifest.wasmEntry).toBeUndefined();
+    expect(manifest.runtime).toEqual({
+      dshVersion: '0.2.0-rc.2',
+      patch: './cordis.patch.yml',
+      entry: './dist/index.js',
+    });
+    expect(packageJson.peerDependencies).toEqual({
+      '@deepseek-ai/cordis': '~4.0.4',
+      '@deepseek-ai/dsh-tools': '0.2.0-rc.2',
+    });
+    expect(patch).toContain('name: __PLUGIN_ROOT__/dist/index.js');
+    expect(source).toContain("export const inject = ['tools'];");
+    expect(source).toContain("name: 'demo_rt_echo'");
+    expect(source).not.toContain('console.log');
+  });
+
+  it('--wasm 与 --runtime 互斥', () => {
+    expect(() =>
+      createPluginProject({
+        name: 'both',
+        author: 'AgentLoom Team',
+        description: 'Both',
+        license: 'MIT',
+        targetDir: createTempRoot(),
+        wasm: true,
+        runtime: true,
+      }),
+    ).toThrow('--wasm 与 --runtime 不能同时使用。');
+  });
 });
 
 describe('runCreateCommand', () => {

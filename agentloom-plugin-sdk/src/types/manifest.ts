@@ -36,6 +36,25 @@ export type CustomNodeCategory = 'transform' | 'filter' | 'aggregator' | 'connec
 export const CUSTOM_NODE_CATEGORIES: readonly CustomNodeCategory[] = customNodeCategories;
 
 /**
+ * 插件包类型：`node` 为画布节点插件（WASM），`runtime` 为 sandbox 内 dsh runtime 插件。
+ */
+export type PluginKind = 'node' | 'runtime';
+
+/**
+ * runtime 插件（dsh Cordis 插件包）声明。
+ */
+export interface PluginRuntimeManifest {
+  /** 目标 `@deepseek-ai/dsh` 版本。 */
+  dshVersion: string;
+  /** 包内 cordis.patch.yml 相对路径。 */
+  patch: string;
+  /** 包内 ESM 入口相对路径。 */
+  entry: string;
+  /** 插件 config 的 JSON Schema。 */
+  configSchema?: Record<string, unknown>;
+}
+
+/**
  * 插件发布清单。
  */
 export interface PluginManifest {
@@ -80,4 +99,8 @@ export interface PluginManifest {
     /** 执行超时毫秒 (默认 30000)。 */
     timeoutMs?: number;
   };
+  /** 插件包类型，缺省为 `node`。 */
+  kind?: PluginKind;
+  /** runtime 插件声明，`kind === 'runtime'` 时必填。 */
+  runtime?: PluginRuntimeManifest;
 }

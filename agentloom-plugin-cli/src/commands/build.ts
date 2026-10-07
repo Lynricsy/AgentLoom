@@ -44,7 +44,7 @@ function getCliBinPath(): string {
 }
 
 const PORT_DATA_TYPES =
-  'model、text、json、array、image、audio、tool、sandbox、knowledge、skill、agent、memory、exec、volume';
+  'model、text、json、array、image、audio、tool、sandbox、knowledge、skill、agent、memory、exec、volume、runtime-plugin';
 
 function loadWasmNodeDefinitions(cwd: string): Array<Record<string, unknown>> {
   const filePath = resolve(cwd, 'node-definitions.json');
@@ -52,7 +52,7 @@ function loadWasmNodeDefinitions(cwd: string): Array<Record<string, unknown>> {
     `请在插件根目录 ${filePath} 创建非空 JSON 数组；` +
     '最小节点结构为 [{"type":"example.echo","label":"示例节点","category":"utility",' +
     '"description":"示例描述","inputPorts":[],"outputPorts":[]}]。' +
-    `端口 dataType 必须取自 14 值 PortDataType：${PORT_DATA_TYPES}。`;
+    `端口 dataType 必须取自 15 值 PortDataType：${PORT_DATA_TYPES}。`;
 
   if (!existsSync(filePath)) {
     throw new Error(`WASM 构建缺少 node-definitions.json。${guidance}`);
@@ -115,12 +115,90 @@ async function createArchive(
   });
 }
 
+/**
+ * runtime 插件（dsh Cordis 插件包）打包：manifest.json + cordis.patch.yml + dist/ +
+ * package.json + README.md（存在时）。不产出 node-definitions.json，也不支持 --wasm。
+ */
+async function buildRuntimePluginArchive(
+  cwd: string,
+  outputDir: string,
+  manifest: PluginManifest,
+): Promise<BuildPluginResult> {
+  const runtime = manifest.runtime;
+  if (!runtime) {
+    throw new Error('runtime 插件 manifest 缺少 runtime 字段。');
+  }
+
+  buildTypeScriptBundle(cwd);
+
+  // 去掉开头的 `./`，与 zip 条目名对齐。
+  const patchEntry = runtime.patch.replace(/^(\.\/)+/, '');
+  const runtimeEntry = runtime.entry.replace(/^(\.\/)+/, '');
+  for (const relativePath of [runtimeEntry, patchEntry]) {
+    if (!existsSync(resolve(cwd, relativePath))) {
+      throw new Error(`runtime 插件缺少入口文件: ${relativePath}`);
+    }
+  }
+
+  mkdirSync(outputDir, { recursive: true });
+  const archivePath = resolve(
+    outputDir,
+    `${manifest.id}-${manifest.version}.alp`,
+  );
+
+  await new Promise<void>((resolveArchive, rejectArchive) => {
+    const output = createWriteStream(archivePath);
+    const archive = new ZipArchive({ zlib: { level: 9 } });
+
+    output.on('close', () => resolveArchive());
+    output.on('error', rejectArchive);
+    archive.on('error', rejectArchive);
+
+    archive.pipe(output);
+    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, {
+      name: 'manifest.json',
+    });
+    archive.file(resolve(cwd, patchEntry), { name: patchEntry });
+
+    const distDir = resolve(cwd, 'dist');
+    if (existsSync(distDir)) {
+      archive.directory(distDir, 'dist');
+    }
+    // 入口不在 dist/ 下时单独打入，保证服务端能按 manifest.runtime.entry 找到它。
+    if (!runtimeEntry.startsWith('dist/')) {
+      archive.file(resolve(cwd, runtimeEntry), { name: runtimeEntry });
+    }
+    archive.file(resolve(cwd, 'package.json'), { name: 'package.json' });
+
+    const readmePath = resolve(cwd, 'README.md');
+    if (existsSync(readmePath)) {
+      archive.file(readmePath, { name: 'README.md' });
+    }
+
+    void archive.finalize();
+  });
+
+  return {
+    archivePath,
+    manifest,
+    nodeCount: 0,
+    sizeBytes: statSync(archivePath).size,
+  };
+}
+
 export async function buildPluginArchive(
   options: BuildPluginOptions = {},
 ): Promise<BuildPluginResult> {
   const cwd = resolve(options.cwd ?? process.cwd());
   const outputDir = resolve(cwd, options.outputDir ?? 'build');
   const manifest = loadManifest(cwd);
+
+  if (manifest.kind === 'runtime') {
+    if (options.wasm) {
+      throw new Error('runtime 插件不支持 --wasm 构建。');
+    }
+    return buildRuntimePluginArchive(cwd, outputDir, manifest);
+  }
 
   if (options.wasm && !existsSync(resolve(cwd, 'Cargo.toml'))) {
     throw new Error(

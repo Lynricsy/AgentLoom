@@ -326,6 +326,12 @@ export {
   type NewPlugin,
 } from './plugins.schema';
 export {
+  runtimePluginStatusEnum,
+  runtimePlugins,
+  type RuntimePluginRecord,
+  type NewRuntimePlugin,
+} from './runtime-plugins.schema';
+export {
   pluginDeveloperKeyStatusEnum,
   pluginDeveloperKeys,
   type PluginDeveloperKey,

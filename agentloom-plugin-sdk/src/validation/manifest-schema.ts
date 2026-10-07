@@ -27,6 +27,38 @@ export const SemverStringSchema = z.string().refine((value) => semverValid(value
 export const PluginPermissionSchema = z.enum(pluginPermissionValues);
 
 /**
+ * 插件包类型：`node` 为画布节点插件（WASM），`runtime` 为 sandbox 内 dsh runtime 插件。
+ */
+export const PluginKindSchema = z.enum(['node', 'runtime']);
+
+/**
+ * 归档内安全相对路径：不得以 `/` 开头、不得包含 `..` 或反斜杠。
+ */
+const ARCHIVE_RELATIVE_PATH_PATTERN = /^(?!\/)(?!.*\.\.)(?!.*\\).+/;
+
+/**
+ * runtime 插件（dsh Cordis 插件包）的声明。
+ */
+export const PluginRuntimeSchema = z.object({
+  /** 目标 `@deepseek-ai/dsh` 版本，服务端按平台当前支持的版本精确比对。 */
+  dshVersion: NonEmptyStringSchema,
+  /** 包内 cordis.patch.yml 相对路径。 */
+  patch: z
+    .string()
+    .regex(new RegExp(`${ARCHIVE_RELATIVE_PATH_PATTERN.source}\\.ya?ml$`), {
+      message: '必须是归档内指向 .yml/.yaml 文件的安全相对路径。',
+    }),
+  /** 包内 ESM 入口（package.json main）相对路径。 */
+  entry: z
+    .string()
+    .regex(new RegExp(`${ARCHIVE_RELATIVE_PATH_PATTERN.source}\\.m?js$`), {
+      message: '必须是归档内指向 .js/.mjs 文件的安全相对路径。',
+    }),
+  /** 插件 config 的 JSON Schema，Studio 面板按此渲染。 */
+  configSchema: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
  * 插件 manifest 运行时校验器。
  */
 export const PluginManifestSchema = z
@@ -62,5 +94,7 @@ export const PluginManifestSchema = z
         timeoutMs: z.number().int().positive().optional(),
       })
       .optional(),
+    kind: PluginKindSchema.default('node'),
+    runtime: PluginRuntimeSchema.optional(),
   })
   .strip();

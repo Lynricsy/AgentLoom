@@ -82,6 +82,48 @@ describe('PluginManifestSchema', () => {
       });
     }
   });
+
+  it('kind defaults to node and runtime declarations parse', () => {
+    expect(PluginManifestSchema.parse(validManifest).kind).toBe('node');
+
+    const parsed = PluginManifestSchema.parse({
+      ...validManifest,
+      kind: 'runtime',
+      runtime: {
+        dshVersion: '0.2.0-rc.2',
+        patch: './cordis.patch.yml',
+        entry: './dist/index.js',
+        configSchema: { type: 'object' },
+      },
+    });
+
+    expect(parsed.kind).toBe('runtime');
+    expect(parsed.runtime).toEqual({
+      dshVersion: '0.2.0-rc.2',
+      patch: './cordis.patch.yml',
+      entry: './dist/index.js',
+      configSchema: { type: 'object' },
+    });
+  });
+
+  it('runtime paths must be safe archive-relative yaml/js paths', () => {
+    const result = PluginManifestSchema.safeParse({
+      ...validManifest,
+      kind: 'runtime',
+      runtime: {
+        dshVersion: '0.2.0-rc.2',
+        patch: '../cordis.patch.yml',
+        entry: '/abs/index.ts',
+      },
+    });
+
+    expect(result.success).toBe(false);
+
+    if (!result.success) {
+      const paths = result.error.issues.map((issue) => issue.path.join('.'));
+      expect(paths).toEqual(expect.arrayContaining(['runtime.patch', 'runtime.entry']));
+    }
+  });
 });
 
 describe('ReverseDomainPluginIdSchema', () => {

@@ -41,6 +41,7 @@ import { ShareModule } from './modules/share/share.module';
 import { SharedResourcesModule } from './modules/shared-resources/shared-resources.module';
 import { PlatformApiTokenModule } from './modules/platform-api-token/platform-api-token.module';
 import { PluginModule } from './modules/plugin/plugin.module';
+import { RuntimePluginModule } from './modules/runtime-plugin/runtime-plugin.module';
 import { SmartRoutingModule } from './modules/smart-routing/smart-routing.module';
 import { ExecutionRecordModule } from './modules/execution-record/execution-record.module';
 import { OptimizationSuggestionModule } from './modules/optimization-suggestion/optimization-suggestion.module';
@@ -129,6 +130,7 @@ function createThrottlerOptions(configService: ConfigService) {
     SharedResourcesModule,
     PlatformApiTokenModule,
     PluginModule,
+    RuntimePluginModule,
     SmartRoutingModule,
     ExecutionRecordModule,
     OptimizationSuggestionModule,

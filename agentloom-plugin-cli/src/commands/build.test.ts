@@ -400,7 +400,7 @@ describe('buildPluginArchive', () => {
     unlinkSync(join(root, 'node-definitions.json'));
 
     await expect(buildPluginArchive({ cwd: root, wasm: true })).rejects.toThrow(
-      /node-definitions\.json.*14 值 PortDataType/,
+      /node-definitions\.json.*15 值 PortDataType/,
     );
     expect(mocks.execSync).not.toHaveBeenCalled();
   });
@@ -428,6 +428,83 @@ describe('buildPluginArchive', () => {
 
     await expect(buildPluginArchive({ cwd: root, wasm: true })).rejects.toThrow(
       '未找到 Cargo.toml',
+    );
+  });
+
+  it('runtime 插件打包 manifest、cordis.patch.yml、dist/ 且不产出 node-definitions.json', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root);
+    writeJson(join(root, 'manifest.json'), {
+      id: 'com.agentloom.runtime-fixture',
+      name: 'Runtime Fixture',
+      version: '0.1.0',
+      author: 'AgentLoom Team',
+      description: 'Runtime plugin fixture',
+      license: 'MIT',
+      minPlatformVersion: '0.1.0',
+      permissions: [],
+      kind: 'runtime',
+      runtime: {
+        dshVersion: '0.2.0-rc.2',
+        patch: './cordis.patch.yml',
+        entry: './dist/index.js',
+      },
+    });
+    writeFileSync(
+      join(root, 'cordis.patch.yml'),
+      '- insert:\n    - id: runtime-fixture\n      name: __PLUGIN_ROOT__/dist/index.js\n',
+      'utf8',
+    );
+
+    const result = await buildPluginArchive({ cwd: root });
+    const entries = listArchiveEntries(result.archivePath);
+    const manifest = await readArchiveManifest<Record<string, unknown>>(
+      readFileSync(result.archivePath),
+    );
+
+    expect(mocks.execSync).toHaveBeenCalledWith(
+      'npx tsc',
+      expect.objectContaining({ cwd: root }),
+    );
+    expect(result.archivePath).toBe(
+      join(root, 'build', 'com.agentloom.runtime-fixture-0.1.0.alp'),
+    );
+    expect(result.nodeCount).toBe(0);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        'manifest.json',
+        'cordis.patch.yml',
+        'dist/index.js',
+        'package.json',
+      ]),
+    );
+    expect(entries).not.toContain('node-definitions.json');
+    expect(manifest.kind).toBe('runtime');
+    expect(manifest.wasmEntry).toBeUndefined();
+  });
+
+  it('runtime 插件缺少 patch 文件时报错', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root);
+    writeJson(join(root, 'manifest.json'), {
+      id: 'com.agentloom.runtime-fixture',
+      name: 'Runtime Fixture',
+      version: '0.1.0',
+      author: 'AgentLoom Team',
+      description: 'Runtime plugin fixture',
+      license: 'MIT',
+      minPlatformVersion: '0.1.0',
+      permissions: [],
+      kind: 'runtime',
+      runtime: {
+        dshVersion: '0.2.0-rc.2',
+        patch: 'cordis.patch.yml',
+        entry: 'dist/index.js',
+      },
+    });
+
+    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow(
+      'runtime 插件缺少入口文件: cordis.patch.yml',
     );
   });
 });

@@ -58,6 +58,7 @@ import { PluginSignatureService } from './plugin-signature.service';
   exports: [
     PluginService,
     PluginSignatureService,
+    PluginDeveloperKeyService,
     PluginSandboxService,
     PluginUsageService,
     PluginEarningsService,

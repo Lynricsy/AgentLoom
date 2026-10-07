@@ -51,4 +51,37 @@ describe('validateManifest', () => {
       );
     }
   });
+
+  it('requires runtime declaration and forbids wasmEntry for runtime plugins', () => {
+    const result = validateManifest({
+      ...validManifest,
+      kind: 'runtime',
+      wasmEntry: 'dist/plugin.wasm',
+    });
+
+    expect(result.valid).toBe(false);
+
+    if (!result.valid) {
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('runtime:'),
+          expect.stringContaining('wasmEntry:'),
+        ]),
+      );
+    }
+  });
+
+  it('accepts runtime plugins with a runtime declaration', () => {
+    expect(
+      validateManifest({
+        ...validManifest,
+        kind: 'runtime',
+        runtime: {
+          dshVersion: '0.2.0-rc.2',
+          patch: 'cordis.patch.yml',
+          entry: 'dist/index.js',
+        },
+      }),
+    ).toEqual({ valid: true, errors: [] });
+  });
 });

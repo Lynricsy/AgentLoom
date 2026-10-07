@@ -1,4 +1,3 @@
-import type { MultipartFile } from '@fastify/multipart';
 import {
   Body,
   Controller,
@@ -24,7 +23,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
-import JSZip from 'jszip';
+import type JSZip from 'jszip';
 
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
@@ -38,7 +37,6 @@ import {
   RegisterPluginSchema,
   UpdatePluginStatusDto,
   UpdatePluginStatusSchema,
-  type RegisterPluginDtoType,
 } from './dto/plugin.dto';
 import {
   QueryPluginUsageQueryDto,
@@ -46,13 +44,14 @@ import {
   QueryPluginUsageSummaryQueryDto,
   QueryPluginUsageSummarySchema,
 } from './dto/plugin-usage-query.dto';
+import {
+  extractMultipartFieldValue,
+  parseArchiveJson,
+  readSignedAlpArchive,
+} from './plugin-archive-intake.util';
 import { MAX_PLUGIN_FILE_SIZE } from './plugin.constants';
 import {
   PluginAlreadyExistsException,
-  PluginFileTooLargeException,
-  PluginSignatureInvalidException,
-  PluginSignerMismatchException,
-  PluginSignatureMissingException,
   PluginValidationException,
 } from './plugin.exceptions';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
@@ -116,51 +115,28 @@ export class PluginController {
       req.user.orgId ??
       req.user.org_id ??
       (await this.pluginService.resolveOrganizationId(tenantId));
-    const multipartFile = await this.readMultipartFile(req);
-    this.ensureAlpFile(multipartFile);
-
-    const registerOptions = this.parseRegisterOptions(multipartFile);
-    const buffer = await this.readMultipartBuffer(multipartFile);
-    const { manifest, nodeDefinitions } = await this.parsePluginArchive(buffer);
-
-    const pluginId =
-      (manifest.id as string) ?? (manifest.pluginId as string) ?? 'unknown';
-    const version = (manifest.version as string) ?? '0.0.0';
-
-    const signingMetadata = this.requireSigningMetadata(manifest, pluginId);
-
-    const developerKey =
-      await this.developerKeyService.findActiveKeyByFingerprint(
-        orgId,
-        signingMetadata.developerKeyFingerprint,
-      );
-
-    if (!developerKey) {
-      throw new PluginSignatureInvalidException(pluginId);
-    }
-
-    if (developerKey.userId !== req.user.sub) {
-      throw new PluginSignerMismatchException(pluginId);
-    }
-
-    const verificationResult =
-      await this.signatureService.verifyArchiveSignature(
-        buffer,
-        signingMetadata.signature,
-        developerKey.publicKey,
-        pluginId,
-      );
-
-    if (verificationResult.contentHash !== signingMetadata.contentHash) {
-      throw new PluginSignatureInvalidException(pluginId);
-    }
-
-    const signature = signingMetadata.signature;
-    const contentHash = verificationResult.contentHash;
+    const archive = await readSignedAlpArchive(req, {
+      orgId,
+      userId: req.user.sub,
+      maxFileSize: MAX_PLUGIN_FILE_SIZE,
+      signatureService: this.signatureService,
+      developerKeyService: this.developerKeyService,
+    });
+    const registerOptions = RegisterPluginSchema.parse({
+      status: extractMultipartFieldValue(archive.fields, 'status'),
+    });
+    const { manifest, pluginId, version, signature, contentHash } = archive;
+    const nodeDefinitions = await this.parseNodeDefinitions(
+      archive.zip,
+      manifest,
+    );
 
     // WASM 为唯一正式运行时：产物校验必须在任何上传之前完成。
     const wasmEntry = this.requireWasmEntry(manifest);
-    const wasmBuffer = await this.extractWasmFromArchive(buffer, wasmEntry);
+    const wasmBuffer = await this.extractWasmFromArchive(
+      archive.zip,
+      wasmEntry,
+    );
 
     // 重复注册预检：避免为已存在的插件留下孤儿对象。
     const existing = await this.pluginService.findByPluginId(
@@ -184,7 +160,7 @@ export class PluginController {
       userId: req.user.sub,
       manifest,
       nodeDefinitions,
-      archiveBuffer: buffer,
+      archiveBuffer: archive.buffer,
       wasmBuffer,
       storageKey,
       wasmBundleUrl,
@@ -263,40 +239,6 @@ export class PluginController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.pluginService.findAll(this.getTenantId(req), query);
-  }
-
-  private requireSigningMetadata(
-    manifest: Record<string, unknown>,
-    pluginId: string,
-  ): {
-    signature: string;
-    contentHash: string;
-    developerKeyFingerprint: string;
-  } {
-    const signature = this.getNonEmptyString(manifest.signature);
-    const contentHash = this.getNonEmptyString(manifest.contentHash);
-    const developerKeyFingerprint = this.getNonEmptyString(
-      manifest.developerKeyFingerprint,
-    );
-
-    if (!signature || !contentHash || !developerKeyFingerprint) {
-      throw new PluginSignatureMissingException(pluginId);
-    }
-
-    return {
-      signature,
-      contentHash,
-      developerKeyFingerprint,
-    };
-  }
-
-  private getNonEmptyString(value: unknown): string | undefined {
-    if (typeof value !== 'string') {
-      return undefined;
-    }
-
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   @Get(':id')
@@ -417,131 +359,6 @@ export class PluginController {
     return tenantId;
   }
 
-  private parseRegisterOptions(
-    multipartFile: MultipartFile,
-  ): RegisterPluginDtoType {
-    const status = this.extractMultipartFieldValue(
-      multipartFile.fields,
-      'status',
-    );
-
-    return RegisterPluginSchema.parse({
-      ...(status ? { status } : {}),
-    });
-  }
-
-  private extractMultipartFieldValue(
-    fields: unknown,
-    fieldName: string,
-  ): string | undefined {
-    if (!fields || typeof fields !== 'object') {
-      return undefined;
-    }
-
-    const rawValue = (fields as Record<string, unknown>)[fieldName];
-
-    if (Array.isArray(rawValue)) {
-      const first = rawValue[0];
-      if (first && typeof first === 'object' && 'value' in first) {
-        const value = (first as { value?: unknown }).value;
-        return typeof value === 'string' ? value : undefined;
-      }
-      return undefined;
-    }
-
-    if (rawValue && typeof rawValue === 'object' && 'value' in rawValue) {
-      const value = (rawValue as { value?: unknown }).value;
-      return typeof value === 'string' ? value : undefined;
-    }
-
-    return undefined;
-  }
-
-  private async readMultipartFile(
-    request: AuthenticatedRequest,
-  ): Promise<MultipartFile> {
-    try {
-      const multipartFile = await request.file();
-
-      if (!multipartFile) {
-        throw new PluginValidationException('缺少插件文件');
-      }
-
-      return multipartFile;
-    } catch (error) {
-      this.rethrowMultipartLimitError(error);
-      throw error;
-    }
-  }
-
-  private async readMultipartBuffer(
-    multipartFile: MultipartFile,
-  ): Promise<Buffer> {
-    try {
-      const buffer = await multipartFile.toBuffer();
-
-      if (
-        buffer.length > MAX_PLUGIN_FILE_SIZE ||
-        multipartFile.file.truncated
-      ) {
-        throw new PluginFileTooLargeException();
-      }
-
-      return buffer;
-    } catch (error) {
-      this.rethrowMultipartLimitError(error);
-      throw error;
-    }
-  }
-
-  private rethrowMultipartLimitError(error: unknown): void {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE'
-    ) {
-      throw new PluginFileTooLargeException();
-    }
-  }
-
-  private ensureAlpFile(multipartFile: MultipartFile): void {
-    const filename = multipartFile.filename ?? '';
-
-    if (!filename.toLowerCase().endsWith('.alp')) {
-      throw new PluginValidationException('插件包必须是 .alp 文件');
-    }
-  }
-
-  private async parsePluginArchive(buffer: Buffer): Promise<{
-    manifest: Record<string, unknown>;
-    nodeDefinitions: Array<Record<string, unknown>>;
-  }> {
-    try {
-      const zip = await JSZip.loadAsync(buffer);
-      const manifestFile = zip.file('manifest.json');
-
-      if (!manifestFile) {
-        throw new PluginValidationException('插件包缺少 manifest.json');
-      }
-
-      const manifest = this.parseJsonRecord(
-        await manifestFile.async('string'),
-        'manifest.json',
-      );
-
-      const nodeDefinitions = await this.parseNodeDefinitions(zip, manifest);
-
-      return { manifest, nodeDefinitions };
-    } catch (error) {
-      if (error instanceof PluginValidationException) {
-        throw error;
-      }
-
-      throw new PluginValidationException('插件包解析失败');
-    }
-  }
-
   private async parseNodeDefinitions(
     zip: JSZip,
     manifest: Record<string, unknown>,
@@ -550,10 +367,10 @@ export class PluginController {
       zip.file('node-definitions.json') ?? zip.file('nodeDefinitions.json');
 
     if (nodeDefinitionFile) {
-      const parsed = this.parseJsonValue(
-        await nodeDefinitionFile.async('string'),
-        nodeDefinitionFile.name,
-      );
+      const raw = await nodeDefinitionFile.async('string').catch(() => {
+        throw new PluginValidationException('插件包解析失败');
+      });
+      const parsed = parseArchiveJson(raw, nodeDefinitionFile.name);
 
       return this.normalizeNodeDefinitions(parsed, nodeDefinitionFile.name);
     }
@@ -594,27 +411,6 @@ export class PluginController {
     });
   }
 
-  private parseJsonRecord(
-    raw: string,
-    sourceLabel: string,
-  ): Record<string, unknown> {
-    const parsed = this.parseJsonValue(raw, sourceLabel);
-
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new PluginValidationException(`${sourceLabel} 必须是 JSON 对象`);
-    }
-
-    return parsed as Record<string, unknown>;
-  }
-
-  private parseJsonValue(raw: string, sourceLabel: string): unknown {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      throw new PluginValidationException(`${sourceLabel} 不是合法 JSON`);
-    }
-  }
-
   /** WASM 模块魔数：`\0asm` */
   private static readonly WASM_MAGIC_BYTES = Buffer.from([
     0x00, 0x61, 0x73, 0x6d,
@@ -644,14 +440,9 @@ export class PluginController {
   }
 
   private async extractWasmFromArchive(
-    archiveBuffer: Buffer,
+    zip: JSZip,
     wasmEntry: string,
   ): Promise<Buffer> {
-    const zip = await JSZip.loadAsync(archiveBuffer).catch(() => {
-      throw new PluginValidationException(
-        `插件包解析失败，无法读取 wasmEntry: ${wasmEntry}`,
-      );
-    });
     const wasmFile = zip.file(wasmEntry);
 
     if (!wasmFile) {
