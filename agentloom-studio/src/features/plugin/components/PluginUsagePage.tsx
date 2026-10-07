@@ -5,6 +5,7 @@ import { Activity, AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { PageContainer } from '@/shared/components/page-container'
 import { Button, buttonVariants } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -192,10 +193,7 @@ export function PluginUsagePage({
   )
 
   return (
-    <div
-      className="flex h-full flex-col gap-5 overflow-y-auto p-6"
-      data-testid="plugin-usage-page"
-    >
+    <PageContainer data-testid="plugin-usage-page">
       <PageHeader
         icon={Receipt}
         tone="var(--color-node-plugin)"
@@ -312,6 +310,6 @@ export function PluginUsagePage({
           }
         />
       )}
-    </div>
+    </PageContainer>
   )
 }

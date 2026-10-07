@@ -27,6 +27,7 @@ import {
 } from "@/shared/components/data-table/DataTable";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -448,7 +449,7 @@ export function McpServerManagementPage() {
   );
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Server}
         tone={MCP_TONE}
@@ -640,6 +641,6 @@ export function McpServerManagementPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

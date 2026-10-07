@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { AlertCircle, Loader2, Upload, X } from "lucide-react";
+import { AlertCircle, Loader2, Upload } from "lucide-react";
 
-import { cn } from "@/shared/lib/utils";
 import { useToast } from "@/shared/ui/toast";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -11,6 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
+import {
+  Sheet,
+  SheetBody,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/shared/ui/sheet";
+import { Textarea } from "@/shared/ui/textarea";
 
 import { usePublishAgent } from "../api/agentMutations";
 import { useAgentVersions } from "../api/agentQueries";
@@ -170,85 +182,66 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
   );
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content
-          className={cn(
-            "fixed right-0 top-0 z-50 flex h-full w-[420px] flex-col",
-            "border-l border-border bg-surface shadow-xl",
-            "data-[state=open]:animate-in data-[state=closed]:animate-out",
-            "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
-          )}
-          data-testid="publish-agent-sheet"
-        >
-          <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <div>
-              <Dialog.Title className="text-base font-medium">
-                发布 Agent
-              </Dialog.Title>
-              <Dialog.Description className="mt-0.5 text-xs text-muted-foreground">
-                发布后 Agent 将以当前发布版本对外提供能力
-              </Dialog.Description>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent side="right" data-testid="publish-agent-sheet">
+        <SheetHeader>
+          <SheetTitle>发布 Agent</SheetTitle>
+          <SheetDescription>
+            发布后 Agent 将以当前发布版本对外提供能力
+          </SheetDescription>
+        </SheetHeader>
+
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <SheetBody className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="publish-label" className="text-sm font-medium">
+                发布标签{" "}
+                <span className="text-muted-foreground">（可选）</span>
+              </label>
+              <Input
+                id="publish-label"
+                type="text"
+                maxLength={255}
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="例如：正式发布"
+                data-testid="publish-label-input"
+              />
             </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="关闭"
+
+            <div className="space-y-2">
+              <label
+                htmlFor="publish-release-notes"
+                className="text-sm font-medium"
               >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
+                发布说明{" "}
+                <span className="text-muted-foreground">（可选）</span>
+              </label>
+              <Textarea
+                id="publish-release-notes"
+                value={releaseNotes}
+                onChange={(event) => setReleaseNotes(event.target.value)}
+                placeholder="例如：补齐 Agent 顶部工具栏与版本历史"
+                rows={4}
+                data-testid="publish-release-notes-input"
+              />
+            </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
-            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-4">
-              <div className="space-y-2">
-                <label htmlFor="publish-label" className="text-sm font-medium">
-                  发布标签{" "}
-                  <span className="text-muted-foreground">（可选）</span>
-                </label>
-                <input
-                  id="publish-label"
-                  type="text"
-                  maxLength={255}
-                  value={label}
-                  onChange={(event) => setLabel(event.target.value)}
-                  placeholder="例如：正式发布"
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  data-testid="publish-label-input"
-                />
-              </div>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">发布来源</p>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="publish-release-notes"
-                  className="text-sm font-medium"
-                >
-                  发布说明{" "}
-                  <span className="text-muted-foreground">（可选）</span>
-                </label>
-                <textarea
-                  id="publish-release-notes"
-                  value={releaseNotes}
-                  onChange={(event) => setReleaseNotes(event.target.value)}
-                  placeholder="例如：补齐 Agent 顶部工具栏与版本历史"
-                  rows={4}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-subtle-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  data-testid="publish-release-notes-input"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-sm font-medium">发布来源</p>
-
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-muted">
-                  <input
-                    type="radio"
-                    name="version-source"
-                    checked={versionSource === "current"}
-                    onChange={() => setVersionSource("current")}
+              <RadioGroup
+                name="version-source"
+                value={versionSource}
+                onValueChange={(value) =>
+                  setVersionSource(value as "current" | "existing")
+                }
+                className="gap-3"
+              >
+                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-150 hover:bg-muted">
+                  <RadioGroupItem
+                    value="current"
+                    className="mt-0.5"
                     data-testid="source-current"
                   />
                   <div>
@@ -261,12 +254,10 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                   </div>
                 </label>
 
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-muted">
-                  <input
-                    type="radio"
-                    name="version-source"
-                    checked={versionSource === "existing"}
-                    onChange={() => setVersionSource("existing")}
+                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-150 hover:bg-muted">
+                  <RadioGroupItem
+                    value="existing"
+                    className="mt-0.5"
                     data-testid="source-existing"
                   />
                   <div className="min-w-0 flex-1">
@@ -278,93 +269,85 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                     </div>
                   </div>
                 </label>
+              </RadioGroup>
 
-                {versionSource === "existing" && (
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="agent-version-select"
-                      className="text-sm font-medium"
+              {versionSource === "existing" && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="agent-version-select"
+                    className="text-sm font-medium"
+                  >
+                    可发布记录
+                  </label>
+                  <Select
+                    value={selectedVersionId}
+                    onValueChange={setSelectedVersionId}
+                  >
+                    <SelectTrigger
+                      id="agent-version-select"
+                      aria-label="可发布记录"
+                      data-testid="version-select"
                     >
-                      可发布记录
-                    </label>
-                    <Select
-                      value={selectedVersionId}
-                      onValueChange={setSelectedVersionId}
-                    >
-                      <SelectTrigger
-                        id="agent-version-select"
-                        aria-label="可发布记录"
-                        data-testid="version-select"
-                      >
-                        <SelectValue placeholder="请选择一条记录" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {publishableVersions.map((version) => (
-                          <SelectItem key={version.id} value={version.id}>
-                            {formatPublishableRecordLabel(version)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {publishableVersions.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        当前没有可直接发布的历史记录
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {validationErrors.length > 0 && (
-                <div
-                  className="rounded-md border border-error/30 bg-error/10 p-3"
-                  data-testid="publish-validation-error"
-                >
-                  <div className="flex items-center gap-2 text-sm font-medium text-error">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>发布失败</span>
-                  </div>
-                  <ul className="mt-2 space-y-1 text-sm text-error">
-                    {validationErrors.map((message) => (
-                      <li
-                        key={message}
-                        data-testid="publish-validation-error-item"
-                      >
-                        {message}
-                      </li>
-                    ))}
-                  </ul>
+                      <SelectValue placeholder="请选择一条记录" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {publishableVersions.map((version) => (
+                        <SelectItem key={version.id} value={version.id}>
+                          {formatPublishableRecordLabel(version)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {publishableVersions.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      当前没有可直接发布的历史记录
+                    </p>
+                  )}
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  data-testid="cancel-publish"
-                >
-                  取消
-                </button>
-              </Dialog.Close>
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                disabled={publishMutation.isPending || isCanvasSaving}
-                data-testid="confirm-publish"
+            {validationErrors.length > 0 && (
+              <div
+                className="rounded-md border border-error/30 bg-error/10 p-3"
+                data-testid="publish-validation-error"
               >
-                {publishMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-                发布
-              </button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+                <div className="flex items-center gap-2 text-sm font-medium text-error">
+                  <AlertCircle className="size-4" />
+                  <span>发布失败</span>
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-error">
+                  {validationErrors.map((message) => (
+                    <li key={message} data-testid="publish-validation-error-item">
+                      {message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </SheetBody>
+
+          <SheetFooter>
+            <SheetClose asChild>
+              <Button variant="outline" data-testid="cancel-publish">
+                取消
+              </Button>
+            </SheetClose>
+            <Button
+              type="submit"
+              disabled={publishMutation.isPending || isCanvasSaving}
+              data-testid="confirm-publish"
+            >
+              {publishMutation.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Upload />
+              )}
+              发布
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 });

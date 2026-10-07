@@ -2,6 +2,7 @@ import { memo, useCallback, useRef, useState } from 'react'
 import { Bot, Brain, ChevronDown, ChevronRight, User } from 'lucide-react'
 import { motion } from 'motion/react'
 import { DUR, EASE } from '@/shared/lib/motion'
+import { Button } from '@/shared/ui/button'
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer'
 import { ToolCallCard } from '@/shared/components/tool-renderers'
 import type { ToolCallData } from '@/shared/components/tool-renderers/types'
@@ -73,9 +74,9 @@ const ThinkingBlock = memo(function ThinkingBlock({
 
   return (
     <div className="rounded-lg border border-border bg-muted px-3 py-2">
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      <Button
+        variant="ghost"
+        className="h-auto w-full cursor-pointer justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((value) => !value)}
       >
         {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
@@ -86,7 +87,7 @@ const ThinkingBlock = memo(function ThinkingBlock({
             {content.slice(0, 60)}...
           </span>
         )}
-      </button>
+      </Button>
 
       {open && (
         <div className="mt-2 border-l-2 border-primary/20 pl-5">

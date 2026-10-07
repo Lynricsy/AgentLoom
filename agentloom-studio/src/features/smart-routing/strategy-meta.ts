@@ -9,17 +9,17 @@ export interface StrategyMeta {
 }
 
 export const STRATEGY_CATEGORY_COLORS: Record<StrategyCategory, string> = {
-  simple: 'text-blue-400',
-  ml: 'text-purple-400',
-  rag: 'text-green-400',
-  plugin: 'text-orange-400',
+  simple: 'text-info',
+  ml: 'text-primary',
+  rag: 'text-success',
+  plugin: 'text-warning',
 }
 
 export const STRATEGY_CATEGORY_BG: Record<StrategyCategory, string> = {
-  simple: 'bg-blue-500/10',
-  ml: 'bg-purple-500/10',
-  rag: 'bg-green-500/10',
-  plugin: 'bg-orange-500/10',
+  simple: 'bg-info/10',
+  ml: 'bg-primary/10',
+  rag: 'bg-success/10',
+  plugin: 'bg-warning/10',
 }
 
 export const STRATEGY_CATEGORY_LABELS: Record<StrategyCategory, string> = {

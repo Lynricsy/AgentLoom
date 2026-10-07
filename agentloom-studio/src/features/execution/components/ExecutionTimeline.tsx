@@ -7,8 +7,10 @@ import {
   formatExecutionDuration,
   stepStatusMeta,
   summarizeDataShape,
+  toneFillClass,
 } from '../lib/presentation'
-import { StatusDot, StepStatusBadge } from './StatusBadge'
+import { StatusDot } from '@/shared/ui/status-badge'
+import { StepStatusBadge } from './StatusBadge'
 import { Card } from '@/shared/ui/card'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { staggerList } from '@/shared/lib/motion'
@@ -158,7 +160,8 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <StatusDot
-                            className={cn('h-2.5 w-2.5', statusMeta.dotClassName)}
+                            tone={statusMeta.tone}
+                            className="size-2.5"
                             pulse={row.status === 'running'}
                           />
                           <p className="truncate text-sm font-semibold text-foreground">{row.nodeName}</p>
@@ -175,7 +178,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                     <div className="space-y-2">
                       <div className="h-2 rounded-full bg-muted">
                         <div
-                          className={cn('h-full rounded-full', statusMeta.dotClassName)}
+                          className={cn('h-full rounded-full', toneFillClass[statusMeta.tone])}
                           style={{
                             marginLeft: `${row.offsetPercent}%`,
                             width: `${row.widthPercent}%`,

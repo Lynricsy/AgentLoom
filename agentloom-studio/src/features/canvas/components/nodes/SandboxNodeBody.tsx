@@ -28,8 +28,8 @@ export const SandboxNodeBody = memo(function SandboxNodeBody({ data }: SandboxNo
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium ${
             isPersistent
-              ? 'bg-blue-500/10 text-blue-400'
-              : 'bg-amber-500/10 text-amber-400'
+              ? 'bg-info/10 text-info'
+              : 'bg-warning/10 text-warning'
           }`}
         >
           {isPersistent ? '持久' : '临时'}

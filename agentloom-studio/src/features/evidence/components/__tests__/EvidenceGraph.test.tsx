@@ -621,7 +621,8 @@ describe('EvidenceGraph components', () => {
       expect(screen.getByTestId('layout-force')).toBeInTheDocument()
       expect(screen.getByTestId('fit-view')).toBeInTheDocument()
       expect(screen.getByTestId('refresh-graph')).toBeInTheDocument()
-      expect(screen.getByTestId('layout-dagre').className).toContain('bg-primary/15')
+      expect(screen.getByTestId('layout-dagre')).toHaveAttribute('data-state', 'active')
+      expect(screen.getByTestId('layout-force')).toHaveAttribute('data-state', 'inactive')
     })
 
     it('点击各按钮时触发对应回调', () => {

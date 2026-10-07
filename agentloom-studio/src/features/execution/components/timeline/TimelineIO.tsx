@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import { JsonTreeView } from '@/shared/components/json'
+import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
 
 import {
@@ -101,9 +102,9 @@ export const TimelineIO = memo(function TimelineIO({
 
   return (
     <div className={cn('space-y-1', className)} data-testid="timeline-io">
-      <button
-        type="button"
-        className="flex w-full flex-wrap items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      <Button
+        variant="ghost"
+        className="h-auto w-full flex-wrap justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={(e) => {
           e.stopPropagation()
           setExpanded((prev) => !prev)
@@ -111,9 +112,9 @@ export const TimelineIO = memo(function TimelineIO({
         data-testid="timeline-io-toggle"
       >
         {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5" />
+          <ChevronDown className="size-3.5" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
+          <ChevronRight className="size-3.5" />
         )}
         <span data-testid="timeline-io-input-preview">输入预览：{inputPreview}</span>
         <span className="mx-1">·</span>
@@ -126,7 +127,7 @@ export const TimelineIO = memo(function TimelineIO({
             <span className="text-warning">重试 {retryCount} 次</span>
           </>
         )}
-      </button>
+      </Button>
 
       {expanded && (
         <div

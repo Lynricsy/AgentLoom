@@ -6,6 +6,8 @@ import { cn } from '@/shared/lib/utils'
 import { fadeInUp } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import { TooltipHint, TooltipProvider } from '@/shared/ui/tooltip'
+import { Input } from '@/shared/ui/input'
+import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
 import { useCanvasActions, useSearchState } from '../../stores/canvasStore'
 
 export const CanvasSearch = memo(function CanvasSearch() {
@@ -51,11 +53,14 @@ export const CanvasSearch = memo(function CanvasSearch() {
     <TooltipProvider delayDuration={300}>
       <motion.div
         {...fadeInUp}
-        className="absolute left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border border-border bg-surface/90 px-3 py-1.5 shadow-lg backdrop-blur-sm"
+        className={cn(
+          CANVAS_FLOATING_CLASS,
+          'absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1.5 px-3 py-1.5',
+        )}
         data-testid="canvas-search"
       >
         <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <input
+        <Input
           ref={inputRef}
           type="text"
           value={searchQuery}
@@ -63,7 +68,7 @@ export const CanvasSearch = memo(function CanvasSearch() {
           onKeyDown={handleKeyDown}
           placeholder="搜索节点..."
           aria-label="搜索节点"
-          className="w-48 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle-foreground"
+          className="h-7 w-48 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
           data-testid="canvas-search-input"
         />
         {searchQuery && (

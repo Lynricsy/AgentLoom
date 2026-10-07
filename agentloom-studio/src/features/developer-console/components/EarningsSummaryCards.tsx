@@ -1,4 +1,5 @@
-import { cn } from '@/shared/lib/utils'
+import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import type { EarningsSummary } from '../api/developer-earnings.api'
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -17,17 +18,17 @@ interface SummaryCardProps {
 
 function SummaryCard({ label, value, icon, isLoading }: SummaryCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <Card className="p-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm text-muted-foreground">{label}</span>
         <span className="text-muted-foreground">{icon}</span>
       </div>
       {isLoading ? (
-        <div className="h-8 w-24 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-8 w-24" />
       ) : (
         <p className="text-2xl font-bold text-foreground">{value}</p>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -176,9 +177,7 @@ export function EarningsSummaryCards({
   ]
 
   return (
-    <div
-      className={cn('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4')}
-    >
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
         <SummaryCard
           key={card.label}

@@ -2,11 +2,11 @@ import { memo } from 'react'
 import { Globe } from 'lucide-react'
 
 const METHOD_COLORS: Record<string, string> = {
-  GET: 'bg-emerald-500/15 text-emerald-400',
-  POST: 'bg-blue-500/15 text-blue-400',
-  PUT: 'bg-orange-500/15 text-orange-400',
-  PATCH: 'bg-yellow-500/15 text-yellow-400',
-  DELETE: 'bg-red-500/15 text-red-400',
+  GET: 'bg-success/15 text-success',
+  POST: 'bg-info/15 text-info',
+  PUT: 'bg-warning/15 text-warning',
+  PATCH: 'bg-warning/15 text-warning',
+  DELETE: 'bg-error/15 text-error',
 }
 
 export const HttpToolNodeBody = memo(function HttpToolNodeBody({

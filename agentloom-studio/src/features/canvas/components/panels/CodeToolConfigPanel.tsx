@@ -135,13 +135,12 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
         <label htmlFor="code-description" className="mb-1 block text-xs font-medium text-foreground">
           描述
         </label>
-        <input
+        <Input
           id="code-description"
           type="text"
           value={parsed.description}
           onChange={handleDescription}
           placeholder="简要描述代码功能"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
       </div>
 
@@ -197,14 +196,14 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
         >
           超时时间（秒）
         </label>
-        <input
+        <Input
           id="code-timeout"
           type="number"
           min={1}
           max={300}
           value={parsed.timeout}
           onChange={handleTimeout}
-          className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="w-24"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           代码执行超时时间，默认 30 秒，最长 300 秒

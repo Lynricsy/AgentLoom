@@ -630,7 +630,7 @@ export const DocumentViewer = memo(function DocumentViewer({
         {hasKbId && kind === 'markdown' && rawText != null && (
           <div
             ref={markdownContainerRef}
-            className="prose prose-sm dark:prose-invert max-w-none p-4"
+            className="prose prose-sm prose-agent max-w-none p-4"
             data-testid="document-viewer-markdown"
           >
             {markdownNodes}

@@ -19,6 +19,7 @@ import {
 } from '@/features/marketplace'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container'
 import {
   DataTable,
   type DataTableColumn,
@@ -320,7 +321,7 @@ export function PluginManagementPage() {
   const hasFilters = search.trim() !== '' || statusFilter !== ''
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Puzzle}
         tone="var(--color-node-plugin)"
@@ -465,6 +466,6 @@ export function PluginManagementPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   )
 }

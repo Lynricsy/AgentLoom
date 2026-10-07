@@ -89,7 +89,7 @@ export const AgentGraphNode = memo(function AgentGraphNode({
   return (
     <div
       className={cn(
-        'relative rounded-lg border px-4 py-3 shadow-sm transition-all duration-200',
+        'relative rounded-lg border px-4 py-3 shadow-sm transition-[box-shadow,border-color] duration-200 ease-out-expo',
         'min-w-[160px] max-w-[220px]',
         'bg-surface',
         statusColors.ring,

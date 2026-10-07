@@ -3,6 +3,8 @@ import { HTTPError } from 'ky'
 import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy'
 import { useCanvasStore } from '@/features/canvas'
 import type { ApiError } from '@/shared/types/api'
+import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
 import {
   useApplySuggestion,
@@ -173,14 +175,11 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
         data-testid="optimization-suggestions-panel"
       >
         {['skeleton-1', 'skeleton-2'].map((key) => (
-          <div
-            key={key}
-            className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 animate-pulse"
-          >
-            <div className="h-4 w-28 rounded bg-zinc-700/60" />
-            <div className="h-3 w-full rounded bg-zinc-700/40" />
-            <div className="h-3 w-2/3 rounded bg-zinc-700/40" />
-          </div>
+          <Card key={key} className="space-y-2 p-3">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-2/3" />
+          </Card>
         ))}
       </div>
     )
@@ -189,7 +188,7 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
   if (isError) {
     return (
       <div
-        className="px-4 py-3 text-sm text-red-400"
+        className="px-4 py-3 text-sm text-error"
         data-testid="optimization-suggestions-panel"
       >
         加载优化建议失败: {error?.message ?? '未知错误'}
@@ -200,7 +199,7 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
   if (!suggestions || suggestions.length === 0) {
     return (
       <div
-        className="px-4 py-3 text-sm text-zinc-500"
+        className="px-4 py-3 text-sm text-muted-foreground"
         data-testid="optimization-suggestions-panel"
       >
         暂无优化建议
@@ -219,13 +218,13 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
       ) &&
       currentWorkflowId === workflowDefinitionId &&
       isDirty ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
           画布存在未保存修改。请先等待自动保存完成，再采纳优化建议，避免覆盖本地编辑。
         </div>
       ) : null}
-      <h3 className="text-sm font-medium text-zinc-200">
+      <h3 className="text-sm font-medium text-foreground">
         优化建议
-        <span className="ml-1.5 text-xs text-zinc-500">({suggestions.length})</span>
+        <span className="ml-1.5 text-xs text-subtle-foreground">({suggestions.length})</span>
       </h3>
       {suggestions.map((suggestion) => (
         <OptimizationSuggestionCard

@@ -49,13 +49,13 @@ function MonitoringBlockedState({
   action?: ReactNode
 }) {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
+    <PageContainer data-testid={testId}>
       <PageHeader icon={Activity} title="运行监控" description={PAGE_DESCRIPTION} />
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
-            <Icon className="h-5 w-5" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+            <Icon className="size-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
@@ -64,21 +64,18 @@ function MonitoringBlockedState({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 
 /** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
 function MonitoringOrganizationLoadingState() {
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="monitoring-organization-loading"
-    >
+    <PageContainer data-testid="monitoring-organization-loading">
       <PageHeader icon={Activity} title="运行监控" description={PAGE_DESCRIPTION} />
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Spinner className="h-3.5 w-3.5" />
+        <Spinner className="size-3.5" />
         正在确认当前组织…
       </p>
 
@@ -88,7 +85,7 @@ function MonitoringOrganizationLoadingState() {
         ))}
       </div>
       <Skeleton className="h-80 rounded-lg" />
-    </div>
+    </PageContainer>
   )
 }
 
@@ -230,51 +227,49 @@ function MonitoringDashboardContent({ organizationId }: { organizationId: string
   const [window, setWindow] = useState<MonitoringWindow>(DEFAULT_MONITORING_WINDOW)
 
   return (
-    <div className="h-full overflow-auto" data-testid="monitoring-page">
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-        <PageHeader
-          icon={Activity}
-          title="运行监控"
-          description="查看当前组织范围内的执行量、成功率、失败率、平均耗时、队列压力、治理阻止与热点分布。这里是只读监控页，不提供配额修改、治理暂停切换或异常执行终止。"
-          actions={
-            <>
-              <Badge variant="secondary">仅 owner / admin 可访问</Badge>
-              <Badge variant="info">只读监控</Badge>
-            </>
-          }
-        />
+    <PageContainer data-testid="monitoring-page">
+      <PageHeader
+        icon={Activity}
+        title="运行监控"
+        description="查看当前组织范围内的执行量、成功率、失败率、平均耗时、队列压力、治理阻止与热点分布。这里是只读监控页，不提供配额修改、治理暂停切换或异常执行终止。"
+        actions={
+          <>
+            <Badge variant="secondary">仅 owner / admin 可访问</Badge>
+            <Badge variant="info">只读监控</Badge>
+          </>
+        }
+      />
 
-        <Tabs defaultValue="overview">
-          <TabsList>
-            <TabsTrigger value="overview" data-testid="monitoring-tab-overview">
-              概览
-            </TabsTrigger>
-            <TabsTrigger value="routing" data-testid="monitoring-tab-routing">
-              路由决策
-            </TabsTrigger>
-            <TabsTrigger value="suggestions" data-testid="monitoring-tab-suggestions">
-              优化建议
-            </TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview" data-testid="monitoring-tab-overview">
+            概览
+          </TabsTrigger>
+          <TabsTrigger value="routing" data-testid="monitoring-tab-routing">
+            路由决策
+          </TabsTrigger>
+          <TabsTrigger value="suggestions" data-testid="monitoring-tab-suggestions">
+            优化建议
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="overview">
-            <MonitoringOverviewTab
-              organizationId={organizationId}
-              window={window}
-              onWindowChange={setWindow}
-            />
-          </TabsContent>
+        <TabsContent value="overview">
+          <MonitoringOverviewTab
+            organizationId={organizationId}
+            window={window}
+            onWindowChange={setWindow}
+          />
+        </TabsContent>
 
-          <TabsContent value="routing" data-testid="monitoring-routing-tab">
-            <RoutingDecisionsPanel />
-          </TabsContent>
+        <TabsContent value="routing" data-testid="monitoring-routing-tab">
+          <RoutingDecisionsPanel />
+        </TabsContent>
 
-          <TabsContent value="suggestions" data-testid="monitoring-suggestions-tab">
-            <OptimizationSuggestionsBoard />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+        <TabsContent value="suggestions" data-testid="monitoring-suggestions-tab">
+          <OptimizationSuggestionsBoard />
+        </TabsContent>
+      </Tabs>
+    </PageContainer>
   )
 }
 

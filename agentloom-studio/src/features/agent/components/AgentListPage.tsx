@@ -21,6 +21,7 @@ import {
 import { ResourceSourceCategoryTabs } from "@/shared/components";
 import { EntityIcon } from "@/shared/components/entity-icon";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageContainer } from "@/shared/components/page-container";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { staggerList } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
@@ -251,13 +252,13 @@ const AgentCard = memo(function AgentCard({
       <div className="min-w-0 flex-1 space-y-1">
         <h3 className="truncate text-sm font-semibold text-foreground">
           {/* 标题按钮拉伸覆盖整张卡片，保证唯一可访问名同时整卡可点 */}
-          <button
-            type="button"
-            className="max-w-full truncate rounded-sm after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          <Button
+            variant="link"
+            className="h-auto max-w-full truncate p-0 text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg hover:no-underline"
             onClick={() => onClick(agent)}
           >
             {agent.name}
-          </button>
+          </Button>
         </h3>
         <p className="line-clamp-2 text-xs text-muted-foreground">
           {agent.description || "暂无描述"}
@@ -338,13 +339,13 @@ const AgentListItem = memo(function AgentListItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
-            <button
-              type="button"
-              className="max-w-full truncate rounded-sm after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            <Button
+              variant="link"
+              className="h-auto max-w-full truncate p-0 text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg hover:no-underline"
               onClick={() => onClick(agent)}
             >
               {agent.name}
-            </button>
+            </Button>
           </h3>
           <Badge variant="outline" size="sm">
             {getAgentReleaseLabel(agent)}
@@ -545,8 +546,8 @@ export function AgentListPage({
   const isFiltered = Boolean(filters.search || filters.status);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-4 sm:px-6">
+    <PageContainer>
+      <div className="flex flex-col gap-4">
         <PageHeader
           title="Agent"
           description="管理和配置你的智能体"
@@ -554,22 +555,23 @@ export function AgentListPage({
           tone={AGENT_TONE}
           actions={
             <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
+              <Plus />
               新建
             </Button>
           }
         />
 
-        <div className="mt-4">
-          <ResourceSourceCategoryTabs
-            value={filters.sourceKind}
-            onChange={handleSourceKindChange}
-          />
-        </div>
+        <ResourceSourceCategoryTabs
+          value={filters.sourceKind}
+          onChange={handleSourceKindChange}
+        />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="relative min-w-0 flex-1 basis-full sm:basis-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle-foreground"
+            />
             <Input
               placeholder="搜索 Agent..."
               value={searchInput}
@@ -603,7 +605,7 @@ export function AgentListPage({
               aria-label="网格视图"
               aria-pressed={viewMode === "grid"}
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid />
             </Button>
             <Button
               variant={viewMode === "list" ? "secondary" : "ghost"}
@@ -612,13 +614,13 @@ export function AgentListPage({
               aria-label="列表视图"
               aria-pressed={viewMode === "list"}
             >
-              <List className="h-4 w-4" />
+              <List />
             </Button>
           </div>
         </div>
 
         {batchMode && (
-          <div className="mt-3 flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
+          <div className="flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
             <Checkbox
               checked={
                 selectedAgentIds.size === agents.length
@@ -635,86 +637,84 @@ export function AgentListPage({
             </span>
             <div className="flex-1" />
             <Button variant="ghost" size="sm" onClick={clearAgentSelection}>
-              <X className="h-3.5 w-3.5" />
+              <X />
               取消选择
             </Button>
           </div>
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <AgentCardSkeleton key={`skeleton-${String(i)}`} />
-            ))}
-          </div>
-        ) : agents.length === 0 ? (
-          <EmptyState
-            icon={isFiltered ? Search : MessageSquare}
-            tone={AGENT_TONE}
-            title={
-              isFiltered
-                ? "没有找到匹配的 Agent"
-                : `还没有${getResourceSourceLabel(filters.sourceKind)}的 Agent`
-            }
-            description={
-              isFiltered
-                ? "换个关键词或状态筛选试试"
-                : "Agent 把模型、工具与记忆编排成可对话的智能体"
-            }
-            action={
-              !isFiltered && filters.sourceKind === "manual" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCreateDialogOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  创建第一个 Agent
-                </Button>
-              ) : null
-            }
-          />
-        ) : viewMode === "grid" ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {agents.map((agent, i) => (
-              <motion.div key={agent.id} {...staggerList(i)}>
-                <AgentCard
-                  agent={agent}
-                  selected={selectedAgentIds.has(agent.id)}
-                  batchMode={batchMode}
-                  onSelect={toggleAgentSelection}
-                  onClick={handleAgentClick}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onConvertSource={handleConvertSource}
-                />
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {agents.map((agent, i) => (
-              <motion.div key={agent.id} {...staggerList(i)}>
-                <AgentListItem
-                  agent={agent}
-                  selected={selectedAgentIds.has(agent.id)}
-                  batchMode={batchMode}
-                  onSelect={toggleAgentSelection}
-                  onClick={handleAgentClick}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onConvertSource={handleConvertSource}
-                />
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <AgentCardSkeleton key={`skeleton-${String(i)}`} />
+          ))}
+        </div>
+      ) : agents.length === 0 ? (
+        <EmptyState
+          icon={isFiltered ? Search : MessageSquare}
+          tone={AGENT_TONE}
+          title={
+            isFiltered
+              ? "没有找到匹配的 Agent"
+              : `还没有${getResourceSourceLabel(filters.sourceKind)}的 Agent`
+          }
+          description={
+            isFiltered
+              ? "换个关键词或状态筛选试试"
+              : "Agent 把模型、工具与记忆编排成可对话的智能体"
+          }
+          action={
+            !isFiltered && filters.sourceKind === "manual" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                <Plus />
+                创建第一个 Agent
+              </Button>
+            ) : null
+          }
+        />
+      ) : viewMode === "grid" ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {agents.map((agent, i) => (
+            <motion.div key={agent.id} {...staggerList(i)}>
+              <AgentCard
+                agent={agent}
+                selected={selectedAgentIds.has(agent.id)}
+                batchMode={batchMode}
+                onSelect={toggleAgentSelection}
+                onClick={handleAgentClick}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onConvertSource={handleConvertSource}
+              />
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {agents.map((agent, i) => (
+            <motion.div key={agent.id} {...staggerList(i)}>
+              <AgentListItem
+                agent={agent}
+                selected={selectedAgentIds.has(agent.id)}
+                batchMode={batchMode}
+                onSelect={toggleAgentSelection}
+                onClick={handleAgentClick}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onConvertSource={handleConvertSource}
+              />
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between border-t border-border pt-4">
           <span className="text-xs text-muted-foreground">
             {meta.total} 个 Agent, 第 {meta.page}/{meta.totalPages} 页
           </span>
@@ -726,7 +726,7 @@ export function AgentListPage({
               disabled={filters.page <= 1}
               aria-label="上一页"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft />
             </Button>
             <Button
               variant="ghost"
@@ -735,7 +735,7 @@ export function AgentListPage({
               disabled={filters.page >= meta.totalPages}
               aria-label="下一页"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight />
             </Button>
           </div>
         </div>
@@ -765,14 +765,12 @@ export function AgentListPage({
               onClick={handleConfirmDelete}
               disabled={deleteAgent.isPending}
             >
-              {deleteAgent.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
+              {deleteAgent.isPending && <Loader2 className="animate-spin" />}
               删除
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

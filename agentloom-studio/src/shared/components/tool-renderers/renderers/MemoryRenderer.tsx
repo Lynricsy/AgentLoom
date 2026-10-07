@@ -62,7 +62,7 @@ function ErrorState({ error }: { error: string }) {
 function ContentPreview({ content, maxHeight = '320px' }: { content: string; maxHeight?: string }) {
   return (
     <pre
-      className="overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all"
+      className="overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all"
       style={{ maxHeight }}
     >
       {content}
@@ -149,7 +149,7 @@ const CreateMemoryDetail = memo(function CreateMemoryDetail({ toolCall, state }:
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg bg-background p-3 space-y-0.5">
+      <div className="rounded-lg bg-muted p-3 space-y-0.5">
         <KeyValue label="URI" value={args.uri} />
         {args.contentType && <KeyValue label="类型" value={args.contentType} />}
         {args.disclosureLevel != null && <KeyValue label="可见性" value={args.disclosureLevel} />}
@@ -218,7 +218,7 @@ const DeleteMemoryDetail = memo(function DeleteMemoryDetail({ toolCall, state }:
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3 text-xs text-foreground/90">
+    <div className="rounded-lg bg-muted p-3 text-xs text-foreground/90">
       <span className="text-error">已删除:</span>{' '}
       <span className="font-mono">{args.uri}</span>
     </div>
@@ -232,7 +232,7 @@ const AddAliasDetail = memo(function AddAliasDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3 space-y-0.5">
+    <div className="rounded-lg bg-muted p-3 space-y-0.5">
       <KeyValue label="目标" value={args.uri} />
       <KeyValue label="别名" value={args.aliasUri} />
     </div>
@@ -246,7 +246,7 @@ const ManageTriggersDetail = memo(function ManageTriggersDetail({ toolCall, stat
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3 space-y-0.5">
+    <div className="rounded-lg bg-muted p-3 space-y-0.5">
       <KeyValue label="操作" value={args.action} />
       <KeyValue label="关键词" value={args.keyword} />
       <KeyValue label="URI" value={args.uri} />
@@ -271,7 +271,7 @@ const SearchMemoryDetail = memo(function SearchMemoryDetail({ toolCall, state }:
 
   if (list.length === 0) {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-lg bg-background p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 rounded-lg bg-muted p-6 text-xs text-muted-foreground">
         <Brain className="size-4 opacity-40" />
         未找到结果
       </div>
@@ -283,7 +283,7 @@ const SearchMemoryDetail = memo(function SearchMemoryDetail({ toolCall, state }:
       {list.map((entry, i) => {
         const uri = entry.uri ?? entry.paths?.[0]?.uri ?? `node:${entry.nodeId ?? i}`
         return (
-          <div key={`${uri}-${i}`} className="rounded-lg bg-background p-3 space-y-1">
+          <div key={`${uri}-${i}`} className="rounded-lg bg-muted p-3 space-y-1">
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-info truncate">{uri}</span>
               {entry.score != null && (

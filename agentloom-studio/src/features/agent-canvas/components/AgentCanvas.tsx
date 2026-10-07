@@ -12,6 +12,7 @@ import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query';
 import { CanvasNodeShell } from '@/features/canvas';
 import { SmartEdge } from '@/features/canvas';
 import { AgentNodePalette } from '@/features/canvas';
+import { CANVAS_FLOATING_CLASS } from '@/features/canvas';
 import { arePortDataTypesCompatible } from '@/features/canvas';
 import { useConnectionPreview } from '@/features/canvas';
 import { ReadOnlyNodeSheet } from '@/features/canvas';
@@ -181,7 +182,10 @@ export const AgentCanvas = memo(function AgentCanvas({
       {!isMobileReadOnly && (
         <>
           <AgentNodePalette
-            className="absolute top-3 left-3 z-10"
+            className={cn(
+              CANVAS_FLOATING_CLASS,
+              'absolute top-3 bottom-3 left-3 z-30 h-auto',
+            )}
             runtimeMode={runtimeMode}
           />
           <AgentNodeConfigPanel />

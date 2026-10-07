@@ -1,6 +1,6 @@
 import { memo, useCallback } from "react";
 import { ArrowLeft, Bot, ChevronRight } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
 
 interface AgentViewBreadcrumbProps {
   agentName: string;
@@ -29,14 +29,15 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-1.5">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="xs"
         onClick={handleBack}
-        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="px-1.5 text-xs text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-3" />
+        <ArrowLeft />
         返回
-      </button>
+      </Button>
 
       <div className="flex items-center gap-1 overflow-hidden">
         {segments.map((seg, i) => {
@@ -58,16 +59,14 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
                   {seg.label}
                 </span>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => onNavigate(seg.index)}
-                  className={cn(
-                    "truncate text-xs text-muted-foreground transition-colors hover:text-foreground",
-                    "cursor-pointer",
-                  )}
+                  className="h-auto min-w-0 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
                 >
-                  {seg.label}
-                </button>
+                  <span className="truncate">{seg.label}</span>
+                </Button>
               )}
             </div>
           );

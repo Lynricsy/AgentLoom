@@ -256,11 +256,11 @@ export const ToolCallCard = memo(function ToolCallCard({
       data-testid={`tool-call-card-${toolCall.id}`}
     >
       {/* Collapsed header / summary row */}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={toggleExpanded}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted"
+        className="h-auto w-full justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal"
       >
         {expanded ? (
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
@@ -290,7 +290,7 @@ export const ToolCallCard = memo(function ToolCallCard({
         ) : null}
 
         <StatusBadge state={state} awaitingPermission={isAwaitingPermission} />
-      </button>
+      </Button>
 
       {/* Permission approval buttons (shown when awaiting permission) */}
       {isAwaitingPermission && onResolvePermission && (

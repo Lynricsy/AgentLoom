@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Pause, Play, RotateCcw } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import type { GraphTimelineEntry } from '../types'
 
 interface GraphTimelinePlayerProps {
@@ -99,36 +100,39 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
       data-testid="graph-timeline-player"
     >
       {isPlaying ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={handlePause}
-          className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground"
           aria-label="暂停"
           data-testid="timeline-pause"
         >
-          <Pause className="h-3.5 w-3.5" />
-        </button>
+          <Pause />
+        </Button>
       ) : (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={handlePlay}
-          className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground"
           aria-label="播放"
           data-testid="timeline-play"
         >
-          <Play className="h-3.5 w-3.5" />
-        </button>
+          <Play />
+        </Button>
       )}
 
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={handleReset}
-        className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground"
         aria-label="重置"
         data-testid="timeline-reset"
       >
-        <RotateCcw className="h-3.5 w-3.5" />
-      </button>
+        <RotateCcw />
+      </Button>
 
       <div className="mx-1 h-4 w-px bg-border/60" />
 

@@ -3,15 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { SourceStatusBadge } from '../SourceStatusBadge'
 
-vi.mock('@radix-ui/react-tooltip', () => ({
-  Provider: ({ children }: { children: React.ReactNode }) => children,
-  Root: ({ children }: { children: React.ReactNode }) => children,
-  Trigger: ({ children }: { children: React.ReactNode }) => children,
-  Portal: ({ children }: { children: React.ReactNode }) => children,
-  Content: ({ children }: { children: React.ReactNode }) => (
+vi.mock('@/shared/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => children,
+  Tooltip: ({ children }: { children: React.ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => children,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => (
     <div role="tooltip">{children}</div>
   ),
-  Arrow: () => null,
 }))
 
 describe('SourceStatusBadge', () => {

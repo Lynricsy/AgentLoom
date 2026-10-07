@@ -2,10 +2,10 @@ import { memo } from 'react'
 import { Code } from 'lucide-react'
 
 const LANGUAGE_COLORS: Record<string, string> = {
-  typescript: 'bg-blue-500/15 text-blue-400',
-  javascript: 'bg-yellow-500/15 text-yellow-400',
-  python: 'bg-green-500/15 text-green-400',
-  bash: 'bg-gray-500/15 text-gray-400',
+  typescript: 'bg-info/15 text-info',
+  javascript: 'bg-warning/15 text-warning',
+  python: 'bg-success/15 text-success',
+  bash: 'bg-muted text-muted-foreground',
 }
 
 const LANGUAGE_LABELS: Record<string, string> = {

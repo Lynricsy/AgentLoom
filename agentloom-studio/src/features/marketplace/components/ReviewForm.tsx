@@ -96,19 +96,18 @@ export function ReviewForm({ listingId, onSuccess }: ReviewFormProps) {
           const isActive = value <= activeRating
 
           return (
-            <button
+            <Button
               key={`review-star-${String(value)}`}
-              type="button"
+              variant="ghost"
+              size="icon-sm"
               onClick={() => setRating(value)}
               onMouseEnter={() => setHoveredRating(value)}
               onMouseLeave={() => setHoveredRating(null)}
-              className="rounded p-1 text-muted-foreground transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="rounded-full text-muted-foreground hover:text-warning [&_svg]:size-5"
               aria-label={`选择 ${value} 星`}
             >
-              <Star
-                className={cn('h-5 w-5', isActive && 'fill-warning text-warning')}
-              />
-            </button>
+              <Star className={cn(isActive && 'fill-warning text-warning')} />
+            </Button>
           )
         })}
       </fieldset>

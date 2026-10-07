@@ -8,10 +8,7 @@ import type {
   GeneratedAppStatus,
   GeneratedAppSubmissionStatus,
 } from '../types'
-import type { BadgeProps } from '@/shared/ui/badge'
-
-/** Badge 语义色枚举，统一状态着色出口 */
-type BadgeVariant = NonNullable<BadgeProps['variant']>
+import type { StatusTone } from '@/shared/ui/status-badge'
 
 export const GENERATED_APP_STATUS_LABELS: Record<GeneratedAppStatus, string> = {
   app_spec_ready: '规格就绪',
@@ -87,9 +84,9 @@ export const GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS: Record<
   skipped: '已跳过',
 }
 
-export function getGeneratedAppReadinessBadgeVariant(
+export function getGeneratedAppReadinessStatusTone(
   readiness: GeneratedAppReadiness,
-): BadgeVariant {
+): StatusTone {
   switch (readiness.state) {
     case 'publish_candidate':
       return readiness.canCreatePublicShare ? 'success' : 'warning'
@@ -102,9 +99,9 @@ export function getGeneratedAppReadinessBadgeVariant(
   }
 }
 
-export function getGeneratedAppStatusBadgeVariant(
+export function getGeneratedAppStatusTone(
   status: GeneratedAppStatus,
-): BadgeVariant {
+): StatusTone {
   switch (status) {
     case 'published':
     case 'publish_candidate':
@@ -118,9 +115,9 @@ export function getGeneratedAppStatusBadgeVariant(
   }
 }
 
-export function getGeneratedAppGateStatusBadgeVariant(
+export function getGeneratedAppGateStatusTone(
   status: GeneratedAppGateStatus,
-): BadgeVariant {
+): StatusTone {
   switch (status) {
     case 'passed':
       return 'success'
@@ -129,32 +126,32 @@ export function getGeneratedAppGateStatusBadgeVariant(
     case 'warning':
       return 'warning'
     case 'running':
-      return 'default'
+      return 'primary'
     case 'skipped':
-      return 'secondary'
+      return 'neutral'
     default:
       return 'info'
   }
 }
 
-export function getGeneratedAppSubmissionStatusBadgeVariant(
+export function getGeneratedAppSubmissionStatusTone(
   status: GeneratedAppSubmissionStatus,
-): BadgeVariant {
+): StatusTone {
   switch (status) {
     case 'completed':
       return 'success'
     case 'failed':
       return 'error'
     case 'running':
-      return 'default'
+      return 'primary'
     default:
       return 'info'
   }
 }
 
-export function getGeneratedAppGenerationRunStatusBadgeVariant(
+export function getGeneratedAppGenerationRunStatusTone(
   status: GeneratedAppGenerationRunStatus,
-): BadgeVariant {
+): StatusTone {
   switch (status) {
     case 'passed':
       return 'success'
@@ -164,24 +161,24 @@ export function getGeneratedAppGenerationRunStatusBadgeVariant(
     case 'repairing':
       return 'warning'
     case 'running':
-      return 'default'
+      return 'primary'
     default:
       return 'info'
   }
 }
 
-export function getGeneratedAppRepairAttemptStatusBadgeVariant(
+export function getGeneratedAppRepairAttemptStatusTone(
   status: GeneratedAppRepairAttemptStatus,
-): BadgeVariant {
+): StatusTone {
   switch (status) {
     case 'completed':
       return 'success'
     case 'failed':
       return 'error'
     case 'running':
-      return 'default'
+      return 'primary'
     case 'skipped':
-      return 'secondary'
+      return 'neutral'
     default:
       return 'info'
   }

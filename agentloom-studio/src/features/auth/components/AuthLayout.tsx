@@ -55,9 +55,9 @@ export function AuthLayout({
           </div>
 
           {title ? (
-            <h1 className="mt-7 text-xl font-semibold tracking-tight text-foreground">
+            <h2 className="mt-7 text-xl font-semibold tracking-tight text-foreground">
               {title}
-            </h1>
+            </h2>
           ) : null}
           <p className={cn("text-sm text-muted-foreground", title ? "mt-1.5" : "mt-5")}>
             {subtitle ?? DEFAULT_SUBTITLE}

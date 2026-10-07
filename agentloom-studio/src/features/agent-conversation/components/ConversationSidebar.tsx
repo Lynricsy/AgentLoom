@@ -277,19 +277,18 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               if (collapsed) {
                 return (
                   <li key={conv.id}>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => handleSelect(conv)}
                       className={cn(
-                        "flex w-full items-center justify-center rounded-md p-2 text-lg transition-colors",
-                        isActive
-                          ? "bg-primary/12"
-                          : "hover:bg-muted",
+                        "w-full text-lg",
+                        isActive && "bg-primary/12 hover:bg-primary/12",
                       )}
                       title={conv.title ?? "未命名"}
                     >
                       {emoji}
-                    </button>
+                    </Button>
                   </li>
                 );
               }
@@ -308,14 +307,14 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-primary"
                     />
                   ) : null}
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
                     onClick={() => handleSelect(conv)}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-md py-1.5 pr-9 pl-2.5 text-left transition-colors",
+                      "h-auto w-full justify-start gap-2 py-1.5 pr-9 pl-2.5 text-left font-normal",
                       isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted",
+                        ? "bg-primary/10 text-primary hover:bg-primary/10"
+                        : "text-foreground",
                     )}
                   >
                     <span className="shrink-0 text-base">{emoji}</span>
@@ -332,7 +331,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                         {formatTime(conv.updatedAt)}
                       </p>
                     </div>
-                  </button>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"

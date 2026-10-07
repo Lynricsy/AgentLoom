@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
+import { PageContainer } from "@/shared/components/page-container";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
@@ -238,7 +239,7 @@ export function KnowledgeBasesPage() {
   );
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Database}
         tone={KNOWLEDGE_TONE}
@@ -340,13 +341,13 @@ export function KnowledgeBasesPage() {
                           >
                             <Database className="h-4 w-4" />
                           </span>
-                          <button
-                            type="button"
-                            className="cursor-pointer truncate text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                          <Button
+                            variant="link"
+                            className="h-auto max-w-full justify-start truncate p-0 text-sm font-semibold text-foreground hover:text-primary hover:no-underline"
                             onClick={() => handleCardClick(kb)}
                           >
                             {kb.name}
-                          </button>
+                          </Button>
                           <Badge
                             size="sm"
                             variant={STATUS_VARIANT[kb.status]}
@@ -506,6 +507,6 @@ export function KnowledgeBasesPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

@@ -69,7 +69,7 @@ export const MemoryGraphNode = memo(function MemoryGraphNode({
     <div
       className={cn(
         'relative min-w-[180px] max-w-[240px] rounded-lg border bg-surface px-4 py-3',
-        'shadow-sm transition-all duration-150 hover:shadow-md',
+        'shadow-sm transition-[box-shadow,border-color] duration-200 ease-out-expo hover:shadow-md',
         selected && 'shadow-md',
         data.isHighlighted && 'ring-2 ring-warning',
         data.isDimmed && 'opacity-30',

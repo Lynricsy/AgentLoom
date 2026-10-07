@@ -73,7 +73,7 @@ describe('CoercionConfigPopover', () => {
     )
     fireEvent.click(screen.getByTestId('coercion-config-trigger'))
     const item = screen.getByTestId('coercion-strategy-JSON.parse')
-    expect(item.className).toContain('selected')
+    expect(item).toHaveAttribute('aria-selected', 'true')
   })
 
   it('shows clear button when value is set', () => {

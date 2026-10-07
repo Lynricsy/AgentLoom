@@ -5,9 +5,17 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Check } from 'lucide-react';
 
-import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog';
+import { Input } from '@/shared/ui/input';
 
 import { useMfa, type MfaEnrollResult } from '../hooks/useMfa';
 
@@ -29,11 +37,8 @@ export function MfaEnrollDialog({
   const { enrollTotp, verifyTotp, isLoading, error, clearError } = useMfa();
   const [step, setStep] = useState<EnrollStep>('loading');
   const [enrollData, setEnrollData] = useState<MfaEnrollResult | null>(null);
-  const [digits, setDigits] = useState<string[]>(
-    Array(CODE_LENGTH).fill(''),
-  );
+  const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(''));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const resetState = useCallback(() => {
     setStep('loading');
@@ -46,7 +51,6 @@ export function MfaEnrollDialog({
     if (!open) return;
 
     resetState();
-    dialogRef.current?.showModal();
 
     enrollTotp()
       .then((data) => {
@@ -64,48 +68,51 @@ export function MfaEnrollDialog({
     }
   }, [step]);
 
-  const handleClose = useCallback(() => {
-    dialogRef.current?.close();
-    onClose();
-  }, [onClose]);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) onClose();
+    },
+    [onClose],
+  );
 
-  const handleDigitChange = useCallback(
-    (index: number, value: string) => {
-      if (!/^\d*$/.test(value)) return;
+  const handleDigitChange = useCallback((index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
 
-      if (value.length > 1) {
-        const pasted = value.slice(0, CODE_LENGTH).split('');
-        setDigits((prev) => {
-          const newDigits = [...prev];
-          for (let i = 0; i < pasted.length && index + i < CODE_LENGTH; i++) {
-            const char = pasted[i] ?? '';
-            if (/^\d$/.test(char)) {
-              newDigits[index + i] = char;
-            }
-          }
-          return newDigits;
-        });
-        const nextIndex = Math.min(index + pasted.length, CODE_LENGTH - 1);
-        inputRefs.current[nextIndex]?.focus();
-        return;
-      }
-
+    if (value.length > 1) {
+      const pasted = value.slice(0, CODE_LENGTH).split('');
       setDigits((prev) => {
         const newDigits = [...prev];
-        newDigits[index] = value;
+        for (let i = 0; i < pasted.length && index + i < CODE_LENGTH; i++) {
+          const char = pasted[i] ?? '';
+          if (/^\d$/.test(char)) {
+            newDigits[index + i] = char;
+          }
+        }
         return newDigits;
       });
+      const nextIndex = Math.min(index + pasted.length, CODE_LENGTH - 1);
+      inputRefs.current[nextIndex]?.focus();
+      return;
+    }
 
-      if (value && index < CODE_LENGTH - 1) {
-        inputRefs.current[index + 1]?.focus();
-      }
-    },
-    [],
-  );
+    setDigits((prev) => {
+      const newDigits = [...prev];
+      newDigits[index] = value;
+      return newDigits;
+    });
+
+    if (value && index < CODE_LENGTH - 1) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  }, []);
 
   const handleKeyDown = useCallback(
     (index: number, e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Backspace' && !(e.currentTarget as HTMLInputElement).value && index > 0) {
+      if (
+        e.key === 'Backspace' &&
+        !(e.currentTarget as HTMLInputElement).value &&
+        index > 0
+      ) {
         inputRefs.current[index - 1]?.focus();
       }
     },
@@ -138,163 +145,124 @@ export function MfaEnrollDialog({
   const code = digits.join('');
   const isCodeComplete = code.length === CODE_LENGTH;
 
-  if (!open) return null;
-
   return (
-    <dialog
-      ref={dialogRef}
-      className="fixed inset-0 z-50 m-auto rounded-xl border border-border bg-surface p-0 shadow-xl backdrop:bg-black/50"
-      onClose={handleClose}
-    >
-      <div className="w-[420px] p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">
-            启用两步验证
-          </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="关闭"
-          >
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              role="img"
-            >
-              <title>关闭</title>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent size="sm" data-testid="mfa-enroll-dialog">
+        <DialogHeader>
+          <DialogTitle>启用两步验证</DialogTitle>
+        </DialogHeader>
 
-        {step === 'loading' && (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm text-muted-foreground">正在生成 TOTP 密钥...</p>
-          </div>
-        )}
+        <DialogBody>
+          {step === 'loading' && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">
+                正在生成 TOTP 密钥...
+              </p>
+            </div>
+          )}
 
-        {(step === 'scan' || step === 'verifying') && (
-          <div className="flex flex-col gap-5">
-            {enrollData && (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  使用身份验证器应用扫描下方二维码，然后输入 6 位验证码完成绑定。
-                </p>
-
-                <div className="flex justify-center">
-                  <div className="rounded-lg border border-border bg-white p-3">
-                    <img
-                      src={enrollData.qrCode}
-                      alt="TOTP QR Code"
-                      className="h-48 w-48"
-                      data-testid="mfa-qr-code"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-border bg-muted p-3">
-                  <p className="mb-1 text-xs text-muted-foreground">
-                    无法扫描？手动输入密钥：
+          {(step === 'scan' || step === 'verifying') && (
+            <div className="flex flex-col gap-5">
+              {enrollData && (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    使用身份验证器应用扫描下方二维码，然后输入 6
+                    位验证码完成绑定。
                   </p>
-                  <code
-                    className="block break-all text-xs font-mono text-foreground"
-                    data-testid="mfa-secret-key"
-                  >
-                    {enrollData.secret}
-                  </code>
+
+                  <div className="flex justify-center">
+                    {/* QR 码必须落在纯白底上才能保证扫描对比度，不随主题变化 */}
+                    <div className="rounded-lg border border-border bg-white p-3">
+                      <img
+                        src={enrollData.qrCode}
+                        alt="TOTP QR Code"
+                        className="size-48"
+                        data-testid="mfa-qr-code"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <p className="mb-1 text-xs text-muted-foreground">
+                      无法扫描？手动输入密钥：
+                    </p>
+                    <code
+                      className="block break-all font-mono text-xs text-foreground"
+                      data-testid="mfa-secret-key"
+                    >
+                      {enrollData.secret}
+                    </code>
+                  </div>
+                </>
+              )}
+
+              {error && (
+                <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2">
+                  <p className="text-sm text-error">{error}</p>
                 </div>
-              </>
-            )}
+              )}
 
-            {error && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
-                <p className="text-sm text-red-400">{error}</p>
+              <fieldset className="m-0 border-none p-0">
+                <legend className="mb-2 text-sm font-medium text-foreground">
+                  验证码
+                </legend>
+                <div
+                  className="flex justify-center gap-2"
+                  data-testid="mfa-code-input"
+                >
+                  {digits.map((digit, i) => (
+                    <Input
+                      key={`enroll-digit-${String(i)}`}
+                      ref={(el) => {
+                        inputRefs.current[i] = el;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={CODE_LENGTH}
+                      value={digit}
+                      onChange={(e) => handleDigitChange(i, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(i, e)}
+                      disabled={step === 'verifying'}
+                      className="h-12 w-10 text-center font-mono text-lg"
+                      aria-label={`验证码第 ${i + 1} 位`}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={onClose}>
+                  取消
+                </Button>
+                <Button
+                  onClick={handleVerify}
+                  disabled={!isCodeComplete || step === 'verifying' || isLoading}
+                >
+                  {step === 'verifying' ? '验证中...' : '确认绑定'}
+                </Button>
               </div>
-            )}
+            </div>
+          )}
 
-            <fieldset className="border-none p-0 m-0">
-              <legend className="mb-2 text-sm font-medium text-foreground">
-                验证码
-              </legend>
-              <div className="flex gap-2 justify-center" data-testid="mfa-code-input">
-                {digits.map((digit, i) => (
-                  <input
-                    key={`enroll-digit-${String(i)}`}
-                    ref={(el) => {
-                      inputRefs.current[i] = el;
-                    }}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={CODE_LENGTH}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(i, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(i, e)}
-                    disabled={step === 'verifying'}
-                    className={cn(
-                      'h-12 w-10 rounded-md border border-border bg-background text-center text-lg font-mono text-foreground',
-                      'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',
-                      'disabled:opacity-50',
-                    )}
-                    aria-label={`验证码第 ${i + 1} 位`}
-                  />
-                ))}
+          {step === 'success' && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="flex size-12 items-center justify-center rounded-full bg-success/15">
+                <Check className="size-6 text-success" />
               </div>
-            </fieldset>
-
-            <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={handleClose}>
-                取消
-              </Button>
-              <Button
-                onClick={handleVerify}
-                disabled={!isCodeComplete || step === 'verifying' || isLoading}
-              >
-                {step === 'verifying' ? '验证中...' : '确认绑定'}
+              <p className="text-sm font-medium text-foreground">
+                两步验证已成功启用
+              </p>
+              <p className="text-center text-xs text-muted-foreground">
+                下次登录时，你需要输入身份验证器应用中的验证码。
+              </p>
+              <Button onClick={onClose} className="mt-2">
+                完成
               </Button>
             </div>
-          </div>
-        )}
-
-        {step === 'success' && (
-          <div className="flex flex-col items-center gap-4 py-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/20">
-              <svg
-                className="h-6 w-6 text-green-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                role="img"
-              >
-                <title>成功</title>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4.5 12.75l6 6 9-13.5"
-                />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-foreground">
-              两步验证已成功启用
-            </p>
-            <p className="text-xs text-muted-foreground text-center">
-              下次登录时，你需要输入身份验证器应用中的验证码。
-            </p>
-            <Button onClick={handleClose} className="mt-2">
-              完成
-            </Button>
-          </div>
-        )}
-      </div>
-    </dialog>
+          )}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

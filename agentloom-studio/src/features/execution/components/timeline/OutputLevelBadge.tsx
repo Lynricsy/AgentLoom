@@ -1,16 +1,13 @@
 import { memo } from 'react'
 
-import { Badge, type BadgeProps } from '@/shared/ui/badge'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
 
 /** 结构化输出等级 → 语义色；L1 最可靠、L4 已降级 */
-const levelMeta: Record<
-  1 | 2 | 3 | 4,
-  { label: string; variant: NonNullable<BadgeProps['variant']> }
-> = {
-  1: { label: 'L1 原生结构化', variant: 'success' },
-  2: { label: 'L2 提示约束', variant: 'info' },
-  3: { label: 'L3 验证修复', variant: 'warning' },
-  4: { label: 'L4 降级解析', variant: 'error' },
+const levelMeta: Record<1 | 2 | 3 | 4, { label: string; tone: StatusTone }> = {
+  1: { label: 'L1 原生结构化', tone: 'success' },
+  2: { label: 'L2 提示约束', tone: 'info' },
+  3: { label: 'L3 验证修复', tone: 'warning' },
+  4: { label: 'L4 降级解析', tone: 'error' },
 }
 
 interface OutputLevelBadgeProps {
@@ -29,13 +26,13 @@ export const OutputLevelBadge = memo(function OutputLevelBadge({
   const meta = levelMeta[level as 1 | 2 | 3 | 4]
 
   return (
-    <Badge
-      variant={meta.variant}
+    <StatusBadge
+      tone={meta.tone}
       size="sm"
       className={className}
       data-testid={`output-level-badge-${level}`}
     >
       {meta.label}
-    </Badge>
+    </StatusBadge>
   )
 })

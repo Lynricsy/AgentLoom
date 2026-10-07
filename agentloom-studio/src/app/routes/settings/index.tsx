@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { PageHeader } from '@/shared/components/page-header/PageHeader';
+import { PageContainer } from '@/shared/components/page-container';
 import { staggerList } from '@/shared/lib/motion';
 import { Card, CardContent, CardDescription, CardTitle } from '@/shared/ui/card';
 import { settingsLayoutRoute } from './layout';
@@ -70,7 +71,7 @@ const SETTINGS_SECTIONS = [
 
 function SettingsOverviewPage() {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <PageContainer>
       <PageHeader
         icon={Settings}
         title="设置"
@@ -87,9 +88,9 @@ function SettingsOverviewPage() {
                   <CardContent className="flex items-start gap-3 p-4">
                     <span
                       aria-hidden
-                      className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15"
+                      className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors duration-150 group-hover:bg-primary/15"
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon className="size-5" />
                     </span>
                     <div className="min-w-0 space-y-1">
                       <CardTitle>{section.label}</CardTitle>
@@ -102,7 +103,7 @@ function SettingsOverviewPage() {
           );
         })}
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

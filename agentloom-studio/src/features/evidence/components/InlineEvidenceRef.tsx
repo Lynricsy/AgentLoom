@@ -1,8 +1,14 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import * as Tooltip from '@radix-ui/react-tooltip'
 import { Loader2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/shared/ui/tooltip'
 
 import type { EvidenceRecord, EvidenceSourceType } from '../types'
 import { fetchEvidenceById } from '../api/evidenceApi'
@@ -79,19 +85,20 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
   }, [preview])
 
   return (
-    <Tooltip.Provider delayDuration={200}>
-      <Tooltip.Root
+    <TooltipProvider delayDuration={200}>
+      <Tooltip
         onOpenChange={(open) => {
           if (open) {
             void ensurePreview()
           }
         }}
       >
-        <Tooltip.Trigger asChild>
-          <button
-            type="button"
+        <TooltipTrigger asChild>
+          <Button
+            variant="link"
+            size="xs"
             className={cn(
-              'inline-flex cursor-pointer text-info transition hover:text-info/80',
+              'inline-flex h-auto p-0 text-info hover:text-info/80 hover:no-underline',
               className,
             )}
             onClick={(e) => {
@@ -102,50 +109,47 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
             data-testid={`inline-evidence-ref-${evidenceId}`}
           >
             <sup className="text-2xs font-semibold">[{index}]</sup>
-          </button>
-        </Tooltip.Trigger>
+          </Button>
+        </TooltipTrigger>
 
-        <Tooltip.Portal>
-          <Tooltip.Content
-            side="top"
-            align="center"
-            className="z-50 w-[260px] rounded-xl border border-border/70 bg-popover p-3 text-foreground shadow-lg"
-          >
-            <div className="space-y-1">
-              <div className="text-xs font-semibold">证据引用 #{index}</div>
+        <TooltipContent
+          side="top"
+          align="center"
+          className="w-[260px] max-w-none rounded-lg p-3 text-foreground"
+        >
+          <div className="space-y-1">
+            <div className="text-xs font-semibold">证据引用 #{index}</div>
 
-              {isLoadingPreview ? (
-                <div className="flex items-center gap-1 text-2xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>加载预览中…</span>
-                </div>
-              ) : previewSummary ? (
-                <>
-                  <div className="text-2xs text-muted-foreground">
-                    {previewSummary.label}
-                  </div>
-                  <div className="truncate text-2xs text-foreground/85">
-                    {previewSummary.detail}
-                  </div>
-                </>
-              ) : previewError ? (
-                <div className="text-2xs text-muted-foreground">
-                  预览不可用（{previewError}）
-                </div>
-              ) : (
-                <div className="text-2xs text-muted-foreground">
-                  悬停可加载来源预览
-                </div>
-              )}
-
-              <div className="pt-1 text-2xs text-muted-foreground">
-                点击打开证据面板并高亮 2 秒
+            {isLoadingPreview ? (
+              <div className="flex items-center gap-1 text-2xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                <span>加载预览中…</span>
               </div>
+            ) : previewSummary ? (
+              <>
+                <div className="text-2xs text-muted-foreground">
+                  {previewSummary.label}
+                </div>
+                <div className="truncate text-2xs text-foreground/85">
+                  {previewSummary.detail}
+                </div>
+              </>
+            ) : previewError ? (
+              <div className="text-2xs text-muted-foreground">
+                预览不可用（{previewError}）
+              </div>
+            ) : (
+              <div className="text-2xs text-muted-foreground">
+                悬停可加载来源预览
+              </div>
+            )}
+
+            <div className="pt-1 text-2xs text-muted-foreground">
+              点击打开证据面板并高亮 2 秒
             </div>
-            <Tooltip.Arrow className="fill-popover" />
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 })

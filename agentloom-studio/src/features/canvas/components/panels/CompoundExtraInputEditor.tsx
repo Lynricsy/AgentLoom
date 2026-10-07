@@ -1,5 +1,8 @@
 import { memo } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
 
 interface CompoundExtraInputEditorProps {
   extraInputIds: readonly string[];
@@ -27,7 +30,7 @@ export const CompoundExtraInputEditor = memo(function CompoundExtraInputEditor({
   onRename,
 }: CompoundExtraInputEditorProps) {
   return (
-    <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+    <Card className="space-y-2 p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-foreground">{title}</p>
@@ -35,14 +38,10 @@ export const CompoundExtraInputEditor = memo(function CompoundExtraInputEditor({
             {description}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-2xs text-foreground hover:bg-muted"
-        >
-          <Plus className="h-3.5 w-3.5" />
+        <Button variant="outline" size="xs" onClick={onAdd}>
+          <Plus />
           <span>{addLabel}</span>
-        </button>
+        </Button>
       </div>
 
       {extraInputIds.length === 0 ? (
@@ -52,52 +51,55 @@ export const CompoundExtraInputEditor = memo(function CompoundExtraInputEditor({
           {extraInputIds.map((portId, index) => (
             <div
               key={portId}
-              className="flex items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-2"
+              className="flex items-center gap-2 rounded-md border border-border bg-muted px-2 py-2"
             >
               <div className="min-w-0 flex-1">
-                <input
+                <Input
                   type="text"
                   value={portLabels?.[portId] ?? `输入 ${index + 1}`}
                   onChange={(event) =>
                     onRename(portId, event.target.value, index)
                   }
                   placeholder={`输入 ${index + 1}`}
-                  className="min-w-0 w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
+                  className="h-7 border-transparent bg-transparent px-1 text-xs font-medium shadow-none hover:border-border"
                 />
                 <p className="px-1 text-2xs font-mono text-muted-foreground">
                   {portId}
                 </p>
               </div>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => onMove(index, -1)}
                 disabled={index === 0}
                 aria-label="上移输入端口"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30"
               >
-                <ChevronUp className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
+                <ChevronUp />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => onMove(index, 1)}
                 disabled={index === extraInputIds.length - 1}
                 aria-label="下移输入端口"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30"
               >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
+                <ChevronDown />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 onClick={() => onRemove(portId)}
                 aria-label="删除输入端口"
-                className="rounded p-1 text-muted-foreground hover:bg-error/10 hover:text-error"
+                className="text-muted-foreground hover:bg-error/10 hover:text-error"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+                <Trash2 />
+              </Button>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 });

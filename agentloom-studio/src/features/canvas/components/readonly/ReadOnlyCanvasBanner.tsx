@@ -22,7 +22,7 @@ export const ReadOnlyCanvasBanner = memo(function ReadOnlyCanvasBanner({
       role="status"
       data-testid="canvas-readonly-banner"
       className={cn(
-        'pointer-events-none flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-medium text-warning shadow-lg backdrop-blur-sm',
+        'pointer-events-none flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-medium text-warning shadow-lg',
         className,
       )}
     >

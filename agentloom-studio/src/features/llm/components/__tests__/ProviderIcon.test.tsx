@@ -74,16 +74,16 @@ describe("ProviderIcon", () => {
   });
 
   it("custom className is applied", () => {
-    render(<ProviderIcon slug="openai" className="text-blue-400" />);
+    render(<ProviderIcon slug="openai" className="text-info" />);
     const img = screen.getByRole("img");
-    expect(img).toHaveClass("text-blue-400");
+    expect(img).toHaveClass("text-info");
   });
 
   it("fallback Bot icon receives className", () => {
-    render(<ProviderIcon slug="bad" className="text-red-500" />);
+    render(<ProviderIcon slug="bad" className="text-error" />);
     fireEvent.error(screen.getByRole("img"));
     const bot = screen.getByTestId("icon-bot");
-    expect(bot).toHaveClass("text-red-500");
+    expect(bot).toHaveClass("text-error");
   });
 
   it('resolves to "unknown" when neither slug nor provider given', () => {

@@ -441,9 +441,9 @@ export const EvidenceCard = memo(function EvidenceCard({
         <div
           className="min-w-0 flex-1 text-left"
         >
-          <button
-            type="button"
-            className="w-full text-left"
+          <Button
+            variant="ghost"
+            className="block h-auto w-full whitespace-normal p-0 text-left hover:bg-transparent"
             onClick={() => onSelect?.(node.evidenceId)}
             data-testid={`evidence-card-${node.evidenceId}`}
           >
@@ -473,7 +473,7 @@ export const EvidenceCard = memo(function EvidenceCard({
             {detailQuery.error && (
               <p className="mt-3 text-2xs text-error">证据详情加载失败</p>
             )}
-          </button>
+          </Button>
 
           {isEncrypted && !decryptedContent && (
             <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">

@@ -21,6 +21,8 @@ vi.mock('../../stores/agent-canvas.store', () => ({
 }));
 
 vi.mock('@/features/canvas', () => ({
+  CANVAS_FLOATING_CLASS: 'canvas-floating',
+  CANVAS_PANEL_HEADER_CLASS: 'canvas-panel-header',
   CUSTOM_PANEL_REGISTRY: {
     'mcp-tool': {
       render: () => <div data-testid="mock-mcp-panel">mock mcp panel</div>,

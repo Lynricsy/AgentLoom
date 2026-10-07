@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -41,7 +42,7 @@ import {
 import {
   GENERATED_APP_SUBMISSION_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusBadgeVariant,
+  getGeneratedAppSubmissionStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicWorkflowExecutionHandoff,
@@ -97,9 +98,9 @@ function SubmissionStatusBadge({
   status: GeneratedAppSubmissionStatus
 }) {
   return (
-    <Badge variant={getGeneratedAppSubmissionStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppSubmissionStatusTone(status)}>
       {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 

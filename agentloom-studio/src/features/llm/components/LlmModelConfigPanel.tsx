@@ -265,31 +265,32 @@ function TagInput({
 
   return (
     <div className="space-y-2">
-      <div className="flex min-h-[44px] flex-wrap gap-1 rounded-md border border-border bg-background px-2 py-2 focus-within:ring-2 focus-within:ring-primary/30">
+      <div className="flex min-h-[44px] flex-wrap gap-1 rounded-md border border-border bg-surface px-2 py-2 shadow-xs focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
         {tags.map((tag) => (
           <span
             key={tag}
             className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-2xs text-foreground"
           >
             {tag}
-            <button
-              type="button"
-              className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-4 rounded-full text-muted-foreground hover:bg-background hover:text-foreground [&_svg]:size-3"
               onClick={() => onChange(tags.filter((item) => item !== tag))}
               aria-label={`删除 ${tag}`}
             >
-              <X className="h-3 w-3" />
-            </button>
+              <X />
+            </Button>
           </span>
         ))}
 
-        <input
+        <Input
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={commitValue}
           placeholder={tags.length === 0 ? placeholder : "继续添加"}
-          className="min-w-[96px] flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-subtle-foreground"
+          className="h-auto min-w-[96px] flex-1 border-0 bg-transparent p-0 text-xs shadow-none hover:border-0 focus-visible:border-0 focus-visible:ring-0"
         />
       </div>
 

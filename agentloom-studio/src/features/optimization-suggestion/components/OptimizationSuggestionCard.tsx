@@ -1,7 +1,8 @@
 import { memo, useCallback } from 'react'
 import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy'
-import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
 import { SUGGESTION_TYPE_LABELS } from '../lib/suggestionPresentation'
 import type {
   OptimizationSuggestion,
@@ -11,20 +12,11 @@ import type {
 
 const SUGGESTION_STATUS_CONFIG: Record<
   Exclude<SuggestionStatus, 'pending'>,
-  { label: string; className: string }
+  { label: string; tone: StatusTone }
 > = {
-  applied: {
-    label: '已采纳',
-    className: 'bg-emerald-500/15 text-emerald-400',
-  },
-  dismissed: {
-    label: '已忽略',
-    className: 'bg-zinc-500/15 text-zinc-400',
-  },
-  blocked: {
-    label: '已阻断',
-    className: 'bg-amber-500/15 text-amber-300',
-  },
+  applied: { label: '已采纳', tone: 'success' },
+  dismissed: { label: '已忽略', tone: 'neutral' },
+  blocked: { label: '已阻断', tone: 'warning' },
 }
 
 function formatConfidence(confidence: number): string {
@@ -55,17 +47,17 @@ function renderCurrentVsSuggested(
     case 'model_downgrade':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-zinc-400">{String(currentValue.model ?? currentValue.modelId ?? '—')}</span>
-          <span className="text-zinc-500">→</span>
-          <span className="text-emerald-400">{String(suggestedValue.model ?? suggestedValue.modelId ?? '—')}</span>
+          <span className="text-muted-foreground">{String(currentValue.model ?? currentValue.modelId ?? '—')}</span>
+          <span className="text-subtle-foreground">→</span>
+          <span className="text-success">{String(suggestedValue.model ?? suggestedValue.modelId ?? '—')}</span>
         </div>
       )
     case 'timeout_adjustment':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-zinc-400">{String(currentValue.timeoutMs ?? '—')}ms</span>
-          <span className="text-zinc-500">→</span>
-          <span className="text-emerald-400">{String(suggestedValue.timeoutMs ?? '—')}ms</span>
+          <span className="text-muted-foreground">{String(currentValue.timeoutMs ?? '—')}ms</span>
+          <span className="text-subtle-foreground">→</span>
+          <span className="text-success">{String(suggestedValue.timeoutMs ?? '—')}ms</span>
         </div>
       )
     case 'tool_pruning': {
@@ -74,8 +66,8 @@ function renderCurrentVsSuggested(
         : []
       return (
         <div className="text-sm">
-          <span className="text-zinc-400">移除工具: </span>
-          <span className="text-amber-400">
+          <span className="text-muted-foreground">移除工具: </span>
+          <span className="text-warning">
             {removedTools.length > 0 ? removedTools.join(', ') : '—'}
           </span>
         </div>
@@ -84,11 +76,11 @@ function renderCurrentVsSuggested(
     case 'autonomy_upgrade':
       return (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-zinc-400">
+          <span className="text-muted-foreground">
             {formatAutonomyModeValue(toDisplayModeValue(currentAutonomyMode))}
           </span>
-          <span className="text-zinc-500">→</span>
-          <span className="text-emerald-400">
+          <span className="text-subtle-foreground">→</span>
+          <span className="text-success">
             {formatAutonomyModeValue(toDisplayModeValue(suggestedAutonomyMode))}
           </span>
         </div>
@@ -129,39 +121,31 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
   }, [onDismiss, suggestion.id])
 
   return (
-    <div
-      className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-800/50 p-3"
+    <Card
+      className="space-y-2 p-3"
       data-testid="optimization-suggestion-card"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-zinc-100">{typeLabel}</span>
+        <span className="text-sm font-medium text-foreground">{typeLabel}</span>
         <div className="flex items-center gap-2">
           {statusConfig ? (
-            <span
-              className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                statusConfig.className,
-              )}
-            >
-              {statusConfig.label}
-            </span>
+            <StatusBadge tone={statusConfig.tone}>{statusConfig.label}</StatusBadge>
           ) : null}
-          <span
-            className={cn(
-              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+          <StatusBadge
+            tone={
               suggestion.confidence >= 0.8
-                ? 'bg-emerald-500/15 text-emerald-400'
+                ? 'success'
                 : suggestion.confidence >= 0.6
-                  ? 'bg-amber-500/15 text-amber-400'
-                  : 'bg-red-500/15 text-red-400',
-            )}
+                  ? 'warning'
+                  : 'error'
+            }
           >
             {formatConfidence(suggestion.confidence)}
-          </span>
+          </StatusBadge>
         </div>
       </div>
 
-      <div className="rounded-md bg-zinc-900/50 px-2.5 py-2">
+      <div className="rounded-md bg-muted px-2.5 py-2">
         {renderCurrentVsSuggested(
           suggestion.suggestionType,
           suggestion.currentValue,
@@ -169,16 +153,16 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
         )}
       </div>
 
-      <p className="text-xs leading-relaxed text-zinc-400">{suggestion.rationale}</p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{suggestion.rationale}</p>
 
       {policyBlock ? (
         <div
-          className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+          className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
           data-testid="optimization-suggestion-policy-block"
         >
-          <p className="font-medium text-amber-100">该建议已被组织自治策略阻断。</p>
+          <p className="font-medium">该建议已被组织自治策略阻断。</p>
           <p className="mt-1">{policyBlock.message}</p>
-          <p className="mt-1 text-amber-100/90">
+          <p className="mt-1">
             当前建议：{formatAutonomyModeValue(policyBlock.rawMode)}；组织上限：
             {formatAutonomyModeValue(policyBlock.autonomyCap)}；建议改为：
             {formatAutonomyModeValue(policyBlock.replacementMode)}。
@@ -189,14 +173,14 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
       {suggestion.impactEstimate ? (
         <div className="flex flex-wrap gap-3 text-xs">
           {suggestion.impactEstimate.costSavingPct != null ? (
-            <span className="text-emerald-400">成本 -{suggestion.impactEstimate.costSavingPct}%</span>
+            <span className="text-success">成本 -{suggestion.impactEstimate.costSavingPct}%</span>
           ) : null}
           {suggestion.impactEstimate.latencyImpactPct != null ? (
             <span
               className={
                 suggestion.impactEstimate.latencyImpactPct > 0
-                  ? 'text-amber-400'
-                  : 'text-emerald-400'
+                  ? 'text-warning'
+                  : 'text-success'
               }
             >
               延迟 {suggestion.impactEstimate.latencyImpactPct > 0 ? '+' : ''}
@@ -207,8 +191,8 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
             <span
               className={
                 suggestion.impactEstimate.reliabilityImpactPct < 0
-                  ? 'text-amber-400'
-                  : 'text-emerald-400'
+                  ? 'text-warning'
+                  : 'text-success'
               }
             >
               可靠性 {suggestion.impactEstimate.reliabilityImpactPct > 0 ? '+' : ''}
@@ -222,7 +206,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
         <div className="space-y-2 pt-1">
           {canApply ? null : (
             <p
-              className="text-xs leading-relaxed text-zinc-500"
+              className="text-xs leading-relaxed text-subtle-foreground"
               data-testid="optimization-suggestion-no-effect-note"
             >
               该节点上的模型、工具、超时与自治级别字段不参与执行，采纳后不会产生任何效果。agent 节点的运行时配置来自所绑定的 Agent Definition，请到该 Agent 中调整。
@@ -250,6 +234,6 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
           </div>
         </div>
       ) : null}
-    </div>
+    </Card>
   )
 })

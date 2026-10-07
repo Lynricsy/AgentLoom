@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { cn } from '@/shared/lib/utils'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { useAdoptionStats } from '../api/optimization-suggestion-queries'
 
 interface AdoptionStatsBadgeProps {
@@ -19,16 +19,11 @@ export const AdoptionStatsBadge = memo(function AdoptionStatsBadge({
   const isHealthy = stats.adoptionRate >= 0.5
 
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-        isHealthy
-          ? 'bg-emerald-500/15 text-emerald-400'
-          : 'bg-amber-500/15 text-amber-400',
-      )}
+    <StatusBadge
+      tone={isHealthy ? 'success' : 'warning'}
       data-testid="adoption-stats-badge"
     >
       采纳率: {adoptionPct}% {isHealthy ? '✓' : '⚠'}
-    </span>
+    </StatusBadge>
   )
 })

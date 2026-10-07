@@ -13,11 +13,12 @@ import {
 } from 'lucide-react'
 
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
 import {
   Card,
   CardContent,
@@ -26,6 +27,7 @@ import {
   CardTitle,
 } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -50,9 +52,9 @@ import {
   GENERATED_APP_READINESS_LABELS,
   GENERATED_APP_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusBadgeVariant,
-  getGeneratedAppReadinessBadgeVariant,
-  getGeneratedAppStatusBadgeVariant,
+  getGeneratedAppGateStatusTone,
+  getGeneratedAppReadinessStatusTone,
+  getGeneratedAppStatusTone,
   isGeneratedAppPublicShareEligible,
 } from '../lib/generatedAppDisplay'
 import type {
@@ -188,9 +190,9 @@ function AcceptanceScenarioList({
 
 function GateStatusBadge({ gate }: { gate: GeneratedAppGateResult }) {
   return (
-    <Badge variant={getGeneratedAppGateStatusBadgeVariant(gate.status)}>
+    <StatusBadge tone={getGeneratedAppGateStatusTone(gate.status)}>
       {GENERATED_APP_GATE_STATUS_LABELS[gate.status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -425,17 +427,15 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
           </div>
           <div className="max-h-96 overflow-auto">
             {manifest.artifacts.map((artifact) => (
-              <button
+              <Button
                 key={artifact.artifactId}
-                type="button"
+                variant="ghost"
                 disabled={!artifact.readable}
                 onClick={() => setSelectedArtifactId(artifact.artifactId)}
                 className={cn(
-                  'flex w-full min-w-0 items-start justify-between gap-3 border-b border-border px-3 py-3 text-left last:border-b-0',
-                  selectedArtifactId === artifact.artifactId
-                    ? 'bg-primary/10'
-                    : 'hover:bg-muted',
-                  !artifact.readable && 'cursor-not-allowed opacity-60',
+                  'h-auto w-full min-w-0 items-start justify-between gap-3 rounded-none border-b border-border px-3 py-3 text-left last:border-b-0',
+                  selectedArtifactId === artifact.artifactId &&
+                    'bg-primary/10 hover:bg-primary/15',
                 )}
               >
                 <span className="min-w-0 space-y-1">
@@ -454,7 +454,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
                     {formatArtifactSize(artifact.sizeBytes)}
                   </span>
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -875,24 +875,22 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
 
   if (isLoading) {
     return (
-      <div className="h-full overflow-auto">
-        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-          <div className="space-y-3">
-            <Skeleton className="h-3.5 w-40" />
-            <Skeleton className="h-7 w-72" />
-            <Skeleton className="h-4 w-full max-w-2xl" />
-          </div>
-          {Array.from({ length: 3 }, (_, index) => (
-            <Skeleton key={index} className="h-40 rounded-lg" />
-          ))}
+      <PageContainer>
+        <div className="space-y-3">
+          <Skeleton className="h-3.5 w-40" />
+          <Skeleton className="h-7 w-72" />
+          <Skeleton className="h-4 w-full max-w-2xl" />
         </div>
-      </div>
+        {Array.from({ length: 3 }, (_, index) => (
+          <Skeleton key={index} className="h-40 rounded-lg" />
+        ))}
+      </PageContainer>
     )
   }
 
   if (!app || isError) {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-16">
+      <PageContainer className="py-16">
         <EmptyState
           icon={AlertTriangle}
           tone="var(--color-error)"
@@ -905,14 +903,14 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
               </Button>
               <Link
                 to="/generated-apps"
-                className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                className={buttonVariants({ variant: 'outline' })}
               >
                 返回列表
               </Link>
             </div>
           }
         />
-      </div>
+      </PageContainer>
     )
   }
 
@@ -952,196 +950,191 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
   }
 
   return (
-    <div
-      className="h-full overflow-auto"
-      data-testid="generated-app-detail-page"
-    >
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-        <PageHeader
-          icon={AppWindow}
-          title={app.appName}
-          description={app.description}
-          breadcrumb={[
-            { label: '生成应用', to: '/generated-apps' },
-            { label: app.appName },
-          ]}
-          actions={
-            <>
-              <Badge variant={getGeneratedAppStatusBadgeVariant(app.status)}>
-                {GENERATED_APP_STATUS_LABELS[app.status]}
-              </Badge>
-              <Badge
-                variant={getGeneratedAppReadinessBadgeVariant(app.readiness)}
-              >
-                {GENERATED_APP_READINESS_LABELS[app.readiness.state]}
-              </Badge>
-            </>
-          }
-        />
+    <PageContainer data-testid="generated-app-detail-page">
+      <PageHeader
+        icon={AppWindow}
+        title={app.appName}
+        description={app.description}
+        breadcrumb={[
+          { label: '生成应用', to: '/generated-apps' },
+          { label: app.appName },
+        ]}
+        actions={
+          <>
+            <StatusBadge tone={getGeneratedAppStatusTone(app.status)}>
+              {GENERATED_APP_STATUS_LABELS[app.status]}
+            </StatusBadge>
+            <StatusBadge
+              tone={getGeneratedAppReadinessStatusTone(app.readiness)}
+            >
+              {GENERATED_APP_READINESS_LABELS[app.readiness.state]}
+            </StatusBadge>
+          </>
+        }
+      />
 
-        <dl className="grid gap-3 text-sm text-muted-foreground sm:max-w-md sm:grid-cols-2">
-          <div className="border-l border-border pl-3">
-            <dt>更新时间</dt>
-            <dd className="font-medium text-foreground">
-              {formatGeneratedAppDateTime(app.updatedAt)}
+      <dl className="grid gap-3 text-sm text-muted-foreground sm:max-w-md sm:grid-cols-2">
+        <div className="border-l border-border pl-3">
+          <dt>更新时间</dt>
+          <dd className="font-medium text-foreground">
+            {formatGeneratedAppDateTime(app.updatedAt)}
+          </dd>
+        </div>
+        <div className="border-l border-border pl-3">
+          <dt>公开访问</dt>
+          <dd className="font-medium text-foreground">{publicAccessLabel}</dd>
+        </div>
+      </dl>
+
+      <DetailSection
+        title="自动生成与验证"
+        description="从当前 AppSpec 启动受控生成、测试和发布候选检查；公开分享仍需在 readiness 允许后显式启用。"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
+            <p className="break-words">{app.readiness.summary}</p>
+            <p>
+              当前阻断项 {app.readiness.blockingIssueCount} 个，Warning{' '}
+              {app.readiness.warningCount} 个。
+            </p>
+          </div>
+          <Button
+            onClick={() => void handleStartGenerationRun()}
+            disabled={startGenerationRunMutation.isPending}
+            className="shrink-0"
+          >
+            {startGenerationRunMutation.isPending ? (
+              <Spinner className="mr-2" />
+            ) : (
+              <WandSparkles className="mr-2 h-4 w-4" />
+            )}
+            {startGenerationRunMutation.isPending
+              ? '正在运行'
+              : runActionLabel}
+          </Button>
+        </div>
+      </DetailSection>
+
+      <DetailSection
+        title="Public share"
+        description="创建者侧公开链接管理，只在后端 readiness 允许时启用。"
+      >
+        <GeneratedAppPublicSharePanel app={app} className="max-w-3xl" />
+      </DetailSection>
+
+      <DetailSection
+        title="Runtime binding readiness"
+        description="创建者侧检查公开提交是否会启动绑定 Workflow；不改变 public-share readiness gate。"
+      >
+        <RuntimeBindingReadinessPanel
+          readiness={runtimeBindingReadinessQuery.data}
+          isLoading={runtimeBindingReadinessQuery.isLoading}
+          isError={runtimeBindingReadinessQuery.isError}
+          onRetry={() => void runtimeBindingReadinessQuery.refetch()}
+        />
+      </DetailSection>
+
+      <DetailSection
+        title="提交记录"
+        description="创建者侧查看公开应用提交列表、单次详情、运行状态、最终输出、报告和错误状态。"
+      >
+        <GeneratedAppSubmissionsPanel appId={app.id} />
+      </DetailSection>
+
+      <DetailSection
+        title="生成证据/运行记录"
+        description="创建者侧查看 generation runs、repair attempts 与 Gate run 证据摘要。"
+      >
+        <GeneratedAppGenerationEvidencePanel
+          appId={app.id}
+          autoSelectLatestRun
+        />
+      </DetailSection>
+
+      <AppSpecSection app={app} />
+
+      <DetailSection
+        title="Acceptance scenarios"
+        description="Given / When / Then 分组展示，用于约束后续浏览器验收。"
+      >
+        <AcceptanceScenarioList scenarios={app.appSpec.acceptanceScenarios} />
+      </DetailSection>
+
+      <DetailSection
+        title="Gate 0-7 结果"
+        description="阻断门禁必须全绿且无 warning，才能成为 publish candidate。"
+      >
+        <GateResultsTable gates={app.gateResults} />
+      </DetailSection>
+
+      <DetailSection
+        title="Traceability"
+        description="核心需求到验收场景和证据的最小追踪矩阵。"
+      >
+        <TraceabilityTable app={app} />
+      </DetailSection>
+
+      <DetailSection
+        title="Artifacts"
+        description="预览 URL、受控 workspace 源码与测试报告仅在 Studio 创建者工作台展示。"
+      >
+        <div className="space-y-5">
+          <dl>
+            <ArtifactLink label="Preview URL" url={app.preview.previewUrl} />
+            <ArtifactLink
+              label="Source artifact URL"
+              url={app.preview.sourceArtifactUrl}
+            />
+            <ArtifactLink
+              label="Test report URL"
+              url={app.preview.testReportUrl}
+            />
+          </dl>
+          <GeneratedAppArtifactDeliveryPanel appId={app.id} />
+        </div>
+      </DetailSection>
+
+      <DetailSection
+        title="Resource bindings"
+        description="创建者侧专业资源入口；公开 runtime 不展示这些内部资源。"
+      >
+        <dl className="grid gap-4 text-sm md:grid-cols-3">
+          <div className="space-y-1 border-l border-border pl-3">
+            <dt className="flex items-center gap-2 font-medium text-foreground">
+              <FileCode2 className="h-4 w-4 text-muted-foreground" />
+              Agent
+            </dt>
+            <dd>
+              <ProfessionalEditorLink
+                label="打开 Agent 专业编辑器"
+                resourceId={app.agentDefinitionId}
+                to="/agents/$agentId"
+                params={{ agentId: app.agentDefinitionId ?? '' }}
+              />
             </dd>
           </div>
-          <div className="border-l border-border pl-3">
-            <dt>公开访问</dt>
-            <dd className="font-medium text-foreground">{publicAccessLabel}</dd>
+          <div className="space-y-1 border-l border-border pl-3">
+            <dt className="flex items-center gap-2 font-medium text-foreground">
+              <ListChecks className="h-4 w-4 text-muted-foreground" />
+              Workflow
+            </dt>
+            <dd>
+              <ProfessionalEditorLink
+                label="打开 Workflow 专业编辑器"
+                resourceId={app.workflowDefinitionId}
+                to="/workflows/$workflowId"
+                params={{ workflowId: app.workflowDefinitionId ?? '' }}
+              />
+            </dd>
+          </div>
+          <div className="space-y-1 border-l border-border pl-3">
+            <dt className="font-medium text-foreground">Plugins</dt>
+            <dd>
+              <IdList values={app.pluginIds} />
+            </dd>
           </div>
         </dl>
-
-        <DetailSection
-          title="自动生成与验证"
-          description="从当前 AppSpec 启动受控生成、测试和发布候选检查；公开分享仍需在 readiness 允许后显式启用。"
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
-              <p className="break-words">{app.readiness.summary}</p>
-              <p>
-                当前阻断项 {app.readiness.blockingIssueCount} 个，Warning{' '}
-                {app.readiness.warningCount} 个。
-              </p>
-            </div>
-            <Button
-              onClick={() => void handleStartGenerationRun()}
-              disabled={startGenerationRunMutation.isPending}
-              className="shrink-0"
-            >
-              {startGenerationRunMutation.isPending ? (
-                <Spinner className="mr-2" />
-              ) : (
-                <WandSparkles className="mr-2 h-4 w-4" />
-              )}
-              {startGenerationRunMutation.isPending
-                ? '正在运行'
-                : runActionLabel}
-            </Button>
-          </div>
-        </DetailSection>
-
-        <DetailSection
-          title="Public share"
-          description="创建者侧公开链接管理，只在后端 readiness 允许时启用。"
-        >
-          <GeneratedAppPublicSharePanel app={app} className="max-w-3xl" />
-        </DetailSection>
-
-        <DetailSection
-          title="Runtime binding readiness"
-          description="创建者侧检查公开提交是否会启动绑定 Workflow；不改变 public-share readiness gate。"
-        >
-          <RuntimeBindingReadinessPanel
-            readiness={runtimeBindingReadinessQuery.data}
-            isLoading={runtimeBindingReadinessQuery.isLoading}
-            isError={runtimeBindingReadinessQuery.isError}
-            onRetry={() => void runtimeBindingReadinessQuery.refetch()}
-          />
-        </DetailSection>
-
-        <DetailSection
-          title="提交记录"
-          description="创建者侧查看公开应用提交列表、单次详情、运行状态、最终输出、报告和错误状态。"
-        >
-          <GeneratedAppSubmissionsPanel appId={app.id} />
-        </DetailSection>
-
-        <DetailSection
-          title="生成证据/运行记录"
-          description="创建者侧查看 generation runs、repair attempts 与 Gate run 证据摘要。"
-        >
-          <GeneratedAppGenerationEvidencePanel
-            appId={app.id}
-            autoSelectLatestRun
-          />
-        </DetailSection>
-
-        <AppSpecSection app={app} />
-
-        <DetailSection
-          title="Acceptance scenarios"
-          description="Given / When / Then 分组展示，用于约束后续浏览器验收。"
-        >
-          <AcceptanceScenarioList scenarios={app.appSpec.acceptanceScenarios} />
-        </DetailSection>
-
-        <DetailSection
-          title="Gate 0-7 结果"
-          description="阻断门禁必须全绿且无 warning，才能成为 publish candidate。"
-        >
-          <GateResultsTable gates={app.gateResults} />
-        </DetailSection>
-
-        <DetailSection
-          title="Traceability"
-          description="核心需求到验收场景和证据的最小追踪矩阵。"
-        >
-          <TraceabilityTable app={app} />
-        </DetailSection>
-
-        <DetailSection
-          title="Artifacts"
-          description="预览 URL、受控 workspace 源码与测试报告仅在 Studio 创建者工作台展示。"
-        >
-          <div className="space-y-5">
-            <dl>
-              <ArtifactLink label="Preview URL" url={app.preview.previewUrl} />
-              <ArtifactLink
-                label="Source artifact URL"
-                url={app.preview.sourceArtifactUrl}
-              />
-              <ArtifactLink
-                label="Test report URL"
-                url={app.preview.testReportUrl}
-              />
-            </dl>
-            <GeneratedAppArtifactDeliveryPanel appId={app.id} />
-          </div>
-        </DetailSection>
-
-        <DetailSection
-          title="Resource bindings"
-          description="创建者侧专业资源入口；公开 runtime 不展示这些内部资源。"
-        >
-          <dl className="grid gap-4 text-sm md:grid-cols-3">
-            <div className="space-y-1 border-l border-border pl-3">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <FileCode2 className="h-4 w-4 text-muted-foreground" />
-                Agent
-              </dt>
-              <dd>
-                <ProfessionalEditorLink
-                  label="打开 Agent 专业编辑器"
-                  resourceId={app.agentDefinitionId}
-                  to="/agents/$agentId"
-                  params={{ agentId: app.agentDefinitionId ?? '' }}
-                />
-              </dd>
-            </div>
-            <div className="space-y-1 border-l border-border pl-3">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <ListChecks className="h-4 w-4 text-muted-foreground" />
-                Workflow
-              </dt>
-              <dd>
-                <ProfessionalEditorLink
-                  label="打开 Workflow 专业编辑器"
-                  resourceId={app.workflowDefinitionId}
-                  to="/workflows/$workflowId"
-                  params={{ workflowId: app.workflowDefinitionId ?? '' }}
-                />
-              </dd>
-            </div>
-            <div className="space-y-1 border-l border-border pl-3">
-              <dt className="font-medium text-foreground">Plugins</dt>
-              <dd>
-                <IdList values={app.pluginIds} />
-              </dd>
-            </div>
-          </dl>
-        </DetailSection>
-      </div>
-    </div>
+      </DetailSection>
+    </PageContainer>
   )
 }

@@ -1,9 +1,19 @@
 import { memo, useCallback, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { AlertTriangle, Import, Loader2, X } from 'lucide-react'
+import { AlertTriangle, Import, Loader2 } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
 import { Label } from '@/shared/ui/label'
+import { Textarea } from '@/shared/ui/textarea'
 
 import { useUploadPublicKey } from '../api/tenantKeyMutations'
 import { importPrivateKeyPem, privateKeyPemToPkcs8 } from '../lib/clientCrypto'
@@ -23,9 +33,7 @@ type ImportState =
 
 const PEM_HEADER = '-----BEGIN PRIVATE KEY-----'
 
-async function extractPublicKeyPem(
-  privateKey: CryptoKey,
-): Promise<string> {
+async function extractPublicKeyPem(privateKey: CryptoKey): Promise<string> {
   const jwk = await crypto.subtle.exportKey('jwk', privateKey)
   delete jwk.d
   delete jwk.dp
@@ -79,7 +87,8 @@ export const KeyImportDialog = memo(function KeyImportDialog({
     if (!trimmed.startsWith(PEM_HEADER)) {
       setState({
         step: 'error',
-        message: '无效的 PEM 格式。请粘贴以 "-----BEGIN PRIVATE KEY-----" 开头的完整私钥。',
+        message:
+          '无效的 PEM 格式。请粘贴以 "-----BEGIN PRIVATE KEY-----" 开头的完整私钥。',
       })
       return
     }
@@ -87,7 +96,9 @@ export const KeyImportDialog = memo(function KeyImportDialog({
     try {
       setState({ step: 'processing' })
 
-      const privateKey = await importPrivateKeyPem(trimmed, { extractable: true })
+      const privateKey = await importPrivateKeyPem(trimmed, {
+        extractable: true,
+      })
       const privateKeyPkcs8 = privateKeyPemToPkcs8(trimmed)
       const publicKeyPem = await extractPublicKeyPem(privateKey)
       const fingerprint = await computeFingerprint(publicKeyPem)
@@ -116,123 +127,108 @@ export const KeyImportDialog = memo(function KeyImportDialog({
   )
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-xl"
-          data-testid="key-import-dialog"
-        >
-          <Dialog.Close asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-3 top-3 h-8 w-8 p-0"
-              aria-label="关闭"
-              disabled={state.step === 'processing'}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </Dialog.Close>
-
-          <Dialog.Title className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <Import className="h-5 w-5 text-primary" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="key-import-dialog"
+        hideClose={state.step === 'processing'}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Import className="size-5 text-primary" />
             导入私钥
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+          </DialogTitle>
+          <DialogDescription>
             粘贴 PEM 编码的 RSA 私钥。系统将自动提取公钥并上传到服务端。
-          </Dialog.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-5 space-y-4">
-            {state.step === 'input' && (
-              <>
-                <div>
-                  <Label>私钥 (PEM)</Label>
-                  <textarea
-                    id="pem-input"
-                    className="mt-2 h-48 w-full resize-none rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground transition-colors placeholder:text-subtle-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                    placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
-                    value={pemInput}
-                    onChange={(e) => setPemInput(e.target.value)}
-                  />
+        {state.step === 'input' && (
+          <>
+            <DialogBody className="space-y-4">
+              <div>
+                <Label htmlFor="pem-input">私钥 (PEM)</Label>
+                <Textarea
+                  id="pem-input"
+                  className="mt-2 h-48 resize-none font-mono text-xs"
+                  placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                  value={pemInput}
+                  onChange={(e) => setPemInput(e.target.value)}
+                />
+              </div>
+
+              <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <p className="text-xs leading-relaxed text-warning">
+                    私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM
+                    明文字符串。
+                    但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
+                  </p>
                 </div>
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">取消</Button>
+              </DialogClose>
+              <Button
+                onClick={handleImport}
+                disabled={!pemInput.trim().startsWith(PEM_HEADER)}
+              >
+                导入
+              </Button>
+            </DialogFooter>
+          </>
+        )}
 
-                <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                    <p className="text-xs leading-relaxed text-amber-700">
-                      私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM 明文字符串。
-                      但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
-                    </p>
-                  </div>
-                </div>
+        {state.step === 'processing' && (
+          <DialogBody>
+            <div className="flex flex-col items-center gap-3 py-6">
+              <Loader2 className="size-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                正在验证并导入私钥…
+              </p>
+            </div>
+          </DialogBody>
+        )}
 
-                <div className="flex justify-end gap-2">
-                  <Dialog.Close asChild>
-                    <Button variant="outline">取消</Button>
-                  </Dialog.Close>
-                  <Button
-                    onClick={handleImport}
-                    disabled={!pemInput.trim().startsWith(PEM_HEADER)}
-                  >
-                    导入
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {state.step === 'processing' && (
-              <div className="flex flex-col items-center gap-3 py-6">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">
-                  正在验证并导入私钥…
+        {state.step === 'done' && (
+          <>
+            <DialogBody>
+              <div className="rounded-lg border border-success/20 bg-success/5 p-3">
+                <p className="text-sm font-medium text-success">私钥导入成功</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  指纹：{state.fingerprint}
                 </p>
               </div>
-            )}
+            </DialogBody>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button>完成</Button>
+              </DialogClose>
+            </DialogFooter>
+          </>
+        )}
 
-            {state.step === 'done' && (
-              <>
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
-                  <p className="text-sm font-medium text-emerald-600">
-                    私钥导入成功
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    指纹：{state.fingerprint}
-                  </p>
-                </div>
-
-                <div className="flex justify-end">
-                  <Dialog.Close asChild>
-                    <Button>完成</Button>
-                  </Dialog.Close>
-                </div>
-              </>
-            )}
-
-            {state.step === 'error' && (
-              <>
-                <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
-                  <p className="text-sm font-medium text-rose-600">导入失败</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {state.message}
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Dialog.Close asChild>
-                    <Button variant="outline">关闭</Button>
-                  </Dialog.Close>
-                  <Button
-                    onClick={() => setState({ step: 'input' })}
-                  >
-                    重试
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        {state.step === 'error' && (
+          <>
+            <DialogBody>
+              <div className="rounded-lg border border-error/20 bg-error/5 p-3">
+                <p className="text-sm font-medium text-error">导入失败</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {state.message}
+                </p>
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">关闭</Button>
+              </DialogClose>
+              <Button onClick={() => setState({ step: 'input' })}>重试</Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 })

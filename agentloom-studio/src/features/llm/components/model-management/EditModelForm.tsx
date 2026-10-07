@@ -146,13 +146,14 @@ export function EditModelForm({ model, onClose }: EditModelFormProps) {
         <h4 className="text-sm font-semibold text-foreground">
           编辑: {model.modelId}
         </h4>
-        <button
-          type="button"
-          className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="关闭编辑模型表单"
           onClick={onClose}
         >
-          <X className="h-4 w-4" />
-        </button>
+          <X />
+        </Button>
       </div>
 
       <div className="mt-3 space-y-3">
@@ -230,20 +231,20 @@ export function EditModelForm({ model, onClose }: EditModelFormProps) {
                 Icon: FileJson,
               },
             ].map(({ key, label, state, set, Icon }) => (
-              <button
+              <Button
                 key={key}
-                type="button"
+                variant="outline"
+                size="xs"
+                aria-pressed={state}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors",
-                  state
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border bg-background text-muted-foreground hover:border-border/80",
+                  "gap-1 font-normal",
+                  state && "border-primary/40 bg-primary/10 text-primary",
                 )}
                 onClick={() => set(!state)}
               >
-                <Icon className="h-3 w-3" />
+                <Icon className="size-3" />
                 {label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

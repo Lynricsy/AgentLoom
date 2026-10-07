@@ -3,6 +3,7 @@ import { MiniMap } from '@xyflow/react'
 import { Minimize2, Maximize2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
 import type { CanvasNode } from '../../types'
 import { NODE_CATEGORIES } from '../nodeCategories'
 import { useCanvasActions, useIsMiniMapCollapsed } from '../../stores/canvasStore'
@@ -21,7 +22,8 @@ export const CanvasMiniMap = memo(function CanvasMiniMap() {
   return (
     <div
       className={cn(
-        'absolute bottom-11 right-4 z-20 overflow-hidden rounded-xl border border-border bg-surface/90 shadow-lg backdrop-blur-sm transition-all',
+        CANVAS_FLOATING_CLASS,
+        'absolute bottom-11 right-4 z-20 overflow-hidden transition-[height,width] duration-300 ease-out-expo',
         isMiniMapCollapsed ? 'h-8 w-8' : 'h-[140px] w-[200px]',
       )}
       data-testid="canvas-minimap"

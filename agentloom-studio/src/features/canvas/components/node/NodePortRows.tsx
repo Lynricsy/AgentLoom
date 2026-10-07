@@ -131,7 +131,7 @@ export function MinimalPortAnchors({
   return (
     <div
       className={cn(
-        "absolute inset-y-2 z-[2] w-0",
+        "absolute inset-y-2 z-20 w-0",
         isInput ? "left-0" : "right-0",
       )}
     >

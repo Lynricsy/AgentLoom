@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 
 export interface FieldMappingSummaryProps {
   isReadonly: boolean
@@ -16,15 +17,16 @@ export function FieldMappingSummary({
     <>
       <div className="mapping-panel__header">
         <h3 className="mapping-panel__title">字段映射</h3>
-        <button
-          type="button"
-          className="mapping-panel__close"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground hover:text-foreground"
           data-testid="mapping-panel-close"
           aria-label="关闭映射面板"
           onClick={onClose}
         >
-          <X size={16} />
-        </button>
+          <X />
+        </Button>
       </div>
 
       <div className="mapping-panel__summary" data-testid="mapping-required-summary">

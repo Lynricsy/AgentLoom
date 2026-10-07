@@ -121,7 +121,7 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
         />
       ) : null}
 
-      <div className="relative z-[1] flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{data.label}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -139,7 +139,7 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
       </div>
 
       {data.summary ? (
-        <p className="relative z-[1] mt-3 text-2xs leading-4 text-muted-foreground">
+        <p className="relative mt-3 text-2xs leading-4 text-muted-foreground">
           {data.summary}
         </p>
       ) : null}

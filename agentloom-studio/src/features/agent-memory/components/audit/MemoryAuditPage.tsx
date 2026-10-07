@@ -3,12 +3,13 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { ArrowLeft, FileSearch, History } from 'lucide-react';
+import { ArrowLeft, FileSearch } from 'lucide-react';
 import { useAuthToken } from '@/features/execution';
-import { PageHeader } from '@/shared/components/page-header/PageHeader';
+import { WorkbenchHeader } from '@/shared/components/workbench-header';
 import { EmptyState } from '@/shared/components/empty-state/EmptyState';
 import { Pagination } from '@/shared/components';
-import { Badge } from '@/shared/ui/badge';
+import { Card } from '@/shared/ui/card';
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
@@ -90,15 +91,11 @@ const OPERATION_LABELS: Record<AuditOperationType, string> = {
 
 const CONNECTION_META: Record<
   ConnectionStatus,
-  { label: string; tone: string; pulse: boolean }
+  { label: string; tone: StatusTone; pulse: boolean }
 > = {
-  connected: {
-    label: '实时同步',
-    tone: 'var(--color-success)',
-    pulse: false,
-  },
-  connecting: { label: '连接中...', tone: 'var(--color-warning)', pulse: true },
-  disconnected: { label: '未连接', tone: 'var(--color-muted)', pulse: false },
+  connected: { label: '实时同步', tone: 'success', pulse: false },
+  connecting: { label: '连接中...', tone: 'warning', pulse: true },
+  disconnected: { label: '未连接', tone: 'neutral', pulse: false },
 };
 
 interface MemoryAuditServerToClientEvents {
@@ -304,44 +301,33 @@ export function MemoryAuditPage() {
   const connection = CONNECTION_META[connectionStatus];
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-hidden p-6">
-      <div className="flex flex-col gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 self-start text-muted-foreground hover:text-foreground"
-          onClick={handleBack}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回
-        </Button>
-
-        <PageHeader
-          icon={History}
-          tone="var(--color-node-memory)"
-          title="审计日志"
-          description="追踪记忆节点的每一次变更、审核与回滚"
-          actions={
-            <Badge tone={connection.tone}>
-              <span
-                aria-hidden
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full',
-                  connection.pulse && 'animate-pulse',
-                )}
-                style={{ backgroundColor: connection.tone }}
-              />
-              {connection.label}
-            </Badge>
-          }
-        />
-      </div>
+    <div className="flex h-full flex-col overflow-hidden">
+      <WorkbenchHeader
+        leading={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            onClick={handleBack}
+            aria-label="返回"
+          >
+            <ArrowLeft />
+          </Button>
+        }
+        title="审计日志"
+        description="追踪记忆节点的每一次变更、审核与回滚"
+        status={
+          <StatusBadge tone={connection.tone} dot pulse={connection.pulse}>
+            {connection.label}
+          </StatusBadge>
+        }
+      />
 
       <Tabs
         value={activeTab}
         defaultValue="timeline"
         onValueChange={(next) => setActiveTab(next as TabKey)}
-        className="flex min-h-0 flex-1 flex-col space-y-4"
+        className="flex min-h-0 flex-1 flex-col space-y-4 p-4 sm:p-6"
       >
         <TabsList className="w-auto self-start">
           <TabsTrigger value="timeline" className="px-4">
@@ -362,7 +348,7 @@ export function MemoryAuditPage() {
           className="flex min-h-0 flex-1 flex-col gap-4 space-y-0 lg:flex-row"
         >
           {/* 左：筛选 + 时间线 */}
-          <div className="flex min-h-0 w-full flex-col overflow-hidden rounded-lg border border-border bg-surface lg:w-96 lg:shrink-0">
+          <Card className="flex min-h-0 w-full flex-col overflow-hidden lg:w-96 lg:shrink-0">
             <div className="space-y-3 border-b border-border p-3">
               <div className="flex gap-2">
                 <Input
@@ -381,15 +367,14 @@ export function MemoryAuditPage() {
                 {OPERATION_OPTIONS.map((opt) => {
                   const isActive = (filters.operationType ?? '') === opt.value;
                   return (
-                    <button
+                    <Button
                       key={opt.value}
-                      type="button"
+                      variant="outline"
+                      size="xs"
                       className={cn(
-                        'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                        isActive
-                          ? 'border-primary/30 bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:border-border-hover hover:text-foreground',
+                        'rounded-full',
+                        isActive &&
+                          'border-primary/30 bg-primary/10 text-primary hover:bg-primary/10',
                       )}
                       onClick={() =>
                         handleFilterChange({
@@ -400,7 +385,7 @@ export function MemoryAuditPage() {
                       }
                     >
                       {opt.label}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -452,10 +437,10 @@ export function MemoryAuditPage() {
                   />
                 </div>
               )}
-          </div>
+          </Card>
 
           {/* 右：详情 */}
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface">
+          <Card className="min-h-0 flex-1 overflow-y-auto">
             {selectedEntry ? (
               <div className="flex flex-col gap-6 p-5">
                 <div className="space-y-2">
@@ -498,29 +483,28 @@ export function MemoryAuditPage() {
                           const isActive =
                             diffSelection?.newVersion.id === ver.id;
                           return (
-                            <button
+                            <Button
                               key={ver.id}
-                              type="button"
+                              variant="outline"
+                              size="xs"
                               aria-current={isActive ? 'true' : undefined}
                               className={cn(
-                                'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-                                isActive
-                                  ? 'border-primary/40 bg-primary/10 text-primary'
-                                  : 'border-border text-muted-foreground hover:border-border-hover hover:text-foreground',
+                                'gap-1.5',
+                                isActive &&
+                                  'border-primary/40 bg-primary/10 text-primary hover:bg-primary/10',
                               )}
                               onClick={() => handleVersionSelect(ver.id)}
                             >
                               v{ver.versionNumber}
                               <span
                                 aria-hidden
-                                className="h-1.5 w-1.5 rounded-full"
+                                className="size-1.5 rounded-full"
                                 style={{
                                   backgroundColor:
                                     REVIEW_STATUS_META[ver.reviewStatus].tone,
                                 }}
                               />
-                            </button>
+                            </Button>
                           );
                         })}
                       </div>
@@ -545,7 +529,7 @@ export function MemoryAuditPage() {
                 />
               </div>
             )}
-          </div>
+          </Card>
         </TabsContent>
 
         <TabsContent

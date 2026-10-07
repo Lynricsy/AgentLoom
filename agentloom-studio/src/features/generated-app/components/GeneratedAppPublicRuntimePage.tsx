@@ -14,6 +14,7 @@ import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -22,6 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Slider } from '@/shared/ui/slider'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { Textarea } from '@/shared/ui/textarea'
 import {
   useCreateGeneratedAppPublicSubmission,
@@ -31,7 +34,7 @@ import {
 import {
   GENERATED_APP_SUBMISSION_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusBadgeVariant,
+  getGeneratedAppSubmissionStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicRuntime,
@@ -120,9 +123,9 @@ function SubmissionStatusBadge({
   status: GeneratedAppPublicSubmission['status']
 }) {
   return (
-    <Badge variant={getGeneratedAppSubmissionStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppSubmissionStatusTone(status)}>
       {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -473,15 +476,13 @@ function RuntimeFormField({
 
       {field.type === 'range' ? (
         <div className="space-y-2">
-          <input
+          <Slider
             id={inputId}
-            type="range"
-            value={stringValue}
+            value={[Number(stringValue)]}
             onChange={(event) => onChange(field.id, event.target.value)}
             min={field.min ?? 1}
             max={field.max ?? 10}
             step={field.step ?? 1}
-            className="w-full accent-primary"
             disabled={disabled}
           />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -523,23 +524,28 @@ function RuntimeFormField({
             const checked = selectedValues.includes(option.value)
 
             return (
-              <label
+              <div
                 key={option.value}
-                className="flex min-w-0 items-center gap-2 border border-border bg-background px-3 py-2 text-sm text-foreground"
+                className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
+                  id={`${inputId}-${option.value}`}
                   checked={checked}
-                  onChange={(event) => {
-                    const nextValues = event.target.checked
-                      ? [...selectedValues, option.value]
-                      : selectedValues.filter((item) => item !== option.value)
+                  onCheckedChange={(next) => {
+                    const nextValues =
+                      next === true
+                        ? [...selectedValues, option.value]
+                        : selectedValues.filter((item) => item !== option.value)
                     onChange(field.id, nextValues)
                   }}
-                  className="h-4 w-4 shrink-0 accent-primary"
                 />
-                <span className="break-words">{option.label}</span>
-              </label>
+                <label
+                  htmlFor={`${inputId}-${option.value}`}
+                  className="min-w-0 break-words"
+                >
+                  {option.label}
+                </label>
+              </div>
             )
           })}
         </fieldset>

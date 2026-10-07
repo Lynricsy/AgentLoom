@@ -2,6 +2,7 @@ import { memo, useCallback, useState, type KeyboardEvent } from 'react'
 import { X } from 'lucide-react'
 
 import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { cn } from '@/shared/lib/utils'
 import { MARKETPLACE_REVIEW_LIMITS } from '../types'
@@ -97,15 +98,16 @@ export const ListingTagsInput = memo(function ListingTagsInput({
           {tags.map((tag) => (
             <Badge key={tag} variant="secondary" className="pr-1 text-foreground">
               {tag}
-              <button
-                type="button"
-                className="rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-4 rounded-full text-muted-foreground hover:bg-surface hover:text-foreground [&_svg]:size-3"
                 onClick={() => removeTag(tag)}
                 aria-label={`移除标签 ${tag}`}
                 disabled={disabled}
               >
-                <X className="h-3 w-3" />
-              </button>
+                <X />
+              </Button>
             </Badge>
           ))}
         </div>

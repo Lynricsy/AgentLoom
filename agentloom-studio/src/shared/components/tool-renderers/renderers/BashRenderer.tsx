@@ -63,7 +63,7 @@ const BashDetail = memo(function BashDetail({ toolCall, state }: ToolRendererPro
 
   if (state === 'pending' || (state === 'streaming' && !toolCall.result && !toolCall.error)) {
     return (
-      <div className="rounded-lg bg-background p-3 font-mono text-sm">
+      <div className="rounded-lg bg-muted p-3 font-mono text-sm">
         <div className="flex items-center gap-2">
           <span className="select-none text-success">$</span>
           <span className="text-foreground">{args.command}</span>

@@ -9,6 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { cn } from '@/shared/lib/utils'
+import { Input } from '@/shared/ui/input'
+import { Slider } from '@/shared/ui/slider'
 import {
   useAgentCanvasStore,
   useAgentCanvasNodes,
@@ -252,7 +255,7 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
         >
           别名 <span className="text-error">*</span>
         </label>
-        <input
+        <Input
           id="sub-agent-alias"
           type="text"
           value={aliasInput}
@@ -260,11 +263,7 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
           onBlur={handleAliasBlur}
           placeholder="例如: code-reviewer"
           aria-invalid={aliasError ? true : undefined}
-          className={`w-full rounded-md border bg-background px-3 py-1.5 text-xs text-foreground outline-none transition-colors placeholder:text-subtle-foreground focus-visible:ring-2 ${
-            aliasError
-              ? 'border-error focus-visible:ring-error/30'
-              : 'border-border focus-visible:ring-primary/30'
-          }`}
+          className={cn('h-8 text-xs', aliasError && 'border-error')}
         />
         {aliasError && (
           <p className="flex items-center gap-1 text-xs font-medium text-error">
@@ -286,15 +285,14 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
           最大超时
         </label>
         <div className="flex items-center gap-3">
-          <input
+          <Slider
             id="sub-agent-timeout"
-            type="range"
             min={10}
             max={600}
             step={10}
-            value={timeoutSec}
+            value={[timeoutSec]}
             onChange={handleTimeoutChange}
-            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-primary [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+            className="flex-1 [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
           />
           <span className="w-12 text-right text-xs tabular-nums text-foreground">
             {timeoutSec}s

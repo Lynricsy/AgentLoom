@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
 import type { BatchPreviewState } from '../../lib/fieldMappingBatch'
 import type { CompatibilityLabel } from '../../types'
 
@@ -62,25 +63,24 @@ export function FieldMappingBatchPreview({
           </div>
         )}
       </div>
-      <div className="batch-preview__actions">
-        <button
-          type="button"
+      <div className="flex gap-1.5">
+        <Button
+          size="xs"
           data-testid="batch-preview-confirm"
-          className="batch-preview__btn--confirm"
           onClick={onConfirm}
         >
-          <Check size={12} />
+          <Check />
           确认映射
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
           data-testid="batch-preview-cancel"
-          className="batch-preview__btn--cancel"
           onClick={onCancel}
         >
-          <X size={12} />
+          <X />
           取消
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -23,6 +23,7 @@ import { WorkflowImportDialog } from "@/features/workflow";
 import { ExecutionLaunchDialog } from "@/features/workflow-input-schema";
 import { MarketplacePublishDialog } from "@/features/marketplace";
 import { ShareManagementDialog } from "@/features/share";
+import { CANVAS_FLOATING_CLASS } from "./canvasChrome";
 import { NodePalette } from "./NodePalette";
 import { ReadOnlyCanvasBanner } from "./readonly/ReadOnlyCanvasBanner";
 import { ReadOnlyNodeSheet } from "./readonly/ReadOnlyNodeSheet";
@@ -43,6 +44,8 @@ import {
   useMappingPanelEdgeId,
 } from "../stores/canvasStore";
 import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
+import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
 import { useToast } from "@/shared/ui/toast";
 
 function buildVersionHistoryRestoreKey(workflowId: string): string {
@@ -457,14 +460,18 @@ export function WorkflowCanvasPage() {
               className="order-2 flex max-w-[min(420px,calc(100%-2rem))] flex-col gap-3 xl:order-1"
               data-testid="workflow-side-overlay"
             >
-              <button
-                type="button"
-                className="pointer-events-auto inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-background/85 px-3 py-2 text-xs font-medium text-foreground shadow-lg backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  CANVAS_FLOATING_CLASS,
+                  "pointer-events-auto w-fit rounded-full hover:border-primary/40 hover:text-primary",
+                )}
                 onClick={handleToggleExecutionHistory}
                 data-testid="toggle-execution-history"
               >
                 {isExecutionHistoryOpen ? "隐藏执行记录" : "查看执行记录"}
-              </button>
+              </Button>
 
               {isExecutionHistoryOpen ? (
                 <div className="pointer-events-auto h-[min(68vh,640px)] w-[min(420px,calc(100vw-3rem))]">

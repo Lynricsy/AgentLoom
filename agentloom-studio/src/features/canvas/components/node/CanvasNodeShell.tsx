@@ -354,7 +354,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           data-testid={`canvas-node-shell-accent-${id}`}
           data-shell-status={shellStatus}
           className={cn(
-            "pointer-events-none absolute inset-y-2 left-0 z-[1] w-1 rounded-full",
+            "pointer-events-none absolute inset-y-2 left-0 z-10 w-1 rounded-full",
             shellAccentClassName,
           )}
         />

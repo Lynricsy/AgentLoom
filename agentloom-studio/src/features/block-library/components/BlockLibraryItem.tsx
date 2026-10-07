@@ -1,7 +1,8 @@
-import { memo, type DragEvent } from 'react';
+import { memo, type DragEvent, type KeyboardEvent } from 'react';
 import { Layers, Package2, Tag } from 'lucide-react';
 
 import { DRAG_TRANSFER_TYPE } from '@/features/canvas';
+import { Card } from '@/shared/ui/card';
 
 import type { BlockCategory, ReusableBlockListItem } from '../types';
 
@@ -29,7 +30,7 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
     ? CATEGORY_LABELS[block.category]
     : '未分类';
 
-  function handleDragStart(event: DragEvent<HTMLButtonElement>) {
+  function handleDragStart(event: DragEvent<HTMLDivElement>) {
     event.dataTransfer.setData(
       DRAG_TRANSFER_TYPE,
       JSON.stringify({
@@ -44,14 +45,21 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
   }
 
   return (
-    <button
-      className="flex w-full cursor-grab flex-col items-start gap-3 rounded-xl border border-border bg-muted p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface active:cursor-grabbing"
+    <Card
+      className="flex w-full cursor-grab flex-col items-start gap-3 p-4 text-left transition-colors duration-150 hover:border-border-hover hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 active:cursor-grabbing"
       data-testid={`block-item-${block.id}`}
       draggable
       onClick={() => onClick?.(block)}
       onDragStart={handleDragStart}
+      onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick?.(block);
+        }
+      }}
+      role="button"
+      tabIndex={0}
       title={block.description ?? block.name}
-      type="button"
     >
       <div className="flex w-full items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
@@ -84,6 +92,6 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
           </span>
         ) : null}
       </div>
-    </button>
+    </Card>
   );
 });

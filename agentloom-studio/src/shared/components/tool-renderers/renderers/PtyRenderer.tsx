@@ -191,7 +191,7 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="space-y-0.5 rounded-lg bg-background p-3">
+    <div className="space-y-0.5 rounded-lg bg-muted p-3">
       <KeyValue label="ID" value={result.id} />
       <KeyValue label="命令" value={[args.command, ...(args.args ?? [])].join(' ')} />
       <KeyValue label="CWD" value={result.cwd ?? args.cwd} />
@@ -214,7 +214,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
 
   if (!output) {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-background p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center rounded-lg bg-muted p-6 text-xs text-muted-foreground">
         无输出
       </div>
     )
@@ -240,7 +240,7 @@ const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3">
+    <div className="rounded-lg bg-muted p-3">
       <div className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         输入数据
       </div>
@@ -264,14 +264,14 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
 
   if (list.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-background p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center rounded-lg bg-muted p-6 text-xs text-muted-foreground">
         无活跃的 PTY 会话
       </div>
     )
   }
 
   return (
-    <div className="overflow-auto rounded-lg bg-background">
+    <div className="overflow-auto rounded-lg bg-muted">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border text-2xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -313,7 +313,7 @@ const PtyKillDetail = memo(function PtyKillDetail({ toolCall, state }: ToolRende
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-background p-3">
+    <div className="rounded-lg bg-muted p-3">
       <div className="flex items-center gap-2 text-xs text-foreground/90">
         <span className="text-error">已终止</span>
         <span className="font-mono">{args.id}</span>

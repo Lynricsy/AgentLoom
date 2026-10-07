@@ -1,9 +1,15 @@
 import { memo } from 'react'
-import * as Tooltip from '@radix-ui/react-tooltip'
 import { AlertTriangle, Ban, Check, Loader2 } from 'lucide-react'
-import { cva } from 'class-variance-authority'
 
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/shared/ui/tooltip'
 
 type SourceStatus = 'valid' | 'modified' | 'unavailable'
 
@@ -23,19 +29,6 @@ interface SourceStatusBadgeProps {
   className?: string
 }
 
-const badgeVariants = cva(
-  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium',
-  {
-    variants: {
-      status: {
-        valid: 'border-success/20 bg-success/10 text-success',
-        modified: 'border-warning/20 bg-warning/10 text-warning',
-        unavailable: 'border-border/60 bg-muted text-muted-foreground',
-      },
-    },
-  },
-)
-
 function deriveStatus(props: SourceStatusBadgeProps): SourceStatus {
   if (props.sourceUnavailable) return 'unavailable'
   if (props.sourceModified || !props.hashValid) return 'modified'
@@ -44,11 +37,11 @@ function deriveStatus(props: SourceStatusBadgeProps): SourceStatus {
 
 const statusConfig: Record<
   SourceStatus,
-  { icon: typeof Check; label: string }
+  { icon: typeof Check; label: string; tone: StatusTone }
 > = {
-  valid: { icon: Check, label: '来源完整' },
-  modified: { icon: AlertTriangle, label: '来源已修改' },
-  unavailable: { icon: Ban, label: '来源不可用' },
+  valid: { icon: Check, label: '来源完整', tone: 'success' },
+  modified: { icon: AlertTriangle, label: '来源已修改', tone: 'warning' },
+  unavailable: { icon: Ban, label: '来源不可用', tone: 'neutral' },
 }
 
 function formatTimestamp(value?: string): string {
@@ -97,55 +90,55 @@ export const SourceStatusBadge = memo(function SourceStatusBadge(
   const config = statusConfig[status]
   const Icon = config.icon
   const tooltipLines = renderTooltipContent(status, props)
+  const hasTooltip = tooltipLines.length > 0
   const showSnapshotToggle =
     props.hasOriginalSnapshot &&
     (status === 'modified' || status === 'unavailable') &&
     props.onToggleOriginalSnapshot
 
+  const badge = (
+    <StatusBadge
+      tone={config.tone}
+      size="sm"
+      // 有提示时可聚焦，键盘用户同样能唤起哈希详情
+      tabIndex={hasTooltip ? 0 : undefined}
+      className={cn('px-2', hasTooltip && 'cursor-help')}
+      data-testid="source-status-badge"
+    >
+      <Icon className="size-3" />
+      {config.label}
+      {props.isVerifying && status !== 'unavailable' && (
+        <Loader2 className="size-3 animate-spin" />
+      )}
+    </StatusBadge>
+  )
+
   return (
     <div className={cn('flex flex-wrap items-center justify-end gap-2', props.className)}>
-      <Tooltip.Provider delayDuration={0}>
-        <Tooltip.Root>
-          <Tooltip.Trigger asChild>
-            <button
-              type="button"
-              className={cn(
-                badgeVariants({ status }),
-                status === 'valid' ? 'cursor-default' : 'cursor-help',
-              )}
-              data-testid="source-status-badge"
-            >
-              <Icon className="h-3 w-3" />
-              {config.label}
-              {props.isVerifying && status !== 'unavailable' && (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              )}
-            </button>
-          </Tooltip.Trigger>
-          {tooltipLines.length > 0 && (
-            <Tooltip.Portal>
-              <Tooltip.Content
-                side="top"
-                className="z-50 max-w-xs rounded-lg border border-border/60 bg-popover px-3 py-2 text-left text-2xs text-popover-foreground shadow-lg"
-              >
-                <div className="space-y-1">
-                  {tooltipLines.map((line) => (
-                    <p key={line} className="break-all leading-relaxed">
-                      {line}
-                    </p>
-                  ))}
-                </div>
-                <Tooltip.Arrow className="fill-popover" />
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          )}
-        </Tooltip.Root>
-      </Tooltip.Provider>
+      {hasTooltip ? (
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>{badge}</TooltipTrigger>
+            <TooltipContent side="top" className="text-left text-2xs">
+              <div className="space-y-1">
+                {tooltipLines.map((line) => (
+                  <p key={line} className="break-all leading-relaxed">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        badge
+      )}
 
       {showSnapshotToggle && (
-        <button
-          type="button"
-          className="text-2xs font-medium text-primary transition hover:text-primary/80 hover:underline"
+        <Button
+          variant="link"
+          size="xs"
+          className="h-auto p-0 text-2xs font-medium"
           onClick={(event) => {
             event.stopPropagation()
             props.onToggleOriginalSnapshot?.()
@@ -153,7 +146,7 @@ export const SourceStatusBadge = memo(function SourceStatusBadge(
           data-testid="toggle-original-snapshot"
         >
           {props.snapshotVisible ? '隐藏原始快照' : '查看原始快照'}
-        </button>
+        </Button>
       )}
     </div>
   )

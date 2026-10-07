@@ -7,10 +7,19 @@ import {
   type Resolver,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as Dialog from "@radix-ui/react-dialog";
-import { ChevronDown, ChevronRight, Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import {
@@ -482,38 +491,25 @@ export function LlmModelConfigDialog({
   );
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="llm-config-dialog-description"
-          className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-muted p-6 shadow-xl"
-        >
-          <div className="flex items-center justify-between">
-            <Dialog.Title className="text-lg font-semibold text-foreground">
-              {isEditMode ? "编辑模型配置" : "添加模型配置"}
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
-
-          <Dialog.Description
-            className="mt-1 text-sm text-muted-foreground"
-            id="llm-config-dialog-description"
-          >
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {isEditMode ? "编辑模型配置" : "添加模型配置"}
+          </DialogTitle>
+          <DialogDescription>
             {isEditMode
               ? "修改模型配置的参数和设置。"
               : "配置新的模型，选择用途、提供商、模型和参数。"}
-          </Dialog.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          <FormProvider {...form}>
-            <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+        <FormProvider {...form}>
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            onSubmit={handleSubmit}
+          >
+            <DialogBody className="space-y-4">
               <div className="space-y-2">
                 <Label>模型用途</Label>
                 <Controller
@@ -694,18 +690,19 @@ export function LlmModelConfigDialog({
                 </div>
               ) : (
                 <div className="rounded-lg border border-border">
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                  <Button
+                    variant="ghost"
+                    aria-expanded={paramsExpanded}
+                    className="h-auto w-full justify-between rounded-lg px-3 py-2.5"
                     onClick={() => setParamsExpanded(!paramsExpanded)}
                   >
                     <span>参数设置</span>
                     {paramsExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      <ChevronDown className="text-muted-foreground" />
                     ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <ChevronRight className="text-muted-foreground" />
                     )}
-                  </button>
+                  </Button>
 
                   {paramsExpanded && (
                     <div className="space-y-4 border-t border-border px-3 py-3">
@@ -855,25 +852,22 @@ export function LlmModelConfigDialog({
                   )}
                 />
               </div>
+            </DialogBody>
 
-              {/* 操作按钮 */}
-              <div className="flex justify-end gap-3 pt-2">
-                <Dialog.Close asChild>
-                  <Button type="button" variant="outline">
-                    取消
-                  </Button>
-                </Dialog.Close>
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving && (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  )}
-                  {isEditMode ? "保存修改" : "创建配置"}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  取消
                 </Button>
-              </div>
-            </form>
-          </FormProvider>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+              </DialogClose>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving && <Loader2 className="animate-spin" />}
+                {isEditMode ? "保存修改" : "创建配置"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </FormProvider>
+      </DialogContent>
+    </Dialog>
   );
 }

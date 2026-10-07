@@ -21,11 +21,11 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Progress } from '@/shared/ui/progress'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { useToast } from '@/shared/ui/toast'
 
 type StatusFilter = SuggestionStatus | 'all'
@@ -87,9 +87,9 @@ function AdoptionStatsCard() {
               {adoptionPct}%
             </span>
           </div>
-          <Badge variant={meetsTarget ? 'success' : 'warning'}>
+          <StatusBadge tone={meetsTarget ? 'success' : 'warning'}>
             {meetsTarget ? '已达目标' : '低于目标'} · 目标 {targetPct}%
-          </Badge>
+          </StatusBadge>
         </div>
 
         <Progress
@@ -208,7 +208,7 @@ export const OptimizationSuggestionsBoard = memo(
           cell: (suggestion) => {
             const meta = SUGGESTION_STATUS_META[suggestion.status]
 
-            return <Badge variant={meta.variant}>{meta.label}</Badge>
+            return <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
           },
         },
         {

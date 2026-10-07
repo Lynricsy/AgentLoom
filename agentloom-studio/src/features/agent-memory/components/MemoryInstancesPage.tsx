@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
@@ -149,7 +150,7 @@ export function MemoryInstancesPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-5 p-6">
+    <PageContainer>
       <PageHeader
         title="记忆管理"
         description="管理 Agent 记忆图谱实例，配置知识域和系统提示词"
@@ -227,9 +228,9 @@ export function MemoryInstancesPage() {
                   interactive
                   className="group flex h-full flex-col overflow-hidden"
                 >
-                  <button
-                    type="button"
-                    className="flex-1 rounded-lg px-4 pb-3 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  <Button
+                    variant="ghost"
+                    className="h-auto flex-1 flex-col items-stretch justify-start rounded-lg px-4 pt-4 pb-3 text-left font-normal hover:bg-transparent [&_svg]:size-[18px]"
                     onClick={() => handleCardClick(instance.id)}
                   >
                     <div className="flex items-start gap-3">
@@ -241,7 +242,7 @@ export function MemoryInstancesPage() {
                           color: MEMORY_TONE,
                         }}
                       >
-                        <Brain className="h-[18px] w-[18px]" />
+                        <Brain />
                       </span>
 
                       <div className="min-w-0 flex-1">
@@ -263,7 +264,7 @@ export function MemoryInstancesPage() {
                         )}
                       </div>
                     </div>
-                  </button>
+                  </Button>
 
                   <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2">
                     <div className="flex min-w-0 items-center gap-3 text-2xs text-muted-foreground">
@@ -354,6 +355,6 @@ export function MemoryInstancesPage() {
         onClose={() => setShowCreateDialog(false)}
         onSuccess={handleCreateSuccess}
       />
-    </div>
+    </PageContainer>
   );
 }

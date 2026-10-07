@@ -17,6 +17,7 @@ import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.css'
 
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 import { MermaidBlock } from './MermaidBlock'
 
 const remarkPlugins = [remarkGfm, remarkMath]
@@ -36,28 +37,29 @@ function CopyButton({ text }: { text: string }) {
   }, [text])
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="xs"
       onClick={handleCopy}
       className={cn(
-        'flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors',
+        'h-6 gap-1 px-1.5 text-2xs [&_svg]:size-3',
         copied
-          ? 'text-success'
-          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/10',
+          ? 'text-success hover:bg-transparent hover:text-success'
+          : 'text-muted-foreground hover:bg-foreground/10 hover:text-foreground',
       )}
     >
       {copied ? (
         <>
-          <Check className="size-3" />
+          <Check />
           <span>已复制</span>
         </>
       ) : (
         <>
-          <Copy className="size-3" />
+          <Copy />
           <span>复制</span>
         </>
       )}
-    </button>
+    </Button>
   )
 }
 
@@ -87,6 +89,24 @@ function CodeBlockWrapper({
 
 /* ─── 自定义 code 组件 ─────────────────────────────────── */
 
+/**
+ * 递归抽出节点的纯文本。
+ * rehypeHighlight 会把 code 的 children 换成高亮 <span> 元素树，
+ * 直接 String(children) 会得到 "[object Object]"，故必须递归展开。
+ */
+function nodeToText(node: unknown): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(nodeToText).join('')
+  if (typeof node === 'object' && 'props' in node) {
+    const props = node.props
+    if (props && typeof props === 'object' && 'children' in props) {
+      return nodeToText(props.children)
+    }
+  }
+  return ''
+}
+
 type PreProps = ComponentPropsWithoutRef<'pre'> & { node?: unknown }
 
 function PreBlock({ children, node: _node, ...rest }: PreProps) {
@@ -102,7 +122,7 @@ function PreBlock({ children, node: _node, ...rest }: PreProps) {
   const className = (codeProps?.className as string) ?? ''
   const match = /language-(\w+)/.exec(className)
   const language = match?.[1]
-  const raw = String(codeProps?.children ?? '').replace(/\n$/, '')
+  const raw = nodeToText(codeProps?.children).replace(/\n$/, '')
 
   // Mermaid 特殊处理
   if (language === 'mermaid') {
@@ -165,7 +185,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   return (
     <div
       className={cn(
-        'prose prose-sm max-w-none dark:prose-invert prose-agent',
+        'prose prose-sm max-w-none prose-agent',
         'prose-headings:font-semibold prose-headings:tracking-tight',
         'prose-p:leading-relaxed',
         'prose-li:leading-relaxed',

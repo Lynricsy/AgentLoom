@@ -61,6 +61,7 @@ vi.mock('@/features/canvas', () => ({
   CanvasNodeShell: () => <div data-testid="canvas-node-shell" />,
   SmartEdge: () => <div data-testid="smart-edge" />,
   AgentNodePalette: () => <div data-testid="agent-node-palette" />,
+  CANVAS_FLOATING_CLASS: 'canvas-floating',
   arePortDataTypesCompatible: () => true,
   useConnectionPreview: () => ({
     onConnectStart: vi.fn(),

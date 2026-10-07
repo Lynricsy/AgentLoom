@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { BellRing } from 'lucide-react'
+import { PageContainer } from '@/shared/components'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
@@ -92,10 +93,7 @@ export function NotificationPreferencesPage() {
 
   if (isLoading) {
     return (
-      <div
-        className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-        data-testid="notification-preferences-page"
-      >
+      <PageContainer width="narrow" data-testid="notification-preferences-page">
         <PageHeader icon={BellRing} title="通知偏好" description="加载通知偏好中…" />
         <Card>
           <CardContent className="space-y-3 p-4">
@@ -104,16 +102,13 @@ export function NotificationPreferencesPage() {
             ))}
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     )
   }
 
   if (isError) {
     return (
-      <div
-        className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-        data-testid="notification-preferences-page"
-      >
+      <PageContainer width="narrow" data-testid="notification-preferences-page">
         <PageHeader icon={BellRing} title="通知偏好" description={PAGE_DESCRIPTION} />
         <Card className="border-error/40">
           <CardContent className="space-y-3 p-5">
@@ -131,15 +126,12 @@ export function NotificationPreferencesPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="notification-preferences-page"
-    >
+    <PageContainer width="narrow" data-testid="notification-preferences-page">
       <PageHeader
         icon={BellRing}
         title="通知偏好"
@@ -216,6 +208,6 @@ export function NotificationPreferencesPage() {
       <p className="text-xs text-muted-foreground">
         未显式设置过的渠道默认开启；关闭后该类型的对应渠道提醒将不再送达。
       </p>
-    </div>
+    </PageContainer>
   )
 }

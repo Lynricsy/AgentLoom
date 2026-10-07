@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
+import { StatusDot, type StatusTone } from "@/shared/ui/status-badge";
+import { WorkbenchHeader } from "@/shared/components/workbench-header";
 import { Badge } from "@/shared/ui/badge";
 import { useToast } from "@/shared/ui/toast";
 import { useAuthToken } from "@/features/auth";
@@ -18,6 +19,7 @@ import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
 import type { ToolCallData } from "@/shared/components/tool-renderers/types";
+import type { ConversationStatus } from "../types";
 import {
   useConversationMessages,
   useConversationStatus,
@@ -42,6 +44,14 @@ interface AgentConversationPageProps {
   conversationId: string;
   onBack?: () => void;
 }
+
+const CONVERSATION_STATUS_TONE: Record<ConversationStatus, StatusTone> = {
+  idle: "neutral",
+  connecting: "warning",
+  connected: "success",
+  executing: "success",
+  error: "error",
+};
 
 function ConnectionError({ error }: { error: string }) {
   return (
@@ -280,46 +290,42 @@ export function AgentConversationPage({
 
   return (
     <SubAgentNavContext.Provider value={subAgentNavValue}>
-      <div className="flex flex-col h-full bg-background">
-        <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-          {onBack && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onBack}
-              className="text-muted-foreground"
-              title="返回"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
-          <div className="flex min-w-0 items-center gap-2">
-            <span
-              className={cn(
-                "h-2 w-2 shrink-0 rounded-full",
-                status === "connected" || status === "executing"
-                  ? "bg-success"
-                  : status === "connecting"
-                    ? "bg-warning animate-pulse"
-                    : status === "error"
-                      ? "bg-error"
-                      : "bg-muted-foreground",
-              )}
-            />
-            <h1 className="truncate text-sm font-semibold text-foreground">
-              {agentName || "Agent"} 对话
-            </h1>
-            <Badge variant="secondary" size="sm" className="shrink-0">
-              {runtimeModeLabel}
-            </Badge>
-          </div>
-          {isExecuting && (
-            <Badge variant="info" size="sm" className="ml-auto shrink-0">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              处理中
-            </Badge>
-          )}
-        </header>
+      <div className="flex h-full flex-col bg-background">
+        <WorkbenchHeader
+          leading={
+            <div className="flex shrink-0 items-center gap-2">
+              {onBack ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onBack}
+                  className="text-muted-foreground"
+                  title="返回"
+                >
+                  <ArrowLeft />
+                </Button>
+              ) : null}
+              <StatusDot
+                tone={CONVERSATION_STATUS_TONE[status]}
+                pulse={status === "connecting"}
+              />
+            </div>
+          }
+          title={`${agentName || "Agent"} 对话`}
+          status={
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge variant="secondary" size="sm">
+                {runtimeModeLabel}
+              </Badge>
+              {isExecuting ? (
+                <Badge variant="info" size="sm">
+                  <Loader2 className="size-3 animate-spin" />
+                  处理中
+                </Badge>
+              ) : null}
+            </div>
+          }
+        />
 
         {isSubAgentView && (
           <AgentViewBreadcrumb

@@ -1,8 +1,17 @@
 import { memo, useMemo, useState, type MouseEvent, type PointerEvent } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { ChevronRight, X, type LucideIcon } from 'lucide-react'
+import { ChevronRight, type LucideIcon } from 'lucide-react'
 import { useNodeExecutionState } from '@/features/execution'
-import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/shared/ui/dialog'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { usePreviewMode } from '../PreviewModeContext'
 import {
   buildOutputPreviewText,
@@ -53,14 +62,11 @@ export const OutputNodeBody = memo(function OutputNodeBody({
   )
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>
-        <button
-          type="button"
-          className={cn(
-            'nodrag nopan nowheel group flex w-full flex-col gap-2 rounded-xl border border-border/60 bg-muted px-2.5 py-2 text-left transition-colors',
-            'hover:border-primary/40 hover:bg-primary/5',
-          )}
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          className="nodrag nopan nowheel group h-auto w-full flex-col items-stretch gap-2 whitespace-normal rounded-lg border border-border bg-muted px-2.5 py-2 text-left hover:border-primary/40 hover:bg-primary/5 [&_svg]:size-3.5"
           onClick={stopNodeEvent}
           onPointerDown={stopNodeEvent}
           aria-label={`查看${title}详情`}
@@ -68,89 +74,68 @@ export const OutputNodeBody = memo(function OutputNodeBody({
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <Icon className="h-3.5 w-3.5 shrink-0 text-foreground" />
+              <Icon className="shrink-0 text-foreground" />
               <span className="truncate text-2xs font-medium text-foreground">
                 {title}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               {isStreaming ? (
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
+                <StatusBadge tone="primary" size="sm" dot pulse>
                   流式中
-                </span>
+                </StatusBadge>
               ) : null}
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition group-hover:text-primary" />
+              <ChevronRight className="text-muted-foreground transition-colors duration-150 group-hover:text-primary" />
             </div>
           </div>
 
           {previewText ? (
-            <pre className="max-h-[7.5rem] overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-background/40 px-2.5 py-2 font-mono text-2xs leading-5 text-foreground">
+            <pre className="max-h-[7.5rem] overflow-hidden whitespace-pre-wrap break-words rounded-md border border-border bg-surface px-2.5 py-2 font-mono text-2xs leading-5 text-foreground">
               {previewText}
             </pre>
           ) : (
-            <div className="rounded-lg border border-dashed border-border/60 bg-background/30 px-2.5 py-2 text-2xs italic text-muted-foreground/80">
+            <div className="rounded-md border border-dashed border-border bg-surface px-2.5 py-2 text-2xs italic text-muted-foreground">
               暂无输出，运行后可在这里查看详情
             </div>
           )}
 
           <div className="flex items-center justify-between text-2xs text-muted-foreground">
             <span>{format === 'json' ? '结构化 JSON 详情' : 'Markdown 详情'}</span>
-            <span className="transition group-hover:text-primary">点击查看</span>
+            <span className="transition-colors duration-150 group-hover:text-primary">点击查看</span>
           </div>
-        </button>
-      </Dialog.Trigger>
+        </Button>
+      </DialogTrigger>
 
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <Dialog.Content
-          className={cn(
-            'fixed inset-0 z-50 flex flex-col bg-background',
-            'data-[state=closed]:animate-out data-[state=open]:animate-in',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(88vh,760px)] sm:w-[min(960px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:border sm:border-border/70 sm:bg-background/95 sm:shadow-xl',
-          )}
-          data-testid="node-output-detail-dialog"
-        >
-          <header className="flex items-start justify-between gap-4 border-b border-border/70 px-4 py-4 sm:px-6">
-            <div className="min-w-0">
-              <Dialog.Title className="flex items-center gap-2 text-base font-semibold text-foreground">
-                <Icon className="h-4 w-4 shrink-0" />
-                <span>{title}详情</span>
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm leading-6 text-muted-foreground">
-                {detailDescription}
-              </Dialog.Description>
-            </div>
+      <DialogContent
+        size="xl"
+        className="sm:h-[min(88vh,760px)]"
+        data-testid="node-output-detail-dialog"
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Icon className="size-4 shrink-0" />
+            <span>{title}详情</span>
+            {isStreaming ? (
+              <StatusBadge tone="primary" size="sm" dot pulse>
+                流式输出中
+              </StatusBadge>
+            ) : null}
+          </DialogTitle>
+          <DialogDescription className="leading-6">
+            {detailDescription}
+          </DialogDescription>
+        </DialogHeader>
 
-            <div className="flex items-center gap-2">
-              {isStreaming ? (
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium text-primary">
-                  流式输出中
-                </span>
-              ) : null}
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-full border border-border/70 p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  aria-label="关闭输出详情"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </Dialog.Close>
-            </div>
-          </header>
-
-          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-            <OutputContentRenderer
-              format={format}
-              output={output}
-              isStreaming={isStreaming}
-              placeholder="当前还没有可查看的输出。"
-              dataTestId="node-output-detail-content"
-            />
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <DialogBody>
+          <OutputContentRenderer
+            format={format}
+            output={output}
+            isStreaming={isStreaming}
+            placeholder="当前还没有可查看的输出。"
+            dataTestId="node-output-detail-content"
+          />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   )
 })

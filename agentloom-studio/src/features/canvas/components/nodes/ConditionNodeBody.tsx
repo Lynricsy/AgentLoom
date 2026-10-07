@@ -34,8 +34,8 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
       <span
         className={cn(
           'inline-flex shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider',
-          branch.label === 'IF' && 'bg-blue-500/15 text-blue-400',
-          branch.label === 'ELSE IF' && 'bg-amber-500/15 text-amber-400',
+          branch.label === 'IF' && 'bg-info/15 text-info',
+          branch.label === 'ELSE IF' && 'bg-warning/15 text-warning',
         )}
       >
         {branch.label}
@@ -46,7 +46,7 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
         <span
           className={cn(
             'min-w-0 flex-1 truncate text-2xs',
-            isExpression ? 'font-mono text-amber-300/80' : 'text-muted-foreground',
+            isExpression ? 'font-mono text-warning' : 'text-muted-foreground',
           )}
         >
           {truncate(summary, MAX_SUMMARY_LEN)}

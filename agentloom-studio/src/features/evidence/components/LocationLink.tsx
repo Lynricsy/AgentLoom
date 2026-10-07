@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react'
 import { ExternalLink, FileText } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
 
 import type { PhysicalLocation } from '../types'
 import { useEvidenceUiActions } from '../stores/evidenceUiStore'
@@ -36,13 +37,13 @@ export const LocationLink = memo(function LocationLink({
   }, [location.page, location.paragraph])
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="link"
       className={cn(
-        'inline-flex min-w-0 items-center gap-1.5 text-xs transition',
+        'inline-flex h-auto min-w-0 gap-1.5 p-0 text-xs font-normal [&_svg]:size-3',
         disabled
-          ? 'cursor-not-allowed text-muted-foreground/60'
-          : 'cursor-pointer text-info hover:text-info/80 hover:underline',
+          ? 'cursor-not-allowed text-subtle-foreground no-underline hover:no-underline'
+          : 'cursor-pointer text-info hover:text-info/80',
         className,
       )}
       disabled={disabled}
@@ -57,14 +58,14 @@ export const LocationLink = memo(function LocationLink({
       title={disabled ? '源文档不可用' : location.fileName}
       data-testid="location-link"
     >
-      <FileText className="h-3 w-3 shrink-0" />
+      <FileText className="shrink-0" />
       <span className="truncate">{location.fileName}</span>
       {locationLabel && (
         <span className="truncate text-2xs text-muted-foreground">
           {locationLabel}
         </span>
       )}
-      {!disabled && <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-60" />}
-    </button>
+      {!disabled && <ExternalLink className="shrink-0 opacity-60" />}
+    </Button>
   )
 })

@@ -23,6 +23,7 @@ import {
 import { staggerList } from "@/shared/lib/motion";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
@@ -230,7 +231,7 @@ export function SkillBrowsePage() {
   }, [confirmDelete, deleteMutation]);
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Zap}
         tone={SKILL_TONE}
@@ -466,6 +467,6 @@ export function SkillBrowsePage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

@@ -14,6 +14,9 @@ import {
 } from 'lucide-react'
 
 import { apiClient } from '@/shared/api/client'
+import { PageContainer } from '@/shared/components'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { Card } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
 
@@ -227,22 +230,18 @@ export function SecuritySettings() {
   )
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8" data-testid="security-settings">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">安全设置</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          管理您的密码、多因素认证和活跃会话
-        </p>
-      </div>
+    <PageContainer width="narrow" data-testid="security-settings">
+      <PageHeader
+        icon={Shield}
+        title="安全设置"
+        description="管理您的密码、多因素认证和活跃会话"
+      />
 
       <div className="space-y-6">
-        <section
-          className="rounded-xl border border-border bg-muted p-5 shadow-sm"
-          data-testid="password-section"
-        >
+        <Card className="p-5" data-testid="password-section">
           <div className="mb-4 flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-medium text-foreground">修改密码</h2>
+            <KeyRound className="size-5 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">修改密码</h2>
           </div>
           <p className="mb-4 text-sm text-muted-foreground">
             定期修改密码可以提高账户安全性
@@ -307,7 +306,7 @@ export function SecuritySettings() {
               <Button type="submit" disabled={passwordSubmitting} data-testid="change-password-btn">
                 {passwordSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                     修改中…
                   </>
                 ) : (
@@ -316,15 +315,14 @@ export function SecuritySettings() {
               </Button>
             </div>
           </form>
-        </section>
+        </Card>
 
-        <section
-          className="rounded-xl border border-border bg-muted p-5 shadow-sm"
-          data-testid="mfa-section"
-        >
+        <Card className="p-5" data-testid="mfa-section">
           <div className="mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-medium text-foreground">多因素认证 (MFA)</h2>
+            <Shield className="size-5 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">
+              多因素认证 (MFA)
+            </h2>
           </div>
           <p className="mb-4 text-sm text-muted-foreground">
             启用 MFA 为您的账户添加额外的安全保护层
@@ -332,13 +330,13 @@ export function SecuritySettings() {
 
           {securityLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="mfa-loading">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
               加载中…
             </div>
           ) : securityInfo?.mfaEnabled ? (
-            <div className="rounded-xl border border-success/30 bg-success/5 p-4" data-testid="mfa-enabled">
+            <div className="rounded-lg border border-success/30 bg-success/5 p-4" data-testid="mfa-enabled">
               <div className="mb-3 flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-success" />
+                <ShieldCheck className="size-5 text-success" />
                 <span className="text-sm font-medium text-success">MFA 已启用</span>
               </div>
               <p className="mb-3 text-sm text-muted-foreground">
@@ -353,41 +351,38 @@ export function SecuritySettings() {
               >
                 {mfaDisabling ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                     禁用中…
                   </>
                 ) : (
                   <>
-                    <ShieldOff className="mr-2 h-4 w-4" />
+                    <ShieldOff />
                     禁用 MFA
                   </>
                 )}
               </Button>
             </div>
           ) : (
-            <div className="rounded-xl border border-border/60 bg-background/30 p-4" data-testid="mfa-disabled">
+            <div className="rounded-lg border border-border bg-muted p-4" data-testid="mfa-disabled">
               <div className="mb-3 flex items-center gap-2">
-                <ShieldOff className="h-5 w-5 text-muted-foreground" />
+                <ShieldOff className="size-5 text-muted-foreground" />
                 <span className="text-sm font-medium text-muted-foreground">MFA 未启用</span>
               </div>
               <p className="mb-3 text-sm text-muted-foreground">
                 建议启用 MFA 以增强账户安全性
               </p>
               <Button size="sm" onClick={handleEnableMfa} data-testid="enable-mfa-btn">
-                <ShieldCheck className="mr-2 h-4 w-4" />
+                <ShieldCheck />
                 启用 MFA
               </Button>
             </div>
           )}
-        </section>
+        </Card>
 
-        <section
-          className="rounded-xl border border-border bg-muted p-5 shadow-sm"
-          data-testid="sessions-section"
-        >
+        <Card className="p-5" data-testid="sessions-section">
           <div className="mb-4 flex items-center gap-2">
-            <Monitor className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-medium text-foreground">活跃会话</h2>
+            <Monitor className="size-5 text-primary" />
+            <h2 className="text-base font-semibold text-foreground">活跃会话</h2>
           </div>
           <p className="mb-4 text-sm text-muted-foreground">
             查看和管理所有已登录的设备和会话
@@ -395,7 +390,7 @@ export function SecuritySettings() {
 
           {sessionsLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="sessions-loading">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
               加载中…
             </div>
           ) : sessions.length === 0 ? (
@@ -407,14 +402,14 @@ export function SecuritySettings() {
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className="flex items-center justify-between rounded-xl border border-border/60 bg-background/30 p-4"
+                  className="flex items-center justify-between rounded-lg border border-border bg-muted p-4"
                   data-testid={`session-${session.id}`}
                 >
                   <div className="flex items-center gap-3">
                     {session.userAgent?.toLowerCase().includes('mobile') ? (
-                      <Smartphone className="h-5 w-5 text-muted-foreground" />
+                      <Smartphone className="size-5 text-subtle-foreground" />
                     ) : (
-                      <Monitor className="h-5 w-5 text-muted-foreground" />
+                      <Monitor className="size-5 text-subtle-foreground" />
                     )}
                     <div>
                       <div className="flex items-center gap-2">
@@ -441,15 +436,17 @@ export function SecuritySettings() {
                   {!session.isCurrent && (
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-sm"
+                      className="hover:bg-error/10 hover:text-error"
                       onClick={() => handleRevokeSession(session.id)}
                       disabled={revokingId === session.id}
+                      aria-label="撤销会话"
                       data-testid={`revoke-session-${session.id}`}
                     >
                       {revokingId === session.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="animate-spin" />
                       ) : (
-                        <Trash2 className="h-4 w-4 text-error" />
+                        <Trash2 className="text-error" />
                       )}
                     </Button>
                   )}
@@ -457,7 +454,7 @@ export function SecuritySettings() {
               ))}
             </div>
           )}
-        </section>
+        </Card>
       </div>
 
       <MfaEnrollDialog
@@ -469,7 +466,7 @@ export function SecuritySettings() {
       <span className="sr-only" data-testid="security-user-email">
         {user?.email}
       </span>
-    </div>
+    </PageContainer>
   )
 }
 

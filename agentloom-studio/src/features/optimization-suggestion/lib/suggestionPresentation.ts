@@ -1,3 +1,4 @@
+import type { StatusTone } from '@/shared/ui/status-badge'
 import type {
   SuggestionStatus,
   SuggestionType,
@@ -13,12 +14,12 @@ export const SUGGESTION_TYPE_LABELS: Record<SuggestionType, string> = {
 
 export const SUGGESTION_STATUS_META: Record<
   SuggestionStatus,
-  { label: string; variant: 'default' | 'success' | 'secondary' | 'warning' }
+  { label: string; tone: StatusTone }
 > = {
-  pending: { label: '待处理', variant: 'default' },
-  applied: { label: '已采纳', variant: 'success' },
-  dismissed: { label: '已忽略', variant: 'secondary' },
-  blocked: { label: '已阻断', variant: 'warning' },
+  pending: { label: '待处理', tone: 'primary' },
+  applied: { label: '已采纳', tone: 'success' },
+  dismissed: { label: '已忽略', tone: 'neutral' },
+  blocked: { label: '已阻断', tone: 'warning' },
 }
 
 export const SUGGESTION_STATUS_FILTERS: Array<{

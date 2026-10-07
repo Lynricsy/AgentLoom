@@ -1,5 +1,4 @@
 import { memo, useState, useEffect, useRef, type ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
 import {
   ChevronDown,
   ChevronRight,
@@ -13,7 +12,9 @@ import {
   Wrench,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import { Badge, type BadgeProps } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge';
+import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer';
 import type {
   SubAgentStream,
   SubAgentRunStatus,
@@ -26,7 +27,7 @@ const STATUS_CONFIG: Record<
   {
     emoji: string;
     label: string;
-    variant: NonNullable<BadgeProps['variant']>;
+    tone: StatusTone;
     textClass: string;
     icon: ReactNode;
   }
@@ -34,56 +35,46 @@ const STATUS_CONFIG: Record<
   pending: {
     emoji: '⏳',
     label: '等待中',
-    variant: 'info',
+    tone: 'info',
     textClass: 'text-info',
     icon: <Loader2 className="size-3 animate-spin" />,
   },
   running: {
     emoji: '⏳',
     label: '运行中',
-    variant: 'info',
+    tone: 'info',
     textClass: 'text-info',
     icon: <Loader2 className="size-3 animate-spin" />,
   },
   completed: {
     emoji: '✅',
     label: '完成',
-    variant: 'success',
+    tone: 'success',
     textClass: 'text-success',
     icon: <CheckCircle2 className="size-3" />,
   },
   failed: {
     emoji: '❌',
     label: '失败',
-    variant: 'error',
+    tone: 'error',
     textClass: 'text-error',
     icon: <XCircle className="size-3" />,
   },
   timeout: {
     emoji: '⏱️',
     label: '超时',
-    variant: 'warning',
+    tone: 'warning',
     textClass: 'text-warning',
     icon: <Clock className="size-3" />,
   },
   cancelled: {
     emoji: '🚫',
     label: '已取消',
-    variant: 'secondary',
+    tone: 'neutral',
     textClass: 'text-muted-foreground',
     icon: <Ban className="size-3" />,
   },
 };
-
-function StatusBadge({ status }: { status: SubAgentRunStatus }) {
-  const config = STATUS_CONFIG[status];
-  return (
-    <Badge variant={config.variant} size="sm">
-      {config.icon}
-      {config.label}
-    </Badge>
-  );
-}
 
 function ElapsedTime({
   startedAt,
@@ -139,19 +130,16 @@ function SubAgentCollapsible({
 
   return (
     <div className="mt-1.5">
-      <button
-        type="button"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+      <Button
+        variant="ghost"
+        size="xs"
+        className="h-auto cursor-pointer justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
+        {open ? <ChevronDown /> : <ChevronRight />}
         {icon}
         <span>{title}</span>
-      </button>
+      </Button>
       {open && <div className="mt-1 pl-5">{children}</div>}
     </div>
   );
@@ -290,9 +278,7 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
       )}
 
       {messageText && (
-        <div className="prose prose-sm dark:prose-invert max-w-none text-xs [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-3 [&_code]:text-info [&_a]:text-info">
-          <ReactMarkdown>{messageText}</ReactMarkdown>
-        </div>
+        <MarkdownRenderer content={messageText} className="text-xs" />
       )}
 
       {nestedStreams.size > 0 && (
@@ -401,18 +387,19 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
       )}
       style={{ marginLeft: `${indentPx}px` }}
     >
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted"
+      <Button
+        variant="ghost"
+        size="xs"
+        className="h-auto w-full cursor-pointer justify-start gap-2 rounded-none px-3 py-2 text-left font-normal"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
-          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+          <ChevronDown className="shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+          <ChevronRight className="shrink-0 text-muted-foreground" />
         )}
 
-        <div
+        <span
           className="flex size-5 shrink-0 items-center justify-center rounded-full"
           style={{
             backgroundColor:
@@ -421,20 +408,23 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
           }}
         >
           <Bot className="size-3" />
-        </div>
+        </span>
 
-        <span className="text-xs font-medium text-foreground truncate">
+        <span className="truncate text-xs font-medium text-foreground">
           {statusConfig.emoji} {alias}
         </span>
         <span className="truncate font-mono text-2xs text-muted-foreground">
           {handle}
         </span>
 
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        <span className="ml-auto flex shrink-0 items-center gap-2">
           <ElapsedTime startedAt={startedAt} completedAt={completedAt} />
-          <StatusBadge status={status} />
-        </div>
-      </button>
+          <StatusBadge tone={statusConfig.tone} size="sm">
+            {statusConfig.icon}
+            {statusConfig.label}
+          </StatusBadge>
+        </span>
+      </Button>
 
       {open && (
         <div className="border-t border-border px-3 py-2">

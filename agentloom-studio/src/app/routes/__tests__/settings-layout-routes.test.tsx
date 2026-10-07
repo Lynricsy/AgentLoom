@@ -24,7 +24,7 @@ function matchAt(path: string) {
   })
   return router.matchRoutes(router.latestLocation).map((m) => ({
     id: m.routeId,
-    fullPath: router.routesById[m.routeId]?.fullPath,
+    fullPath: m.fullPath,
   }))
 }
 

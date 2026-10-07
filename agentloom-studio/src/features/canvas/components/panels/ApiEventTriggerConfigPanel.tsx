@@ -1,5 +1,9 @@
 import { memo, useCallback, useState, type ChangeEvent } from 'react'
 import { Radio, ChevronDown, ChevronRight } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 
 interface ApiEventTriggerConfigPanelProps {
   config: Record<string, unknown>
@@ -75,13 +79,12 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
         >
           事件来源 <span className="text-error">*</span>
         </label>
-        <input
+        <Input
           id="api-event-source"
           type="text"
           value={parsed.eventSource}
           onChange={handleEventSourceChange}
           placeholder="例：github, stripe, internal-api"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           产生事件的系统或服务名称
@@ -96,13 +99,12 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
         >
           事件类型 <span className="text-error">*</span>
         </label>
-        <input
+        <Input
           id="api-event-type"
           type="text"
           value={parsed.eventType}
           onChange={handleEventTypeChange}
           placeholder="例：push, payment.completed, user.created"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           要监听的具体事件类型
@@ -111,27 +113,24 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
 
       {/* 过滤表达式（可折叠） */}
       <div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={toggleFilter}
-          className="flex w-full items-center gap-1 text-xs font-medium text-foreground"
+          className="h-auto w-full justify-start gap-1 px-0 hover:bg-transparent"
         >
-          {filterOpen ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
-          )}
+          {filterOpen ? <ChevronDown /> : <ChevronRight />}
           过滤表达式（可选）
-        </button>
+        </Button>
         {filterOpen && (
           <div className="mt-2">
-            <textarea
+            <Textarea
               id="api-event-filter"
               value={parsed.filterExpression}
               onChange={handleFilterExpressionChange}
               rows={4}
               placeholder={'例：event.action === "opened" && event.label === "bug"'}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
+              className="font-mono"
             />
             <p className="mt-1 text-xs text-muted-foreground">
               可选的 JavaScript 表达式，仅当结果为 truthy 时触发工作流
@@ -141,7 +140,7 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
       </div>
 
       {/* 当前配置预览 */}
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
+      <Card className="space-y-2 p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           {parsed.eventSource || parsed.eventType ? (
@@ -151,7 +150,7 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
               <span>{parsed.eventType || '(未设置类型)'}</span>
             </>
           ) : (
-            <span className="text-muted-foreground/60">未配置事件来源和类型</span>
+            <span className="text-subtle-foreground">未配置事件来源和类型</span>
           )}
         </div>
         {parsed.filterExpression && (
@@ -161,7 +160,7 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
               : parsed.filterExpression}
           </p>
         )}
-      </div>
+      </Card>
     </div>
   )
 })

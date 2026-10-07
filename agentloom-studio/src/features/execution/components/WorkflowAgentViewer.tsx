@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  Bot,
   FileCode2,
   RefreshCw,
   TriangleAlert,
@@ -26,7 +25,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { WorkbenchHeader } from "@/shared/components/workbench-header";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { Spinner } from "@/shared/components/spinner/Spinner";
 import { cn } from "@/shared/lib/utils";
@@ -298,25 +297,38 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
     };
   }, []);
 
+  const backButton = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label="返回执行调试页"
+      onClick={() => {
+        navigate({
+          to: "/executions/$executionId",
+          params: { executionId },
+        });
+      }}
+    >
+      <ArrowLeft />
+    </Button>
+  );
+
   if (isLoading) {
     return (
       <div
-        className="flex h-full flex-col gap-4 p-5"
+        className="flex h-full flex-col"
         data-testid="workflow-agent-viewer-loading"
       >
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-lg" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-44 rounded-full" />
-              <Skeleton className="h-3 w-56 rounded-full" />
-            </div>
+        <WorkbenchHeader
+          title="Agent 节点运行"
+          leading={backButton}
+          status={<Skeleton className="h-6 w-40 rounded-full" />}
+        />
+        <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[58fr_42fr]">
+            <Skeleton className="h-full min-h-[240px] rounded-xl" />
+            <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
           </div>
-          <Skeleton className="h-8 w-40 rounded-full" />
-        </div>
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[58fr_42fr]">
-          <Skeleton className="h-full min-h-[240px] rounded-xl" />
-          <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
         </div>
       </div>
     );
@@ -325,57 +337,22 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
   if (error || !execution || !step || !isAgentStep || !viewerState) {
     return (
       <div
-        className="flex h-full items-center justify-center p-6"
+        className="flex h-full flex-col"
         data-testid="workflow-agent-viewer-error"
       >
-        <EmptyState
-          icon={TriangleAlert}
-          tone="var(--color-error)"
-          title="未找到可查看的 workflow agent 运行视图。"
-          description={
-            error instanceof Error
-              ? error.message
-              : "该步骤可能不是 agent 节点，或执行详情尚未加载完成。"
-          }
-          action={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                navigate({
-                  to: "/executions/$executionId",
-                  params: { executionId },
-                });
-              }}
-            >
-              <ArrowLeft className="mr-2 size-4" />
-              返回执行调试页
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="border-b border-border px-5 py-4">
-        <PageHeader
-          icon={Bot}
-          tone="var(--color-node-agent)"
-          title={step.nodeName || "Agent 节点运行"}
-          description={`Step #${step.id.slice(0, 8)} · ${formatExecutionDateTime(step.startedAt)}`}
-          actions={
-            <>
-              <ExecutionStatusBadge status={execution.status} prefix="执行" />
-              <StepStatusBadge status={step.status} prefix="节点" />
-              <Badge variant="outline">Socket {monitor.connectionStatus}</Badge>
-              <Badge variant="outline">
-                耗时 {formatExecutionDuration(step.startedAt, step.completedAt)}
-              </Badge>
+        <WorkbenchHeader title="Agent 节点运行" leading={backButton} />
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <EmptyState
+            icon={TriangleAlert}
+            tone="var(--color-error)"
+            title="未找到可查看的 workflow agent 运行视图。"
+            description={
+              error instanceof Error
+                ? error.message
+                : "该步骤可能不是 agent 节点，或执行详情尚未加载完成。"
+            }
+            action={
               <Button
-                type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -385,13 +362,33 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
                   });
                 }}
               >
-                <ArrowLeft className="mr-2 size-4" />
+                <ArrowLeft />
                 返回执行调试页
               </Button>
-            </>
-          }
-        />
+            }
+          />
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <WorkbenchHeader
+        title={step.nodeName || "Agent 节点运行"}
+        description={`Step #${step.id.slice(0, 8)} · ${formatExecutionDateTime(step.startedAt)}`}
+        leading={backButton}
+        status={
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            <ExecutionStatusBadge status={execution.status} prefix="执行" />
+            <StepStatusBadge status={step.status} prefix="节点" />
+            <Badge variant="outline">Socket {monitor.connectionStatus}</Badge>
+            <Badge variant="outline">
+              耗时 {formatExecutionDuration(step.startedAt, step.completedAt)}
+            </Badge>
+          </div>
+        }
+      />
 
       <div ref={containerRef} className="hidden min-h-0 flex-1 lg:flex">
         <div
@@ -405,10 +402,10 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           />
         </div>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           aria-label="调整消息流与上下文宽度"
-          className="mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors hover:bg-primary"
+          className="mx-3 h-auto w-1 shrink-0 cursor-col-resize rounded-full bg-border p-0 hover:bg-primary"
           onMouseDown={() => {
             resizingRef.current = true;
           }}

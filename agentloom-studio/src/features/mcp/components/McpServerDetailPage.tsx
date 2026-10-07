@@ -14,6 +14,7 @@ import {
 import { formatRelativeTime } from "@/features/canvas";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
@@ -230,10 +231,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
 
   if (isLoading) {
     return (
-      <div
-        className="flex h-full flex-col gap-5 p-6"
-        data-testid="mcp-server-detail-skeleton"
-      >
+      <PageContainer data-testid="mcp-server-detail-skeleton">
         <Skeleton className="h-12 w-72 rounded-lg" />
         <Skeleton className="h-10 w-full max-w-xl rounded-lg" />
         <div className="grid gap-4 xl:grid-cols-2">
@@ -241,13 +239,13 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
             <Skeleton key={index} className="h-48 rounded-lg" />
           ))}
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error || !detail) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <PageContainer>
         <EmptyState
           icon={AlertCircle}
           tone="var(--color-error)"
@@ -266,14 +264,14 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
             </Button>
           }
         />
-      </div>
+      </PageContainer>
     );
   }
 
   const statusMeta = SERVER_STATUS_META[detail.status];
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Server}
         tone={MCP_TONE}
@@ -544,6 +542,6 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

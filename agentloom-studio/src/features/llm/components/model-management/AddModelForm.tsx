@@ -134,13 +134,14 @@ export function AddModelForm({
     <div className="rounded-lg border border-primary/30 bg-muted p-4">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-foreground">添加模型</h4>
-        <button
-          type="button"
-          className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="关闭添加模型表单"
           onClick={onClose}
         >
-          <X className="h-4 w-4" />
-        </button>
+          <X />
+        </Button>
       </div>
 
       <div className="mt-3 space-y-3">
@@ -177,27 +178,30 @@ export function AddModelForm({
           {/* 已发现的模型快速选择 */}
           {discoveredModels.length > 0 && (
             <div>
-              <button
-                type="button"
-                className="flex items-center gap-1 text-2xs text-primary hover:underline"
+              <Button
+                variant="link"
+                size="xs"
+                className="h-auto gap-1 p-0 text-2xs"
                 onClick={() => setShowDiscovered(!showDiscovered)}
+                aria-expanded={showDiscovered}
               >
                 {showDiscovered ? (
-                  <ChevronDown className="h-3 w-3" />
+                  <ChevronDown className="size-3" />
                 ) : (
-                  <ChevronRight className="h-3 w-3" />
+                  <ChevronRight className="size-3" />
                 )}
                 从已发现的 {discoveredModels.length} 个模型中选择
-              </button>
+              </Button>
               {showDiscovered && (
-                <div className="mt-1 max-h-32 overflow-y-auto rounded border border-border bg-background p-1">
+                <div className="mt-1 max-h-32 overflow-y-auto rounded-md border border-border bg-surface p-1">
                   {discoveredModels.map((dm) => (
-                    <button
+                    <Button
                       key={dm.id}
-                      type="button"
+                      variant="ghost"
+                      size="xs"
                       className={cn(
-                        "flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-muted",
-                        modelId === dm.id && "bg-primary/10",
+                        "w-full justify-start gap-2 rounded-sm px-2 py-1 font-normal",
+                        modelId === dm.id && "bg-primary/10 text-primary",
                       )}
                       onClick={() => {
                         setModelId(dm.id);
@@ -214,7 +218,7 @@ export function AddModelForm({
                           {dm.ownedBy}
                         </span>
                       )}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}

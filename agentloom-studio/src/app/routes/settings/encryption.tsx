@@ -4,16 +4,8 @@ import { TenantKeyManagement } from '@/features/tenant-key'
 
 import { settingsLayoutRoute } from './layout'
 
-function EncryptionSettingsPage() {
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
-      <TenantKeyManagement />
-    </div>
-  )
-}
-
 export const encryptionSettingsRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: '/settings/encryption',
-  component: EncryptionSettingsPage,
+  component: TenantKeyManagement,
 })

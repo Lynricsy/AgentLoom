@@ -3,7 +3,7 @@ import { memo, useMemo } from 'react'
 import { cn } from '@/shared/lib/utils'
 
 import type { ExecutionStepStatus } from '../../types'
-import { stepStatusMeta } from '../../lib/presentation'
+import { stepStatusMeta, toneFillClass } from '../../lib/presentation'
 
 interface TimelineDurationProps {
   status: ExecutionStepStatus
@@ -58,7 +58,7 @@ export const TimelineDuration = memo(function TimelineDuration({
       data-testid="timeline-duration"
     >
       <div
-        className={cn('h-full rounded-full transition-all', meta.dotClassName)}
+        className={cn('h-full rounded-full transition-[margin-left,width] duration-300 ease-out-expo', toneFillClass[meta.tone])}
         style={{
           marginLeft: `${offsetPercent}%`,
           width: `${widthPercent}%`,

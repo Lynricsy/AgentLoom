@@ -10,7 +10,6 @@ import {
 import { Pagination } from '@/shared/components/Pagination'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Spinner } from '@/shared/components/spinner/Spinner'
-import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
   Select,
@@ -20,6 +19,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import {
   Table,
   TableBody,
@@ -39,9 +39,9 @@ import {
   GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS,
   GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusBadgeVariant,
-  getGeneratedAppGenerationRunStatusBadgeVariant,
-  getGeneratedAppRepairAttemptStatusBadgeVariant,
+  getGeneratedAppGateStatusTone,
+  getGeneratedAppGenerationRunStatusTone,
+  getGeneratedAppRepairAttemptStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppGateEvidence,
@@ -139,9 +139,9 @@ function GenerationRunStatusBadge({
   status: GeneratedAppGenerationRunStatus
 }) {
   return (
-    <Badge variant={getGeneratedAppGenerationRunStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppGenerationRunStatusTone(status)}>
       {GENERATED_APP_GENERATION_RUN_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
@@ -151,17 +151,17 @@ function RepairAttemptStatusBadge({
   status: GeneratedAppRepairAttemptStatus
 }) {
   return (
-    <Badge variant={getGeneratedAppRepairAttemptStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppRepairAttemptStatusTone(status)}>
       {GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 
 function GateRunStatusBadge({ status }: { status: GeneratedAppGateRunStatus }) {
   return (
-    <Badge variant={getGeneratedAppGateStatusBadgeVariant(status)}>
+    <StatusBadge tone={getGeneratedAppGateStatusTone(status)}>
       {GENERATED_APP_GATE_STATUS_LABELS[status]}
-    </Badge>
+    </StatusBadge>
   )
 }
 

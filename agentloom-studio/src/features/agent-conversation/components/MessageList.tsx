@@ -97,7 +97,7 @@ const AttachmentCard = memo(function AttachmentCard({
       : null;
 
     return (
-      <div className="overflow-hidden rounded-lg border border-border bg-surface">
+      <Card className="overflow-hidden">
         {imageSrc ? (
           <img
             src={imageSrc}
@@ -116,12 +116,12 @@ const AttachmentCard = memo(function AttachmentCard({
           </span>
           <span className="shrink-0">{formatBytes(attachment.sizeBytes)}</span>
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-3">
+    <Card className="px-3 py-3">
       <div className="flex items-start gap-2">
         <div className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
           <FileText className="h-4 w-4" />
@@ -150,7 +150,7 @@ const AttachmentCard = memo(function AttachmentCard({
           文件内容已随消息发送给 Agent。
         </p>
       )}
-    </div>
+    </Card>
   );
 });
 
@@ -331,10 +331,11 @@ function ThinkingBlock({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-lg border border-border bg-muted px-3 py-2">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="xs"
         aria-expanded={open}
-        className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        className="h-auto w-full justify-start gap-1.5 px-0 py-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
@@ -349,7 +350,7 @@ function ThinkingBlock({ content }: { content: string }) {
             {content.slice(0, 60)}...
           </span>
         )}
-      </button>
+      </Button>
       {open && (
         <div className="mt-2 border-l-2 border-primary/25 pl-5">
           <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">

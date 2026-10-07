@@ -13,6 +13,7 @@ import { formatRelativeTime } from "@/features/canvas";
 import { DataTable, type DataTableColumn } from "@/shared/components/data-table/DataTable";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { PageContainer } from "@/shared/components/page-container";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -241,7 +242,7 @@ export function WorkspaceManagementPage() {
   );
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={FolderOpen}
         tone="var(--color-type-volume)"
@@ -371,6 +372,6 @@ export function WorkspaceManagementPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 }

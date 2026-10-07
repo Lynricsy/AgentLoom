@@ -12,6 +12,7 @@ import {
   tableRowClass as ROW_CLASS,
 } from '@/shared/ui/table'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { Button } from '@/shared/ui/button'
 
 export interface DataTableColumn<T> {
   /** 列唯一键，同时作为 React key */
@@ -153,25 +154,27 @@ function DataTablePager({
       </span>
 
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-40"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
           上一页
-        </button>
+        </Button>
         <span className="px-1 text-foreground">
           {page} / {totalPages}
         </span>
-        <button
-          type="button"
-          className="rounded-md px-2 py-1 transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-40"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >
           下一页
-        </button>
+        </Button>
       </div>
     </div>
   )

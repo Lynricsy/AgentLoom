@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 
 import { Button } from '@/shared/ui/button';
+import { Card } from '@/shared/ui/card';
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 import { useToast } from '@/shared/ui/toast';
 import { useCreateBlock } from '../api/blockQueries';
@@ -134,160 +144,134 @@ export function BlockImportDialog({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="block-import-dialog-description"
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,42rem)] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-muted text-foreground shadow-xl"
-        >
-          <div className="border-b border-border px-6 py-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <Dialog.Title className="text-lg font-semibold">
-                  导入块文件
-                </Dialog.Title>
-                <Dialog.Description
-                  className="text-sm text-muted-foreground"
-                  id="block-import-dialog-description"
-                >
-                  选择导出的块 JSON 文件，系统会先校验格式，再允许导入到我的块库。
-                </Dialog.Description>
-              </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[min(90vh,42rem)]">
+        <DialogHeader>
+          <DialogTitle>导入块文件</DialogTitle>
+          <DialogDescription>
+            选择导出的块 JSON 文件，系统会先校验格式，再允许导入到我的块库。
+          </DialogDescription>
+        </DialogHeader>
 
-              <Dialog.Close asChild>
-                <Button aria-label="关闭导入对话框" variant="outline">
-                  关闭
-                </Button>
-              </Dialog.Close>
-            </div>
+        <DialogBody className="space-y-5">
+          <div className="space-y-2">
+            <label
+              className="block text-sm font-medium text-foreground"
+              htmlFor="block-import-file"
+            >
+              选择块文件
+            </label>
+            <Input
+              accept=".json,.agentloom-block.json,application/json"
+              data-testid="file-input"
+              id="block-import-file"
+              onChange={handleFileChange}
+              type="file"
+            />
+            <p className="text-xs text-muted-foreground">
+              支持 `.agentloom-block.json` / `.json`，最大 {formatFileSize(MAX_IMPORT_SIZE)}。
+            </p>
           </div>
 
-          <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-            <div className="space-y-2">
-              <label
-                className="block text-sm font-medium text-foreground"
-                htmlFor="block-import-file"
-              >
-                选择块文件
-              </label>
-              <Input
-                accept=".json,.agentloom-block.json,application/json"
-                data-testid="file-input"
-                id="block-import-file"
-                onChange={handleFileChange}
-                type="file"
-              />
-              <p className="text-xs text-muted-foreground">
-                支持 `.agentloom-block.json` / `.json`，最大 {formatFileSize(MAX_IMPORT_SIZE)}。
-              </p>
+          {selectedFileName ? (
+            <div className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
+              当前文件：
+              <span className="ml-1 font-medium text-foreground">
+                {selectedFileName}
+              </span>
             </div>
+          ) : null}
 
-            {selectedFileName ? (
-              <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
-                当前文件：
-                <span className="ml-1 font-medium text-foreground">
-                  {selectedFileName}
-                </span>
+          {validationErrors.length > 0 ? (
+            <div
+              className="rounded-lg border border-error/50 bg-error/5 px-4 py-3"
+              data-testid="validation-errors"
+              role="alert"
+            >
+              <p className="text-sm font-medium text-foreground">文件校验失败</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                {validationErrors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {submitError ? (
+            <div
+              className="rounded-lg border border-error/50 bg-error/5 px-4 py-3 text-sm text-muted-foreground"
+              role="alert"
+            >
+              {submitError}
+            </div>
+          ) : null}
+
+          {previewBlock && previewSummary ? (
+            <Card className="space-y-4 p-4" data-testid="block-preview">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  预览
+                </p>
+                <h3 className="text-sm font-semibold text-foreground">
+                  {previewBlock.block.name}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {previewBlock.block.description ?? '这个块没有提供额外描述。'}
+                </p>
               </div>
-            ) : null}
 
-            {validationErrors.length > 0 ? (
-              <div
-                className="rounded-xl border border-error/50 bg-error/5 px-4 py-3"
-                data-testid="validation-errors"
-                role="alert"
-              >
-                <p className="text-sm font-medium text-foreground">文件校验失败</p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                  {validationErrors.map((error) => (
-                    <li key={error}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {submitError ? (
-              <div
-                className="rounded-xl border border-error/50 bg-error/5 px-4 py-3 text-sm text-muted-foreground"
-                role="alert"
-              >
-                {submitError}
-              </div>
-            ) : null}
-
-            {previewBlock && previewSummary ? (
-              <section
-                className="space-y-4 rounded-xl border border-border bg-surface p-4"
-                data-testid="block-preview"
-              >
+              <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <div className="space-y-1">
                   <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    预览
+                    分类
                   </p>
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {previewBlock.block.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {previewBlock.block.description ?? '这个块没有提供额外描述。'}
+                  <p className="text-foreground">
+                    {formatCategoryLabel(previewBlock.block.category)}
                   </p>
                 </div>
-
-                <div className="grid gap-3 text-sm sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      分类
-                    </p>
-                    <p className="text-foreground">
-                      {formatCategoryLabel(previewBlock.block.category)}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      标签
-                    </p>
-                    <p className="text-foreground">
-                      {previewBlock.block.tags.length > 0
-                        ? previewBlock.block.tags.join('、')
-                        : '无标签'}
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      节点数量
-                    </p>
-                    <p className="text-foreground">{previewSummary.nodeCount} 个节点</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      端口摘要
-                    </p>
-                    <p className="text-foreground">
-                      输入 {previewSummary.inputPortCount} · 输出{' '}
-                      {previewSummary.outputPortCount}
-                    </p>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    标签
+                  </p>
+                  <p className="text-foreground">
+                    {previewBlock.block.tags.length > 0
+                      ? previewBlock.block.tags.join('、')
+                      : '无标签'}
+                  </p>
                 </div>
-              </section>
-            ) : null}
-          </div>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    节点数量
+                  </p>
+                  <p className="text-foreground">{previewSummary.nodeCount} 个节点</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    端口摘要
+                  </p>
+                  <p className="text-foreground">
+                    输入 {previewSummary.inputPortCount} · 输出{' '}
+                    {previewSummary.outputPortCount}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ) : null}
+        </DialogBody>
 
-          <div className="border-t border-border px-6 py-4">
-            <div className="flex justify-end gap-3">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button
-                disabled={!previewBlock || createBlockMutation.isPending}
-                onClick={handleImport}
-              >
-                {createBlockMutation.isPending ? '导入中…' : '导入块'}
-              </Button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">取消</Button>
+          </DialogClose>
+          <Button
+            disabled={!previewBlock || createBlockMutation.isPending}
+            onClick={handleImport}
+          >
+            {createBlockMutation.isPending ? '导入中…' : '导入块'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
