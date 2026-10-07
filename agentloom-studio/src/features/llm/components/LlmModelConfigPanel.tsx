@@ -693,8 +693,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 }
               />
               <p className="text-2xs text-muted-foreground">
-                选择后会立即调用 `updateNodeData(nodeId, {"{"} llmConfigId,
-                parameters {"}"})` 所在的数据链路，并交给现有自动保存流程处理。
+                选择后立即应用到当前节点，并随画布自动保存。
               </p>
             </div>
 

@@ -2,6 +2,7 @@ import {
   Activity,
   AppWindow,
   Bell,
+  Blocks,
   BookOpen,
   Bot,
   BrainCircuit,
@@ -166,7 +167,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         label: "Runtime 插件",
-        icon: Cpu,
+        icon: Blocks,
         to: "/resources/runtime-plugins",
         matchPrefix: "/resources/runtime-plugins",
       },
