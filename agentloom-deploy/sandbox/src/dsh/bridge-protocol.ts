@@ -28,6 +28,18 @@ export interface BridgeInitializeParams {
   /** 远程工具回调配置经 socket 下发，不落盘到 patch 文件（含会话 token） */
   remoteToolExecution?: RemoteToolExecutionConfig;
   nativeToolPolicy?: NativeToolPolicy;
+  /**
+   * runtime 插件 patch 插入的 Loader 条目。dsh 对未激活的非必需条目只在 stderr
+   * 警告；bridge 在 Loader 就绪后逐个核对，任一未激活即让 initialize 失败。
+   */
+  pluginEntries?: RuntimePluginEntry[];
+}
+
+export interface RuntimePluginEntry {
+  /** cordis.patch.yml 中的条目 id */
+  id: string;
+  /** 出错信息里展示的插件名（package：pluginId；npm：name@version） */
+  plugin: string;
 }
 
 export interface BridgeRequestMap {

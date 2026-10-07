@@ -8,7 +8,7 @@ import type { ChildProcess, spawn as spawnProcess } from 'node:child_process';
 import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createDshSessionFactory } from '../src/dsh/session-factory.js';
+import { createDshSessionFactory, SessionStartError } from '../src/dsh/session-factory.js';
 import type { CreateSessionRequest, SandboxAgentEvent } from '../src/types.js';
 
 interface FakeChild extends EventEmitter {
@@ -34,12 +34,19 @@ function createFakeChild(): FakeChild {
 }
 
 /** 在 bridge socket 上模拟 agentloom-bridge 的应答 */
-function startFakeBridge(socketPath: string, requests: Array<{ method: string; params: unknown }>): Server {
+function startFakeBridge(
+  socketPath: string,
+  requests: Array<{ method: string; params: unknown }>,
+  initializeError?: string,
+): Server {
   const server = createServer((socket) => {
     const transport = new JsonRpcLineTransport(socket, socket);
     transport.onRequest(async (method, params) => {
       requests.push({ method, params });
       switch (method) {
+        case 'initialize':
+          if (initializeError) throw new Error(initializeError);
+          return {};
         case 'session/prompt':
           setTimeout(() => {
             const sessionId = params['sessionId'];
@@ -207,6 +214,50 @@ describe('createDshSessionFactory', () => {
 
     await expect(factory('/workspace', {}, request)).rejects.toThrow('bridge socket 未就绪');
     expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it('runtime 插件未激活时应以 422 SessionStartError 失败、带上 bridge 的原因，并清理子进程与会话目录', async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const child = createFakeChild();
+    const reason =
+      'runtime 插件未能加载:\n- com.acme.demo（条目 demo，模块 /x/dist/index.js）: 插件激活失败: boom';
+    const spawn = vi.fn(() => {
+      servers.push(startFakeBridge(join(sessionRoot, 'sess-1', 'bridge.sock'), requests, reason));
+      return child as unknown as ChildProcess;
+    });
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: spawn as unknown as typeof spawnProcess,
+    });
+
+    const error = await factory('/workspace', {}, {
+      ...request,
+      files: {
+        'plugins/com.acme.demo/manifest.json': JSON.stringify({
+          id: 'com.acme.demo',
+          kind: 'runtime',
+          runtime: { dshVersion: '0.2.0-rc.2', patch: 'cordis.patch.yml', entry: 'dist/index.js' },
+        }),
+        'plugins/com.acme.demo/cordis.patch.yml': '- insert:\n    - id: demo\n      name: ./dist/index.js\n',
+        'plugins/com.acme.demo/dist/index.js': 'export function apply() {}\n',
+      },
+      harness: {
+        engine: 'dsh',
+        plugins: [
+          { nodeId: 'n1', source: 'package', ref: 'rp-1', pluginId: 'com.acme.demo', enabled: true },
+        ],
+      },
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SessionStartError);
+    expect(error).toMatchObject({ statusCode: 422, message: expect.stringContaining(reason) });
+    expect(requests[0]).toMatchObject({
+      method: 'initialize',
+      params: { pluginEntries: [{ id: 'demo', plugin: 'com.acme.demo' }] },
+    });
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false);
   });
 
   it('缺少 defaultProvider / defaultModel 时应拒绝创建会话', async () => {

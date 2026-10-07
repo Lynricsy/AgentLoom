@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-user-approval';
 import Schema from '@deepseek-ai/schemastery';
 import { AgentLoomBridge, listenBridgeSocket } from './bridge.js';
+import { findInactiveEntries, type LoaderLike } from './loader-audit.js';
 
 export const name = 'agentloom-bridge';
 export const inject = ['agents', 'tools', 'llm'];
@@ -39,6 +40,11 @@ export function apply(ctx: Context, config: Config): void {
       },
       resolveCallConfig: async (provider, model) => {
         await ctx.llm.resolveCallConfig({ provider, model });
+      },
+      inactiveEntries: async (ids) => {
+        // cordis-plugin-loader 不是本包的直接依赖，只按审计用到的结构读取 Loader。
+        const loader = ctx.get('loader') as LoaderLike | undefined;
+        return loader ? findInactiveEntries(loader, ids) : [];
       },
       createAgent: async ({ sessionId, cwd, provider, model }) => {
         const handle = await ctx.agents.create({

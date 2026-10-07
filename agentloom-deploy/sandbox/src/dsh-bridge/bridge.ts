@@ -24,6 +24,7 @@ import {
   type BridgeMethod,
   type BridgeRequestMap,
   type NativeToolPolicy,
+  type RuntimePluginEntry,
 } from '../dsh/bridge-protocol.js';
 import { PTYManager } from '../pty/pty-manager.js';
 import type { PTYEvent } from '../pty/types.js';
@@ -38,10 +39,12 @@ import {
   mapSessionEvent,
   type ToolResultOverride,
 } from './event-mapper.js';
+import type { InactiveEntry } from './loader-audit.js';
 
 /** 审批等待上限，超时视为拒绝（与 server 侧工具授权超时一致） */
 export const APPROVAL_TIMEOUT_MS = 30_000;
 export const NATIVE_TOOL_DISABLED_MESSAGE = '该工具已被 Agent 原生工具策略禁用';
+const INACTIVE_REASON_MAX_CHARS = 2048;
 
 const WORKSPACE_ROOT = path.resolve('/workspace');
 
@@ -62,6 +65,8 @@ export interface BridgeHost {
   awaitLoader(): Promise<void>;
   /** 校验 provider/model 路由可用（凭据缺失等会在此抛错） */
   resolveCallConfig(provider: string, model: string): Promise<void>;
+  /** Loader 中给定 id 的条目里未激活者（禁用的条目不算），以及未激活的原因 */
+  inactiveEntries(ids: readonly string[]): Promise<InactiveEntry[]>;
   createAgent(options: {
     sessionId: string;
     cwd: string;
@@ -298,6 +303,7 @@ export class AgentLoomBridge {
   private async initialize(params: BridgeInitializeParams): Promise<Record<string, never>> {
     if (this.route) throw new Error('agentloom-bridge is already initialized');
     await this.host.awaitLoader();
+    await this.assertPluginEntriesActive(params.pluginEntries ?? []);
     await this.host.resolveCallConfig(params.provider, params.model);
 
     const denied = buildDeniedNativeTools(params.nativeToolPolicy);
@@ -313,6 +319,21 @@ export class AgentLoomBridge {
     }
     this.route = { cwd: params.cwd, provider: params.provider, model: params.model };
     return {};
+  }
+
+  private async assertPluginEntriesActive(entries: RuntimePluginEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+    const inactive = await this.host.inactiveEntries(entries.map((entry) => entry.id));
+    if (inactive.length === 0) return;
+    const pluginOf = new Map(entries.map((entry) => [entry.id, entry.plugin]));
+    const lines = inactive.map((entry) => {
+      const reason =
+        entry.reason.length > INACTIVE_REASON_MAX_CHARS
+          ? `${entry.reason.slice(0, INACTIVE_REASON_MAX_CHARS)}…`
+          : entry.reason;
+      return `- ${pluginOf.get(entry.id) ?? entry.id}（条目 ${entry.id}，模块 ${entry.module}）: ${reason}`;
+    });
+    throw new Error(`runtime 插件未能加载:\n${lines.join('\n')}`);
   }
 
   private async createSession(sessionId: string): Promise<Record<string, never>> {

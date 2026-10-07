@@ -19,6 +19,7 @@ import {
   type BridgeHost,
 } from '../src/dsh-bridge/bridge.js';
 import type { BridgeEventNotification } from '../src/dsh/bridge-protocol.js';
+import type { InactiveEntry } from '../src/dsh-bridge/loader-audit.js';
 import { translateEvent } from '../src/event-stream.js';
 import type { PTYManager } from '../src/pty/pty-manager.js';
 import type { SandboxAgentEvent } from '../src/types.js';
@@ -30,6 +31,7 @@ interface FakeHost extends BridgeHost {
   createAgentSpy: Mock;
   shutdownSpy: Mock;
   resolveSpy: Mock;
+  inactiveEntriesSpy: Mock;
 }
 
 function createFakeHost(): FakeHost {
@@ -39,6 +41,7 @@ function createFakeHost(): FakeHost {
   const createAgentSpy = vi.fn(async () => ({ agent, dispose: vi.fn(async () => undefined) }));
   const shutdownSpy = vi.fn();
   const resolveSpy = vi.fn(async () => undefined);
+  const inactiveEntriesSpy = vi.fn(async (): Promise<InactiveEntry[]> => []);
   return {
     tools,
     guards,
@@ -46,8 +49,10 @@ function createFakeHost(): FakeHost {
     createAgentSpy,
     shutdownSpy,
     resolveSpy,
+    inactiveEntriesSpy,
     awaitLoader: vi.fn(async () => undefined),
     resolveCallConfig: resolveSpy,
+    inactiveEntries: inactiveEntriesSpy,
     createAgent: createAgentSpy,
     registerTool: (definition) => {
       tools.set(definition.name, definition);
@@ -187,6 +192,25 @@ describe('AgentLoomBridge over unix socket', () => {
     await expect(client.request('initialize', { cwd: '/', provider: 'p', model: 'm' })).rejects.toThrow(
       'already initialized',
     );
+  });
+
+  it('runtime 插件条目未激活时 initialize 应失败，并带插件名、条目与原因', async () => {
+    host.inactiveEntriesSpy.mockResolvedValueOnce([
+      { id: 'demo', module: '/s/plugins/com.acme.demo/dist/index.js', reason: '插件激活失败: boom' },
+    ]);
+
+    await expect(
+      initializeAndCreate({
+        pluginEntries: [
+          { id: 'demo', plugin: 'com.acme.demo' },
+          { id: 'auto-review', plugin: '@acme/auto@1.0.0' },
+        ],
+      }),
+    ).rejects.toThrow(
+      'runtime 插件未能加载:\n- com.acme.demo（条目 demo，模块 /s/plugins/com.acme.demo/dist/index.js）: 插件激活失败: boom',
+    );
+    expect(host.inactiveEntriesSpy).toHaveBeenCalledWith(['demo', 'auto-review']);
+    expect(host.createAgentSpy).not.toHaveBeenCalled();
   });
 
   it('session/prompt / session/cancel 应驱动 dsh Agent', async () => {

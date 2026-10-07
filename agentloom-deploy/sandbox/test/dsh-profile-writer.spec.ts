@@ -134,9 +134,24 @@ describe('writeDshProfile', () => {
       id: 'agent-default-model',
       config: { provider: 'openai', model: 'gpt-x' },
     });
-    for (const id of ['llm-deepseek', 'otel', 'web', 'tool-web', 'plugin-manager', 'permission']) {
+    for (const id of ['llm-deepseek', 'otel', 'web', 'tool-web', 'plugin-manager']) {
       expect(byId.get(id)).toEqual({ id, disabled: true });
     }
+    // 只含「danger-full-access + ask」一种预设，permissionPresets 服务才能挂载。
+    expect(byId.get('permission')).toEqual({
+      id: 'permission',
+      config: {
+        presets: {
+          agentloom: {
+            sandbox: 'danger-full-access',
+            approval: 'ask',
+            name: 'agentloom',
+            description: expect.any(String),
+          },
+        },
+      },
+    });
+    expect(profile.pluginEntries).toEqual([]);
     expect(byId.get('skill-filesystem')).toEqual({
       id: 'skill-filesystem',
       config: {
@@ -297,6 +312,11 @@ describe('writeDshProfile', () => {
     expect(tail[2]).toEqual({ insert: [{ id: 'npm-bundle', name: join(npmRoot, 'lib/index.js') }] });
     expect(tail[3]).toEqual({ id: 'tool-skill', disabled: true });
     expect(insertRows(patch).map((row) => row.id)).toEqual(['agentloom-bridge', 'demo', 'npm-bundle']);
+    // 停用节点不参与；bridge 据此核对每个插件条目是否激活。
+    expect(profile.pluginEntries).toEqual([
+      { id: 'demo', plugin: 'com.example.demo' },
+      { id: 'npm-bundle', plugin: '@acme/dsh-bundle@1.2.3' },
+    ]);
   });
 
   it('npm 包不是 dsh bundle 时应作为单个插件条目挂载', async () => {

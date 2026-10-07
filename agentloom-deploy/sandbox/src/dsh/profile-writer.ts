@@ -15,6 +15,7 @@ import YAML, { isMap, isScalar, isSeq, type Document, type YAMLMap } from 'yaml'
 import { normalizeBundledMcpServerConfig } from '../mcp-client.js';
 import { isRecord } from '../type-guards.js';
 import type { CreateSessionRequest, HarnessPluginRef, McpServerConfig } from '../types.js';
+import type { RuntimePluginEntry } from './bridge-protocol.js';
 
 export const DSH_PROFILE_NAME = 'agentloom';
 export const DSH_BRIDGE_ROW_ID = 'agentloom-bridge';
@@ -28,12 +29,12 @@ const PLUGIN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const RUNTIME_PLUGIN_LINK_SCOPE = '@agentloom-runtime-plugins';
 const PLUGIN_ROOT_PLACEHOLDER = '__PLUGIN_ROOT__';
 const STDERR_TAIL_BYTES = 2048;
+const AGENTLOOM_PERMISSION_PRESET = 'agentloom';
 
 /**
  * dsh-base 中与 AgentLoom 部署无关或会外连 DeepSeek 服务的条目：DeepSeek 原生
  * 适配器 / 账号、遥测、web 工具、live-config 与插件管理（profile 由 guest 生成，
  * 不允许运行期改写）、首问标题（额外模型调用）。
- * `permission` 预设表没有「danger-full-access + ask」组合，挂载即报错，同样禁用。
  */
 const DISABLED_BASE_ROWS = [
   'llm-deepseek',
@@ -52,7 +53,6 @@ const DISABLED_BASE_ROWS = [
   'config-editor',
   'plugin-manager',
   'session-title-llm',
-  'permission',
 ] as const;
 
 export interface NpmInstallRequest {
@@ -85,6 +85,8 @@ export interface DshProfile {
   profileDir: string;
   patchPath: string;
   socketPath: string;
+  /** runtime 插件插入的条目，交给 bridge 在 initialize 时核对是否激活 */
+  pluginEntries: RuntimePluginEntry[];
   /** 追加给 dsh 子进程的环境变量（含 provider API key） */
   env: Record<string, string>;
 }
@@ -125,16 +127,18 @@ export async function writeDshProfile(params: WriteDshProfileParams): Promise<Ds
   const rows = document.contents;
   if (!isSeq(rows)) throw new Error('平台层 cordis patch 必须是 YAML 列表');
 
+  const pluginEntries: RuntimePluginEntry[] = [];
   for (const plugin of request.harness?.plugins ?? []) {
     if (!plugin.enabled) continue;
-    rows.items.push(
-      ...(await loadPluginRows(plugin, {
-        agentDir,
-        dshHome,
-        profileDir,
-        installNpmPackage: params.installNpmPackage ?? installNpmPackage,
-      })),
-    );
+    const pluginRows = await loadPluginRows(plugin, {
+      agentDir,
+      dshHome,
+      profileDir,
+      installNpmPackage: params.installNpmPackage ?? installNpmPackage,
+    });
+    rows.items.push(...pluginRows);
+    const label = plugin.source === 'package' ? (plugin.pluginId ?? plugin.ref) : `${plugin.ref}@${plugin.version}`;
+    for (const id of collectInsertedIds(pluginRows)) pluginEntries.push({ id, plugin: label });
   }
 
   const userPatch = request.harness?.profilePatch;
@@ -151,6 +155,7 @@ export async function writeDshProfile(params: WriteDshProfileParams): Promise<Ds
     profileDir,
     patchPath,
     socketPath,
+    pluginEntries,
     env: {
       DSH_HOME: dshHome,
       DSH_PERMISSION_MODE: 'danger-full-access',
@@ -239,6 +244,21 @@ function buildPlatformRows(options: {
     },
     // 子 Agent 等未显式选模型的入口回落到默认模型，保持与会话模型一致。
     { id: 'agent-default-model', config: { provider, model } },
+    // dsh-base 的预设表没有「danger-full-access + ask」组合，挂载即报错；换成只含
+    // 该组合的单一预设，依赖 permissionPresets 的插件（如 auto-review）才能激活。
+    {
+      id: 'permission',
+      config: {
+        presets: {
+          [AGENTLOOM_PERMISSION_PRESET]: {
+            sandbox: 'danger-full-access',
+            approval: 'ask',
+            name: AGENTLOOM_PERMISSION_PRESET,
+            description: 'microVM 隔离，工具审批经 AgentLoom 决议',
+          },
+        },
+      },
+    },
     { id: 'llm-pi-ai', config: { providers } },
     ...DISABLED_BASE_ROWS.map((id) => ({ id, disabled: true })),
     {
@@ -422,6 +442,25 @@ function absolutizeRowNames(rows: unknown[], baseDir: string): void {
     const children = row.get('config', true);
     if (isSeq(children)) absolutizeRowNames(children.items, baseDir);
   }
+}
+
+/** 插件 patch 插入的条目 id（含 cordis:group 子条目），供 bridge 核对激活状态 */
+function collectInsertedIds(items: unknown[]): string[] {
+  const ids: string[] = [];
+  const visit = (rows: unknown[]) => {
+    for (const row of rows) {
+      if (!isMap(row)) continue;
+      const id = row.get('id');
+      if (typeof id === 'string') ids.push(id);
+      const children = row.get('config', true);
+      if (isSeq(children)) visit(children.items);
+    }
+  };
+  for (const item of items) {
+    const insert = isMap(item) ? item.get('insert', true) : undefined;
+    if (isSeq(insert)) visit(insert.items);
+  }
+  return ids;
 }
 
 function mergeRowConfig(

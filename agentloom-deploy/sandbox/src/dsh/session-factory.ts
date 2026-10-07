@@ -65,6 +65,19 @@ function buildChildEnv(profileEnv: Record<string, string>): NodeJS.ProcessEnv {
   return { ...env, ...profileEnv, NODE_ENV: 'production' };
 }
 
+/**
+ * 会话启动失败（插件安装 / 加载、profile、dsh 启动）对同一请求是确定性的：
+ * Fastify 按 statusCode 以 422 返回 message，server 不再重试并把原因带给用户。
+ */
+export class SessionStartError extends Error {
+  readonly statusCode = 422;
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'SessionStartError';
+  }
+}
+
 /** 会话配置合并 /config 下的静态 sandbox 配置（请求优先） */
 function resolveEffectiveRequest(
   config: SandboxConfig,
@@ -129,6 +142,7 @@ export function createDshSessionFactory(options: DshSessionFactoryOptions): Sess
           ? { remoteToolExecution: request.remoteToolExecution }
           : {}),
         ...(request.nativeToolPolicy ? { nativeToolPolicy: request.nativeToolPolicy } : {}),
+        ...(profile.pluginEntries.length > 0 ? { pluginEntries: profile.pluginEntries } : {}),
       });
       options.onPtyBridgeChange?.(session.ptyBridge, 'opened');
       session.onDisposed(() => {
@@ -139,7 +153,7 @@ export function createDshSessionFactory(options: DshSessionFactoryOptions): Sess
       socket?.destroy();
       if (child && child.exitCode === null) child.kill('SIGKILL');
       prepared.dispose();
-      throw error;
+      throw new SessionStartError(error);
     }
   };
 }
