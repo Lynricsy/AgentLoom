@@ -13,7 +13,7 @@ AgentLoom — 多智能体工作流编排平台：用户在可视化画布上把
 |架构总览（请求链、实时事件、类型流、Agent 双运行态、关键文件）|`dev/architecture.md`|
 |本地开发环境|`dev/setup.md`|
 |server 模块 / 请求管线 / 安全 / 数据库 / 队列 / 实时 / Agent 运行态 / ACP / 插件 / 生成应用|`dev/server/*.md`|
-|Studio 架构 / 画布 / 状态管理|`dev/studio/*.md`|
+|Studio 架构 / 画布 / 状态管理 / 设计系统（token、原语、页面骨架，ESLint 守卫）|`dev/studio/*.md`|
 |契约与再生成（contracts、api-client、PortDataType 同步）|`dev/contracts.md`|
 |类型引擎|`dev/type-engine.md`|
 |移动端|`dev/mobile.md`|
@@ -44,7 +44,7 @@ AgentLoom — 多智能体工作流编排平台：用户在可视化画布上把
 - **PortDataType**：全集定义在 `agentloom-contracts/src/port-data-type.ts`；Rust/plugin-sdk/Studio/server 的镜像由 `port-data-type.test.ts` 机械校验，改动必须同步所有端。
 - **生成产物**：`agentloom-api-client/src/models.ts` 只能经 `pnpm contracts:regen` 再生成；`agentloom-docs/_generated/` 只能经 `pnpm docs:gen` 再生成。
 - **Git**：原子化提交并推送，做完一点提交一点；commit message `<type>(<scope>): <gitmoji> <subject>`，末尾附 `Co-authored-by: Wine Fox <fox@ling.plus>`；禁止设置 local git config（user.name/user.email 等一律用全局配置）。
-- **AI 工作流**：用 `record-agent-log` 记录"做了什么 + 为什么"（禁止手动创建/编辑日志文件，查历史用 `search-logs`）；前端页面开发必须用 `designer` agent；测试账号/测试模型凭据只能取自环境变量（`AGENTLOOM_TEST_EMAIL/PASSWORD`、`AGENTLOOM_TEST_MODEL_*`）或私有运维文档，禁止写入真实凭据。
+- **AI 工作流**：用 `record-agent-log` 记录"做了什么 + 为什么"（禁止手动创建/编辑日志文件，查历史用 `search-logs`）；测试账号/测试模型凭据只能取自环境变量（`AGENTLOOM_TEST_EMAIL/PASSWORD`、`AGENTLOOM_TEST_MODEL_*`）或私有运维文档，禁止写入真实凭据。
 - **AGENTS.md 规范**：只写规则、门禁与文档路由；事实写进文档站并在上表加路由；禁止 Story/Epic 编号、完成状态标记、变更历史、开发过程记录。
 
 ## 提交前门禁
