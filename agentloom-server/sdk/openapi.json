@@ -7835,6 +7835,288 @@
         ]
       }
     },
+    "/api/v1/runtime-plugins": {
+      "post": {
+        "operationId": "RuntimePlugin_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "AgentLoom runtime 插件包（.alp，manifest.kind=runtime）"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "active"
+                    ],
+                    "description": "注册后的初始状态，默认 registered"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePluginEnvelopeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "缺少插件签名"
+          },
+          "401": {
+            "description": "认证失败或签名验证失败"
+          },
+          "403": {
+            "description": "权限不足或签名者不是上传者"
+          },
+          "409": {
+            "description": "同版本 runtime 插件已存在"
+          },
+          "413": {
+            "description": "插件文件过大"
+          },
+          "422": {
+            "description": "runtime 插件包校验失败"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "上传已签名的 .alp runtime 插件包（dsh 插件）",
+        "tags": [
+          "Runtime Plugins"
+        ]
+      },
+      "get": {
+        "operationId": "RuntimePlugin_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "registered",
+                "active",
+                "disabled"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePluginListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "分页查询 runtime 插件",
+        "tags": [
+          "Runtime Plugins"
+        ]
+      }
+    },
+    "/api/v1/runtime-plugins/{id}": {
+      "get": {
+        "operationId": "RuntimePlugin_findById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePluginEnvelopeDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "runtime 插件不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取 runtime 插件详情",
+        "tags": [
+          "Runtime Plugins"
+        ]
+      },
+      "delete": {
+        "operationId": "RuntimePlugin_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "runtime 插件已删除"
+          },
+          "404": {
+            "description": "runtime 插件不存在"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除 runtime 插件",
+        "tags": [
+          "Runtime Plugins"
+        ]
+      }
+    },
+    "/api/v1/runtime-plugins/{id}/status": {
+      "patch": {
+        "operationId": "RuntimePlugin_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRuntimePluginStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimePluginEnvelopeDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "runtime 插件不存在"
+          },
+          "409": {
+            "description": "runtime 插件版本冲突"
+          },
+          "422": {
+            "description": "状态更新参数无效"
+          }
+        },
+        "security": [
+          {
+            "X-Api-Key": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新 runtime 插件状态",
+        "tags": [
+          "Runtime Plugins"
+        ]
+      }
+    },
     "/api/v1/smart-routing/strategies": {
       "get": {
         "operationId": "SmartRouting_getStrategies",
@@ -17714,7 +17996,8 @@
                         "agent",
                         "memory",
                         "exec",
-                        "volume"
+                        "volume",
+                        "runtime-plugin"
                       ]
                     },
                     "sourceNodeId": {
@@ -17763,7 +18046,8 @@
                         "agent",
                         "memory",
                         "exec",
-                        "volume"
+                        "volume",
+                        "runtime-plugin"
                       ]
                     },
                     "sourceNodeId": {
@@ -17957,7 +18241,8 @@
                         "agent",
                         "memory",
                         "exec",
-                        "volume"
+                        "volume",
+                        "runtime-plugin"
                       ]
                     },
                     "sourceNodeId": {
@@ -18006,7 +18291,8 @@
                         "agent",
                         "memory",
                         "exec",
-                        "volume"
+                        "volume",
+                        "runtime-plugin"
                       ]
                     },
                     "sourceNodeId": {
@@ -18897,6 +19183,258 @@
             "pattern": "^\\d+(\\.\\d{1,8})?$"
           }
         },
+        "additionalProperties": false
+      },
+      "RuntimePluginEnvelopeDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "pluginId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "author": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string",
+                "nullable": true
+              },
+              "license": {
+                "type": "string",
+                "nullable": true
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "registered",
+                  "active",
+                  "disabled"
+                ]
+              },
+              "configSchema": {
+                "type": "object",
+                "additionalProperties": {},
+                "nullable": true
+              },
+              "sizeBytes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "contentHash": {
+                "type": "string"
+              },
+              "installedBy": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "nullable": true
+              },
+              "occVersion": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "pluginId",
+              "name",
+              "version",
+              "author",
+              "description",
+              "license",
+              "status",
+              "configSchema",
+              "sizeBytes",
+              "contentHash",
+              "installedBy",
+              "occVersion",
+              "createdAt",
+              "updatedAt"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "RuntimePluginListResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "pluginId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "license": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "registered",
+                    "active",
+                    "disabled"
+                  ]
+                },
+                "configSchema": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "nullable": true
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "contentHash": {
+                  "type": "string"
+                },
+                "installedBy": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "nullable": true
+                },
+                "occVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "pluginId",
+                "name",
+                "version",
+                "author",
+                "description",
+                "license",
+                "status",
+                "configSchema",
+                "sizeBytes",
+                "contentHash",
+                "installedBy",
+                "occVersion",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "pageSize": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "totalPages": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "page",
+              "pageSize",
+              "total",
+              "totalPages"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "UpdateRuntimePluginStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "registered",
+              "active",
+              "disabled"
+            ]
+          },
+          "occVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "status",
+          "occVersion"
+        ],
         "additionalProperties": false
       },
       "SmartRoutingStrategiesResponseDto": {
@@ -22254,7 +22792,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-01T14:44:23.824Z",
+                  "default": "2026-10-07T03:18:30.231Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

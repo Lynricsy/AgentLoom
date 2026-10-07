@@ -3582,7 +3582,8 @@ export const CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum = {
     Agent: 'agent',
     Memory: 'memory',
     Exec: 'exec',
-    Volume: 'volume'
+    Volume: 'volume',
+    RuntimePlugin: 'runtime-plugin'
 } as const;
 export type CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum = typeof CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum[keyof typeof CreateReusableBlockDtoDefinitionInputPortsInnerDataTypeEnum];
 
@@ -6357,6 +6358,178 @@ export type RunWorkflowDtoLaunchSourceEnum = typeof RunWorkflowDtoLaunchSourceEn
 /**
  * 
  * @export
+ * @interface RuntimePluginEnvelopeDto
+ */
+export interface RuntimePluginEnvelopeDto {
+    /**
+     * 
+     * @type {RuntimePluginEnvelopeDtoData}
+     * @memberof RuntimePluginEnvelopeDto
+     */
+    data: RuntimePluginEnvelopeDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface RuntimePluginEnvelopeDtoData
+ */
+export interface RuntimePluginEnvelopeDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    pluginId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    name: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    version: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    author: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    description: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    license: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    status: RuntimePluginEnvelopeDtoDataStatusEnum;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    configSchema: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    sizeBytes: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    contentHash: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    installedBy: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    occVersion: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RuntimePluginEnvelopeDtoData
+     */
+    updatedAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const RuntimePluginEnvelopeDtoDataStatusEnum = {
+    Registered: 'registered',
+    Active: 'active',
+    Disabled: 'disabled'
+} as const;
+export type RuntimePluginEnvelopeDtoDataStatusEnum = typeof RuntimePluginEnvelopeDtoDataStatusEnum[keyof typeof RuntimePluginEnvelopeDtoDataStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface RuntimePluginListResponseDto
+ */
+export interface RuntimePluginListResponseDto {
+    /**
+     * 
+     * @type {Array<RuntimePluginEnvelopeDtoData>}
+     * @memberof RuntimePluginListResponseDto
+     */
+    data: Array<RuntimePluginEnvelopeDtoData>;
+    /**
+     * 
+     * @type {RuntimePluginListResponseDtoMeta}
+     * @memberof RuntimePluginListResponseDto
+     */
+    meta: RuntimePluginListResponseDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface RuntimePluginListResponseDtoMeta
+ */
+export interface RuntimePluginListResponseDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof RuntimePluginListResponseDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RuntimePluginListResponseDtoMeta
+     */
+    pageSize: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RuntimePluginListResponseDtoMeta
+     */
+    total: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof RuntimePluginListResponseDtoMeta
+     */
+    totalPages: number;
+}
+/**
+ * 
+ * @export
  * @interface SandboxNodeEnvelopeSwaggerDto
  */
 export interface SandboxNodeEnvelopeSwaggerDto {
@@ -8400,6 +8573,37 @@ export interface UpdateReusableBlockDtoMetadata {
      */
     exportedAt?: string;
 }
+/**
+ * 
+ * @export
+ * @interface UpdateRuntimePluginStatusDto
+ */
+export interface UpdateRuntimePluginStatusDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateRuntimePluginStatusDto
+     */
+    status: UpdateRuntimePluginStatusDtoStatusEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof UpdateRuntimePluginStatusDto
+     */
+    occVersion: number;
+}
+
+
+/**
+ * @export
+ */
+export const UpdateRuntimePluginStatusDtoStatusEnum = {
+    Registered: 'registered',
+    Active: 'active',
+    Disabled: 'disabled'
+} as const;
+export type UpdateRuntimePluginStatusDtoStatusEnum = typeof UpdateRuntimePluginStatusDtoStatusEnum[keyof typeof UpdateRuntimePluginStatusDtoStatusEnum];
+
 /**
  * 
  * @export
