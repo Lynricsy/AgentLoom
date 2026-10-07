@@ -105,23 +105,61 @@ if [[ "$(jq -r '.exitCode' <<<"$private_probe_wait")" == "0" ]]; then
   exit 1
 fi
 
+# guest 的 dsh 会话工厂必须拿到默认模型与 provider 路由。设置 AGENTLOOM_TEST_MODEL_BASE_URL /
+# AGENTLOOM_TEST_MODEL_NAME / AGENTLOOM_TEST_MODEL_API_KEY（可选 AGENTLOOM_TEST_MODEL_API，默认
+# openai-completions）时走真实模型并要求正常结束；未设置时不下发密钥，dsh 以缺少凭据结束本轮，
+# 只验证 dsh 子进程、bridge 与事件流在 microVM 内可用。
+model_api="${AGENTLOOM_TEST_MODEL_API:-openai-completions}"
+model_base_url="${AGENTLOOM_TEST_MODEL_BASE_URL:-https://smoke.invalid/v1}"
+model_name="${AGENTLOOM_TEST_MODEL_NAME:-smoke-model}"
+model_api_key="${AGENTLOOM_TEST_MODEL_API_KEY:-}"
+session_payload="$(jq -cn \
+  --arg sessionId "$SESSION_ID" \
+  --arg api "$model_api" \
+  --arg baseUrl "$model_base_url" \
+  --arg model "$model_name" \
+  --arg apiKey "$model_api_key" \
+  '{
+    sessionId: $sessionId,
+    systemPrompt: "Reply exactly OK",
+    settings: {defaultProvider: "smoke", defaultModel: $model},
+    models: {providers: {smoke: {api: $api, baseUrl: $baseUrl, models: [{id: $model}]}}},
+    runtimeApiKeys: (if $apiKey == "" then {} else {smoke: $apiKey} end),
+    remoteToolExecution: {
+      sessionId: $sessionId,
+      callbackUrl: "http://server:3000/api/v1/agent-runtime/sessions/\($sessionId)/tool-executions",
+      callbackToken: "smoke-callback-token",
+      tools: []
+    }
+  }')"
 session_result="$(manager_curl \
   -H 'Content-Type: application/json' \
-  -d "{\"sessionId\":\"$SESSION_ID\",\"systemPrompt\":\"Reply exactly OK\",\"remoteToolExecution\":{\"sessionId\":\"$SESSION_ID\",\"callbackUrl\":\"http://server:3000/api/v1/agent-runtime/sessions/$SESSION_ID/tool-executions\",\"callbackToken\":\"smoke-callback-token\",\"tools\":[]}}" \
+  -d "$session_payload" \
   "https://firecracker-runtime:8443/v1/vms/$VM_ID/guest/v1/session")"
 [[ "$(jq -r '.sessionId' <<<"$session_result")" == "$SESSION_ID" ]]
 
 pty_sessions="$(manager_curl "https://firecracker-runtime:8443/v1/vms/$VM_ID/guest/v1/pty/sessions")"
 jq -e 'type == "array"' <<<"$pty_sessions" >/dev/null
 
-sse="$(manager_curl --no-buffer --max-time 30 \
+sse="$(manager_curl --no-buffer --max-time 60 \
   -H 'Content-Type: application/json' \
-  -d "{\"sessionId\":\"$SESSION_ID\",\"text\":\"Reply exactly OK\",\"permissionCallbackUrl\":\"http://server:3000/api/v1/agent-conversations/$SESSION_ID/tool-permission\"}" \
+  -d "{\"sessionId\":\"$SESSION_ID\",\"text\":\"Reply exactly OK\"}" \
   "https://firecracker-runtime:8443/v1/vms/$VM_ID/guest/v1/prompt")"
 case "$sse" in
-  *'"type":"done"'*|*'"type":"error"'*) ;;
-  *) echo "SSE prompt omitted a terminal event" >&2; exit 1 ;;
+  *'"type":"harness_trace"'*) ;;
+  *) echo "SSE prompt omitted dsh harness_trace events: $sse" >&2; exit 1 ;;
 esac
+if [[ -n "$model_api_key" ]]; then
+  case "$sse" in
+    *'"type":"text_delta"'*'"type":"done"'*) ;;
+    *) echo "SSE prompt did not stream a reply and finish: $sse" >&2; exit 1 ;;
+  esac
+else
+  case "$sse" in
+    *'"type":"done"'*|*'"type":"error"'*) ;;
+    *) echo "SSE prompt omitted a terminal event: $sse" >&2; exit 1 ;;
+  esac
+fi
 abort_result="$(manager_curl \
   -H 'Content-Type: application/json' \
   -d "{\"sessionId\":\"$SESSION_ID\"}" \

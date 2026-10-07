@@ -81,13 +81,15 @@ runtime 随主栈启动，见 [Docker Compose 部署](/deploy/compose)。主要�
 
 ### 冒烟测试
 
-runtime 健康后运行冒烟脚本。它通过 `docker compose exec firecracker-runtime` 调用 manager API：创建一台 persistent microVM，检查 guest 健康、执行命令、持久文件、DNS/HTTPS 出站、源地址防伪、私网隔离、session 与 SSE，退出时删除 VM 与磁盘。
+runtime 健康后运行冒烟脚本。它通过 `docker compose exec firecracker-runtime` 调用 manager API：创建一台 persistent microVM，检查 guest 健康、执行命令、持久文件、DNS/HTTPS 出站、源地址防伪、私网隔离、dsh 会话创建与 SSE（要求出现 `harness_trace` 事件），退出时删除 VM 与磁盘。
+
+会话使用名为 `smoke` 的 provider 路由。设置 `AGENTLOOM_TEST_MODEL_BASE_URL`、`AGENTLOOM_TEST_MODEL_NAME`、`AGENTLOOM_TEST_MODEL_API_KEY`（可选 `AGENTLOOM_TEST_MODEL_API`，默认 `openai-completions`）时走真实模型，并要求流中有 `text_delta` 且以 `done` 结束；模型地址必须是 guest 可达的公网 HTTPS/HTTP，或已列入 `FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS`。不设置时不下发密钥，dsh 以缺少凭据结束本轮，脚本只要求出现终止事件。
 
 ```bash
 ./firecracker/firecracker-smoke.sh
 ```
 
-验证时约 17 秒，最后一行（ID 每次不同）：
+验证时约 15 秒（不设置测试模型时），最后一行（ID 每次不同）：
 
 ```text
 Firecracker KVM smoke passed for 79c5559e-e8b1-457a-9afc-fee6c7ef252e
