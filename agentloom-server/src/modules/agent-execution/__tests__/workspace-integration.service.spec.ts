@@ -830,13 +830,41 @@ describe('WorkspaceIntegrationService', () => {
       );
     });
 
-    it('已有监听器时不应创建重复的', () => {
+    it('沙箱已被销毁时连续轮询失败后自动停止，不再无限调用 guest', async () => {
       setupExecWithOutput('');
-
       service.startFileWatcher(CONVERSATION_ID, TENANT_ID, CONTAINER_ID);
-      service.startFileWatcher(CONVERSATION_ID, TENANT_ID, CONTAINER_ID);
+      await vi.advanceTimersByTimeAsync(0);
 
-      expect(true).toBe(true);
+      mockRuntimeDriver.createExec.mockRejectedValue(
+        new Error('create guest exec failed with status 404'),
+      );
+      await vi.advanceTimersByTimeAsync(3000 * 10);
+      const callsWhenStopped = mockRuntimeDriver.createExec.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(3000 * 5);
+      expect(mockRuntimeDriver.createExec.mock.calls.length).toBe(
+        callsWhenStopped,
+      );
+    });
+
+    it('轮询恢复成功后重新计数，偶发失败不会停止监听', async () => {
+      setupExecWithOutput('');
+      service.startFileWatcher(CONVERSATION_ID, TENANT_ID, CONTAINER_ID);
+      await vi.advanceTimersByTimeAsync(0);
+
+      for (let round = 0; round < 3; round += 1) {
+        mockRuntimeDriver.createExec.mockRejectedValue(new Error('transient'));
+        await vi.advanceTimersByTimeAsync(3000 * 9);
+        setupExecWithOutput('');
+        await vi.advanceTimersByTimeAsync(3000);
+      }
+
+      setupExecWithOutput('src/after.ts');
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'workspace.file_change',
+        expect.objectContaining({ changedFiles: ['src/after.ts'] }),
+      );
     });
 
     it('没有变更文件时不应发出事件', async () => {

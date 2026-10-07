@@ -38,6 +38,11 @@ import * as schema from '../../database/schema';
 
 const CONTAINER_WORKSPACE = '/workspace';
 const FILE_WATCH_POLL_INTERVAL_MS = 3000;
+/**
+ * 连续轮询失败多少次后停止监听：沙箱可能已被其它进程（server/worker）销毁，
+ * 而 stopWatcher 只会在处理会话结束的那个进程里调用，本进程无从得知。
+ */
+const FILE_WATCH_MAX_CONSECUTIVE_FAILURES = 10;
 const MARKER_FILE = '/tmp/.workspace_marker';
 const CONVERSATION_WORKSPACE_TREE_SNAPSHOT_KEY = 'workspaceTreeSnapshot';
 const CONVERSATION_WORKSPACE_TREE_ONLY_REASON =
@@ -1269,13 +1274,22 @@ export class WorkspaceIntegrationService {
       ),
     );
 
+    let consecutiveFailures = 0;
     const timer = setInterval(async () => {
       try {
         await this.pollFileChanges(target, tenantId, runtimeHandle);
+        consecutiveFailures = 0;
       } catch (error) {
+        consecutiveFailures += 1;
         this.logger.warn(
-          `文件变更轮询失败: key=${watchKey}, error=${error instanceof Error ? error.message : String(error)}`,
+          `文件变更轮询失败: key=${watchKey}, failures=${consecutiveFailures}, error=${error instanceof Error ? error.message : String(error)}`,
         );
+        if (consecutiveFailures >= FILE_WATCH_MAX_CONSECUTIVE_FAILURES) {
+          this.logger.warn(
+            `文件变更轮询连续失败 ${consecutiveFailures} 次，停止监听: key=${watchKey}`,
+          );
+          this.stopWatcher(target);
+        }
       }
     }, FILE_WATCH_POLL_INTERVAL_MS);
 
