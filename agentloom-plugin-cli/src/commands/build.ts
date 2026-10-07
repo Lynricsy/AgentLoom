@@ -340,6 +340,10 @@ export const buildCommand = new Command('build')
     console.info(`文件: ${result.archivePath}`);
     console.info(`大小: ${result.sizeBytes} bytes`);
     console.info(`版本: ${result.manifest.version}`);
+    if (result.manifest.kind === 'runtime') {
+      console.info(`类型: runtime 插件（dsh ${result.manifest.runtime?.dshVersion}）`);
+      return;
+    }
     console.info(`节点数: ${result.nodeCount}`);
     if (!options.wasm) {
       console.warn(

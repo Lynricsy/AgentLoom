@@ -303,7 +303,7 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
             />
             {npmNameError && <p className="text-xs text-error">{npmNameError}</p>}
             <p className="text-xs text-muted-foreground">
-              包的 package.json 必须声明 dsh.bundle.patch，会话启动时在 microVM 内执行 npm install。
+              package.json 声明了 dsh.bundle.patch 时按 bundle 挂载，否则把包本身作为单个插件挂载；会话启动时在 microVM 内执行 npm install。
             </p>
           </div>
           <div className="flex flex-col gap-1.5">

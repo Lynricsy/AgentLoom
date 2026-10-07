@@ -276,18 +276,6 @@ describe('RuntimePluginController', () => {
       expect(service.register).not.toHaveBeenCalled();
     });
 
-    it('入口文件含 stdout 写入字面量返回 422', async () => {
-      const request = await createRegisterRequest({
-        entry: "export function apply() { console.log('hi'); }\n",
-      });
-
-      const error = await controller.register(request).catch((e) => e);
-
-      expect(error).toBeInstanceOf(RuntimePluginValidationException);
-      expect(error.detail).toContain('runtime 插件入口不得写 stdout');
-      expect(service.register).not.toHaveBeenCalled();
-    });
-
     it('包内缺少 patch 文件返回 422', async () => {
       const request = await createRegisterRequest({ patch: null });
 

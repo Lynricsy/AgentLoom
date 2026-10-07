@@ -51,8 +51,6 @@ import {
 } from './dto/runtime-plugin.dto';
 import {
   MAX_RUNTIME_PLUGIN_FILE_SIZE,
-  RUNTIME_PLUGIN_ENTRY_SCAN_BYTES,
-  RUNTIME_PLUGIN_FORBIDDEN_STDOUT_LITERALS,
   RUNTIME_PLUGIN_SUPPORTED_DSH_VERSION,
 } from './runtime-plugin.constants';
 import {
@@ -140,17 +138,13 @@ export class RuntimePluginController {
     }
 
     // zip 条目名不带开头的 `./`，manifest 里的相对路径需先对齐。
-    const bundlePatch = await this.readArchiveText(
+    const bundlePatch = await this.requireArchiveFile(
       archive.zip,
       runtime.patch.replace(/^(\.\/)+/, ''),
-    );
-    const entrySource = await this.readArchiveText(
-      archive.zip,
-      runtime.entry.replace(/^(\.\/)+/, ''),
-    );
+    ).async('string');
+    this.requireArchiveFile(archive.zip, runtime.entry.replace(/^(\.\/)+/, ''));
 
     this.assertBundlePatch(bundlePatch);
-    this.assertEntryDoesNotWriteStdout(entrySource);
 
     const created = await this.runtimePluginService.register({
       tenantId,
@@ -261,14 +255,14 @@ export class RuntimePluginController {
     return PluginManifestSchema.parse(raw);
   }
 
-  private async readArchiveText(zip: JSZip, path: string): Promise<string> {
+  private requireArchiveFile(zip: JSZip, path: string): JSZip.JSZipObject {
     const file = zip.file(path);
 
     if (!file) {
       throw new RuntimePluginValidationException(`插件包缺少 ${path}`);
     }
 
-    return file.async('string');
+    return file;
   }
 
   /** bundle patch 必须是 YAML 列表，且每项为 `insert` 或按 `id` 覆盖的条目。 */
@@ -303,21 +297,5 @@ export class RuntimePluginController {
         );
       }
     });
-  }
-
-  private assertEntryDoesNotWriteStdout(entrySource: string): void {
-    const head = Buffer.from(entrySource, 'utf8')
-      .subarray(0, RUNTIME_PLUGIN_ENTRY_SCAN_BYTES)
-      .toString('utf8');
-
-    if (
-      RUNTIME_PLUGIN_FORBIDDEN_STDOUT_LITERALS.some((literal) =>
-        head.includes(literal),
-      )
-    ) {
-      throw new RuntimePluginValidationException(
-        'runtime 插件入口不得写 stdout（会破坏 JSON-RPC 通道），请改用 ctx.logger 或 stderr',
-      );
-    }
   }
 }

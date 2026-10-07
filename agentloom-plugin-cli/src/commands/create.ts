@@ -340,8 +340,8 @@ function writeRuntimePluginFiles(
     `/**
  * ${options.name}：AgentLoom sandbox 运行态的 dsh runtime 插件（Cordis 插件）。
  *
- * 注意：stdout 是 dsh 的 JSON-RPC 通道，插件内禁止向 stdout 写任何内容，
- * 日志请改用 ctx.logger 或 console.error（stderr）。
+ * 注意：插件 import 的 @deepseek-ai/* 包必须在 package.json 的 peerDependencies 中声明，
+ * 由 microVM 内的 dsh 安装提供，不要打进插件包。
  */
 
 /** dsh-tools 注入的工具服务（只声明本模板用到的成员）。 */
@@ -404,7 +404,7 @@ export function apply(ctx: RuntimePluginContext): void {
 3. 显式指定私钥签名：\`agentloom-plugin publish -k <key>\`。
 4. 在 AgentLoom Studio 的「Runtime 插件」页上传签名后的 \`.alp\` 并启用，再在 Agent 画布的 harness 节点上挂载。
 
-插件入口禁止写 stdout（会破坏 dsh 的 JSON-RPC 通道），日志请用 \`ctx.logger\` 或 \`console.error\`。
+插件 import 的 \`@deepseek-ai/*\` 包必须声明在 \`package.json\` 的 \`peerDependencies\` 中（由 dsh 提供，不要打进包里），否则在 dsh 中加载失败。
 `,
     'utf8',
   );

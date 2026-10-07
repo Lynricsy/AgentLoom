@@ -10,15 +10,3 @@ export const RUNTIME_PLUGIN_NPM_NAME_PATTERN =
 
 /** npm 包名最大长度（npm registry 限制）。 */
 export const RUNTIME_PLUGIN_NPM_SPEC_MAX = 214;
-
-/** 入口文件 stdout 字面量扫描范围：前 1 MiB。 */
-export const RUNTIME_PLUGIN_ENTRY_SCAN_BYTES = 1024 * 1024;
-
-/**
- * 入口文件中禁止出现的 stdout 写入字面量：dsh 子进程的 stdout 是 JSON-RPC 通道，
- * 任何写入都会破坏协议帧。
- */
-export const RUNTIME_PLUGIN_FORBIDDEN_STDOUT_LITERALS = [
-  'process.stdout.write(',
-  'console.log(',
-] as const;
