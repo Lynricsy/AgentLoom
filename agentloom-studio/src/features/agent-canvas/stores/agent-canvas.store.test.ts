@@ -100,6 +100,27 @@ describe("agentCanvasStore", () => {
     expect(putMock).not.toHaveBeenCalled();
   });
 
+  it("new sandbox canvas wires the default sandbox into agent-main.sandbox-in", () => {
+    useAgentCanvasStore.getState().actions.applyServerSnapshot({
+      nodes: [],
+      edges: [],
+      runtimeMode: "sandbox",
+    } as never);
+
+    const { nodes, edges } = useAgentCanvasStore.getState();
+    const agentMain = nodes.find((node) => node.data.nodeType === ("agent-main" as never));
+    const sandbox = nodes.find((node) => node.data.nodeType === "sandbox");
+    expect(agentMain && sandbox).toBeTruthy();
+    expect(edges).toEqual([
+      expect.objectContaining({
+        source: sandbox!.id,
+        target: agentMain!.id,
+        sourceHandle: "sandbox-out",
+        targetHandle: "sandbox-in",
+      }),
+    ]);
+  });
+
   it("hydrates input schema, memory bindings, and sandbox lifecycle from the detail response", async () => {
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue({

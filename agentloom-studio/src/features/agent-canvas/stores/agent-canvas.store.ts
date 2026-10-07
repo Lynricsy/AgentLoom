@@ -250,7 +250,8 @@ function createRequiredNode(
 }
 
 const AGENT_MAIN_DEFAULT_POSITION = { x: 400, y: 300 };
-const SANDBOX_DEFAULT_POSITION = { x: 600, y: 300 };
+// Agent Main 卡片约 320px 宽，沙箱放在其左侧留出连线空间，避免两张卡片重叠
+const SANDBOX_DEFAULT_POSITION = { x: 0, y: 300 };
 const PORT_STATEFUL_AGENT_NODE_TYPES = new Set<AgentCanvasNodeType>([
   "smart-routing",
 ]);
@@ -550,18 +551,35 @@ function ensureRequiredNodes(
   return sanitizeNodesForRuntimeMode([...nodes, agentMainNode], runtimeMode);
 }
 
-function createInitialNodes(runtimeMode: AgentRuntimeMode): AgentCanvasNode[] {
-  const result: AgentCanvasNode[] = [];
+/** 新画布：Agent Main，sandbox 运行态再加一个已连到 sandbox-in 的沙箱节点（未连线时对话会直接失败） */
+function createInitialCanvas(runtimeMode: AgentRuntimeMode): {
+  nodes: AgentCanvasNode[];
+  edges: AgentCanvasEdge[];
+} {
+  const nodes: AgentCanvasNode[] = [];
+  const edges: AgentCanvasEdge[] = [];
   const agentMain = createRequiredNode(
     "agent-main",
     AGENT_MAIN_DEFAULT_POSITION,
   );
-  if (agentMain) result.push(agentMain);
+  if (agentMain) nodes.push(agentMain);
   if (runtimeMode === "sandbox") {
     const sandbox = createRequiredNode("sandbox", SANDBOX_DEFAULT_POSITION);
-    if (sandbox) result.push(sandbox);
+    if (sandbox) {
+      nodes.push(sandbox);
+      if (agentMain) {
+        edges.push({
+          id: createEdgeId(),
+          type: "smart",
+          source: sandbox.id,
+          target: agentMain.id,
+          sourceHandle: "sandbox-out",
+          targetHandle: "sandbox-in",
+        });
+      }
+    }
   }
-  return sanitizeNodesForRuntimeMode(result, runtimeMode);
+  return { nodes: sanitizeNodesForRuntimeMode(nodes, runtimeMode), edges };
 }
 
 export function canAddNodeType(
@@ -818,21 +836,24 @@ export const useAgentCanvasStore = create<
               const rawEdges = (data.edges as AgentCanvasEdge[]) ?? [];
               const isNewCanvas = rawNodes.length === 0;
               const runtimeMode = data.runtimeMode ?? "sandbox";
-              const normalizedNodes = sanitizeNodesForRuntimeMode(
-                normalizePersistedNodes(rawNodes, rawEdges),
-                runtimeMode,
-              );
-              const ensuredNodes = isNewCanvas
-                ? createInitialNodes(runtimeMode)
-                : ensureRequiredNodes(normalizedNodes, runtimeMode);
-              state.nodes = isNewCanvas
-                ? createInitialNodes(runtimeMode)
-                : ensuredNodes;
-              state.edges = sanitizeEdgesForRuntimeMode(
-                state.nodes,
-                rawEdges,
-                runtimeMode,
-              );
+              if (isNewCanvas) {
+                const initial = createInitialCanvas(runtimeMode);
+                state.nodes = initial.nodes;
+                state.edges = initial.edges;
+              } else {
+                state.nodes = ensureRequiredNodes(
+                  sanitizeNodesForRuntimeMode(
+                    normalizePersistedNodes(rawNodes, rawEdges),
+                    runtimeMode,
+                  ),
+                  runtimeMode,
+                );
+                state.edges = sanitizeEdgesForRuntimeMode(
+                  state.nodes,
+                  rawEdges,
+                  runtimeMode,
+                );
+              }
               state.viewport = data.viewport ?? { x: 0, y: 0, zoom: 1 };
               state.globalSandboxConfig = {
                 ...DEFAULT_SANDBOX_CONFIG,
