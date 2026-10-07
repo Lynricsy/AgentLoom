@@ -21,6 +21,7 @@ export function createMockSession(): MockSession {
     },
     prompt: vi.fn().mockResolvedValue(undefined),
     abort: vi.fn().mockResolvedValue(undefined),
+    resolvePermission: vi.fn().mockResolvedValue(true),
     subscribe: vi.fn((listener: AgentEventListener) => {
       listeners.push(listener);
       return () => {

@@ -1,535 +1,248 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
+import type { ChildProcess, spawn as spawnProcess } from 'node:child_process';
+import { JsonRpcLineTransport } from '@deepseek-ai/dsh-sdk-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Mock } from 'vitest';
 
-const mockPtyManager = { id: 'pty-manager' };
-const mockPtyRegister = vi.fn();
-const mockMcpRegister = vi.fn();
+import { createDshSessionFactory } from '../src/dsh/session-factory.js';
+import type { CreateSessionRequest, SandboxAgentEvent } from '../src/types.js';
 
-let sessionRoot: string;
+interface FakeChild extends EventEmitter {
+  stdout: PassThrough;
+  stderr: PassThrough;
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+  kill: (signal?: NodeJS.Signals) => boolean;
+}
 
-vi.mock('../src/pty-extension.js', () => ({
-  createPtyExtension: vi.fn(() => ({
-    manager: mockPtyManager,
-    register: mockPtyRegister,
-  })),
-}));
+function createFakeChild(): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.exitCode = null;
+  child.signalCode = null;
+  child.kill = vi.fn((signal?: NodeJS.Signals) => {
+    child.signalCode = signal ?? 'SIGTERM';
+    setImmediate(() => child.emit('exit', null, child.signalCode));
+    return true;
+  });
+  return child;
+}
 
-vi.mock('../src/mcp-extension.js', () => ({
-  createMcpExtension: vi.fn(() => ({
-    register: mockMcpRegister,
-  })),
-}));
+/** 在 bridge socket 上模拟 agentloom-bridge 的应答 */
+function startFakeBridge(socketPath: string, requests: Array<{ method: string; params: unknown }>): Server {
+  const server = createServer((socket) => {
+    const transport = new JsonRpcLineTransport(socket, socket);
+    transport.onRequest(async (method, params) => {
+      requests.push({ method, params });
+      switch (method) {
+        case 'session/prompt':
+          setTimeout(() => {
+            const sessionId = params['sessionId'];
+            const events: SandboxAgentEvent[] = [
+              { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'hi' } },
+              { type: 'agent_end', stopReason: 'end_turn' },
+            ];
+            transport.notify('event', { sessionId: 'someone-else', event: events[0] });
+            for (const event of events) transport.notify('event', { sessionId, event });
+          }, 10);
+          return { messageId: 'm1' };
+        case 'permission/resolve':
+          return { resolved: true };
+        default:
+          return {};
+      }
+    });
+    transport.start();
+  });
+  server.listen(socketPath);
+  return server;
+}
 
-import { createPiSessionFactory } from '../src/server.js';
-import { createMcpExtension } from '../src/mcp-extension.js';
-import { createPtyExtension } from '../src/pty-extension.js';
+const request: CreateSessionRequest = {
+  sessionId: 'sess-1',
+  settings: { defaultProvider: 'openai', defaultModel: 'gpt-x' },
+  models: {
+    providers: {
+      openai: { api: 'openai-completions', baseUrl: 'https://api.example.com/v1', models: [{ id: 'gpt-x' }] },
+    },
+  },
+  runtimeApiKeys: { openai: 'sk-test' },
+  nativeToolPolicy: { terminalEnabled: false },
+  remoteToolExecution: {
+    sessionId: 'sess-1',
+    callbackUrl: 'http://callback.local',
+    callbackToken: 'tok',
+    tools: [],
+  },
+};
 
-describe('createPiSessionFactory', () => {
+describe('createDshSessionFactory', () => {
+  let sessionRoot: string;
+  let servers: Server[];
+  const previousRoot = process.env['SANDBOX_SESSION_ROOT'];
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    sessionRoot = mkdtempSync(join(tmpdir(), 'agentloom-factory-test-'));
+    sessionRoot = mkdtempSync(join(tmpdir(), 'dsh-factory-'));
     process.env['SANDBOX_SESSION_ROOT'] = sessionRoot;
+    process.env['AGENTLOOM_TEST_SECRET_TOKEN'] = 'must-not-leak';
+    servers = [];
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
-    delete process.env['SANDBOX_SESSION_ROOT'];
+    for (const server of servers) server.close();
+    vi.restoreAllMocks();
+    delete process.env['AGENTLOOM_TEST_SECRET_TOKEN'];
+    if (previousRoot === undefined) delete process.env['SANDBOX_SESSION_ROOT'];
+    else process.env['SANDBOX_SESSION_ROOT'] = previousRoot;
     rmSync(sessionRoot, { recursive: true, force: true });
   });
 
-  it('should wire session-scoped settings, models, and system prompt into createAgentSession', async () => {
-    const session = {
-      prompt: vi.fn(),
-      abort: vi.fn(),
-      subscribe: vi.fn(),
-      dispose: vi.fn(),
-    };
-    const reload = vi.fn().mockResolvedValue(undefined);
-    const settingsManager = { id: 'settings-manager' };
-    const modelRuntime = {
-      id: 'model-runtime',
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      registerProvider: vi.fn(),
-    };
-    const sessionManager = { id: 'session-manager' };
-
-    const piAgent = {
-      createAgentSession: vi.fn().mockResolvedValue({ session }),
-      DefaultResourceLoader: vi.fn().mockImplementation(() => ({ reload })),
-      SessionManager: {
-        inMemory: vi.fn().mockReturnValue(sessionManager),
-      },
-      SettingsManager: {
-        inMemory: vi.fn().mockReturnValue(settingsManager),
-      },
-      ModelRuntime: {
-        create: vi.fn().mockResolvedValue(modelRuntime),
-      },
-    };
-
-    const setPtyManager = vi.fn();
-    const factory = createPiSessionFactory(piAgent, setPtyManager);
-
-    const result = await factory('/workspace/project', {
-      settings: {
-        defaultProvider: 'anthropic',
-        defaultModel: 'claude-opus-4-6',
-      },
-      systemPrompt: '你是测试沙箱里的 agent。',
-      mcpServers: {
-        github: {
-          transportType: 'sse',
-          url: 'https://example.com/sse',
-        },
-      },
-    }, {
-      sessionId: 'session-123',
-      remoteToolExecution: {
-        sessionId: 'session-123',
-        callbackUrl: 'http://worker-1:3000/api/v1/agent-runtime/sessions/session-123/tool-executions',
-        callbackToken: 'token-123',
-        tools: [
-          {
-            name: 'lookup_memory',
-            label: 'lookup_memory',
-            description: '检索记忆内容',
-            promptSnippet: '检索记忆内容',
-            parameters: {
-              type: 'object',
-              properties: {
-                query: { type: 'string' },
-              },
-              required: ['query'],
-              additionalProperties: false,
-            },
-          },
-        ],
-      },
+  it('应拉起 dsh 子进程、经 bridge 初始化会话，并完成 prompt / 审批 / 中止 / 销毁', async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const child = createFakeChild();
+    const spawn = vi.fn(() => {
+      servers.push(startFakeBridge(join(sessionRoot, 'sess-1', 'bridge.sock'), requests));
+      return child as unknown as ChildProcess;
+    });
+    const ptyChanges: string[] = [];
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: spawn as unknown as typeof spawnProcess,
+      onPtyBridgeChange: (_bridge, state) => ptyChanges.push(state),
     });
 
-    expect(result).toBe(session);
-    expect(createPtyExtension).toHaveBeenCalledWith({
-      onPtyEvent: expect.any(Function),
-      workdir: '/workspace/project',
-    });
-    expect(createMcpExtension).toHaveBeenCalledWith({
-      mcpServers: {
-        github: {
-          transportType: 'sse',
-          url: 'https://example.com/sse',
-        },
-      },
-    });
-    expect(setPtyManager).toHaveBeenCalledWith(mockPtyManager);
-    expect(piAgent.SettingsManager.inMemory).toHaveBeenCalledWith({
-      defaultProvider: 'anthropic',
-      defaultModel: 'claude-opus-4-6',
-    });
-    expect(piAgent.ModelRuntime.create).toHaveBeenCalledWith({
-      authPath: expect.stringMatching(/session-123\/auth\.json$/),
-      modelsPath: expect.stringMatching(/session-123\/models\.json$/),
-    });
-    expect(piAgent.DefaultResourceLoader).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cwd: '/workspace/project',
-        agentDir: expect.stringMatching(/session-123$/),
-        settingsManager,
-        systemPrompt: '你是测试沙箱里的 agent。',
-        extensionFactories: [mockMcpRegister, mockPtyRegister],
-      }),
+    const session = await factory('/workspace', {}, request);
+
+    expect(spawn).toHaveBeenCalledWith(
+      process.execPath,
+      ['/opt/dsh/lib/bin.js', '--profile', 'agentloom'],
+      expect.objectContaining({ cwd: '/workspace', stdio: ['ignore', 'pipe', 'pipe'] }),
     );
-    expect(reload).toHaveBeenCalledOnce();
-    expect(piAgent.SessionManager.inMemory).toHaveBeenCalledWith('/workspace/project');
-    expect(piAgent.createAgentSession).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cwd: '/workspace/project',
-        agentDir: expect.stringMatching(/session-123$/),
-        sessionManager,
-        settingsManager,
-        modelRuntime,
-        resourceLoader: expect.any(Object),
-        customTools: [
-          expect.objectContaining({
-            name: 'lookup_memory',
-            description: '检索记忆内容',
-            promptSnippet: '检索记忆内容',
-          }),
-        ],
-      }),
+    const env = (spawn.mock.calls[0] as unknown as [string, string[], { env: NodeJS.ProcessEnv }])[2].env;
+    expect(env['DSH_HOME']).toBe(join(sessionRoot, 'sess-1', 'dsh-home'));
+    expect(env['AGENTLOOM_PROVIDER_OPENAI_API_KEY']).toBe('sk-test');
+    expect(env['NODE_ENV']).toBe('production');
+    expect(env).not.toHaveProperty('AGENTLOOM_TEST_SECRET_TOKEN');
+    expect(existsSync(join(sessionRoot, 'sess-1', 'dsh-home', 'profiles', 'agentloom', 'cordis.patch.yml'))).toBe(
+      true,
     );
-    const createSessionOptions = piAgent.createAgentSession.mock.calls[0]?.[0];
-    expect(createSessionOptions).not.toHaveProperty('model');
-    // 0.84 移除了这三个入参；残留任何一个都说明装配没迁移干净。
-    expect(createSessionOptions).not.toHaveProperty('authStorage');
-    expect(createSessionOptions).not.toHaveProperty('modelRegistry');
-    expect(createSessionOptions).not.toHaveProperty('tools');
-    // 默认策略全启用 → 不下发拒绝清单，交回 pi 的内置默认工具集。
-    expect(createSessionOptions).not.toHaveProperty('excludeTools');
-  });
+    expect(requests.map((entry) => entry.method)).toEqual(['initialize', 'session/create']);
+    expect(requests[0]!.params).toEqual({
+      cwd: '/workspace',
+      provider: 'openai',
+      model: 'gpt-x',
+      remoteToolExecution: request.remoteToolExecution,
+      nativeToolPolicy: { terminalEnabled: false },
+    });
+    expect(ptyChanges).toEqual(['opened']);
 
-  it('nativeToolPolicy 关闭的内置工具应转成 excludeTools 拒绝清单', async () => {
-    const session = {
-      prompt: vi.fn(),
-      abort: vi.fn(),
-      subscribe: vi.fn(),
-      dispose: vi.fn(),
-    };
-    const piAgent = {
-      createAgentSession: vi.fn().mockResolvedValue({ session }),
-      DefaultResourceLoader: vi.fn().mockImplementation(() => ({
-        reload: vi.fn().mockResolvedValue(undefined),
-      })),
-      SessionManager: { inMemory: vi.fn().mockReturnValue({}) },
-      SettingsManager: { inMemory: vi.fn().mockReturnValue({}) },
-      ModelRuntime: {
-        create: vi.fn().mockResolvedValue({
-          setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-          registerProvider: vi.fn(),
-        }),
-      },
-    };
-
-    const factory = createPiSessionFactory(piAgent);
-
-    // 这是 workflow agent 与执行 worker 实际下发的只读策略。
-    await factory(
-      '/workspace/project',
-      {},
-      {
-        sessionId: 'session-readonly',
-        nativeToolPolicy: {
-          readEnabled: true,
-          writeEnabled: false,
-          editEnabled: false,
-          terminalEnabled: false,
-        },
-      },
-    );
-
-    const options = piAgent.createAgentSession.mock.calls[0]?.[0] as {
-      excludeTools?: string[];
-    };
-    // 终端要连 powershell 一起禁，否则 Windows guest 上禁 bash 等于没禁。
-    expect(options.excludeTools).toEqual([
-      'bash',
-      'powershell',
-      'edit',
-      'write',
+    const events: SandboxAgentEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+    // prompt 只在 agent_end 到达后 resolve（/v1/prompt 依赖这个时机）。
+    let eventsWhenSettled = -1;
+    await session.prompt('hello').then(() => {
+      eventsWhenSettled = events.length;
+    });
+    expect(eventsWhenSettled).toBe(2);
+    expect(events).toEqual([
+      { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'hi' } },
+      { type: 'agent_end', stopReason: 'end_turn' },
     ]);
-    // 允许清单会连 customTools/远程工具一起过滤，因此绝不能下发 tools。
-    expect(options).not.toHaveProperty('tools');
+    unsubscribe();
+    expect(requests.at(-1)).toEqual({ method: 'session/prompt', params: { sessionId: 'sess-1', text: 'hello' } });
+
+    await expect(session.resolvePermission('call-1', true)).resolves.toBe(true);
+    expect(requests.at(-1)).toEqual({
+      method: 'permission/resolve',
+      params: { callId: 'call-1', allowed: true },
+    });
+
+    await session.abort();
+    expect(requests.at(-1)).toEqual({ method: 'session/cancel', params: { sessionId: 'sess-1' } });
+
+    session.dispose();
+    expect(ptyChanges).toEqual(['opened', 'closed']);
+    await vi.waitFor(() => expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false));
+    expect(requests.slice(-2).map((entry) => entry.method)).toEqual(['session/dispose', 'shutdown']);
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
-  it('should apply session-level settings, models, prompt, MCP servers, and runtime API keys', async () => {
-    const session = {
-      prompt: vi.fn(),
-      abort: vi.fn(),
-      subscribe: vi.fn(),
-      dispose: vi.fn(),
-    };
-    const reload = vi.fn().mockResolvedValue(undefined);
-    const settingsManager = { id: 'settings-manager' };
-    const modelRuntime = {
-      id: 'model-runtime',
-      setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-      registerProvider: vi.fn(),
-    };
-    const sessionManager = { id: 'session-manager' };
-
-    const piAgent = {
-      createAgentSession: vi.fn().mockResolvedValue({ session }),
-      DefaultResourceLoader: vi.fn().mockImplementation(() => ({ reload })),
-      SessionManager: {
-        inMemory: vi.fn().mockReturnValue(sessionManager),
-      },
-      SettingsManager: {
-        inMemory: vi.fn().mockReturnValue(settingsManager),
-      },
-      ModelRuntime: {
-        create: vi.fn().mockResolvedValue(modelRuntime),
-      },
-    };
-
-    const factory = createPiSessionFactory(piAgent);
-
-    await factory(
-      '/workspace/project',
-      {
-        settings: {
-          compaction: { enabled: true },
-          retry: { enabled: true, maxRetries: 3 },
-          defaultProvider: 'anthropic',
-        },
-        systemPrompt: '静态提示词',
-        mcpServers: {
-          staticServer: {
-            transportType: 'sse',
-            url: 'https://static.example.com/sse',
-          },
-        },
-      },
-      {
-        sessionId: 'session-dynamic',
-        settings: {
-          defaultProvider: 'openai',
-          defaultModel: 'gpt-4.1',
-        },
-        systemPrompt: '动态提示词',
-        mcpServers: {
-          dynamicServer: {
-            transportType: 'stdio',
-            command: 'npx',
-            args: ['-y', 'dynamic-mcp'],
-          },
-        },
-        runtimeApiKeys: {
-          openai: 'sk-openai-runtime',
-        },
-        models: {
-          providers: {
-            openai: {
-              api: 'openai-completions',
-              apiKey: 'OPENAI_API_KEY',
-              baseUrl: 'https://api.openai.com/v1',
-              compat: {
-                supportsDeveloperRole: false,
-              },
-              models: [
-                {
-                  id: 'gpt-4.1',
-                  name: 'GPT-4.1',
-                },
-              ],
-            },
-          },
-        },
-      },
-    );
-
-    expect(createMcpExtension).toHaveBeenCalledWith({
-      mcpServers: {
-        dynamicServer: {
-          transportType: 'stdio',
-          command: 'npx',
-          args: ['-y', 'dynamic-mcp'],
-        },
-      },
+  it('dsh 子进程提前退出时应带 stderr 抛错并清理会话目录', async () => {
+    const child = createFakeChild();
+    const spawn = vi.fn(() => {
+      setImmediate(() => {
+        child.stderr.write('plugin tree failed to load: agentloom-bridge\n');
+        child.exitCode = 1;
+        child.emit('exit', 1, null);
+      });
+      return child as unknown as ChildProcess;
     });
-    expect(piAgent.SettingsManager.inMemory).toHaveBeenCalledWith({
-      compaction: { enabled: true },
-      retry: { enabled: true, maxRetries: 3 },
-      defaultProvider: 'openai',
-      defaultModel: 'gpt-4.1',
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: spawn as unknown as typeof spawnProcess,
     });
-    expect(modelRuntime.setRuntimeApiKey).toHaveBeenCalledWith(
-      'openai',
-      'sk-openai-runtime',
+
+    await expect(factory('/workspace', {}, request)).rejects.toThrow(
+      'dsh 运行时启动失败: plugin tree failed to load: agentloom-bridge',
     );
-    expect(modelRuntime.registerProvider).toHaveBeenCalledWith(
-      'openai',
-      expect.objectContaining({
-        api: 'openai-completions',
-        apiKey: 'OPENAI_API_KEY',
-        baseUrl: 'https://api.openai.com/v1',
-        models: [
-          expect.objectContaining({
-            id: 'gpt-4.1',
-            name: 'GPT-4.1',
-            reasoning: false,
-            input: ['text'],
-            cost: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-            },
-            contextWindow: 128000,
-            maxTokens: 16384,
-          }),
-        ],
-      }),
-    );
-    expect(piAgent.DefaultResourceLoader).toHaveBeenCalledWith(
-      expect.objectContaining({
-        systemPrompt: '动态提示词',
-      }),
-    );
+    expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false);
   });
 
-  it('同一工厂连续创建多个会话时应保持 session 级配置隔离', async () => {
-    const createSessionArgs: Array<Record<string, unknown>> = [];
-    const settingsManagers: Array<Record<string, unknown>> = [];
-    const modelRuntimes: Array<{
-      id: string;
-      setRuntimeApiKey: Mock;
-      registerProvider: Mock;
-    }> = [];
-    const resourceLoaders: Array<Record<string, unknown>> = [];
-
-    const piAgent = {
-      createAgentSession: vi.fn().mockImplementation(async (args) => {
-        createSessionArgs.push(args as Record<string, unknown>);
-        return {
-          session: {
-            prompt: vi.fn(),
-            abort: vi.fn(),
-            subscribe: vi.fn(),
-            dispose: vi.fn(),
-          },
-        };
-      }),
-      DefaultResourceLoader: vi.fn().mockImplementation((args) => {
-        const resourceLoader = {
-          id: `resource-loader-${resourceLoaders.length + 1}`,
-          reload: vi.fn().mockResolvedValue(undefined),
-        };
-        resourceLoaders.push({ ...resourceLoader, args });
-        return resourceLoader;
-      }),
-      SessionManager: {
-        inMemory: vi.fn().mockImplementation(() => ({
-          id: `session-manager-${createSessionArgs.length + 1}`,
-        })),
-      },
-      SettingsManager: {
-        inMemory: vi.fn().mockImplementation((settings) => {
-          const manager = {
-            id: `settings-manager-${settingsManagers.length + 1}`,
-            settings,
-          };
-          settingsManagers.push(manager);
-          return manager;
-        }),
-      },
-      ModelRuntime: {
-        create: vi.fn().mockImplementation(async () => {
-          const modelRuntime = {
-            id: `model-runtime-${modelRuntimes.length + 1}`,
-            setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
-            registerProvider: vi.fn(),
-          };
-          modelRuntimes.push(modelRuntime);
-          return modelRuntime;
-        }),
-      },
-    };
-
-    const factory = createPiSessionFactory(piAgent);
-    const staticConfig = {
-      settings: {
-        compaction: { enabled: true },
-      },
-      systemPrompt: '静态提示词',
-    };
-
-    await factory('/workspace/project', staticConfig, {
-      sessionId: 'session-a',
-      settings: {
-        defaultProvider: 'openai',
-        defaultModel: 'gpt-4.1',
-      },
-      systemPrompt: '会话 A 提示词',
-      runtimeApiKeys: {
-        openai: 'sk-openai-a',
-      },
-      models: {
-        providers: {
-          openai: {
-            api: 'openai-completions',
-            apiKey: 'OPENAI_API_KEY',
-            models: [{ id: 'gpt-4.1', name: 'GPT-4.1' }],
-          },
-        },
-      },
+  it('bridge socket 超时未就绪时应杀掉子进程', async () => {
+    const child = createFakeChild();
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: vi.fn(() => child as unknown as ChildProcess) as unknown as typeof spawnProcess,
+      startupTimeoutMs: 150,
     });
 
-    await factory('/workspace/project', staticConfig, {
-      sessionId: 'session-b',
-      settings: {
-        defaultProvider: 'anthropic',
-        defaultModel: 'claude-sonnet-4-6',
-      },
-      systemPrompt: '会话 B 提示词',
-      runtimeApiKeys: {
-        anthropic: 'ak-anthropic-b',
-      },
-      models: {
-        providers: {
-          anthropic: {
-            api: 'anthropic',
-            apiKey: 'ANTHROPIC_API_KEY',
-            models: [
-              {
-                id: 'claude-sonnet-4-6',
-                name: 'Claude Sonnet 4.6',
-              },
-            ],
-          },
-        },
-      },
+    await expect(factory('/workspace', {}, request)).rejects.toThrow('bridge socket 未就绪');
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it('缺少 defaultProvider / defaultModel 时应拒绝创建会话', async () => {
+    const spawn = vi.fn();
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: spawn as unknown as typeof spawnProcess,
     });
 
-    expect(settingsManagers).toHaveLength(2);
-    expect(settingsManagers[0]?.settings).toEqual({
-      compaction: { enabled: true },
-      defaultProvider: 'openai',
-      defaultModel: 'gpt-4.1',
-    });
-    expect(settingsManagers[1]?.settings).toEqual({
-      compaction: { enabled: true },
-      defaultProvider: 'anthropic',
-      defaultModel: 'claude-sonnet-4-6',
-    });
+    await expect(factory('/workspace', {}, { ...request, settings: {} })).rejects.toThrow(
+      'settings.defaultProvider / settings.defaultModel 必填',
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
 
-    // 每个会话必须拿到独立的 ModelRuntime，否则 runtime key 会跨会话泄漏。
-    expect(modelRuntimes).toHaveLength(2);
-    expect(modelRuntimes[0]?.setRuntimeApiKey).toHaveBeenCalledWith(
-      'openai',
-      'sk-openai-a',
-    );
-    expect(modelRuntimes[1]?.setRuntimeApiKey).toHaveBeenCalledWith(
-      'anthropic',
-      'ak-anthropic-b',
-    );
-    expect(modelRuntimes[0]?.setRuntimeApiKey).not.toHaveBeenCalledWith(
-      'anthropic',
-      'ak-anthropic-b',
-    );
-
-    expect(modelRuntimes[0]?.registerProvider).toHaveBeenCalledWith(
-      'openai',
-      expect.objectContaining({
-        api: 'openai-completions',
-      }),
-    );
-    expect(modelRuntimes[1]?.registerProvider).toHaveBeenCalledWith(
-      'anthropic',
-      expect.objectContaining({
-        api: 'anthropic',
-      }),
-    );
-
-    expect(resourceLoaders).toHaveLength(2);
-    expect(
-      resourceLoaders[0]?.args as { systemPrompt?: string } | undefined,
-    ).toMatchObject({
-      systemPrompt: '会话 A 提示词',
-    });
-    expect(
-      resourceLoaders[1]?.args as { systemPrompt?: string } | undefined,
-    ).toMatchObject({
-      systemPrompt: '会话 B 提示词',
+  it('静态 /config 配置应作为默认值合并到会话请求', async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const child = createFakeChild();
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: vi.fn(() => {
+        servers.push(startFakeBridge(join(sessionRoot, 'sess-1', 'bridge.sock'), requests));
+        return child as unknown as ChildProcess;
+      }) as unknown as typeof spawnProcess,
     });
 
-    expect(createSessionArgs).toHaveLength(2);
-    expect(createSessionArgs[0]?.settingsManager).toBe(settingsManagers[0]);
-    expect(createSessionArgs[1]?.settingsManager).toBe(settingsManagers[1]);
-    expect(createSessionArgs[0]?.modelRuntime).toBe(modelRuntimes[0]);
-    expect(createSessionArgs[1]?.modelRuntime).toBe(modelRuntimes[1]);
-    expect(createSessionArgs[0]?.resourceLoader).not.toBe(
-      createSessionArgs[1]?.resourceLoader,
+    const session = await factory(
+      '/workspace',
+      { settings: { defaultProvider: 'openai', defaultModel: 'from-config' }, systemPrompt: 'static prompt' },
+      { ...request, settings: undefined },
     );
+
+    expect(requests[0]!.params).toMatchObject({ provider: 'openai', model: 'from-config' });
+    session.dispose();
+    await vi.waitFor(() => expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false));
   });
 });

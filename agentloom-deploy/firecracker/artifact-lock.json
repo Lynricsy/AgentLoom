@@ -29,6 +29,6 @@
   "rootfs": {
     "archOciDigest": "sha256:a674898d53cc63b1af4023a468ccddc25ed9d7aecc3996f16171838a57085999",
     "archSnapshot": "2026/08/01",
-    "sizeGiB": 2
+    "sizeGiB": 4
   }
 }

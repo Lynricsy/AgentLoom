@@ -1,3 +1,4 @@
+import { isRecord } from "./type-guards.js";
 import type {
   SandboxAgentEvent,
   SseEventEnvelope,
@@ -8,7 +9,7 @@ import type {
 } from "./types.js";
 
 /**
- * 将 pi-coding-agent AgentSessionEvent 转换为 ACP SSE 事件参数。
+ * 将 dsh bridge 转发的 SandboxAgentEvent 转换为 ACP SSE 事件参数。
  * 返回 null 表示该事件不需要推送到客户端。
  */
 export function translateEvent(
@@ -93,6 +94,15 @@ export function translateEvent(
         type: "done",
         stopReason:
           typeof event.stopReason === "string" ? event.stopReason : undefined,
+      };
+    case "harness_trace":
+      return {
+        type: "harness_trace",
+        kind: event.kind,
+        ...(event.turn !== undefined ? { turn: event.turn } : {}),
+        ...(event.step !== undefined ? { step: event.step } : {}),
+        ...(event.data !== undefined ? { data: event.data } : {}),
+        timestamp: event.timestamp,
       };
     default:
       return null;
@@ -368,8 +378,4 @@ function readMessageEndError(
   }
 
   return "Assistant message ended with provider error";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

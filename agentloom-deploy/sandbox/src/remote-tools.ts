@@ -1,73 +1,111 @@
-import type { PiToolDefinition } from './agentloom-extension.js';
+import { isRecord } from './type-guards.js';
 import type {
-  RemoteToolDescriptor,
   RemoteToolExecutionConfig,
   RemoteToolExecutionRequest,
   RemoteToolExecutionResponse,
 } from './types.js';
-import {
-  createTextToolResult,
-  formatToolTextResult,
-} from './agentloom-extension.js';
 
 const REMOTE_TOOL_TIMEOUT_MS = 300_000;
 export const REMOTE_TOOL_CALLBACK_TOKEN_HEADER =
   'x-agentloom-sandbox-session-token';
 
-export function createRemoteToolDefinitions(
-  config?: RemoteToolExecutionConfig,
-): PiToolDefinition[] {
-  if (!config || config.tools.length === 0) {
-    return [];
+export interface RemoteToolUpdate {
+  status: string;
+  permissionRequest?: Record<string, unknown>;
+}
+
+export interface InvokeRemoteToolParams {
+  config: RemoteToolExecutionConfig;
+  toolName: string;
+  toolCallId: string;
+  input: unknown;
+  signal?: AbortSignal;
+  onUpdate: (update: RemoteToolUpdate) => void;
+}
+
+export interface RemoteToolInvocationResult {
+  /** 交给模型的文本结果 */
+  text: string;
+  /**
+   * 结构化结果：completed 为回调原始 result；denied 为
+   * `{__agentloomToolStatus:'denied', permissionRequest?, payload}`，
+   * 与 event-stream 的 normalizeToolExecutionEndResult 约定一致。
+   */
+  details: unknown;
+}
+
+/**
+ * 执行一次 AgentLoom 远程工具：先 preflight，server 要求授权时通知
+ * awaiting_permission，再以 execute 阶段阻塞等待 server 决议后的结果。
+ */
+export async function invokeRemoteTool(
+  params: InvokeRemoteToolParams,
+): Promise<RemoteToolInvocationResult> {
+  const { config, toolName, toolCallId, input, signal, onUpdate } = params;
+  const preflight = await executeRemoteTool(
+    config.callbackUrl,
+    config.callbackToken,
+    {
+      sessionId: config.sessionId,
+      toolCallId,
+      toolName,
+      input,
+      phase: 'preflight',
+    },
+    signal,
+  );
+
+  if (preflight.outcome !== 'awaiting_permission') {
+    return createRemoteToolResult(preflight);
   }
 
-  return config.tools.map((descriptor) => ({
-    name: descriptor.name,
-    label: descriptor.label,
-    description: descriptor.description,
-    ...(descriptor.promptSnippet
-      ? { promptSnippet: descriptor.promptSnippet }
-      : {}),
-    parameters: normalizeParameters(descriptor.parameters),
-    execute: async (toolCallId, params, signal, onUpdate) => {
-      const preflight = await executeRemoteTool(
-        config.callbackUrl,
-        config.callbackToken,
-        {
-          sessionId: config.sessionId,
-          toolCallId,
-          toolName: descriptor.name,
-          input: params,
-          phase: 'preflight',
-        },
-        signal,
-      );
+  onUpdate({
+    status: 'awaiting_permission',
+    permissionRequest: preflight.permissionRequest,
+  });
 
-      if (preflight.outcome === 'awaiting_permission') {
-        await emitToolUpdate(onUpdate, {
-          status: 'awaiting_permission',
-          permissionRequest: preflight.permissionRequest,
-        });
-
-        const resumed = await executeRemoteTool(
-          config.callbackUrl,
-          config.callbackToken,
-          {
-            sessionId: config.sessionId,
-            toolCallId,
-            toolName: descriptor.name,
-            input: params,
-            phase: 'execute',
-          },
-          signal,
-        );
-
-        return createRemoteToolResult(resumed);
-      }
-
-      return createRemoteToolResult(preflight);
+  const resumed = await executeRemoteTool(
+    config.callbackUrl,
+    config.callbackToken,
+    {
+      sessionId: config.sessionId,
+      toolCallId,
+      toolName,
+      input,
+      phase: 'execute',
     },
-  }));
+    signal,
+  );
+
+  return createRemoteToolResult(resumed);
+}
+
+export function formatToolTextResult(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === undefined) {
+    return 'null';
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+/** 远程工具描述里的参数 schema 非对象时，退化为接受任意对象 */
+export function normalizeRemoteToolParameters(
+  parameters: unknown,
+): Record<string, unknown> {
+  return isRecord(parameters)
+    ? parameters
+    : {
+        type: 'object',
+        additionalProperties: true,
+      };
 }
 
 async function executeRemoteTool(
@@ -98,20 +136,9 @@ async function executeRemoteTool(
   return (await response.json()) as RemoteToolExecutionResponse;
 }
 
-async function emitToolUpdate(
-  onUpdate: unknown,
-  value: unknown,
-): Promise<void> {
-  if (typeof onUpdate !== 'function') {
-    return;
-  }
-
-  await (onUpdate as (value: unknown) => void | Promise<void>)(value);
-}
-
 function createRemoteToolResult(
   response: RemoteToolExecutionResponse,
-) {
+): RemoteToolInvocationResult {
   const payload =
     response.outcome === 'denied'
       ? normalizeDeniedPayload(response)
@@ -134,7 +161,7 @@ function createRemoteToolResult(
         }
       : payload;
 
-  return createTextToolResult(formatToolTextResult(payload), details);
+  return { text: formatToolTextResult(payload), details };
 }
 
 function normalizeDeniedPayload(
@@ -165,19 +192,4 @@ async function readRemoteToolError(response: Response): Promise<string> {
   } catch {}
 
   return `Remote tool callback failed with status ${response.status}`;
-}
-
-function normalizeParameters(
-  parameters: RemoteToolDescriptor['parameters'],
-): Record<string, unknown> {
-  return isRecord(parameters)
-    ? parameters
-    : {
-        type: 'object',
-        additionalProperties: true,
-      };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -8,15 +8,6 @@ import {
   beforeEach,
 } from 'vitest';
 
-vi.mock('@earendil-works/pi-coding-agent', () => ({}));
-
-vi.mock('../src/pty-extension.js', () => ({
-  createPtyExtension: () => ({
-    manager: null,
-    register: () => ({}),
-  }),
-}));
-
 vi.mock('../src/acp-adapter.js', async () => {
   const actual = await vi.importActual<typeof AcpAdapter>(
     '../src/acp-adapter.js',
@@ -54,6 +45,7 @@ function createMockSession(): MockSession {
     },
     prompt: vi.fn().mockImplementation(async () => {}),
     abort: vi.fn().mockResolvedValue(undefined),
+    resolvePermission: vi.fn().mockResolvedValue(true),
     subscribe: vi.fn((listener: AgentEventListener) => {
       listeners.push(listener);
       return () => {
@@ -608,6 +600,47 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ success: true });
       expect(mockSession.abort).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('POST /v1/permission', () => {
+    it('参数不全应返回 400', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/permission',
+        payload: { sessionId: 's', toolCallId: 'c' },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('会话不存在应返回 404', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/permission',
+        payload: { sessionId: 'nonexistent-session', toolCallId: 'c', allowed: true },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('应把决议转给会话（dsh bridge 审批回路）', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/v1/session',
+        payload: {},
+      });
+      const { sessionId } = createRes.json();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/v1/permission',
+        payload: { sessionId, toolCallId: 'call-1', allowed: false },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ resolved: true });
+      expect(mockSession.resolvePermission).toHaveBeenCalledWith('call-1', false);
     });
   });
 

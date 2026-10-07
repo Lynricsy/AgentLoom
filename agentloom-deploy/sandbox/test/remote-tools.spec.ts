@@ -1,62 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  createRemoteToolDefinitions,
+  invokeRemoteTool,
+  normalizeRemoteToolParameters,
   REMOTE_TOOL_CALLBACK_TOKEN_HEADER,
 } from '../src/remote-tools.js';
+import type { RemoteToolExecutionConfig } from '../src/types.js';
 
-describe('createRemoteToolDefinitions', () => {
+const config: RemoteToolExecutionConfig = {
+  sessionId: 'session-123',
+  callbackUrl: 'http://callback.local/tool',
+  callbackToken: 'token-123',
+  tools: [],
+};
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { status: 200 });
+}
+
+describe('invokeRemoteTool', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('缺少配置时应返回空工具列表', () => {
-    expect(createRemoteToolDefinitions()).toEqual([]);
-  });
+  it('preflight 直接完成时应返回文本与结构化结果', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({ result: { items: ['memory-a'], total: 1 } }));
+    const onUpdate = vi.fn();
 
-  it('preflight 直接完成时应把远程工具回调结果包装为 pi 原生 content/details 结构', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          result: {
-            items: ['memory-a'],
-            total: 1,
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-
-    const [tool] = createRemoteToolDefinitions({
-      sessionId: 'session-123',
-      callbackUrl: 'http://callback.local/tool',
-      callbackToken: 'token-123',
-      tools: [
-        {
-          name: 'lookup_memory',
-          label: 'lookup_memory',
-          description: '检索记忆内容',
-          parameters: {
-            type: 'object',
-            properties: {
-              query: { type: 'string' },
-            },
-            required: ['query'],
-            additionalProperties: false,
-          },
-        },
-      ],
+    const result = await invokeRemoteTool({
+      config,
+      toolName: 'lookup_memory',
+      toolCallId: 'tool-call-1',
+      input: { query: 'redis' },
+      onUpdate,
     });
-
-    expect(tool).toBeDefined();
-
-    const result = await tool!.execute(
-      'tool-call-1',
-      { query: 'redis' },
-      undefined,
-      undefined,
-      {},
-    );
 
     expect(fetchSpy).toHaveBeenCalledWith(
       'http://callback.local/tool',
@@ -75,24 +54,10 @@ describe('createRemoteToolDefinitions', () => {
         }),
       }),
     );
+    expect(onUpdate).not.toHaveBeenCalled();
     expect(result).toEqual({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            {
-              items: ['memory-a'],
-              total: 1,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-      details: {
-        items: ['memory-a'],
-        total: 1,
-      },
+      text: JSON.stringify({ items: ['memory-a'], total: 1 }, null, 2),
+      details: { items: ['memory-a'], total: 1 },
     });
   });
 
@@ -100,77 +65,22 @@ describe('createRemoteToolDefinitions', () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            outcome: 'awaiting_permission',
-            permissionRequest: {
-              description: '主人授权后，Agent 将修改自身编排',
-            },
-          }),
-          { status: 200 },
-        ),
+        jsonResponse({
+          outcome: 'awaiting_permission',
+          permissionRequest: { description: '主人授权后，Agent 将修改自身编排' },
+        }),
       )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            result: {
-              success: true,
-              data: {
-                applied: true,
-              },
-            },
-          }),
-          { status: 200 },
-        ),
-      );
-
-    const [tool] = createRemoteToolDefinitions({
-      sessionId: 'session-123',
-      callbackUrl: 'http://callback.local/tool',
-      callbackToken: 'token-123',
-      tools: [
-        {
-          name: 'apply_change',
-          label: 'apply_change',
-          description: '应用自进化变更',
-          parameters: {
-            type: 'object',
-            properties: {
-              proposal: { type: 'object' },
-            },
-            required: ['proposal'],
-            additionalProperties: false,
-          },
-        },
-      ],
-    });
+      .mockResolvedValueOnce(jsonResponse({ result: { success: true, data: { applied: true } } }));
     const onUpdate = vi.fn();
 
-    const result = await tool!.execute(
-      'tool-call-2',
-      {
-        proposal: { summary: '新增一个 skill 节点' },
-      },
-      undefined,
+    const result = await invokeRemoteTool({
+      config,
+      toolName: 'apply_change',
+      toolCallId: 'tool-call-2',
+      input: { proposal: { summary: '新增一个 skill 节点' } },
       onUpdate,
-      {},
-    );
+    });
 
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      'http://callback.local/tool',
-      expect.objectContaining({
-        body: JSON.stringify({
-          sessionId: 'session-123',
-          toolCallId: 'tool-call-2',
-          toolName: 'apply_change',
-          input: {
-            proposal: { summary: '新增一个 skill 节点' },
-          },
-          phase: 'preflight',
-        }),
-      }),
-    );
     expect(fetchSpy).toHaveBeenNthCalledWith(
       2,
       'http://callback.local/tool',
@@ -179,41 +89,55 @@ describe('createRemoteToolDefinitions', () => {
           sessionId: 'session-123',
           toolCallId: 'tool-call-2',
           toolName: 'apply_change',
-          input: {
-            proposal: { summary: '新增一个 skill 节点' },
-          },
+          input: { proposal: { summary: '新增一个 skill 节点' } },
           phase: 'execute',
         }),
       }),
     );
     expect(onUpdate).toHaveBeenCalledWith({
       status: 'awaiting_permission',
-      permissionRequest: {
-        description: '主人授权后，Agent 将修改自身编排',
-      },
+      permissionRequest: { description: '主人授权后，Agent 将修改自身编排' },
     });
-    expect(result).toEqual({
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            {
-              success: true,
-              data: {
-                applied: true,
-              },
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-      details: {
-        success: true,
-        data: {
-          applied: true,
-        },
-      },
+    expect(result.details).toEqual({ success: true, data: { applied: true } });
+  });
+
+  it('denied 时 details 应带 __agentloomToolStatus 供 tool_call_end 识别', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ outcome: 'denied', result: undefined, permissionRequest: { description: 'x' } }),
+    );
+
+    const result = await invokeRemoteTool({
+      config,
+      toolName: 'apply_change',
+      toolCallId: 'tool-call-3',
+      input: {},
+      onUpdate: vi.fn(),
     });
+
+    expect(result.details).toEqual({
+      __agentloomToolStatus: 'denied',
+      permissionRequest: { description: 'x' },
+      payload: { success: false, data: { denied: true }, error: 'Permission denied' },
+    });
+  });
+
+  it('回调非 2xx 时应抛出 server 返回的错误信息', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ message: 'session token invalid' }), { status: 403 }),
+    );
+
+    await expect(
+      invokeRemoteTool({ config, toolName: 't', toolCallId: 'c', input: {}, onUpdate: vi.fn() }),
+    ).rejects.toThrow('session token invalid');
+  });
+});
+
+describe('normalizeRemoteToolParameters', () => {
+  it('非对象 schema 应退化为接受任意对象', () => {
+    expect(normalizeRemoteToolParameters(undefined)).toEqual({
+      type: 'object',
+      additionalProperties: true,
+    });
+    expect(normalizeRemoteToolParameters({ type: 'object' })).toEqual({ type: 'object' });
   });
 });

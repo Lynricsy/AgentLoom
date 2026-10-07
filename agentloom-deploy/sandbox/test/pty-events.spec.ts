@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { SandboxAgentEvent } from '../src/types.js';
 
 vi.mock('node-pty', () => ({ spawn: vi.fn() }));
-vi.mock('@earendil-works/pi-coding-agent', () => ({}));
 
 vi.mock('../src/acp-adapter.js', async () => {
   const actual = await vi.importActual<typeof import('../src/acp-adapter.js')>('../src/acp-adapter.js');
@@ -18,20 +17,17 @@ vi.mock('../src/acp-adapter.js', async () => {
 
 import { translateEvent } from '../src/event-stream.js';
 import { createSandboxServer } from '../src/server.js';
-import type { PTYManager } from '../src/pty/pty-manager.js';
+import type { PtyBridge } from '../src/dsh/session-factory.js';
+import { createMockSessionFactory } from './test-helpers.js';
 
-function createMockPtyManager(overrides: Partial<PTYManager> = {}): PTYManager {
+type MockPtyBridge = { [K in keyof PtyBridge]: Mock<PtyBridge[K]> };
+
+function createMockPtyBridge(): MockPtyBridge {
   return {
-    spawn: vi.fn(),
-    write: vi.fn(),
-    read: vi.fn(),
-    list: vi.fn().mockReturnValue([]),
-    kill: vi.fn(),
-    getSession: vi.fn().mockReturnValue(null),
-    cleanup: vi.fn(),
-    getBufferDump: vi.fn().mockReturnValue(''),
-    ...overrides,
-  } as unknown as PTYManager;
+    list: vi.fn<PtyBridge['list']>().mockResolvedValue([]),
+    write: vi.fn<PtyBridge['write']>().mockResolvedValue(undefined),
+    bufferDump: vi.fn<PtyBridge['bufferDump']>().mockResolvedValue(null),
+  };
 }
 
 describe('translateEvent — PTY events', () => {
@@ -107,22 +103,17 @@ describe('translateEvent — PTY events', () => {
   });
 });
 
-describe('PTY REST endpoints', () => {
+describe('PTY REST endpoints（经 dsh bridge 代理）', () => {
   let app: FastifyInstance;
-  let mockPtyManager: PTYManager;
+  let ptyBridge: MockPtyBridge;
 
   beforeEach(async () => {
-    mockPtyManager = createMockPtyManager();
+    ptyBridge = createMockPtyBridge();
     app = await createSandboxServer({
       host: '127.0.0.1',
       port: 0,
-      sessionFactory: vi.fn().mockResolvedValue({
-        prompt: vi.fn(),
-        abort: vi.fn(),
-        subscribe: vi.fn(() => () => {}),
-        dispose: vi.fn(),
-      }),
-      getPtyManager: () => mockPtyManager,
+      sessionFactory: createMockSessionFactory().factory,
+      getPtyBridge: () => ptyBridge,
     });
   });
 
@@ -132,9 +123,7 @@ describe('PTY REST endpoints', () => {
 
   describe('POST /v1/pty/buffer-dump', () => {
     it('should return buffer lines for existing session', async () => {
-      const mockSession = { id: 'pty_test1', status: 'running' };
-      vi.mocked(mockPtyManager.getSession).mockReturnValue(mockSession as any);
-      vi.mocked(mockPtyManager.getBufferDump).mockReturnValue('line1\nline2\nline3');
+      ptyBridge.bufferDump.mockResolvedValue('line1\nline2\nline3');
 
       const response = await app.inject({
         method: 'POST',
@@ -146,12 +135,10 @@ describe('PTY REST endpoints', () => {
       const body = response.json();
       expect(body.lines).toEqual(['line1', 'line2', 'line3']);
       expect(body.totalLines).toBe(3);
-      expect(mockPtyManager.getBufferDump).toHaveBeenCalledWith('pty_test1');
+      expect(ptyBridge.bufferDump).toHaveBeenCalledWith('pty_test1');
     });
 
     it('should return 404 for non-existent session', async () => {
-      vi.mocked(mockPtyManager.getSession).mockReturnValue(null);
-
       const response = await app.inject({
         method: 'POST',
         url: '/v1/pty/buffer-dump',
@@ -175,12 +162,12 @@ describe('PTY REST endpoints', () => {
   });
 
   describe('GET /v1/pty/sessions', () => {
-    it('should return session list from ptyManager', async () => {
+    it('should return session list from the bridge', async () => {
       const sessions = [
         { id: 'pty_a', pid: 10, command: 'bash', status: 'running' },
         { id: 'pty_b', pid: 20, command: 'node', status: 'exited' },
       ];
-      vi.mocked(mockPtyManager.list).mockReturnValue(sessions as any);
+      ptyBridge.list.mockResolvedValue(sessions);
 
       const response = await app.inject({
         method: 'GET',
@@ -202,13 +189,11 @@ describe('PTY REST endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ success: true });
-      expect(mockPtyManager.write).toHaveBeenCalledWith('pty_test1', 'ls -la\n');
+      expect(ptyBridge.write).toHaveBeenCalledWith('pty_test1', 'ls -la\n');
     });
 
     it('should return 404 when PTY session not found', async () => {
-      vi.mocked(mockPtyManager.write).mockImplementation(() => {
-        throw new Error('PTY session not found: pty_missing');
-      });
+      ptyBridge.write.mockRejectedValue(new Error('PTY session not found: pty_missing'));
 
       const response = await app.inject({
         method: 'POST',
@@ -230,5 +215,28 @@ describe('PTY REST endpoints', () => {
       expect(response.statusCode).toBe(400);
       expect(response.json().error).toContain('sessionId and data are required');
     });
+  });
+
+  it('should answer 503 / empty list when no dsh session exists yet', async () => {
+    const bare = await createSandboxServer({
+      host: '127.0.0.1',
+      port: 0,
+      sessionFactory: createMockSessionFactory().factory,
+      getPtyBridge: () => null,
+    });
+    try {
+      expect((await bare.inject({ method: 'GET', url: '/v1/pty/sessions' })).json()).toEqual([]);
+      expect(
+        (
+          await bare.inject({
+            method: 'POST',
+            url: '/v1/pty/write',
+            payload: { sessionId: 'pty_x', data: 'y' },
+          })
+        ).statusCode,
+      ).toBe(503);
+    } finally {
+      await bare.close();
+    }
   });
 });

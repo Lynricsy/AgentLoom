@@ -1,19 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEventListener, IAgentSession, SandboxAgentEvent } from '../src/types.js';
 
-vi.mock('../src/pty-extension.js', () => ({
-  createPtyExtension: vi.fn(() => ({
-    manager: null,
-    register: vi.fn(),
-  })),
-}));
-
-vi.mock('../src/mcp-extension.js', () => ({
-  createMcpExtension: vi.fn(() => ({
-    register: vi.fn(),
-  })),
-}));
-
 import { createSandboxServer } from '../src/server.js';
 
 function createAsyncStreamingSession(): IAgentSession & {
