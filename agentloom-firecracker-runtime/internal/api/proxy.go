@@ -149,7 +149,7 @@ func (server *Server) guestProxy(response http.ResponseWriter, request *http.Req
 	defer upstreamResponse.Body.Close()
 	copyResponseHeaders(response.Header(), upstreamResponse.Header)
 	response.WriteHeader(upstreamResponse.StatusCode)
-	_, _ = io.Copy(response, upstreamResponse.Body)
+	copyFlushing(response, upstreamResponse.Body)
 }
 
 func (server *Server) rewriteCallbacks(metadata manager.Metadata, path string, content []byte) ([]byte, error) {
@@ -234,6 +234,26 @@ func (server *Server) callback(response http.ResponseWriter, request *http.Reque
 	copyResponseHeaders(response.Header(), upstreamResponse.Header)
 	response.WriteHeader(upstreamResponse.StatusCode)
 	_, _ = io.Copy(response, io.LimitReader(upstreamResponse.Body, 1024*1024))
+}
+
+// copyFlushing 逐块转发并立即 Flush：/v1/prompt 是 SSE 流，io.Copy 会被 ResponseWriter 缓冲到整轮结束。
+func copyFlushing(response http.ResponseWriter, body io.Reader) {
+	controller := http.NewResponseController(response)
+	buffer := make([]byte, 32*1024)
+	for {
+		count, readErr := body.Read(buffer)
+		if count > 0 {
+			if _, writeErr := response.Write(buffer[:count]); writeErr != nil {
+				return
+			}
+			if flushErr := controller.Flush(); flushErr != nil && !errors.Is(flushErr, http.ErrNotSupported) {
+				return
+			}
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }
 
 func copyRequestHeaders(target, source http.Header) {

@@ -1,14 +1,53 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentloom/agentloom-firecracker-runtime/internal/manager"
 )
+
+// SSE 回归：guest 的 /v1/prompt 事件必须在上游仍未结束时就到达调用方，而不是整轮结束后一次性送达。
+func TestCopyFlushingDeliversChunksBeforeUpstreamEnds(t *testing.T) {
+	upstream, upstreamWriter := io.Pipe()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "text/event-stream")
+		response.WriteHeader(http.StatusOK)
+		copyFlushing(response, upstream)
+	}))
+	// defer 后进先出：先关闭上游让 handler 返回，server.Close 才不会等待挂起的 handler。
+	defer server.Close()
+	defer upstreamWriter.Close()
+
+	// 上游只写首个事件且不结束；未 Flush 时响应头与正文都滞留在服务端缓冲里。
+	go func() { _, _ = upstreamWriter.Write([]byte("data: first\n\n")) }()
+
+	line := make(chan string, 1)
+	go func() {
+		response, err := http.Get(server.URL)
+		if err != nil {
+			line <- "error: " + err.Error()
+			return
+		}
+		defer response.Body.Close()
+		text, _ := bufio.NewReader(response.Body).ReadString('\n')
+		line <- text
+	}()
+	select {
+	case text := <-line:
+		if text != "data: first\n" {
+			t.Fatalf("unexpected first line %q", text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("first SSE event was buffered until upstream completion")
+	}
+}
 
 // D-10 回归：relay 的回调令牌头名必须与 guest / server 契约一致。
 func TestCallbackTokenHeaderMatchesGuestAndServerContract(t *testing.T) {
