@@ -25,7 +25,7 @@ const TIME_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
 /**
  * 按 turn 切分时间线：遇到 `turn/start` 或新的 turn 编号就开新组；不带 turn 的事件
  * （如 user/message、system/message）归入当前组，避免打散一轮的上下文。
- * 每条用户消息可能由新的 dsh 进程处理，turn 编号会从 1 重新开始，因此不能只比较编号。
+ * dsh 会话被重建时 turn 编号会从 1 重新开始，因此不能只比较编号。
  */
 function groupByTurn(entries: HarnessTraceEntry[]): TraceTurnGroup[] {
   const groups: TraceTurnGroup[] = [];

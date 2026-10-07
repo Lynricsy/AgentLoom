@@ -58,7 +58,7 @@ docType: howto
 
 ## 6. 查看 Harness 事件
 
-对话页右栏顶部有「电脑」与「Harness」两个标签。切到「Harness」，Agent 执行时按轮次列出运行时事件，每次收到 `turn/start` 开一个新的 `Turn N` 分组；同一对话的每条消息都会起一个新的 dsh 进程，所以每条消息的轮次都从 `Turn 1` 开始，按出现顺序依次往下排。事件包括 `turn/start`、`step/start`、`tool/call`、`tool/result`、`step/end`、`turn/end`：`tool/call` 行显示工具名，`tool/result` 行显示「成功」或「失败」，`turn/end` 行显示结束原因，`assistant/message` 行显示输入与输出 token 数。还没有事件时显示「等待 dsh 事件…」。
+对话页右栏顶部有「电脑」与「Harness」两个标签。切到「Harness」，Agent 执行时按轮次列出运行时事件，每次收到 `turn/start` 开一个新的 `Turn N` 分组。同一对话的后续消息通常复用同一个 dsh 会话，编号依次递增；会话被重建（例如由另一个 worker 处理、沙箱重建）时编号会从 `Turn 1` 重新开始，分组仍按出现顺序往下排。事件包括 `turn/start`、`step/start`、`tool/call`、`tool/result`、`step/end`、`turn/end`：`tool/call` 行显示工具名，`tool/result` 行显示「成功」或「失败」，`turn/end` 行显示结束原因，`assistant/message` 行显示输入与输出 token 数。还没有事件时显示「等待 dsh 事件…」。
 
 这些事件只在页面打开时实时接收，不保存在对话记录里：刷新页面或重新打开对话后，之前的事件不再显示。
 
