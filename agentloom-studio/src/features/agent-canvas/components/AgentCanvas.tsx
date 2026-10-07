@@ -45,6 +45,7 @@ const NODE_TYPES = {
   memory: CanvasNodeShell,
   output: CanvasNodeShell,
   control: CanvasNodeShell,
+  plugin: CanvasNodeShell,
 };
 
 const EDGE_TYPES = {
@@ -185,7 +186,8 @@ export const AgentCanvas = memo(function AgentCanvas({
         proOptions={{ hideAttribution: true }}
       >
         <Background />
-        <Controls showInteractive={false} />
+        {/* 节点面板占满左侧整列，缩放控件放右下角避免被遮挡 */}
+        <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
 
       {!isMobileReadOnly && (

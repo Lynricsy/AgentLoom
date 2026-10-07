@@ -144,11 +144,12 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
     onValidationChange(hasErrors)
   }, [hasErrors, onValidationChange])
 
+  // 面板对缺省 source 按 package 展示，写回时必须显式落盘，否则服务端编译拒绝缺少 source 的节点
   const patchConfig = useCallback(
     (patch: Record<string, unknown>) => {
-      onApply({ ...config, ...patch })
+      onApply({ ...config, source: parsed.source, ...patch })
     },
-    [config, onApply],
+    [config, onApply, parsed.source],
   )
 
   const handleSelectPlugin = useCallback(

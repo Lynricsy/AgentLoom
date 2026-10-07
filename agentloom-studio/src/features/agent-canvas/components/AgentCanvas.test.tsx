@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
+import {
+  AGENT_CANVAS_NODE_REGISTRY,
+  getAgentNodeTypeConfig,
+} from '@/features/canvas/registry/agent-canvas-registry';
 import type { CanvasNodeData } from '@/features/canvas';
 import {
   DESKTOP_WIDTH,
@@ -169,6 +172,18 @@ describe('AgentCanvas', () => {
         targetHandle: 'memory-in',
       }),
     ).toBe(true);
+  });
+
+  // 节点 type 取自注册表 category；缺少对应渲染器时 React Flow 回退默认节点，端口不可连线
+  it('registers a renderer for every agent canvas node category', () => {
+    render(<AgentCanvas agentId="agent-1" />);
+
+    const categories = [...AGENT_CANVAS_NODE_REGISTRY.values()].map(
+      (config) => config.category,
+    );
+    expect(Object.keys(mocks.lastReactFlowProps?.nodeTypes ?? {})).toEqual(
+      expect.arrayContaining(categories),
+    );
   });
 
   describe('小屏只读浏览（<lg）', () => {
