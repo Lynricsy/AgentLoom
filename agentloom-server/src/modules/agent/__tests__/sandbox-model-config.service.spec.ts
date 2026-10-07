@@ -308,11 +308,33 @@ describe('SandboxModelConfigService', () => {
   });
 
   it('不可重试 HTTP 状态保持原错误消息', async () => {
-    runtimeDriver.requestGuest.mockResolvedValue({ ok: false, status: 401 });
+    runtimeDriver.requestGuest.mockResolvedValue(
+      new Response(null, { status: 401 }),
+    );
     await expect(
       service.initializeContainerSession('runtime-1', {
         sessionId: 'session-1',
       }),
     ).rejects.toThrow('Container session init failed with status 401');
+  });
+
+  it('guest 以 422 拒绝会话时不重试，并把 guest 给出的原因带进错误', async () => {
+    const message =
+      'runtime 插件未能加载:\n- com.acme.demo（条目 demo，模块 /run/x/dist/index.js）: 插件激活失败: boom';
+    runtimeDriver.requestGuest.mockResolvedValue(
+      new Response(
+        JSON.stringify({ statusCode: 422, error: 'Unprocessable Entity', message }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(
+      service.initializeContainerSession('runtime-1', {
+        sessionId: 'session-1',
+      }),
+    ).rejects.toThrow(
+      `Container session init failed with status 422: ${message}`,
+    );
+    expect(runtimeDriver.requestGuest).toHaveBeenCalledTimes(1);
   });
 });

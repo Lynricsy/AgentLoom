@@ -51,6 +51,8 @@ const SESSION_INIT_NPM_PLUGIN_INSTALL_MS = 180_000;
 /** 单次请求超时之外留给就绪重试的余量 */
 const SESSION_INIT_RETRY_HEADROOM_MS = 30_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
+/** 会话初始化失败时附带的 guest 错误原文上限 */
+const GUEST_ERROR_DETAIL_MAX_CHARS = 4096;
 const RETRYABLE_SESSION_INIT_STATUSES = new Set([
   404, 408, 425, 429, 500, 502, 503, 504,
 ]);
@@ -683,8 +685,10 @@ export class SandboxModelConfigService {
           return;
         }
 
+        // guest 对插件加载、profile 生成等确定性失败返回 422，message 是给用户看的原因。
+        const detail = await this.readGuestErrorMessage(response);
         const responseError = new Error(
-          `Container session init failed with status ${response.status}`,
+          `Container session init failed with status ${response.status}${detail ? `: ${detail}` : ''}`,
         );
         if (!this.isRetryableSessionInitStatus(response.status)) {
           throw responseError;
@@ -711,6 +715,19 @@ export class SandboxModelConfigService {
         `Container session init did not become ready within ${totalTimeoutMs}ms`,
       )
     );
+  }
+
+  private async readGuestErrorMessage(response: Response): Promise<string> {
+    const text = (await response.text().catch(() => '')).trim();
+    let message = text;
+    try {
+      const body = this.asRecord(JSON.parse(text));
+      const field = body?.['message'] ?? body?.['error'];
+      if (typeof field === 'string') message = field;
+    } catch {
+      // 非 JSON 响应体按原文展示。
+    }
+    return message.slice(0, GUEST_ERROR_DETAIL_MAX_CHARS);
   }
 
   private resolveSessionInitTimeouts(payload: Record<string, unknown>): {
