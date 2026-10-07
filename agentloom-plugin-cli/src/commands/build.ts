@@ -4,14 +4,18 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
 } from 'node:fs';
-import { delimiter, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { delimiter, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ZipArchive } from 'archiver';
+import { build as esbuild } from 'esbuild';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
@@ -115,9 +119,26 @@ async function createArchive(
   });
 }
 
+/** sandbox 会话下发通道（/v1/session 的 files）的单文件与合计上限 */
+const RUNTIME_FILE_MAX_BYTES = 1024 * 1024;
+const RUNTIME_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
+const MODULE_FILE_PATTERN = /\.m?js$/;
+
+/**
+ * 打包后的模块若含 CommonJS 依赖，esbuild 的 require 垫片要求作用域里有 `require`；
+ * ESM 下用 createRequire 提供（node 内置模块之外的 require 已被内联）。
+ */
+const ESM_REQUIRE_BANNER =
+  "import { createRequire as __agentloomCreateRequire } from 'node:module';\nconst require = __agentloomCreateRequire(import.meta.url);";
+
 /**
  * runtime 插件（dsh Cordis 插件包）打包：manifest.json + cordis.patch.yml + dist/ +
  * package.json + README.md（存在时）。不产出 node-definitions.json，也不支持 --wasm。
+ *
+ * 包内不带 node_modules，所以 dist/ 中的 JS 由 esbuild 重新打包为自包含的 ESM：
+ * 第三方依赖内联，`@deepseek-ai/*`、peerDependencies 与 node 内置模块保持外部
+ * import，由 microVM 内的 dsh 安装提供。dist/ 下每个 JS 文件都是一个入口（patch
+ * 可以引用其中任意一个），共享代码拆为公共 chunk，模块状态不会被复制。
  */
 async function buildRuntimePluginArchive(
   cwd: string,
@@ -140,50 +161,130 @@ async function buildRuntimePluginArchive(
     }
   }
 
-  mkdirSync(outputDir, { recursive: true });
-  const archivePath = resolve(
-    outputDir,
-    `${manifest.id}-${manifest.version}.alp`,
-  );
+  const stagingDir = mkdtempSync(join(tmpdir(), 'agentloom-runtime-plugin-'));
+  try {
+    const bundledFiles = await bundleRuntimeModules(cwd, stagingDir, runtimeEntry);
 
-  await new Promise<void>((resolveArchive, rejectArchive) => {
-    const output = createWriteStream(archivePath);
-    const archive = new ZipArchive({ zlib: { level: 9 } });
-
-    output.on('close', () => resolveArchive());
-    output.on('error', rejectArchive);
-    archive.on('error', rejectArchive);
-
-    archive.pipe(output);
-    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, {
-      name: 'manifest.json',
-    });
-    archive.file(resolve(cwd, patchEntry), { name: patchEntry });
-
-    const distDir = resolve(cwd, 'dist');
-    if (existsSync(distDir)) {
-      archive.directory(distDir, 'dist');
-    }
-    // 入口不在 dist/ 下时单独打入，保证服务端能按 manifest.runtime.entry 找到它。
-    if (!runtimeEntry.startsWith('dist/')) {
-      archive.file(resolve(cwd, runtimeEntry), { name: runtimeEntry });
-    }
-    archive.file(resolve(cwd, 'package.json'), { name: 'package.json' });
-
+    const archiveFiles = new Map<string, string>([
+      [patchEntry, resolve(cwd, patchEntry)],
+      ...bundledFiles,
+      ['package.json', resolve(cwd, 'package.json')],
+    ]);
     const readmePath = resolve(cwd, 'README.md');
     if (existsSync(readmePath)) {
-      archive.file(readmePath, { name: 'README.md' });
+      archiveFiles.set('README.md', readmePath);
+    }
+    const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
+    let totalBytes = Buffer.byteLength(manifestContent);
+    for (const [name, filePath] of archiveFiles) {
+      const { size } = statSync(filePath);
+      if (size > RUNTIME_FILE_MAX_BYTES) {
+        throw new Error(
+          `runtime 插件文件 ${name} 为 ${size} 字节，超过会话下发通道的单文件上限 1 MiB。`,
+        );
+      }
+      totalBytes += size;
+    }
+    if (totalBytes > RUNTIME_TOTAL_MAX_BYTES) {
+      throw new Error(
+        `runtime 插件包内文件合计 ${totalBytes} 字节，超过会话下发通道的上限 16 MiB。`,
+      );
     }
 
-    void archive.finalize();
+    mkdirSync(outputDir, { recursive: true });
+    const archivePath = resolve(
+      outputDir,
+      `${manifest.id}-${manifest.version}.alp`,
+    );
+
+    await new Promise<void>((resolveArchive, rejectArchive) => {
+      const output = createWriteStream(archivePath);
+      const archive = new ZipArchive({ zlib: { level: 9 } });
+
+      output.on('close', () => resolveArchive());
+      output.on('error', rejectArchive);
+      archive.on('error', rejectArchive);
+
+      archive.pipe(output);
+      archive.append(manifestContent, { name: 'manifest.json' });
+      for (const [name, filePath] of archiveFiles) {
+        archive.file(filePath, { name });
+      }
+
+      void archive.finalize();
+    });
+
+    return {
+      archivePath,
+      manifest,
+      nodeCount: 0,
+      sizeBytes: statSync(archivePath).size,
+    };
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 把 dist/ 下的 JS（以及不在 dist/ 下的 runtime.entry）打包进 stagingDir，返回
+ * 归档条目名 → 暂存文件路径。dist/ 中的非 JS 文件原样带上，类型声明与 source map 除外。
+ */
+async function bundleRuntimeModules(
+  cwd: string,
+  stagingDir: string,
+  runtimeEntry: string,
+): Promise<Array<[string, string]>> {
+  const distDir = resolve(cwd, 'dist');
+  const distFiles = existsSync(distDir)
+    ? readdirSync(distDir, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) =>
+          relative(cwd, join(entry.parentPath, entry.name)).split(sep).join('/'),
+        )
+    : [];
+  const entryPoints = distFiles.filter((file) => MODULE_FILE_PATTERN.test(file));
+  if (!entryPoints.includes(runtimeEntry)) {
+    entryPoints.push(runtimeEntry);
+  }
+
+  const packageJson = JSON.parse(
+    readFileSync(resolve(cwd, 'package.json'), 'utf8'),
+  ) as { peerDependencies?: Record<string, string> };
+  const result = await esbuild({
+    absWorkingDir: cwd,
+    entryPoints,
+    outbase: cwd,
+    outdir: stagingDir,
+    chunkNames: 'dist/chunks/[name]-[hash]',
+    bundle: true,
+    splitting: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'node22',
+    external: [
+      '@deepseek-ai/*',
+      ...Object.keys(packageJson.peerDependencies ?? {}),
+    ],
+    banner: { js: ESM_REQUIRE_BANNER },
+    metafile: true,
+    logLevel: 'silent',
+  }).catch((error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`runtime 插件依赖打包失败: ${detail}`);
   });
 
-  return {
-    archivePath,
-    manifest,
-    nodeCount: 0,
-    sizeBytes: statSync(archivePath).size,
-  };
+  const files: Array<[string, string]> = Object.keys(result.metafile.outputs).map(
+    (output) => {
+      const filePath = resolve(cwd, output);
+      return [relative(stagingDir, filePath).split(sep).join('/'), filePath];
+    },
+  );
+  for (const file of distFiles) {
+    if (!MODULE_FILE_PATTERN.test(file) && !/\.(d\.[cm]?ts|map)$/.test(file)) {
+      files.push([file, resolve(cwd, file)]);
+    }
+  }
+  return files;
 }
 
 export async function buildPluginArchive(

@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readArchiveManifest } from '@agentloom/plugin-sdk';
@@ -155,6 +156,32 @@ function readArchiveJson(archivePath: string, entryPath: string): unknown {
     { encoding: 'utf8' },
   );
   return JSON.parse(output) as unknown;
+}
+
+function readArchiveText(archivePath: string, entryPath: string): string {
+  const script = [
+    'import sys, zipfile',
+    'with zipfile.ZipFile(sys.argv[1]) as archive:',
+    '    sys.stdout.write(archive.read(sys.argv[2]).decode("utf-8"))',
+  ].join('\n');
+
+  return childProcess.execFileSync(
+    'python3',
+    ['-c', script, archivePath, entryPath],
+    { encoding: 'utf8' },
+  );
+}
+
+function readExecCwd(options: unknown): string {
+  if (
+    options !== null &&
+    typeof options === 'object' &&
+    'cwd' in options &&
+    typeof options.cwd === 'string'
+  ) {
+    return options.cwd;
+  }
+  throw new Error('缺少 cwd');
 }
 
 afterEach(() => {
@@ -505,6 +532,140 @@ describe('buildPluginArchive', () => {
 
     await expect(buildPluginArchive({ cwd: root })).rejects.toThrow(
       'runtime 插件缺少入口文件: cordis.patch.yml',
+    );
+  });
+
+  it('runtime 插件把第三方依赖打包进 dist，解包后无需 node_modules 即可加载', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root);
+    writeJson(join(root, 'manifest.json'), {
+      id: 'com.agentloom.runtime-deps',
+      name: 'Runtime Deps',
+      version: '0.1.0',
+      author: 'AgentLoom Team',
+      description: 'Runtime plugin with third-party dependencies',
+      license: 'MIT',
+      minPlatformVersion: '0.1.0',
+      permissions: [],
+      kind: 'runtime',
+      runtime: {
+        dshVersion: '0.2.0-rc.2',
+        patch: './cordis.patch.yml',
+        entry: './dist/index.js',
+      },
+    });
+    writeJson(join(root, 'package.json'), {
+      name: 'runtime-deps',
+      type: 'module',
+      dependencies: { 'esm-dep': '1.0.0', 'cjs-dep': '1.0.0' },
+      peerDependencies: { '@deepseek-ai/dsh-tools': '0.2.0-rc.2' },
+    });
+    writeFileSync(
+      join(root, 'cordis.patch.yml'),
+      '- insert:\n    - id: runtime-deps\n      name: __PLUGIN_ROOT__/dist/index.js\n',
+      'utf8',
+    );
+    const files: Record<string, string> = {
+      'node_modules/esm-dep/package.json': '{"name":"esm-dep","type":"module","main":"index.js"}',
+      'node_modules/esm-dep/index.js': 'export const esmValue = "esm-dep-value";\n',
+      'node_modules/cjs-dep/package.json': '{"name":"cjs-dep","main":"index.js"}',
+      'node_modules/cjs-dep/index.js':
+        'const path = require("node:path");\nmodule.exports = { cjsValue: path.posix.join("cjs", "dep") };\n',
+    };
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(join(root, file, '..'), { recursive: true });
+      writeFileSync(join(root, file), content, 'utf8');
+    }
+    mocks.execSync.mockImplementationOnce((_command, options) => {
+      const cwd = readExecCwd(options);
+      mkdirSync(join(cwd, 'dist'), { recursive: true });
+      writeFileSync(
+        join(cwd, 'dist', 'index.js'),
+        [
+          "import { esmValue } from 'esm-dep';",
+          "import cjs from 'cjs-dep';",
+          "export const name = 'runtime-deps';",
+          'export function apply() { return `${esmValue}|${cjs.cjsValue}`; }',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+      writeFileSync(
+        join(cwd, 'dist', 'peer.js'),
+        "import { defineTool } from '@deepseek-ai/dsh-tools';\nexport const tool = defineTool;\n",
+        'utf8',
+      );
+      return Buffer.from('');
+    });
+
+    const result = await buildPluginArchive({ cwd: root });
+
+    const entries = listArchiveEntries(result.archivePath);
+    expect(entries).toEqual(
+      expect.arrayContaining(['dist/index.js', 'dist/peer.js']),
+    );
+    expect(entries.some((entry) => entry.includes('node_modules'))).toBe(false);
+
+    // 按 server 下发方式只落地包内文件，没有 node_modules。
+    const unpacked = createTempRoot();
+    for (const entry of entries.filter((name) => name.startsWith('dist/'))) {
+      mkdirSync(join(unpacked, entry, '..'), { recursive: true });
+      writeFileSync(join(unpacked, entry), readArchiveText(result.archivePath, entry));
+    }
+    // 这里要验证的正是「解包后的模块能否在没有 node_modules 的目录里被加载」，只能运行期导入。
+    const plugin: unknown = await import(
+      pathToFileURL(join(unpacked, 'dist', 'index.js')).href
+    );
+    expect(
+      plugin !== null &&
+        typeof plugin === 'object' &&
+        'apply' in plugin &&
+        typeof plugin.apply === 'function'
+        ? plugin.apply()
+        : undefined,
+    ).toBe('esm-dep-value|cjs/dep');
+    expect(readArchiveText(result.archivePath, 'dist/peer.js')).toMatch(
+      /from\s*["']@deepseek-ai\/dsh-tools["']/,
+    );
+  });
+
+  it('runtime 插件打包后的单个文件超过 1 MiB 时报错', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root);
+    writeJson(join(root, 'manifest.json'), {
+      id: 'com.agentloom.runtime-large',
+      name: 'Runtime Large',
+      version: '0.1.0',
+      author: 'AgentLoom Team',
+      description: 'Runtime plugin exceeding the session file limit',
+      license: 'MIT',
+      minPlatformVersion: '0.1.0',
+      permissions: [],
+      kind: 'runtime',
+      runtime: {
+        dshVersion: '0.2.0-rc.2',
+        patch: './cordis.patch.yml',
+        entry: './dist/index.js',
+      },
+    });
+    writeFileSync(
+      join(root, 'cordis.patch.yml'),
+      '- insert:\n    - id: runtime-large\n      name: __PLUGIN_ROOT__/dist/index.js\n',
+      'utf8',
+    );
+    mocks.execSync.mockImplementationOnce((_command, options) => {
+      const cwd = readExecCwd(options);
+      mkdirSync(join(cwd, 'dist'), { recursive: true });
+      writeFileSync(
+        join(cwd, 'dist', 'index.js'),
+        `export const blob = ${JSON.stringify('x'.repeat(1024 * 1024 + 1))};\n`,
+        'utf8',
+      );
+      return Buffer.from('');
+    });
+
+    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow(
+      /runtime 插件文件 dist\/index\.js 为 \d+ 字节，超过会话下发通道的单文件上限 1 MiB/,
     );
   });
 });

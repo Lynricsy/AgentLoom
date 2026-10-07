@@ -404,7 +404,7 @@ export function apply(ctx: RuntimePluginContext): void {
 3. 显式指定私钥签名：\`agentloom-plugin publish -k <key>\`。
 4. 在 AgentLoom Studio 的「Runtime 插件」页上传签名后的 \`.alp\` 并启用，再在 Agent 画布的 harness 节点上挂载。
 
-插件 import 的 \`@deepseek-ai/*\` 包必须声明在 \`package.json\` 的 \`peerDependencies\` 中（由 dsh 提供，不要打进包里），否则在 dsh 中加载失败。
+插件 import 的 \`@deepseek-ai/*\` 包必须声明在 \`package.json\` 的 \`peerDependencies\` 中（由 dsh 提供，不要打进包里），否则在 dsh 中加载失败。其他第三方依赖写进 \`dependencies\` 即可，\`agentloom-plugin build\` 会把它们打包进 \`dist/\`。
 `,
     'utf8',
   );
