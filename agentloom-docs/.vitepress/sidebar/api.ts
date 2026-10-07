@@ -19,6 +19,7 @@ const api: DefaultTheme.SidebarItem[] = [
       { text: '开发教程', link: '/api/plugins/tutorial' },
       { text: 'Plugin SDK', link: '/api/plugins/sdk' },
       { text: 'Plugin CLI', link: '/api/plugins/cli' },
+      { text: '开发 runtime 插件', link: '/api/plugins/runtime' },
       { text: '市场与收益', link: '/api/plugins/marketplace' },
     ],
   },

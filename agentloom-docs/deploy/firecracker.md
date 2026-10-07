@@ -52,7 +52,7 @@ Compose 通过 8 个 secret 把文件交给容器（`agentloom-deploy/docker-com
 
 ## 2. 构建产物与镜像
 
-产物来源锁定在 `agentloom-deploy/firecracker/artifact-lock.json`：Firecracker 1.16.1 发布包、Amazon microVM 内核源码与配置、BusyBox、Arch Linux OCI digest 与快照日期、rootfs 大小 2 GiB。升级时同步更新其中的 URL、提交、SHA-256，不要只替换生成物。
+产物来源锁定在 `agentloom-deploy/firecracker/artifact-lock.json`：Firecracker 1.16.1 发布包、Amazon microVM 内核源码与配置、BusyBox、Arch Linux OCI digest 与快照日期、rootfs 大小（`rootfs.sizeGiB`，当前 4 GiB，容纳 guest 服务及其含 DeepSeek Harness 的生产依赖）。升级时同步更新其中的 URL、提交、SHA-256，不要只替换生成物。
 
 ```bash
 ./firecracker/build-artifacts.sh

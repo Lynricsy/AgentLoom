@@ -10,6 +10,7 @@ docType: index
 | --- | --- | --- | --- |
 | [0001](/dev/decisions/0001-agent-external-api) | Agent 对外 API：专用 Key + 原生 REST/SSE | 已实施 | 2026-10-01 |
 | [0002](/dev/decisions/0002-docs-system) | 文档体系：单站、Diátaxis、生成式参考 | 已实施 | 2026-10-01 |
+| [0003](/dev/decisions/0003-dsh-sandbox-runtime) | sandbox 运行态切换为 DeepSeek Harness 并开放 runtime 插件 | 已实施 | 2026-10-07 |
 
 ## 模板
 

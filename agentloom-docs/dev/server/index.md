@@ -107,6 +107,7 @@ agentloom-server/src/
 - `smart-routing`：模型智能路由，路由在 `/smart-routing/…` 与 `/routing-decisions`。
 - `knowledge`：知识库、文档解析与向量化、RAG 检索，前缀 `/knowledge-bases`，Socket.IO 命名空间 `/knowledge`；向量存储在 Qdrant。
 - `plugin`：`.alp` 插件的上传验签、WASM 沙箱执行、开发者密钥、使用量与收益结算，前缀 `/plugins`、`/plugins/developer-keys`、`/plugins/marketplace`。内部机制见 [插件系统](/dev/server/plugins)。
+- `runtime-plugin`：sandbox 运行态 Agent 的 runtime 插件（DeepSeek Harness 的 Cordis 插件包）上传验签、存储与启停，前缀 `/runtime-plugins`；上传入口与 `plugin` 共用签名校验。机制见 [Runtime 插件](/dev/server/runtime-plugins)。
 
 #### 智能路由策略
 
@@ -212,6 +213,8 @@ graph LR
     AG --> MCP[mcp]
     AG --> KN[knowledge]
     AG --> SB
+    AG --> RP[runtime-plugin]
+    RP --> PL
     LLM --> AK[api-key]
     LLM --> TK[tenant-key]
     AE[agent-execution] --> AC[agent-conversation]

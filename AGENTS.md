@@ -18,6 +18,7 @@ AgentLoom — 多智能体工作流编排平台：用户在可视化画布上把
 |类型引擎|`dev/type-engine.md`|
 |移动端|`dev/mobile.md`|
 |Firecracker 运行时|`dev/firecracker-runtime.md`|
+|runtime 插件（sandbox 运行态 dsh 内核、harness 节点、插件包开发与下发）|`dev/server/runtime-plugins.md`、`dev/server/agent-runtime.md`、`api/plugins/runtime.md`、`guide/agents/harness.md`|
 |测试|`dev/testing.md`|
 |新增模块 / 节点类型 / 环境变量 / Socket 事件|`dev/howto/*.md`|
 |部署运维|`deploy/*.md`|

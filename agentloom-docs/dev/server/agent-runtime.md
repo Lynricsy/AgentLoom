@@ -11,7 +11,7 @@ Agent 定义上的 `runtime_mode` 列决定一次对话或一个工作流 agent 
 两种运行态的差别在于 Agent 能否碰到一个可写的文件系统和终端：
 
 - `no_sandbox`：模型循环跑在 server/worker 的 Node 进程内，工具全部由服务端提供（MCP、知识库检索、代码执行等），不分配任何 VM。
-- `sandbox`：模型循环跑在一台 Firecracker microVM 的 guest 里，Agent 拥有 `/workspace/` 工作区和原生读写/编辑/终端工具；服务端只负责编排、转发和回调。
+- `sandbox`：模型循环跑在一台 Firecracker microVM 的 guest 里，由 DeepSeek Harness（dsh）执行，Agent 拥有 `/workspace/` 工作区和原生读写/编辑/终端工具；服务端只负责编排、转发和回调。
 
 ```mermaid
 flowchart LR
@@ -25,7 +25,7 @@ flowchart LR
     F -- "true" --> SA
   end
   subgraph Node["沙箱运行时节点（Go manager）"]
-    M["runtime-manager<br/>/v1/vms · /v1/capacity"] --> VM["microVM guest<br/>/v1/session · /v1/prompt"]
+    M["runtime-manager<br/>/v1/vms · /v1/capacity"] --> VM["microVM guest<br/>guestd + @agentloom/sandbox + dsh"]
   end
   REG -- "HTTPS + mTLS" --> M
   VM -- "工具回调<br/>/agent-runtime/sessions/:sessionId/tool-executions" --> Server
@@ -52,13 +52,85 @@ pi 系列包只发布 ESM，而 NestJS server 以 CJS 运行，因此不能顶�
 | 服务 | 职责 |
 | --- | --- |
 | `SandboxSessionRuntimeService` | 解析 sandbox 绑定、等待 guest 就绪、代理 `/v1/prompt` 与 `/v1/abort` |
-| `SandboxModelConfigService` | 由租户模型配置生成 pi 的 `settings`/`models`、解析运行时密钥，并初始化 guest 会话（`/v1/session`） |
+| `SandboxModelConfigService` | 由租户模型配置生成会话的 `settings`/`models`（格式由 `agentloom-server/src/modules/sandbox/pi-config-generator.service.ts` 产出）、解析运行时密钥、组装 `harness` 载荷与 runtime 插件文件，并初始化 guest 会话（`/v1/session`） |
 | `SandboxToolRegistryService` | 把服务端工具序列化为远程工具描述，生成回调地址与回调令牌 |
 | `SandboxPtyService` | 终端（PTY）代理 |
 
 guest 内的 Agent 需要调用服务端工具（MCP、知识库、子 Agent 等）时，回调 `POST /api/v1/agent-runtime/sessions/:sessionId/tool-executions`（`agentloom-server/src/modules/agent/agent-runtime.controller.ts:18-23`）。该路由标记 `@Public()`，鉴权靠每个会话独立的回调令牌（`agentloom-server/src/modules/agent/sandbox-tool-registry.service.ts:634-692`）。回调基址取 `APP_SANDBOX_CALLBACK_BASE_URL`；未设置时在容器内回退为 `http://<HOSTNAME>:<APP_PORT>/api/v1`（同文件 `:649-666`）。server 与 worker 各自需要一个 guest 能访问到的地址，部署时分别配置，见 [/deploy/firecracker](/deploy/firecracker)。
 
-工具审批在 sandbox 路径上有超时：`TOOL_PERMISSION_TIMEOUT_MS` 为 30000 ms（`agentloom-server/src/modules/agent/sandbox-agent.adapter.ts:49`）。
+工具审批在 sandbox 路径上有超时：`TOOL_PERMISSION_TIMEOUT_MS` 为 30000 ms（`agentloom-server/src/modules/agent/sandbox-agent.adapter.ts`）。
+
+会话初始化请求 `/v1/session` 要等 guest 启动 dsh 子进程，超时按会话内容放宽（`agentloom-server/src/modules/agent/sandbox-model-config.service.ts`）：单次请求 45 s、含就绪重试共 60 s；带 MCP server 时 90 s / 120 s；每个启用的 npm 来源 runtime 插件给单次请求再加 180 s，此时总时长为单次请求加 30 s。
+
+### guest 内的 Agent 核心：DeepSeek Harness
+
+guest 内的 Node 服务 `@agentloom/sandbox`（`agentloom-deploy/sandbox/`）对外仍是 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/pty/*` 这组 HTTP/SSE 契约，server 侧的 `agentloom-server/src/modules/agent/sandbox-event-decoder.ts` 按同一套事件解码。契约之下，每个会话对应一个 `dsh --profile agentloom` 子进程（`@deepseek-ai/dsh`，版本见 `agentloom-deploy/sandbox/package.json`），guest 进程本身不跑模型循环。
+
+```mermaid
+sequenceDiagram
+    participant S as server（SandboxAgentAdapter）
+    participant G as guest @agentloom/sandbox
+    participant D as dsh 子进程（agentloom-bridge 插件）
+    S->>G: POST /v1/session（settings、models、files、harness…）
+    G->>G: 写会话目录与 dsh profile，按需 npm install 插件
+    G->>D: spawn node bin.js --profile agentloom（DSH_HOME=会话目录/dsh-home）
+    D-->>G: bridge.sock 可连接
+    G->>D: initialize（模型路由、远程工具、原生工具策略）→ session/create
+    S->>G: POST /v1/prompt
+    G->>D: session/prompt
+    D-->>G: event 通知（SandboxAgentEvent + harness_trace）
+    G-->>S: SSE
+```
+
+会话创建（`agentloom-deploy/sandbox/src/dsh/session-factory.ts`）依次：
+
+1. `prepareSessionConfig` 在 `SANDBOX_SESSION_ROOT/<sessionId>` 下建会话目录（`0700`），写入请求的 `files`（技能在 `skills/`，runtime 插件包在 `plugins/<pluginId>/`）。单文件 1 MiB、总量 16 MiB 的上限由这里与 server 两侧共同执行。
+2. `writeDshProfile`（`agentloom-deploy/sandbox/src/dsh/profile-writer.ts`）在会话目录下生成 `dsh-home/profiles/agentloom/`：`package.json` 只挂 `@deepseek-ai/dsh-base` bundle，`cordis.patch.yml` 按「平台层 → 插件层（画布连线顺序）→ 用户 profile patch」三层叠加。
+3. 以 guest 的 Node 启动 dsh launcher：路径取 `AGENTLOOM_DSH_BIN`，未设置时解析安装目录内的 `@deepseek-ai/dsh/lib/bin.js`。子进程环境继承 guest 环境但去掉名字匹配 `KEY|SECRET|TOKEN|PASSWORD` 的变量，再加上 `DSH_HOME`、`DSH_PERMISSION_MODE=danger-full-access`、`DSH_TELEMETRY_DISABLED=1`，以及每个模型路由一条 `AGENTLOOM_PROVIDER_<路由名大写>_API_KEY`。
+4. 轮询 `<会话目录>/bridge.sock`，30 s（`DSH_STARTUP_TIMEOUT_MS`）内连不上或子进程提前退出时，杀掉子进程、删除会话目录，并把 dsh 输出末尾带进错误信息。
+5. 发 `initialize` 与 `session/create`。会话必须带 `settings.defaultProvider` 与 `settings.defaultModel`，否则直接失败。
+
+#### 平台层 patch
+
+平台层把 dsh-base 改造成适合 microVM 的形态：
+
+| 条目 | 处理 | 原因 |
+| --- | --- | --- |
+| `sandbox-policy` | `mode: danger-full-access`，`workspaceRoot` 为会话 cwd | microVM 本身是隔离边界，dsh 内置的进程沙箱不再叠加 |
+| `approval` | `policy: ask` | 审批请求交给 bridge，转成 AgentLoom 的审批卡片 |
+| `system-prompt` | `personaPrefix` 为 Agent 的系统提示词，不加 dsh 自身身份段 | 提示词由画布决定 |
+| `session-persistence-jsonl` | 写到 `dsh-home/sessions` | 只是会话内的临时记录，会话销毁时随目录删除；权威记录仍在 PostgreSQL |
+| `agent-default-model`、`llm-pi-ai` | 会话模型；`models.providers` 每项转成一条 `llm-pi-ai` 路由，密钥只经环境变量传入 | 子 Agent 等未显式选模型的入口也用会话模型；密钥不落盘 |
+| `skill-filesystem` | 只扫描会话目录下的 `skills/` | 技能只来自画布绑定 |
+| DeepSeek 账号与原生模型、遥测、web 工具、`permission`、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true` | 会外连 DeepSeek 服务、与 danger-full-access 冲突、或允许运行期改写 profile |
+| `insert` | `agentloom-bridge`（绝对路径）与每个 MCP server 一条 `@deepseek-ai/dsh-mcp-client` | MCP 不支持 SSE transport，SSE 类型的 server 被跳过并写 stderr 警告 |
+
+禁用条目的完整列表是 `profile-writer.ts` 的 `DISABLED_BASE_ROWS`。runtime 插件与用户 patch 叠在平台层之后，可以覆盖平台层的任何条目；插件包的来源、校验与下发见 [Runtime 插件](/dev/server/runtime-plugins)。
+
+#### agentloom-bridge
+
+`agentloom-deploy/sandbox/src/dsh-bridge/` 是运行在 dsh 子进程内的 Cordis 插件，构建为 `dist/dsh-bridge/index.js`。它在 `<会话目录>/bridge.sock` 上以行分隔 JSON-RPC 应答 guest，方法与参数定义在 `agentloom-deploy/sandbox/src/dsh/bridge-protocol.ts`：`initialize`、`session/create`、`session/prompt`、`session/cancel`、`session/dispose`、`permission/resolve`、`pty/list`、`pty/write`、`pty/buffer-dump`、`shutdown`；反方向只有一种通知 `event`。
+
+- **敏感配置走 socket**：远程工具描述（含会话回调令牌）与原生工具策略作为 `initialize` 参数下发，不写进 patch 文件，因为 Agent 的终端能读到会话目录。
+- **事件映射**：dsh 的会话事件与助手流帧被映射为 guest 原有的 `SandboxAgentEvent`（`agentloom-deploy/sandbox/src/dsh-bridge/event-mapper.ts`），再由 `agentloom-deploy/sandbox/src/event-stream.ts` 翻译为 SSE。`turn/end` 的 `completed`、`aborted` 分别对应 `done` 的 `end_turn`、`cancelled`；`error` 产生一条错误消息后结束。
+- **原生工具策略**：经 `ctx.tools.guard` 拒绝被关闭的工具，模型收到「该工具已被 Agent 原生工具策略禁用」。读取关闭 `read`、`read_image`、`glob`、`grep`；写入关闭 `write`；编辑关闭 `edit`、`str_replace_editor`；终端关闭 `bash` 与五个 `pty_*` 工具。dsh 的 `skill` 工具不受策略约束。
+- **PTY**：`pty_spawn`、`pty_write`、`pty_read`、`pty_list`、`pty_kill` 由 bridge 注册，PTY 事件经 `event` 通知进入 `/v1/prompt` 流；guest 的 `/v1/pty/*` 路由经 bridge 代理到最近打开的会话。
+- **进程收尾**：`dispose` 依次请求 `session/dispose`、`shutdown`，再 `SIGTERM`，3 s 后 `SIGKILL`；最后一个 socket 连接断开时 dsh 自行退出，guest 进程被杀后不留孤儿进程。
+
+#### Harness trace
+
+bridge 对每条 dsh 会话事件额外发一条 `harness_trace`（`kind` 为 dsh 事件类型，如 `turn/start`、`tool/call`、`turn/end`，附 `turn`、`step` 与精简后的 `data`），并排在同一事件映射出的其他事件之前，否则 `turn/end` 触发的结束帧会先关闭 SSE。server 的 decoder 把它转为 `AgentEvent` 的 `harness_trace`，对话网关以 `conversation.agent.harness_trace` 推送。trace 不写入消息与工具调用记录，只在线推送，断线时依赖网关的进程内回放缓冲；Studio 对话页右栏的「Harness」tab 展示它。
+
+#### 审批回路
+
+dsh 以 danger-full-access 运行，内置的 bash、文件工具不会发起审批；审批只来自 runtime 插件或用户 patch 在 `tools/pre-execute` 中返回的 `ask`。回路如下：
+
+1. bridge 监听 dsh 的 `approval/request`，发出 `tool_execution_update`（`status: awaiting_permission`），guest 照常经 SSE 交给 server。
+2. `SandboxAgentAdapter` 对不在远程工具清单中的工具建立审批 gate，用户批准、拒绝、30 s 超时或会话中止时只决议一次。
+3. `SandboxSessionRuntimeService.resolveGuestToolPermission` 向 guest `POST /v1/permission`（`{ sessionId, toolCallId, allowed }`）写回，guest 转为 bridge 的 `permission/resolve`。没有待决审批时 guest 返回 `{ resolved: false }`；写回失败只记 warning。
+4. bridge 自身也有 30 s 等待上限（`APPROVAL_TIMEOUT_MS`），超时按拒绝处理。
+
+远程工具（服务端工具）不进这条回路：bridge 对它们直接放行审批请求，审批由远程工具回调的 preflight / execute 两阶段完成。
 
 ## 沙箱驱动与多节点调度
 
@@ -135,7 +207,7 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 | 路径 | 技能进入 Agent 的方式 |
 | --- | --- |
 | 对话，`no_sandbox` | 提示词内联 + 注册 `load_skill`（新建会话与恢复会话都注册，`agentloom-server/src/modules/agent-execution/agent-execution-worker-runtime.service.ts`） |
-| 对话，`sandbox` | 不进系统提示词。技能随 guest 会话请求的 `files` 下发为 `skills/<dir>/SKILL.md` 等文件（`SandboxModelConfigService.buildContainerSessionPayload`），由 pi 在会话 agentDir 中发现，并在系统提示词中提示模型用 read 工具读取。原生工具策略关闭读取时技能不可见。单文件超过 `SANDBOX_SESSION_FILE_MAX_BYTES`（1 MiB）或总量超过 `SANDBOX_SESSION_TOTAL_MAX_BYTES`（16 MiB）时，server 在下发前以 422 `sandbox-skill-payload-too-large` 拒绝（`agentloom-server/src/modules/sandbox/sandbox.exceptions.ts`） |
+| 对话，`sandbox` | 不进系统提示词。技能随 guest 会话请求的 `files` 下发为 `skills/<dir>/SKILL.md` 等文件（`SandboxModelConfigService.buildContainerSessionPayload`），由 dsh 的 `skill-filesystem` 从会话目录的 `skills/` 发现，模型经 dsh 的 `skill` 工具加载。技能与 runtime 插件文件共用会话文件上限：单文件超过 `SANDBOX_SESSION_FILE_MAX_BYTES`（1 MiB）或总量超过 `SANDBOX_SESSION_TOTAL_MAX_BYTES`（16 MiB）时，server 在下发前以 422 拒绝（`SandboxSessionPayloadTooLargeException`，problem type 沿用 `sandbox-skill-payload-too-large`，`agentloom-server/src/modules/sandbox/sandbox.exceptions.ts`） |
 | 子 Agent（两种运行态） | 提示词内联 + 注册 `load_skill`（`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`）；sandbox 运行态的 `load_skill` 经服务端工具回调执行 |
 | 工作流 agent 节点 | `WorkflowAgentAdapter` 合并 `skillIds` 与上游技能后内联 + 注册 `load_skill`；`agent-task.worker.ts` 对上游技能同样内联 + 注册 `load_skill` |
 

@@ -39,7 +39,7 @@ flowchart TB
 
     subgraph Sandbox["沙箱节点（每台 KVM 宿主一个）"]
         Manager["agentloom-firecracker-runtime<br/>Go runtime manager"]
-        VM["Firecracker microVM<br/>guestd + pi-coding-agent"]
+        VM["Firecracker microVM<br/>guestd + @agentloom/sandbox + dsh"]
     end
 
     Studio -->|"REST"| Http
@@ -149,11 +149,11 @@ Agent 定义上的运行态字段取值 `sandbox` 或 `no_sandbox`（`agentloom-
 | 运行态 | 执行位置 | 入口 |
 | --- | --- | --- |
 | `no_sandbox` | server/worker 进程内运行 pi-agent-core | `agentloom-server/src/modules/agent/in-process-agent.adapter.ts` → `agentloom-server/src/modules/agent/pi-agent-core.adapter.ts` |
-| `sandbox` | Firecracker microVM 内运行 pi-coding-agent | `agentloom-server/src/modules/sandbox/sandbox.module.ts` 把 `SANDBOX_RUNTIME_DRIVER` 绑定到 `agentloom-server/src/modules/sandbox/firecracker-runtime.service.ts`，经 undici mTLS 调用各节点的 runtime manager |
+| `sandbox` | Firecracker microVM 内运行 DeepSeek Harness（dsh 子进程，由 guest 服务 `@agentloom/sandbox` 拉起） | `agentloom-server/src/modules/sandbox/sandbox.module.ts` 把 `SANDBOX_RUNTIME_DRIVER` 绑定到 `agentloom-server/src/modules/sandbox/firecracker-runtime.service.ts`，经 undici mTLS 调用各节点的 runtime manager；guest 侧见 `agentloom-deploy/sandbox/src/dsh/session-factory.ts` |
 
-server 与 worker 不持有 KVM、网络或 cgroup 特权；这些只在运行 `agentloom-firecracker-runtime` 的宿主机上需要。pi-mono 包是纯 ESM，CJS 的 Nest 代码必须经 `agentloom-server/src/modules/agent/pi-imports.ts` 惰性 `await import()`。工作流中的 `agent` 节点经 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts` 进入同一套 Agent 运行时。
+server 与 worker 不持有 KVM、网络或 cgroup 特权；这些只在运行 `agentloom-firecracker-runtime` 的宿主机上需要。`no_sandbox` 使用的 pi-mono 包是纯 ESM，CJS 的 Nest 代码必须经 `agentloom-server/src/modules/agent/pi-imports.ts` 惰性 `await import()`。工作流中的 `agent` 节点经 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts` 进入同一套 Agent 运行时。
 
-沙箱节点登记、容量择优与 handle 路由见 [Agent 运行态](/dev/server/agent-runtime)；manager 的 HTTP API 见 [Firecracker 运行时](/dev/firecracker-runtime)。
+沙箱节点登记、容量择优、handle 路由以及 guest 内的 dsh 会话见 [Agent 运行态](/dev/server/agent-runtime)；manager 的 HTTP API 见 [Firecracker 运行时](/dev/firecracker-runtime)。
 
 ## 关键文件
 

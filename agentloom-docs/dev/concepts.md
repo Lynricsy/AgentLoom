@@ -39,7 +39,7 @@ Agent 有自己的定义、版本、对话与执行体系，不依赖工作流�
 Agent 定义的 `runtime_mode` 列决定一个 Agent 在哪里运行（`agentloom-server/src/database/schema/agent-definitions.schema.ts`）：
 
 - `no_sandbox`：在 server/worker 进程内运行 pi-agent-core，没有文件系统与终端隔离，适合只调用模型与平台工具的 Agent。
-- `sandbox`：在 Firecracker microVM 内运行 pi-coding-agent，Agent 可以读写文件、执行命令。microVM 由部署在 KVM 宿主机上的 `agentloom-firecracker-runtime` 管理，server 经 mTLS 调用它。
+- `sandbox`：在 Firecracker microVM 内运行 DeepSeek Harness（dsh），Agent 可以读写文件、执行命令，并可在画布上用 harness 节点挂载 runtime 插件定制运行时。microVM 由部署在 KVM 宿主机上的 `agentloom-firecracker-runtime` 管理，server 经 mTLS 调用它。
 
 两者的边界由数据访问而不是性能决定：需要执行任意代码或保留工作目录的 Agent 必须进 microVM，因为 server 进程不应把宿主机能力交给模型。`no_sandbox` 的 Agent 不能调用 `sandbox` 子 Agent。实现细节见 [Agent 运行态](/dev/server/agent-runtime) 与 [Firecracker 运行时](/dev/firecracker-runtime)。
 

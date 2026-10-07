@@ -36,6 +36,7 @@ const guide: DefaultTheme.SidebarItem[] = [
       { text: '创建 Agent', link: '/guide/agents/creating' },
       { text: '与 Agent 对话', link: '/guide/agents/conversations' },
       { text: 'Agent 记忆', link: '/guide/agents/memory' },
+      { text: '用 Harness 定制运行时', link: '/guide/agents/harness' },
       { text: '在工作流中使用 Agent', link: '/guide/agents/in-workflows' },
       { text: '通过 API 调用 Agent', link: '/guide/agents/api-access' },
     ],

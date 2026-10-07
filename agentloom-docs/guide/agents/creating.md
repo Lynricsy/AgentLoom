@@ -23,7 +23,8 @@ docType: howto
 | 内置文件读写、编辑、终端工具 | 有，可在 Agent Main 的「原生工具」中逐项开关 | 无 |
 | 画布上的 Sandbox、Workspace 节点 | 可用 | 不可用，Agent Main 没有「沙箱」端口 |
 | 调用子 Agent | 可调用有沙箱或无沙箱子 Agent | 只能调用无沙箱子 Agent；调用有沙箱子 Agent 时运行失败，错误为 `无 sandbox Agent 不支持调用有 sandbox 的子 Agent` |
-| 技能的加载方式 | 技能文件写入沙箱会话目录，Agent 用「文件读取」工具按需读取；关闭「文件读取」后 Agent 看不到技能 | 技能内容写入系统提示词；技能正文合计超过 50 KiB 时只写摘要，Agent 通过 `load_skill` 工具按需加载 |
+| 技能的加载方式 | 技能文件写入沙箱会话目录，Agent 用内置的 `skill` 工具按需加载 | 技能内容写入系统提示词；技能正文合计超过 50 KiB 时只写摘要，Agent 通过 `load_skill` 工具按需加载 |
+| 定制运行时 | 可用 Harness 节点挂载 runtime 插件、写 profile patch | 不可用 |
 
 ## 连接模型与系统提示词
 
@@ -44,6 +45,7 @@ docType: howto
 | 子 Agent | 高级：子 Agent（选择一个已发布的 Agent、版本，填写别名） | 子 Agent |
 | 输入预处理 | 高级：[输入预处理器](/guide/nodes/input-preprocessor) | 输入预处理 |
 | 沙箱与工作区 | 环境：[Sandbox](/guide/nodes/sandbox)、[Workspace](/guide/nodes/workspace)（仅有沙箱 Agent） | 沙箱 |
+| 运行时定制 | 运行时：[Harness 与 Runtime 插件](/guide/agents/harness)（仅有沙箱 Agent） | Harness |
 
 点击 Agent Main 可设置：
 
@@ -61,4 +63,5 @@ docType: howto
 
 - [与 Agent 对话](/guide/agents/conversations)
 - [在工作流中使用 Agent](/guide/agents/in-workflows)
+- [用 Harness 定制 Agent 运行时](/guide/agents/harness)
 - [通过 API 调用 Agent](/guide/agents/api-access)

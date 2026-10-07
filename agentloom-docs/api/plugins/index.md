@@ -6,6 +6,8 @@ docType: explanation
 
 **一个第三方写的节点，要经过哪些环节才能在别人的画布上运行，平台又凭什么信任它？** 本页回答这个问题。动手开发从 [开发教程](/api/plugins/tutorial) 开始。
 
+本页讲的是工作流节点插件。另有一类 runtime 插件：manifest 声明 `kind: "runtime"`，是挂进 sandbox 运行态 Agent 核心（DeepSeek Harness）的 Cordis 插件，在 Agent 的 microVM 内运行，签名方式与本页相同，上传到 Studio 的「Runtime 插件」页，见 [开发 runtime 插件](/api/plugins/runtime)。
+
 ## 插件是什么
 
 插件是一组自定义节点。每个节点声明输入端口、输出端口与配置项，端口的 `dataType` 与内置节点共用同一套端口类型（见 [端口类型](/guide/getting-started/)），因此插件节点可以和内置节点直接连线。

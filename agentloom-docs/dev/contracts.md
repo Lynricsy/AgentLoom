@@ -37,7 +37,7 @@ Socket 事件信封与载荷保持 camelCase，不套用 REST 的大小写转换
 
 `port-data-type.test.ts` 比对的四个镜像：
 
-- `agentloom-type-engine/src/types/port.rs`：`pub enum PortDataType` 的变体，转小写；
+- `agentloom-type-engine/src/types/port.rs`：`pub enum PortDataType` 的变体，按 serde 的 `kebab-case` 转换（`RuntimePlugin` → `runtime-plugin`）；
 - `agentloom-plugin-sdk/src/types/port.ts`：`const portDataTypes = [...]`；
 - `agentloom-studio/src/features/canvas/types/typeSchema.ts`：`export const PORT_DATA_TYPES = [...]`；
 - `agentloom-server/src/modules/workflow-definition/utils/normalize-workflow-graph.utils.ts`：`type PortDataType = ...` 联合类型。

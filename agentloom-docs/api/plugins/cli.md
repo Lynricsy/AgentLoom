@@ -13,24 +13,27 @@ alias agentloom-plugin="node $PWD/agentloom-plugin-cli/dist/cli.js"
 
 | 命令 | 作用 |
 | --- | --- |
-| `create <name> [--wasm]` | 创建插件项目 |
-| `build [-o <dir>] [--wasm]` | 打包 `.alp` |
+| `create <name> [--wasm \| --runtime]` | 创建插件项目 |
+| `build [-o <dir>] [--wasm]` | 打包 `.alp`（runtime 插件按 manifest 的 `kind` 自动走 runtime 分支） |
 | `keys generate [-o <dir>] [-b <bits>]` | 生成 RSA 签名密钥对 |
 | `dev [-p <port>]` | 启动 TypeScript 本地预览服务器 |
 | `publish -k <path> [-o <dir>]` | 签名已构建的 `.alp`，不上传 |
 
 ## `create`
 
-`agentloom-plugin create <name> [--wasm]`
+`agentloom-plugin create <name> [--wasm | --runtime]`
 
 交互询问「作者名称」「插件描述」「许可证」（默认 `MIT`），在当前目录下创建 `<name>`（转为小写、非字母数字替换为 `-`）。目录已存在时报错退出。
 
 | 选项 | 生成内容 |
 | --- | --- |
 | `--wasm` | `Cargo.toml`、`src/lib.rs`（Extism `execute` 导出，示例节点 `example.echo`）、`node-definitions.json`、`manifest.json`（含 `wasmEntry: "dist/plugin.wasm"`）、`package.json`、`README.md`。可注册到平台 |
+| `--runtime` | sandbox 运行态的 runtime 插件：`manifest.json`（`kind: "runtime"`，`runtime` 指向 `./cordis.patch.yml` 与 `./dist/index.js`）、声明 `dsh.bundle.patch` 与 `@deepseek-ai/*` peerDependencies 的 `package.json`、`cordis.patch.yml`、注册示例工具 `<name>_echo` 的 `src/index.ts`、`tsconfig.json`、`README.md`。可注册到平台的「Runtime 插件」，见 [开发 runtime 插件](/api/plugins/runtime) |
 | 不带 | `src/index.ts`（空节点列表）、`tests/index.test.ts`、`tsconfig.json`、`manifest.json`、`package.json`。仅供 `dev` 本地预览 |
 
-两种项目的 `manifest.json` 都以 `com.agentloom.<name>` 为 `id`、`0.1.0` 为 `version`，并写入 `keywords`。TypeScript 项目的 `package.json` 依赖 `"@agentloom/plugin-sdk": "file:../agentloom-plugin-sdk"`，因此项目目录的上一级需要有 `agentloom-plugin-sdk`（放在仓库根目录下，或在上一级建一个指向它的符号链接）。
+`--wasm` 与 `--runtime` 不能同时使用。
+
+所有项目的 `manifest.json` 都以 `com.agentloom.<name>` 为 `id`、`0.1.0` 为 `version`，并写入 `keywords`。TypeScript 预览项目的 `package.json` 依赖 `"@agentloom/plugin-sdk": "file:../agentloom-plugin-sdk"`，因此项目目录的上一级需要有 `agentloom-plugin-sdk`（放在仓库根目录下，或在上一级建一个指向它的符号链接）；runtime 项目不依赖 plugin-sdk，`npm install` 即可。
 
 ## `build`
 
@@ -41,9 +44,10 @@ alias agentloom-plugin="node $PWD/agentloom-plugin-cli/dist/cli.js"
 | `-o, --output <dir>` | `build` | 输出目录 |
 | `--wasm` | 关 | 构建 WASM 插件 |
 
+- manifest 的 `kind` 为 `runtime`：不接受 `--wasm`；执行 `npx tsc`，要求 `runtime.entry` 与 `runtime.patch` 指向的文件存在，否则报错 `runtime 插件缺少入口文件: <path>`；输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、patch 文件、`dist/`、`package.json`，以及存在时的 `README.md`（入口不在 `dist/` 下时单独打入）。
 - `--wasm`：要求存在 `Cargo.toml` 与非空且合法的 `node-definitions.json`；`dist/plugin.wasm` 不存在时执行 `cargo build --target wasm32-unknown-unknown --release` 并复制产物，已存在时跳过编译。
-- 不带 `--wasm`：执行 `npx tsc`，从 `dist/index.js` 读取节点定义；结束时提示该产物不能注册到服务端。
-- 输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、`node-definitions.json`、`dist/`、`package.json`，以及存在时的 `README.md`。
+- 不带 `--wasm` 的节点插件：执行 `npx tsc`，从 `dist/index.js` 读取节点定义；结束时提示该产物不能注册到服务端。
+- 节点插件输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、`node-definitions.json`、`dist/`、`package.json`，以及存在时的 `README.md`。
 
 ## `keys generate`
 

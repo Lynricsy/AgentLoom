@@ -18,25 +18,27 @@
 | `memory` | Memory | `book` |
 | `exec` | Exec | `arrow` |
 | `volume` | Volume | `square` |
+| `runtime-plugin` | Runtime Plugin | `diamond` |
 
 **dataType 兼容矩阵**（来源 `agentloom-contracts/src/port-compatibility.ts` 的 `isPortDataTypeCompatible`；✓ 同类型直连，「可连」为跨类型变换规则允许的连线，空白为不兼容。exec / volume / memory 的专有连线约束与 schema 深层比对不在此表内）：
 
-| 源 \ 目标 | `model` | `text` | `json` | `array` | `image` | `audio` | `tool` | `sandbox` | `knowledge` | `skill` | `agent` | `memory` | `exec` | `volume` |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `model` | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `text` |  | ✓ | 可连（parse_json） |  |  |  |  |  |  |  |  |  |  |  |
-| `json` |  | 可连（stringify_json） | ✓ |  |  |  |  |  |  |  |  |  |  |  |
-| `array` |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |
-| `image` |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |
-| `audio` |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |
-| `tool` |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |
-| `sandbox` |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |
-| `knowledge` |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |
-| `skill` |  | 可连（extract_skill_text） |  |  |  |  |  |  |  | ✓ |  |  |  |  |
-| `agent` |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |
-| `memory` |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |
-| `exec` |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |
-| `volume` |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
+| 源 \ 目标 | `model` | `text` | `json` | `array` | `image` | `audio` | `tool` | `sandbox` | `knowledge` | `skill` | `agent` | `memory` | `exec` | `volume` | `runtime-plugin` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `model` | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `text` |  | ✓ | 可连（parse_json） |  |  |  |  |  |  |  |  |  |  |  |  |
+| `json` |  | 可连（stringify_json） | ✓ |  |  |  |  |  |  |  |  |  |  |  |  |
+| `array` |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |  |
+| `image` |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |  |
+| `audio` |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |  |
+| `tool` |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |  |
+| `sandbox` |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |  |
+| `knowledge` |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |  |
+| `skill` |  | 可连（extract_skill_text） |  |  |  |  |  |  |  | ✓ |  |  |  |  |  |
+| `agent` |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |  |
+| `memory` |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |  |
+| `exec` |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |  |
+| `volume` |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |  |
+| `runtime-plugin` |  |  |  |  |  |  |  |  |  |  |  |  |  |  | ✓ |
 
 **跨类型变换规则**（`PORT_DATA_TYPE_TRANSFORM_RULES`，与 type-engine 同步）。server 执行期用这张表校验连线，并在组装下游输入时执行对应的变换函数；变换失败（如文本不是合法 JSON）时下游收到上游原值，并在该步骤的 `checkpointData.warnings` 中记录 `port-value-transform-failed` 告警：
 

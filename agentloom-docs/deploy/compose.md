@@ -92,7 +92,7 @@ Client Secret: kubectl create secret generic agentloom-firecracker-client-pki --
 ./firecracker/build-artifacts.sh
 ```
 
-脚本按 `firecracker/artifact-lock.json` 下载 Firecracker、内核源码与 BusyBox 并校验 SHA-256，按已跟踪的 `sandbox/package-lock.json` 执行 `npm ci` 构建 guest 侧程序，生成 2 GiB ext4 rootfs、内核与 initramfs，写出清单。验证时耗时约 2.5 分钟（Docker 构建缓存已存在；无缓存时约 6 分钟），最后一行：
+脚本按 `firecracker/artifact-lock.json` 下载 Firecracker、内核源码与 BusyBox 并校验 SHA-256，按已跟踪的 `sandbox/package-lock.json` 执行 `npm ci` 构建 guest 侧程序，生成 ext4 rootfs（大小见 [Firecracker 沙箱](/deploy/firecracker#_2-构建产物与镜像)）、内核与 initramfs，写出清单。验证时耗时约 2.5 分钟（Docker 构建缓存已存在；无缓存时约 6 分钟），最后一行：
 
 ```text
 Firecracker artifacts built at /root/Projects/Ling/fixlab-deploy/agentloom-deploy/firecracker/artifacts

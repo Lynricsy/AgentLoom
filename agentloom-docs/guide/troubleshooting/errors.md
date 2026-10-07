@@ -100,6 +100,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `agent-publish-validation` | 422 | Agent 发布校验未通过 | 按 `detail` 修正 Agent 画布 |
 | `agent-sandbox-not-connected` | 409 | 有沙箱的 Agent 画布上没有连接沙箱，无法开始对话 | 在 Agent 画布上把 Sandbox 节点连到 Agent Main |
 | `agent-canvas-invalid-mcp-tool-binding` | 422 | Agent 画布上的 MCP 节点配置不完整 | 在 MCP 节点中选择服务与工具 |
+| `agent-canvas-invalid-harness` | 422 | Harness 或 Runtime 插件节点配置无效，或无沙箱 Agent 使用了 Harness | 按 `detail` 修正节点，见 [用 Harness 定制 Agent 运行时](/guide/agents/harness) |
 
 Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 
@@ -140,6 +141,8 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `sandbox-not-found` | 404 | 沙箱会话不存在或已被清理 | 重新运行 |
 | `sandbox-invalid-state` | 409 | 沙箱当前状态不允许该操作 | 刷新后按当前状态操作 |
 | `sandbox-config-validation` | 400 | 沙箱资源配置不合法 | 按 `detail` 修正 CPU、内存、磁盘或超时 |
+| `sandbox-skill-payload-too-large` | 422 | 下发到沙箱会话的文件（技能与 runtime 插件包文件）单个超过 1 MiB 或合计超过 16 MiB | 减少 Agent 绑定的技能或插件，或缩小其中的文件 |
+| `sandbox-runtime-plugin-unsupported-file` | 422 | runtime 插件包含非文本文件，不能下发到沙箱 | 请插件开发者移除二进制文件后重新打包上传 |
 
 ## API Token
 
@@ -162,4 +165,4 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `workflow-import-validation` | 422 | 导入的工作流文件无效 | 检查导出文件是否完整 |
 | `workflow-import-model-not-found` | 409 | 当前组织缺少工作流依赖的模型配置 | 先创建所需模型配置，再导入 |
 
-插件上传、签名与运行的错误类型见[插件开发](/api/plugins/)。
+插件上传、签名与运行的错误类型见[插件开发](/api/plugins/)；runtime 插件的上传错误见[开发 runtime 插件](/api/plugins/runtime#出错时)。

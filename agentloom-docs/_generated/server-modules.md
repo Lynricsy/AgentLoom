@@ -34,6 +34,7 @@
 | `resource-governance` | `/api/v1` |  |  |
 | `resource-source` | `/api/v1/resource-sources` |  |  |
 | `reusable-block` | `/api/v1/reusable-blocks` |  |  |
+| `runtime-plugin` | `/api/v1/runtime-plugins` |  |  |
 | `sandbox` | `/api/v1`<br>`/api/v1/sandbox-nodes` |  | `sandbox-lifecycle` |
 | `self-evolution` |  |  |  |
 | `share` | `/api/v1/agent-shares`<br>`/api/v1/s`<br>`/api/v1/workflow-shares` |  |  |

@@ -35,6 +35,7 @@
 | `private-deployment` | 是 |
 | `resource-governance` | 是 |
 | `routing-decision` | 是 |
+| `runtime-plugin` | 是 |
 | `sandbox` | 是 |
 | `share` | 是 |
 | `skill` | 是 |

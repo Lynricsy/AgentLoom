@@ -39,6 +39,7 @@
 | `/resources/memory-instances` | `resources/memory-instances.tsx` |
 | `/resources/plugins/:pluginId/usage` | `resources/plugins.$pluginId.usage.tsx` |
 | `/resources/plugins` | `resources/plugins.tsx` |
+| `/resources/runtime-plugins` | `resources/runtime-plugins.tsx` |
 | `/resources/sandboxes` | `resources/sandboxes.tsx` |
 | `/resources/skills` | `resources/skills.tsx` |
 | `/resources/workspaces/:workspaceId` | `resources/workspaces.$workspaceId.tsx` |

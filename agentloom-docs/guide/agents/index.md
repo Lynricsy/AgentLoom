@@ -11,7 +11,8 @@ Agent 是一个可以独立完成推理任务的智能体。它的能力在 Agen
 | 新建 Agent，选择运行形态，连接模型与能力，发布 | [创建 Agent](/guide/agents/creating) |
 | 在 Studio 中与 Agent 对话、上传文件、查看沙箱 | [与 Agent 对话](/guide/agents/conversations) |
 | 让 Agent 跨对话保留信息 | [Agent 记忆](/guide/agents/memory) |
+| 给有沙箱 Agent 挂载 runtime 插件、查看运行时事件 | [用 Harness 定制 Agent 运行时](/guide/agents/harness) |
 | 在工作流中调用 Agent | [在工作流中使用 Agent](/guide/agents/in-workflows) |
 | 让外部系统通过 API 调用 Agent | [通过 API 调用 Agent](/guide/agents/api-access) |
 
-Agent 画布可用的节点：Agent Main（自动创建）、[LLM 模型](/guide/nodes/llm-model)、[智能路由](/guide/nodes/smart-routing)、[HTTP Request](/guide/nodes/http-tool)、[Code Executor](/guide/nodes/code-tool)、[MCP Tool](/guide/nodes/mcp-tool)、[Knowledge Base](/guide/nodes/knowledge-base)、[Text](/guide/nodes/text)、[Memory](/guide/nodes/memory)、子 Agent、[输入预处理器](/guide/nodes/input-preprocessor)、[Skill](/guide/nodes/skill)、[Sandbox](/guide/nodes/sandbox)、[Workspace](/guide/nodes/workspace)。
+Agent 画布可用的节点：Agent Main（自动创建）、[LLM 模型](/guide/nodes/llm-model)、[智能路由](/guide/nodes/smart-routing)、[HTTP Request](/guide/nodes/http-tool)、[Code Executor](/guide/nodes/code-tool)、[MCP Tool](/guide/nodes/mcp-tool)、[Knowledge Base](/guide/nodes/knowledge-base)、[Text](/guide/nodes/text)、[Memory](/guide/nodes/memory)、子 Agent、[输入预处理器](/guide/nodes/input-preprocessor)、[Skill](/guide/nodes/skill)、[Sandbox](/guide/nodes/sandbox)、[Workspace](/guide/nodes/workspace)、[Harness 与 Runtime 插件](/guide/agents/harness)。

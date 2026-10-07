@@ -62,6 +62,7 @@
 | `router_models` | 11 | 是 | `router-models.schema.ts` |
 | `routing_benchmarks` | 10 | 否 | `routing-benchmarks.schema.ts` |
 | `routing_decisions` | 11 | 是 | `routing-decisions.schema.ts` |
+| `runtime_plugins` | 21 | 是 | `runtime-plugins.schema.ts` |
 | `sandbox_logs` | 5 | 否 | `sandbox-logs.schema.ts` |
 | `sandbox_runtime_migrations` | 19 | 是 | `sandbox-runtime-migrations.schema.ts` |
 | `sandbox_runtime_nodes` | 6 | 否 | `sandbox-runtime-nodes.schema.ts` |
@@ -1267,6 +1268,34 @@
 | `decision_reasoning` | `text` | 是 |  |
 | `routing_latency_ms` | `integer` | 是 |  |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
+
+### runtime_plugins
+
+定义：`agentloom-server/src/database/schema/runtime-plugins.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `org_id` | `uuid` | 是 |  |
+| `plugin_id` | `varchar(255)` | 是 |  |
+| `name` | `varchar(255)` | 是 |  |
+| `version` | `varchar(50)` | 是 |  |
+| `author` | `varchar(255)` | 是 |  |
+| `description` | `text` |  |  |
+| `license` | `varchar(100)` |  |  |
+| `status` | `runtime_plugin_status` | 是 | `"registered"` |
+| `manifest` | `jsonb` | 是 |  |
+| `bundle_patch` | `text` | 是 |  |
+| `config_schema` | `jsonb` |  |  |
+| `storage_key` | `varchar(500)` | 是 |  |
+| `content_hash` | `varchar(64)` | 是 |  |
+| `signature` | `text` | 是 |  |
+| `size_bytes` | `integer` | 是 |  |
+| `installed_by` | `uuid` |  |  |
+| `occ_version` | `integer` | 是 | `1` |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+| `updated_at` | `timestamp with time zone` | 是 | `now()` |
 
 ### sandbox_logs
 

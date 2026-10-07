@@ -24,6 +24,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: 'Agent 运行态', link: '/dev/server/agent-runtime' },
       { text: 'ACP', link: '/dev/server/acp' },
       { text: '插件执行', link: '/dev/server/plugins' },
+      { text: 'Runtime 插件', link: '/dev/server/runtime-plugins' },
       { text: '生成应用', link: '/dev/server/generated-apps' },
     ],
   },
@@ -73,6 +74,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: 'ADR 索引', link: '/dev/decisions/' },
       { text: '0001 Agent 对外 API', link: '/dev/decisions/0001-agent-external-api' },
       { text: '0002 文档体系', link: '/dev/decisions/0002-docs-system' },
+      { text: '0003 sandbox 运行态切换为 dsh', link: '/dev/decisions/0003-dsh-sandbox-runtime' },
     ],
   },
 ]

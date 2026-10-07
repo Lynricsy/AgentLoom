@@ -22,7 +22,12 @@ docType: reference
 | `icon` | string | 否 | 图标路径或 URL |
 | `homepage` | string | 否 | 主页地址 |
 | `repository` | string | 否 | 仓库地址 |
-| `wasmEntry` | string | 注册时必填 | 归档内 `.wasm` 文件的相对路径；`build --wasm` 写为 `dist/plugin.wasm` |
+| `wasmEntry` | string | 节点插件注册时必填 | 归档内 `.wasm` 文件的相对路径；`build --wasm` 写为 `dist/plugin.wasm`。`kind` 为 `runtime` 时不得声明 |
+| `kind` | `'node'` \| `'runtime'` | 否 | 默认 `node`；`runtime` 表示 sandbox 运行态的 runtime 插件，见 [开发 runtime 插件](/api/plugins/runtime) |
+| `runtime.dshVersion` | string | `kind` 为 `runtime` 时必填 | 目标 `@deepseek-ai/dsh` 版本，上传时与平台支持的版本精确比对 |
+| `runtime.patch` | string | `kind` 为 `runtime` 时必填 | 归档内 `.yml` / `.yaml` 文件的安全相对路径（不以 `/` 开头、不含 `..` 与 `\`），即插件的 `cordis.patch.yml` |
+| `runtime.entry` | string | `kind` 为 `runtime` 时必填 | 归档内 `.js` / `.mjs` 入口的安全相对路径 |
+| `runtime.configSchema` | object | 否 | 插件配置的 JSON Schema，Studio 的 runtime-plugin 节点面板据此渲染标量字段 |
 | `sandbox.allowedHosts` | string[] | 否 | 允许访问的主机；仅当 `permissions` 含 `network:outbound` 时服务端采用 |
 | `sandbox.maxMemoryPages` | number | 否 | 只能收紧：小于平台上限 `4096` 时采用，超过上限或非正数时按 `4096` 处理 |
 | `sandbox.timeoutMs` | number | 否 | 只能收紧：小于平台上限 `30000` 毫秒时采用，超过上限或非正数时按 `30000` 处理 |

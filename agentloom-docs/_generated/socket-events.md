@@ -5,6 +5,7 @@
 | 命名空间 | 方向 | 事件 | 来源文件 |
 | --- | --- | --- | --- |
 | `/agent-conversation` | server→client | `conversation.agent.done` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
+| `/agent-conversation` | server→client | `conversation.agent.harness_trace` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
 | `/agent-conversation` | server→client | `conversation.agent.message_chunk` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
 | `/agent-conversation` | server→client | `conversation.agent.thinking` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |
 | `/agent-conversation` | server→client | `conversation.agent.tool_call` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` |

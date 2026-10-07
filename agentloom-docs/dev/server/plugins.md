@@ -44,6 +44,8 @@ flowchart TD
 - **manifest 校验**：`PluginService.register` 用 plugin-sdk 的 `validateManifest` 与 `PluginManifestSchema` 校验（`agentloom-server/src/modules/plugin/plugin.service.ts`）。
 - **状态**：`plugin_status` 枚举为 `registered`、`active`、`disabled`、`error`，默认 `registered`；上传时可通过表单字段 `status` 直接切换。只有 `active` 插件能被执行（`findActiveByPluginId` 对其他状态抛 `PluginInactiveException`）。
 
+流程图中从 multipart 文件到验签的部分抽在 `agentloom-server/src/modules/plugin/plugin-archive-intake.util.ts` 的 `readSignedAlpArchive`，[Runtime 插件](/dev/server/runtime-plugins) 的上传与节点插件共用这一段；WASM 检查与节点定义解析只在 `PluginController` 中执行。
+
 ## 工作流中的执行路径
 
 工作流 `plugin` 节点（见 [节点参考](/guide/nodes/)）不在节点调度器中同步执行，而是投递到 BullMQ：

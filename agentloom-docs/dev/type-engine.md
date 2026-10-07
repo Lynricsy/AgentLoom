@@ -8,7 +8,7 @@ docType: reference
 
 ## 端口数据类型与兼容矩阵
 
-端口数据类型的唯一定义是 `agentloom-contracts/src/port-data-type.ts` 的 `PORT_DATA_TYPES`；`agentloom-type-engine/src/types/port.rs` 的 `PortDataType` 枚举是 Rust 镜像（serde 序列化为小写），由 `agentloom-contracts/src/port-data-type.test.ts` 机械校验，见 [契约与代码生成](/dev/contracts)。
+端口数据类型的唯一定义是 `agentloom-contracts/src/port-data-type.ts` 的 `PORT_DATA_TYPES`；`agentloom-type-engine/src/types/port.rs` 的 `PortDataType` 枚举是 Rust 镜像（serde 以 kebab-case 序列化），由 `agentloom-contracts/src/port-data-type.test.ts` 机械校验，见 [契约与代码生成](/dev/contracts)。
 
 数据类型级的兼容矩阵只由两条规则决定：同类型恒为可连（随后进入 schema 级比较，可能降级），跨类型只有命中转换规则时可连。下表由生成器从 contracts 的 `isPortDataTypeCompatible` 与 `PORT_DATA_TYPE_TRANSFORM_RULES` 算出：
 

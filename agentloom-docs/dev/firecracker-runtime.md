@@ -110,7 +110,9 @@ guestd 自身的运行时 API：
 | GET | `/v1/runtime/stats` | `stats` |
 | GET | `/v1/runtime/processes` | `processes` |
 
-Node 沙箱服务的源码在 `agentloom-deploy/sandbox/`（包名 `@agentloom/sandbox`）：Fastify 服务包装 pi-coding-agent 的 AgentSession，`agentloom-deploy/sandbox/src/server.ts` 注册 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/pty/*`、`/health` 等路由，监听 `SANDBOX_LISTEN_SOCKET` 指定的 unix socket；远程工具回调的令牌头常量在 `agentloom-deploy/sandbox/src/remote-tools.ts`。`agentloom-deploy/firecracker/build-artifacts.sh` 在该目录按已跟踪的 `package-lock.json` 执行 `npm ci`、`npm run typecheck`、`npm run build`，把 `dist/` 复制进 rootfs 的 `/opt/agentloom-sandbox/`；这是该服务唯一的发布形态。
+Node 沙箱服务的源码在 `agentloom-deploy/sandbox/`（包名 `@agentloom/sandbox`）：Fastify 服务为每个会话拉起一个 DeepSeek Harness（dsh）子进程，经会话目录内的 unix socket 与子进程里的 bridge 插件通信，机制见 [Agent 运行态](/dev/server/agent-runtime)。`agentloom-deploy/sandbox/src/server.ts` 注册 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/permission`、`/v1/pty/*`、`/health` 等路由，监听 `SANDBOX_LISTEN_SOCKET` 指定的 unix socket；远程工具回调的令牌头常量在 `agentloom-deploy/sandbox/src/remote-tools.ts`。dsh launcher 的路径可用 `AGENTLOOM_DSH_BIN` 覆盖，默认解析安装目录内的 `@deepseek-ai/dsh/lib/bin.js`；dsh 要求 Node 不低于 22.19（`agentloom-deploy/sandbox/package.json` 的 `engines`），rootfs 中的 Node 版本须满足。
+
+`agentloom-deploy/firecracker/build-artifacts.sh` 在该目录按已跟踪的 `package-lock.json` 执行 `npm ci`、`npm run typecheck`、`npm run build`，再把 `package.json`、`package-lock.json` 与 `dist/` 复制到构建上下文、在其中执行 `npm ci --omit=dev`，整个目录进入 rootfs 的 `/opt/agentloom-sandbox/`（`dist/` 加生产依赖的 `node_modules/`，dsh 及其插件包含在内）；这是该服务唯一的发布形态。runtime 插件的 npm 来源在会话启动时于 VM 内在线安装，经 guest 出网规则访问 registry。
 
 agentloom-guestd 读取的环境变量（`guest.RunMain`）：`AGENTLOOM_GUESTD_LISTEN`（默认 `:8443`）、`SANDBOX_LISTEN_SOCKET`（默认 `/run/agentloom/agent.sock`）、`AGENTLOOM_NODE_ENTRY`（默认 `/opt/agentloom-sandbox/dist/server.js`）、`AGENTLOOM_GUESTD_DEV_MODE`（为 `true` 时不取 MMDS、不启用 TLS，令牌取 `AGENTLOOM_GUEST_TOKEN`）。
 
