@@ -181,6 +181,10 @@ function translateContainerEvent(
         ? { events: [{ type: 'pty.killed', sessionId }] }
         : { events: [] };
     }
+    case 'harness_trace': {
+      const trace = decodeHarnessTrace(envelope, context);
+      return trace ? { events: [trace] } : { events: [] };
+    }
     default:
       return { events: [] };
   }
@@ -192,6 +196,29 @@ function readContainerEventPayload(envelope: ContainerEventEnvelope): unknown {
     ([key]) => key !== 'type' && key !== 'data',
   );
   return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/**
+ * harness_trace 的 kind/turn/step/timestamp 位于 envelope 顶层，params.data 是
+ * 精简载荷本身，不能经 readContainerEventPayload（它会优先取 data）读取。
+ */
+function decodeHarnessTrace(
+  envelope: ContainerEventEnvelope,
+  context: SandboxEventDecodeContext,
+): AgentEvent | null {
+  const kind = readString(envelope.kind);
+  if (!kind) return null;
+  const turn = readInteger(envelope.turn);
+  const step = readInteger(envelope.step);
+  return {
+    type: 'harness_trace',
+    kind,
+    ...(turn !== undefined ? { turn } : {}),
+    ...(step !== undefined ? { step } : {}),
+    ...(isRecord(envelope.data) ? { data: envelope.data } : {}),
+    timestamp:
+      readString(envelope.timestamp) ?? context.fallbackTransitionTimestamp,
+  };
 }
 
 function buildToolCallEvent(
@@ -420,6 +447,12 @@ function isAgentEvent(value: unknown): value is AgentEvent {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value)
+    ? value
+    : undefined;
 }
 
 function readBoolean(value: unknown): boolean {

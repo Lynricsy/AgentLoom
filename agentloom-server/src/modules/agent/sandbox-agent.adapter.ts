@@ -42,18 +42,28 @@ import type {
   ContentBlock,
   CreateSessionParams,
   ServerSandboxBinding,
+  ToolCallEvent,
+  ToolCallStatus,
   ToolPermissionRequest,
 } from './types';
 
 const CONTAINER_WORKSPACE = '/workspace/';
 const TOOL_PERMISSION_TIMEOUT_MS = 30_000;
+/** 工具调用已在 guest 侧终结的状态：对应的 guest 审批 gate 不再可决议 */
+const TERMINAL_TOOL_CALL_STATUSES: Partial<Record<ToolCallStatus, true>> = {
+  completed: true,
+  failed: true,
+  denied: true,
+};
 
 export type { SandboxBinding };
 
 type PendingPermissionAction = 'approve' | 'deny' | 'cancelled';
 type PendingPermissionGate = {
   resolve: (action: PendingPermissionAction) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: NodeJS.Timeout;
+  /** 仅 guest bridge 发起的审批：工具已在 guest 侧终结时静默撤销，不再回写 guest */
+  dismiss?: () => void;
 };
 type RemoteToolExecutionCallback = {
   sessionId: string;
@@ -81,6 +91,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     Map<string, PendingPermissionGate>
   >();
   private readonly conversationSessionIds = new Map<string, string>();
+  /** 会话下发给 guest 的远程工具名；它们的审批走 preflight/execute 回调，不建 guest gate */
+  private readonly remoteToolNames = new Map<string, ReadonlySet<string>>();
   private readonly sessionRuntime: SandboxSessionRuntimeService;
   private readonly modelConfig: SandboxModelConfigService;
   private readonly toolRegistry: SandboxToolRegistryService;
@@ -195,16 +207,19 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           mcpServers: params.mcpServers,
           skills: params.skills,
         });
+        const remoteToolPayload =
+          await this.toolRegistry.buildRemoteToolExecutionPayload(session.id);
+        this.remoteToolNames.set(
+          session.id,
+          readRemoteToolNames(remoteToolPayload),
+        );
         await this.modelConfig.initializeContainerSession(
           sandbox.runtimeHandle,
           {
             sessionId: session.id,
             cwd: CONTAINER_WORKSPACE,
-            createCodingTools: true,
             ...payload,
-            ...(await this.toolRegistry.buildRemoteToolExecutionPayload(
-              session.id,
-            )),
+            ...remoteToolPayload,
           },
         );
       } catch (error) {
@@ -235,13 +250,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const session = await this.loadSession(sessionId);
     session.context.history.push(...content);
     session.updatedAt = new Date();
-    const workflowState = session.context.workflowState ?? {};
-    const sandboxBinding =
-      this.sessionRuntime.readSandboxBinding(workflowState);
-    const tenantId =
-      typeof workflowState.tenantId === 'string'
-        ? workflowState.tenantId
-        : (session.tenantId ?? null);
+    const { binding: sandboxBinding, tenantId } =
+      this.readSessionSandboxTarget(session);
 
     if (!tenantId || !this.sessionRuntime.hasSandboxBinding(sandboxBinding)) {
       throw new Error(
@@ -325,9 +335,54 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     sessionId: string,
     decoded: SandboxEventDecodeResult,
   ): void {
+    for (const event of decoded.events) {
+      if (event.type !== 'tool_call') continue;
+      if (event.call.status === 'awaiting_permission') {
+        this.openGuestPermissionGate(sessionId, event.call);
+      } else if (TERMINAL_TOOL_CALL_STATUSES[event.call.status]) {
+        // guest 侧已自行终结（如 bridge 超时拒绝），live gate 不再可决议
+        this.pendingPermissionResolvers
+          .get(sessionId)
+          ?.get(event.call.id)
+          ?.dismiss?.();
+      }
+    }
     if (decoded.denyPendingPermissions) {
       this.clearPendingPermissions(sessionId, 'deny');
     }
+  }
+
+  /**
+   * dsh 原生 / MCP / 插件工具的审批由 guest bridge 发起并在 guest 内阻塞；
+   * 这里登记 live gate，决议（批准 / 拒绝 / 超时 / 中止）后经 /v1/permission 回写。
+   */
+  private openGuestPermissionGate(
+    sessionId: string,
+    call: ToolCallEvent,
+  ): void {
+    if (this.remoteToolNames.get(sessionId)?.has(call.tool)) return;
+    // 同一调用的重复 awaiting_permission 更新只保留首个 gate
+    if (this.pendingPermissionResolvers.get(sessionId)?.has(call.id)) return;
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const { binding, tenantId } = this.readSessionSandboxTarget(session);
+    if (!tenantId || !this.sessionRuntime.hasSandboxBinding(binding)) return;
+
+    this.registerPermissionGate({
+      sessionId,
+      toolCallId: call.id,
+      active: session.status === 'active',
+      dismissible: true,
+      onSettled: (action) => {
+        void this.sessionRuntime.resolveGuestToolPermission(
+          sessionId,
+          binding,
+          tenantId,
+          call.id,
+          action === 'approve',
+        );
+      },
+    });
   }
 
   private async cancelReaderSafely(
@@ -344,12 +399,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     this.abortControllers.get(sessionId)?.abort();
     const session = this.sessions.get(sessionId);
     if (session) {
-      const workflowState = session.context.workflowState ?? {};
-      const binding = this.sessionRuntime.readSandboxBinding(workflowState);
-      const tenantId =
-        typeof workflowState.tenantId === 'string'
-          ? workflowState.tenantId
-          : (session.tenantId ?? null);
+      const { binding, tenantId } = this.readSessionSandboxTarget(session);
       if (tenantId && this.sessionRuntime.hasSandboxBinding(binding)) {
         await this.sessionRuntime.abortContainerPrompt(
           sessionId,
@@ -365,6 +415,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
     this.clearPendingPermissions(sessionId, 'cancelled');
     this.toolRegistry.disposeSession(sessionId);
+    this.remoteToolNames.delete(sessionId);
     this.abortControllers.delete(sessionId);
     this.logger.debug(`取消 Sandbox 会话: ${sessionId}`);
   }
@@ -498,6 +549,28 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     toolCallId: string,
   ): Promise<PendingPermissionAction> {
     const session = await this.loadSession(sessionId);
+    return new Promise<PendingPermissionAction>((resolve) => {
+      this.registerPermissionGate({
+        sessionId,
+        toolCallId,
+        active: session.status === 'active',
+        onSettled: resolve,
+      });
+    });
+  }
+
+  /**
+   * 登记一个 live gate：显式决议、30 s 超时（deny）或会话中止（cancelled）任一发生即结算，
+   * 结算只发生一次。
+   */
+  private registerPermissionGate(params: {
+    sessionId: string;
+    toolCallId: string;
+    active: boolean;
+    onSettled: (action: PendingPermissionAction) => void;
+    dismissible?: boolean;
+  }): void {
+    const { sessionId, toolCallId } = params;
     const signal = this.abortControllers.get(sessionId)?.signal;
     const resolvers =
       this.pendingPermissionResolvers.get(sessionId) ??
@@ -509,28 +582,37 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
     this.pendingPermissionResolvers.set(sessionId, resolvers);
 
-    return new Promise<PendingPermissionAction>((resolve) => {
-      const finish = (action: PendingPermissionAction) => {
-        clearTimeout(timer);
-        resolvers.delete(toolCallId);
-        if (resolvers.size === 0) {
-          this.pendingPermissionResolvers.delete(sessionId);
-        }
-        signal?.removeEventListener('abort', onAbort);
-        resolve(action);
-      };
-      const onAbort = () => finish('cancelled');
-      const timer = setTimeout(
-        () => finish('deny'),
-        TOOL_PERMISSION_TIMEOUT_MS,
-      );
-      resolvers.set(toolCallId, { resolve: finish, timer });
-      if (signal?.aborted || session.status !== 'active') {
-        finish('cancelled');
-        return;
+    let settled = false;
+    const release = (): boolean => {
+      if (settled) return false;
+      settled = true;
+      clearTimeout(timer);
+      if (resolvers.get(toolCallId) === gate) resolvers.delete(toolCallId);
+      if (
+        resolvers.size === 0 &&
+        this.pendingPermissionResolvers.get(sessionId) === resolvers
+      ) {
+        this.pendingPermissionResolvers.delete(sessionId);
       }
-      signal?.addEventListener('abort', onAbort, { once: true });
-    });
+      signal?.removeEventListener('abort', onAbort);
+      return true;
+    };
+    const finish = (action: PendingPermissionAction) => {
+      if (release()) params.onSettled(action);
+    };
+    const onAbort = () => finish('cancelled');
+    const timer = setTimeout(() => finish('deny'), TOOL_PERMISSION_TIMEOUT_MS);
+    const gate: PendingPermissionGate = {
+      resolve: finish,
+      timer,
+      ...(params.dismissible ? { dismiss: () => void release() } : {}),
+    };
+    resolvers.set(toolCallId, gate);
+    if (signal?.aborted || !params.active) {
+      finish('cancelled');
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
   }
 
   private clearPendingPermissions(
@@ -544,6 +626,20 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       clearTimeout(gate.timer);
       gate.resolve(action);
     }
+  }
+
+  private readSessionSandboxTarget(session: AgentSession): {
+    binding: SandboxBinding;
+    tenantId: string | null;
+  } {
+    const workflowState = session.context.workflowState ?? {};
+    return {
+      binding: this.sessionRuntime.readSandboxBinding(workflowState),
+      tenantId:
+        typeof workflowState.tenantId === 'string'
+          ? workflowState.tenantId
+          : (session.tenantId ?? null),
+    };
   }
 
   private resolveSessionIdForConversation(conversationId: string): string {
@@ -593,4 +689,26 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       ? (input as Record<string, unknown>)
       : {};
   }
+}
+
+function readRemoteToolNames(
+  payload: Record<string, unknown>,
+): ReadonlySet<string> {
+  const remote = payload['remoteToolExecution'];
+  const names = new Set<string>();
+  if (typeof remote !== 'object' || remote === null || !('tools' in remote)) {
+    return names;
+  }
+  if (!Array.isArray(remote.tools)) return names;
+  for (const tool of remote.tools as unknown[]) {
+    if (
+      typeof tool === 'object' &&
+      tool !== null &&
+      'name' in tool &&
+      typeof tool.name === 'string'
+    ) {
+      names.add(tool.name);
+    }
+  }
+  return names;
 }

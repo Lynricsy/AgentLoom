@@ -11,12 +11,95 @@ import type {
 import {
   AgentNotFoundException,
   AgentArchivedException,
+  AgentCanvasInvalidHarnessException,
   AgentCanvasInvalidMcpToolBindingException,
   AgentCanvasUnknownNodeTypeException,
   AgentVersionConflictException,
   AgentVersionNotFoundException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
+import { RuntimePluginInactiveException } from '../runtime-plugin/runtime-plugin.exceptions';
+
+const mockRuntimePluginService = {
+  findActiveById: vi.fn(),
+};
+
+const RUNTIME_PLUGIN_RECORD_ID = '0195a1c0-0000-7000-8000-000000000001';
+
+/** agent-main ← harness ← [npm 插件, package 插件]（边顺序决定插件顺序） */
+function makeHarnessCanvas(
+  overrides: {
+    harnessData?: Record<string, unknown>;
+    npmData?: Record<string, unknown>;
+  } = {},
+) {
+  return {
+    nodes: [
+      { id: 'main', type: 'agent-main', data: { nodeType: 'agent-main' } },
+      {
+        id: 'harness-1',
+        type: 'tool',
+        data: {
+          nodeType: 'harness',
+          config: {
+            engine: 'dsh',
+            profilePatch: '- id: approval\n  config:\n    policy: never\n',
+            ...overrides.harnessData,
+          },
+        },
+      },
+      {
+        id: 'rp-package',
+        type: 'plugin',
+        data: {
+          nodeType: 'runtime-plugin',
+          config: {
+            source: 'package',
+            runtimePluginId: RUNTIME_PLUGIN_RECORD_ID,
+            pluginConfig: { greeting: 'hi' },
+          },
+        },
+      },
+      {
+        id: 'rp-npm',
+        type: 'plugin',
+        data: {
+          nodeType: 'runtime-plugin',
+          config: {
+            source: 'npm',
+            npmName: '@deepseek-ai/dsh-tool-todo',
+            npmVersion: '0.2.0-rc.2',
+            enabled: false,
+            ...overrides.npmData,
+          },
+        },
+      },
+    ],
+    edges: [
+      {
+        id: 'e-harness',
+        source: 'harness-1',
+        target: 'main',
+        sourceHandle: 'harness-out',
+        targetHandle: 'harness-in',
+      },
+      {
+        id: 'e-npm',
+        source: 'rp-npm',
+        target: 'harness-1',
+        sourceHandle: 'plugin-out',
+        targetHandle: 'plugins-in',
+      },
+      {
+        id: 'e-package',
+        source: 'rp-package',
+        target: 'harness-1',
+        sourceHandle: 'plugin-out',
+        targetHandle: 'plugins-in',
+      },
+    ],
+  };
+}
 
 const { mockTenantDb, mockTransactionStorage, mockResourceSourceService } =
   vi.hoisted(() => {
@@ -368,6 +451,7 @@ describe('AgentDefinitionService', () => {
     service = new AgentDefinitionService(
       mockTenantDb as never,
       mockResourceSourceService as never,
+      mockRuntimePluginService as never,
     );
   });
 
@@ -2460,6 +2544,79 @@ describe('AgentDefinitionService', () => {
       expect(config.modelConfig).toBeDefined();
       expect(config.modelConfig!.modelId).toBe('gpt-4-turbo');
     });
+
+    it('harness 节点编译为 HarnessConfig，插件按 plugins-in 边顺序排列', () => {
+      const { nodes, edges } = makeHarnessCanvas();
+
+      const config = service.buildRuntimeConfigFromNodes(
+        nodes,
+        edges,
+        undefined,
+        'sandbox',
+      );
+
+      expect(config.harness).toEqual({
+        engine: 'dsh',
+        profilePatch: '- id: approval\n  config:\n    policy: never\n',
+        plugins: [
+          {
+            nodeId: 'rp-npm',
+            source: 'npm',
+            ref: '@deepseek-ai/dsh-tool-todo',
+            version: '0.2.0-rc.2',
+            enabled: false,
+          },
+          {
+            nodeId: 'rp-package',
+            source: 'package',
+            ref: RUNTIME_PLUGIN_RECORD_ID,
+            config: { greeting: 'hi' },
+            enabled: true,
+          },
+        ],
+      });
+    });
+
+    it('no_sandbox 运行态带 harness 节点应拒绝', () => {
+      const { nodes, edges } = makeHarnessCanvas();
+
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(
+          nodes,
+          edges,
+          undefined,
+          'no_sandbox',
+        ),
+      ).toThrow(AgentCanvasInvalidHarnessException);
+    });
+
+    it('npm 来源的 runtime-plugin 节点缺少版本应拒绝', () => {
+      const { nodes, edges } = makeHarnessCanvas({
+        npmData: { npmVersion: '' },
+      });
+
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(nodes, edges, undefined, 'sandbox'),
+      ).toThrow(
+        expect.objectContaining({
+          detail: 'runtime-plugin 节点 rp-npm 缺少 npm 版本',
+        }),
+      );
+    });
+
+    it('profile patch 不是 YAML 列表时应拒绝', () => {
+      const { nodes, edges } = makeHarnessCanvas({
+        harnessData: { profilePatch: 'id: approval\n' },
+      });
+
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(nodes, edges, undefined, 'sandbox'),
+      ).toThrow(
+        expect.objectContaining({
+          detail: 'harness 节点的 profile patch 必须是 YAML 列表',
+        }),
+      );
+    });
   });
 
   // ─── compileCanvas ────────────────────────────────────────
@@ -3330,6 +3487,46 @@ describe('AgentDefinitionService', () => {
       );
 
       expect(result).toBeDefined();
+    });
+
+    it('harness 引用的 package 插件未启用时应拒绝发布', async () => {
+      const canvas = makeHarnessCanvas();
+      const agent = makeAgent({
+        runtimeMode: 'sandbox',
+        nodes: canvas.nodes,
+        edges: canvas.edges,
+      });
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+      mockTxClient.update.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue(undefined);
+        return c;
+      });
+      mockRuntimePluginService.findActiveById.mockRejectedValueOnce(
+        new RuntimePluginInactiveException(RUNTIME_PLUGIN_RECORD_ID),
+      );
+
+      const error = await service
+        .publish('agent-1', makePublishAgentDto(), 'user-1')
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(AgentPublishValidationException);
+      expect(error).toMatchObject({
+        detail: `runtime 插件 ${RUNTIME_PLUGIN_RECORD_ID} 不存在或未启用`,
+      });
+      // 只查询启用的 package 插件（npm 节点不走插件库）
+      expect(mockRuntimePluginService.findActiveById).toHaveBeenCalledTimes(1);
+      expect(mockRuntimePluginService.findActiveById).toHaveBeenCalledWith(
+        RUNTIME_PLUGIN_RECORD_ID,
+        'tenant-1',
+      );
+      expect(mockTxClient.insert).not.toHaveBeenCalled();
     });
 
     it('指定 versionId 时应直接重新发布历史版本', async () => {

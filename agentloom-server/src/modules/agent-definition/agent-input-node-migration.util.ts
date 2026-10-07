@@ -60,6 +60,8 @@ const INPUT_PREPROCESSOR_NODE_TYPE = 'input-preprocessor';
 const SKILL_NODE_TYPE = 'skill';
 const SANDBOX_NODE_TYPE = 'sandbox';
 const WORKSPACE_NODE_TYPE = 'workspace';
+const HARNESS_NODE_TYPE = 'harness';
+const RUNTIME_PLUGIN_NODE_TYPE = 'runtime-plugin';
 const SYSTEM_PROMPT_HANDLE = 'system-prompt-in';
 const SCHEMA_HANDLE = 'schema-in';
 
@@ -78,6 +80,8 @@ const SUPPORTED_AGENT_CANVAS_NODE_TYPES = new Set<string>([
   SKILL_NODE_TYPE,
   SANDBOX_NODE_TYPE,
   WORKSPACE_NODE_TYPE,
+  HARNESS_NODE_TYPE,
+  RUNTIME_PLUGIN_NODE_TYPE,
 ]);
 
 const LEGACY_AGENT_NODE_TYPE_ALIASES: Record<string, string> = {

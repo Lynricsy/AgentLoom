@@ -6,13 +6,26 @@ import { DomainException } from '../../common/exceptions/domain.exception';
 export const SANDBOX_SESSION_FILE_MAX_BYTES = 1024 * 1024;
 export const SANDBOX_SESSION_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
 
-export class SandboxSkillPayloadTooLargeException extends DomainException {
+/** 会话 files（技能与 runtime 插件文件）超限；problem type 沿用历史值以保持 Studio 文案映射。 */
+export class SandboxSessionPayloadTooLargeException extends DomainException {
   constructor(detail: string) {
     super({
       type: 'https://agentloom.dev/errors/sandbox-skill-payload-too-large',
-      title: '技能文件超出沙箱会话上限',
+      title: '会话文件超出沙箱会话上限',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail,
+    });
+  }
+}
+
+/** runtime 插件包经会话 files 文本通道下发，只能包含 UTF-8 文本文件。 */
+export class SandboxRuntimePluginUnsupportedFileException extends DomainException {
+  constructor(pluginId: string, path: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-runtime-plugin-unsupported-file',
+      title: 'runtime 插件包含不支持的文件',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `runtime 插件 ${pluginId} 含非文本文件 ${path}，runtime 插件包只能包含文本文件`,
     });
   }
 }

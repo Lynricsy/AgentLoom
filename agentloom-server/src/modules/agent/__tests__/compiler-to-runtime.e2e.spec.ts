@@ -315,6 +315,8 @@ describe('compiler → runtime tool injection E2E', () => {
     compiler = new AgentDefinitionService(
       mockDb as unknown as CompilerArgs[0],
       mockResourceSourceService as unknown as CompilerArgs[1],
+      // 编译链路不触达 runtime 插件查询（只在发布校验时使用）
+      {} as unknown as CompilerArgs[2],
     );
 
     type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;

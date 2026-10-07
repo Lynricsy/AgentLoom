@@ -153,3 +153,15 @@ export class AgentCanvasInvalidMcpToolBindingException extends DomainException {
     });
   }
 }
+
+/** harness / runtime-plugin 节点配置不合法（patch 非 YAML 列表、插件来源缺字段、运行态不符等）。 */
+export class AgentCanvasInvalidHarnessException extends DomainException {
+  constructor(detail: string) {
+    super({
+      type: 'https://agentloom.dev/errors/agent-canvas-invalid-harness',
+      title: 'Agent harness 节点配置无效',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail,
+    });
+  }
+}

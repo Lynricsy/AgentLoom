@@ -363,7 +363,7 @@ describe('SandboxAgentAdapter', () => {
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: expect.stringContaining('"createCodingTools":true'),
+          body: expect.stringContaining('"cwd":"/workspace/"'),
         }),
       );
       expect(session.status).toBe('active');
@@ -1302,6 +1302,198 @@ describe('SandboxAgentAdapter', () => {
         'deny',
       );
       await expect(first).resolves.toEqual({ allowed: false });
+    });
+  });
+
+  describe('guest bridge 审批回路', () => {
+    function sseFrame(params: Record<string, unknown>): string {
+      return `data: ${JSON.stringify({ jsonrpc: '2.0', method: 'event', params })}\n\n`;
+    }
+
+    function awaitingFrame(toolCallId: string, toolName: string): string {
+      return sseFrame({
+        type: 'tool_call_update',
+        toolCallId,
+        toolName,
+        status: 'awaiting_permission',
+        permissionRequest: { description: `${toolName} 请求执行` },
+      });
+    }
+
+    /** /v1/prompt 返回给定 SSE，其余 guest 控制请求（含 /v1/permission）直接成功 */
+    function routeGuestRequests(promptResponse: Response): void {
+      mockRuntimeDriver.requestGuest.mockImplementation(
+        async (_runtimeHandle: string, path: string) =>
+          (path === '/v1/prompt'
+            ? promptResponse
+            : { ok: true, status: 200 }) as never,
+      );
+    }
+
+    function permissionCalls() {
+      return mockRuntimeDriver.requestGuest.mock.calls.filter(
+        ([, path]) => path === '/v1/permission',
+      );
+    }
+
+    async function createConversationSession(
+      conversationId: string,
+      sessionId?: string,
+    ) {
+      return adapter.createSession({
+        ...defaultParams,
+        ...(sessionId ? { sessionId } : {}),
+        mode: 'conversation',
+        context: { agentConversationId: conversationId },
+      });
+    }
+
+    it('bash 的 awaiting_permission 登记 live gate，approve 后回写 /v1/permission allowed:true', async () => {
+      const session = await createConversationSession('conv-guest');
+      routeGuestRequests(
+        createHangingSseResponse([awaitingFrame('call-bash', 'bash')]).response,
+      );
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'run' }])
+        [Symbol.asyncIterator]();
+
+      await expect(iterator.next()).resolves.toMatchObject({
+        value: {
+          type: 'tool_call',
+          call: { id: 'call-bash', status: 'awaiting_permission' },
+        },
+      });
+      expect(
+        adapter.hasPendingConversationToolPermission('conv-guest', 'call-bash'),
+      ).toBe(true);
+
+      await adapter.resolveConversationToolPermission(
+        'conv-guest',
+        'call-bash',
+        'approve',
+      );
+
+      await vi.waitFor(() => expect(permissionCalls()).toHaveLength(1));
+      const [runtimeHandle, , init] = permissionCalls()[0]!;
+      expect(runtimeHandle).toBe('abc123def456');
+      expect(init).toMatchObject({ method: 'POST' });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        sessionId: session.id,
+        toolCallId: 'call-bash',
+        allowed: true,
+      });
+      expect(
+        adapter.hasPendingConversationToolPermission('conv-guest', 'call-bash'),
+      ).toBe(false);
+    });
+
+    it('远程工具的 awaiting_permission 不建 guest gate（由 preflight/execute 回调负责）', async () => {
+      adapter.registerSessionToolProvider('session-remote-gate', () => ({
+        lookup_memory: tool({
+          description: '检索记忆内容',
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: vi.fn(),
+        }),
+      }));
+      const session = await createConversationSession(
+        'conv-remote',
+        'session-remote-gate',
+      );
+      routeGuestRequests(
+        createHangingSseResponse([
+          awaitingFrame('call-remote', 'lookup_memory'),
+          awaitingFrame('call-native', 'read'),
+        ]).response,
+      );
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'run' }])
+        [Symbol.asyncIterator]();
+      await iterator.next();
+      await iterator.next();
+
+      expect(
+        adapter.hasPendingConversationToolPermission(
+          'conv-remote',
+          'call-remote',
+        ),
+      ).toBe(false);
+      expect(
+        adapter.hasPendingConversationToolPermission(
+          'conv-remote',
+          'call-native',
+        ),
+      ).toBe(true);
+      await expect(
+        adapter.resolveConversationToolPermission(
+          'conv-remote',
+          'call-remote',
+          'approve',
+        ),
+      ).rejects.toBeInstanceOf(ToolPermissionResolutionNotAllowedException);
+    });
+
+    it('重复 awaiting 更新只保留一个 gate；guest 侧终结后静默撤销且不回写', async () => {
+      const session = await createConversationSession('conv-dismiss');
+      routeGuestRequests(
+        createHangingSseResponse([
+          awaitingFrame('call-x', 'bash'),
+          awaitingFrame('call-x', 'bash'),
+          sseFrame({
+            type: 'tool_call_end',
+            toolCallId: 'call-x',
+            toolName: 'bash',
+            isError: true,
+            result: 'rejected',
+          }),
+        ]).response,
+      );
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'run' }])
+        [Symbol.asyncIterator]();
+      await iterator.next();
+      await iterator.next();
+      expect(
+        adapter.hasPendingConversationToolPermission('conv-dismiss', 'call-x'),
+      ).toBe(true);
+
+      await iterator.next();
+
+      expect(
+        adapter.hasPendingConversationToolPermission('conv-dismiss', 'call-x'),
+      ).toBe(false);
+      expect(permissionCalls()).toHaveLength(0);
+    });
+
+    it('30 秒无人决议时 gate 超时并回写 allowed:false', async () => {
+      vi.useFakeTimers();
+      try {
+        const session = await createConversationSession('conv-timeout');
+        routeGuestRequests(
+          createHangingSseResponse([awaitingFrame('call-slow', 'write')])
+            .response,
+        );
+        const iterator = adapter
+          .prompt(session.id, [{ type: 'text', text: 'run' }])
+          [Symbol.asyncIterator]();
+        await iterator.next();
+
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        expect(permissionCalls()).toHaveLength(1);
+        expect(JSON.parse(String(permissionCalls()[0]![2]?.body))).toEqual({
+          sessionId: session.id,
+          toolCallId: 'call-slow',
+          allowed: false,
+        });
+        expect(
+          adapter.hasPendingConversationToolPermission(
+            'conv-timeout',
+            'call-slow',
+          ),
+        ).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

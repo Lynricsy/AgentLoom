@@ -1,14 +1,19 @@
 /**
- * Sandbox 模型配置边界：从租户模型记录生成容器级 pi 配置、解析运行时密钥，
- * 并负责 guest session 初始化；不管理 Agent 会话和工具生命周期。
+ * Sandbox 模型配置边界：从租户模型记录生成容器级模型配置、解析运行时密钥，
+ * 组装 harness（dsh）载荷与 runtime 插件文件，并负责 guest session 初始化；
+ * 不管理 Agent 会话和工具生命周期。
  */
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
+import JSZip from 'jszip';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
+import type {
+  AgentRuntimeConfig,
+  HarnessConfig,
+} from '../agent-definition/agent-runtime-config.interface';
 import {
   ApiKeyNotFoundException,
   DefaultApiKeyNotConfiguredException,
@@ -27,14 +32,24 @@ import {
 import {
   SANDBOX_SESSION_FILE_MAX_BYTES,
   SANDBOX_SESSION_TOTAL_MAX_BYTES,
-  SandboxSkillPayloadTooLargeException,
+  SandboxRuntimePluginUnsupportedFileException,
+  SandboxSessionPayloadTooLargeException,
 } from '../sandbox/sandbox.exceptions';
+import { RuntimePluginService } from '../runtime-plugin/runtime-plugin.service';
 import type { AgentSession, McpServerConfig } from './types';
 
-const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
+/**
+ * 每个会话都会在 guest 内拉起 dsh 子进程并等待 bridge socket（guest 上限 30 s），
+ * 单次 /v1/session 请求必须覆盖该启动窗口，否则超时重试会撞上进行中的会话创建。
+ */
+const SESSION_INIT_REQUEST_TIMEOUT_MS = 45_000;
 const SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS = 90_000;
-const SANDBOX_READY_TIMEOUT_MS = 30_000;
+const SANDBOX_READY_TIMEOUT_MS = 60_000;
 const SANDBOX_READY_TIMEOUT_WITH_MCP_MS = 120_000;
+/** guest 对每个 npm 来源的 runtime 插件执行一次在线安装，单次上限 180 s */
+const SESSION_INIT_NPM_PLUGIN_INSTALL_MS = 180_000;
+/** 单次请求超时之外留给就绪重试的余量 */
+const SESSION_INIT_RETRY_HEADROOM_MS = 30_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
 const RETRYABLE_SESSION_INIT_STATUSES = new Set([
   404, 408, 425, 429, 500, 502, 503, 504,
@@ -66,6 +81,7 @@ export class SandboxModelConfigService {
     @Optional()
     private readonly decryptionBoundaryService?: DecryptionBoundaryService,
     @Optional() private readonly piConfigGenerator?: PiConfigGeneratorService,
+    @Optional() private readonly runtimePluginService?: RuntimePluginService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -94,8 +110,10 @@ export class SandboxModelConfigService {
       payload['nativeToolPolicy'] = params.runtimeConfig.nativeToolPolicy;
     }
 
-    // guest 把 files 写进 session agentDir，pi 的 DefaultResourceLoader 从
-    // `<agentDir>/skills/<name>/SKILL.md` 发现技能并在系统提示词列出（read 工具按需加载）
+    const files: Record<string, string> = {};
+
+    // guest 把 files 写进 session agentDir；dsh 的 skill-filesystem 从
+    // `<agentDir>/skills/<name>/SKILL.md` 发现技能
     if (params.skills?.length) {
       if (!this.piConfigGenerator) {
         throw new Error(
@@ -105,28 +123,37 @@ export class SandboxModelConfigService {
       const skillDirs = this.piConfigGenerator.generateSkillFiles({
         skills: [...params.skills],
       });
-      const files: Record<string, string> = Object.fromEntries(
-        Object.entries(skillDirs).flatMap(([dirName, files]) =>
-          Object.entries(files).map(([fileName, content]) => [
-            `skills/${dirName}/${fileName}`,
-            content,
-          ]),
-        ),
+      for (const [dirName, skillFiles] of Object.entries(skillDirs)) {
+        for (const [fileName, content] of Object.entries(skillFiles)) {
+          files[`skills/${dirName}/${fileName}`] = content;
+        }
+      }
+    }
+
+    const harness = params.runtimeConfig?.harness;
+    if (harness) {
+      payload['harness'] = await this.buildHarnessPayload(
+        harness,
+        params.session,
+        files,
       );
+    }
+
+    if (Object.keys(files).length > 0) {
       // guest 写文件前按同样上限校验，超限会让会话创建失败；在 server 端提前拒绝并给出原因
       let totalBytes = 0;
       for (const [path, content] of Object.entries(files)) {
         const bytes = Buffer.byteLength(content);
         if (bytes > SANDBOX_SESSION_FILE_MAX_BYTES) {
-          throw new SandboxSkillPayloadTooLargeException(
-            `技能文件 ${path} 为 ${bytes} 字节，超过沙箱单文件上限 ${SANDBOX_SESSION_FILE_MAX_BYTES} 字节`,
+          throw new SandboxSessionPayloadTooLargeException(
+            `会话文件 ${path} 为 ${bytes} 字节，超过沙箱单文件上限 ${SANDBOX_SESSION_FILE_MAX_BYTES} 字节`,
           );
         }
         totalBytes += bytes;
       }
       if (totalBytes > SANDBOX_SESSION_TOTAL_MAX_BYTES) {
-        throw new SandboxSkillPayloadTooLargeException(
-          `技能文件合计 ${totalBytes} 字节，超过沙箱会话上限 ${SANDBOX_SESSION_TOTAL_MAX_BYTES} 字节`,
+        throw new SandboxSessionPayloadTooLargeException(
+          `会话文件（技能与 runtime 插件）合计 ${totalBytes} 字节，超过沙箱会话上限 ${SANDBOX_SESSION_TOTAL_MAX_BYTES} 字节`,
         );
       }
       payload['files'] = files;
@@ -140,6 +167,68 @@ export class SandboxModelConfigService {
     }
 
     return payload;
+  }
+
+  /**
+   * 生成 guest 的 harness 载荷：package 插件补上 manifest.id（pluginId），
+   * 并把已签名包内全部文件解包为 `plugins/<pluginId>/<path>` 写入 files。
+   */
+  private async buildHarnessPayload(
+    harness: HarnessConfig,
+    session: AgentSession,
+    files: Record<string, string>,
+  ): Promise<Record<string, unknown>> {
+    const plugins: Array<Record<string, unknown>> = [];
+
+    for (const plugin of harness.plugins) {
+      // 停用节点与 npm 插件原样下发：前者由 guest 跳过，后者由 guest 在线安装
+      if (plugin.source !== 'package' || !plugin.enabled) {
+        plugins.push({ ...plugin });
+        continue;
+      }
+      if (!this.runtimePluginService) {
+        throw new Error(
+          'RuntimePluginService 未注入，无法下发 runtime 插件包到沙箱会话',
+        );
+      }
+      const tenantId = session.tenantId;
+      if (!tenantId) {
+        throw new Error(
+          `Session ${session.id} 缺少 tenantId，无法解析 runtime 插件 ${plugin.ref}`,
+        );
+      }
+      const runtimePluginService = this.runtimePluginService;
+      const record = await runInTenantTransaction(this.db, tenantId, () =>
+        runtimePluginService.findActiveById(plugin.ref, tenantId),
+      );
+      plugins.push({ ...plugin, pluginId: record.pluginId });
+
+      // 对象存储读取不占用数据库事务
+      const archive = await runtimePluginService.downloadArchive(record);
+      const zip = await JSZip.loadAsync(archive);
+      const decoder = new TextDecoder('utf-8', { fatal: true });
+      for (const entry of Object.values(zip.files)) {
+        if (entry.dir) continue;
+        let content: string;
+        try {
+          content = decoder.decode(await entry.async('uint8array'));
+        } catch {
+          throw new SandboxRuntimePluginUnsupportedFileException(
+            record.pluginId,
+            entry.name,
+          );
+        }
+        files[`plugins/${record.pluginId}/${entry.name}`] = content;
+      }
+    }
+
+    return {
+      engine: harness.engine,
+      ...(harness.profilePatch !== undefined
+        ? { profilePatch: harness.profilePatch }
+        : {}),
+      plugins,
+    };
   }
 
   private async resolveSessionPiConfig(
@@ -629,18 +718,38 @@ export class SandboxModelConfigService {
     totalTimeoutMs: number;
   } {
     const hasMcpServers = this.hasConfiguredMcpServers(payload);
+    const baseRequestTimeoutMs = hasMcpServers
+      ? SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS
+      : SESSION_INIT_REQUEST_TIMEOUT_MS;
+    const baseTotalTimeoutMs = hasMcpServers
+      ? SANDBOX_READY_TIMEOUT_WITH_MCP_MS
+      : SANDBOX_READY_TIMEOUT_MS;
+    const npmPluginCount = this.countEnabledNpmPlugins(payload);
 
-    if (!hasMcpServers) {
+    if (npmPluginCount === 0) {
       return {
-        requestTimeoutMs: SESSION_INIT_REQUEST_TIMEOUT_MS,
-        totalTimeoutMs: SANDBOX_READY_TIMEOUT_MS,
+        requestTimeoutMs: baseRequestTimeoutMs,
+        totalTimeoutMs: baseTotalTimeoutMs,
       };
     }
 
+    const requestTimeoutMs =
+      baseRequestTimeoutMs +
+      npmPluginCount * SESSION_INIT_NPM_PLUGIN_INSTALL_MS;
     return {
-      requestTimeoutMs: SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS,
-      totalTimeoutMs: SANDBOX_READY_TIMEOUT_WITH_MCP_MS,
+      requestTimeoutMs,
+      totalTimeoutMs: requestTimeoutMs + SESSION_INIT_RETRY_HEADROOM_MS,
     };
+  }
+
+  private countEnabledNpmPlugins(payload: Record<string, unknown>): number {
+    const harness = this.asRecord(payload['harness']);
+    const plugins = harness?.['plugins'];
+    if (!Array.isArray(plugins)) return 0;
+    return plugins.filter((plugin: unknown) => {
+      const record = this.asRecord(plugin);
+      return record?.['source'] === 'npm' && record['enabled'] !== false;
+    }).length;
   }
 
   private hasConfiguredMcpServers(payload: Record<string, unknown>): boolean {

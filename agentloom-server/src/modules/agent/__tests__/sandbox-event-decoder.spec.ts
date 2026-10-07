@@ -143,4 +143,45 @@ describe('decodeSandboxServerSentEvent', () => {
       sessionId: 'pty-1',
     });
   });
+
+  it('JSON-RPC harness_trace 从 params 顶层读 kind/turn/step、从 params.data 读精简载荷', () => {
+    expect(
+      decode({
+        jsonrpc: '2.0',
+        method: 'event',
+        params: {
+          type: 'harness_trace',
+          kind: 'tool/call',
+          turn: 1,
+          step: 2,
+          data: { callId: 'c1', name: 'bash' },
+          timestamp: '2026-10-07T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      events: [
+        {
+          type: 'harness_trace',
+          kind: 'tool/call',
+          turn: 1,
+          step: 2,
+          data: { callId: 'c1', name: 'bash' },
+          timestamp: '2026-10-07T00:00:00.000Z',
+        },
+      ],
+    });
+  });
+
+  it('harness_trace 缺 timestamp 用显式回退值，非整数 turn/step 被丢弃，缺 kind 不产生事件', () => {
+    expect(
+      decode({ type: 'harness_trace', kind: 'turn/start', turn: 1.5 }).events,
+    ).toEqual([
+      {
+        type: 'harness_trace',
+        kind: 'turn/start',
+        timestamp: '2026-08-20T00:00:00.000Z',
+      },
+    ]);
+    expect(decode({ type: 'harness_trace', turn: 1 }).events).toEqual([]);
+  });
 });

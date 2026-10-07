@@ -15,7 +15,8 @@ export type SandboxBinding = ServerSandboxBinding;
 
 const CONTAINER_WORKSPACE = '/workspace/';
 const REQUEST_TIMEOUT_MS = 3_600_000;
-const ABORT_REQUEST_TIMEOUT_MS = 5_000;
+/** abort / 审批回写这类 guest 控制请求的超时 */
+const GUEST_CONTROL_REQUEST_TIMEOUT_MS = 5_000;
 const SANDBOX_READY_TIMEOUT_MS = 30_000;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1_000;
 
@@ -159,7 +160,7 @@ export class SandboxSessionRuntimeService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionId }),
-          signal: AbortSignal.timeout(ABORT_REQUEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(GUEST_CONTROL_REQUEST_TIMEOUT_MS),
         },
       );
       if (!response.ok) {
@@ -170,6 +171,41 @@ export class SandboxSessionRuntimeService {
     } catch (error) {
       this.logger.warn(
         `Sandbox abort 请求异常: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * 把对话审批结果回写给 guest bridge（dsh 原生 / MCP / 插件工具的审批在 guest 内阻塞等待）。
+   * guest 侧有独立超时兜底，回写失败只记录告警。
+   */
+  async resolveGuestToolPermission(
+    sessionId: string,
+    binding: SandboxBinding,
+    tenantId: string,
+    toolCallId: string,
+    allowed: boolean,
+  ): Promise<void> {
+    try {
+      const sandbox = await this.waitForSandboxReady(binding, tenantId);
+      const response = await this.runtimeDriver.requestGuest(
+        sandbox.runtimeHandle,
+        '/v1/permission',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, toolCallId, allowed }),
+          signal: AbortSignal.timeout(GUEST_CONTROL_REQUEST_TIMEOUT_MS),
+        },
+      );
+      if (!response.ok) {
+        this.logger.warn(
+          `Sandbox 工具审批回写失败: session=${sessionId}, toolCallId=${toolCallId}, status=${response.status}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Sandbox 工具审批回写异常: session=${sessionId}, toolCallId=${toolCallId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

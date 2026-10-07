@@ -11,6 +11,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { parse as parseYaml } from 'yaml';
 
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
 import type { DrizzleDB } from '../../database/database.module';
@@ -41,6 +42,7 @@ import { deriveAgentSandboxConfigFromCanvas } from './agent-sandbox-config.utils
 import {
   AgentNotFoundException,
   AgentArchivedException,
+  AgentCanvasInvalidHarnessException,
   AgentCanvasInvalidMcpToolBindingException,
   AgentVersionConflictException,
   AgentCanvasUnknownNodeTypeException,
@@ -48,6 +50,15 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
+import {
+  RUNTIME_PLUGIN_NPM_NAME_PATTERN,
+  RUNTIME_PLUGIN_NPM_SPEC_MAX,
+} from '../runtime-plugin/runtime-plugin.constants';
+import {
+  RuntimePluginInactiveException,
+  RuntimePluginNotFoundException,
+} from '../runtime-plugin/runtime-plugin.exceptions';
+import { RuntimePluginService } from '../runtime-plugin/runtime-plugin.service';
 import {
   deriveSandboxTimeoutHours,
   normalizeSandboxTimeoutSeconds,
@@ -72,6 +83,8 @@ import type {
   AgentModelConfig,
   AgentNativeToolPolicy,
   AgentSelfEvolutionPolicy,
+  HarnessConfig,
+  RuntimePluginRef,
 } from './agent-runtime-config.interface';
 import { coerceAgentOutputSchema } from './agent-runtime-config.utils';
 import {
@@ -88,6 +101,12 @@ type AgentDbClient = Pick<
   DrizzleDB,
   'execute' | 'insert' | 'select' | 'update'
 >;
+
+/** 与 contracts HarnessConfigSchema.profilePatch 的上限一致，编译期给出领域错误而非 Zod 异常 */
+const HARNESS_PROFILE_PATCH_MAX_LENGTH = 65_536;
+/** runtime_plugins.id（uuid）；非法值在编译期拒绝，避免查询时触发数据库类型错误 */
+const RUNTIME_PLUGIN_RECORD_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface ApplyAgentCanvasSnapshotOptions {
   canvasNodes: schema.ReactFlowNode[];
@@ -142,6 +161,7 @@ export class AgentDefinitionService {
     @Inject(DRIZZLE)
     private readonly db: DrizzleDB,
     private readonly resourceSourceService: ResourceSourceService,
+    private readonly runtimePluginService: RuntimePluginService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -636,6 +656,12 @@ export class AgentDefinitionService {
           'Agent 画布不包含任何节点，无法发布',
         );
       }
+      await this.assertRuntimePluginsPublishable(
+        updatedDraft.tenantId,
+        updatedDraft.runtimeMode,
+        updatedDraft.nodes,
+        updatedDraft.edges ?? [],
+      );
 
       const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
       const snapshot = this.buildSnapshot(updatedDraft);
@@ -832,6 +858,19 @@ export class AgentDefinitionService {
           break;
         }
 
+        // runtime-plugin 节点只经 harness 的 plugins-in 收集；未连到 harness 的不参与编译
+        case 'harness': {
+          if (!agentMainNode || targetHandle === 'harness-in') {
+            config.harness = this.extractHarnessConfig(
+              nodeId,
+              data,
+              nodesById,
+              edges,
+            );
+          }
+          break;
+        }
+
         case 'skill': {
           // Skill IDs are collected by extractConversationSkillIds() above
           break;
@@ -881,7 +920,132 @@ export class AgentDefinitionService {
       }
     }
 
+    if (config.harness && runtimeMode !== 'sandbox') {
+      throw new AgentCanvasInvalidHarnessException(
+        'harness 节点只能用于 sandbox 运行态的 Agent',
+      );
+    }
+
     return normalizeAgentRuntimeConfig(config);
+  }
+
+  /** harness 节点 → HarnessConfig：插件按 plugins-in 边在画布中的顺序排列（决定 patch 叠加顺序）。 */
+  private extractHarnessConfig(
+    harnessNodeId: string | undefined,
+    data: Record<string, unknown>,
+    nodesById: ReadonlyMap<string, unknown>,
+    edges: readonly unknown[],
+  ): HarnessConfig {
+    const profilePatch =
+      typeof data.profilePatch === 'string' && data.profilePatch.trim()
+        ? data.profilePatch
+        : undefined;
+    if (profilePatch !== undefined) {
+      if (profilePatch.length > HARNESS_PROFILE_PATCH_MAX_LENGTH) {
+        throw new AgentCanvasInvalidHarnessException(
+          `harness 节点的 profile patch 超过 ${HARNESS_PROFILE_PATCH_MAX_LENGTH} 字符上限`,
+        );
+      }
+      let parsedPatch: unknown;
+      try {
+        parsedPatch = parseYaml(profilePatch);
+      } catch {
+        parsedPatch = undefined;
+      }
+      if (!Array.isArray(parsedPatch)) {
+        throw new AgentCanvasInvalidHarnessException(
+          'harness 节点的 profile patch 必须是 YAML 列表',
+        );
+      }
+    }
+
+    const plugins: RuntimePluginRef[] = [];
+    for (const rawEdge of edges) {
+      const edge = this.asRecord(rawEdge);
+      if (
+        !edge ||
+        edge.target !== harnessNodeId ||
+        edge.targetHandle !== 'plugins-in'
+      ) {
+        continue;
+      }
+      const sourceId = typeof edge.source === 'string' ? edge.source : '';
+      const pluginNode = nodesById.get(sourceId);
+      if (
+        !pluginNode ||
+        this.resolveNodeType(pluginNode) !== 'runtime-plugin'
+      ) {
+        throw new AgentCanvasInvalidHarnessException(
+          `harness 节点的 plugins-in 只能连接 runtime-plugin 节点（来源 ${sourceId || '未知'}）`,
+        );
+      }
+      plugins.push(
+        this.extractRuntimePluginRef(
+          sourceId,
+          this.resolveNodeData(pluginNode),
+        ),
+      );
+    }
+
+    return {
+      engine: 'dsh',
+      ...(profilePatch !== undefined ? { profilePatch } : {}),
+      plugins,
+    };
+  }
+
+  private extractRuntimePluginRef(
+    nodeId: string,
+    data: Record<string, unknown>,
+  ): RuntimePluginRef {
+    const pluginConfig = this.asRecord(data.pluginConfig);
+    const common = {
+      nodeId,
+      ...(pluginConfig ? { config: pluginConfig } : {}),
+      enabled: data.enabled !== false,
+    };
+
+    if (data.source === 'package') {
+      const runtimePluginId = this.readFirstString(data.runtimePluginId);
+      if (
+        !runtimePluginId ||
+        !RUNTIME_PLUGIN_RECORD_ID_PATTERN.test(runtimePluginId)
+      ) {
+        throw new AgentCanvasInvalidHarnessException(
+          `runtime-plugin 节点 ${nodeId} 未选择插件包`,
+        );
+      }
+      return { ...common, source: 'package', ref: runtimePluginId };
+    }
+
+    if (data.source === 'npm') {
+      const npmName = this.readFirstString(data.npmName);
+      if (
+        !npmName ||
+        npmName.length > RUNTIME_PLUGIN_NPM_SPEC_MAX ||
+        !RUNTIME_PLUGIN_NPM_NAME_PATTERN.test(npmName)
+      ) {
+        throw new AgentCanvasInvalidHarnessException(
+          `runtime-plugin 节点 ${nodeId} 的 npm 包名无效`,
+        );
+      }
+      const npmVersion = this.readFirstString(data.npmVersion);
+      if (!npmVersion) {
+        throw new AgentCanvasInvalidHarnessException(
+          `runtime-plugin 节点 ${nodeId} 缺少 npm 版本`,
+        );
+      }
+      if (npmVersion.length > RUNTIME_PLUGIN_NPM_SPEC_MAX) {
+        throw new AgentCanvasInvalidHarnessException(
+          `runtime-plugin 节点 ${nodeId} 的 npm 版本过长`,
+        );
+      }
+      return { ...common, source: 'npm', ref: npmName, version: npmVersion };
+    }
+
+    throw new AgentCanvasInvalidHarnessException(
+      `runtime-plugin 节点 ${nodeId} 的来源必须是 package 或 npm`,
+    );
   }
 
   resolveSystemPromptFromNodes(
@@ -989,6 +1153,12 @@ export class AgentDefinitionService {
 
       await this.assertRuntimeModeConstraints(
         dbClient,
+        agent.runtimeMode,
+        agent.nodes ?? [],
+        agent.edges ?? [],
+      );
+      await this.assertRuntimePluginsPublishable(
+        agent.tenantId,
         agent.runtimeMode,
         agent.nodes ?? [],
         agent.edges ?? [],
@@ -1167,6 +1337,12 @@ export class AgentDefinitionService {
           existingVersion.snapshot.nodes ?? [],
           existingVersion.snapshot.edges ?? [],
         );
+        await this.assertRuntimePluginsPublishable(
+          agent.tenantId,
+          existingVersion.snapshot.runtimeMode ?? agent.runtimeMode,
+          existingVersion.snapshot.nodes ?? [],
+          existingVersion.snapshot.edges ?? [],
+        );
 
         const [updatedVersion] = await dbClient
           .update(schema.agentVersions)
@@ -1200,6 +1376,12 @@ export class AgentDefinitionService {
 
         await this.assertRuntimeModeConstraints(
           dbClient,
+          agent.runtimeMode,
+          agent.nodes ?? [],
+          agent.edges ?? [],
+        );
+        await this.assertRuntimePluginsPublishable(
+          agent.tenantId,
           agent.runtimeMode,
           agent.nodes ?? [],
           agent.edges ?? [],
@@ -2254,6 +2436,52 @@ export class AgentDefinitionService {
         .map((config) => config.name)
         .join('、')}`,
     );
+  }
+
+  /**
+   * 发布 / 创建版本时确认 harness 引用的 package 插件存在且 active；
+   * 画布草稿保存不做此校验，允许先连线再上传或启用插件。
+   */
+  private async assertRuntimePluginsPublishable(
+    tenantId: string,
+    runtimeMode: AgentRuntimeMode,
+    nodes: unknown[],
+    edges: unknown[],
+  ): Promise<void> {
+    if (runtimeMode !== 'sandbox') {
+      return;
+    }
+
+    const { harness } = this.buildRuntimeConfigFromNodes(
+      nodes,
+      edges,
+      undefined,
+      runtimeMode,
+    );
+    const packageRefs = new Set(
+      (harness?.plugins ?? [])
+        .filter((plugin) => plugin.source === 'package' && plugin.enabled)
+        .map((plugin) => plugin.ref),
+    );
+    const reasons: string[] = [];
+    for (const ref of packageRefs) {
+      try {
+        await this.runtimePluginService.findActiveById(ref, tenantId);
+      } catch (error) {
+        if (
+          error instanceof RuntimePluginNotFoundException ||
+          error instanceof RuntimePluginInactiveException
+        ) {
+          reasons.push(`runtime 插件 ${ref} 不存在或未启用`);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (reasons.length > 0) {
+      throw new AgentPublishValidationException(reasons);
+    }
   }
 
   private readFirstString(...candidates: unknown[]): string | undefined {
