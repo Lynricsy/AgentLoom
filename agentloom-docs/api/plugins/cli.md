@@ -44,7 +44,7 @@ alias agentloom-plugin="node $PWD/agentloom-plugin-cli/dist/cli.js"
 | `-o, --output <dir>` | `build` | 输出目录 |
 | `--wasm` | 关 | 构建 WASM 插件 |
 
-- manifest 的 `kind` 为 `runtime`：不接受 `--wasm`；执行 `npx tsc`，要求 `runtime.entry` 与 `runtime.patch` 指向的文件存在，否则报错 `runtime 插件缺少入口文件: <path>`；输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、patch 文件、`dist/`、`package.json`，以及存在时的 `README.md`（入口不在 `dist/` 下时单独打入）。
+- manifest 的 `kind` 为 `runtime`：不接受 `--wasm`；执行 `npx tsc`，要求 `runtime.entry` 与 `runtime.patch` 指向的文件存在，否则报错 `runtime 插件缺少入口文件: <path>`；再用 esbuild 把 `dist/` 下的每个 JS 文件（以及不在 `dist/` 下的入口）打包为自包含的 ESM：第三方依赖内联，`@deepseek-ai/*`、`peerDependencies` 与 node 内置模块保持外部 import，共享代码拆到 `dist/chunks/`，打包失败时报错 `runtime 插件依赖打包失败: …`；任一文件超过 1 MiB 或合计超过 16 MiB 时报错（会话下发通道的上限）。输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、patch 文件、打包后的 `dist/`（类型声明与 source map 除外）、`package.json`，以及存在时的 `README.md`。
 - `--wasm`：要求存在 `Cargo.toml` 与非空且合法的 `node-definitions.json`；`dist/plugin.wasm` 不存在时执行 `cargo build --target wasm32-unknown-unknown --release` 并复制产物，已存在时跳过编译。
 - 不带 `--wasm` 的节点插件：执行 `npx tsc`，从 `dist/index.js` 读取节点定义；结束时提示该产物不能注册到服务端。
 - 节点插件输出 `<output>/<id>-<version>.alp`，包含 `manifest.json`、`node-definitions.json`、`dist/`、`package.json`，以及存在时的 `README.md`。

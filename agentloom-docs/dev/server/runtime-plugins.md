@@ -79,9 +79,27 @@ Agent 画布上，`runtime-plugin` 节点经 `plugins-in` 端口连到 `harness`
 
 读出的 patch 先把字面量 `__PLUGIN_ROOT__` 替换为插件根目录，再把 `insert` 条目中以相对路径写的 `name` 按 patch 文件所在目录转为绝对路径（多份 patch 合并进一个文件后，相对基准会变）；节点上的 `pluginConfig` 浅合并到该插件每个顶层 `insert` 条目的 `config` 上。处理基于 YAML AST，`!!js` 等标签原样保留。最终叠加顺序：平台层 → 各插件（画布顺序）→ 用户 profile patch，后者可以覆盖前面任何条目。
 
+覆盖用的是 dsh 的 `- id: <条目> config: …` 语义：**整体替换**该条目的 config，不与前面的层合并。插件或用户 patch 用这种写法改平台层条目时，平台写入的值随之丢失，例如覆盖 `system-prompt` 会丢掉 Agent 的系统提示词（`personaPrefix`）并恢复 dsh 的身份段；用户 patch 覆盖某个插件条目时，插件 patch 里的默认值与节点 `pluginConfig` 也一并被替换。只想追加提示词时，插件应调用 `ctx.systemPrompt.section(...)`。
+
+### 激活核对
+
+dsh 只把一组全局必需条目（`agent-loop` 等）未激活视为启动失败；其他条目导入失败、`apply` 抛错或等不到依赖的服务时，只在 stderr 打一行 `dsh: warning: N entries did not activate`，会话照常创建，插件静默缺席。因此 `writeDshProfile` 记下每个启用插件 patch 插入的条目 id（含 `cordis:group` 子条目），随 `initialize` 交给 bridge；bridge 等 Loader 就绪后按 dsh 启动审计的同一判据（`agentloom-deploy/sandbox/src/dsh-bridge/loader-audit.ts`）逐个核对，任一未激活就让 `initialize` 失败：
+
+```text
+runtime 插件未能加载:
+- com.agentloom.dep-rt（条目 dep-rt，模块 file:///…/plugins/com.agentloom.dep-rt/dist/index.js）: 模块导入失败: Cannot find package 'nanoid' imported from …/dist/index.js
+```
+
+原因分三类：`模块导入失败: <原始错误>`（Loader 不保留导入错误，bridge 重放一次导入取回）、`插件激活失败: <apply 抛出的错误>`、`等待服务 <服务名>`。被 `disabled` 关掉的条目不核对。会话创建随之以 422 失败（见 [Agent 运行态](/dev/server/agent-runtime)），dsh 子进程被终止、会话目录被删除。
+
 ### 依赖解析
 
 插件 `import` 的 `@deepseek-ai/*` 包必须解析到 guest 安装的那一份 dsh，否则同一个服务会有两份实例。实测只有同时满足两点时 import 才成功：插件被链接进 profile 的 `node_modules/`，并且插件的 `package.json` 在 `peerDependencies` 中声明了它 import 的每个 `@deepseek-ai/*` 包。只做其一都会失败。npm 安装用 `--legacy-peer-deps` 正是为了不再装一份 peer 副本。
+
+第三方依赖（如 `nanoid`、`yaml`）按来源分两条路：
+
+- `package`：包内没有 `node_modules`，guest 也不为它安装依赖。`agentloom-plugin build` 用 esbuild 把 `dist/` 下的每个 JS 文件重新打包为自包含的 ESM，第三方依赖内联进去，`@deepseek-ai/*`、`peerDependencies` 与 node 内置模块保持外部 import；共享代码拆成 `dist/chunks/` 下的公共 chunk。依赖因此随包签名、离线可用，不需要 VM 出网。打包后单文件超过 1 MiB 或合计超过 16 MiB 时 `build` 直接报错，因为下发通道放不下。
+- `npm`：`npm install` 按包的 `dependencies` 正常安装到会话目录，插件从自己的真实路径解析到它们。
 
 ## 约束与取舍
 

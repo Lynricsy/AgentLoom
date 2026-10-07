@@ -59,8 +59,10 @@ agentloom-plugin create demo-rt --runtime
 
 - **`__PLUGIN_ROOT__`**：在 VM 内被替换为插件解包后的绝对路径。`insert` 条目的 `name` 也可以写相对路径（相对 patch 文件所在目录），平台合并 patch 前会把它转为绝对路径。
 - **peerDependencies**：插件 import 的每个 `@deepseek-ai/*` 包都要在 `package.json` 的 `peerDependencies` 中声明，版本与平台一致；不要把它们装进包里。否则插件在 dsh 中 import 失败。模板已声明 `@deepseek-ai/cordis` 与 `@deepseek-ai/dsh-tools`。
+- **第三方依赖**：其他 npm 包（如 `nanoid`、`yaml`）照常写进 `dependencies` 并 `npm install`。包里不带 `node_modules`，`build` 会把它们打包进 `dist/` 的 JS（见第 3 步）；需要原生编译（`.node` 文件）的依赖无法使用。
 - **只放文本文件**：包经会话请求的文本通道下发，任何非 UTF-8 文件都会让使用它的会话创建失败；包内所有文件与 Agent 绑定的技能文件合计不超过 16 MiB，单文件不超过 1 MiB。
 - **配置**：用户在画布节点上填写的配置会浅合并到该插件 patch 中每个顶层 `insert` 条目的 `config` 上。在 manifest 的 `runtime.configSchema` 写 JSON Schema 后，Studio 面板为标量字段渲染表单；对象与数组字段需要用户在 harness 节点的 profile patch 中配置。
+- **覆盖已有条目**：patch 里的 `- id: <条目>` 加 `config` 会**整体替换**该条目的 config，包括平台为 Agent 生成的条目。例如覆盖 `system-prompt` 会丢掉 Agent 的系统提示词；只想追加提示词时，在插件里 `inject = ['systemPrompt']` 并调用 `ctx.systemPrompt.section({ name, order, text })`。
 - **审批**：dsh 在 microVM 内以 danger-full-access 运行，内置工具不发起审批。要让某个工具调用经用户确认，在 `tools/pre-execute` 中返回 `{ kind: 'ask' }`，请求会出现在 AgentLoom 的审批卡片里，30 秒无决议按拒绝处理。
 
 ## 3. 构建与签名
@@ -71,15 +73,17 @@ agentloom-plugin build
 agentloom-plugin publish -k ../keys/private.pem
 ```
 
-`build` 执行 `tsc` 并检查 `runtime.entry` 与 `runtime.patch` 指向的文件存在，然后打包。实跑时归档内容：
+`build` 先执行 `tsc`，检查 `runtime.entry` 与 `runtime.patch` 指向的文件存在，再用 esbuild 把 `dist/` 下的每个 JS 文件重新打包：第三方依赖内联进去，`@deepseek-ai/*`、`peerDependencies` 与 node 内置模块保留为外部 import，多个入口共用的代码拆到 `dist/chunks/`。打包后任一文件超过 1 MiB 或合计超过 16 MiB 时报错。实跑模板时归档内容：
 
 ```text
-      422  2026-10-07 03:52   manifest.json
-       70  2026-10-07 03:52   cordis.patch.yml
-      446  2026-10-07 03:52   package.json
-      620  2026-10-07 03:52   README.md
-      927  2026-10-07 03:52   dist/index.js
+      408  2026-10-07 15:30   manifest.json
+       70  2026-10-07 15:30   cordis.patch.yml
+      801  2026-10-07 15:30   dist/index.js
+      446  2026-10-07 15:30   package.json
+      673  2026-10-07 15:30   README.md
 ```
+
+模板加上 `nanoid` 与 `yaml` 两个依赖后，`dist/index.js` 为 265384 字节，包内仍只有这 5 个文件。
 
 `build` 结束时打印归档路径、大小、版本与「类型: runtime 插件（dsh 0.2.0-rc.2）」。`publish` 的输出以 `✅ 插件签名完成` 开头，归档为 `build/com.agentloom.demo-rt-0.1.0.alp`。
 
@@ -110,4 +114,5 @@ agentloom-plugin publish -k ../keys/private.pem
 | 上传返回 409 `runtime-plugin-already-exists` | 同一 `id` 与 `version` 已上传过；提升 `version` 后重新构建 |
 | 签名相关错误（`plugin-signature-*` 等） | 与节点插件相同，见 [开发教程](/api/plugins/tutorial#出错时) |
 | 对话开始时报 `sandbox-runtime-plugin-unsupported-file` | 包内有非文本文件，从 `dist/` 与包根目录中移除后重新打包 |
-| 对话开始时报 `dsh 运行时启动失败: …` | 插件在 dsh 中加载失败，错误后附 dsh 输出末尾；常见原因是 import 的 `@deepseek-ai/*` 包未在 `peerDependencies` 中声明 |
+| 对话开始时报 `runtime 插件未能加载: - <插件>（条目 …，模块 …）: …` | 插件条目在 dsh 中没有激活，原因跟在冒号后：`模块导入失败: Cannot find package '<依赖>'` 是包里缺依赖，用当前版本的 `agentloom-plugin build` 重新构建（会把依赖打包进去）；`插件激活失败: …` 是 `apply` 抛错；`等待服务 …` 是 `inject` 声明的服务在 AgentLoom 的 profile 中不存在 |
+| 对话开始时报 `dsh 运行时启动失败: …` | dsh 进程没能启动，错误后附 dsh 输出末尾 |

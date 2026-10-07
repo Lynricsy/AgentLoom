@@ -88,7 +88,9 @@ sequenceDiagram
 2. `writeDshProfile`（`agentloom-deploy/sandbox/src/dsh/profile-writer.ts`）在会话目录下生成 `dsh-home/profiles/agentloom/`：`package.json` 只挂 `@deepseek-ai/dsh-base` bundle，`cordis.patch.yml` 按「平台层 → 插件层（画布连线顺序）→ 用户 profile patch」三层叠加。
 3. 以 guest 的 Node 启动 dsh launcher：路径取 `AGENTLOOM_DSH_BIN`，未设置时解析安装目录内的 `@deepseek-ai/dsh/lib/bin.js`。子进程环境继承 guest 环境但去掉名字匹配 `KEY|SECRET|TOKEN|PASSWORD` 的变量，再加上 `DSH_HOME`、`DSH_PERMISSION_MODE=danger-full-access`、`DSH_TELEMETRY_DISABLED=1`，以及每个模型路由一条 `AGENTLOOM_PROVIDER_<路由名大写>_API_KEY`。
 4. 轮询 `<会话目录>/bridge.sock`，30 s（`DSH_STARTUP_TIMEOUT_MS`）内连不上或子进程提前退出时，杀掉子进程、删除会话目录，并把 dsh 输出末尾带进错误信息。
-5. 发 `initialize` 与 `session/create`。会话必须带 `settings.defaultProvider` 与 `settings.defaultModel`，否则直接失败。
+5. 发 `initialize` 与 `session/create`。会话必须带 `settings.defaultProvider` 与 `settings.defaultModel`，否则直接失败。`initialize` 携带 runtime 插件插入的条目 id，bridge 等 Loader 就绪后逐个核对是否激活（见 [Runtime 插件](/dev/server/runtime-plugins#激活核对)）。
+
+生成 profile（含 npm 插件安装）、启动 dsh、`initialize` / `session/create` 任一环节失败时，guest 都以 `SessionStartError` 返回 422，响应体 `message` 是失败原因；server 的 `initializeContainerSession` 不重试 422，并把 `message` 接在 `Container session init failed with status 422: ` 之后抛出。
 
 #### 平台层 patch
 
@@ -101,8 +103,9 @@ sequenceDiagram
 | `system-prompt` | `personaPrefix` 为 Agent 的系统提示词，不加 dsh 自身身份段 | 提示词由画布决定 |
 | `session-persistence-jsonl` | 写到 `dsh-home/sessions` | 只是会话内的临时记录，会话销毁时随目录删除；权威记录仍在 PostgreSQL |
 | `agent-default-model`、`llm-pi-ai` | 会话模型；`models.providers` 每项转成一条 `llm-pi-ai` 路由，密钥只经环境变量传入 | 子 Agent 等未显式选模型的入口也用会话模型；密钥不落盘 |
+| `permission` | 预设表换成只有一个 `agentloom`（`danger-full-access` + `ask`） | dsh-base 的预设表没有这个组合，原样挂载会报错；禁用它又会让依赖 `permissionPresets` 的插件（如 `@deepseek-ai/dsh-experimental-auto-review`）一直等待服务 |
 | `skill-filesystem` | 只扫描会话目录下的 `skills/` | 技能只来自画布绑定 |
-| DeepSeek 账号与原生模型、遥测、web 工具、`permission`、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true` | 会外连 DeepSeek 服务、与 danger-full-access 冲突、或允许运行期改写 profile |
+| DeepSeek 账号与原生模型、遥测、web 工具、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true` | 会外连 DeepSeek 服务或允许运行期改写 profile |
 | `insert` | `agentloom-bridge`（绝对路径）与每个 MCP server 一条 `@deepseek-ai/dsh-mcp-client` | MCP 不支持 SSE transport，SSE 类型的 server 被跳过并写 stderr 警告 |
 
 禁用条目的完整列表是 `profile-writer.ts` 的 `DISABLED_BASE_ROWS`。runtime 插件与用户 patch 叠在平台层之后，可以覆盖平台层的任何条目；插件包的来源、校验与下发见 [Runtime 插件](/dev/server/runtime-plugins)。
