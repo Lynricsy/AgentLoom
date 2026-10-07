@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CanvasNode } from "@/features/canvas";
+import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-canvas-registry";
 import { useAgentCanvasStore } from "./agent-canvas.store";
 
 const { getMock, putMock, postMock } = vi.hoisted(() => ({
@@ -48,6 +50,25 @@ async function hydrateAgentFromMock(agentId: string): Promise<void> {
   const request = getMock(`agent-definitions/${agentId}`);
   const response = await request.json();
   useAgentCanvasStore.getState().actions.hydrateAgent(agentId, response.data);
+}
+
+function createRegistryNode(id: string, nodeType: string): CanvasNode {
+  const config = AGENT_CANVAS_NODE_REGISTRY.get(nodeType);
+  if (!config) throw new Error(`未注册的节点类型: ${nodeType}`);
+  return {
+    id,
+    type: config.category,
+    position: { x: 0, y: 0 },
+    data: {
+      label: config.label,
+      nodeType: nodeType as CanvasNode["data"]["nodeType"],
+      category: config.category,
+      description: config.description,
+      config: {},
+      inputPorts: [...config.inputPorts],
+      outputPorts: [...config.outputPorts],
+    },
+  } as CanvasNode;
 }
 
 
@@ -582,5 +603,47 @@ describe("agentCanvasStore", () => {
     expect(
       agentMainNode?.data.inputPorts.some((port) => port.id === "sandbox-in"),
     ).toBe(false);
+  });
+
+  it("rejects a second harness node because harness maxInstances is 1", () => {
+    const { actions } = useAgentCanvasStore.getState();
+    actions.addNode(createRegistryNode("harness-1", "harness"));
+    actions.addNode(createRegistryNode("harness-2", "harness"));
+
+    const harnessIds = useAgentCanvasStore
+      .getState()
+      .nodes.filter((node) => (node.data.nodeType as string) === "harness")
+      .map((node) => node.id);
+    expect(harnessIds).toEqual(["harness-1"]);
+  });
+
+  it("only lets harness-out connect to agent-main harness-in", () => {
+    const { actions } = useAgentCanvasStore.getState();
+    actions.addNode(createRegistryNode("agent-main-1", "agent-main"));
+    actions.addNode(createRegistryNode("harness-1", "harness"));
+    const agentMainId = "agent-main-1";
+
+    // harness-out 与 input-preprocessor-in 同为 json 端口，类型兼容但必须拒绝
+    actions.createConnection({
+      source: "harness-1",
+      sourceHandle: "harness-out",
+      target: agentMainId,
+      targetHandle: "input-preprocessor-in",
+    });
+    expect(useAgentCanvasStore.getState().edges).toHaveLength(0);
+
+    actions.createConnection({
+      source: "harness-1",
+      sourceHandle: "harness-out",
+      target: agentMainId,
+      targetHandle: "harness-in",
+    });
+    const edges = useAgentCanvasStore.getState().edges;
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({
+      source: "harness-1",
+      target: agentMainId,
+      targetHandle: "harness-in",
+    });
   });
 });

@@ -30,6 +30,7 @@ import {
 import { useAgentCanvasHydration } from '../hooks/useAgentCanvasHydration';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
 import { AgentNodeConfigPanel } from './panels/AgentNodeConfigPanel';
+import { isHarnessConnectionAllowed } from '../lib/harnessNodeConfig';
 type AgentCanvasNode = CanvasNode;
 type AgentCanvasReactFlowInstance = ReactFlowInstance<
   AgentCanvasNode,
@@ -137,7 +138,15 @@ export const AgentCanvas = memo(function AgentCanvas({
       );
       if (!sourcePort || !targetPort) return false;
 
-      return arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType);
+      if (!arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType)) {
+        return false;
+      }
+
+      return isHarnessConnectionAllowed({
+        sourceNodeType: sourceNode.data.nodeType as string,
+        targetNodeType: targetNode.data.nodeType as string,
+        targetHandle: connection.targetHandle,
+      });
     },
     [isMobileReadOnly, nodes],
   );

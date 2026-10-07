@@ -41,6 +41,8 @@ import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
 import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
 import { SkillPanel } from '../../../agent-canvas/components/panels/SkillPanel'
 import { SubAgentConfigPanel } from '../../../agent-canvas/components/panels/SubAgentConfigPanel'
+import { HarnessConfigPanel } from '../../../agent-canvas/components/panels/HarnessConfigPanel'
+import { RuntimePluginConfigPanel } from '../../../agent-canvas/components/panels/RuntimePluginConfigPanel'
 import { TextConfigPanel } from './TextConfigPanel'
 
 export interface CustomPanelRendererProps {
@@ -185,6 +187,27 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
       <SubAgentConfigPanel
         config={node.data.config}
         onApply={(config) => onConfigChange({ config })}
+      />
+    ),
+  },
+  'harness': {
+    render: ({ node, onConfigChange }) => (
+      <HarnessConfigPanel
+        key={node.id}
+        nodeId={node.id}
+        config={node.data.config}
+        onApply={(config) => onConfigChange({ config })}
+      />
+    ),
+  },
+  'runtime-plugin': {
+    handlesValidation: true,
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <RuntimePluginConfigPanel
+        nodeId={node.id}
+        config={node.data.config}
+        onApply={(config) => onConfigChange({ config })}
+        onValidationChange={onValidationChange}
       />
     ),
   },

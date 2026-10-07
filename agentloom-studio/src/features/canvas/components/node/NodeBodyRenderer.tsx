@@ -28,6 +28,8 @@ import { TextOutputNodeBody } from "../nodes/TextOutputNodeBody";
 import { JsonOutputNodeBody } from "../nodes/JsonOutputNodeBody";
 import { SkillBody } from "../../../agent-canvas/components/nodes/SkillBody";
 import { SubAgentNodeBody } from "../../../agent-canvas/components/nodes/SubAgentNodeBody";
+import { HarnessNodeBody } from "../../../agent-canvas/components/nodes/HarnessNodeBody";
+import { RuntimePluginNodeBody } from "../../../agent-canvas/components/nodes/RuntimePluginNodeBody";
 import type { LlmVisualState } from "./nodeVisualMeta";
 
 interface NodeBodyRendererProps {
@@ -83,6 +85,10 @@ export function NodeBodyRenderer({
         <SkillBody data={data} />
       ) : (data.nodeType as string) === "sub-agent" ? (
         <SubAgentNodeBody data={data} />
+      ) : (data.nodeType as string) === "harness" ? (
+        <HarnessNodeBody nodeId={id} data={data} />
+      ) : (data.nodeType as string) === "runtime-plugin" ? (
+        <RuntimePluginNodeBody data={data} />
       ) : data.nodeType === "input-preprocessor" ? (
         <InputPreprocessorNodeBody config={data.config} />
       ) : data.nodeType === "condition" ? (

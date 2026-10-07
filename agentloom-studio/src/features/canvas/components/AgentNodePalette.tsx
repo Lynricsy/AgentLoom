@@ -27,7 +27,12 @@ import type { AgentRuntimeMode } from '@/features/agent'
 
 /** 自动创建的节点类型 — 新画布初始化时自动放置，不可从面板拖入 */
 const AUTO_CREATED_NODE_TYPES = new Set<string>(['agent-main', 'sandbox'])
-const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>(['sandbox', 'workspace'])
+const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>([
+  'sandbox',
+  'workspace',
+  'harness',
+  'runtime-plugin',
+])
 
 interface AgentPaletteNodeItem {
   type: AgentCanvasNodeType
@@ -114,6 +119,12 @@ const AGENT_PALETTE_GROUPS: AgentPaletteGroup[] = [
     icon: NODE_CATEGORIES.tool.icon,
     color: NODE_CATEGORIES.tool.color,
     items: resolveNodes(['sandbox', 'workspace']),
+  },
+  {
+    label: '运行时',
+    icon: 'Cpu',
+    color: NODE_CATEGORIES.tool.color,
+    items: resolveNodes(['harness', 'runtime-plugin']),
   },
 ]
 

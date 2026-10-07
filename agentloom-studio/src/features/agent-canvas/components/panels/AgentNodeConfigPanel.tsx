@@ -82,6 +82,9 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           <AgentOnlyNodeConfig
             nodeData={nodeData}
             runtimeMode={runtimeMode}
+            hasHarnessNode={nodes.some(
+              (node) => (node.data?.nodeType as string | undefined) === 'harness',
+            )}
             onConfigChange={(config) => updateNodeData(selectedNode.id, { config })}
           />
         )}
@@ -96,10 +99,12 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
 const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
   nodeData,
   runtimeMode,
+  hasHarnessNode,
   onConfigChange,
 }: {
   nodeData: CanvasNodeData;
   runtimeMode: 'sandbox' | 'no_sandbox';
+  hasHarnessNode: boolean;
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
   switch (nodeData.nodeType as string) {
@@ -108,6 +113,7 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
         <AgentMainConfigPanel
           config={nodeData.config}
           runtimeMode={runtimeMode}
+          hasHarnessNode={hasHarnessNode}
           onApply={onConfigChange}
         />
       );

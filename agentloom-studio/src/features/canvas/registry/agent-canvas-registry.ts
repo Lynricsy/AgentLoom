@@ -6,8 +6,13 @@ import {
 import { createConfigField, createPort } from "../types/portSchema";
 import type { NodeCategory } from "../types";
 
-// Agent canvas extends base NodeType with 'sub-agent' and 'agent-main', exclusive to the agent editor
-export type AgentCanvasNodeType = NodeType | "sub-agent" | "agent-main";
+// Agent canvas extends base NodeType with agent-editor-only node types
+export type AgentCanvasNodeType =
+  | NodeType
+  | "sub-agent"
+  | "agent-main"
+  | "harness"
+  | "runtime-plugin";
 
 /**
  * Agent node config mirrors NodeTypeConfig but uses AgentCanvasNodeType and supports maxInstances.
@@ -50,6 +55,8 @@ export const AGENT_CANVAS_NODE_TYPES = [
   "skill",
   "sandbox",
   "workspace",
+  "harness",
+  "runtime-plugin",
 ] as const satisfies readonly AgentCanvasNodeType[];
 
 export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
@@ -425,6 +432,75 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
     },
   ],
   [
+    "harness",
+    {
+      type: "harness",
+      category: "tool",
+      label: "Harness",
+      icon: "Cpu",
+      description:
+        "选择 Agent 运行时内核并挂载 runtime 插件（仅 sandbox 运行态）",
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
+      maxInstances: 1,
+      inputPorts: [
+        createPort("plugins-in", "Runtime 插件", "input", "runtime-plugin", {
+          multiple: true,
+          maxConnections: null,
+          required: false,
+          description: "挂载到 DeepSeek Harness 的 runtime 插件，按连线顺序加载",
+        }),
+      ],
+      outputPorts: [
+        createPort("harness-out", "Harness", "output", "json", {
+          description: "连接到 Agent Main 的 harness-in",
+        }),
+      ],
+      configSchema: {
+        type: "object",
+        properties: {
+          engine: createConfigField("string", "引擎", {
+            description: "固定 dsh",
+            default: "dsh",
+          }),
+          profilePatch: createConfigField("string", "Profile patch (YAML)", {
+            description: "cordis.patch.yml 片段，最高优先级覆盖",
+          }),
+        },
+        required: [],
+      },
+    },
+  ],
+  [
+    "runtime-plugin",
+    {
+      type: "runtime-plugin",
+      category: "plugin",
+      label: "Runtime 插件",
+      icon: "Puzzle",
+      description: "已签名的 dsh 插件包，或 npm 上的 dsh bundle",
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.plugin,
+      inputPorts: [],
+      outputPorts: [
+        createPort("plugin-out", "插件", "output", "runtime-plugin", {
+          description: "连接到 Harness 节点的 plugins-in",
+        }),
+      ],
+      configSchema: {
+        type: "object",
+        properties: {
+          source: createConfigField("string", "来源", {
+            enum: ["package", "npm"],
+          }),
+          runtimePluginId: createConfigField("string", "插件"),
+          npmName: createConfigField("string", "npm 包名"),
+          npmVersion: createConfigField("string", "版本"),
+          enabled: createConfigField("boolean", "启用", { default: true }),
+        },
+        required: ["source"],
+      },
+    },
+  ],
+  [
     "agent-main",
     {
       type: "agent-main",
@@ -473,6 +549,11 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
         }),
         createPort("input-preprocessor-in", "输入预处理", "input", "json", {
           description: "连接输入预处理管道，用户消息先经过预处理再交给 Agent",
+        }),
+        createPort("harness-in", "Harness", "input", "json", {
+          maxConnections: 1,
+          required: false,
+          description: "运行时内核配置（harness 节点）",
         }),
       ],
       outputPorts: [],

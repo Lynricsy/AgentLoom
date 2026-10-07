@@ -18,6 +18,8 @@ import { Switch } from '@/shared/ui/switch'
 interface AgentMainConfigPanelProps {
   config: Record<string, unknown>
   runtimeMode: AgentRuntimeMode
+  /** 画布上是否存在 harness 节点（no_sandbox 下需提示不生效） */
+  hasHarnessNode?: boolean
   onApply: (config: Record<string, unknown>) => void
 }
 
@@ -137,6 +139,7 @@ const ToggleRow = memo(function ToggleRow({
 export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
   config,
   runtimeMode,
+  hasHarnessNode = false,
   onApply,
 }: AgentMainConfigPanelProps) {
   const nativeToolPolicy = parseNativeToolPolicy(config)
@@ -185,6 +188,14 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
               : '当前 Agent 通过 no_sandbox runtime 运行，不提供内置文件或终端工具；若被有沙箱 Agent 调用为子 Agent，系统会自动授予只读 read 权限。'}
           </p>
         </div>
+        {runtimeMode === 'no_sandbox' && hasHarnessNode && (
+          <div
+            className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
+            data-testid="agent-main-harness-warning"
+          >
+            harness 仅 sandbox 运行态生效；当前 Agent 为无沙箱运行态，发布时会被拒绝，请删除 harness 节点。
+          </div>
+        )}
       </SectionCard>
 
       {runtimeMode === 'sandbox' && (

@@ -32,6 +32,7 @@ import {
   clonePortDefinitions,
   hydratePortDefinitions,
 } from "@/features/canvas";
+import { isHarnessConnectionAllowed } from "../lib/harnessNodeConfig";
 
 enableMapSet();
 
@@ -671,6 +672,17 @@ export const useAgentCanvasStore = create<
             const targetNodeType = targetNode?.data?.nodeType as
               | string
               | undefined;
+
+            // harness-out 与 agent-main.harness-in 都是 json 端口，需显式限定两端
+            if (
+              !isHarnessConnectionAllowed({
+                sourceNodeType,
+                targetNodeType,
+                targetHandle: connection.targetHandle,
+              })
+            ) {
+              return;
+            }
 
             if (
               sourceNodeType === "sub-agent" &&

@@ -90,6 +90,7 @@ export {
   type FieldMappingPanelProps,
 } from './components/panels/FieldMappingPanel'
 export { NodeConfigPanel } from './components/panels/NodeConfigPanel'
+export { DynamicConfigForm } from './components/panels/DynamicConfigForm'
 export { LlmModelNodeBody } from './components/nodes/LlmModelNodeBody'
 export { WorkflowStatusBar } from './components/status/WorkflowStatusBar'
 export { CanvasSearch } from './components/toolbar/CanvasSearch'
