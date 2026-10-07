@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRoute, useRouterState } from "@tanstack/react-router";
 import { useAuthToken } from "@/features/execution";
 import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
 import { useAuthStore } from "@/features/auth";
@@ -20,7 +20,8 @@ export function RootLayout() {
   // 而它的展开状态在全局 store 上，两个实例的外部点击监听会互相关掉下拉。
   const isDesktop = useMediaQuery(LG_QUERY);
 
-  const pathname = window.location.pathname;
+  // 必须订阅路由状态：客户端跳转（如完成 onboarding）后要重新判定壳层，window.location 不会触发重渲染
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isPublicRoute =
     PUBLIC_ROUTES.includes(pathname) ||
     PUBLIC_ROUTE_PREFIXES.some((r) => pathname.startsWith(r));

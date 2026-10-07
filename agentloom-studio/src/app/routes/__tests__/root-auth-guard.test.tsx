@@ -40,7 +40,11 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ to, children, ...rest }: { to: string; children: React.ReactNode }) => (
     <a href={to} {...rest}>{children}</a>
   ),
-  useRouterState: vi.fn().mockReturnValue({ pathname: '/' }),
+  // RootLayout 通过 useRouterState 订阅路径；用例用 window.location.pathname 设定当前路由
+  useRouterState: ({ select }: { select?: (state: unknown) => unknown } = {}) => {
+    const state = { location: { pathname: window.location.pathname } };
+    return select ? select(state) : state;
+  },
   // RootLayout 现在挂载 CommandPalette，后者依赖 useNavigate
   useNavigate: vi.fn().mockReturnValue(vi.fn()),
 }));
