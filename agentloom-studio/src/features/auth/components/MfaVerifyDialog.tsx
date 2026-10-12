@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog';
@@ -137,80 +138,85 @@ export function MfaVerifyDialog({
           <DialogTitle>两步验证</DialogTitle>
         </DialogHeader>
 
-        <DialogBody>
-          {step === 'input' || step === 'verifying' ? (
-            <div className="flex flex-col gap-5">
-              <div className="flex justify-center">
-                <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
-                  <ShieldCheck aria-hidden className="size-6 text-primary" />
+        {step === 'input' || step === 'verifying' ? (
+          <>
+            <DialogBody>
+              <div className="flex flex-col gap-5">
+                <div className="flex justify-center">
+                  <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+                    <ShieldCheck aria-hidden className="size-6 text-primary" />
+                  </div>
                 </div>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  请输入身份验证器应用中的 6 位验证码以完成身份验证。
+                </p>
+
+                {error && (
+                  <Alert variant="error" role="alert">
+                    {error}
+                  </Alert>
+                )}
+
+                <fieldset className="m-0 border-none p-0">
+                  <legend className="mb-2 w-full text-center text-sm font-medium text-foreground">
+                    验证码
+                  </legend>
+                  <div
+                    className="flex justify-center gap-2"
+                    data-testid="mfa-verify-code-input"
+                  >
+                    {digits.map((digit, i) => (
+                      <Input
+                        key={`verify-digit-${String(i)}`}
+                        ref={(el) => {
+                          inputRefs.current[i] = el;
+                        }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={CODE_LENGTH}
+                        value={digit}
+                        onChange={(e) => handleDigitChange(i, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(i, e)}
+                        disabled={step === 'verifying'}
+                        className="h-12 w-10 text-center font-mono text-lg"
+                        aria-label={`验证码第 ${i + 1} 位`}
+                      />
+                    ))}
+                  </div>
+                </fieldset>
               </div>
-
-              <p className="text-center text-sm text-muted-foreground">
-                请输入身份验证器应用中的 6 位验证码以完成身份验证。
-              </p>
-
-              {error && (
-                <Alert variant="error" role="alert">
-                  {error}
-                </Alert>
-              )}
-
-              <fieldset className="m-0 border-none p-0">
-                <legend className="mb-2 w-full text-center text-sm font-medium text-foreground">
-                  验证码
-                </legend>
-                <div
-                  className="flex justify-center gap-2"
-                  data-testid="mfa-verify-code-input"
-                >
-                  {digits.map((digit, i) => (
-                    <Input
-                      key={`verify-digit-${String(i)}`}
-                      ref={(el) => {
-                        inputRefs.current[i] = el;
-                      }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={CODE_LENGTH}
-                      value={digit}
-                      onChange={(e) => handleDigitChange(i, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(i, e)}
-                      disabled={step === 'verifying'}
-                      className="h-12 w-10 text-center font-mono text-lg"
-                      aria-label={`验证码第 ${i + 1} 位`}
-                    />
-                  ))}
-                </div>
-              </fieldset>
-
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={onClose}>
-                  取消
-                </Button>
-                <Button
-                  onClick={handleVerify}
-                  disabled={!isCodeComplete || step === 'verifying' || isLoading}
-                >
-                  {step === 'verifying' ? '验证中…' : '验证'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex size-12 items-center justify-center rounded-full bg-success/15">
-                <Check aria-hidden className="size-6 text-success" />
-              </div>
-              <p className="text-sm font-medium text-foreground">验证成功</p>
-              <p className="text-center text-xs text-muted-foreground">
-                身份已确认，你可以继续操作。
-              </p>
-              <Button onClick={onClose} className="mt-2">
-                继续
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                取消
               </Button>
-            </div>
-          )}
-        </DialogBody>
+              <Button
+                onClick={handleVerify}
+                disabled={!isCodeComplete || step === 'verifying' || isLoading}
+              >
+                {step === 'verifying' ? '验证中…' : '验证'}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogBody>
+              <div className="flex flex-col items-center gap-4 py-4">
+                <div className="flex size-12 items-center justify-center rounded-full bg-success/15">
+                  <Check aria-hidden className="size-6 text-success" />
+                </div>
+                <p className="text-sm font-medium text-foreground">验证成功</p>
+                <p className="text-center text-xs text-muted-foreground">
+                  身份已确认，你可以继续操作。
+                </p>
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button onClick={onClose}>继续</Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

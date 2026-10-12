@@ -6,17 +6,22 @@ import {
   useState,
 } from 'react';
 import { Check } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 
+import { Spinner } from '@/shared/components/spinner/Spinner';
+import { fadeIn } from '@/shared/lib/motion';
 import { Alert } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
+import { Skeleton } from '@/shared/ui/skeleton';
 
 import { useMfa, type MfaEnrollResult } from '../hooks/useMfa';
 
@@ -143,6 +148,8 @@ export function MfaEnrollDialog({
     }
   }, [enrollData, verifyTotp, clearError, onSuccess]);
 
+  // scan 与 verifying 共用一个视图，避免提交验证码时整块淡出淡入
+  const phase = step === 'loading' ? 'loading' : step === 'success' ? 'success' : 'form';
   const code = digits.join('');
   const isCodeComplete = code.length === CODE_LENGTH;
 
@@ -153,116 +160,140 @@ export function MfaEnrollDialog({
           <DialogTitle>启用两步验证</DialogTitle>
         </DialogHeader>
 
-        <DialogBody>
-          {step === 'loading' && (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted-foreground">
-                正在生成 TOTP 密钥…
-              </p>
-            </div>
-          )}
-
-          {(step === 'scan' || step === 'verifying') && (
-            <div className="flex flex-col gap-5">
-              {enrollData && (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    使用身份验证器应用扫描下方二维码，然后输入 6
-                    位验证码完成绑定。
-                  </p>
-
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={phase}
+            {...fadeIn}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {phase === 'loading' ? (
+              <DialogBody>
+                {/* 骨架与扫码态同结构同高，生成完成时弹窗高度不跳 */}
+                <div className="flex flex-col gap-5" role="status" aria-label="正在生成 TOTP 密钥…">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
                   <div className="flex justify-center">
-                    {/* QR 码必须落在纯白底上才能保证扫描对比度，不随主题变化 */}
-                    <div className="rounded-lg border border-border bg-white p-3">
-                      <img
-                        src={enrollData.qrCode}
-                        alt="TOTP QR Code"
-                        className="size-48"
-                        data-testid="mfa-qr-code"
-                      />
-                    </div>
+                    <Skeleton className="size-[13.5rem] rounded-lg" />
                   </div>
-
-                  <div className="rounded-lg border border-border bg-muted p-3">
-                    <p className="mb-1 text-xs text-muted-foreground">
-                      无法扫描？手动输入密钥：
-                    </p>
-                    <code
-                      className="block break-all font-mono text-xs text-foreground"
-                      data-testid="mfa-secret-key"
-                    >
-                      {enrollData.secret}
-                    </code>
-                  </div>
-                </>
-              )}
-
-              {error && (
-                <Alert variant="error" role="alert">
-                  {error}
-                </Alert>
-              )}
-
-              <fieldset className="m-0 border-none p-0">
-                <legend className="mb-2 text-sm font-medium text-foreground">
-                  验证码
-                </legend>
-                <div
-                  className="flex justify-center gap-2"
-                  data-testid="mfa-code-input"
-                >
-                  {digits.map((digit, i) => (
-                    <Input
-                      key={`enroll-digit-${String(i)}`}
-                      ref={(el) => {
-                        inputRefs.current[i] = el;
-                      }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={CODE_LENGTH}
-                      value={digit}
-                      onChange={(e) => handleDigitChange(i, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(i, e)}
-                      disabled={step === 'verifying'}
-                      className="h-12 w-10 text-center font-mono text-lg"
-                      aria-label={`验证码第 ${i + 1} 位`}
-                    />
-                  ))}
+                  <Skeleton className="h-16 rounded-lg" />
+                  <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Spinner size="sm" />
+                    正在生成 TOTP 密钥…
+                  </p>
                 </div>
-              </fieldset>
+              </DialogBody>
+            ) : null}
 
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={onClose}>
-                  取消
-                </Button>
-                <Button
-                  onClick={handleVerify}
-                  disabled={!isCodeComplete || step === 'verifying' || isLoading}
-                >
-                  {step === 'verifying' ? '验证中…' : '确认绑定'}
-                </Button>
-              </div>
-            </div>
-          )}
+            {phase === 'form' ? (
+              <>
+                <DialogBody>
+                  <div className="flex flex-col gap-5">
+                    {enrollData && (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          使用身份验证器应用扫描下方二维码，然后输入 6
+                          位验证码完成绑定。
+                        </p>
 
-          {step === 'success' && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex size-12 items-center justify-center rounded-full bg-success/15">
-                <Check className="size-6 text-success" />
-              </div>
-              <p className="text-sm font-medium text-foreground">
-                两步验证已成功启用
-              </p>
-              <p className="text-center text-xs text-muted-foreground">
-                下次登录时，你需要输入身份验证器应用中的验证码。
-              </p>
-              <Button onClick={onClose} className="mt-2">
-                完成
-              </Button>
-            </div>
-          )}
-        </DialogBody>
+                        <div className="flex justify-center">
+                          {/* QR 码必须落在纯白底上才能保证扫描对比度，不随主题变化 */}
+                          <div className="rounded-lg border border-border bg-white p-3">
+                            <img
+                              src={enrollData.qrCode}
+                              alt="TOTP QR Code"
+                              className="size-48"
+                              data-testid="mfa-qr-code"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-muted p-3">
+                          <p className="mb-1 text-xs text-muted-foreground">
+                            无法扫描？手动输入密钥：
+                          </p>
+                          <code
+                            className="block break-all font-mono text-xs text-foreground"
+                            data-testid="mfa-secret-key"
+                          >
+                            {enrollData.secret}
+                          </code>
+                        </div>
+                      </>
+                    )}
+
+                    {error && (
+                      <Alert variant="error" role="alert">
+                        {error}
+                      </Alert>
+                    )}
+
+                    <fieldset className="m-0 border-none p-0">
+                      <legend className="mb-2 text-sm font-medium text-foreground">
+                        验证码
+                      </legend>
+                      <div
+                        className="flex justify-center gap-2"
+                        data-testid="mfa-code-input"
+                      >
+                        {digits.map((digit, i) => (
+                          <Input
+                            key={`enroll-digit-${String(i)}`}
+                            ref={(el) => {
+                              inputRefs.current[i] = el;
+                            }}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={CODE_LENGTH}
+                            value={digit}
+                            onChange={(e) => handleDigitChange(i, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(i, e)}
+                            disabled={step === 'verifying'}
+                            className="h-12 w-10 text-center font-mono text-lg"
+                            aria-label={`验证码第 ${i + 1} 位`}
+                          />
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+                </DialogBody>
+                <DialogFooter>
+                  <Button variant="outline" onClick={onClose}>
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleVerify}
+                    disabled={!isCodeComplete || step === 'verifying' || isLoading}
+                  >
+                    {step === 'verifying' ? '验证中…' : '确认绑定'}
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : null}
+
+            {phase === 'success' ? (
+              <>
+                <DialogBody>
+                  <div className="flex flex-col items-center gap-4 py-4">
+                    <div className="flex size-12 items-center justify-center rounded-full bg-success/15">
+                      <Check className="size-6 text-success" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">
+                      两步验证已成功启用
+                    </p>
+                    <p className="text-center text-xs text-muted-foreground">
+                      下次登录时，你需要输入身份验证器应用中的验证码。
+                    </p>
+                  </div>
+                </DialogBody>
+                <DialogFooter>
+                  <Button onClick={onClose}>完成</Button>
+                </DialogFooter>
+              </>
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   );

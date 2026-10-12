@@ -12,7 +12,7 @@ interface AuthLayoutProps {
   children: ReactNode;
   /** 卡片主标题，页面自身的语义标题（如「登录」）；省略时只显示品牌区 */
   title?: ReactNode;
-  /** 主标题下的说明文案，省略时回落到平台标语 */
+  /** 主标题下的说明文案；省略（undefined）时回落到平台标语，传 null 不渲染 */
   subtitle?: ReactNode;
   className?: string;
 }
@@ -24,7 +24,7 @@ export function AuthLayout({
   className,
 }: AuthLayoutProps) {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-10">
       {/* 品牌光晕背景 — 纯装饰，不参与命中测试 */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div
@@ -41,7 +41,7 @@ export function AuthLayout({
         {...fadeInUp}
         className={cn("relative w-full max-w-md", className)}
       >
-        <Card className="rounded-xl p-6 shadow-lg sm:p-8">
+        <Card className="p-6 sm:p-8">
           <div className="flex items-center gap-3">
             <BrandMark size="md" className="bg-surface ring-border" />
             <div className="flex flex-col">
@@ -59,9 +59,11 @@ export function AuthLayout({
               {title}
             </h2>
           ) : null}
-          <p className={cn("text-sm text-muted-foreground", title ? "mt-1.5" : "mt-5")}>
-            {subtitle ?? DEFAULT_SUBTITLE}
-          </p>
+          {subtitle === null ? null : (
+            <p className={cn("text-sm text-muted-foreground", title ? "mt-1.5" : "mt-5")}>
+              {subtitle === undefined ? DEFAULT_SUBTITLE : subtitle}
+            </p>
+          )}
 
           <div className="mt-7">{children}</div>
         </Card>

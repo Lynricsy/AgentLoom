@@ -24,16 +24,15 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
         />
         <Button
           variant="ghost"
-          size="icon-sm"
-          tabIndex={-1}
+          size="icon-xs"
           onClick={() => setVisible((v) => !v)}
-          className="absolute right-0.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+          className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
           aria-label={visible ? '隐藏密码' : '显示密码'}
         >
           {visible ? (
-            <EyeOff className="h-4 w-4" aria-hidden />
+            <EyeOff aria-hidden />
           ) : (
-            <Eye className="h-4 w-4" aria-hidden />
+            <Eye aria-hidden />
           )}
         </Button>
       </div>

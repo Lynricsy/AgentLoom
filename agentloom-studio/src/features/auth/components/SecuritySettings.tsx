@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { AnimatePresence, motion } from 'motion/react'
 import { z } from 'zod'
 import {
   KeyRound,
@@ -16,7 +17,11 @@ import {
 import { apiClient } from '@/shared/api/client'
 import { PageContainer } from '@/shared/components'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { formatDate } from '@/shared/lib/format'
+import { fadeIn } from '@/shared/lib/motion'
+import { Badge } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
 
@@ -249,7 +254,7 @@ export function SecuritySettings() {
 
           <form onSubmit={handleSubmit(onPasswordSubmit)} className="space-y-4">
             <div>
-              <label htmlFor="currentPassword" className="mb-1 block text-sm font-medium text-foreground">
+              <label htmlFor="currentPassword" className="mb-1.5 block text-xs font-medium text-foreground">
                 当前密码
               </label>
               <PasswordInput
@@ -267,7 +272,7 @@ export function SecuritySettings() {
             </div>
 
             <div>
-              <label htmlFor="newPassword" className="mb-1 block text-sm font-medium text-foreground">
+              <label htmlFor="newPassword" className="mb-1.5 block text-xs font-medium text-foreground">
                 新密码
               </label>
               <PasswordInput
@@ -285,7 +290,7 @@ export function SecuritySettings() {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-foreground">
+              <label htmlFor="confirmPassword" className="mb-1.5 block text-xs font-medium text-foreground">
                 确认新密码
               </label>
               <PasswordInput
@@ -321,7 +326,7 @@ export function SecuritySettings() {
           <div className="mb-4 flex items-center gap-2">
             <Shield className="size-5 text-primary" />
             <h2 className="text-base font-semibold text-foreground">
-              多因素认证 (MFA)
+              多因素认证（MFA）
             </h2>
           </div>
           <p className="mb-4 text-sm text-muted-foreground">
@@ -329,12 +334,10 @@ export function SecuritySettings() {
           </p>
 
           {securityLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="mfa-loading">
-              <Loader2 className="size-4 animate-spin" />
-              加载中…
-            </div>
+            // 与「已启用 / 未启用」卡同高，加载完成时卡片不跳
+            <Skeleton className="h-[8.75rem] w-full rounded-lg" data-testid="mfa-loading" />
           ) : securityInfo?.mfaEnabled ? (
-            <div className="rounded-lg border border-success/30 bg-success/5 p-4" data-testid="mfa-enabled">
+            <div className="rounded-lg border border-success/30 bg-success/10 p-4" data-testid="mfa-enabled">
               <div className="mb-3 flex items-center gap-2">
                 <ShieldCheck className="size-5 text-success" />
                 <span className="text-sm font-medium text-success">MFA 已启用</span>
@@ -389,9 +392,9 @@ export function SecuritySettings() {
           </p>
 
           {sessionsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="sessions-loading">
-              <Loader2 className="size-4 animate-spin" />
-              加载中…
+            <div className="space-y-3" data-testid="sessions-loading">
+              <Skeleton className="h-[4.625rem] w-full rounded-lg" />
+              <Skeleton className="h-[4.625rem] w-full rounded-lg" />
             </div>
           ) : sessions.length === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="sessions-empty">
@@ -399,59 +402,63 @@ export function SecuritySettings() {
             </p>
           ) : (
             <div className="space-y-3" data-testid="sessions-list">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between rounded-lg border border-border bg-muted p-4"
-                  data-testid={`session-${session.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    {session.userAgent?.toLowerCase().includes('mobile') ? (
-                      <Smartphone className="size-5 text-subtle-foreground" />
-                    ) : (
-                      <Monitor className="size-5 text-subtle-foreground" />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          {parseUserAgent(session.userAgent)}
-                        </span>
-                        {session.isCurrent && (
-                          <span
-                            className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                            data-testid="current-session-badge"
-                          >
-                            当前会话
+              <AnimatePresence initial={false}>
+                {sessions.map((session) => (
+                  <motion.div
+                    key={session.id}
+                    layout
+                    initial={false}
+                    animate={fadeIn.animate}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={fadeIn.transition}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted p-4"
+                    data-testid={`session-${session.id}`}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      {session.userAgent?.toLowerCase().includes('mobile') ? (
+                        <Smartphone className="size-5 shrink-0 text-subtle-foreground" />
+                      ) : (
+                        <Monitor className="size-5 shrink-0 text-subtle-foreground" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {parseUserAgent(session.userAgent)}
                           </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        <span>{session.ip || '未知 IP'}</span>
-                        <span className="mx-1">·</span>
-                        <span>{formatSessionTime(session.updatedAt || session.createdAt)}</span>
+                          {session.isCurrent && (
+                            <Badge size="sm" className="shrink-0" data-testid="current-session-badge">
+                              当前会话
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={session.ip || undefined}>
+                          <span>{session.ip || '未知 IP'}</span>
+                          <span className="mx-1">·</span>
+                          <span>{formatSessionTime(session.updatedAt || session.createdAt)}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {!session.isCurrent && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="hover:bg-error/10 hover:text-error"
-                      onClick={() => handleRevokeSession(session.id)}
-                      disabled={revokingId === session.id}
-                      aria-label="撤销会话"
-                      data-testid={`revoke-session-${session.id}`}
-                    >
-                      {revokingId === session.id ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <Trash2 className="text-error" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-              ))}
+                    {!session.isCurrent && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="hover:bg-error/10 hover:text-error"
+                        onClick={() => handleRevokeSession(session.id)}
+                        disabled={revokingId === session.id}
+                        aria-label="撤销会话"
+                        data-testid={`revoke-session-${session.id}`}
+                      >
+                        {revokingId === session.id ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <Trash2 className="text-error" />
+                        )}
+                      </Button>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
         </Card>
@@ -502,7 +509,7 @@ function formatSessionTime(isoString: string): string {
     const diffDays = Math.floor(diffHours / 24)
     if (diffDays < 30) return `${diffDays} 天前`
 
-    return date.toLocaleDateString('zh-CN')
+    return formatDate(date)
   } catch {
     return '未知时间'
   }
