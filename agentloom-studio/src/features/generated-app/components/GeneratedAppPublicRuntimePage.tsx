@@ -14,7 +14,7 @@ import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
 import {
@@ -78,7 +78,7 @@ function PublicSection({ title, children }: PublicSectionProps) {
 function PublicRuntimeLoading() {
   return (
     <main
-      className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
+      className="flex min-h-dvh items-center justify-center bg-background px-4 text-foreground"
       data-testid="generated-app-public-runtime-loading"
     >
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -92,12 +92,12 @@ function PublicRuntimeLoading() {
 function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
   return (
     <main
-      className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
+      className="flex min-h-dvh items-center justify-center bg-background px-4 text-foreground"
       data-testid="generated-app-public-runtime-error"
     >
-      <section className="w-full max-w-xl rounded-xl border border-error/30 bg-error/5 p-6">
+      <section className="w-full max-w-xl rounded-lg border border-error/30 bg-error/10 p-6">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-error" />
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error" />
           <div className="min-w-0 space-y-4">
             <div className="space-y-2">
               <h2 className="break-words text-lg font-semibold text-foreground">
@@ -114,18 +114,6 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
         </div>
       </section>
     </main>
-  )
-}
-
-function SubmissionStatusBadge({
-  status,
-}: {
-  status: GeneratedAppPublicSubmission['status']
-}) {
-  return (
-    <StatusBadge tone={GENERATED_APP_SUBMISSION_STATUS_META[status].tone}>
-      {GENERATED_APP_SUBMISSION_STATUS_META[status].label}
-    </StatusBadge>
   )
 }
 
@@ -352,11 +340,11 @@ function WorkflowExecutionStatusPanel({
     >
       <div className="flex items-start gap-3">
         {active ? (
-          <Spinner className="mt-0.5 h-5 w-5 shrink-0 text-info" />
+          <Spinner className="mt-0.5 size-5 shrink-0 text-info" />
         ) : completed ? (
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" />
         )}
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -444,9 +432,9 @@ function RuntimeFormField({
         className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground"
       >
         <span>{field.label}</span>
-        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+        <Badge variant="outline" size="sm">
           {requiredLabel}
-        </span>
+        </Badge>
       </label>
 
       {field.type === 'textarea' ? (
@@ -487,9 +475,9 @@ function RuntimeFormField({
           />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{field.min ?? 1}</span>
-            <span className="rounded border border-border px-2 py-0.5 text-foreground">
+            <Badge variant="outline" size="sm" className="tabular-nums">
               当前：{stringValue}
-            </span>
+            </Badge>
             <span>{field.max ?? 10}</span>
           </div>
         </div>
@@ -592,22 +580,22 @@ function PublicSubmissionResult({
 
   return (
     <article
-      className="space-y-5 border border-border bg-muted p-4"
+      className="space-y-5 rounded-lg border border-border bg-muted p-4"
       data-testid="generated-app-public-submission-result"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <SubmissionStatusBadge status={submission.status} />
+            <StatusBadge tone={GENERATED_APP_SUBMISSION_STATUS_META[submission.status].tone}>{GENERATED_APP_SUBMISSION_STATUS_META[submission.status].label}</StatusBadge>
             <span className="text-xs text-muted-foreground">
               更新时间 {formatGeneratedAppDateTime(submission.updatedAt)}
             </span>
           </div>
           <div className="flex items-start gap-3">
             {failed ? (
-              <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-error" />
+              <AlertTriangle className="mt-1 size-5 shrink-0 text-error" />
             ) : (
-              <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-success" />
+              <CheckCircle2 className="mt-1 size-5 shrink-0 text-success" />
             )}
             <div className="min-w-0 space-y-2">
               <h3 className="break-words text-lg font-semibold text-foreground">
@@ -634,7 +622,7 @@ function PublicSubmissionResult({
       {sections.length > 0 ? (
         <div className="grid gap-4">
           {sections.map((section) => (
-            <section key={section.id} className="border border-border p-4">
+            <section key={section.id} className="rounded-lg border border-border bg-surface p-4">
               <h4 className="break-words text-sm font-semibold text-foreground">
                 {section.title}
               </h4>
@@ -802,13 +790,13 @@ function PublicRuntimeSuccess({
 
   return (
     <main
-      className="min-h-screen bg-background text-foreground"
+      className="min-h-dvh bg-background text-foreground"
       data-testid="generated-app-public-runtime-page"
     >
-      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-8 sm:px-6 lg:px-8">
         <div className="space-y-5 pb-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AppWindow className="h-4 w-4" />
+            <AppWindow className="size-4 shrink-0" />
             <span className="truncate">公开应用</span>
           </div>
           <PageHeader title={app.title} description={app.description} />
@@ -816,7 +804,7 @@ function PublicRuntimeSuccess({
 
         <section className="border-y border-border bg-muted px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-success" />
             <p className="break-words text-sm leading-6 text-muted-foreground">
               {app.dataUseNotice}
             </p>
@@ -855,7 +843,7 @@ function PublicRuntimeSuccess({
               {app.runtimeForm.sections.map((section) => (
                 <section
                   key={section.id}
-                  className="space-y-4 border border-border p-4"
+                  className="space-y-4 rounded-lg border border-border p-4"
                 >
                   <div className="space-y-1">
                     <h4 className="break-words text-sm font-semibold text-foreground">
@@ -886,7 +874,7 @@ function PublicRuntimeSuccess({
               ))}
 
               {unsectionedFields.length > 0 ? (
-                <section className="space-y-4 border border-border p-4">
+                <section className="space-y-4 rounded-lg border border-border p-4">
                   <div className="space-y-1">
                     <h4 className="break-words text-sm font-semibold text-foreground">
                       其他信息
@@ -915,9 +903,9 @@ function PublicRuntimeSuccess({
                 disabled={createSubmissionMutation.isPending}
               >
                 {createSubmissionMutation.isPending ? (
-                  <Spinner className="mr-2" />
+                  <Spinner />
                 ) : (
-                  <Send className="mr-2 h-4 w-4" />
+                  <Send />
                 )}
                 {app.runtimeForm.submitLabel}
               </Button>
@@ -990,10 +978,10 @@ function PublicRuntimeSuccess({
               href={previewUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex max-w-full items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className={cn(buttonVariants(), 'max-w-full')}
             >
               <span className="truncate">打开运行预览</span>
-              <ExternalLink className="h-4 w-4 shrink-0" />
+              <ExternalLink className="shrink-0" />
             </a>
           ) : (
             <p className="break-words text-sm text-muted-foreground">

@@ -9,7 +9,6 @@ import {
 
 import { Pagination } from '@/shared/components/Pagination'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
 import {
   Select,
@@ -43,11 +42,9 @@ import {
 import type {
   GeneratedAppGateEvidence,
   GeneratedAppGateRun,
-  GeneratedAppGateRunStatus,
   GeneratedAppGenerationRun,
   GeneratedAppGenerationRunStatus,
   GeneratedAppRepairAttempt,
-  GeneratedAppRepairAttemptStatus,
 } from '../types'
 
 const PAGE_SIZE = 8
@@ -97,8 +94,8 @@ function InlineErrorState({
   onRetry: () => void
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">
-      <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
+    <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/10 p-4">
+      <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error" />
       <div className="min-w-0 space-y-3">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -107,7 +104,7 @@ function InlineErrorState({
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="mr-2 h-3.5 w-3.5" />
+          <RefreshCw />
           重新加载
         </Button>
       </div>
@@ -115,50 +112,24 @@ function InlineErrorState({
   )
 }
 
-/** 三个区块共用的骨架列表：先给出行位占位，再由真实表格替换 */
+/** 三个区块共用的表格形态骨架：表头 h-10 + 行位占位，加载完成后列结构不再突变 */
 function LoadingState({ label, rows = 3 }: { label: string; rows?: number }) {
   return (
-    <div className="space-y-3">
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner size="sm" />
-        {label}
-      </p>
+    <div className="overflow-hidden rounded-lg border border-border" aria-busy="true">
+      <p className="sr-only">{label}</p>
+      <div className="flex h-10 items-center gap-4 border-b border-border px-3">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-3 w-12" />
+        <Skeleton className="h-3 w-40" />
+      </div>
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} className="h-12 rounded-lg" />
+        <div key={index} className="flex items-center gap-4 border-b border-border px-3 py-3 last:border-b-0">
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 flex-1" />
+        </div>
       ))}
     </div>
-  )
-}
-
-function GenerationRunStatusBadge({
-  status,
-}: {
-  status: GeneratedAppGenerationRunStatus
-}) {
-  return (
-    <StatusBadge tone={GENERATED_APP_GENERATION_RUN_STATUS_META[status].tone}>
-      {GENERATED_APP_GENERATION_RUN_STATUS_META[status].label}
-    </StatusBadge>
-  )
-}
-
-function RepairAttemptStatusBadge({
-  status,
-}: {
-  status: GeneratedAppRepairAttemptStatus
-}) {
-  return (
-    <StatusBadge tone={GENERATED_APP_REPAIR_ATTEMPT_STATUS_META[status].tone}>
-      {GENERATED_APP_REPAIR_ATTEMPT_STATUS_META[status].label}
-    </StatusBadge>
-  )
-}
-
-function GateRunStatusBadge({ status }: { status: GeneratedAppGateRunStatus }) {
-  return (
-    <StatusBadge tone={GENERATED_APP_GATE_STATUS_META[status].tone}>
-      {GENERATED_APP_GATE_STATUS_META[status].label}
-    </StatusBadge>
   )
 }
 
@@ -554,9 +525,9 @@ export function GeneratedAppGenerationEvidencePanel({
                   <TableHead>预算</TableHead>
                   <TableHead className="min-w-72">摘要</TableHead>
                   <TableHead className="min-w-56">失败原因</TableHead>
-                  <TableHead>Started</TableHead>
-                  <TableHead>Completed</TableHead>
-                  <TableHead>操作</TableHead>
+                  <TableHead>开始时间</TableHead>
+                  <TableHead>完成时间</TableHead>
+                  <TableHead className="sticky right-0 border-l border-border bg-surface">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -573,13 +544,16 @@ export function GeneratedAppGenerationEvidencePanel({
                         <p className="font-medium text-foreground">
                           Run #{run.runNumber}
                         </p>
-                        <code className="text-xs text-muted-foreground">
+                        <code
+                          className="block max-w-40 truncate text-xs text-muted-foreground"
+                          title={run.id}
+                        >
                           {run.id}
                         </code>
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3">
-                      <GenerationRunStatusBadge status={run.status} />
+                      <StatusBadge tone={GENERATED_APP_GENERATION_RUN_STATUS_META[run.status].tone}>{GENERATED_APP_GENERATION_RUN_STATUS_META[run.status].label}</StatusBadge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
                       {
@@ -588,7 +562,7 @@ export function GeneratedAppGenerationEvidencePanel({
                         ]
                       }
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground tabular-nums">
                       {run.maxRepairAttempts} 次修复 / {run.maxRuntimeSeconds}s
                     </TableCell>
                     <TableCell className="py-3">
@@ -599,22 +573,27 @@ export function GeneratedAppGenerationEvidencePanel({
                         {run.failureReason?.trim() || '暂无'}
                       </SummaryText>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground tabular-nums">
                       {formatGeneratedAppDateTime(run.startedAt)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground tabular-nums">
                       {formatGeneratedAppDateTime(run.completedAt)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-3">
+                    <TableCell className="sticky right-0 whitespace-nowrap border-l border-border bg-surface py-3">
+                      {/* 文案固定宽度，选中/未选中切换时操作列不抖动；可访问名称仍带 Run 编号 */}
                       <Button
-                        variant="outline"
+                        variant={selectedRunId === run.id ? 'secondary' : 'outline'}
                         size="sm"
+                        className="min-w-16 justify-center"
                         aria-pressed={selectedRunId === run.id}
+                        aria-label={
+                          selectedRunId === run.id
+                            ? `当前 Run #${run.runNumber}`
+                            : `选择 Run #${run.runNumber}`
+                        }
                         onClick={() => handleSelectRun(run.id)}
                       >
-                        {selectedRunId === run.id
-                          ? `当前 Run #${run.runNumber}`
-                          : `选择 Run #${run.runNumber}`}
+                        {selectedRunId === run.id ? '已选' : '选择'}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -673,8 +652,8 @@ export function GeneratedAppGenerationEvidencePanel({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Attempt</TableHead>
-                  <TableHead>Target gate</TableHead>
+                  <TableHead>修复轮次</TableHead>
+                  <TableHead>目标 Gate</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="min-w-64">失败摘要</TableHead>
                   <TableHead className="min-w-64">变更摘要</TableHead>
@@ -698,7 +677,10 @@ export function GeneratedAppGenerationEvidencePanel({
                         <p className="font-medium text-foreground">
                           Repair #{attempt.attemptNumber}
                         </p>
-                        <code className="text-xs text-muted-foreground">
+                        <code
+                          className="block max-w-40 truncate text-xs text-muted-foreground"
+                          title={attempt.id}
+                        >
                           {attempt.id}
                         </code>
                       </div>
@@ -709,7 +691,7 @@ export function GeneratedAppGenerationEvidencePanel({
                       </code>
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3">
-                      <RepairAttemptStatusBadge status={attempt.status} />
+                      <StatusBadge tone={GENERATED_APP_REPAIR_ATTEMPT_STATUS_META[attempt.status].tone}>{GENERATED_APP_REPAIR_ATTEMPT_STATUS_META[attempt.status].label}</StatusBadge>
                     </TableCell>
                     <TableCell className="py-3">
                       <div className="min-w-0 space-y-2">
@@ -790,12 +772,12 @@ export function GeneratedAppGenerationEvidencePanel({
                 <TableRow>
                   <TableHead>Gate</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>Attempt</TableHead>
-                  <TableHead>Blocking</TableHead>
+                  <TableHead>轮次</TableHead>
+                  <TableHead>阻断</TableHead>
                   <TableHead className="min-w-72">摘要</TableHead>
-                  <TableHead className="min-w-72">Evidence</TableHead>
-                  <TableHead className="min-w-64">Failure / repair</TableHead>
-                  <TableHead>Completed</TableHead>
+                  <TableHead className="min-w-72">证据</TableHead>
+                  <TableHead className="min-w-64">失败 / 修复</TableHead>
+                  <TableHead>完成时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -809,13 +791,16 @@ export function GeneratedAppGenerationEvidencePanel({
                         <p className="text-xs text-muted-foreground">
                           {gateRun.gateName}
                         </p>
-                        <code className="text-xs text-muted-foreground">
+                        <code
+                          className="block max-w-40 truncate text-xs text-muted-foreground"
+                          title={gateRun.gateId}
+                        >
                           {gateRun.gateId}
                         </code>
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3">
-                      <GateRunStatusBadge status={gateRun.status} />
+                      <StatusBadge tone={GENERATED_APP_GATE_STATUS_META[gateRun.status].tone}>{GENERATED_APP_GATE_STATUS_META[gateRun.status].label}</StatusBadge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
                       #{gateRun.attemptNumber}

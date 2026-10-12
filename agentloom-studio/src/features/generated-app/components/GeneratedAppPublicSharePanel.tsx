@@ -9,8 +9,9 @@ import {
 } from 'lucide-react'
 
 import { Spinner } from '@/shared/components/spinner/Spinner'
+import { formatNumber } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDisableGeneratedAppPublicShare,
@@ -116,14 +117,12 @@ export function GeneratedAppPublicSharePanel({
         <p className="break-words text-xs text-muted-foreground">
           {app.readiness.summary}
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled
-          className="w-full justify-center whitespace-normal text-center sm:w-auto"
-          title={getGeneratedAppPublicShareUnavailableReason(app.readiness)}
-        >
-          <ShieldAlert className="mr-2 h-3.5 w-3.5" />
+        {/* disabled 按钮上的 title 不会显示，不可用原因直接以可见文案给出 */}
+        <p className="break-words text-xs text-warning">
+          {getGeneratedAppPublicShareUnavailableReason(app.readiness)}
+        </p>
+        <Button size="sm" variant="outline" disabled className="w-full justify-center sm:w-auto">
+          <ShieldAlert />
           公开分享不可用
         </Button>
       </div>
@@ -140,16 +139,19 @@ export function GeneratedAppPublicSharePanel({
         data-testid="generated-app-public-share-panel"
       >
         <div className="flex flex-wrap items-center gap-2 text-xs text-success">
-          <CheckCircle2 className="h-3.5 w-3.5" />
+          <CheckCircle2 className="size-3.5 shrink-0" />
           <span>公开分享已启用</span>
-          <span className="text-muted-foreground">
-            浏览 {app.publicViewCount} 次
+          <span className="text-muted-foreground tabular-nums">
+            浏览 {formatNumber(app.publicViewCount)} 次
           </span>
         </div>
 
         {app.publicShareUrl ? (
           <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            <span
+              className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+              title={app.publicShareUrl}
+            >
               {app.publicShareUrl}
             </span>
             <Button
@@ -159,16 +161,19 @@ export function GeneratedAppPublicSharePanel({
               onClick={handleCopyPublicUrl}
               aria-label={`复制 ${app.appName} 公开链接`}
             >
-              <Copy className="h-3.5 w-3.5" />
+              <Copy />
             </Button>
             <a
               href={app.publicShareUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'icon-xs' }),
+                'text-muted-foreground hover:text-foreground',
+              )}
               aria-label={`打开 ${app.appName} 公开链接`}
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink />
             </a>
           </div>
         ) : (
@@ -185,9 +190,9 @@ export function GeneratedAppPublicSharePanel({
             disabled={isMutating}
           >
             {regenerateShareMutation.isPending ? (
-              <Spinner size="sm" className="mr-2" />
+              <Spinner size="sm" />
             ) : (
-              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              <RefreshCw />
             )}
             重新生成
           </Button>
@@ -198,7 +203,7 @@ export function GeneratedAppPublicSharePanel({
             disabled={isMutating}
           >
             {disableShareMutation.isPending ? (
-              <Spinner size="sm" className="mr-2" />
+              <Spinner size="sm" />
             ) : null}
             关闭分享
           </Button>
@@ -222,9 +227,9 @@ export function GeneratedAppPublicSharePanel({
         data-testid={`generated-app-enable-share-${app.id}`}
       >
         {enableShareMutation.isPending ? (
-          <Spinner size="sm" className="mr-2" />
+          <Spinner size="sm" />
         ) : (
-          <Share2 className="mr-2 h-3.5 w-3.5" />
+          <Share2 />
         )}
         启用公开分享
       </Button>

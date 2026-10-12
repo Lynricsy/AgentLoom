@@ -16,6 +16,7 @@ import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageContainer } from '@/shared/components/page-container'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
+import { formatBytes } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button, buttonVariants } from '@/shared/ui/button'
@@ -186,14 +187,6 @@ function AcceptanceScenarioList({
   )
 }
 
-function GateStatusBadge({ gate }: { gate: GeneratedAppGateResult }) {
-  return (
-    <StatusBadge tone={GENERATED_APP_GATE_STATUS_META[gate.status].tone}>
-      {GENERATED_APP_GATE_STATUS_META[gate.status].label}
-    </StatusBadge>
-  )
-}
-
 function GateResultsTable({ gates }: { gates: GeneratedAppGateResult[] }) {
   if (gates.length === 0) {
     return <p className="text-sm text-muted-foreground">尚未写入 Gate 结果。</p>
@@ -203,13 +196,13 @@ function GateResultsTable({ gates }: { gates: GeneratedAppGateResult[] }) {
     <Table data-testid="generated-app-gates">
       <TableHeader>
         <TableRow>
-          <TableHead>Order</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Blocking</TableHead>
-          <TableHead className="min-w-72">Summary</TableHead>
-          <TableHead>Evidence</TableHead>
-          <TableHead>Updated</TableHead>
+          <TableHead>顺序</TableHead>
+          <TableHead>名称</TableHead>
+          <TableHead>状态</TableHead>
+          <TableHead>阻断</TableHead>
+          <TableHead className="min-w-72">摘要</TableHead>
+          <TableHead className="text-right">证据数</TableHead>
+          <TableHead>更新时间</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -218,10 +211,10 @@ function GateResultsTable({ gates }: { gates: GeneratedAppGateResult[] }) {
           .sort((left, right) => left.order - right.order)
           .map((gate) => (
             <TableRow key={gate.gateId} className="align-top">
-              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+              <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                 Gate {gate.order}
               </TableCell>
-              <TableCell className="min-w-48 py-3">
+              <TableCell className="min-w-48">
                 <div className="space-y-1">
                   <p className="break-words font-medium text-foreground">
                     {gate.name}
@@ -231,21 +224,23 @@ function GateResultsTable({ gates }: { gates: GeneratedAppGateResult[] }) {
                   </code>
                 </div>
               </TableCell>
-              <TableCell className="whitespace-nowrap py-3">
-                <GateStatusBadge gate={gate} />
+              <TableCell className="whitespace-nowrap">
+                <StatusBadge tone={GENERATED_APP_GATE_STATUS_META[gate.status].tone}>
+                  {GENERATED_APP_GATE_STATUS_META[gate.status].label}
+                </StatusBadge>
               </TableCell>
-              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+              <TableCell className="whitespace-nowrap text-muted-foreground">
                 {gate.blocking ? '阻断' : '非阻断'}
               </TableCell>
-              <TableCell className="py-3">
+              <TableCell>
                 <p className="break-words text-muted-foreground">
                   {gate.summary}
                 </p>
               </TableCell>
-              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+              <TableCell className="whitespace-nowrap text-right text-muted-foreground tabular-nums">
                 {gate.evidence.length}
               </TableCell>
-              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+              <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                 {formatGeneratedAppDateTime(gate.updatedAt)}
               </TableCell>
             </TableRow>
@@ -266,23 +261,23 @@ function TraceabilityTable({ app }: { app: GeneratedApp }) {
     <Table data-testid="generated-app-traceability">
       <TableHeader>
         <TableRow>
-          <TableHead>Requirement</TableHead>
-          <TableHead className="min-w-56">Scenarios</TableHead>
-          <TableHead className="min-w-56">Evidence</TableHead>
+          <TableHead>需求</TableHead>
+          <TableHead className="min-w-56">场景</TableHead>
+          <TableHead className="min-w-56">证据</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.requirementId} className="align-top">
-            <TableCell className="py-3">
+            <TableCell>
               <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
                 {row.requirementId}
               </code>
             </TableCell>
-            <TableCell className="py-3">
+            <TableCell>
               <IdList values={row.scenarioIds} />
             </TableCell>
-            <TableCell className="py-3">
+            <TableCell>
               <IdList values={row.evidenceIds} />
             </TableCell>
           </TableRow>
@@ -329,19 +324,7 @@ const ARTIFACT_KIND_LABELS = {
 } as const satisfies Record<GeneratedAppArtifactSummary['kind'], string>
 
 function formatArtifactSize(sizeBytes: number | null) {
-  if (sizeBytes === null) {
-    return '未物化'
-  }
-
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`
-  }
-
-  if (sizeBytes < 1024 * 1024) {
-    return `${(sizeBytes / 1024).toFixed(1)} KB`
-  }
-
-  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
+  return sizeBytes === null ? '未物化' : formatBytes(sizeBytes)
 }
 
 function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
@@ -420,7 +403,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="min-h-0 overflow-hidden rounded-lg border border-border">
-          <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
+          <div className="border-b border-border px-3 py-2 text-xs font-medium tracking-wide text-muted-foreground">
             交付文件
           </div>
           <div className="max-h-96 overflow-auto">
@@ -431,7 +414,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
                 disabled={!artifact.readable}
                 onClick={() => setSelectedArtifactId(artifact.artifactId)}
                 className={cn(
-                  'h-auto w-full min-w-0 items-start justify-between gap-3 rounded-none border-b border-border px-3 py-3 text-left last:border-b-0',
+                  'h-auto w-full min-w-0 items-start justify-between gap-3 whitespace-normal rounded-none border-b border-border px-3 py-3 text-left last:border-b-0',
                   selectedArtifactId === artifact.artifactId &&
                     'bg-primary/10 hover:bg-primary/15',
                 )}
@@ -444,11 +427,11 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
                     {artifact.path}
                   </span>
                 </span>
-                <span className="shrink-0 space-y-1 text-right">
-                  <span className="block rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                <span className="flex shrink-0 flex-col items-end gap-1 text-right">
+                  <Badge variant="outline" size="sm">
                     {ARTIFACT_KIND_LABELS[artifact.kind]}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
+                  </Badge>
+                  <span className="block text-xs text-muted-foreground tabular-nums">
                     {formatArtifactSize(artifact.sizeBytes)}
                   </span>
                 </span>
@@ -500,18 +483,19 @@ function GeneratedAppBuildPreview({
     )
   }
 
+  // 加载/失败占位与成品（头部 + h-80 iframe）同高，切换时不跳动
   if (isLoading) {
     return (
-      <div className="flex min-h-44 items-center justify-center rounded-lg border border-border p-6 text-sm text-muted-foreground">
-        <Spinner className="mr-2" />
-        正在读取构建预览
+      <div className="flex h-[23.5rem] items-center justify-center gap-2 rounded-lg border border-border p-6 text-sm text-muted-foreground">
+        <Spinner />
+        正在读取构建预览…
       </div>
     )
   }
 
   if (isError) {
     return (
-      <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex h-[23.5rem] flex-col items-center justify-center gap-3 rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
         <span>构建预览读取失败。</span>
         <Button variant="outline" size="sm" onClick={onRetry}>
           重试
@@ -534,7 +518,7 @@ function GeneratedAppBuildPreview({
             {artifact.path}
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {formatArtifactSize(artifact.sizeBytes)}
         </span>
       </div>
@@ -612,9 +596,9 @@ function ArtifactContentPreview({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-lg border border-border p-6 text-sm text-muted-foreground">
-        <Spinner className="mr-2" />
-        正在读取 {artifact.label}
+      <div className="flex min-h-56 items-center justify-center gap-2 rounded-lg border border-border p-6 text-sm text-muted-foreground">
+        <Spinner />
+        正在读取 {artifact.label}…
       </div>
     )
   }
@@ -888,7 +872,7 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
 
   if (!app || isError) {
     return (
-      <PageContainer className="py-16">
+      <PageContainer>
         <EmptyState
           icon={AlertTriangle}
           tone="var(--color-error)"
@@ -1002,9 +986,9 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
             className="shrink-0"
           >
             {startGenerationRunMutation.isPending ? (
-              <Spinner className="mr-2" />
+              <Spinner />
             ) : (
-              <WandSparkles className="mr-2 h-4 w-4" />
+              <WandSparkles />
             )}
             {startGenerationRunMutation.isPending
               ? '正在运行'

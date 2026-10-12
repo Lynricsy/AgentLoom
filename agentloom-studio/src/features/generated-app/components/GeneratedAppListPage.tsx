@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -11,9 +11,11 @@ import {
 
 import { Pagination } from '@/shared/components/Pagination'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
-import { staggerList } from '@/shared/lib/motion'
+import { formatNumber } from '@/shared/lib/format'
+import { fadeInUp, staggerList } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
@@ -215,8 +217,7 @@ export function GeneratedAppListPage() {
     createGeneratedAppMutation.isPending || startGenerationRunMutation.isPending
 
   return (
-    <div className="h-full overflow-auto" data-testid="generated-app-list-page">
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <PageContainer data-testid="generated-app-list-page">
         <PageHeader
           icon={AppWindow}
           title="生成应用"
@@ -241,11 +242,11 @@ export function GeneratedAppListPage() {
                   maxLength={4000}
                   disabled={isCreatingOrRunning}
                 />
-                <Button type="submit" disabled={isCreatingOrRunning} className="shrink-0 gap-2">
+                <Button type="submit" disabled={isCreatingOrRunning} className="shrink-0">
                   {isCreatingOrRunning ? (
                     <Spinner size="sm" />
                   ) : (
-                    <WandSparkles className="h-4 w-4" />
+                    <WandSparkles />
                   )}
                   {isCreatingOrRunning ? '正在生成' : '创建并生成应用'}
                 </Button>
@@ -254,41 +255,42 @@ export function GeneratedAppListPage() {
           </CardContent>
         </Card>
 
-        {lastLaunch ? (
-          <Card
-            className={
-              lastLaunch.status === 'started' ? 'border-success/30' : 'border-warning/30'
-            }
-          >
-            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <h2 className="break-words text-xs font-semibold text-foreground">
-                  {lastLaunch.appName}
-                </h2>
-                <p className="break-words text-xs leading-relaxed text-muted-foreground">
-                  {lastLaunch.summary}
-                </p>
-              </div>
-              <Link
-                to="/generated-apps/$appId"
-                params={{ appId: lastLaunch.appId }}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors hover:text-primary-hover"
+        <AnimatePresence initial={false}>
+          {lastLaunch ? (
+            <motion.div key="last-launch" {...fadeInUp}>
+              <Card
+                className={
+                  lastLaunch.status === 'started' ? 'border-success/30' : 'border-warning/30'
+                }
               >
-                进入详情
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </CardContent>
-          </Card>
-        ) : null}
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 space-y-1">
+                    <h2 className="break-words text-xs font-semibold text-foreground">
+                      {lastLaunch.appName}
+                    </h2>
+                    <p className="break-words text-xs leading-relaxed text-muted-foreground">
+                      {lastLaunch.summary}
+                    </p>
+                  </div>
+                  <Link
+                    to="/generated-apps/$appId"
+                    params={{ appId: lastLaunch.appId }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors duration-150 hover:text-primary-hover"
+                  >
+                    进入详情
+                    <ArrowRight className="size-3.5" />
+                  </Link>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         {isLoading ? (
-          <div className="space-y-3">
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner size="sm" />
-              正在加载生成应用…
-            </p>
+          <div className="space-y-3" aria-busy="true">
+            {/* 骨架高度对齐真实卡片（状态行 + 标题 + 3 格 dl + 分享面板） */}
             {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-44 rounded-lg" />
+              <Skeleton key={index} className="h-56 rounded-lg" />
             ))}
           </div>
         ) : null}
@@ -296,7 +298,7 @@ export function GeneratedAppListPage() {
         {!isLoading && isError ? (
           <Card className="border-error/30">
             <CardContent className="flex items-start gap-3 p-5">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-error" />
+              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error" />
               <div className="space-y-3">
                 <div className="space-y-1">
                   <h2 className="text-sm font-semibold text-foreground">生成应用加载失败</h2>
@@ -321,7 +323,9 @@ export function GeneratedAppListPage() {
         {apps.length > 0 ? (
           <section className="space-y-3" aria-label="生成应用列表">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">共 {meta?.total ?? apps.length} 个生成应用</p>
+              <p className="text-xs text-muted-foreground tabular-nums">
+                共 {formatNumber(meta?.total ?? apps.length)} 个生成应用
+              </p>
               {isFetching && !isLoading ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <Spinner size="sm" />
@@ -348,7 +352,6 @@ export function GeneratedAppListPage() {
             ) : null}
           </section>
         ) : null}
-      </div>
-    </div>
+    </PageContainer>
   )
 }

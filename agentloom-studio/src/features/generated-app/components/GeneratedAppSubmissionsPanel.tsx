@@ -274,9 +274,9 @@ function WorkflowExecutionStatusBlock({
         {isActive ? (
           <Spinner className="mt-0.5 shrink-0 text-info" />
         ) : displayStatus === 'completed' ? (
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
         )}
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -562,13 +562,23 @@ export function GeneratedAppSubmissionsPanel({
 
   if (submissionsQuery.isLoading) {
     return (
-      <div className="space-y-3">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner size="sm" />
-          正在加载提交记录…
-        </p>
+      <div className="overflow-hidden rounded-lg border border-border" aria-busy="true">
+        <p className="sr-only">正在加载提交记录…</p>
+        {/* 表格形态骨架：表头 h-10 + 与真实行（两行摘要）同高的行 */}
+        <div className="flex h-10 items-center gap-4 border-b border-border px-3">
+          <Skeleton className="h-3 w-12" />
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-40" />
+        </div>
         {Array.from({ length: 3 }, (_, index) => (
-          <Skeleton key={index} className="h-14 rounded-lg" />
+          <div
+            key={index}
+            className="flex h-[4.5rem] items-center gap-4 border-b border-border px-3 last:border-b-0"
+          >
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-8 flex-1" />
+          </div>
         ))}
       </div>
     )
@@ -577,7 +587,7 @@ export function GeneratedAppSubmissionsPanel({
   if (submissionsQuery.isError) {
     return (
       <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">
-        <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error" />
         <div className="min-w-0 space-y-3">
           <div>
             <h3 className="text-sm font-semibold text-foreground">
@@ -675,11 +685,12 @@ export function GeneratedAppSubmissionsPanel({
               <TableHead>状态</TableHead>
               <TableHead className="min-w-44">匿名会话</TableHead>
               <TableHead>提交时间</TableHead>
-              <TableHead className="min-w-64">Input</TableHead>
-              <TableHead className="min-w-64">Result</TableHead>
-              <TableHead className="min-w-64">Report</TableHead>
-              <TableHead className="min-w-56">Error</TableHead>
-              <TableHead>操作</TableHead>
+              <TableHead className="min-w-48">输入</TableHead>
+              <TableHead className="min-w-48">结果</TableHead>
+              <TableHead className="min-w-48">报告</TableHead>
+              <TableHead className="min-w-48">错误</TableHead>
+              {/* 操作列固定在右侧，宽表横向滚动时仍可见 */}
+              <TableHead className="sticky right-0 border-l border-border bg-surface">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -731,7 +742,7 @@ export function GeneratedAppSubmissionsPanel({
                     {submission.errorMessage?.trim() || '暂无'}
                   </SummaryText>
                 </TableCell>
-                <TableCell className="whitespace-nowrap py-3">
+                <TableCell className="sticky right-0 whitespace-nowrap border-l border-border bg-surface py-3">
                   <div className="flex items-center gap-1.5">
                     <Button
                       variant="outline"
@@ -744,12 +755,12 @@ export function GeneratedAppSubmissionsPanel({
                     </Button>
                     <Button
                       variant="outline"
-                      size="sm"
+                      size="icon-sm"
                       onClick={() => void handleDeleteSubmission(submission)}
                       disabled={isDeleting}
                       aria-label={`删除提交记录 ${submission.id}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 />
                     </Button>
                   </div>
                 </TableCell>
@@ -780,7 +791,7 @@ export function GeneratedAppSubmissionsPanel({
           </div>
         ) : detailQuery.isError || !selectedSubmission ? (
           <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error" />
             <div className="min-w-0 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
