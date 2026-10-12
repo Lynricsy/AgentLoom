@@ -837,4 +837,64 @@ describe('normalizeWorkflowNodesAndEdges', () => {
     expect(nodes[0]?.data).not.toHaveProperty('selected_agent_id');
     expect(nodes[0]?.data.config).not.toHaveProperty('default_state');
   });
+
+  it('容器与跳转节点的 input-N 端口补齐为可接收任意类型（兼容旧快照），其他节点不受影响', () => {
+    const legacyExtraInput = {
+      id: 'input-0',
+      label: 'input-0',
+      direction: 'input',
+      dataType: 'json',
+    };
+    const { nodes } = normalizeWorkflowNodesAndEdges(
+      [
+        {
+          id: 'loop-a',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: {
+            nodeType: 'loop',
+            inputPorts: [
+              { id: 'exec-in' },
+              { id: 'state-in' },
+              legacyExtraInput,
+            ],
+          },
+        },
+        {
+          id: 'break-a',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: {
+            nodeType: 'break',
+            inputPorts: [{ id: 'exec-in' }, legacyExtraInput],
+          },
+        },
+        {
+          id: 'merge-a',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: {
+            nodeType: 'merge',
+            inputPorts: [{ id: 'exec-in' }, legacyExtraInput],
+          },
+        },
+      ],
+      [],
+    );
+
+    const inputPort = (nodeId: string) =>
+      (
+        nodes.find((node) => node.id === nodeId)?.data.inputPorts as Array<
+          Record<string, unknown>
+        >
+      ).find((port) => port.id === 'input-0');
+
+    expect(inputPort('loop-a')).toMatchObject({
+      dataType: 'json',
+      acceptsAnyDataType: true,
+      label: 'input-0',
+    });
+    expect(inputPort('break-a')).toMatchObject({ acceptsAnyDataType: true });
+    expect(inputPort('merge-a')?.acceptsAnyDataType).toBeUndefined();
+  });
 });

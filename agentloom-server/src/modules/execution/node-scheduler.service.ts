@@ -506,25 +506,37 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
   }
 
   /**
-   * 读取节点某个方向的端口 dataType。
+   * 读取节点某个方向的端口类型信息。
    *
    * 两级查找：normalize 阶段已把内置节点的静态端口写入 data.inputPorts/outputPorts
    * （字段名 id），这是绝大多数边的唯一来源；portMappingMetadata 只有动态端口
-   * （MCP 工具、可复用块）才会写，字段名是 name。两处都查不到时返回 undefined，
+   * （MCP 工具、可复用块）才会写，字段名是 name。两处都查不到时 dataType 为 undefined，
    * 调用方保持 no-op —— 动态端口在快照里可能确实没有类型信息，不能误报不兼容。
    */
-  private resolvePortDataType(
+  private resolvePortType(
     node: schema.ReactFlowNode,
     handle: string,
     direction: 'source' | 'target',
-  ): string | undefined {
+  ): { dataType?: string; acceptsAnyDataType: boolean } {
     const staticPorts = (
       direction === 'source' ? node.data?.outputPorts : node.data?.inputPorts
-    ) as Array<{ id?: string; name?: string; dataType?: string }> | undefined;
+    ) as
+      | Array<{
+          id?: string;
+          name?: string;
+          dataType?: string;
+          acceptsAnyDataType?: boolean;
+        }>
+      | undefined;
     const staticPort = Array.isArray(staticPorts)
       ? staticPorts.find((p) => p?.id === handle || p?.name === handle)
       : undefined;
-    if (staticPort?.dataType) return staticPort.dataType;
+    if (staticPort?.dataType) {
+      return {
+        dataType: staticPort.dataType,
+        acceptsAnyDataType: staticPort.acceptsAnyDataType === true,
+      };
+    }
 
     const metadata = node.data?.portMappingMetadata as
       | {
@@ -534,7 +546,10 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       | undefined;
     const dynamicPorts =
       direction === 'source' ? metadata?.outputs : metadata?.inputs;
-    return dynamicPorts?.find((p) => p.name === handle)?.dataType;
+    return {
+      dataType: dynamicPorts?.find((p) => p.name === handle)?.dataType,
+      acceptsAnyDataType: false,
+    };
   }
 
   /**
@@ -553,17 +568,15 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     const targetNode = nodes.find((n) => n.id === edge.target);
     if (!sourceNode || !targetNode) return undefined;
 
-    const sourceType = this.resolvePortDataType(
-      sourceNode,
-      sourceHandle,
-      'source',
-    );
-    const targetType = this.resolvePortDataType(
-      targetNode,
-      targetHandle,
-      'target',
-    );
+    const sourcePort = this.resolvePortType(sourceNode, sourceHandle, 'source');
+    const targetPort = this.resolvePortType(targetNode, targetHandle, 'target');
+    const sourceType = sourcePort.dataType;
+    const targetType = targetPort.dataType;
     if (!sourceType || !targetType) return undefined;
+    // 与 Studio 连线校验一致：任一端声明 acceptsAnyDataType 时原样透传，不校验也不做类型变换
+    if (sourcePort.acceptsAnyDataType || targetPort.acceptsAnyDataType) {
+      return undefined;
+    }
 
     const detail: TypeMismatchDetail = {
       sourceNodeId: edge.source,

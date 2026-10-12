@@ -988,5 +988,49 @@ describe('facade migrated scenarios', () => {
         );
       expect(typeMismatchCalls).toHaveLength(0);
     });
+
+    it('目标端口声明 acceptsAnyDataType 时放行异类连线（sandbox → 循环容器 input-N）', async () => {
+      const nodeA = makeNode('A', 'sandbox', {
+        outputPorts: [{ id: 'sandbox-out', dataType: 'sandbox' }],
+      });
+      const nodeB = makeNode('B', 'loop', {
+        inputPorts: [
+          { id: 'input-0', dataType: 'json', acceptsAnyDataType: true },
+        ],
+      });
+      const snapshot = makeSnapshot(
+        [nodeA, nodeB],
+        [makeEdge('A', 'B', 'sandbox-out', 'input-0')],
+      );
+      const stepA = makeStep({
+        id: 'step-a',
+        nodeId: 'A',
+        status: 'completed',
+        result: { 'sandbox-out': { sandboxId: 'sbx-1' } },
+      });
+      const stepB = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'pending',
+        nodeType: 'loop',
+      });
+
+      db.update.mockReturnValue(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeFailed').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [
+        stepA,
+        stepB,
+      ]);
+
+      const typeMismatchCalls =
+        mockStateMachine.updateStepStatus.mock.calls.filter(
+          (call: unknown[]) =>
+            (call[3] as { errorMessage?: { type?: string } } | undefined)
+              ?.errorMessage?.type ===
+            'https://agentloom.dev/errors/node-type-mismatch',
+        );
+      expect(typeMismatchCalls).toHaveLength(0);
+    });
   });
 });

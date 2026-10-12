@@ -1018,6 +1018,39 @@ function normalizePortRecord(
   };
 }
 
+/**
+ * 容器与跳转节点用户追加的 input-N 端口透传任意上游端口值（与 Studio createCompoundValueInputPort
+ * 一致）。旧快照里这些端口只存了 dataType=json、没有 acceptsAnyDataType，这里按规范补齐。
+ */
+const COMPOUND_VALUE_INPUT_NODE_TYPES = new Set([
+  'loop',
+  'iteration',
+  'break',
+  'continue',
+]);
+
+function buildCompoundValueInputTemplates(
+  nodeData: JsonRecord,
+  baseTemplates: readonly PortTemplate[],
+): PortTemplate[] {
+  return readNodePortRecords(nodeData, 'input').flatMap((port) => {
+    const portId = readNonEmptyString(port.id);
+    if (
+      !portId?.startsWith('input-') ||
+      baseTemplates.some((template) => template.id === portId)
+    ) {
+      return [];
+    }
+    return [
+      createAnyJsonPortTemplate(
+        portId,
+        readNonEmptyString(port.label) ?? portId,
+        'input',
+      ),
+    ];
+  });
+}
+
 function buildDefaultPortTemplates(
   nodeType: string | undefined,
   nodeData: JsonRecord,
@@ -1047,7 +1080,11 @@ function buildDefaultPortTemplates(
     }
   }
 
-  return [...templates[direction]];
+  const base = [...templates[direction]];
+  if (direction === 'input' && COMPOUND_VALUE_INPUT_NODE_TYPES.has(nodeType)) {
+    return [...base, ...buildCompoundValueInputTemplates(nodeData, base)];
+  }
+  return base;
 }
 
 function hydratePortRecords(
