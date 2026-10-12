@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2, ShieldAlert } from 'lucide-react'
+import { Bot, ShieldAlert } from 'lucide-react'
 import { z } from 'zod'
 import {
   getNodeTypeConfigOrNull,
   type CanvasNode,
 } from '@/features/canvas'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
+import { Alert } from '@/shared/ui/alert'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Checkbox } from '@/shared/ui/checkbox'
 import {
   Select,
@@ -232,14 +237,14 @@ function RoleCheckboxGroup({
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-medium text-foreground">{label}</legend>
-      <div id={fieldId} className="grid gap-2 sm:grid-cols-2">
+      <div id={fieldId} className="grid gap-2 @sm:grid-cols-2">
         {CONFIGURABLE_INTERVENTION_ROLES.map((role) => {
           const checked = value.includes(role)
 
           return (
             <label
               key={role}
-              className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/40 px-3 py-2 text-sm text-foreground"
+              className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
             >
               <Checkbox
                 checked={checked}
@@ -276,14 +281,14 @@ function NotifyChannelCheckboxGroup({
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-medium text-foreground">{label}</legend>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 @md:grid-cols-3">
         {NOTIFY_CHANNELS.map((channel) => {
           const checked = value.includes(channel)
 
           return (
             <label
               key={channel}
-              className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/40 px-3 py-2 text-sm text-foreground"
+              className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
             >
               <Checkbox
                 checked={checked}
@@ -324,7 +329,7 @@ function PolicySummary({
   notifyChannels: NotifyChannel[]
 }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-background/35 p-3 text-sm text-muted-foreground">
+    <div className="rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
       <p className="text-sm font-medium text-foreground">{title}</p>
       <div className="mt-2 grid gap-1">
         <p>来源：{source}</p>
@@ -373,18 +378,14 @@ function LegacyRoleWarning({
   }
 
   return (
-    <div
-      className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning"
-      data-testid={testId}
-    >
-      <p className="font-medium text-warning">检测到旧版兼容角色配置</p>
-      <p className="mt-1 leading-6 text-foreground">{warningParts.join('；')}。</p>
-      <p className="mt-2 text-foreground/85">
+    <Alert variant="warning" title="检测到旧版兼容角色配置" data-testid={testId}>
+      <p className="leading-6 text-foreground">{warningParts.join('；')}。</p>
+      <p className="mt-1">
         {requiresAction
           ? '请先重新选择当前界面支持的角色后再保存；保存后会以你当前的可见选择覆盖旧版兼容角色。'
           : '当前保存将以你现在的可见选择覆盖旧版兼容角色，请确认后再继续。'}
       </p>
-    </div>
+    </Alert>
   )
 }
 
@@ -587,21 +588,21 @@ export function InterventionPolicyTab({
 
   if (isLoading) {
     return (
-      <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface p-4 shadow-xl">
-        <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-xl border border-border/70 bg-background/30">
-          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+      <Card className="flex h-full flex-col p-4">
+        <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-lg border border-border bg-muted">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Spinner />
             正在加载介入策略…
           </div>
         </div>
-      </section>
+      </Card>
     )
   }
 
   if (policiesQuery.isError || workflowResolvedQuery.isError || nodeResolvedQuery.isError) {
     return (
-      <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface p-4 shadow-xl">
-        <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-xl border border-error/20 bg-error/10 px-6 text-center">
+      <Card className="flex h-full flex-col p-4">
+        <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-lg border border-error/30 bg-error/10 px-6 text-center">
           <div>
             <p className="text-base font-medium text-error">加载介入策略失败</p>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -609,12 +610,13 @@ export function InterventionPolicyTab({
             </p>
           </div>
         </div>
-      </section>
+      </Card>
     )
   }
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface p-4 shadow-xl">
+    // @container：本面板嵌在 480px 的画布设置浮层里，栅格按容器宽度而非视口断点
+    <Card className="@container flex h-full flex-col p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -627,15 +629,15 @@ export function InterventionPolicyTab({
         </div>
 
         {isReadOnly ? (
-          <div className="inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning">
-            <ShieldAlert className="h-3.5 w-3.5" />
+          <Badge variant="warning">
+            <ShieldAlert className="size-3.5 shrink-0" />
             当前角色仅可查看策略配置
-          </div>
+          </Badge>
         ) : null}
       </div>
 
       <div className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-        <div className="rounded-xl border border-border/70 bg-background/20 p-4">
+        <div className="rounded-lg border border-border bg-muted p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold text-foreground">工作流级介入策略</h3>
@@ -683,7 +685,7 @@ export function InterventionPolicyTab({
               </p>
             ) : null}
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 @md:grid-cols-2">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <label htmlFor="workflow-timeout-seconds" className="text-sm font-medium text-foreground">
@@ -807,7 +809,7 @@ export function InterventionPolicyTab({
           </form>
         </div>
 
-        <div className="rounded-xl border border-border/70 bg-background/20 p-4">
+        <div className="rounded-lg border border-border bg-muted p-4">
           <div>
             <h3 className="text-base font-semibold text-foreground">节点级覆盖</h3>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -827,21 +829,23 @@ export function InterventionPolicyTab({
                     type="button"
                     variant="outline"
                     className={cn(
-                      'h-auto w-full flex-col items-stretch gap-0 whitespace-normal rounded-xl px-3 py-3 text-left font-normal shadow-none',
+                      'h-auto w-full flex-col items-stretch gap-0 whitespace-normal rounded-lg px-3 py-3 text-left font-normal shadow-none',
                       isSelected
                         ? 'border-primary/40 bg-primary/10 hover:bg-primary/10'
-                        : 'border-border/70 bg-background/35 hover:border-primary/30 hover:bg-background/35',
+                        : 'border-border bg-surface hover:border-primary/30 hover:bg-surface',
                     )}
                     onClick={() => setSelectedNodeId(node.id)}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{node.data.label}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground" title={node.data.label}>
+                          {node.data.label}
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {override ? '已配置节点覆盖' : '使用工作流默认策略'}
                         </p>
                       </div>
-                      <div className="text-right text-xs text-muted-foreground">
+                      <div className="shrink-0 text-right text-xs text-muted-foreground">
                         <p>
                           {formatInterventionTimeoutLabel(
                             override?.timeoutSeconds ?? workflowResolvedQuery.data?.timeoutSeconds ?? DEFAULT_INTERVENTION_POLICY.timeoutSeconds,
@@ -858,15 +862,17 @@ export function InterventionPolicyTab({
                 )
               })
             ) : (
-              <div className="rounded-xl border border-dashed border-border/70 bg-background/20 px-4 py-6 text-sm text-muted-foreground">
-                当前工作流中还没有可配置介入策略的 Agent 节点。
-              </div>
+              <EmptyState
+                icon={Bot}
+                title="当前工作流中还没有可配置介入策略的 Agent 节点。"
+                className="py-6"
+              />
             )}
           </div>
 
           {selectedNode ? (
             <>
-              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,240px),minmax(0,1fr)]">
+              <div className="mt-4 grid gap-4 @lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
                 <div className="space-y-2">
                   <label htmlFor="node-policy-target" className="text-sm font-medium text-foreground">
                     选择 Agent 节点
@@ -926,7 +932,7 @@ export function InterventionPolicyTab({
                   </p>
                 ) : null}
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 @md:grid-cols-2">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <label htmlFor="node-timeout-seconds" className="text-sm font-medium text-foreground">
@@ -1067,6 +1073,6 @@ export function InterventionPolicyTab({
           ) : null}
         </div>
       </div>
-    </section>
+    </Card>
   )
 }
