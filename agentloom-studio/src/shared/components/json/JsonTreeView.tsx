@@ -1,5 +1,8 @@
-import { memo, type ReactNode } from 'react'
+import { memo, useState, type ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { Button } from '@/shared/ui/button'
 
 export interface JsonTreeViewProps {
   value: unknown
@@ -18,8 +21,37 @@ interface JsonTreeNodeProps {
   renderString?: (value: string) => ReactNode
 }
 
-const SUMMARY_CLASS =
-  'cursor-pointer rounded-sm text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
+interface JsonBranchProps {
+  label: ReactNode
+  depth: number
+  defaultOpen: boolean
+  children: ReactNode
+}
+
+/** 数组/对象节点：受控展开 + Collapse 高度动画，单个 ChevronDown 旋转表示开合 */
+function JsonBranch({ label, depth, defaultOpen, children }: JsonBranchProps) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className={cn(depth === 0 ? 'rounded-lg border border-border bg-muted px-3 py-2' : 'py-0.5')}>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="-ml-2 max-w-full justify-start font-medium text-foreground hover:bg-border/40"
+      >
+        <ChevronDown
+          className={cn('shrink-0 transition-transform duration-150', !open && '-rotate-90')}
+        />
+        <span className="min-w-0 truncate">{label}</span>
+      </Button>
+      <Collapse open={open}>
+        <div className="mt-1 space-y-2 pl-3">{children}</div>
+      </Collapse>
+    </div>
+  )
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -55,28 +87,22 @@ function JsonTreeNode({
 
   if (Array.isArray(value)) {
     return (
-      <details
-        open={depth < defaultExpandedDepth}
-        className={cn(
-          depth === 0 ? 'rounded-lg border border-border bg-muted px-3 py-2' : 'py-0.5',
-        )}
+      <JsonBranch
+        label={`${name ?? 'Array'} [${value.length}]`}
+        depth={depth}
+        defaultOpen={depth < defaultExpandedDepth}
       >
-        <summary className={SUMMARY_CLASS}>
-          {name ?? 'Array'} [{value.length}]
-        </summary>
-        <div className="mt-2 space-y-2 pl-3">
-          {value.map((item, index) => (
-            <JsonTreeNode
-              key={`${name ?? 'array'}-${index}`}
-              name={`${index}`}
-              value={item}
-              depth={depth + 1}
-              defaultExpandedDepth={defaultExpandedDepth}
-              renderString={renderString}
-            />
-          ))}
-        </div>
-      </details>
+        {value.map((item, index) => (
+          <JsonTreeNode
+            key={`${name ?? 'array'}-${index}`}
+            name={`${index}`}
+            value={item}
+            depth={depth + 1}
+            defaultExpandedDepth={defaultExpandedDepth}
+            renderString={renderString}
+          />
+        ))}
+      </JsonBranch>
     )
   }
 
@@ -84,30 +110,22 @@ function JsonTreeNode({
     const entries = Object.entries(value)
 
     return (
-      <details
-        open={depth < defaultExpandedDepth}
-        className={cn(
-          depth === 0 ? 'rounded-lg border border-border bg-muted px-3 py-2' : 'py-0.5',
-        )}
+      <JsonBranch
+        label={`${name ?? 'Object'} {${entries.length}}`}
+        depth={depth}
+        defaultOpen={depth < defaultExpandedDepth}
       >
-        <summary className={SUMMARY_CLASS}>
-          {name ?? 'Object'} {'{'}
-          {entries.length}
-          {'}'}
-        </summary>
-        <div className="mt-2 space-y-2 pl-3">
-          {entries.map(([entryName, entryValue]) => (
-            <JsonTreeNode
-              key={entryName}
-              name={entryName}
-              value={entryValue}
-              depth={depth + 1}
-              defaultExpandedDepth={defaultExpandedDepth}
-              renderString={renderString}
-            />
-          ))}
-        </div>
-      </details>
+        {entries.map(([entryName, entryValue]) => (
+          <JsonTreeNode
+            key={entryName}
+            name={entryName}
+            value={entryValue}
+            depth={depth + 1}
+            defaultExpandedDepth={defaultExpandedDepth}
+            renderString={renderString}
+          />
+        ))}
+      </JsonBranch>
     )
   }
 
