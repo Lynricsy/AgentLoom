@@ -12,11 +12,14 @@ import {
 import { useAuthToken } from '@/features/execution'
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { formatDateTime } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
+import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button, buttonVariants } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -77,23 +80,6 @@ const EXPORT_STATUS_VARIANT: Record<
   completed: 'success',
   failed: 'error',
   expired: 'warning',
-}
-
-function formatTimestamp(value?: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
 }
 
 function stringifyValue(value: unknown): string {
@@ -269,10 +255,10 @@ function EvidenceExportPanel({
           <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">{statusDescription}</p>
           {exportJob ? (
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>导出任务：{exportJob.id}</span>
+              <span className="break-all">导出任务：{exportJob.id}</span>
               <span>命中执行：{exportJob.matchedExecutionCount}</span>
-              <span>请求时间：{formatTimestamp(exportJob.requestedAt)}</span>
-              <span>保留至：{formatTimestamp(exportJob.expiresAt)}</span>
+              <span>请求时间：{formatDateTime(exportJob.requestedAt)}</span>
+              <span>保留至：{formatDateTime(exportJob.expiresAt)}</span>
             </div>
           ) : null}
         </div>
@@ -366,7 +352,7 @@ function getForbiddenMessage(authToken?: string, role?: string | null) {
 
 function AuditLogForbiddenState({ authToken, role }: { authToken?: string; role?: string | null }) {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="audit-log-forbidden">
+    <PageContainer data-testid="audit-log-forbidden">
       <PageHeader
         icon={History}
         title="审计日志"
@@ -375,8 +361,8 @@ function AuditLogForbiddenState({ authToken, role }: { authToken?: string; role?
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
-            <ShieldAlert className="h-5 w-5" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+            <ShieldAlert className="size-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">无权访问审计日志</h2>
@@ -386,7 +372,7 @@ function AuditLogForbiddenState({ authToken, role }: { authToken?: string; role?
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -424,9 +410,9 @@ function AuditLogDetailView({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-1">
               <CardTitle className="text-base">{detail.summary ?? '未提供摘要'}</CardTitle>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                记录于 {formatTimestamp(detail.createdAt)}，用于追踪资源与执行相关的配置或状态变更。
-              </p>
+              <CardDescription className="leading-relaxed">
+                记录于 {formatDateTime(detail.createdAt)}，用于追踪资源与执行相关的配置或状态变更。
+              </CardDescription>
             </div>
 
             <Button size="sm" onClick={onLoadSequence} variant="outline" className="shrink-0">
@@ -477,9 +463,9 @@ function AuditLogDetailView({
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="space-y-1">
                 <CardTitle>资源时序</CardTitle>
-                <p className="text-xs text-muted-foreground">
+                <CardDescription>
                   同一资源的审计记录按时间顺序展示，便于回溯状态演进。
-                </p>
+                </CardDescription>
               </div>
               <Badge variant="secondary" size="sm">
                 {sequenceRecords.length} 条记录
@@ -520,7 +506,7 @@ function AuditLogDetailView({
                         </div>
                       </div>
                       <span className="text-2xs text-muted-foreground">
-                        {formatTimestamp(record.createdAt)}
+                        {formatDateTime(record.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -622,6 +608,7 @@ function AuditLogContent() {
         key: 'createdAt',
         header: '时间',
         className: 'w-[9.5rem]',
+        nowrap: true,
         cell: (record) => (
           <div
             className="flex items-center gap-2"
@@ -634,8 +621,8 @@ function AuditLogContent() {
                 record.id === resolvedSelectedAuditLogId ? 'bg-primary' : 'bg-transparent',
               )}
             />
-            <span className="whitespace-nowrap text-xs text-muted-foreground">
-              {formatTimestamp(record.createdAt)}
+            <span className="text-xs text-muted-foreground">
+              {formatDateTime(record.createdAt)}
             </span>
           </div>
         ),
@@ -643,12 +630,13 @@ function AuditLogContent() {
       {
         key: 'event',
         header: '事件与摘要',
+        className: 'w-full max-w-0',
         cell: (record) => (
           <div className="min-w-0 space-y-1">
-            <Badge variant="outline" size="sm">
-              {record.eventType}
+            <Badge variant="outline" size="sm" title={record.eventType}>
+              <span className="truncate">{record.eventType}</span>
             </Badge>
-            <p className="truncate text-xs font-medium text-foreground">
+            <p className="truncate text-xs font-medium text-foreground" title={record.summary ?? undefined}>
               {record.summary ?? '未提供摘要'}
             </p>
           </div>
@@ -658,10 +646,13 @@ function AuditLogContent() {
         key: 'resource',
         header: '资源',
         hideBelow: 'md',
+        className: 'max-w-[12rem]',
         cell: (record) => (
           <div className="min-w-0 space-y-1">
-            <p className="text-xs text-foreground">{record.resourceType}</p>
-            <p className="truncate font-mono text-2xs text-muted-foreground">{record.resourceId}</p>
+            <p className="truncate text-xs text-foreground">{record.resourceType}</p>
+            <p className="truncate font-mono text-2xs text-muted-foreground" title={record.resourceId}>
+              {record.resourceId}
+            </p>
           </div>
         ),
       },
@@ -669,12 +660,15 @@ function AuditLogContent() {
         key: 'actor',
         header: '操作人',
         hideBelow: 'lg',
+        className: 'max-w-[12rem]',
         cell: (record) => (
           <div className="min-w-0 space-y-1">
             <Badge variant="secondary" size="sm">
               {record.actorType}
             </Badge>
-            <p className="truncate text-2xs text-muted-foreground">{record.actorId ?? '系统'}</p>
+            <p className="truncate text-2xs text-muted-foreground" title={record.actorId ?? undefined}>
+              {record.actorId ?? '系统'}
+            </p>
           </div>
         ),
       },
@@ -732,7 +726,7 @@ function AuditLogContent() {
   }
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="audit-log-page">
+    <PageContainer data-testid="audit-log-page">
       <PageHeader
         icon={History}
         title="审计日志"
@@ -869,24 +863,20 @@ function AuditLogContent() {
         <section className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold text-foreground">记录列表</h2>
-            <p className="text-xs text-muted-foreground">
-              {paginationMeta
-                ? `当前第 ${paginationMeta.page} 页，共 ${paginationMeta.total} 条记录`
-                : '按当前筛选条件查看审计记录'}
+            {/* 加载提示放在标题行，不再在表格上方插入一行把骨架顶下去 */}
+            <p className="text-xs text-muted-foreground" role="status">
+              {auditLogsQuery.isLoading
+                ? '加载审计日志中…'
+                : paginationMeta
+                  ? `当前第 ${paginationMeta.page} 页，共 ${paginationMeta.total} 条记录`
+                  : '按当前筛选条件查看审计记录'}
             </p>
           </div>
 
-          {auditLogsQuery.isLoading ? (
-            <p className="text-xs text-muted-foreground" role="status">
-              加载审计日志中…
-            </p>
-          ) : null}
-
           {auditLogsQuery.error ? (
-            <div className="rounded-lg border border-error/30 bg-error/5 p-4">
-              <p className="text-xs font-medium text-foreground">审计日志加载失败</p>
-              <p className="mt-1 text-xs text-error">{listError}</p>
-            </div>
+            <Alert variant="error" title="审计日志加载失败">
+              {listError}
+            </Alert>
           ) : (
             <DataTable
               columns={columns}
@@ -966,7 +956,7 @@ function AuditLogContent() {
           ) : null}
         </section>
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
