@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { EMPTY_VALUE, formatDateTime } from '@/shared/lib/format'
 import type { InterventionRole } from '@/features/intervention-policy'
 import type { BadgeProps } from '@/shared/ui/badge'
 import type {
@@ -67,26 +68,13 @@ export const PLUGIN_ORIGIN_LABEL: Record<PluginOrigin, string> = {
   upload: '本地上传',
 }
 
-const PLUGIN_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
 /**
  * 时间戳缺失（服务端对缺失字段下发空串）或无法解析时返回 null，
  * 由调用方决定隐藏整行，避免渲染出 Invalid Date。
  */
 export function formatPluginTimestamp(value: string | null): string | null {
-  if (!value) {
-    return null
-  }
-
-  const date = new Date(value)
-
-  return Number.isNaN(date.getTime()) ? null : PLUGIN_TIMESTAMP_FORMATTER.format(date)
+  const formatted = formatDateTime(value)
+  return formatted === EMPTY_VALUE ? null : formatted
 }
 
 /**

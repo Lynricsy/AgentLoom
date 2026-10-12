@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Cpu, Plus, Power, PowerOff, Search, Trash2 } from 'lucide-react'
+import { formatBytes } from '@/shared/lib/format'
 import { useAuthToken } from '@/features/auth'
 import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import {
@@ -45,7 +46,6 @@ import {
   RUNTIME_PLUGIN_DSH_VERSION,
   RUNTIME_PLUGIN_STATUS_LABEL,
   RUNTIME_PLUGIN_STATUS_VARIANT,
-  formatRuntimePluginSize,
 } from '../lib/runtimePluginPresentation'
 import { RegisterRuntimePluginDialog } from './RegisterRuntimePluginDialog'
 import { RuntimePluginDetailSheet } from './RuntimePluginDetailSheet'
@@ -213,7 +213,7 @@ export function RuntimePluginManagementPage() {
         className: 'w-24',
         hideBelow: 'md',
         cell: (plugin) => (
-          <span className="text-muted-foreground">{formatRuntimePluginSize(plugin.sizeBytes)}</span>
+          <span className="text-muted-foreground">{formatBytes(plugin.sizeBytes)}</span>
         ),
       },
       {

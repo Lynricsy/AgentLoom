@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { FileArchive, ShieldAlert, Upload, X } from 'lucide-react'
+import { formatBytes } from '@/shared/lib/format'
 import { PLUGIN_PACKAGE_EXTENSION, isPluginPackageFile } from '@/features/plugin'
 import {
   Dialog,
@@ -19,7 +20,6 @@ import { cn } from '@/shared/lib/utils'
 import { useRegisterRuntimePlugin } from '../api/runtimePluginMutations'
 import {
   RUNTIME_PLUGIN_DSH_VERSION,
-  formatRuntimePluginSize,
 } from '../lib/runtimePluginPresentation'
 
 interface RegisterRuntimePluginDialogProps {
@@ -159,7 +159,7 @@ export function RegisterRuntimePluginDialog({
                   {file.name}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatRuntimePluginSize(file.size)}
+                  {formatBytes(file.size)}
                 </span>
                 {isUploading ? null : (
                   <Button

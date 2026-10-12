@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
+import { formatBytes } from '@/shared/lib/format'
 import { formatPluginTimestamp } from '@/features/plugin'
 import {
   Sheet,
@@ -18,7 +19,6 @@ import { useRuntimePlugin } from '../api/runtimePluginQueries'
 import {
   RUNTIME_PLUGIN_STATUS_LABEL,
   RUNTIME_PLUGIN_STATUS_VARIANT,
-  formatRuntimePluginSize,
 } from '../lib/runtimePluginPresentation'
 
 interface RuntimePluginDetailSheetProps {
@@ -67,7 +67,7 @@ export function RuntimePluginDetailSheet({
                 <Field label="版本">v{plugin.version}</Field>
                 <Field label="作者">{plugin.author}</Field>
                 <Field label="许可协议">{plugin.license ?? '未声明'}</Field>
-                <Field label="包大小">{formatRuntimePluginSize(plugin.sizeBytes)}</Field>
+                <Field label="包大小">{formatBytes(plugin.sizeBytes)}</Field>
                 <Field label="更新时间">
                   {formatPluginTimestamp(plugin.updatedAt) ?? '未记录'}
                 </Field>

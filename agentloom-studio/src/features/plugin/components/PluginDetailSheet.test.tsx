@@ -173,7 +173,7 @@ describe('PluginDetailSheet 市场来源区块', () => {
     const section = await findSourceSection()
     expect(within(section).getByText('文本翻译插件')).toBeInTheDocument()
     expect(within(section).getByText('$0.02/次')).toBeInTheDocument()
-    expect(within(section).getByText(/2026\/03\/15/)).toBeInTheDocument()
+    expect(within(section).getByText(/2026年3月15日/)).toBeInTheDocument()
     expect(within(section).queryByText('最近升级')).not.toBeInTheDocument()
   })
 
@@ -191,7 +191,7 @@ describe('PluginDetailSheet 市场来源区块', () => {
 
     const section = await findSourceSection()
     expect(within(section).getByText('最近升级')).toBeInTheDocument()
-    expect(within(section).getByText(/2026\/04\/02/)).toBeInTheDocument()
+    expect(within(section).getByText(/2026年4月2日/)).toBeInTheDocument()
   })
 
   it('快照字段缺失时降级为「未记录」而不是 undefined 或 Invalid Date', async () => {
