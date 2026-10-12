@@ -256,7 +256,7 @@ export function ToolLibraryPage() {
       {!isLoading && !error ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
               工具总数
             </p>
             <p className="mt-2 text-2xl font-semibold text-foreground">
@@ -267,7 +267,7 @@ export function ToolLibraryPage() {
             </p>
           </Card>
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
               运行状态
             </p>
             <p className="mt-2 text-2xl font-semibold text-foreground">
@@ -278,7 +278,7 @@ export function ToolLibraryPage() {
             </p>
           </Card>
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
               关联配置
             </p>
             <p className="mt-2 text-2xl font-semibold text-foreground">
@@ -289,7 +289,7 @@ export function ToolLibraryPage() {
             </p>
           </Card>
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">
               最近更新
             </p>
             <p className="mt-2 text-2xl font-semibold text-foreground">
@@ -385,7 +385,7 @@ export function ToolLibraryPage() {
 
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     工具名称
                   </p>
                   <p className="font-mono text-xs text-foreground">
@@ -393,7 +393,7 @@ export function ToolLibraryPage() {
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     关联配置
                   </p>
                   <p className="font-mono text-xs break-all text-foreground">
@@ -401,7 +401,7 @@ export function ToolLibraryPage() {
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     最后更新
                   </p>
                   <p className="text-foreground">
@@ -412,7 +412,7 @@ export function ToolLibraryPage() {
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     首次导入
                   </p>
                   <p className="text-foreground">

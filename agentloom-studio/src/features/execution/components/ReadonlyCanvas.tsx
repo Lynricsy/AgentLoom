@@ -125,7 +125,7 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{data.label}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="truncate text-2xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
               {data.nodeType}
             </p>
             {data.isCompoundContainer ? (

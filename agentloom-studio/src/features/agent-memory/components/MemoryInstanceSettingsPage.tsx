@@ -323,7 +323,7 @@ export function MemoryInstanceSettingsPage({
                   id="settings-system-prompt"
                   value={systemPromptOverride}
                   onChange={(e) => setSystemPromptOverride(e.target.value)}
-                  placeholder="输入自定义系统提示词..."
+                  placeholder="输入自定义系统提示词…"
                   rows={10}
                   className="font-mono"
                 />

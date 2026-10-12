@@ -278,7 +278,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
               aria-label="搜索 MCP Server"
               value={serverSearch}
               onChange={(e) => setServerSearch(e.target.value)}
-              placeholder="搜索 MCP Server..."
+              placeholder="搜索 MCP Server…"
               className="h-8 pl-8 text-xs"
             />
           </div>
@@ -287,7 +287,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
             {serversLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>加载中...</span>
+                <span>加载中…</span>
               </div>
             ) : filteredServers.length === 0 ? (
               <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
@@ -350,7 +350,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
             <div className="flex items-center gap-1.5 min-w-0">
               <Server className="h-3.5 w-3.5 shrink-0 text-info" />
               <span className="truncate text-xs font-medium text-foreground">
-                {selectedServerName || '加载中...'}
+                {selectedServerName || '加载中…'}
               </span>
             </div>
           </div>
@@ -377,7 +377,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
               aria-label="搜索工具"
               value={toolSearch}
               onChange={(e) => setToolSearch(e.target.value)}
-              placeholder="搜索工具..."
+              placeholder="搜索工具…"
               className="h-8 pl-8 text-xs"
             />
           </div>
@@ -387,7 +387,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
             {detailLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>加载工具列表...</span>
+                <span>加载工具列表…</span>
               </div>
             ) : filteredTools.length === 0 ? (
               <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">

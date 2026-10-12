@@ -20,7 +20,7 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
       variant="outline"
       onClick={onClick}
       className={cn(
-        'group relative flex h-full w-full flex-col items-start justify-start gap-0 overflow-hidden whitespace-normal rounded-lg bg-surface p-5 text-left font-normal shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-surface hover:shadow-md [&_svg]:size-[18px] [&_p_svg]:size-[11px] [&_h3~span_svg]:size-[9px] [&>svg:last-child]:size-3.5',
+        'group relative flex h-full w-full flex-col items-start justify-start gap-0 overflow-hidden whitespace-normal rounded-lg bg-surface p-5 text-left font-normal shadow-sm transition-[background-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:bg-surface hover:shadow-md [&_svg]:size-[18px] [&_p_svg]:size-[11px] [&_h3~span_svg]:size-[9px] [&>svg:last-child]:size-3.5',
         isCrossDomain ? 'border-transparent hover:border-transparent' : 'border-border hover:border-border-hover',
       )}
       style={

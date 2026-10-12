@@ -155,6 +155,7 @@ function FileItem({
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button
+          aria-label="下载"
           variant="ghost"
           size="icon-xs"
           onClick={handleDownload}
@@ -165,6 +166,7 @@ function FileItem({
         </Button>
         {!isMainContent && (
           <Button
+            aria-label="删除"
             variant="ghost"
             size="icon-xs"
             onClick={() => onDelete(file.name)}
@@ -358,7 +360,7 @@ function ImportDropZone({
       {status === 'parsing' && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          正在解析...
+          正在解析…
         </div>
       )}
 
@@ -810,6 +812,7 @@ export function CreateSkillDialog({
                               </div>
                             </div>
                             <Button
+                              aria-label="移除"
                               variant="ghost"
                               size="icon-xs"
                               onClick={() =>
@@ -850,7 +853,7 @@ export function CreateSkillDialog({
                     {uploadMutation.isPending && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        正在上传...
+                        正在上传…
                       </div>
                     )}
 

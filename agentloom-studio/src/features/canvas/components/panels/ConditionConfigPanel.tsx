@@ -518,7 +518,7 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
 
       <div className="rounded-lg border border-border bg-surface px-3 py-2">
         <div className="flex min-h-[20px] items-center gap-1.5">
-          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">
+          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-2xs font-bold uppercase tracking-wider text-muted-foreground/70">
             ELSE
           </span>
           <span className="flex-1 text-2xs text-muted-foreground">

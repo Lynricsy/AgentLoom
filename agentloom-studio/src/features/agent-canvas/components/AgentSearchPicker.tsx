@@ -88,7 +88,7 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="搜索 Agent..."
+          placeholder="搜索 Agent…"
           aria-label="搜索 Agent"
           className="h-8 pl-8 pr-3 text-xs"
         />
@@ -97,7 +97,7 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
       <div className="max-h-52 overflow-y-auto rounded-lg border border-border">
         {isLoading ? (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-            加载中...
+            加载中…
           </div>
         ) : agents.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">

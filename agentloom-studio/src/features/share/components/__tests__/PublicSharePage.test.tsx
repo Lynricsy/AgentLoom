@@ -149,7 +149,7 @@ describe('PublicSharePage', () => {
     publicShareMock.isLoading = true
     render(<PublicSharePage />)
 
-    expect(screen.getByText('加载分享内容...')).toBeInTheDocument()
+    expect(screen.getByText('加载分享内容…')).toBeInTheDocument()
   })
 
   it('shows empty state when the request settles without share data', () => {

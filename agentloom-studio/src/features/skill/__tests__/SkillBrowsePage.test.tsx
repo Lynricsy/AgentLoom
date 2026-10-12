@@ -180,7 +180,7 @@ describe("SkillBrowsePage", () => {
 
       render(<SkillBrowsePage />);
 
-      const searchInput = screen.getByPlaceholderText("搜索技能名称或描述...");
+      const searchInput = screen.getByPlaceholderText("搜索技能名称或描述…");
       await userEvent.type(searchInput, "abc");
 
       expect(screen.getByText("没有匹配的技能")).toBeInTheDocument();
@@ -262,7 +262,7 @@ describe("SkillBrowsePage", () => {
     it("存在搜索 placeholder", () => {
       render(<SkillBrowsePage />);
       expect(
-        screen.getByPlaceholderText("搜索技能名称或描述..."),
+        screen.getByPlaceholderText("搜索技能名称或描述…"),
       ).toBeInTheDocument();
     });
   });

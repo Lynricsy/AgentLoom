@@ -231,7 +231,7 @@ describe('MemoryBrowser', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '打开搜索' }))
 
-    expect(screen.getByPlaceholderText('搜索记忆节点...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('搜索记忆节点…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭搜索' })).toBeInTheDocument()
   })
 })

@@ -134,7 +134,7 @@ export function CreateMemoryInstanceDialog({
               id="mi-domains"
               tags={validDomains}
               onChange={setValidDomains}
-              placeholder="core, notes..."
+              placeholder="core, notes…"
             />
           </div>
 
@@ -147,7 +147,7 @@ export function CreateMemoryInstanceDialog({
               id="mi-uris"
               tags={coreMemoryUris}
               onChange={setCoreMemoryUris}
-              placeholder="core://agent..."
+              placeholder="core://agent…"
             />
           </div>
 

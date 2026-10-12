@@ -290,7 +290,7 @@ const EmojiTab = memo(function EmojiTab({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        加载中...
+        加载中…
       </div>
     )
   }
@@ -303,7 +303,7 @@ const EmojiTab = memo(function EmojiTab({
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="搜索表情..."
+            placeholder="搜索表情…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 pl-8 pr-3"
@@ -316,6 +316,7 @@ const EmojiTab = memo(function EmojiTab({
         <div className="flex gap-0.5 overflow-x-auto px-2 pb-1">
           {data.categories.map((cat) => (
             <Button
+              aria-label={CATEGORY_NAMES[cat.id] ?? cat.id}
               key={cat.id}
               variant="ghost"
               size="icon-sm"
@@ -437,6 +438,7 @@ const EmojiCell = memo(function EmojiCell({
 
   return (
     <Button
+      aria-label={emoji.name}
       variant="ghost"
       size="icon"
       className={cn(
@@ -497,7 +499,7 @@ const IconTab = memo(function IconTab({
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="搜索图标..."
+            placeholder="搜索图标…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 pl-8 pr-3"
@@ -581,6 +583,7 @@ const LucideIconGrid = memo(function LucideIconGrid({
 
                 return (
                   <Button
+                    aria-label={iconName}
                     key={iconName}
                     variant="ghost"
                     size="icon"

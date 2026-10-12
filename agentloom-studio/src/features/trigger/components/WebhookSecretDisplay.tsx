@@ -101,7 +101,7 @@ export function WebhookSecretDisplay({
       )}
     >
       <div className="space-y-1">
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em] text-primary">
+        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium uppercase tracking-wider text-primary">
           <KeyRound className="h-3.5 w-3.5" />
           Webhook 凭证
         </div>

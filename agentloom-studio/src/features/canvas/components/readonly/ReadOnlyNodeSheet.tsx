@@ -165,7 +165,7 @@ export const ReadOnlyNodeSheet = memo(function ReadOnlyNodeSheet({
 
         <SheetBody className="space-y-5">
           <section data-testid="readonly-node-config">
-            <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               配置
             </h3>
 
@@ -222,7 +222,7 @@ const ReadOnlyNodeOutput = memo(function ReadOnlyNodeOutput({
   return (
     <section data-testid="readonly-node-output-section">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           输出
         </h3>
 

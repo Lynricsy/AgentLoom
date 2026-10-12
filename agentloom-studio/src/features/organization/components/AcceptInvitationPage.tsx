@@ -31,7 +31,7 @@ function InvitationShell({ children }: { children: ReactNode }) {
               <span className="text-lg font-semibold leading-tight tracking-tight text-foreground">
                 AgentLoom
               </span>
-              <span className="mt-1 text-2xs font-semibold uppercase leading-none tracking-[0.28em] text-primary">
+              <span className="mt-1 text-2xs font-semibold uppercase leading-none tracking-wider text-primary">
                 Studio
               </span>
             </div>

@@ -24,17 +24,45 @@ const PALETTE_CLASS =
  * 以及绕过层级阶梯的 arbitrary z-index / blur 与 dark: 变体。
  */
 const LEGACY_CLASS =
-  /(^|[\s"'`:(])(\w+:)*(rounded(-[trblse]{1,2})?-(2xl|3xl|4xl|card|panel|\[\d)|shadow-(2xl|node|node-selected|panel|popover|\[)|surface-elevated|text-muted(?![\w-])|bg-card|text-card-foreground|border-input|bg-accent|text-\[1[01]px\]|animate-in|animate-out|fade-in-0|fade-out-0|zoom-in-95|zoom-out-95|backdrop-blur-\[|z-\[|dark:)/
+  /(^|[\s"'`:(])(\w+:)*(rounded(-[trblse]{1,2})?-(2xl|3xl|4xl|card|panel|\[\d)|shadow-(2xl|node|node-selected|panel|popover|\[)|surface-elevated|text-muted(?![\w-])|bg-card|text-card-foreground|border-input|bg-accent|text-\[\d+px\]|tracking-\[|transition-all(?![\w-])|animate-in|animate-out|fade-in-0|fade-out-0|zoom-in-95|zoom-out-95|backdrop-blur-\[|z-\[|dark:)/
+
+/**
+ * backdrop-blur 白名单只有 OVERLAY_CLASS 与 CANVAS_FLOATING_CLASS 两处（见下方 BLUR_WHITELIST），
+ * 其余位置一律禁止。
+ */
+const BLUR_CLASS = /(^|[\s"'`:(])(\w+:)*backdrop-blur(-(xs|sm|md|lg|xl|2xl|3xl))?(?![\w-])/
+const BLUR_WHITELIST = ['src/shared/ui/overlay.ts', 'src/features/canvas/components/canvasChrome.ts']
+
+/** 省略号只用 …（U+2026）；ASCII 三点在中文排版下是三个分离的句点 */
+const ASCII_ELLIPSIS = /\.\.\./
 
 const DESIGN_TOKEN_MESSAGE =
   '禁止 Tailwind 原生调色板，请改用语义 token（primary/success/warning/error/info/muted…）。见 agentloom-docs/dev/studio/design-system.md'
 const LEGACY_CLASS_MESSAGE =
   '已废弃的样式类，请查阅 agentloom-docs/dev/studio/design-system.md 选择对应档位'
 
+const BLUR_MESSAGE =
+  'backdrop-blur 只允许 OVERLAY_CLASS 与 CANVAS_FLOATING_CLASS 两处，见 design-system.md §8'
+const ELLIPSIS_MESSAGE = '省略号请用 …（U+2026），不要写 ...'
+
 /** 生成 no-restricted-syntax 规则值：基础的类名守卫 + 可选的额外选择器 */
-function restrictedSyntax(extra = []) {
+function restrictedSyntax(extra = [], { allowBlur = false } = {}) {
   return [
     'error',
+    ...(allowBlur
+      ? []
+      : [
+          { selector: `Literal[value=/${BLUR_CLASS.source}/]`, message: BLUR_MESSAGE },
+          { selector: `TemplateElement[value.raw=/${BLUR_CLASS.source}/]`, message: BLUR_MESSAGE },
+        ]),
+    { selector: `Literal[value=/${ASCII_ELLIPSIS.source}/]`, message: ELLIPSIS_MESSAGE },
+    { selector: `TemplateElement[value.raw=/${ASCII_ELLIPSIS.source}/]`, message: ELLIPSIS_MESSAGE },
+    { selector: `JSXText[value=/${ASCII_ELLIPSIS.source}/]`, message: ELLIPSIS_MESSAGE },
+    {
+      selector:
+        "JSXOpeningElement[name.name='Button']:has(JSXAttribute[name.name='size'][value.value=/^icon/]):not(:has(JSXAttribute[name.name=/^aria-label/])):not(:has(JSXSpreadAttribute))",
+      message: '图标按钮必须有 aria-label',
+    },
     {
       selector: `Literal[value=/${PALETTE_CLASS.source}/]`,
       message: DESIGN_TOKEN_MESSAGE,
@@ -227,5 +255,10 @@ export default defineConfig([
     rules: {
       'no-restricted-syntax': restrictedSyntax(NATIVE_ELEMENT_SELECTORS),
     },
+  },
+  // backdrop-blur 白名单（放最后以覆盖上面两段）
+  {
+    files: BLUR_WHITELIST,
+    rules: { 'no-restricted-syntax': restrictedSyntax([], { allowBlur: true }) },
   },
 ])

@@ -533,7 +533,7 @@ export function GeneratedAppGenerationEvidencePanel({
         </div>
 
         {generationRunsQuery.isLoading ? (
-          <LoadingState label="正在加载生成运行记录..." />
+          <LoadingState label="正在加载生成运行记录…" />
         ) : generationRunsQuery.isError ? (
           <InlineErrorState
             title="生成运行记录加载失败"
@@ -658,7 +658,7 @@ export function GeneratedAppGenerationEvidencePanel({
             尚未选中 generation run。
           </p>
         ) : repairAttemptsQuery.isLoading ? (
-          <LoadingState label="正在加载修复尝试..." />
+          <LoadingState label="正在加载修复尝试…" />
         ) : repairAttemptsQuery.isError ? (
           <InlineErrorState
             title="修复尝试加载失败"
@@ -773,7 +773,7 @@ export function GeneratedAppGenerationEvidencePanel({
             尚未选中 generation run。
           </p>
         ) : gateRunsQuery.isLoading ? (
-          <LoadingState label="正在加载 Gate run 证据..." />
+          <LoadingState label="正在加载 Gate run 证据…" />
         ) : gateRunsQuery.isError ? (
           <InlineErrorState
             title="Gate run 证据加载失败"

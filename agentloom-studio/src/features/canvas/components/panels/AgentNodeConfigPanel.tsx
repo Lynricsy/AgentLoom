@@ -310,7 +310,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索已发布的 Agent..."
+            placeholder="搜索已发布的 Agent…"
             className="pl-8 pr-3"
           />
         </div>
@@ -318,7 +318,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           {loadingAgents ? (
             <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
               <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              加载中...
+              加载中…
             </div>
           ) : filteredAgents.length === 0 ? (
             <div className="py-4 text-center text-xs text-muted-foreground">
@@ -427,7 +427,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           {loadingVersions ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              加载版本...
+              加载版本…
             </div>
           ) : (
             <Select
@@ -519,6 +519,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                   className="h-8 min-w-0 flex-1 px-2 text-xs"
                 />
                 <Button
+                  aria-label={`删除映射 ${key}`}
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => handleRemoveMappingRow(key)}

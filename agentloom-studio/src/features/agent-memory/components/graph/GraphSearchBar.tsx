@@ -46,7 +46,7 @@ export const GraphSearchBar = memo(function GraphSearchBar({
       <Input
         ref={inputRef}
         type="text"
-        placeholder="搜索节点..."
+        placeholder="搜索节点…"
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}

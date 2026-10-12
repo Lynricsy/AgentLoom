@@ -1020,7 +1020,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
                 {createMutation.isPending || updateMutation.isPending
-                  ? "保存中..."
+                  ? "保存中…"
                   : selectedConfigId
                     ? "更新并应用当前配置"
                     : "保存并应用新配置"}

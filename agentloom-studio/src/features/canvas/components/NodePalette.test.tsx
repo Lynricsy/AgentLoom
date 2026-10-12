@@ -59,7 +59,7 @@ describe('NodePalette', () => {
     await user.click(screen.getByRole('tab', { name: 'My Blocks' }))
 
     expect(screen.getByTestId('block-library-panel')).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('搜索节点...')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('搜索节点…')).not.toBeInTheDocument()
   })
 
   it('derives palette items from the node type registry', () => {
@@ -102,7 +102,7 @@ describe('NodePalette', () => {
     const user = userEvent.setup()
     render(<NodePalette />)
 
-    await user.type(screen.getByPlaceholderText('搜索节点...'), 'schedule')
+    await user.type(screen.getByPlaceholderText('搜索节点…'), 'schedule')
 
     expect(screen.getByText('Schedule')).toBeInTheDocument()
     expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()
@@ -112,7 +112,7 @@ describe('NodePalette', () => {
     const user = userEvent.setup()
     render(<NodePalette />)
 
-    await user.type(screen.getByPlaceholderText('搜索节点...'), 'smart routing')
+    await user.type(screen.getByPlaceholderText('搜索节点…'), 'smart routing')
 
     expect(screen.getByText('智能路由')).toBeInTheDocument()
     expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()

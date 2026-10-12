@@ -192,7 +192,7 @@ export function MfaVerifyDialog({
                   onClick={handleVerify}
                   disabled={!isCodeComplete || step === 'verifying' || isLoading}
                 >
-                  {step === 'verifying' ? '验证中...' : '验证'}
+                  {step === 'verifying' ? '验证中…' : '验证'}
                 </Button>
               </div>
             </div>

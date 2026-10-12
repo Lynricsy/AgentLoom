@@ -132,7 +132,7 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
                   {node.uri}
                 </code>
                 {isUnlinked && (
-                  <span className="shrink-0 rounded-md border border-error/40 bg-error/10 px-1.5 py-0.5 text-[9px] text-error">
+                  <span className="shrink-0 rounded-md border border-error/40 bg-error/10 px-1.5 py-0.5 text-2xs text-error">
                     Orphaned
                   </span>
                 )}

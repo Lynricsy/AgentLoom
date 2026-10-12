@@ -84,7 +84,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
 function DiffEditorFallback() {
   return (
     <div className="flex items-center justify-center rounded-md bg-muted p-8">
-      <span className="text-xs text-muted-foreground">正在加载对比编辑器...</span>
+      <span className="text-xs text-muted-foreground">正在加载对比编辑器…</span>
     </div>
   )
 }
@@ -161,7 +161,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        正在编辑文件...
+        正在编辑文件…
       </div>
     )
   }

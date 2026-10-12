@@ -40,7 +40,7 @@ function extractExitCode(output: string): number | undefined {
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str
-  return str.slice(0, maxLen) + '...'
+  return str.slice(0, maxLen) + '…'
 }
 
 const BashSummary = memo(function BashSummary({ toolCall }: ToolSummaryProps) {

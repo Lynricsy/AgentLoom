@@ -294,7 +294,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
                 />
                 <Input
                   type="text"
-                  placeholder="搜索节点..."
+                  placeholder="搜索节点…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-8 pl-8 text-xs"

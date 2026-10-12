@@ -167,7 +167,7 @@ export function EditMemoryInstanceDialog({
                   id="edit-mi-domains"
                   tags={validDomains}
                   onChange={setValidDomains}
-                  placeholder="core, notes..."
+                  placeholder="core, notes…"
                 />
               </div>
 
@@ -183,7 +183,7 @@ export function EditMemoryInstanceDialog({
                   id="edit-mi-uris"
                   tags={coreMemoryUris}
                   onChange={setCoreMemoryUris}
-                  placeholder="core://agent..."
+                  placeholder="core://agent…"
                 />
               </div>
 

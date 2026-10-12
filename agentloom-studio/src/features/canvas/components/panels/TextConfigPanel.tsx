@@ -72,7 +72,7 @@ export const TextConfigPanel = memo(function TextConfigPanel({
           onChange={(event) => setText(event.target.value)}
           onBlur={handleBlur}
           rows={10}
-          placeholder="输入系统提示词、固定说明或其他可复用文本..."
+          placeholder="输入系统提示词、固定说明或其他可复用文本…"
           className="font-mono leading-6"
         />
         <p className="mt-2 text-xs text-muted-foreground">

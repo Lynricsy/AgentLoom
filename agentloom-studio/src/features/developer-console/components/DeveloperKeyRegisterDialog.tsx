@@ -24,7 +24,7 @@ import {
 } from '../lib/developerKey'
 import type { DeveloperKey } from '../types'
 
-const PEM_PLACEHOLDER = `${PEM_PUBLIC_KEY_BEGIN}\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----`
+const PEM_PLACEHOLDER = `${PEM_PUBLIC_KEY_BEGIN}\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A…\n-----END PUBLIC KEY-----`
 
 interface DeveloperKeyRegisterDialogProps {
   open: boolean

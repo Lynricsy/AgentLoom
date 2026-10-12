@@ -95,7 +95,7 @@ const CONNECTION_META: Record<
   { label: string; tone: StatusTone; pulse: boolean }
 > = {
   connected: { label: '实时同步', tone: 'success', pulse: false },
-  connecting: { label: '连接中...', tone: 'warning', pulse: true },
+  connecting: { label: '连接中…', tone: 'warning', pulse: true },
   disconnected: { label: '未连接', tone: 'neutral', pulse: false },
 };
 
@@ -353,7 +353,7 @@ export function MemoryAuditPage() {
             <div className="space-y-3 border-b border-border p-3">
               <div className="flex gap-2">
                 <Input
-                  placeholder="搜索节点名称..."
+                  placeholder="搜索节点名称…"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={handleSearchKeyDown}

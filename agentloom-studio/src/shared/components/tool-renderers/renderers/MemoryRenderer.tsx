@@ -27,7 +27,7 @@ function safeString(val: unknown): string {
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str
-  return str.slice(0, maxLen) + '...'
+  return str.slice(0, maxLen) + '…'
 }
 
 // --- Arg types ---
@@ -134,7 +134,7 @@ const MemorySummary = memo(function MemorySummary({ toolCall }: ToolSummaryProps
 const ReadMemoryDetail = memo(function ReadMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const content = safeString(toolCall.result)
 
-  if (state === 'pending') return <PendingState message="正在读取记忆..." />
+  if (state === 'pending') return <PendingState message="正在读取记忆…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   if (!content) return null
@@ -144,7 +144,7 @@ const ReadMemoryDetail = memo(function ReadMemoryDetail({ toolCall, state }: Too
 const CreateMemoryDetail = memo(function CreateMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<CreateMemoryArgs>(toolCall.args, { uri: '', content: '' })
 
-  if (state === 'pending') return <PendingState message="正在创建记忆..." />
+  if (state === 'pending') return <PendingState message="正在创建记忆…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
@@ -169,7 +169,7 @@ const CreateMemoryDetail = memo(function CreateMemoryDetail({ toolCall, state }:
 const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<UpdateMemoryArgs>(toolCall.args, { uri: '', mode: 'append' })
 
-  if (state === 'pending') return <PendingState message="正在更新记忆..." />
+  if (state === 'pending') return <PendingState message="正在更新记忆…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   if (args.mode === 'append' && args.appendContent) {
@@ -214,7 +214,7 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
 const DeleteMemoryDetail = memo(function DeleteMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<DeleteMemoryArgs>(toolCall.args, { uri: '' })
 
-  if (state === 'pending') return <PendingState message="正在删除记忆..." />
+  if (state === 'pending') return <PendingState message="正在删除记忆…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
@@ -228,7 +228,7 @@ const DeleteMemoryDetail = memo(function DeleteMemoryDetail({ toolCall, state }:
 const AddAliasDetail = memo(function AddAliasDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<AddAliasArgs>(toolCall.args, { uri: '', aliasUri: '' })
 
-  if (state === 'pending') return <PendingState message="正在添加别名..." />
+  if (state === 'pending') return <PendingState message="正在添加别名…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
@@ -242,7 +242,7 @@ const AddAliasDetail = memo(function AddAliasDetail({ toolCall, state }: ToolRen
 const ManageTriggersDetail = memo(function ManageTriggersDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<ManageTriggersArgs>(toolCall.args, { action: 'add', keyword: '', uri: '' })
 
-  if (state === 'pending') return <PendingState message="正在管理触发器..." />
+  if (state === 'pending') return <PendingState message="正在管理触发器…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
@@ -266,7 +266,7 @@ const SearchMemoryDetail = memo(function SearchMemoryDetail({ toolCall, state }:
   const results = safeParse<SearchResultEntry[]>(toolCall.result, [])
   const list = Array.isArray(results) ? results : []
 
-  if (state === 'pending') return <PendingState message="正在搜索记忆..." />
+  if (state === 'pending') return <PendingState message="正在搜索记忆…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   if (list.length === 0) {

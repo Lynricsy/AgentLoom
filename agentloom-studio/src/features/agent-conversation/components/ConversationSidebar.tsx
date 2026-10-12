@@ -224,6 +224,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
       <div className="flex items-center gap-1 border-b border-border px-2 py-2">
         {collapsed ? (
           <Button
+            aria-label="新建对话"
             variant="ghost"
             size="icon-sm"
             onClick={handleNewConversation}
@@ -244,6 +245,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               新建
             </Button>
             <Button
+              aria-label="收起侧边栏"
               variant="ghost"
               size="icon-sm"
               onClick={toggleCollapsed}
@@ -332,6 +334,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                 return (
                   <li key={conv.id}>
                     <Button
+                      aria-label={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => handleSelect(conv)}
@@ -417,6 +420,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
       {collapsed && canExpand && (
         <div className="border-t border-border p-2">
           <Button
+            aria-label="展开侧边栏"
             variant="ghost"
             size="icon-sm"
             onClick={toggleCollapsed}

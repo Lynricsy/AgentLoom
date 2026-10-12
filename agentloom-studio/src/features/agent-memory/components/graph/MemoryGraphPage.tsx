@@ -49,7 +49,7 @@ const NODE_HEIGHT = 120
 
 /** 悬浮 chrome 统一样式 — 圆角面板 + 半透明底 + popover 阴影 */
 const FLOATING_CHROME =
-  'rounded-xl border border-border bg-surface/90 shadow-lg backdrop-blur-md'
+  'rounded-xl border border-border bg-surface shadow-lg'
 
 // ReactFlow v12 NodeTypes/EdgeTypes 泛型约束需要桥接自定义节点类型
 const nodeTypes: NodeTypes = {
@@ -277,7 +277,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
               {isRefreshing ? (
                 <>
                   <Spinner size="sm" />
-                  重试中...
+                  重试中…
                 </>
               ) : (
                 '重试加载'

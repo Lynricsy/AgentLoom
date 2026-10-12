@@ -217,7 +217,7 @@ export function SandboxManagementPage() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="搜索沙箱..."
+            placeholder="搜索沙箱…"
             className="pl-9"
           />
         </div>

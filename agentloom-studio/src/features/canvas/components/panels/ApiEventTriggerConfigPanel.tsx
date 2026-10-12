@@ -156,7 +156,7 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
         {parsed.filterExpression && (
           <p className="break-all font-mono text-muted-foreground">
             {parsed.filterExpression.length > 80
-              ? `${parsed.filterExpression.slice(0, 80)}...`
+              ? `${parsed.filterExpression.slice(0, 80)}…`
               : parsed.filterExpression}
           </p>
         )}

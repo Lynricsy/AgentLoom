@@ -50,7 +50,7 @@ describe('SkillPanel', () => {
 
     render(<SkillPanel config={{}} onApply={vi.fn()} />)
 
-    expect(screen.getByText('加载中...')).toBeInTheDocument()
+    expect(screen.getByText('加载中…')).toBeInTheDocument()
   })
 
   it('选择 skill 时回填 skill 元数据', async () => {

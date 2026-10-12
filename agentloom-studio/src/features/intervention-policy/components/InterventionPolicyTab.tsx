@@ -587,11 +587,11 @@ export function InterventionPolicyTab({
 
   if (isLoading) {
     return (
-      <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
+      <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface p-4 shadow-xl">
         <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-xl border border-border/70 bg-background/30">
           <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            正在加载介入策略...
+            正在加载介入策略…
           </div>
         </div>
       </section>
@@ -600,7 +600,7 @@ export function InterventionPolicyTab({
 
   if (policiesQuery.isError || workflowResolvedQuery.isError || nodeResolvedQuery.isError) {
     return (
-      <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
+      <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface p-4 shadow-xl">
         <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-xl border border-error/20 bg-error/10 px-6 text-center">
           <div>
             <p className="text-base font-medium text-error">加载介入策略失败</p>
@@ -614,10 +614,10 @@ export function InterventionPolicyTab({
   }
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
+    <section className="flex h-full flex-col rounded-xl border border-border/70 bg-surface p-4 shadow-xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Intervention Policy
           </p>
           <h2 className="text-lg font-semibold text-foreground">介入权限策略</h2>

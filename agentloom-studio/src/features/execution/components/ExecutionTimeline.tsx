@@ -165,7 +165,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                             pulse={row.status === 'running'}
                           />
                           <p className="truncate text-sm font-semibold text-foreground">{row.nodeName}</p>
-                          <span className="truncate text-2xs uppercase tracking-[0.18em] text-muted-foreground">
+                          <span className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
                             {row.nodeType}
                           </span>
                         </div>

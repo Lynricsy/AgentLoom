@@ -66,7 +66,7 @@ export const CanvasSearch = memo(function CanvasSearch() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="搜索节点..."
+          placeholder="搜索节点…"
           aria-label="搜索节点"
           className="h-7 w-48 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
           data-testid="canvas-search-input"

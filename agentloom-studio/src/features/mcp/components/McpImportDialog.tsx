@@ -465,7 +465,7 @@ export function McpImportDialog({
       return (
         <dl className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
           <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <dt className="text-xs uppercase tracking-wider text-muted-foreground">
               服务器
             </dt>
             <dd className="font-medium text-foreground">
@@ -473,7 +473,7 @@ export function McpImportDialog({
             </dd>
           </div>
           <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <dt className="text-xs uppercase tracking-wider text-muted-foreground">
               传输方式
             </dt>
             <dd className="font-medium text-foreground">
@@ -481,14 +481,14 @@ export function McpImportDialog({
             </dd>
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <dt className="text-xs uppercase tracking-wider text-muted-foreground">
               连接摘要
             </dt>
             <dd className="font-medium text-foreground">{auxiliaryValue}</dd>
           </div>
           {connectionForm.serverDescription.trim() ? (
             <div className="space-y-1 sm:col-span-2">
-              <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <dt className="text-xs uppercase tracking-wider text-muted-foreground">
                 描述
               </dt>
               <dd className="text-muted-foreground">
@@ -503,7 +503,7 @@ export function McpImportDialog({
     return (
       <dl className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
         <div className="space-y-1">
-          <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          <dt className="text-xs uppercase tracking-wider text-muted-foreground">
             已保存服务器
           </dt>
           <dd className="font-medium text-foreground">
@@ -511,7 +511,7 @@ export function McpImportDialog({
           </dd>
         </div>
         <div className="space-y-1">
-          <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          <dt className="text-xs uppercase tracking-wider text-muted-foreground">
             配置 ID
           </dt>
           <dd className="font-mono text-xs text-foreground">
@@ -568,7 +568,7 @@ export function McpImportDialog({
                     ? "按四步完成服务器配置、连接测试、工具发现与导入复核，整个会话会保留当前输入上下文。"
                     : `复用${serverLabel ? `“${serverLabel}”` : "已保存 MCP 服务器"}完成连接验证、重新发现与重新导入。`}
                 </DialogDescription>
-                <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">
+                <p className="text-xs font-medium uppercase tracking-wider text-primary">
                   步骤 {currentStep} / 4
                 </p>
               </div>
@@ -600,7 +600,7 @@ export function McpImportDialog({
                     )}
                     key={step.id}
                   >
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
                       Step {step.id}
                     </p>
                     <p className="mt-1 font-medium text-foreground">

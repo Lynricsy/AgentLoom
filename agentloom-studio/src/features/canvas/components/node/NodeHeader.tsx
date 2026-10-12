@@ -112,7 +112,7 @@ export function NodeCompactHeader({
       )}
     >
       <NodeIconChip id={id} icon={icon} size="compact" />
-      <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight">
+      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight">
         {title}
       </h3>
       {hasValidationError ? <NodeValidationBadge id={id} /> : null}
@@ -169,7 +169,7 @@ export function NodeFullHeader({
 
       <div className="min-w-0 flex-1">
         <p
-          className="truncate text-[9px] font-medium uppercase leading-none tracking-[0.1em]"
+          className="truncate text-2xs font-medium uppercase leading-none tracking-wider"
           style={{
             color:
               "color-mix(in srgb, var(--node-color, var(--color-primary)) 60%, var(--color-muted-foreground))",
@@ -178,7 +178,7 @@ export function NodeFullHeader({
           {nodeType}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
-          <h3 className="truncate text-[13px] font-semibold leading-tight">
+          <h3 className="truncate text-sm font-semibold leading-tight">
             {title}
           </h3>
           {showConfigWarning ? (

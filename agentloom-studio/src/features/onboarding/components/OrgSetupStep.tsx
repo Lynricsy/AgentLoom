@@ -79,7 +79,7 @@ export function OrgSetupStep({
           {isSubmitting ? (
             <>
               <Spinner className="text-primary-foreground" />
-              创建中...
+              创建中…
             </>
           ) : (
             '创建组织'

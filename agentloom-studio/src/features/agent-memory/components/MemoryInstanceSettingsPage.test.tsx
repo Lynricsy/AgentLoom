@@ -164,7 +164,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
     // 默认不显示编辑器
     expect(
-      screen.queryByPlaceholderText('输入自定义系统提示词...'),
+      screen.queryByPlaceholderText('输入自定义系统提示词…'),
     ).not.toBeInTheDocument();
 
     // 切换到自定义模式
@@ -172,7 +172,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
     // 现在显示编辑器
     expect(
-      screen.getByPlaceholderText('输入自定义系统提示词...'),
+      screen.getByPlaceholderText('输入自定义系统提示词…'),
     ).toBeInTheDocument();
   });
 
@@ -224,7 +224,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
     // 输入提示词
     const textarea = screen.getByPlaceholderText(
-      '输入自定义系统提示词...',
+      '输入自定义系统提示词…',
     );
     await userEvent.type(textarea, '新的系统提示词');
 

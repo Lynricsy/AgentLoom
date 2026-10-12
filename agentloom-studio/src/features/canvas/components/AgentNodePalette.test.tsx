@@ -24,7 +24,7 @@ describe('AgentNodePalette', () => {
     const user = userEvent.setup()
     render(<AgentNodePalette />)
 
-    await user.type(screen.getByPlaceholderText('搜索节点...'), 'smart routing')
+    await user.type(screen.getByPlaceholderText('搜索节点…'), 'smart routing')
 
     expect(
       screen.getByRole('button', { name: /智能路由根据策略从多个 LLM 模型中选择最优模型/i }),

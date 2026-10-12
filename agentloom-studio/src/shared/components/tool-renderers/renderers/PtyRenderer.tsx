@@ -104,7 +104,7 @@ function visualizeEscapes(data: string): string {
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str
-  return str.slice(0, maxLen) + '...'
+  return str.slice(0, maxLen) + '…'
 }
 
 // --- Summary component ---
@@ -187,7 +187,7 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
   const args = safeParse<PtySpawnArgs>(toolCall.args, { command: '' })
   const result = safeParse<PtySpawnResult>(toolCall.result, {})
 
-  if (state === 'pending') return <PendingState message="正在启动 PTY..." />
+  if (state === 'pending') return <PendingState message="正在启动 PTY…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
@@ -207,7 +207,7 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
 const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRendererProps) {
   const result = safeParse<PtyReadResult>(toolCall.result, {})
 
-  if (state === 'pending') return <PendingState message="正在读取 PTY 输出..." />
+  if (state === 'pending') return <PendingState message="正在读取 PTY 输出…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   const output = Array.isArray(result.lines) ? result.lines.join('\n') : safeString(toolCall.result)
@@ -236,7 +236,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
 const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<PtyWriteArgs>(toolCall.args, { id: '', data: '' })
 
-  if (state === 'pending') return <PendingState message="正在写入 PTY..." />
+  if (state === 'pending') return <PendingState message="正在写入 PTY…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
@@ -257,7 +257,7 @@ const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRen
 const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRendererProps) {
   const sessions = safeParse<PtySessionInfo[]>(toolCall.result, [])
 
-  if (state === 'pending') return <PendingState message="正在列出 PTY 会话..." />
+  if (state === 'pending') return <PendingState message="正在列出 PTY 会话…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   const list = Array.isArray(sessions) ? sessions : []
@@ -309,7 +309,7 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
 const PtyKillDetail = memo(function PtyKillDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<PtyKillArgs>(toolCall.args, { id: '' })
 
-  if (state === 'pending') return <PendingState message="正在终止 PTY 会话..." />
+  if (state === 'pending') return <PendingState message="正在终止 PTY 会话…" />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (

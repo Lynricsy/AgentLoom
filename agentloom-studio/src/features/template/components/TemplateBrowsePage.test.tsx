@@ -76,7 +76,7 @@ describe('TemplateBrowsePage', () => {
     render(<TemplateBrowsePage />);
 
     expect(screen.getByText('模板')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('搜索模板...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('搜索模板…')).toBeInTheDocument();
   });
 
   it('渲染所有分类标签', () => {
@@ -148,7 +148,7 @@ describe('TemplateBrowsePage', () => {
 
     render(<TemplateBrowsePage />);
 
-    fireEvent.change(screen.getByPlaceholderText('搜索模板...'), {
+    fireEvent.change(screen.getByPlaceholderText('搜索模板…'), {
       target: { value: '竞品' },
     });
 
@@ -166,7 +166,7 @@ describe('TemplateBrowsePage', () => {
 
     render(<TemplateBrowsePage />);
 
-    fireEvent.change(screen.getByPlaceholderText('搜索模板...'), {
+    fireEvent.change(screen.getByPlaceholderText('搜索模板…'), {
       target: { value: '不存在的模板' },
     });
 

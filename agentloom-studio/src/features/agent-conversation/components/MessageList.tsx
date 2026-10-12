@@ -347,7 +347,7 @@ function ThinkingBlock({ content }: { content: string }) {
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
           <span className="ml-auto max-w-[200px] truncate text-2xs text-muted-foreground">
-            {content.slice(0, 60)}...
+            {content.slice(0, 60)}…
           </span>
         )}
       </Button>

@@ -209,7 +209,7 @@ export function BlockImportDialog({
           {previewBlock && previewSummary ? (
             <Card className="space-y-4 p-4" data-testid="block-preview">
               <div className="space-y-1">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">
                   预览
                 </p>
                 <h3 className="text-sm font-semibold text-foreground">
@@ -222,7 +222,7 @@ export function BlockImportDialog({
 
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     分类
                   </p>
                   <p className="text-foreground">
@@ -230,7 +230,7 @@ export function BlockImportDialog({
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     标签
                   </p>
                   <p className="text-foreground">
@@ -240,13 +240,13 @@ export function BlockImportDialog({
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     节点数量
                   </p>
                   <p className="text-foreground">{previewSummary.nodeCount} 个节点</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
                     端口摘要
                   </p>
                   <p className="text-foreground">

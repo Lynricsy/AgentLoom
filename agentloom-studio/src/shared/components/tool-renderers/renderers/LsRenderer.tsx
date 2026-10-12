@@ -60,7 +60,7 @@ const LsDetail = memo(function LsDetail({ toolCall, state }: ToolRendererProps) 
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        正在列出目录...
+        正在列出目录…
       </div>
     )
   }

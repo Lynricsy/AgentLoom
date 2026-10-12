@@ -61,7 +61,7 @@ describe('KnowledgeBaseConfigPanel', () => {
 
     render(<KnowledgeBaseConfigPanel config={{}} onApply={vi.fn()} />)
 
-    expect(screen.getByText('加载中...')).toBeInTheDocument()
+    expect(screen.getByText('加载中…')).toBeInTheDocument()
   })
 
   it('applies the selected knowledge base with full node config', async () => {

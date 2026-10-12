@@ -131,7 +131,7 @@ export function TriggerHistoryDialog({
         <DialogBody className="flex min-h-0 flex-col">
           <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-background/40 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 筛选条件
               </p>
               <p className="text-sm text-foreground">
@@ -167,7 +167,7 @@ export function TriggerHistoryDialog({
               <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-border/70 bg-background/30">
                 <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  正在加载触发历史...
+                  正在加载触发历史…
                 </div>
               </div>
             ) : historyQuery.isError ? (
@@ -197,7 +197,7 @@ export function TriggerHistoryDialog({
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             className={cn(
-                              'inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.18em]',
+                              'inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-wider',
                               statusBadgeClassNames[record.status],
                             )}
                           >

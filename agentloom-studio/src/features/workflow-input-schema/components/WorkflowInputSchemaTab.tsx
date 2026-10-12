@@ -751,7 +751,7 @@ export function WorkflowInputSchemaTab({
             disabled={isReadOnly || updateWorkflow.isPending}
             data-testid="save-input-schema"
           >
-            {updateWorkflow.isPending ? '保存中...' : '保存输入参数'}
+            {updateWorkflow.isPending ? '保存中…' : '保存输入参数'}
           </Button>
         </div>
       </fieldset>

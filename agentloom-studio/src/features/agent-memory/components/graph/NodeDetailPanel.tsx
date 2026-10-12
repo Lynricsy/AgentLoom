@@ -56,7 +56,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
       {...panelSlideRight}
       className={cn(
         'absolute right-0 top-0 z-20 flex h-full w-[360px] max-w-[85vw] flex-col',
-        'border-l border-border bg-surface/95 shadow-lg backdrop-blur-md',
+        'border-l border-border bg-surface shadow-lg',
       )}
       data-testid="node-detail-panel"
     >

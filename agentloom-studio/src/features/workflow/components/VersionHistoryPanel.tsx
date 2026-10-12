@@ -429,7 +429,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
                 data-testid="version-list-loading-more"
               >
                 <Loader2 className="h-4 w-4 animate-spin" />
-                正在加载更多版本...
+                正在加载更多版本…
               </div>
             )}
           </div>

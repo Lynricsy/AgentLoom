@@ -21,7 +21,7 @@ import {
 const LEVEL_LABELS: Record<VisualCompatibilityLevel, string> = {
   L0: 'L0 精确匹配',
   L1: '转换',
-  checking: '检查中...',
+  checking: '检查中…',
   error: '不兼容',
 }
 

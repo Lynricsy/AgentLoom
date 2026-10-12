@@ -230,7 +230,7 @@ describe("KnowledgeBasesPage", () => {
     setupMocks({ knowledgeBases: kbs });
     render(<KnowledgeBasesPage />);
 
-    const searchInput = screen.getByPlaceholderText("搜索知识库...");
+    const searchInput = screen.getByPlaceholderText("搜索知识库…");
     await userEvent.type(searchInput, "Alpha");
 
     expect(screen.getByText("Alpha文档")).toBeInTheDocument();
@@ -252,7 +252,7 @@ describe("KnowledgeBasesPage", () => {
       sourceKind: "manual",
     });
 
-    const searchInput = screen.getByPlaceholderText("搜索知识库...");
+    const searchInput = screen.getByPlaceholderText("搜索知识库…");
     await userEvent.type(searchInput, "Alpha");
 
     expect(mocks.useAllKnowledgeBases).toHaveBeenLastCalledWith({
@@ -282,7 +282,7 @@ describe("KnowledgeBasesPage", () => {
     setupMocks({ knowledgeBases: [createKnowledgeBase()] });
     render(<KnowledgeBasesPage />);
 
-    const searchInput = screen.getByPlaceholderText("搜索知识库...");
+    const searchInput = screen.getByPlaceholderText("搜索知识库…");
     await userEvent.type(searchInput, "不存在的内容");
 
     expect(screen.getByText("没有匹配的知识库")).toBeInTheDocument();

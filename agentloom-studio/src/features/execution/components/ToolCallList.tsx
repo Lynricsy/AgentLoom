@@ -401,7 +401,7 @@ export const ToolCallList = memo(function ToolCallList({
         className="h-auto w-full justify-between gap-2 px-0 py-0 font-normal hover:bg-transparent"
         onClick={() => setExpanded((v) => !v)}
       >
-        <h4 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           工具调用
           <span className="ml-1.5 text-2xs text-foreground">
             ({entries.length})

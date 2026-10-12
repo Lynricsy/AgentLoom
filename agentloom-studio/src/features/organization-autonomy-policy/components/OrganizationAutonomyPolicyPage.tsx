@@ -79,7 +79,7 @@ function SummaryStats({
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <div className="rounded-lg border border-border bg-surface p-3">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}工作流
         </p>
         <p className="mt-1.5 text-xl font-semibold tabular-nums text-foreground">
@@ -87,7 +87,7 @@ function SummaryStats({
         </p>
       </div>
       <div className="rounded-lg border border-border bg-surface p-3">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}节点
         </p>
         <p className="mt-1.5 text-xl font-semibold tabular-nums text-foreground">

@@ -44,7 +44,7 @@ function parseResult(raw: unknown): KnowledgeResult {
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str
-  return str.slice(0, maxLen) + '...'
+  return str.slice(0, maxLen) + '…'
 }
 
 function scoreColor(score: number): string {
@@ -74,7 +74,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        正在搜索知识库...
+        正在搜索知识库…
       </div>
     )
   }

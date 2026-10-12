@@ -119,7 +119,7 @@ function getOutputPlaceholder(
   isExecutionActive?: boolean,
 ): string {
   if (isStreaming) {
-    return '正在接收实时输出...'
+    return '正在接收实时输出…'
   }
 
   if (!status && isExecutionActive) {
@@ -677,7 +677,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
 
       <div className="mt-5 space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             输出流
           </h4>
 

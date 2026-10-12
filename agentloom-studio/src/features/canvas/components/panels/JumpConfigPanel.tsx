@@ -279,6 +279,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                   </p>
                 </div>
                 <Button
+                  aria-label="上移输入端口"
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => handleMoveInputPort(index, -1)}
@@ -288,6 +289,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                   <ChevronUp />
                 </Button>
                 <Button
+                  aria-label="下移输入端口"
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => handleMoveInputPort(index, 1)}
@@ -297,6 +299,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                   <ChevronDown />
                 </Button>
                 <Button
+                  aria-label="删除输入端口"
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => handleRemoveInputPort(portId)}

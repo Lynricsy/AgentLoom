@@ -208,7 +208,7 @@ describe("MemoryInstancesPage", () => {
     });
     renderPage();
 
-    const searchInput = screen.getByPlaceholderText("搜索记忆实例...");
+    const searchInput = screen.getByPlaceholderText("搜索记忆实例…");
     await userEvent.type(searchInput, "Alpha");
 
     expect(mocks.useAllMemoryInstances).toHaveBeenLastCalledWith({
@@ -242,7 +242,7 @@ describe("MemoryInstancesPage", () => {
     });
     renderPage();
 
-    const searchInput = screen.getByPlaceholderText("搜索记忆实例...");
+    const searchInput = screen.getByPlaceholderText("搜索记忆实例…");
     await userEvent.type(searchInput, "不存在的内容");
 
     expect(screen.getByText("没有找到匹配的记忆实例")).toBeInTheDocument();

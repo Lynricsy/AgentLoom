@@ -168,7 +168,7 @@ describe('MemoryAuditPage', () => {
 
   it('渲染搜索输入和操作筛选', () => {
     render(<MemoryAuditPage />, { wrapper: createWrapper() });
-    expect(screen.getByPlaceholderText('搜索节点名称...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('搜索节点名称…')).toBeInTheDocument();
     expect(screen.getByText('搜索')).toBeInTheDocument();
     expect(screen.getByText('全部操作')).toBeInTheDocument();
     expect(screen.getAllByText('创建').length).toBeGreaterThanOrEqual(1);

@@ -135,7 +135,7 @@ export const TriggerCard = memo(function TriggerCard({
                 <StatusBadge
                   tone={typeMeta.tone}
                   size="sm"
-                  className="px-2.5 py-1 uppercase tracking-[0.18em]"
+                  className="px-2.5 py-1 uppercase tracking-wider"
                 >
                   {typeMeta.label}
                 </StatusBadge>
@@ -171,14 +171,14 @@ export const TriggerCard = memo(function TriggerCard({
 
           {cronDescription ? (
             <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-warning">执行计划</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-warning">执行计划</p>
               <p className="mt-2">{cronDescription}</p>
             </div>
           ) : null}
 
           {trigger.type === 'webhook' && webhookUrl ? (
             <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-info">Webhook 入口</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-info">Webhook 入口</p>
               <div className="mt-2 flex items-start gap-2 text-muted-foreground">
                 <LinkIcon className="mt-0.5 size-4 shrink-0 text-info" />
                 <code className="break-all text-xs text-foreground">{webhookUrl}</code>
@@ -196,7 +196,7 @@ export const TriggerCard = memo(function TriggerCard({
 
           {trigger.type === 'api_event' && isApiEventConfig(trigger.config) ? (
             <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">事件契约</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-primary">事件契约</p>
               <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
                 <span>事件源：{trigger.config.eventSource}</span>
                 <span>事件类型：{trigger.config.eventType}</span>
@@ -261,7 +261,7 @@ interface InfoTileProps {
 function InfoTile({ label, value, icon }: InfoTileProps) {
   return (
     <div className="rounded-lg border border-border bg-muted p-3">
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         {icon}
         {label}
       </div>

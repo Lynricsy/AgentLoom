@@ -48,7 +48,7 @@ export function ProviderListPanel({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索提供商..."
+            placeholder="搜索提供商…"
             className="h-8 pl-8 text-xs"
           />
         </div>

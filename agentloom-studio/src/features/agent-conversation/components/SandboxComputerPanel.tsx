@@ -476,7 +476,7 @@ function ProcessMonitorView({
             className="min-w-full border-collapse"
           >
             <thead className="sticky top-0 z-10 bg-surface text-left">
-              <tr className="border-b border-border text-2xs tracking-[0.18em] text-muted-foreground uppercase">
+              <tr className="border-b border-border text-2xs tracking-wider text-muted-foreground uppercase">
                 <th className="px-3 py-2 font-medium">PID</th>
                 <th className="px-3 py-2 font-medium">命令</th>
                 <th className="px-3 py-2 font-medium">状态</th>

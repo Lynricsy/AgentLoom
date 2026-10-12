@@ -80,7 +80,7 @@ export const MermaidBlock = memo(function MermaidBlock({
         )}
       >
         <span className="text-xs text-muted-foreground">
-          Rendering diagram...
+          Rendering diagram…
         </span>
       </div>
     )

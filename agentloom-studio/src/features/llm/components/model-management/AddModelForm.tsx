@@ -156,7 +156,7 @@ export function AddModelForm({
                 setLookupDone(false);
                 setMetadata(null);
               }}
-              placeholder="例如: gpt-4o, claude-3-opus..."
+              placeholder="例如: gpt-4o, claude-3-opus…"
               className="h-8 flex-1 text-xs"
             />
             <Button

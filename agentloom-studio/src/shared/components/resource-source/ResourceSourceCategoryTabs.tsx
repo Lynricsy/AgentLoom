@@ -18,7 +18,7 @@ export function ResourceSourceCategoryTabs({
 }: ResourceSourceCategoryTabsProps) {
   return (
     <div className={cn("flex flex-wrap items-center gap-3", className)}>
-      <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
         来源分类
       </span>
 

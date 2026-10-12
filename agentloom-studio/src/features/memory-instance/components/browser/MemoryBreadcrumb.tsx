@@ -35,7 +35,7 @@ export function MemoryBreadcrumb({ items, onNavigate }: MemoryBreadcrumbProps) {
             size="xs"
             onClick={() => onNavigate(crumb.path)}
             className={cn(
-              'h-auto px-2 py-1 transition-all',
+              'h-auto px-2 py-1 transition-colors',
               i === items.length - 1
                 ? 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted',

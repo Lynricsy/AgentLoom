@@ -38,7 +38,7 @@ export const TimelineHeader = memo(function TimelineHeader({
           pulse={status === 'running'}
         />
         <p className="truncate text-sm font-semibold text-foreground">{nodeName}</p>
-        <span className="truncate text-2xs uppercase tracking-[0.18em] text-muted-foreground">
+        <span className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
           {nodeType}
         </span>
       </div>

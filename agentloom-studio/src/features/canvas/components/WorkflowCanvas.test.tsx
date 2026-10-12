@@ -393,7 +393,7 @@ describe('WorkflowCanvas', () => {
     })
 
     expect(screen.getByTestId('compatibility-preview')).toHaveAttribute('aria-hidden', 'false')
-    expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent('检查中...')
+    expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent('检查中…')
 
     await waitFor(() => {
       const overlay = screen.getByTestId('connection-overlay')

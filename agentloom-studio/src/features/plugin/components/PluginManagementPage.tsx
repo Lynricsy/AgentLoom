@@ -348,7 +348,7 @@ export function PluginManagementPage() {
               setSearch(event.target.value)
               setPage(1)
             }}
-            placeholder="搜索插件名称、标识或作者..."
+            placeholder="搜索插件名称、标识或作者…"
             className="pl-9"
           />
         </div>

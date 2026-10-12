@@ -132,7 +132,7 @@ export function CronConfigForm({
       </div>
 
       <div className="rounded-xl border border-info/20 bg-info/10 p-4">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-info">执行预览</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-info">执行预览</p>
         <p className="mt-2 text-sm text-foreground">{getCronPreview(expression)}</p>
         <p className="mt-2 text-xs text-muted-foreground">当前时区：{timezone || 'UTC'}</p>
       </div>

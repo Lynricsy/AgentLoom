@@ -91,7 +91,7 @@ export function AppSidebar() {
               <p className="truncate text-sm font-semibold text-foreground">
                 AgentLoom
               </p>
-              <p className="truncate text-2xs uppercase tracking-[0.24em] text-muted-foreground">
+              <p className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
                 Studio
               </p>
             </div>

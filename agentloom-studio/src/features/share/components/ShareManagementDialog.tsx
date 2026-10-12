@@ -99,7 +99,7 @@ function resolveShareExpiryPreset(preset: ShareExpiryPreset): string | undefined
 
 function truncateUrl(url: string, maxLen = 45): string {
   if (url.length <= maxLen) return url
-  return url.slice(0, maxLen) + '...'
+  return url.slice(0, maxLen) + '…'
 }
 
 const ShareItem = memo(function ShareItem({
@@ -421,7 +421,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
             {isCreating ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                创建中...
+                创建中…
               </>
             ) : (
               <>

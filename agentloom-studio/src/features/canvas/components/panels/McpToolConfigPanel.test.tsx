@@ -114,7 +114,7 @@ describe('McpToolConfigPanel', () => {
         onApply={vi.fn()}
       />,
     )
-    expect(screen.getByText('加载中...')).toBeInTheDocument()
+    expect(screen.getByText('加载中…')).toBeInTheDocument()
   })
 
   it('shows configured server info when server is selected', () => {

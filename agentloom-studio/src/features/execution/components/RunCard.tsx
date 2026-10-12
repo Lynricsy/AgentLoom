@@ -32,7 +32,7 @@ export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
           <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <ExecutionStatusBadge status={execution.status} />
-              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+              <span className="text-xs uppercase tracking-wider text-muted-foreground">
                 Run #{execution.id.slice(0, 8)}
               </span>
             </div>

@@ -437,25 +437,25 @@ function AuditLogDetailView({
 
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
-            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
               日志 ID
             </p>
             <p className="break-all font-mono text-xs text-foreground">{detail.id}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
               资源 ID
             </p>
             <p className="break-all font-mono text-xs text-foreground">{detail.resourceId}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
               操作人
             </p>
             <p className="text-xs text-foreground">{detail.actorId ?? '系统 / 服务账号'}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
               执行 ID
             </p>
             <p className="break-all font-mono text-xs text-foreground">

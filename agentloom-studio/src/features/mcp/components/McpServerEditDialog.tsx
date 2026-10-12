@@ -439,7 +439,7 @@ export function McpServerEditDialog({
                         }}
                         placeholder={
                           credentialPlaceholder ||
-                          "GROK_API_KEY=sk-xxx\nGROK_API_URL=https://..."
+                          "GROK_API_KEY=sk-xxx\nGROK_API_URL=https://…"
                         }
                       />
                     </div>

@@ -23,7 +23,7 @@ function DetailSection({
 }) {
   return (
     <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
       {children}
     </section>
   )
@@ -71,7 +71,7 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
           <h2 className="text-sm font-semibold text-foreground">{step.nodeName}</h2>
           <StepStatusBadge status={step.status} />
         </div>
-        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.nodeType}</p>
+        <p className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">{step.nodeType}</p>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">

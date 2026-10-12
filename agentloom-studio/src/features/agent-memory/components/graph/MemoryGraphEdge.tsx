@@ -51,7 +51,7 @@ export const MemoryGraphEdge = memo(function MemoryGraphEdge({
           <div
             className={cn(
               'pointer-events-none absolute rounded-md border border-border px-2 py-0.5 text-2xs',
-              'bg-surface/90 shadow-sm backdrop-blur-sm',
+              'bg-surface shadow-sm',
             )}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,

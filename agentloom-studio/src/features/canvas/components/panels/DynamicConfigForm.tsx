@@ -221,7 +221,7 @@ const ConfigField = memo(function ConfigField({
                         onFieldBlur()
                       }}
                     >
-                      <SelectValue placeholder="选择..." />
+                      <SelectValue placeholder="选择…" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>

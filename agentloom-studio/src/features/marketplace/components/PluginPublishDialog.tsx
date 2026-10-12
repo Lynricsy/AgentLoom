@@ -489,7 +489,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    提交审查中...
+                    提交审查中…
                   </>
                 ) : (
                   <>

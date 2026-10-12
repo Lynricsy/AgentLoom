@@ -99,7 +99,7 @@ export function CreateProviderDialog({
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="例如: DeepSeek, Groq..."
+                placeholder="例如: DeepSeek, Groq…"
               />
             </div>
 

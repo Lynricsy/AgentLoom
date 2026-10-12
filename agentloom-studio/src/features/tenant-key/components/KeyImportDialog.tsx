@@ -153,7 +153,7 @@ export const KeyImportDialog = memo(function KeyImportDialog({
                 <Textarea
                   id="pem-input"
                   className="mt-2 h-48 resize-none font-mono text-xs"
-                  placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                  placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----"
                   value={pemInput}
                   onChange={(e) => setPemInput(e.target.value)}
                 />

@@ -157,14 +157,14 @@ describe('CompatibilityPreview', () => {
     );
   });
 
-  it('shows "检查中..." for checking', () => {
+  it('shows "检查中…" for checking', () => {
     render(
       <CompatibilityPreview
         {...createProps({ visualLevel: 'checking' })}
       />,
     );
     expect(screen.getByTestId('compatibility-preview-message')).toHaveTextContent(
-      '检查中...',
+      '检查中…',
     );
   });
 

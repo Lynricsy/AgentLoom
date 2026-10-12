@@ -158,7 +158,7 @@ export function MfaEnrollDialog({
             <div className="flex flex-col items-center gap-4 py-8">
               <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               <p className="text-sm text-muted-foreground">
-                正在生成 TOTP 密钥...
+                正在生成 TOTP 密钥…
               </p>
             </div>
           )}
@@ -240,7 +240,7 @@ export function MfaEnrollDialog({
                   onClick={handleVerify}
                   disabled={!isCodeComplete || step === 'verifying' || isLoading}
                 >
-                  {step === 'verifying' ? '验证中...' : '确认绑定'}
+                  {step === 'verifying' ? '验证中…' : '确认绑定'}
                 </Button>
               </div>
             </div>

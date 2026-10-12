@@ -227,7 +227,7 @@ export function RegisterPage() {
             {isSubmitting ? (
               <>
                 <Spinner className="text-primary-foreground" />
-                注册中...
+                注册中…
               </>
             ) : (
               '注册'

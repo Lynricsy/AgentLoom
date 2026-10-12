@@ -192,7 +192,7 @@ export function MemoryBrowser() {
       {/* Main Area */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <div className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-6 backdrop-blur-md">
+        <div className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-6">
           <MemoryBreadcrumb items={breadcrumbs} onNavigate={navigateTo} />
           <div className="flex-1" />
           <Button
@@ -213,7 +213,7 @@ export function MemoryBrowser() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索记忆节点..."
+              placeholder="搜索记忆节点…"
               className="max-w-md"
               autoFocus
             />
@@ -400,7 +400,7 @@ export function MemoryBrowser() {
                           type="text"
                           value={editDisclosure}
                           onChange={(e) => setEditDisclosure(e.target.value)}
-                          placeholder="例如：当我需要记住..."
+                          placeholder="例如：当我需要记住…"
                         />
                       </div>
                     </div>

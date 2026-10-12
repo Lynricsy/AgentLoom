@@ -162,7 +162,7 @@ export function MemoryInstanceManagementPage() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="搜索记忆实例..."
+            placeholder="搜索记忆实例…"
             className="pl-9"
           />
         </div>

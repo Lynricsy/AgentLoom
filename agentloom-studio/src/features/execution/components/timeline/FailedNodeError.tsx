@@ -122,7 +122,7 @@ function TypeMismatchComparison({
 
   return (
     <div className="rounded-lg border border-warning/25 bg-warning/5 p-3">
-      <p className="text-2xs font-medium uppercase tracking-[0.18em] text-warning">
+      <p className="text-2xs font-medium uppercase tracking-wider text-warning">
         类型对比
       </p>
 
@@ -172,7 +172,7 @@ function FieldErrorList({
 
   return (
     <div className="rounded-lg border border-error/20 bg-muted p-3">
-      <p className="text-2xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         字段错误
       </p>
       <ul className="mt-2 space-y-1.5 text-xs text-foreground">

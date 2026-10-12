@@ -109,7 +109,7 @@ const StatusIndicator = memo(function StatusIndicator({
     return (
       <span className="flex items-center gap-1 text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
-        保存中...
+        保存中…
       </span>
     )
   }

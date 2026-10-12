@@ -252,7 +252,7 @@ export function ConversationComposer({
           onInput={handleInput}
           placeholder={
             isBusy
-              ? (busyPlaceholder ?? "Agent 正在思考中...")
+              ? (busyPlaceholder ?? "Agent 正在思考中…")
               : (idlePlaceholder ?? "输入消息，Enter 发送，Shift+Enter 换行")
           }
           className={cn(
@@ -265,6 +265,7 @@ export function ConversationComposer({
 
         <div className="flex items-center gap-1 px-2 pb-2">
           <Button
+            aria-label="上传文件"
             variant="ghost"
             size="icon-sm"
             onClick={handleFileClick}
@@ -275,6 +276,7 @@ export function ConversationComposer({
             <Paperclip className="h-4 w-4" />
           </Button>
           <Button
+            aria-label="上传图片"
             variant="ghost"
             size="icon-sm"
             onClick={handleImageClick}

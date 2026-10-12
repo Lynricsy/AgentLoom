@@ -169,7 +169,7 @@ export function WebhookConfigForm({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
+            <p className="text-xs font-medium uppercase tracking-wider text-primary">
               Webhook URL
             </p>
             <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">
@@ -178,7 +178,7 @@ export function WebhookConfigForm({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary">
+            <p className="text-xs font-medium uppercase tracking-wider text-primary">
               Token
             </p>
             <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">

@@ -75,7 +75,7 @@ export function TemplateBrowsePage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索模板..."
+            placeholder="搜索模板…"
             className="pl-9"
           />
         </div>

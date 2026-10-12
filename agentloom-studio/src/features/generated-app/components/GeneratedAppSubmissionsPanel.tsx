@@ -89,7 +89,7 @@ function summarizeJson(value: Record<string, unknown> | null): string {
     return text
   }
 
-  return `${text.slice(0, 140)}...`
+  return `${text.slice(0, 140)}…`
 }
 
 function SubmissionStatusBadge({
@@ -546,7 +546,7 @@ export function GeneratedAppSubmissionsPanel({
       <div className="space-y-3">
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner size="sm" />
-          正在加载提交记录...
+          正在加载提交记录…
         </p>
         {Array.from({ length: 3 }, (_, index) => (
           <Skeleton key={index} className="h-14 rounded-lg" />
@@ -753,7 +753,7 @@ export function GeneratedAppSubmissionsPanel({
         ) : detailQuery.isLoading && !selectedSubmission ? (
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <Spinner />
-            正在加载提交详情...
+            正在加载提交详情…
           </div>
         ) : detailQuery.isError || !selectedSubmission ? (
           <div className="flex items-start gap-3 rounded-lg border border-error/30 bg-error/5 p-4">

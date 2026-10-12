@@ -493,7 +493,7 @@ export function McpServerManagementPage() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="搜索服务器名称或描述..."
+            placeholder="搜索服务器名称或描述…"
             className="pl-9"
           />
         </div>

@@ -77,7 +77,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
 
                 <dl className="mt-3 grid gap-2 sm:grid-cols-3">
                   <div className="rounded-lg border border-border bg-surface p-2.5">
-                    <dt className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    <dt className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
                       执行量
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -85,7 +85,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                     </dd>
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-2.5">
-                    <dt className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    <dt className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
                       失败率
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -95,7 +95,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                     </dd>
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-2.5">
-                    <dt className="text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    <dt className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
                       排队深度
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">

@@ -51,11 +51,11 @@ function buildMessage(
       return reasonKey ? `L1 · ${reasonKey}` : 'L1 · 需要转换'
     }
     case 'checking':
-      return '检查中...'
+      return '检查中…'
     case 'error':
       return `不兼容: ${reasonKey ?? '未知原因'}`
     default:
-      return '检查中...'
+      return '检查中…'
   }
 }
 

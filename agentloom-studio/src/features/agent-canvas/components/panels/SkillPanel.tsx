@@ -120,7 +120,7 @@ export const SkillPanel = memo(function SkillPanel({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="搜索 Skill..."
+          placeholder="搜索 Skill…"
           aria-label="搜索 Skill"
           className="h-8 pl-8 pr-3 text-xs"
         />
@@ -129,7 +129,7 @@ export const SkillPanel = memo(function SkillPanel({
       <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
         {isLoading ? (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-            加载中...
+            加载中…
           </div>
         ) : skills.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">

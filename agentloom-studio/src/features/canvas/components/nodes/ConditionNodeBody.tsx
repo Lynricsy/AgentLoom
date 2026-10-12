@@ -10,7 +10,7 @@ import {
 const MAX_SUMMARY_LEN = 40
 
 function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}...` : text
+  return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
 interface BranchRowProps {
@@ -33,7 +33,7 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
       {/* 分支标签 */}
       <span
         className={cn(
-          'inline-flex shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider',
+          'inline-flex shrink-0 rounded px-1 py-0.5 text-2xs font-bold uppercase leading-none tracking-wider',
           branch.label === 'IF' && 'bg-info/15 text-info',
           branch.label === 'ELSE IF' && 'bg-warning/15 text-warning',
         )}
@@ -92,7 +92,7 @@ export const ConditionNodeBody = memo(function ConditionNodeBody({
 
         {/* ELSE 分支（始终存在） */}
         <div className="flex min-h-[20px] items-center gap-1.5 px-1.5 py-0.5">
-          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-muted-foreground/70">
+          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-2xs font-bold uppercase leading-none tracking-wider text-muted-foreground/70">
             ELSE
           </span>
           <span className="flex-1 text-2xs text-muted-foreground/40">

@@ -153,7 +153,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
                 }
               }}
             >
-              {isProcessing ? '处理中...' : '确认'}
+              {isProcessing ? '处理中…' : '确认'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

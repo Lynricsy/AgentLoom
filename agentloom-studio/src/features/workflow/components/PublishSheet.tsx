@@ -426,7 +426,7 @@ export const PublishSheet = memo(function PublishSheet({
                         aria-labelledby="version-select-label"
                         data-testid="version-select"
                       >
-                        <SelectValue placeholder="请选择记录..." />
+                        <SelectValue placeholder="请选择记录…" />
                       </SelectTrigger>
                       <SelectContent>
                         {unpublishedVersions.map((v) => (

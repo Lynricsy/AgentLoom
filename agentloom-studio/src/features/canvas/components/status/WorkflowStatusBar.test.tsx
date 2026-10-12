@@ -96,7 +96,7 @@ describe('WorkflowStatusBar', () => {
 
     render(<WorkflowStatusBar />)
 
-    expect(screen.getByText('保存中...')).toBeInTheDocument()
+    expect(screen.getByText('保存中…')).toBeInTheDocument()
   })
 
   it('有脏数据时显示未保存状态', () => {

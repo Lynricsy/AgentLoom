@@ -128,7 +128,7 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
         {isLoading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>加载中...</span>
+            <span>加载中…</span>
           </div>
         ) : (
           <Controller

@@ -83,7 +83,7 @@ const SectionCard = memo(function SectionCard({
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 size-4 shrink-0 text-[var(--color-node-agent)]" />
         <div className="min-w-0">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
             {title}
           </h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>

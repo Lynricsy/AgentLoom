@@ -92,7 +92,7 @@ function PersistentSandboxSelector({
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        加载持久沙箱...
+        加载持久沙箱…
       </div>
     );
   }

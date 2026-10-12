@@ -171,7 +171,7 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
               {isValidating ? (
                 <>
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">验证中...</span>
+                  <span className="text-sm text-muted-foreground">验证中…</span>
                 </>
               ) : (
                 <>
@@ -294,7 +294,7 @@ export function WorkflowImportDialog({ open, onOpenChange }: WorkflowImportDialo
                 {isImporting ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    导入中...
+                    导入中…
                   </>
                 ) : (
                   '导入'

@@ -83,7 +83,7 @@ function TreeNode({
     <div>
       <div
         className={cn(
-          'group flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 text-sm transition-all',
+          'group flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 text-sm transition-colors',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -119,7 +119,7 @@ function TreeNode({
             isActive ? 'text-primary' : 'text-muted-foreground/50 group-hover:text-muted-foreground',
           )}
         />
-        <span className="flex-1 truncate text-[13px]">{name}</span>
+        <span className="flex-1 truncate text-sm">{name}</span>
       </div>
 
       {expanded && children.length > 0 && (
@@ -216,7 +216,7 @@ function DomainNode({
     <div className="mb-2">
       <div
         className={cn(
-          'group flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2 text-sm transition-all',
+          'group flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2 text-sm transition-colors',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',

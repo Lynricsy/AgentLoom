@@ -102,7 +102,7 @@ describe('BlockLibraryPanel', () => {
 
     render(<BlockLibraryPanel />);
 
-    await user.type(screen.getByPlaceholderText('搜索块...'), '周报');
+    await user.type(screen.getByPlaceholderText('搜索块…'), '周报');
 
     expect(screen.getByText('周报块')).toBeInTheDocument();
     expect(screen.queryByText('客户洞察块')).not.toBeInTheDocument();

@@ -259,7 +259,7 @@ export function SkillBrowsePage() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="搜索技能名称或描述..."
+            placeholder="搜索技能名称或描述…"
             className="pl-9"
           />
         </div>

@@ -84,7 +84,7 @@ const ThinkingBlock = memo(function ThinkingBlock({
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
           <span className="ml-auto max-w-[200px] truncate text-2xs text-muted-foreground">
-            {content.slice(0, 60)}...
+            {content.slice(0, 60)}…
           </span>
         )}
       </Button>
@@ -271,7 +271,7 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
           )}
           {childStreams.length > 0 && (
             <div className="space-y-3 px-4 py-2">
-              <div className="px-1 text-2xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="px-1 text-2xs uppercase tracking-wider text-muted-foreground">
                 子 Agent 瀑布流
               </div>
               {childStreams.map((stream) => (

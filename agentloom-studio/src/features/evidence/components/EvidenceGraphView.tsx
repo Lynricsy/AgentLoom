@@ -309,7 +309,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
           {isRefreshing ? (
             <>
               <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              重试中...
+              重试中…
             </>
           ) : (
             '重试加载'

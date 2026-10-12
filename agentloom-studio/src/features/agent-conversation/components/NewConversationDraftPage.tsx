@@ -161,6 +161,7 @@ export function NewConversationDraftPage({
           <div className="flex shrink-0 items-center gap-2">
             {onBack ? (
               <Button
+                aria-label="返回"
                 variant="ghost"
                 size="icon-sm"
                 onClick={onBack}
@@ -213,7 +214,7 @@ export function NewConversationDraftPage({
           <ConversationComposer
             onSend={handleSend}
             isBusy={startConversation.isPending}
-            busyPlaceholder="正在创建并发送..."
+            busyPlaceholder="正在创建并发送…"
             busyActionLabel="发送中"
           />
         </div>

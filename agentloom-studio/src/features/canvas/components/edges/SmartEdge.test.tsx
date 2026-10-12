@@ -355,7 +355,7 @@ describe('SmartEdge', () => {
     expect(readClassName(basePath)).toContain('smart-edge-path--checking')
 
     const badge = screen.getByTestId('edge-badge-edge-1')
-    expect(badge.textContent).toContain('检查中...')
+    expect(badge.textContent).toContain('检查中…')
   })
 
   it('badge becomes visible on hover', () => {

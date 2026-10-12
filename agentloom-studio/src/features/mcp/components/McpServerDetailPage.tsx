@@ -408,7 +408,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
 
                 <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
                       工具名称
                     </p>
                     <p className="truncate font-mono text-xs text-foreground">
@@ -416,7 +416,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
                       最后更新
                     </p>
                     <p className="text-foreground">
@@ -427,7 +427,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
                       首次导入
                     </p>
                     <p className="text-foreground">

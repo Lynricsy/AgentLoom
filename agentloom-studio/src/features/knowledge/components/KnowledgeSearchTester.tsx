@@ -82,7 +82,7 @@ export function KnowledgeSearchTester({
           ))
         ) : (
           <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            {isPending ? '正在执行测试检索...' : '这里会展示测试检索结果。'}
+            {isPending ? '正在执行测试检索…' : '这里会展示测试检索结果。'}
           </div>
         )}
       </div>

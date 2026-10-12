@@ -264,7 +264,7 @@ export function WorkspaceManagementPage() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="搜索工作区..."
+            placeholder="搜索工作区…"
             className="pl-9"
           />
         </div>

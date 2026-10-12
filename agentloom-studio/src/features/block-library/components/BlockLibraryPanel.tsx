@@ -94,7 +94,7 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
         <Input
           data-testid="block-library-search"
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="搜索块..."
+          placeholder="搜索块…"
           type="search"
           value={searchQuery}
         />

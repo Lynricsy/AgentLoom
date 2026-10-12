@@ -244,7 +244,7 @@ export const InterventionPanel = memo(function InterventionPanel({
             rows={2}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
-            placeholder="可选：说明修改原因..."
+            placeholder="可选：说明修改原因…"
             data-testid="intervention-feedback"
           />
           <div className="flex gap-2">
@@ -289,7 +289,7 @@ export const InterventionPanel = memo(function InterventionPanel({
             rows={3}
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
-            placeholder="可选：说明拒绝原因..."
+            placeholder="可选：说明拒绝原因…"
             data-testid="intervention-reject-feedback"
           />
           <div className="flex gap-2">

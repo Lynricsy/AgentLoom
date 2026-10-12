@@ -474,6 +474,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                 <span className="font-mono text-muted-foreground">{index + 1}</span>
                 <span className="flex-1 truncate">{portLabelById.get(portId) ?? portId}</span>
                 <Button
+                  aria-label="上移优先级"
                   variant="ghost"
                   size="icon-xs"
                   disabled={index === 0}
@@ -483,6 +484,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                   <ChevronUp className="h-3 w-3" />
                 </Button>
                 <Button
+                  aria-label="下移优先级"
                   variant="ghost"
                   size="icon-xs"
                   disabled={index === fallbackPriority.length - 1}
@@ -510,6 +512,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
               <span>{port.label}</span>
               {modelInputPorts.length > MIN_MODEL_PORTS ? (
                 <Button
+                  aria-label={`删除端口 ${port.label}`}
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => handleRemovePort(port.id)}

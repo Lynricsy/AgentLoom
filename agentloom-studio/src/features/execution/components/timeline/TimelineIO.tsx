@@ -79,7 +79,7 @@ function buildPreview(data: Record<string, unknown> | null) {
   const singleLine = json.replace(/\s+/g, ' ')
 
   return singleLine.length > 120
-    ? `${singleLine.slice(0, 117)}...`
+    ? `${singleLine.slice(0, 117)}…`
     : singleLine
 }
 

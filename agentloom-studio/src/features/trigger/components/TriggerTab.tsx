@@ -87,7 +87,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
     <section className="flex h-full flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             事件驱动触发器
           </p>
           <h2 className="text-base font-semibold text-foreground">触发器管理</h2>
@@ -118,7 +118,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
           <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-border bg-muted">
             <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              正在加载触发器...
+              正在加载触发器…
             </div>
           </div>
         ) : triggerQuery.isError ? (

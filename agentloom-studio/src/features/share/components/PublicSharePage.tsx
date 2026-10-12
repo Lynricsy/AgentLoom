@@ -200,7 +200,7 @@ export function PublicSharePage() {
         <CenteredSlot>
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">加载分享内容...</p>
+            <p className="text-sm text-muted-foreground">加载分享内容…</p>
           </div>
         </CenteredSlot>
       </PublicShareShell>

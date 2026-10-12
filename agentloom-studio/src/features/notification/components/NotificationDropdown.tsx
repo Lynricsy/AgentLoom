@@ -77,14 +77,14 @@ export function NotificationDropdown() {
           disabled={!unreadCount || markAllAsReadMutation.isPending}
           data-testid="mark-all-read"
         >
-          {markAllAsReadMutation.isPending ? '处理中...' : '全部标记已读'}
+          {markAllAsReadMutation.isPending ? '处理中…' : '全部标记已读'}
         </Button>
       </div>
 
       {isLoading && visibleNotifications.length === 0 ? (
         <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          加载通知中...
+          加载通知中…
         </div>
       ) : null}
 

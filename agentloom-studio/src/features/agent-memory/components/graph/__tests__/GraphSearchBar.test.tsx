@@ -6,7 +6,7 @@ describe('GraphSearchBar', () => {
   it('渲染搜索输入框', () => {
     render(<GraphSearchBar onSearch={vi.fn()} />)
     expect(screen.getByTestId('graph-search-input')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('搜索节点...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('搜索节点…')).toBeInTheDocument()
   })
 
   it('输入时触发 onSearch 回调', () => {

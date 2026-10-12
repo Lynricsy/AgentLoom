@@ -427,7 +427,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           </div>
 
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">
               Workspace
             </span>
             <Button
@@ -489,7 +489,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         />
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">
               Workspace
             </span>
             <Button

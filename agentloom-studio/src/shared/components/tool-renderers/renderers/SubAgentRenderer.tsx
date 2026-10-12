@@ -57,7 +57,7 @@ function safeString(val: unknown): string {
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
-  return str.slice(0, maxLen) + "...";
+  return str.slice(0, maxLen) + "…";
 }
 
 // --- Shared sub-components ---
@@ -144,7 +144,7 @@ const CallDetail = memo(function CallDetail({
   const output = safeString(toolCall.result);
 
   if (state === "pending")
-    return <PendingState message={`正在调用 ${alias}...`} />;
+    return <PendingState message={`正在调用 ${alias}…`} />;
   if (state === "failed" && toolCall.error)
     return <ErrorState error={toolCall.error} />;
 
@@ -205,7 +205,7 @@ const WaitDetail = memo(function WaitDetail({
   const resultStr = safeString(toolCall.result);
 
   if (state === "pending")
-    return <PendingState message="正在等待子代理..." />;
+    return <PendingState message="正在等待子代理…" />;
   if (state === "failed" && toolCall.error)
     return <ErrorState error={toolCall.error} />;
 
@@ -242,7 +242,7 @@ const StatusDetail = memo(function StatusDetail({
   const args = safeParse<StatusArgs>(toolCall.args, {});
   const resultStr = safeString(toolCall.result);
 
-  if (state === "pending") return <PendingState message="正在查询状态..." />;
+  if (state === "pending") return <PendingState message="正在查询状态…" />;
   if (state === "failed" && toolCall.error)
     return <ErrorState error={toolCall.error} />;
 

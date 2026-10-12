@@ -101,7 +101,7 @@ export function KeywordManager({
               onBlur={() => {
                 if (!newKeyword.trim()) setAdding(false)
               }}
-              placeholder="keyword..."
+              placeholder="keyword…"
               className="h-auto w-28 bg-background px-1.5 py-0.5 font-mono text-2xs shadow-none"
             />
             <Button

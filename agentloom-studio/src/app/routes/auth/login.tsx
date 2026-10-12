@@ -166,7 +166,7 @@ export function LoginPage() {
             {isSubmitting ? (
               <>
                 <Spinner className="text-primary-foreground" />
-                登录中...
+                登录中…
               </>
             ) : (
               "登录"
