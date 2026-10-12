@@ -93,7 +93,7 @@ function CodeSnippet({ step, title, description, code }: CodeSnippetProps) {
       <div className="flex items-start gap-2.5">
         <span
           aria-hidden
-          className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/10 text-2xs font-semibold text-primary"
+          className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-2xs font-semibold text-primary"
         >
           {step}
         </span>

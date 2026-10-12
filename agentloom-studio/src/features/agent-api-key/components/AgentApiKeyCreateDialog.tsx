@@ -1,6 +1,8 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Check, Copy, ShieldAlert } from 'lucide-react'
 
+import { fadeIn } from '@/shared/lib/motion'
 import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
@@ -243,159 +245,163 @@ export function AgentApiKeyCreateDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent size="md" data-testid="agent-api-key-create-dialog">
-        {created ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>保存你的 API Key</DialogTitle>
-              <DialogDescription>
-                这是明文 Key 唯一一次出现的机会，关闭后不会再次显示。
-              </DialogDescription>
-            </DialogHeader>
+        <AnimatePresence mode="wait" initial={false}>
+          {created ? (
+            // 包裹层接管 DialogContent 的 flex 列布局，Body 才能在矮屏内滚动
+            <motion.div key="created" {...fadeIn} className="flex min-h-0 flex-1 flex-col">
+              <DialogHeader>
+                <DialogTitle>保存你的 API Key</DialogTitle>
+                <DialogDescription>
+                  这是明文 Key 唯一一次出现的机会，关闭后不会再次显示。
+                </DialogDescription>
+              </DialogHeader>
 
-            <DialogBody className="space-y-4">
-              <Alert variant="warning" icon={ShieldAlert} role="alert">
-                请立即复制并存入调用方的密钥管理器。不要把 Key 写进前端代码或公开仓库，遗失只能吊销后重新创建。
-              </Alert>
+              <DialogBody className="space-y-4">
+                <Alert variant="warning" icon={ShieldAlert} role="alert">
+                  请立即复制并存入调用方的密钥管理器。不要把 Key 写进前端代码或公开仓库，遗失只能吊销后重新创建。
+                </Alert>
 
-              <div className="space-y-2">
-                <span className="block break-words text-xs font-medium text-muted-foreground">
-                  {created.name}
-                </span>
-                <div className="flex items-start gap-2">
-                  <code
-                    ref={keyRef}
-                    data-testid="agent-api-key-plaintext"
-                    className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
-                  >
-                    {created.key}
-                  </code>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    aria-label="复制 API Key"
-                    onClick={handleCopy}
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-success" aria-hidden />
-                    ) : (
-                      <Copy className="h-4 w-4" aria-hidden />
-                    )}
-                  </Button>
+                <div className="space-y-2">
+                  <span className="block break-words text-xs font-medium text-muted-foreground">
+                    {created.name}
+                  </span>
+                  <div className="flex items-start gap-2">
+                    <code
+                      ref={keyRef}
+                      data-testid="agent-api-key-plaintext"
+                      className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
+                    >
+                      {created.key}
+                    </code>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      aria-label="复制 API Key"
+                      onClick={handleCopy}
+                    >
+                      {copied ? (
+                        <Check className="text-success" aria-hidden />
+                      ) : (
+                        <Copy aria-hidden />
+                      )}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </DialogBody>
+              </DialogBody>
 
-            <DialogFooter>
-              <Button onClick={() => handleOpenChange(false)}>我已保存</Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <form onSubmit={handleSubmit} noValidate>
-            <DialogHeader>
-              <DialogTitle>创建 API Key</DialogTitle>
-              <DialogDescription>
-                Key 只能调用当前 Agent 的已发布版本。请为每个接入方单独创建，便于限流与吊销。
-              </DialogDescription>
-            </DialogHeader>
+              <DialogFooter>
+                <Button onClick={() => handleOpenChange(false)}>我已保存</Button>
+              </DialogFooter>
+            </motion.div>
+          ) : (
+            // motion.form 保持为 DialogContent 的直接子元素，命中原语的 [&>form] flex 规则
+            <motion.form key="form" {...fadeIn} onSubmit={handleSubmit} noValidate>
+              <DialogHeader>
+                <DialogTitle>创建 API Key</DialogTitle>
+                <DialogDescription>
+                  Key 只能调用当前 Agent 的已发布版本。请为每个接入方单独创建，便于限流与吊销。
+                </DialogDescription>
+              </DialogHeader>
 
-            <DialogBody className="space-y-4">
-              <Field
-                id="agent-api-key-name"
-                label="名称"
-                error={errors.name}
-                hint="便于日后在列表中辨认接入方。"
-              >
-                <Input
+              <DialogBody className="space-y-4">
+                <Field
                   id="agent-api-key-name"
-                  value={form.name}
-                  maxLength={NAME_MAX_LENGTH}
-                  placeholder="例如：CRM 客服机器人"
-                  aria-invalid={errors.name ? true : undefined}
-                  aria-describedby="agent-api-key-name-message"
-                  onChange={(event) => updateField('name', event.target.value)}
-                />
-              </Field>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  id="agent-api-key-rate-limit"
-                  label="每分钟请求上限"
-                  optional
-                  error={errors.rateLimitPerMinute}
-                  hint="留空则沿用组织的 API 速率限制。"
+                  label="名称"
+                  error={errors.name}
+                  hint="便于日后在列表中辨认接入方。"
                 >
                   <Input
+                    id="agent-api-key-name"
+                    value={form.name}
+                    maxLength={NAME_MAX_LENGTH}
+                    placeholder="例如：CRM 客服机器人"
+                    aria-invalid={errors.name ? true : undefined}
+                    aria-describedby="agent-api-key-name-message"
+                    onChange={(event) => updateField('name', event.target.value)}
+                  />
+                </Field>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
                     id="agent-api-key-rate-limit"
-                    type="number"
-                    inputMode="numeric"
-                    min={RATE_LIMIT_RANGE.min}
-                    max={RATE_LIMIT_RANGE.max}
-                    step={1}
-                    value={form.rateLimitPerMinute}
-                    placeholder="例如：60"
-                    aria-invalid={errors.rateLimitPerMinute ? true : undefined}
-                    aria-describedby="agent-api-key-rate-limit-message"
-                    onChange={(event) =>
-                      updateField('rateLimitPerMinute', event.target.value)
-                    }
-                  />
-                </Field>
+                    label="每分钟请求上限"
+                    optional
+                    error={errors.rateLimitPerMinute}
+                    hint="留空则沿用组织的 API 速率限制。"
+                  >
+                    <Input
+                      id="agent-api-key-rate-limit"
+                      type="number"
+                      inputMode="numeric"
+                      min={RATE_LIMIT_RANGE.min}
+                      max={RATE_LIMIT_RANGE.max}
+                      step={1}
+                      value={form.rateLimitPerMinute}
+                      placeholder="例如：60"
+                      aria-invalid={errors.rateLimitPerMinute ? true : undefined}
+                      aria-describedby="agent-api-key-rate-limit-message"
+                      onChange={(event) =>
+                        updateField('rateLimitPerMinute', event.target.value)
+                      }
+                    />
+                  </Field>
+
+                  <Field
+                    id="agent-api-key-max-concurrent-runs"
+                    label="最大并发 run 数"
+                    error={errors.maxConcurrentRuns}
+                    hint="同时排队或运行中的 run 超出后返回 429。"
+                  >
+                    <Input
+                      id="agent-api-key-max-concurrent-runs"
+                      type="number"
+                      inputMode="numeric"
+                      min={CONCURRENCY_RANGE.min}
+                      max={CONCURRENCY_RANGE.max}
+                      step={1}
+                      value={form.maxConcurrentRuns}
+                      aria-invalid={errors.maxConcurrentRuns ? true : undefined}
+                      aria-describedby="agent-api-key-max-concurrent-runs-message"
+                      onChange={(event) =>
+                        updateField('maxConcurrentRuns', event.target.value)
+                      }
+                    />
+                  </Field>
+                </div>
 
                 <Field
-                  id="agent-api-key-max-concurrent-runs"
-                  label="最大并发 run 数"
-                  error={errors.maxConcurrentRuns}
-                  hint="同时排队或运行中的 run 超出后返回 429。"
+                  id="agent-api-key-expires-at"
+                  label="过期时间"
+                  optional
+                  error={errors.expiresAt}
+                  hint="留空表示长期有效，直至被吊销。"
                 >
                   <Input
-                    id="agent-api-key-max-concurrent-runs"
-                    type="number"
-                    inputMode="numeric"
-                    min={CONCURRENCY_RANGE.min}
-                    max={CONCURRENCY_RANGE.max}
-                    step={1}
-                    value={form.maxConcurrentRuns}
-                    aria-invalid={errors.maxConcurrentRuns ? true : undefined}
-                    aria-describedby="agent-api-key-max-concurrent-runs-message"
-                    onChange={(event) =>
-                      updateField('maxConcurrentRuns', event.target.value)
-                    }
+                    id="agent-api-key-expires-at"
+                    type="datetime-local"
+                    value={form.expiresAt}
+                    aria-invalid={errors.expiresAt ? true : undefined}
+                    aria-describedby="agent-api-key-expires-at-message"
+                    onChange={(event) => updateField('expiresAt', event.target.value)}
                   />
                 </Field>
-              </div>
+              </DialogBody>
 
-              <Field
-                id="agent-api-key-expires-at"
-                label="过期时间"
-                optional
-                error={errors.expiresAt}
-                hint="留空表示长期有效，直至被吊销。"
-              >
-                <Input
-                  id="agent-api-key-expires-at"
-                  type="datetime-local"
-                  value={form.expiresAt}
-                  aria-invalid={errors.expiresAt ? true : undefined}
-                  aria-describedby="agent-api-key-expires-at-message"
-                  onChange={(event) => updateField('expiresAt', event.target.value)}
-                />
-              </Field>
-            </DialogBody>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleOpenChange(false)}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? '创建中…' : '创建 Key'}
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleOpenChange(false)}
+                >
+                  取消
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending ? '创建中…' : '创建 Key'}
+                </Button>
+              </DialogFooter>
+            </motion.form>
+          )}
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

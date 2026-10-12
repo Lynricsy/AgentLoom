@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { AlertTriangle, KeyRound, Lock, Plus } from 'lucide-react'
 
 import {
@@ -6,6 +6,7 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { formatDateTime, formatNumber } from '@/shared/lib/format'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,22 +46,6 @@ const STATUS_OPTIONS: { value: AgentApiKeyStatusFilter; label: string }[] = [
   { value: 'all', label: '全部' },
 ]
 
-const DATE_TIME_FORMAT = new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
-const COUNT_FORMAT = new Intl.NumberFormat('zh-CN')
-
-function formatTimestamp(value: string): string {
-  const parsed = new Date(value)
-
-  return Number.isNaN(parsed.getTime()) ? value : DATE_TIME_FORMAT.format(parsed)
-}
-
 type KeyState = 'active' | 'expired' | 'revoked'
 
 function resolveKeyState(key: AgentApiKey, now: number): KeyState {
@@ -89,6 +74,9 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
   const [status, setStatus] = useState<AgentApiKeyStatusFilter>('active')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<AgentApiKey | null>(null)
+  // 退场动画期间 revokeTarget 已置 null，文案读最后一次的目标避免闪空
+  const lastRevokeRef = useRef<AgentApiKey | null>(null)
+  if (revokeTarget) lastRevokeRef.current = revokeTarget
 
   const keysQuery = useAgentApiKeys(agentId, { page, pageSize: PAGE_SIZE, status })
   const revokeMutation = useRevokeAgentApiKey(agentId)
@@ -133,7 +121,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         cell: (row) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
-            <code className="truncate font-mono text-xs text-muted-foreground">
+            <code className="block truncate font-mono text-xs text-muted-foreground">
               {row.keyPrefix}…
             </code>
           </div>
@@ -143,15 +131,16 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         key: 'limits',
         header: '限额',
         hideBelow: 'sm',
+        nowrap: true,
         cell: (row) => (
-          <div className="flex flex-col whitespace-nowrap text-xs">
+          <div className="flex flex-col text-xs">
             <span className="text-foreground">
               {row.rateLimitPerMinute == null
                 ? '组织默认速率'
-                : `${COUNT_FORMAT.format(row.rateLimitPerMinute)} 次/分钟`}
+                : `${formatNumber(row.rateLimitPerMinute)} 次/分钟`}
             </span>
             <span className="text-muted-foreground">
-              并发 {COUNT_FORMAT.format(row.maxConcurrentRuns)} 个 run
+              并发 {formatNumber(row.maxConcurrentRuns)} 个 run
             </span>
           </div>
         ),
@@ -160,9 +149,10 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         key: 'lastUsedAt',
         header: '最后使用',
         hideBelow: 'md',
+        nowrap: true,
         cell: (row) => (
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
-            {row.lastUsedAt ? formatTimestamp(row.lastUsedAt) : '从未使用'}
+          <span className="text-xs text-muted-foreground">
+            {row.lastUsedAt ? formatDateTime(row.lastUsedAt) : '从未使用'}
           </span>
         ),
       },
@@ -178,9 +168,9 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
               <Badge variant={badge.variant}>{badge.label}</Badge>
               <span className="whitespace-nowrap text-2xs text-muted-foreground">
                 {state === 'revoked' && row.revokedAt
-                  ? `吊销于 ${formatTimestamp(row.revokedAt)}`
+                  ? `吊销于 ${formatDateTime(row.revokedAt)}`
                   : row.expiresAt
-                    ? `${state === 'expired' ? '过期于' : '有效至'} ${formatTimestamp(row.expiresAt)}`
+                    ? `${state === 'expired' ? '过期于' : '有效至'} ${formatDateTime(row.expiresAt)}`
                     : '长期有效'}
               </span>
             </div>
@@ -198,18 +188,22 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
       {
         key: 'actions',
         header: '操作',
-        className: 'w-px text-right',
+        align: 'right',
+        nowrap: true,
+        className: 'w-px',
         cell: (row) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`吊销 ${row.name}`}
-            className="whitespace-nowrap text-error hover:bg-error/10"
-            disabled={row.revokedAt !== null}
-            onClick={() => setRevokeTarget(row)}
-          >
-            吊销
-          </Button>
+          <div className="flex justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`吊销 ${row.name}`}
+              className="text-error hover:bg-error/10"
+              disabled={row.revokedAt !== null}
+              onClick={() => setRevokeTarget(row)}
+            >
+              吊销
+            </Button>
+          </div>
         ),
       },
     ]
@@ -217,7 +211,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
 
   const createButton = canManage ? (
     <Button size="sm" onClick={() => setIsCreateOpen(true)}>
-      <Plus className="h-4 w-4" aria-hidden />
+      <Plus aria-hidden />
       创建 Key
     </Button>
   ) : null
@@ -229,7 +223,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
           className="flex gap-2 rounded-lg border border-border bg-muted px-3 py-2.5"
           data-testid="agent-api-key-readonly-notice"
         >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
           <p className="text-xs leading-relaxed text-muted-foreground">
             你当前只有查看权限。创建与吊销 API Key 需要组织的 owner 或 admin 角色。
           </p>
@@ -258,7 +252,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
 
         {meta ? (
           <span className="text-xs text-muted-foreground">
-            共 {COUNT_FORMAT.format(meta.total)} 个
+            共 {formatNumber(meta.total)} 个
           </span>
         ) : null}
 
@@ -330,7 +324,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         <AlertDialogContent>
           <AlertDialogTitle>吊销 API Key？</AlertDialogTitle>
           <AlertDialogDescription>
-            吊销后「{revokeTarget?.name}」将立即失效且无法恢复，使用它的调用都会收到 401。请先确认接入方已切换到新的 Key。
+            吊销后「{lastRevokeRef.current?.name}」将立即失效且无法恢复，使用它的调用都会收到 401。请先确认接入方已切换到新的 Key。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={revokeMutation.isPending}>取消</AlertDialogCancel>
