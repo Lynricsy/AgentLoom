@@ -39,13 +39,17 @@ export interface WorkflowImportSourceContext {
 
 @Injectable()
 export class WorkflowImportSourceResolverService {
+  /**
+   * 读取源租户（作者）的 Agent。`sourceDb` 必须是不受目标租户 RLS 约束的根连接：
+   * 导入事务以目标租户身份运行，在事务里读源租户的行永远为空。查询条件显式限定了源租户。
+   */
   async loadAgentSource(params: {
     sourceTenantId: string;
     sourceAgentDefinitionId: string;
     sourceAgentVersionId?: string;
-    dbClient: WorkflowImportDbClient;
+    sourceDb: WorkflowImportDbClient;
   }): Promise<ImportedWorkflowAgentSourceRecord> {
-    const [definition] = await params.dbClient
+    const [definition] = await params.sourceDb
       .select({
         id: schema.agentDefinitions.id,
         tenantId: schema.agentDefinitions.tenantId,
@@ -85,7 +89,7 @@ export class WorkflowImportSourceResolverService {
       });
     }
 
-    const [version] = await params.dbClient
+    const [version] = await params.sourceDb
       .select({
         id: schema.agentVersions.id,
         snapshot: schema.agentVersions.snapshot,
@@ -122,18 +126,19 @@ export class WorkflowImportSourceResolverService {
     };
   }
 
+  /** 读取源租户的模型配置；`sourceDb` 的要求同 loadAgentSource。 */
   async loadSourceModel(params: {
     sourceTenantId: string;
     sourceModelBindingId: string;
     context: WorkflowImportSourceContext;
-    dbClient: WorkflowImportDbClient;
+    sourceDb: WorkflowImportDbClient;
   }): Promise<ImportedWorkflowModelRecord> {
     const cached = params.context.sourceModels.get(params.sourceModelBindingId);
     if (cached) {
       return cached;
     }
 
-    const [row] = await params.dbClient
+    const [row] = await params.sourceDb
       .select({
         config: schema.llmModelConfigs,
         provider: schema.llmProviders,

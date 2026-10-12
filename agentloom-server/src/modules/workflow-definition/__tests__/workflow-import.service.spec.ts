@@ -83,7 +83,7 @@ describe('WorkflowImportService import validation', () => {
 });
 
 describe('WorkflowImportService transaction boundary', () => {
-  it('依赖克隆失败回滚时，源 Agent 读取与克隆写入均不逃逸事务', async () => {
+  it('源租户 Agent 走根连接读取（目标租户 RLS 下不可见），克隆写入全部在事务内并随失败回滚', async () => {
     const sourceTenantId = '00000000-0000-0000-0000-000000000001';
     const targetTenantId = '00000000-0000-0000-0000-000000000002';
     const userId = '00000000-0000-0000-0000-000000000003';
@@ -93,38 +93,7 @@ describe('WorkflowImportService transaction boundary', () => {
     const committedWrites: string[] = [];
 
     const tx = {
-      select: vi
-        .fn()
-        .mockReturnValueOnce(
-          selectChain([
-            {
-              id: agentId,
-              tenantId: sourceTenantId,
-              name: 'Imported Agent',
-              description: null,
-              icon: null,
-              runtimeMode: 'no_sandbox',
-              sandboxConfig: null,
-              workspaceSnapshotId: null,
-              publishedVersionId: agentVersionId,
-            },
-          ]),
-        )
-        .mockReturnValueOnce(
-          selectChain([
-            {
-              id: agentVersionId,
-              snapshot: {
-                runtimeMode: 'no_sandbox',
-                nodes: [],
-                edges: [],
-                viewport: null,
-                systemPrompt: null,
-                metadata: {},
-              },
-            },
-          ]),
-        ),
+      select: vi.fn(),
       insert: vi
         .fn()
         .mockReturnValueOnce(
@@ -158,32 +127,64 @@ describe('WorkflowImportService transaction boundary', () => {
     };
 
     const rootDb = {
-      select: vi.fn().mockReturnValue(
-        selectChain([
-          {
-            id: '00000000-0000-0000-0000-000000000008',
-            title: 'Marketplace Workflow',
-            sourceTenantId,
-            snapshot: {
-              nodes: [
-                {
-                  id: 'agent-node',
-                  type: 'agent',
-                  position: { x: 0, y: 0 },
-                  data: {
-                    nodeType: 'agent',
-                    agentDefinitionId: agentId,
-                    agentVersionId,
+      select: vi
+        .fn()
+        .mockReturnValueOnce(
+          selectChain([
+            {
+              id: '00000000-0000-0000-0000-000000000008',
+              title: 'Marketplace Workflow',
+              sourceTenantId,
+              snapshot: {
+                nodes: [
+                  {
+                    id: 'agent-node',
+                    type: 'agent',
+                    position: { x: 0, y: 0 },
+                    data: {
+                      nodeType: 'agent',
+                      agentDefinitionId: agentId,
+                      agentVersionId,
+                    },
                   },
-                },
-              ],
-              edges: [],
-              viewport: null,
-              inputSchema: null,
+                ],
+                edges: [],
+                viewport: null,
+                inputSchema: null,
+              },
             },
-          },
-        ]),
-      ),
+          ]),
+        )
+        .mockReturnValueOnce(
+          selectChain([
+            {
+              id: agentId,
+              tenantId: sourceTenantId,
+              name: 'Imported Agent',
+              description: null,
+              icon: null,
+              runtimeMode: 'no_sandbox',
+              sandboxConfig: null,
+              workspaceSnapshotId: null,
+              publishedVersionId: agentVersionId,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          selectChain([
+            {
+              id: agentVersionId,
+              snapshot: {
+                runtimeMode: 'no_sandbox',
+                nodes: [],
+                edges: [],
+                viewport: null,
+                systemPrompt: null,
+                metadata: {},
+              },
+            },
+          ]),
+        ),
       insert: vi.fn(),
       update: vi.fn(),
       transaction: vi.fn(
@@ -215,9 +216,10 @@ describe('WorkflowImportService transaction boundary', () => {
       }),
     ).rejects.toThrow('force transaction rollback');
 
-    expect(rootDb.select).toHaveBeenCalledOnce();
+    // 列表 + 源 Agent 定义 + 源 Agent 版本，全部走根连接；事务里不读源租户
+    expect(rootDb.select).toHaveBeenCalledTimes(3);
     expect(rootDb.insert).not.toHaveBeenCalled();
-    expect(tx.select).toHaveBeenCalledTimes(2);
+    expect(tx.select).not.toHaveBeenCalled();
     expect(tx.insert).toHaveBeenCalledTimes(3);
     expect(committedWrites).toEqual([]);
     expect(pendingWrites).toEqual([]);

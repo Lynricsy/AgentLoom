@@ -868,7 +868,8 @@ export class WorkflowImportService {
       return cached;
     }
 
-    const [sourceSnapshot] = await params.dbClient
+    // 源租户的行在目标租户的 RLS 事务里不可见，用根连接读取（条件已限定源租户）
+    const [sourceSnapshot] = await this.db
       .select({
         name: schema.workspaceSnapshots.name,
         description: schema.workspaceSnapshots.description,
@@ -989,7 +990,7 @@ export class WorkflowImportService {
         sourceTenantId: params.sourceTenantId,
         sourceAgentDefinitionId: params.sourceAgentDefinitionId,
         sourceAgentVersionId: params.sourceAgentVersionId,
-        dbClient: params.dbClient,
+        sourceDb: this.db,
       });
 
       if (source.workspaceSnapshotId || source.snapshot.workspaceSnapshotId) {
@@ -1198,7 +1199,7 @@ export class WorkflowImportService {
       sourceTenantId: params.sourceTenantId,
       sourceModelBindingId,
       context: params.context,
-      dbClient: params.dbClient,
+      sourceDb: this.db,
     });
     const targetModel =
       (await this.sourceResolver.resolveTargetModel({
