@@ -59,17 +59,19 @@ function WorkflowPreviewSection({
         </p>
       </div>
 
-      <WorkflowPreviewCanvas
-        className="h-[260px] overflow-hidden rounded-lg border border-border sm:h-[300px]"
-        definition={listing.definition}
-        lodOverride="full"
-        emptyFallback={
-          <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground sm:h-[300px]">
-            暂无可预览的工作流结构。
-          </div>
-        }
-        testId="marketplace-preview"
-      />
+      {/* ReactFlow 根节点内联 width/height: 100%，会盖掉传给它的高度类，高度必须由外层容器给 */}
+      <div className="h-[260px] overflow-hidden rounded-lg border border-border sm:h-[300px]">
+        <WorkflowPreviewCanvas
+          definition={listing.definition}
+          lodOverride="full"
+          emptyFallback={
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              暂无可预览的工作流结构。
+            </div>
+          }
+          testId="marketplace-preview"
+        />
+      </div>
     </section>
   )
 }
