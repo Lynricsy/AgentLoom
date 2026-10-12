@@ -35,6 +35,11 @@ import {
   MarketplaceWorkflowVersionNotFoundException,
 } from './marketplace.exceptions';
 import { MarketplaceReviewService } from './marketplace-review.service';
+import {
+  buildMarketplacePreviewGraph,
+  type MarketplacePreviewGraph,
+  selectMarketplacePreviewGraphSource,
+} from './marketplace-preview-graph.util';
 
 const DEFAULT_VIEWPORT: schema.ReactFlowViewport = {
   x: 0,
@@ -63,7 +68,7 @@ export interface MarketplacePublicPluginDescriptor {
   license: string | null;
 }
 
-export interface PublicMarketplaceListingItem {
+interface PublicMarketplaceListingBase {
   id: string;
   title: string;
   summary: string;
@@ -81,6 +86,11 @@ export interface PublicMarketplaceListingItem {
   author: MarketplacePublicAuthor;
 }
 
+export interface PublicMarketplaceListingItem extends PublicMarketplaceListingBase {
+  /** 卡片缩略图；插件 listing 或快照里没有可画节点时为 null */
+  previewGraph: MarketplacePreviewGraph | null;
+}
+
 export interface PublicMarketplaceListingsResult {
   data: PublicMarketplaceListingItem[];
   meta: {
@@ -91,7 +101,7 @@ export interface PublicMarketplaceListingsResult {
   };
 }
 
-export interface PublicMarketplaceWorkflowListingDetail extends PublicMarketplaceListingItem {
+export interface PublicMarketplaceWorkflowListingDetail extends PublicMarketplaceListingBase {
   listingType: 'workflow';
   plugin: null;
   definition: {
@@ -102,7 +112,7 @@ export interface PublicMarketplaceWorkflowListingDetail extends PublicMarketplac
   reviews: MarketplacePublicReviewItem[];
 }
 
-export interface PublicMarketplacePluginListingDetail extends PublicMarketplaceListingItem {
+export interface PublicMarketplacePluginListingDetail extends PublicMarketplaceListingBase {
   listingType: 'plugin';
   plugin: MarketplacePublicPluginDescriptor;
   reviews: MarketplacePublicReviewItem[];
@@ -598,8 +608,16 @@ export class MarketplaceService {
         authorDisplayName: sql<
           string | null
         >`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        previewGraphSource: selectMarketplacePreviewGraphSource(),
       })
       .from(schema.marketplaceListings)
+      .leftJoin(
+        schema.workflowVersions,
+        eq(
+          schema.marketplaceListings.workflowVersionId,
+          schema.workflowVersions.id,
+        ),
+      )
       .leftJoin(
         schema.plugins,
         eq(schema.marketplaceListings.pluginDbId, schema.plugins.id),
@@ -668,6 +686,7 @@ export class MarketplaceService {
         author: buildMarketplaceAuthor({
           displayName: item.authorDisplayName,
         }),
+        previewGraph: buildMarketplacePreviewGraph(item.previewGraphSource),
       })),
       meta: {
         page,

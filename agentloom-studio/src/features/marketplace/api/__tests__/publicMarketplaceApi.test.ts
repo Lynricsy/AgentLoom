@@ -62,6 +62,7 @@ function makeListing(
     pricingModel: 'free',
     pricePerExecution: null,
     plugin: null,
+    previewGraph: null,
     ...overrides,
   }
 }

@@ -212,25 +212,6 @@ function createCountChainWithLeftJoin(result: unknown) {
   return { from, leftJoin, where };
 }
 
-function createSelectChainWithDoubleLeftJoinPagination(result: unknown) {
-  const offset = vi.fn().mockResolvedValue(result);
-  const limit = vi.fn().mockReturnValue({ offset });
-  const orderBy = vi.fn().mockReturnValue({ limit });
-  const where = vi.fn().mockReturnValue({ orderBy });
-  const leftJoinSecond = vi.fn().mockReturnValue({ where });
-  const leftJoinFirst = vi.fn().mockReturnValue({ leftJoin: leftJoinSecond });
-  const from = vi.fn().mockReturnValue({ leftJoin: leftJoinFirst });
-  return {
-    from,
-    leftJoinFirst,
-    leftJoinSecond,
-    where,
-    orderBy,
-    limit,
-    offset,
-  };
-}
-
 function createSelectChainWithTripleLeftJoinPagination(result: unknown) {
   const offset = vi.fn().mockResolvedValue(result);
   const limit = vi.fn().mockReturnValue({ offset });
@@ -646,9 +627,29 @@ describe('MarketplaceService', () => {
 
   describe('findPublicListings', () => {
     it('应返回 workflow/plugin union 列表并映射作者与插件信息', async () => {
-      const workflowRow = createPublicWorkflowListingRow();
-      const pluginRow = createPublicPluginListingRow();
-      const selectData = createSelectChainWithDoubleLeftJoinPagination([
+      const workflowRow = {
+        ...createPublicWorkflowListingRow(),
+        previewGraphSource: {
+          nodes: [
+            {
+              id: 'public-node-1',
+              x: 10,
+              y: 20,
+              width: 200,
+              height: 120,
+              category: 'agent',
+              nodeType: 'agent',
+              parentId: null,
+            },
+          ],
+          edges: [],
+        },
+      };
+      const pluginRow = {
+        ...createPublicPluginListingRow(),
+        previewGraphSource: null,
+      };
+      const selectData = createSelectChainWithTripleLeftJoinPagination([
         workflowRow,
         pluginRow,
       ]);
@@ -685,6 +686,20 @@ describe('MarketplaceService', () => {
             pricePerExecution: null,
             plugin: null,
             author: { displayName: '公开工作流作者' },
+            previewGraph: {
+              nodes: [
+                {
+                  id: 'public-node-1',
+                  x: 10,
+                  y: 20,
+                  width: 200,
+                  height: 120,
+                  category: 'agent',
+                  nodeType: 'agent',
+                },
+              ],
+              edges: [],
+            },
           },
           {
             id: PLUGIN_LISTING_ID,
@@ -709,6 +724,7 @@ describe('MarketplaceService', () => {
               license: 'MIT',
             },
             author: { displayName: '公开插件作者' },
+            previewGraph: null,
           },
         ],
         meta: {
@@ -721,7 +737,7 @@ describe('MarketplaceService', () => {
     });
 
     it('应支持 pricingModel 筛选并对 count 查询套用同一条件', async () => {
-      const dataQuery = createSelectChainWithDoubleLeftJoinPagination([]);
+      const dataQuery = createSelectChainWithTripleLeftJoinPagination([]);
       const countQuery = createCountChainWithLeftJoin([{ count: 0 }]);
       db.select.mockReturnValueOnce(dataQuery).mockReturnValueOnce(countQuery);
 
@@ -1470,7 +1486,7 @@ describe('MarketplaceService', () => {
     it.each(['newest', 'popular'] as const)(
       '公开列表支持 %s 排序、类型与分类筛选',
       async (sort) => {
-        const dataQuery = createSelectChainWithDoubleLeftJoinPagination([]);
+        const dataQuery = createSelectChainWithTripleLeftJoinPagination([]);
         db.select
           .mockReturnValueOnce(dataQuery)
           .mockReturnValueOnce(createCountChainWithLeftJoin([{ count: 0 }]));
@@ -1504,7 +1520,7 @@ describe('MarketplaceService', () => {
       });
       db.select
         .mockReturnValueOnce(
-          createSelectChainWithDoubleLeftJoinPagination([pluginRow]),
+          createSelectChainWithTripleLeftJoinPagination([pluginRow]),
         )
         .mockReturnValueOnce(createCountChainWithLeftJoin([{ count: 1 }]));
 
@@ -1527,7 +1543,7 @@ describe('MarketplaceService', () => {
       const pluginRow = createPublicPluginListingRow({ pluginId: null });
       db.select
         .mockReturnValueOnce(
-          createSelectChainWithDoubleLeftJoinPagination([pluginRow]),
+          createSelectChainWithTripleLeftJoinPagination([pluginRow]),
         )
         .mockReturnValueOnce(createCountChainWithLeftJoin([{ count: 1 }]));
 

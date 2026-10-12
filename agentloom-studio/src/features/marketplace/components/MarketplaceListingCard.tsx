@@ -13,6 +13,7 @@ import {
 } from '../lib/display'
 import type { PublicMarketplaceListingItem } from '../types'
 import { StarRating } from './StarRating'
+import { WorkflowThumbnail } from './WorkflowThumbnail'
 
 interface MarketplaceListingCardProps {
   listing: PublicMarketplaceListingItem
@@ -45,7 +46,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
       className="group flex h-full flex-col overflow-hidden text-left"
       data-testid="marketplace-listing-card"
     >
-      {/* 封面区：缺图时用类型令牌色渐变 + 类型图标兜底，保持栅格节奏一致 */}
+      {/* 封面区：优先作者上传的封面；缺图时工作流画结构缩略图、插件显示包标识，再兜底类型图标 */}
       <div
         className="relative aspect-[16/9] w-full overflow-hidden border-b border-border"
         style={{
@@ -60,14 +61,30 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
             className="h-full w-full object-cover"
             onError={() => setCoverFailed(true)}
           />
+        ) : listing.previewGraph ? (
+          <WorkflowThumbnail graph={listing.previewGraph} className="p-3" />
         ) : (
-          <TypeIcon
-            aria-hidden
-            className="absolute bottom-3 right-3 h-10 w-10"
-            style={{
-              color: `color-mix(in srgb, ${typeMeta.tone} 55%, transparent)`,
-            }}
-          />
+          <>
+            {listing.plugin ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-6 text-center">
+                <span className="max-w-full truncate font-mono text-xs text-foreground/80">
+                  {listing.plugin.pluginId}
+                </span>
+                {listing.plugin.version ? (
+                  <span className="font-mono text-2xs text-muted-foreground">
+                    v{listing.plugin.version}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <TypeIcon
+              aria-hidden
+              className="absolute bottom-3 right-3 h-10 w-10"
+              style={{
+                color: `color-mix(in srgb, ${typeMeta.tone} 55%, transparent)`,
+              }}
+            />
+          </>
         )}
       </div>
 

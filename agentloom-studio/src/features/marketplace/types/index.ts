@@ -185,7 +185,23 @@ export interface MarketplacePublicPluginDescriptor {
   license: string | null;
 }
 
-export interface PublicMarketplaceListingItem {
+/** 卡片缩略图节点：画布绝对坐标下的包围盒，已按嵌套深度排序（容器在前） */
+export interface MarketplacePreviewGraphNode {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  category: string | null;
+  nodeType: string | null;
+}
+
+export interface MarketplacePreviewGraph {
+  nodes: MarketplacePreviewGraphNode[];
+  edges: Array<{ source: string; target: string }>;
+}
+
+interface PublicMarketplaceListingBase {
   id: string;
   title: string;
   summary: string;
@@ -203,6 +219,11 @@ export interface PublicMarketplaceListingItem {
   author: { displayName: string };
 }
 
+export interface PublicMarketplaceListingItem extends PublicMarketplaceListingBase {
+  /** 列表接口下发；插件或快照里没有可画节点时为 null */
+  previewGraph: MarketplacePreviewGraph | null;
+}
+
 export interface MarketplaceReview {
   id: string;
   rating: number;
@@ -212,7 +233,7 @@ export interface MarketplaceReview {
 }
 
 export interface PublicWorkflowListingDetail
-  extends PublicMarketplaceListingItem {
+  extends PublicMarketplaceListingBase {
   listingType: 'workflow';
   definition: {
     nodes: unknown[];
@@ -223,7 +244,7 @@ export interface PublicWorkflowListingDetail
 }
 
 export interface PublicPluginListingDetail
-  extends PublicMarketplaceListingItem {
+  extends PublicMarketplaceListingBase {
   listingType: 'plugin';
   plugin: MarketplacePublicPluginDescriptor;
   reviews: MarketplaceReview[];

@@ -88,6 +88,7 @@ function makeListing(
     pricingModel: 'free' as const,
     pricePerExecution: null,
     plugin: null,
+    previewGraph: null,
     ...overrides,
   }
 }
