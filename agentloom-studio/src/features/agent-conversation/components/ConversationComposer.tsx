@@ -15,9 +15,13 @@ import {
   Square,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { formatBytes } from "@/shared/lib/format";
+import { expand, scaleIn } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Textarea } from "@/shared/ui/textarea";
+import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import { useToast } from "@/shared/ui/toast";
 import {
   describeConversationAttachmentsSummary,
@@ -182,49 +186,58 @@ export function ConversationComposer({
 
   return (
     <div className="shrink-0 px-4 pt-2 pb-4">
-      <div className="mx-auto w-full max-w-3xl rounded-xl border border-border bg-surface shadow-lg">
-        {pendingAttachments.length > 0 ? (
-          <div
-            className="flex flex-wrap gap-2 border-b border-border px-3 py-3"
-            data-testid="attachment-draft-list"
-          >
-            {pendingAttachments.map((attachment, index) => (
+      <div className="mx-auto w-full max-w-3xl rounded-lg border border-border bg-surface shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
+        <AnimatePresence initial={false}>
+          {pendingAttachments.length > 0 ? (
+            <motion.div
+              key="attachment-draft-list"
+              {...expand}
+              className="overflow-hidden"
+            >
               <div
-                key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
-                className="flex min-w-0 max-w-full items-start gap-2 rounded-lg border border-border bg-muted px-3 py-2"
+                className="flex flex-wrap gap-2 border-b border-border px-3 py-3"
+                data-testid="attachment-draft-list"
               >
-                <div className="mt-0.5 rounded-md bg-surface p-2 text-muted-foreground">
-                  {attachment.kind === "image" ? (
-                    <ImageIcon className="h-4 w-4" />
-                  ) : (
-                    <FileText className="h-4 w-4" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {attachment.fileName}
-                  </p>
-                  <p className="text-2xs text-muted-foreground">
-                    {attachment.mimeType} ·{" "}
-                    {attachment.sizeBytes < 1024 * 1024
-                      ? `${(attachment.sizeBytes / 1024).toFixed(1)} KB`
-                      : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => handleRemoveAttachment(index)}
-                  disabled={isBusy}
-                  className="ml-1 h-6 w-6 shrink-0 text-muted-foreground"
-                  aria-label={`移除附件 ${attachment.fileName}`}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                <AnimatePresence initial={false}>
+                  {pendingAttachments.map((attachment, index) => (
+                    <motion.div
+                      key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
+                      layout
+                      {...scaleIn}
+                      className="flex min-w-0 max-w-full items-start gap-2 rounded-lg border border-border bg-muted px-3 py-2"
+                    >
+                      <div className="mt-0.5 shrink-0 rounded-md bg-surface p-2 text-muted-foreground">
+                        {attachment.kind === "image" ? (
+                          <ImageIcon className="size-4" />
+                        ) : (
+                          <FileText className="size-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {attachment.fileName}
+                        </p>
+                        <p className="truncate text-2xs text-muted-foreground tabular-nums">
+                          {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => handleRemoveAttachment(index)}
+                        disabled={isBusy}
+                        className="ml-1 shrink-0 text-muted-foreground"
+                        aria-label={`移除附件 ${attachment.fileName}`}
+                      >
+                        <X />
+                      </Button>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
-            ))}
-          </div>
-        ) : null}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <input
           ref={fileInputRef}
@@ -264,28 +277,32 @@ export function ConversationComposer({
         />
 
         <div className="flex items-center gap-1 px-2 pb-2">
-          <Button
-            aria-label="上传文件"
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleFileClick}
-            disabled={isBusy}
-            className="text-muted-foreground"
-            title="上传文件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Button
-            aria-label="上传图片"
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleImageClick}
-            disabled={isBusy}
-            className="text-muted-foreground"
-            title="上传图片"
-          >
-            <ImagePlus className="h-4 w-4" />
-          </Button>
+          <TooltipProvider delayDuration={300}>
+            <TooltipHint label="上传文件">
+              <Button
+                aria-label="上传文件"
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleFileClick}
+                disabled={isBusy}
+                className="text-muted-foreground"
+              >
+                <Paperclip />
+              </Button>
+            </TooltipHint>
+            <TooltipHint label="上传图片">
+              <Button
+                aria-label="上传图片"
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleImageClick}
+                disabled={isBusy}
+                className="text-muted-foreground"
+              >
+                <ImagePlus />
+              </Button>
+            </TooltipHint>
+          </TooltipProvider>
 
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-2xs text-muted-foreground sm:inline">
@@ -299,12 +316,12 @@ export function ConversationComposer({
                 onClick={onCancel}
                 className="border-error/40 text-error hover:border-error/60 hover:bg-error/10"
               >
-                <Square className="h-3.5 w-3.5" />
+                <Square />
                 停止
               </Button>
             ) : isBusy ? (
               <Button size="sm" disabled>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
                 {busyActionLabel ?? "发送中"}
               </Button>
             ) : (
@@ -315,7 +332,7 @@ export function ConversationComposer({
                   draft.trim().length === 0 && pendingAttachments.length === 0
                 }
               >
-                <Send className="h-3.5 w-3.5" />
+                <Send />
                 发送
               </Button>
             )}

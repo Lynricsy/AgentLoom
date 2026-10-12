@@ -1,7 +1,10 @@
 import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { Alert } from "@/shared/ui/alert";
+import { expand } from "@/shared/lib/motion";
 import { StatusDot, type StatusTone } from "@/shared/ui/status-badge";
 import { WorkbenchHeader } from "@/shared/components/workbench-header";
 import { Badge } from "@/shared/ui/badge";
@@ -20,6 +23,7 @@ import { SandboxSidePanelTabs } from "./SandboxSidePanelTabs";
 import { HarnessTracePanel } from "./HarnessTracePanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
+import { ErrorBanner } from "./ErrorBanner";
 import type { ToolCallData } from "@/shared/components/tool-renderers/types";
 import type { ConversationStatus } from "../types";
 import {
@@ -55,24 +59,6 @@ const CONVERSATION_STATUS_TONE: Record<ConversationStatus, StatusTone> = {
   executing: "success",
   error: "error",
 };
-
-function ConnectionError({ error }: { error: string }) {
-  return (
-    <div className="flex items-center gap-2 px-4 py-2 bg-error/10 border-b border-error/20 text-xs text-error">
-      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-      <span>连接错误: {error}</span>
-    </div>
-  );
-}
-
-function RuntimeError({ error }: { error: string }) {
-  return (
-    <div className="flex items-center gap-2 px-4 py-2 bg-error/10 border-b border-error/20 text-xs text-error">
-      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-      <span>运行失败: {error}</span>
-    </div>
-  );
-}
 
 export function AgentConversationPage({
   agentId,
@@ -305,7 +291,6 @@ export function AgentConversationPage({
                   size="icon-sm"
                   onClick={onBack}
                   className="text-muted-foreground"
-                  title="返回"
                 >
                   <ArrowLeft />
                 </Button>
@@ -332,20 +317,27 @@ export function AgentConversationPage({
           }
         />
 
-        {isSubAgentView && (
-          <AgentViewBreadcrumb
-            agentName={agentName || "Agent"}
-            viewStack={agentViewStack}
-            labelsByHandle={breadcrumbLabels}
-            onNavigate={actions.navigateToAgentView}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {isSubAgentView ? (
+            <motion.div
+              key="agent-view-breadcrumb"
+              {...expand}
+              className="shrink-0 overflow-hidden"
+            >
+              <AgentViewBreadcrumb
+                agentName={agentName || "Agent"}
+                viewStack={agentViewStack}
+                labelsByHandle={breadcrumbLabels}
+                onNavigate={actions.navigateToAgentView}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
-        {connectionError ? (
-          <ConnectionError error={connectionError} />
-        ) : executionError ? (
-          <RuntimeError error={executionError} />
-        ) : null}
+        <ErrorBanner
+          error={connectionError ?? executionError}
+          prefix={connectionError ? "连接错误" : "运行失败"}
+        />
 
         <ConversationLayout
           hasSandbox={hasSandbox}
@@ -359,13 +351,21 @@ export function AgentConversationPage({
             />
           }
           composer={
-            !isSubAgentView ? (
-              <ConversationComposer
-                onSend={actions.sendMessage}
-                isBusy={isExecuting}
-                onCancel={actions.cancelExecution}
-              />
-            ) : null
+            <AnimatePresence initial={false}>
+              {!isSubAgentView ? (
+                <motion.div
+                  key="composer"
+                  {...expand}
+                  className="shrink-0 overflow-hidden"
+                >
+                  <ConversationComposer
+                    onSend={actions.sendMessage}
+                    isBusy={isExecuting}
+                    onCancel={actions.cancelExecution}
+                  />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           }
           computerPanel={
             <SandboxSidePanelTabs
@@ -387,12 +387,13 @@ export function AgentConversationPage({
           workspacePanel={
             <>
               {workspaceSource === "snapshot_preview" ? (
-                <div
+                <Alert
+                  variant="info"
                   data-testid="workspace-snapshot-preview-hint"
-                  className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                  className="shrink-0"
                 >
                   当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
-                </div>
+                </Alert>
               ) : null}
 
               <div className="min-h-0 flex-1 overflow-hidden">

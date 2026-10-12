@@ -134,7 +134,7 @@ describe("NewConversationDraftPage", () => {
 
     expect(screen.getByText("无沙箱")).toBeInTheDocument();
     expect(
-      screen.queryByTestId("draft-conversation-context-pane"),
+      screen.queryByTestId("agent-conversation-context-pane"),
     ).not.toBeInTheDocument();
     expect(mockFetchWorkspaceFileTree).not.toHaveBeenCalled();
   });

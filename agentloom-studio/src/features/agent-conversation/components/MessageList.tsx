@@ -1,9 +1,8 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   Bot,
   ChevronDown,
-  ChevronRight,
   Brain,
   AlertTriangle,
   FileText,
@@ -19,7 +18,11 @@ import type { AgentRuntimeMode } from "@/features/agent";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import { DUR, EASE, staggerList } from "@/shared/lib/motion";
+import { Alert } from "@/shared/ui/alert";
+import { Collapse } from "@/shared/components/collapse/Collapse";
+import { DUR, EASE, fadeInUp } from "@/shared/lib/motion";
+import { formatBytes, formatTime } from "@/shared/lib/format";
+import { cn } from "@/shared/lib/utils";
 import type {
   ConversationAttachment,
   ConversationMessage,
@@ -43,22 +46,6 @@ import {
 } from "../stores/agent-conversation.store";
 import { SubAgentCompletionNotice } from "./SubAgentStreamView";
 import { PreparationCard } from "./PreparationCard";
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "0 B";
-  }
-
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function isAttachmentAutoSummary(message: ConversationMessage): boolean {
   return isConversationAttachmentAutoSummary(
@@ -114,7 +101,9 @@ const AttachmentCard = memo(function AttachmentCard({
           <span className="truncate font-medium text-foreground">
             {attachment.fileName}
           </span>
-          <span className="shrink-0">{formatBytes(attachment.sizeBytes)}</span>
+          <span className="shrink-0 tabular-nums">
+            {formatBytes(attachment.sizeBytes)}
+          </span>
         </div>
       </Card>
     );
@@ -327,37 +316,44 @@ function RestartToLatestVersionCard({
   );
 }
 
+const THINKING_PREVIEW_LENGTH = 60;
+
 function ThinkingBlock({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
+  const preview =
+    content.length > THINKING_PREVIEW_LENGTH
+      ? `${content.slice(0, THINKING_PREVIEW_LENGTH)}…`
+      : content;
   return (
-    <div className="rounded-lg border border-border bg-muted px-3 py-2">
+    <div className="rounded-lg border border-border bg-muted px-2 py-1">
       <Button
         variant="ghost"
         size="xs"
         aria-expanded={open}
-        className="h-auto w-full justify-start gap-1.5 px-0 py-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+        className="w-full justify-start px-1 text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
-        <Brain className="size-3 text-primary" />
-        <span className="font-medium">思考过程</span>
-        {!open && content.length > 0 && (
-          <span className="ml-auto max-w-[200px] truncate text-2xs text-muted-foreground">
-            {content.slice(0, 60)}…
+        <ChevronDown
+          className={cn(
+            "size-3.5 shrink-0 transition-transform duration-150",
+            !open && "-rotate-90",
+          )}
+        />
+        <Brain className="text-primary" />
+        <span className="shrink-0 font-medium">思考过程</span>
+        {!open && preview.length > 0 && (
+          <span className="ml-auto min-w-0 truncate text-2xs text-muted-foreground">
+            {preview}
           </span>
         )}
       </Button>
-      {open && (
-        <div className="mt-2 border-l-2 border-primary/25 pl-5">
-          <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
+      <Collapse open={open}>
+        <div className="my-1 ml-1 border-l-2 border-primary/25 pl-5">
+          <p className="text-xs leading-relaxed whitespace-pre-wrap break-words text-muted-foreground">
             {content}
           </p>
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }
@@ -420,7 +416,7 @@ const UserBubble = memo(function UserBubble({
         ) : null}
         <AttachmentPreview message={message} />
       </div>
-      <span className="text-2xs text-muted-foreground">
+      <span className="text-2xs tabular-nums text-muted-foreground">
         {formatTime(message.createdAt)}
       </span>
     </div>
@@ -497,10 +493,11 @@ const AssistantMessage = memo(function AssistantMessage({
         {message.isStreaming && segments.length > 0 && <StreamingCaret />}
 
         {incompleteError && (
-          <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>本轮在输出过程中中断：{incompleteError}</span>
-          </div>
+          <Alert variant="error" icon={AlertTriangle}>
+            <span className="whitespace-pre-wrap">
+              本轮在输出过程中中断：{incompleteError}
+            </span>
+          </Alert>
         )}
 
         {activeRestartSuggestion && (
@@ -512,7 +509,7 @@ const AssistantMessage = memo(function AssistantMessage({
           />
         )}
 
-        <span className="block text-2xs text-muted-foreground">
+        <span className="block text-2xs tabular-nums text-muted-foreground">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -563,14 +560,6 @@ function segmentKey(seg: MessageSegment, index: number): string {
   return `${seg.type}-${index}`;
 }
 
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function isCompletionNotice(message: ConversationMessage): boolean {
   return message.metadata?.type === "subagent_completion_notice";
 }
@@ -591,9 +580,19 @@ export function MessageList({
   onRestartConversation,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const prevMessageCount = useRef(messages.length);
+  /** 用户是否停留在底部附近（距底 <80px）—— 只有此时才跟随新内容滚动 */
+  const stickToBottomRef = useRef(true);
+  const lastMessageIdRef = useRef<string | null>(null);
+  /**
+   * 首批非空消息（历史）的 id：这些消息不做入场动画，
+   * 之后追加的消息用无 delay 的 fadeInUp。
+   */
+  const [historyIds, setHistoryIds] = useState<ReadonlySet<string> | null>(
+    () => (messages.length > 0 ? new Set(messages.map((m) => m.id)) : null),
+  );
+  if (historyIds === null && messages.length > 0) {
+    setHistoryIds(new Set(messages.map((m) => m.id)));
+  }
   useSubAgentStreams(); // 保持订阅
 
   const preparationPhase = usePreparationPhase();
@@ -607,20 +606,32 @@ export function MessageList({
     runtimeMode === "sandbox" &&
     (preparationPhase !== null || preparationStartTime !== null);
 
-  if (messages.length !== prevMessageCount.current) {
-    prevMessageCount.current = messages.length;
-    if (autoScroll) {
-      queueMicrotask(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      });
+  // 内容变化（含流式 token 增长）后同步跟随到底部；新发出的用户消息总是滚到底
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const last = messages[messages.length - 1];
+    const isNewUserMessage =
+      last !== undefined &&
+      last.id !== lastMessageIdRef.current &&
+      last.role === "user" &&
+      lastMessageIdRef.current !== null;
+    lastMessageIdRef.current = last?.id ?? null;
+    if (isNewUserMessage) {
+      stickToBottomRef.current = true;
+      el.scrollTo?.({ top: el.scrollHeight, behavior: "smooth" });
+      return;
     }
-  }
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, isExecuting, preparationPhase]);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    setAutoScroll(atBottom);
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
   return (
@@ -640,7 +651,7 @@ export function MessageList({
         </div>
       ) : (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-          {messages.map((msg, index) =>
+          {messages.map((msg) =>
             isCompletionNotice(msg) ? (
               <SubAgentCompletionNotice
                 key={msg.id}
@@ -666,7 +677,16 @@ export function MessageList({
                 }
               />
             ) : (
-              <motion.div key={msg.id} {...staggerList(index)}>
+              <motion.div
+                key={msg.id}
+                initial={
+                  historyIds === null || historyIds.has(msg.id)
+                    ? false
+                    : fadeInUp.initial
+                }
+                animate={fadeInUp.animate}
+                transition={fadeInUp.transition}
+              >
                 {msg.role === "user" ? (
                   <UserBubble message={msg} />
                 ) : (
@@ -708,7 +728,6 @@ export function MessageList({
             )}
         </div>
       )}
-      <div ref={bottomRef} />
     </div>
   );
 }

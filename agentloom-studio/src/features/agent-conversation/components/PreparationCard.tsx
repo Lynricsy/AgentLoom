@@ -5,6 +5,8 @@ import {
   Loader2,
   XCircle,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { DUR, EASE, fadeIn, scaleIn } from '@/shared/lib/motion';
 import { cn } from '@/shared/lib/utils';
 import { Card } from '@/shared/ui/card';
 import type { PreparationPhase } from '../types';
@@ -52,17 +54,30 @@ function getStepStatus(
   return 'pending';
 }
 
-function StepIcon({ status }: { status: StepStatus }) {
+function StepIconGlyph({ status }: { status: StepStatus }) {
   switch (status) {
     case 'completed':
-      return <CheckCircle2 className="size-4 shrink-0 text-success" />;
+      return <CheckCircle2 className="size-4 text-success" />;
     case 'current':
-      return <Loader2 className="size-4 shrink-0 animate-spin text-info" />;
+      return <Loader2 className="size-4 animate-spin text-info" />;
     case 'failed':
-      return <XCircle className="size-4 shrink-0 text-error" />;
+      return <XCircle className="size-4 text-error" />;
     case 'pending':
-      return <Circle className="size-4 shrink-0 text-muted-foreground/40" />;
+      return <Circle className="size-4 text-subtle-foreground" />;
   }
+}
+
+/** 状态切换时图标缩放淡入，而不是硬切 */
+function StepIcon({ status }: { status: StepStatus }) {
+  return (
+    <span className="grid size-4 shrink-0 place-items-center">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span key={status} {...scaleIn} className="flex">
+          <StepIconGlyph status={status} />
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
 }
 
 function StepItem({
@@ -102,14 +117,14 @@ function StepItem({
             'text-sm leading-none',
             status === 'completed' && 'text-muted-foreground',
             status === 'current' && 'text-foreground font-medium',
-            status === 'pending' && 'text-muted-foreground/40',
+            status === 'pending' && 'text-subtle-foreground',
             status === 'failed' && 'text-error font-medium',
           )}
         >
           {label}
         </span>
         {status === 'failed' && error && (
-          <p className="mt-1 text-xs leading-relaxed text-error/80">{error}</p>
+          <p className="mt-1 break-words text-xs leading-relaxed text-error/80">{error}</p>
         )}
       </div>
     </div>
@@ -173,53 +188,56 @@ export const PreparationCard = memo(function PreparationCard({
       (!sandboxReused || p !== 'sandbox_creating'),
   );
 
-  // Collapsed summary view
-  if (collapsed) {
-    return (
-      <Card className="flex items-center gap-2 px-3 py-2 shadow-none">
-        <CheckCircle2 className="size-3.5 shrink-0 text-success" />
-        <span className="text-xs text-muted-foreground">
-          {failedPhase
-            ? '启动失败'
-            : `环境就绪 · 用时 ${elapsedSnapshotRef.current || elapsedText}`}
-        </span>
-      </Card>
-    );
-  }
-
-  // Active stepper view (only when phase is not null)
-  if (phase === null) {
-    return null;
-  }
+  // Active stepper view only renders while phase is not null
+  const view = collapsed ? 'summary' : phase === null ? null : 'stepper';
 
   return (
-    <Card className="p-4 shadow-none">
-      {displayPhases.map((stepPhase, index) => {
-        const stepStatus = getStepStatus(
-          stepPhase,
-          phase,
-          failedPhase,
-          displayPhases,
-        );
+    <motion.div layout transition={{ duration: DUR.base, ease: EASE }}>
+      <AnimatePresence mode="wait" initial={false}>
+        {view === 'summary' ? (
+          <motion.div key="summary" {...fadeIn}>
+            <Card className="flex items-center gap-2 px-3 py-2 shadow-none">
+              <CheckCircle2 className="size-3.5 shrink-0 text-success" />
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {failedPhase
+                  ? '启动失败'
+                  : `环境就绪 · 用时 ${elapsedSnapshotRef.current || elapsedText}`}
+              </span>
+            </Card>
+          </motion.div>
+        ) : view === 'stepper' && phase !== null ? (
+          <motion.div key="stepper" {...fadeIn}>
+            <Card className="p-4 shadow-none">
+              {displayPhases.map((stepPhase, index) => {
+                const stepStatus = getStepStatus(
+                  stepPhase,
+                  phase,
+                  failedPhase,
+                  displayPhases,
+                );
 
-        return (
-          <StepItem
-            key={stepPhase}
-            label={PHASE_LABELS[stepPhase]}
-            status={stepStatus}
-            error={stepPhase === failedPhase ? error : null}
-            isLast={index === displayPhases.length - 1}
-          />
-        );
-      })}
+                return (
+                  <StepItem
+                    key={stepPhase}
+                    label={PHASE_LABELS[stepPhase]}
+                    status={stepStatus}
+                    error={stepPhase === failedPhase ? error : null}
+                    isLast={index === displayPhases.length - 1}
+                  />
+                );
+              })}
 
-      {elapsedText && (
-        <div className="mt-2 border-t border-border pt-2">
-          <span className="text-xs text-muted-foreground">
-            已用时 {elapsedText}
-          </span>
-        </div>
-      )}
-    </Card>
+              {elapsedText && (
+                <div className="mt-2 border-t border-border pt-2">
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    已用时 {elapsedText}
+                  </span>
+                </div>
+              )}
+            </Card>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
   );
 });

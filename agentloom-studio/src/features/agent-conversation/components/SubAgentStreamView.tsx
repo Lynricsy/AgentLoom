@@ -1,7 +1,6 @@
 import { memo, useState, useEffect, useRef, type ReactNode } from 'react';
 import {
   ChevronDown,
-  ChevronRight,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -13,6 +12,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
+import { Alert } from '@/shared/ui/alert';
+import { Collapse } from '@/shared/components/collapse/Collapse';
 import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge';
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer';
 import type {
@@ -25,7 +26,6 @@ import type {
 const STATUS_CONFIG: Record<
   SubAgentRunStatus,
   {
-    emoji: string;
     label: string;
     tone: StatusTone;
     textClass: string;
@@ -33,42 +33,36 @@ const STATUS_CONFIG: Record<
   }
 > = {
   pending: {
-    emoji: '⏳',
     label: '等待中',
     tone: 'info',
     textClass: 'text-info',
     icon: <Loader2 className="size-3 animate-spin" />,
   },
   running: {
-    emoji: '⏳',
     label: '运行中',
     tone: 'info',
     textClass: 'text-info',
     icon: <Loader2 className="size-3 animate-spin" />,
   },
   completed: {
-    emoji: '✅',
     label: '完成',
     tone: 'success',
     textClass: 'text-success',
     icon: <CheckCircle2 className="size-3" />,
   },
   failed: {
-    emoji: '❌',
     label: '失败',
     tone: 'error',
     textClass: 'text-error',
     icon: <XCircle className="size-3" />,
   },
   timeout: {
-    emoji: '⏱️',
     label: '超时',
     tone: 'warning',
     textClass: 'text-warning',
     icon: <Clock className="size-3" />,
   },
   cancelled: {
-    emoji: '🚫',
     label: '已取消',
     tone: 'neutral',
     textClass: 'text-muted-foreground',
@@ -133,14 +127,22 @@ function SubAgentCollapsible({
       <Button
         variant="ghost"
         size="xs"
-        className="h-auto cursor-pointer justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+        aria-expanded={open}
+        className="-ml-1 max-w-full justify-start px-1 font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? <ChevronDown /> : <ChevronRight />}
+        <ChevronDown
+          className={cn(
+            'size-3.5 shrink-0 transition-transform duration-150',
+            !open && '-rotate-90',
+          )}
+        />
         {icon}
-        <span>{title}</span>
+        <span className="min-w-0 truncate">{title}</span>
       </Button>
-      {open && <div className="mt-1 pl-5">{children}</div>}
+      <Collapse open={open}>
+        <div className="pt-1 pl-5">{children}</div>
+      </Collapse>
     </div>
   );
 }
@@ -224,7 +226,7 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
           title="思考中"
           icon={<Brain className="size-3" />}
         >
-          <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+          <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-words">
             {thinkingText}
           </p>
         </SubAgentCollapsible>
@@ -382,38 +384,34 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border bg-muted',
-        !isTerminal && 'border-l-2 border-l-primary/50',
+        'relative rounded-lg border border-border bg-muted',
+        !isTerminal &&
+          'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-primary/50',
       )}
       style={{ marginLeft: `${indentPx}px` }}
     >
       <Button
         variant="ghost"
         size="xs"
-        className="h-auto w-full cursor-pointer justify-start gap-2 rounded-none px-3 py-2 text-left font-normal"
+        aria-expanded={open}
+        className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left font-normal hover:bg-border/40"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? (
-          <ChevronDown className="shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="shrink-0 text-muted-foreground" />
-        )}
+        <ChevronDown
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition-transform duration-150',
+            !open && '-rotate-90',
+          )}
+        />
 
-        <span
-          className="flex size-5 shrink-0 items-center justify-center rounded-full"
-          style={{
-            backgroundColor:
-              'color-mix(in srgb, var(--color-node-agent) 15%, transparent)',
-            color: 'var(--color-node-agent)',
-          }}
-        >
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-node-agent)_15%,transparent)] text-[var(--color-node-agent)]">
           <Bot className="size-3" />
         </span>
 
-        <span className="truncate text-xs font-medium text-foreground">
-          {statusConfig.emoji} {alias}
+        <span className="min-w-0 truncate text-xs font-medium text-foreground">
+          {alias}
         </span>
-        <span className="truncate font-mono text-2xs text-muted-foreground">
+        <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground">
           {handle}
         </span>
 
@@ -426,12 +424,12 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
         </span>
       </Button>
 
-      {open && (
+      <Collapse open={open}>
         <div className="border-t border-border px-3 py-2">
           {error && (
-            <div className="mb-2 rounded bg-error/10 px-2.5 py-1.5 text-xs text-error">
-              {error}
-            </div>
+            <Alert variant="error" className="mb-2">
+              <span className="whitespace-pre-wrap">{error}</span>
+            </Alert>
           )}
 
           <SubAgentEventList events={allEvents} />
@@ -445,7 +443,7 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
                 </div>
               ))}
         </div>
-      )}
+      </Collapse>
     </div>
   );
 });
@@ -467,25 +465,26 @@ export const SubAgentCompletionNotice = memo(
     const config = STATUS_CONFIG[status];
 
     return (
-      <div className="flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5">
-          <span className={config.textClass}>{config.icon}</span>
-          <span className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{alias}</span>
-            <span className="mx-1.5 text-muted-foreground">·</span>
-            <span className={cn('text-2xs', config.textClass)}>
-              {config.label}
-            </span>
-            {error && (
-              <span className="ml-1.5 truncate text-2xs text-error">
-                — {error}
-              </span>
-            )}
+      <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5">
+        <span className={cn('flex shrink-0', config.textClass)}>
+          {config.icon}
+        </span>
+        <span
+          className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+          title={error}
+        >
+          <span className="font-medium text-foreground">{alias}</span>
+          <span className="mx-1.5 text-muted-foreground">·</span>
+          <span className={cn('text-2xs', config.textClass)}>
+            {config.label}
           </span>
-          <span className="ml-auto font-mono text-2xs text-muted-foreground">
-            {handle}
-          </span>
-        </div>
+          {error && (
+            <span className="ml-1.5 text-2xs text-error">— {error}</span>
+          )}
+        </span>
+        <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+          {handle}
+        </span>
       </div>
     );
   },

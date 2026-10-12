@@ -50,8 +50,7 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
               )}
               {isFirst && (
                 <Bot
-                  className="size-3 shrink-0"
-                  style={{ color: "var(--color-node-agent)" }}
+                  className="size-3 shrink-0 text-[var(--color-node-agent)]"
                 />
               )}
               {isLast ? (

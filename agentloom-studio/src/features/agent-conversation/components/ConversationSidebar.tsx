@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
-import { DUR, EASE, staggerList } from "@/shared/lib/motion";
+import { formatDate } from "@/shared/lib/format";
+import { DUR, EASE, fadeIn, staggerList } from "@/shared/lib/motion";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import {
   AlertDialog,
@@ -26,6 +27,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
+import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import { useMediaQuery } from "@/shared/hooks/use-media-query";
 
 import { useTitleUpdateCounter } from "../stores/agent-conversation.store";
@@ -66,19 +68,22 @@ function extractText(title: string | null): string {
   );
 }
 
+const RELATIVE_TIME = new Intl.RelativeTimeFormat("zh-CN", {
+  numeric: "auto",
+  style: "narrow",
+});
+
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
+  const diffMin = Math.floor((Date.now() - d.getTime()) / 60_000);
 
   if (diffMin < 1) return "刚刚";
-  if (diffMin < 60) return `${diffMin}m`;
+  if (diffMin < 60) return RELATIVE_TIME.format(-diffMin, "minute");
   const diffHrs = Math.floor(diffMin / 60);
-  if (diffHrs < 24) return `${diffHrs}h`;
+  if (diffHrs < 24) return RELATIVE_TIME.format(-diffHrs, "hour");
   const diffDays = Math.floor(diffHrs / 24);
-  if (diffDays < 7) return `${diffDays}d`;
-  return d.toLocaleDateString();
+  if (diffDays < 7) return RELATIVE_TIME.format(-diffDays, "day");
+  return formatDate(d);
 }
 
 function ConversationListSkeleton() {
@@ -86,7 +91,7 @@ function ConversationListSkeleton() {
     <div className="flex flex-col gap-1 p-2" data-testid="conversation-list-skeleton">
       {[0, 1, 2, 3, 4].map((row) => (
         <div key={row} className="flex items-center gap-2 px-2 py-1.5">
-          <Skeleton className="h-5 w-5 shrink-0 rounded-md" />
+          <Skeleton className="size-5 shrink-0 rounded-md" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-3 w-full rounded-sm" />
             <Skeleton className="h-2.5 w-10 rounded-sm" />
@@ -216,46 +221,53 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   return (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200",
+        "flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-300 ease-out-expo",
         collapsed ? "w-14" : "w-64",
       )}
     >
+      <TooltipProvider delayDuration={300}>
       {/* Header */}
       <div className="flex items-center gap-1 border-b border-border px-2 py-2">
-        {collapsed ? (
-          <Button
-            aria-label="新建对话"
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleNewConversation}
-            className="mx-auto text-muted-foreground"
-            title="新建对话"
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNewConversation}
-              className="flex-1 justify-start text-foreground"
-            >
-              <MessageSquarePlus className="h-4 w-4" />
-              新建
-            </Button>
-            <Button
-              aria-label="收起侧边栏"
-              variant="ghost"
-              size="icon-sm"
-              onClick={toggleCollapsed}
-              className="text-muted-foreground"
-              title="收起侧边栏"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          {collapsed ? (
+            <motion.div key="rail" {...fadeIn} className="flex flex-1 justify-center">
+              <TooltipHint label="新建对话" side="right">
+                <Button
+                  aria-label="新建对话"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleNewConversation}
+                  className="text-muted-foreground"
+                >
+                  <MessageSquarePlus />
+                </Button>
+              </TooltipHint>
+            </motion.div>
+          ) : (
+            <motion.div key="full" {...fadeIn} className="flex min-w-0 flex-1 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewConversation}
+                className="flex-1 justify-start text-foreground"
+              >
+                <MessageSquarePlus />
+                新建
+              </Button>
+              <TooltipHint label="收起侧边栏">
+                <Button
+                  aria-label="收起侧边栏"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={toggleCollapsed}
+                  className="text-muted-foreground"
+                >
+                  <ChevronLeft />
+                </Button>
+              </TooltipHint>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {collapsed ? null : (
@@ -318,7 +330,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               description="从「新建」开始第一次对话。"
               action={
                 <Button variant="secondary" size="sm" onClick={handleNewConversation}>
-                  <MessageSquarePlus className="h-3.5 w-3.5" />
+                  <MessageSquarePlus />
                   新建对话
                 </Button>
               }
@@ -333,19 +345,23 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               if (collapsed) {
                 return (
                   <li key={conv.id}>
-                    <Button
-                      aria-label={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => handleSelect(conv)}
-                      className={cn(
-                        "w-full text-lg",
-                        isActive && "bg-primary/12 hover:bg-primary/12",
-                      )}
-                      title={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
+                    <TooltipHint
+                      label={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
+                      side="right"
                     >
-                      {emoji}
-                    </Button>
+                      <Button
+                        aria-label={`${conv.title ?? "未命名"}${conv.source === "api" ? "（API）" : ""}`}
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleSelect(conv)}
+                        className={cn(
+                          "w-full text-lg",
+                          isActive && "bg-primary/12 hover:bg-primary/12",
+                        )}
+                      >
+                        {emoji}
+                      </Button>
+                    </TooltipHint>
                   </li>
                 );
               }
@@ -381,7 +397,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       </p>
                       <p
                         className={cn(
-                          "flex items-center gap-1.5 text-2xs",
+                          "flex items-center gap-1.5 text-2xs tabular-nums",
                           isActive ? "text-primary/70" : "text-muted-foreground",
                         )}
                       >
@@ -401,13 +417,12 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     onClick={() => setPendingDeleteId(conv.id)}
-                    className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
-                    title="删除"
+                    className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-150 hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
                     aria-label={`删除对话 ${extractText(conv.title)}`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 />
                   </Button>
                 </motion.li>
               );
@@ -419,16 +434,17 @@ export const ConversationSidebar = memo(function ConversationSidebar({
       {/* Expand button (collapsed state) */}
       {collapsed && canExpand && (
         <div className="border-t border-border p-2">
-          <Button
-            aria-label="展开侧边栏"
-            variant="ghost"
-            size="icon-sm"
-            onClick={toggleCollapsed}
-            className="mx-auto text-muted-foreground"
-            title="展开侧边栏"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <TooltipHint label="展开侧边栏" side="right">
+            <Button
+              aria-label="展开侧边栏"
+              variant="ghost"
+              size="icon-sm"
+              onClick={toggleCollapsed}
+              className="mx-auto flex text-muted-foreground"
+            >
+              <ChevronRight />
+            </Button>
+          </TooltipHint>
         </div>
       )}
 
@@ -456,6 +472,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </TooltipProvider>
     </aside>
   );
 });

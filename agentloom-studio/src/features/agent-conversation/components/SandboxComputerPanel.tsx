@@ -5,7 +5,6 @@ import {
   Cpu,
   HardDrive,
   ChevronDown,
-  ChevronRight,
   FileCode,
   FilePlus,
   FileX,
@@ -13,6 +12,8 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { formatBytes } from "@/shared/lib/format";
+import { Collapse } from "@/shared/components/collapse/Collapse";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { Spinner } from "@/shared/components/spinner/Spinner";
 import { Badge, type BadgeProps } from "@/shared/ui/badge";
@@ -21,11 +22,18 @@ import { Card } from "@/shared/ui/card";
 import { StatusDot, type StatusTone } from "@/shared/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/shared/ui/table";
+import {
   useConversationSandboxProcesses,
   useConversationSandboxStats,
 } from "../api/conversationQueries";
 import {
-  formatSandboxBytes,
   formatSandboxMegabytes,
   getSandboxDiskPercent,
   safeSandboxPercent,
@@ -61,10 +69,10 @@ const HeaderMetric = memo(function HeaderMetric({
   const Icon = icon;
 
   return (
-    <div className="flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-2xs text-muted-foreground">
-      {Icon ? <Icon className="h-3 w-3 shrink-0" /> : null}
-      <span className="uppercase tracking-wide">{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
+    <div className="flex items-center gap-1 whitespace-nowrap rounded-md border border-border bg-surface px-2 py-1 text-2xs text-muted-foreground">
+      {Icon ? <Icon className="size-3 shrink-0" /> : null}
+      <span className="tracking-wide">{label}</span>
+      <span className="font-medium text-foreground tabular-nums">{value}</span>
     </div>
   );
 });
@@ -333,7 +341,7 @@ const ActivityCard = memo(function ActivityCard({
           ) : null}
 
           {item.preview ? (
-            <div className="mt-2 text-xs leading-relaxed text-foreground/80">
+            <div className="mt-2 break-words text-xs leading-relaxed text-foreground/80">
               {item.preview}
             </div>
           ) : null}
@@ -391,14 +399,14 @@ const ProcessTableRow = memo(function ProcessTableRow({
   const commandPreview = clipText(process.command, 180);
 
   return (
-    <tr
+    <TableRow
       data-testid={`sandbox-process-row-${process.pid}`}
-      className="border-b border-border/30 align-top last:border-0"
+      className="border-border/30 hover:bg-transparent"
     >
-      <td className="px-3 py-2 font-mono text-2xs text-foreground/85">
+      <TableCell className="py-2 font-mono text-2xs text-foreground/85 tabular-nums">
         {process.pid}
-      </td>
-      <td className="px-3 py-2">
+      </TableCell>
+      <TableCell className="max-w-0 py-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
             {process.executable}
@@ -407,31 +415,27 @@ const ProcessTableRow = memo(function ProcessTableRow({
             {commandPreview}
           </div>
         </div>
-      </td>
-      <td className="px-3 py-2">
-        <div className="flex flex-col gap-1">
-          <Badge
-            variant={PROCESS_TONE_VARIANT[stateMeta.tone]}
-            size="sm"
-            className="w-fit"
-          >
+      </TableCell>
+      <TableCell className="py-2">
+        <div className="flex items-center gap-1.5 whitespace-nowrap">
+          <Badge variant={PROCESS_TONE_VARIANT[stateMeta.tone]} size="sm">
             {stateMeta.label}
           </Badge>
           <span className="font-mono text-2xs text-muted-foreground">
             {process.state}
           </span>
         </div>
-      </td>
-      <td className="px-3 py-2 font-mono text-2xs text-foreground/85">
+      </TableCell>
+      <TableCell className="py-2 text-right font-mono text-2xs text-foreground/85 tabular-nums">
         {formatProcessPercent(process.cpuPercent)}
-      </td>
-      <td className="px-3 py-2 font-mono text-2xs text-foreground/85">
+      </TableCell>
+      <TableCell className="py-2 text-right font-mono text-2xs text-foreground/85 tabular-nums">
         {formatProcessPercent(process.memoryPercent)}
-      </td>
-      <td className="px-3 py-2 font-mono text-2xs text-muted-foreground">
+      </TableCell>
+      <TableCell className="whitespace-nowrap py-2 text-right font-mono text-2xs text-muted-foreground tabular-nums">
         {process.elapsed}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 });
 
@@ -471,26 +475,27 @@ function ProcessMonitorView({
           </div>
         </div>
         <div className="flex-1 overflow-auto">
-          <table
+          <Table
             data-testid="sandbox-process-table"
-            className="min-w-full border-collapse"
+            wrapperClassName="overflow-visible"
+            className="min-w-full"
           >
-            <thead className="sticky top-0 z-10 bg-surface text-left">
-              <tr className="border-b border-border text-2xs tracking-wider text-muted-foreground uppercase">
-                <th className="px-3 py-2 font-medium">PID</th>
-                <th className="px-3 py-2 font-medium">命令</th>
-                <th className="px-3 py-2 font-medium">状态</th>
-                <th className="px-3 py-2 font-medium">CPU</th>
-                <th className="px-3 py-2 font-medium">MEM</th>
-                <th className="px-3 py-2 font-medium">运行时长</th>
-              </tr>
-            </thead>
-            <tbody>
+            <TableHeader className="[&_tr]:border-0">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="sticky top-0 z-10 border-b border-border bg-surface">PID</TableHead>
+                <TableHead className="sticky top-0 z-10 w-full border-b border-border bg-surface">命令</TableHead>
+                <TableHead className="sticky top-0 z-10 border-b border-border bg-surface">状态</TableHead>
+                <TableHead className="sticky top-0 z-10 border-b border-border bg-surface text-right">CPU</TableHead>
+                <TableHead className="sticky top-0 z-10 border-b border-border bg-surface text-right">MEM</TableHead>
+                <TableHead className="sticky top-0 z-10 border-b border-border bg-surface text-right">运行时长</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {processes.map((process) => (
                 <ProcessTableRow key={process.pid} process={process} />
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
     );
@@ -502,7 +507,7 @@ function ProcessMonitorView({
         data-testid="sandbox-process-fallback"
         className="flex-1 overflow-y-auto p-3"
       >
-        <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
+        <div className="mb-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
           {hasRealtimeSource
             ? "当前还没有拿到真实进程快照，先退回展示最近活动摘要。"
             : "当前视图尚未接入真实进程采样，下面展示最近活动摘要。"}
@@ -580,29 +585,30 @@ const FileChangeItem = memo(function FileChangeItem({
     <div className="border-b border-border last:border-0">
       <Button
         variant="ghost"
-        size="xs"
         onClick={toggleExpand}
+        aria-expanded={hasDiff || hasContent ? expanded : undefined}
         className={cn(
-          "h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-xs font-normal",
+          "h-auto w-full justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left text-xs font-normal",
           hasDiff || hasContent ? "cursor-pointer" : "cursor-default",
         )}
       >
         {hasDiff || hasContent ? (
-          expanded ? (
-            <ChevronDown className="text-muted-foreground" />
-          ) : (
-            <ChevronRight className="text-muted-foreground" />
-          )
+          <ChevronDown
+            className={cn(
+              "shrink-0 text-muted-foreground transition-transform duration-150",
+              !expanded && "-rotate-90",
+            )}
+          />
         ) : (
-          <span className="w-3 shrink-0" />
+          <span className="w-4 shrink-0" />
         )}
         {changeTypeIcon(change.changeType)}
-        <span className="truncate font-mono text-foreground">{fileName}</span>
-        {dirPath && (
-          <span className="ml-auto truncate text-2xs text-muted-foreground">
-            {dirPath}
-          </span>
-        )}
+        <span className="max-w-[60%] shrink-0 truncate font-mono text-foreground">
+          {fileName}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-right text-2xs text-muted-foreground">
+          {dirPath}
+        </span>
         <Badge
           variant={
             change.changeType === "created"
@@ -618,9 +624,9 @@ const FileChangeItem = memo(function FileChangeItem({
         </Badge>
       </Button>
 
-      {expanded && (hasDiff || hasContent) && (
+      <Collapse open={expanded && (hasDiff || hasContent)}>
         <div className="px-3 pb-2">
-          <pre className="bg-background rounded-md p-2 text-2xs font-mono leading-relaxed overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-background p-2 font-mono text-2xs leading-relaxed">
             {change.diff ? (
               <DiffHighlight diff={change.diff} />
             ) : (
@@ -628,7 +634,7 @@ const FileChangeItem = memo(function FileChangeItem({
             )}
           </pre>
         </div>
-      )}
+      </Collapse>
     </div>
   );
 });
@@ -782,7 +788,7 @@ export function SandboxComputerPanel({
     sandboxStats.diskUsage != null &&
     sandboxStats.diskTotal != null &&
     diskPercent !== null
-      ? `${formatSandboxBytes(sandboxStats.diskUsage)} / ${formatSandboxBytes(sandboxStats.diskTotal)}`
+      ? `${formatBytes(sandboxStats.diskUsage)} / ${formatBytes(sandboxStats.diskTotal)}`
       : "--";
   const showToolTab = isExecuting || Boolean(activeToolCall);
   const visibleActiveTab =
@@ -803,9 +809,9 @@ export function SandboxComputerPanel({
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <Monitor className="size-4 text-primary" />
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2">
+        <div className="flex min-w-0 flex-1 basis-40 items-center gap-2">
+          <Monitor className="size-4 shrink-0 text-primary" />
           <span className="truncate text-sm font-medium text-foreground">
             {agentName}的电脑
           </span>
@@ -815,7 +821,7 @@ export function SandboxComputerPanel({
           />
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           <HeaderMetric icon={Cpu} label="CPU" value={cpuLabel} />
           <HeaderMetric label="MEM" value={memoryLabel} />
           <HeaderMetric icon={HardDrive} label="DISK" value={diskLabel} />

@@ -1,8 +1,9 @@
-import { AlertCircle, ArrowLeft, MessagesSquare } from "lucide-react";
+import { ArrowLeft, MessagesSquare } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Alert } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Spinner } from "@/shared/components/spinner/Spinner";
@@ -14,6 +15,8 @@ import { useStartConversation } from "../api/conversationMutations";
 import type { FileTreeNode, OutgoingConversationMessage } from "../types";
 import { resolveConversationWorkspacePreviewId } from "../workspacePreview";
 import { ConversationComposer } from "./ConversationComposer";
+import { ConversationLayout } from "./ConversationLayout";
+import { ErrorBanner } from "./ErrorBanner";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 
@@ -166,7 +169,6 @@ export function NewConversationDraftPage({
                 size="icon-sm"
                 onClick={onBack}
                 className="text-muted-foreground"
-                title="返回"
               >
                 <ArrowLeft />
               </Button>
@@ -193,16 +195,12 @@ export function NewConversationDraftPage({
         }
       />
 
-      {error ? (
-        <div className="flex items-center gap-2 border-b border-error/20 bg-error/10 px-4 py-2 text-xs text-error">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      ) : null}
+      <ErrorBanner error={error} />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
+      <ConversationLayout
+        hasSandbox={hasSandbox}
+        messages={
+          <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-6">
             <EmptyState
               className="border-0"
               icon={MessagesSquare}
@@ -210,55 +208,48 @@ export function NewConversationDraftPage({
               description="描述你希望 Agent 完成的任务，也可以先带上文件或截图作为上下文。"
             />
           </div>
-
+        }
+        composer={
           <ConversationComposer
             onSend={handleSend}
             isBusy={startConversation.isPending}
             busyPlaceholder="正在创建并发送…"
             busyActionLabel="发送中"
           />
-        </div>
+        }
+        computerPanel={
+          <SandboxComputerPanel
+            conversationId={null}
+            agentName={agentName}
+            terminalEntries={[]}
+            fileChanges={[]}
+            sandboxStatus="idle"
+            isExecuting={false}
+          />
+        }
+        workspacePanel={
+          <>
+            {workspacePreviewId ? (
+              <Alert
+                variant="info"
+                data-testid="workspace-snapshot-preview-hint"
+                className="shrink-0"
+              >
+                当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
+              </Alert>
+            ) : null}
 
-        {hasSandbox ? (
-          <div
-            data-testid="draft-conversation-context-pane"
-            className="hidden min-w-[320px] flex-1 flex-col gap-2 border-l border-border bg-surface p-2 lg:flex"
-          >
-            <div className="min-h-[220px] flex-[3] overflow-hidden">
-              <SandboxComputerPanel
-                conversationId={null}
-                agentName={agentName}
-                terminalEntries={[]}
-                fileChanges={[]}
-                sandboxStatus="idle"
-                isExecuting={false}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <WorkspaceFileTree
+                tree={previewTree}
+                selectedPath={selectedPreviewPath}
+                onSelectFile={setSelectedPreviewPath}
+                isLoading={isPreviewLoading}
               />
             </div>
-
-            <div className="min-h-0 flex-[2] overflow-hidden">
-              <div className="flex h-full flex-col gap-2 overflow-hidden">
-                {workspacePreviewId ? (
-                  <div
-                    data-testid="workspace-snapshot-preview-hint"
-                    className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
-                  >
-                    当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
-                  </div>
-                ) : null}
-
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <WorkspaceFileTree
-                    tree={previewTree}
-                    selectedPath={selectedPreviewPath}
-                    onSelectFile={setSelectedPreviewPath}
-                    isLoading={isPreviewLoading}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
+          </>
+        }
+      />
     </div>
   );
 }

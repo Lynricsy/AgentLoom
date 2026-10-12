@@ -4,10 +4,10 @@ import {
   Folder,
   File,
   ChevronDown,
-  ChevronRight,
   FolderTree,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { Collapse } from '@/shared/components/collapse/Collapse';
 import { EmptyState } from '@/shared/components/empty-state/EmptyState';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Button } from '@/shared/ui/button';
@@ -42,11 +42,11 @@ function FileTreeSkeleton() {
       {rows.map((row, i) => (
         <div
           key={i}
-          className="flex items-center gap-1.5 px-2 py-1"
+          className="flex h-6 items-center gap-1.5 px-2"
           style={{ paddingLeft: `${row.depth * 16 + 8}px` }}
         >
-          <Skeleton className="h-3 w-3 shrink-0 rounded-sm" />
-          <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+          <Skeleton className="size-3.5 shrink-0 rounded-sm" />
+          <Skeleton className="size-3.5 shrink-0 rounded-sm" />
           <Skeleton className={cn('h-3 rounded-sm', row.width)} />
         </div>
       ))}
@@ -97,31 +97,32 @@ const TreeNodeItem = memo(function TreeNodeItem({
         {isDir ? (
           <>
             {hasChildren ? (
-              expanded ? (
-                <ChevronDown className="text-muted-foreground" />
-              ) : (
-                <ChevronRight className="text-muted-foreground" />
-              )
+              <ChevronDown
+                className={cn(
+                  'shrink-0 text-muted-foreground transition-transform duration-150',
+                  !expanded && '-rotate-90',
+                )}
+              />
             ) : (
-              <span className="w-3 shrink-0" />
+              <span className="w-3.5 shrink-0" />
             )}
             {expanded ? (
-              <FolderOpen style={{ color: 'var(--color-node-tool)' }} />
+              <FolderOpen className="shrink-0 text-[var(--color-node-tool)]" />
             ) : (
-              <Folder style={{ color: 'var(--color-node-tool)' }} />
+              <Folder className="shrink-0 text-[var(--color-node-tool)]" />
             )}
           </>
         ) : (
           <>
-            <span className="w-3 shrink-0" />
-            <File className="text-muted-foreground" />
+            <span className="w-3.5 shrink-0" />
+            <File className="shrink-0 text-muted-foreground" />
           </>
         )}
         <span className="truncate font-mono">{node.name}</span>
       </Button>
 
-      {isDir && expanded && node.children && (
-        <div>
+      {isDir && node.children ? (
+        <Collapse open={expanded}>
           {node.children.map((child) => (
             <TreeNodeItem
               key={child.path}
@@ -131,8 +132,8 @@ const TreeNodeItem = memo(function TreeNodeItem({
               onSelectFile={onSelectFile}
             />
           ))}
-        </div>
-      )}
+        </Collapse>
+      ) : null}
     </div>
   );
 });
@@ -191,8 +192,7 @@ function WorkspaceHeader() {
   return (
     <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
       <FolderTree
-        className="h-4 w-4"
-        style={{ color: 'var(--color-node-tool)' }}
+        className="size-4 shrink-0 text-[var(--color-node-tool)]"
       />
       <span className="text-sm font-medium text-foreground">工作区</span>
     </div>

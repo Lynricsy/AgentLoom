@@ -1,7 +1,17 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { motion } from "motion/react";
 import { Activity, Cpu } from "lucide-react";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { Badge } from "@/shared/ui/badge";
+import { Card } from "@/shared/ui/card";
+import { fadeIn } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import type { HarnessTraceEntry } from "../types";
 
@@ -103,7 +113,14 @@ function formatTraceTime(timestamp: string): string {
   return Number.isNaN(date.getTime()) ? "" : TIME_FORMATTER.format(date);
 }
 
-const TraceRow = memo(function TraceRow({ entry }: { entry: HarnessTraceEntry }) {
+const TraceRow = memo(function TraceRow({
+  entry,
+  animateIn,
+}: {
+  entry: HarnessTraceEntry;
+  /** 挂载后新到的事件淡入；首批（历史）事件直接显示 */
+  animateIn: boolean;
+}) {
   const summary = summarizeTraceData(entry);
   const isFailure =
     (entry.kind === "tool/result" && entry.data?.isError === true) ||
@@ -112,11 +129,14 @@ const TraceRow = memo(function TraceRow({ entry }: { entry: HarnessTraceEntry })
       entry.data.reason !== "completed");
 
   return (
-    <li
+    <motion.li
+      initial={animateIn ? fadeIn.initial : false}
+      animate={fadeIn.animate}
+      transition={fadeIn.transition}
       className="flex items-baseline gap-2 px-3 py-1 text-xs"
       data-testid="harness-trace-row"
     >
-      <span className="w-14 shrink-0 font-mono text-2xs text-muted-foreground">
+      <span className="w-14 shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
         {formatTraceTime(entry.timestamp)}
       </span>
       <code className="shrink-0 font-mono text-foreground">{entry.kind}</code>
@@ -136,27 +156,45 @@ const TraceRow = memo(function TraceRow({ entry }: { entry: HarnessTraceEntry })
           {summary}
         </span>
       ) : null}
-    </li>
+    </motion.li>
   );
 });
 
 /** 对话页右栏「Harness」tab：dsh 会话事件按 turn 分组的实时时间线 */
 export function HarnessTracePanel({ entries }: HarnessTracePanelProps) {
   const groups = useMemo(() => groupByTurn(entries), [entries]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** 用户是否停留在底部附近（距底 <80px）—— 只有此时才跟随新事件滚动 */
+  const stickToBottomRef = useRef(true);
+  const [historyIds, setHistoryIds] = useState<ReadonlySet<string> | null>(
+    () => (entries.length > 0 ? new Set(entries.map((e) => e.id)) : null),
+  );
+  if (historyIds === null && entries.length > 0) {
+    setHistoryIds(new Set(entries.map((e) => e.id)));
+  }
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
-  }, [entries.length]);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [entries]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
   return (
-    <div
-      className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface"
+    <Card
+      className="flex h-full flex-col overflow-hidden"
       data-testid="harness-trace-panel"
     >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Cpu className="h-4 w-4 text-primary" />
+          <Cpu className="size-4 shrink-0 text-primary" />
           <span className="truncate text-sm font-medium text-foreground">
             Harness 轨迹
           </span>
@@ -164,7 +202,7 @@ export function HarnessTracePanel({ entries }: HarnessTracePanelProps) {
             dsh
           </Badge>
         </div>
-        <span className="shrink-0 text-2xs text-muted-foreground">
+        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
           {entries.length} 条事件
         </span>
       </div>
@@ -179,22 +217,29 @@ export function HarnessTracePanel({ entries }: HarnessTracePanelProps) {
           />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-y-auto py-1"
+          onScroll={handleScroll}
+        >
           {groups.map((group) => (
             <section key={group.key} className="pb-1">
-              <h4 className="sticky top-0 bg-surface px-3 py-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+              <h4 className="sticky top-0 z-10 border-b border-border/60 bg-surface px-3 py-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
                 {group.turn !== undefined ? `Turn ${group.turn}` : "会话"}
               </h4>
               <ol>
                 {group.entries.map((entry) => (
-                  <TraceRow key={entry.id} entry={entry} />
+                  <TraceRow
+                    key={entry.id}
+                    entry={entry}
+                    animateIn={historyIds !== null && !historyIds.has(entry.id)}
+                  />
                 ))}
               </ol>
             </section>
           ))}
-          <div ref={bottomRef} />
         </div>
       )}
-    </div>
+    </Card>
   );
 }
