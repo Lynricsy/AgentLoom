@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react'
-import { AlertTriangle, Import, Loader2 } from 'lucide-react'
+import { Import, Loader2 } from 'lucide-react'
 
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -158,16 +159,11 @@ export const KeyImportDialog = memo(function KeyImportDialog({
                 />
               </div>
 
-              <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <p className="text-xs leading-relaxed text-warning">
-                    私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM
-                    明文字符串。
-                    但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
-                  </p>
-                </div>
-              </div>
+              <Alert variant="warning">
+                私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM
+                明文字符串。
+                但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>
@@ -197,12 +193,11 @@ export const KeyImportDialog = memo(function KeyImportDialog({
         {state.step === 'done' && (
           <>
             <DialogBody>
-              <div className="rounded-lg border border-success/20 bg-success/5 p-3">
-                <p className="text-sm font-medium text-success">私钥导入成功</p>
-                <p className="mt-1 text-xs text-muted-foreground">
+              <Alert variant="success" title="私钥导入成功">
+                <span className="break-all font-mono text-xs">
                   指纹：{state.fingerprint}
-                </p>
-              </div>
+                </span>
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>
@@ -215,12 +210,9 @@ export const KeyImportDialog = memo(function KeyImportDialog({
         {state.step === 'error' && (
           <>
             <DialogBody>
-              <div className="rounded-lg border border-error/20 bg-error/5 p-3">
-                <p className="text-sm font-medium text-error">导入失败</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {state.message}
-                </p>
-              </div>
+              <Alert variant="error" title="导入失败">
+                {state.message}
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>

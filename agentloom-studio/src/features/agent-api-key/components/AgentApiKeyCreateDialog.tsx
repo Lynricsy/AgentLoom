@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Check, Copy, ShieldAlert } from 'lucide-react'
 
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -252,21 +253,14 @@ export function AgentApiKeyCreateDialog({
             </DialogHeader>
 
             <DialogBody className="space-y-4">
-              <div
-                className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5"
-                role="alert"
-              >
-                <ShieldAlert
-                  className="mt-0.5 h-4 w-4 shrink-0 text-warning"
-                  aria-hidden
-                />
-                <p className="text-xs leading-relaxed text-warning">
-                  请立即复制并存入调用方的密钥管理器。不要把 Key 写进前端代码或公开仓库，遗失只能吊销后重新创建。
-                </p>
-              </div>
+              <Alert variant="warning" icon={ShieldAlert} role="alert">
+                请立即复制并存入调用方的密钥管理器。不要把 Key 写进前端代码或公开仓库，遗失只能吊销后重新创建。
+              </Alert>
 
               <div className="space-y-2">
-                <span className="text-xs font-medium text-muted-foreground">{created.name}</span>
+                <span className="block break-words text-xs font-medium text-muted-foreground">
+                  {created.name}
+                </span>
                 <div className="flex items-start gap-2">
                   <code
                     ref={keyRef}

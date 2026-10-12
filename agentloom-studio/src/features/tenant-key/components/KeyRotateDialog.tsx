@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react'
-import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -101,19 +102,14 @@ export const KeyRotateDialog = memo(function KeyRotateDialog({
                 </p>
               </div>
 
-              <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <div className="space-y-1 text-xs leading-relaxed text-warning">
-                    <p>轮换后，新数据将使用新密钥加密。请注意：</p>
-                    <ul className="list-inside list-disc space-y-0.5 pl-1">
-                      <li>已用旧密钥加密的数据仍需旧私钥解密</li>
-                      <li>请确保已备份旧私钥</li>
-                      <li>新私钥生成后请立即下载备份</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+              <Alert variant="warning">
+                <p>轮换后，新数据将使用新密钥加密。请注意：</p>
+                <ul className="mt-1 list-inside list-disc space-y-0.5 pl-1">
+                  <li>已用旧密钥加密的数据仍需旧私钥解密</li>
+                  <li>请确保已备份旧私钥</li>
+                  <li>新私钥生成后请立即下载备份</li>
+                </ul>
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>
@@ -140,12 +136,11 @@ export const KeyRotateDialog = memo(function KeyRotateDialog({
         {state.step === 'done' && (
           <>
             <DialogBody>
-              <div className="rounded-lg border border-success/20 bg-success/5 p-3">
-                <p className="text-sm font-medium text-success">密钥轮换成功</p>
-                <p className="mt-1 text-xs text-muted-foreground">
+              <Alert variant="success" title="密钥轮换成功">
+                <span className="break-all font-mono text-xs">
                   新指纹：{state.newFingerprint}
-                </p>
-              </div>
+                </span>
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>
@@ -158,12 +153,9 @@ export const KeyRotateDialog = memo(function KeyRotateDialog({
         {state.step === 'error' && (
           <>
             <DialogBody>
-              <div className="rounded-lg border border-error/20 bg-error/5 p-3">
-                <p className="text-sm font-medium text-error">轮换失败</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {state.message}
-                </p>
-              </div>
+              <Alert variant="error" title="轮换失败">
+                {state.message}
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>

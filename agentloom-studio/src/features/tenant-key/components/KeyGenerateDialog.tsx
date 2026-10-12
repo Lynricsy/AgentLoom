@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react'
-import { AlertTriangle, Download, Key, Loader2 } from 'lucide-react'
+import { Download, Key, Loader2 } from 'lucide-react'
 
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -105,15 +106,10 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
         {state.step === 'idle' && (
           <>
             <DialogBody>
-              <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <p className="text-xs leading-relaxed text-warning">
-                    私钥会保存到当前浏览器的本地密钥库中，无法由服务器恢复。生成后请立即下载备份。
-                    更换浏览器或清除数据后将无法解密已加密内容。
-                  </p>
-                </div>
-              </div>
+              <Alert variant="warning">
+                私钥会保存到当前浏览器的本地密钥库中，无法由服务器恢复。生成后请立即下载备份。
+                更换浏览器或清除数据后将无法解密已加密内容。
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>
@@ -140,23 +136,15 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
         {state.step === 'done' && (
           <>
             <DialogBody className="space-y-4">
-              <div className="rounded-lg border border-success/20 bg-success/5 p-3">
-                <p className="text-sm font-medium text-success">
-                  密钥对生成成功
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
+              <Alert variant="success" title="密钥对生成成功">
+                <span className="break-all font-mono text-xs">
                   指纹：{state.keyPair.fingerprint}
-                </p>
-              </div>
+                </span>
+              </Alert>
 
-              <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <p className="text-xs leading-relaxed text-warning">
-                    请立即下载私钥备份。如果您丢失了私钥，将无法解密任何已加密的数据。
-                  </p>
-                </div>
-              </div>
+              <Alert variant="warning">
+                请立即下载私钥备份。如果您丢失了私钥，将无法解密任何已加密的数据。
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={handleDownloadPrivateKey}>
@@ -173,12 +161,9 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
         {state.step === 'error' && (
           <>
             <DialogBody>
-              <div className="rounded-lg border border-error/20 bg-error/5 p-3">
-                <p className="text-sm font-medium text-error">生成失败</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {state.message}
-                </p>
-              </div>
+              <Alert variant="error" title="生成失败">
+                {state.message}
+              </Alert>
             </DialogBody>
             <DialogFooter>
               <DialogClose asChild>

@@ -10,6 +10,7 @@ import {
 
 import { PageContainer } from '@/shared/components'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import {
@@ -271,14 +272,9 @@ export function TenantKeyManagement() {
           </DialogHeader>
 
           <DialogBody className="space-y-3">
-            <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                <p className="text-xs text-warning">
-                  请确保您已备份私钥。撤销后，如果您丢失私钥，将无法解密已加密的证据数据。
-                </p>
-              </div>
-            </div>
+            <Alert variant="warning">
+              请确保您已备份私钥。撤销后，如果您丢失私钥，将无法解密已加密的证据数据。
+            </Alert>
 
             {revokeMutation.error && (
               <p className="text-xs text-error">

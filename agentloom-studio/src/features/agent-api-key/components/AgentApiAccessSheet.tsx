@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { AlertTriangle, ShieldAlert } from 'lucide-react'
+import { ShieldAlert } from 'lucide-react'
 
 import type { AgentStatus } from '@/features/agent'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Alert } from '@/shared/ui/alert'
 import {
   Sheet,
   SheetBody,
@@ -67,19 +68,13 @@ export function AgentApiAccessSheet({
           ) : (
             <>
               {unavailableNotice ? (
-                <div
-                  className="flex gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5"
+                <Alert
+                  variant="warning"
                   role="status"
                   data-testid="agent-api-unpublished-notice"
                 >
-                  <AlertTriangle
-                    className="mt-0.5 h-4 w-4 shrink-0 text-warning"
-                    aria-hidden
-                  />
-                  <p className="text-xs leading-relaxed text-warning">
-                    {unavailableNotice}
-                  </p>
-                </div>
+                  {unavailableNotice}
+                </Alert>
               ) : null}
 
               <Tabs
