@@ -1,9 +1,13 @@
 import { memo, useCallback, useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Copy, Eye, Link2, Loader2, Plus, Share2, Trash2 } from 'lucide-react'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { cn } from '@/shared/lib/utils'
+import { formatDateTime } from '@/shared/lib/format'
+import { fadeIn, fadeInUp } from '@/shared/lib/motion'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import {
   Dialog,
   DialogBody,
@@ -61,22 +65,6 @@ const shareExpiryPresetLabels: Record<ShareExpiryPreset, string> = {
   '30d': '30天',
 }
 
-/** 选项按钮：outline 底座；选中态用品牌色描边，未选中态与表单控件同层次 */
-const OPTION_SELECTED_CLASS =
-  'border-primary/50 bg-primary/10 text-primary hover:border-primary/50 hover:bg-primary/10'
-const OPTION_IDLE_CLASS = 'text-muted-foreground'
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function getShareStatus(share: ShareRecord): ShareStatus {
   if (share.isRevoked) return 'revoked'
   if (share.expiresAt && new Date(share.expiresAt) < new Date()) return 'expired'
@@ -95,11 +83,6 @@ function resolveShareExpiryPreset(preset: ShareExpiryPreset): string | undefined
   }
 
   return new Date(Date.now() + durationDays[preset] * 24 * 60 * 60 * 1000).toISOString()
-}
-
-function truncateUrl(url: string, maxLen = 45): string {
-  if (url.length <= maxLen) return url
-  return url.slice(0, maxLen) + '…'
 }
 
 const ShareItem = memo(function ShareItem({
@@ -158,76 +141,79 @@ const ShareItem = memo(function ShareItem({
             </Badge>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-            <span className="truncate text-xs text-muted-foreground" title={share.shareUrl}>
-              {truncateUrl(share.shareUrl)}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Link2 className="size-3 shrink-0 text-muted-foreground" />
+            <span
+              className="min-w-0 truncate text-xs text-muted-foreground"
+              title={share.shareUrl}
+            >
+              {share.shareUrl}
             </span>
             <Button
               variant="ghost"
-              size="icon-sm"
-              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-foreground"
               onClick={handleCopyUrl}
               aria-label="复制链接"
               data-testid="btn-copy-share-url"
             >
-              <Copy className="h-3 w-3" />
+              <Copy />
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <Eye className="h-3 w-3" />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs tabular-nums text-muted-foreground">
+            <span className="inline-flex items-center gap-1" title="浏览次数">
+              <Eye className="size-3" />
               {share.viewCount}
             </span>
-            <span className="inline-flex items-center gap-1">
-              <Copy className="h-3 w-3" />
+            <span className="inline-flex items-center gap-1" title="导入次数">
+              <Copy className="size-3" />
               {share.copyCount}
             </span>
             {share.expiresAt && status !== 'revoked' && (
-              <span>过期: {formatDate(share.expiresAt)}</span>
+              <span>过期：{formatDateTime(share.expiresAt)}</span>
             )}
-            <span>创建: {formatDate(share.createdAt)}</span>
+            <span>创建：{formatDateTime(share.createdAt)}</span>
           </div>
         </div>
 
         <div className="shrink-0">
-          {share.isRevoked ? null : confirmRevoke ? (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleRevoke}
-                disabled={isRevoking}
-                data-testid="btn-confirm-revoke"
-              >
-                {isRevoking ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  '确认'
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCancelRevoke}
-                data-testid="btn-cancel-revoke"
-              >
-                取消
-              </Button>
-            </div>
-          ) : (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-error"
-              onClick={handleRevoke}
-              aria-label="撤销分享"
-              data-testid="btn-revoke-share"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <AnimatePresence mode="popLayout" initial={false}>
+            {share.isRevoked ? null : confirmRevoke ? (
+              <motion.div key="confirm" {...fadeIn} className="flex items-center gap-1">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRevoke}
+                  disabled={isRevoking}
+                  data-testid="btn-confirm-revoke"
+                >
+                  {isRevoking ? <Loader2 className="animate-spin" /> : '确认'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancelRevoke}
+                  data-testid="btn-cancel-revoke"
+                >
+                  取消
+                </Button>
+              </motion.div>
+            ) : (
+              <motion.div key="revoke" {...fadeIn}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-error"
+                  onClick={handleRevoke}
+                  aria-label="撤销分享"
+                  data-testid="btn-revoke-share"
+                >
+                  <Trash2 />
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
@@ -311,14 +297,14 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
         <DialogHeader className="flex-row items-center gap-2.5">
           <span
             aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+            className="grid size-9 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-primary) 12%, transparent)',
               color: 'var(--color-primary)',
             }}
           >
-            <Share2 className="h-4 w-4" />
+            <Share2 className="size-4" />
           </span>
           <div className="min-w-0">
             <DialogTitle>分享管理</DialogTitle>
@@ -331,8 +317,9 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
             <h3 className="text-sm font-medium text-foreground">现有分享链接</h3>
 
             {isLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <div className="space-y-2" aria-busy>
+                <Skeleton className="h-[5.5rem] w-full rounded-lg" />
+                <Skeleton className="h-[5.5rem] w-full rounded-lg" />
               </div>
             ) : shares.length === 0 ? (
               <EmptyState
@@ -343,14 +330,17 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
               />
             ) : (
               <div className="space-y-2" data-testid="share-list">
-                {shares.map((share) => (
-                  <ShareItem
-                    key={share.id}
-                    share={share}
-                    onRevoke={handleRevoke}
-                    isRevoking={revokeShareMutation.isPending}
-                  />
-                ))}
+                <AnimatePresence initial={false}>
+                  {shares.map((share) => (
+                    <motion.div key={share.id} layout {...fadeInUp}>
+                      <ShareItem
+                        share={share}
+                        onRevoke={handleRevoke}
+                        isRevoking={revokeShareMutation.isPending}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             )}
           </section>
@@ -359,54 +349,49 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
             <h3 className="text-sm font-medium text-foreground">创建新分享</h3>
 
             <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">分享类型</span>
-              <div className="flex gap-2" role="radiogroup" aria-label="分享类型">
-                {(['read_only', 'copyable'] as const).map((type) => (
-                  <Button
-                    key={type}
-                    variant="outline"
-                    size="sm"
-                    role="radio"
-                    aria-checked={shareType === type}
-                    className={cn(
-                      'flex-1',
-                      shareType === type ? OPTION_SELECTED_CLASS : OPTION_IDLE_CLASS,
-                    )}
-                    onClick={() => setShareType(type)}
-                    data-testid={`share-type-${type}`}
-                  >
-                    {shareTypeLabels[type]}
-                  </Button>
-                ))}
-              </div>
+              <span id="share-type-label" className="text-xs font-medium text-muted-foreground">
+                分享类型
+              </span>
+              <Tabs
+                defaultValue="read_only"
+                value={shareType}
+                onValueChange={(value) => setShareType(value as ShareTypeOption)}
+              >
+                <TabsList className="w-full" aria-labelledby="share-type-label">
+                  {(['read_only', 'copyable'] as const).map((type) => (
+                    <TabsTrigger
+                      key={type}
+                      value={type}
+                      data-testid={`share-type-${type}`}
+                    >
+                      {shareTypeLabels[type]}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">有效期</span>
-              <div
-                className="grid grid-cols-2 gap-2"
-                role="radiogroup"
-                aria-label="分享有效期"
+              <span id="share-expiry-label" className="text-xs font-medium text-muted-foreground">
+                有效期
+              </span>
+              <Tabs
+                defaultValue="never"
+                value={expiryPreset}
+                onValueChange={(value) => setExpiryPreset(value as ShareExpiryPreset)}
               >
-                {(['never', '1d', '7d', '30d'] as const).map((preset) => (
-                  <Button
-                    key={preset}
-                    variant="outline"
-                    size="sm"
-                    role="radio"
-                    aria-checked={expiryPreset === preset}
-                    className={
-                      expiryPreset === preset
-                        ? OPTION_SELECTED_CLASS
-                        : OPTION_IDLE_CLASS
-                    }
-                    onClick={() => setExpiryPreset(preset)}
-                    data-testid={`share-expiry-${preset}`}
-                  >
-                    {shareExpiryPresetLabels[preset]}
-                  </Button>
-                ))}
-              </div>
+                <TabsList className="w-full" aria-labelledby="share-expiry-label">
+                  {(['never', '1d', '7d', '30d'] as const).map((preset) => (
+                    <TabsTrigger
+                      key={preset}
+                      value={preset}
+                      data-testid={`share-expiry-${preset}`}
+                    >
+                      {shareExpiryPresetLabels[preset]}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             </div>
           </section>
         </DialogBody>
@@ -420,12 +405,12 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
           >
             {isCreating ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
                 创建中…
               </>
             ) : (
               <>
-                <Plus className="h-4 w-4" />
+                <Plus />
                 创建{resourceLabel}分享链接
               </>
             )}

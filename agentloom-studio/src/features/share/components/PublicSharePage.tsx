@@ -16,9 +16,10 @@ import { useCreateWorkflow } from '@/features/workflow'
 import { BrandMark } from '@/shared/components/brand/BrandMark'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { formatDateTime } from '@/shared/lib/format'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
 import { useImportAgentShare } from '../api/shareMutations'
 import { usePublicShare } from '../api/shareQueries'
@@ -44,11 +45,6 @@ interface ShareMetaItem {
   icon?: LucideIcon
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) return '无'
-  return new Date(value).toLocaleString('zh-CN')
-}
-
 /** 头部元信息条目；Agent 额外补运行模式与沙箱生命周期 */
 function buildShareMetaItems(share: PublicShareData): ShareMetaItem[] {
   const items: ShareMetaItem[] = [
@@ -69,12 +65,12 @@ function buildShareMetaItems(share: PublicShareData): ShareMetaItem[] {
   )
 
   if (share.resourceType === 'agent') {
-    items.push({ key: 'runtime', label: `运行模式: ${share.runtimeMode}` })
+    items.push({ key: 'runtime', label: `运行模式：${share.runtimeMode}` })
 
     if (share.sandboxLifecycle) {
       items.push({
         key: 'sandbox',
-        label: `沙箱生命周期: ${share.sandboxLifecycle}`,
+        label: `沙箱生命周期：${share.sandboxLifecycle}`,
       })
     }
   }
@@ -82,11 +78,14 @@ function buildShareMetaItems(share: PublicShareData): ShareMetaItem[] {
   return items
 }
 
-/** 公开分享页外壳：无侧栏、无应用导航，只保留品牌头部 */
+/**
+ * 公开分享页外壳：无侧栏、无应用导航，只保留品牌头部。
+ * `/s/*` 是公开路由，__root 直接渲染 Outlet，不需要 fixed 覆盖层。
+ */
 function PublicShareShell({ children }: { children: ReactNode }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-background"
+      className="flex h-dvh flex-col bg-background"
       data-testid="public-share-page"
     >
       <div
@@ -197,12 +196,21 @@ export function PublicSharePage() {
   if (isLoading) {
     return (
       <PublicShareShell>
-        <CenteredSlot>
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">加载分享内容…</p>
+        <div className="shrink-0 border-b border-border bg-surface" aria-busy>
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-6 sm:px-6">
+            <span className="sr-only">加载分享内容…</span>
+            <div className="flex gap-1.5">
+              <Skeleton className="h-5 w-14 rounded-full" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+            <Skeleton className="h-7 w-64" />
+            <Skeleton className="h-4 w-full max-w-md" />
+            <Skeleton className="h-4 w-80 max-w-full" />
           </div>
-        </CenteredSlot>
+        </div>
+        <div className="min-h-0 flex-1 px-4 py-4 sm:px-6">
+          <Skeleton className="mx-auto h-full w-full max-w-5xl rounded-lg" />
+        </div>
       </PublicShareShell>
     )
   }
@@ -216,36 +224,27 @@ export function PublicSharePage() {
     return (
       <PublicShareShell>
         <CenteredSlot>
-          <Card className="p-8">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <span
-                aria-hidden
-                className="grid h-14 w-14 place-items-center rounded-full"
-                style={{
-                  backgroundColor:
-                    'color-mix(in srgb, var(--color-warning) 12%, transparent)',
-                  color: 'var(--color-warning)',
-                }}
-              >
-                <AlertTriangle className="h-7 w-7" />
-              </span>
-              <h2 className="text-lg font-semibold text-foreground">
-                {is404
-                  ? '分享链接不存在'
-                  : isExpired
-                    ? '分享链接已过期'
-                    : '加载失败'}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {is404
-                  ? '该分享链接无效或已被撤销。'
-                  : isExpired
-                    ? '该分享链接已过期或已被撤销，无法继续访问。'
-                    : '加载分享内容时发生错误，请稍后重试。'}
-              </p>
+          <EmptyState
+            icon={AlertTriangle}
+            tone="var(--color-warning)"
+            title={
+              is404
+                ? '分享链接不存在'
+                : isExpired
+                  ? '分享链接已过期'
+                  : '加载失败'
+            }
+            description={
+              is404
+                ? '该分享链接无效或已被撤销。'
+                : isExpired
+                  ? '该分享链接已过期或已被撤销，无法继续访问。'
+                  : '加载分享内容时发生错误，请稍后重试。'
+            }
+            action={
               <Button onClick={() => void navigate({ to: '/' })}>返回首页</Button>
-            </div>
-          </Card>
+            }
+          />
         </CenteredSlot>
       </PublicShareShell>
     )
@@ -350,9 +349,9 @@ export function PublicSharePage() {
               <Badge variant="outline">{resourceLabel}</Badge>
               <Badge variant={isCopyable ? 'success' : 'info'}>
                 {isCopyable ? (
-                  <Copy className="h-3 w-3" />
+                  <Copy className="size-3" />
                 ) : (
-                  <Eye className="h-3 w-3" />
+                  <Eye className="size-3" />
                 )}
                 {isCopyable ? '可导入' : '仅查看'}
               </Badge>
@@ -362,8 +361,8 @@ export function PublicSharePage() {
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
               {metaItems.map((item) => (
-                <span key={item.key} className="inline-flex items-center gap-1">
-                  {item.icon ? <item.icon className="h-3.5 w-3.5" /> : null}
+                <span key={item.key} className="inline-flex min-w-0 items-center gap-1">
+                  {item.icon ? <item.icon className="size-3.5 shrink-0" /> : null}
                   {item.label}
                 </span>
               ))}
@@ -378,9 +377,9 @@ export function PublicSharePage() {
               data-testid="btn-copy-to-workspace"
             >
               {importPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <FileUp className="h-4 w-4" />
+                <FileUp />
               )}
               {data.resourceType === 'agent'
                 ? '导入到我的 Agent'
@@ -399,7 +398,7 @@ export function PublicSharePage() {
 
       <main className="min-h-0 flex-1 overflow-hidden">
         <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-4 py-4 sm:px-6">
-          <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
+          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
             <WorkflowPreviewCanvas
               className="h-full"
               definition={data.definition}
@@ -420,7 +419,7 @@ export function PublicSharePage() {
       </main>
 
       <footer className="shrink-0 border-t border-border bg-surface px-4 py-2.5 text-center sm:px-6">
-        <p className="text-xs text-muted-foreground">
+        <p className="break-all text-xs text-muted-foreground">
           分享作者：{data.author.displayName}
           {data.author.email ? ` · ${data.author.email}` : ''}
         </p>

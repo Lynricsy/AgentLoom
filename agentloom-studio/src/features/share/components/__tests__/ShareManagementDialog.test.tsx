@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -267,7 +267,10 @@ describe('ShareManagementDialog', () => {
     await user.click(screen.getByTestId('btn-cancel-revoke'))
 
     expect(screen.getByTestId('btn-revoke-share')).toBeInTheDocument()
-    expect(screen.queryByTestId('btn-confirm-revoke')).not.toBeInTheDocument()
+    // 确认按钮组带退场动画，等动画结束后才卸载
+    await waitFor(() =>
+      expect(screen.queryByTestId('btn-confirm-revoke')).not.toBeInTheDocument(),
+    )
   })
 
   it('copies share URL to clipboard on btn-copy-share-url click', async () => {
