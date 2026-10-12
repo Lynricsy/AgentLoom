@@ -44,8 +44,9 @@ export function NavItemLink({
         exact ? { exact: true, includeSearch: false } : undefined
       }
       className={cn(
-        'relative flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
-        collapsed && 'justify-center',
+        // 左内边距固定 15px：64px 图标列（nav px-2 后链接宽 48px）里 18px 图标恰好居中，
+        // 展开/收起两态图标 x 坐标不变，宽度过渡时不横跳
+        'relative flex items-center gap-3 rounded-md py-2 pl-[15px] pr-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
         active
           ? 'bg-primary/10 text-primary'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -59,7 +60,14 @@ export function NavItemLink({
         />
       ) : null}
       <Icon className="size-[18px] shrink-0" />
-      {collapsed ? null : <span className="truncate">{label}</span>}
+      <span
+        className={cn(
+          'min-w-0 truncate transition-[opacity] duration-150',
+          collapsed && 'w-0 opacity-0',
+        )}
+      >
+        {label}
+      </span>
     </Link>
   )
 }

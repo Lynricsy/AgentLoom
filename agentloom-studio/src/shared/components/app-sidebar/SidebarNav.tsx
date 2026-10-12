@@ -1,6 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Collapse } from '@/shared/components/collapse/Collapse'
 import { NavItemLink } from './NavItemLink'
 import { filterNavGroupsByRole, type NavRole } from './navigation'
 
@@ -32,7 +33,7 @@ export function SidebarNav({
   indicatorScope = 'sidebar',
 }: SidebarNavProps) {
   return (
-    <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 py-2">
+    <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-2 pt-2 pb-4 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
       {filterNavGroupsByRole(role).map((group) => {
         const expanded = collapsed || (groupExpanded?.[group.id] ?? true)
 
@@ -48,32 +49,32 @@ export function SidebarNav({
                 variant="ghost"
                 size="xs"
                 onClick={() => onToggleGroup?.(group.id)}
-                className="w-full justify-start px-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent"
+                className="w-full justify-start px-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
               >
-                <span className="flex-1 text-left">{group.label}</span>
+                <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
                 <ChevronDown
                   className={cn(
-                    'size-3 shrink-0 transition-transform duration-200',
+                    'size-3 shrink-0 transition-transform duration-150',
                     expanded ? 'rotate-0' : '-rotate-90',
                   )}
                 />
               </Button>
             )}
 
-            {expanded
-              ? group.items.map((item) => (
-                  <NavItemLink
-                    key={item.to}
-                    to={item.to}
-                    icon={item.icon}
-                    label={item.label}
-                    active={pathname.startsWith(item.matchPrefix)}
-                    collapsed={collapsed}
-                    onClick={onNavigate}
-                    indicatorLayoutId={`${indicatorScope}-${INDICATOR_LAYOUT_ID}`}
-                  />
-                ))
-              : null}
+            <Collapse open={expanded} className="flex flex-col gap-0.5">
+              {group.items.map((item) => (
+                <NavItemLink
+                  key={item.to}
+                  to={item.to}
+                  icon={item.icon}
+                  label={item.label}
+                  active={pathname.startsWith(item.matchPrefix)}
+                  collapsed={collapsed}
+                  onClick={onNavigate}
+                  indicatorLayoutId={`${indicatorScope}-${INDICATOR_LAYOUT_ID}`}
+                />
+              ))}
+            </Collapse>
           </div>
         )
       })}

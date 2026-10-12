@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { Check, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import { useTheme, type Theme } from '@/shared/hooks/use-theme'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
+import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import {
   DropdownMenu,
@@ -39,16 +40,20 @@ export function UserMenu({ collapsed }: { collapsed: boolean }) {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
+          aria-label={collapsed ? displayName : undefined}
           className="w-full justify-start gap-3 px-2 text-muted-foreground hover:text-foreground"
         >
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
             {initial}
           </span>
-          {collapsed ? null : (
-            <span className="truncate text-left text-foreground">
-              {displayName}
-            </span>
-          )}
+          <span
+            className={cn(
+              'min-w-0 truncate text-left text-foreground transition-[opacity] duration-150',
+              collapsed && 'w-0 opacity-0',
+            )}
+          >
+            {displayName}
+          </span>
         </Button>
       </DropdownMenuTrigger>
 

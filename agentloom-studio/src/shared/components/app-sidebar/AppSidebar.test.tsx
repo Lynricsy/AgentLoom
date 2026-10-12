@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,11 +93,12 @@ describe("AppSidebar", () => {
 
     await user.click(screen.getByRole("button", { name: "收起侧边栏" }));
 
-    expect(screen.queryByText("工作流")).not.toBeInTheDocument();
-    // 折叠态下链接仍然存在，只是不显示文字
-    expect(
-      document.querySelector('a[href="/workflows"]'),
-    ).toBeInTheDocument();
+    // 文字常驻并淡出（宽度过渡期间不硬切），链接可访问名仍是文字标签
+    expect(screen.getByText("工作流")).toHaveClass("opacity-0");
+    expect(screen.getByRole("link", { name: "工作流" })).toHaveAttribute(
+      "href",
+      "/workflows",
+    );
   });
 
   it("折叠分组后隐藏该组条目", async () => {
@@ -108,7 +109,9 @@ describe("AppSidebar", () => {
 
     await user.click(screen.getByRole("button", { name: /资源/ }));
 
-    expect(screen.queryByText("沙箱")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("沙箱")).not.toBeInTheDocument(),
+    );
     // 其他分组不受影响
     expect(screen.getByText("工作流")).toBeInTheDocument();
   });
