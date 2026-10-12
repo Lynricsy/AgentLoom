@@ -1,9 +1,11 @@
 import { memo, useCallback, type ChangeEvent } from "react";
-import { Container, Loader2 } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
-import { Button } from "@/shared/ui/button";
+import { Container } from "lucide-react";
+import { Badge } from "@/shared/ui/badge";
 import { Input } from "@/shared/ui/input";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { Slider } from "@/shared/ui/slider";
+import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { FormField } from "@/shared/components/form-field/FormField";
 import {
   Select,
   SelectContent,
@@ -90,9 +92,9 @@ function PersistentSandboxSelector({
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        加载持久沙箱…
+      <div role="status">
+        <Skeleton className="h-9 w-full" />
+        <span className="sr-only">加载持久沙箱…</span>
       </div>
     );
   }
@@ -157,8 +159,8 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
   );
 
   const handleLifecycleMode = useCallback(
-    (mode: LifecycleMode) => {
-      applyPatch({ lifecycleMode: mode });
+    (mode: string) => {
+      applyPatch({ lifecycleMode: mode as LifecycleMode });
     },
     [applyPatch],
   );
@@ -241,42 +243,27 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
     <div className="space-y-5 px-4 py-4">
       <div className="flex items-center gap-2">
         <Container className="h-4 w-4 text-type-tool" />
-        <span className="rounded-full bg-type-tool/10 px-2 py-0.5 text-xs font-medium text-type-tool">
-          Sandbox
-        </span>
+        <Badge tone="var(--color-type-tool)">Sandbox</Badge>
       </div>
 
       {/* Lifecycle mode toggle */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-foreground">生命周期模式</span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleLifecycleMode("session")}
-            className={cn(
-              "flex-1",
-              sandbox.lifecycleMode === "session"
-                ? "border-warning/50 bg-warning/10 text-warning hover:border-warning/50 hover:bg-warning/10"
-                : "text-muted-foreground",
-            )}
+        <span id="sandbox-lifecycle-label" className="text-xs font-medium text-foreground">
+          生命周期模式
+        </span>
+        <Tabs
+          value={sandbox.lifecycleMode}
+          defaultValue="session"
+          onValueChange={handleLifecycleMode}
+        >
+          <TabsList
+            aria-labelledby="sandbox-lifecycle-label"
+            className="grid grid-cols-2"
           >
-            临时
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleLifecycleMode("persistent")}
-            className={cn(
-              "flex-1",
-              sandbox.lifecycleMode === "persistent"
-                ? "border-info/50 bg-info/10 text-info hover:border-info/50 hover:bg-info/10"
-                : "text-muted-foreground",
-            )}
-          >
-            持久
-          </Button>
-        </div>
+            <TabsTrigger value="session">临时</TabsTrigger>
+            <TabsTrigger value="persistent">持久</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {sandbox.lifecycleMode === "session" ? (
@@ -437,9 +424,9 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
           <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs">
             <p className="font-medium text-foreground">当前配置</p>
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning">
+              <Badge variant="warning" size="sm">
                 临时
-              </span>
+              </Badge>
               <span>{sandbox.cpu} 核</span>
               <span>&middot;</span>
               <span>{sandbox.memory} MB</span>
@@ -453,28 +440,24 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
       ) : (
         <>
           {/* Persistent sandbox selector */}
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="sandbox-persistent-select"
-              className="text-xs font-medium text-foreground"
-            >
-              选择持久沙箱
-            </label>
+          <FormField label="选择持久沙箱" htmlFor="sandbox-persistent-select">
             <PersistentSandboxSelector
               selectedId={sandbox.persistentSandboxId}
               onSelect={handleSelectPersistentSandbox}
             />
-          </div>
+          </FormField>
 
           {/* Summary */}
           <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs">
             <p className="font-medium text-foreground">当前配置</p>
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span className="inline-flex items-center rounded-full bg-info/10 px-2 py-0.5 text-2xs font-medium text-info">
+              <Badge variant="info" size="sm">
                 持久
-              </span>
+              </Badge>
               {sandbox.persistentSandboxName ? (
-                <span>{sandbox.persistentSandboxName}</span>
+                <span className="min-w-0 truncate" title={sandbox.persistentSandboxName}>
+                  {sandbox.persistentSandboxName}
+                </span>
               ) : (
                 <span className="italic">未选择沙箱</span>
               )}

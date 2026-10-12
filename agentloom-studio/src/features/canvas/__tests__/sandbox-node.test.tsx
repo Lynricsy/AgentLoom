@@ -136,7 +136,7 @@ describe('SandboxConfigPanel', () => {
     const onApply = vi.fn()
     render(<SandboxConfigPanel config={{}} onApply={onApply} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '持久' }))
+    fireEvent.click(screen.getByRole('tab', { name: '持久' }))
 
     expect(onApply).toHaveBeenCalledWith({
       config: expect.objectContaining({ lifecycleMode: 'persistent' }),

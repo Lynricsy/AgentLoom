@@ -1,5 +1,7 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { fadeInUp } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 
@@ -65,36 +67,43 @@ export const DynamicPortEditor = memo(function DynamicPortEditor({
 
   return (
     <div className="space-y-2">
-      {ports.map((port, index) => (
-        <div key={port.id} className="flex items-center gap-2">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40" />
-          <Input
-            type="text"
-            value={port.label}
-            onChange={(e) => handleLabelChange(index, e)}
-            placeholder={createDefaultLabel(index)}
-            className="h-7 min-w-0 flex-1 px-2 py-1 text-xs placeholder:text-subtle-foreground/50"
-          />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => handleRemove(index)}
-            disabled={ports.length <= minPorts}
-            className="h-6 w-6 shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error disabled:opacity-30"
-            aria-label={`删除 ${port.label}`}
+      <AnimatePresence initial={false}>
+        {ports.map((port, index) => (
+          <motion.div
+            key={port.id}
+            layout
+            {...fadeInUp}
+            className="flex items-center gap-2"
           >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      ))}
+            <span className="size-2 shrink-0 rounded-full bg-muted-foreground/40" />
+            <Input
+              type="text"
+              value={port.label}
+              onChange={(e) => handleLabelChange(index, e)}
+              placeholder={createDefaultLabel(index)}
+              className="h-7 min-w-0 flex-1 px-2 py-1 text-xs placeholder:text-subtle-foreground/50"
+            />
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => handleRemove(index)}
+              disabled={ports.length <= minPorts}
+              className="shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error disabled:opacity-30"
+              aria-label={`删除 ${port.label}`}
+            >
+              <Trash2 />
+            </Button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
       {ports.length < maxPorts ? (
         <Button
           variant="outline"
           size="xs"
           onClick={handleAdd}
-          className="h-auto w-full border-dashed px-3 py-1.5 font-normal text-muted-foreground hover:border-primary/40 hover:text-foreground"
+          className="w-full border-dashed font-normal text-muted-foreground hover:border-primary/40 hover:text-foreground"
         >
-          <Plus className="h-3 w-3" />
+          <Plus />
           {addLabel}
         </Button>
       ) : null}

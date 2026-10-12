@@ -1,9 +1,12 @@
 import { memo, useCallback, useState, type ChangeEvent } from 'react'
-import { Radio, ChevronDown, ChevronRight } from 'lucide-react'
+import { Radio, ChevronDown } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { cn } from '@/shared/lib/utils'
 
 interface ApiEventTriggerConfigPanelProps {
   config: Record<string, unknown>
@@ -72,13 +75,12 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
       </div>
 
       {/* 事件来源 */}
-      <div>
-        <label
-          htmlFor="api-event-source"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          事件来源 <span className="text-error">*</span>
-        </label>
+      <FormField
+        label="事件来源"
+        htmlFor="api-event-source"
+        required
+        hint="产生事件的系统或服务名称"
+      >
         <Input
           id="api-event-source"
           type="text"
@@ -86,19 +88,15 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
           onChange={handleEventSourceChange}
           placeholder="例：github, stripe, internal-api"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          产生事件的系统或服务名称
-        </p>
-      </div>
+      </FormField>
 
       {/* 事件类型 */}
-      <div>
-        <label
-          htmlFor="api-event-type"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          事件类型 <span className="text-error">*</span>
-        </label>
+      <FormField
+        label="事件类型"
+        htmlFor="api-event-type"
+        required
+        hint="要监听的具体事件类型"
+      >
         <Input
           id="api-event-type"
           type="text"
@@ -106,37 +104,41 @@ export const ApiEventTriggerConfigPanel = memo(function ApiEventTriggerConfigPan
           onChange={handleEventTypeChange}
           placeholder="例：push, payment.completed, user.created"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          要监听的具体事件类型
-        </p>
-      </div>
+      </FormField>
 
       {/* 过滤表达式（可折叠） */}
       <div>
         <Button
           variant="ghost"
-          size="sm"
+          size="xs"
           onClick={toggleFilter}
-          className="h-auto w-full justify-start gap-1 px-0 hover:bg-transparent"
+          aria-expanded={filterOpen}
+          className="w-full justify-start text-muted-foreground hover:text-foreground"
         >
-          {filterOpen ? <ChevronDown /> : <ChevronRight />}
+          <ChevronDown
+            className={cn(
+              'size-3.5 shrink-0 transition-transform duration-150',
+              !filterOpen && '-rotate-90',
+            )}
+          />
           过滤表达式（可选）
         </Button>
-        {filterOpen && (
-          <div className="mt-2">
+        <Collapse open={filterOpen}>
+          <div className="flex flex-col gap-1.5 pt-2">
             <Textarea
               id="api-event-filter"
+              aria-label="过滤表达式"
               value={parsed.filterExpression}
               onChange={handleFilterExpressionChange}
               rows={4}
               placeholder={'例：event.action === "opened" && event.label === "bug"'}
               className="font-mono"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               可选的 JavaScript 表达式，仅当结果为 truthy 时触发工作流
             </p>
           </div>
-        )}
+        </Collapse>
       </div>
 
       {/* 当前配置预览 */}

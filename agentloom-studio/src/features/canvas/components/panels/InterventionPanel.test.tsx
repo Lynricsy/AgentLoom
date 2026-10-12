@@ -127,7 +127,7 @@ describe('InterventionPanel', () => {
 
     await user.click(screen.getByTestId('intervention-modify'))
 
-    const textarea = screen.getByTestId('intervention-modified-content')
+    const textarea = await screen.findByTestId('intervention-modified-content')
     expect(textarea).toHaveValue('建议的内容')
 
     await user.clear(textarea)
@@ -154,7 +154,7 @@ describe('InterventionPanel', () => {
 
     await user.click(screen.getByTestId('intervention-reject'))
 
-    const textarea = screen.getByTestId('intervention-reject-feedback')
+    const textarea = await screen.findByTestId('intervention-reject-feedback')
     await user.type(textarea, '不符合要求')
 
     await user.click(screen.getByTestId('intervention-submit-reject'))
@@ -188,15 +188,15 @@ describe('InterventionPanel', () => {
 
     await user.click(screen.getByTestId('intervention-modify'))
     expect(
-      screen.getByTestId('intervention-modified-content'),
+      await screen.findByTestId('intervention-modified-content'),
     ).toBeInTheDocument()
 
     await user.click(screen.getByText('取消'))
 
+    expect(await screen.findByTestId('intervention-approve')).toBeInTheDocument()
     expect(
       screen.queryByTestId('intervention-modified-content'),
     ).not.toBeInTheDocument()
-    expect(screen.getByTestId('intervention-approve')).toBeInTheDocument()
   })
 
   it('returns to idle mode when cancel is clicked in reject mode', async () => {
@@ -205,14 +205,14 @@ describe('InterventionPanel', () => {
 
     await user.click(screen.getByTestId('intervention-reject'))
     expect(
-      screen.getByTestId('intervention-reject-feedback'),
+      await screen.findByTestId('intervention-reject-feedback'),
     ).toBeInTheDocument()
 
     await user.click(screen.getByText('取消'))
 
+    expect(await screen.findByTestId('intervention-approve')).toBeInTheDocument()
     expect(
       screen.queryByTestId('intervention-reject-feedback'),
     ).not.toBeInTheDocument()
-    expect(screen.getByTestId('intervention-approve')).toBeInTheDocument()
   })
 })

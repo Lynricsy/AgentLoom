@@ -8,7 +8,9 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
+import { FormField } from '@/shared/components/form-field/FormField'
 
 interface ScheduleTriggerConfigPanelProps {
   config: Record<string, unknown>
@@ -87,13 +89,12 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
       </div>
 
       {/* Cron 表达式 */}
-      <div>
-        <label
-          htmlFor="schedule-cron"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          Cron 表达式 <span className="text-error">*</span>
-        </label>
+      <FormField
+        label="Cron 表达式"
+        htmlFor="schedule-cron"
+        required
+        hint="标准 5 段 Cron 格式：分 时 日 月 周"
+      >
         <Input
           id="schedule-cron"
           type="text"
@@ -102,43 +103,41 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
           placeholder="例：0 * * * *"
           className="font-mono"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          标准 5 段 Cron 格式：分 时 日 月 周
-        </p>
-      </div>
+      </FormField>
 
       {/* 常用预设 */}
-      <div>
-        <label className="mb-2 block text-xs font-medium text-foreground">
+      <div className="flex flex-col gap-1.5">
+        <span id="cron-preset-label" className="text-xs font-medium text-foreground">
           常用预设
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {CRON_PRESETS.map((preset) => (
-            <Button
-              key={preset.value}
-              variant="outline"
-              size="xs"
-              onClick={() => handlePresetClick(preset.value)}
-              className={`px-2.5 font-normal ${
-                parsed.cron === preset.value
-                  ? 'border-warning/50 bg-warning/10 text-warning hover:border-warning/50 hover:bg-warning/10'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              {preset.label}
-            </Button>
-          ))}
+        </span>
+        <div
+          role="group"
+          aria-labelledby="cron-preset-label"
+          className="flex flex-wrap gap-2"
+        >
+          {CRON_PRESETS.map((preset) => {
+            const selected = parsed.cron === preset.value
+            return (
+              <Button
+                key={preset.value}
+                variant={selected ? 'secondary' : 'outline'}
+                size="xs"
+                aria-pressed={selected}
+                onClick={() => handlePresetClick(preset.value)}
+              >
+                {preset.label}
+              </Button>
+            )
+          })}
         </div>
       </div>
 
       {/* 时区 */}
-      <div>
-        <label
-          htmlFor="schedule-timezone"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          时区
-        </label>
+      <FormField
+        label="时区"
+        htmlFor="schedule-timezone"
+        hint="Cron 表达式将基于该时区解析执行"
+      >
         <Select value={parsed.timezone} onValueChange={handleTimezoneChange}>
           <SelectTrigger id="schedule-timezone" aria-label="时区">
             <SelectValue />
@@ -151,13 +150,10 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
             ))}
           </SelectContent>
         </Select>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Cron 表达式将基于该时区解析执行
-        </p>
-      </div>
+      </FormField>
 
       {/* 当前配置预览 */}
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
+      <Card className="space-y-2 p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           {parsed.cron ? (
@@ -170,7 +166,7 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
             <span className="text-muted-foreground/60">未配置 Cron 表达式</span>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   )
 })

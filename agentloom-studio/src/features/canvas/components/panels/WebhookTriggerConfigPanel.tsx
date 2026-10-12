@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import { Copy, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { useCanvasStore } from '../../stores/canvasStore'
 import {
   buildWebhookUrl,
@@ -93,15 +94,9 @@ function DeployedWebhookInfo({
     <div className="space-y-2.5 rounded-lg border border-primary/20 bg-primary/5 p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-foreground">Webhook 入口</span>
-        <span
-          className={
-            isEnabled
-              ? 'rounded-full bg-success/15 px-2 py-0.5 text-2xs font-medium text-success'
-              : 'rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground'
-          }
-        >
+        <StatusBadge tone={isEnabled ? 'success' : 'neutral'} size="sm" className="shrink-0">
           {isEnabled ? '已启用' : '已禁用'}
-        </span>
+        </StatusBadge>
       </div>
 
       {/* Webhook URL */}
@@ -120,7 +115,7 @@ function DeployedWebhookInfo({
         </div>
         <div>
           <dt className="font-medium text-muted-foreground">IP 白名单</dt>
-          <dd className="font-mono text-foreground/80" data-testid="webhook-ip-allowlist">
+          <dd className="break-all font-mono text-foreground/80" data-testid="webhook-ip-allowlist">
             {ipWhitelist.length > 0 ? ipWhitelist.join(', ') : '不限制'}
           </dd>
         </div>
@@ -176,7 +171,7 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
               variant="ghost"
               size="xs"
               onClick={() => setRevealed((v) => !v)}
-              className="h-auto rounded px-1.5 py-0.5 text-2xs font-normal text-muted-foreground hover:text-foreground"
+              className="font-normal text-muted-foreground hover:text-foreground"
             >
               {revealed ? '隐藏' : '显示'}
             </Button>
@@ -185,14 +180,17 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
             variant="ghost"
             size="xs"
             onClick={onCopy}
-            className="h-auto gap-1 rounded px-1.5 py-0.5 text-2xs font-normal text-muted-foreground hover:text-foreground [&_svg]:size-2.5"
+            className="font-normal text-muted-foreground hover:text-foreground"
           >
             <Copy />
             {copied ? '已复制' : '复制'}
           </Button>
         </div>
       </div>
-      <code className="block truncate rounded border border-border/60 bg-muted px-2 py-1 text-2xs text-foreground/80">
+      <code
+        className="block truncate rounded border border-border/60 bg-muted px-2 py-1 text-2xs text-foreground/80"
+        title={masked && !revealed ? undefined : value}
+      >
         {displayValue}
       </code>
     </div>

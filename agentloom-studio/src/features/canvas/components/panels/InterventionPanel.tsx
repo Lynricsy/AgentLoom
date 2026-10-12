@@ -1,5 +1,8 @@
 import { memo, useState, useCallback } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Check, Pencil, X, AlertTriangle, Loader2 } from 'lucide-react'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { fadeIn } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import { Textarea } from '@/shared/ui/textarea'
 import {
@@ -125,12 +128,12 @@ export const InterventionPanel = memo(function InterventionPanel({
 
   return (
     <div
-      className="mt-4 rounded-xl border border-warning/40 bg-warning/5 p-3"
+      className="rounded-lg border border-warning/40 bg-warning/5 p-3"
       data-testid="intervention-panel"
     >
       {/* 标题 */}
       <div className="flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+        <AlertTriangle className="size-4 shrink-0 text-warning" />
         <h4 className="text-xs font-semibold text-warning">需要人工干预</h4>
       </div>
 
@@ -140,7 +143,7 @@ export const InterventionPanel = memo(function InterventionPanel({
           {decision.rationale && (
             <div>
               <dt className="text-muted-foreground">决策理由</dt>
-              <dd className="mt-0.5 leading-5 text-foreground">
+              <dd className="mt-0.5 break-words leading-5 text-foreground">
                 {decision.rationale}
               </dd>
             </div>
@@ -165,157 +168,149 @@ export const InterventionPanel = memo(function InterventionPanel({
       )}
 
       {/* 错误提示 */}
-      {error && (
-        <p
-          className="mt-2 text-xs text-error"
-          data-testid="intervention-error"
-        >
-          {error}
-        </p>
-      )}
+      <AnimatePresence initial={false}>
+        {error ? (
+          <motion.p
+            key="intervention-error"
+            {...fadeIn}
+            className="mt-2 whitespace-pre-wrap break-words text-xs text-error"
+            data-testid="intervention-error"
+          >
+            {error}
+          </motion.p>
+        ) : null}
+      </AnimatePresence>
 
-      {/* 空闲态：三个操作按钮 */}
-      {mode === 'idle' && (
-        <div className="mt-3 flex gap-2" data-testid="intervention-actions">
-          <Button
-            size="sm"
-            onClick={handleApprove}
-            disabled={isSubmitting}
-            data-testid="intervention-approve"
-            className="bg-success text-white hover:bg-success/90"
+      {/* 空闲态按钮组 ↔ 修改 / 拒绝表单：同一位置的视图切换 */}
+      <AnimatePresence mode="wait" initial={false}>
+        {mode === 'idle' ? (
+          <motion.div
+            key="idle"
+            {...fadeIn}
+            className="mt-3 flex flex-wrap gap-2"
+            data-testid="intervention-actions"
           >
-            {isSubmitting ? (
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-            ) : (
-              <Check className="mr-1 h-3 w-3" />
-            )}
-            批准
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleStartModify}
-            disabled={isSubmitting}
-            data-testid="intervention-modify"
-          >
-            <Pencil className="mr-1 h-3 w-3" />
-            修改
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleStartReject}
-            disabled={isSubmitting}
-            data-testid="intervention-reject"
-            className="border-error/40 text-error hover:bg-error/10"
-          >
-            <X className="mr-1 h-3 w-3" />
-            拒绝
-          </Button>
-        </div>
-      )}
-
-      {/* 修改模式 */}
-      {mode === 'modifying' && (
-        <div className="mt-3 space-y-2" data-testid="intervention-modify-form">
-          <label
-            htmlFor="intervention-modified-content"
-            className="text-xs text-muted-foreground"
-          >
-            修改内容
-          </label>
-          <Textarea
-            id="intervention-modified-content"
-            className="px-2 py-1.5 font-mono text-xs leading-5"
-            rows={5}
-            value={modifiedContent}
-            onChange={(e) => setModifiedContent(e.target.value)}
-            data-testid="intervention-modified-content"
-          />
-          <label
-            htmlFor="intervention-feedback"
-            className="text-xs text-muted-foreground"
-          >
-            反馈（可选）
-          </label>
-          <Textarea
-            id="intervention-feedback"
-            className="px-2 py-1.5 font-mono text-xs leading-5"
-            rows={2}
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="可选：说明修改原因…"
-            data-testid="intervention-feedback"
-          />
-          <div className="flex gap-2">
             <Button
               size="sm"
-              onClick={handleSubmitModify}
+              onClick={handleApprove}
               disabled={isSubmitting}
-              data-testid="intervention-submit-modify"
+              data-testid="intervention-approve"
+              className="bg-success text-white hover:bg-success/90"
             >
-              {isSubmitting && (
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              )}
-              提交修改
+              {isSubmitting ? <Loader2 className="animate-spin" /> : <Check />}
+              批准
             </Button>
             <Button
               size="sm"
-              variant="ghost"
-              onClick={handleCancel}
+              variant="outline"
+              onClick={handleStartModify}
               disabled={isSubmitting}
+              data-testid="intervention-modify"
             >
-              取消
+              <Pencil />
+              修改
             </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 拒绝模式 */}
-      {mode === 'rejecting' && (
-        <div
-          className="mt-3 space-y-2"
-          data-testid="intervention-reject-form"
-        >
-          <label
-            htmlFor="intervention-reject-feedback"
-            className="text-xs text-muted-foreground"
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleStartReject}
+              disabled={isSubmitting}
+              data-testid="intervention-reject"
+              className="border-error/40 text-error hover:bg-error/10"
+            >
+              <X />
+              拒绝
+            </Button>
+          </motion.div>
+        ) : mode === 'modifying' ? (
+          <motion.div
+            key="modifying"
+            {...fadeIn}
+            className="mt-3 space-y-3"
+            data-testid="intervention-modify-form"
           >
-            拒绝原因（可选）
-          </label>
-          <Textarea
-            id="intervention-reject-feedback"
-            className="px-2 py-1.5 font-mono text-xs leading-5"
-            rows={3}
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="可选：说明拒绝原因…"
-            data-testid="intervention-reject-feedback"
-          />
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={handleSubmitReject}
-              disabled={isSubmitting}
-              data-testid="intervention-submit-reject"
-              variant="destructive"
-            >
-              {isSubmitting && (
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              )}
-              确认拒绝
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCancel}
-              disabled={isSubmitting}
-            >
-              取消
-            </Button>
-          </div>
-        </div>
-      )}
+            <FormField label="修改内容" htmlFor="intervention-modified-content">
+              <Textarea
+                id="intervention-modified-content"
+                className="px-2 py-1.5 font-mono text-xs leading-5"
+                rows={5}
+                value={modifiedContent}
+                onChange={(e) => setModifiedContent(e.target.value)}
+                data-testid="intervention-modified-content"
+              />
+            </FormField>
+            <FormField label="反馈（可选）" htmlFor="intervention-feedback">
+              <Textarea
+                id="intervention-feedback"
+                className="px-2 py-1.5 font-mono text-xs leading-5"
+                rows={2}
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="可选：说明修改原因…"
+                data-testid="intervention-feedback"
+              />
+            </FormField>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleSubmitModify}
+                disabled={isSubmitting}
+                data-testid="intervention-submit-modify"
+              >
+                {isSubmitting && <Loader2 className="animate-spin" />}
+                提交修改
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCancel}
+                disabled={isSubmitting}
+              >
+                取消
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="rejecting"
+            {...fadeIn}
+            className="mt-3 space-y-3"
+            data-testid="intervention-reject-form"
+          >
+            <FormField label="拒绝原因（可选）" htmlFor="intervention-reject-feedback">
+              <Textarea
+                id="intervention-reject-feedback"
+                className="px-2 py-1.5 font-mono text-xs leading-5"
+                rows={3}
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="可选：说明拒绝原因…"
+                data-testid="intervention-reject-feedback"
+              />
+            </FormField>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleSubmitReject}
+                disabled={isSubmitting}
+                data-testid="intervention-submit-reject"
+                variant="destructive"
+              >
+                {isSubmitting && <Loader2 className="animate-spin" />}
+                确认拒绝
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCancel}
+                disabled={isSubmitting}
+              >
+                取消
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 })

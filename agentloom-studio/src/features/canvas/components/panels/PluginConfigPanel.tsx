@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo } from 'react'
-import { AlertCircle, Puzzle } from 'lucide-react'
+import { Puzzle } from 'lucide-react'
+import { Alert } from '@/shared/ui/alert'
+import { Badge } from '@/shared/ui/badge'
+import { Card } from '@/shared/ui/card'
 import { normalizePluginConfigSchema } from '../../lib/pluginConfigSchema'
 import type { CanvasNode, PluginNodeData } from '../../types'
 import { DynamicConfigForm } from './DynamicConfigForm'
@@ -49,27 +52,27 @@ export const PluginConfigPanel = memo(function PluginConfigPanel({
 
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="plugin-config-panel">
-      <div className="flex items-start gap-3 rounded-lg border p-3">
+      <Card className="flex items-start gap-3 p-3">
         <div className="rounded-md bg-[var(--color-node-plugin)]/15 p-2">
-          <Puzzle className="h-5 w-5 text-[var(--color-node-plugin)]" />
+          <Puzzle className="size-5 text-[var(--color-node-plugin)]" />
         </div>
-        <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-medium">{data.pluginName || '未选择插件'}</h4>
+        <div className="min-w-0 flex-1">
+          <h4 className="break-words text-sm font-medium">{data.pluginName || '未选择插件'}</h4>
           {data.pluginId && (
-            <p className="text-xs text-muted-foreground mt-0.5">{data.pluginId}</p>
+            <p className="mt-0.5 break-all text-xs text-muted-foreground">{data.pluginId}</p>
           )}
           {data.pluginVersion && (
-            <span className="inline-flex items-center rounded-full bg-[var(--color-node-plugin)]/15 px-1.5 py-0.5 text-2xs font-medium text-[var(--color-node-plugin)] mt-1">
+            <Badge size="sm" tone="var(--color-node-plugin)" className="mt-1">
               v{data.pluginVersion}
-            </span>
+            </Badge>
           )}
         </div>
-      </div>
+      </Card>
 
       {data.pluginNodeType && (
         <div>
           <span className="text-xs font-medium text-muted-foreground">节点类型</span>
-          <p className="text-sm mt-1">{data.pluginNodeType}</p>
+          <p className="mt-1 break-all text-sm">{data.pluginNodeType}</p>
         </div>
       )}
 
@@ -88,17 +91,11 @@ export const PluginConfigPanel = memo(function PluginConfigPanel({
       )}
 
       {!hasIdentity && (
-        <div
-          className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error"
-          data-testid="plugin-config-identity-error"
-        >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            {data.pluginId
-              ? '此节点缺少插件节点类型，请从已安装的插件中重新拖入节点。'
-              : '此节点需要从已安装的插件中选择，否则无法执行。'}
-          </span>
-        </div>
+        <Alert variant="error" data-testid="plugin-config-identity-error">
+          {data.pluginId
+            ? '此节点缺少插件节点类型，请从已安装的插件中重新拖入节点。'
+            : '此节点需要从已安装的插件中选择，否则无法执行。'}
+        </Alert>
       )}
     </div>
   )

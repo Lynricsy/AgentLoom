@@ -117,7 +117,7 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
             size="xs"
             onClick={onLogicToggle}
             className={cn(
-              'h-auto rounded px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider',
+              'text-2xs font-semibold uppercase tracking-wider',
               logic === 'and'
                 ? 'bg-info/15 text-info hover:bg-info/25 hover:text-info'
                 : 'bg-warning/15 text-warning hover:bg-warning/25 hover:text-warning',
@@ -129,7 +129,8 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
         </div>
       )}
 
-      <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_auto_minmax(0,1fr)_auto]">
+      {/* 属性面板仅 360px：两行布局 —— 端口 + 运算符 / 字段路径 + 右值 + 删除 */}
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-1.5">
         <Select
           value={selectedPort?.portId ?? rule.sourcePortId}
           onValueChange={handlePortChange}
@@ -137,7 +138,7 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
         >
           <SelectTrigger
             aria-label={`条件 ${index + 1} 输入端口`}
-            className="h-8 min-w-0 px-2 text-xs"
+            className="col-span-2 h-8 min-w-0 px-2 text-xs"
           >
             <SelectValue
               placeholder={
@@ -154,19 +155,10 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
           </SelectContent>
         </Select>
 
-        <Input
-          type="text"
-          value={supportsFieldPath ? rule.fieldPath : ''}
-          onChange={handleFieldPathChange}
-          disabled={!supportsFieldPath}
-          placeholder={supportsFieldPath ? '字段路径（可选）' : '该输入只支持整值比较'}
-          className="h-8 min-w-0 px-2 text-xs"
-        />
-
         <Select value={rule.operator} onValueChange={handleOperatorChange}>
           <SelectTrigger
             aria-label={`条件 ${index + 1} 运算符`}
-            className="h-8 w-auto shrink-0 px-1.5 text-xs"
+            className="h-8 w-auto min-w-0 px-1.5 text-xs"
           >
             <SelectValue />
           </SelectTrigger>
@@ -179,17 +171,28 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
           </SelectContent>
         </Select>
 
+        <Input
+          type="text"
+          value={supportsFieldPath ? rule.fieldPath : ''}
+          onChange={handleFieldPathChange}
+          disabled={!supportsFieldPath}
+          aria-label={`条件 ${index + 1} 字段路径`}
+          placeholder={supportsFieldPath ? '字段路径（可选）' : '仅支持整值比较'}
+          className="h-8 min-w-0 px-2 text-xs"
+        />
+
         {operatorMeta.requiresValue ? (
           <Input
             type="text"
             value={rule.value}
             onChange={handleValueChange}
+            aria-label={`条件 ${index + 1} 比较值`}
             placeholder="值"
             className="h-8 min-w-0 px-2 text-xs"
           />
         ) : (
-          <div className="h-8 rounded-md border border-dashed border-border/50 bg-muted px-2 text-xs leading-8 text-muted-foreground">
-            当前运算符不需要右值
+          <div className="flex h-8 min-w-0 items-center rounded-md border border-dashed border-border/50 bg-muted px-2 text-xs text-muted-foreground">
+            <span className="truncate">无需右值</span>
           </div>
         )}
 
@@ -198,10 +201,10 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
           size="icon-sm"
           onClick={handleRemove}
           disabled={totalRules <= 1}
-          className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+          className="justify-self-end text-muted-foreground hover:text-foreground disabled:opacity-30"
           aria-label="删除条件"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 />
         </Button>
       </div>
 
@@ -291,16 +294,16 @@ export const ConditionBuilder = memo(function ConditionBuilder({
             variant="ghost"
             size="xs"
             onClick={onModeToggle}
-            className="h-auto gap-1 px-2 py-1 text-2xs text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground"
           >
             {mode === 'visual' ? (
               <>
-                <Code className="h-3 w-3" />
+                <Code />
                 <span>表达式模式</span>
               </>
             ) : (
               <>
-                <Eye className="h-3 w-3" />
+                <Eye />
                 <span>可视化模式</span>
               </>
             )}
@@ -317,8 +320,11 @@ export const ConditionBuilder = memo(function ConditionBuilder({
             placeholder={'例: ports[1] === "ready"\n例: ports[2].score > 80 && ports[3]'}
             className="font-mono text-xs leading-relaxed"
           />
-          <p className="text-2xs text-muted-foreground">
-            表达式左值统一使用 `ports[n]`。`ports[1]` 表示第 1 个输入端口，结构化输入可继续写字段路径。
+          <p className="text-xs text-muted-foreground">
+            表达式左值统一使用{' '}
+            <code className="rounded-xs bg-muted px-1 font-mono">ports[n]</code>：
+            <code className="rounded-xs bg-muted px-1 font-mono">ports[1]</code>{' '}
+            表示第 1 个输入端口，结构化输入可继续写字段路径。
           </p>
         </div>
       )}
@@ -343,9 +349,9 @@ export const ConditionBuilder = memo(function ConditionBuilder({
             variant="outline"
             size="xs"
             onClick={handleAddRule}
-            className="h-auto w-full gap-1 border-dashed py-1.5 text-2xs font-normal text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+            className="w-full border-dashed font-normal text-muted-foreground hover:border-foreground/30 hover:text-foreground"
           >
-            <Plus className="h-3 w-3" />
+            <Plus />
             <span>添加条件</span>
           </Button>
         </div>

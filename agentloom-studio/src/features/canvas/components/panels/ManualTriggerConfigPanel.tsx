@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo } from 'react'
 import { Play } from 'lucide-react'
+import { Card } from '@/shared/ui/card'
 import {
   parseManualTriggerConfig,
   buildManualTriggerOutputPorts,
@@ -67,7 +68,7 @@ export const ManualTriggerConfigPanel = memo(function ManualTriggerConfigPanel({
       </p>
 
       {/* 输出端口编辑器 */}
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+      <Card className="space-y-2 p-3">
         <p className="text-xs font-medium text-foreground">输出参数</p>
         <DynamicPortEditor
           ports={portEntries}
@@ -78,10 +79,10 @@ export const ManualTriggerConfigPanel = memo(function ManualTriggerConfigPanel({
           createDefaultLabel={createDefaultLabel}
           addLabel="添加参数"
         />
-      </div>
+      </Card>
 
       {/* 配置摘要 */}
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
+      <Card className="space-y-2 p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-col gap-1 text-muted-foreground">
           <span>
@@ -95,7 +96,7 @@ export const ManualTriggerConfigPanel = memo(function ManualTriggerConfigPanel({
             </span>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   )
 })
