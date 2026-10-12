@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Brain, Container, Copy, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, Brain, Check, Container, Copy, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import {
@@ -17,6 +17,12 @@ import { OptimizationSuggestionsPanel } from '@/features/optimization-suggestion
 import { useCanvasStore } from '../../stores/canvasStore'
 import type { CanvasNode } from '../../types'
 import { getWorkflowAgentInputPorts } from '../../types/nodeTypeRegistry'
+import { Badge } from '@/shared/ui/badge'
+import { cn } from '@/shared/lib/utils'
+import { formatDate } from '@/shared/lib/format'
+import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { FormField } from '@/shared/components/form-field/FormField'
 
 interface AgentNodeConfigPanelProps {
   node: CanvasNode
@@ -289,22 +295,14 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   return (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-2">
-        <Brain className="h-4 w-4 text-type-model" />
-        <span className="rounded-full bg-type-model/10 px-2 py-0.5 text-xs font-medium text-type-model">
-          Agent
-        </span>
+        <Brain className="size-4 shrink-0 text-type-model" />
+        <Badge tone="var(--color-type-model)">Agent</Badge>
       </div>
 
       {/* Agent 选择器 */}
-      <div>
-        <label
-          htmlFor="agent-search"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          选择 Agent
-        </label>
+      <FormField label="选择 Agent" htmlFor="agent-search">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             id="agent-search"
             type="text"
@@ -314,11 +312,13 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
             className="pl-8 pr-3"
           />
         </div>
-        <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border">
+        <div className="mt-2 max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
           {loadingAgents ? (
-            <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              加载中…
+            <div role="status" className="space-y-2 p-3">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-1/2" />
+              <span className="sr-only">加载中…</span>
             </div>
           ) : filteredAgents.length === 0 ? (
             <div className="py-4 text-center text-xs text-muted-foreground">
@@ -331,18 +331,23 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                 size="sm"
                 key={agent.id}
                 onClick={() => handleSelectAgent(agent)}
-                className={`h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-none px-3 py-2 text-left text-sm ${
+                aria-pressed={agentConfig.selectedAgentId === agent.id}
+                className={cn(
+                  'h-auto w-full flex-col items-stretch justify-start gap-0 whitespace-normal rounded-none px-3 py-2 text-left text-sm',
                   agentConfig.selectedAgentId === agent.id
-                    ? 'bg-muted font-medium'
-                    : 'font-normal'
-                }`}
+                    ? 'bg-primary/10 font-medium hover:bg-primary/10'
+                    : 'font-normal',
+                )}
               >
-                <div className="flex items-center gap-2">
-                  <Brain className="h-3.5 w-3.5 shrink-0 text-type-model" />
-                  <span className="truncate">{agent.name}</span>
-                  <span className="rounded-full border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Brain className="size-3.5 shrink-0 text-type-model" />
+                  <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                  <Badge variant="outline" size="sm" className="shrink-0">
                     {agent.runtimeMode === 'sandbox' ? '有沙箱' : '无沙箱'}
-                  </span>
+                  </Badge>
+                  {agentConfig.selectedAgentId === agent.id ? (
+                    <Check className="size-3.5 shrink-0 text-primary" />
+                  ) : null}
                 </div>
                 {agent.description && (
                   <p className="mt-0.5 truncate text-xs text-muted-foreground pl-5.5">
@@ -353,7 +358,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
             ))
           )}
         </div>
-      </div>
+      </FormField>
 
       {/* 遗留内联 Agent 配置（只读） */}
       {(legacyInline.systemPrompt || legacyInline.model) && (
@@ -362,7 +367,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           className="space-y-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
         >
           <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
             <div className="space-y-1">
               <p className="font-medium text-warning">
                 旧版内联 Agent 配置（已废除，不再参与执行）
@@ -383,9 +388,9 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                   variant="ghost"
                   size="xs"
                   onClick={handleCopyLegacyPrompt}
-                  className="h-6 gap-1 px-2 text-2xs text-warning hover:bg-warning/15 hover:text-warning"
+                  className="text-warning hover:bg-warning/15 hover:text-warning"
                 >
-                  <Copy className="h-3 w-3" />
+                  <Copy />
                   复制
                 </Button>
               </div>
@@ -398,7 +403,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           {legacyInline.model && (
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-foreground">模型</span>
-              <span className="truncate font-mono text-2xs text-foreground">
+              <span className="min-w-0 truncate font-mono text-2xs text-foreground" title={legacyInline.model}>
                 {legacyInline.model}
               </span>
             </div>
@@ -409,58 +414,57 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       {/* 版本选择 */}
       {agentConfig.selectedAgentId && (
         <div>
-          <div className="mb-2 rounded-md border border-border/60 bg-surface px-3 py-2 text-xs text-muted-foreground">
+          <div className="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
             当前 Agent 运行形态：
             <span className="ml-1 font-medium text-foreground">
               {agentConfig.agentRuntimeMode === 'no_sandbox' ? '无沙箱' : '有沙箱'}
             </span>
             {agentConfig.agentRuntimeMode === 'no_sandbox' && (
-              <span className="ml-1">输入端口将移除 `sandbox-in`。</span>
+              <span className="ml-1">
+                输入端口将移除{' '}
+                <code className="rounded-xs bg-surface px-1 font-mono">sandbox-in</code>。
+              </span>
             )}
           </div>
-          <label
-            htmlFor="agent-version"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            版本
-          </label>
-          {loadingVersions ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              加载版本…
-            </div>
-          ) : (
-            <Select
-              value={agentConfig.agentVersionId ?? ''}
-              onValueChange={(value) => {
-                const v = versions.find((ver) => ver.id === value)
-                if (v) handleSelectVersion(v)
-              }}
-              disabled={versions.length === 0}
-            >
-              <SelectTrigger id="agent-version" aria-label="版本">
-                <SelectValue
-                  placeholder={
-                    versions.length === 0 ? '暂无已发布版本' : '使用最新发布版本'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {versions.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.label || `v${v.versionNumber}`}
-                    {v.publishedAt ? ` (${new Date(v.publishedAt).toLocaleDateString()})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <FormField label="版本" htmlFor="agent-version">
+            {loadingVersions ? (
+              <div role="status">
+                <Skeleton className="h-9 w-full" />
+                <span className="sr-only">加载版本…</span>
+              </div>
+            ) : (
+              <Select
+                value={agentConfig.agentVersionId ?? ''}
+                onValueChange={(value) => {
+                  const v = versions.find((ver) => ver.id === value)
+                  if (v) handleSelectVersion(v)
+                }}
+                disabled={versions.length === 0}
+              >
+                <SelectTrigger id="agent-version" aria-label="版本">
+                  <SelectValue
+                    placeholder={
+                      versions.length === 0 ? '暂无已发布版本' : '使用最新发布版本'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {versions.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.label || `v${v.versionNumber}`}
+                      {v.publishedAt ? `（${formatDate(v.publishedAt)}）` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </FormField>
         </div>
       )}
 
       {/* Sandbox 覆盖提示 */}
-      <div className="flex items-start gap-2 rounded-lg border border-border bg-surface p-3 text-xs">
-        <Container className="mt-0.5 h-3.5 w-3.5 shrink-0 text-type-tool" />
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-muted p-3 text-xs">
+        <Container className="mt-0.5 size-3.5 shrink-0 text-type-tool" />
         <p className="text-muted-foreground">
           连接 Sandbox 节点将覆盖 Agent 内置的沙箱配置。
         </p>
@@ -468,15 +472,15 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
 
       {/* 当前配置摘要 */}
       {agentConfig.selectedAgentId && (
-        <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
+        <Card className="space-y-2 p-3 text-xs">
           <p className="font-medium text-foreground">当前配置</p>
           <div className="space-y-1 text-muted-foreground">
-            <p>Agent: {agentConfig.agentName || '未知'}</p>
+            <p className="break-words">Agent：{agentConfig.agentName || '未知'}</p>
             {agentConfig.versionLabel && (
-              <p>版本: {agentConfig.versionLabel}</p>
+              <p className="break-words">版本：{agentConfig.versionLabel}</p>
             )}
           </div>
-        </div>
+        </Card>
       )}
 
       <div>
@@ -489,9 +493,9 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
             variant="ghost"
             size="xs"
             onClick={handleAddMappingRow}
-            className="gap-1 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground"
           >
-            <Plus className="h-3 w-3" />
+            <Plus />
             添加
           </Button>
         </div>
@@ -501,14 +505,17 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           </p>
         ) : (
           <div className="space-y-2">
-            {inputMappingEntries.map(({ key, value }) => (
-              <div key={key} className="flex items-center gap-2">
+            {/* 行 key 用位置而非字段名：字段名正在被编辑，作 key 会每键重挂导致输入框失焦；
+                重命名保持对象键顺序，因此位置在编辑期间稳定 */}
+            {inputMappingEntries.map(({ key, value }, index) => (
+              <div key={`mapping-row-${index}`} className="flex items-center gap-2">
                 <Input
                   type="text"
                   value={key}
                   onChange={(e) => handleUpdateMappingKey(key, e.target.value)}
                   placeholder="字段名"
-                  className="h-8 w-2/5 px-2 text-xs"
+                  aria-label={`映射 ${index + 1} 字段名`}
+                  className="h-7 w-2/5 px-2 text-xs"
                 />
                 <span className="shrink-0 text-xs text-muted-foreground">→</span>
                 <Input
@@ -516,7 +523,8 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                   value={value}
                   onChange={(e) => handleUpdateMappingValue(key, e.target.value)}
                   placeholder="来源表达式"
-                  className="h-8 min-w-0 flex-1 px-2 text-xs"
+                  aria-label={`映射 ${index + 1} 来源表达式`}
+                  className="h-7 min-w-0 flex-1 px-2 text-xs"
                 />
                 <Button
                   aria-label={`删除映射 ${key}`}
@@ -525,7 +533,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                   onClick={() => handleRemoveMappingRow(key)}
                   className="shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 />
                 </Button>
               </div>
             ))}
@@ -535,7 +543,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
 
       {/* 节点级优化建议：Board 的「在画布中查看」深链最终落到这里 */}
       {workflowId ? (
-        <div className="-mx-4 border-t border-border pt-1">
+        <div className="border-t border-border pt-4">
           <OptimizationSuggestionsPanel workflowDefinitionId={workflowId} nodeId={node.id} />
         </div>
       ) : null}

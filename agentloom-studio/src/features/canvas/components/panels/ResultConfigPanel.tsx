@@ -4,6 +4,7 @@ import { useCanvasActions, useCanvasNodes } from '../../stores/canvasStore'
 import { buildCompoundOutputPorts } from '../../types/controlFlow.types'
 import { useToast } from '@/shared/ui/toast'
 import { Input } from '@/shared/ui/input'
+import { FormField } from '@/shared/components/form-field/FormField'
 
 interface ResultConfigPanelProps {
   nodeId: string
@@ -87,23 +88,18 @@ export const ResultConfigPanel = memo(function ResultConfigPanel({
         <span className="text-xs font-medium text-foreground">结果节点</span>
       </div>
 
-      <div>
-        <label
-          htmlFor="result-output-key"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          outputKey
-        </label>
+      <FormField
+        label="outputKey"
+        htmlFor="result-output-key"
+        hint="父 compound 的外部输出口会直接使用这个 key。"
+      >
         <Input
           id="result-output-key"
           type="text"
           value={outputKey}
           onChange={handleOutputKeyChange}
         />
-        <p className="mt-1 text-2xs text-muted-foreground">
-          父 compound 的外部输出口会直接使用这个 key。
-        </p>
-      </div>
+      </FormField>
     </div>
   )
 })

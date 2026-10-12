@@ -138,9 +138,9 @@ const KeyValueList = memo(function KeyValueList({
           variant="ghost"
           size="xs"
           onClick={handleAdd}
-          className="h-auto gap-1 px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground"
         >
-          <Plus className="h-3 w-3" />
+          <Plus />
           添加
         </Button>
       </div>
@@ -155,13 +155,13 @@ const KeyValueList = memo(function KeyValueList({
                 value={item.key}
                 onChange={(e) => handleChange(index, 'key', e.target.value)}
                 placeholder={keyPlaceholder}
-                className="h-8 w-[40%] text-xs"
+                className="h-7 w-[40%] text-xs"
               />
               <Input
                 value={item.value}
                 onChange={(e) => handleChange(index, 'value', e.target.value)}
                 placeholder={valuePlaceholder}
-                className="h-8 min-w-0 flex-1 text-xs"
+                className="h-7 min-w-0 flex-1 text-xs"
               />
               <Button
                 variant="ghost"
@@ -170,7 +170,7 @@ const KeyValueList = memo(function KeyValueList({
                 aria-label={`删除${label}第 ${index + 1} 项`}
                 className="text-muted-foreground hover:bg-error/10 hover:text-error"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 />
               </Button>
             </div>
           ))}
@@ -269,15 +269,15 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
     METHOD_BADGE_COLORS[parsed.method] ?? 'bg-muted text-muted-foreground'
 
   return (
-    <div className="space-y-5 px-4 py-4" data-testid="http-tool-config-panel">
+    <div className="space-y-4 px-4 py-4" data-testid="http-tool-config-panel">
       {/* 方法 + URL */}
       <div className="flex items-center gap-2">
-        <Globe className="h-4 w-4 text-type-tool" />
+        <Globe className="size-4 shrink-0 text-type-tool" />
         <span className="text-xs font-medium text-foreground">HTTP 请求</span>
       </div>
 
       <div className="flex items-start gap-2">
-        <div className="flex w-[104px] shrink-0 flex-col gap-1.5">
+        <div className="flex w-28 shrink-0 flex-col gap-1.5">
           <label
             htmlFor="http-method"
             className="text-xs font-medium text-foreground"

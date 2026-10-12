@@ -114,8 +114,8 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
 
   if (schema.enum && schema.enum.length > 0) {
     return (
-      <div className="flex flex-col gap-1">
-        <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={fieldId} className="text-xs font-medium text-foreground">
           {label}
         </label>
         <Select
@@ -135,7 +135,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
             ))}
           </SelectContent>
         </Select>
-        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
     )
   }
@@ -143,10 +143,10 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
   if (schema.type === 'boolean') {
     const checked = typeof value === 'boolean' ? value : (schema.default as boolean) ?? false
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         <label
           htmlFor={fieldId}
-          className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
+          className="flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground"
         >
           <Checkbox
             id={fieldId}
@@ -156,7 +156,7 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
           />
           {label}
         </label>
-        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
     )
   }
@@ -164,8 +164,8 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
   if (schema.type === 'number' || schema.type === 'integer') {
     const numVal = typeof value === 'number' ? value : (schema.default as number) ?? undefined
     return (
-      <div className="flex flex-col gap-1">
-        <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={fieldId} className="text-xs font-medium text-foreground">
           {label}
         </label>
         <Input
@@ -180,17 +180,16 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
             const v = e.target.value === '' ? undefined : Number(e.target.value)
             onChange(name, v)
           }}
-          className="h-8"
         />
-        {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
     )
   }
 
   const strVal = typeof value === 'string' ? value : (schema.default as string) ?? ''
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={fieldId} className="text-xs font-medium text-foreground">
         {label}
       </label>
       <Input
@@ -199,9 +198,8 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
         data-testid={fieldId}
         value={strVal}
         onChange={(e) => onChange(name, e.target.value)}
-        className="h-8"
       />
-      {description ? <p className="text-2xs text-muted-foreground/70">{description}</p> : null}
+      {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
     </div>
   )
 })
@@ -352,12 +350,12 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="smart-routing-config-panel">
       <div className="flex items-center gap-2">
-        <GitFork className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-medium">智能路由配置</h3>
+        <GitFork className="size-4 shrink-0 text-primary" />
+        <h3 className="text-xs font-medium text-foreground">智能路由配置</h3>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="strategy-select" className="text-xs font-medium text-muted-foreground">
+        <label htmlFor="strategy-select" className="text-xs font-medium text-foreground">
           路由策略
         </label>
         <Select
@@ -395,7 +393,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             {ICON_MAP[meta.icon] ? (
               (() => {
                 const Icon = ICON_MAP[meta.icon]!
-                return <Icon className={cn('h-3 w-3', STRATEGY_CATEGORY_COLORS[meta.category])} />
+                return <Icon className={cn('size-3 shrink-0', STRATEGY_CATEGORY_COLORS[meta.category])} />
               })()
             ) : null}
             <span
@@ -414,7 +412,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 
       {healthList.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Provider 状态</span>
+          <span className="text-xs font-medium text-foreground">Provider 状态</span>
           <div className="flex items-center gap-2" data-testid="provider-health-summary">
             {(Object.entries(healthSummary) as [ProviderHealthState, number][]).map(
               ([status, count]) =>
@@ -436,7 +434,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
           </div>
           {healthSummary.degraded > 0 || healthSummary.open > 0 ? (
             <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-2xs text-warning">
-              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <AlertCircle className="mt-0.5 size-3 shrink-0" />
               <span>
                 {healthSummary.open > 0
                   ? `${healthSummary.open} 个 Provider 已断路`
@@ -449,7 +447,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 
       {schemaPropertyEntries.length > 0 ? (
         <div className="flex flex-col gap-3">
-          <span className="text-xs font-medium text-muted-foreground">策略参数</span>
+          <span className="text-xs font-medium text-foreground">策略参数</span>
           {schemaPropertyEntries.map(([key, propSchema]) => (
             <SchemaField
               key={key}
@@ -464,15 +462,15 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 
       {strategy === 'fallback_chain' ? (
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">回退优先级</span>
+          <span className="text-xs font-medium text-foreground">回退优先级</span>
           <ul className="flex flex-col gap-1" data-testid="fallback-priority-list">
             {fallbackPriority.map((portId, index) => (
               <li
                 key={portId}
-                className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
+                className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
               >
-                <span className="font-mono text-muted-foreground">{index + 1}</span>
-                <span className="flex-1 truncate">{portLabelById.get(portId) ?? portId}</span>
+                <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate">{portLabelById.get(portId) ?? portId}</span>
                 <Button
                   aria-label="上移优先级"
                   variant="ghost"
@@ -481,7 +479,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                   onClick={() => handleMovePriority(index, 'up')}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  <ChevronUp className="h-3 w-3" />
+                  <ChevronUp />
                 </Button>
                 <Button
                   aria-label="下移优先级"
@@ -491,7 +489,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                   onClick={() => handleMovePriority(index, 'down')}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  <ChevronDown className="h-3 w-3" />
+                  <ChevronDown />
                 </Button>
               </li>
             ))}
@@ -500,16 +498,18 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
       ) : null}
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">
-          模型输入端口 ({modelInputPorts.length})
+        <span className="text-xs font-medium text-foreground">
+          模型输入端口（{modelInputPorts.length}）
         </span>
         <ul className="flex flex-col gap-1">
           {modelInputPorts.map((port) => (
             <li
               key={port.id}
-              className="flex items-center justify-between rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
+              className="flex min-h-10 items-center justify-between gap-2 rounded-md border border-border bg-muted px-3 py-1.5 text-xs"
             >
-              <span>{port.label}</span>
+              <span className="min-w-0 flex-1 truncate" title={port.label}>
+                {port.label}
+              </span>
               {modelInputPorts.length > MIN_MODEL_PORTS ? (
                 <Button
                   aria-label={`删除端口 ${port.label}`}
@@ -519,9 +519,12 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
                   className="text-muted-foreground hover:bg-error/10 hover:text-error"
                   data-testid={`remove-port-${port.id}`}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 />
                 </Button>
-              ) : null}
+              ) : (
+                // 端口数到下限时不可删除：保留同尺寸占位，避免增删端口时整列表行高跳变
+                <span aria-hidden className="size-7 shrink-0" />
+              )}
             </li>
           ))}
         </ul>
@@ -533,7 +536,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             data-testid="add-model-port"
             className="self-start border-dashed text-muted-foreground hover:border-primary hover:text-primary"
           >
-            <Plus className="h-3 w-3" />
+            <Plus />
             添加模型端口
           </Button>
         ) : null}

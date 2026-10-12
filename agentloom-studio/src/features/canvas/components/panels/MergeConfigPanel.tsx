@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, type ChangeEvent } from 'react'
 import { GitMerge } from 'lucide-react'
 import { Input } from '@/shared/ui/input'
+import { FormField } from '@/shared/components/form-field/FormField'
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ import {
   type MergeMode,
 } from '../../types/condition.types'
 import { DynamicPortEditor, type DynamicPortEntry } from './DynamicPortEditor'
+import { Card } from '@/shared/ui/card'
 
 // ── MergeConfigPanel ──────────────────────────────────────────────
 
@@ -98,13 +100,15 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
       </div>
 
       {/* 合并模式 */}
-      <div>
-        <label
-          htmlFor="merge-mode"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          合并模式
-        </label>
+      <FormField
+        label="合并模式"
+        htmlFor="merge-mode"
+        hint={
+          parsed.mode === 'append'
+            ? '将所有输入数据按顺序拼接为数组'
+            : '按指定键字段合并对象'
+        }
+      >
         <Select value={parsed.mode} onValueChange={handleModeChange}>
           <SelectTrigger id="merge-mode" aria-label="合并模式">
             <SelectValue />
@@ -114,37 +118,23 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
             <SelectItem value="merge-by-key">按键合并</SelectItem>
           </SelectContent>
         </Select>
-        <p className="mt-1 text-2xs text-muted-foreground">
-          {parsed.mode === 'append'
-            ? '将所有输入数据按顺序拼接为数组'
-            : '按指定键字段合并对象'}
-        </p>
-      </div>
+      </FormField>
 
       {/* 合并键（仅 merge-by-key 模式） */}
       {parsed.mode === 'merge-by-key' && (
-        <div>
-          <label
-            htmlFor="merge-key"
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            合并键
-          </label>
+        <FormField label="合并键" htmlFor="merge-key" hint="用于匹配合并的键字段名称">
           <Input
             id="merge-key"
             type="text"
             value={parsed.mergeKey}
             onChange={handleMergeKeyChange}
-            placeholder="例: id"
+            placeholder="例：id"
           />
-          <p className="mt-1 text-2xs text-muted-foreground">
-            用于匹配合并的键字段名称
-          </p>
-        </div>
+        </FormField>
       )}
 
       {/* 输入端口编辑器 */}
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+      <Card className="space-y-2 p-3">
         <p className="text-xs font-medium text-foreground">输入端口</p>
         <DynamicPortEditor
           ports={portEntries}
@@ -155,23 +145,23 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
           createDefaultLabel={createMergeDefaultLabel}
           addLabel="添加输入"
         />
-      </div>
+      </Card>
 
       {/* 配置摘要 */}
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
+      <Card className="space-y-2 p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-col gap-1 text-muted-foreground">
           <span>
-            合并模式: {parsed.mode === 'append' ? '追加拼接' : '按键合并'}
+            合并模式：{parsed.mode === 'append' ? '追加拼接' : '按键合并'}
           </span>
           {parsed.mode === 'merge-by-key' && (
-            <span>
-              合并键: {parsed.mergeKey || '(未设置)'}
+            <span className="break-all">
+              合并键：{parsed.mergeKey || '（未设置）'}
             </span>
           )}
-          <span>输入端口: {parsed.inputCount} 个</span>
+          <span>输入端口：{parsed.inputCount} 个</span>
         </div>
-      </div>
+      </Card>
     </div>
   )
 })

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Plug, Search, ArrowLeft, Server, Loader2, ChevronRight, ChevronDown, Check } from 'lucide-react'
+import { Plug, Search, ArrowLeft, Server, ChevronRight, ChevronDown, Check } from 'lucide-react'
 import { useMcpServerConfigs, useMcpServerConfig } from '@/features/mcp'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
@@ -7,6 +7,11 @@ import { Input } from '@/shared/ui/input'
 import { buildMcpToolPorts } from '../../types/mcpToolMapping'
 import type { McpToolDefinition } from '../../types/mcpToolMapping'
 import type { CanvasNodeData } from '../../types'
+import { Badge } from '@/shared/ui/badge'
+import { motion } from 'motion/react'
+import { fadeIn } from '@/shared/lib/motion'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { Skeleton } from '@/shared/ui/skeleton'
 
 interface McpToolConfigPanelProps {
   data: CanvasNodeData
@@ -169,21 +174,25 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
     <div className="space-y-5 px-4 py-4">
       {/* 标题区域 */}
       <div className="flex items-center gap-2">
-        <Plug className="h-4 w-4 text-info" />
-        <span className="rounded-full bg-info/10 px-2 py-0.5 text-xs font-medium text-info">
-          MCP Server
-        </span>
+        <Plug className="size-4 shrink-0 text-info" />
+        <Badge variant="info">MCP Server</Badge>
       </div>
 
       {/* 已配置展示 */}
       {showConfigured && (
-        <div className="space-y-3">
+        <motion.div
+          key="configured"
+          initial={fadeIn.initial}
+          animate={fadeIn.animate}
+          transition={fadeIn.transition}
+          className="space-y-3"
+        >
           <div className="rounded-lg border border-border bg-muted p-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2 min-w-0">
-                <Server className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+              <div className="flex min-w-0 items-start gap-2">
+                <Server className="mt-0.5 size-4 shrink-0 text-info" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
+                  <p className="truncate text-sm font-medium text-foreground">
                     {currentServerName || currentServerConfigId}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
@@ -195,7 +204,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                 variant="ghost"
                 size="xs"
                 onClick={handleClear}
-                className="h-auto p-0 font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+                className="shrink-0 font-normal text-muted-foreground hover:text-foreground"
               >
                 清除
               </Button>
@@ -209,18 +218,19 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                 variant="ghost"
                 size="xs"
                 onClick={() => setShowToolList((v) => !v)}
-                className="h-auto w-full justify-start p-0 hover:bg-transparent"
+                aria-expanded={showToolList}
+                className="text-muted-foreground hover:text-foreground"
               >
                 <ChevronDown
                   className={cn(
-                    'h-3.5 w-3.5 transition-transform',
+                    'transition-transform duration-150',
                     !showToolList && '-rotate-90',
                   )}
                 />
                 查看工具列表
               </Button>
-              {showToolList && (
-                <ul className="mt-2 max-h-48 overflow-y-auto space-y-1">
+              <Collapse open={showToolList}>
+                <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
                   {currentTools.map((tool) => {
                     const isEnabled = currentEnabledToolIds.includes(tool.id)
                     return (
@@ -236,10 +246,12 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                               : 'border-border bg-surface',
                           )}
                         >
-                          {isEnabled && <Check className="h-2.5 w-2.5" />}
+                          {isEnabled && <Check className="size-2.5" />}
                         </div>
                         <div className="min-w-0">
-                          <span className="truncate text-foreground">{tool.title ?? tool.name}</span>
+                          <span className="block truncate text-foreground">
+                            {tool.title ?? tool.name}
+                          </span>
                           {tool.description && (
                             <p className="truncate text-2xs text-muted-foreground">{tool.description}</p>
                           )}
@@ -248,7 +260,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                     )
                   })}
                 </ul>
-              )}
+              </Collapse>
             </div>
           )}
 
@@ -261,19 +273,25 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
           >
             重新选择
           </Button>
-        </div>
+        </motion.div>
       )}
 
       {/* Step 1: 选择 MCP Server */}
       {!selectedServerId && !isConfigured && (
-        <div className="flex flex-col gap-3">
+        <motion.div
+          key="select-server"
+          initial={fadeIn.initial}
+          animate={fadeIn.animate}
+          transition={fadeIn.transition}
+          className="flex flex-col gap-3"
+        >
           <span className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground">
             <span>选择 MCP Server</span>
             <span className="text-error">*</span>
           </span>
 
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="搜索 MCP Server"
               value={serverSearch}
@@ -285,9 +303,11 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
 
           <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
             {serversLoading ? (
-              <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>加载中…</span>
+              <div role="status" className="space-y-2 p-3">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-1/2" />
+                <span className="sr-only">加载中…</span>
               </div>
             ) : filteredServers.length === 0 ? (
               <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
@@ -303,13 +323,13 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                       className="block h-auto w-full whitespace-normal rounded-none px-3 py-2.5 text-left font-normal active:scale-100"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Server className="h-3.5 w-3.5 shrink-0 text-info" />
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Server className="size-3.5 shrink-0 text-info" />
                           <span className="truncate text-xs font-medium text-foreground">
                             {server.name}
                           </span>
                         </div>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
                       </div>
                       {server.description && (
                         <p className="mt-0.5 pl-5.5 text-2xs text-muted-foreground line-clamp-2">
@@ -317,9 +337,9 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                         </p>
                       )}
                       <div className="mt-1 flex items-center gap-2 pl-5.5">
-                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+                        <Badge variant="secondary" size="sm">
                           {server.transportType}
-                        </span>
+                        </Badge>
                         <span className="text-2xs text-muted-foreground">
                           {server.toolCount} 个工具
                         </span>
@@ -330,12 +350,18 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
               </ul>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Step 2: 选择工具 */}
       {selectedServerId && (
-        <div className="flex flex-col gap-3">
+        <motion.div
+          key="select-tools"
+          initial={fadeIn.initial}
+          animate={fadeIn.animate}
+          transition={fadeIn.transition}
+          className="flex flex-col gap-3"
+        >
           {/* 返回 + Server 名称 */}
           <div className="flex items-center gap-2">
             <Button
@@ -345,10 +371,10 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
               className="text-muted-foreground hover:text-foreground"
               aria-label="返回服务器列表"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft />
             </Button>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Server className="h-3.5 w-3.5 shrink-0 text-info" />
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Server className="size-3.5 shrink-0 text-info" />
               <span className="truncate text-xs font-medium text-foreground">
                 {selectedServerName || '加载中…'}
               </span>
@@ -364,7 +390,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
               variant="ghost"
               size="xs"
               onClick={handleToggleAll}
-              className="h-auto p-0 font-normal text-info hover:bg-transparent hover:text-info/80"
+              className="font-normal text-info hover:bg-info/10 hover:text-info"
             >
               {enabledToolIds.size === activeTools.length ? '取消全选' : '全选'}
             </Button>
@@ -372,7 +398,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
 
           {/* 搜索框 */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="搜索工具"
               value={toolSearch}
@@ -385,9 +411,11 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
           {/* 工具复选列表 */}
           <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
             {detailLoading ? (
-              <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>加载工具列表…</span>
+              <div role="status" className="space-y-2 p-3">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-1/2" />
+                <span className="sr-only">加载工具列表…</span>
               </div>
             ) : filteredTools.length === 0 ? (
               <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
@@ -415,10 +443,10 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
                               : 'border-border bg-surface',
                           )}
                         >
-                          {isChecked && <Check className="h-3 w-3" />}
+                          {isChecked && <Check className="size-3" />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className="text-xs font-medium text-foreground">
+                          <span className="block break-all text-xs font-medium text-foreground">
                             {tool.title ?? tool.name}
                           </span>
                           {tool.description && (
@@ -442,9 +470,9 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
             disabled={enabledToolIds.size === 0}
             className="w-full bg-info text-white hover:bg-info/90"
           >
-            确认选择 ({enabledToolIds.size} 个工具)
+            确认选择（{enabledToolIds.size} 个工具）
           </Button>
-        </div>
+        </motion.div>
       )}
     </div>
   )

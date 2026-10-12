@@ -9,6 +9,9 @@ import {
 } from '@/shared/ui/select'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { Badge } from '@/shared/ui/badge'
+import { Card } from '@/shared/ui/card'
 
 type InputPreprocessorTransformType = 'jmespath' | 'jsonata' | 'template' | 'script'
 
@@ -86,19 +89,11 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
   return (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-type-tool" />
-        <span className="rounded-full bg-type-tool/10 px-2 py-0.5 text-xs font-medium text-type-tool">
-          输入预处理器
-        </span>
+        <Filter className="size-4 shrink-0 text-type-tool" />
+        <Badge tone="var(--color-type-tool)">输入预处理器</Badge>
       </div>
 
-      <div>
-        <label
-          htmlFor="preprocessor-transform-type"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          转换类型
-        </label>
+      <FormField label="转换类型" htmlFor="preprocessor-transform-type">
         <Select value={parsed.transformType} onValueChange={handleTransformType}>
           <SelectTrigger id="preprocessor-transform-type" aria-label="转换类型">
             <SelectValue />
@@ -111,15 +106,9 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
 
-      <div>
-        <label
-          htmlFor="preprocessor-expression"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          转换表达式
-        </label>
+      <FormField label="转换表达式" htmlFor="preprocessor-expression">
         <Textarea
           id="preprocessor-expression"
           value={parsed.expression}
@@ -138,15 +127,13 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
           }
           className="font-mono"
         />
-      </div>
+      </FormField>
 
-      <div>
-        <label
-          htmlFor="preprocessor-output-format"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          输出格式（可选）
-        </label>
+      <FormField
+        label="输出格式（可选）"
+        htmlFor="preprocessor-output-format"
+        hint="描述转换结果的格式，供下游节点参考。"
+      >
         <Input
           id="preprocessor-output-format"
           type="text"
@@ -154,19 +141,16 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
           onChange={handleOutputFormat}
           placeholder="例：json / text / csv"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          描述转换结果的格式，供下游节点参考
-        </p>
-      </div>
+      </FormField>
 
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3 text-xs">
+      <Card className="space-y-2 p-3 text-xs">
         <p className="font-medium text-foreground">当前配置</p>
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <span>{selectedOption?.label ?? parsed.transformType}</span>
           {parsed.outputFormat && (
             <>
               <span>&middot;</span>
-              <span>输出：{parsed.outputFormat}</span>
+              <span className="min-w-0 break-all">输出：{parsed.outputFormat}</span>
             </>
           )}
         </div>
@@ -177,7 +161,7 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
               : parsed.expression}
           </p>
         )}
-      </div>
+      </Card>
     </div>
   )
 })

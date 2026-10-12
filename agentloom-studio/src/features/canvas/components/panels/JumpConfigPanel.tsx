@@ -4,6 +4,7 @@ import { useToast } from '@/shared/ui/toast'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { FormField } from '@/shared/components/form-field/FormField'
 import {
   Select,
   SelectContent,
@@ -19,6 +20,7 @@ import {
   COMPOUND_EXTRA_INPUT_PREFIX,
 } from '../../types/controlFlow.types'
 import { rewriteConditionExpressionPorts } from '../../types/condition.types'
+import { Card } from '@/shared/ui/card'
 
 interface JumpConfigPanelProps {
   nodeType: 'break' | 'continue'
@@ -223,13 +225,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         {actionMeta.description}
       </p>
 
-      <div>
-        <label
-          htmlFor={`${nodeType}-mode`}
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          触发模式
-        </label>
+      <FormField label="触发模式" htmlFor={`${nodeType}-mode`}>
         <Select value={parsed.mode} onValueChange={handleModeChange}>
           <SelectTrigger id={`${nodeType}-mode`} aria-label="触发模式">
             <SelectValue />
@@ -239,17 +235,18 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
             <SelectItem value="expression">表达式触发</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
 
-      <div className="space-y-2 rounded-lg border border-border bg-surface p-3">
+      <Card className="space-y-2 p-3">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-medium text-foreground">表达式输入端口</p>
             <p className="mt-1 text-2xs text-muted-foreground">
-              通过 `ports[n]` 引用，例如 `ports[1].status === &quot;skip&quot;`。
+              通过 <code className="rounded-xs bg-muted px-1 font-mono">ports[n]</code> 引用，例如{' '}
+              <code className="rounded-xs bg-muted px-1 font-mono">ports[1].status === &quot;skip&quot;</code>。
             </p>
           </div>
-          <Button variant="outline" size="xs" onClick={handleAddInputPort}>
+          <Button variant="outline" size="xs" className="shrink-0" onClick={handleAddInputPort}>
             <Plus />
             <span>添加输入</span>
           </Button>
@@ -264,7 +261,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
             {extraInputIds.map((portId, index) => (
               <div
                 key={portId}
-                className="flex items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-2"
+                className="flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1.5"
               >
                 <div className="min-w-0 flex-1">
                   <Input
@@ -274,7 +271,10 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                     placeholder={`输入 ${index + 1}`}
                     className="h-7 border-transparent bg-transparent px-1 text-xs font-medium shadow-none hover:border-border"
                   />
-                  <p className="px-1 text-2xs font-mono text-muted-foreground">
+                  <p
+                    className="truncate px-1 font-mono text-2xs text-muted-foreground"
+                    title={portId}
+                  >
                     {`ports[${index + 1}]`} · {portId}
                   </p>
                 </div>
@@ -311,16 +311,10 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {parsed.mode === 'expression' ? (
-        <div>
-          <label
-            htmlFor={`${nodeType}-expression`}
-            className="mb-2 block text-xs font-medium text-foreground"
-          >
-            表达式
-          </label>
+        <FormField label="表达式" htmlFor={`${nodeType}-expression`}>
           <Textarea
             id={`${nodeType}-expression`}
             rows={4}
@@ -329,7 +323,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
             placeholder="例如：ports[1] === 'skip'"
             className="font-mono text-xs leading-relaxed"
           />
-        </div>
+        </FormField>
       ) : null}
     </div>
   )

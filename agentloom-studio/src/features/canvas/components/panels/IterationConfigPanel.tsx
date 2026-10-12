@@ -19,6 +19,7 @@ import {
   getNextCompoundExtraInputId,
 } from "../../types/controlFlow.types";
 import { CompoundExtraInputEditor } from "./CompoundExtraInputEditor";
+import { FormField } from '@/shared/components/form-field/FormField'
 
 interface IterationConfigPanelProps {
   nodeId: string;
@@ -204,7 +205,12 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
         extraInputIds={extraInputIds}
         portLabels={parsed.portLabels}
         title="额外输入端口"
-        description="这些输入会同步映射到内部 `iteration-start` 节点输出。"
+        description={
+          <>
+            这些输入会同步映射到内部{' '}
+            <code className="rounded-xs bg-muted px-1 font-mono">iteration-start</code> 节点输出。
+          </>
+        }
         emptyText="当前没有额外输入端口。"
         addLabel="添加输入"
         onAdd={handleAddInputPort}
@@ -213,13 +219,7 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
         onRename={handleRenameInputPort}
       />
 
-      <div>
-        <label
-          htmlFor="iteration-output-mode"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          输出模式
-        </label>
+      <FormField label="输出模式" htmlFor="iteration-output-mode">
         <Select value={parsed.outputMode} onValueChange={handleOutputModeChange}>
           <SelectTrigger id="iteration-output-mode" aria-label="输出模式">
             <SelectValue />
@@ -230,7 +230,7 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
             <SelectItem value="last">保留最后一次结果</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
 
       <label className="flex items-center gap-2 text-xs text-foreground">
         <Checkbox

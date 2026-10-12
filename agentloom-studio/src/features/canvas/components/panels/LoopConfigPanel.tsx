@@ -20,6 +20,7 @@ import {
   getNextCompoundExtraInputId,
 } from "../../types/controlFlow.types";
 import { CompoundExtraInputEditor } from "./CompoundExtraInputEditor";
+import { FormField } from '@/shared/components/form-field/FormField'
 
 interface LoopConfigPanelProps {
   nodeId: string;
@@ -237,7 +238,12 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
         extraInputIds={extraInputIds}
         portLabels={parsed.portLabels}
         title="额外输入端口"
-        description="这些输入会同步映射到内部 `loop-start` 节点输出。"
+        description={
+          <>
+            这些输入会同步映射到内部{' '}
+            <code className="rounded-xs bg-muted px-1 font-mono">loop-start</code> 节点输出。
+          </>
+        }
         emptyText="当前没有额外输入端口。"
         addLabel="添加输入"
         onAdd={handleAddInputPort}
@@ -246,29 +252,26 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
         onRename={handleRenameInputPort}
       />
 
-      <div>
-        <label className="mb-2 block text-xs font-medium text-foreground">
-          默认初始状态
-        </label>
+      <FormField
+        label="默认初始状态"
+        htmlFor="loop-default-state"
+        hint={
+          <>
+            当 <code className="rounded-xs bg-muted px-1 font-mono">state-in</code> 未连线时，循环运行会回退到这里定义的默认 state。
+          </>
+        }
+      >
         <Textarea
+          id="loop-default-state"
           rows={4}
           value={stringifyDefaultState(parsed.defaultState)}
           onChange={handleDefaultStateChange}
           placeholder='可输入 JSON，例如 {"count":0}'
           className="font-mono text-xs leading-relaxed"
         />
-        <p className="mt-1 text-2xs text-muted-foreground">
-          当 `state-in` 未连线时，循环运行会回退到这里定义的默认 state。
-        </p>
-      </div>
+      </FormField>
 
-      <div>
-        <label
-          htmlFor="loop-output-mode"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          输出模式
-        </label>
+      <FormField label="输出模式" htmlFor="loop-output-mode">
         <Select value={parsed.outputMode} onValueChange={handleOutputModeChange}>
           <SelectTrigger id="loop-output-mode" aria-label="输出模式">
             <SelectValue />
@@ -279,7 +282,7 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
             <SelectItem value="collect-array">收集为数组</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
 
       <label className="flex items-center gap-2 text-xs text-foreground">
         <Checkbox

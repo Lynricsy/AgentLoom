@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { fadeInUp } from "@/shared/lib/motion";
@@ -10,7 +10,7 @@ interface CompoundExtraInputEditorProps {
   extraInputIds: readonly string[];
   portLabels?: Record<string, string>;
   title: string;
-  description: string;
+  description: ReactNode;
   emptyText: string;
   addLabel?: string;
   onAdd: () => void;

@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import { FolderOpen, Loader2 } from 'lucide-react'
+import { FolderOpen } from 'lucide-react'
 import { useAllWorkspaces } from '@/features/workspace'
 import {
   Select,
@@ -8,19 +8,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Badge } from '@/shared/ui/badge'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { formatBytes } from '@/shared/lib/format'
+import { Alert } from '@/shared/ui/alert'
 
 interface WorkspaceConfigPanelProps {
   config: Record<string, unknown>
   onApply: (patch: Record<string, unknown>) => void
-}
-
-function formatSize(bytes: number | null): string {
-  if (bytes === null || bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const k = 1024
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  const size = bytes / Math.pow(k, i)
-  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
 export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
@@ -59,10 +54,8 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
   return (
     <div className="space-y-5 px-4 py-4" data-testid="workspace-config-panel">
       <div className="flex items-center gap-2">
-        <FolderOpen className="h-4 w-4 text-type-volume" />
-        <span className="rounded-full bg-type-volume/10 px-2 py-0.5 text-xs font-medium text-type-volume">
-          Workspace
-        </span>
+        <FolderOpen className="size-4 shrink-0 text-type-volume" />
+        <Badge tone="var(--color-type-volume)">Workspace</Badge>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -74,9 +67,9 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
           <span className="text-error">*</span>
         </label>
         {isLoading ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>加载中…</span>
+          <div role="status">
+            <Skeleton className="h-9 w-full" />
+            <span className="sr-only">加载中…</span>
           </div>
         ) : readyWorkspaces.length === 0 ? (
           <p className="text-xs text-muted-foreground">
@@ -90,7 +83,7 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
             <SelectContent>
               {readyWorkspaces.map((ws) => (
                 <SelectItem key={ws.id} value={ws.id}>
-                  {ws.name} · {formatSize(ws.sizeBytes)}
+                  {ws.name} · {formatBytes(ws.sizeBytes ?? 0)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -103,29 +96,29 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
           className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs"
           data-testid="workspace-details"
         >
-          <p className="font-medium text-foreground">{selectedWorkspace.name}</p>
+          <p className="break-words font-medium text-foreground">{selectedWorkspace.name}</p>
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-            <span>大小: {formatSize(selectedWorkspace.sizeBytes)}</span>
+            <span className="tabular-nums">大小：{formatBytes(selectedWorkspace.sizeBytes ?? 0)}</span>
             <span>·</span>
             <span className="text-success">{selectedWorkspace.status}</span>
           </div>
           {selectedWorkspace.description && (
-            <p className="text-muted-foreground">{selectedWorkspace.description}</p>
+            <p className="break-words text-muted-foreground">{selectedWorkspace.description}</p>
           )}
-          <p className="break-all text-muted-foreground">ID: {currentId}</p>
+          <p className="truncate font-mono text-muted-foreground" title={currentId}>
+            ID：{currentId}
+          </p>
         </div>
       )}
 
       {showMissingWarning && (
-        <div
-          className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
+        <Alert
+          variant="warning"
+          title="当前已选择的工作区不可用或已删除，请重新选择。"
           data-testid="workspace-missing-warning"
         >
-          <p className="font-medium text-warning">
-            当前已选择的工作区不可用或已删除，请重新选择。
-          </p>
-          <p className="break-all text-warning/80">ID: {currentId}</p>
-        </div>
+          <p className="break-all font-mono text-xs">ID：{currentId}</p>
+        </Alert>
       )}
     </div>
   )

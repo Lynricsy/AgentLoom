@@ -4,6 +4,7 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { Switch } from '@/shared/ui/switch'
 import type { BlockDefinition, BlockNodeData, CanvasNodeData } from '../../types'
+import { Badge } from '@/shared/ui/badge'
 
 interface ReusableBlockPanelProps {
   data: CanvasNodeData
@@ -52,10 +53,12 @@ function PortList({
           {ports.map((port) => (
             <li
               key={port.id}
-              className="flex items-center justify-between rounded-md bg-muted px-2 py-1 text-xs"
+              className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-1.5 text-xs"
             >
-              <span className="text-foreground">{port.label}</span>
-              <span className="text-muted-foreground">{port.dataType}</span>
+              <span className="min-w-0 truncate text-foreground" title={port.label}>
+                {port.label}
+              </span>
+              <span className="shrink-0 font-mono text-muted-foreground">{port.dataType}</span>
             </li>
           ))}
         </ul>
@@ -90,10 +93,8 @@ export const ReusableBlockPanel = memo(function ReusableBlockPanel({
   return (
     <div className="space-y-5 px-4 py-4">
       <div className="flex items-center gap-2">
-        <Package className="h-4 w-4 text-muted-foreground" />
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-          Reusable Block
-        </span>
+        <Package className="size-4 shrink-0 text-muted-foreground" />
+        <Badge variant="secondary">Reusable Block</Badge>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -142,11 +143,15 @@ export const ReusableBlockPanel = memo(function ReusableBlockPanel({
       <div className="rounded-lg border border-border bg-muted p-3 text-xs">
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">内部节点数</span>
-          <span className="font-medium text-foreground">{blockData.blockDefinition.nodes.length} 个节点</span>
+          <span className="font-medium tabular-nums text-foreground">
+            {blockData.blockDefinition.nodes.length} 个节点
+          </span>
         </div>
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-muted-foreground">内部连线数</span>
-          <span className="font-medium text-foreground">{blockData.blockDefinition.edges.length} 条连线</span>
+          <span className="font-medium tabular-nums text-foreground">
+            {blockData.blockDefinition.edges.length} 条连线
+          </span>
         </div>
       </div>
 
@@ -154,12 +159,13 @@ export const ReusableBlockPanel = memo(function ReusableBlockPanel({
       <PortList title="输出端口" ports={blockData.outputPorts} />
 
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted px-3 py-2">
-        <label htmlFor="reusable-block-expanded" className="text-sm font-medium text-foreground">
+        <label htmlFor="reusable-block-expanded" className="text-xs font-medium text-foreground">
           查看内部图
         </label>
         <Switch
           id="reusable-block-expanded"
           aria-label="查看内部图"
+          className="shrink-0"
           checked={blockData.isExpanded}
           onCheckedChange={(checked) => onApply({ isExpanded: checked })}
         />

@@ -2,6 +2,7 @@ import { memo, useCallback, Suspense, lazy, type ChangeEvent } from 'react'
 import { Code } from 'lucide-react'
 import { useTheme } from '@/shared/hooks/use-theme'
 import { Input } from '@/shared/ui/input'
+import { FormField } from '@/shared/components/form-field/FormField'
 import {
   Select,
   SelectContent,
@@ -9,6 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { Separator } from '@/shared/ui/separator'
+import { Skeleton } from '@/shared/ui/skeleton'
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
 
@@ -108,15 +111,12 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
     <div className="space-y-5 px-4 py-4" data-testid="code-tool-config-panel">
       {/* 标题 */}
       <div className="flex items-center gap-2">
-        <Code className="h-4 w-4 text-type-tool" />
+        <Code className="size-4 shrink-0 text-type-tool" />
         <span className="text-xs font-medium text-foreground">Code Executor</span>
       </div>
 
       {/* 语言选择 */}
-      <div>
-        <label htmlFor="code-language" className="mb-1 block text-xs font-medium text-foreground">
-          语言 <span className="text-error">*</span>
-        </label>
+      <FormField label="语言" htmlFor="code-language" required>
         <Select value={parsed.language} onValueChange={handleLanguage}>
           <SelectTrigger id="code-language" aria-label="语言">
             <SelectValue />
@@ -129,13 +129,10 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
 
       {/* 描述 */}
-      <div>
-        <label htmlFor="code-description" className="mb-1 block text-xs font-medium text-foreground">
-          描述
-        </label>
+      <FormField label="描述" htmlFor="code-description">
         <Input
           id="code-description"
           type="text"
@@ -143,25 +140,22 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
           onChange={handleDescription}
           placeholder="简要描述代码功能"
         />
-      </div>
+      </FormField>
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* 代码编辑器 */}
-      <div>
-        <label className="mb-2 block text-xs font-medium text-foreground">
-          代码
-        </label>
+      <FormField label="代码" hint="通过 input 变量获取上游数据，将结果赋值给 output 变量。">
         <Suspense
           fallback={
             <div
               className="flex h-[300px] flex-col gap-2 rounded-md border border-border bg-surface p-4"
               data-testid="code-tool-editor-fallback"
             >
-              <div className="h-4 w-28 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-full animate-pulse rounded bg-muted" />
-              <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-5/6" />
+              <Skeleton className="h-3 w-2/3" />
             </div>
           }
         >
@@ -182,21 +176,16 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
             />
           </div>
         </Suspense>
-        <p className="mt-1 text-xs text-muted-foreground">
-          通过 input 变量获取上游数据，将结果赋值给 output 变量
-        </p>
-      </div>
+      </FormField>
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* 超时时间 */}
-      <div>
-        <label
-          htmlFor="code-timeout"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          超时时间（秒）
-        </label>
+      <FormField
+        label="超时时间（秒）"
+        htmlFor="code-timeout"
+        hint="代码执行超时时间，默认 30 秒，最长 300 秒"
+      >
         <Input
           id="code-timeout"
           type="number"
@@ -206,10 +195,7 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
           onChange={handleTimeout}
           className="w-24"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          代码执行超时时间，默认 30 秒，最长 300 秒
-        </p>
-      </div>
+      </FormField>
     </div>
   )
 })

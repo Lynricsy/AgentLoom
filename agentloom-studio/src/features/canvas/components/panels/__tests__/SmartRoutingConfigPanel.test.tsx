@@ -525,7 +525,7 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      expect(screen.getByText(/模型输入端口\s*\(2\)/)).toBeInTheDocument()
+      expect(screen.getByText(/模型输入端口（2）/)).toBeInTheDocument()
     })
 
     it('adds a model port and keeps fallbackPriority in sync', () => {

@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { BrainCircuit, Loader2, X } from 'lucide-react'
+import { BrainCircuit, X } from 'lucide-react'
 import { useAllMemoryInstances } from '@/features/canvas/hooks/useMemoryInstances'
 import {
   Select,
@@ -13,6 +13,8 @@ import {
 } from '@/shared/ui/select'
 import { Input } from '@/shared/ui/input'
 import { Button } from '@/shared/ui/button'
+import { Badge } from '@/shared/ui/badge'
+import { Skeleton } from '@/shared/ui/skeleton'
 
 const memoryConfigSchema = z.object({
   memoryInstanceId: z.string().min(1, '此字段为必填项'),
@@ -101,21 +103,23 @@ const BootUriTagInput = memo(function BootUriTagInput({
     <div className="space-y-2" data-testid="boot-uri-tag-input">
       <div className="flex flex-wrap gap-1">
         {tags.map((tag, index) => (
-          <span
+          <Badge
             key={`${tag}-${index}`}
-            className="inline-flex items-center gap-1 rounded-md bg-[var(--color-node-memory)]/20 px-2 py-0.5 text-xs text-[var(--color-node-memory)]"
+            tone="var(--color-node-memory)"
+            className="max-w-full pr-0.5"
+            title={tag}
           >
-            {tag}
+            <span className="truncate font-mono">{tag}</span>
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-2xs"
               onClick={() => removeTag(index)}
-              className="size-auto rounded-sm text-[var(--color-node-memory)] hover:bg-transparent hover:opacity-80 [&_svg]:size-3"
+              className="shrink-0 rounded-full text-current hover:bg-current/10"
               aria-label={`删除 ${tag}`}
             >
               <X />
             </Button>
-          </span>
+          </Badge>
         ))}
       </div>
       <Input
@@ -241,10 +245,8 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
     <div className="space-y-5 px-4 py-4" data-testid="memory-config-panel">
       {/* 头部标签 */}
       <div className="flex items-center gap-2">
-        <BrainCircuit className="h-4 w-4 text-node-memory" />
-        <span className="rounded-full bg-node-memory/10 px-2 py-0.5 text-xs font-medium text-node-memory">
-          Memory
-        </span>
+        <BrainCircuit className="size-4 shrink-0 text-node-memory" />
+        <Badge tone="var(--color-node-memory)">Memory</Badge>
       </div>
 
       {/* Memory 实例选择器 */}
@@ -257,13 +259,13 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
           <span className="text-error">*</span>
         </label>
         {isLoading ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>加载中…</span>
+          <div role="status">
+            <Skeleton className="h-9 w-full" />
+            <span className="sr-only">加载中…</span>
           </div>
         ) : memoryInstances.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No memory instances available. Create one first.
+            暂无可用 Memory 实例，请先创建。
           </p>
         ) : (
           <Controller

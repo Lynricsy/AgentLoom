@@ -224,6 +224,6 @@ describe('MemoryConfigPanel', () => {
       />,
     );
 
-    expect(screen.getByText(/no memory instances/i)).toBeInTheDocument();
+    expect(screen.getByText(/暂无可用 Memory 实例/)).toBeInTheDocument();
   });
 });
