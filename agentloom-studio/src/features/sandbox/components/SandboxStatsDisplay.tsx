@@ -1,6 +1,6 @@
 import { memo } from "react";
+import { formatBytes } from "@/shared/lib/format";
 import {
-  formatSandboxBytes,
   formatSandboxMegabytes,
   getSandboxDiskPercent,
   safeSandboxPercent,
@@ -19,7 +19,7 @@ function getBarTone(percent: number): string {
   return "var(--color-success)";
 }
 
-function ProgressBar({ percent }: { percent: number }) {
+export function ProgressBar({ percent }: { percent: number }) {
   const clamped = Math.min(100, Math.max(0, percent));
   return (
     <div className="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -106,8 +106,8 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
             <div className="mb-1 flex items-center justify-between text-xs">
               <span className="text-muted-foreground">磁盘</span>
               <span className="font-medium tabular-nums text-foreground">
-                {formatSandboxBytes(stats.diskUsage)} /{" "}
-                {formatSandboxBytes(stats.diskTotal)}
+                {formatBytes(stats.diskUsage)} /{" "}
+                {formatBytes(stats.diskTotal)}
                 <span className="ml-1 text-muted-foreground">({diskPercent}%)</span>
               </span>
             </div>

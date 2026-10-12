@@ -155,8 +155,8 @@ export function CreateSandboxDialog({
             />
           </div>
 
-          <div>
-            <div className="mb-2 flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
               <label
                 htmlFor="sandbox-cpu-slider"
                 className="text-sm font-medium text-foreground"
@@ -176,14 +176,14 @@ export function CreateSandboxDialog({
                 clearPresetSelection();
               }}
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>0.5 核</span>
               <span>4 核</span>
             </div>
           </div>
 
-          <div>
-            <div className="mb-2 flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
               <label
                 htmlFor="sandbox-memory-slider"
                 className="text-sm font-medium text-foreground"
@@ -205,14 +205,14 @@ export function CreateSandboxDialog({
                 clearPresetSelection();
               }}
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>256 MB</span>
               <span>4096 MB</span>
             </div>
           </div>
 
-          <div>
-            <div className="mb-2 flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
               <label
                 htmlFor="sandbox-disk-slider"
                 className="text-sm font-medium text-foreground"
@@ -232,7 +232,7 @@ export function CreateSandboxDialog({
                 clearPresetSelection();
               }}
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>1 GB</span>
               <span>10 GB</span>
             </div>
@@ -271,7 +271,7 @@ export function CreateSandboxDialog({
           </DialogClose>
           <Button disabled={!canCreate} onClick={handleCreate}>
             {createMutation.isPending && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="animate-spin" />
             )}
             创建
           </Button>

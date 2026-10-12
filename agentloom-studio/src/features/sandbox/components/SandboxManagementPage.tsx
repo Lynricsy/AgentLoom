@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { AlertCircle, Container, Loader2, Plus, Search } from "lucide-react";
 import { motion } from "motion/react";
 import { staggerList } from "@/shared/lib/motion";
@@ -91,6 +91,12 @@ export function SandboxManagementPage() {
   const [confirmDelete, setConfirmDelete] = useState<SandboxSession | null>(
     null,
   );
+  const lastConfirmDeleteRef = useRef<SandboxSession | null>(null);
+  if (confirmDelete) lastConfirmDeleteRef.current = confirmDelete;
+  const deleteTargetName = lastConfirmDeleteRef.current
+    ? lastConfirmDeleteRef.current.config.name ||
+      lastConfirmDeleteRef.current.id.slice(0, 8)
+    : "";
 
   const stopMutation = useStopSandbox();
   const startMutation = useStartSandbox();
@@ -204,7 +210,7 @@ export function SandboxManagementPage() {
         description="管理 Agent 的代码执行沙箱环境"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus />
             创建沙箱
           </Button>
         }
@@ -212,7 +218,7 @@ export function SandboxManagementPage() {
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -294,7 +300,7 @@ export function SandboxManagementPage() {
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-44 rounded-lg" />
+            <Skeleton key={index} className="h-52 rounded-lg" />
           ))}
         </div>
       ) : isError ? (
@@ -322,7 +328,7 @@ export function SandboxManagementPage() {
           action={
             hasFilters ? null : (
               <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus className="mr-1.5 h-4 w-4" />
+                <Plus />
                 创建沙箱
               </Button>
             )
@@ -365,11 +371,7 @@ export function SandboxManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除沙箱「
-            {confirmDelete
-              ? confirmDelete.config.name || confirmDelete.id.slice(0, 8)
-              : ""}
-            」吗？此操作不可撤销。
+            确定要删除沙箱「{deleteTargetName}」吗？此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -382,7 +384,7 @@ export function SandboxManagementPage() {
               }}
             >
               {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               )}
               删除
             </AlertDialogAction>

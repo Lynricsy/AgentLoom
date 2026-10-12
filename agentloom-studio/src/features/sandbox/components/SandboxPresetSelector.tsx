@@ -1,8 +1,11 @@
-import { memo, useState } from "react";
+import { memo, useId, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Cpu, MemoryStick, HardDrive, X, Plus, Pencil } from "lucide-react";
+import { fadeInUp } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import {
   useSandboxPresetStore,
   getAllPresets,
@@ -38,6 +41,7 @@ const PresetCard = memo(function PresetCard({
   onStartRename?: () => void;
   compact?: boolean;
 }) {
+  const hasActions = !preset.isBuiltin && Boolean(onStartRename || onRemove);
   return (
     <div className="relative">
       <Button
@@ -52,8 +56,10 @@ const PresetCard = memo(function PresetCard({
         )}
       >
         <span
+          title={preset.name}
           className={cn(
-            "block text-xs font-medium",
+            "block truncate text-xs font-medium",
+            hasActions && "pr-14",
             isSelected ? "text-primary" : "text-foreground",
           )}
         >
@@ -65,31 +71,31 @@ const PresetCard = memo(function PresetCard({
           )}
         </span>
 
-        <span className="mt-1 flex items-center gap-2 text-2xs text-muted-foreground">
+        <span className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 whitespace-nowrap text-2xs text-muted-foreground">
           <span className="inline-flex items-center gap-0.5">
-            <Cpu className="h-2.5 w-2.5" />
+            <Cpu />
             {preset.cpu}核
           </span>
           <span className="inline-flex items-center gap-0.5">
-            <MemoryStick className="h-2.5 w-2.5" />
+            <MemoryStick />
             {preset.memory}MB
           </span>
           <span className="inline-flex items-center gap-0.5">
-            <HardDrive className="h-2.5 w-2.5" />
+            <HardDrive />
             {preset.disk}GB
           </span>
         </span>
       </Button>
 
-      {!preset.isBuiltin && (onStartRename || onRemove) && (
+      {hasActions && (
         <div className="absolute right-2 top-2 flex items-center gap-1">
           {onStartRename && (
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-2xs"
               aria-label={`${preset.name} 重命名`}
               onClick={onStartRename}
-              className="h-5 w-5 rounded-full bg-muted text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground [&_svg]:size-3"
+              className="rounded-full bg-muted text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground"
             >
               <Pencil />
             </Button>
@@ -97,10 +103,10 @@ const PresetCard = memo(function PresetCard({
           {onRemove && (
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-2xs"
               aria-label={`${preset.name} 删除`}
               onClick={onRemove}
-              className="h-5 w-5 rounded-full bg-muted text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground [&_svg]:size-3"
+              className="rounded-full bg-muted text-muted-foreground shadow-sm ring-1 ring-border hover:bg-muted hover:text-foreground"
             >
               <X />
             </Button>
@@ -127,6 +133,7 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
   const [newPresetName, setNewPresetName] = useState("");
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editingPresetName, setEditingPresetName] = useState("");
+  const labelId = useId();
 
   // 判断当前配置是否已经匹配某个预设
   const matchedPreset = currentConfig
@@ -166,14 +173,9 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label
-          className={cn(
-            "font-medium text-foreground",
-            compact ? "text-xs" : "text-sm",
-          )}
-        >
+        <Label id={labelId} className="text-sm">
           配置预设
-        </label>
+        </Label>
         {canSave && !showSaveForm && (
           <Button
             variant="link"
@@ -191,6 +193,8 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
       </div>
 
       <div
+        role="group"
+        aria-labelledby={labelId}
         className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-3")}
       >
         {allPresets.map((preset) => (
@@ -210,75 +214,69 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
         ))}
       </div>
 
-      {editingPresetId && (
-        <div className="flex items-center gap-2">
-          <Input
-            value={editingPresetName}
-            onChange={(e) => setEditingPresetName(e.target.value)}
-            placeholder="重命名预设"
-            className="h-7 flex-1 text-xs"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleRenamePreset();
-              if (e.key === "Escape") clearRename();
-            }}
-            autoFocus
-          />
-          <Button
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={handleRenamePreset}
-            disabled={!editingPresetName.trim()}
-          >
-            重命名
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={clearRename}
-          >
-            取消
-          </Button>
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {editingPresetId && (
+          <motion.div key="rename" {...fadeInUp} className="flex items-center gap-2">
+            <Input
+              value={editingPresetName}
+              onChange={(e) => setEditingPresetName(e.target.value)}
+              placeholder="重命名预设"
+              className="h-7 flex-1 text-xs"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenamePreset();
+                if (e.key === "Escape") clearRename();
+              }}
+              autoFocus
+            />
+            <Button
+              size="xs"
+              onClick={handleRenamePreset}
+              disabled={!editingPresetName.trim()}
+            >
+              重命名
+            </Button>
+            <Button variant="ghost" size="xs" onClick={clearRename}>
+              取消
+            </Button>
+          </motion.div>
+        )}
 
-      {showSaveForm && (
-        <div className="flex items-center gap-2">
-          <Input
-            value={newPresetName}
-            onChange={(e) => setNewPresetName(e.target.value)}
-            placeholder="预设名称"
-            className="h-7 flex-1 text-xs"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSavePreset();
-              if (e.key === "Escape") {
+        {showSaveForm && (
+          <motion.div key="save" {...fadeInUp} className="flex items-center gap-2">
+            <Input
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder="预设名称"
+              className="h-7 flex-1 text-xs"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSavePreset();
+                if (e.key === "Escape") {
+                  setShowSaveForm(false);
+                  setNewPresetName("");
+                }
+              }}
+              autoFocus
+            />
+            <Button
+              size="xs"
+              onClick={handleSavePreset}
+              disabled={!newPresetName.trim()}
+            >
+              保存
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => {
                 setShowSaveForm(false);
                 setNewPresetName("");
-              }
-            }}
-            autoFocus
-          />
-          <Button
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={handleSavePreset}
-            disabled={!newPresetName.trim()}
-          >
-            保存
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => {
-              setShowSaveForm(false);
-              setNewPresetName("");
-            }}
-          >
-            取消
-          </Button>
-        </div>
-      )}
+              }}
+            >
+              取消
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

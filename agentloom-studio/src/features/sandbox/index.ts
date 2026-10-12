@@ -38,11 +38,12 @@ export { findMatchingPreset } from "./stores/sandboxPresetStore";
 
 export type { SandboxPreset } from "./stores/sandboxPresetStore";
 export {
-  formatSandboxBytes,
   formatSandboxMegabytes,
   getSandboxDiskPercent,
   safeSandboxPercent,
 } from "./lib/sandboxStats";
+// agent-conversation/SandboxComputerPanel 仍从这里取字节格式化；切片 C 改为直接用 formatBytes 后删除此别名
+export { formatBytes as formatSandboxBytes } from "@/shared/lib/format";
 
 export type {
   SandboxSession,

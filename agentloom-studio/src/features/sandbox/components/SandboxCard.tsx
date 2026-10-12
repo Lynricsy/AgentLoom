@@ -12,8 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { useSandboxStats } from "../api/sandboxQueries";
-import { formatSandboxBytes, getSandboxDiskPercent } from "../lib/sandboxStats";
-import { SandboxStatsDisplay } from "./SandboxStatsDisplay";
+import { formatBytes } from "@/shared/lib/format";
+import { getSandboxDiskPercent } from "../lib/sandboxStats";
+import { ProgressBar, SandboxStatsDisplay } from "./SandboxStatsDisplay";
 import type { SandboxSession, SandboxStatus } from "../types";
 
 interface SandboxCardProps {
@@ -138,14 +139,14 @@ export const SandboxCard = memo(function SandboxCard({
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+              className="grid size-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor:
                   "color-mix(in srgb, var(--color-type-sandbox) 14%, transparent)",
                 color: "var(--color-type-sandbox)",
               }}
             >
-              <Container className="h-4 w-4" />
+              <Container className="size-4" />
             </span>
             <h2 className="truncate text-sm font-semibold text-foreground">
               {displayName}
@@ -202,16 +203,11 @@ export const SandboxCard = memo(function SandboxCard({
               <div className="mb-1 flex items-center justify-between">
                 <span>磁盘</span>
                 <span className="font-medium tabular-nums text-foreground">
-                  {formatSandboxBytes(stats.diskUsage)} /{" "}
-                  {formatSandboxBytes(stats.diskTotal)}
+                  {formatBytes(stats.diskUsage)} /{" "}
+                  {formatBytes(stats.diskTotal)}
                 </span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-success"
-                  style={{ width: `${Math.min(100, diskPercent)}%` }}
-                />
-              </div>
+              <ProgressBar percent={diskPercent} />
             </div>
           )}
 

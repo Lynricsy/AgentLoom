@@ -33,7 +33,7 @@ describe("SandboxStatsDisplay", () => {
       />,
     );
 
-    expect(screen.getByText("0 B / 2.0 GB")).toBeInTheDocument();
+    expect(screen.getByText("0 B / 2 GB")).toBeInTheDocument();
     expect(screen.getByText("(0%)")).toBeInTheDocument();
   });
 });
