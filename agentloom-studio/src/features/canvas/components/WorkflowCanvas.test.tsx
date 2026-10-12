@@ -244,6 +244,7 @@ vi.mock('@xyflow/react', () => {
     ReactFlow: MockReactFlow,
     useReactFlow: () => ({ screenToFlowPosition: vi.fn(), getNode: vi.fn(), fitView: fitViewMock }),
     useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+    useStore: (selector: (state: { width: number }) => unknown) => selector({ width: 1200 }),
   }
 })
 

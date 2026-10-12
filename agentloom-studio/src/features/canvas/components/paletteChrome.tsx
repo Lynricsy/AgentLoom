@@ -95,9 +95,9 @@ interface PaletteIconChipProps {
 }
 
 const CHIP_SIZE_CLASS: Record<NonNullable<PaletteIconChipProps['size']>, string> = {
-  sm: 'h-5 w-5 rounded-md',
-  md: 'h-7 w-7 rounded-lg',
-  lg: 'h-8 w-8 rounded-lg',
+  sm: 'size-5 rounded-md',
+  md: 'size-7 rounded-lg',
+  lg: 'size-8 rounded-lg',
 }
 
 /**

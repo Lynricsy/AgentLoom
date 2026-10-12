@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCanvasStore } from '../../stores/canvasStore'
 import { CanvasMiniMap } from './CanvasMiniMap'
@@ -28,12 +28,14 @@ describe('CanvasMiniMap', () => {
     expect(screen.getByRole('button', { name: '折叠小地图' })).toBeInTheDocument()
   })
 
-  it('可以折叠和重新展开小地图', () => {
+  it('可以折叠和重新展开小地图', async () => {
     render(<CanvasMiniMap />)
 
     fireEvent.click(screen.getByRole('button', { name: '折叠小地图' }))
     expect(useCanvasStore.getState().isMiniMapCollapsed).toBe(true)
-    expect(screen.queryByTestId('xyflow-minimap')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByTestId('xyflow-minimap')).not.toBeInTheDocument()
+    })
     expect(screen.getByRole('button', { name: '展开小地图' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '展开小地图' }))

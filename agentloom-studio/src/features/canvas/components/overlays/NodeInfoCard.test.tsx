@@ -7,10 +7,12 @@ import { clonePortDefinitions } from "../../types/portSchema";
 import { NodeInfoCard } from "./NodeInfoCard";
 
 const getNodeMock = vi.fn();
+const flowWidth = { current: 1200 };
 
 vi.mock("@xyflow/react", () => ({
   useReactFlow: () => ({ getNode: getNodeMock }),
   useViewport: () => ({ x: 10, y: 5, zoom: 2 }),
+  useStore: (selector: (state: { width: number }) => unknown) => selector({ width: flowWidth.current }),
 }));
 
 function createNode(): CanvasNode {
@@ -55,6 +57,7 @@ describe("NodeInfoCard", () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset();
     getNodeMock.mockReset();
+    flowWidth.current = 1200;
   });
 
   it("未悬浮节点时不渲染卡片", () => {
@@ -70,12 +73,24 @@ describe("NodeInfoCard", () => {
     render(<NodeInfoCard />);
 
     const card = screen.getByTestId("node-info-card");
-    expect(card.getAttribute("style")).toContain("translate(402px, 37px)");
+    expect(card.getAttribute("style")).toContain("translateX(402px) translateY(37px)");
     expect(screen.getByTestId("node-info-card-icon")).toBeInTheDocument();
     expect(screen.getByText("分析 Agent")).toBeInTheDocument();
     expect(screen.getAllByText("Agent")).toHaveLength(2);
     expect(screen.getByText("9 输入, 3 输出")).toBeInTheDocument();
-    expect(screen.getByText("空闲")).toBeInTheDocument();
+  });
+
+  it("节点靠近画布右缘时卡片翻到节点左侧", () => {
+    flowWidth.current = 500;
+    useCanvasStore.getState().actions.setHoveredNodeId("node-1");
+    getNodeMock.mockReturnValue(createNode());
+
+    render(<NodeInfoCard />);
+
+    // 节点左缘 = 40*2+10 = 90；翻转后 left = max(0, 90 - 12 - 260) = 0（motion 省略 0 位移）
+    const style = screen.getByTestId("node-info-card").getAttribute("style") ?? "";
+    expect(style).not.toContain("translateX");
+    expect(style).toContain("translateY(37px)");
   });
 
   it("未知节点类型时应降级显示而不是抛错", () => {

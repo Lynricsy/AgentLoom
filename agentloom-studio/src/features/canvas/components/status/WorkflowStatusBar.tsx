@@ -1,6 +1,8 @@
 import { memo, useEffect, useState } from 'react'
 import { useOnViewportChange } from '@xyflow/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Loader2, Check, Circle, Play, CheckCircle2, XCircle, Pause } from 'lucide-react'
+import { fadeIn } from '@/shared/lib/motion'
 import { cn } from '@/shared/lib/utils'
 import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
 import {
@@ -51,7 +53,7 @@ export const WorkflowStatusBar = memo(function WorkflowStatusBar() {
     <div
       className={cn(
         CANVAS_FLOATING_CLASS,
-        'absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2.5 px-3 py-1.5 text-xs text-muted-foreground',
+        'absolute bottom-3 left-1/2 z-20 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 items-center gap-2.5 whitespace-nowrap px-3 py-1.5 text-xs text-muted-foreground',
       )}
       data-testid="workflow-status-bar"
     >
@@ -105,37 +107,40 @@ const StatusIndicator = memo(function StatusIndicator({
     }
   }, [isDirty, isSaving, lastSavedAt])
 
-  if (isSaving) {
-    return (
-      <span className="flex items-center gap-1 text-muted-foreground">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        保存中…
-      </span>
-    )
-  }
+  const state = isSaving
+    ? {
+        key: 'saving',
+        className: 'text-muted-foreground',
+        icon: <Loader2 className="size-3 shrink-0 animate-spin" />,
+        label: '保存中…',
+      }
+    : isDirty
+      ? {
+          key: 'dirty',
+          className: 'text-warning',
+          icon: <Circle className="size-2 shrink-0 fill-current" />,
+          label: '未保存',
+        }
+      : {
+          key: 'saved',
+          className: 'text-success',
+          icon: <Check className="size-3 shrink-0" />,
+          label: lastSavedAt ? `已保存 · ${formatRelativeTime(lastSavedAt, now)}` : '已保存',
+        }
 
-  if (isDirty) {
-    return (
-      <span className="flex items-center gap-1 text-warning">
-        <Circle className="h-2 w-2 fill-current" />
-        未保存
-      </span>
-    )
-  }
-
-  if (lastSavedAt) {
-    return (
-      <span className="flex items-center gap-1 text-success">
-        <Check className="h-3 w-3" />
-        已保存 · {formatRelativeTime(lastSavedAt, now)}
-      </span>
-    )
-  }
-
+  // 新旧状态叠在同一格里交叉淡入淡出；min-w 防止文案长度变化让居中的状态条左右抖动
   return (
-    <span className="flex items-center gap-1 text-success">
-      <Check className="h-3 w-3" />
-      已保存
+    <span className="grid min-w-[8rem] [&>*]:col-start-1 [&>*]:row-start-1">
+      <AnimatePresence initial={false}>
+        <motion.span
+          key={state.key}
+          {...fadeIn}
+          className={cn('flex items-center gap-1', state.className)}
+        >
+          {state.icon}
+          {state.label}
+        </motion.span>
+      </AnimatePresence>
     </span>
   )
 })
@@ -160,10 +165,10 @@ const ExecutionStatusIndicator = memo(function ExecutionStatusIndicator({
       className={cn('flex items-center gap-1', config.className)}
       data-testid="execution-status-indicator"
     >
-      <Icon className={cn('h-3 w-3', status === 'pending' && 'animate-spin')} />
+      <Icon className={cn('size-3 shrink-0', status === 'pending' && 'animate-spin')} />
       {config.label}
       {showProgress && (
-        <span className="text-muted-foreground">
+        <span className="tabular-nums text-muted-foreground">
           ({completedSteps}/{totalSteps})
         </span>
       )}
