@@ -14,8 +14,12 @@ import {
 import {
   buildCompoundChildExtent,
   clampPositionToExtent,
+  computeChildrenBoundingBox,
+  computeMinResizeSize,
+  getCompoundFrameInsets,
   readCompoundNodeDimension,
   resolveCompoundContainerSize,
+  type CompoundLayoutSize,
 } from "../lib/compoundLayout";
 import {
   evaluateConnection,
@@ -155,6 +159,30 @@ export function syncCompoundParentOutputPorts(
   parentNode.data.outputPorts = buildCompoundOutputPorts(outputKeys);
 }
 
+/** 未测量的同级节点按完整卡片宽度估算，判断是否位于容器正下方 */
+const COMPOUND_CHILD_FALLBACK_WIDTH = 240;
+
+/**
+ * 写入 compound 容器尺寸。React Flow 渲染取 `width`/`height`（resizer 写入）优先于 `style`，
+ * readCompoundNodeDimension 又优先读 `measured`，三处必须一起改，否则旧尺寸会盖过新尺寸。
+ */
+export function writeCompoundNodeSize(
+  node: CanvasNode,
+  size: CompoundLayoutSize,
+): void {
+  node.style = { ...(node.style ?? {}), width: size.width, height: size.height };
+  if (typeof node.width === "number") node.width = size.width;
+  if (typeof node.height === "number") node.height = size.height;
+  if (node.measured) node.measured = { ...size };
+}
+
+/**
+ * 按收起态与子节点同步 compound 容器尺寸与子节点 extent：
+ * - 收起：宽度固定为收起宽度，高度不写死、由内容撑开（端口多时固定高度会把输出端口裁到卡片外）；
+ *   不能沿用展开时的大框，否则卡片被拉高、出边悬空、fitView 预留空白。
+ * - 展开：至少容纳全部子节点，因此从收起态展开、或载入子节点越界的图时容器会撑开；
+ *   不会比当前尺寸更小，用户手动放大的尺寸保留。
+ */
 export function syncCompoundParentLayout(
   nodes: CanvasNode[],
   parentNodeId: string,
@@ -164,37 +192,54 @@ export function syncCompoundParentLayout(
     return;
   }
 
-  const isCollapsed = parentNode.data.config?.isCollapsed === true;
-  const parentSize = resolveCompoundContainerSize({
-    inputPortCount: parentNode.data.inputPorts.length,
-    outputPortCount: parentNode.data.outputPorts.length,
-    width: readCompoundNodeDimension(parentNode, "width"),
-    height: readCompoundNodeDimension(parentNode, "height"),
-    isCollapsed,
-  });
+  const inputPortCount = parentNode.data.inputPorts.length;
+  const outputPortCount = parentNode.data.outputPorts.length;
 
-  parentNode.style = {
-    ...(parentNode.style ?? {}),
-    width: parentSize.width,
-    height: parentSize.height,
-  };
-
-  if (isCollapsed) {
+  if (parentNode.data.config?.isCollapsed === true) {
+    const { width } = resolveCompoundContainerSize({
+      inputPortCount,
+      outputPortCount,
+      isCollapsed: true,
+    });
+    // 每次测量后都会走到这里，已是目标形态时不再写入，避免无意义的新对象与历史步。
+    // 不能删除 measured：删了 React Flow 会把节点当作未测量而隐藏并重新测量，形成循环
+    if (
+      parentNode.style?.width !== width ||
+      parentNode.style.height !== undefined
+    ) {
+      const style = { ...(parentNode.style ?? {}), width };
+      delete style.height;
+      parentNode.style = style;
+    }
+    if (typeof parentNode.width === "number") parentNode.width = width;
+    if (parentNode.height !== undefined) delete parentNode.height;
     return;
   }
 
-  for (const childNode of nodes) {
-    if (childNode.parentId !== parentNodeId) {
-      continue;
-    }
+  const childNodes = nodes.filter((node) => node.parentId === parentNodeId);
+  const currentSize = resolveCompoundContainerSize({
+    inputPortCount,
+    outputPortCount,
+    width: readCompoundNodeDimension(parentNode, "width"),
+    height: readCompoundNodeDimension(parentNode, "height"),
+  });
+  const childrenFit = computeMinResizeSize(
+    computeChildrenBoundingBox(childNodes),
+    getCompoundFrameInsets(inputPortCount, outputPortCount),
+  );
+  const parentSize = {
+    width: Math.max(currentSize.width, childrenFit.width),
+    height: Math.max(currentSize.height, childrenFit.height),
+  };
+  writeCompoundNodeSize(parentNode, parentSize);
 
-    const childExtent = buildCompoundChildExtent({
-      inputPortCount: parentNode.data.inputPorts.length,
-      outputPortCount: parentNode.data.outputPorts.length,
-      width: parentSize.width,
-      height: parentSize.height,
-    });
-
+  const childExtent = buildCompoundChildExtent({
+    inputPortCount,
+    outputPortCount,
+    width: parentSize.width,
+    height: parentSize.height,
+  });
+  for (const childNode of childNodes) {
     childNode.extent = childExtent;
     childNode.expandParent = false;
     childNode.position = clampPositionToExtent(
@@ -205,6 +250,80 @@ export function syncCompoundParentLayout(
         childHeight: readCompoundNodeDimension(childNode, "height"),
       },
     );
+  }
+}
+
+/**
+ * 容器占位尺寸；收起态高度不写死，尚未被 React Flow 测量时按收起尺寸估算。
+ * 切换时 config 已是新状态，读切换前尺寸需显式传入旧的收起态。
+ */
+function readCompoundFootprint(
+  node: CanvasNode,
+  isCollapsed: boolean,
+): CompoundLayoutSize {
+  const fallback = resolveCompoundContainerSize({
+    inputPortCount: node.data.inputPorts.length,
+    outputPortCount: node.data.outputPorts.length,
+    isCollapsed,
+  });
+  return {
+    width: readCompoundNodeDimension(node, "width") ?? fallback.width,
+    height: readCompoundNodeDimension(node, "height") ?? fallback.height,
+  };
+}
+
+/**
+ * 容器收起 / 展开后同步尺寸，并按尺寸差平移同级节点：起点在容器原右边缘及以右的节点横移；
+ * 位于容器正下方（横向与容器相交）的节点纵移。展开不会压住后面的节点，
+ * 收起不会留下大块空白，来回切换位置可还原。嵌套容器继续向上同步外层尺寸。
+ */
+export function applyCompoundCollapseToggle(
+  nodes: CanvasNode[],
+  containerId: string,
+): void {
+  const container = nodes.find((node) => node.id === containerId);
+  if (!container || !isCompoundContainerNodeType(container.data.nodeType)) {
+    return;
+  }
+
+  const isCollapsed = container.data.config?.isCollapsed === true;
+  const before = readCompoundFootprint(container, !isCollapsed);
+  syncCompoundParentLayout(nodes, containerId);
+  // 刚收起时 measured 仍是展开尺寸，内容高度要等 React Flow 重新测量，先按收起尺寸估算
+  const after = isCollapsed
+    ? resolveCompoundContainerSize({
+        inputPortCount: container.data.inputPorts.length,
+        outputPortCount: container.data.outputPorts.length,
+        isCollapsed: true,
+      })
+    : readCompoundFootprint(container, false);
+  const deltaX = after.width - before.width;
+  const deltaY = after.height - before.height;
+  const oldLeft = container.position.x;
+  const oldRight = oldLeft + before.width;
+  const oldBottom = container.position.y + before.height;
+  const groupParentId = container.parentId ?? null;
+
+  for (const sibling of nodes) {
+    if (sibling.id === containerId) continue;
+    if ((sibling.parentId ?? null) !== groupParentId) continue;
+    const siblingWidth =
+      readCompoundNodeDimension(sibling, "width") ??
+      COMPOUND_CHILD_FALLBACK_WIDTH;
+    const isRight = sibling.position.x >= oldRight;
+    const isBelow =
+      !isRight &&
+      sibling.position.y >= oldBottom &&
+      sibling.position.x + siblingWidth > oldLeft;
+    if (!isRight && !isBelow) continue;
+    sibling.position = {
+      x: sibling.position.x + (isRight ? deltaX : 0),
+      y: sibling.position.y + (isBelow ? deltaY : 0),
+    };
+  }
+
+  if (groupParentId) {
+    syncCompoundParentLayout(nodes, groupParentId);
   }
 }
 

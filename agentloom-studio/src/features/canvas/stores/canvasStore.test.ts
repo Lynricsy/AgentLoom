@@ -452,6 +452,138 @@ describe('canvasStore', () => {
     expect(extent[1][1] - extent[0][1]).toBeGreaterThanOrEqual(80)
   })
 
+  it('收起 / 展开 compound 容器时调整尺寸并平移右侧与下方的同级节点', () => {
+    const loopConfig = getNodeTypeConfig('loop')
+    const agentConfig = getNodeTypeConfig('agent')
+    const loopConfigValue = {
+      isCollapsed: false,
+      outputMode: 'last',
+      defaultState: null,
+    }
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'wf-1',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        {
+          id: 'loop-1',
+          type: 'control',
+          position: { x: 0, y: 0 },
+          style: { width: 1400, height: 900 },
+          data: {
+            label: 'Loop',
+            nodeType: 'loop',
+            category: 'control',
+            description: '循环 compound 容器',
+            config: loopConfigValue,
+            inputPorts: clonePortDefinitions(loopConfig.inputPorts),
+            outputPorts: clonePortDefinitions(loopConfig.outputPorts),
+          },
+        },
+        {
+          id: 'agent-1',
+          type: 'agent',
+          parentId: 'loop-1',
+          position: { x: 1000, y: 600 },
+          data: {
+            label: 'Agent',
+            nodeType: 'agent',
+            category: 'agent',
+            description: '对话型 Agent 节点',
+            config: {},
+            inputPorts: clonePortDefinitions(agentConfig.inputPorts),
+            outputPorts: clonePortDefinitions(agentConfig.outputPorts),
+            ...createDefaultAgentNodeData(),
+          },
+        },
+        {
+          id: 'right',
+          type: 'output',
+          position: { x: 1500, y: 0 },
+          data: {
+            label: 'Right',
+            nodeType: 'text-output',
+            category: 'output',
+            config: {},
+            inputPorts: [],
+            outputPorts: [],
+          },
+        },
+        {
+          id: 'below',
+          type: 'output',
+          position: { x: 100, y: 1000 },
+          data: {
+            label: 'Below',
+            nodeType: 'text-output',
+            category: 'output',
+            config: {},
+            inputPorts: [],
+            outputPorts: [],
+          },
+        },
+        {
+          id: 'left-below',
+          type: 'output',
+          position: { x: -600, y: 1000 },
+          data: {
+            label: 'Left below',
+            nodeType: 'text-output',
+            category: 'output',
+            config: {},
+            inputPorts: [],
+            outputPorts: [],
+          },
+        },
+      ],
+      edges: [],
+    })
+
+    const { updateNodeData, onNodesChange } = useCanvasStore.getState().actions
+    const readNode = (id: string) =>
+      useCanvasStore.getState().nodes.find((node) => node.id === id)
+
+    updateNodeData('loop-1', {
+      config: { ...loopConfigValue, isCollapsed: true },
+    })
+    // 收起：宽度固定，高度交给内容撑开；同级节点与容器的间距保持不变
+    const collapsed = readNode('loop-1')
+    expect(collapsed?.style?.width).toBe(360)
+    expect(collapsed?.style?.height).toBeUndefined()
+    expect(readNode('right')?.position).toEqual({ x: 360 + 100, y: 0 })
+    expect(readNode('below')?.position).toEqual({ x: 100, y: 220 + 100 })
+    // 不在容器正下方的节点不纵移
+    expect(readNode('left-below')?.position).toEqual({ x: -600, y: 1000 })
+
+    // React Flow 按内容测得收起高度后必须保留，清掉会让节点被当作未测量而反复重测
+    onNodesChange([
+      {
+        type: 'dimensions',
+        id: 'loop-1',
+        dimensions: { width: 360, height: 267 },
+      },
+    ])
+    expect(readNode('loop-1')?.measured).toEqual({ width: 360, height: 267 })
+
+    updateNodeData('loop-1', { config: loopConfigValue })
+    const expanded = readNode('loop-1')
+    const child = readNode('agent-1')
+    const extent = child?.extent
+    if (!Array.isArray(extent)) {
+      throw new Error('Expected compound child to receive array extent')
+    }
+    // 子节点未测量时按 260×160 兜底估算，必须完整落在内框里且位置不被挤动
+    expect(child?.position).toEqual({ x: 1000, y: 600 })
+    expect(extent[1][0]).toBeGreaterThanOrEqual(1000 + 260)
+    expect(extent[1][1]).toBeGreaterThanOrEqual(600 + 160)
+    // 展开后不压住同级节点
+    const width = expanded?.style?.width as number
+    const height = expanded?.style?.height as number
+    expect(readNode('right')?.position.x).toBeGreaterThanOrEqual(width)
+    expect(readNode('below')?.position.y).toBeGreaterThanOrEqual(height)
+  })
+
   it('拖拽 compound 子节点到右下角时不会把节点尺寸重复扣减两次', () => {
     const loopConfig = getNodeTypeConfig('loop')
     const agentConfig = getNodeTypeConfig('agent')

@@ -75,6 +75,7 @@ import {
   matchesSearchQuery,
   nextEdgeCompatibilityRefreshVersion,
   revalidateConnectedEdges,
+  applyCompoundCollapseToggle,
   syncCompoundParentLayout,
   syncCompoundParentOutputPorts,
 } from "../lib/canvasStoreHelpers";
@@ -1525,11 +1526,16 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   outputPorts: nextNodeData.outputPorts,
                 });
 
+                const wasCollapsed = node.data.config?.isCollapsed === true;
                 Object.assign(node.data, patch);
                 state.isDirty = true;
 
                 if (isCompoundContainerNodeType(node.data.nodeType)) {
-                  syncCompoundParentLayout(state.nodes, nodeId);
+                  if ((node.data.config?.isCollapsed === true) !== wasCollapsed) {
+                    applyCompoundCollapseToggle(state.nodes, nodeId);
+                  } else {
+                    syncCompoundParentLayout(state.nodes, nodeId);
+                  }
                 }
 
                 if (previousSignature !== nextSignature) {

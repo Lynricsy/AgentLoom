@@ -45,6 +45,7 @@ docType: reference
 - 循环最多执行 100 轮，达到上限时以 `max_iterations` 结束；该上限目前不能在界面中修改。没有 Break 的循环会一直运行到上限。
 - 容器内节点按依赖顺序逐个执行；任一内部节点失败，整个 Loop 失败。
 - Result、Break、Continue 在 [Iteration](/guide/nodes/iteration) 容器中同样可用；Loop State 只用于 Loop。
+- 点击容器标题栏的箭头可收起容器：收起后容器缩成卡片，内部节点与相连连线不显示；再次展开时容器撑开到能容纳全部内部节点。配置面板勾选「保存为收起态」效果相同。
 
 ## 相关
 
