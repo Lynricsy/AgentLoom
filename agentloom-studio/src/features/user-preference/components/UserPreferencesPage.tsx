@@ -1,7 +1,8 @@
 import { SlidersHorizontal } from 'lucide-react'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
 import { GlobalModelSelector } from '@/features/llm'
@@ -55,7 +56,7 @@ export function UserPreferencesPage() {
     : '使用组织默认'
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <PageContainer width="narrow">
       <PageHeader
         icon={SlidersHorizontal}
         title="个人偏好"
@@ -65,16 +66,17 @@ export function UserPreferencesPage() {
       <Card>
         <CardHeader>
           <CardTitle>对话标题生成</CardTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <CardDescription className="leading-relaxed">
             为自动生成对话标题单独指定一个 LLM 模型，不设置时使用组织默认模型。
-          </p>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="max-w-sm">
           {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-3 w-24" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-4 w-24" />
               <Skeleton className="h-9 w-full rounded-md" />
+              <Skeleton className="h-4 w-3/4" />
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -95,7 +97,10 @@ export function UserPreferencesPage() {
                   aria-label="标题生成模型"
                   className="flex-1"
                 />
-                {updateMutation.isPending ? <Spinner size="sm" /> : null}
+                {/* 固定占位：Spinner 出现时选择器宽度不跳 */}
+                <span className="grid size-4 shrink-0 place-items-center">
+                  {updateMutation.isPending ? <Spinner size="sm" /> : null}
+                </span>
               </div>
               <p className="text-2xs leading-relaxed text-muted-foreground">
                 选择「使用组织默认」可清除当前偏好，恢复使用组织级默认设置。
@@ -104,6 +109,6 @@ export function UserPreferencesPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
