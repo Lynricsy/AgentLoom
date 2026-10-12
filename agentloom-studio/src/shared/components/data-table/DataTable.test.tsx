@@ -122,4 +122,42 @@ describe('DataTable', () => {
     await user.keyboard('{Enter}')
     expect(onRowClick).toHaveBeenCalledWith(rows[0], 0)
   })
+
+  it('单元格内按钮的 Enter/空格执行按钮本身，不触发整行点击', async () => {
+    const user = userEvent.setup()
+    const onRowClick = vi.fn()
+    const onTest = vi.fn()
+
+    render(
+      <DataTable
+        columns={[
+          ...columns,
+          {
+            key: 'actions',
+            header: '操作',
+            cell: () => (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onTest()
+                }}
+              >
+                测试连接
+              </button>
+            ),
+          },
+        ]}
+        data={rows.slice(0, 1)}
+        onRowClick={onRowClick}
+      />,
+    )
+
+    screen.getByRole('button', { name: '测试连接' }).focus()
+    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
+
+    expect(onTest).toHaveBeenCalledTimes(2)
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
 })

@@ -124,6 +124,8 @@ export function DataTable<T>({
                         role: 'button',
                         onClick: () => onRowClick(row, index),
                         onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+                          // 只响应焦点在行本身时的按键；单元格内按钮冒泡上来的 Enter/空格交给按钮自己
+                          if (event.target !== event.currentTarget) return
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault()
                             onRowClick(row, index)
