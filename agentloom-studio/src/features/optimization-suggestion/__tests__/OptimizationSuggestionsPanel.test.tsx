@@ -128,7 +128,8 @@ describe('OptimizationSuggestionsPanel', () => {
     )
 
     const panel = screen.getByTestId('optimization-suggestions-panel')
-    expect(panel.querySelectorAll('.shimmer')).toHaveLength(6)
+    expect(panel.querySelectorAll('.shimmer').length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('optimization-suggestion-card')).not.toBeInTheDocument()
   })
 
   it('shows empty state when no suggestions', () => {

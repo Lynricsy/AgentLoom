@@ -23,6 +23,29 @@ vi.mock('../api/optimization-suggestion-queries', () => ({
   }),
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    params,
+    children,
+    ...rest
+  }: {
+    to: string
+    params?: Record<string, string>
+    children?: React.ReactNode
+  } & Record<string, unknown>) => (
+    <a
+      href={Object.entries(params ?? {}).reduce(
+        (path, [key, value]) => path.replace(`$${key}`, value),
+        to,
+      )}
+      {...rest}
+    >
+      {children}
+    </a>
+  ),
+}))
+
 function createSuggestion(
   overrides: Partial<OptimizationSuggestion> = {},
 ): OptimizationSuggestion {

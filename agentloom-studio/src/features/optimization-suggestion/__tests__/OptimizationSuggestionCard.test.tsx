@@ -42,7 +42,7 @@ describe('OptimizationSuggestionCard', () => {
 
     expect(screen.getByTestId('optimization-suggestion-card')).toBeInTheDocument()
     expect(screen.getByText('模型降级')).toBeInTheDocument()
-    expect(screen.getByText('85%')).toBeInTheDocument()
+    expect(screen.getByText('置信度 85%')).toBeInTheDocument()
     expect(screen.getByText('历史数据显示该节点可使用低成本模型')).toBeInTheDocument()
   })
 

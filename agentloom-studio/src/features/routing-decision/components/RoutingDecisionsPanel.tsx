@@ -15,7 +15,6 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { Badge } from '@/shared/ui/badge'
 import { Card, CardContent } from '@/shared/ui/card'
 import { useToast } from '@/shared/ui/toast'
 
@@ -23,9 +22,9 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
   {
     key: 'createdAt',
     header: '时间',
-    className: 'whitespace-nowrap',
+    nowrap: true,
     cell: (decision) => (
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs text-muted-foreground tabular-nums">
         {formatRoutingTimestamp(decision.createdAt)}
       </span>
     ),
@@ -50,23 +49,27 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
     cell: (decision) => {
       const { label, selected } = resolveSelectedModelLabel(decision)
 
-      if (!selected) {
-        return (
-          <Badge variant="secondary" data-testid="routing-decision-model-unselected">
-            {label}
-          </Badge>
-        )
-      }
-
+      // 选中/未选中统一同一种单行文本形态，行高与基线一致；长模型 ID 截断并保留 title
       return (
-        <span className="text-xs font-medium text-foreground">{label}</span>
+        <span
+          className={
+            selected
+              ? 'block max-w-56 truncate text-xs font-medium text-foreground'
+              : 'block max-w-56 truncate text-xs text-muted-foreground'
+          }
+          title={label}
+          data-testid={selected ? undefined : 'routing-decision-model-unselected'}
+        >
+          {label}
+        </span>
       )
     },
   },
   {
     key: 'latency',
     header: '延迟',
-    className: 'whitespace-nowrap text-right',
+    align: 'right',
+    nowrap: true,
     cell: (decision) => (
       <span className="text-xs tabular-nums text-foreground">
         {formatRoutingLatency(decision.routingLatencyMs)}
@@ -138,7 +141,7 @@ export const RoutingDecisionsPanel = memo(function RoutingDecisionsPanel() {
 
       {isError ? (
         <Card className="border-error/30" data-testid="routing-decisions-error">
-          <CardContent className="space-y-1 p-5">
+          <CardContent className="space-y-1 p-4">
             <p className="text-sm font-medium text-foreground">加载路由决策失败</p>
             <p className="text-xs font-medium text-error">
               {error instanceof Error ? error.message : '未知错误'}

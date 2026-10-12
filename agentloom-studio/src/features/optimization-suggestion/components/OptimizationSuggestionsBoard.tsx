@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { ExternalLink, Lightbulb } from 'lucide-react'
 import { SUGGESTION_PAGE_SIZE } from '../api/optimization-suggestion-api'
 import {
@@ -21,7 +22,7 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Progress } from '@/shared/ui/progress'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -226,7 +227,12 @@ export const OptimizationSuggestionsBoard = memo(
           header: '节点',
           hideBelow: 'md',
           cell: (suggestion) => (
-            <span className="text-xs text-muted-foreground">{suggestion.nodeId}</span>
+            <span
+              className="block max-w-40 truncate font-mono text-xs text-muted-foreground"
+              title={suggestion.nodeId}
+            >
+              {suggestion.nodeId}
+            </span>
           ),
         },
         {
@@ -249,7 +255,7 @@ export const OptimizationSuggestionsBoard = memo(
               {suggestion.status === 'pending' ? (
                 <Button
                   type="button"
-                  size="sm"
+                  size="xs"
                   variant="outline"
                   disabled={dismissMutation.isPending}
                   onClick={() => handleDismiss(suggestion.id)}
@@ -258,14 +264,15 @@ export const OptimizationSuggestionsBoard = memo(
                   忽略
                 </Button>
               ) : null}
-              <a
-                href={`/workflows/${suggestion.workflowDefinitionId}`}
-                className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              <Link
+                to="/workflows/$workflowId"
+                params={{ workflowId: suggestion.workflowDefinitionId }}
+                className={buttonVariants({ variant: 'link', size: 'xs' })}
                 data-testid={`suggestion-canvas-link-${suggestion.id}`}
               >
                 在画布中查看
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
+                <ExternalLink aria-hidden="true" />
+              </Link>
             </div>
           ),
         },
@@ -315,9 +322,9 @@ export const OptimizationSuggestionsBoard = memo(
 
         {isError ? (
           <Card className="border-error/30" data-testid="optimization-suggestions-error">
-            <CardContent className="space-y-1 p-5">
+            <CardContent className="space-y-1 p-4">
               <p className="text-sm font-medium text-foreground">加载优化建议失败</p>
-              <p className="text-xs font-medium text-error">
+              <p className="break-words text-xs font-medium text-error">
                 {error instanceof Error ? error.message : '未知错误'}
               </p>
             </CardContent>

@@ -288,7 +288,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
 
   if (isError) {
     return (
-      <div className="flex h-full items-center justify-center" data-testid="evidence-graph-error">
+      <div className="grid h-full place-items-center" data-testid="evidence-graph-error">
         <EmptyState
           variant="plain"
           icon={AlertCircle}
@@ -314,7 +314,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center" data-testid="evidence-graph-empty">
+      <div className="grid h-full place-items-center" data-testid="evidence-graph-empty">
         <EmptyState variant="plain" icon={GitBranch} title="暂无证据数据" />
       </div>
     )

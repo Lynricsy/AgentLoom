@@ -48,7 +48,7 @@ describe('AdoptionStatsBadge', () => {
     render(<AdoptionStatsBadge />)
 
     const badge = screen.getByTestId('adoption-stats-badge')
-    expect(badge).toHaveTextContent('采纳率: 70% ✓')
+    expect(badge).toHaveTextContent('采纳率 70%')
     expect(badge.className).toContain('text-success')
   })
 
@@ -70,7 +70,7 @@ describe('AdoptionStatsBadge', () => {
     render(<AdoptionStatsBadge />)
 
     const badge = screen.getByTestId('adoption-stats-badge')
-    expect(badge).toHaveTextContent('采纳率: 30% ⚠')
+    expect(badge).toHaveTextContent('采纳率 30%')
     expect(badge.className).toContain('text-warning')
   })
 })

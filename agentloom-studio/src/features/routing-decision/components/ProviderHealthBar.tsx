@@ -5,6 +5,7 @@ import {
   PROVIDER_HEALTH_META,
   formatRoutingTimestamp,
 } from '../lib/presentation'
+import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
@@ -23,7 +24,7 @@ export const ProviderHealthBar = memo(function ProviderHealthBar() {
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-foreground">
-            <HeartPulse className="h-4 w-4" aria-hidden="true" />
+            <HeartPulse className="size-4 shrink-0" aria-hidden="true" />
             <h3 className="text-sm font-semibold">提供商健康</h3>
           </div>
           <Button
@@ -34,7 +35,7 @@ export const ProviderHealthBar = memo(function ProviderHealthBar() {
             disabled={isFetching}
             data-testid="provider-health-refresh"
           >
-            <RotateCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            <RotateCw className={cn(isFetching && 'animate-spin')} aria-hidden="true" />
             刷新
           </Button>
         </div>
@@ -67,20 +68,23 @@ export const ProviderHealthBar = memo(function ProviderHealthBar() {
               return (
                 <li
                   key={`${status.providerName}:${status.modelId ?? 'all'}`}
-                  className="flex items-center gap-2 rounded-full border border-border bg-muted py-1 pl-2.5 pr-1.5"
+                  className="flex min-w-0 max-w-full items-center gap-2 rounded-full border border-border bg-muted px-2.5 py-1"
                 >
-                  <span className="text-xs font-medium text-foreground">
+                  <span
+                    className="min-w-0 truncate text-xs font-medium text-foreground"
+                    title={status.modelId ? `${status.providerName} · ${status.modelId}` : status.providerName}
+                  >
                     {status.providerName}
                     {status.modelId ? (
                       <span className="text-muted-foreground"> · {status.modelId}</span>
                     ) : null}
                   </span>
-                  <Badge variant={meta.variant} size="sm">
+                  <Badge variant={meta.variant} size="sm" className="shrink-0">
                     {meta.label}
                   </Badge>
                   {status.failureCount > 0 ? (
                     <span
-                      className="text-2xs text-muted-foreground"
+                      className="shrink-0 text-2xs text-muted-foreground tabular-nums"
                       title={`最近失败：${formatRoutingTimestamp(status.lastFailureAt)}`}
                     >
                       失败 {status.failureCount} 次

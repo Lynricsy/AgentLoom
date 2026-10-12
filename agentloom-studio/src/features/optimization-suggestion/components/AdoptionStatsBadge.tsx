@@ -1,4 +1,6 @@
 import { memo } from 'react'
+import { AlertTriangle, Check } from 'lucide-react'
+import { formatPercent } from '@/shared/lib/format'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { useAdoptionStats } from '../api/optimization-suggestion-queries'
 
@@ -15,15 +17,16 @@ export const AdoptionStatsBadge = memo(function AdoptionStatsBadge({
     return null
   }
 
-  const adoptionPct = Math.round(stats.adoptionRate * 100)
   const isHealthy = stats.adoptionRate >= 0.5
+  const Icon = isHealthy ? Check : AlertTriangle
 
   return (
     <StatusBadge
       tone={isHealthy ? 'success' : 'warning'}
       data-testid="adoption-stats-badge"
     >
-      采纳率: {adoptionPct}% {isHealthy ? '✓' : '⚠'}
+      <Icon className="size-3 shrink-0" aria-hidden="true" />
+      <span className="tabular-nums">采纳率 {formatPercent(stats.adoptionRate, 0)}</span>
     </StatusBadge>
   )
 })

@@ -1,8 +1,13 @@
 import { memo, useCallback } from 'react'
 import { HTTPError } from 'ky'
+import { Lightbulb, TriangleAlert } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy'
 import { useCanvasStore } from '@/features/canvas'
 import type { ApiError } from '@/shared/types/api'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { fadeInUp } from '@/shared/lib/motion'
+import { Alert } from '@/shared/ui/alert'
 import { Card } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
@@ -174,11 +179,20 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
         className="space-y-3 px-4 py-3"
         data-testid="optimization-suggestions-panel"
       >
+        {/* 骨架与真实卡片同结构：标题+徽章行 / 对比块 / 说明 / 按钮行 */}
         {['skeleton-1', 'skeleton-2'].map((key) => (
           <Card key={key} className="space-y-2 p-3">
-            <Skeleton className="h-4 w-28" />
+            <div className="flex items-center justify-between gap-2">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-5 w-24 rounded-full" />
+            </div>
+            <Skeleton className="h-9 w-full rounded-md" />
             <Skeleton className="h-3 w-full" />
             <Skeleton className="h-3 w-2/3" />
+            <div className="flex gap-2 pt-1">
+              <Skeleton className="h-8 w-14" />
+              <Skeleton className="h-8 w-14" />
+            </div>
           </Card>
         ))}
       </div>
@@ -187,22 +201,23 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
 
   if (isError) {
     return (
-      <div
-        className="px-4 py-3 text-sm text-error"
-        data-testid="optimization-suggestions-panel"
-      >
-        加载优化建议失败: {error?.message ?? '未知错误'}
+      <div data-testid="optimization-suggestions-panel">
+        <EmptyState
+          variant="plain"
+          className="py-8"
+          icon={TriangleAlert}
+          tone="var(--color-error)"
+          title="加载优化建议失败"
+          description={error?.message ?? '未知错误'}
+        />
       </div>
     )
   }
 
   if (!suggestions || suggestions.length === 0) {
     return (
-      <div
-        className="px-4 py-3 text-sm text-muted-foreground"
-        data-testid="optimization-suggestions-panel"
-      >
-        暂无优化建议
+      <div data-testid="optimization-suggestions-panel">
+        <EmptyState variant="plain" className="py-8" icon={Lightbulb} title="暂无优化建议" />
       </div>
     )
   }
@@ -218,24 +233,28 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
       ) &&
       currentWorkflowId === workflowDefinitionId &&
       isDirty ? (
-        <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+        <Alert variant="warning">
           画布存在未保存修改。请先等待自动保存完成，再采纳优化建议，避免覆盖本地编辑。
-        </div>
+        </Alert>
       ) : null}
       <h3 className="text-sm font-medium text-foreground">
         优化建议
-        <span className="ml-1.5 text-xs text-subtle-foreground">({suggestions.length})</span>
+        <span className="ml-1.5 text-xs text-subtle-foreground tabular-nums">({suggestions.length})</span>
       </h3>
-      {suggestions.map((suggestion) => (
-        <OptimizationSuggestionCard
-          key={suggestion.id}
-          suggestion={suggestion}
-          onApply={handleApply}
-          onDismiss={handleDismiss}
-          actionsDisabled={applyMutation.isPending || dismissMutation.isPending}
-          canApply={APPLICABLE_SUGGESTION_TYPES.has(suggestion.suggestionType)}
-        />
-      ))}
+      {/* 忽略/采纳后建议离开列表时淡出，其余卡片随 layout 归位 */}
+      <AnimatePresence initial={false}>
+        {suggestions.map((suggestion) => (
+          <motion.div key={suggestion.id} layout {...fadeInUp}>
+            <OptimizationSuggestionCard
+              suggestion={suggestion}
+              onApply={handleApply}
+              onDismiss={handleDismiss}
+              actionsDisabled={applyMutation.isPending || dismissMutation.isPending}
+              canApply={APPLICABLE_SUGGESTION_TYPES.has(suggestion.suggestionType)}
+            />
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 })

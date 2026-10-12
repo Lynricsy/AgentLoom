@@ -1,5 +1,7 @@
 import { memo, useCallback } from 'react'
 import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy'
+import { formatPercent } from '@/shared/lib/format'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
@@ -20,7 +22,17 @@ const SUGGESTION_STATUS_CONFIG: Record<
 }
 
 function formatConfidence(confidence: number): string {
-  return `${Math.round(confidence * 100)}%`
+  return formatPercent(confidence, 0)
+}
+
+/** 影响估算：最多 1 位小数并带符号（+5 / -2），避免 12.345678% 与 "--5" */
+const IMPACT_FORMAT = new Intl.NumberFormat('zh-CN', {
+  maximumFractionDigits: 1,
+  signDisplay: 'exceptZero',
+})
+
+function formatImpact(value: number): string {
+  return `${IMPACT_FORMAT.format(value)}%`
 }
 
 function toDisplayModeValue(value: unknown): string | undefined {
@@ -46,18 +58,22 @@ function renderCurrentVsSuggested(
   switch (suggestionType) {
     case 'model_downgrade':
       return (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">{String(currentValue.model ?? currentValue.modelId ?? '—')}</span>
-          <span className="text-subtle-foreground">→</span>
-          <span className="text-success">{String(suggestedValue.model ?? suggestedValue.modelId ?? '—')}</span>
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="min-w-0 truncate text-muted-foreground" title={String(currentValue.model ?? currentValue.modelId ?? '')}>
+            {String(currentValue.model ?? currentValue.modelId ?? '—')}
+          </span>
+          <span className="shrink-0 text-subtle-foreground">→</span>
+          <span className="min-w-0 truncate text-success" title={String(suggestedValue.model ?? suggestedValue.modelId ?? '')}>
+            {String(suggestedValue.model ?? suggestedValue.modelId ?? '—')}
+          </span>
         </div>
       )
     case 'timeout_adjustment':
       return (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">{String(currentValue.timeoutMs ?? '—')}ms</span>
-          <span className="text-subtle-foreground">→</span>
-          <span className="text-success">{String(suggestedValue.timeoutMs ?? '—')}ms</span>
+        <div className="flex min-w-0 items-center gap-2 text-sm tabular-nums">
+          <span className="min-w-0 truncate text-muted-foreground">{String(currentValue.timeoutMs ?? '—')}ms</span>
+          <span className="shrink-0 text-subtle-foreground">→</span>
+          <span className="min-w-0 truncate text-success">{String(suggestedValue.timeoutMs ?? '—')}ms</span>
         </div>
       )
     case 'tool_pruning': {
@@ -65,22 +81,22 @@ function renderCurrentVsSuggested(
         ? suggestedValue.removedTools
         : []
       return (
-        <div className="text-sm">
-          <span className="text-muted-foreground">移除工具: </span>
+        <div className="break-words text-sm">
+          <span className="text-muted-foreground">移除工具：</span>
           <span className="text-warning">
-            {removedTools.length > 0 ? removedTools.join(', ') : '—'}
+            {removedTools.length > 0 ? removedTools.join('、') : '—'}
           </span>
         </div>
       )
     }
     case 'autonomy_upgrade':
       return (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <span className="min-w-0 truncate text-muted-foreground">
             {formatAutonomyModeValue(toDisplayModeValue(currentAutonomyMode))}
           </span>
-          <span className="text-subtle-foreground">→</span>
-          <span className="text-success">
+          <span className="shrink-0 text-subtle-foreground">→</span>
+          <span className="min-w-0 truncate text-success">
             {formatAutonomyModeValue(toDisplayModeValue(suggestedAutonomyMode))}
           </span>
         </div>
@@ -126,22 +142,15 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
       data-testid="optimization-suggestion-card"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-foreground">{typeLabel}</span>
-        <div className="flex items-center gap-2">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{typeLabel}</span>
+        <div className="flex shrink-0 items-center gap-2">
           {statusConfig ? (
             <StatusBadge tone={statusConfig.tone}>{statusConfig.label}</StatusBadge>
           ) : null}
-          <StatusBadge
-            tone={
-              suggestion.confidence >= 0.8
-                ? 'success'
-                : suggestion.confidence >= 0.6
-                  ? 'warning'
-                  : 'error'
-            }
-          >
-            {formatConfidence(suggestion.confidence)}
-          </StatusBadge>
+          {/* 置信度用中性 outline 徽章，避免与「已阻断」等状态同色混淆 */}
+          <Badge variant="outline" size="sm" className="tabular-nums">
+            置信度 {formatConfidence(suggestion.confidence)}
+          </Badge>
         </div>
       </div>
 
@@ -153,7 +162,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
         )}
       </div>
 
-      <p className="text-xs leading-relaxed text-muted-foreground">{suggestion.rationale}</p>
+      <p className="break-words text-xs leading-relaxed text-muted-foreground">{suggestion.rationale}</p>
 
       {policyBlock ? (
         <div
@@ -161,7 +170,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
           data-testid="optimization-suggestion-policy-block"
         >
           <p className="font-medium">该建议已被组织自治策略阻断。</p>
-          <p className="mt-1">{policyBlock.message}</p>
+          <p className="mt-1 break-words">{policyBlock.message}</p>
           <p className="mt-1">
             当前建议：{formatAutonomyModeValue(policyBlock.rawMode)}；组织上限：
             {formatAutonomyModeValue(policyBlock.autonomyCap)}；建议改为：
@@ -171,9 +180,11 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
       ) : null}
 
       {suggestion.impactEstimate ? (
-        <div className="flex flex-wrap gap-3 text-xs">
+        <div className="grid grid-cols-3 gap-2 text-xs tabular-nums">
           {suggestion.impactEstimate.costSavingPct != null ? (
-            <span className="text-success">成本 -{suggestion.impactEstimate.costSavingPct}%</span>
+            <span className="text-success">
+              {`成本 ${formatImpact(-suggestion.impactEstimate.costSavingPct)}`}
+            </span>
           ) : null}
           {suggestion.impactEstimate.latencyImpactPct != null ? (
             <span
@@ -183,8 +194,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
                   : 'text-success'
               }
             >
-              延迟 {suggestion.impactEstimate.latencyImpactPct > 0 ? '+' : ''}
-              {suggestion.impactEstimate.latencyImpactPct}%
+              {`延迟 ${formatImpact(suggestion.impactEstimate.latencyImpactPct)}`}
             </span>
           ) : null}
           {suggestion.impactEstimate.reliabilityImpactPct != null ? (
@@ -195,8 +205,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
                   : 'text-success'
               }
             >
-              可靠性 {suggestion.impactEstimate.reliabilityImpactPct > 0 ? '+' : ''}
-              {suggestion.impactEstimate.reliabilityImpactPct}%
+              {`可靠性 ${formatImpact(suggestion.impactEstimate.reliabilityImpactPct)}`}
             </span>
           ) : null}
         </div>
@@ -206,7 +215,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
         <div className="space-y-2 pt-1">
           {canApply ? null : (
             <p
-              className="text-xs leading-relaxed text-subtle-foreground"
+              className="rounded-md border border-border bg-muted p-2 text-xs leading-relaxed text-muted-foreground"
               data-testid="optimization-suggestion-no-effect-note"
             >
               该节点上的模型、工具、超时与自治级别字段不参与执行，采纳后不会产生任何效果。agent 节点的运行时配置来自所绑定的 Agent Definition，请到该 Agent 中调整。

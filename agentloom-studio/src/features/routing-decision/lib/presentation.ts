@@ -6,6 +6,12 @@ const dateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeStyle: 'medium',
 })
 
+const secondsFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+})
+
 export function formatRoutingTimestamp(value?: string | null): string {
   if (!value) {
     return '—'
@@ -26,7 +32,7 @@ export function formatRoutingLatency(latencyMs: number): string {
   }
 
   if (latencyMs >= 1_000) {
-    return `${(latencyMs / 1_000).toFixed(2)} 秒`
+    return `${secondsFormatter.format(latencyMs / 1_000)} 秒`
   }
 
   return `${Math.round(latencyMs)} 毫秒`
