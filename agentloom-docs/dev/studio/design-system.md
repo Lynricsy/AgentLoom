@@ -126,7 +126,10 @@ Tailwind 原生调色板（`slate|gray|zinc|neutral|stone|red|orange|amber|yello
 - **禁止 `transition-all`** —— 必须列出具体属性。
 - `hover:-translate-y-0.5` 只允许出现在 `shared/ui/card.tsx` 的 `interactive` 变体；业务层要抬升就用 `<Card interactive>`。
 - 按钮微交互只有 `active:scale-[0.98]`，无 hover 缩放。
-- JS 动画参数只能取自 `shared/lib/motion.ts`（`DUR` / `EASE` / `fadeIn` / `scaleIn` / `panelSlide*` / `staggerList`）。
+- JS 动画参数只能取自 `shared/lib/motion.ts`（`DUR` / `EASE` / `fadeIn` / `fadeInUp` / `scaleIn` / `panelSlide*` / `expand` / `staggerList`）。
+- 高度折叠（折叠区、树节点、行内详情）一律用 `@/shared/components/collapse` 的 `<Collapse open>`（`expand` 预设，收起即卸载子树），不要用原生 `<details>` 或手写 `height` 动画；开合箭头用同一个 `ChevronDown` 旋转表示，触发按钮带 `aria-expanded`。
+- 同一区域的视图切换（表单 ↔ 结果、查看 ↔ 编辑）用 `<AnimatePresence mode="wait" initial={false}>` + 按状态 key 的 `motion.div`，保证有退场；计时类副作用（如成功后自动关闭）由状态驱动，不挂在动画回调上。
+- 带进退场的面板由组件内部的 `AnimatePresence` 决定是否渲染，父级不得再条件挂载，否则退场动画被吞。
 - **禁止 `animate-in` / `animate-out` / `fade-in-0` / `zoom-in-95` / `slide-*`**：`tailwindcss-animate` 未安装，这些类从未生效。进退场动画一律用 `motion/react` + `AnimatePresence`。
 - `prefers-reduced-motion` 降级集中在 `index.css` 末尾唯一一处；JS 动画由 `app/providers.tsx` 的 `<MotionConfig reducedMotion="user">` 自动降级。
 
@@ -158,7 +161,9 @@ Tailwind 原生调色板（`slate|gray|zinc|neutral|stone|red|orange|amber|yello
 | meta | `text-xs text-muted-foreground` |
 | 微标签 | `text-2xs`（11px） |
 
-禁止 `text-[10px]` / `text-[11px]`，禁止 features 内 `<h1>`。
+禁止 `text-[<数字>px]`、`tracking-[...]`，禁止 features 内 `<h1>`。
+
+省略号只用 `…`（U+2026），字符串、模板与 JSX 文本中的 ASCII `...` 会被守卫拦下。
 
 lucide 图标新代码用 `className`，不用 `size={N}` prop（存量不迁移）：
 
@@ -175,7 +180,8 @@ lucide 图标新代码用 `className`，不用 `size={N}` prop（存量不迁移
 
 - 焦点环统一 `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30`；输入类控件额外 `focus-visible:border-primary`。
 - 遮罩只有一种：`shared/ui/overlay.ts` 的 `OVERLAY_CLASS`（`fixed inset-0 z-50 bg-black/50 backdrop-blur-xs`）。
-- `backdrop-blur` 白名单只有两处：`shared/ui/overlay.ts` 的 `OVERLAY_CLASS`、`features/canvas/components/canvasChrome.ts` 的 `CANVAS_FLOATING_CLASS`。业务层一律不写。
+- `backdrop-blur` 白名单只有两处：`shared/ui/overlay.ts` 的 `OVERLAY_CLASS`、`features/canvas/components/canvasChrome.ts` 的 `CANVAS_FLOATING_CLASS`。业务层一律不写（守卫只对白名单文件放行）。
+- 图标按钮（`<Button size="icon*">`）必须带 `aria-label`；`title` 不能替代可访问名称。
 
 ---
 
@@ -249,15 +255,45 @@ feature 内不得自建 `*StatusBadge` / `StatusDot`。业务枚举先映射到 
 |---|---|
 | 模态表单 / 确认信息 | `Dialog` + `DialogContent size="sm\|md\|lg\|xl"` |
 | 侧边 / 底部抽屉 | `Sheet` + `SheetContent side="right\|left\|bottom"` |
-| 破坏性操作确认 | `AlertDialog`（`Action`/`Cancel` 已复用 `buttonVariants`） |
+| 破坏性操作确认 | `AlertDialog`；底部按钮行用 `AlertDialogFooter`，确认按钮用 `AlertDialogAction variant="destructive"`，不要手写红色按钮或 `mt-* flex justify-end` 底栏 |
 | 轻量浮层（表单片段、筛选器） | `Popover` |
 | 操作菜单 | `DropdownMenu` |
 | 可搜索列表 | `Command` / `CommandDialog` |
 | 悬浮提示 | `Tooltip` / `TooltipHint` |
 
 `Dialog`/`Sheet`/`AlertDialog` 自带遮罩、关闭按钮与进退场动画，不要再手写。
+表单弹窗把 `<form>` 作为 `DialogContent`/`SheetContent` 的直接子元素包住 Body 与 Footer：内容容器会把直接子 `form` 变为纵向 flex，Body 内部滚动、Footer 常驻可见（矮视口下也不会被裁掉）。
 `Tooltip` 在外层没有 `TooltipProvider` 时自带一个（延迟 300ms），调用方无需再包 Provider；需要统一延迟的区域（画布 palette）仍可外包 `TooltipProvider`。
 **注意**：`AlertDialog` 关闭后的卸载是异步的（退场动画），断言「关闭」的测试必须用 `waitFor`。
+
+### 提示框
+
+行内提示（错误、风险、成功结果）一律用 `@/shared/ui/alert` 的 `<Alert variant="info|success|warning|error" title? icon?>`，默认按 variant 配图标，`icon={null}` 去掉图标。需要读屏播报时由调用方加 `role="alert"`（错误）或 `role="status"`。不要手写 `rounded-lg border border-error/30 bg-error/10` 一类提示盒。
+
+### Tabs
+
+`@/shared/ui/tabs` 渲染 `tablist` / `tab`（`aria-selected`）/ `tabpanel` 语义，激活项是按 `layoutId` 滑动的 pill，内容切换淡入。测试按 `getByRole('tab', { name })` 查询。
+
+### 表单字段
+
+`@/shared/components/form-field` 的 `<FormField label htmlFor? required? hint? error?>` 统一标签、必填标记、提示与错误的排布和间距；react-hook-form 场景继续用 `shared/ui/form`。
+
+### 数据表格
+
+列表数据用 `@/shared/components/data-table` 的 `DataTable`，列定义 `DataTableColumn` 支持：
+
+| 字段 | 作用 |
+|---|---|
+| `align` | `left` / `center` / `right`，同时作用于表头与单元格；`right` 自动加 `tabular-nums` |
+| `nowrap` | 表头与单元格不换行，日期、数字、版本、操作列使用 |
+| `className` / `cellClassName` | 前者作用于 th/td（宽度），后者只作用于 td |
+| `hideBelow` | 小屏隐藏次要列 |
+
+`pagination.total === 0` 时不渲染分页行；空态传 `<EmptyState variant="plain">`。`onRowClick` 的行支持 Enter/空格触发，但只在焦点位于行本身时生效，单元格内按钮的键盘操作不会冒泡成整行点击。
+
+### 展示格式化
+
+日期时间、字节、百分比、数字统一走 `@/shared/lib/format`（`formatDateTime` / `formatDate` / `formatTime` / `formatBytes` / `formatPercent` / `formatNumber` / `formatDecimal`，空值占位 `EMPTY_VALUE`）。组件内不要直接调用 `toLocaleString`、手写 `/ 1024`。`formatBytes` 的数字与单位之间是不换行空格（U+00A0），测试里 `getByText` 会把它归一化成普通空格。
 
 ---
 
@@ -280,7 +316,7 @@ feature 内不得自建 `*StatusBadge` / `StatusDot`。业务枚举先映射到 
 
 - 页面滚动由 `app/routes/__root.tsx` 的内容容器负责。页面**不得**自带 `h-full` / `overflow-y-auto` / `p-6` / `mx-auto max-w-*`。
 - **同一页面的 loading / error / empty 分支必须用同一个 `PageContainer`**，否则状态切换时布局跳动。
-- 空态一律 `<EmptyState icon title description? action? tone?>`，不要手写虚线框。
+- 空态一律 `<EmptyState icon title description? action? tone?>`，不要手写虚线框；嵌在表格或卡片里时用 `variant="plain"`（无虚线边框），独立占位用默认的 `card`。
 
 ---
 
@@ -307,5 +343,6 @@ feature 内不得自建 `*StatusBadge` / `StatusDot`。业务枚举先映射到 
 4. 所有按钮/输入/下拉/弹窗走 `shared/ui`；没有合适原语时**先加原语**，不要在 feature 内自建。
 5. 状态用 `StatusBadge` + `StatusTone` 映射表。
 6. 颜色只用语义 token；圆角/阴影只用上面的档位；`z-index` 只用阶梯值。
-7. 新设置页要同步补 `SettingsLayout` 的 `SETTINGS_GROUPS` 入口，并把路由挂在 `settingsLayoutRoute` 下（有测试守着这两点）。
-8. `pnpm lint` 零 error —— 守卫会拦下上面每一条。
+7. 列表用 `DataTable` 并按列声明 `align` / `nowrap`；日期、字节、百分比走 `shared/lib/format`；行内提示用 `Alert`。
+8. 新设置页要同步补 `SettingsLayout` 的 `SETTINGS_GROUPS` 入口，并把路由挂在 `settingsLayoutRoute` 下（有测试守着这两点）。
+9. `pnpm lint` 零 error —— 守卫会拦下上面每一条。
