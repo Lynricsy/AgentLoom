@@ -1,14 +1,14 @@
-import { Clock3, Settings2, ShieldAlert, SlidersHorizontal, X } from 'lucide-react'
+import { Clock3, Settings2, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import { motion } from 'motion/react'
 import { TriggerTab } from '@/features/trigger'
 import { InterventionPolicyTab } from '@/features/intervention-policy'
 import { WorkflowInputSchemaTab } from '@/features/workflow-input-schema'
 import type { WorkflowInputSchema } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
-import { fadeInUp } from '@/shared/lib/motion'
-import { Button } from '@/shared/ui/button'
+import { fadeIn, fadeInUp } from '@/shared/lib/motion'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
-import { CANVAS_FLOATING_CLASS, CANVAS_PANEL_HEADER_CLASS } from '../canvasChrome'
+import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
+import { CanvasPanelHeader } from '../CanvasPanelHeader'
 import type { CanvasNode } from '../../types'
 
 const WORKFLOW_SETTINGS_TABS = ['input-schema', 'triggers', 'intervention-policies'] as const
@@ -50,39 +50,22 @@ export function WorkflowSettingsPanel({
     <motion.section
       initial={fadeInUp.initial}
       animate={fadeInUp.animate}
+      exit={fadeInUp.exit}
       transition={fadeInUp.transition}
       className={cn(
         CANVAS_FLOATING_CLASS,
-        'flex h-[min(76vh,720px)] flex-col overflow-hidden',
+        'flex h-[min(76vh,720px)] w-full flex-col overflow-hidden',
       )}
       data-testid="workflow-settings-panel"
     >
-      <div className={cn(CANVAS_PANEL_HEADER_CLASS, 'items-start')}>
-        <span
-          aria-hidden
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary"
-        >
-          <Settings2 className="size-4" />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">工作流设置</h2>
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-            集中管理输入参数、触发器与人工介入策略，避免在画布上分散切换。
-          </p>
-        </div>
-
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="-mr-1 shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={onClose}
-          aria-label="收起工作流设置"
-          data-testid="close-workflow-settings-panel"
-        >
-          <X />
-        </Button>
-      </div>
+      <CanvasPanelHeader
+        icon={Settings2}
+        title="工作流设置"
+        description="集中管理输入参数、触发器与人工介入策略，避免在画布上分散切换。"
+        onClose={onClose}
+        closeLabel="收起工作流设置"
+        closeTestId="close-workflow-settings-panel"
+      />
 
       <Tabs
         value={activeTab}
@@ -100,14 +83,14 @@ export function WorkflowSettingsPanel({
               value="input-schema"
               data-testid="workflow-settings-tab-input-schema"
             >
-              <span className="inline-flex items-center gap-2">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span className="inline-flex items-center gap-1.5">
+                <SlidersHorizontal className="size-3.5" />
                 输入参数
               </span>
             </TabsTrigger>
             <TabsTrigger value="triggers" data-testid="workflow-settings-tab-triggers">
-              <span className="inline-flex items-center gap-2">
-                <Clock3 className="h-3.5 w-3.5" />
+              <span className="inline-flex items-center gap-1.5">
+                <Clock3 className="size-3.5" />
                 触发器
               </span>
             </TabsTrigger>
@@ -115,8 +98,8 @@ export function WorkflowSettingsPanel({
               value="intervention-policies"
               data-testid="workflow-settings-tab-intervention-policies"
             >
-              <span className="inline-flex items-center gap-2">
-                <ShieldAlert className="h-3.5 w-3.5" />
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldAlert className="size-3.5" />
                 介入策略
               </span>
             </TabsTrigger>
@@ -124,7 +107,10 @@ export function WorkflowSettingsPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
-          <div
+          <motion.div
+            initial={false}
+            animate={{ opacity: activeTab === 'input-schema' ? 1 : 0 }}
+            transition={fadeIn.transition}
             className={cn('h-full', activeTab !== 'input-schema' && 'hidden')}
             data-testid="workflow-settings-content-input-schema"
             data-active={activeTab === 'input-schema'}
@@ -135,17 +121,23 @@ export function WorkflowSettingsPanel({
               inputSchema={inputSchema}
               isReadOnly={isInputSchemaReadOnly}
             />
-          </div>
+          </motion.div>
 
-          <div
+          <motion.div
+            initial={false}
+            animate={{ opacity: activeTab === 'triggers' ? 1 : 0 }}
+            transition={fadeIn.transition}
             className={cn('h-full', activeTab !== 'triggers' && 'hidden')}
             data-testid="workflow-settings-content-triggers"
             data-active={activeTab === 'triggers'}
           >
             <TriggerTab workflowId={workflowId} isPublished={isPublished} />
-          </div>
+          </motion.div>
 
-          <div
+          <motion.div
+            initial={false}
+            animate={{ opacity: activeTab === 'intervention-policies' ? 1 : 0 }}
+            transition={fadeIn.transition}
             className={cn('h-full', activeTab !== 'intervention-policies' && 'hidden')}
             data-testid="workflow-settings-content-intervention-policies"
             data-active={activeTab === 'intervention-policies'}
@@ -156,7 +148,7 @@ export function WorkflowSettingsPanel({
               nodes={nodes}
               isReadOnly={isInterventionPolicyReadOnly}
             />
-          </div>
+          </motion.div>
         </div>
       </Tabs>
     </motion.section>

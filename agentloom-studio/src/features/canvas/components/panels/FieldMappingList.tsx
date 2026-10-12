@@ -1,4 +1,6 @@
 import { ArrowRightLeft } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { CoercionConfigPopover } from './CoercionConfigPopover'
 import { getStrategyLabel } from '../../lib/coercionStrategies'
 import type { FieldMapping, NestedFieldNode, TypeCoercionConfig } from '../../types'
@@ -31,25 +33,34 @@ export function FieldMappingList({
         return (
           <div
             key={`${m.sourceField}->${m.targetField}`}
-            className={`mapping-line${m.autoRecommended ? ' mapping-line--auto' : ''}`}
+            className={cn(
+              'flex min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5 font-mono text-xs text-foreground',
+              m.autoRecommended && 'border-dashed',
+            )}
           >
-            <span className="truncate">{m.sourceField}</span>
+            <span className="min-w-0 truncate" title={m.sourceField}>
+              {m.sourceField}
+            </span>
             <span className="shrink-0 text-muted-foreground">→</span>
-            <span className="truncate">{m.targetField}</span>
+            <span className="min-w-0 truncate" title={m.targetField}>
+              {m.targetField}
+            </span>
 
             {srcKind && tgtKind && srcKind !== tgtKind && (
               <>
-                <span
-                  className="mapping-line__coercion ml-auto inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning"
+                <Badge
+                  variant="warning"
+                  size="sm"
+                  className="ml-auto shrink-0 font-sans"
                   data-testid={`mapping-line-coercion-${m.targetField}`}
                 >
-                  <ArrowRightLeft size={12} />
-                  <span>
+                  <ArrowRightLeft className="size-3 shrink-0" />
+                  <span className="truncate">
                     {m.coercionConfig
                       ? getStrategyLabel(m.coercionConfig.strategy)
                       : '待配置转换'}
                   </span>
-                </span>
+                </Badge>
 
                 <CoercionConfigPopover
                   sourceType={srcKind}

@@ -14,13 +14,13 @@ export function FieldMappingCandidates({
   onAcceptAll,
 }: FieldMappingCandidatesProps) {
   return (
-    <div className="mapping-panel__candidates" data-testid="mapping-candidates-section">
-      <div className="flex items-center justify-between px-2 py-1">
+    <div className="space-y-1 px-3" data-testid="mapping-candidates-section">
+      <div className="flex items-center justify-between gap-2 py-1">
         <span className="text-xs text-muted-foreground">{candidates.length} 个推荐映射</span>
         <Button
           variant="link"
           size="xs"
-          className="h-auto p-0"
+          className="px-0"
           data-testid="accept-all-candidates"
           onClick={onAcceptAll}
         >
@@ -30,16 +30,20 @@ export function FieldMappingCandidates({
       {candidates.map((c) => (
         <div
           key={`candidate-${c.targetPath}`}
-          className="mapping-line mapping-line--auto"
+          className="flex min-w-0 items-center gap-2 rounded-md border border-dashed border-border bg-surface px-2 py-1 font-mono text-xs text-foreground"
           data-testid={`candidate-${c.targetPath}`}
         >
-          <span className="truncate">{c.sourcePath}</span>
+          <span className="min-w-0 truncate" title={c.sourcePath}>
+            {c.sourcePath}
+          </span>
           <span className="shrink-0 text-muted-foreground">→</span>
-          <span className="truncate">{c.targetPath}</span>
+          <span className="min-w-0 truncate" title={c.targetPath}>
+            {c.targetPath}
+          </span>
           <Button
             variant="ghost"
             size="xs"
-            className="shrink-0 px-1.5 text-primary hover:bg-primary/10 hover:text-primary"
+            className="ml-auto shrink-0 font-sans text-primary hover:bg-primary/10 hover:text-primary"
             data-testid={`accept-candidate-${c.targetPath}`}
             onClick={() => onAccept(c)}
           >

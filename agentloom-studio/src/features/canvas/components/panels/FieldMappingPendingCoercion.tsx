@@ -16,14 +16,21 @@ export function FieldMappingPendingCoercion({
   onCancel,
 }: FieldMappingPendingCoercionProps) {
   return (
-    <div className="mapping-pending-coercion" data-testid="pending-coercion">
-      <div className="mapping-pending-coercion__info">
-        <AlertTriangle size={14} className="text-warning" />
-        <span>
-          {pending.sourceField} → {pending.targetField}
+    <div
+      className="mx-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs"
+      data-testid="pending-coercion"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-warning">
+        <AlertTriangle aria-hidden className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate font-mono" title={pending.sourceField}>
+          {pending.sourceField}
         </span>
-        <span className="text-xs text-muted-foreground">
-          ({pending.sourceType} → {pending.targetType})
+        <span className="shrink-0">→</span>
+        <span className="min-w-0 truncate font-mono" title={pending.targetField}>
+          {pending.targetField}
+        </span>
+        <span className="shrink-0 text-muted-foreground">
+          （{pending.sourceType} → {pending.targetType}）
         </span>
       </div>
       <CoercionConfigPopover

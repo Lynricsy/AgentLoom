@@ -48,12 +48,13 @@ export function FieldMappingTreePane({
 }: FieldMappingTreePaneProps) {
   return (
     <div className="flex gap-2">
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <div
-          className="mapping-panel__section-title"
+          className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground"
+          title={sourceLabel}
           data-testid="mapping-source-summary"
         >
-          源: {sourceLabel} ({sourceLeafCount})
+          源：{sourceLabel}（{sourceLeafCount}）
         </div>
         <NestedFieldTree
           nodes={sourceTree}
@@ -65,12 +66,13 @@ export function FieldMappingTreePane({
         />
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <div
-          className="mapping-panel__section-title"
+          className="truncate px-2 py-1 text-xs font-semibold text-muted-foreground"
+          title={targetLabel}
           data-testid="mapping-target-summary"
         >
-          目标: {targetLabel} ({targetLeafCount})
+          目标：{targetLabel}（{targetLeafCount}）
         </div>
         <NestedFieldTree
           nodes={targetTree}

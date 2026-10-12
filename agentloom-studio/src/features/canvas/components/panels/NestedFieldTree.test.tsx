@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { NestedFieldNode, TypeSchema } from '../../types'
 import { NestedFieldTree } from './NestedFieldTree'
 
@@ -85,7 +85,7 @@ describe('NestedFieldTree', () => {
     expect(screen.getByTestId('nested-field-user.name')).toBeInTheDocument()
   })
 
-  it('collapses parent node on second chevron click', () => {
+  it('collapses parent node on second chevron click', async () => {
     const parent = makeParent('user', 'user', [
       makeLeaf('user.name', 'name', { depth: 1 }),
     ])
@@ -102,7 +102,9 @@ describe('NestedFieldTree', () => {
     expect(screen.getByTestId('nested-field-user.name')).toBeInTheDocument()
 
     fireEvent.click(chevron)
-    expect(screen.queryByTestId('nested-field-user.name')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByTestId('nested-field-user.name')).not.toBeInTheDocument(),
+    )
   })
 
   it('calls onFieldClick for leaf click', () => {
@@ -147,8 +149,8 @@ describe('NestedFieldTree', () => {
         onFieldClick={vi.fn()}
       />,
     )
-    const nameEl = screen.getByTestId('nested-field-name')
-    expect(nameEl.className).toContain('selected')
+    expect(screen.getByTestId('nested-field-name')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('nested-field-email')).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('shows mapped indicator on mapped fields', () => {
@@ -190,7 +192,8 @@ describe('NestedFieldTree', () => {
     fireEvent.click(chevron)
 
     const childRow = screen.getByTestId('nested-field-user.name')
-    expect(childRow.style.paddingLeft).toBe('32px')
+    // 基础 8px + 每层 16px
+    expect(childRow.style.paddingLeft).toBe('40px')
   })
 
   it('shows depth cap indicator at max depth', () => {
@@ -229,7 +232,7 @@ describe('NestedFieldTree', () => {
     expect(onDragStart).toHaveBeenCalledWith('name')
   })
 
-  it('applies forbidden class to forbidden paths', () => {
+  it('marks forbidden paths as aria-disabled', () => {
     const nodes = [
       makeLeaf('name', 'name'),
       makeLeaf('email', 'email'),
@@ -245,8 +248,8 @@ describe('NestedFieldTree', () => {
 
     const nameEl = screen.getByTestId('nested-field-name')
     const emailEl = screen.getByTestId('nested-field-email')
-    expect(nameEl.className).not.toContain('forbidden')
-    expect(emailEl.className).toContain('forbidden')
+    expect(nameEl).not.toHaveAttribute('aria-disabled')
+    expect(emailEl).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('sets aria-disabled on forbidden leaf nodes', () => {

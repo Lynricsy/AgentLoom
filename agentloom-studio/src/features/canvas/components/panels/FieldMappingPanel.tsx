@@ -1,6 +1,10 @@
 import { memo, useCallback } from 'react'
+import { motion } from 'motion/react'
 import { X } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
+import { panelSlideRight } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
+import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
 import { FieldMappingBatchPreview } from './FieldMappingBatchPreview'
 import { FieldMappingCandidates } from './FieldMappingCandidates'
 import { FieldMappingList } from './FieldMappingList'
@@ -17,8 +21,10 @@ import type {
   NestedFieldNode,
 } from '../../types'
 
+/**
+ * 字段映射浮层面板。进退场由父级 `<AnimatePresence>` 驱动（条件挂载本组件即可）。
+ */
 export interface FieldMappingPanelProps {
-  open: boolean
   edgeId: string | null
   edge: CanvasEdge | null
   sourceNode: CanvasNode | null
@@ -28,7 +34,6 @@ export interface FieldMappingPanelProps {
 }
 
 export const FieldMappingPanel = memo(function FieldMappingPanel({
-  open,
   edgeId,
   edge,
   sourceNode,
@@ -82,12 +87,12 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
       return (
         <Button
           variant="ghost"
-          size="icon-xs"
-          className="h-5 w-5 shrink-0 text-muted-foreground hover:text-error"
+          size="icon-2xs"
+          className="shrink-0 text-muted-foreground hover:bg-error/10 hover:text-error"
           aria-label={`删除 ${node.leafKey} 映射`}
           onClick={() => handleRemoveMapping(node.path)}
         >
-          <X size={12} />
+          <X />
         </Button>
       )
     },
@@ -95,11 +100,17 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
   )
 
   return (
-    <aside
-      className={`mapping-panel${open ? ' mapping-panel--open' : ''}`}
+    <motion.aside
+      initial={panelSlideRight.initial}
+      animate={panelSlideRight.animate}
+      exit={panelSlideRight.exit}
+      transition={panelSlideRight.transition}
+      className={cn(
+        CANVAS_FLOATING_CLASS,
+        'absolute bottom-2 right-2 top-2 z-30 flex w-[var(--spacing-mapping-panel)] max-w-[calc(100%-1rem)] flex-col overflow-hidden',
+      )}
       data-testid="field-mapping-panel"
       aria-label="字段映射面板"
-      aria-hidden={!open}
     >
       <FieldMappingSummary
         isReadonly={isReadonly}
@@ -107,87 +118,89 @@ export const FieldMappingPanel = memo(function FieldMappingPanel({
         onClose={onClose}
       />
 
-      {!isReadonly && visibleCandidates.length > 0 && (
-        <FieldMappingCandidates
-          candidates={visibleCandidates}
-          onAccept={interactions.acceptCandidate}
-          onAcceptAll={interactions.acceptAllCandidates}
-        />
-      )}
-
-      {!isReadonly && bestSuggestionsByTarget.size > 0 && (
-        <FieldMappingSuggestions
-          suggestionsByTarget={bestSuggestionsByTarget}
-          hasApplicableSuggestions={applicableSuggestions.length > 0}
-          applyAllConfirmData={interactions.applyAllConfirmData}
-          onApplySuggestion={interactions.handleApplySuggestion}
-          onApplyAll={interactions.handleApplyAllSuggestions}
-          onConfirmApplyAll={interactions.confirmApplyAll}
-          onCancelApplyAll={interactions.cancelApplyAll}
-        />
-      )}
-
-      {interactions.batchPreview &&
-        (interactions.batchPreview.items.length > 0 ||
-          interactions.batchPreview.unmatchedSources.length > 0) && (
-          <FieldMappingBatchPreview
-            preview={interactions.batchPreview}
-            onConfirm={interactions.handleBatchPreviewConfirm}
-            onCancel={interactions.handleBatchPreviewCancel}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto py-3">
+        {!isReadonly && visibleCandidates.length > 0 && (
+          <FieldMappingCandidates
+            candidates={visibleCandidates}
+            onAccept={interactions.acceptCandidate}
+            onAcceptAll={interactions.acceptAllCandidates}
           />
         )}
 
-      {interactions.pendingCoercion && (
-        <FieldMappingPendingCoercion
-          pending={interactions.pendingCoercion}
-          onConfirm={interactions.handlePendingCoercionConfirm}
-          onCancel={interactions.handlePendingCoercionCancel}
-        />
-      )}
-
-      {!isReadonly && (
-        <div className="mapping-panel__body">
-          <FieldMappingTreePane
-            sourceLabel={sourceNode?.data.label ?? '—'}
-            targetLabel={targetNode?.data.label ?? '—'}
-            sourceTree={sourceTree}
-            targetTree={targetTree}
-            sourceLeafCount={sourceLeafCount}
-            targetLeafCount={targetLeafCount}
-            selectedSources={interactions.selectedSources}
-            suggestedSourceFields={suggestedSourceFields}
-            suggestedTargetFields={suggestedTargetFields}
-            forbiddenPaths={interactions.forbiddenPaths}
-            targetDisabled={interactions.targetDisabled}
-            onSourceClick={interactions.handleSourceClick}
-            onTargetClick={interactions.handleTargetClick}
-            onDragStart={interactions.handleDragStart}
-            onDragEnd={interactions.handleDragEnd}
-            onDragOver={interactions.handleDragOver}
-            onDrop={interactions.handleDrop}
-            renderTargetSuffix={renderTargetSuffix}
+        {!isReadonly && bestSuggestionsByTarget.size > 0 && (
+          <FieldMappingSuggestions
+            suggestionsByTarget={bestSuggestionsByTarget}
+            hasApplicableSuggestions={applicableSuggestions.length > 0}
+            applyAllConfirmData={interactions.applyAllConfirmData}
+            onApplySuggestion={interactions.handleApplySuggestion}
+            onApplyAll={interactions.handleApplyAllSuggestions}
+            onConfirmApplyAll={interactions.confirmApplyAll}
+            onCancelApplyAll={interactions.cancelApplyAll}
           />
+        )}
 
-          {mappings.length > 0 && (
-            <FieldMappingList
-              mappings={mappings}
-              sourceLeafMap={sourceLeafMap}
-              targetLeafMap={targetLeafMap}
-              onCoercionChange={interactions.handleCoercionChange}
+        {interactions.batchPreview &&
+          (interactions.batchPreview.items.length > 0 ||
+            interactions.batchPreview.unmatchedSources.length > 0) && (
+            <FieldMappingBatchPreview
+              preview={interactions.batchPreview}
+              onConfirm={interactions.handleBatchPreviewConfirm}
+              onCancel={interactions.handleBatchPreviewCancel}
             />
           )}
 
-          <Button
-            variant="link"
-            size="xs"
-            className="mt-2 h-auto px-0 font-normal text-muted-foreground hover:text-primary hover:no-underline"
-            data-testid="mapping-undo"
-            onClick={interactions.handleUndo}
-          >
-            撤销
-          </Button>
-        </div>
-      )}
-    </aside>
+        {interactions.pendingCoercion && (
+          <FieldMappingPendingCoercion
+            pending={interactions.pendingCoercion}
+            onConfirm={interactions.handlePendingCoercionConfirm}
+            onCancel={interactions.handlePendingCoercionCancel}
+          />
+        )}
+
+        {!isReadonly && (
+          <div className="px-3">
+            <FieldMappingTreePane
+              sourceLabel={sourceNode?.data.label ?? '—'}
+              targetLabel={targetNode?.data.label ?? '—'}
+              sourceTree={sourceTree}
+              targetTree={targetTree}
+              sourceLeafCount={sourceLeafCount}
+              targetLeafCount={targetLeafCount}
+              selectedSources={interactions.selectedSources}
+              suggestedSourceFields={suggestedSourceFields}
+              suggestedTargetFields={suggestedTargetFields}
+              forbiddenPaths={interactions.forbiddenPaths}
+              targetDisabled={interactions.targetDisabled}
+              onSourceClick={interactions.handleSourceClick}
+              onTargetClick={interactions.handleTargetClick}
+              onDragStart={interactions.handleDragStart}
+              onDragEnd={interactions.handleDragEnd}
+              onDragOver={interactions.handleDragOver}
+              onDrop={interactions.handleDrop}
+              renderTargetSuffix={renderTargetSuffix}
+            />
+
+            {mappings.length > 0 && (
+              <FieldMappingList
+                mappings={mappings}
+                sourceLeafMap={sourceLeafMap}
+                targetLeafMap={targetLeafMap}
+                onCoercionChange={interactions.handleCoercionChange}
+              />
+            )}
+
+            <Button
+              variant="link"
+              size="xs"
+              className="mt-2 px-0 font-normal text-muted-foreground hover:text-primary hover:no-underline"
+              data-testid="mapping-undo"
+              onClick={interactions.handleUndo}
+            >
+              撤销
+            </Button>
+          </div>
+        )}
+      </div>
+    </motion.aside>
   )
 })

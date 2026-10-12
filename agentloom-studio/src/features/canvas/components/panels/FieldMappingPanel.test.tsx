@@ -148,7 +148,6 @@ function renderPanel(overrides?: Partial<FieldMappingPanelProps>) {
     ])
 
   const props: FieldMappingPanelProps = {
-    open: true,
     edgeId: 'e-1',
     edge: makeEdge(),
     sourceNode,
@@ -226,7 +225,7 @@ describe('FieldMappingPanel', () => {
 
     await user.click(screen.getByTestId('nested-field-out-image'))
     const target = screen.getByTestId('nested-field-in-text')
-    expect(target.className).toContain('mapping-field--forbidden')
+    expect(target).toHaveAttribute('aria-disabled', 'true')
 
     await user.click(target)
 

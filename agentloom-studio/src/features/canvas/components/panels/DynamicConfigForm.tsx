@@ -156,7 +156,7 @@ const DynamicFormInner = memo(function DynamicFormInner({
 
   return (
     <Form {...form}>
-      <div className="space-y-5 px-4 py-4" data-testid="dynamic-config-form">
+      <div className="space-y-5" data-testid="dynamic-config-form">
         {fields.map(([key, field]) => (
           <ConfigField
             key={key}

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   node: null as CanvasNode | null,
   nodeState: null as NodeExecutionState | null,
   isExecutionActive: false,
+  mappingPanelEdgeId: null as string | null,
   selectNode: vi.fn(),
   updateNodeData: vi.fn(),
   setNodeValidationError: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock('../../stores/canvasStore', () => ({
     setNodeValidationError: mocks.setNodeValidationError,
   }),
   useCanvasNodes: () => (mocks.node ? [mocks.node] : []),
+  useMappingPanelEdgeId: () => mocks.mappingPanelEdgeId,
 }))
 
 vi.mock('@/features/execution/stores/executionStore', () => ({
@@ -215,6 +217,7 @@ describe('NodeConfigPanel', () => {
     mocks.node = createNode()
     mocks.nodeState = null
     mocks.isExecutionActive = false
+    mocks.mappingPanelEdgeId = null
     mocks.selectNode.mockReset()
     mocks.updateNodeData.mockReset()
     mocks.setNodeValidationError.mockReset()
@@ -307,6 +310,14 @@ describe('NodeConfigPanel', () => {
     expect(screen.getByTestId('node-execution-output')).toHaveTextContent(
       '节点执行失败，暂无可展示的输出内容。',
     )
+  })
+
+  it('hides itself while the field mapping panel is open', () => {
+    mocks.mappingPanelEdgeId = 'edge-1'
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.queryByTestId('node-config-panel')).not.toBeInTheDocument()
   })
 
   it('closes the panel through canvas selection action', async () => {

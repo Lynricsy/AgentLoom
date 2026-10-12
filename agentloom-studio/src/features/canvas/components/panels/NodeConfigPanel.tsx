@@ -1,6 +1,5 @@
 import {
   memo,
-  createElement,
   useCallback,
   useEffect,
   useRef,
@@ -9,7 +8,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { X } from 'lucide-react'
 import {
   useExecutionId,
   useIsExecutionActive,
@@ -18,13 +16,18 @@ import {
 import { ToolCallList } from '@/features/execution'
 import type { StepStatus } from '@/features/execution'
 import { cn } from '@/shared/lib/utils'
-import { panelSlideRight } from '@/shared/lib/motion'
-import { Button } from '@/shared/ui/button'
+import { fadeIn, panelSlideRight } from '@/shared/lib/motion'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
+import { Alert } from '@/shared/ui/alert'
 import { Input } from '@/shared/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import type { CanvasNode } from '../../types'
 import { getResolvedNodeTypeConfig } from '../../types/nodeTypeRegistry'
-import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
+import {
+  useCanvasActions,
+  useCanvasStore,
+  useMappingPanelEdgeId,
+} from '../../stores/canvasStore'
 import { getOutputContentFormat } from '../../lib/outputContent'
 import {
   getNodeAccentToken,
@@ -34,10 +37,8 @@ import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
 import { InterventionPanel } from './InterventionPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
 import { OutputContentRenderer } from '../output/OutputContentRenderer'
-import {
-  CANVAS_FLOATING_CLASS,
-  CANVAS_PANEL_HEADER_CLASS,
-} from '../canvasChrome'
+import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
+import { CanvasPanelHeader } from '../CanvasPanelHeader'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -55,39 +56,39 @@ type NodeConfigTab = 'config' | 'output' | 'intervention'
 
 const EXECUTION_STATUS_META: Record<
   StepStatus,
-  { label: string; badgeClassName: string }
+  { label: string; tone: StatusTone }
 > = {
   pending: {
     label: '等待中',
-    badgeClassName: 'border-border bg-muted text-muted-foreground',
+    tone: 'neutral',
   },
   queued: {
     label: '排队中',
-    badgeClassName: 'border-border bg-muted text-muted-foreground',
+    tone: 'neutral',
   },
   running: {
     label: '执行中',
-    badgeClassName: 'border-primary/30 bg-primary/10 text-primary',
+    tone: 'primary',
   },
   completed: {
     label: '已完成',
-    badgeClassName: 'border-success/30 bg-success/10 text-success',
+    tone: 'success',
   },
   failed: {
     label: '失败',
-    badgeClassName: 'border-error/30 bg-error/10 text-error',
+    tone: 'error',
   },
   skipped: {
     label: '已跳过',
-    badgeClassName: 'border-border bg-muted text-muted-foreground',
+    tone: 'neutral',
   },
   cancelled: {
     label: '已取消',
-    badgeClassName: 'border-border bg-muted text-muted-foreground',
+    tone: 'neutral',
   },
   waiting_intervention: {
     label: '等待干预',
-    badgeClassName: 'border-warning/30 bg-warning/10 text-warning',
+    tone: 'warning',
   },
 }
 
@@ -261,6 +262,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
     s.selectedNodeId ? s.nodes.find((n) => n.id === s.selectedNodeId) ?? null : null
   )
 
+  const mappingPanelEdgeId = useMappingPanelEdgeId()
   const { selectNode, updateNodeData, setNodeValidationError } = useCanvasActions()
   const nodeState = useNodeExecutionState(selectedNodeId ?? '')
   const isWaitingIntervention = nodeState?.status === 'waiting_intervention'
@@ -341,7 +343,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
 
   return (
     <AnimatePresence>
-      {node && nodeConfig ? (
+      {node && nodeConfig && !mappingPanelEdgeId ? (
         <motion.aside
           key="node-config-panel"
           data-testid="node-config-panel"
@@ -376,45 +378,28 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
             )}
           />
 
-          <header className={cn(CANVAS_PANEL_HEADER_CLASS, 'items-start pl-5')}>
-            <span
-              aria-hidden
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-              style={{
-                backgroundColor: `color-mix(in srgb, ${accentToken} 14%, transparent)`,
-                color: accentToken,
-              }}
-            >
-              {createElement(resolveNodeIcon(nodeConfig.icon), {
-                className: 'h-4 w-4',
-              })}
-            </span>
-
-            <div className="min-w-0 flex-1">
+          <CanvasPanelHeader
+            icon={resolveNodeIcon(nodeConfig.icon)}
+            tone={accentToken}
+            title={
               <Input
                 aria-label="节点名称"
                 data-testid="node-config-panel-title"
                 value={node.data.label}
                 onChange={(event) => handleLabelChange(event.target.value)}
-                className="h-auto border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold shadow-none hover:border-transparent hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted"
+                className="h-7 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-transparent hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted"
               />
-              <p className="mt-0.5 truncate px-1.5 text-xs text-muted-foreground">
+            }
+            description={
+              <span className="px-1.5">
                 {nodeConfig.isKnownType
                   ? `${nodeConfig.label} 配置`
                   : `未知节点类型（${nodeConfig.type}）`}
-              </p>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={handleClose}
-              className="-mr-1 text-muted-foreground hover:text-foreground"
-              aria-label="关闭配置面板"
-            >
-              <X />
-            </Button>
-          </header>
+              </span>
+            }
+            onClose={handleClose}
+            closeLabel="关闭配置面板"
+          />
 
           <Tabs
             value={activeTab}
@@ -441,41 +426,59 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
               </TabsList>
             </div>
 
-            {/* tab 内容常驻挂载、仅切换可见性：自定义面板持有 Monaco / 草稿等本地状态，卸载会丢编辑上下文 */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div
+            {/* tab 内容常驻挂载、仅切换可见性：自定义面板持有 Monaco / 草稿等本地状态，卸载会丢编辑上下文。
+                切换节点时以 node.id 重挂内容区，避免同类型节点之间串用面板内部 state，并淡入新内容。 */}
+            <motion.div
+              key={node.id}
+              initial={fadeIn.initial}
+              animate={fadeIn.animate}
+              transition={fadeIn.transition}
+              className="min-h-0 flex-1 overflow-y-auto"
+            >
+              <motion.div
+                initial={false}
+                animate={{ opacity: activeTab === 'config' ? 1 : 0 }}
+                transition={fadeIn.transition}
                 className={cn(activeTab !== 'config' && 'hidden')}
                 data-testid="node-config-tab-panel-config"
                 data-active={activeTab === 'config'}
               >
                 <NodeConfigDispatch
+                  key={node.id}
                   node={node}
                   onConfigChange={handleConfigChange}
                   onValidationChange={handleValidationChange}
                 />
-              </div>
+              </motion.div>
 
-              <div
+              <motion.div
+                initial={false}
+                animate={{ opacity: activeTab === 'output' ? 1 : 0 }}
+                transition={fadeIn.transition}
                 className={cn(activeTab !== 'output' && 'hidden')}
                 data-testid="node-config-tab-panel-output"
                 data-active={activeTab === 'output'}
               >
                 <NodeExecutionSection
+                  key={node.id}
                   nodeId={node.id}
                   nodeType={node.data.nodeType}
                 />
-              </div>
+              </motion.div>
 
               {isWaitingIntervention && (
-                <div
+                <motion.div
+                  initial={false}
+                  animate={{ opacity: activeTab === 'intervention' ? 1 : 0 }}
+                  transition={fadeIn.transition}
                   className={cn('px-4 py-4', activeTab !== 'intervention' && 'hidden')}
                   data-testid="node-config-tab-panel-intervention"
                   data-active={activeTab === 'intervention'}
                 >
                   <InterventionPanel nodeId={node.id} />
-                </div>
+                </motion.div>
               )}
-            </div>
+            </motion.div>
           </Tabs>
         </motion.aside>
       ) : null}
@@ -549,12 +552,14 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
 
   if (hasDynamicConfigFields) {
     return (
-      <DynamicConfigForm
-        configSchema={nodeConfig.configSchema}
-        values={node.data.config}
-        onApply={onConfigChange}
-        onValidationChange={onValidationChange}
-      />
+      <div className="px-4 py-4">
+        <DynamicConfigForm
+          configSchema={nodeConfig.configSchema}
+          values={node.data.config}
+          onApply={onConfigChange}
+          onValidationChange={onValidationChange}
+        />
+      </div>
     )
   }
 
@@ -592,7 +597,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
   return (
     <section className="px-4 py-4" data-testid="node-execution-section">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">实时执行</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {nodeState
@@ -603,23 +608,23 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
           </p>
         </div>
 
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-2xs font-medium',
-            statusMeta?.badgeClassName ??
-              'border-border bg-muted text-muted-foreground',
-          )}
+        <StatusBadge
+          tone={statusMeta?.tone ?? 'neutral'}
+          className="shrink-0"
           data-testid="node-execution-status"
         >
           {statusMeta?.label ?? (isExecutionActive ? '待运行' : '空闲')}
-        </span>
+        </StatusBadge>
       </div>
 
       {nodeState && (
         <dl className="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted p-3 text-xs">
-          <div>
+          <div className="min-w-0">
             <dt className="text-muted-foreground">步骤 ID</dt>
-            <dd className="mt-1 break-all font-mono text-foreground">
+            <dd
+              className="mt-1 truncate font-mono text-foreground"
+              title={nodeState.stepId}
+            >
               {nodeState.stepId}
             </dd>
           </div>
@@ -642,14 +647,14 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
           {startedAt && (
             <div>
               <dt className="text-muted-foreground">开始时间</dt>
-              <dd className="mt-1 text-foreground">{startedAt}</dd>
+              <dd className="mt-1 tabular-nums text-foreground">{startedAt}</dd>
             </div>
           )}
 
           {completedAt && (
             <div>
               <dt className="text-muted-foreground">完成时间</dt>
-              <dd className="mt-1 text-foreground">{completedAt}</dd>
+              <dd className="mt-1 tabular-nums text-foreground">{completedAt}</dd>
             </div>
           )}
         </dl>
@@ -664,20 +669,21 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
       )}
 
       {nodeState?.errorMessage && (
-        <div
-          className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2"
+        <Alert
+          variant="error"
+          title="执行错误"
+          className="mt-4"
           data-testid="node-execution-error"
         >
-          <p className="text-xs font-medium text-error">执行错误</p>
-          <p className="mt-1 text-xs leading-5 text-foreground">
+          <p className="whitespace-pre-wrap break-words text-xs leading-5">
             {nodeState.errorMessage}
           </p>
-        </div>
+        </Alert>
       )}
 
       <div className="mt-5 space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <h4 className="text-xs font-medium tracking-wide text-muted-foreground">
             输出流
           </h4>
 

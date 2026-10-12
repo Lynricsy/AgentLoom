@@ -24,10 +24,13 @@ const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
   low: '低',
 }
 
-const COMPAT_LABELS: Record<CompatibilityLabel, { text: string; className: string }> = {
-  exact: { text: '完全兼容', className: 'suggestion-compat--exact' },
-  coercible: { text: '可转换', className: 'suggestion-compat--coercible' },
-  incompatible: { text: '不兼容', className: 'suggestion-compat--incompatible' },
+const COMPAT_LABELS: Record<
+  CompatibilityLabel,
+  { text: string; variant: NonNullable<BadgeProps['variant']> }
+> = {
+  exact: { text: '完全兼容', variant: 'success' },
+  coercible: { text: '可转换', variant: 'warning' },
+  incompatible: { text: '不兼容', variant: 'error' },
 }
 
 export const MappingSuggestionCard = memo(function MappingSuggestionCard({
@@ -45,10 +48,22 @@ export const MappingSuggestionCard = memo(function MappingSuggestionCard({
       onClick={() => onApply(suggestion)}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1 truncate font-mono text-2xs text-foreground">
-          <span data-testid="suggestion-source">{suggestion.sourceField}</span>
+        <span className="flex min-w-0 items-center gap-1 font-mono text-2xs text-foreground">
+          <span
+            className="min-w-0 truncate"
+            title={suggestion.sourceField}
+            data-testid="suggestion-source"
+          >
+            {suggestion.sourceField}
+          </span>
           <span className="shrink-0 text-muted-foreground">→</span>
-          <span data-testid="suggestion-target">{suggestion.targetField}</span>
+          <span
+            className="min-w-0 truncate"
+            title={suggestion.targetField}
+            data-testid="suggestion-target"
+          >
+            {suggestion.targetField}
+          </span>
         </span>
         <span
           data-testid="suggestion-score"
@@ -67,27 +82,21 @@ export const MappingSuggestionCard = memo(function MappingSuggestionCard({
           {CONFIDENCE_LABELS[suggestion.confidenceLevel]}
         </Badge>
 
-        <span
-          data-testid="suggestion-compat"
-          className={`suggestion-compat ${compat.className}`}
-        >
+        <Badge size="sm" variant={compat.variant} data-testid="suggestion-compat">
           {compat.text}
-        </span>
+        </Badge>
 
         <span
           data-testid="suggestion-type-pair"
-          className="inline-flex items-center whitespace-nowrap font-mono text-2xs text-muted-foreground"
+          className="min-w-0 truncate font-mono text-2xs text-muted-foreground"
         >
           {suggestion.sourceTypeLabel} → {suggestion.targetTypeLabel}
         </span>
 
         {suggestion.suggestedCoercion && (
-          <span
-            data-testid="suggestion-coercion"
-            className="rounded-xs bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning"
-          >
+          <Badge size="sm" variant="warning" data-testid="suggestion-coercion">
             {getStrategyLabel(suggestion.suggestedCoercion.strategy)}
-          </span>
+          </Badge>
         )}
       </div>
     </Button>

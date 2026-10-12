@@ -15,6 +15,9 @@ export interface CanvasPanelHeaderProps {
   /** 关闭按钮左侧的额外操作 */
   actions?: ReactNode
   onClose?: () => void
+  /** 关闭按钮的无障碍名称，默认「关闭」 */
+  closeLabel?: string
+  closeTestId?: string
   className?: string
 }
 
@@ -29,6 +32,8 @@ export function CanvasPanelHeader({
   description,
   actions,
   onClose,
+  closeLabel = '关闭',
+  closeTestId,
   className,
 }: CanvasPanelHeaderProps) {
   return (
@@ -54,7 +59,7 @@ export function CanvasPanelHeader({
           title
         )}
         {description ? (
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">{description}</div>
+          <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</div>
         ) : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
@@ -62,7 +67,8 @@ export function CanvasPanelHeader({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="关闭"
+          aria-label={closeLabel}
+          data-testid={closeTestId}
           className="shrink-0 text-muted-foreground"
           onClick={onClose}
         >

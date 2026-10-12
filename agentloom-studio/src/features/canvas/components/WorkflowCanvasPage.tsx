@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { AlertCircle } from "lucide-react";
 import { useParams } from "@tanstack/react-router";
 import { useAuthToken } from "@/features/execution";
 import { CelebrationEffect } from "@/features/execution";
@@ -45,6 +47,9 @@ import {
 } from "../stores/canvasStore";
 import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
 import { cn } from "@/shared/lib/utils";
+import { fadeInUp } from "@/shared/lib/motion";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { Button } from "@/shared/ui/button";
 import { useToast } from "@/shared/ui/toast";
 
@@ -94,7 +99,6 @@ export function WorkflowCanvasPage() {
   } = useCanvasActions();
   const { notify } = useToast();
   const mappingPanelEdgeId = useMappingPanelEdgeId();
-  const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
   const selectedNode = useCanvasStore((s) =>
     s.selectedNodeId
       ? (s.nodes.find((n) => n.id === s.selectedNodeId) ?? null)
@@ -344,22 +348,32 @@ export function WorkflowCanvasPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full w-full items-center justify-center">
-        <p className="text-muted-foreground">加载工作流中…</p>
+      <div
+        className="flex h-full w-full gap-2 p-2"
+        role="status"
+        aria-label="加载工作流中…"
+      >
+        <Skeleton className="h-full w-[var(--spacing-palette-expanded)] shrink-0 rounded-xl" />
+        <Skeleton className="h-full flex-1 rounded-xl" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-full w-full items-center justify-center">
-        <p className="text-error">加载失败: {error.message}</p>
+      <div className="flex h-full w-full items-center justify-center p-6">
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载工作流失败"
+          description={error.message}
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full">
+    <div className="relative flex h-full w-full">
       {!isWorkflowArchived && !isMobileReadOnly && <NodePalette />}
 
       <div className="relative flex-1">
@@ -457,7 +471,7 @@ export function WorkflowCanvasPage() {
             </div>
 
             <div
-              className="order-2 flex max-w-[min(420px,calc(100%-2rem))] flex-col gap-3 xl:order-1"
+              className="order-2 flex w-[min(480px,calc(100vw-3rem))] max-w-full flex-col gap-3 xl:order-1"
               data-testid="workflow-side-overlay"
             >
               <Button
@@ -473,42 +487,51 @@ export function WorkflowCanvasPage() {
                 {isExecutionHistoryOpen ? "隐藏执行记录" : "查看执行记录"}
               </Button>
 
-              {isExecutionHistoryOpen ? (
-                <div className="pointer-events-auto h-[min(68vh,640px)] w-[min(420px,calc(100vw-3rem))]">
-                  <ExecutionHistoryPanel
-                    key={workflow.id}
-                    workflowDefinitionId={workflow.id}
-                    onClose={handleCloseExecutionHistory}
-                  />
-                </div>
-              ) : null}
+              <AnimatePresence initial={false}>
+                {isExecutionHistoryOpen ? (
+                  <motion.div
+                    key="execution-history"
+                    {...fadeInUp}
+                    className="pointer-events-auto h-[min(68vh,640px)] w-full"
+                  >
+                    <ExecutionHistoryPanel
+                      key={workflow.id}
+                      workflowDefinitionId={workflow.id}
+                      onClose={handleCloseExecutionHistory}
+                    />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
 
-              {activeSettingsTab ? (
-                <div className="pointer-events-auto w-[min(480px,calc(100vw-3rem))]">
-                  <WorkflowSettingsPanel
-                    activeTab={activeSettingsTab}
-                    onTabChange={handleWorkflowSettingsTabChange}
-                    onClose={handleCloseWorkflowSettingsPanel}
-                    workflowId={workflow.id}
-                    workflowName={workflow.name}
-                    workflowVersion={workflow.version}
-                    nodes={workflow.nodes}
-                    inputSchema={workflow.inputSchema}
-                    isInputSchemaReadOnly={isInputSchemaReadOnly}
-                    isPublished={workflow.status === "published"}
-                    isInterventionPolicyReadOnly={isInterventionPolicyReadOnly}
-                  />
-                </div>
-              ) : null}
+              <AnimatePresence initial={false}>
+                {activeSettingsTab ? (
+                  <div
+                    key="workflow-settings"
+                    className="pointer-events-auto w-full"
+                  >
+                    <WorkflowSettingsPanel
+                      activeTab={activeSettingsTab}
+                      onTabChange={handleWorkflowSettingsTabChange}
+                      onClose={handleCloseWorkflowSettingsPanel}
+                      workflowId={workflow.id}
+                      workflowName={workflow.name}
+                      workflowVersion={workflow.version}
+                      nodes={workflow.nodes}
+                      inputSchema={workflow.inputSchema}
+                      isInputSchemaReadOnly={isInputSchemaReadOnly}
+                      isPublished={workflow.status === "published"}
+                      isInterventionPolicyReadOnly={isInterventionPolicyReadOnly}
+                    />
+                  </div>
+                ) : null}
+              </AnimatePresence>
             </div>
           </div>
         )}
       </div>
 
-      {!isWorkflowArchived &&
-        !isMobileReadOnly &&
-        selectedNodeId &&
-        !mappingPanelEdgeId && <NodeConfigPanel />}
+      {/* 面板自身根据「有选中节点且未打开字段映射」驱动进退场，父级不得条件挂载，否则退场动画被吞 */}
+      {!isWorkflowArchived && !isMobileReadOnly && <NodeConfigPanel />}
 
       {isMobileReadOnly && (
         <ReadOnlyNodeSheet
@@ -519,17 +542,19 @@ export function WorkflowCanvasPage() {
         />
       )}
 
-      {!isWorkflowArchived && mappingPanelEdgeId && mappingPanelEdge && (
-        <FieldMappingPanel
-          open={!!mappingPanelEdgeId}
-          edgeId={mappingPanelEdgeId}
-          edge={mappingPanelEdge}
-          sourceNode={mappingSourceNode}
-          targetNode={mappingTargetNode}
-          onClose={closeFieldMapping}
-          onChange={updateFieldMapping}
-        />
-      )}
+      <AnimatePresence>
+        {!isWorkflowArchived && mappingPanelEdgeId && mappingPanelEdge ? (
+          <FieldMappingPanel
+            key="field-mapping"
+            edgeId={mappingPanelEdgeId}
+            edge={mappingPanelEdge}
+            sourceNode={mappingSourceNode}
+            targetNode={mappingTargetNode}
+            onClose={closeFieldMapping}
+            onChange={updateFieldMapping}
+          />
+        ) : null}
+      </AnimatePresence>
 
       {workflow && (
         <VersionHistoryPanel

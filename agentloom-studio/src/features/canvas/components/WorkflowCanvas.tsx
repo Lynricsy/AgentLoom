@@ -181,6 +181,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   }, [clearSelection, closeContextMenu])
 
   const encapsulation = useEncapsulateSelection()
+  // Dialog 退场期间 analysis 已被清空：保留最近一次分析结果，让 Dialog 常驻挂载以播放退场动画
+  const lastAnalysisRef = useRef(encapsulation.analysis)
+  if (encapsulation.analysis) {
+    lastAnalysisRef.current = encapsulation.analysis
+  }
+  const dialogAnalysis = encapsulation.analysis ?? lastAnalysisRef.current
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
@@ -251,11 +257,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         onCloseContextMenu={closeContextMenu}
         onEncapsulate={encapsulation.openEncapsulation}
       />
-      {encapsulation.analysis ? (
+      {dialogAnalysis ? (
         <BlockCreateDialog
-          open
+          open={encapsulation.analysis !== null}
           onOpenChange={encapsulation.onOpenChange}
-          analysis={encapsulation.analysis}
+          analysis={dialogAnalysis}
           onConfirm={encapsulation.onConfirm}
         />
       ) : null}

@@ -1,5 +1,6 @@
-import { X } from 'lucide-react'
-import { Button } from '@/shared/ui/button'
+import { ArrowRightLeft } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
+import { CanvasPanelHeader } from '../CanvasPanelHeader'
 
 export interface FieldMappingSummaryProps {
   isReadonly: boolean
@@ -15,30 +16,26 @@ export function FieldMappingSummary({
 }: FieldMappingSummaryProps) {
   return (
     <>
-      <div className="mapping-panel__header">
-        <h3 className="mapping-panel__title">字段映射</h3>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground hover:text-foreground"
-          data-testid="mapping-panel-close"
-          aria-label="关闭映射面板"
-          onClick={onClose}
-        >
-          <X />
-        </Button>
-      </div>
+      <CanvasPanelHeader
+        icon={ArrowRightLeft}
+        title="字段映射"
+        onClose={onClose}
+        closeLabel="关闭映射面板"
+        closeTestId="mapping-panel-close"
+      />
 
-      <div className="mapping-panel__summary" data-testid="mapping-required-summary">
-        {isReadonly ? (
-          <span>完全匹配，无需映射</span>
-        ) : requiredUnmappedCount > 0 ? (
-          <span className="mapping-panel__summary-item--warning">
-            {requiredUnmappedCount} 个必填字段未映射
-          </span>
-        ) : (
-          <span>所有必填字段已映射</span>
+      <div
+        className={cn(
+          'shrink-0 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground',
+          !isReadonly && requiredUnmappedCount > 0 && 'text-warning',
         )}
+        data-testid="mapping-required-summary"
+      >
+        {isReadonly
+          ? '完全匹配，无需映射'
+          : requiredUnmappedCount > 0
+            ? `${requiredUnmappedCount} 个必填字段未映射`
+            : '所有必填字段已映射'}
       </div>
     </>
   )

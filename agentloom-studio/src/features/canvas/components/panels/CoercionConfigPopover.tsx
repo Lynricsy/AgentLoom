@@ -3,7 +3,6 @@ import { Check, Settings2, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
 import type { CoercionStrategy, PortDataType, TypeCoercionConfig } from '../../types'
 import { getAvailableStrategies, getStrategyLabel } from '../../lib/coercionStrategies'
@@ -233,8 +232,8 @@ function CoercionParamsInput({ strategy, params, onChange }: CoercionParamsInput
     const precision = (params?.precision as number) ?? 2
     return (
       <div className="space-y-1.5" data-testid="coercion-param-toFixed">
-        <label htmlFor="coercion-precision">
-          <Label>精度</Label>
+        <label htmlFor="coercion-precision" className="text-xs font-medium text-foreground">
+          精度
         </label>
         <Input
           id="coercion-precision"
@@ -254,8 +253,8 @@ function CoercionParamsInput({ strategy, params, onChange }: CoercionParamsInput
     const separator = (params?.separator as string) ?? ','
     return (
       <div className="space-y-1.5" data-testid="coercion-param-join">
-        <label htmlFor="coercion-separator">
-          <Label>分隔符</Label>
+        <label htmlFor="coercion-separator" className="text-xs font-medium text-foreground">
+          分隔符
         </label>
         <Input
           id="coercion-separator"

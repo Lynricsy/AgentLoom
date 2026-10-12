@@ -1,4 +1,6 @@
+import { AnimatePresence, motion } from 'motion/react'
 import { Check, X } from 'lucide-react'
+import { fadeInUp } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import { MappingSuggestionCard } from './MappingSuggestionCard'
 import type { ApplyAllConfirmSummary } from '../../hooks/useFieldMappingInteractions'
@@ -25,8 +27,8 @@ export function FieldMappingSuggestions({
   onCancelApplyAll,
 }: FieldMappingSuggestionsProps) {
   return (
-    <div className="mapping-panel__suggestions" data-testid="mapping-suggestions-section">
-      <div className="flex items-center justify-between px-2 py-1">
+    <div className="flex flex-col gap-2 px-3" data-testid="mapping-suggestions-section">
+      <div className="flex items-center justify-between gap-2 py-1">
         <span className="text-xs text-muted-foreground">
           {suggestionsByTarget.size} 个智能推荐
         </span>
@@ -34,7 +36,7 @@ export function FieldMappingSuggestions({
           <Button
             variant="link"
             size="xs"
-            className="h-auto p-0"
+            className="px-0"
             data-testid="apply-all-suggestions"
             onClick={onApplyAll}
           >
@@ -43,42 +45,49 @@ export function FieldMappingSuggestions({
         )}
       </div>
 
-      {applyAllConfirmData && (
-        <div className="apply-all-confirm" data-testid="apply-all-confirm">
-          <div className="apply-all-confirm__summary">
-            将应用 {applyAllConfirmData.toApply.length} 个推荐
-            {applyAllConfirmData.coercibleCount > 0 && (
-              <span className="apply-all-confirm__coercible">
-                （{applyAllConfirmData.coercibleCount} 个需要类型转换）
-              </span>
-            )}
-            {applyAllConfirmData.skippedIncompatibleCount > 0 && (
-              <span className="apply-all-confirm__coercible">
-                （{applyAllConfirmData.skippedIncompatibleCount} 个不兼容已跳过）
-              </span>
-            )}
-          </div>
-          <div className="flex gap-1.5">
-            <Button
-              size="xs"
-              data-testid="apply-all-confirm-btn"
-              onClick={onConfirmApplyAll}
-            >
-              <Check />
-              确认
-            </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              data-testid="apply-all-cancel-btn"
-              onClick={onCancelApplyAll}
-            >
-              <X />
-              取消
-            </Button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {applyAllConfirmData ? (
+          <motion.div
+            key="apply-all-confirm"
+            {...fadeInUp}
+            className="space-y-2 rounded-lg border border-border bg-muted p-3 text-xs text-foreground"
+            data-testid="apply-all-confirm"
+          >
+            <p>
+              将应用 {applyAllConfirmData.toApply.length} 个推荐
+              {applyAllConfirmData.coercibleCount > 0 && (
+                <span className="text-warning">
+                  （{applyAllConfirmData.coercibleCount} 个需要类型转换）
+                </span>
+              )}
+              {applyAllConfirmData.skippedIncompatibleCount > 0 && (
+                <span className="text-warning">
+                  （{applyAllConfirmData.skippedIncompatibleCount} 个不兼容已跳过）
+                </span>
+              )}
+            </p>
+            <div className="flex gap-1.5">
+              <Button
+                size="xs"
+                data-testid="apply-all-confirm-btn"
+                onClick={onConfirmApplyAll}
+              >
+                <Check />
+                确认
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                data-testid="apply-all-cancel-btn"
+                onClick={onCancelApplyAll}
+              >
+                <X />
+                取消
+              </Button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {[...suggestionsByTarget.values()].map((s) => (
         <MappingSuggestionCard
