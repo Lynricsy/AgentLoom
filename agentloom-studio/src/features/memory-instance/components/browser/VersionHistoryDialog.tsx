@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Loader2, History, RotateCcw } from 'lucide-react'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { formatDateTime } from '@/shared/lib/format'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
@@ -39,7 +41,7 @@ function VersionRow({
 }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-bold text-primary">
+      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-bold tabular-nums text-primary">
         v{version.versionNumber}
       </span>
       <div className="min-w-0 flex-1">
@@ -52,17 +54,14 @@ function VersionRow({
               最新
             </Badge>
           )}
-          <span className="text-2xs text-muted-foreground">
-            {new Date(version.createdAt).toLocaleString('zh-CN', {
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+          <span className="text-2xs tabular-nums text-muted-foreground">
+            {formatDateTime(version.createdAt)}
           </span>
         </div>
         {version.content && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{version.content}</p>
+          <p className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground">
+            {version.content}
+          </p>
         )}
       </div>
       {!isLatest && (
@@ -71,13 +70,9 @@ function VersionRow({
           size="sm"
           disabled={isRollingBack}
           onClick={() => onRollback(version.id)}
-          className="shrink-0 gap-1 text-xs"
+          className="shrink-0"
         >
-          {isRollingBack ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RotateCcw className="h-3 w-3" />
-          )}
+          {isRollingBack ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           回滚
         </Button>
       )}
@@ -124,12 +119,17 @@ export function VersionHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg" className="max-h-[70vh]">
+      <DialogContent size="lg" className="max-h-[70dvh]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <History className="h-4 w-4 text-primary" />
-            版本历史
-            <span className="text-sm font-normal text-muted-foreground">— {nodeName}</span>
+          <DialogTitle className="flex min-w-0 items-center gap-2">
+            <History className="size-4 shrink-0 text-primary" />
+            <span className="shrink-0">版本历史</span>
+            <span
+              className="min-w-0 truncate text-sm font-normal text-muted-foreground"
+              title={nodeName}
+            >
+              — {nodeName}
+            </span>
           </DialogTitle>
           <DialogDescription>
             查看和管理记忆节点的版本历史
@@ -144,7 +144,12 @@ export function VersionHistoryDialog({
               ))}
             </div>
           ) : !versions || versions.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">暂无版本记录</p>
+            <EmptyState
+              variant="plain"
+              icon={History}
+              title="暂无版本记录"
+              description="节点被编辑或回滚后，这里会按时间倒序列出每一个版本。"
+            />
           ) : (
             <div className="space-y-2">
               {versions.map((version, i) => (
@@ -162,9 +167,7 @@ export function VersionHistoryDialog({
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline" size="sm">
-              关闭
-            </Button>
+            <Button variant="outline">关闭</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

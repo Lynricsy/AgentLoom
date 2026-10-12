@@ -3,7 +3,8 @@ import { Link } from '@tanstack/react-router'
 import { MoreVertical, Pencil, Trash2, Archive, RotateCcw, Brain, Eye, Network } from 'lucide-react'
 import { formatRelativeTime } from '@/features/canvas'
 import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
+import { Button, buttonVariants } from '@/shared/ui/button'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { Card } from '@/shared/ui/card'
 import {
   DropdownMenu,
@@ -34,29 +35,29 @@ function CardActions({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm" aria-label="更多操作">
-          <MoreVertical className="h-4 w-4" />
+          <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
         <DropdownMenuItem onSelect={() => onEdit(instance)}>
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="size-3.5" />
           编辑
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onToggleStatus(instance)}>
           {isActive ? (
             <>
-              <Archive className="h-3.5 w-3.5" />
+              <Archive className="size-3.5" />
               归档
             </>
           ) : (
             <>
-              <RotateCcw className="h-3.5 w-3.5" />
+              <RotateCcw className="size-3.5" />
               激活
             </>
           )}
         </DropdownMenuItem>
         <DropdownMenuItem destructive onSelect={() => onDelete(instance)}>
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="size-3.5" />
           删除
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -79,20 +80,20 @@ export const MemoryInstanceCard = memo(function MemoryInstanceCard({
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+              className="grid size-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${MEMORY_TONE} 14%, transparent)`,
                 color: MEMORY_TONE,
               }}
             >
-              <Brain className="h-4 w-4" />
+              <Brain className="size-4" />
             </span>
-            <h2 className="truncate text-sm font-semibold text-foreground">
+            <h2 className="min-w-0 truncate text-sm font-semibold text-foreground" title={instance.name}>
               {instance.name}
             </h2>
-            <Badge size="sm" variant={isArchived ? 'secondary' : 'success'}>
+            <StatusBadge size="sm" tone={isArchived ? 'neutral' : 'success'} className="shrink-0">
               {isArchived ? '已归档' : '活跃'}
-            </Badge>
+            </StatusBadge>
           </div>
           <CardActions
             instance={instance}
@@ -103,35 +104,41 @@ export const MemoryInstanceCard = memo(function MemoryInstanceCard({
         </div>
 
         {instance.description && (
-          <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+          <p className="mt-2 line-clamp-2 break-words text-xs text-muted-foreground">
             {instance.description}
           </p>
         )}
 
         {instance.validDomains.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
             {instance.validDomains.map((domain) => (
-              <Badge key={domain} size="sm" variant="outline" className="rounded-md">
-                {domain}
+              <Badge
+                key={domain}
+                size="sm"
+                variant="outline"
+                className="max-w-[10rem] rounded-md"
+                title={domain}
+              >
+                <span className="truncate">{domain}</span>
               </Badge>
             ))}
           </div>
         )}
 
-        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <Network className="h-3 w-3" />
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="flex shrink-0 items-center gap-1 tabular-nums">
+              <Network className="size-3" />
               {instance.nodeCount ?? 0} 节点
             </span>
-            <span>创建于 {formatRelativeTime(new Date(instance.createdAt))}</span>
+            <span className="shrink-0">创建于 {formatRelativeTime(new Date(instance.createdAt))}</span>
           </div>
           <Link
             to="/resources/memory-instances/$instanceId/browse"
             params={{ instanceId: instance.id }}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+            className={buttonVariants({ variant: 'ghost', size: 'xs', className: 'text-primary' })}
           >
-            <Eye className="h-3.5 w-3.5" />
+            <Eye />
             浏览
           </Link>
         </div>

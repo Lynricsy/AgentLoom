@@ -15,36 +15,41 @@ interface MemoryBreadcrumbProps {
 
 export function MemoryBreadcrumb({ items, onNavigate }: MemoryBreadcrumbProps) {
   return (
-    <div className="flex items-center gap-2 overflow-x-auto">
+    <nav aria-label="记忆路径" className="flex min-w-0 items-center gap-1 overflow-x-auto">
       <Button
         variant="ghost"
         size="icon-xs"
         onClick={() => onNavigate('')}
         aria-label="返回根路径"
-        title="返回根路径"
         className="text-muted-foreground hover:text-primary"
       >
-        <Home size={14} />
+        <Home />
       </Button>
 
-      {items.map((crumb, i) => (
-        <Fragment key={crumb.path}>
-          <ChevronRight size={12} className="shrink-0 text-muted-foreground/50" />
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => onNavigate(crumb.path)}
-            className={cn(
-              'h-auto px-2 py-1 transition-colors',
-              i === items.length - 1
-                ? 'bg-primary/10 text-primary border border-primary/20 hover:bg-primary/10'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-            )}
-          >
-            {crumb.label}
-          </Button>
-        </Fragment>
-      ))}
-    </div>
+      {items.map((crumb, i) => {
+        const isCurrent = i === items.length - 1
+        return (
+          <Fragment key={crumb.path}>
+            <ChevronRight aria-hidden className="size-3 shrink-0 text-subtle-foreground" />
+            {/* 所有项都带 1px 边框（非当前项透明），当前项高亮时高度不变 */}
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => onNavigate(crumb.path)}
+              aria-current={isCurrent ? 'page' : undefined}
+              title={crumb.label}
+              className={cn(
+                'max-w-[12rem] shrink-0 border',
+                isCurrent
+                  ? 'border-primary/20 bg-primary/10 text-primary hover:bg-primary/10'
+                  : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <span className="truncate">{crumb.label}</span>
+            </Button>
+          </Fragment>
+        )
+      })}
+    </nav>
   )
 }

@@ -45,21 +45,22 @@ export function EditMemoryInstanceDialog({
     { enabled: open && Boolean(instance?.id) },
   )
 
-  // Sync form when detail loads
-  const prevId = detail?.id
-  useEffect(() => {
-    if (detail) {
-      setName(detail.name)
-      setDescription(detail.description ?? '')
-      setValidDomains(detail.validDomains)
-      setCoreMemoryUris(detail.coreMemoryUris)
-      setSystemPromptOverride(detail.systemPromptOverride ?? '')
-    }
-  }, [prevId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // detail 首次到达（或切换到另一个实例）时同步一次表单；后续 refetch 不覆盖用户正在编辑的值。
+  // 渲染期比对 id 而非 useEffect，避免依赖数组需要压制 exhaustive-deps。
+  const [syncedId, setSyncedId] = useState<string | null>(null)
+  if (open && detail && detail.id !== syncedId) {
+    setSyncedId(detail.id)
+    setName(detail.name)
+    setDescription(detail.description ?? '')
+    setValidDomains(detail.validDomains)
+    setCoreMemoryUris(detail.coreMemoryUris)
+    setSystemPromptOverride(detail.systemPromptOverride ?? '')
+  }
 
   // Reset on close
   useEffect(() => {
     if (!open) {
+      setSyncedId(null)
       setName('')
       setDescription('')
       setValidDomains([])
@@ -116,11 +117,21 @@ export function EditMemoryInstanceDialog({
 
         <DialogBody>
           {detailLoading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-9" />
-              <Skeleton className="h-16" />
-              <Skeleton className="h-12" />
-              <Skeleton className="h-12" />
+            // 骨架按真实字段结构排布（标签 + 控件），加载完成时弹窗高度不跳
+            <div className="space-y-4" role="status" aria-label="正在加载…">
+              {[
+                'h-9',
+                'h-16',
+                'h-[2.625rem]',
+                'h-[2.625rem]',
+                'h-20',
+              ].map((controlHeight, index) => (
+                <div key={index} className="space-y-1.5">
+                  <Skeleton className="h-5 w-24" />
+                  {index === 2 || index === 3 ? <Skeleton className="h-4 w-40" /> : null}
+                  <Skeleton className={controlHeight} />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="space-y-4">

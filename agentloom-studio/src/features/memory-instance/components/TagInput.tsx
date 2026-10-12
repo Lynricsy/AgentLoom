@@ -32,21 +32,23 @@ export function TagInput({ tags, onChange, placeholder, id }: TagInputProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-background px-3 py-2 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="rounded-md border border-border bg-surface px-3 py-2 transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
+      <div className="flex min-w-0 flex-wrap gap-1.5">
         {tags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground"
+            className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground"
           >
-            {tag}
+            <span className="min-w-0 truncate" title={tag}>
+              {tag}
+            </span>
             <Button
               variant="ghost"
               aria-label={`移除 ${tag}`}
               onClick={() => onChange(tags.filter((t) => t !== tag))}
-              className="h-auto p-0 text-muted-foreground hover:bg-transparent hover:text-foreground [&_svg]:size-3"
+              className="size-4 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-surface hover:text-foreground [&_svg]:size-3"
             >
-              <X className="h-3 w-3" />
+              <X />
             </Button>
           </span>
         ))}

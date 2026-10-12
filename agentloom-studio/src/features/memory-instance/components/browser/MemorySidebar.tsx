@@ -1,8 +1,73 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, FileText, Database } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react'
+import { ChevronDown, FileText, Database } from 'lucide-react'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
 import { browseMemoryNode } from '../../api/memoryInstanceApi'
 import type { MemoryNode, MemoryDomain } from '../../types'
+
+/** 树节点行的键盘操作：Enter/Space 选中，→ 展开，← 收起 */
+function handleTreeKeyDown(
+  event: KeyboardEvent<HTMLDivElement>,
+  {
+    activate,
+    expanded,
+    hasChildren,
+    setExpanded,
+  }: {
+    activate: () => void
+    expanded: boolean
+    hasChildren: boolean
+    setExpanded: (next: boolean) => void
+  },
+) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    activate()
+  } else if (event.key === 'ArrowRight' && hasChildren && !expanded) {
+    event.preventDefault()
+    setExpanded(true)
+  } else if (event.key === 'ArrowLeft' && expanded) {
+    event.preventDefault()
+    setExpanded(false)
+  }
+}
+
+function TreeChevron({
+  loading,
+  hasChildren,
+  expanded,
+  onToggle,
+}: {
+  loading: boolean
+  hasChildren: boolean
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <span
+      aria-hidden
+      className="grid size-5 shrink-0 place-items-center"
+      onClick={(e) => {
+        if (hasChildren) {
+          e.stopPropagation()
+          onToggle()
+        }
+      }}
+    >
+      {loading ? (
+        <Spinner size="sm" className="size-3" />
+      ) : hasChildren ? (
+        <ChevronDown
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:text-foreground',
+            !expanded && '-rotate-90',
+          )}
+        />
+      ) : null}
+    </span>
+  )
+}
 
 interface TreeNodeProps {
   instanceId: string
@@ -69,8 +134,7 @@ function TreeNode({
     prevActiveDomain.current = activeDomain
   }, [activePath, activeDomain, isAncestor, isActive, expanded])
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const activate = () => {
     if (isActive) {
       if (hasChildren) setExpanded(!expanded)
     } else {
@@ -80,50 +144,46 @@ function TreeNode({
   }
 
   return (
-    <div>
+    <div role="none">
       <div
+        role="treeitem"
+        tabIndex={0}
+        aria-selected={isActive}
+        aria-expanded={hasChildren ? expanded : undefined}
         className={cn(
-          'group flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 text-sm transition-colors',
+          'group flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
-        onClick={handleClick}
+        onClick={(e) => {
+          e.stopPropagation()
+          activate()
+        }}
+        onKeyDown={(e) =>
+          handleTreeKeyDown(e, { activate, expanded, hasChildren, setExpanded })
+        }
       >
-        <div
-          className="flex h-5 w-5 shrink-0 items-center justify-center"
-          onClick={(e) => {
-            if (hasChildren) {
-              e.stopPropagation()
-              setExpanded(!expanded)
-            }
-          }}
-        >
-          {loading ? (
-            <div className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-          ) : hasChildren ? (
-            <ChevronRight
-              size={14}
-              className={cn(
-                'text-muted-foreground transition-transform group-hover:text-foreground',
-                expanded && 'rotate-90',
-              )}
-            />
-          ) : null}
-        </div>
+        <TreeChevron
+          loading={loading}
+          hasChildren={hasChildren}
+          expanded={expanded}
+          onToggle={() => setExpanded(!expanded)}
+        />
         <FileText
-          size={14}
           className={cn(
-            'shrink-0',
-            isActive ? 'text-primary' : 'text-muted-foreground/50 group-hover:text-muted-foreground',
+            'size-3.5 shrink-0',
+            isActive ? 'text-primary' : 'text-subtle-foreground group-hover:text-muted-foreground',
           )}
         />
-        <span className="flex-1 truncate text-sm">{name}</span>
+        <span className="min-w-0 flex-1 truncate text-sm" title={name}>
+          {name}
+        </span>
       </div>
 
-      {expanded && children.length > 0 && (
-        <div>
+      <Collapse open={expanded && children.length > 0}>
+        <div role="group">
           {children.map((child) => (
             <TreeNode
               key={child.path}
@@ -139,7 +199,7 @@ function TreeNode({
             />
           ))}
         </div>
-      )}
+      </Collapse>
     </div>
   )
 }
@@ -202,8 +262,7 @@ function DomainNode({
 
   const isActive = activeDomain === domain && activePath === ''
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const activate = () => {
     if (isActive) {
       if (hasChildren) setExpanded(!expanded)
     } else {
@@ -213,53 +272,47 @@ function DomainNode({
   }
 
   return (
-    <div className="mb-2">
+    <div role="none" className="mb-2">
       <div
+        role="treeitem"
+        tabIndex={0}
+        aria-selected={isActive}
+        aria-expanded={hasChildren ? expanded : undefined}
         className={cn(
-          'group flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2 text-sm transition-colors',
+          'group flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-2 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
-        onClick={handleClick}
+        onClick={(e) => {
+          e.stopPropagation()
+          activate()
+        }}
+        onKeyDown={(e) =>
+          handleTreeKeyDown(e, { activate, expanded, hasChildren, setExpanded })
+        }
       >
-        <div
-          className="flex h-5 w-5 shrink-0 items-center justify-center"
-          onClick={(e) => {
-            if (hasChildren) {
-              e.stopPropagation()
-              setExpanded(!expanded)
-            }
-          }}
-        >
-          {loading ? (
-            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-          ) : hasChildren ? (
-            <ChevronRight
-              size={16}
-              className={cn(
-                'text-muted-foreground transition-transform group-hover:text-foreground',
-                expanded && 'rotate-90',
-              )}
-            />
-          ) : null}
-        </div>
-        <Database
-          size={16}
-          className={cn('ml-0.5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground/60')}
+        <TreeChevron
+          loading={loading}
+          hasChildren={hasChildren}
+          expanded={expanded}
+          onToggle={() => setExpanded(!expanded)}
         />
-        <span className="ml-1 flex-1 truncate font-medium">
+        <Database
+          className={cn('ml-0.5 size-4 shrink-0', isActive ? 'text-primary' : 'text-subtle-foreground')}
+        />
+        <span className="ml-1 min-w-0 flex-1 truncate font-medium">
           {domain.charAt(0).toUpperCase() + domain.slice(1)} Memory
         </span>
         {rootCount !== undefined && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
+          <span className="shrink-0 rounded-xs bg-muted px-1.5 py-0.5 text-2xs tabular-nums text-muted-foreground">
             {rootCount}
           </span>
         )}
       </div>
 
-      {expanded && children.length > 0 && (
-        <div className="mt-1">
+      <Collapse open={expanded && children.length > 0}>
+        <div role="group" className="mt-1">
           {children.map((child) => (
             <TreeNode
               key={child.path}
@@ -275,7 +328,7 @@ function DomainNode({
             />
           ))}
         </div>
-      )}
+      </Collapse>
     </div>
   )
 }
@@ -296,31 +349,36 @@ export function MemorySidebar({
   onNavigate,
 }: MemorySidebarProps) {
   return (
-    <div className="p-3 flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto p-3">
       <div className="mb-4">
-        <h3 className="mb-2 px-3 text-2xs font-bold uppercase tracking-widest text-muted-foreground/60">
+        <h3
+          id="memory-sidebar-domains"
+          className="mb-2 px-3 text-xs font-medium tracking-wide text-muted-foreground"
+        >
           Domains
         </h3>
-        {domains.map((d) => (
-          <DomainNode
-            key={d.domain}
-            instanceId={instanceId}
-            domain={d.domain}
-            rootCount={d.rootCount}
-            activeDomain={activeDomain}
-            activePath={activePath}
-            onNavigate={onNavigate}
-          />
-        ))}
-        {domains.length === 0 && (
-          <DomainNode
-            instanceId={instanceId}
-            domain="core"
-            activeDomain={activeDomain}
-            activePath={activePath}
-            onNavigate={onNavigate}
-          />
-        )}
+        <div role="tree" aria-labelledby="memory-sidebar-domains">
+          {domains.map((d) => (
+            <DomainNode
+              key={d.domain}
+              instanceId={instanceId}
+              domain={d.domain}
+              rootCount={d.rootCount}
+              activeDomain={activeDomain}
+              activePath={activePath}
+              onNavigate={onNavigate}
+            />
+          ))}
+          {domains.length === 0 && (
+            <DomainNode
+              instanceId={instanceId}
+              domain="core"
+              activeDomain={activeDomain}
+              activePath={activePath}
+              onNavigate={onNavigate}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Tag, X, Save, Plus } from 'lucide-react'
+import { fadeIn } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useAddGlossaryKeyword, useRemoveGlossaryKeyword } from '../../api/memoryInstanceMutations'
@@ -63,66 +65,76 @@ export function KeywordManager({
 
   return (
     <div className="flex items-start gap-2 text-xs text-muted-foreground">
-      <Tag size={13} className="mt-0.5 shrink-0" style={{ color: GLOSSARY_TONE }} />
-      <div className="flex flex-wrap items-center gap-1.5">
+      <Tag className="mt-1.5 size-3.5 shrink-0" style={{ color: GLOSSARY_TONE }} />
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <span className="font-medium" style={{ color: GLOSSARY_TONE }}>
-          Glossary:
+          术语表：
         </span>
         {keywords.map((kw) => (
           <span
             key={kw}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-2xs"
+            className="inline-flex max-w-full min-w-0 items-center gap-0.5 rounded-md py-0.5 pl-1.5 pr-0.5 font-mono text-2xs"
             style={{
               border: `1px solid color-mix(in srgb, ${GLOSSARY_TONE} 30%, transparent)`,
               backgroundColor: `color-mix(in srgb, ${GLOSSARY_TONE} 12%, transparent)`,
               color: GLOSSARY_TONE,
             }}
           >
-            {kw}
+            <span className="min-w-0 truncate" title={kw}>
+              {kw}
+            </span>
+            {/* 24px 点击区（icon-2xs），不再是 9px 的图标本身 */}
             <Button
               variant="ghost"
+              size="icon-2xs"
               aria-label={`移除关键词 ${kw}`}
               onClick={() => handleRemove(kw)}
-              className="h-auto p-0 text-inherit opacity-70 transition-opacity hover:bg-transparent hover:opacity-100 [&_svg]:size-[9px]"
+              className="shrink-0 text-inherit opacity-70 transition-opacity duration-150 hover:bg-transparent hover:opacity-100"
             >
-              <X size={9} />
+              <X />
             </Button>
           </span>
         ))}
-        {adding ? (
-          <span className="inline-flex items-center gap-1">
-            <Input
-              ref={inputRef}
-              type="text"
-              aria-label="新增 Glossary 关键词"
-              value={newKeyword}
-              onChange={(e) => setNewKeyword(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={() => {
-                if (!newKeyword.trim()) setAdding(false)
-              }}
-              placeholder="keyword…"
-              className="h-auto w-28 bg-background px-1.5 py-0.5 font-mono text-2xs shadow-none"
-            />
-            <Button
-              variant="ghost"
-              aria-label="保存关键词"
-              onClick={handleAdd}
-              className="h-auto p-0 opacity-70 transition-opacity hover:bg-transparent hover:opacity-100 [&_svg]:size-[11px]"
-              style={{ color: GLOSSARY_TONE }}
-            >
-              <Save size={11} />
-            </Button>
-          </span>
-        ) : (
-          <Button
-            variant="outline"
-            onClick={() => setAdding(true)}
-            className="h-auto gap-0.5 border-dashed bg-transparent px-1.5 py-0.5 text-2xs font-normal text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground [&_svg]:size-[9px]"
-          >
-            <Plus size={9} /> add
-          </Button>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          {adding ? (
+            <motion.span key="input" {...fadeIn} className="inline-flex items-center gap-1">
+              <Input
+                ref={inputRef}
+                type="text"
+                aria-label="新增术语表关键词"
+                value={newKeyword}
+                onChange={(e) => setNewKeyword(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => {
+                  if (!newKeyword.trim()) setAdding(false)
+                }}
+                placeholder="关键词…"
+                className="h-7 w-32 px-2 font-mono text-xs"
+              />
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="保存关键词"
+                onClick={handleAdd}
+                style={{ color: GLOSSARY_TONE }}
+              >
+                <Save />
+              </Button>
+            </motion.span>
+          ) : (
+            <motion.span key="add" {...fadeIn} className="inline-flex">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => setAdding(true)}
+                className="border-dashed font-normal text-muted-foreground hover:text-foreground"
+              >
+                <Plus />
+                添加
+              </Button>
+            </motion.span>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )
