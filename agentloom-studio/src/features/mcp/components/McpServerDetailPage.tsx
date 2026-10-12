@@ -12,6 +12,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { formatRelativeTime } from "@/features/canvas";
+import { formatDateTime } from "@/shared/lib/format";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { PageContainer } from "@/shared/components/page-container";
@@ -19,7 +20,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
+import { FormField } from "@/shared/components/form-field/FormField";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
   AlertDialog,
@@ -49,23 +50,6 @@ import type { McpToolDefinition } from "../types";
 const MCP_TONE = "var(--color-node-tool)";
 
 // ---------- helpers ----------
-
-function formatDateTime(value?: string | null): string {
-  if (!value) {
-    return "\u2014";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "\u2014";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
 
 function formatRelativeDateTime(value?: string | null): string {
   if (!value) {
@@ -283,8 +267,8 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
           { label: detail.name },
         ]}
         title={
-          <span className="flex flex-wrap items-center gap-2">
-            {detail.name}
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="min-w-0 break-words">{detail.name}</span>
             <Badge size="sm" tone={TRANSPORT_TONE[detail.transportType]}>
               {TRANSPORT_LABEL[detail.transportType]}
             </Badge>
@@ -301,32 +285,34 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
               size="sm"
               onClick={() => void navigate({ to: "/resources/mcp-servers" })}
             >
-              <ArrowLeft className="mr-1 h-4 w-4" />
+              <ArrowLeft />
               返回
             </Button>
             {canManage ? (
               <>
                 <Button
                   variant="outline"
+                  size="sm"
                   disabled={rediscoverMutation.isPending}
                   onClick={() => void handleRediscover()}
                 >
                   {rediscoverMutation.isPending ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                   ) : (
-                    <RefreshCw className="mr-1.5 h-4 w-4" />
+                    <RefreshCw />
                   )}
                   重新发现工具
                 </Button>
-                <Button variant="outline" onClick={openReimportDialog}>
-                  <Download className="mr-1.5 h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={openReimportDialog}>
+                  <Download />
                   重新导入工具
                 </Button>
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={() => setEditDialogOpen(true)}
                 >
-                  <Pencil className="mr-1.5 h-4 w-4" />
+                  <Pencil />
                   编辑
                 </Button>
               </>
@@ -336,12 +322,9 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
       />
 
       {/* 搜索 */}
-      <div className="max-w-xl space-y-1.5">
-        <label htmlFor="server-tool-search">
-          <Label>搜索工具</Label>
-        </label>
+      <FormField label="搜索工具" htmlFor="server-tool-search" className="max-w-xl">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             autoComplete="off"
             id="server-tool-search"
@@ -353,7 +336,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
             className="pl-9"
           />
         </div>
-      </div>
+      </FormField>
 
       {visibleTools.length === 0 ? (
         <EmptyState
@@ -375,7 +358,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                 disabled={rediscoverMutation.isPending}
                 onClick={() => void handleRediscover()}
               >
-                <RefreshCw className="mr-1.5 h-4 w-4" />
+                <RefreshCw />
                 重新发现工具
               </Button>
             )
@@ -384,12 +367,14 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {visibleTools.map((tool) => (
-            <Card key={tool.id} className="p-5">
+            <Card key={tool.id} className="p-4">
               <article>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                      <h2
+                        className="min-w-0 max-w-full break-words text-base font-semibold text-foreground"
+                      >
                         {tool.title ?? tool.name}
                       </h2>
                       <Badge
@@ -400,7 +385,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                       </Badge>
                     </div>
 
-                    <p className="text-sm text-muted-foreground">
+                    <p className="line-clamp-3 break-words text-sm text-muted-foreground">
                       {tool.description ?? "这个工具没有提供额外描述。"}
                     </p>
                   </div>
@@ -408,15 +393,15 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
 
                 <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground">
                       工具名称
                     </p>
-                    <p className="truncate font-mono text-xs text-foreground">
+                    <p className="truncate font-mono text-xs text-foreground" title={tool.name}>
                       {tool.name}
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground">
                       最后更新
                     </p>
                     <p className="text-foreground">
@@ -427,7 +412,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground">
                       首次导入
                     </p>
                     <p className="text-foreground">
@@ -469,7 +454,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                 ) : null}
 
                 {canManage ? (
-                  <div className="mt-5 flex flex-wrap gap-3">
+                  <div className="mt-4 flex flex-wrap gap-3">
                     <Button
                       aria-label={`停用 ${tool.title ?? tool.name}`}
                       disabled={!tool.isActive}
@@ -477,9 +462,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                       variant="outline"
                       size="sm"
                     >
-                      {tool.isActive
-                        ? `停用 ${tool.title ?? tool.name}`
-                        : "已停用"}
+                      {tool.isActive ? "停用" : "已停用"}
                     </Button>
                   </div>
                 ) : null}
@@ -550,9 +533,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
                 void handleDeactivate();
               }}
             >
-              {deactivateMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {deactivateMutation.isPending && <Loader2 className="animate-spin" />}
               确认停用
             </AlertDialogAction>
           </AlertDialogFooter>

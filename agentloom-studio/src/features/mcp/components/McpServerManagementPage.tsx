@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   type MouseEvent,
 } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -114,31 +115,31 @@ function ServerRowActions({
           size="icon-sm"
           aria-label={`${server.name} 的更多操作`}
         >
-          <MoreVertical className="h-4 w-4" />
+          <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
         <DropdownMenuItem onClick={() => onRediscover(server)}>
-          <RefreshCw className="h-3.5 w-3.5" />
+          <RefreshCw className="size-3.5" />
           重新发现
         </DropdownMenuItem>
         <DropdownMenuItem onClick={(event) => onReimport(event, server)}>
-          <Download className="h-3.5 w-3.5" />
+          <Download className="size-3.5" />
           重新导入
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onEdit(server)}>
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="size-3.5" />
           编辑
         </DropdownMenuItem>
         {server.sourceKind === "share_imported" && (
           <DropdownMenuItem onClick={() => onConvertSource(server)}>
-            <FolderSync className="h-3.5 w-3.5" />
+            <FolderSync className="size-3.5" />
             转为自己创建
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem destructive onClick={() => onDelete(server)}>
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="size-3.5" />
           删除
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -178,6 +179,9 @@ export function McpServerManagementPage() {
     useState<McpServerConfigSummary | null>(null);
   const [confirmDelete, setConfirmDelete] =
     useState<McpServerConfigSummary | null>(null);
+  // 退场动画期间 confirmDelete 已置空，文案沿用最近一次的目标
+  const lastConfirmDeleteRef = useRef<McpServerConfigSummary | null>(null);
+  if (confirmDelete) lastConfirmDeleteRef.current = confirmDelete;
 
   const deleteMutation = useDeleteMcpServerConfig();
   const testMutation = useTestSavedMcpConnection();
@@ -346,19 +350,25 @@ export function McpServerManagementPage() {
           <div className="flex min-w-0 items-center gap-3">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+              className="grid size-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor: `color-mix(in srgb, ${MCP_TONE} 14%, transparent)`,
                 color: MCP_TONE,
               }}
             >
-              <Server className="h-4 w-4" />
+              <Server className="size-4" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">
+              <p
+                className="truncate text-sm font-medium text-foreground"
+                title={server.name}
+              >
                 {server.name}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p
+                className="truncate text-xs text-muted-foreground"
+                title={server.description || undefined}
+              >
                 {server.description || "暂无描述"}
               </p>
             </div>
@@ -393,10 +403,12 @@ export function McpServerManagementPage() {
         key: "toolCount",
         header: "工具数",
         hideBelow: "sm",
-        className: "w-20 tabular-nums",
+        className: "w-20",
+        nowrap: true,
+        align: "right",
         cell: (server) => (
-          <span className="flex items-center gap-1 whitespace-nowrap text-muted-foreground">
-            <Zap className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center justify-end gap-1 text-muted-foreground">
+            <Zap className="size-3.5" />
             {server.toolCount}
           </span>
         ),
@@ -406,6 +418,7 @@ export function McpServerManagementPage() {
         header: "最后测试",
         hideBelow: "lg",
         className: "w-28",
+        nowrap: true,
         cell: (server) => {
           if (!server.lastTestedAt) return "—";
           const date = new Date(server.lastTestedAt);
@@ -416,7 +429,9 @@ export function McpServerManagementPage() {
         key: "actions",
         // 不用 sr-only：绝对定位元素会逃出 DataTable 的横向滚动容器，撑破小屏文档宽度
         header: "操作",
-        className: "w-px whitespace-nowrap text-right",
+        className: "w-px",
+        nowrap: true,
+        align: "right",
         cell: (server) =>
           canManage ? (
             <div
@@ -432,7 +447,7 @@ export function McpServerManagementPage() {
                 aria-label={`测试连接 ${server.name}`}
                 onClick={() => void handleTest(server)}
               >
-                <Play className="h-3.5 w-3.5 sm:mr-1.5" />
+                <Play />
                 <span className="hidden sm:inline">测试</span>
               </Button>
               <ServerRowActions
@@ -474,7 +489,7 @@ export function McpServerManagementPage() {
                 setImportDialogOpen(true);
               }}
             >
-              <Plus className="mr-1.5 h-4 w-4" />
+              <Plus />
               导入新的
             </Button>
           ) : null
@@ -488,7 +503,7 @@ export function McpServerManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -568,7 +583,7 @@ export function McpServerManagementPage() {
                       setImportDialogOpen(true);
                     }}
                   >
-                    <Plus className="mr-1.5 h-4 w-4" />
+                    <Plus />
                     导入 MCP 服务器
                   </Button>
                 )
@@ -634,8 +649,7 @@ export function McpServerManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除服务器「{confirmDelete?.name}
-            」吗？关联的工具将不再可用，此操作不可撤销。
+            {`确定要删除服务器「${lastConfirmDeleteRef.current?.name ?? ""}」吗？关联的工具将不再可用，此操作不可撤销。`}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -647,9 +661,7 @@ export function McpServerManagementPage() {
                 handleConfirmDelete();
               }}
             >
-              {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {deleteMutation.isPending && <Loader2 className="animate-spin" />}
               删除
             </AlertDialogAction>
           </AlertDialogFooter>

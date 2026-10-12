@@ -2,8 +2,10 @@ import { useMemo, useRef, useState, type MouseEvent } from "react";
 import { AlertCircle, Wrench } from "lucide-react";
 import { formatRelativeTime } from "@/features/canvas";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { FormField } from "@/shared/components/form-field/FormField";
 import { PageContainer } from "@/shared/components/page-container";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { formatDateTime } from "@/shared/lib/format";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
@@ -18,6 +20,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
 import {
   useDeactivateMcpTool,
@@ -29,22 +32,8 @@ import type { McpToolDefinition } from "../types";
 
 const MCP_TONE = "var(--color-node-tool)";
 
-function formatDateTime(value?: string | null): string {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
+/** 统计卡标签：中文不做 uppercase，字距用 token */
+const STAT_LABEL_CLASS = "text-xs font-medium tracking-wide text-muted-foreground";
 
 function formatRelativeDateTime(value?: string | null): string {
   if (!value) {
@@ -253,13 +242,18 @@ export function ToolLibraryPage() {
         actions={<Button onClick={openImportDialog}>导入 MCP 工具</Button>}
       />
 
-      {!isLoading && !error ? (
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-busy>
+          <span className="sr-only">加载工具中…</span>
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={`stat-${String(index)}`} className="h-[7.25rem] rounded-lg" />
+          ))}
+        </div>
+      ) : !error ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
-              工具总数
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">
+            <p className={STAT_LABEL_CLASS}>工具总数</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
               {summary.total}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -267,10 +261,8 @@ export function ToolLibraryPage() {
             </p>
           </Card>
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
-              运行状态
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">
+            <p className={STAT_LABEL_CLASS}>运行状态</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
               {summary.activeCount}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -278,10 +270,8 @@ export function ToolLibraryPage() {
             </p>
           </Card>
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
-              关联配置
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">
+            <p className={STAT_LABEL_CLASS}>关联配置</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
               {summary.serverCount}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -289,10 +279,8 @@ export function ToolLibraryPage() {
             </p>
           </Card>
           <Card className="p-4">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
-              最近更新
-            </p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">
+            <p className={STAT_LABEL_CLASS}>最近更新</p>
+            <p className="mt-2 truncate text-2xl font-semibold text-foreground">
               {summary.latestUpdatedAt
                 ? formatRelativeDateTime(summary.latestUpdatedAt)
                 : "—"}
@@ -306,13 +294,7 @@ export function ToolLibraryPage() {
         </div>
       ) : null}
 
-      <div className="max-w-xl space-y-2">
-        <label
-          className="block text-sm font-medium text-foreground"
-          htmlFor="tool-library-search"
-        >
-          搜索工具
-        </label>
+      <FormField label="搜索工具" htmlFor="tool-library-search" className="max-w-xl">
         <Input
           autoComplete="off"
           id="tool-library-search"
@@ -322,10 +304,14 @@ export function ToolLibraryPage() {
           type="search"
           value={search}
         />
-      </div>
+      </FormField>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">加载工具中…</p>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={`tool-${String(index)}`} className="h-64 rounded-lg" />
+          ))}
+        </div>
       ) : null}
 
       {error ? (
@@ -353,11 +339,11 @@ export function ToolLibraryPage() {
       {!isLoading && !error && visibleTools.length > 0 ? (
         <div className="grid gap-4 xl:grid-cols-2">
           {visibleTools.map((tool) => (
-            <Card key={tool.id} className="p-5">
+            <Card key={tool.id} className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm font-semibold text-foreground">
+                    <h2 className="min-w-0 max-w-full break-words text-sm font-semibold text-foreground">
                       {tool.title ?? tool.name}
                     </h2>
                     <Badge
@@ -371,39 +357,27 @@ export function ToolLibraryPage() {
                     </Badge>
                   </div>
 
-                  {tool.description ? (
-                    <p className="text-sm text-muted-foreground">
-                      {tool.description}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      这个工具没有提供额外描述。
-                    </p>
-                  )}
+                  <p className="line-clamp-3 break-words text-sm text-muted-foreground">
+                    {tool.description ?? "这个工具没有提供额外描述。"}
+                  </p>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    工具名称
-                  </p>
-                  <p className="font-mono text-xs text-foreground">
+                <div className="min-w-0 space-y-1">
+                  <p className={STAT_LABEL_CLASS}>工具名称</p>
+                  <p className="break-all font-mono text-xs text-foreground">
                     {tool.name}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    关联配置
-                  </p>
-                  <p className="font-mono text-xs break-all text-foreground">
+                <div className="min-w-0 space-y-1">
+                  <p className={STAT_LABEL_CLASS}>关联配置</p>
+                  <p className="break-all font-mono text-xs text-foreground">
                     {tool.mcpServerConfigId ?? "未绑定配置"}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    最后更新
-                  </p>
+                <div className="min-w-0 space-y-1">
+                  <p className={STAT_LABEL_CLASS}>最后更新</p>
                   <p className="text-foreground">
                     {formatRelativeDateTime(getToolLastUpdatedAt(tool))}
                   </p>
@@ -411,10 +385,8 @@ export function ToolLibraryPage() {
                     {formatDateTime(getToolLastUpdatedAt(tool))}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    首次导入
-                  </p>
+                <div className="min-w-0 space-y-1">
+                  <p className={STAT_LABEL_CLASS}>首次导入</p>
                   <p className="text-foreground">
                     {formatRelativeDateTime(getToolImportedAt(tool))}
                   </p>
@@ -424,26 +396,26 @@ export function ToolLibraryPage() {
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <div className="mt-4 flex flex-wrap gap-2">
                 {tool.portMappingMetadata ? (
                   <>
-                    <span className="rounded-full border border-border px-2 py-1">
+                    <Badge size="sm" variant="outline">
                       输入 {tool.portMappingMetadata.inputs.length}
-                    </span>
-                    <span className="rounded-full border border-border px-2 py-1">
+                    </Badge>
+                    <Badge size="sm" variant="outline">
                       输出 {tool.portMappingMetadata.outputs.length}
-                    </span>
+                    </Badge>
                   </>
                 ) : null}
                 {tool.annotations ? (
-                  <span className="rounded-full border border-border px-2 py-1">
+                  <Badge size="sm" variant="outline">
                     注解 {Object.keys(tool.annotations).length} 项
-                  </span>
+                  </Badge>
                 ) : null}
                 {tool.inputSchema ? (
-                  <span className="rounded-full border border-border px-2 py-1">
+                  <Badge size="sm" variant="outline">
                     已提供 inputSchema
-                  </span>
+                  </Badge>
                 ) : null}
               </div>
 
@@ -453,11 +425,12 @@ export function ToolLibraryPage() {
                 </p>
               ) : null}
 
-              <div className="mt-5 flex flex-wrap gap-3">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Button
                   disabled={!tool.mcpServerConfigId}
                   onClick={() => handleRediscover(tool.mcpServerConfigId)}
                   variant="outline"
+                  size="sm"
                 >
                   重新发现工具
                 </Button>
@@ -465,6 +438,7 @@ export function ToolLibraryPage() {
                   disabled={!tool.mcpServerConfigId}
                   onClick={(event) => openReimportDialog(event, tool)}
                   variant="outline"
+                  size="sm"
                 >
                   重新导入工具
                 </Button>
@@ -473,8 +447,9 @@ export function ToolLibraryPage() {
                   disabled={!tool.isActive}
                   onClick={(event) => openDeactivateDialog(event, tool)}
                   variant="outline"
+                  size="sm"
                 >
-                  {tool.isActive ? `停用 ${tool.title ?? tool.name}` : "已停用"}
+                  {tool.isActive ? "停用" : "已停用"}
                 </Button>
               </div>
             </Card>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Loader2,
   Play,
@@ -7,6 +8,9 @@ import {
   Check,
   AlertCircle,
 } from "lucide-react";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { FormField } from "@/shared/components/form-field/FormField";
+import { fadeIn } from "@/shared/lib/motion";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -19,6 +23,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -27,6 +32,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { Textarea } from "@/shared/ui/textarea";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfig } from "../api/mcpQueries";
@@ -77,38 +83,16 @@ function parseCommandArgs(raw: string): string[] | undefined {
 
 // ---------- sub-components ----------
 
-function TabButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      onClick={onClick}
-      className={`h-auto cursor-pointer rounded-none border-b-2 px-3 pb-2 pt-0 hover:bg-transparent ${
-        active
-          ? "border-primary text-primary"
-          : "border-transparent text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </Button>
-  );
-}
-
 function ToolRow({ tool }: { tool: McpToolDefinition }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2">
-      <Zap className="h-3.5 w-3.5 shrink-0 text-primary" />
+    <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+      <Zap className="size-3.5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{tool.name}</p>
+        <p className="truncate text-sm font-medium" title={tool.name}>
+          {tool.name}
+        </p>
         {tool.description && (
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="truncate text-xs text-muted-foreground" title={tool.description}>
             {tool.description}
           </p>
         )}
@@ -116,6 +100,8 @@ function ToolRow({ tool }: { tool: McpToolDefinition }) {
     </div>
   );
 }
+
+type EditTab = "info" | "connection" | "tools";
 
 // ---------- main ----------
 
@@ -291,269 +277,239 @@ export function McpServerEditDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Tabs */}
-          <div className="flex gap-1 border-b border-border px-6 pt-4">
-            <TabButton active={tab === "info"} onClick={() => setTab("info")}>
-              基本信息
-            </TabButton>
-            <TabButton
-              active={tab === "connection"}
-              onClick={() => setTab("connection")}
-            >
-              连接配置
-            </TabButton>
-            <TabButton
-              active={tab === "tools"}
-              onClick={() => setTab("tools")}
-            >
-              工具 ({tools.length})
-            </TabButton>
-          </div>
+          <Tabs
+            defaultValue="info"
+            value={tab}
+            onValueChange={(next) => setTab(next as EditTab)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="px-6 pt-4">
+              <TabsList className="w-full">
+                <TabsTrigger value="info">基本信息</TabsTrigger>
+                <TabsTrigger value="connection">连接配置</TabsTrigger>
+                <TabsTrigger value="tools">工具（{tools.length}）</TabsTrigger>
+              </TabsList>
+            </div>
 
-          {/* Body */}
-          <DialogBody className="py-5">
-            {detailLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : tab === "info" ? (
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label
-                    className="text-sm font-medium text-foreground"
-                    htmlFor="mcp-edit-name"
-                  >
-                    名称
-                  </label>
-                  <Input
-                    id="mcp-edit-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="服务器名称"
-                  />
+            {/* Body */}
+            <DialogBody className="py-5">
+              {detailLoading ? (
+                <div className="space-y-4" aria-busy>
+                  <Skeleton className="h-[3.75rem] w-full" />
+                  <Skeleton className="h-[6.25rem] w-full" />
+                  <Skeleton className="h-6 w-full" />
                 </div>
-                <div className="space-y-1.5">
-                  <label
-                    className="text-sm font-medium text-foreground"
-                    htmlFor="mcp-edit-desc-input"
-                  >
-                    描述
-                  </label>
-                  <Textarea
-                    id="mcp-edit-desc-input"
-                    rows={3}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="可选描述"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <label
-                    className="text-sm font-medium text-foreground"
-                    htmlFor="mcp-edit-status"
-                  >
-                    启用状态
-                  </label>
-                  <Switch
-                    id="mcp-edit-status"
-                    checked={isActive}
-                    onCheckedChange={setIsActive}
-                  />
-                </div>
-              </div>
-            ) : tab === "connection" ? (
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">
-                    传输类型
-                  </label>
-                  <Select
-                    value={transportType}
-                    onValueChange={(v) =>
-                      setTransportType(v as McpTransportType)
-                    }
-                  >
-                    <SelectTrigger aria-label="传输类型" className="w-full">
-                      <SelectValue placeholder="请选择传输类型" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="stdio">stdio</SelectItem>
-                      <SelectItem value="sse">SSE</SelectItem>
-                      <SelectItem value="streamable_http">
-                        Streamable HTTP
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {transportType === "stdio" ? (
-                  <>
-                    <div className="space-y-1.5">
-                      <label
-                        className="text-sm font-medium text-foreground"
-                        htmlFor="mcp-edit-command"
-                      >
-                        命令
-                      </label>
+              ) : (
+                <>
+                  <TabsContent value="info">
+                    <FormField label="名称" htmlFor="mcp-edit-name">
                       <Input
-                        id="mcp-edit-command"
-                        value={command}
-                        onChange={(e) => setCommand(e.target.value)}
-                        placeholder="例如: npx, uvx, node"
+                        id="mcp-edit-name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="服务器名称"
                       />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label
-                        className="text-sm font-medium text-foreground"
-                        htmlFor="mcp-edit-args"
-                      >
-                        参数
-                      </label>
-                      <Input
-                        id="mcp-edit-args"
-                        value={commandArgs}
-                        onChange={(e) => setCommandArgs(e.target.value)}
-                        placeholder="空格分隔，例如: -y grok-search@latest"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label
-                        className="text-sm font-medium text-foreground"
-                        htmlFor="mcp-edit-env"
-                      >
-                        环境变量
-                      </label>
-                      <p className="text-xs text-muted-foreground">
-                        {credentialPlaceholder
-                          ? "当前已配置的环境变量如下所示（值已隐藏）。如需更新请重新输入所有变量。"
-                          : "每行一个，格式: KEY=VALUE"}
-                      </p>
+                    </FormField>
+                    <FormField label="描述" htmlFor="mcp-edit-desc-input">
                       <Textarea
-                        id="mcp-edit-env"
-                        rows={4}
-                        className="font-mono text-xs"
-                        value={credentialText}
-                        onChange={(e) => {
-                          setCredentialText(e.target.value);
-                          setCredentialDirty(true);
-                        }}
-                        placeholder={
-                          credentialPlaceholder ||
-                          "GROK_API_KEY=sk-xxx\nGROK_API_URL=https://…"
-                        }
+                        id="mcp-edit-desc-input"
+                        rows={3}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="可选描述"
                       />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-1.5">
+                    </FormField>
+                    <div className="flex items-center justify-between gap-3">
                       <label
-                        className="text-sm font-medium text-foreground"
-                        htmlFor="mcp-edit-url"
+                        htmlFor="mcp-edit-status"
+                        className="text-xs font-medium text-foreground"
                       >
-                        URL
+                        启用状态
                       </label>
-                      <Input
-                        id="mcp-edit-url"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="https://example.com/mcp"
+                      <Switch
+                        id="mcp-edit-status"
+                        checked={isActive}
+                        onCheckedChange={setIsActive}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <label
-                        className="text-sm font-medium text-foreground"
-                        htmlFor="mcp-edit-headers"
-                      >
-                        请求头
-                      </label>
-                      <p className="text-xs text-muted-foreground">
-                        {credentialPlaceholder
-                          ? "当前已配置的请求头如下所示（值已隐藏）。如需更新请重新输入。"
-                          : "每行一个，格式: Header-Name=Value"}
-                      </p>
-                      <Textarea
-                        id="mcp-edit-headers"
-                        rows={4}
-                        className="font-mono text-xs"
-                        value={credentialText}
-                        onChange={(e) => {
-                          setCredentialText(e.target.value);
-                          setCredentialDirty(true);
-                        }}
-                        placeholder={
-                          credentialPlaceholder ||
-                          "Authorization=Bearer xxx"
-                        }
-                      />
-                    </div>
-                  </>
-                )}
+                  </TabsContent>
 
-                <div className="flex items-center gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={testMutation.isPending}
-                    onClick={() => void handleTest()}
-                  >
-                    {testMutation.isPending ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <TabsContent value="connection">
+                    <FormField label="传输类型">
+                      <Select
+                        value={transportType}
+                        onValueChange={(v) =>
+                          setTransportType(v as McpTransportType)
+                        }
+                      >
+                        <SelectTrigger aria-label="传输类型" className="w-full">
+                          <SelectValue placeholder="请选择传输类型" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="stdio">stdio</SelectItem>
+                          <SelectItem value="sse">SSE</SelectItem>
+                          <SelectItem value="streamable_http">
+                            Streamable HTTP
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormField>
+
+                    {transportType === "stdio" ? (
+                      <>
+                        <FormField label="命令" htmlFor="mcp-edit-command">
+                          <Input
+                            id="mcp-edit-command"
+                            value={command}
+                            onChange={(e) => setCommand(e.target.value)}
+                            placeholder="例如：npx、uvx、node"
+                          />
+                        </FormField>
+                        <FormField label="参数" htmlFor="mcp-edit-args">
+                          <Input
+                            id="mcp-edit-args"
+                            value={commandArgs}
+                            onChange={(e) => setCommandArgs(e.target.value)}
+                            placeholder="空格分隔，例如：-y grok-search@latest"
+                          />
+                        </FormField>
+                        <FormField
+                          label="环境变量"
+                          htmlFor="mcp-edit-env"
+                          hint={
+                            credentialPlaceholder
+                              ? "当前已配置的环境变量如下所示（值已隐藏）。如需更新请重新输入所有变量。"
+                              : "每行一个，格式：KEY=VALUE"
+                          }
+                        >
+                          <Textarea
+                            id="mcp-edit-env"
+                            rows={4}
+                            className="font-mono text-xs"
+                            value={credentialText}
+                            onChange={(e) => {
+                              setCredentialText(e.target.value);
+                              setCredentialDirty(true);
+                            }}
+                            placeholder={
+                              credentialPlaceholder ||
+                              "GROK_API_KEY=sk-xxx\nGROK_API_URL=https://…"
+                            }
+                          />
+                        </FormField>
+                      </>
                     ) : (
-                      <Play className="mr-1.5 h-3.5 w-3.5" />
+                      <>
+                        <FormField label="URL" htmlFor="mcp-edit-url">
+                          <Input
+                            id="mcp-edit-url"
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            placeholder="https://example.com/mcp"
+                          />
+                        </FormField>
+                        <FormField
+                          label="请求头"
+                          htmlFor="mcp-edit-headers"
+                          hint={
+                            credentialPlaceholder
+                              ? "当前已配置的请求头如下所示（值已隐藏）。如需更新请重新输入。"
+                              : "每行一个，格式：Header-Name=Value"
+                          }
+                        >
+                          <Textarea
+                            id="mcp-edit-headers"
+                            rows={4}
+                            className="font-mono text-xs"
+                            value={credentialText}
+                            onChange={(e) => {
+                              setCredentialText(e.target.value);
+                              setCredentialDirty(true);
+                            }}
+                            placeholder={
+                              credentialPlaceholder ||
+                              "Authorization=Bearer xxx"
+                            }
+                          />
+                        </FormField>
+                      </>
                     )}
-                    测试已保存的连接
-                  </Button>
-                  {testMutation.isSuccess && (
-                    <span className="flex items-center gap-1 text-xs text-success">
-                      <Check className="h-3.5 w-3.5" /> 连接正常
-                    </span>
-                  )}
-                  {testMutation.isError && (
-                    <span className="flex items-center gap-1 text-xs text-error">
-                      <AlertCircle className="h-3.5 w-3.5" /> 连接失败
-                    </span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* tools tab */
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    已导入 {tools.length} 个工具
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={rediscoverMutation.isPending}
-                    onClick={() => void handleRediscover()}
-                  >
-                    {rediscoverMutation.isPending ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={testMutation.isPending}
+                        onClick={() => void handleTest()}
+                      >
+                        {testMutation.isPending ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <Play />
+                        )}
+                        测试已保存的连接
+                      </Button>
+                      <AnimatePresence mode="wait" initial={false}>
+                        {testMutation.isSuccess && (
+                          <motion.span
+                            key="ok"
+                            {...fadeIn}
+                            className="flex items-center gap-1 text-xs text-success"
+                          >
+                            <Check className="size-3.5" /> 连接正常
+                          </motion.span>
+                        )}
+                        {testMutation.isError && (
+                          <motion.span
+                            key="fail"
+                            {...fadeIn}
+                            className="flex items-center gap-1 text-xs text-error"
+                          >
+                            <AlertCircle className="size-3.5" /> 连接失败
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="tools" className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-muted-foreground">
+                        已导入 {tools.length} 个工具
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={rediscoverMutation.isPending}
+                        onClick={() => void handleRediscover()}
+                      >
+                        {rediscoverMutation.isPending ? (
+                          <Loader2 className="animate-spin" />
+                        ) : (
+                          <RefreshCw />
+                        )}
+                        重新发现
+                      </Button>
+                    </div>
+                    {tools.length === 0 ? (
+                      <EmptyState
+                        variant="plain"
+                        icon={Zap}
+                        title="暂无已导入的工具"
+                        className="py-8"
+                      />
                     ) : (
-                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      <div className="space-y-2">
+                        {tools.map((tool) => (
+                          <ToolRow key={tool.name} tool={tool} />
+                        ))}
+                      </div>
                     )}
-                    重新发现
-                  </Button>
-                </div>
-                {tools.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 py-8 text-center">
-                    <Zap className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      暂无已导入的工具
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {tools.map((tool) => (
-                      <ToolRow key={tool.name} tool={tool} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </DialogBody>
+                  </TabsContent>
+                </>
+              )}
+            </DialogBody>
+          </Tabs>
 
           {/* Footer */}
           <DialogFooter>
@@ -561,9 +517,7 @@ export function McpServerEditDialog({
               <Button variant="outline">取消</Button>
             </DialogClose>
             <Button disabled={!canSave} onClick={handleSave}>
-              {updateMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {updateMutation.isPending && <Loader2 className="animate-spin" />}
               保存
             </Button>
           </DialogFooter>

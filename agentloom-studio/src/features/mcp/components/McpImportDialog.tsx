@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
+import { Wrench } from "lucide-react";
 import {
   useDiscoverMcpTools,
   useImportMcpTools,
@@ -19,7 +21,10 @@ import {
   type McpTransportType,
   type TestMcpConnectionResult,
 } from "../types";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { fadeIn } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Checkbox } from "@/shared/ui/checkbox";
 import {
@@ -463,35 +468,35 @@ export function McpImportDialog({
           : `地址 ${connectionForm.url.trim() || "未填写"}${connectionPayload.headers ? ` · 请求头 ${Object.keys(connectionPayload.headers).length} 项` : ""}`;
 
       return (
-        <dl className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-wider text-muted-foreground">
+        <dl className="grid gap-3 rounded-lg border border-border bg-surface p-4 text-sm sm:grid-cols-2">
+          <div className="min-w-0 space-y-1">
+            <dt className="text-xs font-medium tracking-wide text-muted-foreground">
               服务器
             </dt>
-            <dd className="font-medium text-foreground">
+            <dd className="break-words font-medium text-foreground">
               {connectionForm.serverName || "未命名服务器"}
             </dd>
           </div>
-          <div className="space-y-1">
-            <dt className="text-xs uppercase tracking-wider text-muted-foreground">
+          <div className="min-w-0 space-y-1">
+            <dt className="text-xs font-medium tracking-wide text-muted-foreground">
               传输方式
             </dt>
             <dd className="font-medium text-foreground">
               {getTransportLabel(connectionForm.transportType)}
             </dd>
           </div>
-          <div className="space-y-1 sm:col-span-2">
-            <dt className="text-xs uppercase tracking-wider text-muted-foreground">
+          <div className="min-w-0 space-y-1 sm:col-span-2">
+            <dt className="text-xs font-medium tracking-wide text-muted-foreground">
               连接摘要
             </dt>
-            <dd className="font-medium text-foreground">{auxiliaryValue}</dd>
+            <dd className="break-all font-medium text-foreground">{auxiliaryValue}</dd>
           </div>
           {connectionForm.serverDescription.trim() ? (
-            <div className="space-y-1 sm:col-span-2">
-              <dt className="text-xs uppercase tracking-wider text-muted-foreground">
+            <div className="min-w-0 space-y-1 sm:col-span-2">
+              <dt className="text-xs font-medium tracking-wide text-muted-foreground">
                 描述
               </dt>
-              <dd className="text-muted-foreground">
+              <dd className="break-words text-muted-foreground">
                 {connectionForm.serverDescription.trim()}
               </dd>
             </div>
@@ -501,20 +506,20 @@ export function McpImportDialog({
     }
 
     return (
-      <dl className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
-        <div className="space-y-1">
-          <dt className="text-xs uppercase tracking-wider text-muted-foreground">
+      <dl className="grid gap-3 rounded-lg border border-border bg-surface p-4 text-sm sm:grid-cols-2">
+        <div className="min-w-0 space-y-1">
+          <dt className="text-xs font-medium tracking-wide text-muted-foreground">
             已保存服务器
           </dt>
-          <dd className="font-medium text-foreground">
+          <dd className="break-words font-medium text-foreground">
             {serverLabel ?? "已保存 MCP 服务器"}
           </dd>
         </div>
-        <div className="space-y-1">
-          <dt className="text-xs uppercase tracking-wider text-muted-foreground">
+        <div className="min-w-0 space-y-1">
+          <dt className="text-xs font-medium tracking-wide text-muted-foreground">
             配置 ID
           </dt>
-          <dd className="font-mono text-xs text-foreground">
+          <dd className="truncate font-mono text-xs text-foreground" title={mcpServerConfigId ?? undefined}>
             {mcpServerConfigId ?? "未提供"}
           </dd>
         </div>
@@ -528,9 +533,9 @@ export function McpImportDialog({
     }
 
     return (
-      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+      <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
         <p className="font-medium">服务器响应正常</p>
-        <p className="mt-1 text-muted-foreground">
+        <p className="mt-1 break-words text-muted-foreground">
           {serverInfo.name} · 版本 {serverInfo.version}
           {serverInfo.protocolVersion
             ? ` · 协议 ${serverInfo.protocolVersion}`
@@ -556,7 +561,7 @@ export function McpImportDialog({
       >
           <DialogHeader className="block py-5 pr-6">
             <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 <DialogTitle>
                   {isImportMode ? "导入 MCP 工具" : "重新导入 MCP 工具"}
                 </DialogTitle>
@@ -566,15 +571,15 @@ export function McpImportDialog({
                 >
                   {isImportMode
                     ? "按四步完成服务器配置、连接测试、工具发现与导入复核，整个会话会保留当前输入上下文。"
-                    : `复用${serverLabel ? `“${serverLabel}”` : "已保存 MCP 服务器"}完成连接验证、重新发现与重新导入。`}
+                    : `复用${serverLabel ? `「${serverLabel}」` : "已保存 MCP 服务器"}完成连接验证、重新发现与重新导入。`}
                 </DialogDescription>
-                <p className="text-xs font-medium uppercase tracking-wider text-primary">
+                <p className="text-xs font-medium tracking-wide text-primary">
                   步骤 {currentStep} / 4
                 </p>
               </div>
 
               <DialogClose asChild>
-                <Button aria-label="关闭导入对话框" variant="outline">
+                <Button aria-label="关闭导入对话框" variant="outline" size="sm">
                   关闭
                 </Button>
               </DialogClose>
@@ -591,7 +596,7 @@ export function McpImportDialog({
                 return (
                   <li
                     className={cn(
-                      "rounded-xl border px-3 py-3 transition-colors",
+                      "rounded-lg border px-3 py-2 transition-colors duration-150",
                       isActive
                         ? "border-primary bg-primary/10"
                         : isCompleted
@@ -600,13 +605,13 @@ export function McpImportDialog({
                     )}
                     key={step.id}
                   >
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground">
                       Step {step.id}
                     </p>
                     <p className="mt-1 font-medium text-foreground">
                       {step.name}
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 hidden text-xs text-muted-foreground lg:block">
                       {step.description}
                     </p>
                   </li>
@@ -620,6 +625,12 @@ export function McpImportDialog({
               {liveMessage}
             </p>
 
+            <motion.div
+              key={currentStep}
+              initial={fadeIn.initial}
+              animate={fadeIn.animate}
+              transition={fadeIn.transition}
+            >
             {currentStep === 1 ? (
               <div className="space-y-5">
                 <div className="space-y-2">
@@ -876,8 +887,10 @@ export function McpImportDialog({
                     步骤 3 · 发现工具
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    先确认服务器当前能发现到哪些工具，并查看 `name / title /
-                    description / inputSchema`
+                    先确认服务器当前能发现到哪些工具，并查看{" "}
+                    <code className="rounded-xs bg-muted px-1 font-mono text-xs">
+                      name / title / description / inputSchema
+                    </code>{" "}
                     摘要；下一步再选择具体要导入的工具。
                   </p>
                 </div>
@@ -885,7 +898,7 @@ export function McpImportDialog({
                 {renderConnectionSummary()}
                 {renderServerIdentity(currentServerInfo)}
 
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface p-4 text-sm text-muted-foreground">
                   <span>当前已发现 {discoveredTools.length} 个工具</span>
                   <Button
                     disabled={
@@ -902,24 +915,24 @@ export function McpImportDialog({
                   <div className="space-y-3">
                     {discoveredTools.map((tool) => (
                       <div
-                        className="rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary/40"
+                        className="rounded-lg border border-border bg-surface p-4 text-sm transition-colors duration-150 hover:border-primary/40"
                         key={tool.name}
                       >
                         <div className="min-w-0 space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-medium text-foreground">
+                            <span className="min-w-0 break-words font-medium text-foreground">
                               {tool.title ?? tool.name}
                             </span>
-                            <span className="rounded-full border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                            <span className="max-w-full break-all rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
                               {tool.name}
                             </span>
-                            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                            <Badge size="sm" variant="outline">
                               {summarizeInputSchema(tool.inputSchema)}
-                            </span>
+                            </Badge>
                           </div>
 
                           {tool.description ? (
-                            <p className="text-muted-foreground">
+                            <p className="break-words text-muted-foreground">
                               {tool.description}
                             </p>
                           ) : (
@@ -928,7 +941,7 @@ export function McpImportDialog({
                             </p>
                           )}
 
-                          <details className="rounded-xl border border-border/80 bg-background/40 px-3 py-2">
+                          <details className="rounded-lg border border-border bg-muted px-3 py-2">
                             <summary className="cursor-pointer text-xs font-medium text-foreground">
                               查看 inputSchema 摘要
                             </summary>
@@ -941,9 +954,12 @@ export function McpImportDialog({
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-center text-sm text-muted-foreground">
-                    还没有发现工具，先执行一次发现操作。
-                  </div>
+                  <EmptyState
+                    icon={Wrench}
+                    title="还没有发现工具"
+                    description="先执行一次发现操作。"
+                    className="py-8"
+                  />
                 )}
               </div>
             ) : null}
@@ -981,7 +997,7 @@ export function McpImportDialog({
 
                         return (
                           <label
-                            className="flex items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary/40"
+                            className="flex items-start gap-3 rounded-lg border border-border bg-surface p-4 text-sm transition-colors duration-150 hover:border-primary/40"
                             htmlFor={checkboxId}
                             key={tool.name}
                           >
@@ -995,15 +1011,15 @@ export function McpImportDialog({
 
                             <span className="min-w-0 flex-1 space-y-2">
                               <span className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-foreground">
+                                <span className="min-w-0 break-words font-medium text-foreground">
                                   {tool.title ?? tool.name}
                                 </span>
-                                <span className="rounded-full border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                                <span className="max-w-full break-all rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
                                   {tool.name}
                                 </span>
                               </span>
                               {tool.description ? (
-                                <span className="block text-muted-foreground">
+                                <span className="block break-words text-muted-foreground">
                                   {tool.description}
                                 </span>
                               ) : null}
@@ -1013,14 +1029,17 @@ export function McpImportDialog({
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-center text-sm text-muted-foreground">
-                      还没有发现工具，请先返回上一步完成发现。
-                    </div>
+                    <EmptyState
+                      icon={Wrench}
+                      title="还没有发现工具"
+                      description="请先返回上一步完成发现。"
+                      className="py-8"
+                    />
                   )}
                 </div>
 
-                <div className="grid gap-4 rounded-xl border border-border bg-surface p-4 md:grid-cols-[minmax(0,1fr)_16rem]">
-                  <div className="space-y-2">
+                <div className="grid gap-4 rounded-lg border border-border bg-surface p-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+                  <div className="min-w-0 space-y-2">
                     <p className="text-sm font-medium text-foreground">
                       本次导入摘要
                     </p>
@@ -1034,7 +1053,7 @@ export function McpImportDialog({
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                       {selectedToolNames.map((toolName) => (
                         <span
-                          className="rounded-full border border-border px-2 py-1"
+                          className="max-w-full break-all rounded-md border border-border px-2 py-0.5 font-mono"
                           key={toolName}
                         >
                           {toolName}
@@ -1045,7 +1064,7 @@ export function McpImportDialog({
 
                   <div className="space-y-2">
                     <label
-                      className="block text-sm font-medium text-foreground"
+                      className="block text-xs font-medium text-foreground"
                       htmlFor="mcp-conflict-strategy"
                     >
                       冲突处理策略
@@ -1078,88 +1097,88 @@ export function McpImportDialog({
                       <h4 className="text-base font-semibold text-foreground">
                         导入回执
                       </h4>
-                      <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                        <span className="rounded-full border border-border px-3 py-1">
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">
                           {formatToolReceiptCount(
                             receipt.summary.total,
                             "总计处理",
                           )}
-                        </span>
-                        <span className="rounded-full border border-border px-3 py-1">
+                        </Badge>
+                        <Badge variant="outline">
                           {formatToolReceiptCount(
                             receipt.summary.imported,
                             "已导入",
                           )}
-                        </span>
-                        <span className="rounded-full border border-border px-3 py-1">
+                        </Badge>
+                        <Badge variant="outline">
                           {formatToolReceiptCount(
                             receipt.summary.overwritten,
                             "已覆盖",
                           )}
-                        </span>
-                        <span className="rounded-full border border-border px-3 py-1">
+                        </Badge>
+                        <Badge variant="outline">
                           {formatToolReceiptCount(
                             receipt.summary.skipped,
                             "已跳过",
                           )}
-                        </span>
-                        <span className="rounded-full border border-border px-3 py-1">
+                        </Badge>
+                        <Badge variant="outline">
                           {formatToolReceiptCount(
                             receipt.summary.failed,
                             "失败",
                           )}
-                        </span>
+                        </Badge>
                       </div>
                     </div>
 
                     <div className="space-y-3">
                       {receipt.results.map((result) => (
                         <div
-                          className="rounded-xl border border-border bg-surface p-4"
+                          className="rounded-lg border border-border bg-surface p-4"
                           key={`${result.toolName}-${result.status}-${result.toolDefinitionId ?? "none"}`}
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="space-y-1">
-                              <p className="font-medium text-foreground">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <p className="break-words font-medium text-foreground">
                                 {result.title ?? result.toolName}
                               </p>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="break-all text-sm text-muted-foreground">
                                 {result.toolName}
                               </p>
                             </div>
-                            <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
+                            <Badge variant="outline" className="shrink-0">
                               {RECEIPT_STATUS_LABELS[result.status]}
-                            </span>
+                            </Badge>
                           </div>
 
                           {result.description ? (
-                            <p className="mt-2 text-sm text-muted-foreground">
+                            <p className="mt-2 break-words text-sm text-muted-foreground">
                               {result.description}
                             </p>
                           ) : null}
 
                           <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
                             {result.toolDefinitionId ? (
-                              <span className="rounded-full border border-border px-2 py-1">
+                              <span className="max-w-full break-all rounded-md border border-border px-2 py-0.5 font-mono">
                                 Tool ID {result.toolDefinitionId}
                               </span>
                             ) : null}
                             {result.portMappingMetadata ? (
-                              <span className="rounded-full border border-border px-2 py-1">
+                              <Badge size="sm" variant="outline">
                                 输入 {result.portMappingMetadata.inputs.length}{" "}
                                 · 输出{" "}
                                 {result.portMappingMetadata.outputs.length}
-                              </span>
+                              </Badge>
                             ) : null}
                             {result.reasonCode ? (
-                              <span className="rounded-full border border-border px-2 py-1">
+                              <span className="max-w-full break-all rounded-md border border-border px-2 py-0.5 font-mono">
                                 {result.reasonCode}
                               </span>
                             ) : null}
                           </div>
 
                           {result.reasonMessage ? (
-                            <p className="mt-3 rounded-xl border border-border/80 bg-background/40 px-3 py-2 text-sm text-muted-foreground">
+                            <p className="mt-3 break-words rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
                               {result.reasonMessage}
                             </p>
                           ) : null}
@@ -1170,6 +1189,7 @@ export function McpImportDialog({
                 ) : null}
               </div>
             ) : null}
+            </motion.div>
           </DialogBody>
 
           <DialogFooter className="block">
