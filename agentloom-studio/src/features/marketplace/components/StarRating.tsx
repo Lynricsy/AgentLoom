@@ -9,9 +9,15 @@ interface StarRatingProps {
 }
 
 const STAR_SIZES = {
-  sm: 'h-4 w-4',
-  md: 'h-5 w-5',
+  sm: 'size-4',
+  md: 'size-5',
 } as const
+
+/** 评分固定一位小数（4 → 4.0），与星级对照阅读 */
+const RATING_FORMAT = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
 
 const TEXT_SIZES = {
   sm: 'text-xs',
@@ -52,7 +58,7 @@ export const StarRating = memo(function StarRating({
       className={cn('flex items-center gap-2 text-muted-foreground', TEXT_SIZES[size])}
       data-testid="star-rating"
     >
-      <div className="flex items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5">
         {Array.from({ length: 5 }, (_, index) => {
           const fillRatio = Math.max(0, Math.min(1, rating - index))
 
@@ -73,8 +79,10 @@ export const StarRating = memo(function StarRating({
           )
         })}
       </div>
-      <span className="font-medium text-foreground">{rating.toFixed(1)}</span>
-      {count !== undefined ? <span>({count})</span> : null}
+      <span className="font-medium tabular-nums text-foreground">
+        {RATING_FORMAT.format(rating)}
+      </span>
+      {count !== undefined ? <span className="tabular-nums">({count})</span> : null}
     </div>
   )
 })

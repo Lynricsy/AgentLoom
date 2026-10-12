@@ -106,7 +106,12 @@ export function ReviewForm({ listingId, onSuccess }: ReviewFormProps) {
               className="rounded-full text-muted-foreground hover:text-warning [&_svg]:size-5"
               aria-label={`选择 ${value} 星`}
             >
-              <Star className={cn(isActive && 'fill-warning text-warning')} />
+              <Star
+                className={cn(
+                  'transition-colors duration-150',
+                  isActive && 'fill-warning text-warning',
+                )}
+              />
             </Button>
           )
         })}

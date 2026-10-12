@@ -1,6 +1,7 @@
 import { Puzzle, Workflow, type LucideIcon } from 'lucide-react'
 
 import type { BadgeProps } from '@/shared/ui/badge'
+import type { StatusTone } from '@/shared/ui/status-badge'
 import {
   MARKETPLACE_CATEGORIES,
   type MarketplaceCategory,
@@ -38,15 +39,15 @@ export const MARKETPLACE_PRICING_VARIANT: Record<
   per_execution: 'warning',
 }
 
-/** 上架状态 → Badge 语义变体 */
-export const MARKETPLACE_STATUS_VARIANT: Record<
+/** 上架状态 → 文案 + StatusTone，由 <StatusBadge> 统一渲染 */
+export const MARKETPLACE_STATUS_META: Record<
   MarketplaceListingStatus,
-  NonNullable<BadgeProps['variant']>
+  { label: string; tone: StatusTone }
 > = {
-  pending_review: 'warning',
-  listed: 'success',
-  review_failed: 'error',
-  unlisted: 'secondary',
+  pending_review: { label: '审核中', tone: 'warning' },
+  listed: { label: '已上架', tone: 'success' },
+  review_failed: { label: '审核未通过', tone: 'error' },
+  unlisted: { label: '已下架', tone: 'neutral' },
 }
 
 export const MARKETPLACE_CATEGORY_LABELS = Object.fromEntries(

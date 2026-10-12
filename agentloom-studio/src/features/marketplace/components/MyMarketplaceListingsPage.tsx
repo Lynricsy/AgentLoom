@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { motion } from 'motion/react'
-import { AlertCircle, Loader2, Package, Store } from 'lucide-react'
+import { AlertCircle, Check, Lightbulb, Loader2, Package, Store } from 'lucide-react'
 
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Pagination } from '@/shared/components/Pagination'
 import { staggerList } from '@/shared/lib/motion'
@@ -16,6 +17,7 @@ import {
   AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import {
   Dialog,
   DialogBody,
@@ -72,16 +74,19 @@ function ReviewResultView({
       {failed.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-error">
-            未通过项 ({failed.length})
+            未通过项（{failed.length}）
           </p>
           {failed.map((check) => (
             <div
               key={check.code}
-              className="rounded-lg border border-error/25 bg-error/5 p-2.5"
+              className="rounded-lg border border-error/30 bg-error/10 p-2.5"
             >
-              <p className="text-xs text-error">{check.message}</p>
+              <p className="break-words text-xs text-error">{check.message}</p>
               {check.fixHint && (
-                <p className="mt-1 text-xs text-muted-foreground">💡 {check.fixHint}</p>
+                <p className="mt-1 flex items-start gap-1.5 break-words text-xs text-muted-foreground">
+                  <Lightbulb aria-hidden className="mt-0.5 size-3 shrink-0 text-warning" />
+                  <span className="min-w-0">{check.fixHint}</span>
+                </p>
               )}
             </div>
           ))}
@@ -90,11 +95,15 @@ function ReviewResultView({
       {passed.length > 0 && (
         <div className="space-y-1">
           <p className="text-xs font-medium text-success">
-            已通过项 ({passed.length})
+            已通过项（{passed.length}）
           </p>
           {passed.map((check) => (
-            <p key={check.code} className="text-xs text-muted-foreground">
-              ✓ {check.message}
+            <p
+              key={check.code}
+              className="flex items-start gap-1.5 break-words text-xs text-muted-foreground"
+            >
+              <Check aria-hidden className="mt-0.5 size-3 shrink-0 text-success" />
+              <span className="min-w-0">{check.message}</span>
             </p>
           ))}
         </div>
@@ -111,6 +120,9 @@ export function MyMarketplaceListingsPage() {
   const [unlistTarget, setUnlistTarget] = useState<MyMarketplaceListingItem | null>(null)
   const [reviewTarget, setReviewTarget] =
     useState<MyMarketplaceListingItem | null>(null)
+  // 退场动画期间 reviewTarget 已置空，弹窗内容读最近一次目标，避免内容闪空
+  const lastReviewRef = useRef<MyMarketplaceListingItem | null>(null)
+  if (reviewTarget) lastReviewRef.current = reviewTarget
   const [editTarget, setEditTarget] = useState<PluginPublishTarget | null>(null)
 
   const { notify } = useToast()
@@ -239,17 +251,14 @@ export function MyMarketplaceListingsPage() {
     unlistMutation.isPending || unlistPluginMutation.isPending
 
   return (
-    <div
-      className="mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:p-6"
-      data-testid="my-marketplace-listings-page"
-    >
+    <PageContainer data-testid="my-marketplace-listings-page">
       <PageHeader
         icon={Store}
         title="我的市场发布"
         description="管理已提交到市场的工作流与插件，随时上下架或查看审核结果。"
       />
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-4">
+      <Card className="flex flex-col gap-3 p-3 sm:p-4">
         <Tabs
           value={listingTypeFilter}
           defaultValue="all"
@@ -273,9 +282,9 @@ export function MyMarketplaceListingsPage() {
             ))}
           </TabsList>
         </Tabs>
-      </div>
+      </Card>
 
-      {isLoading && (
+      {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
@@ -291,9 +300,7 @@ export function MyMarketplaceListingsPage() {
             </div>
           ))}
         </div>
-      )}
-
-      {isError && (
+      ) : isError ? (
         <EmptyState
           icon={AlertCircle}
           tone="var(--color-error)"
@@ -305,17 +312,13 @@ export function MyMarketplaceListingsPage() {
             </Button>
           }
         />
-      )}
-
-      {!isLoading && !isError && listings.length === 0 && (
+      ) : listings.length === 0 ? (
         <EmptyState
           icon={Package}
           title="暂无发布记录"
           description="在工作流画布中点击「发布到市场」，通过审核后即可在这里管理上架内容。"
         />
-      )}
-
-      {!isLoading && !isError && listings.length > 0 && (
+      ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {listings.map((listing, index) => (
             <motion.div key={listing.id} className="h-full" {...staggerList(index)}>
@@ -348,14 +351,14 @@ export function MyMarketplaceListingsPage() {
           <div className="flex items-start gap-3">
             <span
               aria-hidden
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
+              className="grid size-10 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor:
                   'color-mix(in srgb, var(--color-warning) 14%, transparent)',
                 color: 'var(--color-warning)',
               }}
             >
-              <AlertCircle className="h-5 w-5" />
+              <AlertCircle className="size-5" />
             </span>
             <div className="space-y-1">
               <AlertDialogTitle>确认下架</AlertDialogTitle>
@@ -369,8 +372,12 @@ export function MyMarketplaceListingsPage() {
             <AlertDialogCancel asChild>
               <Button variant="outline">取消</Button>
             </AlertDialogCancel>
-            <Button onClick={handleConfirmUnlist} disabled={isUnlistPending}>
-              {isUnlistPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button
+              variant="destructive"
+              onClick={handleConfirmUnlist}
+              disabled={isUnlistPending}
+            >
+              {isUnlistPending && <Loader2 className="animate-spin" />}
               确认下架
             </Button>
           </AlertDialogFooter>
@@ -381,20 +388,20 @@ export function MyMarketplaceListingsPage() {
         <DialogContent size="md" data-testid="review-result-dialog">
           <DialogHeader>
             <DialogTitle>审核结果</DialogTitle>
-            <DialogDescription>{reviewTarget?.title}</DialogDescription>
+            <DialogDescription className="break-words">
+              {lastReviewRef.current?.title}
+            </DialogDescription>
           </DialogHeader>
 
           <DialogBody>
-            {reviewTarget?.reviewResult && (
-              <ReviewResultView checks={reviewTarget.reviewResult.checks} />
+            {lastReviewRef.current?.reviewResult && (
+              <ReviewResultView checks={lastReviewRef.current.reviewResult.checks} />
             )}
           </DialogBody>
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" size="sm">
-                关闭
-              </Button>
+              <Button variant="outline">关闭</Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
@@ -404,6 +411,6 @@ export function MyMarketplaceListingsPage() {
         target={editTarget}
         onOpenChange={handleEditOpenChange}
       />
-    </div>
+    </PageContainer>
   )
 }

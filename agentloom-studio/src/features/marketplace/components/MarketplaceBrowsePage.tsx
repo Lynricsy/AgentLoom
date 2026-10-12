@@ -9,14 +9,16 @@ import {
 
 import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { Compass, Search, Store } from 'lucide-react'
+import { AlertCircle, Compass, Search, Store } from 'lucide-react'
 
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Pagination } from '@/shared/components/Pagination'
 import { staggerList } from '@/shared/lib/motion'
 import { cn } from '@/shared/lib/utils'
 import { Button, buttonVariants } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -194,10 +196,7 @@ export function MarketplaceBrowsePage({
   }, [])
 
   return (
-    <div
-      className="mx-auto flex h-full max-w-6xl flex-col gap-5 p-4 sm:p-6"
-      data-testid="marketplace-browse-page"
-    >
+    <PageContainer data-testid="marketplace-browse-page">
       <PageHeader
         icon={isDiscover ? Compass : Store}
         title={isDiscover ? '发现' : '市场'}
@@ -225,10 +224,10 @@ export function MarketplaceBrowsePage({
         }
       />
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-4">
+      <Card className="flex flex-col gap-3 p-3 sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchInput}
               onChange={handleSearchChange}
@@ -302,7 +301,7 @@ export function MarketplaceBrowsePage({
             ))}
           </TabsList>
         </Tabs>
-      </div>
+      </Card>
 
       {isLoading ? (
         <div
@@ -328,7 +327,7 @@ export function MarketplaceBrowsePage({
       ) : isError ? (
         <div data-testid="marketplace-browse-error">
           <EmptyState
-            icon={Store}
+            icon={AlertCircle}
             tone="var(--color-error)"
             title="Marketplace 加载失败"
             description="请稍后重试，或刷新页面后再试一次。"
@@ -356,7 +355,7 @@ export function MarketplaceBrowsePage({
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-xs tabular-nums text-muted-foreground">
             <span>共 {String(total)} 个项目</span>
             <span>第 {filters.page} 页</span>
           </div>
@@ -390,6 +389,6 @@ export function MarketplaceBrowsePage({
         open={selectedListingId !== null}
         onOpenChange={handleDetailOpenChange}
       />
-    </div>
+    </PageContainer>
   )
 }

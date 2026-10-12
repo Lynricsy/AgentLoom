@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useState } from 'react'
 
-import { Download, Loader2, Puzzle } from 'lucide-react'
+import { AlertCircle, Download, Puzzle } from 'lucide-react'
 
 import { WorkflowPreviewCanvas } from '@/features/canvas'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
@@ -16,6 +17,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog'
 import { Separator } from '@/shared/ui/separator'
+import { Skeleton } from '@/shared/ui/skeleton'
 import {
   useListingReviews,
   usePublicListingDetail,
@@ -60,12 +62,12 @@ function WorkflowPreviewSection({
       </div>
 
       {/* ReactFlow 根节点内联 width/height: 100%，会盖掉传给它的高度类，高度必须由外层容器给 */}
-      <div className="h-[260px] overflow-hidden rounded-lg border border-border sm:h-[300px]">
+      <div className="h-64 overflow-hidden rounded-lg border border-border sm:h-72">
         <WorkflowPreviewCanvas
           definition={listing.definition}
           lodOverride="full"
           emptyFallback={
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            <div className="grid h-full place-items-center text-sm text-muted-foreground">
               暂无可预览的工作流结构。
             </div>
           }
@@ -96,39 +98,46 @@ function PluginDetailSection({
         className="space-y-3 rounded-lg border border-border bg-muted p-4"
         data-testid="plugin-detail-metadata"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+            className="grid size-9 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-node-plugin) 14%, transparent)',
               color: 'var(--color-node-plugin)',
             }}
           >
-            <Puzzle className="h-4 w-4" />
+            <Puzzle className="size-4" />
           </span>
-          <span className="text-sm font-medium text-foreground">
+          <span
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+            title={plugin.name}
+          >
             {plugin.name}
           </span>
-          <Badge variant="outline">v{plugin.version}</Badge>
+          <Badge variant="outline" className="shrink-0">
+            v{plugin.version}
+          </Badge>
         </div>
 
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">插件 ID</dt>
-          <dd className="truncate font-mono text-xs text-foreground">
+          <dd className="truncate font-mono text-xs text-foreground" title={plugin.pluginId}>
             {plugin.pluginId}
           </dd>
 
           <dt className="text-muted-foreground">开发者</dt>
-          <dd className="truncate text-foreground">{plugin.author}</dd>
+          <dd className="truncate text-foreground" title={plugin.author}>
+            {plugin.author}
+          </dd>
 
           <dt className="text-muted-foreground">许可协议</dt>
           <dd className="truncate text-foreground">{plugin.license ?? '未指定'}</dd>
         </dl>
 
         {plugin.description ? (
-          <p className="border-t border-border pt-3 text-sm text-muted-foreground">
+          <p className="break-words border-t border-border pt-3 text-sm text-muted-foreground">
             {plugin.description}
           </p>
         ) : null}
@@ -169,35 +178,45 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* 固定最小高度：loading / error / 内容三态切换时弹窗高度不再从 ~120px 跳到满高 */}
       <DialogContent
         size="lg"
-        className="sm:max-h-[88vh]"
+        className="sm:max-h-[88dvh] sm:min-h-[28rem]"
         data-testid="marketplace-detail-dialog"
       >
         {detailQuery.isLoading ? (
           <>
             <DialogHiddenTitle>市场条目详情</DialogHiddenTitle>
             <div
-              className="flex items-center justify-center gap-3 px-6 py-20"
+              className="space-y-4 px-6 py-6"
               data-testid="marketplace-detail-loading"
+              role="status"
+              aria-label="正在加载详情…"
             >
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm text-muted-foreground">正在加载详情…</span>
+              <div className="flex gap-1.5">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-12 rounded-full" />
+              </div>
+              <Skeleton className="h-6 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-64 w-full rounded-lg sm:h-72" />
             </div>
           </>
         ) : detailQuery.isError || !listing || !typeMeta || !TypeIcon ? (
           <>
             <DialogHiddenTitle>市场条目详情</DialogHiddenTitle>
             <div
-              className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center"
+              className="grid flex-1 place-items-center px-6 py-10"
               data-testid="marketplace-detail-error"
             >
-              <p className="text-base font-medium text-foreground">
-                无法加载详情
-              </p>
-              <p className="text-sm text-muted-foreground">
-                请稍后重试，或返回列表后重新打开。
-              </p>
+              <EmptyState
+                variant="plain"
+                icon={AlertCircle}
+                tone="var(--color-error)"
+                title="无法加载详情"
+                description="请稍后重试，或返回列表后重新打开。"
+              />
             </div>
           </>
         ) : (
@@ -205,7 +224,7 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
             <DialogHeader className="gap-2.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge tone={typeMeta.tone} data-testid="detail-listing-type-badge">
-                  <TypeIcon className="h-3 w-3" />
+                  <TypeIcon className="size-3" />
                   {typeMeta.label}
                 </Badge>
                 <Badge variant={MARKETPLACE_PRICING_VARIANT[listing.pricingModel]}>
@@ -221,14 +240,16 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                 ) : null}
               </div>
 
-              <DialogTitle className="text-lg">{listing.title}</DialogTitle>
-              <DialogDescription>{listing.summary}</DialogDescription>
+              <DialogTitle className="break-words text-lg">{listing.title}</DialogTitle>
+              <DialogDescription className="break-words">{listing.summary}</DialogDescription>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                <span>作者：{listing.author.displayName}</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Download className="h-3.5 w-3.5" />
-                  <span>{listing.useCount} 次安装</span>
+                <span className="max-w-[16rem] truncate" title={listing.author.displayName}>
+                  作者：{listing.author.displayName}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1.5">
+                  <Download className="size-3.5" />
+                  <span className="tabular-nums">{listing.useCount} 次安装</span>
                 </span>
                 <StarRating
                   rating={parseMarketplaceRating(listing.avgRating)}
@@ -238,9 +259,11 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               </div>
 
               {listing.tags.length > 0 ? (
-                <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
+                <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
                   {listing.tags.map((tag) => (
-                    <span key={tag}>#{tag}</span>
+                    <span key={tag} className="max-w-full truncate">
+                      #{tag}
+                    </span>
                   ))}
                 </div>
               ) : null}

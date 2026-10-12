@@ -504,7 +504,7 @@ describe('MyMarketplaceListingsPage', () => {
     expect(within(dialog).getByText('审核结果')).toBeInTheDocument();
     expect(within(dialog).getByText('Failed Listing')).toBeInTheDocument();
     expect(within(dialog).getByText('标题不符合要求')).toBeInTheDocument();
-    expect(within(dialog).getByText(/💡.*请修改标题/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/请修改标题/)).toBeInTheDocument();
     expect(within(dialog).getByText(/节点检测通过/)).toBeInTheDocument();
   });
 

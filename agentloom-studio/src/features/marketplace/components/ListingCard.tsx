@@ -13,13 +13,15 @@ import {
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { formatDate } from '@/shared/lib/format'
 import {
   MARKETPLACE_LISTING_TYPE_META,
   MARKETPLACE_PRICING_VARIANT,
+  MARKETPLACE_STATUS_META,
   formatMarketplacePrice,
 } from '../lib/display'
 import type { MyMarketplaceListingItem } from '../types'
-import { ListingStatusBadge } from './ListingStatusBadge'
 
 interface ListingCardProps {
   listing: MyMarketplaceListingItem
@@ -70,75 +72,83 @@ export const ListingCard = memo(function ListingCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Badge tone={typeMeta.tone}>
-            <TypeIcon className="h-3 w-3" />
+            <TypeIcon className="size-3" />
             {typeMeta.label}
           </Badge>
           <Badge variant={MARKETPLACE_PRICING_VARIANT[listing.pricingModel]}>
             {formatMarketplacePrice(listing.pricingModel, listing.pricePerExecution)}
           </Badge>
         </div>
-        <ListingStatusBadge status={listing.status} />
+        <StatusBadge
+          tone={MARKETPLACE_STATUS_META[listing.status].tone}
+          className="shrink-0"
+          data-testid="listing-status-badge"
+        >
+          {MARKETPLACE_STATUS_META[listing.status].label}
+        </StatusBadge>
       </div>
 
-      <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+      <h3 className="line-clamp-2 break-words text-sm font-semibold leading-snug text-foreground">
         {listing.title}
       </h3>
 
       {listing.workflowName ? (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Workflow className="h-3 w-3 shrink-0" />
-          <span className="truncate">{listing.workflowName}</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <Workflow className="size-3 shrink-0" />
+          <span className="min-w-0 truncate" title={listing.workflowName}>
+            {listing.workflowName}
+          </span>
           {listing.versionNumber != null ? (
-            <span className="shrink-0 text-muted-foreground">
-              v{listing.versionNumber}
-            </span>
+            <span className="shrink-0 tabular-nums">v{listing.versionNumber}</span>
           ) : null}
         </div>
       ) : null}
 
       {isPlugin && listing.pluginName ? (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Puzzle className="h-3 w-3 shrink-0" />
-          <span className="truncate">{listing.pluginName}</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <Puzzle className="size-3 shrink-0" />
+          <span className="min-w-0 truncate" title={listing.pluginName}>
+            {listing.pluginName}
+          </span>
           {listing.pluginVersion ? (
-            <span className="shrink-0 text-muted-foreground">
-              v{listing.pluginVersion}
-            </span>
+            <span className="shrink-0 tabular-nums">v{listing.pluginVersion}</span>
           ) : null}
         </div>
       ) : null}
 
       {listing.summary ? (
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <p className="line-clamp-2 break-words text-xs leading-relaxed text-muted-foreground">
           {listing.summary}
         </p>
       ) : null}
 
       {listing.tags.length > 0 ? (
-        <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
           {listing.tags.slice(0, 4).map((tag) => (
-            <span key={tag}>#{tag}</span>
+            <span key={tag} className="max-w-full truncate">
+              #{tag}
+            </span>
           ))}
         </div>
       ) : null}
 
       <div className="mt-auto flex items-center gap-1.5 text-2xs text-muted-foreground">
-        <Calendar className="h-3 w-3" />
-        <span>{new Date(listing.submittedAt).toLocaleDateString('zh-CN')}</span>
+        <Calendar className="size-3 shrink-0" />
+        <span className="tabular-nums">{formatDate(listing.submittedAt)}</span>
       </div>
 
       {hasActions ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           {listing.status === 'listed' ? (
             <Button variant="outline" size="sm" onClick={handleUnlist}>
-              <EyeOff className="h-3.5 w-3.5" />
+              <EyeOff />
               下架
             </Button>
           ) : null}
 
           {listing.status === 'unlisted' ? (
             <Button variant="outline" size="sm" onClick={handleRelist}>
-              <Eye className="h-3.5 w-3.5" />
+              <Eye />
               重新上架
             </Button>
           ) : null}
@@ -146,17 +156,17 @@ export const ListingCard = memo(function ListingCard({
           {listing.status === 'review_failed' ? (
             <>
               <Button variant="outline" size="sm" onClick={handleViewReview}>
-                <Eye className="h-3.5 w-3.5" />
+                <Eye />
                 查看审核结果
               </Button>
               {isPlugin ? (
                 <Button variant="ghost" size="sm" onClick={handleRelist}>
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <RefreshCw />
                   重新提交
                 </Button>
               ) : (
                 <Button variant="ghost" size="sm" disabled>
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <RefreshCw />
                   重新提交
                 </Button>
               )}
@@ -165,7 +175,7 @@ export const ListingCard = memo(function ListingCard({
 
           {canEditPlugin ? (
             <Button variant="ghost" size="sm" onClick={handleEdit}>
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil />
               编辑
             </Button>
           ) : null}

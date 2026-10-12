@@ -87,21 +87,23 @@ export const ListingTagsInput = memo(function ListingTagsInput({
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
+      <label htmlFor={id} className="block text-sm font-medium text-foreground">
         标签 <span className="text-error">*</span>
-        <span className="ml-1 text-xs font-normal text-muted-foreground">
-          ({tags.length}/{L.maxTags})
+        <span className="ml-1 text-xs font-normal tabular-nums text-muted-foreground">
+          （{tags.length}/{L.maxTags}）
         </span>
       </label>
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {tags.map((tag) => (
             <Badge key={tag} variant="secondary" className="pr-1 text-foreground">
-              {tag}
+              <span className="min-w-0 truncate" title={tag}>
+                {tag}
+              </span>
               <Button
                 variant="ghost"
                 size="icon-xs"
-                className="size-4 rounded-full text-muted-foreground hover:bg-surface hover:text-foreground [&_svg]:size-3"
+                className="size-4 shrink-0 rounded-full text-muted-foreground hover:bg-surface hover:text-foreground [&_svg]:size-3"
                 onClick={() => removeTag(tag)}
                 aria-label={`移除标签 ${tag}`}
                 disabled={disabled}
@@ -126,7 +128,11 @@ export const ListingTagsInput = memo(function ListingTagsInput({
         disabled={disabled}
         data-testid={testId}
       />
-      {error && <p className="text-xs font-medium text-error">{error}</p>}
+      {error && (
+        <p className="text-xs font-medium text-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   )
 })

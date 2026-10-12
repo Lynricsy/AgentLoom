@@ -2,18 +2,22 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { motion } from 'motion/react'
 import { AlertCircle, CheckCircle2, Loader2, Store, XCircle } from 'lucide-react'
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
   DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { fadeIn } from '@/shared/lib/motion'
 import { cn } from '@/shared/lib/utils'
 import { useWorkflow } from '@/features/workflow'
 import { useSubmitMarketplaceListing } from '../api/marketplaceMutations'
@@ -69,16 +73,23 @@ const ReviewCheckList = memo(function ReviewCheckList({
           data-testid="review-check-item"
         >
           {check.status === 'passed' ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
           ) : (
-            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+            <XCircle className="mt-0.5 size-4 shrink-0 text-error" />
           )}
           <div className="min-w-0 flex-1">
-            <p className={check.status === 'passed' ? 'text-foreground' : 'text-error'}>
+            <p
+              className={cn(
+                'break-words',
+                check.status === 'passed' ? 'text-foreground' : 'text-error',
+              )}
+            >
               {check.message}
             </p>
             {check.fixHint && (
-              <p className="mt-0.5 text-xs text-muted-foreground">{check.fixHint}</p>
+              <p className="mt-0.5 break-words text-xs text-muted-foreground">
+                {check.fixHint}
+              </p>
             )}
           </div>
         </li>
@@ -198,25 +209,27 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
 
   const isSubmitting = dialogState.kind === 'submitting'
   const isFormDisabled = isSubmitting || !publishedVersionId
+  /** 表单与提交中共用同一视图，切换其它结果态时才做淡入淡出 */
+  const viewKey = dialogState.kind === 'submitting' ? 'form' : dialogState.kind
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         size="md"
-        className="sm:max-h-[88vh]"
+        className="sm:max-h-[88dvh]"
         data-testid="marketplace-publish-dialog"
       >
         <DialogHeader className="flex-row items-start gap-3">
           <span
             aria-hidden
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg"
+            className="grid size-10 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-node-tool) 14%, transparent)',
               color: 'var(--color-node-tool)',
             }}
           >
-            <Store className="h-5 w-5" />
+            <Store className="size-5" />
           </span>
           <div className="min-w-0">
             <DialogTitle>发布到市场</DialogTitle>
@@ -226,151 +239,154 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
           </div>
         </DialogHeader>
 
-        {dialogState.kind === 'success' && (
-          <DialogBody className="flex flex-col items-center gap-3 py-12">
-            <CheckCircle2 className="h-12 w-12 text-success" />
-            <p className="text-lg font-medium text-foreground">提交成功</p>
-            <p className="text-sm text-muted-foreground">工作流已通过审核并上架市场</p>
-            <Button className="mt-2" onClick={() => onOpenChange(false)}>
-              完成
-            </Button>
-          </DialogBody>
-        )}
-
-        {dialogState.kind === 'conflict' && (
-          <DialogBody className="flex flex-col items-center gap-3 py-12">
-            <AlertCircle className="h-12 w-12 text-warning" />
-            <p className="text-lg font-medium text-foreground">已存在</p>
-            <p className="text-sm text-muted-foreground">该工作流版本已提交到市场</p>
-            <Button
-              variant="outline"
-              className="mt-2"
-              onClick={() => onOpenChange(false)}
-            >
-              关闭
-            </Button>
-          </DialogBody>
-        )}
-
-        {dialogState.kind === 'review-failed' && (
-          <DialogBody className="space-y-4">
-            <div className="flex items-center gap-2 text-error">
-              <XCircle className="h-5 w-5" />
-              <p className="text-sm font-medium">审核未通过，请修复以下问题后重试</p>
-            </div>
-            <ReviewCheckList checks={dialogState.result.checks} />
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setDialogState({ kind: 'form' })}
-            >
-              返回修改
-            </Button>
-          </DialogBody>
-        )}
-
-        {(dialogState.kind === 'form' || dialogState.kind === 'submitting') && (
-          <form
-            className="flex min-h-0 flex-1 flex-col"
-            onSubmit={handleSubmit(onSubmit)}
-            data-testid="marketplace-publish-form"
-          >
-            <DialogBody className="space-y-4">
-              {!publishedVersionId && (
-                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  工作流尚未发布，请先发布工作流后再提交到市场
+        {/* 视图切换只做入场淡入（key 变化即重挂载）：结果态必须同步出现，成功后的自动关闭计时不受退场动画影响 */}
+        <>
+          {dialogState.kind === 'success' ? (
+            <motion.div key={viewKey} {...fadeIn} className="flex min-h-0 flex-1 flex-col">
+              <DialogBody className="flex flex-col items-center gap-3 py-12">
+                <CheckCircle2 className="size-12 text-success" />
+                <p className="text-lg font-medium text-foreground">提交成功</p>
+                <p className="text-sm text-muted-foreground">工作流已通过审核并上架市场</p>
+              </DialogBody>
+              <DialogFooter>
+                <Button onClick={() => onOpenChange(false)}>完成</Button>
+              </DialogFooter>
+            </motion.div>
+          ) : dialogState.kind === 'conflict' ? (
+            <motion.div key={viewKey} {...fadeIn} className="flex min-h-0 flex-1 flex-col">
+              <DialogBody className="flex flex-col items-center gap-3 py-12">
+                <AlertCircle className="size-12 text-warning" />
+                <p className="text-lg font-medium text-foreground">已存在</p>
+                <p className="text-sm text-muted-foreground">该工作流版本已提交到市场</p>
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  关闭
+                </Button>
+              </DialogFooter>
+            </motion.div>
+          ) : dialogState.kind === 'review-failed' ? (
+            <motion.div key={viewKey} {...fadeIn} className="flex min-h-0 flex-1 flex-col">
+              <DialogBody className="space-y-4">
+                <div className="flex items-center gap-2 text-error">
+                  <XCircle className="size-5 shrink-0" />
+                  <p className="text-sm font-medium">审核未通过，请修复以下问题后重试</p>
                 </div>
-              )}
+                <ReviewCheckList checks={dialogState.result.checks} />
+              </DialogBody>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDialogState({ kind: 'form' })}>
+                  返回修改
+                </Button>
+              </DialogFooter>
+            </motion.div>
+          ) : (
+            <motion.form
+              key={viewKey}
+              {...fadeIn}
+              className="flex min-h-0 flex-1 flex-col"
+              onSubmit={handleSubmit(onSubmit)}
+              data-testid="marketplace-publish-form"
+            >
+              <DialogBody className="space-y-4">
+                {!publishedVersionId && (
+                  <Alert variant="warning">
+                    工作流尚未发布，请先发布工作流后再提交到市场
+                  </Alert>
+                )}
 
-              <div className="space-y-1.5">
-                <label htmlFor="mp-title" className="text-sm font-medium text-foreground">
-                  标题 <span className="text-error">*</span>
-                </label>
-                <Input
-                  id="mp-title"
-                  type="text"
-                  className={cn(errors.title && 'border-error')}
-                  placeholder="为你的工作流取一个吸引人的标题"
+                <div className="space-y-1.5">
+                  <label htmlFor="mp-title" className="block text-sm font-medium text-foreground">
+                    标题 <span className="text-error">*</span>
+                  </label>
+                  <Input
+                    id="mp-title"
+                    type="text"
+                    className={cn(errors.title && 'border-error')}
+                    placeholder="为你的工作流取一个吸引人的标题"
+                    disabled={isFormDisabled}
+                    data-testid="marketplace-title-input"
+                    {...register('title')}
+                  />
+                  {errors.title && (
+                    <p className="text-xs font-medium text-error" role="alert">
+                      {errors.title.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="mp-summary" className="block text-sm font-medium text-foreground">
+                    简介 <span className="text-error">*</span>
+                  </label>
+                  <Textarea
+                    id="mp-summary"
+                    className={cn('min-h-20', errors.summary && 'border-error')}
+                    placeholder="描述工作流的用途和特点"
+                    disabled={isFormDisabled}
+                    data-testid="marketplace-summary-input"
+                    {...register('summary')}
+                  />
+                  {errors.summary && (
+                    <p className="text-xs font-medium text-error" role="alert">
+                      {errors.summary.message}
+                    </p>
+                  )}
+                </div>
+
+                <ListingTagsInput
+                  id="mp-tags"
+                  tags={tags}
+                  onTagsChange={setTags}
+                  error={tagError}
+                  onErrorChange={setTagError}
                   disabled={isFormDisabled}
-                  data-testid="marketplace-title-input"
-                  {...register('title')}
+                  testId="marketplace-tags-input"
                 />
-                {errors.title && (
-                  <p className="text-xs font-medium text-error">{errors.title.message}</p>
-                )}
-              </div>
 
-              <div className="space-y-1.5">
-                <label htmlFor="mp-summary" className="text-sm font-medium text-foreground">
-                  简介 <span className="text-error">*</span>
-                </label>
-                <Textarea
-                  id="mp-summary"
-                  className={cn('min-h-20', errors.summary && 'border-error')}
-                  placeholder="描述工作流的用途和特点"
+                <div className="space-y-1.5">
+                  <label htmlFor="mp-cover" className="block text-sm font-medium text-foreground">
+                    封面图片 URL
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">（可选）</span>
+                  </label>
+                  <Input
+                    id="mp-cover"
+                    type="text"
+                    className={cn(errors.coverImageUrl && 'border-error')}
+                    placeholder="https://example.com/cover.png"
+                    disabled={isFormDisabled}
+                    {...register('coverImageUrl')}
+                  />
+                  {errors.coverImageUrl && (
+                    <p className="text-xs font-medium text-error" role="alert">
+                      {errors.coverImageUrl.message}
+                    </p>
+                  )}
+                </div>
+              </DialogBody>
+
+              <DialogFooter>
+                <Button
+                  type="submit"
                   disabled={isFormDisabled}
-                  data-testid="marketplace-summary-input"
-                  {...register('summary')}
-                />
-                {errors.summary && (
-                  <p className="text-xs font-medium text-error">
-                    {errors.summary.message}
-                  </p>
-                )}
-              </div>
-
-              <ListingTagsInput
-                id="mp-tags"
-                tags={tags}
-                onTagsChange={setTags}
-                error={tagError}
-                onErrorChange={setTagError}
-                disabled={isFormDisabled}
-                testId="marketplace-tags-input"
-              />
-
-              <div className="space-y-1.5">
-                <label htmlFor="mp-cover" className="text-sm font-medium text-foreground">
-                  封面图片 URL
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
-                </label>
-                <Input
-                  id="mp-cover"
-                  type="text"
-                  className={cn(errors.coverImageUrl && 'border-error')}
-                  placeholder="https://example.com/cover.png"
-                  disabled={isFormDisabled}
-                  {...register('coverImageUrl')}
-                />
-                {errors.coverImageUrl && (
-                  <p className="text-xs font-medium text-error">
-                    {errors.coverImageUrl.message}
-                  </p>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isFormDisabled}
-                data-testid="marketplace-submit-btn"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    提交审核中…
-                  </>
-                ) : (
-                  <>
-                    <Store className="h-4 w-4" />
-                    提交到市场
-                  </>
-                )}
-              </Button>
-            </DialogBody>
-          </form>
-        )}
+                  data-testid="marketplace-submit-btn"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="animate-spin" />
+                      提交审核中…
+                    </>
+                  ) : (
+                    <>
+                      <Store />
+                      提交到市场
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </motion.form>
+          )}
+        </>
       </DialogContent>
     </Dialog>
   )

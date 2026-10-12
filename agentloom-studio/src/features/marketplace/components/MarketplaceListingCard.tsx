@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 
 import { Download, UserRound } from 'lucide-react'
 
+import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
 import {
@@ -25,6 +26,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
   onClick,
 }: MarketplaceListingCardProps) {
   const [coverFailed, setCoverFailed] = useState(false)
+  const [coverLoaded, setCoverLoaded] = useState(false)
   const typeMeta = MARKETPLACE_LISTING_TYPE_META[listing.listingType]
   const TypeIcon = typeMeta.icon
   const categoryLabel = listing.category
@@ -58,7 +60,11 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
             src={listing.coverImageUrl}
             alt=""
             loading="lazy"
-            className="h-full w-full object-cover"
+            className={cn(
+              'h-full w-full object-cover transition-opacity duration-300',
+              coverLoaded ? 'opacity-100' : 'opacity-0',
+            )}
+            onLoad={() => setCoverLoaded(true)}
             onError={() => setCoverFailed(true)}
           />
         ) : listing.previewGraph ? (
@@ -79,7 +85,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
             ) : null}
             <TypeIcon
               aria-hidden
-              className="absolute bottom-3 right-3 h-10 w-10"
+              className="absolute bottom-3 right-3 size-10"
               style={{
                 color: `color-mix(in srgb, ${typeMeta.tone} 55%, transparent)`,
               }}
@@ -91,7 +97,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={typeMeta.tone} data-testid="listing-type-badge">
-            <TypeIcon className="h-3 w-3" />
+            <TypeIcon className="size-3" />
             {typeMeta.label}
           </Badge>
           <Badge
@@ -106,36 +112,40 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
           <Badge variant="secondary">{categoryLabel}</Badge>
         </div>
 
-        <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+        <h3 className="line-clamp-2 break-words text-sm font-semibold leading-snug text-foreground">
           {listing.title}
         </h3>
 
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <p className="line-clamp-2 break-words text-xs leading-relaxed text-muted-foreground">
           {listing.summary}
         </p>
 
         {listing.tags.length > 0 ? (
-          <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
+          <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-2xs text-muted-foreground">
             {listing.tags.slice(0, 3).map((tag) => (
-              <span key={tag}>#{tag}</span>
+              <span key={tag} className="max-w-full truncate">
+                #{tag}
+              </span>
             ))}
           </div>
         ) : null}
 
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-border pt-3">
           <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <UserRound className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{listing.author.displayName}</span>
+            <UserRound className="size-3.5 shrink-0" />
+            <span className="truncate" title={listing.author.displayName}>
+              {listing.author.displayName}
+            </span>
           </span>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <StarRating
               rating={parseMarketplaceRating(listing.avgRating)}
               count={listing.reviewCount}
               size="sm"
             />
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Download className="h-3.5 w-3.5" />
+            <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+              <Download className="size-3.5" />
               {listing.useCount}
             </span>
           </div>

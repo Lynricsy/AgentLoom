@@ -3,11 +3,14 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { CheckCircle2, Loader2 } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import { ChatModelSelect, useUsableChatModels } from '@/features/llm'
 import { resolveProblemDetail } from '@/shared/api/problemDetail'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { fadeIn } from '@/shared/lib/motion'
 import { Button, buttonVariants } from '@/shared/ui/button'
 import {
   Dialog,
@@ -145,117 +148,117 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
       <DialogContent size="md" data-testid="marketplace-install-dialog">
         <DialogHeader>
           <DialogTitle>安装 Marketplace {entityLabel}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words">
             {isPlugin
-              ? `将 "${listingTitle}" 安装到你的工作区后，可以在工作流画布中使用该插件节点。`
-              : `复制 "${listingTitle}" 到你的工作区后，你可以继续编辑和运行它。`}
+              ? `将「${listingTitle}」安装到你的工作区后，可以在工作流画布中使用该插件节点。`
+              : `复制「${listingTitle}」到你的工作区后，你可以继续编辑和运行它。`}
           </DialogDescription>
         </DialogHeader>
 
-        {installedPluginName !== null ? (
-          <DialogBody
-            className="flex flex-col items-center gap-3 py-10"
-            data-testid="plugin-install-success"
-          >
-            <CheckCircle2 className="h-12 w-12 text-success" />
-            <p className="text-lg font-medium text-foreground">安装成功</p>
-            <p className="text-center text-sm text-muted-foreground">
-              {`「${installedPluginName}」已进入插件库，启用后即可在画布中使用它的节点。`}
-            </p>
-            <div className="mt-2 flex flex-wrap justify-center gap-2">
-              <Link
-                to="/resources/plugins"
-                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                onClick={() => onOpenChange(false)}
+        {/* 视图切换只做入场淡入（key 变化即重挂载）：结果态必须同步出现，不等旧视图退场 */}
+        <>
+          {installedPluginName !== null ? (
+            <motion.div
+              key="success"
+              {...fadeIn}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <DialogBody
+                className="flex flex-col items-center gap-3 py-10"
+                data-testid="plugin-install-success"
               >
-                前往插件管理
-              </Link>
-              <Button size="sm" onClick={() => onOpenChange(false)}>
-                完成
-              </Button>
-            </div>
-          </DialogBody>
-        ) : (
-          <form
-            onSubmit={handleSubmit(onSubmit)}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <DialogBody className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="install-name"
-                  className="block text-sm font-medium text-foreground"
-                >
-                  {entityLabel}名称
-                </label>
-                <Input
-                  id="install-name"
-                  {...register('name')}
-                  placeholder={`输入${entityLabel}名称`}
-                />
-                {errors.name ? (
-                  <p className="text-xs font-medium text-error">
-                    {errors.name.message}
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="install-description"
-                  className="block text-sm font-medium text-foreground"
-                >
-                  描述 <span className="font-normal text-muted-foreground">(可选)</span>
-                </label>
-                <Textarea
-                  id="install-description"
-                  {...register('description')}
-                  rows={4}
-                  placeholder={`描述这个${entityLabel}的使用场景`}
-                />
-                {errors.description ? (
-                  <p className="text-xs font-medium text-error">
-                    {errors.description.message}
-                  </p>
-                ) : null}
-              </div>
-
-              {isPlugin ? null : (
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="install-fallback-model"
-                    className="block text-sm font-medium text-foreground"
+                <CheckCircle2 className="size-12 text-success" />
+                <p className="text-lg font-medium text-foreground">安装成功</p>
+                <p className="break-words text-center text-sm text-muted-foreground">
+                  {`「${installedPluginName}」已进入插件库，启用后即可在画布中使用它的节点。`}
+                </p>
+                <div className="mt-2 flex flex-wrap justify-center gap-2">
+                  <Link
+                    to="/resources/plugins"
+                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                    onClick={() => onOpenChange(false)}
                   >
-                    备用模型 <span className="font-normal text-muted-foreground">(可选)</span>
-                  </label>
-                  <ChatModelSelect
-                    id="install-fallback-model"
-                    data-testid="install-fallback-model-select"
-                    value={modelConfigId}
-                    onValueChange={setModelConfigId}
-                    models={usableChatModels.data ?? []}
-                    disabled={isPending}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    作者使用的模型在你的账号中不存在时，Agent 改用这个模型。
-                  </p>
+                    前往插件管理
+                  </Link>
+                  <Button size="sm" onClick={() => onOpenChange(false)}>
+                    完成
+                  </Button>
                 </div>
-              )}
-            </DialogBody>
+              </DialogBody>
+            </motion.div>
+          ) : (
+            <motion.form
+              key="form"
+              {...fadeIn}
+              onSubmit={handleSubmit(onSubmit)}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <DialogBody className="space-y-4">
+                <FormField
+                  label={`${entityLabel}名称`}
+                  htmlFor="install-name"
+                  error={errors.name?.message}
+                >
+                  <Input
+                    id="install-name"
+                    {...register('name')}
+                    placeholder={`输入${entityLabel}名称`}
+                  />
+                </FormField>
 
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  取消
+                <FormField
+                  label={
+                    <>
+                      描述 <span className="font-normal text-muted-foreground">（可选）</span>
+                    </>
+                  }
+                  htmlFor="install-description"
+                  error={errors.description?.message}
+                >
+                  <Textarea
+                    id="install-description"
+                    {...register('description')}
+                    rows={4}
+                    placeholder={`描述这个${entityLabel}的使用场景`}
+                  />
+                </FormField>
+
+                {isPlugin ? null : (
+                  <FormField
+                    label={
+                      <>
+                        备用模型 <span className="font-normal text-muted-foreground">（可选）</span>
+                      </>
+                    }
+                    htmlFor="install-fallback-model"
+                    hint="作者使用的模型在你的账号中不存在时，Agent 改用这个模型。"
+                  >
+                    <ChatModelSelect
+                      id="install-fallback-model"
+                      data-testid="install-fallback-model-select"
+                      value={modelConfigId}
+                      onValueChange={setModelConfigId}
+                      models={usableChatModels.data ?? []}
+                      disabled={isPending}
+                    />
+                  </FormField>
+                )}
+              </DialogBody>
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    取消
+                  </Button>
+                </DialogClose>
+                <Button type="submit" disabled={isPending}>
+                  {isPending ? <Loader2 className="animate-spin" /> : null}
+                  确认安装
                 </Button>
-              </DialogClose>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                确认安装
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
+              </DialogFooter>
+            </motion.form>
+          )}
+        </>
       </DialogContent>
     </Dialog>
   )
