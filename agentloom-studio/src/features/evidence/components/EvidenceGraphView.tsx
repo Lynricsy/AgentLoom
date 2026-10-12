@@ -20,7 +20,10 @@ import {
   type SimulationLinkDatum,
 } from 'd3-force'
 import { Loader2, AlertCircle, GitBranch } from 'lucide-react'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { DUR } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useEvidenceGraph } from '../api/evidenceQueries'
 import { useEvidenceUiStore } from '../stores/evidenceUiStore'
 import type {
@@ -209,7 +212,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
   useEffect(() => {
     if (nodes.length > 0 && !initialFitDone.current) {
       requestAnimationFrame(() => {
-        fitView({ padding: 0.2, duration: 300 })
+        fitView({ padding: 0.2, duration: DUR.slow * 1000 })
         initialFitDone.current = true
       })
     }
@@ -261,7 +264,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
   )
 
   const handleFitView = useCallback(() => {
-    fitView({ padding: 0.2, duration: 300 })
+    fitView({ padding: 0.2, duration: DUR.slow * 1000 })
   }, [fitView])
 
   const handleRefresh = useCallback(async () => {
@@ -270,63 +273,49 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
     setIsRefreshing(false)
   }, [refetch])
 
-  const handleLayoutChange = useCallback(
-    (lt: LayoutType) => {
-      setLayoutType(lt)
-      if (graphData) {
-        applyLayout(graphData, lt)
-      }
-    },
-    [graphData, applyLayout],
-  )
+  // 布局只由 layoutType 变化触发的 effect 统一计算一次，避免重复布局导致节点瞬移
+  const handleLayoutChange = useCallback((lt: LayoutType) => {
+    setLayoutType(lt)
+  }, [])
 
   if (isLoading) {
     return (
-      <div
-        className="flex h-full items-center justify-center"
-        data-testid="evidence-graph-loading"
-      >
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="h-full p-4" data-testid="evidence-graph-loading">
+        <Skeleton className="h-full min-h-60 w-full rounded-lg" />
       </div>
     )
   }
 
   if (isError) {
     return (
-      <div
-        className="flex h-full flex-col items-center justify-center gap-3 text-error"
-        data-testid="evidence-graph-error"
-      >
-        <AlertCircle className="h-8 w-8" />
-        <p className="text-sm">{error?.message ?? '加载溯源图失败'}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void handleRefresh()}
-          disabled={isRefreshing}
-          data-testid="evidence-graph-retry"
-        >
-          {isRefreshing ? (
-            <>
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              重试中…
-            </>
-          ) : (
-            '重试加载'
-          )}
-        </Button>
+      <div className="flex h-full items-center justify-center" data-testid="evidence-graph-error">
+        <EmptyState
+          variant="plain"
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载溯源图失败"
+          description={error?.message ?? '请稍后重试。'}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={isRefreshing}
+              data-testid="evidence-graph-retry"
+            >
+              {isRefreshing ? <Loader2 className="animate-spin" /> : null}
+              {isRefreshing ? '重试中…' : '重试加载'}
+            </Button>
+          }
+        />
       </div>
     )
   }
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div
-        className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"
-        data-testid="evidence-graph-empty"
-      >
-        <GitBranch className="h-8 w-8" />
-        <p className="text-sm">暂无证据数据</p>
+      <div className="flex h-full items-center justify-center" data-testid="evidence-graph-empty">
+        <EmptyState variant="plain" icon={GitBranch} title="暂无证据数据" />
       </div>
     )
   }
@@ -352,7 +341,9 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
         <Background />
       </ReactFlow>
 
+      {/* 浮于画布之上，不再作为文档流兄弟节点被挤到画布下方裁掉 */}
       <EvidenceGraphControls
+        className="absolute right-3 top-3 z-10"
         layoutMode={layoutType}
         onLayoutChange={handleLayoutChange}
         onFitView={handleFitView}
@@ -362,6 +353,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
 
       {graphData.timeline.length > 0 && (
         <GraphTimelinePlayer
+          className="absolute bottom-3 left-3 right-3 z-10 sm:right-auto sm:max-w-[calc(100%-1.5rem)]"
           timeline={graphData.timeline}
           onStepChange={setTimelineStep}
         />

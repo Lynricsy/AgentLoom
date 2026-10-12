@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Maximize, RefreshCw } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Separator } from '@/shared/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 
 export type LayoutMode = 'dagre' | 'force'
@@ -26,7 +27,7 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 rounded-lg border border-border/60 bg-surface/80 p-1',
+        'flex items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-sm',
         className,
       )}
       data-testid="evidence-graph-controls"
@@ -56,7 +57,7 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
         </TabsList>
       </Tabs>
 
-      <div className="mx-0.5 h-4 w-px bg-border/60" />
+      <Separator orientation="vertical" className="mx-0.5 h-4" />
 
       <Button
         variant="ghost"
@@ -76,7 +77,8 @@ export const EvidenceGraphControls = memo(function EvidenceGraphControls({
         disabled={isRefreshing}
         className={cn(
           'text-muted-foreground hover:text-foreground',
-          isRefreshing && 'animate-spin',
+          // 只旋转图标，不旋转整个按钮方块
+          isRefreshing && '[&_svg]:animate-spin',
         )}
         aria-label="刷新"
         data-testid="refresh-graph"

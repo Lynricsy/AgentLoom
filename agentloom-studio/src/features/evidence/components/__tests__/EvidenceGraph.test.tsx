@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Position } from '@xyflow/react'
+import { formatDateTime } from '@/shared/lib/format'
 
 import { useEvidenceGraph } from '../../api/evidenceQueries'
 import {
@@ -572,7 +573,7 @@ describe('EvidenceGraph components', () => {
       expect(screen.getByTestId('timeline-step-info')).toHaveTextContent('1/2')
       expect(screen.getByTestId('timeline-step-label')).toHaveTextContent('开始执行')
       expect(screen.getByTestId('timeline-step-timestamp')).toHaveTextContent(
-        '2026-03-14 10:00:00 UTC',
+        formatDateTime('2026-03-14T10:00:00Z'),
       )
     })
 

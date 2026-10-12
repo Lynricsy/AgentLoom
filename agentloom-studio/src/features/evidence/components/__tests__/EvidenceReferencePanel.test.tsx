@@ -178,9 +178,7 @@ describe('EvidenceReferencePanel', () => {
 
     render(<EvidenceReferencePanel />)
 
-    const panel = screen.getByTestId('evidence-reference-panel')
-    expect(panel).toHaveClass('translate-x-full')
-    expect(panel).not.toHaveClass('translate-x-0')
+    expect(screen.queryByTestId('evidence-reference-panel')).not.toBeInTheDocument()
   })
 
   it('面板打开时显示证据链', () => {

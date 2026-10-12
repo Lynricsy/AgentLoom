@@ -234,6 +234,18 @@ export const DocumentViewer = memo(function DocumentViewer({
   const markdownContainerRef = useRef<HTMLDivElement | null>(null)
   const pdfContainerRef = useRef<HTMLDivElement | null>(null)
   const textHighlightRef = useRef<HTMLElement | null>(null)
+  // PDF 按容器宽度渲染，避免按原始尺寸（600–800px）溢出 400px 面板产生横向滚动
+  const [pdfContainerWidth, setPdfContainerWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = pdfContainerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width) setPdfContainerWidth(width)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [docViewer])
 
   const knowledgeBaseId = docViewer?.knowledgeBaseId ?? null
   const documentId = docViewer?.documentId ?? null
@@ -577,7 +589,7 @@ export const DocumentViewer = memo(function DocumentViewer({
             <p className="text-xs text-muted-foreground">
               无法加载文档预览：缺少知识库关联
             </p>
-            <p className="text-2xs text-muted-foreground/60">
+            <p className="break-all text-2xs text-subtle-foreground">
               文档 ID：{documentId}
             </p>
           </div>
@@ -585,14 +597,14 @@ export const DocumentViewer = memo(function DocumentViewer({
 
         {hasKbId && isLoading && (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         )}
 
         {hasKbId && error && (
-          <div className="m-4 rounded-xl border border-error/20 bg-error/5 p-4 text-center">
+          <div className="m-4 rounded-lg border border-error/30 bg-error/10 p-4 text-center">
             <p className="text-xs text-error">加载文档失败</p>
-            <p className="mt-1 text-2xs text-muted-foreground">
+            <p className="mt-1 break-words text-2xs text-muted-foreground">
               {error.message}
             </p>
           </div>
@@ -611,12 +623,13 @@ export const DocumentViewer = memo(function DocumentViewer({
               file={contentUrl}
               loading={
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
               }
             >
               <Page
                 pageNumber={locationPage ?? 1}
+                width={pdfContainerWidth ? Math.max(pdfContainerWidth, 200) : undefined}
                 renderTextLayer
                 renderAnnotationLayer
                 customTextRenderer={renderPdfText}
@@ -639,7 +652,7 @@ export const DocumentViewer = memo(function DocumentViewer({
 
         {hasKbId && kind === 'text' && rawText != null && (
           <pre
-            className="whitespace-pre-wrap p-4 text-xs leading-6 text-foreground/85"
+            className="whitespace-pre-wrap break-words p-4 text-xs leading-6 text-foreground/85"
             data-testid="document-viewer-text"
           >
             {textHighlightRange ? (
@@ -650,7 +663,7 @@ export const DocumentViewer = memo(function DocumentViewer({
                     textHighlightRef.current = el
                   }}
                   className={cn(
-                    'rounded px-0.5',
+                    'rounded px-0.5 transition-colors duration-300',
                     textHighlightActive ? 'bg-highlight/40' : 'bg-transparent',
                   )}
                   data-testid="document-viewer-text-highlight"

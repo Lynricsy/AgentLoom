@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink, FileText } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
-import { Button } from '@/shared/ui/button'
+import { buttonVariants, Button } from '@/shared/ui/button'
 
 interface DocumentViewerToolbarProps {
   fileName: string
@@ -28,23 +28,24 @@ export function DocumentViewerToolbar({
     >
       <Button
         variant="ghost"
-        size="sm"
+        size="icon-sm"
         onClick={onBack}
+        aria-label="返回证据列表"
         data-testid="document-viewer-back"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <ArrowLeft />
       </Button>
 
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-w-0 items-center gap-2">
-          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="min-w-0 truncate text-xs font-medium text-foreground">
+          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate text-xs font-medium text-foreground" title={fileName}>
             {fileName}
           </span>
         </div>
 
         {locationLabel && (
-          <span className="text-2xs text-muted-foreground">
+          <span className="truncate text-2xs text-muted-foreground">
             {locationLabel}
           </span>
         )}
@@ -55,11 +56,14 @@ export function DocumentViewerToolbar({
           href={contentUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="ml-auto text-muted-foreground transition hover:text-foreground"
-          title="在新标签页打开"
+          className={cn(
+            buttonVariants({ variant: 'ghost', size: 'icon-xs' }),
+            'shrink-0 text-muted-foreground hover:text-foreground',
+          )}
+          aria-label="在新标签页打开"
           data-testid="document-viewer-external"
         >
-          <ExternalLink className="h-3.5 w-3.5" />
+          <ExternalLink />
         </a>
       )}
     </div>

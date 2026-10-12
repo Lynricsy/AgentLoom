@@ -1,7 +1,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Pause, Play, RotateCcw } from 'lucide-react'
+import { formatDateTime } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Separator } from '@/shared/ui/separator'
 import type { GraphTimelineEntry } from '../types'
 
 interface GraphTimelinePlayerProps {
@@ -13,13 +15,7 @@ interface GraphTimelinePlayerProps {
 const INTERVAL_MS = 800
 
 function formatTimelineTimestamp(timestamp: string): string {
-  const date = new Date(timestamp)
-
-  if (Number.isNaN(date.getTime())) {
-    return timestamp
-  }
-
-  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
+  return formatDateTime(timestamp)
 }
 
 export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
@@ -94,7 +90,7 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-lg border border-border/60 bg-surface/80 px-3 py-1.5',
+        'flex min-w-0 max-w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 shadow-sm',
         className,
       )}
       data-testid="graph-timeline-player"
@@ -134,22 +130,22 @@ export const GraphTimelinePlayer = memo(function GraphTimelinePlayer({
         <RotateCcw />
       </Button>
 
-      <div className="mx-1 h-4 w-px bg-border/60" />
+      <Separator orientation="vertical" className="mx-1 h-4" />
 
-      <span className="text-2xs text-muted-foreground tabular-nums" data-testid="timeline-step-info">
+      <span className="shrink-0 text-2xs text-muted-foreground tabular-nums" data-testid="timeline-step-info">
         {currentStep >= 0 ? currentStep + 1 : 0}/{totalSteps}
       </span>
 
       {currentEntry && (
         <>
           <span
-            className="truncate text-2xs text-foreground/80"
+            className="min-w-0 flex-1 truncate text-2xs text-foreground/80"
             data-testid="timeline-step-label"
           >
             {currentEntry.label}
           </span>
           <span
-            className="truncate text-2xs text-muted-foreground tabular-nums"
+            className="shrink-0 text-2xs text-muted-foreground tabular-nums"
             data-testid="timeline-step-timestamp"
           >
             {formatTimelineTimestamp(currentEntry.timestamp)}

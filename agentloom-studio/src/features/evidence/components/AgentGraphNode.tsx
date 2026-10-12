@@ -23,39 +23,45 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
 
 const STATUS_COLORS: Record<
   string,
-  { bg: string; ring: string; dot: string; pulse: boolean }
+  { label: string; bg: string; ring: string; dot: string; pulse: boolean }
 > = {
   completed: {
+    label: '已完成',
     bg: 'bg-success/10',
     ring: 'ring-success/30',
     dot: 'bg-success',
     pulse: false,
   },
   running: {
+    label: '执行中',
     bg: 'bg-info/10',
     ring: 'ring-info/30',
     dot: 'bg-info',
     pulse: true,
   },
   failed: {
+    label: '失败',
     bg: 'bg-error/10',
     ring: 'ring-error/30',
     dot: 'bg-error',
     pulse: false,
   },
   waiting_for_intervention: {
+    label: '等待干预',
     bg: 'bg-warning/10',
     ring: 'ring-warning/30',
     dot: 'bg-warning',
     pulse: false,
   },
   pending: {
+    label: '等待中',
     bg: 'bg-muted',
     ring: 'ring-border',
     dot: 'bg-muted-foreground',
     pulse: false,
   },
   cancelled: {
+    label: '已取消',
     bg: 'bg-muted',
     ring: 'ring-border',
     dot: 'bg-muted-foreground',
@@ -63,7 +69,9 @@ const STATUS_COLORS: Record<
   },
 }
 
+/** 未知状态：label 为空时回退显示后端原始枚举 */
 const DEFAULT_STATUS = {
+  label: '',
   bg: 'bg-muted',
   ring: 'ring-border',
   dot: 'bg-muted-foreground',
@@ -89,14 +97,14 @@ export const AgentGraphNode = memo(function AgentGraphNode({
   return (
     <div
       className={cn(
-        'relative rounded-lg border px-4 py-3 shadow-sm transition-[box-shadow,border-color] duration-200 ease-out-expo',
-        'min-w-[160px] max-w-[220px]',
+        // 只用 ring 表达边框（不再 border + ring 双线）；宽度固定为布局用的 NODE_WIDTH=200，边锚点居中
+        'relative w-[200px] rounded-lg px-4 py-3 shadow-sm transition-[box-shadow] duration-200 ease-out-expo',
         'bg-surface',
-        statusColors.ring,
-        selected
-          ? 'ring-2 ring-primary border-primary'
-          : 'ring-1 border-border',
-        isHighlighted && 'ring-2 ring-warning border-warning',
+        isHighlighted
+          ? 'ring-2 ring-warning'
+          : selected
+            ? 'ring-2 ring-primary'
+            : cn('ring-1', statusColors.ring),
       )}
       data-testid={`agent-graph-node-${data.nodeId}`}
     >
@@ -144,7 +152,7 @@ export const AgentGraphNode = memo(function AgentGraphNode({
             }
           />
           <span className="text-2xs text-muted-foreground">
-            {data.executionStatus}
+            {statusColors.label || data.executionStatus}
           </span>
         </div>
 

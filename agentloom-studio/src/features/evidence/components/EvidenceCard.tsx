@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { formatPercent } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -199,10 +201,10 @@ function renderStructuredDetails(
       return (
         <div className="mt-3 space-y-3 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="var(--color-node-agent)" size="sm">
+            <Badge tone="var(--color-node-agent)" size="sm" className="truncate" title={agentDecision.selectedAction}>
               {agentDecision.selectedAction}
             </Badge>
-            <Badge variant="secondary" size="sm">
+            <Badge variant="secondary" size="sm" className="truncate">
               {agentDecision.autonomyMode}
             </Badge>
             <span className="text-muted-foreground">{agentDecision.agentName}</span>
@@ -212,17 +214,20 @@ function renderStructuredDetails(
             <div className="space-y-1">
               <div className="flex items-center justify-between text-2xs text-muted-foreground">
                 <span>置信度</span>
-                <span>{agentDecision.confidence}</span>
+                <span className="tabular-nums">{formatPercent(confidence / 100, 0)}</span>
               </div>
               <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <span className="h-full bg-node-agent" style={{ width: `${confidence}%` }} />
+                <span
+                  className="h-full bg-node-agent transition-[width] duration-300 ease-out-expo"
+                  style={{ width: `${confidence}%` }}
+                />
               </span>
             </div>
           )}
 
           <div className="space-y-1">
             <p className="text-2xs font-medium text-foreground">推理</p>
-            <div className="rounded-lg bg-muted p-2 text-muted-foreground">
+            <div className="break-words rounded-lg bg-muted p-2 text-muted-foreground [&_a]:break-all [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-surface [&_pre]:p-2">
               <ReactMarkdown
                 skipHtml
                 components={{
@@ -264,7 +269,7 @@ function renderStructuredDetails(
       return (
         <div className="mt-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="var(--color-node-tool)" size="sm">
+            <Badge tone="var(--color-node-tool)" size="sm" className="truncate" title={toolOutput.toolName}>
               {toolOutput.toolName}
             </Badge>
             {lastTransition && (
@@ -476,8 +481,11 @@ export const EvidenceCard = memo(function EvidenceCard({
           </Button>
 
           {isEncrypted && !decryptedContent && (
-            <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">
-              <p className="text-2xs font-medium text-warning">🔒 已加密</p>
+            <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
+              <p className="flex items-center gap-1 text-2xs font-medium text-warning">
+                <Lock className="size-3.5 shrink-0" />
+                已加密
+              </p>
               {decryptError ? (
                 <p className="mt-1 break-words text-2xs text-error">{decryptError}</p>
               ) : (
@@ -487,8 +495,8 @@ export const EvidenceCard = memo(function EvidenceCard({
               )}
               <Button
                 variant="outline"
-                size="sm"
-                className="mt-2 h-7 text-2xs"
+                size="xs"
+                className="mt-2"
                 onClick={(e) => {
                   e.stopPropagation()
                   void handleDecrypt()
@@ -496,9 +504,9 @@ export const EvidenceCard = memo(function EvidenceCard({
                 disabled={isDecrypting}
               >
                 {isDecrypting ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : (
-                  <Unlock className="mr-1 h-3 w-3" />
+                  <Unlock />
                 )}
                 解密
               </Button>
@@ -537,24 +545,27 @@ export const EvidenceCard = memo(function EvidenceCard({
         />
       </div>
 
-      {snapshotVisible && node.originalSnapshot && (
-        <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">
+      <Collapse open={snapshotVisible && !!node.originalSnapshot}>
+        <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
           <p className="text-2xs font-medium text-warning">缓存快照</p>
           <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-2xs leading-relaxed text-muted-foreground">
             {node.originalSnapshot}
           </pre>
         </div>
-      )}
+      </Collapse>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
         {node.sourceType === 'rag_retrieval' && (
           <>
             {metadata.relevanceScore != null && (
-              <span>相关度 {String(metadata.relevanceScore)}</span>
+              <span className="tabular-nums">相关度 {String(metadata.relevanceScore)}</span>
             )}
             {relevancePercent != null && (
               <span className="flex h-1.5 w-24 overflow-hidden rounded-full bg-muted">
-                <span className="h-full bg-primary" style={{ width: `${relevancePercent}%` }} />
+                <span
+                  className="h-full bg-primary transition-[width] duration-300 ease-out-expo"
+                  style={{ width: `${relevancePercent}%` }}
+                />
               </span>
             )}
             {location && (

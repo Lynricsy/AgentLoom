@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
+import { formatDateTime, formatPercent } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import {
@@ -71,16 +72,15 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
     const label = sourceTypeLabels[preview.packet.sourceType]
     if (preview.packet.sourceType === 'rag_retrieval') {
       const fileName = preview.packet.physicalLocation.fileName
-      const relevance = Math.round(preview.packet.semanticLocation.relevanceScore * 100)
       return {
         label,
-        detail: `${fileName} · 相关度 ${relevance}%`,
+        detail: `${fileName} · 相关度 ${formatPercent(preview.packet.semanticLocation.relevanceScore, 0)}`,
       }
     }
 
     return {
       label,
-      detail: new Date(preview.createdAt).toLocaleString('zh-CN'),
+      detail: formatDateTime(preview.createdAt),
     }
   }, [preview])
 
@@ -105,7 +105,7 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
               e.stopPropagation()
               openPanel(executionId, nodeId, nodeName, evidenceId)
             }}
-            title={`证据引用 #${index}`}
+            aria-label={`证据引用 #${index}`}
             data-testid={`inline-evidence-ref-${evidenceId}`}
           >
             <sup className="text-2xs font-semibold">[{index}]</sup>
@@ -115,7 +115,7 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
         <TooltipContent
           side="top"
           align="center"
-          className="w-[260px] max-w-none rounded-lg p-3 text-foreground"
+          className="w-64 rounded-lg p-3 text-foreground"
         >
           <div className="space-y-1">
             <div className="text-xs font-semibold">证据引用 #{index}</div>
@@ -130,7 +130,7 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
                 <div className="text-2xs text-muted-foreground">
                   {previewSummary.label}
                 </div>
-                <div className="truncate text-2xs text-foreground/85">
+                <div className="truncate text-2xs text-foreground/85 tabular-nums">
                   {previewSummary.detail}
                 </div>
               </>
