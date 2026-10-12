@@ -1,7 +1,11 @@
 import { useRef } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
 import { Pagination } from '@/shared/components'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { formatBytes, formatDateTime } from '@/shared/lib/format'
+import { fadeInUp } from '@/shared/lib/motion'
+import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -23,11 +27,7 @@ import {
   STATUS_BADGE_VARIANT,
   type DocumentStatusFilter,
 } from '../lib/knowledgeBaseDetail'
-import {
-  formatFileSize,
-  getDocumentStatusLabel,
-  type KnowledgeBaseDocument,
-} from '../types'
+import { getDocumentStatusLabel, type KnowledgeBaseDocument } from '../types'
 
 const PROGRESS_STAGE_LABELS: Record<DocumentProgressStage, string> = {
   preparing: '准备文件',
@@ -116,21 +116,17 @@ export function KnowledgeDocumentsPanel({
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading || !canUploadDocuments}
           >
-            {isUploading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="mr-2 h-4 w-4" />
-            )}
+            {isUploading ? <Loader2 className="animate-spin" /> : <Upload />}
             上传文档
           </Button>
         </div>
       </div>
 
       {!canUploadDocuments && (
-        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+        <Alert variant="warning">
           当前知识库未配置可用的 Embedding
           模型，上传后的检索质量无法保证。建议先完成策略配置再上传。
-        </div>
+        </Alert>
       )}
 
       <div className="space-y-3">
@@ -139,7 +135,7 @@ export function KnowledgeDocumentsPanel({
             <Skeleton
               key={index}
               data-testid="knowledge-document-skeleton"
-              className="h-24 rounded-lg"
+              className="h-22 rounded-lg"
             />
           ))}
 
@@ -164,7 +160,7 @@ export function KnowledgeDocumentsPanel({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading || !canUploadDocuments}
                 >
-                  <Upload className="mr-1.5 h-4 w-4" />
+                  <Upload />
                   上传文档
                 </Button>
               ) : null
@@ -172,69 +168,83 @@ export function KnowledgeDocumentsPanel({
           />
         )}
 
-        {!isLoading &&
-          documents.map((document) => {
-            const liveEvent = documentEvents[document.id]
-            const effectiveStatus = liveEvent?.status ?? document.status
-            const progress = liveEvent?.progress
+        <AnimatePresence initial={false}>
+          {!isLoading &&
+            documents.map((document) => {
+              const liveEvent = documentEvents[document.id]
+              const effectiveStatus = liveEvent?.status ?? document.status
+              const progress = liveEvent?.progress
+              const errorMessage = liveEvent?.errorMessage ?? document.errorMessage
 
-            return (
-              <div
-                key={document.id}
-                className="rounded-lg border border-border bg-muted p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="min-w-0 truncate text-sm font-medium text-foreground">
-                        {document.fileName}
-                      </p>
-                      <Badge
-                        size="sm"
-                        className="whitespace-nowrap"
-                        variant={
-                          STATUS_BADGE_VARIANT[effectiveStatus] ?? 'secondary'
-                        }
-                      >
-                        {getDocumentStatusLabel(effectiveStatus)}
-                      </Badge>
+              return (
+                <motion.div
+                  key={document.id}
+                  layout
+                  {...fadeInUp}
+                  className="rounded-lg border border-border bg-muted p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p
+                          className="min-w-0 truncate text-sm font-medium text-foreground"
+                          title={document.fileName}
+                        >
+                          {document.fileName}
+                        </p>
+                        <Badge
+                          size="sm"
+                          className="whitespace-nowrap"
+                          variant={
+                            STATUS_BADGE_VARIANT[effectiveStatus] ?? 'secondary'
+                          }
+                        >
+                          {getDocumentStatusLabel(effectiveStatus)}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="whitespace-nowrap">
+                          {formatBytes(document.sizeBytes)}
+                        </span>
+                        <span aria-hidden>·</span>
+                        <span className="max-w-48 truncate" title={document.mimeType}>
+                          {document.mimeType}
+                        </span>
+                        <span aria-hidden>·</span>
+                        <span className="whitespace-nowrap">
+                          {formatDateTime(document.createdAt)}
+                        </span>
+                      </div>
+                      {progress && (
+                        <p className="mt-2 text-xs tabular-nums text-muted-foreground">
+                          {PROGRESS_STAGE_LABELS[progress.stage]} ·{' '}
+                          {progress.percentage}%
+                        </p>
+                      )}
+                      {errorMessage && (
+                        <p className="mt-2 whitespace-pre-wrap break-words text-xs text-error">
+                          {errorMessage}
+                        </p>
+                      )}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>{formatFileSize(document.sizeBytes)}</span>
-                      <span>·</span>
-                      <span>{document.mimeType}</span>
-                      <span>·</span>
-                      <span>{new Date(document.createdAt).toLocaleString()}</span>
-                    </div>
-                    {progress && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {PROGRESS_STAGE_LABELS[progress.stage]} ·{' '}
-                        {progress.percentage}%
-                      </p>
-                    )}
-                    {(liveEvent?.errorMessage ?? document.errorMessage) && (
-                      <p className="mt-2 text-xs text-error">
-                        {liveEvent?.errorMessage ?? document.errorMessage}
-                      </p>
-                    )}
+
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0 text-muted-foreground hover:text-error"
+                      aria-label={`删除 ${document.fileName}`}
+                      onClick={() =>
+                        onDeleteDocument(document.id, document.fileName)
+                      }
+                      disabled={isDeleting}
+                    >
+                      <Trash2 />
+                    </Button>
                   </div>
-
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0 text-muted-foreground hover:text-error"
-                    aria-label={`删除 ${document.fileName}`}
-                    onClick={() =>
-                      onDeleteDocument(document.id, document.fileName)
-                    }
-                    disabled={isDeleting}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )
-          })}
+                </motion.div>
+              )
+            })}
+        </AnimatePresence>
       </div>
 
       {totalPages > 1 && (

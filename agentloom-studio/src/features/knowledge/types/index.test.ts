@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildKnowledgeBaseNodeConfig,
-  formatFileSize,
   getDocumentStatusLabel,
   getDocumentStatusVariant,
   isKnowledgeBaseConfigured,
@@ -23,30 +22,6 @@ describe('Knowledge Types', () => {
       expect(getDocumentStatusVariant('processing')).toBe('secondary');
       expect(getDocumentStatusVariant('ready')).toBe('default');
       expect(getDocumentStatusVariant('failed')).toBe('destructive');
-    });
-  });
-
-  describe('formatFileSize', () => {
-    it('handles zero bytes', () => {
-      expect(formatFileSize(0)).toBe('0 B');
-    });
-
-    it('formats bytes', () => {
-      expect(formatFileSize(500)).toBe('500 B');
-    });
-
-    it('formats kilobytes', () => {
-      expect(formatFileSize(1024)).toBe('1.0 KB');
-      expect(formatFileSize(1536)).toBe('1.5 KB');
-    });
-
-    it('formats megabytes', () => {
-      expect(formatFileSize(1048576)).toBe('1.0 MB');
-      expect(formatFileSize(2621440)).toBe('2.5 MB');
-    });
-
-    it('formats gigabytes', () => {
-      expect(formatFileSize(1073741824)).toBe('1.0 GB');
     });
   });
 

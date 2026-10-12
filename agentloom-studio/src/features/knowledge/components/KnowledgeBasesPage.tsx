@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import {
@@ -13,18 +13,19 @@ import {
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
 import { PageContainer } from "@/shared/components/page-container";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { FormField } from "@/shared/components/form-field/FormField";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
   getResourceSourceLabel,
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
+import { formatDate } from "@/shared/lib/format";
 import { staggerList } from "@/shared/lib/motion";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
   AlertDialog,
@@ -91,6 +92,9 @@ export function KnowledgeBasesPage() {
   const [newKbName, setNewKbName] = useState("");
   const [newKbDescription, setNewKbDescription] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeBase | null>(null);
+  // 退场动画期间 deleteTarget 已置空，用最近一次非空值渲染文案避免闪空
+  const lastDeleteTargetRef = useRef<KnowledgeBase | null>(null);
+  lastDeleteTargetRef.current = deleteTarget ?? lastDeleteTargetRef.current;
 
   const navigate = useNavigate();
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
@@ -248,7 +252,7 @@ export function KnowledgeBasesPage() {
         description="管理 Agent 检索用的知识库，上传文档后自动完成解析、切分与索引"
         actions={
           <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus />
             创建知识库
           </Button>
         }
@@ -263,7 +267,7 @@ export function KnowledgeBasesPage() {
       />
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="搜索知识库…"
           value={searchQuery}
@@ -316,7 +320,7 @@ export function KnowledgeBasesPage() {
           action={
             isSearching ? null : (
               <Button size="sm" onClick={() => setShowCreateDialog(true)}>
-                <Plus className="mr-1.5 h-4 w-4" />
+                <Plus />
                 创建第一个知识库
               </Button>
             )
@@ -331,23 +335,23 @@ export function KnowledgeBasesPage() {
                   <article className="flex h-full flex-col">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <span
                             aria-hidden
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+                            className="grid size-8 shrink-0 place-items-center rounded-lg"
                             style={{
                               backgroundColor: `color-mix(in srgb, ${KNOWLEDGE_TONE} 14%, transparent)`,
                               color: KNOWLEDGE_TONE,
                             }}
                           >
-                            <Database className="h-4 w-4" />
+                            <Database className="size-4" />
                           </span>
                           <Button
                             variant="link"
-                            className="h-auto max-w-full justify-start truncate p-0 text-sm font-semibold text-foreground hover:text-primary hover:no-underline"
+                            className="h-auto min-w-0 max-w-full justify-start p-0 text-sm font-semibold text-foreground hover:text-primary hover:no-underline"
                             onClick={() => handleCardClick(kb)}
                           >
-                            {kb.name}
+                            <span className="truncate">{kb.name}</span>
                           </Button>
                           <Badge
                             size="sm"
@@ -370,9 +374,10 @@ export function KnowledgeBasesPage() {
                             variant="outline"
                             size="sm"
                             className="whitespace-nowrap"
+                            aria-label="转为自己创建"
                             onClick={() => void handleConvertSource(kb)}
                           >
-                            <FolderSync className="h-3.5 w-3.5 sm:mr-1.5" />
+                            <FolderSync />
                             <span className="hidden sm:inline">
                               转为自己创建
                             </span>
@@ -385,7 +390,7 @@ export function KnowledgeBasesPage() {
                           aria-label={`删除 ${kb.name}`}
                           onClick={() => setDeleteTarget(kb)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 />
                         </Button>
                       </div>
                     </div>
@@ -402,7 +407,7 @@ export function KnowledgeBasesPage() {
                       <span>{getChunkingStrategyLabel(kb.chunkingStrategy)}</span>
                       <span aria-hidden>·</span>
                       <span>
-                        更新于 {new Date(kb.updatedAt).toLocaleDateString()}
+                        更新于 {formatDate(kb.updatedAt)}
                       </span>
                     </div>
                   </article>
@@ -434,28 +439,22 @@ export function KnowledgeBasesPage() {
             <DialogTitle>创建知识库</DialogTitle>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-4">
-            <div className="space-y-1.5">
-              <label htmlFor="kb-name">
-                <Label>名称</Label>
-              </label>
+            <FormField label="名称" htmlFor="kb-name">
               <Input
                 id="kb-name"
                 placeholder="输入知识库名称"
                 value={newKbName}
                 onChange={(e) => setNewKbName(e.target.value)}
               />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="kb-description">
-                <Label>描述</Label>
-              </label>
+            </FormField>
+            <FormField label="描述" htmlFor="kb-description">
               <Input
                 id="kb-description"
                 placeholder="输入描述（可选）"
                 value={newKbDescription}
                 onChange={(e) => setNewKbDescription(e.target.value)}
               />
-            </div>
+            </FormField>
           </DialogBody>
           <DialogFooter>
             <Button
@@ -468,9 +467,7 @@ export function KnowledgeBasesPage() {
               onClick={handleCreate}
               disabled={!newKbName.trim() || createMutation.isPending}
             >
-              {createMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {createMutation.isPending && <Loader2 className="animate-spin" />}
               创建
             </Button>
           </DialogFooter>
@@ -487,7 +484,7 @@ export function KnowledgeBasesPage() {
         <AlertDialogContent>
           <AlertDialogTitle>删除知识库</AlertDialogTitle>
           <AlertDialogDescription>
-            确认删除知识库「{deleteTarget?.name}
+            确认删除知识库「{lastDeleteTargetRef.current?.name}
             」吗？该操作会同时删除其下文档、知识节点与向量索引，且不可恢复。
           </AlertDialogDescription>
           <AlertDialogFooter>
@@ -500,9 +497,7 @@ export function KnowledgeBasesPage() {
                 handleConfirmDelete();
               }}
             >
-              {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {deleteMutation.isPending && <Loader2 className="animate-spin" />}
               确认删除
             </AlertDialogAction>
           </AlertDialogFooter>

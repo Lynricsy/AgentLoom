@@ -49,7 +49,6 @@ export {
   getDocumentStatusLabel,
   getDocumentStatusVariant,
   getKnowledgeBaseStatusLabel,
-  formatFileSize,
   buildKnowledgeBaseNodeConfig,
   isKnowledgeBaseConfigured,
 } from './types';

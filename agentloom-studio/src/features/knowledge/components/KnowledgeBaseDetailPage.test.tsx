@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { KnowledgeBaseDetailPage } from './KnowledgeBaseDetailPage'
@@ -514,7 +514,6 @@ describe('KnowledgeBaseDetailPage', () => {
   })
 
   it('删除文档时在确认后调用删除 mutation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { deleteFn } = setupMocks({
       documents: [createDocument({ id: 'doc-del', fileName: '删除我.pdf' })],
     })
@@ -523,7 +522,12 @@ describe('KnowledgeBaseDetailPage', () => {
 
     await userEvent.click(screen.getByLabelText('删除 删除我.pdf'))
 
-    expect(confirmSpy).toHaveBeenCalledWith('确定要删除文档“删除我.pdf”吗？')
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent('删除我.pdf')
+    expect(deleteFn).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: '删除' }))
+
     expect(deleteFn).toHaveBeenCalledWith(
       {
         knowledgeBaseId: 'kb-1',
@@ -533,7 +537,5 @@ describe('KnowledgeBaseDetailPage', () => {
         onError: expect.any(Function),
       }),
     )
-
-    confirmSpy.mockRestore()
   })
 })

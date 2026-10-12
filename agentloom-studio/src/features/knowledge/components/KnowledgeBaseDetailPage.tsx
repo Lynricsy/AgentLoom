@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   AlertCircle,
@@ -9,7 +9,17 @@ import {
 } from 'lucide-react'
 import { useLlmModels } from '@/features/llm'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from '@/shared/ui/alert-dialog'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -47,6 +57,11 @@ interface KnowledgeBaseDetailPageProps {
   knowledgeBaseId: string
 }
 
+interface DocumentDeleteTarget {
+  documentId: string
+  fileName: string
+}
+
 export function KnowledgeBaseDetailPage({
   knowledgeBaseId,
 }: KnowledgeBaseDetailPageProps) {
@@ -59,6 +74,12 @@ export function KnowledgeBaseDetailPage({
   )
   const [testQuery, setTestQuery] = useState('')
   const [testTopK, setTestTopK] = useState(5)
+  const [deleteTarget, setDeleteTarget] = useState<DocumentDeleteTarget | null>(
+    null,
+  )
+  // 退场动画期间 deleteTarget 已置空，用最近一次非空值渲染文案避免闪空
+  const lastDeleteTargetRef = useRef<DocumentDeleteTarget | null>(null)
+  lastDeleteTargetRef.current = deleteTarget ?? lastDeleteTargetRef.current
 
   const {
     data: knowledgeBase,
@@ -174,27 +195,34 @@ export function KnowledgeBaseDetailPage({
 
   const handleDeleteDocument = useCallback(
     (documentId: string, fileName: string) => {
-      if (!window.confirm(`确定要删除文档“${fileName}”吗？`)) {
-        return
-      }
-
-      deleteDocumentMutation.mutate(
-        {
-          knowledgeBaseId,
-          documentId,
-        },
-        {
-          onError: (error) => {
-            notify({
-              description: getErrorMessage(error),
-              variant: 'error',
-            })
-          },
-        },
-      )
+      setDeleteTarget({ documentId, fileName })
     },
-    [deleteDocumentMutation, knowledgeBaseId, notify],
+    [],
   )
+
+  const handleConfirmDeleteDocument = useCallback(() => {
+    if (!deleteTarget) {
+      return
+    }
+
+    deleteDocumentMutation.mutate(
+      {
+        knowledgeBaseId,
+        documentId: deleteTarget.documentId,
+      },
+      {
+        onError: (error) => {
+          notify({
+            description: getErrorMessage(error),
+            variant: 'error',
+          })
+        },
+        onSettled: () => {
+          setDeleteTarget(null)
+        },
+      },
+    )
+  }, [deleteDocumentMutation, deleteTarget, knowledgeBaseId, notify])
 
   const handleSaveSettings = useCallback(() => {
     updateSettingsMutation.mutate(
@@ -272,24 +300,21 @@ export function KnowledgeBaseDetailPage({
 
   if (kbLoading) {
     return (
-      <div
-        className="flex h-full flex-col gap-6 p-6"
-        data-testid="knowledge-base-detail-skeleton"
-      >
+      <PageContainer data-testid="knowledge-base-detail-skeleton">
         <Skeleton className="h-12 w-72 rounded-lg" />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-24 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="min-h-64 flex-1 rounded-lg" />
-      </div>
+        <Skeleton className="h-96 rounded-lg" />
+      </PageContainer>
     )
   }
 
   if (!knowledgeBase) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <PageContainer>
         <EmptyState
           icon={AlertCircle}
           tone="var(--color-error)"
@@ -306,12 +331,12 @@ export function KnowledgeBaseDetailPage({
             </Button>
           }
         />
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Database}
         tone="var(--color-type-knowledge)"
@@ -340,18 +365,19 @@ export function KnowledgeBaseDetailPage({
                 void navigate({ to: '/resources/knowledge-bases' })
               }}
             >
-              <ArrowLeft className="mr-1 h-4 w-4" />
+              <ArrowLeft />
               返回
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={handleRebuild}
               disabled={rebuildMutation.isPending}
             >
               {rebuildMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <RefreshCw />
               )}
               重建索引/重切分
             </Button>
@@ -361,21 +387,21 @@ export function KnowledgeBaseDetailPage({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">文档规模</p>
+          <p className="text-xs tracking-wide text-muted-foreground">文档规模</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">
             {knowledgeBase.documentCount}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">已接入文档</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">节点规模</p>
+          <p className="text-xs tracking-wide text-muted-foreground">节点规模</p>
           <p className="mt-2 text-2xl font-semibold text-foreground">
             {knowledgeBase.nodeCount}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">当前索引节点数</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">分块策略</p>
+          <p className="text-xs tracking-wide text-muted-foreground">分块策略</p>
           <p className="mt-2 truncate text-base font-semibold text-foreground">
             {getChunkingStrategyLabel(knowledgeBase.chunkingStrategy)}
           </p>
@@ -384,7 +410,7 @@ export function KnowledgeBaseDetailPage({
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Embedding</p>
+          <p className="text-xs tracking-wide text-muted-foreground">Embedding</p>
           <p className="mt-2 truncate text-base font-semibold text-foreground">
             {selectedEmbeddingModel?.name ?? knowledgeBase.embeddingModel}
           </p>
@@ -436,26 +462,59 @@ export function KnowledgeBaseDetailPage({
         <div className="flex items-start gap-3">
           <span
             aria-hidden
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+            className="grid size-9 shrink-0 place-items-center rounded-lg"
             style={{
               backgroundColor:
                 'color-mix(in srgb, var(--color-type-knowledge) 14%, transparent)',
               color: 'var(--color-type-knowledge)',
             }}
           >
-            <Database className="h-4 w-4" />
+            <Database className="size-4" />
           </span>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground">
               统一工具语义
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Agent runtime 现在只暴露一个 `search_knowledge` 工具，调用时必须显式传
-              `knowledgeBaseIds`，并且这些 ID 只能来自连接到 Agent 的知识库节点。
+              Agent runtime 现在只暴露一个{' '}
+              <code className="rounded-xs bg-muted px-1 font-mono">search_knowledge</code>{' '}
+              工具，调用时必须显式传{' '}
+              <code className="rounded-xs bg-muted px-1 font-mono">knowledgeBaseIds</code>
+              ，并且这些 ID 只能来自连接到 Agent 的知识库节点。
             </p>
           </div>
         </div>
       </Card>
-    </div>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>删除文档</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定要删除文档「{lastDeleteTargetRef.current?.fileName}」吗？该文档的知识节点与向量索引会一并删除，且不可恢复。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteDocumentMutation.isPending}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteDocumentMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                handleConfirmDeleteDocument()
+              }}
+            >
+              {deleteDocumentMutation.isPending && <Loader2 className="animate-spin" />}
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </PageContainer>
   )
 }

@@ -4,6 +4,7 @@ import type { LlmModelInfo } from '@/features/llm'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
+import { Label } from '@/shared/ui/label'
 import { Textarea } from '@/shared/ui/textarea'
 import {
   Select,
@@ -55,7 +56,7 @@ export function KnowledgeBaseSettingsForm({
 
   return (
     <Card className="space-y-4 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground">检索策略</h2>
           <p className="text-sm text-muted-foreground">
@@ -63,18 +64,14 @@ export function KnowledgeBaseSettingsForm({
           </p>
         </div>
         <Button onClick={onSave} disabled={isSaving || !isDirty}>
-          {isSaving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
+          {isSaving ? <Loader2 className="animate-spin" /> : <Save />}
           保存策略
         </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="space-y-2 text-sm">
-          <span className="font-medium">Embedding 模型</span>
+        <div className="flex flex-col gap-1.5">
+          <Label>Embedding 模型</Label>
           <Select
             value={settings.embeddingModelConfigId ?? USE_DEFAULT_MODEL}
             onValueChange={(value) => {
@@ -99,8 +96,8 @@ export function KnowledgeBaseSettingsForm({
           </Select>
         </div>
 
-        <div className="space-y-2 text-sm">
-          <span className="font-medium">分块策略</span>
+        <div className="flex flex-col gap-1.5">
+          <Label>分块策略</Label>
           <Select
             value={chunkingStrategy.type}
             onValueChange={(value) => {
@@ -132,8 +129,8 @@ export function KnowledgeBaseSettingsForm({
 
         {chunkingStrategy.type === 'sentence' && (
           <>
-            <label className="space-y-2 text-sm">
-              <span className="font-medium">Chunk Size</span>
+            <label className="flex flex-col gap-1.5">
+              <Label>Chunk Size</Label>
               <Input
                 type="number"
                 min={64}
@@ -152,8 +149,8 @@ export function KnowledgeBaseSettingsForm({
                 }}
               />
             </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-medium">Chunk Overlap</span>
+            <label className="flex flex-col gap-1.5">
+              <Label>Chunk Overlap</Label>
               <Input
                 type="number"
                 min={0}
@@ -176,8 +173,8 @@ export function KnowledgeBaseSettingsForm({
         )}
 
         {chunkingStrategy.type === 'sentence_window' && (
-          <label className="space-y-2 text-sm">
-            <span className="font-medium">Window Size</span>
+          <label className="flex flex-col gap-1.5">
+            <Label>Window Size</Label>
             <Input
               type="number"
               min={1}
@@ -197,8 +194,8 @@ export function KnowledgeBaseSettingsForm({
           </label>
         )}
 
-        <label className="space-y-2 text-sm">
-          <span className="font-medium">检索 Top K</span>
+        <label className="flex flex-col gap-1.5">
+          <Label>检索 Top K</Label>
           <Input
             type="number"
             min={1}
@@ -218,8 +215,8 @@ export function KnowledgeBaseSettingsForm({
           />
         </label>
 
-        <label className="space-y-2 text-sm">
-          <span className="font-medium">相似度阈值</span>
+        <label className="flex flex-col gap-1.5">
+          <Label>相似度阈值</Label>
           <Input
             type="number"
             min={0}
@@ -242,8 +239,8 @@ export function KnowledgeBaseSettingsForm({
           />
         </label>
 
-        <div className="space-y-2 text-sm">
-          <span className="font-medium">重排策略</span>
+        <div className="flex flex-col gap-1.5">
+          <Label>重排策略</Label>
           <Select
             value={rerankingStrategy.type}
             onValueChange={(value) => {
@@ -279,8 +276,8 @@ export function KnowledgeBaseSettingsForm({
 
         {rerankingStrategy.type === 'cohere' && (
           <>
-            <label className="space-y-2 text-sm">
-              <span className="font-medium">Cohere 模型</span>
+            <label className="flex flex-col gap-1.5">
+              <Label>Cohere 模型</Label>
               <Input
                 value={rerankingStrategy.model}
                 onChange={(event) => {
@@ -294,8 +291,8 @@ export function KnowledgeBaseSettingsForm({
                 }}
               />
             </label>
-            <label className="space-y-2 text-sm">
-              <span className="font-medium">重排 Top N</span>
+            <label className="flex flex-col gap-1.5">
+              <Label>重排 Top N</Label>
               <Input
                 type="number"
                 min={1}
@@ -315,8 +312,8 @@ export function KnowledgeBaseSettingsForm({
           </>
         )}
 
-        <div className="space-y-2 text-sm md:col-span-2">
-          <span className="font-medium">Query Orchestration</span>
+        <div className="flex flex-col gap-1.5 md:col-span-2">
+          <Label>Query Orchestration</Label>
           <Select
             value={queryOrchestration.type}
             onValueChange={(value) => {
@@ -350,8 +347,8 @@ export function KnowledgeBaseSettingsForm({
 
         {queryOrchestration.type === 'hyde' && (
           <>
-            <div className="space-y-2 text-sm">
-              <span className="font-medium">HyDE 模型</span>
+            <div className="flex flex-col gap-1.5">
+              <Label>HyDE 模型</Label>
               <Select
                 value={queryOrchestration.modelConfigId ?? USE_DEFAULT_MODEL}
                 onValueChange={(value) => {
@@ -379,8 +376,8 @@ export function KnowledgeBaseSettingsForm({
               </Select>
             </div>
 
-            <label className="space-y-2 text-sm md:col-span-2">
-              <span className="font-medium">HyDE Prompt Template</span>
+            <label className="flex flex-col gap-1.5 md:col-span-2">
+              <Label>HyDE Prompt Template</Label>
               <Textarea
                 value={queryOrchestration.promptTemplate ?? ''}
                 onChange={(event) => {

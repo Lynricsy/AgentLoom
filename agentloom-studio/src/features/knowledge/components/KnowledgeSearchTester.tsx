@@ -1,4 +1,7 @@
+import { motion } from 'motion/react'
 import { FileSearch, Loader2 } from 'lucide-react'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { staggerList } from '@/shared/lib/motion'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -49,13 +52,10 @@ export function KnowledgeSearchTester({
             value={topK}
             onChange={(event) => onTopKChange(Number(event.target.value))}
             className="max-w-28"
+            aria-label="Top K"
           />
           <Button onClick={onRunTest} disabled={isPending}>
-            {isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <FileSearch className="mr-2 h-4 w-4" />
-            )}
+            {isPending ? <Loader2 className="animate-spin" /> : <FileSearch />}
             执行测试检索
           </Button>
         </div>
@@ -63,27 +63,38 @@ export function KnowledgeSearchTester({
 
       <div className="space-y-3">
         {results?.length ? (
-          results.map((result) => (
-            <div
+          results.map((result, index) => (
+            <motion.div
               key={result.nodeId}
+              {...staggerList(index)}
               className="rounded-lg border border-border bg-muted p-3"
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                <p
+                  className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+                  title={result.fileName ?? result.documentId}
+                >
                   {result.fileName ?? result.documentId}
                 </p>
-                <Badge size="sm" className="whitespace-nowrap">
+                <Badge size="sm" className="shrink-0 whitespace-nowrap tabular-nums">
                   score {result.score.toFixed(3)}
                 </Badge>
               </div>
-              <p className="mt-2 text-sm text-foreground/90">{result.content}</p>
-              <p className="mt-2 text-xs text-muted-foreground">{renderLocation(result)}</p>
-            </div>
+              <p className="mt-2 line-clamp-6 break-words text-sm text-foreground/90">
+                {result.content}
+              </p>
+              <p className="mt-2 break-all text-xs text-muted-foreground">
+                {renderLocation(result)}
+              </p>
+            </motion.div>
           ))
         ) : (
-          <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            {isPending ? '正在执行测试检索…' : '这里会展示测试检索结果。'}
-          </div>
+          <EmptyState
+            icon={FileSearch}
+            tone="var(--color-type-knowledge)"
+            className="py-8"
+            title={isPending ? '正在执行测试检索…' : '这里会展示测试检索结果。'}
+          />
         )}
       </div>
     </Card>

@@ -1,5 +1,5 @@
+import { formatBytes } from '@/shared/lib/format'
 import {
-  formatFileSize,
   type KnowledgeBase,
   type KnowledgeChunkingStrategy,
   type KnowledgeQueryOrchestration,
@@ -143,7 +143,7 @@ export function validateUploadFile(file: File): string | null {
   }
 
   if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-    return `文件大小不能超过 ${formatFileSize(MAX_UPLOAD_SIZE_BYTES)}`
+    return `文件大小不能超过 ${formatBytes(MAX_UPLOAD_SIZE_BYTES)}`
   }
 
   return null
