@@ -3995,6 +3995,12 @@ export interface CreateWorkflowDefinitionDto {
      * @memberof CreateWorkflowDefinitionDto
      */
     shareToken?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateWorkflowDefinitionDto
+     */
+    modelConfigId?: string;
 }
 /**
  * 
@@ -4656,6 +4662,12 @@ export interface InstallMarketplaceListingDto {
      * @memberof InstallMarketplaceListingDto
      */
     description?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof InstallMarketplaceListingDto
+     */
+    modelConfigId?: string;
 }
 /**
  * 

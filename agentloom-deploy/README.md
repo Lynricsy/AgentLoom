@@ -37,6 +37,7 @@ curl http://localhost:8080/api/v1/health
 ```bash
 ./firecracker/firecracker-smoke.sh
 docker compose --profile tools run --rm server-migrator pnpm db:migrate
+docker compose --profile tools run --rm server-migrator pnpm db:seed
 ./scripts/backup-postgres.sh
 ./scripts/backup-minio.sh
 ./scripts/restore.sh --postgres-dump backups/postgres/agentloom-postgres-<timestamp>.dump --minio-dir backups/minio/agentloom-minio-<timestamp>

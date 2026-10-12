@@ -28,6 +28,14 @@ export const CreateWorkflowDefinitionSchema = z
       .min(1, { message: '分享 token 不能为空' })
       .max(128, { message: '分享 token 不能超过 128 个字符' })
       .optional(),
+    /**
+     * 模板：新建 Agent 使用的对话模型；Marketplace/分享：作者的模型在当前账号里找不到时改用的模型。
+     * 不传时取账号默认对话模型，没有默认则取最早添加的可用对话模型。
+     */
+    model_config_id: z
+      .string()
+      .uuid({ message: '模型配置 ID 必须是合法的 UUID' })
+      .optional(),
   })
   .refine(
     (value) => {

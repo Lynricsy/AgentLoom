@@ -2635,7 +2635,7 @@ describe('WorkflowVersionService', () => {
             id: 'tmpl-node-1',
             type: 'agent',
             position: { x: 0, y: 0 },
-            data: {},
+            data: { label: '安全审查 Agent' },
           },
           {
             id: 'tmpl-node-2',
@@ -2696,24 +2696,87 @@ describe('WorkflowVersionService', () => {
       expect(valuesArg.slug).toBeDefined();
     });
 
-    it('应从模板克隆定义并设置元数据', async () => {
-      templateService.findBySlug.mockResolvedValue(MOCK_TEMPLATE);
+    const MODEL_IDS = {
+      oldest: '00000000-0000-0000-0000-0000000000b1',
+      newer: '00000000-0000-0000-0000-0000000000b2',
+      defaultChat: '00000000-0000-0000-0000-0000000000b3',
+      defaultEmbedding: '00000000-0000-0000-0000-0000000000b4',
+    };
+    const TEMPLATE_AGENT_ID = '00000000-0000-0000-0000-0000000000a1';
+    const TEMPLATE_AGENT_VERSION_ID = '00000000-0000-0000-0000-0000000000a2';
 
-      const mockResult = createDraftWorkflow({
-        name: '模板副本',
-        slug: 'mo-ban-fu-ben',
-        description: '从模板创建',
-      });
-      const publishedResult = {
-        ...mockResult,
+    function createModelRow(overrides: {
+      id: string;
+      createdAt: string;
+      isDefault?: boolean;
+      modelType?: 'chat' | 'embedding';
+      providerEnabled?: boolean;
+    }) {
+      return {
+        config: {
+          id: overrides.id,
+          name: `model-${overrides.id.slice(-2)}`,
+          modelId: `model-id-${overrides.id.slice(-2)}`,
+          modelType: overrides.modelType ?? 'chat',
+          isDefault: overrides.isDefault ?? false,
+          createdAt: new Date(overrides.createdAt),
+        },
+        provider: {
+          slug: 'openai',
+          isEnabled: overrides.providerEnabled ?? true,
+          apiKeyId: null,
+          baseUrl: 'https://llm.example.com/v1',
+          defaultBaseUrl: null,
+        },
+      };
+    }
+
+    /** 模板实例化的写入顺序：Agent → Agent 版本 →（Agent 发布）→ 工作流 → 工作流版本 →（工作流发布） */
+    function mockTemplateInstantiation(modelRows: unknown[]) {
+      templateService.findBySlug.mockResolvedValue(MOCK_TEMPLATE);
+      db.select.mockReturnValueOnce(createSelectChainWithInnerJoin(modelRows));
+      const workflow = createDraftWorkflow({ name: '模板副本' });
+      const published = {
+        ...workflow,
         status: 'published' as const,
         publishedVersionId: VERSION_ID,
       };
-      const mockVersion = createMockVersion({ publishedAt: NOW });
       db.insert
-        .mockReturnValueOnce(createInsertReturning(mockResult))
-        .mockReturnValueOnce(createInsertReturning(mockVersion));
-      db.update.mockReturnValueOnce(createUpdateChain([publishedResult]));
+        .mockReturnValueOnce(
+          createInsertReturning({
+            id: TEMPLATE_AGENT_ID,
+            name: '安全审查 Agent',
+            runtimeMode: 'no_sandbox',
+          }),
+        )
+        .mockReturnValueOnce(
+          createInsertReturning({ id: TEMPLATE_AGENT_VERSION_ID }),
+        )
+        .mockReturnValueOnce(createInsertReturning(workflow))
+        .mockReturnValueOnce(
+          createInsertReturning(createMockVersion({ publishedAt: NOW })),
+        );
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChain([published]));
+      return published;
+    }
+
+    it('从模板创建时为未绑定的 agent 节点生成已发布 Agent，并用默认对话模型', async () => {
+      const published = mockTemplateInstantiation([
+        createModelRow({ id: MODEL_IDS.oldest, createdAt: '2026-01-01' }),
+        createModelRow({
+          id: MODEL_IDS.defaultChat,
+          createdAt: '2026-03-01',
+          isDefault: true,
+        }),
+        createModelRow({
+          id: MODEL_IDS.defaultEmbedding,
+          createdAt: '2025-12-01',
+          isDefault: true,
+          modelType: 'embedding',
+        }),
+      ]);
 
       const result = await service.create(
         TENANT_ID,
@@ -2721,33 +2784,106 @@ describe('WorkflowVersionService', () => {
         MOCK_DTO_WITH_TEMPLATE,
       );
 
-      expect(result).toEqual(publishedResult);
-      expect(result.status).toBe('published');
-      expect(result.publishedVersionId).toBe(VERSION_ID);
-      expect(templateService.findBySlug).toHaveBeenCalledWith(
-        'code-review-assistant',
+      expect(result).toEqual(published);
+      const [agentInsert, versionInsert, workflowInsert] =
+        db.insert.mock.results.map(
+          (call) => call.value.values.mock.calls[0][0],
+        );
+
+      // 模型节点指向默认对话模型（不是更早的、也不是默认的 embedding 模型）
+      const modelNode = agentInsert.nodes.find(
+        (node: { data: { nodeType: string } }) =>
+          node.data.nodeType === 'llm-model',
+      );
+      expect(modelNode.data.config.llmConfigId).toBe(MODEL_IDS.defaultChat);
+      expect(agentInsert).toMatchObject({
+        tenantId: TENANT_ID,
+        runtimeMode: 'no_sandbox',
+        name: '安全审查 Agent',
+      });
+      expect(agentInsert.edges).toEqual([
+        expect.objectContaining({
+          source: modelNode.id,
+          sourceHandle: 'model-out',
+          targetHandle: 'model-in',
+        }),
+      ]);
+      expect(versionInsert.snapshot.nodes).toEqual(agentInsert.nodes);
+
+      // 工作流里的 agent 节点绑定到新 Agent 的已发布版本，ID 已重映射
+      const agentNode = workflowInsert.nodes[0];
+      expect(agentNode.id).not.toBe('tmpl-node-1');
+      expect(agentNode.data.config).toMatchObject({
+        selectedAgentId: TEMPLATE_AGENT_ID,
+        agentDefinitionId: TEMPLATE_AGENT_ID,
+        agentVersionId: TEMPLATE_AGENT_VERSION_ID,
+        agentRuntimeMode: 'no_sandbox',
+      });
+      expect(workflowInsert.edges[0].source).toBe(agentNode.id);
+      expect(workflowInsert.metadata.cloned_from_template).toMatchObject({
+        templateSlug: 'code-review-assistant',
+        templateName: '代码审查助手',
+      });
+    });
+
+    it('没有默认对话模型时取最早添加的可用对话模型，跳过已停用的提供商', async () => {
+      mockTemplateInstantiation([
+        createModelRow({
+          id: MODEL_IDS.defaultChat,
+          createdAt: '2025-06-01',
+          providerEnabled: false,
+        }),
+        createModelRow({ id: MODEL_IDS.newer, createdAt: '2026-05-01' }),
+        createModelRow({ id: MODEL_IDS.oldest, createdAt: '2026-01-01' }),
+      ]);
+
+      await service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_TEMPLATE);
+
+      const agentInsert =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(
+        agentInsert.nodes.find(
+          (node: { data: { nodeType: string } }) =>
+            node.data.nodeType === 'llm-model',
+        ).data.config.llmConfigId,
+      ).toBe(MODEL_IDS.oldest);
+    });
+
+    it('显式指定的模型不可用时报错，不悄悄换成别的模型', async () => {
+      templateService.findBySlug.mockResolvedValue(MOCK_TEMPLATE);
+      db.select.mockReturnValueOnce(
+        createSelectChainWithInnerJoin([
+          createModelRow({ id: MODEL_IDS.oldest, createdAt: '2026-01-01' }),
+          createModelRow({
+            id: MODEL_IDS.defaultEmbedding,
+            createdAt: '2026-01-01',
+            modelType: 'embedding',
+          }),
+        ]),
       );
 
-      // 验证克隆后的节点 ID 已替换（不等于原始模板 ID）
-      const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
-      expect(valuesArg.nodes).toHaveLength(2);
-      expect(valuesArg.nodes[0].id).not.toBe('tmpl-node-1');
-      expect(valuesArg.nodes[1].id).not.toBe('tmpl-node-2');
-      expect(valuesArg.edges).toHaveLength(1);
-      expect(valuesArg.edges[0].source).toBe(valuesArg.nodes[0].id);
-      expect(valuesArg.edges[0].target).toBe(valuesArg.nodes[1].id);
-      expect(valuesArg.viewport).toEqual(MOCK_TEMPLATE.definition.viewport);
-      expect(valuesArg.inputSchema).toEqual(MOCK_INPUT_SCHEMA);
-
-      // 验证元数据包含克隆信息
-      expect(valuesArg.metadata).toMatchObject({
-        cloned_from_template: {
-          templateSlug: 'code-review-assistant',
-          templateName: '代码审查助手',
-        },
+      await expect(
+        service.create(TENANT_ID, USER_ID, {
+          ...MOCK_DTO_WITH_TEMPLATE,
+          model_config_id: MODEL_IDS.defaultEmbedding,
+        }),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-import-model-unavailable',
       });
-      expect(valuesArg.metadata.cloned_from_template.clonedAt).toBeDefined();
-      expect(valuesArg.description).toBe('从模板创建');
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('账号里没有可用对话模型时拒绝从含 Agent 的模板创建', async () => {
+      templateService.findBySlug.mockResolvedValue(MOCK_TEMPLATE);
+      db.select.mockReturnValueOnce(createSelectChainWithInnerJoin([]));
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_TEMPLATE),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-template-model-not-found',
+        status: 409,
+      });
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('应从 marketplace listing 克隆定义并处理空 viewport', async () => {

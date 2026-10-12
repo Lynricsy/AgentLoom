@@ -815,6 +815,7 @@ export class MarketplaceService {
         name: parsedDto.name ?? listing.title,
         description: parsedDto.description ?? listing.summary,
         marketplace_listing_id: listingId,
+        model_config_id: parsedDto.model_config_id,
       },
     );
 

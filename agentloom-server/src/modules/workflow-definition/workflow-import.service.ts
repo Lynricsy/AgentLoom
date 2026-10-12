@@ -109,6 +109,8 @@ interface ImportedWorkflowAgentCloneContext {
   sourceModels: Map<string, ImportedWorkflowModelRecord | null>;
   targetModels: ImportedWorkflowModelRecord[] | null;
   activeAgentCloneStack: Set<string>;
+  /** 来源模型在目标租户里找不到时改用的模型；未指定则取租户默认/最早的可用对话模型 */
+  fallbackModelConfigId?: string;
 }
 
 interface ImportedWorkflowWorkspaceCloneResult {
@@ -185,6 +187,7 @@ export class WorkflowImportService {
     let importSourceTenantId: string | null = null;
     let importSourceType: 'marketplace' | 'share' | null = null;
     let importSourceReference: string | null = null;
+    let templateName: string | null = null;
 
     if (dto.template_slug) {
       const template = await this.templateService.findBySlug(dto.template_slug);
@@ -199,6 +202,7 @@ export class WorkflowImportService {
       inputSchema = template.definition.inputSchema
         ? workflowInputSchemaSchema.parse(template.definition.inputSchema)
         : null;
+      templateName = template.name;
       metadata = {
         cloned_from_template: {
           templateSlug: dto.template_slug,
@@ -314,6 +318,17 @@ export class WorkflowImportService {
         const created = await this.tenantDb.transaction(async (tx) => {
           const importedNodes = cloneJson(nodes);
 
+          if (templateName) {
+            await this.provisionTemplateWorkflowAgents({
+              nodes: importedNodes,
+              templateName,
+              preferredModelConfigId: dto.model_config_id,
+              targetTenantId: tenantId,
+              targetUserId: userId,
+              dbClient: tx,
+            });
+          }
+
           if (
             importSourceTenantId &&
             importSourceType &&
@@ -327,6 +342,7 @@ export class WorkflowImportService {
                 importReference: importSourceReference,
                 targetTenantId: tenantId,
                 targetUserId: userId,
+                fallbackModelConfigId: dto.model_config_id,
                 dbClient: tx,
               });
             }
@@ -648,6 +664,7 @@ export class WorkflowImportService {
     importReference: string;
     targetTenantId: string;
     targetUserId: string;
+    fallbackModelConfigId?: string;
     dbClient: WorkflowDbClient;
   }): Promise<void> {
     const context: ImportedWorkflowAgentCloneContext = {
@@ -659,6 +676,7 @@ export class WorkflowImportService {
       sourceModels: new Map(),
       targetModels: null,
       activeAgentCloneStack: new Set(),
+      fallbackModelConfigId: params.fallbackModelConfigId,
     };
 
     for (const node of params.nodes) {
@@ -1143,6 +1161,8 @@ export class WorkflowImportService {
               sourceVersionId: source.sourceVersionId,
             },
           },
+          versionLabel: 'v1 (workflow import)',
+          releaseNotes: '由工作流安装自动导入',
         },
         params.context,
         params.dbClient,
@@ -1180,13 +1200,20 @@ export class WorkflowImportService {
       context: params.context,
       dbClient: params.dbClient,
     });
-    const targetModel = await this.sourceResolver.resolveTargetModel({
-      sourceModel,
-      runtimeNodeData: params.runtimeNodeData,
-      targetTenantId: params.context.targetTenantId,
-      context: params.context,
-      dbClient: params.dbClient,
-    });
+    const targetModel =
+      (await this.sourceResolver.resolveTargetModel({
+        sourceModel,
+        runtimeNodeData: params.runtimeNodeData,
+        targetTenantId: params.context.targetTenantId,
+        context: params.context,
+        dbClient: params.dbClient,
+      })) ??
+      (await this.sourceResolver.resolveFallbackModel({
+        preferredModelConfigId: params.context.fallbackModelConfigId,
+        targetTenantId: params.context.targetTenantId,
+        context: params.context,
+        dbClient: params.dbClient,
+      }));
 
     if (!targetModel) {
       const providerBaseUrl = this.normalizeOptionalText(
@@ -1198,41 +1225,150 @@ export class WorkflowImportService {
         type: 'https://agentloom.dev/errors/workflow-import-model-not-found',
         title: '目标租户缺少所需模型配置',
         status: HttpStatus.CONFLICT,
-        detail: `依赖 Agent「${params.sourceAgentName}」需要模型 ${sourceModel.config.modelId}（provider=${sourceModel.provider.slug}${providerBaseUrl ? `, baseUrl=${providerBaseUrl}` : ''}），请先在当前账号配置对应模型`,
+        detail: `依赖 Agent「${params.sourceAgentName}」需要模型 ${sourceModel.config.modelId}（provider=${sourceModel.provider.slug}${providerBaseUrl ? `, baseUrl=${providerBaseUrl}` : ''}），当前账号也没有可替代的对话模型，请先在「LLM 模型」中添加并启用一个`,
       });
     }
 
-    clearNodeConfigField(params.node, 'llm_config_id');
-    clearNodeConfigField(params.node, 'model_config_id');
-    clearNodeConfigField(params.node, 'api_key_id');
-    clearNodeConfigField(params.node, 'endpoint_url');
-    setNodeConfigField(params.node, 'llmConfigId', targetModel.config.id);
-    setNodeConfigField(params.node, 'modelConfigId', targetModel.config.id);
-    setNodeConfigField(params.node, 'provider', targetModel.provider.slug);
-    setNodeConfigField(params.node, 'name', targetModel.config.name);
-    setNodeConfigField(params.node, 'modelName', targetModel.config.modelId);
-    setNodeConfigField(params.node, 'modelId', targetModel.config.modelId);
-    setNodeConfigField(params.node, 'modelType', targetModel.config.modelType);
+    this.bindAgentModelNode(params.node, targetModel);
+  }
 
-    if (targetModel.provider.apiKeyId) {
-      setNodeConfigField(
-        params.node,
-        'apiKeyId',
-        targetModel.provider.apiKeyId,
-      );
+  /** 把 Agent 画布上的 llm-model 节点指向目标租户的模型配置 */
+  private bindAgentModelNode(
+    node: schema.ReactFlowNode,
+    model: ImportedWorkflowModelRecord,
+  ): void {
+    clearNodeConfigField(node, 'llm_config_id');
+    clearNodeConfigField(node, 'model_config_id');
+    clearNodeConfigField(node, 'api_key_id');
+    clearNodeConfigField(node, 'endpoint_url');
+    setNodeConfigField(node, 'llmConfigId', model.config.id);
+    setNodeConfigField(node, 'modelConfigId', model.config.id);
+    setNodeConfigField(node, 'provider', model.provider.slug);
+    setNodeConfigField(node, 'name', model.config.name);
+    setNodeConfigField(node, 'modelName', model.config.modelId);
+    setNodeConfigField(node, 'modelId', model.config.modelId);
+    setNodeConfigField(node, 'modelType', model.config.modelType);
+
+    if (model.provider.apiKeyId) {
+      setNodeConfigField(node, 'apiKeyId', model.provider.apiKeyId);
     } else {
-      clearNodeConfigField(params.node, 'apiKeyId');
+      clearNodeConfigField(node, 'apiKeyId');
     }
 
     const endpointUrl = this.normalizeOptionalText(
-      targetModel.provider.baseUrl ??
-        targetModel.provider.defaultBaseUrl ??
-        undefined,
+      model.provider.baseUrl ?? model.provider.defaultBaseUrl ?? undefined,
     );
     if (endpointUrl) {
-      setNodeConfigField(params.node, 'endpointUrl', endpointUrl);
+      setNodeConfigField(node, 'endpointUrl', endpointUrl);
     } else {
-      clearNodeConfigField(params.node, 'endpointUrl');
+      clearNodeConfigField(node, 'endpointUrl');
+    }
+  }
+
+  /**
+   * 模板里的 agent 节点不带绑定（模板不属于任何租户），实例化时为每个节点在当前租户里
+   * 建一个已发布的无沙箱 Agent：画布只有 Agent Main 与连到 model-in 的 LLM 模型节点，
+   * 角色设定仍由工作流里连到 system-prompt-in 的文本节点提供，用户可以直接在画布上改。
+   */
+  private async provisionTemplateWorkflowAgents(params: {
+    nodes: schema.ReactFlowNode[];
+    templateName: string;
+    preferredModelConfigId?: string;
+    targetTenantId: string;
+    targetUserId: string;
+    dbClient: WorkflowDbClient;
+  }): Promise<void> {
+    const unboundAgentNodes = params.nodes.filter(
+      (node) =>
+        this.getWorkflowNodeType(node) === 'agent' &&
+        !getWorkflowAgentDefinitionId(node.data),
+    );
+    if (unboundAgentNodes.length === 0) {
+      return;
+    }
+
+    const model = await this.sourceResolver.resolveFallbackModel({
+      preferredModelConfigId: params.preferredModelConfigId,
+      targetTenantId: params.targetTenantId,
+      context: { sourceModels: new Map(), targetModels: null },
+      dbClient: params.dbClient,
+    });
+    if (!model) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-template-model-not-found',
+        title: '没有可用的对话模型',
+        status: HttpStatus.CONFLICT,
+        detail: `模板「${params.templateName}」里的 Agent 需要一个对话模型，请先在「LLM 模型」中添加并启用一个`,
+      });
+    }
+
+    const createdAt = new Date().toISOString();
+    for (const node of unboundAgentNodes) {
+      const modelNode: schema.ReactFlowNode = {
+        id: 'llm-model',
+        type: 'agent',
+        position: { x: 140, y: 280 },
+        data: {
+          label: model.config.modelId,
+          category: 'agent',
+          nodeType: 'llm-model',
+          config: {},
+        },
+      };
+      this.bindAgentModelNode(modelNode, model);
+
+      const created = await this.insertImportedWorkflowAgentDefinition(
+        {
+          name:
+            this.getWorkflowNodeLabel(node) ?? `${params.templateName} Agent`,
+          description: `由模板「${params.templateName}」创建`,
+          icon: null,
+          runtimeMode: 'no_sandbox',
+          nodes: [
+            {
+              id: 'agent-main',
+              type: 'agent',
+              position: { x: 420, y: 280 },
+              data: {
+                label: 'Agent Main',
+                category: 'agent',
+                nodeType: 'agent-main',
+                config: {},
+              },
+            },
+            modelNode,
+          ],
+          edges: [
+            {
+              id: 'edge-model',
+              source: 'llm-model',
+              target: 'agent-main',
+              sourceHandle: 'model-out',
+              targetHandle: 'model-in',
+            },
+          ],
+          viewport: DEFAULT_VIEWPORT,
+          systemPrompt: null,
+          sandboxConfig: null,
+          metadata: {
+            createdFromTemplate: {
+              templateName: params.templateName,
+              createdAt,
+            },
+          },
+          versionLabel: 'v1 (template)',
+          releaseNotes: `由模板「${params.templateName}」自动创建`,
+        },
+        params,
+        params.dbClient,
+      );
+
+      setNodeConfigField(node, 'selectedAgentId', created.agentDefinitionId);
+      setNodeConfigField(node, 'agentDefinitionId', created.agentDefinitionId);
+      setNodeConfigField(node, 'agentVersionId', created.publishedVersionId);
+      setNodeConfigField(node, 'agentName', created.name);
+      setNodeConfigField(node, 'versionLabel', 'published');
+      setNodeConfigField(node, 'agentRuntimeMode', created.runtimeMode);
     }
   }
 
@@ -1268,8 +1404,13 @@ export class WorkflowImportService {
       systemPrompt: string | null;
       sandboxConfig: schema.SandboxConfig | null;
       metadata: Record<string, unknown>;
+      versionLabel: string;
+      releaseNotes: string;
     },
-    context: ImportedWorkflowAgentCloneContext,
+    context: Pick<
+      ImportedWorkflowAgentCloneContext,
+      'targetTenantId' | 'targetUserId'
+    >,
     dbClient: WorkflowDbClient,
   ): Promise<ImportedWorkflowAgentCloneResult> {
     let slug = generateSlug(input.name);
@@ -1310,7 +1451,7 @@ export class WorkflowImportService {
             agentDefinitionId: createdAgent.id,
             tenantId: context.targetTenantId,
             versionNumber: 1,
-            label: 'v1 (workflow import)',
+            label: input.versionLabel,
             snapshot: {
               runtimeMode: input.runtimeMode,
               nodes: cloneJson(input.nodes),
@@ -1324,7 +1465,7 @@ export class WorkflowImportService {
                 nodeCount: input.nodes.length,
                 edgeCount: input.edges.length,
                 createdFromVersion: 1,
-                releaseNotes: '由工作流安装自动导入',
+                releaseNotes: input.releaseNotes,
               },
             },
             publishedAt: new Date(),

@@ -170,24 +170,7 @@ export class WorkflowImportSourceResolverService {
     context: WorkflowImportSourceContext;
     dbClient: WorkflowImportDbClient;
   }): Promise<ImportedWorkflowModelRecord | null> {
-    if (params.context.targetModels === null) {
-      params.context.targetModels = await params.dbClient
-        .select({
-          config: schema.llmModelConfigs,
-          provider: schema.llmProviders,
-        })
-        .from(schema.llmModelConfigs)
-        .innerJoin(
-          schema.llmProviders,
-          eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
-        )
-        .where(
-          and(
-            eq(schema.llmModelConfigs.tenantId, params.targetTenantId),
-            eq(schema.llmModelConfigs.isEnabled, true),
-          ),
-        );
-    }
+    const targetModels = await this.loadTargetModels(params);
 
     const sourceBaseUrl = this.normalizeOptionalText(
       params.sourceModel.provider.baseUrl ??
@@ -197,7 +180,7 @@ export class WorkflowImportSourceResolverService {
           params.runtimeNodeData.endpoint_url,
         ),
     );
-    const exactMatches = params.context.targetModels.filter((candidate) => {
+    const exactMatches = targetModels.filter((candidate) => {
       if (
         candidate.provider.slug !== params.sourceModel.provider.slug ||
         candidate.config.modelId !== params.sourceModel.config.modelId ||
@@ -218,7 +201,7 @@ export class WorkflowImportSourceResolverService {
       return this.pickTargetModel(exactMatches, params.sourceModel.config.name);
     }
 
-    const looseMatches = params.context.targetModels.filter(
+    const looseMatches = targetModels.filter(
       (candidate) =>
         candidate.provider.slug === params.sourceModel.provider.slug &&
         candidate.config.modelId === params.sourceModel.config.modelId &&
@@ -230,6 +213,77 @@ export class WorkflowImportSourceResolverService {
     }
 
     return null;
+  }
+
+  /**
+   * 选出替代模型：模板里的 Agent 没有来源模型，Marketplace/分享导入时来源模型在目标租户里
+   * 也可能不存在，这两种情况都落到这里。
+   *
+   * 调用方显式指定了模型时只认这一个，不可用就报错——静默换成别的模型会让用户以为用的是自己选的；
+   * 未指定时依次取租户默认对话模型、最早添加的可用对话模型。没有任何可用对话模型返回 null。
+   */
+  async resolveFallbackModel(params: {
+    preferredModelConfigId?: string;
+    targetTenantId: string;
+    context: WorkflowImportSourceContext;
+    dbClient: WorkflowImportDbClient;
+  }): Promise<ImportedWorkflowModelRecord | null> {
+    const chatModels = (await this.loadTargetModels(params))
+      .filter(
+        (candidate) =>
+          candidate.config.modelType === 'chat' && candidate.provider.isEnabled,
+      )
+      .sort(
+        (left, right) =>
+          left.config.createdAt.getTime() - right.config.createdAt.getTime(),
+      );
+
+    if (params.preferredModelConfigId) {
+      const preferred = chatModels.find(
+        (candidate) => candidate.config.id === params.preferredModelConfigId,
+      );
+      if (!preferred) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-import-model-unavailable',
+          title: '所选模型不可用',
+          status: HttpStatus.UNPROCESSABLE_ENTITY,
+          detail: `模型配置 ${params.preferredModelConfigId} 不存在、已停用或不是对话模型`,
+        });
+      }
+      return preferred;
+    }
+
+    return (
+      chatModels.find((candidate) => candidate.config.isDefault) ??
+      chatModels[0] ??
+      null
+    );
+  }
+
+  private async loadTargetModels(params: {
+    targetTenantId: string;
+    context: WorkflowImportSourceContext;
+    dbClient: WorkflowImportDbClient;
+  }): Promise<ImportedWorkflowModelRecord[]> {
+    if (params.context.targetModels === null) {
+      params.context.targetModels = await params.dbClient
+        .select({
+          config: schema.llmModelConfigs,
+          provider: schema.llmProviders,
+        })
+        .from(schema.llmModelConfigs)
+        .innerJoin(
+          schema.llmProviders,
+          eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+        )
+        .where(
+          and(
+            eq(schema.llmModelConfigs.tenantId, params.targetTenantId),
+            eq(schema.llmModelConfigs.isEnabled, true),
+          ),
+        );
+    }
+    return params.context.targetModels;
   }
 
   private pickTargetModel(

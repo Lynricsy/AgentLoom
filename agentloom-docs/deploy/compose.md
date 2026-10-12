@@ -245,10 +245,13 @@ level=warning msg="optional dependency \"firecracker-runtime\" failed to start: 
 ```bash
 docker compose --profile tools build server-migrator
 docker compose --profile tools run --rm server-migrator pnpm db:migrate
+docker compose --profile tools run --rm server-migrator pnpm db:seed
 docker compose up -d --build
 ```
 
 `server-migrator` 使用独立镜像（`SERVER_IMAGE` 加 `-migrator` 后缀），`run` 不会自动重建它，所以先 `build`。迁移输出以 `[✓] migrations applied successfully!` 结束；`up -d --build` 重建有变化的镜像并只重建受影响的容器。Firecracker 产物、`firecracker/artifact-lock.json` 或 `sandbox/package-lock.json` 有变化时，先重跑第 3 步。
+
+`db:seed` 按唯一键覆盖平台内置数据：内置 LLM Provider、工作流模板与内置技能只写系统租户下的行；路由基准会为各组织已有的智能路由模型重写同一批种子基准行。迁移只改表结构，不会更新这些内置数据；升级时跳过 `db:seed`，模板页会一直显示旧版本模板的定义与封面。
 
 ### 从 `COMPOSE_PROJECT_NAME` 与无 profile 的旧版本升级
 

@@ -1,7 +1,19 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { TEMPLATE_SEEDS, seedTemplates } from './template-seeds';
 import { workflowTemplates, type NewWorkflowTemplate } from '../schema';
+
+const STUDIO_PUBLIC_DIR = join(
+  __dirname,
+  '../../../../agentloom-studio/public',
+);
+
+function nodeTypeOf(node: { data: Record<string, unknown> }): unknown {
+  return node.data.nodeType;
+}
 
 describe('template seeds', () => {
   const seededRecords = new Map<string, NewWorkflowTemplate>();
@@ -37,6 +49,58 @@ describe('template seeds', () => {
       expect(seed.definition.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
     }
   });
+
+  it.each(TEMPLATE_SEEDS.map((seed) => [seed.slug, seed] as const))(
+    '%s 是可直接运行的图：表单经触发器进入，每个 Agent 有角色与输入，结果落到输出节点',
+    (_slug, seed) => {
+      const { nodes, edges } = seed.definition;
+      const nodeIds = new Set(nodes.map((node) => node.id));
+
+      expect(
+        nodes.filter((node) => nodeTypeOf(node) === 'manual-trigger'),
+      ).toHaveLength(1);
+      for (const edge of edges) {
+        expect(nodeIds.has(edge.source) && nodeIds.has(edge.target)).toBe(true);
+        expect(edge.sourceHandle).toBeTruthy();
+        expect(edge.targetHandle).toBeTruthy();
+      }
+
+      for (const agent of nodes.filter(
+        (node) => nodeTypeOf(node) === 'agent',
+      )) {
+        const incoming = edges.filter((edge) => edge.target === agent.id);
+        expect(incoming.map((edge) => edge.targetHandle)).toEqual(
+          expect.arrayContaining(['system-prompt-in', 'text-in']),
+        );
+        // 模板 Agent 不带绑定，由实例化时为租户生成
+        expect(agent.data.config).toEqual({});
+      }
+
+      // 从触发器出发能走到某个输出节点
+      const reachable = new Set([
+        nodes.find((node) => nodeTypeOf(node) === 'manual-trigger')!.id,
+      ]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const edge of edges) {
+          if (reachable.has(edge.source) && !reachable.has(edge.target)) {
+            reachable.add(edge.target);
+            grew = true;
+          }
+        }
+      }
+      const outputs = nodes.filter((node) =>
+        ['text-output', 'json-output'].includes(String(nodeTypeOf(node))),
+      );
+      expect(outputs.some((node) => reachable.has(node.id))).toBe(true);
+
+      expect(seed.thumbnailUrl).toMatch(/^\/covers\/templates\/.+\.svg$/);
+      expect(existsSync(join(STUDIO_PUBLIC_DIR, seed.thumbnailUrl!))).toBe(
+        true,
+      );
+    },
+  );
 
   it('should upsert template seeds idempotently', async () => {
     await seedTemplates(db as never);

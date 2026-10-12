@@ -89,6 +89,8 @@ export class QueryPublicReviewsDto extends createZodDto(
 export const InstallMarketplaceListingSchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
   description: z.string().trim().max(2000).optional(),
+  /** 作者使用的模型在当前账号里找不到时改用的对话模型（仅工作流 listing） */
+  model_config_id: z.string().uuid().optional(),
 });
 
 export class InstallMarketplaceListingDto extends createZodDto(
