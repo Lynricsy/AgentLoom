@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { ArrowDown, ArrowUp, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useUpdateWorkflow } from '@/features/workflow'
 import type {
   WorkflowInputCollectionMode,
@@ -8,6 +9,10 @@ import type {
   WorkflowInputSchema,
 } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
+import { fadeInUp } from '@/shared/lib/motion'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Alert } from '@/shared/ui/alert'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Input } from '@/shared/ui/input'
@@ -77,6 +82,20 @@ const COLLECTION_MODE_OPTIONS: Array<{
  */
 const ALWAYS_VISIBLE = '__always_visible__'
 
+/**
+ * 字段卡片的稳定 React key。字段 ID 本身可编辑，若直接作 key，每敲一个字符整张卡片就会重挂、输入框失焦；
+ * 因此用与 `schema.fields` 等长的本地 key 数组承载身份，增删/移动时同步维护。
+ */
+let fieldKeySequence = 0
+function createFieldKey(): string {
+  fieldKeySequence += 1
+  return `input-schema-field-${fieldKeySequence}`
+}
+
+function createFieldKeys(count: number): string[] {
+  return Array.from({ length: count }, createFieldKey)
+}
+
 export function WorkflowInputSchemaTab({
   workflowId,
   workflowVersion,
@@ -86,6 +105,7 @@ export function WorkflowInputSchemaTab({
   const { notify } = useToast()
   const updateWorkflow = useUpdateWorkflow(workflowId)
   const [schema, setSchema] = useState(() => normalizeWorkflowInputSchema(inputSchema))
+  const [fieldKeys, setFieldKeys] = useState(() => createFieldKeys(schema.fields.length))
   const [currentWorkflowVersion, setCurrentWorkflowVersion] = useState(workflowVersion)
   const [errorMessages, setErrorMessages] = useState<string[]>([])
   const [previewValues, setPreviewValues] = useState<Record<string, unknown>>(() =>
@@ -93,7 +113,13 @@ export function WorkflowInputSchemaTab({
   )
 
   useEffect(() => {
-    setSchema(normalizeWorkflowInputSchema(inputSchema))
+    const nextSchema = normalizeWorkflowInputSchema(inputSchema)
+    setSchema(nextSchema)
+    setFieldKeys((current) =>
+      current.length === nextSchema.fields.length
+        ? current
+        : createFieldKeys(nextSchema.fields.length),
+    )
   }, [inputSchema])
 
   useEffect(() => {
@@ -125,6 +151,18 @@ export function WorkflowInputSchemaTab({
   }
 
   const moveField = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= schema.fields.length) {
+      return
+    }
+
+    setFieldKeys((current) => {
+      const next = [...current]
+      const [moved] = next.splice(fromIndex, 1)
+      if (moved !== undefined) {
+        next.splice(toIndex, 0, moved)
+      }
+      return next
+    })
     setSchema((current) => {
       if (toIndex < 0 || toIndex >= current.fields.length) {
         return current
@@ -167,7 +205,13 @@ export function WorkflowInputSchemaTab({
       })
 
       setCurrentWorkflowVersion(updatedWorkflow.version)
-      setSchema(normalizeWorkflowInputSchema(updatedWorkflow.inputSchema))
+      const savedSchema = normalizeWorkflowInputSchema(updatedWorkflow.inputSchema)
+      setSchema(savedSchema)
+      setFieldKeys((current) =>
+        current.length === savedSchema.fields.length
+          ? current
+          : createFieldKeys(savedSchema.fields.length),
+      )
       setErrorMessages([])
       notify({
         title: '输入参数已保存',
@@ -184,7 +228,7 @@ export function WorkflowInputSchemaTab({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-border/70 bg-surface/95 p-4" data-testid="workflow-input-schema-tab">
+    <section className="@container space-y-4" data-testid="workflow-input-schema-tab">
       <div className="space-y-1">
         <div className="text-sm font-semibold text-foreground">输入参数</div>
         <p className="text-xs text-muted-foreground">
@@ -193,23 +237,23 @@ export function WorkflowInputSchemaTab({
       </div>
 
       {isReadOnly ? (
-        <div className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-          当前角色仅可查看输入参数配置，无法编辑或保存。
-        </div>
+        <Alert variant="info">当前角色仅可查看输入参数配置，无法编辑或保存。</Alert>
       ) : null}
 
       {errorMessages.length > 0 ? (
-        <div className="rounded-xl border border-error/60 bg-error/10 px-3 py-2 text-xs text-error">
-          <ul className="space-y-1">
+        <Alert variant="error" title="输入参数配置有误">
+          <ul className="space-y-1 text-xs">
             {errorMessages.map((message) => (
-              <li key={message}>{message}</li>
+              <li key={message} className="break-words">
+                {message}
+              </li>
             ))}
           </ul>
-        </div>
+        </Alert>
       ) : null}
 
       <fieldset disabled={isReadOnly} className="contents">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,240px)_1fr]">
+        <div className="grid gap-4 @md:grid-cols-[minmax(0,240px)_1fr]">
           <FieldInput label="收集模式">
             <Select
               value={schema.collectionMode}
@@ -242,7 +286,7 @@ export function WorkflowInputSchemaTab({
             </Select>
           </FieldInput>
 
-          <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
+          <div className="rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
             {
               COLLECTION_MODE_OPTIONS.find((option) => option.value === schema.collectionMode)
                 ?.description
@@ -251,7 +295,7 @@ export function WorkflowInputSchemaTab({
         </div>
 
         {showsConversationPlan ? (
-          <div className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4">
+          <div className="space-y-4 rounded-lg border border-border bg-muted p-3">
             <div className="space-y-1">
               <h3 className="text-sm font-medium text-foreground">对话计划</h3>
               <p className="text-xs text-muted-foreground">
@@ -259,7 +303,7 @@ export function WorkflowInputSchemaTab({
               </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+            <div className="grid gap-4 @md:grid-cols-[minmax(0,1fr)_180px]">
               <FieldInput label="系统提示词">
                 <Textarea
                   className="min-h-24"
@@ -309,404 +353,416 @@ export function WorkflowInputSchemaTab({
             variant="outline"
             size="sm"
             onClick={() => {
+              setFieldKeys((current) => [...current, createFieldKey()])
               setSchema((current) => ({
                 ...current,
                 fields: [...current.fields, createEmptyWorkflowInputField(current.fields)],
-                }))
-              }}
-              disabled={isReadOnly}
-              data-testid="add-input-schema-field"
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              添加字段
+              }))
+            }}
+            disabled={isReadOnly}
+            data-testid="add-input-schema-field"
+          >
+            <Plus />
+            添加字段
           </Button>
         </div>
 
         {schema.fields.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">
-            还没有输入字段。添加字段后，运行对话框会按 schema 渲染输入表单。
-          </div>
+          <EmptyState
+            icon={SlidersHorizontal}
+            title="还没有输入字段"
+            description="添加字段后，运行对话框会按 schema 渲染输入表单。"
+            className="py-8"
+          />
         ) : null}
 
         <div className="space-y-4">
-          {schema.fields.map((field, index) => {
-            const supportsOptions = field.type === 'single_select' || field.type === 'multi_select'
-            const visibilityController = field.visibility?.fieldId ?? ''
+          <AnimatePresence initial={false}>
+            {schema.fields.map((field, index) => {
+              const supportsOptions = field.type === 'single_select' || field.type === 'multi_select'
+              const visibilityController = field.visibility?.fieldId ?? ''
 
-            return (
-              <article
-                key={`${field.id}-${index}`}
-                className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4"
-                data-testid={`input-schema-field-${index}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-medium text-foreground">字段 {index + 1}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {schema.collectionMode === 'form'
-                        ? '配置字段标识、类型、默认值和显示条件。'
-                        : schema.collectionMode === 'conversation'
-                          ? '字段会作为对话采集目标展示，建议补充 collectionHint 指导逐项追问。'
-                          : '字段会先出现在表单阶段，未解决的内容再进入对话阶段继续补充。'}
-                    </p>
+              return (
+                <motion.article
+                  key={fieldKeys[index] ?? `${field.id}-${index}`}
+                  layout
+                  {...fadeInUp}
+                  className="space-y-4 rounded-lg border border-border bg-muted p-3"
+                  data-testid={`input-schema-field-${index}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-medium text-foreground">字段 {index + 1}</h3>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {schema.collectionMode === 'form'
+                          ? '配置字段标识、类型、默认值和显示条件。'
+                          : schema.collectionMode === 'conversation'
+                            ? '字段会作为对话采集目标展示，建议补充 collectionHint 指导逐项追问。'
+                            : '字段会先出现在表单阶段，未解决的内容再进入对话阶段继续补充。'}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`上移字段 ${index + 1}`}
+                        onClick={() => moveField(index, index - 1)}
+                        disabled={index === 0}
+                        data-testid={`move-input-schema-field-up-${index}`}
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`下移字段 ${index + 1}`}
+                        onClick={() => moveField(index, index + 1)}
+                        disabled={index === schema.fields.length - 1}
+                        data-testid={`move-input-schema-field-down-${index}`}
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="hover:bg-error/10 hover:text-error"
+                        aria-label={`删除字段 ${index + 1}`}
+                        onClick={() => {
+                          setFieldKeys((current) =>
+                            current.filter((_, keyIndex) => keyIndex !== index),
+                          )
+                          setSchema((current) => ({
+                            ...current,
+                            fields: current.fields.filter((_, fieldIndex) => fieldIndex !== index),
+                          }))
+                        }}
+                        data-testid={`remove-input-schema-field-${index}`}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`上移字段 ${index + 1}`}
-                      onClick={() => moveField(index, index - 1)}
-                      disabled={index === 0}
-                      data-testid={`move-input-schema-field-up-${index}`}
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`下移字段 ${index + 1}`}
-                      onClick={() => moveField(index, index + 1)}
-                      disabled={index === schema.fields.length - 1}
-                      data-testid={`move-input-schema-field-down-${index}`}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`删除字段 ${index + 1}`}
-                      onClick={() => {
+                  <div className="grid gap-4 @md:grid-cols-2">
+                  <FieldInput label="字段 ID">
+                    <Input
+                      value={field.id}
+                      onChange={(event) => {
+                        const nextId = event.target.value
+                        updateField(index, (currentField) => {
+                          const nextField = { ...currentField, id: nextId }
+
+                          return nextField
+                        })
+
                         setSchema((current) => ({
                           ...current,
-                          fields: current.fields.filter((_, fieldIndex) => fieldIndex !== index),
-                        }))
-                      }}
-                      data-testid={`remove-input-schema-field-${index}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                <FieldInput label="字段 ID">
-                  <Input
-                    value={field.id}
-                    onChange={(event) => {
-                      const nextId = event.target.value
-                      updateField(index, (currentField) => {
-                        const nextField = { ...currentField, id: nextId }
-
-                        return nextField
-                      })
-
-                      setSchema((current) => ({
-                        ...current,
-                        fields: current.fields.map((currentField, currentIndex) => {
-                          if (
-                            currentIndex !== index &&
-                            currentField.visibility?.fieldId === field.id &&
-                            nextId.trim()
-                          ) {
-                            return {
-                              ...currentField,
-                              visibility: {
-                                ...currentField.visibility,
-                                fieldId: nextId.trim(),
-                              },
+                          fields: current.fields.map((currentField, currentIndex) => {
+                            if (
+                              currentIndex !== index &&
+                              currentField.visibility?.fieldId === field.id &&
+                              nextId.trim()
+                            ) {
+                              return {
+                                ...currentField,
+                                visibility: {
+                                  ...currentField.visibility,
+                                  fieldId: nextId.trim(),
+                                },
+                              }
                             }
-                          }
 
-                          return currentField
-                        }),
-                      }))
-                    }}
-                    aria-label={`字段 ${index + 1} ID`}
-                    data-testid={`input-schema-field-id-${index}`}
-                  />
-                </FieldInput>
-
-                <FieldInput label="标签">
-                  <Input
-                    value={field.label}
-                    onChange={(event) => {
-                      updateField(index, (currentField) => ({
-                        ...currentField,
-                        label: event.target.value,
-                      }))
-                    }}
-                    aria-label={`字段 ${index + 1} 标签`}
-                    data-testid={`input-schema-field-label-${index}`}
-                  />
-                </FieldInput>
-
-                <FieldInput label="字段类型">
-                  <Select
-                    value={field.type}
-                    onValueChange={(value) => {
-                      updateField(index, (currentField) => {
-                        const nextType = value as WorkflowInputFieldType
-                        return {
-                          ...currentField,
-                          type: nextType,
-                          options:
-                            nextType === 'single_select' || nextType === 'multi_select'
-                              ? currentField.options
-                              : undefined,
-                          default: normalizeDefaultValue(nextType, currentField.default),
-                          validation: normalizeFieldValidation(nextType, currentField.validation),
-                        }
-                      })
-                    }}
-                  >
-                    <SelectTrigger
-                      aria-label={`字段 ${index + 1} 类型`}
-                      data-testid={`input-schema-field-type-${index}`}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FIELD_TYPE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FieldInput>
-
-                <FieldInput label="必填">
-                  <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-foreground">
-                    <Checkbox
-                      checked={field.required}
-                      onCheckedChange={(nextChecked) => {
-                        updateField(index, (currentField) => ({
-                          ...currentField,
-                          required: nextChecked === true,
+                            return currentField
+                          }),
                         }))
                       }}
-                      aria-label={`字段 ${index + 1} 必填`}
-                      data-testid={`input-schema-field-required-${index}`}
+                      aria-label={`字段 ${index + 1} ID`}
+                      data-testid={`input-schema-field-id-${index}`}
                     />
-                    设为必填
-                  </label>
-                </FieldInput>
+                  </FieldInput>
 
-                <FieldInput label="描述">
-                  <Input
-                    value={field.description ?? ''}
-                    onChange={(event) => {
-                      updateField(index, (currentField) => ({
-                        ...currentField,
-                        description: event.target.value,
-                      }))
-                    }}
-                    aria-label={`字段 ${index + 1} 描述`}
-                    data-testid={`input-schema-field-description-${index}`}
-                  />
-                </FieldInput>
-
-                <FieldInput
-                  label={schema.collectionMode === 'form' ? '收集提示' : 'collectionHint'}
-                  className="md:col-span-2"
-                >
-                  <Textarea
-                    className="min-h-24"
-                    value={field.collectionHint ?? ''}
-                    onChange={(event) => {
-                      updateField(index, (currentField) => ({
-                        ...currentField,
-                        collectionHint: event.target.value,
-                      }))
-                    }}
-                    aria-label={`字段 ${index + 1} 收集提示`}
-                    data-testid={`input-schema-field-collection-hint-${index}`}
-                  />
-                </FieldInput>
-
-                <FieldInput label="默认值">
-                  <Input
-                    value={formatDefaultValue(field.type, field.default)}
-                    onChange={(event) => {
-                      updateField(index, (currentField) => ({
-                        ...currentField,
-                        default: normalizeDefaultValue(currentField.type, event.target.value),
-                      }))
-                    }}
-                    aria-label={`字段 ${index + 1} 默认值`}
-                    data-testid={`input-schema-field-default-${index}`}
-                  />
-                </FieldInput>
-
-                {supportsOptions ? (
-                  <FieldInput label="选项（逗号分隔）" className="md:col-span-2">
+                  <FieldInput label="标签">
                     <Input
-                      value={formatOptionsInput(field.options)}
+                      value={field.label}
                       onChange={(event) => {
                         updateField(index, (currentField) => ({
                           ...currentField,
-                          options: parseOptionsInput(event.target.value),
+                          label: event.target.value,
                         }))
                       }}
-                      aria-label={`字段 ${index + 1} 选项`}
-                      data-testid={`input-schema-field-options-${index}`}
+                      aria-label={`字段 ${index + 1} 标签`}
+                      data-testid={`input-schema-field-label-${index}`}
                     />
                   </FieldInput>
-                ) : null}
 
-                <FieldInput label="显示条件字段">
-                  <Select
-                    value={visibilityController || ALWAYS_VISIBLE}
-                    onValueChange={(value) => {
-                      const nextFieldId = value === ALWAYS_VISIBLE ? '' : value
-
-                      updateField(index, (currentField) => ({
-                        ...currentField,
-                        visibility: nextFieldId
-                          ? {
-                              fieldId: nextFieldId,
-                              equals: currentField.visibility?.equals ?? '',
-                            }
-                          : undefined,
-                      }))
-                    }}
-                  >
-                    <SelectTrigger
-                      aria-label={`字段 ${index + 1} 显示条件字段`}
-                      data-testid={`input-schema-visibility-field-${index}`}
+                  <FieldInput label="字段类型">
+                    <Select
+                      value={field.type}
+                      onValueChange={(value) => {
+                        updateField(index, (currentField) => {
+                          const nextType = value as WorkflowInputFieldType
+                          return {
+                            ...currentField,
+                            type: nextType,
+                            options:
+                              nextType === 'single_select' || nextType === 'multi_select'
+                                ? currentField.options
+                                : undefined,
+                            default: normalizeDefaultValue(nextType, currentField.default),
+                            validation: normalizeFieldValidation(nextType, currentField.validation),
+                          }
+                        })
+                      }}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALWAYS_VISIBLE}>始终显示</SelectItem>
-                      {fieldOptions
-                        .filter((option) => option.value !== field.id)
-                        .map((option) => (
+                      <SelectTrigger
+                        aria-label={`字段 ${index + 1} 类型`}
+                        data-testid={`input-schema-field-type-${index}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FIELD_TYPE_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                </FieldInput>
+                      </SelectContent>
+                    </Select>
+                  </FieldInput>
 
-                <FieldInput label="显示条件取值">
-                  <Input
-                    value={field.visibility?.equals === undefined ? '' : String(field.visibility.equals)}
-                    onChange={(event) => {
-                      const controllerField = schema.fields.find(
-                        (candidate) => candidate.id === visibilityController,
-                      )
+                  <FieldInput label="必填">
+                    <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+                      <Checkbox
+                        checked={field.required}
+                        onCheckedChange={(nextChecked) => {
+                          updateField(index, (currentField) => ({
+                            ...currentField,
+                            required: nextChecked === true,
+                          }))
+                        }}
+                        aria-label={`字段 ${index + 1} 必填`}
+                        data-testid={`input-schema-field-required-${index}`}
+                      />
+                      设为必填
+                    </label>
+                  </FieldInput>
 
-                      updateField(index, (currentField) => {
-                        if (!visibilityController) {
+                  <FieldInput label="描述">
+                    <Input
+                      value={field.description ?? ''}
+                      onChange={(event) => {
+                        updateField(index, (currentField) => ({
+                          ...currentField,
+                          description: event.target.value,
+                        }))
+                      }}
+                      aria-label={`字段 ${index + 1} 描述`}
+                      data-testid={`input-schema-field-description-${index}`}
+                    />
+                  </FieldInput>
+
+                  <FieldInput
+                    label={schema.collectionMode === 'form' ? '收集提示' : 'collectionHint'}
+                    className="@md:col-span-2"
+                  >
+                    <Textarea
+                      className="min-h-24"
+                      value={field.collectionHint ?? ''}
+                      onChange={(event) => {
+                        updateField(index, (currentField) => ({
+                          ...currentField,
+                          collectionHint: event.target.value,
+                        }))
+                      }}
+                      aria-label={`字段 ${index + 1} 收集提示`}
+                      data-testid={`input-schema-field-collection-hint-${index}`}
+                    />
+                  </FieldInput>
+
+                  <FieldInput label="默认值">
+                    <Input
+                      value={formatDefaultValue(field.type, field.default)}
+                      onChange={(event) => {
+                        updateField(index, (currentField) => ({
+                          ...currentField,
+                          default: normalizeDefaultValue(currentField.type, event.target.value),
+                        }))
+                      }}
+                      aria-label={`字段 ${index + 1} 默认值`}
+                      data-testid={`input-schema-field-default-${index}`}
+                    />
+                  </FieldInput>
+
+                  {supportsOptions ? (
+                    <FieldInput label="选项（逗号分隔）" className="@md:col-span-2">
+                      <Input
+                        value={formatOptionsInput(field.options)}
+                        onChange={(event) => {
+                          updateField(index, (currentField) => ({
+                            ...currentField,
+                            options: parseOptionsInput(event.target.value),
+                          }))
+                        }}
+                        aria-label={`字段 ${index + 1} 选项`}
+                        data-testid={`input-schema-field-options-${index}`}
+                      />
+                    </FieldInput>
+                  ) : null}
+
+                  <FieldInput label="显示条件字段">
+                    <Select
+                      value={visibilityController || ALWAYS_VISIBLE}
+                      onValueChange={(value) => {
+                        const nextFieldId = value === ALWAYS_VISIBLE ? '' : value
+
+                        updateField(index, (currentField) => ({
+                          ...currentField,
+                          visibility: nextFieldId
+                            ? {
+                                fieldId: nextFieldId,
+                                equals: currentField.visibility?.equals ?? '',
+                              }
+                            : undefined,
+                        }))
+                      }}
+                    >
+                      <SelectTrigger
+                        aria-label={`字段 ${index + 1} 显示条件字段`}
+                        data-testid={`input-schema-visibility-field-${index}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALWAYS_VISIBLE}>始终显示</SelectItem>
+                        {fieldOptions
+                          .filter((option) => option.value !== field.id)
+                          .map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldInput>
+
+                  <FieldInput label="显示条件取值">
+                    <Input
+                      value={field.visibility?.equals === undefined ? '' : String(field.visibility.equals)}
+                      onChange={(event) => {
+                        const controllerField = schema.fields.find(
+                          (candidate) => candidate.id === visibilityController,
+                        )
+
+                        updateField(index, (currentField) => {
+                          if (!visibilityController) {
+                            return {
+                              ...currentField,
+                              visibility: undefined,
+                            }
+                          }
+
                           return {
                             ...currentField,
-                            visibility: undefined,
+                            visibility: {
+                              fieldId: visibilityController,
+                              equals:
+                                normalizeVisibilityEquals(event.target.value, controllerField?.type) ?? '',
+                            },
                           }
-                        }
+                        })
+                      }}
+                      aria-label={`字段 ${index + 1} 显示条件取值`}
+                      data-testid={`input-schema-visibility-equals-${index}`}
+                      disabled={!visibilityController}
+                    />
+                  </FieldInput>
 
-                        return {
-                          ...currentField,
-                          visibility: {
-                            fieldId: visibilityController,
-                            equals:
-                              normalizeVisibilityEquals(event.target.value, controllerField?.type) ?? '',
-                          },
-                        }
-                      })
-                    }}
-                    aria-label={`字段 ${index + 1} 显示条件取值`}
-                    data-testid={`input-schema-visibility-equals-${index}`}
-                    disabled={!visibilityController}
-                  />
-                </FieldInput>
+                  {field.type === 'text' ? (
+                    <>
+                      <FieldInput label="最小长度">
+                        <Input
+                          type="number"
+                          value={field.validation?.minLength ?? ''}
+                          onChange={(event) => {
+                            updateField(index, (currentField) => ({
+                              ...currentField,
+                              validation: {
+                                ...currentField.validation,
+                                minLength: toOptionalNumber(event.target.value),
+                              },
+                            }))
+                          }}
+                          aria-label={`字段 ${index + 1} 最小长度`}
+                        />
+                      </FieldInput>
 
-                {field.type === 'text' ? (
-                  <>
-                    <FieldInput label="最小长度">
-                      <Input
-                        type="number"
-                        value={field.validation?.minLength ?? ''}
-                        onChange={(event) => {
-                          updateField(index, (currentField) => ({
-                            ...currentField,
-                            validation: {
-                              ...currentField.validation,
-                              minLength: toOptionalNumber(event.target.value),
-                            },
-                          }))
-                        }}
-                        aria-label={`字段 ${index + 1} 最小长度`}
-                      />
-                    </FieldInput>
+                      <FieldInput label="最大长度">
+                        <Input
+                          type="number"
+                          value={field.validation?.maxLength ?? ''}
+                          onChange={(event) => {
+                            updateField(index, (currentField) => ({
+                              ...currentField,
+                              validation: {
+                                ...currentField.validation,
+                                maxLength: toOptionalNumber(event.target.value),
+                              },
+                            }))
+                          }}
+                          aria-label={`字段 ${index + 1} 最大长度`}
+                        />
+                      </FieldInput>
+                    </>
+                  ) : null}
 
-                    <FieldInput label="最大长度">
-                      <Input
-                        type="number"
-                        value={field.validation?.maxLength ?? ''}
-                        onChange={(event) => {
-                          updateField(index, (currentField) => ({
-                            ...currentField,
-                            validation: {
-                              ...currentField.validation,
-                              maxLength: toOptionalNumber(event.target.value),
-                            },
-                          }))
-                        }}
-                        aria-label={`字段 ${index + 1} 最大长度`}
-                      />
-                    </FieldInput>
-                  </>
-                ) : null}
+                  {field.type === 'number' ? (
+                    <>
+                      <FieldInput label="最小值">
+                        <Input
+                          type="number"
+                          value={field.validation?.min ?? ''}
+                          onChange={(event) => {
+                            updateField(index, (currentField) => ({
+                              ...currentField,
+                              validation: {
+                                ...currentField.validation,
+                                min: toOptionalNumber(event.target.value),
+                              },
+                            }))
+                          }}
+                          aria-label={`字段 ${index + 1} 最小值`}
+                        />
+                      </FieldInput>
 
-                {field.type === 'number' ? (
-                  <>
-                    <FieldInput label="最小值">
-                      <Input
-                        type="number"
-                        value={field.validation?.min ?? ''}
-                        onChange={(event) => {
-                          updateField(index, (currentField) => ({
-                            ...currentField,
-                            validation: {
-                              ...currentField.validation,
-                              min: toOptionalNumber(event.target.value),
-                            },
-                          }))
-                        }}
-                        aria-label={`字段 ${index + 1} 最小值`}
-                      />
-                    </FieldInput>
-
-                    <FieldInput label="最大值">
-                      <Input
-                        type="number"
-                        value={field.validation?.max ?? ''}
-                        onChange={(event) => {
-                          updateField(index, (currentField) => ({
-                            ...currentField,
-                            validation: {
-                              ...currentField.validation,
-                              max: toOptionalNumber(event.target.value),
-                            },
-                          }))
-                        }}
-                        aria-label={`字段 ${index + 1} 最大值`}
-                      />
-                    </FieldInput>
-                  </>
-                ) : null}
-                </div>
-              </article>
-            )
-          })}
+                      <FieldInput label="最大值">
+                        <Input
+                          type="number"
+                          value={field.validation?.max ?? ''}
+                          onChange={(event) => {
+                            updateField(index, (currentField) => ({
+                              ...currentField,
+                              validation: {
+                                ...currentField.validation,
+                                max: toOptionalNumber(event.target.value),
+                              },
+                            }))
+                          }}
+                          aria-label={`字段 ${index + 1} 最大值`}
+                        />
+                      </FieldInput>
+                    </>
+                  ) : null}
+                  </div>
+                </motion.article>
+              )
+            })}
+          </AnimatePresence>
         </div>
 
         {schema.collectionMode !== 'conversation' ? (
           <div
-            className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4"
+            className="space-y-3 rounded-lg border border-border bg-muted p-3"
             data-testid="workflow-input-schema-preview"
           >
             <div className="space-y-1">
@@ -723,9 +779,13 @@ export function WorkflowInputSchemaTab({
               idPrefix="workflow-input-schema-preview"
               dataTestId="workflow-input-schema-preview-fields"
               emptyState={
-                <div className="rounded-xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
-                  当前 schema 没有可预览的字段，保存后运行弹窗会直接走确认启动流程。
-                </div>
+                <EmptyState
+                  variant="plain"
+                  icon={SlidersHorizontal}
+                  title="没有可预览的字段"
+                  description="保存后运行弹窗会直接走确认启动流程。"
+                  className="py-6"
+                />
               }
               onChange={(fieldId, nextValue) => {
                 setPreviewValues((current) => ({
@@ -759,6 +819,10 @@ export function WorkflowInputSchemaTab({
   )
 }
 
+/**
+ * 字段布局：控件均带 aria-label（含字段序号），这里的标签只承担视觉分组，
+ * 因此不建立 htmlFor 关联，避免与 aria-label 冲突。
+ */
 function FieldInput({
   label,
   className,
@@ -769,7 +833,7 @@ function FieldInput({
   children: React.ReactNode
 }) {
   return (
-    <div className={cn('space-y-1.5', className)}>
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <span className="text-xs font-medium text-foreground">{label}</span>
       {children}
     </div>
@@ -800,7 +864,7 @@ function ConversationCollectionPreview({
 
   return (
     <div
-      className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4"
+      className="space-y-4 rounded-lg border border-border bg-muted p-3"
       data-testid="workflow-input-schema-conversation-preview"
     >
       <div className="space-y-1">
@@ -814,14 +878,14 @@ function ConversationCollectionPreview({
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+      <div className="grid gap-3 @md:grid-cols-[minmax(0,1fr)_140px]">
         <div
-          className="rounded-xl border border-border/70 bg-surface/80 px-4 py-3 text-sm text-foreground whitespace-pre-wrap"
+          className="whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
           data-testid="workflow-input-schema-conversation-preview-prompt"
         >
           {systemPrompt}
         </div>
-        <div className="rounded-xl border border-border/70 bg-surface/60 px-4 py-3 text-sm text-foreground">
+        <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm tabular-nums text-foreground">
           最多 {maxTurns} 轮
         </div>
       </div>
@@ -831,30 +895,30 @@ function ConversationCollectionPreview({
           {promptFields.map((field, index) => (
             <li
               key={field.id}
-              className="rounded-xl border border-border/70 bg-surface/60 px-4 py-3"
+              className="rounded-lg border border-border bg-surface px-3 py-2"
             >
-              <div className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-                <span className="font-medium">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                <span className="min-w-0 truncate font-medium">
                   {index + 1}. {field.label}
                 </span>
-                <span className="rounded-full border border-border/70 px-2 py-0.5 text-2xs text-muted-foreground">
+                <Badge variant="outline" size="sm" className="shrink-0">
                   {field.required ? '必填' : '可选'}
-                </span>
+                </Badge>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 break-words text-xs text-muted-foreground">
                 {field.collectionHint?.trim() || field.description?.trim() || '未配置额外追问提示。'}
               </p>
             </li>
           ))}
         </ol>
       ) : (
-        <div className="rounded-xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
           当前可见字段已经由默认值或预设内容覆盖；运行时会直接进入确认页，或在条件满足后再追问其余字段。
-        </div>
+        </p>
       )}
 
       {conditionalFields.length > 0 ? (
-        <div className="rounded-xl border border-border/70 bg-surface/50 px-4 py-3 text-xs text-muted-foreground">
+        <div className="break-words rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
           以下字段会在满足显示条件后进入对话阶段：
           {conditionalFields.map((field) => ` ${field.label}`).join('、')}
         </div>

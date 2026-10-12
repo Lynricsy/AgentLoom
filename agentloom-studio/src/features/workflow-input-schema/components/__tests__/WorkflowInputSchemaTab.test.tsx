@@ -31,6 +31,29 @@ describe('WorkflowInputSchemaTab', () => {
     vi.clearAllMocks()
   })
 
+  it('编辑字段 ID 时字段卡片保持挂载，输入框不丢焦点', () => {
+    render(
+      <WorkflowInputSchemaTab
+        workflowId="wf-001"
+        workflowVersion={7}
+        inputSchema={{
+          version: 1,
+          collectionMode: 'form',
+          fields: [{ id: 'topic', type: 'text', label: '主题', required: true }],
+        }}
+        isReadOnly={false}
+      />,
+    )
+
+    const idInput = screen.getByTestId('input-schema-field-id-0')
+    idInput.focus()
+    fireEvent.change(idInput, { target: { value: 'topic_v2' } })
+
+    expect(screen.getByTestId('input-schema-field-id-0')).toBe(idInput)
+    expect(idInput).toHaveFocus()
+    expect(idInput).toHaveValue('topic_v2')
+  })
+
   it('编辑字段后保存 input schema', async () => {
     const inputSchema: WorkflowInputSchema = {
       version: 1,

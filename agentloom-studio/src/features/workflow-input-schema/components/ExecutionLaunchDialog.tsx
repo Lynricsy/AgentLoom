@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Loader2, MessageSquare, Play } from 'lucide-react'
 import type {
   ConversationPlan,
@@ -7,7 +8,10 @@ import type {
   WorkflowStatus,
 } from '@/features/workflow'
 import { cn } from '@/shared/lib/utils'
+import { fadeIn, fadeInUp } from '@/shared/lib/motion'
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
+import { Skeleton } from '@/shared/ui/skeleton'
 import {
   Dialog,
   DialogBody,
@@ -57,7 +61,7 @@ interface ConversationMessage {
 }
 
 const CONVERSATION_MESSAGE_CLASSNAME = {
-  assistant: 'self-start border-border/70 bg-background/70 text-foreground',
+  assistant: 'self-start border-border bg-surface text-foreground',
   user: 'self-end border-primary/30 bg-primary/10 text-foreground',
 } satisfies Record<ConversationMessage['role'], string>
 
@@ -258,23 +262,37 @@ export function ExecutionLaunchDialog({
 
         <DialogBody>
           {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              正在加载输入 Schema…
+            <div role="status" className="space-y-4">
+              <span className="sr-only">正在加载输入 Schema…</span>
+              {[0, 1].map((item) => (
+                <div key={item} className="space-y-1.5">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              ))}
             </div>
           ) : null}
 
           {!isLoading && error ? (
-            <div className="space-y-3 rounded-xl border border-error/60 bg-error/10 p-4 text-sm text-error">
-              <p>读取输入 Schema 失败：{error.message}</p>
-              <Button variant="outline" size="sm" onClick={() => void refetch()}>
-                重试
-              </Button>
-            </div>
+            <Alert variant="error" title="读取输入 Schema 失败">
+              <div className="space-y-3">
+                <p className="break-words">{error.message}</p>
+                <Button variant="outline" size="sm" onClick={() => void refetch()}>
+                  重试
+                </Button>
+              </div>
+            </Alert>
           ) : null}
 
           {!isLoading && !error ? (
-            <div className="space-y-4">
+            // 阶段切换只做入场淡入：按阶段重挂内容，避免 mode="wait" 推迟新阶段出现
+            <motion.div
+              key={`${schema.collectionMode}-${stage}`}
+              initial={fadeIn.initial}
+              animate={fadeIn.animate}
+              transition={fadeIn.transition}
+              className="space-y-4"
+            >
               {schema.collectionMode === 'form' ? (
                 <FormStage
                   schema={schema}
@@ -365,8 +383,7 @@ export function ExecutionLaunchDialog({
                   }}
                 />
               ) : null}
-
-            </div>
+            </motion.div>
           ) : null}
         </DialogBody>
 
@@ -378,7 +395,7 @@ export function ExecutionLaunchDialog({
 
                 {schema.collectionMode === 'hybrid' && stage === 'conversation' ? (
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => {
                       setStage('form')
                       setConversationInput('')
@@ -403,7 +420,7 @@ export function ExecutionLaunchDialog({
                     data-testid="launch-conversation-send"
                     disabled={isStarting || !currentConversationField}
                   >
-                    <MessageSquare className="mr-1.5 h-4 w-4" />
+                    <MessageSquare />
                     提交本轮回复
                   </Button>
                 ) : null}
@@ -416,12 +433,12 @@ export function ExecutionLaunchDialog({
                   >
                     {isStarting ? (
                       <>
-                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        <Loader2 className="animate-spin" />
                         启动中
                       </>
                     ) : (
                       <>
-                        <Play className="mr-1.5 h-4 w-4" />
+                        <Play />
                         运行
                       </>
                     )}
@@ -449,9 +466,9 @@ function FormStage({
 
   if (visibleFields.length === 0) {
     return (
-      <div className="rounded-xl border border-border/70 bg-background/70 px-4 py-5 text-sm text-muted-foreground">
+      <p className="rounded-lg border border-border bg-muted px-3 py-3 text-sm text-muted-foreground">
         当前工作流没有需要填写的字段，确认后将直接启动执行。
-      </div>
+      </p>
     )
   }
 
@@ -490,7 +507,7 @@ function ConversationStage({
 
   return (
     <section
-      className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4"
+      className="space-y-4 rounded-lg border border-border bg-muted p-3"
       data-testid="launch-conversation-shell"
     >
       <div className="space-y-1">
@@ -500,22 +517,28 @@ function ConversationStage({
         </p>
       </div>
 
-      <div className="rounded-xl border border-border/70 bg-surface/80 px-4 py-3 text-sm text-foreground">
+      <div className="whitespace-pre-wrap break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
         {conversationPlan?.systemPrompt || '请逐项补全工作流运行所需的输入参数。'}
       </div>
 
-      <div className="flex max-h-72 flex-col gap-3 overflow-y-auto rounded-xl border border-border/70 bg-surface/60 p-3">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              'max-w-[90%] rounded-xl border px-3 py-2 text-sm whitespace-pre-wrap',
-              CONVERSATION_MESSAGE_CLASSNAME[message.role],
-            )}
-          >
-            {message.content}
-          </div>
-        ))}
+      <div className="flex max-h-72 flex-col gap-3 overflow-y-auto rounded-lg border border-border bg-surface p-3">
+        {/* 历史消息不重播入场；仅新追加的气泡淡入 */}
+        <AnimatePresence initial={false}>
+          {messages.map((message) => (
+            <motion.div
+              key={message.id}
+              initial={fadeInUp.initial}
+              animate={fadeInUp.animate}
+              transition={fadeInUp.transition}
+              className={cn(
+                'max-w-[90%] whitespace-pre-wrap break-words rounded-lg border px-3 py-2 text-sm [overflow-wrap:anywhere]',
+                CONVERSATION_MESSAGE_CLASSNAME[message.role],
+              )}
+            >
+              {message.content}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
       <div className="space-y-2">
@@ -524,7 +547,7 @@ function ConversationStage({
         </div>
 
         {currentField ? (
-          <div className="rounded-lg border border-border/70 bg-background/70 px-3 py-2 text-sm text-foreground">
+          <div className="break-words rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
             {currentField.label}
           </div>
         ) : null}
@@ -571,7 +594,7 @@ function SummaryStage({
   onChange: (fieldId: string, value: unknown) => void
 }) {
   return (
-    <section className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-4">
+    <section className="space-y-4 rounded-lg border border-border bg-muted p-3">
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-foreground">确认运行参数</h3>
         <p className="text-xs text-muted-foreground">
@@ -580,12 +603,9 @@ function SummaryStage({
       </div>
 
       {showConversationLimitNotice ? (
-        <div
-          className="rounded-xl border border-border/70 bg-warning/10 px-4 py-3 text-sm text-foreground"
-          data-testid="launch-conversation-limit-notice"
-        >
+        <Alert variant="warning" data-testid="launch-conversation-limit-notice">
           已达到当前对话计划的最大轮次；请在这里补充剩余 {unresolvedVisibleFieldCount} 个字段后再运行。
-        </div>
+        </Alert>
       ) : null}
 
       <FormStage schema={schema} values={values} errors={errors} onChange={onChange} />
