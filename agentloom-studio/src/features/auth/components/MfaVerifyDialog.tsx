@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { Check, ShieldCheck } from 'lucide-react';
 
+import { Alert } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import {
   Dialog,

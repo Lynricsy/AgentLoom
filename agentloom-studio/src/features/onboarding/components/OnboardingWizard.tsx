@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertCircle } from 'lucide-react';
 
 import { AuthLayout } from '@/features/auth';
 import { useAuthStore } from '@/features/auth';
 import { fadeInUp } from '@/shared/lib/motion';
+import { Alert } from '@/shared/ui/alert';
 import { Progress } from '@/shared/ui/progress';
 
 import { createOrganization } from '../api';

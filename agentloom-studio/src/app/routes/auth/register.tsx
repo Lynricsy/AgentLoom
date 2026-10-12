@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, createRoute, useNavigate } from '@tanstack/react-router';
-import { AlertCircle } from 'lucide-react';
 import { HTTPError } from 'ky';
 import { z } from 'zod';
 
 import { AuthLayout } from '@/features/auth';
+import { Alert } from '@/shared/ui/alert';
 import { PasswordInput } from '@/features/auth';
 import { Spinner } from '@/shared/components/spinner/Spinner';
 import { apiClient } from '@/shared/api/client';
