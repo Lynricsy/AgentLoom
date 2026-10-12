@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { motion } from "motion/react";
 import {
   Search,
@@ -20,6 +20,7 @@ import {
   getResourceSourceLabel,
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
+import { formatBytes, formatDateTime } from "@/shared/lib/format";
 import { staggerList } from "@/shared/lib/motion";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
@@ -59,7 +60,6 @@ import {
   useDeleteSkill,
   useArchiveSkill,
 } from "../api/skillQueries";
-import { formatSkillBytes, formatSkillTimestamp } from "../lib/format";
 import { CreateSkillDialog } from "./CreateSkillDialog";
 import { SkillDetailDialog } from "./SkillDetailDialog";
 import type { Skill, SkillStatus } from "../types";
@@ -94,35 +94,35 @@ function SkillCardActions({
           size="icon-sm"
           aria-label={`${skill.name} 的更多操作`}
         >
-          <MoreVertical className="h-4 w-4" />
+          <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
         <DropdownMenuItem onClick={() => onView(skill)}>
-          <Eye className="h-3.5 w-3.5" />
+          <Eye className="size-3.5" />
           查看详情
         </DropdownMenuItem>
         {!skill.isBuiltin && (
           <>
             <DropdownMenuItem onClick={() => onEdit(skill)}>
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil className="size-3.5" />
               编辑
             </DropdownMenuItem>
             {skill.sourceKind === "share_imported" && (
               <DropdownMenuItem onClick={() => onConvertSource(skill)}>
-                <FolderSync className="h-3.5 w-3.5" />
+                <FolderSync className="size-3.5" />
                 转为自己创建
               </DropdownMenuItem>
             )}
             {skill.status === "active" && (
               <DropdownMenuItem onClick={() => onArchive(skill)}>
-                <Archive className="h-3.5 w-3.5" />
+                <Archive className="size-3.5" />
                 归档
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onClick={() => onDelete(skill)}>
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="size-3.5" />
               删除
             </DropdownMenuItem>
           </>
@@ -144,6 +144,8 @@ export function SkillBrowsePage() {
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [viewingSkill, setViewingSkill] = useState<Skill | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Skill | null>(null);
+  const lastConfirmDeleteRef = useRef<Skill | null>(null);
+  if (confirmDelete) lastConfirmDeleteRef.current = confirmDelete;
 
   const deleteMutation = useDeleteSkill();
   const archiveMutation = useArchiveSkill();
@@ -240,7 +242,7 @@ export function SkillBrowsePage() {
         description="管理 Agent 可使用的技能，包括内置技能和自定义技能"
         actions={
           <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-1.5 h-4 w-4" />
+            <Plus />
             新建技能
           </Button>
         }
@@ -254,7 +256,7 @@ export function SkillBrowsePage() {
       {/* 筛选行 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -291,7 +293,7 @@ export function SkillBrowsePage() {
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-36 rounded-lg" />
+            <Skeleton key={index} className="h-44 rounded-lg" />
           ))}
         </div>
       ) : isError ? (
@@ -325,7 +327,7 @@ export function SkillBrowsePage() {
           action={
             hasListFilters ? null : (
               <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
-                <Plus className="mr-1.5 h-4 w-4" />
+                <Plus />
                 创建第一个技能
               </Button>
             )
@@ -340,27 +342,29 @@ export function SkillBrowsePage() {
                   <article className="flex h-full flex-col">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
                           <span
                             aria-hidden
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+                            className="grid size-8 shrink-0 place-items-center rounded-lg"
                             style={{
                               backgroundColor: `color-mix(in srgb, ${SKILL_TONE} 14%, transparent)`,
                               color: SKILL_TONE,
                             }}
                           >
-                            <Zap className="h-4 w-4" />
+                            <Zap className="size-4" />
                           </span>
                           <Button
                             variant="link"
-                            className="block h-auto cursor-pointer truncate p-0 text-sm font-semibold text-foreground transition-colors hover:text-primary hover:no-underline"
+                            className="h-auto min-w-0 max-w-full shrink p-0 text-sm font-semibold text-foreground hover:text-primary hover:no-underline"
                             onClick={() => handleView(skill)}
                           >
-                            {skill.name}
+                            <span className="truncate">{skill.name}</span>
                           </Button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           {skill.isBuiltin && (
                             <Badge size="sm" variant="info">
-                              <ShieldCheck className="h-3 w-3" />
+                              <ShieldCheck className="size-3" />
                               内置
                             </Badge>
                           )}
@@ -389,15 +393,15 @@ export function SkillBrowsePage() {
 
                     <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
-                        <FileText className="h-3.5 w-3.5" />
+                        <FileText className="size-3.5" />
                         {skill.fileCount} 个文件
                         {skill.totalSizeBytes > 0 && (
                           <span className="opacity-70">
-                            ({formatSkillBytes(skill.totalSizeBytes)})
+                            ({formatBytes(skill.totalSizeBytes)})
                           </span>
                         )}
                       </span>
-                      <span>更新于 {formatSkillTimestamp(skill.updatedAt)}</span>
+                      <span>更新于 {formatDateTime(skill.updatedAt)}</span>
                     </div>
                   </article>
                 </Card>
@@ -448,7 +452,7 @@ export function SkillBrowsePage() {
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除技能「{confirmDelete?.name}」吗？此操作不可撤销。
+            确定要删除技能「{lastConfirmDeleteRef.current?.name}」吗？此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -461,7 +465,7 @@ export function SkillBrowsePage() {
               }}
             >
               {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               )}
               删除
             </AlertDialogAction>

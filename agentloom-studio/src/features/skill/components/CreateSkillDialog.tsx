@@ -18,22 +18,26 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import JSZip from 'jszip';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Loader2,
   Upload,
   FileText,
   Download,
   Trash2,
-  AlertCircle,
   Package,
-  CircleCheck,
 } from 'lucide-react';
+import { Alert } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { Skeleton } from '@/shared/ui/skeleton';
 import { Textarea } from '@/shared/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs';
-import { formatSkillBytes as formatBytes } from '../lib/format';
+import { TooltipHint, TooltipProvider } from '@/shared/ui/tooltip';
+import { formatBytes } from '@/shared/lib/format';
+import { fadeInUp } from '@/shared/lib/motion';
+import { useTheme } from '@/shared/hooks/use-theme';
 import {
   useCreateSkill,
   useUpdateSkill,
@@ -102,12 +106,12 @@ function parseSkillFrontmatter(content: string): { name?: string; description?: 
 
 function EditorSkeleton() {
   return (
-    <div className="flex h-[400px] flex-col gap-2 rounded-md border border-border bg-muted p-4">
-      <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-      <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-      <div className="h-4 w-5/6 animate-pulse rounded bg-muted" />
-      <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-      <div className="h-4 w-4/5 animate-pulse rounded bg-muted" />
+    <div className="flex h-[400px] flex-col gap-2 bg-surface p-4">
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-4 w-1/2" />
+      <Skeleton className="h-4 w-5/6" />
+      <Skeleton className="h-4 w-2/3" />
+      <Skeleton className="h-4 w-4/5" />
     </div>
   );
 }
@@ -142,7 +146,7 @@ function FileItem({
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <FileText className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{file.name}</p>
           <p className="text-xs text-muted-foreground">
@@ -153,35 +157,35 @@ function FileItem({
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          aria-label="下载"
-          variant="ghost"
-          size="icon-xs"
-          onClick={handleDownload}
-          className="text-muted-foreground hover:text-foreground"
-          title="下载"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </Button>
-        {!isMainContent && (
-          <Button
-            aria-label="删除"
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => onDelete(file.name)}
-            disabled={isDeleting}
-            className="text-muted-foreground hover:bg-error/10 hover:text-error"
-            title="删除"
-          >
-            {isDeleting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        )}
-      </div>
+      <TooltipProvider delayDuration={300}>
+        <div className="flex shrink-0 items-center gap-1">
+          <TooltipHint label="下载">
+            <Button
+              aria-label="下载"
+              variant="ghost"
+              size="icon-xs"
+              onClick={handleDownload}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Download />
+            </Button>
+          </TooltipHint>
+          {!isMainContent && (
+            <TooltipHint label="删除">
+              <Button
+                aria-label="删除"
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => onDelete(file.name)}
+                disabled={isDeleting}
+                className="text-muted-foreground hover:bg-error/10 hover:text-error"
+              >
+                {isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+              </Button>
+            </TooltipHint>
+          )}
+        </div>
+      </TooltipProvider>
     </div>
   );
 }
@@ -244,7 +248,7 @@ function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
           : 'border-border hover:border-muted-foreground/50 hover:bg-transparent'
       }`}
     >
-      <Upload className="h-6 w-6 text-muted-foreground" />
+      <Upload className="text-muted-foreground" />
       <div className="text-center">
         <p className="text-sm text-muted-foreground">
           拖放文件到此处，或{' '}
@@ -335,7 +339,7 @@ function ImportDropZone({
             : 'border-border hover:border-muted-foreground/50 hover:bg-transparent'
         }`}
       >
-        <Package className="h-6 w-6 text-muted-foreground" />
+        <Package className="text-muted-foreground" />
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">
             导入技能文件
@@ -357,34 +361,34 @@ function ImportDropZone({
         />
       </Button>
 
-      {status === 'parsing' && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          正在解析…
-        </div>
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {status === 'parsing' && (
+          <motion.div
+            key="parsing"
+            {...fadeInUp}
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Loader2 className="size-3.5 animate-spin" />
+            正在解析…
+          </motion.div>
+        )}
 
-      {status === 'success' && (
-        <div className="flex flex-col gap-1 rounded-lg border border-success/30 bg-success/5 px-3 py-2">
-          <div className="flex items-center gap-2 text-sm text-success">
-            <CircleCheck className="h-3.5 w-3.5" />
-            {message}
-          </div>
-          {pendingFilesCount > 0 && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <FileText className="h-3 w-3" />
-              {pendingFilesCount} 个附件文件
-            </div>
-          )}
-        </div>
-      )}
+        {status === 'success' && (
+          <motion.div key="success" {...fadeInUp}>
+            <Alert variant="success" title={message}>
+              {pendingFilesCount > 0 ? `${pendingFilesCount} 个附件文件` : null}
+            </Alert>
+          </motion.div>
+        )}
 
-      {status === 'error' && (
-        <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/5 px-3 py-2">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
-          <p className="text-xs text-error">{message}</p>
-        </div>
-      )}
+        {status === 'error' && (
+          <motion.div key="error" {...fadeInUp}>
+            <Alert variant="error" role="alert">
+              <span className="block min-w-0 break-words">{message}</span>
+            </Alert>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -451,6 +455,7 @@ export function CreateSkillDialog({
   skill,
 }: CreateSkillDialogProps) {
   const isEditing = Boolean(skill);
+  const { resolvedTheme } = useTheme();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
@@ -758,7 +763,7 @@ export function CreateSkillDialog({
                     <MonacoEditor
                       height="400px"
                       defaultLanguage="markdown"
-                      theme="vs-dark"
+                      theme={resolvedTheme === 'dark' ? 'vs-dark' : 'vs'}
                       value={content}
                       onChange={handleEditorChange}
                       onMount={handleEditorMount}
@@ -803,7 +808,7 @@ export function CreateSkillDialog({
                             className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2"
                           >
                             <div className="flex min-w-0 items-center gap-2">
-                              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <FileText className="size-4 shrink-0 text-muted-foreground" />
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium">{f.name}</p>
                                 <p className="text-xs text-muted-foreground">
@@ -821,9 +826,8 @@ export function CreateSkillDialog({
                                 )
                               }
                               className="text-muted-foreground hover:bg-error/10 hover:text-error"
-                              title="移除"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 />
                             </Button>
                           </div>
                         ))}
@@ -841,26 +845,31 @@ export function CreateSkillDialog({
                       disabled={uploadMutation.isPending}
                     />
 
-                    {/* 错误信息 */}
-                    {fileError && (
-                      <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/5 px-3 py-2">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
-                        <p className="text-xs text-error">{fileError}</p>
-                      </div>
-                    )}
+                    <AnimatePresence initial={false}>
+                      {fileError && (
+                        <motion.div key="file-error" {...fadeInUp}>
+                          <Alert variant="error" role="alert">
+                            <span className="block min-w-0 break-words">{fileError}</span>
+                          </Alert>
+                        </motion.div>
+                      )}
 
-                    {/* 上传进度 */}
-                    {uploadMutation.isPending && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        正在上传…
-                      </div>
-                    )}
+                      {uploadMutation.isPending && (
+                        <motion.div
+                          key="uploading"
+                          {...fadeInUp}
+                          className="flex items-center gap-2 text-sm text-muted-foreground"
+                        >
+                          <Loader2 className="size-3.5 animate-spin" />
+                          正在上传…
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     {/* 文件列表 */}
                     {filesQuery.isLoading ? (
                       <div className="flex items-center justify-center py-6">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <Loader2 className="size-5 animate-spin text-muted-foreground" />
                       </div>
                     ) : files.length === 0 ? (
                       <p className="py-4 text-center text-sm text-muted-foreground">
@@ -906,9 +915,7 @@ export function CreateSkillDialog({
             取消
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            )}
+            {isPending && <Loader2 className="animate-spin" />}
             {isEditing ? '保存' : '创建'}
           </Button>
         </DialogFooter>
