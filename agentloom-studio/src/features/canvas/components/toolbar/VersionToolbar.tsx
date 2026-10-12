@@ -107,6 +107,9 @@ const statusConfig: Record<
 const TOGGLE_ACTIVE_CLASS =
   "border-primary/25 bg-primary/10 text-primary hover:bg-primary/15";
 
+/** 带文字的工具条按钮收紧水平内边距：1366 宽画布下整条工具条才能单行放下 */
+const TOOLBAR_TEXT_BUTTON_CLASS = "px-2.5";
+
 export const VersionToolbar = memo(function VersionToolbar({
   workflowId,
   workflowStatus,
@@ -150,7 +153,7 @@ export const VersionToolbar = memo(function VersionToolbar({
       <div
         className={cn(
           CANVAS_FLOATING_CLASS,
-          "flex flex-nowrap items-center justify-end gap-1 px-2 py-1.5",
+          "flex flex-wrap items-center justify-end gap-1 px-2 py-1",
           className,
         )}
         data-testid="version-toolbar"
@@ -158,7 +161,7 @@ export const VersionToolbar = memo(function VersionToolbar({
         <Badge
           variant={config.variant}
           size="sm"
-          className="mx-1"
+          className="mx-0.5"
           data-testid="workflow-status-badge"
         >
           {config.label}
@@ -265,7 +268,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           <Button
             variant="outline"
             size="sm"
-            className={cn(isInterventionPoliciesOpen && TOGGLE_ACTIVE_CLASS)}
+            className={cn(TOOLBAR_TEXT_BUTTON_CLASS, isInterventionPoliciesOpen && TOGGLE_ACTIVE_CLASS)}
             aria-pressed={isInterventionPoliciesOpen}
             onClick={onToggleInterventionPolicies}
             data-testid="btn-intervention-policies"
@@ -279,7 +282,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           <Button
             variant="outline"
             size="sm"
-            className={cn(isInputSchemaOpen && TOGGLE_ACTIVE_CLASS)}
+            className={cn(TOOLBAR_TEXT_BUTTON_CLASS, isInputSchemaOpen && TOGGLE_ACTIVE_CLASS)}
             aria-pressed={isInputSchemaOpen}
             onClick={onToggleInputSchema}
             data-testid="btn-input-schema"
@@ -293,7 +296,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           <Button
             variant="outline"
             size="sm"
-            className={cn(isTriggersOpen && TOGGLE_ACTIVE_CLASS)}
+            className={cn(TOOLBAR_TEXT_BUTTON_CLASS, isTriggersOpen && TOGGLE_ACTIVE_CLASS)}
             aria-pressed={isTriggersOpen}
             onClick={onToggleTriggers}
             data-testid="btn-triggers"
@@ -313,6 +316,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           <Button
             variant="secondary"
             size="sm"
+            className={TOOLBAR_TEXT_BUTTON_CLASS}
             onClick={onPublishToMarketplace}
             data-testid="btn-publish-to-marketplace"
           >
@@ -324,6 +328,7 @@ export const VersionToolbar = memo(function VersionToolbar({
         {canPublish && (
           <Button
             size="sm"
+            className={TOOLBAR_TEXT_BUTTON_CLASS}
             onClick={() => onOpenPublish()}
             data-testid="btn-publish"
           >
@@ -335,6 +340,7 @@ export const VersionToolbar = memo(function VersionToolbar({
         {!isArchived && onRun && (
           <Button
             size="sm"
+            className={TOOLBAR_TEXT_BUTTON_CLASS}
             onClick={onRun}
             disabled={isRunning}
             data-testid="btn-run-workflow"

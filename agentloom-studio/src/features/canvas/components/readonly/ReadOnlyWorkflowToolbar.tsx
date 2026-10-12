@@ -45,7 +45,7 @@ export const ReadOnlyWorkflowToolbar = memo(function ReadOnlyWorkflowToolbar({
     <div
       className={cn(
         CANVAS_FLOATING_CLASS,
-        'flex flex-nowrap items-center justify-end gap-1 px-2 py-1.5',
+        'flex flex-nowrap items-center justify-end gap-1 px-2 py-1',
         className,
       )}
       data-testid="readonly-workflow-toolbar"

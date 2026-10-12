@@ -409,16 +409,17 @@ export function WorkflowCanvasPage() {
 
         {workflow && (
           <div
-            className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between"
+            className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-2"
             data-testid="workflow-top-overlay"
           >
             {isMobileReadOnly && (
               <ReadOnlyCanvasBanner message="当前为只读浏览，请在桌面端编辑工作流" />
             )}
 
-            <div className="order-1 flex justify-end xl:order-2">
+            {/* 工具条宽度受画布列约束(属性面板打开时画布变窄):min-w-0 允许收缩,工具条内部换行而不是溢出盖住属性面板 */}
+            <div className="order-1 flex min-w-0 justify-end xl:order-2">
               <div
-                className="pointer-events-auto w-full xl:w-auto"
+                className="pointer-events-auto w-full min-w-0 xl:w-auto"
                 data-testid="workflow-toolbar-shell"
               >
                 {isMobileReadOnly ? (
@@ -470,8 +471,12 @@ export function WorkflowCanvasPage() {
               </div>
             </div>
 
+            {/* 左列只有展开执行记录/设置面板时才占 480px;收起时按按钮宽度,把剩余宽度留给工具条单行展示 */}
             <div
-              className="order-2 flex w-[min(480px,calc(100vw-3rem))] max-w-full flex-col gap-3 xl:order-1"
+              className={cn(
+                "order-2 flex w-[min(480px,calc(100vw-3rem))] max-w-full flex-col gap-3 xl:order-1 xl:shrink-[999]",
+                !isExecutionHistoryOpen && !activeSettingsTab && "xl:w-auto",
+              )}
               data-testid="workflow-side-overlay"
             >
               <Button
