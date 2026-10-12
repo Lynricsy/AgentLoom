@@ -16,7 +16,7 @@ import { useToast } from '@/shared/ui/toast'
 
 import { useCreateAgentApiKey } from '../api/agentApiKeyQueries'
 import { copyText } from '../lib/clipboard'
-import { resolveProblemDetail } from '../lib/problemDetail'
+import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import type { CreateAgentApiKeyInput, CreatedAgentApiKey } from '../types'
 
 interface AgentApiKeyCreateDialogProps {

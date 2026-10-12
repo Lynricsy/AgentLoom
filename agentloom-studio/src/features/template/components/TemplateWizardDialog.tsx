@@ -1,10 +1,12 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
+import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import { WorkflowPreviewCanvas } from '@/features/canvas'
+import { ChatModelSelect, useUsableChatModels } from '@/features/llm'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
@@ -50,6 +52,15 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
   const navigate = useNavigate()
   const { notify } = useToast()
   const createWorkflow = useCreateWorkflow()
+  const usableChatModels = useUsableChatModels()
+  const chatModels = usableChatModels.data ?? []
+  // 只有确认账号里一个可用对话模型都没有时才拦截；加载中/加载失败交给服务端判定
+  const hasNoUsableChatModel = usableChatModels.isSuccess && chatModels.length === 0
+  const [modelConfigId, setModelConfigId] = useState<string | undefined>()
+
+  useEffect(() => {
+    if (!open) setModelConfigId(undefined)
+  }, [open])
 
   const {
     register,
@@ -71,6 +82,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
           name: values.name,
           description: values.description || undefined,
           templateSlug: template?.slug,
+          modelConfigId,
         })
         onOpenChange(false)
         reset()
@@ -82,15 +94,15 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
           to: '/workflows/$workflowId',
           params: { workflowId: result.id },
         })
-      } catch {
+      } catch (error) {
         notify({
           title: '创建失败',
-          description: '无法创建工作流，请稍后重试',
+          description: resolveProblemDetail(error, '无法创建工作流，请稍后重试'),
           variant: 'error',
         })
       }
     },
-    [createWorkflow, template?.slug, onOpenChange, reset, notify, navigate],
+    [createWorkflow, template?.slug, modelConfigId, onOpenChange, reset, notify, navigate],
   )
 
   const nodeCount = template?.metadata?.nodeCount ?? 0
@@ -182,6 +194,42 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                 </p>
               )}
             </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="wf-agent-model"
+                className="block text-sm font-medium text-foreground"
+              >
+                Agent 使用的模型
+              </label>
+              <ChatModelSelect
+                id="wf-agent-model"
+                data-testid="template-agent-model-select"
+                value={modelConfigId}
+                onValueChange={setModelConfigId}
+                models={chatModels}
+                disabled={isSubmitting || hasNoUsableChatModel}
+              />
+              <p className="text-xs text-muted-foreground">
+                模板里的每个 Agent 会在你的账号中自动创建并使用这个模型。
+              </p>
+              {hasNoUsableChatModel && (
+                <div
+                  className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
+                  data-testid="template-no-chat-model-warning"
+                >
+                  你的账号中还没有可用的对话模型，模板里的 Agent 无法创建。请先到{' '}
+                  <Link
+                    to="/resources/llm-models"
+                    className="font-medium underline underline-offset-2"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    模型管理
+                  </Link>{' '}
+                  添加并启用一个对话模型。
+                </div>
+              )}
+            </div>
           </DialogBody>
 
           <DialogFooter>
@@ -190,7 +238,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                 取消
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || hasNoUsableChatModel}>
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               创建工作流
             </Button>

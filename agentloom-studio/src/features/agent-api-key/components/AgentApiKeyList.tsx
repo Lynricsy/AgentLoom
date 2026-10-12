@@ -26,7 +26,7 @@ import {
 import { useToast } from '@/shared/ui/toast'
 
 import { useAgentApiKeys, useRevokeAgentApiKey } from '../api/agentApiKeyQueries'
-import { resolveProblemDetail } from '../lib/problemDetail'
+import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import type { AgentApiKey, AgentApiKeyStatusFilter } from '../types'
 import { AgentApiKeyCreateDialog } from './AgentApiKeyCreateDialog'
 

@@ -6,6 +6,8 @@ import { CheckCircle2, Loader2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
+import { ChatModelSelect, useUsableChatModels } from '@/features/llm'
+import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import { Button, buttonVariants } from '@/shared/ui/button'
 import {
   Dialog,
@@ -62,9 +64,15 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
   const [installedPluginName, setInstalledPluginName] = useState<string | null>(
     null,
   )
+  /** 仅工作流 listing：作者的模型在当前账号不存在时，Agent 改用的备用模型 */
+  const [modelConfigId, setModelConfigId] = useState<string | undefined>()
+  const usableChatModels = useUsableChatModels({ enabled: !isPlugin })
 
   useEffect(() => {
-    if (!open) setInstalledPluginName(null)
+    if (!open) {
+      setInstalledPluginName(null)
+      setModelConfigId(undefined)
+    }
   }, [open])
 
   const {
@@ -88,6 +96,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
           body: {
             name: values.name,
             description: values.description?.trim() || undefined,
+            modelConfigId,
           },
         })
 
@@ -111,17 +120,20 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
         }
 
         setInstalledPluginName(result.name)
-      } catch {
+      } catch (error) {
         notify({
           title: '安装失败',
-          description: isPlugin
-            ? '无法安装这个插件，请稍后重试。'
-            : '无法安装这个工作流，请稍后重试。',
+          description: resolveProblemDetail(
+            error,
+            isPlugin
+              ? '无法安装这个插件，请稍后重试。'
+              : '无法安装这个工作流，请稍后重试。',
+          ),
           variant: 'error',
         })
       }
     },
-    [installListing, isPlugin, listingId, listingSummary, listingTitle, navigate, notify, onOpenChange, reset],
+    [installListing, isPlugin, listingId, listingSummary, listingTitle, modelConfigId, navigate, notify, onOpenChange, reset],
   )
 
   const isPending = isSubmitting || installListing.isPending
@@ -207,6 +219,28 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
                   </p>
                 ) : null}
               </div>
+
+              {isPlugin ? null : (
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="install-fallback-model"
+                    className="block text-sm font-medium text-foreground"
+                  >
+                    备用模型 <span className="font-normal text-muted-foreground">(可选)</span>
+                  </label>
+                  <ChatModelSelect
+                    id="install-fallback-model"
+                    data-testid="install-fallback-model-select"
+                    value={modelConfigId}
+                    onValueChange={setModelConfigId}
+                    models={usableChatModels.data ?? []}
+                    disabled={isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    作者使用的模型在你的账号中不存在时，Agent 改用这个模型。
+                  </p>
+                </div>
+              )}
             </DialogBody>
 
             <DialogFooter>

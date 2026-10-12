@@ -87,6 +87,7 @@ export {
   useLookupModelMetadata,
   // Model hooks
   useLlmModels,
+  useUsableChatModels,
   useLlmModel,
   useLlmApiKeys,
   useCreateLlmModel,
@@ -107,3 +108,7 @@ export {
   GlobalModelSelector,
   type GlobalModelSelectorProps,
 } from "./components/GlobalModelSelector";
+export {
+  ChatModelSelect,
+  type ChatModelSelectProps,
+} from "./components/ChatModelSelect";

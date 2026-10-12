@@ -1,15 +1,32 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { HTTPError, type NormalizedOptions } from 'ky'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { installListingMock, navigateMock, notifyMock } = vi.hoisted(() => ({
+import type * as LlmFeature from '@/features/llm'
+import type { LlmModelInfo } from '@/features/llm'
+
+const { installListingMock, navigateMock, notifyMock, useUsableChatModelsMock } = vi.hoisted(() => ({
   installListingMock: {
     mutateAsync: vi.fn(),
     isPending: false,
   },
   navigateMock: vi.fn(),
   notifyMock: vi.fn(),
+  useUsableChatModelsMock: vi.fn(),
 }))
+
+vi.mock('@/features/llm', async (importOriginal) => ({
+  ...(await importOriginal<typeof LlmFeature>()),
+  useUsableChatModels: useUsableChatModelsMock,
+}))
+
+function makeHttpError(status: number, data?: unknown): HTTPError {
+  const request = new Request('http://localhost/api/v1/marketplace/listings/listing-1/install')
+  const error = new HTTPError(new Response(null, { status }), request, {} as NormalizedOptions)
+  error.data = data
+  return error
+}
 
 vi.mock('../../api/publicMarketplaceMutations', () => ({
   useInstallListing: () => installListingMock,
@@ -43,6 +60,19 @@ describe('MarketplaceInstallDialog', () => {
     vi.clearAllMocks()
     installListingMock.mutateAsync = vi.fn()
     installListingMock.isPending = false
+    useUsableChatModelsMock.mockReturnValue({
+      data: [
+        {
+          id: 'model-claude',
+          name: 'Claude Sonnet',
+          modelType: 'chat',
+          isEnabled: true,
+          isDefault: false,
+          providerEntity: { name: 'Anthropic', isEnabled: true },
+        } as LlmModelInfo,
+      ],
+      isSuccess: true,
+    })
   })
 
   it('pre-fills the form with listing data', () => {
@@ -108,6 +138,53 @@ describe('MarketplaceInstallDialog', () => {
     })
   })
 
+  it('workflow 安装选择备用模型时发送 modelConfigId，自动时不发送', async () => {
+    const user = userEvent.setup()
+    installListingMock.mutateAsync.mockResolvedValue({
+      workflowDefinitionId: 'workflow-1',
+      name: 'Agent Workflow',
+      message: 'Workflow installed successfully',
+    })
+
+    const { unmount } = render(
+      <MarketplaceInstallDialog
+        listingId="listing-1"
+        listingTitle="Agent Workflow"
+        listingType="workflow"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '确认安装' }))
+    await waitFor(() => expect(installListingMock.mutateAsync).toHaveBeenCalledTimes(1))
+    expect(installListingMock.mutateAsync.mock.calls[0]?.[0]?.body?.modelConfigId).toBeUndefined()
+    unmount()
+
+    render(
+      <MarketplaceInstallDialog
+        listingId="listing-1"
+        listingTitle="Agent Workflow"
+        listingType="workflow"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('combobox', { name: /备用模型/ }))
+    await user.click(await screen.findByRole('option', { name: /Claude Sonnet/ }))
+    await user.click(screen.getByRole('button', { name: '确认安装' }))
+
+    await waitFor(() => expect(installListingMock.mutateAsync).toHaveBeenCalledTimes(2))
+    expect(installListingMock.mutateAsync).toHaveBeenNthCalledWith(2, {
+      id: 'listing-1',
+      body: {
+        name: 'Agent Workflow',
+        modelConfigId: 'model-claude',
+      },
+    })
+  })
+
   it('plugin 安装成功后停在成功态并给出插件管理入口', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
@@ -162,9 +239,26 @@ describe('MarketplaceInstallDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it('shows an error toast when installation fails', async () => {
+  it('plugin listing 不展示备用模型，也不加载模型列表', () => {
+    render(
+      <MarketplaceInstallDialog
+        listingId="listing-plugin-1"
+        listingTitle="Text Uppercase"
+        listingType="plugin"
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByTestId('install-fallback-model-select')).not.toBeInTheDocument()
+    expect(useUsableChatModelsMock).toHaveBeenCalledWith({ enabled: false })
+  })
+
+  it('shows the server problem detail when installation fails', async () => {
     const user = userEvent.setup()
-    installListingMock.mutateAsync.mockRejectedValue(new Error('install failed'))
+    installListingMock.mutateAsync.mockRejectedValue(
+      makeHttpError(422, { detail: '所选模型不可用，请换一个对话模型' }),
+    )
 
     render(
       <MarketplaceInstallDialog
@@ -183,6 +277,7 @@ describe('MarketplaceInstallDialog', () => {
       expect(notifyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           title: '安装失败',
+          description: '所选模型不可用，请换一个对话模型',
           variant: 'error',
         }),
       )
@@ -193,7 +288,7 @@ describe('MarketplaceInstallDialog', () => {
 
   it('shows plugin-specific error toast when plugin installation fails', async () => {
     const user = userEvent.setup()
-    installListingMock.mutateAsync.mockRejectedValue(new Error('install failed'))
+    installListingMock.mutateAsync.mockRejectedValue(makeHttpError(500))
 
     render(
       <MarketplaceInstallDialog

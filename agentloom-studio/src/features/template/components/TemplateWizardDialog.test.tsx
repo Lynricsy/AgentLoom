@@ -1,6 +1,10 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { HTTPError, type NormalizedOptions } from "ky";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import type * as LlmFeature from "@/features/llm";
+import type { LlmModelInfo } from "@/features/llm";
 import { TemplateWizardDialog } from "./TemplateWizardDialog";
 import type { TemplateDetail } from "../types";
 
@@ -44,6 +48,12 @@ vi.mock("@xyflow/react", () => ({
 const mutateAsyncMock = vi.fn();
 const navigateMock = vi.fn();
 const toastMock = vi.fn();
+const { usableChatModelsMock } = vi.hoisted(() => ({
+  usableChatModelsMock: {
+    data: [] as LlmModelInfo[],
+    isSuccess: true,
+  },
+}));
 
 vi.mock("@/features/workflow", () => ({
   useCreateWorkflow: () => ({
@@ -52,13 +62,43 @@ vi.mock("@/features/workflow", () => ({
   }),
 }));
 
+vi.mock("@/features/llm", async (importOriginal) => ({
+  ...(await importOriginal<typeof LlmFeature>()),
+  useUsableChatModels: () => usableChatModelsMock,
+}));
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
+  Link: ({
+    to,
+    children,
+    ...props
+  }: {
+    to: string;
+    children?: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("@/shared/ui/toast", () => ({
   useToast: () => ({ notify: toastMock }),
 }));
+
+function makeChatModel(overrides: Partial<LlmModelInfo>): LlmModelInfo {
+  return {
+    id: "model-1",
+    name: "GPT-4o",
+    modelType: "chat",
+    isEnabled: true,
+    isDefault: false,
+    providerEntity: { name: "OpenAI", isEnabled: true },
+    ...overrides,
+  } as LlmModelInfo;
+}
 
 function makeTemplateDetail(
   overrides?: Partial<TemplateDetail>,
@@ -112,6 +152,11 @@ function makeTemplateDetail(
 describe("TemplateWizardDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    usableChatModelsMock.data = [
+      makeChatModel({ id: "model-default", name: "GPT-4o", isDefault: true }),
+      makeChatModel({ id: "model-claude", name: "Claude Sonnet" }),
+    ];
+    usableChatModelsMock.isSuccess = true;
   });
 
   it("关闭时不渲染内容", () => {
@@ -238,6 +283,64 @@ describe("TemplateWizardDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("选择具体模型时随请求发送 modelConfigId，自动时不发送", async () => {
+    const user = userEvent.setup();
+    mutateAsyncMock.mockResolvedValue({ id: "wf-new", name: "竞品分析的副本" });
+
+    const { unmount } = render(
+      <TemplateWizardDialog
+        template={makeTemplateDetail()}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "创建工作流" }));
+    await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(1));
+    expect(mutateAsyncMock.mock.calls[0]?.[0]?.modelConfigId).toBeUndefined();
+    unmount();
+
+    render(
+      <TemplateWizardDialog
+        template={makeTemplateDetail()}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Agent 使用的模型" }));
+    await user.click(await screen.findByRole("option", { name: /Claude Sonnet/ }));
+    await user.click(screen.getByRole("button", { name: "创建工作流" }));
+
+    await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(2));
+    expect(mutateAsyncMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        templateSlug: "test-template",
+        modelConfigId: "model-claude",
+      }),
+    );
+  });
+
+  it("账号没有可用对话模型时提示去模型管理并禁用创建", () => {
+    usableChatModelsMock.data = [];
+
+    render(
+      <TemplateWizardDialog
+        template={makeTemplateDetail()}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    const warning = screen.getByTestId("template-no-chat-model-warning");
+    expect(warning).toHaveTextContent("还没有可用的对话模型");
+    expect(
+      screen.getByRole("link", { name: "模型管理" }),
+    ).toHaveAttribute("href", "/resources/llm-models");
+    expect(screen.getByRole("button", { name: "创建工作流" })).toBeDisabled();
+  });
+
   it("创建失败时显示错误 toast", async () => {
     mutateAsyncMock.mockRejectedValue(new Error("Server error"));
 
@@ -261,6 +364,37 @@ describe("TemplateWizardDialog", () => {
     });
 
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("创建失败时展示服务端返回的 detail", async () => {
+    const request = new Request("http://localhost/api/v1/workflow-definitions");
+    const error = new HTTPError(
+      new Response(null, { status: 409 }),
+      request,
+      {} as NormalizedOptions,
+    );
+    error.data = { detail: "没有可用的对话模型" };
+    mutateAsyncMock.mockRejectedValue(error);
+
+    render(
+      <TemplateWizardDialog
+        template={makeTemplateDetail()}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("创建工作流"));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "创建失败",
+          description: "没有可用的对话模型",
+          variant: "error",
+        }),
+      );
+    });
   });
 
   it("点击取消关闭对话框", () => {

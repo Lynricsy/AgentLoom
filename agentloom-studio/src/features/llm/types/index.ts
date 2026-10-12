@@ -626,3 +626,15 @@ export function adaptModelEntityToInfo(
     modelName: entity.modelId,
   };
 }
+
+/**
+ * 能交给 Agent 使用的对话模型：chat 类型、模型已启用且所属 Provider 已启用。
+ * 与服务端从模板/市场实例化工作流时挑选模型的规则保持一致。
+ */
+export function isUsableChatModel(model: LlmModelInfo): boolean {
+  return (
+    model.modelType === "chat" &&
+    model.isEnabled &&
+    model.providerEntity?.isEnabled === true
+  );
+}

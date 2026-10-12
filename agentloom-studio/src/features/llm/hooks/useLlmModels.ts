@@ -26,7 +26,8 @@ import type {
   UpdateLlmModelInput,
   UpdateLlmProviderInput,
 } from "../types";
-import { adaptModelEntityToInfo } from "../types";
+import type { LlmModelConfigEntity } from "../types";
+import { adaptModelEntityToInfo, isUsableChatModel } from "../types";
 
 // ============================================================================
 // Provider hooks
@@ -190,6 +191,21 @@ export function useLlmModels() {
     queryKey: llmModelKeys.lists(),
     queryFn: fetchLlmModels,
     select: (entities) => entities.map(adaptModelEntityToInfo),
+  });
+}
+
+/** 模块级函数保证 select 引用稳定，TanStack 仅在数据变化时重新计算 */
+function selectUsableChatModels(entities: LlmModelConfigEntity[]) {
+  return entities.map(adaptModelEntityToInfo).filter(isUsableChatModel);
+}
+
+/** 账号中可交给 Agent 使用的对话模型（与 useLlmModels 共享同一份缓存） */
+export function useUsableChatModels(options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: llmModelKeys.lists(),
+    queryFn: fetchLlmModels,
+    select: selectUsableChatModels,
+    enabled: options.enabled ?? true,
   });
 }
 
