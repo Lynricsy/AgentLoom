@@ -333,8 +333,13 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           isCompoundContainer &&
           isCompoundCollapsed &&
           "max-w-[360px] overflow-hidden",
-        lod === "compact" && "min-w-[156px] max-w-[180px]",
-        lod === "minimal" && "h-[80px] min-w-[80px] max-w-[80px]",
+        // 展开的容器尺寸由 style 决定，低缩放时不能按普通卡片收窄，否则子节点会画到框外
+        lod === "compact" &&
+          !(isCompoundContainer && !isCompoundCollapsed) &&
+          "min-w-[156px] max-w-[180px]",
+        lod === "minimal" &&
+          !(isCompoundContainer && !isCompoundCollapsed) &&
+          "h-[80px] min-w-[80px] max-w-[80px]",
         isSearchActive && isMatch && !isCurrent && "search-match",
         isSearchActive && isCurrent && "search-current",
         isSearchActive && !isMatch && "search-dimmed",
