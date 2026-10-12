@@ -83,7 +83,7 @@ function SettingsOverviewPage() {
           const Icon = section.icon;
           return (
             <motion.div key={section.to} {...staggerList(index)}>
-              <Link to={section.to} className="group block h-full">
+              <Link to={section.to} className="group block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
                 <Card interactive className="h-full">
                   <CardContent className="flex items-start gap-3 p-4">
                     <span

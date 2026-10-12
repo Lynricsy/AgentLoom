@@ -31,7 +31,7 @@ export function RootLayout() {
 
   if (isLoading && !isPublicRoute) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
+      <div className="flex h-dvh w-full items-center justify-center bg-background">
         <Spinner size="lg" />
       </div>
     );
@@ -57,7 +57,7 @@ export function RootLayout() {
   // 设置区不再替换主侧栏：它由 settingsLayoutRoute 提供二级导航并渲染在
   // 下方的 Outlet 内，因此壳层对所有非公开路由完全一致。
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh w-full overflow-hidden bg-background text-foreground">
       {isDesktop ? <AppSidebar /> : null}
       <div className="flex min-w-0 flex-1 flex-col">
         {isDesktop ? null : <MobileTopBar />}

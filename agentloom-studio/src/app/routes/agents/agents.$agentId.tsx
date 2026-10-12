@@ -2,6 +2,7 @@ import { Link, createRoute } from "@tanstack/react-router";
 import { ReactFlowProvider } from "@xyflow/react";
 import { ChevronRight } from "lucide-react";
 import { HTTPError } from "ky";
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useRef, useState } from "react";
 
 import {
@@ -23,6 +24,7 @@ import {
 import { ShareManagementDialog } from "@/features/share";
 import type { ApiError } from "@/shared/types/api";
 import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
+import { fadeIn } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { useToast } from "@/shared/ui/toast";
 
@@ -70,7 +72,13 @@ function AgentBreadcrumb({
       <span className="max-w-[220px] truncate font-medium text-foreground">
         {agentName || "加载中…"}
       </span>
-      {isDirty && <span className="text-2xs text-warning">未保存</span>}
+      <AnimatePresence initial={false}>
+        {isDirty ? (
+          <motion.span key="dirty" {...fadeIn} className="text-2xs text-warning">
+            未保存
+          </motion.span>
+        ) : null}
+      </AnimatePresence>
     </nav>
   );
 }
@@ -157,7 +165,7 @@ function AgentCanvasPage() {
         <AgentCanvas agentId={agentId} />
 
         <div
-          className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between"
+          className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
           data-testid="agent-top-overlay"
         >
           {isMobileReadOnly && (

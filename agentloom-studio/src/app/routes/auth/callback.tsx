@@ -1,6 +1,7 @@
 import { createRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { supabase } from '@/shared/lib/supabase'
 import { rootRoute } from '../__root'
 
@@ -30,9 +31,9 @@ export function AuthCallbackPage() {
   }, [navigate])
 
   return (
-    <div className="flex h-screen items-center justify-center bg-background">
+    <div className="flex h-dvh items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        <Spinner size="lg" />
         <p className="text-sm text-muted-foreground">正在完成登录…</p>
       </div>
     </div>
