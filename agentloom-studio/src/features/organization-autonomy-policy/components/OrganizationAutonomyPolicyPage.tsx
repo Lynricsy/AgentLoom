@@ -6,17 +6,21 @@ import {
   type ReactNode,
 } from 'react'
 import { AlertTriangle, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { HTTPError } from 'ky'
 import type { AutonomyMode } from '@/features/canvas/autonomy.types'
 import { useAuthToken } from '@/features/execution'
 import { useCurrentOrganization } from '@/features/organization'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
-import { staggerList } from '@/shared/lib/motion'
+import { formatDateTime } from '@/shared/lib/format'
+import { fadeInUp, staggerList } from '@/shared/lib/motion'
+import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import {
   Select,
   SelectContent,
@@ -48,23 +52,6 @@ import type {
   OrganizationAutonomyViolationDetail,
   OrganizationAutonomyViolationSummary,
 } from '../types/organizationAutonomyPolicy'
-
-function formatTimestamp(value?: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
-}
 
 const PAGE_DESCRIPTION =
   '在组织级别约束 LLM Agent 的自治上限，并在必要时批量降级现有工作流节点。'
@@ -168,7 +155,7 @@ function AutonomyPolicyBlockedState({
   action?: ReactNode
 }) {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
+    <PageContainer width="narrow" data-testid={testId}>
       <PageHeader
         icon={SlidersHorizontal}
         title="组织自治策略"
@@ -177,8 +164,8 @@ function AutonomyPolicyBlockedState({
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
-            <Icon className="h-5 w-5" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+            <Icon className="size-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
@@ -187,30 +174,30 @@ function AutonomyPolicyBlockedState({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 
 /** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
 function AutonomyPolicyOrganizationLoadingState() {
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="organization-autonomy-policy-organization-loading"
-    >
+    <PageContainer width="narrow" data-testid="organization-autonomy-policy-organization-loading">
       <PageHeader
         icon={SlidersHorizontal}
         title="组织自治策略"
         description={PAGE_DESCRIPTION}
       />
 
-      <p className="text-xs text-muted-foreground">正在确认当前组织…</p>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+        <Spinner size="sm" />
+        正在确认当前组织…
+      </p>
 
       <div className="space-y-3">
         <Skeleton className="h-28 rounded-lg" />
         <Skeleton className="h-44 rounded-lg" />
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -337,10 +324,7 @@ function OrganizationAutonomyPolicyContent({
 
   if (isLoading) {
     return (
-      <div
-        className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-        data-testid="organization-autonomy-policy-page"
-      >
+      <PageContainer width="narrow" data-testid="organization-autonomy-policy-page">
         <PageHeader
           icon={SlidersHorizontal}
           title="组织自治策略"
@@ -348,31 +332,23 @@ function OrganizationAutonomyPolicyContent({
         />
         <Skeleton className="h-40 rounded-lg" />
         <Skeleton className="h-56 rounded-lg" />
-      </div>
+      </PageContainer>
     )
   }
 
   if (isError || !policy) {
     return (
-      <div
-        className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-        data-testid="organization-autonomy-policy-page"
-      >
+      <PageContainer width="narrow" data-testid="organization-autonomy-policy-page">
         <PageHeader
           icon={SlidersHorizontal}
           title="组织自治策略"
           description={PAGE_DESCRIPTION}
         />
 
-        <Card className="border-error/40">
-          <CardContent className="space-y-1 p-5">
-            <p className="text-sm font-medium text-foreground">加载组织自治策略失败</p>
-            <p className="text-xs font-medium text-error">
-              {error instanceof Error ? error.message : '未知错误'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <Alert variant="error" title="加载组织自治策略失败">
+          {error instanceof Error ? error.message : '未知错误'}
+        </Alert>
+      </PageContainer>
     )
   }
 
@@ -380,10 +356,7 @@ function OrganizationAutonomyPolicyContent({
     updateMutation.isPending || previewMutation.isPending || confirmMutation.isPending
 
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="organization-autonomy-policy-page"
-    >
+    <PageContainer width="narrow" data-testid="organization-autonomy-policy-page">
       <PageHeader
         icon={SlidersHorizontal}
         title="组织自治策略"
@@ -396,7 +369,7 @@ function OrganizationAutonomyPolicyContent({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-1.5">
               <div className="flex items-center gap-2 text-foreground">
-                <SlidersHorizontal className="h-4 w-4" />
+                <SlidersHorizontal className="size-4" />
                 <CardTitle>当前组织策略</CardTitle>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -407,14 +380,14 @@ function OrganizationAutonomyPolicyContent({
                 。
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
-                <span>组织 ID：{policy.organizationId}</span>
+                <span className="break-all">组织 ID：{policy.organizationId}</span>
                 <span>版本：{policy.version}</span>
                 <span>更新人：{policy.updatedBy ?? '—'}</span>
-                <span>更新时间：{formatTimestamp(policy.updatedAt)}</span>
+                <span>更新时间：{formatDateTime(policy.updatedAt)}</span>
               </div>
             </div>
 
-            <p className="shrink-0 rounded-lg border border-border bg-muted px-3 py-2 text-2xs leading-relaxed text-muted-foreground">
+            <p className="rounded-lg border border-border bg-muted px-3 py-2 text-2xs leading-relaxed text-muted-foreground lg:max-w-xs">
               当前存在 {policy.violationSummary.workflowCount} 个工作流、
               {policy.violationSummary.nodeCount} 个节点超出组织上限。
             </p>
@@ -429,9 +402,9 @@ function OrganizationAutonomyPolicyContent({
       <Card>
         <CardHeader>
           <CardTitle>调整自治上限</CardTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <CardDescription className="leading-relaxed">
             选择新的组织级自治上限。更严格的上限会阻止更高自治模式继续被采纳。
-          </p>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
@@ -513,23 +486,27 @@ function OrganizationAutonomyPolicyContent({
         </CardContent>
       </Card>
 
-      {previewResult ? (
-        <Card data-testid="organization-autonomy-policy-preview">
-          <CardHeader>
-            <CardTitle>批量降级预览</CardTitle>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              预览目标上限为 {getAutonomyModeLabel(previewResult.autonomyCap)}
-              。确认后，以下节点会被批量调整到允许的自治模式。
-            </p>
-          </CardHeader>
+      <AnimatePresence initial={false}>
+        {previewResult ? (
+          <motion.div key="downgrade-preview" {...fadeInUp}>
+            <Card data-testid="organization-autonomy-policy-preview">
+              <CardHeader>
+                <CardTitle>批量降级预览</CardTitle>
+                <CardDescription className="leading-relaxed">
+                  预览目标上限为 {getAutonomyModeLabel(previewResult.autonomyCap)}
+                  。确认后，以下节点会被批量调整到允许的自治模式。
+                </CardDescription>
+              </CardHeader>
 
-          <CardContent className="space-y-3">
-            <SummaryStats summary={previewResult.violationSummary} label="预估受影响" />
-            <ViolationList violations={previewResult.violations} />
-          </CardContent>
-        </Card>
-      ) : null}
-    </div>
+              <CardContent className="space-y-3">
+                <SummaryStats summary={previewResult.violationSummary} label="预估受影响" />
+                <ViolationList violations={previewResult.violations} />
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </PageContainer>
   )
 }
 
