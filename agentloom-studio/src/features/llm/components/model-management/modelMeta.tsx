@@ -130,7 +130,7 @@ export function ModelMetaChip({
       )}
       title={title}
     >
-      {Icon ? <Icon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} /> : null}
+      {Icon ? <Icon className={cn("shrink-0", compact ? "size-3" : "size-3.5")} /> : null}
       <span className="truncate">{children}</span>
     </span>
   );

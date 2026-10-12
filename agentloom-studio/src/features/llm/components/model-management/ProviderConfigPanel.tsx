@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Globe,
   Loader2,
@@ -15,6 +16,7 @@ import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { useToast } from "@/shared/ui/toast";
+import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +26,7 @@ import {
   AlertDialogTitle,
   AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
+import { fadeInUp } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import type {
   ConnectionTestResult,
@@ -70,6 +73,9 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
   const [editingModel, setEditingModel] = useState<LlmModelInfo | null>(null);
   const [deleteConfirmModel, setDeleteConfirmModel] =
     useState<LlmModelInfo | null>(null);
+  // 退场动画期间 deleteConfirmModel 已置空，文案读最近一次目标
+  const lastDeleteModelRef = useRef<LlmModelInfo | null>(null);
+  if (deleteConfirmModel) lastDeleteModelRef.current = deleteConfirmModel;
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>(
     [],
   );
@@ -248,7 +254,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
           />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="min-w-0 truncate text-lg font-semibold text-foreground">
+              <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
                 {provider.name}
               </h2>
               <ModelMetaChip compact>
@@ -265,14 +271,16 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                 </Badge>
               )}
             </div>
-            <p className="truncate text-xs text-muted-foreground">{provider.slug}</p>
+            <p className="truncate text-xs text-muted-foreground" title={provider.slug}>
+              {provider.slug}
+            </p>
           </div>
         </div>
 
         {/* Base URL */}
         <Card className="space-y-2 p-4">
           <Label>Base URL</Label>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <Input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
@@ -281,37 +289,39 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
             />
             <Button
               variant="outline"
-              size="sm"
               onClick={() => void handleBaseUrlSave()}
               disabled={updateProviderMutation.isPending}
               className="shrink-0"
             >
               {updateProviderMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
                 "保存"
               )}
             </Button>
             {baseUrlDiffers && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleResetBaseUrl()}
-                disabled={resetBaseUrlMutation.isPending}
-                className="shrink-0"
-                title="恢复默认 URL"
-              >
-                {resetBaseUrlMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3.5 w-3.5" />
-                )}
-              </Button>
+              <TooltipProvider delayDuration={300}>
+                <TooltipHint label="恢复默认 URL">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void handleResetBaseUrl()}
+                    disabled={resetBaseUrlMutation.isPending}
+                    aria-label="恢复默认 URL"
+                  >
+                    {resetBaseUrlMutation.isPending ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <RotateCcw />
+                    )}
+                  </Button>
+                </TooltipHint>
+              </TooltipProvider>
             )}
           </div>
           {provider.defaultBaseUrl && (
-            <p className="text-2xs text-muted-foreground">
-              默认: {provider.defaultBaseUrl}
+            <p className="break-all text-2xs text-muted-foreground">
+              默认：{provider.defaultBaseUrl}
             </p>
           )}
         </Card>
@@ -345,7 +355,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               }
             >
               {updateProviderMutation.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
                 "保存凭据"
               )}
@@ -356,7 +366,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
         {/* 连接测试 */}
         <Card className="space-y-2 p-4">
           <Label>连接测试</Label>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="outline"
               size="sm"
@@ -364,9 +374,9 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               disabled={testConnectionMutation.isPending}
             >
               {testConnectionMutation.isPending ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Globe className="mr-1.5 h-3.5 w-3.5" />
+                <Globe />
               )}
               测试连接
             </Button>
@@ -390,7 +400,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
         <Card className="space-y-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-foreground">
-              模型配置 ({models.length})
+              模型配置（{models.length}）
             </h3>
             <div className="flex gap-2">
               <Button
@@ -400,9 +410,9 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                 disabled={discoverMutation.isPending}
               >
                 {discoverMutation.isPending ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : (
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  <Sparkles />
                 )}
                 发现模型
               </Button>
@@ -413,30 +423,35 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                   setEditingModel(null);
                 }}
               >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                <Plus />
                 添加模型
               </Button>
             </div>
           </div>
 
-          {/* 添加模型表单 */}
-          {showAddModel && (
-            <AddModelForm
-              providerId={provider.id}
-              providerSlug={provider.slug}
-              discoveredModels={discoveredModels}
-              onClose={() => setShowAddModel(false)}
-            />
-          )}
+          <AnimatePresence initial={false}>
+            {/* 添加模型表单 */}
+            {showAddModel && (
+              <motion.div key="add-model" {...fadeInUp}>
+                <AddModelForm
+                  providerId={provider.id}
+                  providerSlug={provider.slug}
+                  discoveredModels={discoveredModels}
+                  onClose={() => setShowAddModel(false)}
+                />
+              </motion.div>
+            )}
 
-          {/* 编辑模型表单 */}
-          {editingModel && (
-            <EditModelForm
-              key={editingModel.id}
-              model={editingModel}
-              onClose={() => setEditingModel(null)}
-            />
-          )}
+            {/* 编辑模型表单 */}
+            {editingModel && (
+              <motion.div key={`edit-model-${editingModel.id}`} {...fadeInUp}>
+                <EditModelForm
+                  model={editingModel}
+                  onClose={() => setEditingModel(null)}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* 模型行列表 */}
           {models.length === 0 && !showAddModel ? (
@@ -475,7 +490,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除模型「{deleteConfirmModel?.name}」吗？此操作不可撤销。
+            确定要删除模型「{lastDeleteModelRef.current?.name}」吗？此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -484,9 +499,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               disabled={deleteMutation.isPending}
               onClick={() => void handleConfirmDeleteModel()}
             >
-              {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {deleteMutation.isPending && <Loader2 className="animate-spin" />}
               删除
             </AlertDialogAction>
           </AlertDialogFooter>

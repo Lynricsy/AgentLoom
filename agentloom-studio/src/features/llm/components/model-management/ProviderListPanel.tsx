@@ -39,11 +39,11 @@ export function ProviderListPanel({
   }, [providers, search]);
 
   return (
-    <div className="flex w-full shrink-0 flex-col border-b border-border lg:w-[280px] lg:border-b-0 lg:border-r">
+    <div className="flex w-full shrink-0 flex-col border-b border-border lg:w-70 lg:border-b-0 lg:border-r">
       {/* 搜索 */}
       <div className="p-3">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -60,7 +60,7 @@ export function ProviderListPanel({
           <div className="space-y-2 px-1">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="flex items-center gap-2 rounded-lg p-2">
-                <Skeleton className="h-5 w-5 rounded" />
+                <Skeleton className="size-5 rounded" />
                 <Skeleton className="h-3.5 w-24 rounded" />
               </div>
             ))}
@@ -75,7 +75,7 @@ export function ProviderListPanel({
               <div
                 key={provider.id}
                 className={cn(
-                  "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors",
+                  "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150",
                   selectedId === provider.id
                     ? "bg-primary/10 text-foreground"
                     : "text-foreground hover:bg-muted",
@@ -95,7 +95,7 @@ export function ProviderListPanel({
                   iconUrl={provider.iconUrl}
                   size={18}
                 />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium" title={provider.name}>
                   {provider.name}
                 </span>
 
@@ -103,24 +103,26 @@ export function ProviderListPanel({
                 <Switch
                   checked={provider.isEnabled}
                   onCheckedChange={() => onToggleEnabled(provider)}
+                  aria-label={`启用 ${provider.name}`}
                   className="shrink-0"
                   onClick={(e) => e.stopPropagation()}
                 />
 
-                {/* 自定义 provider 删除按钮 */}
-                {!provider.isBuiltin && (
+                {/* 自定义 provider 删除按钮；内置项保留同宽占位，保证各行开关横向对齐 */}
+                {provider.isBuiltin ? (
+                  <span aria-hidden className="size-7 shrink-0" />
+                ) : (
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`删除提供商 ${provider.name}`}
-                    className="text-muted-foreground opacity-0 transition-opacity hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
+                    className="text-muted-foreground opacity-0 transition-opacity hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDelete(provider);
                     }}
-                    title="删除提供商"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 />
                   </Button>
                 )}
               </div>
@@ -132,7 +134,7 @@ export function ProviderListPanel({
       {/* 添加按钮 */}
       <div className="border-t border-border p-3">
         <Button variant="outline" size="sm" className="w-full" onClick={onAdd}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          <Plus />
           添加自定义提供商
         </Button>
       </div>

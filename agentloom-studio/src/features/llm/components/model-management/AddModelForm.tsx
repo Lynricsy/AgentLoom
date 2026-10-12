@@ -2,11 +2,11 @@ import { useCallback, useState } from "react";
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   Loader2,
   Search,
   X,
 } from "lucide-react";
+import { Collapse } from "@/shared/components/collapse/Collapse";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -19,6 +19,7 @@ import {
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
+import { formatNumber } from "@/shared/lib/format";
 import { cn } from "@/shared/lib/utils";
 import type {
   CreateLlmModelInput,
@@ -164,12 +165,12 @@ export function AddModelForm({
               size="sm"
               onClick={() => void handleLookup()}
               disabled={lookupMutation.isPending || !modelId.trim()}
-              className="h-8 shrink-0"
+              className="shrink-0"
             >
               {lookupMutation.isPending ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Search className="mr-1 h-3.5 w-3.5" />
+                <Search />
               )}
               查询
             </Button>
@@ -185,14 +186,15 @@ export function AddModelForm({
                 onClick={() => setShowDiscovered(!showDiscovered)}
                 aria-expanded={showDiscovered}
               >
-                {showDiscovered ? (
-                  <ChevronDown className="size-3" />
-                ) : (
-                  <ChevronRight className="size-3" />
-                )}
+                <ChevronDown
+                  className={cn(
+                    "size-3 shrink-0 transition-transform duration-150",
+                    !showDiscovered && "-rotate-90",
+                  )}
+                />
                 从已发现的 {discoveredModels.length} 个模型中选择
               </Button>
-              {showDiscovered && (
+              <Collapse open={showDiscovered}>
                 <div className="mt-1 max-h-32 overflow-y-auto rounded-md border border-border bg-surface p-1">
                   {discoveredModels.map((dm) => (
                     <Button
@@ -210,7 +212,7 @@ export function AddModelForm({
                         setMetadata(null);
                       }}
                     >
-                      <span className="truncate font-medium">
+                      <span className="min-w-0 truncate font-medium" title={dm.id}>
                         {dm.name || dm.id}
                       </span>
                       {dm.ownedBy && (
@@ -221,7 +223,7 @@ export function AddModelForm({
                     </Button>
                   ))}
                 </div>
-              )}
+              </Collapse>
             </div>
           )}
 
@@ -231,13 +233,13 @@ export function AddModelForm({
               {metadata ? (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-success">
-                    <Check className="h-3 w-3" />
+                    <Check className="size-3" />
                     <span>已获取元数据</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {metadata.contextWindow ? (
                       <ModelMetaChip tone="success" compact>
-                        ctx {(metadata.contextWindow / 1000).toFixed(0)}k
+                        ctx {formatNumber(Math.round(metadata.contextWindow / 1000))}k
                       </ModelMetaChip>
                     ) : null}
                     {metadata.pricing
@@ -297,8 +299,12 @@ export function AddModelForm({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2 pb-1">
-            <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+          <div className="flex h-8 items-center gap-2">
+            <Switch
+              checked={isDefault}
+              onCheckedChange={setIsDefault}
+              aria-label="设为默认"
+            />
             <span className="text-xs text-muted-foreground">设为默认</span>
           </div>
         </div>
@@ -313,9 +319,7 @@ export function AddModelForm({
             onClick={() => void handleSubmit()}
             disabled={createMutation.isPending}
           >
-            {createMutation.isPending && (
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-            )}
+            {createMutation.isPending && <Loader2 className="animate-spin" />}
             添加
           </Button>
         </div>

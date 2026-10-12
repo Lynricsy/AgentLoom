@@ -1,6 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
+import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import type { LlmModelInfo } from "../../types";
 import {
   buildPricingBadges,
@@ -23,20 +24,21 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
   );
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-3 transition-colors hover:border-border/80">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-3 transition-colors duration-150 hover:border-border-hover">
       {/* 启用开关 */}
       <Switch
         checked={model.isEnabled}
         onCheckedChange={() => onToggleEnabled(model)}
+        aria-label={`启用 ${model.name}`}
         className="shrink-0"
       />
 
       {/* 信息 */}
       <div className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">
+        <span className="block truncate text-sm font-medium text-foreground" title={model.name}>
           {model.name}
         </span>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground" title={model.modelId}>
           {model.modelId}
         </p>
 
@@ -72,26 +74,31 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
       </div>
 
       {/* 操作 */}
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0"
-          onClick={() => onEdit(model)}
-          title="编辑"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-error"
-          onClick={() => onDelete(model)}
-          title="删除"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+      <TooltipProvider delayDuration={300}>
+        <div className="flex shrink-0 items-center gap-1">
+          <TooltipHint label="编辑模型">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`编辑模型 ${model.name}`}
+              onClick={() => onEdit(model)}
+            >
+              <Pencil />
+            </Button>
+          </TooltipHint>
+          <TooltipHint label="删除模型">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`删除模型 ${model.name}`}
+              className="text-muted-foreground hover:text-error"
+              onClick={() => onDelete(model)}
+            >
+              <Trash2 />
+            </Button>
+          </TooltipHint>
+        </div>
+      </TooltipProvider>
     </div>
   );
 }

@@ -142,9 +142,12 @@ export function EditModelForm({ model, onClose }: EditModelFormProps) {
 
   return (
     <div className="rounded-lg border border-primary/30 bg-muted p-4">
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-foreground">
-          编辑: {model.modelId}
+      <div className="flex items-center justify-between gap-2">
+        <h4
+          className="min-w-0 truncate text-sm font-semibold text-foreground"
+          title={model.modelId}
+        >
+          编辑：{model.modelId}
         </h4>
         <Button
           variant="ghost"
@@ -312,9 +315,7 @@ export function EditModelForm({ model, onClose }: EditModelFormProps) {
             onClick={() => void handleSubmit()}
             disabled={updateMutation.isPending}
           >
-            {updateMutation.isPending && (
-              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-            )}
+            {updateMutation.isPending && <Loader2 className="animate-spin" />}
             保存
           </Button>
         </div>

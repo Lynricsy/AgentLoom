@@ -1,8 +1,8 @@
 import { memo, useState } from "react";
 import { Bot } from "lucide-react";
+import { useTheme, type ResolvedTheme } from "@/shared/hooks/use-theme";
 import { cn } from "@/shared/lib/utils";
 
-const LOBEHUB_ICON_THEME = "dark";
 const LOBEHUB_ICON_BASE = "https://unpkg.com/@lobehub/icons-static-png@latest";
 const LEGACY_LOBEHUB_ICON_BASE = "https://icons.lobehub.com/icons/";
 const STATIC_LOBEHUB_SVG_ICON_BASE =
@@ -32,7 +32,15 @@ const LOBEHUB_ICON_ASSET_ALIASES: Record<string, string> = {
   hunyuan: "hunyuan-color",
 };
 
-function resolveProviderIconUrl(slug: string, iconUrl?: string | null) {
+/**
+ * lobehub 静态 PNG 的 `dark/` 目录是给深色背景用的浅色单色 logo（openai、grok 等），
+ * `light/` 目录是给浅色背景用的深色 logo；`*-color` 变体两目录相同。按当前主题选目录。
+ */
+function resolveProviderIconUrl(
+  slug: string,
+  iconUrl: string | null | undefined,
+  theme: ResolvedTheme,
+) {
   const iconAsset = LOBEHUB_ICON_ASSET_ALIASES[slug] ?? slug;
   const isManagedLobeUrl =
     !!iconUrl &&
@@ -52,7 +60,7 @@ function resolveProviderIconUrl(slug: string, iconUrl?: string | null) {
     return null;
   }
 
-  return `${LOBEHUB_ICON_BASE}/${LOBEHUB_ICON_THEME}/${iconAsset}.png`;
+  return `${LOBEHUB_ICON_BASE}/${theme}/${iconAsset}.png`;
 }
 
 interface ProviderIconProps {
@@ -76,12 +84,15 @@ export const ProviderIcon = memo(function ProviderIcon({
   className,
 }: ProviderIconProps) {
   const [hasError, setHasError] = useState(false);
+  const { resolvedTheme } = useTheme();
 
   const resolvedSlug = slug ?? provider ?? "unknown";
-  const src = resolveProviderIconUrl(resolvedSlug, iconUrl);
+  const src = resolveProviderIconUrl(resolvedSlug, iconUrl, resolvedTheme);
 
   if (hasError || !src) {
-    return <Bot size={size} className={cn("text-foreground/80", className)} />;
+    return (
+      <Bot size={size} className={cn("shrink-0 text-foreground/80", className)} />
+    );
   }
 
   return (
@@ -90,7 +101,7 @@ export const ProviderIcon = memo(function ProviderIcon({
       alt={resolvedSlug}
       width={size}
       height={size}
-      className={cn("shrink-0", className)}
+      className={cn("shrink-0 rounded-xs", className)}
       onError={() => setHasError(true)}
       loading="lazy"
     />

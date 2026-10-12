@@ -7,8 +7,10 @@ import {
   type Resolver,
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { z } from "zod";
+import { Collapse } from "@/shared/components/collapse/Collapse";
+import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -697,14 +699,15 @@ export function LlmModelConfigDialog({
                     onClick={() => setParamsExpanded(!paramsExpanded)}
                   >
                     <span>参数设置</span>
-                    {paramsExpanded ? (
-                      <ChevronDown className="text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="text-muted-foreground" />
-                    )}
+                    <ChevronDown
+                      className={cn(
+                        "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
+                        !paramsExpanded && "-rotate-90",
+                      )}
+                    />
                   </Button>
 
-                  {paramsExpanded && (
+                  <Collapse open={paramsExpanded}>
                     <div className="space-y-4 border-t border-border px-3 py-3">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
@@ -827,12 +830,12 @@ export function LlmModelConfigDialog({
                         />
                       </div>
                     </div>
-                  )}
+                  </Collapse>
                 </div>
               )}
 
               {/* 设为默认 */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <Label>设为默认配置</Label>
                   <p className="text-2xs text-muted-foreground">
@@ -846,6 +849,7 @@ export function LlmModelConfigDialog({
                   name="isDefault"
                   render={({ field }) => (
                     <Switch
+                      className="shrink-0"
                       checked={field.value}
                       onCheckedChange={field.onChange}
                     />

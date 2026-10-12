@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import {
   Command,
@@ -257,9 +258,9 @@ export function GlobalModelSelector({
                         </span>
                       </span>
                       {model.isDefault ? (
-                        <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-2xs font-medium text-warning">
+                        <Badge size="sm" variant="warning" className="shrink-0">
                           默认
-                        </span>
+                        </Badge>
                       ) : null}
                       {model.id === value ? (
                         <Check className="size-4 shrink-0" />

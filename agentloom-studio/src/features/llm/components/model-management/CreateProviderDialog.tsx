@@ -99,7 +99,7 @@ export function CreateProviderDialog({
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="例如: DeepSeek, Groq…"
+                placeholder="例如：DeepSeek、Groq…"
               />
             </div>
 
@@ -153,9 +153,7 @@ export function CreateProviderDialog({
             onClick={() => void handleSubmit()}
             disabled={createMutation.isPending}
           >
-            {createMutation.isPending && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            )}
+            {createMutation.isPending && <Loader2 className="animate-spin" />}
             创建
           </Button>
         </DialogFooter>

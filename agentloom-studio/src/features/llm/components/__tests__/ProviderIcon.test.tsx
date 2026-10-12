@@ -19,7 +19,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/openai.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/openai.png",
     );
     expect(img).toHaveAttribute("alt", "openai");
   });
@@ -29,7 +29,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/claude-color.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/claude-color.png",
     );
     expect(img).toHaveAttribute("alt", "anthropic");
   });
@@ -39,7 +39,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/deepseek-color.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/deepseek-color.png",
     );
   });
 
@@ -91,7 +91,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/unknown.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/unknown.png",
     );
     expect(img).toHaveAttribute("alt", "unknown");
   });
@@ -101,7 +101,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/gemini-color.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/gemini-color.png",
     );
   });
 
@@ -115,7 +115,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/claude-color.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/claude-color.png",
     );
   });
 
@@ -124,11 +124,11 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/siliconcloud-color.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/siliconcloud-color.png",
     );
   });
 
-  it("normalizes managed png iconUrl back to the dark color asset", () => {
+  it("normalizes managed png iconUrl to the current theme asset", () => {
     render(
       <ProviderIcon
         slug="anthropic"
@@ -138,7 +138,7 @@ describe("ProviderIcon", () => {
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
       "src",
-      "https://unpkg.com/@lobehub/icons-static-png@latest/dark/claude-color.png",
+      "https://unpkg.com/@lobehub/icons-static-png@latest/light/claude-color.png",
     );
   });
 

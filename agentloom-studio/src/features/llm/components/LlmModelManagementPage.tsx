@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Cpu, Loader2, Plus, Server } from "lucide-react";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { WorkbenchHeader } from "@/shared/components/workbench-header";
@@ -38,6 +38,9 @@ export function LlmModelManagementPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteConfirmProvider, setDeleteConfirmProvider] =
     useState<LlmProviderEntity | null>(null);
+  // 退场动画期间 deleteConfirmProvider 已置空，用最近一次非空值渲染文案
+  const lastDeleteProviderRef = useRef<LlmProviderEntity | null>(null);
+  if (deleteConfirmProvider) lastDeleteProviderRef.current = deleteConfirmProvider;
 
   const providers = useMemo(
     () => providersQuery.data ?? [],
@@ -223,7 +226,7 @@ export function LlmModelManagementPage() {
                       variant="outline"
                       onClick={() => setShowCreateDialog(true)}
                     >
-                      <Plus className="mr-1.5 h-4 w-4" />
+                      <Plus />
                       添加自定义提供商
                     </Button>
                   }
@@ -257,7 +260,7 @@ export function LlmModelManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>确认删除提供商</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除提供商「{deleteConfirmProvider?.name}
+            确定要删除提供商「{lastDeleteProviderRef.current?.name}
             」吗？该提供商下的所有模型配置也将被删除，此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
@@ -268,7 +271,7 @@ export function LlmModelManagementPage() {
               onClick={() => void handleConfirmDeleteProvider()}
             >
               {deleteProviderMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
               )}
               删除
             </AlertDialogAction>

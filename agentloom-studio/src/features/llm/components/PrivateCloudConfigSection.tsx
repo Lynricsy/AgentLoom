@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useFormContext, useWatch } from "react-hook-form";
-import { CheckCircle2, Loader2, Lock, PlugZap, XCircle } from "lucide-react";
+import { Loader2, Lock, PlugZap } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 
+import { fadeIn, fadeInUp } from "@/shared/lib/motion";
+import { Alert } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -337,16 +340,12 @@ export function PrivateCloudConfigSection({
       ) : null}
 
       {authMethod === "mtls" ? (
-        <div
-          className="flex items-center gap-2 rounded-lg border border-muted px-3 py-3 text-xs text-muted-foreground"
-          data-testid="mtls-auth-section"
-        >
-          <Lock className="h-4 w-4 shrink-0" />
-          <span>mTLS 认证即将支持，敬请期待。</span>
-        </div>
+        <Alert icon={Lock} data-testid="mtls-auth-section">
+          mTLS 认证即将支持，敬请期待。
+        </Alert>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="outline"
@@ -360,57 +359,60 @@ export function PrivateCloudConfigSection({
           data-testid="test-connection-btn"
         >
           {testConnectionMutation.isPending ? (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="animate-spin" />
           ) : (
-            <PlugZap className="mr-1.5 h-3.5 w-3.5" />
+            <PlugZap />
           )}
           测试连接
         </Button>
 
-        {connectionStatus?.success ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={requiresApiKeyInput || fetchModelsMutation.isPending}
-            onClick={handleFetchModels}
-            data-testid="fetch-models-btn"
-          >
-            {fetchModelsMutation.isPending ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : null}
-            获取模型列表
-          </Button>
-        ) : null}
+        <AnimatePresence initial={false}>
+          {connectionStatus?.success ? (
+            <motion.div key="fetch-models" {...fadeIn}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={requiresApiKeyInput || fetchModelsMutation.isPending}
+                onClick={handleFetchModels}
+                data-testid="fetch-models-btn"
+              >
+                {fetchModelsMutation.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                获取模型列表
+              </Button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
 
-      {connectionStatus ? (
-        <div
-          className={
-            connectionStatus.success
-              ? "flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2 text-xs text-success"
-              : "flex items-center gap-2 rounded-lg border border-error/50 bg-error/5 px-3 py-2 text-xs text-error"
-          }
-          data-testid="connection-status"
-        >
-          {connectionStatus.success ? (
-            <>
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>
-                连接成功 — 延迟 {connectionStatus.latencyMs}ms
-                {connectionStatus.serverVersion
-                  ? ` · 版本 ${connectionStatus.serverVersion}`
-                  : ""}
-              </span>
-            </>
-          ) : (
-            <>
-              <XCircle className="h-4 w-4 shrink-0" />
-              <span>{connectionStatus.error}</span>
-            </>
-          )}
-        </div>
-      ) : null}
+      <AnimatePresence mode="wait" initial={false}>
+        {connectionStatus ? (
+          <motion.div
+            key={connectionStatus.success ? "success" : "error"}
+            {...fadeInUp}
+          >
+            <Alert
+              variant={connectionStatus.success ? "success" : "error"}
+              data-testid="connection-status"
+            >
+              {connectionStatus.success ? (
+                <>
+                  连接成功 — 延迟 {connectionStatus.latencyMs}ms
+                  {connectionStatus.serverVersion
+                    ? ` · 版本 ${connectionStatus.serverVersion}`
+                    : ""}
+                </>
+              ) : (
+                <span className="whitespace-pre-wrap break-words">
+                  {connectionStatus.error}
+                </span>
+              )}
+            </Alert>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {remoteModels.length > 0 ? (
         <div className="space-y-2" data-testid="remote-models-section">
@@ -448,7 +450,7 @@ export function PrivateCloudConfigSection({
         <div className="space-y-2">
           <Label>模型名称</Label>
           <Input
-            placeholder="例如: llama-3.1-70b-instruct"
+            placeholder="例如：llama-3.1-70b-instruct"
             {...form.register("modelName")}
             data-testid="manual-model-input"
           />

@@ -59,8 +59,7 @@ export const ManagedApiKeyField = memo(function ManagedApiKeyField({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-7"
+            size="xs"
             onClick={() => onClearRequestedChange(false)}
             disabled={disabled}
           >
@@ -75,8 +74,7 @@ export const ManagedApiKeyField = memo(function ManagedApiKeyField({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-7"
+            size="xs"
             onClick={() => onClearRequestedChange(true)}
             disabled={disabled}
           >

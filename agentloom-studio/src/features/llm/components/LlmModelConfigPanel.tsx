@@ -11,6 +11,7 @@ import { Controller, useForm, useWatch, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { RotateCcw, Sparkles, X } from "lucide-react";
 import { z } from "zod";
+import { Alert } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -269,13 +270,13 @@ function TagInput({
         {tags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-2xs text-foreground"
+            className="inline-flex max-w-full items-center gap-1 break-all rounded-full bg-muted py-0.5 pl-2 pr-0.5 text-2xs text-foreground"
           >
             {tag}
             <Button
               variant="ghost"
-              size="icon-xs"
-              className="size-4 rounded-full text-muted-foreground hover:bg-background hover:text-foreground [&_svg]:size-3"
+              size="icon-2xs"
+              className="shrink-0 rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
               onClick={() => onChange(tags.filter((item) => item !== tag))}
               aria-label={`删除 ${tag}`}
             >
@@ -317,7 +318,7 @@ function ExistingConfigSummary({ current }: { current: LlmModelInfo | null }) {
     <div className="rounded-lg border border-border bg-muted p-3 text-xs">
       <div className="flex items-center gap-2 text-foreground">
         <ProviderIcon provider={current.provider} size={14} />
-        <span className="font-medium">{current.name}</span>
+        <span className="min-w-0 truncate font-medium">{current.name}</span>
       </div>
 
       <dl className="mt-3 space-y-2 text-muted-foreground">
@@ -327,7 +328,7 @@ function ExistingConfigSummary({ current }: { current: LlmModelInfo | null }) {
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt>模型</dt>
-          <dd>{current.modelName}</dd>
+          <dd className="min-w-0 break-all text-right">{current.modelName}</dd>
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt>Temperature</dt>
@@ -652,7 +653,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
   });
 
   return (
-    <div className="space-y-5 p-4">
+    <div className="@container space-y-5 p-4">
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-foreground">LLM 模型配置</h3>
         <p className="text-xs text-muted-foreground">
@@ -662,9 +663,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
       </div>
 
       {queryError ? (
-        <div className="rounded-lg border border-error/50 bg-error/5 px-3 py-2 text-xs text-error">
-          {getErrorMessage(queryError)}
-        </div>
+        <Alert variant="error">{getErrorMessage(queryError)}</Alert>
       ) : null}
 
       <Tabs
@@ -709,8 +708,8 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
 
         <TabsContent value="create">
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
+            <div className="grid gap-4 @md:grid-cols-2">
+              <div className="space-y-2 @md:col-span-2">
                 <Label>配置名称</Label>
                 <Input
                   placeholder="例如：OpenAI 主模型"
@@ -749,7 +748,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
               </div>
 
               {selectedProvider === "private_cloud" ? (
-                <div className="sm:col-span-2">
+                <div className="@md:col-span-2">
                   <PrivateCloudConfigSection
                     provider={selectedProviderEntity}
                   />
@@ -793,7 +792,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                     ) : null}
                   </div>
 
-                  <div className="space-y-2 sm:col-span-2">
+                  <div className="space-y-2 @md:col-span-2">
                     <Label>API Key</Label>
                     <Controller
                       control={form.control}
@@ -850,7 +849,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                   size="sm"
                   onClick={handleResetParameters}
                 >
-                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                  <RotateCcw />
                   重置默认
                 </Button>
               </div>
@@ -881,7 +880,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                 />
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 @md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Max Tokens</Label>
                   <Input
@@ -989,23 +988,16 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
             </div>
 
             {createError ? (
-              <div className="rounded-lg border border-error/50 bg-error/5 px-3 py-2 text-xs text-error">
-                {createError}
-              </div>
+              <Alert variant="error">{createError}</Alert>
             ) : null}
 
-            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-              <div className="flex items-start gap-2">
-                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                <p>
-                  {selectedConfigId
-                    ? "保存后会更新当前选中的模型配置，并将最新的 llmConfigId 与参数写回当前节点，随后由现有 workflow 自动保存链路完成持久化。"
-                    : "保存后会创建新的模型配置，并将 llmConfigId 与参数写回当前节点，随后由现有 workflow 自动保存链路完成持久化。"}
-                </p>
-              </div>
-            </div>
+            <Alert icon={Sparkles}>
+              {selectedConfigId
+                ? "保存后会更新当前选中的模型配置，并将最新的 llmConfigId 与参数写回当前节点，随后由现有 workflow 自动保存链路完成持久化。"
+                : "保存后会创建新的模型配置，并将 llmConfigId 与参数写回当前节点，随后由现有 workflow 自动保存链路完成持久化。"}
+            </Alert>
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
