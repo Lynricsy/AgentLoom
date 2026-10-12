@@ -92,7 +92,7 @@ export const SheetContent = forwardRef<
               exit={sideMotion.exit}
               transition={{ duration: DUR.slow, ease: EASE }}
               className={cn(
-                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-xl',
+                'fixed z-50 flex flex-col overflow-hidden border-border bg-surface text-foreground shadow-xl [&>form]:flex [&>form]:min-h-0 [&>form]:flex-1 [&>form]:flex-col',
                 SIDE_CLASS[side],
                 className,
               )}

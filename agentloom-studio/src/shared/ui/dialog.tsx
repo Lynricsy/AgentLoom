@@ -82,7 +82,7 @@ export const DialogContent = forwardRef<
               <motion.div
                 {...scaleIn}
                 className={cn(
-                  'pointer-events-auto relative flex max-h-full w-full flex-col overflow-hidden border border-border bg-surface text-foreground shadow-xl',
+                  'pointer-events-auto relative flex max-h-full w-full flex-col overflow-hidden border border-border bg-surface text-foreground shadow-xl [&>form]:flex [&>form]:min-h-0 [&>form]:flex-1 [&>form]:flex-col',
                   'rounded-none sm:rounded-xl',
                   SIZE_CLASS[size],
                   className,
