@@ -1606,6 +1606,41 @@
         ]
       }
     },
+    "/api/v1/llm-models/{id}/thinking-capability": {
+      "get": {
+        "description": "按模型真实能力返回可选思考强度：LiteLLM 元数据优先，其次 pi-ai 内置目录；两者都不认识该模型时 status 为 unknown。",
+        "operationId": "Llm_getThinkingCapability",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回模型思考能力",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelThinkingCapabilityResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模型配置未找到"
+          }
+        },
+        "summary": "获取模型的思考强度能力",
+        "tags": [
+          "LLM Models"
+        ]
+      }
+    },
     "/api/v1/llm-providers/metadata/lookup": {
       "get": {
         "operationId": "LlmProvider_lookupModelMetadata",
@@ -15725,6 +15760,108 @@
           "modelId"
         ]
       },
+      "ModelThinkingCapabilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "supported"
+                    ]
+                  },
+                  "levels": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "off",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    }
+                  },
+                  "defaultLevel": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      null
+                    ],
+                    "nullable": true
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "litellm",
+                      "pi-catalog"
+                    ]
+                  }
+                },
+                "required": [
+                  "status",
+                  "levels",
+                  "defaultLevel",
+                  "source"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "unsupported"
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "litellm",
+                      "pi-catalog"
+                    ]
+                  }
+                },
+                "required": [
+                  "status",
+                  "source"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "unknown"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
       "UpdateLlmModelConfigDto": {
         "type": "object",
         "properties": {
@@ -22802,7 +22939,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-12T08:46:59.135Z",
+                  "default": "2026-10-12T11:15:38.305Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

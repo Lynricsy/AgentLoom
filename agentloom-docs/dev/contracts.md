@@ -18,7 +18,7 @@ docType: reference
 | 实时事件 | `agentloom-contracts/src/execution-events.ts` | `/execution` 与 `/agent-conversation` namespace 的事件名 `EXECUTION_EVENT_NAMES`、载荷 schema、事件信封、回放快照、`parseExecutionEvent()` |
 | 实时事件 | `agentloom-contracts/src/agent-events.ts` | Agent 运行时事件、工具调用状态与权限请求 |
 | 实时事件 | `agentloom-contracts/src/conversation-events.ts` | 对话断线兜底事件 `conversation.state.snapshot` |
-| Agent 配置 | `agentloom-contracts/src/agent-runtime-config.ts` | `AGENT_RUNTIME_MODES`（`sandbox` \| `no_sandbox`）、模型（含 `AGENT_THINKING_LEVELS` 主模型思考强度）、工具、知识库、路由、沙箱配置与递归子 Agent |
+| Agent 配置 | `agentloom-contracts/src/agent-runtime-config.ts` | `AGENT_RUNTIME_MODES`（`sandbox` \| `no_sandbox`）、模型（含 `AGENT_THINKING_LEVELS` 主模型思考强度词表 `off`…`max`；单个模型的可选集合不在契约里，由 server `GET /api/v1/llm-models/:id/thinking-capability` 按 LiteLLM → pi-ai 目录 → unknown 的顺序从模型能力推导，不支持的配置值在运行时按 pi `clampThinkingLevel` 收敛，见 [Agent 运行态](/dev/server/agent-runtime#主模型思考强度)）、工具、知识库、路由、沙箱配置与递归子 Agent |
 | 对外 API | `agentloom-contracts/src/agent-api-events.ts` | `/api/v1/agent-api/**` 的 run 资源与 SSE 事件，见 [Agent API](/api/agent-api) |
 | 权限 | `agentloom-contracts/src/rbac.ts` | `ORG_ROLES`、`OrgRole`、`RBAC_PERMISSION_MATRIX`、`Permission`、`PERMISSIONS`、`hasPermission()`、`parsePlatformApiScopes()`；server 的 `@RequirePermission` / `RolesGuard` / `ApiScopeGuard` 与 Studio 导航过滤共用这一份矩阵，平台 API Token 的 `scopes` 取值也是这里的权限名 |
 | fixtures | `agentloom-contracts/fixtures/` | 合法 server wire JSON，随包发布（`./fixtures/*` 导出），供 contracts、server、Studio、mobile 的契约测试读取 |

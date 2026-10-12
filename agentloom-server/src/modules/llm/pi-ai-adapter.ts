@@ -6,6 +6,7 @@ import type { LlmProvider } from '../../database/schema/llm-providers.schema';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from './private-cloud-auth.constants';
 import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
+import { ThinkingCapabilityService } from './thinking-capability.service';
 import {
   resolvePiModelApi,
   resolvePiModelBaseUrl,
@@ -50,6 +51,7 @@ export class PiAiAdapter {
 
   constructor(
     private readonly decryptionBoundaryService: DecryptionBoundaryService,
+    private readonly thinkingCapabilityService: ThinkingCapabilityService,
   ) {}
 
   async getModel(
@@ -96,6 +98,14 @@ export class PiAiAdapter {
       },
       apiSettings.api,
     );
+    // 思考字段来自模型真实能力：supported → reasoning + thinkingLevelMap，unsupported →
+    // reasoning false，unknown → 沿用 reasoning: true、无 map 的旧行为
+    const { piModel: thinkingFields } =
+      await this.thinkingCapabilityService.resolve({
+        providerSlug,
+        apiProtocol: apiSettings.rawProtocol,
+        modelId: config.modelId,
+      });
 
     const model: PiModel<PiApi> = {
       id: config.modelId,
@@ -103,7 +113,7 @@ export class PiAiAdapter {
       api: apiSettings.api as PiApi,
       provider: providerSlug,
       baseUrl: runtimeBaseUrl ?? '',
-      reasoning: true,
+      ...thinkingFields,
       input: ['text', 'image'],
       cost: {
         input: 0,

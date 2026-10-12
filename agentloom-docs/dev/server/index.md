@@ -101,7 +101,7 @@ agentloom-server/src/
 
 ### 模型与工具
 
-- `llm`：模型提供商（`/llm-providers`）、模型配置（`/llm-models`）与私有云连接测试（`/llm`）；`LlmEncryptionService` 负责凭据加密。
+- `llm`：模型提供商（`/llm-providers`）、模型配置（`/llm-models`，含按模型能力给出可选思考强度的 `/llm-models/:id/thinking-capability`，见 [Agent 运行态](/dev/server/agent-runtime#主模型思考强度)）与私有云连接测试（`/llm`）；`LlmEncryptionService` 负责凭据加密。
 - `api-key`：LLM 提供商 API Key 的加密存储与轮换，前缀 `/api-keys`。
 - `mcp`：MCP 服务器配置、工具发现与导入，前缀 `/mcp`。
 - `smart-routing`：模型智能路由，路由在 `/smart-routing/…` 与 `/routing-decisions`。

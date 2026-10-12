@@ -64,10 +64,20 @@ guest 内的 Agent 需要调用服务端工具（MCP、知识库、子 Agent 等
 
 ### 主模型思考强度
 
-Agent 画布 `llm-model` 节点 config 的 `thinkingLevel`（`AGENT_THINKING_LEVELS`：`off`、`minimal`、`low`、`medium`、`high`、`xhigh`，与 pi `ThinkingLevel` 对齐）由 `AgentDefinitionService.extractModelConfig` 编译进 `AgentRuntimeConfig.modelConfig.thinkingLevel`；节点 config 保存时不按节点类型校验，非法值在编译时丢弃，等同缺省。经智能路由选模型时 `modelConfig` 只有路由选中的 id，不带思考强度。
+Agent 画布 `llm-model` 节点 config 的 `thinkingLevel` 由 `AgentDefinitionService.extractModelConfig` 编译进 `AgentRuntimeConfig.modelConfig.thinkingLevel`；节点 config 保存时不按节点类型校验，非法值在编译时丢弃，等同缺省。经智能路由选模型时 `modelConfig` 只有路由选中的 id，不带思考强度。`AGENT_THINKING_LEVELS`（`off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，与 pi-ai `ModelThinkingLevel` 对齐）只是词表；单个模型能选哪些强度由模型真实能力决定，不维护任何按模型硬编码的列表。
 
-- `no_sandbox`：`PiAgentCoreAdapter.createSession` 把它写入 pi Agent 的 `initialState.thinkingLevel`；缺省时不写，pi-agent-core 默认 `off`。
-- `sandbox`：`SandboxModelConfigService` 把它叠加到会话 `PiModelConfig`（租户存储配置与 runtimeConfig 快照回退两条路径都叠加），`PiConfigGeneratorService.generateSettings` 写成 `settings.defaultThinkingLevel`，guest 再交给 bridge（见下文 [agentloom-bridge](#agentloom-bridge)）。缺省时不写，dsh 沿用 adapter 默认。
+**能力来源**（`agentloom-server/src/modules/llm/thinking-capability.service.ts`，推导规则在同目录 `thinking-capability.util.ts`）按 provider slug、`apiProtocol`、`modelId` 依次查：
+
+1. **LiteLLM 元数据**：复用 `ModelDiscoveryService` 的 24 h 缓存与键回退（裸模型 id 优先，再试 `<slug>/<id>` 与 LiteLLM provider 前缀）。无 `supports_reasoning` → 不推理；有 `reasoning_effort_levels` → 以该列表为准（`none` 即 `off`）；否则以 `low`/`medium`/`high` 为基础，`supports_low_reasoning_effort === false` 去掉 `low`，`minimal`/`xhigh`/`max` 仅在对应 `supports_*_reasoning_effort` 为 true 时加入，`off` 在 `supports_none_reasoning_effort === false` 或 `thinking_always_on === true` 时去掉。`default_reasoning_effort`（`none` 即 `off`）落在可选集合内时作为 `defaultLevel`。
+2. **pi-ai 内置目录**：同模型 id、且 `api` 等于该配置解析出的 pi api（`resolvePiModelApi`，与 `PiAiAdapter` 一致）的条目；同 id 多条时优先 provider 与 slug 同名者。可选集合取 pi 的 `getSupportedThinkingLevels`，没有 `defaultLevel`。
+3. **unknown**：两处都不认识该模型。
+
+LiteLLM 拉取失败或离线、目录加载异常都只降级到下一来源，不让运行或接口失败。Studio 经 `GET /api/v1/llm-models/:id/thinking-capability`（`llm:read`，租户隔离，配置不存在 404）取 `{ status: 'supported', levels, defaultLevel, source } | { status: 'unsupported', source } | { status: 'unknown' }`；`levels` 按词表顺序，只有模型能关闭思考时才含 `off`。
+
+**语义**：缺省 = 模型能关闭思考时关闭，否则不下发推理参数、沿用模型默认。配置了模型不支持的强度时，两条运行态都按 pi 的 `clampThinkingLevel` 收敛（先向更高档找，再向更低档找）并记 warning，绝不原样下发；不推理的模型一律收敛为 `off`。
+
+- `no_sandbox`：`PiAiAdapter.getPiRuntimeModel` 按能力生成 pi 模型：supported → `reasoning: true` 加 `thinkingLevelMap`（不支持的强度为 `null`；`xhigh`/`max` 显式映射为字符串；`off` 受支持且来源声明接受显式 `none` 时为 `'none'`，受支持但未声明时留空，不支持时为 `null`），unsupported → `reasoning: false`，unknown → 保持 `reasoning: true`、无 map 的旧行为。`off: null` 让 pi 在关闭思考时不发推理参数，`gpt-6.1-sol` 这类不接受 `effort: none` 的模型因此不再 400。`PiAgentCoreAdapter.createSession` 对配置的强度先 clamp 再写入 `initialState.thinkingLevel`；缺省时不写，pi-agent-core 默认 `off`。
+- `sandbox`：`SandboxModelConfigService` 解析同一能力，把 clamp 后的强度叠加到会话 `PiModelConfig`（租户存储配置与 runtimeConfig 快照回退两条路径都叠加），`PiConfigGeneratorService.generateSettings` 写成 `settings.defaultThinkingLevel`；`generateModelsJson` 在 model 条目写 `reasoningEfforts`：不推理为 `false`，supported 为恰好覆盖可选强度的字典（值为强度名，`off` 在来源接受显式 none 时为 `"none"`、否则为 `null` 即不发参数；只支持 `off` 时也写 `false`，因为 dsh 要求字典至少含一个非 `off` 强度），unknown 时省略。guest 再交给 bridge（见下文 [agentloom-bridge](#agentloom-bridge)）。缺省强度时不写 `defaultThinkingLevel`，dsh 沿用 adapter 默认。
 
 ### guest 内的 Agent 核心：DeepSeek Harness
 

@@ -1,10 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
+import { Test } from '@nestjs/testing';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 
+import { AllExceptionsFilter } from '../../../common/filters/all-exceptions.filter';
+import { LlmModelConfigNotFoundException } from '../llm.exceptions';
 import { LlmController } from '../llm.controller';
 import { LlmProviderController } from '../llm-provider.controller';
 import type { LlmProviderService } from '../llm-provider.service';
-import type { LlmService } from '../llm.service';
+import { LlmService } from '../llm.service';
 import type { ModelDiscoveryService } from '../model-discovery.service';
+import { ThinkingCapabilityService } from '../thinking-capability.service';
+import { deriveLiteLLMThinkingCapability } from '../thinking-capability.util';
 
 // ---------------------------------------------------------------------------
 // 辅助函数
@@ -45,7 +62,10 @@ describe('LlmController', () => {
       delete: vi.fn().mockResolvedValue(undefined),
     };
 
-    controller = new LlmController(service as unknown as LlmService);
+    controller = new LlmController(
+      service as unknown as LlmService,
+      { resolve: vi.fn() } as unknown as ThinkingCapabilityService,
+    );
   });
 
   // ========== 角色元数据验证 ==========
@@ -104,6 +124,112 @@ describe('LlmController', () => {
 
       expect(service.delete).toHaveBeenCalledWith(CONFIG_ID, TENANT_ID);
     });
+  });
+});
+
+describe('GET /llm-models/:id/thinking-capability', () => {
+  let app: NestFastifyApplication;
+  let findById: Mock;
+  let resolve: Mock;
+
+  beforeEach(async () => {
+    findById = vi.fn();
+    resolve = vi.fn();
+    const module = await Test.createTestingModule({
+      controllers: [LlmController],
+      providers: [
+        { provide: LlmService, useValue: { findById } },
+        { provide: ThinkingCapabilityService, useValue: { resolve } },
+      ],
+    }).compile();
+    app = module.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
+    app.useGlobalFilters(new AllExceptionsFilter());
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('200：按模型配置的 provider/apiProtocol/modelId 返回能力', async () => {
+    findById.mockResolvedValue({
+      id: CONFIG_ID,
+      modelId: 'gpt-6.1-sol',
+      provider: { slug: 'private_cloud', apiProtocol: 'openai_responses' },
+    });
+    resolve.mockResolvedValue(
+      deriveLiteLLMThinkingCapability({
+        supports_reasoning: true,
+        supports_none_reasoning_effort: false,
+        supports_minimal_reasoning_effort: false,
+        supports_xhigh_reasoning_effort: true,
+        supports_max_reasoning_effort: true,
+      }),
+    );
+
+    const response = await app
+      .getHttpAdapter()
+      .getInstance()
+      .inject({
+        method: 'GET',
+        url: `/llm-models/${CONFIG_ID}/thinking-capability`,
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: {
+        status: 'supported',
+        levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultLevel: null,
+        source: 'litellm',
+      },
+    });
+    expect(resolve).toHaveBeenCalledWith({
+      providerSlug: 'private_cloud',
+      apiProtocol: 'openai_responses',
+      modelId: 'gpt-6.1-sol',
+    });
+  });
+
+  it('200：两个来源都不认识时 status 为 unknown', async () => {
+    findById.mockResolvedValue({
+      id: CONFIG_ID,
+      modelId: 'mystery',
+      provider: { slug: 'custom', apiProtocol: 'openai_chat' },
+    });
+    resolve.mockResolvedValue({
+      capability: { status: 'unknown' },
+      piModel: { reasoning: true },
+    });
+
+    const response = await app
+      .getHttpAdapter()
+      .getInstance()
+      .inject({
+        method: 'GET',
+        url: `/llm-models/${CONFIG_ID}/thinking-capability`,
+      });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: { status: 'unknown' } });
+  });
+
+  it('404：模型配置不存在', async () => {
+    findById.mockRejectedValue(new LlmModelConfigNotFoundException(CONFIG_ID));
+
+    const response = await app
+      .getHttpAdapter()
+      .getInstance()
+      .inject({
+        method: 'GET',
+        url: `/llm-models/${CONFIG_ID}/thinking-capability`,
+      });
+
+    expect(response.statusCode).toBe(404);
+    expect(resolve).not.toHaveBeenCalled();
   });
 });
 

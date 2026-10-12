@@ -83,7 +83,12 @@ const hoisted = vi.hoisted(() => {
   return {
     MockPiAgent,
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
-    importPiAiCompat: vi.fn(async () => ({ streamSimple })),
+    // clampThinkingLevel 用真实 pi 实现，验证思考强度按模型能力收敛
+    importPiAiCompat: vi.fn(async () => ({
+      streamSimple,
+      clampThinkingLevel: (await import('@earendil-works/pi-ai'))
+        .clampThinkingLevel,
+    })),
     typeBoxToZod: vi.fn((schema: unknown) => ({ typeBoxConverted: schema })),
     normalizeFlexibleSchemaJson: vi.fn((schema: unknown) => schema),
     flexibleSchemaToJsonSchema: vi.fn((schema: unknown) => ({
@@ -367,6 +372,83 @@ describe('PiAgentCoreAdapter', () => {
       expect(agent.options.streamFn).toBeTypeOf('function');
       expect(agent.options.getApiKey).toBeTypeOf('function');
       expect(typeof agent.options.beforeToolCall).toBe('function');
+    });
+
+    describe('思考强度按模型能力收敛', () => {
+      const solModel = {
+        id: 'gpt-6.1-sol',
+        name: 'gpt-6.1-sol',
+        api: 'openai-responses',
+        provider: 'private_cloud',
+        baseUrl: 'https://private-cloud.example.com/v1',
+        reasoning: true,
+        thinkingLevelMap: {
+          off: null,
+          minimal: null,
+          xhigh: 'xhigh',
+          max: 'max',
+        },
+        input: ['text'],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 4096,
+      };
+
+      function paramsWithThinking(
+        thinkingLevel?: 'off' | 'minimal' | 'max',
+      ): CreateSessionParams {
+        return createParams({
+          runtimeConfig: {
+            runtimeMode: 'no_sandbox',
+            modelConfig: {
+              modelId: 'model-config-001',
+              ...(thinkingLevel ? { thinkingLevel } : {}),
+            },
+          },
+        });
+      }
+
+      beforeEach(() => {
+        vi.mocked(Logger.prototype.warn).mockClear();
+        mockDb.select.mockReturnValueOnce(
+          createSelectChain([defaultModelConfig]),
+        );
+        mockPiAiAdapter.getPiRuntimeModel.mockResolvedValueOnce({
+          model: solModel,
+          apiKey: 'sk-key',
+        });
+      });
+
+      it('配置了模型不支持的强度时按 pi clampThinkingLevel 收敛并告警', async () => {
+        await adapter.createSession(paramsWithThinking('minimal'));
+
+        const initialState = hoisted.MockPiAgent.instances[0].options
+          .initialState as Record<string, unknown>;
+        expect(initialState.thinkingLevel).toBe('low');
+        expect(Logger.prototype.warn).toHaveBeenCalledWith(
+          expect.stringContaining('不支持思考强度 minimal，已收敛为 low'),
+        );
+      });
+
+      it('受支持的强度原样下发', async () => {
+        await adapter.createSession(paramsWithThinking('max'));
+
+        const initialState = hoisted.MockPiAgent.instances[0].options
+          .initialState as Record<string, unknown>;
+        expect(initialState.thinkingLevel).toBe('max');
+        expect(Logger.prototype.warn).not.toHaveBeenCalled();
+      });
+
+      it('未配置时保持未设置（模型不支持关闭时由 off: null 让 pi 不发推理参数）', async () => {
+        await adapter.createSession(paramsWithThinking());
+
+        const initialState = hoisted.MockPiAgent.instances[0].options
+          .initialState as Record<string, unknown>;
+        expect('thinkingLevel' in initialState).toBe(false);
+        expect(initialState.model).toMatchObject({
+          thinkingLevelMap: expect.objectContaining({ off: null }),
+        });
+      });
     });
 
     it('workflow 模式会把初始 context 映射为 workflowState', async () => {

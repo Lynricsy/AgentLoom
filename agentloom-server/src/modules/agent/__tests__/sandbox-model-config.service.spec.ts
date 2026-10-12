@@ -2,7 +2,10 @@
  * Sandbox 模型配置服务回归：直接验证 payload 边界与 guest session 初始化错误语义。
  */
 import JSZip from 'jszip';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ModelDiscoveryService } from '../../llm/model-discovery.service';
+import { ThinkingCapabilityService } from '../../llm/thinking-capability.service';
 import { PiConfigGeneratorService } from '../../sandbox/pi-config-generator.service';
 import {
   SandboxRuntimePluginUnsupportedFileException,
@@ -132,37 +135,123 @@ describe('SandboxModelConfigService', () => {
     });
   });
 
-  it.each([
-    ['设置时写入 defaultThinkingLevel', 'medium', 'medium'],
-    ['缺省时不写 defaultThinkingLevel', undefined, undefined],
-  ] as const)(
-    'llm-model 节点思考强度%s',
-    async (_label, thinkingLevel, expected) => {
-      const withGenerator = new SandboxModelConfigService(
+  describe('按模型能力生成思考配置', () => {
+    const LITELLM = {
+      'claude-sonnet-5-5': {
+        supports_reasoning: true,
+        supports_xhigh_reasoning_effort: true,
+        supports_max_reasoning_effort: true,
+        thinking_always_on: true,
+      },
+      'azure-gpt-5.4': {
+        supports_reasoning: true,
+        supports_none_reasoning_effort: true,
+        supports_minimal_reasoning_effort: true,
+        default_reasoning_effort: 'none',
+      },
+      'gpt-4o': { supports_vision: true },
+    } as Record<string, Record<string, unknown>>;
+
+    async function buildPayload(
+      modelName: string,
+      thinkingLevel?: 'off' | 'minimal' | 'medium' | 'high',
+    ) {
+      const thinkingCapabilityService = new ThinkingCapabilityService({
+        lookupLiteLLMEntry: vi.fn(async (_slug: string, modelId: string) =>
+          LITELLM[modelId] ? { key: modelId, entry: LITELLM[modelId] } : null,
+        ),
+      } as unknown as ModelDiscoveryService);
+      const withCapability = new SandboxModelConfigService(
         {} as never,
         runtimeDriver as never,
         undefined,
         new PiConfigGeneratorService(),
+        undefined,
+        thinkingCapabilityService,
       );
 
-      const payload = await withGenerator.buildContainerSessionPayload({
+      const payload = await withCapability.buildContainerSessionPayload({
         session: session as never,
         runtimeConfig: {
           runtimeMode: 'sandbox',
           modelConfig: {
             modelId: 'cfg-1',
             provider: 'anthropic',
-            modelName: 'claude-sonnet-4-6',
+            modelName,
             ...(thinkingLevel ? { thinkingLevel } : {}),
           },
         },
       });
-
       const settings = payload.settings as Record<string, unknown>;
-      expect(settings.defaultModel).toBe('claude-sonnet-4-6');
-      expect(settings.defaultThinkingLevel).toBe(expected);
-    },
-  );
+      const models = payload.models as {
+        providers: Record<string, { models: Record<string, unknown>[] }>;
+      };
+      return { settings, model: models.providers.anthropic.models[0] };
+    }
+
+    beforeEach(() => {
+      vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('supported：models.json 带上恰好为支持强度的 reasoningEfforts 字典', async () => {
+      const { settings, model } = await buildPayload(
+        'claude-sonnet-5-5',
+        'medium',
+      );
+
+      expect(settings.defaultThinkingLevel).toBe('medium');
+      expect(model).toEqual({
+        id: 'claude-sonnet-5-5',
+        name: 'claude-sonnet-5-5',
+        reasoningEfforts: {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'xhigh',
+          max: 'max',
+        },
+      });
+    });
+
+    it('supported 且接受显式 none：off 的 wire 拼写为 none', async () => {
+      const { model } = await buildPayload('azure-gpt-5.4');
+
+      expect(model.reasoningEfforts).toEqual({
+        off: 'none',
+        minimal: 'minimal',
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+      });
+    });
+
+    it('配置了不支持的强度时按 pi clampThinkingLevel 收敛 defaultThinkingLevel', async () => {
+      const { settings } = await buildPayload('claude-sonnet-5-5', 'minimal');
+
+      expect(settings.defaultThinkingLevel).toBe('low');
+      expect(Logger.prototype.warn).toHaveBeenCalledWith(
+        expect.stringContaining('思考强度 minimal 不受模型支持，已收敛为 low'),
+      );
+    });
+
+    it('unsupported：reasoningEfforts 为 false，配置强度收敛为 off', async () => {
+      const { settings, model } = await buildPayload('gpt-4o', 'high');
+
+      expect(model.reasoningEfforts).toBe(false);
+      expect(settings.defaultThinkingLevel).toBe('off');
+    });
+
+    it('unknown：省略 reasoningEfforts；缺省强度不写 defaultThinkingLevel', async () => {
+      const { settings, model } = await buildPayload('agentloom-no-such-model');
+
+      expect(model).not.toHaveProperty('reasoningEfforts');
+      expect('defaultThinkingLevel' in settings).toBe(false);
+    });
+  });
 
   it('有技能但缺少 pi generator 时显式失败，而不是静默丢弃技能', async () => {
     await expect(

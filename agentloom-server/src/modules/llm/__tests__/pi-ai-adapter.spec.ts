@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { DefaultApiKeyNotConfiguredException } from '../../api-key/api-key.exceptions';
 import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import { LlmProviderException } from '../llm.exceptions';
-import { PiAiAdapter, type ResolvedModelConfig } from '../pi-ai-adapter';
+import {
+  PiAiAdapter,
+  type PiRuntimeResolvedModel,
+  type ResolvedModelConfig,
+} from '../pi-ai-adapter';
+import type { ThinkingCapabilityService } from '../thinking-capability.service';
+import {
+  deriveLiteLLMThinkingCapability,
+  UNKNOWN_THINKING_CAPABILITY,
+} from '../thinking-capability.util';
 
 type WrappedModel = {
   doGenerate: (...args: unknown[]) => Promise<unknown>;
@@ -99,6 +108,7 @@ describe('PiAiAdapter', () => {
   let decryptionBoundaryService: {
     decryptConfiguredApiKey: ReturnType<typeof vi.fn>;
   };
+  let thinkingCapabilityService: { resolve: Mock };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -109,8 +119,12 @@ describe('PiAiAdapter', () => {
     decryptionBoundaryService = {
       decryptConfiguredApiKey: vi.fn().mockResolvedValue('decrypted-key'),
     };
+    thinkingCapabilityService = {
+      resolve: vi.fn().mockResolvedValue(UNKNOWN_THINKING_CAPABILITY),
+    };
     adapter = new PiAiAdapter(
       decryptionBoundaryService as unknown as DecryptionBoundaryService,
+      thinkingCapabilityService as unknown as ThinkingCapabilityService,
     );
     vi.spyOn(
       adapter as unknown as { sleep: (ms: number) => Promise<void> },
@@ -721,6 +735,124 @@ describe('PiAiAdapter', () => {
         provider: 'private_cloud',
         baseUrl: 'https://private-cloud.example.com',
         headers: { Authorization: '' },
+      });
+    });
+
+    it('按配置解析的 provider/apiProtocol/modelId 查询思考能力', async () => {
+      await adapter.getPiRuntimeModel(
+        createConfig({
+          modelId: 'gpt-6.1-sol',
+          providerOverrides: {
+            slug: 'openai',
+            apiProtocol: 'openai_responses' as const,
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(thinkingCapabilityService.resolve).toHaveBeenCalledWith({
+        providerSlug: 'openai',
+        apiProtocol: 'openai_responses',
+        modelId: 'gpt-6.1-sol',
+      });
+    });
+
+    it('unknown 能力沿用 reasoning: true、无 thinkingLevelMap 的旧行为', async () => {
+      const result = await adapter.getPiRuntimeModel(createConfig(), 'sk-key');
+
+      expect(result.model.reasoning).toBe(true);
+      expect(result.model.thinkingLevelMap).toBeUndefined();
+    });
+
+    it('unsupported 能力生成 reasoning: false 的模型', async () => {
+      thinkingCapabilityService.resolve.mockResolvedValueOnce(
+        deriveLiteLLMThinkingCapability({}),
+      );
+
+      const result = await adapter.getPiRuntimeModel(createConfig(), 'sk-key');
+
+      expect(result.model.reasoning).toBe(false);
+      expect(result.model.thinkingLevelMap).toBeUndefined();
+    });
+
+    describe('gpt-6.1-sol 类模型（不接受 none effort）', () => {
+      const solEntry = {
+        supports_reasoning: true,
+        supports_none_reasoning_effort: false,
+        supports_minimal_reasoning_effort: false,
+        supports_xhigh_reasoning_effort: true,
+        supports_max_reasoning_effort: true,
+      };
+
+      async function captureOpenAIResponsesPayload(
+        model: PiRuntimeResolvedModel['model'],
+      ): Promise<Record<string, unknown>> {
+        const { streamSimple } = await import('@earendil-works/pi-ai/compat');
+        let payload: Record<string, unknown> | undefined;
+        const stream = streamSimple(
+          model,
+          {
+            systemPrompt: '',
+            messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+          },
+          {
+            apiKey: 'sk-key',
+            maxRetries: 0,
+            // pi-agent-core 在 thinkingLevel=off 时不传 reasoning
+            onPayload: (params) => {
+              payload = params as Record<string, unknown>;
+            },
+            fetch: () => Promise.reject(new Error('offline in test')),
+          },
+        );
+        for await (const _event of stream) {
+          // 只关心发出前的 payload，请求本身被假 fetch 拒绝
+        }
+        if (!payload) throw new Error('pi 未构建请求 payload');
+        return payload;
+      }
+
+      function solConfig() {
+        return createConfig({
+          modelId: 'gpt-6.1-sol',
+          providerOverrides: {
+            slug: 'private_cloud',
+            apiProtocol: 'openai_responses' as const,
+            baseUrl: 'https://private-cloud.example.com',
+          },
+        });
+      }
+
+      it('thinkingLevelMap.off === null，关闭思考时不再发送 effort: none', async () => {
+        thinkingCapabilityService.resolve.mockResolvedValueOnce(
+          deriveLiteLLMThinkingCapability(solEntry),
+        );
+
+        const { model } = await adapter.getPiRuntimeModel(
+          solConfig(),
+          'sk-key',
+        );
+
+        expect(model.api).toBe('openai-responses');
+        expect(model.reasoning).toBe(true);
+        expect(model.thinkingLevelMap).toEqual({
+          off: null,
+          minimal: null,
+          xhigh: 'xhigh',
+          max: 'max',
+        });
+        const payload = await captureOpenAIResponsesPayload(model);
+        expect(payload).not.toHaveProperty('reasoning');
+      });
+
+      it('对照：能力未知时 pi 仍会发送 effort: none（旧 400 根因）', async () => {
+        const { model } = await adapter.getPiRuntimeModel(
+          solConfig(),
+          'sk-key',
+        );
+
+        const payload = await captureOpenAIResponsesPayload(model);
+        expect(payload.reasoning).toEqual({ effort: 'none' });
       });
     });
   });

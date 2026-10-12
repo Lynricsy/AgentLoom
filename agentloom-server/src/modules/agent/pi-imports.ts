@@ -15,3 +15,8 @@ export async function importPiAi() {
 export async function importPiAiCompat() {
   return await import('@earendil-works/pi-ai/compat');
 }
+
+// pi-ai 内置模型目录（getBuiltinProviders/getBuiltinModels），用于按模型目录推导思考能力。
+export async function importPiAiBuiltinProviders() {
+  return await import('@earendil-works/pi-ai/providers/all');
+}

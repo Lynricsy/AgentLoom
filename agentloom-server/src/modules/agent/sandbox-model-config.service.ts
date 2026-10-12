@@ -12,6 +12,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   AgentRuntimeConfig,
+  AgentThinkingLevel,
   HarnessConfig,
 } from '../agent-definition/agent-runtime-config.interface';
 import {
@@ -19,6 +20,7 @@ import {
   DefaultApiKeyNotConfiguredException,
 } from '../api-key/api-key.exceptions';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
+import { ThinkingCapabilityService } from '../llm/thinking-capability.service';
 import {
   PiConfigGeneratorService,
   resolvePiProviderApiKeyEnv,
@@ -84,6 +86,8 @@ export class SandboxModelConfigService {
     private readonly decryptionBoundaryService?: DecryptionBoundaryService,
     @Optional() private readonly piConfigGenerator?: PiConfigGeneratorService,
     @Optional() private readonly runtimePluginService?: RuntimePluginService,
+    @Optional()
+    private readonly thinkingCapabilityService?: ThinkingCapabilityService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -250,20 +254,18 @@ export class SandboxModelConfigService {
       return null;
     }
 
-    // 思考强度属于 Agent 画布 llm-model 节点而非租户模型配置，存储配置与快照回退都要叠加
-    const thinkingLevel = runtimeConfig?.modelConfig?.thinkingLevel;
+    const modelConfig = await this.applyThinkingCapability(
+      session,
+      resolvedModelConfig.modelConfig,
+      // 思考强度属于 Agent 画布 llm-model 节点而非租户模型配置，存储配置与快照回退都要叠加
+      runtimeConfig?.modelConfig?.thinkingLevel,
+    );
     const settings = this.parseJsonObject(
-      this.piConfigGenerator.generateSettings({
-        modelConfig: thinkingLevel
-          ? { ...resolvedModelConfig.modelConfig, thinkingLevel }
-          : resolvedModelConfig.modelConfig,
-      }),
+      this.piConfigGenerator.generateSettings({ modelConfig }),
       'pi settings',
     );
     const models = this.parseJsonObject(
-      this.piConfigGenerator.generateModelsJson({
-        modelConfig: resolvedModelConfig.modelConfig,
-      }),
+      this.piConfigGenerator.generateModelsJson({ modelConfig }),
       'pi models',
     );
     const runtimeApiKeys =
@@ -300,6 +302,41 @@ export class SandboxModelConfigService {
       settings,
       models,
       ...(runtimeApiKeys ? { runtimeApiKeys } : {}),
+    };
+  }
+
+  /**
+   * 按模型真实能力补全 sandbox 模型配置：models.json 的 reasoningEfforts（unknown 时省略），
+   * 以及按 pi clampThinkingLevel 收敛后的 settings.defaultThinkingLevel。未配置强度时保持未设置。
+   */
+  private async applyThinkingCapability(
+    session: AgentSession,
+    modelConfig: PiModelConfig,
+    thinkingLevel?: AgentThinkingLevel,
+  ): Promise<PiModelConfig> {
+    if (!this.thinkingCapabilityService) {
+      return thinkingLevel ? { ...modelConfig, thinkingLevel } : modelConfig;
+    }
+
+    const resolution = await this.thinkingCapabilityService.resolve({
+      providerSlug: modelConfig.provider,
+      apiProtocol: modelConfig.apiProtocol,
+      modelId: modelConfig.model,
+    });
+    const clampedThinkingLevel = thinkingLevel
+      ? await this.thinkingCapabilityService.clampThinkingLevel(
+          resolution.piModel,
+          thinkingLevel,
+          `会话 ${session.id} 模型 ${modelConfig.provider}/${modelConfig.model}`,
+        )
+      : undefined;
+
+    return {
+      ...modelConfig,
+      ...(clampedThinkingLevel ? { thinkingLevel: clampedThinkingLevel } : {}),
+      ...(resolution.reasoningEfforts !== undefined
+        ? { reasoningEfforts: resolution.reasoningEfforts }
+        : {}),
     };
   }
 

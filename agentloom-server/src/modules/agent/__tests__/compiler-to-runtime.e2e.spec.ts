@@ -77,7 +77,11 @@ const hoisted = vi.hoisted(() => {
   return {
     MockPiAgent,
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
-    importPiAiCompat: vi.fn(async () => ({ streamSimple })),
+    importPiAiCompat: vi.fn(async () => ({
+      streamSimple,
+      clampThinkingLevel: (await import('@earendil-works/pi-ai'))
+        .clampThinkingLevel,
+    })),
     typeBoxToZod: vi.fn(() => z.any()),
     normalizeFlexibleSchemaJson: vi.fn((schema: unknown) =>
       typeof schema === 'object' && schema !== null ? schema : {},

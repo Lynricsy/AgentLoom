@@ -307,6 +307,35 @@ describe('PiConfigGeneratorService', () => {
         'https://bedrock-runtime.us-east-1.amazonaws.com',
       );
     });
+
+    it.each([
+      [
+        '能力字典',
+        { off: null, low: 'low', high: 'high' },
+        { off: null, low: 'low', high: 'high' },
+      ],
+      ['不推理时为 false', false, false],
+      ['能力未知时省略', undefined, undefined],
+    ] as const)(
+      'model 条目的 reasoningEfforts：%s',
+      (_label, reasoningEfforts, expected) => {
+        const cfg: PiModelConfig = {
+          provider: 'anthropic',
+          model: 'claude-sonnet-5-5',
+          ...(reasoningEfforts !== undefined ? { reasoningEfforts } : {}),
+        };
+        const parsed = JSON.parse(
+          service.generateModelsJson({ modelConfig: cfg }),
+        ) as {
+          providers: Record<string, { models: Record<string, unknown>[] }>;
+        };
+        const [model] = parsed.providers['anthropic'].models;
+
+        expect(model.id).toBe('claude-sonnet-5-5');
+        expect('reasoningEfforts' in model).toBe(expected !== undefined);
+        expect(model.reasoningEfforts).toEqual(expected);
+      },
+    );
   });
 
   describe('generateSystemPrompt()', () => {

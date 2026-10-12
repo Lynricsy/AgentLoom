@@ -1,13 +1,20 @@
 import { Injectable } from '@nestjs/common';
 
 import type { AgentThinkingLevel } from '../agent-definition/agent-runtime-config.interface';
+import type { DshReasoningEfforts } from '../llm/thinking-capability.util';
 import type { McpServerConfig } from '../agent/types/agent-session.types';
 import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from '../llm/private-cloud-auth.constants';
 
 export interface PiModelConfig {
   provider: string;
   model: string;
+  /** 已按模型能力收敛过的思考强度（写入 settings.defaultThinkingLevel） */
   thinkingLevel?: AgentThinkingLevel;
+  /**
+   * 模型思考能力（dsh `PiAiModelProfile.reasoningEfforts`）：false = 不推理，字典 = 可选强度及
+   * wire 拼写；undefined = 能力未知，models.json 中省略。
+   */
+  reasoningEfforts?: DshReasoningEfforts;
   apiProtocol?: string | null;
   apiBaseUrl?: string;
   apiKeyId?: string | null;
@@ -304,7 +311,15 @@ export class PiConfigGeneratorService {
       ...(headers ? { headers } : {}),
       ...(baseUrl ? { baseUrl } : {}),
       ...(compat ? { compat } : {}),
-      models: [{ id: modelCfg.model, name: modelCfg.model }],
+      models: [
+        {
+          id: modelCfg.model,
+          name: modelCfg.model,
+          ...(modelCfg.reasoningEfforts !== undefined
+            ? { reasoningEfforts: modelCfg.reasoningEfforts }
+            : {}),
+        },
+      ],
     };
 
     return JSON.stringify(

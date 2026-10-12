@@ -10,6 +10,7 @@ import { LlmProviderService } from './llm-provider.service';
 import { LlmService } from './llm.service';
 import { ModelDiscoveryService } from './model-discovery.service';
 import { PiAiAdapter } from './pi-ai-adapter';
+import { ThinkingCapabilityService } from './thinking-capability.service';
 
 @Module({
   imports: [ConfigModule, ApiKeyModule, TenantKeyModule],
@@ -20,6 +21,7 @@ import { PiAiAdapter } from './pi-ai-adapter';
     PiAiAdapter,
     LlmEncryptionService,
     ModelDiscoveryService,
+    ThinkingCapabilityService,
   ],
   exports: [
     LlmService,
@@ -27,6 +29,7 @@ import { PiAiAdapter } from './pi-ai-adapter';
     PiAiAdapter,
     LlmEncryptionService,
     ModelDiscoveryService,
+    ThinkingCapabilityService,
   ],
 })
 export class LlmModule {}

@@ -322,13 +322,24 @@ export class ModelDiscoveryService {
     providerSlug: string,
     modelId: string,
   ): Promise<LiteLLMModelInfo | null> {
-    const data = await this.getLiteLLMData();
-    const keys = this.buildLiteLLMKeys(providerSlug, modelId);
+    const match = await this.lookupLiteLLMEntry(providerSlug, modelId);
+    return match ? this.parseLiteLLMEntry(match.key, match.entry) : null;
+  }
 
-    for (const key of keys) {
+  /**
+   * 按与 lookupModelMetadata 相同的键回退顺序（裸模型 ID 优先）返回原始 LiteLLM 条目，
+   * 供需要未建模字段（如推理强度）的调用方复用同一份 24h 缓存。找不到时返回 null。
+   */
+  async lookupLiteLLMEntry(
+    providerSlug: string,
+    modelId: string,
+  ): Promise<{ key: string; entry: Record<string, unknown> } | null> {
+    const data = await this.getLiteLLMData();
+
+    for (const key of this.buildLiteLLMKeys(providerSlug, modelId)) {
       const entry = data[key];
       if (entry && typeof entry === 'object') {
-        return this.parseLiteLLMEntry(key, entry as Record<string, unknown>);
+        return { key, entry: entry as Record<string, unknown> };
       }
     }
 

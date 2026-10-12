@@ -29,6 +29,7 @@ export type {
 
 export {
   AGENT_RUNTIME_MODES,
+  AGENT_THINKING_LEVELS,
   AgentThinkingLevelSchema,
   AgentRuntimeConfigSchema,
   AgentModelConfigSchema,

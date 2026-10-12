@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { importPiAgentCore, importPiAi, importPiAiCompat } from './pi-imports';
+import {
+  importPiAgentCore,
+  importPiAi,
+  importPiAiBuiltinProviders,
+  importPiAiCompat,
+} from './pi-imports';
 
 describe('pi-imports', () => {
   it('importPiAgentCore() resolves and exports Agent class', async () => {
@@ -19,6 +24,12 @@ describe('pi-imports', () => {
     const mod = await importPiAiCompat();
     expect(mod).toBeDefined();
     expect(typeof mod.streamSimple).toBe('function');
+  });
+
+  it('importPiAiBuiltinProviders() resolves the builtin model catalog', async () => {
+    const mod = await importPiAiBuiltinProviders();
+    expect(mod.getBuiltinProviders()).toContain('openai');
+    expect(mod.getBuiltinModels('openai').length).toBeGreaterThan(0);
   });
 
   it('both imports can be called multiple times without errors (module caching)', async () => {

@@ -20,7 +20,11 @@ export const AGENT_RUNTIME_MODES = ['sandbox', 'no_sandbox'] as const;
 
 export const AgentRuntimeModeSchema = z.enum(AGENT_RUNTIME_MODES);
 
-/** 与 pi-agent-core `ThinkingLevel` 对齐的 Agent 主模型思考强度；缺省等同 `off`。 */
+/**
+ * 与 pi-ai `ModelThinkingLevel` 对齐的 Agent 主模型思考强度词表（仅词表，不是任何模型的可选集合）。
+ * 单个模型实际可选的强度由 server `GET /llm-models/:id/thinking-capability` 按模型能力给出；
+ * 缺省表示「模型支持关闭思考时为 off，否则不下发推理参数、沿用模型默认」。
+ */
 export const AGENT_THINKING_LEVELS = [
   'off',
   'minimal',
@@ -28,6 +32,7 @@ export const AGENT_THINKING_LEVELS = [
   'medium',
   'high',
   'xhigh',
+  'max',
 ] as const;
 
 export const AgentThinkingLevelSchema = z.enum(AGENT_THINKING_LEVELS);

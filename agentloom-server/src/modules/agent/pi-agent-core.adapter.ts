@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { jsonSchema, tool, type FlexibleSchema, type ToolSet } from 'ai';
 import { and, eq } from 'drizzle-orm';
@@ -13,6 +13,7 @@ import type {
   AgentKnowledgeBinding,
   AgentMcpToolBinding,
   AgentRuntimeConfig,
+  AgentThinkingLevel,
   AgentToolBinding,
 } from '../agent-definition/agent-runtime-config.interface';
 import { RagService } from '../knowledge/services/rag.service';
@@ -105,6 +106,10 @@ type PiAgentCoreModule = {
 
 type PiAiCompatModule = {
   streamSimple: (...args: unknown[]) => unknown;
+  clampThinkingLevel: (
+    model: PiRuntimeResolvedModel['model'],
+    level: AgentThinkingLevel,
+  ) => AgentThinkingLevel;
 };
 
 type PermissionResolution = 'approve' | 'deny' | 'cancelled';
@@ -272,6 +277,7 @@ class AsyncAgentEventSink implements AsyncIterable<AgentEvent> {
 
 @Injectable()
 export class PiAgentCoreAdapter implements IAgentRuntime {
+  private readonly logger = new Logger(PiAgentCoreAdapter.name);
   private readonly sessions = new Map<string, RuntimeSession>();
   private readonly sessionToolProviders = new Map<
     string,
@@ -329,8 +335,19 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       importPiAgentCore(),
       importPiAiCompat(),
     ])) as unknown as [PiAgentCoreModule, PiAiCompatModule];
-    // 主模型思考强度来自画布 llm-model 节点；缺省时沿用 pi-agent-core 默认的 off
-    const thinkingLevel = params.runtimeConfig?.modelConfig?.thinkingLevel;
+    // 主模型思考强度来自画布 llm-model 节点。缺省不下发：pi-agent-core 默认 off，模型支持关闭
+    // 思考时关闭，否则（thinkingLevelMap.off === null）不发推理参数、沿用模型默认。
+    // 配置了模型不支持的强度时按 pi 的 clampThinkingLevel 收敛并告警，绝不原样下发。
+    const configuredThinkingLevel =
+      params.runtimeConfig?.modelConfig?.thinkingLevel;
+    const thinkingLevel = configuredThinkingLevel
+      ? piAiCompat.clampThinkingLevel(model.model, configuredThinkingLevel)
+      : undefined;
+    if (configuredThinkingLevel && thinkingLevel !== configuredThinkingLevel) {
+      this.logger.warn(
+        `Agent ${params.agentId} 模型 ${model.model.provider}/${model.model.id} 不支持思考强度 ${configuredThinkingLevel}，已收敛为 ${thinkingLevel}`,
+      );
+    }
     const agent = new piAgentCore.Agent({
       initialState: {
         systemPrompt: params.systemPrompt ?? '',

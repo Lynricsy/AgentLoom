@@ -5001,6 +5001,164 @@ export interface MfaVerifyDto {
 /**
  * 
  * @export
+ * @interface ModelThinkingCapabilityResponseDto
+ */
+export interface ModelThinkingCapabilityResponseDto {
+    /**
+     * 
+     * @type {ModelThinkingCapabilityResponseDtoData}
+     * @memberof ModelThinkingCapabilityResponseDto
+     */
+    data: ModelThinkingCapabilityResponseDtoData;
+}
+/**
+ * @type ModelThinkingCapabilityResponseDtoData
+ * 
+ * @export
+ */
+export type ModelThinkingCapabilityResponseDtoData = ModelThinkingCapabilityResponseDtoDataOneOf | ModelThinkingCapabilityResponseDtoDataOneOf1 | ModelThinkingCapabilityResponseDtoDataOneOf2;
+/**
+ * 
+ * @export
+ * @interface ModelThinkingCapabilityResponseDtoDataOneOf
+ */
+export interface ModelThinkingCapabilityResponseDtoDataOneOf {
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf
+     */
+    status: ModelThinkingCapabilityResponseDtoDataOneOfStatusEnum;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf
+     */
+    levels: Array<ModelThinkingCapabilityResponseDtoDataOneOfLevelsEnum>;
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf
+     */
+    defaultLevel: ModelThinkingCapabilityResponseDtoDataOneOfDefaultLevelEnum | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf
+     */
+    source: ModelThinkingCapabilityResponseDtoDataOneOfSourceEnum;
+}
+
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOfStatusEnum = {
+    Supported: 'supported'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOfStatusEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOfStatusEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOfStatusEnum];
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOfLevelsEnum = {
+    Off: 'off',
+    Minimal: 'minimal',
+    Low: 'low',
+    Medium: 'medium',
+    High: 'high',
+    Xhigh: 'xhigh',
+    Max: 'max'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOfLevelsEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOfLevelsEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOfLevelsEnum];
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOfDefaultLevelEnum = {
+    Off: 'off',
+    Minimal: 'minimal',
+    Low: 'low',
+    Medium: 'medium',
+    High: 'high',
+    Xhigh: 'xhigh',
+    Max: 'max'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOfDefaultLevelEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOfDefaultLevelEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOfDefaultLevelEnum];
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOfSourceEnum = {
+    Litellm: 'litellm',
+    PiCatalog: 'pi-catalog'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOfSourceEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOfSourceEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOfSourceEnum];
+
+/**
+ * 
+ * @export
+ * @interface ModelThinkingCapabilityResponseDtoDataOneOf1
+ */
+export interface ModelThinkingCapabilityResponseDtoDataOneOf1 {
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf1
+     */
+    status: ModelThinkingCapabilityResponseDtoDataOneOf1StatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf1
+     */
+    source: ModelThinkingCapabilityResponseDtoDataOneOf1SourceEnum;
+}
+
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOf1StatusEnum = {
+    Unsupported: 'unsupported'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOf1StatusEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOf1StatusEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOf1StatusEnum];
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOf1SourceEnum = {
+    Litellm: 'litellm',
+    PiCatalog: 'pi-catalog'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOf1SourceEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOf1SourceEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOf1SourceEnum];
+
+/**
+ * 
+ * @export
+ * @interface ModelThinkingCapabilityResponseDtoDataOneOf2
+ */
+export interface ModelThinkingCapabilityResponseDtoDataOneOf2 {
+    /**
+     * 
+     * @type {string}
+     * @memberof ModelThinkingCapabilityResponseDtoDataOneOf2
+     */
+    status: ModelThinkingCapabilityResponseDtoDataOneOf2StatusEnum;
+}
+
+
+/**
+ * @export
+ */
+export const ModelThinkingCapabilityResponseDtoDataOneOf2StatusEnum = {
+    Unknown: 'unknown'
+} as const;
+export type ModelThinkingCapabilityResponseDtoDataOneOf2StatusEnum = typeof ModelThinkingCapabilityResponseDtoDataOneOf2StatusEnum[keyof typeof ModelThinkingCapabilityResponseDtoDataOneOf2StatusEnum];
+
+/**
+ * 
+ * @export
  * @interface MonitoringDashboardEnvelopeDto
  */
 export interface MonitoringDashboardEnvelopeDto {
