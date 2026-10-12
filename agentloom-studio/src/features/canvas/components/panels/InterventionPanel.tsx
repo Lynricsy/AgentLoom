@@ -298,7 +298,7 @@ export const InterventionPanel = memo(function InterventionPanel({
               onClick={handleSubmitReject}
               disabled={isSubmitting}
               data-testid="intervention-submit-reject"
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
             >
               {isSubmitting && (
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />

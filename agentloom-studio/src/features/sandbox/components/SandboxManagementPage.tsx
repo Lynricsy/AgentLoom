@@ -22,6 +22,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import { Pagination } from "@/shared/components";
 import { useToast } from "@/shared/ui/toast";
@@ -370,10 +371,10 @@ export function SandboxManagementPage() {
               : ""}
             」吗？此操作不可撤销。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={(event) => {
                 event.preventDefault();
@@ -385,7 +386,7 @@ export function SandboxManagementPage() {
               )}
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageContainer>

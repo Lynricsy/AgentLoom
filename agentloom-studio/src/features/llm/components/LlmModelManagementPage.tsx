@@ -12,6 +12,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import type { LlmProviderEntity } from "../types";
 import {
@@ -259,10 +260,10 @@ export function LlmModelManagementPage() {
             确定要删除提供商「{deleteConfirmProvider?.name}
             」吗？该提供商下的所有模型配置也将被删除，此操作不可撤销。
           </AlertDialogDescription>
-          <div className="mt-4 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteProviderMutation.isPending}
               onClick={() => void handleConfirmDeleteProvider()}
             >
@@ -271,7 +272,7 @@ export function LlmModelManagementPage() {
               )}
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

@@ -28,6 +28,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfig } from "../api/mcpQueries";
@@ -540,7 +541,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
             停用后，这个工具会从工具库中标记为停用，并从画布的 Imported Tools
             中移除。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               disabled={deactivateMutation.isPending}
@@ -554,7 +555,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
               )}
               确认停用
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageContainer>

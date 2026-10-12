@@ -4,6 +4,7 @@ import {
   useContext,
   type ComponentPropsWithoutRef,
   type ElementRef,
+  type HTMLAttributes,
   type PropsWithChildren,
 } from 'react'
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog'
@@ -65,7 +66,7 @@ export const AlertDialogContent = forwardRef<
               <motion.div
                 {...scaleIn}
                 className={cn(
-                  'pointer-events-auto relative w-full max-w-md rounded-xl border border-border bg-surface p-6 text-foreground shadow-xl focus:outline-none',
+                  'pointer-events-auto relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-surface p-6 text-foreground shadow-xl focus:outline-none',
                   className,
                 )}
               >
@@ -105,14 +106,30 @@ export const AlertDialogDescription = forwardRef<
   )
 })
 
+/** 页脚按钮行：小屏纵向（主操作在上），≥sm 右对齐横排 */
+export function AlertDialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn('mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
+      {...props}
+    />
+  )
+}
+
+export interface AlertDialogActionProps
+  extends ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> {
+  /** destructive：删除/撤销/移除等不可逆操作 */
+  variant?: 'default' | 'destructive'
+}
+
 export const AlertDialogAction = forwardRef<
   ElementRef<typeof AlertDialogPrimitive.Action>,
-  ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(function AlertDialogAction({ className, ...props }, ref) {
+  AlertDialogActionProps
+>(function AlertDialogAction({ className, variant = 'default', ...props }, ref) {
   return (
     <AlertDialogPrimitive.Action
       ref={ref}
-      className={cn(buttonVariants({ variant: 'default' }), className)}
+      className={cn(buttonVariants({ variant }), className)}
       {...props}
     />
   )

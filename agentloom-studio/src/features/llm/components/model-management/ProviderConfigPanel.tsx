@@ -22,6 +22,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import { cn } from "@/shared/lib/utils";
 import type {
@@ -476,10 +477,10 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
           <AlertDialogDescription>
             确定要删除模型「{deleteConfirmModel?.name}」吗？此操作不可撤销。
           </AlertDialogDescription>
-          <div className="mt-4 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={() => void handleConfirmDeleteModel()}
             >
@@ -488,7 +489,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               )}
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

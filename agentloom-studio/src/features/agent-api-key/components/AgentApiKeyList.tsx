@@ -13,6 +13,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -331,10 +332,10 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
           <AlertDialogDescription>
             吊销后「{revokeTarget?.name}」将立即失效且无法恢复，使用它的调用都会收到 401。请先确认接入方已切换到新的 Key。
           </AlertDialogDescription>
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <AlertDialogFooter>
             <AlertDialogCancel disabled={revokeMutation.isPending}>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={revokeMutation.isPending}
               onClick={(event) => {
                 // 吊销是异步的：阻止 Radix 立即关闭，等请求落地后统一收尾
@@ -344,7 +345,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
             >
               {revokeMutation.isPending ? '吊销中…' : '确认吊销'}
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

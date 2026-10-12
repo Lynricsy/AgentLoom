@@ -9,6 +9,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog';
 import { REVIEW_STATUS_META } from './AuditTimeline';
 import { useReview, useRollback } from './api';
@@ -139,7 +140,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
             {confirmAction === 'rollback' &&
               `确认回滚节点 "${entry.nodeName}" 到版本 ${entry.versionId.slice(0, 8)}？此操作不可撤销。`}
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel disabled={isProcessing}>取消</AlertDialogCancel>
             <AlertDialogAction
               disabled={isProcessing}
@@ -154,7 +155,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
             >
               {isProcessing ? '处理中...' : '确认'}
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

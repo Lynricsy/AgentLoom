@@ -13,6 +13,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { Button } from '@/shared/ui/button'
 import {
@@ -364,7 +365,7 @@ export function MyMarketplaceListingsPage() {
             </div>
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel asChild>
               <Button variant="outline">取消</Button>
             </AlertDialogCancel>
@@ -372,7 +373,7 @@ export function MyMarketplaceListingsPage() {
               {isUnlistPending && <Loader2 className="h-4 w-4 animate-spin" />}
               确认下架
             </Button>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 

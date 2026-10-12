@@ -34,6 +34,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import {
   useAllMemoryInstances,
@@ -332,12 +333,12 @@ export function MemoryInstancesPage() {
           <AlertDialogDescription>
             确定要删除「{deleteTarget?.name}」吗？此操作不可恢复。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>
               取消
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={(e) => {
                 e.preventDefault();
@@ -346,7 +347,7 @@ export function MemoryInstancesPage() {
             >
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 

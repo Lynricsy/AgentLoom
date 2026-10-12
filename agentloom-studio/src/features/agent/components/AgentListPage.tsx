@@ -52,6 +52,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
@@ -758,17 +759,17 @@ export function AgentListPage({
             确定要删除 Agent &ldquo;{deleteTarget?.name}&rdquo;
             吗？此操作不可撤销，所有关联数据将被永久移除。
           </AlertDialogDescription>
-          <div className="mt-6 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="gap-1.5 bg-error text-white hover:bg-error/90"
+              variant="destructive"
               onClick={handleConfirmDelete}
               disabled={deleteAgent.isPending}
             >
               {deleteAgent.isPending && <Loader2 className="animate-spin" />}
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageContainer>

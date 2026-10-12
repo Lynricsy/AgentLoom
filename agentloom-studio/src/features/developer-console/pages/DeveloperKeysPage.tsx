@@ -15,6 +15,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import {
   Select,
@@ -336,7 +337,7 @@ export function DeveloperKeysPage() {
             撤销「{keyPendingRevoke?.label?.trim() || '未命名密钥'}
             」后，使用对应私钥签名的插件包将无法通过验签。此操作不可撤销。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel asChild>
               <Button variant="outline">取消</Button>
             </AlertDialogCancel>
@@ -347,7 +348,7 @@ export function DeveloperKeysPage() {
             >
               {revokeMutation.isPending ? '撤销中…' : '确认撤销'}
             </Button>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </DeveloperConsoleLayout>

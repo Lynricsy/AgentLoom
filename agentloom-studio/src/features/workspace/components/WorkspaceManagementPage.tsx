@@ -31,6 +31,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import { useToast } from "@/shared/ui/toast";
 import { useWorkspaces } from "../api/workspaceQueries";
@@ -355,10 +356,10 @@ export function WorkspaceManagementPage() {
             确定要删除工作区「{confirmDelete?.name}
             」吗？删除将移除存储的数据，此操作不可撤销。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={(event) => {
                 event.preventDefault();
@@ -370,7 +371,7 @@ export function WorkspaceManagementPage() {
               )}
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageContainer>

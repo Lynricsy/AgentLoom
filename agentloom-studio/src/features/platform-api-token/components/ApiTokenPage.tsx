@@ -15,6 +15,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -335,12 +336,12 @@ export function ApiTokenPage() {
             撤销后「{revokeTarget?.name}」将立即失效且无法恢复，所有使用它的集成都会收到
             401。请先确认没有线上服务仍在使用该 Token。
           </AlertDialogDescription>
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <AlertDialogFooter>
             <AlertDialogCancel disabled={revokeMutation.isPending}>
               取消
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={revokeMutation.isPending}
               onClick={(event) => {
                 // 撤销是异步的：阻止 Radix 立即关闭，等请求落地后统一收尾
@@ -350,7 +351,7 @@ export function ApiTokenPage() {
             >
               {revokeMutation.isPending ? '撤销中…' : '确认撤销'}
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

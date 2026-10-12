@@ -20,6 +20,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -440,15 +441,15 @@ export const ConversationSidebar = memo(function ConversationSidebar({
           <AlertDialogDescription>
             删除后该对话的消息记录将无法恢复。
           </AlertDialogDescription>
-          <div className="mt-4 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error hover:bg-error/90"
+              variant="destructive"
               onClick={handleConfirmDelete}
             >
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </aside>

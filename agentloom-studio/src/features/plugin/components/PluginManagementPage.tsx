@@ -43,6 +43,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { useToast } from '@/shared/ui/toast'
 import { usePlugins } from '../api/pluginQueries'
@@ -451,10 +452,10 @@ export function PluginManagementPage() {
           <AlertDialogDescription>
             {`确定要删除「${pendingDelete?.name ?? ''}」吗？使用了该插件节点的工作流将无法继续执行，此操作不可撤销。`}
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={(event) => {
                 event.preventDefault()
@@ -464,7 +465,7 @@ export function PluginManagementPage() {
               {deleteMutation.isPending ? <Spinner size="sm" className="mr-1.5" /> : null}
               删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageContainer>

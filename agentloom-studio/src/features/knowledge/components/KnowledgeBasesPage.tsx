@@ -33,6 +33,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from "@/shared/ui/alert-dialog";
 import {
   Dialog,
@@ -489,10 +490,10 @@ export function KnowledgeBasesPage() {
             确认删除知识库「{deleteTarget?.name}
             」吗？该操作会同时删除其下文档、知识节点与向量索引，且不可恢复。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={deleteMutation.isPending}
               onClick={(event) => {
                 event.preventDefault();
@@ -504,7 +505,7 @@ export function KnowledgeBasesPage() {
               )}
               确认删除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PageContainer>

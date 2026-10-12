@@ -7,6 +7,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -275,10 +276,10 @@ export function OrganizationMembersTable({
           <AlertDialogDescription>
             确定要把 {confirmRemove?.email} 移出组织吗？该成员将立即失去组织内全部资源的访问权限。
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-error text-white hover:bg-error/90"
+              variant="destructive"
               disabled={removeMutation.isPending}
               onClick={(event) => {
                 event.preventDefault()
@@ -290,7 +291,7 @@ export function OrganizationMembersTable({
               ) : null}
               移除
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

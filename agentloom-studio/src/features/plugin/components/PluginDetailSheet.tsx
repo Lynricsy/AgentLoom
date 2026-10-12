@@ -21,6 +21,7 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
+  AlertDialogFooter,
 } from '@/shared/ui/alert-dialog'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -323,7 +324,7 @@ function MarketplaceSourceSection({
           <AlertDialogDescription>
             {`将把来自「${source.listingTitle ?? '该上架'}」的插件副本全部置为停用。插件记录与产物不会删除，可随时重新启用；停用期间用到这些插件节点的工作流无法执行。`}
           </AlertDialogDescription>
-          <div className="mt-5 flex justify-end gap-2">
+          <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               disabled={uninstallMutation.isPending}
@@ -337,7 +338,7 @@ function MarketplaceSourceSection({
               ) : null}
               停用副本
             </AlertDialogAction>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </section>
