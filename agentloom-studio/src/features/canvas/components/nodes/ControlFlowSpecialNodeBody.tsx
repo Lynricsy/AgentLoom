@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import type { CompoundSpecialNodeType } from '../../types/controlFlow.types'
+import { NodeBadge } from '../shared/NodeBadge'
 
 function resolveJumpMode(config: Record<string, unknown>): 'always' | 'expression' {
   return config.mode === 'expression' ? 'expression' : 'always'
@@ -7,9 +8,11 @@ function resolveJumpMode(config: Record<string, unknown>): 'always' | 'expressio
 
 function renderChip(label: string) {
   return (
-    <span className="rounded border border-border/50 bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
-      {label}
-    </span>
+    <NodeBadge key={label} className="border border-border/50 font-normal">
+      <span className="truncate" title={label}>
+        {label}
+      </span>
+    </NodeBadge>
   )
 }
 
@@ -35,14 +38,7 @@ export const ControlFlowSpecialNodeBody = memo(function ControlFlowSpecialNodeBo
           每轮开始时把上下文显式送入内部子图。
         </div>
         <div className="flex flex-wrap gap-1">
-          {exposures.map((label) => (
-            <span
-              key={label}
-              className="rounded border border-border/50 bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-            >
-              {label}
-            </span>
-          ))}
+          {exposures.map((label) => renderChip(label))}
         </div>
       </div>
     )
@@ -66,14 +62,7 @@ export const ControlFlowSpecialNodeBody = memo(function ControlFlowSpecialNodeBo
           每个数组项开始时把 item 上下文显式送入内部子图。
         </div>
         <div className="flex flex-wrap gap-1">
-          {exposures.map((label) => (
-            <span
-              key={label}
-              className="rounded border border-border/50 bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
-            >
-              {label}
-            </span>
-          ))}
+          {exposures.map((label) => renderChip(label))}
         </div>
       </div>
     )
@@ -130,7 +119,10 @@ export const ControlFlowSpecialNodeBody = memo(function ControlFlowSpecialNodeBo
         {renderChip(mode === 'expression' ? '表达式触发' : '总是触发')}
       </div>
       {mode === 'expression' && expression ? (
-        <code className="block rounded border border-border/50 bg-background/70 px-2 py-1 text-2xs leading-4 text-foreground">
+        <code
+          className="line-clamp-3 break-all rounded-sm border border-border/50 bg-surface px-2 py-1 text-2xs leading-4 text-foreground"
+          title={expression}
+        >
           {expression}
         </code>
       ) : null}

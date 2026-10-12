@@ -1,5 +1,7 @@
 import { memo } from 'react'
-import { ChevronDown, ChevronRight, Package } from 'lucide-react'
+import { ChevronDown, Package } from 'lucide-react'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import type { BlockDefinition, BlockNodeData, CanvasNodeData } from '../../types'
 import { useCanvasActions } from '../../stores/canvasStore'
@@ -57,7 +59,7 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
     <div className="flex flex-col gap-2" data-testid="reusable-block-body">
       {/* Header row: icon + badges */}
       <div className="flex items-center gap-1">
-        <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <Package className="size-3.5 shrink-0 text-muted-foreground" />
         <NodeBadge variant="status" color="muted">
           {internalNodeCount} 节点 / {internalEdgeCount} 连线
         </NodeBadge>
@@ -70,7 +72,9 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
 
       {/* Block name + description */}
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-foreground">{data.blockName}</p>
+        <p className="truncate font-medium text-foreground" title={data.blockName}>
+          {data.blockName}
+        </p>
         {data.description && (
           <p className="truncate text-muted-foreground">{data.description}</p>
         )}
@@ -80,27 +84,25 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
       {previewMode ? null : (
         <div className="flex items-center justify-end">
           <Button
-            size="sm"
+            size="xs"
             variant="ghost"
-            className="h-7 px-2 text-2xs"
             onClick={() => updateNodeData(nodeId, { isExpanded: !data.isExpanded })}
             aria-label={toggleLabel}
+            aria-expanded={data.isExpanded}
           >
-            {data.isExpanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
+            <ChevronDown
+              className={cn('transition-transform duration-150', !data.isExpanded && '-rotate-90')}
+            />
             <span>{toggleLabel}</span>
           </Button>
         </div>
       )}
 
       {/* Expanded preview (limited to MAX_VISIBLE_INTERNAL_NODES) */}
-      {data.isExpanded ? (
+      <Collapse open={Boolean(data.isExpanded)}>
         <div
           data-testid="reusable-block-expanded-view"
-          className="flex flex-col gap-2 rounded-lg border border-dashed border-border/70 bg-background/70 p-3"
+          className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-muted p-3"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-2xs font-medium text-foreground">内部图预览</span>
@@ -110,18 +112,20 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
             {data.blockDefinition.nodes
               .slice(0, MAX_VISIBLE_INTERNAL_NODES)
               .map((node) => (
-                <NodeBadge key={node.id} variant="info" color="default">
-                  {node.data.label}
+                <NodeBadge key={node.id} variant="info" color="default" className="max-w-32">
+                  <span className="truncate" title={node.data.label}>
+                    {node.data.label}
+                  </span>
                 </NodeBadge>
               ))}
             {data.blockDefinition.nodes.length > MAX_VISIBLE_INTERNAL_NODES ? (
               <NodeBadge variant="info" color="muted">
-                +{data.blockDefinition.nodes.length - MAX_VISIBLE_INTERNAL_NODES} more
+                +{data.blockDefinition.nodes.length - MAX_VISIBLE_INTERNAL_NODES}
               </NodeBadge>
             ) : null}
           </div>
         </div>
-      ) : null}
+      </Collapse>
     </div>
   )
 })

@@ -6,7 +6,8 @@ import {
   isKnowledgeBaseConfigured,
   type KnowledgeBaseStatus,
 } from '@/features/knowledge'
-import { NodeBadge, type NodeBadgeColor } from '../shared/NodeBadge'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
+import { NodeBadge } from '../shared/NodeBadge'
 
 interface KnowledgeBaseNodeBodyProps {
   config: Record<string, unknown>
@@ -25,17 +26,11 @@ function readKnowledgeBaseStatus(value: unknown): KnowledgeBaseStatus | null {
     : null
 }
 
-function getStatusBadgeColor(status: KnowledgeBaseStatus): NodeBadgeColor {
-  switch (status) {
-    case 'ready':
-      return 'success'
-    case 'processing':
-      return 'info'
-    case 'failed':
-      return 'destructive'
-    default:
-      return 'default'
-  }
+const KNOWLEDGE_BASE_STATUS_TONE: Record<KnowledgeBaseStatus, StatusTone> = {
+  empty: 'neutral',
+  processing: 'info',
+  ready: 'success',
+  failed: 'error',
 }
 
 export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
@@ -44,8 +39,8 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
   // Body 只在外层 shell 的 full LOD 下渲染，这里不再按 zoom 二次降级
   if (!isKnowledgeBaseConfigured(config)) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground/60 italic">
-        <BookOpen className="h-3.5 w-3.5 shrink-0" />
+      <div className="flex items-center gap-2 italic text-subtle-foreground">
+        <BookOpen className="size-3.5 shrink-0" />
         <span>选择知识库</span>
       </div>
     )
@@ -65,17 +60,19 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
   return (
     <div className="flex flex-col gap-2" data-testid="knowledge-node-body">
       {/* Name row */}
-      <div className="flex items-center gap-2">
-        <BookOpen className="h-3.5 w-3.5 shrink-0 text-primary/80" />
-        <span className="truncate font-medium text-foreground">{name}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <BookOpen className="size-3.5 shrink-0 text-primary/80" />
+        <span className="min-w-0 truncate font-medium text-foreground" title={name}>
+          {name}
+        </span>
       </div>
 
       {/* 状态 + 统计徽章 */}
       <div className="flex flex-wrap items-center gap-1">
         {status && (
-          <NodeBadge variant="status" color={getStatusBadgeColor(status)}>
+          <StatusBadge tone={KNOWLEDGE_BASE_STATUS_TONE[status]} size="sm">
             {getKnowledgeBaseStatusLabel(status)}
-          </NodeBadge>
+          </StatusBadge>
         )}
         {documentCount !== null && (
           <NodeBadge variant="info" color="default">

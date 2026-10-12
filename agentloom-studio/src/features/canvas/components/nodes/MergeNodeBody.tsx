@@ -23,23 +23,26 @@ export const MergeNodeBody = memo(function MergeNodeBody({
       </div>
 
       {/* 合并模式 */}
-      <div className="rounded border border-border/40 bg-muted px-1.5 py-1">
+      <div className="min-w-0 rounded-sm border border-border/40 bg-muted px-1.5 py-1">
         <span className="text-2xs text-muted-foreground">
-          模式: {getMergeModeLabel(parsed.mode)}
+          模式：{getMergeModeLabel(parsed.mode)}
         </span>
       </div>
 
       {/* 合并键（仅 merge-by-key 模式显示） */}
       {parsed.mode === 'merge-by-key' && parsed.mergeKey && (
-        <div className="rounded border border-border/40 bg-muted px-1.5 py-1">
-          <span className="text-2xs text-muted-foreground">
-            键: <span className="font-mono text-foreground/80">{parsed.mergeKey}</span>
+        <div className="min-w-0 rounded-sm border border-border/40 bg-muted px-1.5 py-1">
+          <span className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
+            <span className="shrink-0">键：</span>
+            <span className="min-w-0 truncate font-mono text-foreground/80" title={parsed.mergeKey}>
+              {parsed.mergeKey}
+            </span>
           </span>
         </div>
       )}
 
       {/* 输入数量 */}
-      <div className="rounded border border-border/40 bg-muted px-1.5 py-1">
+      <div className="min-w-0 rounded-sm border border-border/40 bg-muted px-1.5 py-1">
         <span className="text-2xs text-muted-foreground">
           等待 {parsed.inputCount} 个输入
         </span>

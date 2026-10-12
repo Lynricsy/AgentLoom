@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Plug } from 'lucide-react'
 import type { CanvasNodeData } from '../../types'
+import { NodeBadge } from '../shared/NodeBadge'
 
 interface McpToolNodeBodyProps {
   data: CanvasNodeData
@@ -19,7 +20,7 @@ export const McpToolNodeBody = memo(function McpToolNodeBody({ data }: McpToolNo
 
   if (!serverConfigId) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground/60 italic">
+      <div className="flex items-center gap-2 text-xs italic text-subtle-foreground">
         <Plug className="h-3.5 w-3.5 shrink-0" />
         <span>选择 MCP Server</span>
       </div>
@@ -29,9 +30,9 @@ export const McpToolNodeBody = memo(function McpToolNodeBody({ data }: McpToolNo
   return (
     <div className="flex items-center gap-2">
       <Plug className="h-3.5 w-3.5 shrink-0 text-info" />
-      <span className="rounded-full bg-info/10 px-2 py-0.5 text-2xs font-medium text-info">
+      <NodeBadge variant="status" color="info" className="shrink-0">
         MCP
-      </span>
+      </NodeBadge>
       <span className="min-w-0 truncate text-xs font-medium">{serverName || serverConfigId}</span>
       <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
         {enabledToolCount} 个工具

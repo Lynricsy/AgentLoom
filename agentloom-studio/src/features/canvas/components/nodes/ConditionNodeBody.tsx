@@ -7,12 +7,6 @@ import {
   type ConditionBranch,
 } from '../../types/condition.types'
 
-const MAX_SUMMARY_LEN = 40
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text
-}
-
 interface BranchRowProps {
   branch: ConditionBranch
   isLast: boolean
@@ -33,7 +27,7 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
       {/* 分支标签 */}
       <span
         className={cn(
-          'inline-flex shrink-0 rounded px-1 py-0.5 text-2xs font-bold uppercase leading-none tracking-wider',
+          'inline-flex shrink-0 rounded-sm px-1 py-0.5 text-2xs font-bold uppercase leading-none tracking-wider',
           branch.label === 'IF' && 'bg-info/15 text-info',
           branch.label === 'ELSE IF' && 'bg-warning/15 text-warning',
         )}
@@ -48,11 +42,12 @@ const BranchRow = memo(function BranchRow({ branch, isLast }: BranchRowProps) {
             'min-w-0 flex-1 truncate text-2xs',
             isExpression ? 'font-mono text-warning' : 'text-muted-foreground',
           )}
+          title={summary}
         >
-          {truncate(summary, MAX_SUMMARY_LEN)}
+          {summary}
         </span>
       ) : (
-        <span className="flex-1 text-2xs text-muted-foreground/40">
+        <span className="flex-1 text-2xs text-subtle-foreground">
           {branch.mode === 'expression' ? '未配置表达式' : '未配置条件'}
         </span>
       )}
@@ -75,13 +70,13 @@ export const ConditionNodeBody = memo(function ConditionNodeBody({
         <span className="text-2xs font-medium text-foreground">
           条件分支
         </span>
-        <span className="text-2xs text-muted-foreground/60">
+        <span className="text-2xs tabular-nums text-subtle-foreground">
           {parsed.branches.length + 1} 路
         </span>
       </div>
 
       {/* 分支列表 */}
-      <div className="rounded border border-border/40 bg-muted">
+      <div className="rounded-sm border border-border/40 bg-muted">
         {parsed.branches.map((branch) => (
           <BranchRow
             key={branch.id}
@@ -92,10 +87,10 @@ export const ConditionNodeBody = memo(function ConditionNodeBody({
 
         {/* ELSE 分支（始终存在） */}
         <div className="flex min-h-[20px] items-center gap-1.5 px-1.5 py-0.5">
-          <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-2xs font-bold uppercase leading-none tracking-wider text-muted-foreground/70">
+          <span className="inline-flex shrink-0 rounded-sm bg-surface px-1 py-0.5 text-2xs font-bold uppercase leading-none tracking-wider text-muted-foreground">
             ELSE
           </span>
-          <span className="flex-1 text-2xs text-muted-foreground/40">
+          <span className="flex-1 text-2xs text-subtle-foreground">
             默认分支
           </span>
         </div>

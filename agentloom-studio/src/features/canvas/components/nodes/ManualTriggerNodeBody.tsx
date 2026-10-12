@@ -14,7 +14,7 @@ export const ManualTriggerNodeBody = memo(function ManualTriggerNodeBody({
   return (
     <div className="flex flex-col gap-1" data-testid="manual-trigger-node-body">
       <div className="flex items-center gap-1.5">
-        <Play className="h-3 w-3 text-warning" />
+        <Play className="size-3.5 shrink-0 text-warning" />
         <span className="text-2xs text-muted-foreground">
           {outputFields.length > 0
             ? `${outputFields.length} 个输入参数`

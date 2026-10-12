@@ -35,7 +35,7 @@ export const WorkspaceNodeBody = memo(function WorkspaceNodeBody({
       <FolderOpen className="h-4 w-4 shrink-0 text-primary/80" />
 
       <span
-        className="max-w-[120px] truncate leading-tight text-foreground"
+        className="max-w-full truncate leading-tight text-foreground"
         data-testid="workspace-name"
       >
         {configured ? workspaceName : '未配置'}

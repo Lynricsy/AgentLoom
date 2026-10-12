@@ -1,7 +1,8 @@
 import type { MouseEvent, ReactNode } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { COMPACT_STATUS_META } from "./nodeVisualMeta";
 
@@ -47,14 +48,14 @@ export function NodeIconChip({
   );
 }
 
-interface NodeStatusBadgeProps {
+interface NodeExecutionStatusProps {
   id: string;
   meta: StatusMeta;
   isRunning: boolean;
 }
 
 /** 执行状态徽章：状态圆点 + 文案，running 时圆点呼吸 */
-function NodeStatusBadge({ id, meta, isRunning }: NodeStatusBadgeProps) {
+function NodeExecutionStatus({ id, meta, isRunning }: NodeExecutionStatusProps) {
   return (
     <StatusBadge
       data-testid={`canvas-node-status-badge-${id}`}
@@ -117,7 +118,7 @@ export function NodeCompactHeader({
       </h3>
       {hasValidationError ? <NodeValidationBadge id={id} /> : null}
       {hasExecutionStatus ? (
-        <NodeStatusBadge id={id} meta={statusMeta} isRunning={isRunning} />
+        <NodeExecutionStatus id={id} meta={statusMeta} isRunning={isRunning} />
       ) : null}
     </header>
   );
@@ -177,8 +178,8 @@ export function NodeFullHeader({
         >
           {nodeType}
         </p>
-        <div className="mt-1 flex items-center gap-1.5">
-          <h3 className="truncate text-sm font-semibold leading-tight">
+        <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <h3 className="min-w-0 truncate text-sm font-semibold leading-tight">
             {title}
           </h3>
           {showConfigWarning ? (
@@ -193,22 +194,25 @@ export function NodeFullHeader({
       <div className="flex shrink-0 items-center gap-1">
         {hasValidationError ? <NodeValidationBadge id={id} /> : null}
         {hasExecutionStatus ? (
-          <NodeStatusBadge id={id} meta={statusMeta} isRunning={isRunning} />
+          <NodeExecutionStatus id={id} meta={statusMeta} isRunning={isRunning} />
         ) : null}
         {isCompoundContainer ? (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="icon-2xs"
             onClick={onToggleCompoundCollapse}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground transition-colors duration-150 hover:border-border-hover hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
             aria-label={isCompoundCollapsed ? "展开容器" : "收起容器"}
+            aria-expanded={!isCompoundCollapsed}
             data-testid={`compound-toggle-${id}`}
           >
-            {isCompoundCollapsed ? (
-              <ChevronRight className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5" />
-            )}
-          </button>
+            <ChevronDown
+              className={cn(
+                "transition-transform duration-150",
+                isCompoundCollapsed && "-rotate-90",
+              )}
+            />
+          </Button>
         ) : null}
       </div>
     </header>

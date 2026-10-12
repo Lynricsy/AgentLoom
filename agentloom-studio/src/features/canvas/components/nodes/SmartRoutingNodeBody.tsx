@@ -21,6 +21,7 @@ import {
 import type { ProviderHealthState } from '@/features/smart-routing'
 import { cn } from '@/shared/lib/utils'
 import { usePreviewMode } from '../PreviewModeContext'
+import { NodeBadge } from '../shared/NodeBadge'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Shuffle,
@@ -70,22 +71,19 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5">
         {Icon ? (
           <Icon className={cn('h-3.5 w-3.5 shrink-0', STRATEGY_CATEGORY_COLORS[category])} />
         ) : null}
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium',
-            STRATEGY_CATEGORY_BG[category],
-            STRATEGY_CATEGORY_COLORS[category],
-          )}
+        <NodeBadge
+          variant="status"
+          className={cn(STRATEGY_CATEGORY_BG[category], STRATEGY_CATEGORY_COLORS[category])}
         >
-          {strategyLabel}
-        </span>
+          <span className="truncate" title={strategyLabel}>{strategyLabel}</span>
+        </NodeBadge>
       </div>
-      <div className="flex items-center justify-between">
-        <p className="text-2xs text-muted-foreground">{modelCount} 个模型</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-2xs tabular-nums text-muted-foreground">{modelCount} 个模型</p>
         {healthData && healthData.length > 0 ? (
           <div className="flex items-center gap-1" data-testid="provider-health-summary">
             {(Object.entries(healthSummary) as [ProviderHealthState, number][]).map(

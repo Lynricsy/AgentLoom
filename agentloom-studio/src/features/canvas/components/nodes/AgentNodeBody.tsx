@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Brain, Braces, Container, Type } from 'lucide-react'
 import type { AgentNodeData } from '@/features/agent'
+import { NodeBadge } from '../shared/NodeBadge'
 
 interface AgentNodeBodyProps {
   data: AgentNodeData
@@ -18,32 +19,32 @@ export const AgentNodeBody = memo(function AgentNodeBody({ data, hasSchemaConnec
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5">
-        <Brain className="h-3.5 w-3.5 text-type-model" />
-        <span className="text-xs font-medium truncate">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Brain className="size-3.5 shrink-0 text-type-model" />
+        <span className="min-w-0 truncate text-xs font-medium">
           {agentName || '未选择 Agent'}
         </span>
       </div>
       {versionLabel && (
-        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
-          {versionLabel}
-        </span>
+        <NodeBadge variant="status" className="w-fit">
+          <span className="truncate">{versionLabel}</span>
+        </NodeBadge>
       )}
       {hasSandboxOverride && (
         <div className="flex items-center gap-1 text-2xs text-muted-foreground">
-          <Container className="h-3 w-3" />
+          <Container className="size-3 shrink-0" />
           <span>Sandbox 已连接</span>
         </div>
       )}
       <div className="flex items-center gap-1 text-2xs">
         {hasSchemaConnection ? (
           <>
-            <Braces className="h-3 w-3 text-type-json" />
+            <Braces className="size-3 shrink-0 text-type-json" />
             <span className="font-medium text-type-json">JSON 输出模式</span>
           </>
         ) : (
           <>
-            <Type className="h-3 w-3 text-muted-foreground" />
+            <Type className="size-3 shrink-0 text-muted-foreground" />
             <span className="text-muted-foreground">文本输出模式</span>
           </>
         )}

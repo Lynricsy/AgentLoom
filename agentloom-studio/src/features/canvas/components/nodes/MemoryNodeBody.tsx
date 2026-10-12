@@ -49,7 +49,7 @@ export const MemoryNodeBody = memo(function MemoryNodeBody({
       <BrainCircuit className="h-4 w-4 shrink-0 text-primary/80" />
 
       <span
-        className="max-w-[120px] truncate leading-tight text-foreground"
+        className="max-w-full truncate leading-tight text-foreground"
         data-testid="memory-instance-name"
       >
         {configured ? instanceName : '未配置'}

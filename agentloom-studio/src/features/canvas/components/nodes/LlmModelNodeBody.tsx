@@ -5,6 +5,8 @@ import {
   parseLlmModelConfig,
   ProviderIcon,
 } from "@/features/llm";
+import { formatNumber } from "@/shared/lib/format";
+import { cn } from "@/shared/lib/utils";
 import { NodeBadge } from "../shared/NodeBadge";
 
 type LlmNodeVisualState = "unconfigured" | "configured" | "warning";
@@ -23,6 +25,11 @@ function extractHostname(url: string): string {
 }
 
 const MAX_VISIBLE_BADGES = 3;
+
+const TEMPERATURE_FORMATTER = new Intl.NumberFormat("zh-CN", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
 
 export const LlmModelNodeBody = memo(function LlmModelNodeBody({
   source,
@@ -53,12 +60,12 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
     : "缺少 API Key";
 
   const paramBadges: { key: string; label: string }[] = [
-    { key: "temp", label: `t:${llmConfig.parameters.temperature.toFixed(1)}` },
+    { key: "temp", label: `t:${TEMPERATURE_FORMATTER.format(llmConfig.parameters.temperature)}` },
   ];
   if (typeof llmConfig.parameters.maxTokens === "number") {
     paramBadges.push({
       key: "max",
-      label: `max:${llmConfig.parameters.maxTokens}`,
+      label: `max:${formatNumber(llmConfig.parameters.maxTokens)}`,
     });
   }
 
@@ -67,18 +74,18 @@ export const LlmModelNodeBody = memo(function LlmModelNodeBody({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <ProviderIcon
           provider={llmConfig.provider}
           size={14}
-          className={hasWarning ? "text-warning" : "text-primary/80"}
+          className={cn("shrink-0", hasWarning ? "text-warning" : "text-primary/80")}
         />
-        <span className="truncate font-medium text-foreground">
+        <span className="min-w-0 truncate font-medium text-foreground" title={modelIdLabel}>
           {modelIdLabel}
         </span>
         {hasWarning ? (
           <NodeBadge variant="status" color="warning" className="shrink-0">
-            <AlertTriangle className="h-3 w-3" />
+            <AlertTriangle className="size-3 shrink-0" />
             {warningLabel}
           </NodeBadge>
         ) : null}
