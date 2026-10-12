@@ -99,13 +99,7 @@ export function AuditTimeline({
   }
 
   return (
-    <div className="relative p-3" data-testid="audit-timeline">
-      {/* 时间线竖线 */}
-      <div
-        aria-hidden
-        className="absolute bottom-6 left-[26px] top-6 w-px bg-border"
-      />
-
+    <div className="p-3" data-testid="audit-timeline">
       <div className="space-y-2">
         {sortedEntries.map((entry, index) => {
           const tone = OPERATION_TONES[entry.operationType];
@@ -118,8 +112,11 @@ export function AuditTimeline({
               type="button"
               {...staggerList(index)}
               className={cn(
-                'relative flex w-full gap-3 rounded-lg border p-3 pl-9 text-left transition-colors',
+                'relative flex w-full gap-3 rounded-lg border p-3 pl-9 text-left transition-colors duration-150',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                // 连线挂在每一项自身坐标系上（圆点中心 x=15px），不再依赖外层 padding 手算对齐
+                index < sortedEntries.length - 1 &&
+                  'after:absolute after:-bottom-[1.625rem] after:left-[15px] after:top-7 after:w-px after:bg-border',
                 isSelected
                   ? 'border-primary/40 bg-primary/10'
                   : 'border-transparent hover:bg-muted',
@@ -131,7 +128,7 @@ export function AuditTimeline({
               {/* 时间线节点 */}
               <span
                 aria-hidden
-                className="absolute left-[10px] top-[18px] h-2.5 w-2.5 rounded-full ring-2 ring-surface"
+                className="absolute left-2.5 top-[18px] z-10 size-2.5 rounded-full ring-2 ring-surface"
                 style={{ backgroundColor: tone }}
               />
 
@@ -143,20 +140,22 @@ export function AuditTimeline({
                   <Badge size="sm" tone={reviewMeta.tone}>
                     {reviewMeta.label}
                   </Badge>
-                  <span className="truncate text-sm font-medium text-foreground">
+                  <span className="min-w-0 truncate text-sm font-medium text-foreground" title={entry.nodeName}>
                     {entry.nodeName}
                   </span>
                 </div>
 
                 {entry.changeSummary && (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                  <p className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground">
                     {entry.changeSummary}
                   </p>
                 )}
 
-                <div className="mt-1.5 flex items-center gap-3 text-2xs text-muted-foreground">
-                  <span>{entry.actor}</span>
-                  <span>{formatTimestamp(entry.timestamp)}</span>
+                <div className="mt-1.5 flex min-w-0 items-center gap-3 text-2xs text-muted-foreground">
+                  <span className="min-w-0 truncate" title={entry.actor}>
+                    {entry.actor}
+                  </span>
+                  <span className="shrink-0 tabular-nums">{formatTimestamp(entry.timestamp)}</span>
                 </div>
               </div>
             </motion.button>

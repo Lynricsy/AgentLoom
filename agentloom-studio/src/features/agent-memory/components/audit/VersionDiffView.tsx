@@ -39,23 +39,23 @@ export function VersionDiffView({
       {/* 版本标题 */}
       <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
         {oldVersion && (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span
               aria-hidden
-              className="inline-block h-2.5 w-2.5 rounded-full bg-error"
+              className="inline-block size-2.5 shrink-0 rounded-full bg-error"
             />
-            <span className="text-muted-foreground">
+            <span className="min-w-0 truncate text-muted-foreground" title={oldVersion.nodeName}>
               v{oldVersion.versionNumber} — {oldVersion.nodeName}
             </span>
           </div>
         )}
         {newVersion && (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span
               aria-hidden
-              className="inline-block h-2.5 w-2.5 rounded-full bg-success"
+              className="inline-block size-2.5 shrink-0 rounded-full bg-success"
             />
-            <span className="text-muted-foreground">
+            <span className="min-w-0 truncate text-muted-foreground" title={newVersion.nodeName}>
               v{newVersion.versionNumber} — {newVersion.nodeName}
             </span>
           </div>
@@ -64,7 +64,8 @@ export function VersionDiffView({
 
       {/* 差异内容 */}
       <div className="overflow-x-auto rounded-lg border border-border bg-muted">
-        <pre className="p-3 font-mono text-xs leading-relaxed">
+        {/* w-max min-w-full：行宽随最长行撑开，横向滚动后增删行的底色仍铺满 */}
+        <pre className="w-max min-w-full p-3 font-mono text-xs leading-relaxed">
           {changes?.map((part, index) => {
             const lineClass = part.added
               ? 'bg-success/12 text-success'

@@ -20,7 +20,9 @@ vi.mock('../hooks/useMemoryInstances', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
-  Link: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  Link: ({ children, to }: { children?: React.ReactNode; to?: string }) => (
+    <a href={to}>{children}</a>
+  ),
 }));
 
 /** 页面依赖 ToastProvider 上报删除失败 */
@@ -117,7 +119,9 @@ describe('MemoryInstanceDetailPage', () => {
     });
     renderPage();
 
-    expect(screen.getByText('产品知识库')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /产品知识库/ }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText('包含产品相关的知识图谱'),
     ).toBeInTheDocument();
@@ -209,12 +213,14 @@ describe('MemoryInstanceDetailPage', () => {
     expect(screen.getByText('使用默认模板')).toBeInTheDocument();
   });
 
-  it('点击返回按钮导航到列表', async () => {
+  it('面包屑链接指向记忆列表', () => {
     setupMocks();
     renderPage();
 
-    await userEvent.click(screen.getByText('返回'));
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/memory' });
+    expect(screen.getByRole('link', { name: '记忆管理' })).toHaveAttribute(
+      'href',
+      '/memory',
+    );
   });
 
   it('点击设置按钮导航到设置页', async () => {

@@ -1,4 +1,4 @@
-import type { BadgeProps } from '@/shared/ui/badge';
+import type { StatusTone } from '@/shared/ui/status-badge';
 import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
 
 export const MEMORY_INSTANCE_STATUSES = [
@@ -9,29 +9,15 @@ export const MEMORY_INSTANCE_STATUSES = [
 
 export type MemoryInstanceStatus = (typeof MEMORY_INSTANCE_STATUSES)[number];
 
-export function getMemoryStatusLabel(status: MemoryInstanceStatus): string {
-  const labels: Record<MemoryInstanceStatus, string> = {
-    active: '运行中',
-    archived: '已归档',
-    error: '异常',
-  };
-  return labels[status] ?? status;
-}
-
-/** 状态 → Badge 语义色档位（design token 驱动，禁止硬编码调色板类） */
-export function getMemoryStatusVariant(
-  status: MemoryInstanceStatus,
-): NonNullable<BadgeProps['variant']> {
-  const variants: Record<
-    MemoryInstanceStatus,
-    NonNullable<BadgeProps['variant']>
-  > = {
-    active: 'success',
-    archived: 'secondary',
-    error: 'error',
-  };
-  return variants[status] ?? 'outline';
-}
+/** 状态 → 文案 + StatusTone，由 <StatusBadge> 统一渲染 */
+export const MEMORY_STATUS_META: Record<
+  MemoryInstanceStatus,
+  { label: string; tone: StatusTone }
+> = {
+  active: { label: '运行中', tone: 'success' },
+  archived: { label: '已归档', tone: 'neutral' },
+  error: { label: '异常', tone: 'error' },
+};
 
 export interface MemoryInstance {
   id: string;

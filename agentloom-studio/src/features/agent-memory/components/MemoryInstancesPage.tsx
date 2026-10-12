@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import {
@@ -21,9 +21,10 @@ import {
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
 import { staggerList } from "@/shared/lib/motion";
+import { formatDate } from "@/shared/lib/format";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { Badge } from "@/shared/ui/badge";
+import { StatusBadge } from "@/shared/ui/status-badge";
 import { Card } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
@@ -41,7 +42,7 @@ import {
   useDeleteMemoryInstance,
   useMemoryInstances,
 } from "../hooks/useMemoryInstances";
-import { getMemoryStatusLabel, getMemoryStatusVariant } from "../types";
+import { MEMORY_STATUS_META } from "../types";
 import type { MemoryInstance } from "../types";
 import { CreateMemoryDialog } from "./CreateMemoryDialog";
 
@@ -61,6 +62,9 @@ export function MemoryInstancesPage() {
     useState<ResourceSourceKind>("manual");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MemoryInstance | null>(null);
+  // AlertDialog 退场动画期间 deleteTarget 已置空，描述文案读最近一次的目标
+  const lastDeleteTargetRef = useRef<MemoryInstance | null>(null);
+  if (deleteTarget) lastDeleteTargetRef.current = deleteTarget;
 
   const deleteMutation = useDeleteMemoryInstance();
 
@@ -142,14 +146,6 @@ export function MemoryInstancesPage() {
     [allQuery, isSearching, notify, paginatedQuery],
   );
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-  };
-
   return (
     <PageContainer>
       <PageHeader
@@ -159,7 +155,7 @@ export function MemoryInstancesPage() {
         tone={MEMORY_TONE}
         actions={
           <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4" />
+            <Plus />
             新建实例
           </Button>
         }
@@ -174,7 +170,7 @@ export function MemoryInstancesPage() {
       />
 
       <div className="relative max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
           placeholder="搜索记忆实例…"
@@ -195,7 +191,7 @@ export function MemoryInstancesPage() {
               className="flex flex-col gap-3 p-4"
             >
               <div className="flex items-center gap-3">
-                <Skeleton className="h-9 w-9 rounded-lg" />
+                <Skeleton className="size-9 rounded-lg" />
                 <Skeleton className="h-4 w-32 rounded" />
               </div>
               <Skeleton className="h-3 w-full rounded" />
@@ -228,16 +224,17 @@ export function MemoryInstancesPage() {
                 <Card
                   interactive
                   className="group flex h-full flex-col overflow-hidden"
+                  onClick={() => handleCardClick(instance.id)}
                 >
+                  {/* 整卡可点（Card onClick）；内层 Button 只承担键盘焦点，Enter/Space 触发的 click 冒泡到 Card */}
                   <Button
                     variant="ghost"
                     className="h-auto flex-1 flex-col items-stretch justify-start rounded-lg px-4 pt-4 pb-3 text-left font-normal hover:bg-transparent [&_svg]:size-[18px]"
-                    onClick={() => handleCardClick(instance.id)}
                   >
                     <div className="flex items-start gap-3">
                       <span
                         aria-hidden
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                        className="grid size-9 shrink-0 place-items-center rounded-lg"
                         style={{
                           backgroundColor: `color-mix(in srgb, ${MEMORY_TONE} 14%, transparent)`,
                           color: MEMORY_TONE,
@@ -247,16 +244,17 @@ export function MemoryInstancesPage() {
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="truncate text-sm font-semibold text-foreground">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
                             {instance.name}
                           </h3>
-                          <Badge
+                          <StatusBadge
                             size="sm"
-                            variant={getMemoryStatusVariant(instance.status)}
+                            tone={MEMORY_STATUS_META[instance.status].tone}
+                            className="shrink-0"
                           >
-                            {getMemoryStatusLabel(instance.status)}
-                          </Badge>
+                            {MEMORY_STATUS_META[instance.status].label}
+                          </StatusBadge>
                         </div>
                         {instance.description && (
                           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
@@ -270,15 +268,15 @@ export function MemoryInstancesPage() {
                   <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2">
                     <div className="flex min-w-0 items-center gap-3 text-2xs text-muted-foreground">
                       <span className="flex items-center gap-1">
-                        <Network className="h-3 w-3" />
+                        <Network className="size-3" />
                         {instance.nodeCount ?? 0} 节点
                       </span>
                       <span className="flex items-center gap-1">
-                        <GitFork className="h-3 w-3" />
+                        <GitFork className="size-3" />
                         {instance.validDomains?.length ?? 0} 域
                       </span>
-                      <span className="hidden items-center gap-1 sm:flex">
-                        <Calendar className="h-3 w-3" />
+                      <span className="hidden items-center gap-1 whitespace-nowrap sm:flex">
+                        <Calendar className="size-3" />
                         {formatDate(instance.createdAt)}
                       </span>
                     </div>
@@ -287,21 +285,27 @@ export function MemoryInstancesPage() {
                       {instance.sourceKind === "share_imported" ? (
                         <Button
                           variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-2xs text-muted-foreground hover:text-foreground"
-                          onClick={() => void handleConvertSource(instance)}
+                          size="xs"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleConvertSource(instance);
+                          }}
                         >
                           转为自己创建
                         </Button>
                       ) : null}
                       <Button
                         variant="ghost"
-                        size="icon-sm"
-                        className="h-7 w-7 text-muted-foreground opacity-70 transition-opacity hover:bg-error/10 hover:text-error group-hover:opacity-100"
-                        onClick={() => setDeleteTarget(instance)}
+                        size="icon-xs"
+                        className="text-muted-foreground opacity-70 transition-opacity hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(instance);
+                        }}
                         aria-label={`删除 ${instance.name}`}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 />
                       </Button>
                     </div>
                   </div>
@@ -331,7 +335,7 @@ export function MemoryInstancesPage() {
         <AlertDialogContent>
           <AlertDialogTitle>删除记忆实例</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除「{deleteTarget?.name}」吗？此操作不可恢复。
+            确定要删除「{lastDeleteTargetRef.current?.name}」吗？此操作不可恢复。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>

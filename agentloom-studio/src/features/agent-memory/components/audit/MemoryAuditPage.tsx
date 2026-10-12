@@ -3,6 +3,7 @@ import { useNavigate, useParams } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
+import { motion } from 'motion/react';
 import { ArrowLeft, FileSearch } from 'lucide-react';
 import { useAuthToken } from '@/features/execution';
 import { WorkbenchHeader } from '@/shared/components/workbench-header';
@@ -14,6 +15,8 @@ import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { formatDateTime } from '@/shared/lib/format';
+import { fadeIn } from '@/shared/lib/motion';
 import { cn } from '@/shared/lib/utils';
 import {
   useAuditLog,
@@ -328,7 +331,7 @@ export function MemoryAuditPage() {
         value={activeTab}
         defaultValue="timeline"
         onValueChange={(next) => setActiveTab(next as TabKey)}
-        className="flex min-h-0 flex-1 flex-col space-y-4 p-4 sm:p-6"
+        className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4 sm:p-6 lg:overflow-visible"
       >
         <TabsList className="w-auto self-start">
           <TabsTrigger value="timeline" className="px-4">
@@ -337,19 +340,19 @@ export function MemoryAuditPage() {
           <TabsTrigger value="pending" className="px-4">
             待审核
             {pendingCount > 0 && (
-              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/15 px-1 text-2xs font-medium text-warning">
+              <Badge size="sm" variant="warning" className="ml-1.5 tabular-nums">
                 {pendingCount}
-              </span>
+              </Badge>
             )}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent
           value="timeline"
-          className="flex min-h-0 flex-1 flex-col gap-4 space-y-0 lg:flex-row"
+          className="flex flex-col gap-4 space-y-0 lg:min-h-0 lg:flex-1 lg:flex-row"
         >
           {/* 左：筛选 + 时间线 */}
-          <Card className="flex min-h-0 w-full flex-col overflow-hidden lg:w-96 lg:shrink-0">
+          <Card className="flex max-h-[60vh] min-h-0 w-full shrink-0 flex-col overflow-hidden lg:max-h-none lg:w-96">
             <div className="space-y-3 border-b border-border p-3">
               <div className="flex gap-2">
                 <Input
@@ -441,12 +444,19 @@ export function MemoryAuditPage() {
           </Card>
 
           {/* 右：详情 */}
-          <Card className="min-h-0 flex-1 overflow-y-auto">
+          <Card className="min-h-[24rem] flex-1 overflow-y-auto lg:min-h-0">
+            <motion.div
+              key={selectedEntry?.id ?? 'empty'}
+              initial={fadeIn.initial}
+              animate={fadeIn.animate}
+              transition={fadeIn.transition}
+              className="h-full"
+            >
             {selectedEntry ? (
               <div className="flex flex-col gap-6 p-5">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold text-foreground">
+                    <h2 className="min-w-0 break-words text-base font-semibold text-foreground">
                       {selectedEntry.nodeName}
                     </h2>
                     <Badge
@@ -462,12 +472,9 @@ export function MemoryAuditPage() {
                       {REVIEW_STATUS_META[selectedEntry.reviewStatus].label}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="break-words text-sm text-muted-foreground">
                     {selectedEntry.actor} 于{' '}
-                    {new Intl.DateTimeFormat('zh-CN', {
-                      dateStyle: 'medium',
-                      timeStyle: 'medium',
-                    }).format(new Date(selectedEntry.timestamp))}{' '}
+                    {formatDateTime(selectedEntry.timestamp)}{' '}
                     执行了
                     {OPERATION_LABELS[selectedEntry.operationType]}操作
                   </p>
@@ -530,6 +537,7 @@ export function MemoryAuditPage() {
                 />
               </div>
             )}
+            </motion.div>
           </Card>
         </TabsContent>
 

@@ -39,7 +39,7 @@ export const GraphSearchBar = memo(function GraphSearchBar({
 
   return (
     <div
-      className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 shadow-lg focus-within:border-border-hover"
+      className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 shadow-lg transition-[border-color,box-shadow] duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30"
       data-testid="graph-search-bar"
     >
       <Search className="size-3.5 shrink-0 text-muted-foreground" />

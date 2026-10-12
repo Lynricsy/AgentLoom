@@ -96,28 +96,30 @@ export function PendingReviewsList({
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium text-foreground">
+                <span className="min-w-0 truncate text-sm font-medium text-foreground" title={review.nodeName}>
                   {review.nodeName}
                 </span>
                 <Badge size="sm" tone={OPERATION_TONES[review.operationType]}>
                   {OPERATION_LABELS[review.operationType]}
                 </Badge>
               </div>
-              <Badge size="sm" tone={REVIEW_STATUS_META.pending.tone}>
+              <Badge size="sm" tone={REVIEW_STATUS_META.pending.tone} className="shrink-0">
                 {REVIEW_STATUS_META.pending.label}
               </Badge>
             </div>
 
             {review.changeSummary && (
-              <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+              <p className="mt-2 line-clamp-2 break-words text-sm text-muted-foreground">
                 {review.changeSummary}
               </p>
             )}
 
-            <div className="mt-2 flex items-center gap-3 text-2xs text-muted-foreground">
-              <span>v{review.versionNumber}</span>
-              <span>{review.actor}</span>
-              <span>{formatTimestamp(review.createdAt)}</span>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+              <span className="shrink-0">v{review.versionNumber}</span>
+              <span className="min-w-0 max-w-full truncate" title={review.actor}>
+                {review.actor}
+              </span>
+              <span className="shrink-0 tabular-nums">{formatTimestamp(review.createdAt)}</span>
             </div>
           </Card>
         </motion.div>

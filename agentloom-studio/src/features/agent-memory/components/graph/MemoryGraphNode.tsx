@@ -40,7 +40,8 @@ export const NODE_TYPE_LABELS: Record<MemoryNodeType, string> = {
   index: '索引',
 }
 
-const DEFAULT_NODE_COLOR = 'var(--color-muted)'
+/** 未知类型的强调色：用于图标/描边/Badge 文字，取前景系 token（--color-muted 是背景色） */
+const DEFAULT_NODE_COLOR = 'var(--color-muted-foreground)'
 
 /** 披露等级 — 由低到高映射到状态色阶梯 */
 const DISCLOSURE_COLORS: Record<string, string> = {

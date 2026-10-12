@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { motion } from 'motion/react'
 import { X, Clock, FileText, Hash } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { formatDateTime } from '@/shared/lib/format'
 import { panelSlideRight } from '@/shared/lib/motion'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -26,7 +27,7 @@ const DISCLOSURE_COLORS: Record<string, string> = {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+    <p className="text-2xs font-medium tracking-wide text-muted-foreground">
       {children}
     </p>
   )
@@ -46,32 +47,33 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
     nodeId,
   )
 
+  // 回退色用作 Badge tone（文字/描边色），不能用背景 token --color-muted
   const accent = node
     ? (NODE_TYPE_COLORS[node.nodeType as MemoryNodeType] ??
-      'var(--color-muted)')
-    : 'var(--color-muted)'
+      'var(--color-muted-foreground)')
+    : 'var(--color-muted-foreground)'
 
   return (
     <motion.aside
       {...panelSlideRight}
       className={cn(
-        'absolute right-0 top-0 z-20 flex h-full w-[360px] max-w-[85vw] flex-col',
+        'absolute right-0 top-0 z-20 flex h-full w-[var(--spacing-property-panel)] max-w-[85vw] flex-col',
         'border-l border-border bg-surface shadow-lg',
       )}
       data-testid="node-detail-panel"
     >
       {/* 标题栏 */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold text-foreground">节点详情</h3>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon-xs"
           onClick={onClose}
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground"
           aria-label="关闭详情面板"
           data-testid="node-detail-close"
         >
-          <X className="h-4 w-4" />
+          <X />
         </Button>
       </div>
 
@@ -89,7 +91,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
             <div className="space-y-3">
               <div>
                 <FieldLabel>名称</FieldLabel>
-                <p className="mt-1 text-sm font-medium text-foreground">
+                <p className="mt-1 break-words text-sm font-medium text-foreground">
                   {node.name}
                 </p>
               </div>
@@ -121,7 +123,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
                         size="sm"
                         tone={
                           DISCLOSURE_COLORS[node.disclosureLevel] ??
-                          'var(--color-muted)'
+                          'var(--color-muted-foreground)'
                         }
                       >
                         {node.disclosureLevel}
@@ -135,10 +137,10 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
               {node.content && (
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <FileText className="h-3 w-3 text-muted-foreground" />
+                    <FileText className="size-3 text-muted-foreground" />
                     <FieldLabel>内容</FieldLabel>
                   </div>
-                  <pre className="mt-1.5 max-h-[200px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 text-xs leading-relaxed text-foreground">
+                  <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 text-xs leading-relaxed text-foreground">
                     {node.content}
                   </pre>
                 </div>
@@ -148,7 +150,7 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
             {/* 版本历史 */}
             <div className="mt-6">
               <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3 text-muted-foreground" />
+                <Clock className="size-3 text-muted-foreground" />
                 <FieldLabel>版本历史</FieldLabel>
               </div>
 
@@ -166,19 +168,19 @@ export const NodeDetailPanel = memo(function NodeDetailPanel({
                       className="rounded-lg border border-border bg-muted p-2.5"
                       data-testid={`version-item-${v.version}`}
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5">
-                          <Hash className="h-3 w-3 text-muted-foreground" />
+                          <Hash className="size-3 text-muted-foreground" />
                           <span className="text-xs font-medium text-foreground">
                             v{v.version}
                           </span>
                         </div>
-                        <span className="text-2xs text-muted-foreground">
-                          {new Date(v.createdAt).toLocaleString('zh-CN')}
+                        <span className="whitespace-nowrap text-2xs tabular-nums text-muted-foreground">
+                          {formatDateTime(v.createdAt)}
                         </span>
                       </div>
                       {v.content && (
-                        <p className="mt-1.5 line-clamp-3 text-2xs leading-relaxed text-muted-foreground">
+                        <p className="mt-1.5 line-clamp-3 break-words text-2xs leading-relaxed text-muted-foreground">
                           {v.content}
                         </p>
                       )}

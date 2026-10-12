@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Check, RotateCcw, X } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -30,6 +30,10 @@ const CONFIRM_TITLES: Record<ConfirmKind, string> = {
 
 export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
   const [confirmAction, setConfirmAction] = useState<ConfirmKind | null>(null);
+  // 退场动画期间 confirmAction 已置空，标题/描述读最近一次动作，避免文案闪空
+  const lastActionRef = useRef<ConfirmKind | null>(null);
+  if (confirmAction) lastActionRef.current = confirmAction;
+  const shownAction = confirmAction ?? lastActionRef.current;
 
   const reviewMutation = useReview(instanceId);
   const rollbackMutation = useRollback(instanceId);
@@ -87,7 +91,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
               disabled={isProcessing}
               data-testid="approve-btn"
             >
-              <Check className="h-3.5 w-3.5" />
+              <Check />
               批准
             </Button>
             <Button
@@ -98,7 +102,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
               disabled={isProcessing}
               data-testid="reject-btn"
             >
-              <X className="h-3.5 w-3.5" />
+              <X />
               拒绝
             </Button>
           </>
@@ -111,7 +115,7 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
           disabled={isProcessing}
           data-testid="rollback-btn"
         >
-          <RotateCcw className="h-3.5 w-3.5" />
+          <RotateCcw />
           回滚
         </Button>
 
@@ -131,18 +135,19 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
       >
         <AlertDialogContent data-testid="confirm-dialog">
           <AlertDialogTitle>
-            {confirmAction ? CONFIRM_TITLES[confirmAction] : ''}
+            {shownAction ? CONFIRM_TITLES[shownAction] : ''}
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            {confirmAction === 'approve' && '确认批准此版本变更？'}
-            {confirmAction === 'reject' &&
+          <AlertDialogDescription className="break-words">
+            {shownAction === 'approve' && '确认批准此版本变更？'}
+            {shownAction === 'reject' &&
               '确认拒绝此版本变更？拒绝后可回滚到上一版本。'}
-            {confirmAction === 'rollback' &&
-              `确认回滚节点 "${entry.nodeName}" 到版本 ${entry.versionId.slice(0, 8)}？此操作不可撤销。`}
+            {shownAction === 'rollback' &&
+              `确认回滚节点「${entry?.nodeName ?? ''}」到版本 ${entry?.versionId.slice(0, 8) ?? ''}？此操作不可撤销。`}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isProcessing}>取消</AlertDialogCancel>
             <AlertDialogAction
+              variant={shownAction === 'approve' ? 'default' : 'destructive'}
               disabled={isProcessing}
               onClick={(e) => {
                 e.preventDefault();

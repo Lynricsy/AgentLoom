@@ -20,7 +20,9 @@ vi.mock('../hooks/useMemoryInstances', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
-  Link: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  Link: ({ children, to }: { children?: React.ReactNode; to?: string }) => (
+    <a href={to}>{children}</a>
+  ),
 }));
 
 /** 页面依赖 ToastProvider 上报保存失败 */
@@ -141,7 +143,7 @@ describe('MemoryInstanceSettingsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('有自定义提示词时选中"自定义覆盖"模式', () => {
+  it('有自定义提示词时选中"自定义覆盖"模式', async () => {
     setupMocks({
       instance: createMemoryInstanceDetail({
         systemPromptOverride: '自定义提示词内容',
@@ -150,7 +152,7 @@ describe('MemoryInstanceSettingsPage', () => {
     renderPage();
 
     expect(
-      screen.getByDisplayValue('自定义提示词内容'),
+      await screen.findByDisplayValue('自定义提示词内容'),
     ).toBeInTheDocument();
   });
 
@@ -172,7 +174,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
     // 现在显示编辑器
     expect(
-      screen.getByPlaceholderText('输入自定义系统提示词…'),
+      await screen.findByPlaceholderText('输入自定义系统提示词…'),
     ).toBeInTheDocument();
   });
 
@@ -223,7 +225,7 @@ describe('MemoryInstanceSettingsPage', () => {
     await userEvent.click(screen.getByRole('radio', { name: '自定义覆盖' }));
 
     // 输入提示词
-    const textarea = screen.getByPlaceholderText(
+    const textarea = await screen.findByPlaceholderText(
       '输入自定义系统提示词…',
     );
     await userEvent.type(textarea, '新的系统提示词');
@@ -276,15 +278,18 @@ describe('MemoryInstanceSettingsPage', () => {
     expect(saveBtn.closest('button')).toBeDisabled();
   });
 
-  it('点击返回详情按钮导航', async () => {
+  it('面包屑提供返回列表与详情的链接', () => {
     setupMocks();
     renderPage();
 
-    await userEvent.click(screen.getByText('返回详情'));
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/memory/$id',
-      params: { id: 'mi-1' },
-    });
+    expect(screen.getByRole('link', { name: '记忆管理' })).toHaveAttribute(
+      'href',
+      '/memory',
+    );
+    expect(screen.getByRole('link', { name: '测试记忆实例' })).toHaveAttribute(
+      'href',
+      '/memory/$id',
+    );
   });
 
   it('点击取消按钮导航返回', async () => {

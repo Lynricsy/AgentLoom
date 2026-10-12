@@ -39,6 +39,5 @@ export type {
 } from './types';
 export {
   MEMORY_INSTANCE_STATUSES,
-  getMemoryStatusLabel,
-  getMemoryStatusVariant,
+  MEMORY_STATUS_META,
 } from './types';

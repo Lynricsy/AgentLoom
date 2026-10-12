@@ -11,6 +11,7 @@ import {
   type EdgeTypes,
 } from '@xyflow/react'
 import dagre from '@dagrejs/dagre'
+import { AnimatePresence } from 'motion/react'
 import {
   AlertCircle,
   ArrowLeft,
@@ -20,7 +21,9 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
+import { CANVAS_FLOATING_CLASS } from '@/features/canvas'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
 import { Skeleton } from '@/shared/ui/skeleton'
@@ -46,10 +49,6 @@ import type {
 
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 120
-
-/** 悬浮 chrome 统一样式 — 圆角面板 + 半透明底 + popover 阴影 */
-const FLOATING_CHROME =
-  'rounded-xl border border-border bg-surface shadow-lg'
 
 // ReactFlow v12 NodeTypes/EdgeTypes 泛型约束需要桥接自定义节点类型
 const nodeTypes: NodeTypes = {
@@ -242,11 +241,11 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
   if (isLoading) {
     return (
       <div
-        className="flex h-full flex-col gap-4 p-6"
+        className="relative h-full w-full bg-background"
         data-testid="memory-graph-loading"
       >
-        <Skeleton className="h-9 w-64 rounded-xl" />
-        <div className="grid flex-1 place-items-center">
+        <Skeleton className="absolute left-4 top-4 h-9 w-64 rounded-xl" />
+        <div className="grid h-full place-items-center">
           <div className="flex flex-col items-center gap-3">
             <Spinner size="lg" />
             <p className="text-xs text-muted-foreground">正在加载记忆图谱…</p>
@@ -259,10 +258,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
   // -- 错误态 --
   if (isError) {
     return (
-      <div
-        className="flex h-full items-center justify-center p-6"
-        data-testid="memory-graph-error"
-      >
+      <PageContainer data-testid="memory-graph-error">
         <EmptyState
           icon={AlertCircle}
           tone="var(--color-error)"
@@ -285,17 +281,14 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
             </Button>
           }
         />
-      </div>
+      </PageContainer>
     )
   }
 
   // -- 空态 --
   if (!data || data.nodes.length === 0) {
     return (
-      <div
-        className="flex h-full items-center justify-center p-6"
-        data-testid="memory-graph-empty"
-      >
+      <PageContainer data-testid="memory-graph-empty">
         <EmptyState
           icon={Network}
           tone="var(--color-node-memory)"
@@ -307,7 +300,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
             </Button>
           }
         />
-      </div>
+      </PageContainer>
     )
   }
 
@@ -343,17 +336,17 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
 
       {/* 左上：返回 + 搜索 */}
       <div className="absolute left-4 top-4 z-10 flex w-64 flex-col gap-2">
-        <div className={cn(FLOATING_CHROME, 'flex items-center gap-1 p-1')}>
+        <div className={cn(CANVAS_FLOATING_CLASS, 'flex items-center gap-1 p-1')}>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            size="xs"
+            className="text-muted-foreground hover:text-foreground"
             onClick={handleBack}
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
+            <ArrowLeft />
             返回
           </Button>
-          <span className="ml-auto pr-1 text-2xs text-muted-foreground">
+          <span className="ml-auto pr-1 text-2xs tabular-nums text-muted-foreground">
             {data.nodes.length} 节点 · {data.edges.length} 边
           </span>
         </div>
@@ -366,58 +359,59 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
         )}
       </div>
 
-      {/* 右上：视图工具条 */}
+      {/* 右上：视图工具条；详情面板打开时左移，避免被面板盖住 */}
       <div
         className={cn(
-          FLOATING_CHROME,
-          'absolute right-4 top-4 z-10 flex items-center gap-0.5 p-1',
+          CANVAS_FLOATING_CLASS,
+          'absolute top-4 z-10 flex items-center gap-0.5 p-1 transition-[right] duration-300 ease-out-expo',
+          selectedNodeId
+            ? 'right-[calc(var(--spacing-property-panel)+1rem)]'
+            : 'right-4',
         )}
       >
         <Button
           variant="ghost"
-          size="icon-sm"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          size="icon-xs"
+          className="text-muted-foreground hover:text-foreground"
           onClick={() => zoomIn({ duration: 200 })}
           aria-label="放大"
         >
-          <ZoomIn className="h-3.5 w-3.5" />
+          <ZoomIn />
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          size="icon-xs"
+          className="text-muted-foreground hover:text-foreground"
           onClick={() => zoomOut({ duration: 200 })}
           aria-label="缩小"
         >
-          <ZoomOut className="h-3.5 w-3.5" />
+          <ZoomOut />
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          size="icon-xs"
+          className="text-muted-foreground hover:text-foreground"
           onClick={() => fitView({ padding: 0.2, duration: 300 })}
           aria-label="适应视图"
         >
-          <Maximize2 className="h-3.5 w-3.5" />
+          <Maximize2 />
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          size="icon-xs"
+          className="text-muted-foreground hover:text-foreground"
           onClick={() => void handleRefresh()}
           disabled={isRefreshing}
           aria-label="刷新图谱"
         >
-          <RefreshCw
-            className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')}
-          />
+          <RefreshCw className={cn(isRefreshing && 'animate-spin')} />
         </Button>
       </div>
 
       {/* 左下：类别色图例 */}
       <div
         className={cn(
-          FLOATING_CHROME,
+          CANVAS_FLOATING_CLASS,
           'absolute bottom-4 left-4 z-10 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2',
         )}
         data-testid="memory-graph-legend"
@@ -429,7 +423,7 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
           >
             <span
               aria-hidden
-              className="h-2 w-2 rounded-full"
+              className="size-2 rounded-full"
               style={{ backgroundColor: NODE_TYPE_COLORS[nodeType] }}
             />
             {NODE_TYPE_LABELS[nodeType]}
@@ -438,13 +432,16 @@ export const MemoryGraphPage = memo(function MemoryGraphPage({
       </div>
 
       {/* 节点详情面板 */}
-      {selectedNodeId && (
-        <NodeDetailPanel
-          instanceId={instanceId}
-          nodeId={selectedNodeId}
-          onClose={() => setSelectedNodeId(null)}
-        />
-      )}
+      <AnimatePresence>
+        {selectedNodeId && (
+          <NodeDetailPanel
+            key={selectedNodeId}
+            instanceId={instanceId}
+            nodeId={selectedNodeId}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 })

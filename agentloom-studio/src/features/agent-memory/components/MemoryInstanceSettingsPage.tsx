@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { AlertCircle, ArrowLeft, Save, Settings, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { AlertCircle, Save, Settings, X } from 'lucide-react';
+import { PageContainer } from '@/shared/components/page-container/PageContainer';
 import { PageHeader } from '@/shared/components/page-header/PageHeader';
 import { EmptyState } from '@/shared/components/empty-state/EmptyState';
 import { Spinner } from '@/shared/components/spinner/Spinner';
@@ -11,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { useToast } from '@/shared/ui/toast';
+import { fadeIn } from '@/shared/lib/motion';
 import {
   useMemoryInstance,
   useUpdateMemoryInstance,
@@ -108,24 +111,21 @@ export function MemoryInstanceSettingsPage({
 
   if (isLoading) {
     return (
-      <div
-        className="flex h-full flex-col gap-6 p-6"
-        data-testid="memory-settings-skeleton"
-      >
+      <PageContainer width="narrow" data-testid="memory-settings-skeleton">
         <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-lg" />
+          <Skeleton className="size-10 rounded-lg" />
           <Skeleton className="h-4 w-40 rounded" />
         </div>
         {Array.from({ length: 3 }, (_, i) => (
           <Skeleton key={i} className="h-44 rounded-lg" />
         ))}
-      </div>
+      </PageContainer>
     );
   }
 
   if (isError || !instance) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <PageContainer width="narrow">
         <EmptyState
           icon={AlertCircle}
           tone="var(--color-error)"
@@ -140,52 +140,45 @@ export function MemoryInstanceSettingsPage({
             </Button>
           }
         />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
-      <div className="flex flex-col gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 self-start text-muted-foreground hover:text-foreground"
-          onClick={handleBack}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回详情
-        </Button>
+    <PageContainer width="narrow">
+      <PageHeader
+        breadcrumb={[
+          { label: '记忆管理', to: '/memory' },
+          { label: instance.name, to: '/memory/$id', params: { id: memoryInstanceId } },
+          { label: '设置' },
+        ]}
+        icon={Settings}
+        tone={MEMORY_TONE}
+        title="实例设置"
+        description={`调整「${instance.name}」的基本信息、知识域与系统提示词`}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={handleBack}>
+              <X />
+              取消
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleSave()}
+              disabled={!name.trim() || updateMutation.isPending}
+            >
+              {updateMutation.isPending ? (
+                <Spinner size="sm" className="text-current" />
+              ) : (
+                <Save />
+              )}
+              保存
+            </Button>
+          </>
+        }
+      />
 
-        <PageHeader
-          icon={Settings}
-          tone={MEMORY_TONE}
-          title="实例设置"
-          description={`调整「${instance.name}」的基本信息、知识域与系统提示词`}
-          actions={
-            <>
-              <Button variant="outline" size="sm" onClick={handleBack}>
-                <X className="h-4 w-4" />
-                取消
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => void handleSave()}
-                disabled={!name.trim() || updateMutation.isPending}
-              >
-                {updateMutation.isPending ? (
-                  <Spinner size="sm" className="text-current" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                保存
-              </Button>
-            </>
-          }
-        />
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-2">
+      <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>基本信息</CardTitle>
@@ -307,35 +300,41 @@ export function MemoryInstanceSettingsPage({
               </label>
             </RadioGroup>
 
-            {useCustomPrompt ? (
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="settings-system-prompt"
-                  className="block text-sm font-medium text-foreground"
+            <AnimatePresence mode="wait" initial={false}>
+              {useCustomPrompt ? (
+                <motion.div key="custom" {...fadeIn} className="space-y-1.5">
+                  <label
+                    htmlFor="settings-system-prompt"
+                    className="block text-sm font-medium text-foreground"
+                  >
+                    自定义系统提示词
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    覆盖默认的系统提示词模板。支持 {'{{memory_context}}'}{' '}
+                    等变量占位符。
+                  </p>
+                  <Textarea
+                    id="settings-system-prompt"
+                    value={systemPromptOverride}
+                    onChange={(e) => setSystemPromptOverride(e.target.value)}
+                    placeholder="输入自定义系统提示词…"
+                    rows={10}
+                    className="font-mono"
+                  />
+                </motion.div>
+              ) : (
+                <motion.p
+                  key="default"
+                  {...fadeIn}
+                  className="text-sm text-muted-foreground"
                 >
-                  自定义系统提示词
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  覆盖默认的系统提示词模板。支持 {'{{memory_context}}'}{' '}
-                  等变量占位符。
-                </p>
-                <Textarea
-                  id="settings-system-prompt"
-                  value={systemPromptOverride}
-                  onChange={(e) => setSystemPromptOverride(e.target.value)}
-                  placeholder="输入自定义系统提示词…"
-                  rows={10}
-                  className="font-mono"
-                />
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                将使用系统默认的记忆提示词模板。如需定制，请切换到「自定义覆盖」模式。
-              </p>
-            )}
+                  将使用系统默认的记忆提示词模板。如需定制，请切换到「自定义覆盖」模式。
+                </motion.p>
+              )}
+            </AnimatePresence>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }
