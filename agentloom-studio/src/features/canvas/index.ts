@@ -124,3 +124,4 @@ export {
 export { formatRelativeTime } from './lib/formatRelativeTime'
 export { arePortDataTypesCompatible } from './lib/connectionCompatibility'
 export { normalizeTextNodeConfig } from './lib/textNodeConfig'
+export { layoutCanvasNodes } from './lib/autoLayout'

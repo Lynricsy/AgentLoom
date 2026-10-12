@@ -25,6 +25,7 @@ import type { AgentCanvasNodeType } from "@/features/canvas/registry/agent-canva
 import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-canvas-registry";
 import { arePortDataTypesCompatible } from "@/features/canvas";
 import { normalizeTextNodeConfig } from "@/features/canvas";
+import { layoutCanvasNodes } from "@/features/canvas";
 import {
   getNodeTypeConfigOrNull,
 } from "@/features/canvas";
@@ -82,6 +83,8 @@ interface AgentCanvasActions {
     onEdgesChange: (changes: EdgeChange<AgentCanvasEdge>[]) => void;
     createConnection: (connection: Connection) => void;
     addNode: (node: AgentCanvasNode) => void;
+    /** 按连线方向自动整理全部节点位置 */
+    autoLayout: () => void;
     deleteSelectedNode: () => void;
     selectNode: (nodeId: string | null) => void;
     selectEdge: (edgeId: string | null) => void;
@@ -740,6 +743,14 @@ export const useAgentCanvasStore = create<
                 return;
               }
               state.nodes.push(node);
+              state.isDirty = true;
+            });
+          },
+
+          autoLayout: () => {
+            set((state) => {
+              if (state.nodes.length === 0) return;
+              layoutCanvasNodes(state.nodes, state.edges);
               state.isDirty = true;
             });
           },

@@ -45,6 +45,8 @@ export interface CanvasSurfaceProps {
     event: MouseEvent | TouchEvent | null,
     viewport: Viewport,
   ) => void
+  /** 可编辑时传入，在缩放控件中显示「整理布局」 */
+  onAutoLayout?: () => void
 }
 
 /**
@@ -73,6 +75,7 @@ export function CanvasSurface({
   onDrop,
   onViewportChange,
   onMoveEnd,
+  onAutoLayout,
 }: CanvasSurfaceProps) {
   return (
     <ReactFlow<CanvasNode, CanvasEdge>
@@ -109,8 +112,10 @@ export function CanvasSurface({
       zoomOnDoubleClick={false}
       proOptions={{ hideAttribution: true }}
       colorMode={colorMode}
+      // 默认 0.5 放不下大图：fitView 会被截断，minimal LOD 也无法到达；与 Agent 画布一致
+      minZoom={0.1}
     >
-      <CanvasBackdrop />
+      <CanvasBackdrop onAutoLayout={onAutoLayout} />
       <CanvasMiniMap />
     </ReactFlow>
   )

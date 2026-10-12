@@ -42,7 +42,7 @@ flowchart TB
 | `agent` 节点专用面板 | `agentloom-studio/src/features/canvas/components/panels/AgentNodeConfigPanel.tsx` |
 | 叠加层 | `agentloom-studio/src/features/canvas/components/overlays/` 下的 `CompatibilityPreview`、`ConnectionStateOverlay`、`NodeInfoCard` |
 
-**细节层级**：`agentloom-studio/src/features/canvas/hooks/useLevelOfDetail.ts` 按缩放比例切换节点渲染精度：缩放 ≥ 0.7 为 full，0.4 到 0.7 为 compact，低于 0.4 为 minimal。节点越多、缩放越小，渲染的 DOM 越少。
+**细节层级**：`agentloom-studio/src/features/canvas/hooks/useLevelOfDetail.ts` 按缩放比例切换节点渲染精度：缩放 ≥ 0.7 为 full，0.4 到 0.7 为 compact，低于 0.4 为 minimal。节点越多、缩放越小，渲染的 DOM 越少。工作流画布与 Agent 画布的 `minZoom` 都是 0.1，大图 `fitView` 才能放下全部节点。compact / minimal 的卡片宽度限制不作用于展开的 Loop / Iteration 容器，容器尺寸始终由 `style` 决定。
 
 ## 画布草稿：canvasStore
 
@@ -60,7 +60,21 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 | 与服务端同步 | `applyServerSnapshot`、`markSaved`、`advanceVersion`、`setIsSaving`、`reset` |
 | 撤销与重做 | `undo`、`redo` |
 | 搜索与辅助 | `toggleSearch`、`setSearchQuery`、`nextSearchResult`、`prevSearchResult`、`clearSearch`、`toggleMiniMap`、`setHoveredNodeId` |
+| 布局 | `autoLayout`（整理全部节点位置，见下文「自动布局」） |
 | 校验提示 | `setNodeValidationError`、`clearNodeValidationErrors` |
+
+## 自动布局
+
+> 本节回答：「整理布局」怎么排节点，为什么工作流画布与 Agent 画布共用一份实现？
+
+通过 API 或 Agent 写入的画布，节点 `position` 由调用方给定，server 不校验也不重排，常见全部落在原点或互相重叠。`agentloom-studio/src/features/canvas/lib/autoLayout.ts` 的 `layoutCanvasNodes(nodes, edges)` 在客户端按真实节点尺寸重排，原地改写传入节点（可以是 immer draft）：
+
+- **分层方向。** 端口左入右出，dagre 用 `rankdir: 'LR'`；节点尺寸取 React Flow 测量的 `measured`，未测量时回退 240×120。
+- **两级布局。** 同一 `parentId` 下的兄弟节点为一组。展开的 Loop / Iteration 容器先在容器本地坐标里排子节点（原点为 `getCompoundInitialChildPosition`），再按内容包围盒加帧内距算出容器尺寸（不小于 `resolveCompoundContainerSize` 的下限），写回 `style`、`width`/`height`（已存在时）与 `measured`，并按新尺寸重建子节点 `extent`；之后容器作为一个整体参与外层布局。跨组的边提升到本组内的祖先节点参与排序。
+- **不动不可见节点。** 收起容器的后代（`collectCollapsedCompoundDescendantIds`）保持原位，容器按收起尺寸参与布局。
+- **锚定原位置。** 顶层布局平移到原顶层包围盒的左上角，避免内容跳到远处。
+
+`useCanvasStore` 与 `useAgentCanvasStore` 都暴露 `autoLayout` action，在一次 `set` 中调用 `layoutCanvasNodes` 并标脏：工作流画布因此形成一个撤销步并走自动保存，Agent 画布需要用户点击「保存画布」。按钮由共用的 `CanvasBackdrop` 渲染在 React Flow `Controls` 中（传入 `onAutoLayout` 才显示，只读画布不传）。`measured` 随细节层级变化（compact 卡片约 156–180 宽，full 为 200–268），所以缩放低于 `LOD_FULL_THRESHOLD` 时按钮先 `zoomTo(1)` 并等两帧让 React Flow 按完整卡片重新测量，再布局，否则放大查看时会重叠；布局后下一帧 `fitView`。视口变化不进撤销历史，撤销仍只有一步。
 
 ## 自动保存
 

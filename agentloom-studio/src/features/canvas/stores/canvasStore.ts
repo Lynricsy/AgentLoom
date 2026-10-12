@@ -78,6 +78,7 @@ import {
   syncCompoundParentLayout,
   syncCompoundParentOutputPorts,
 } from "../lib/canvasStoreHelpers";
+import { layoutCanvasNodes } from "../lib/autoLayout";
 
 enableMapSet();
 
@@ -224,6 +225,8 @@ interface CanvasActions {
       edges: CanvasEdge[];
       blockNodeId: string;
     }) => void;
+    /** 按连线方向自动整理全部节点位置；整次整理是一个撤销步 */
+    autoLayout: () => void;
     selectNode: (nodeId: string | null) => void;
     selectEdge: (edgeId: string | null) => void;
     openFieldMapping: (edgeId: string) => void;
@@ -966,6 +969,13 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 }
                 state.selectedNodeId = blockNodeId;
                 state.selectedNodeIds = new Set([blockNodeId]);
+                state.isDirty = true;
+              }),
+
+            autoLayout: () =>
+              set((state) => {
+                if (state.nodes.length === 0) return;
+                layoutCanvasNodes(state.nodes, state.edges);
                 state.isDirty = true;
               }),
 

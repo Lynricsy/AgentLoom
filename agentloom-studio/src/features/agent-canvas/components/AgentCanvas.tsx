@@ -76,6 +76,7 @@ export const AgentCanvas = memo(function AgentCanvas({
     selectNode,
     selectEdge,
     setViewport,
+    autoLayout,
   } = useAgentCanvasActions();
   useAgentCanvasHydration(agentId);
 
@@ -188,7 +189,10 @@ export const AgentCanvas = memo(function AgentCanvas({
         colorMode={resolvedTheme}
       >
         {/* 节点面板占满左侧整列，缩放控件放右下角避免被遮挡 */}
-        <CanvasBackdrop position="bottom-right" />
+        <CanvasBackdrop
+          position="bottom-right"
+          onAutoLayout={isMobileReadOnly ? undefined : autoLayout}
+        />
       </ReactFlow>
 
       {!isMobileReadOnly && (

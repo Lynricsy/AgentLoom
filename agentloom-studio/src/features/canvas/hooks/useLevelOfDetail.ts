@@ -5,8 +5,8 @@ import { usePreviewMode } from '../components/PreviewModeContext'
 /** 画布节点的细节层级 */
 export type LevelOfDetail = 'full' | 'compact' | 'minimal'
 
-/** LOD 缩放阈值 */
-const LOD_FULL_THRESHOLD = 0.7
+/** LOD 缩放阈值；自动布局按完整卡片尺寸排版时也以此判断是否需要先放大 */
+export const LOD_FULL_THRESHOLD = 0.7
 const LOD_COMPACT_THRESHOLD = 0.4
 
 /**

@@ -47,6 +47,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         : 0,
   )
   const {
+    autoLayout,
     clearSelection,
     commitViewport,
     createConnection,
@@ -247,6 +248,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         onDrop={handleDrop}
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
+        onAutoLayout={isEditingDisabled ? undefined : autoLayout}
       />
       <CanvasOverlayLayer
         previewRef={previewRef}
