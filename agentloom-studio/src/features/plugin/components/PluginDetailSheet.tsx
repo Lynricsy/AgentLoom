@@ -71,15 +71,23 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{plugin?.name ?? '插件详情'}</SheetTitle>
-          <SheetDescription>
+          <SheetDescription className="break-all">
             {plugin ? `${plugin.pluginId} · v${plugin.version}` : '查看清单与节点定义'}
           </SheetDescription>
         </SheetHeader>
 
         <SheetBody className="space-y-5">
           {isLoading ? (
-            <div className="space-y-3" data-testid="plugin-detail-skeleton">
-              <Skeleton className="h-16 rounded-lg" />
+            <div className="space-y-5" data-testid="plugin-detail-skeleton">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} className="space-y-1">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-5 w-full" />
+                  </div>
+                ))}
+              </div>
+              <Skeleton className="h-12 rounded-lg" />
               <Skeleton className="h-24 rounded-lg" />
               <Skeleton className="h-40 rounded-lg" />
             </div>
@@ -94,17 +102,23 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
             <>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                 <Field label="状态">
-                  <Badge variant={PLUGIN_STATUS_VARIANT[plugin.status]}>
+                  <Badge size="sm" variant={PLUGIN_STATUS_VARIANT[plugin.status]}>
                     {PLUGIN_STATUS_LABEL[plugin.status]}
                   </Badge>
                 </Field>
                 <Field label="版本">v{plugin.version}</Field>
-                <Field label="作者">{plugin.author}</Field>
-                <Field label="许可协议">{plugin.license ?? '未声明'}</Field>
+                <Field label="作者" title={plugin.author}>
+                  {plugin.author}
+                </Field>
+                <Field label="许可协议" title={plugin.license ?? undefined}>
+                  {plugin.license ?? '未声明'}
+                </Field>
               </dl>
 
               {plugin.description ? (
-                <p className="text-sm leading-relaxed text-muted-foreground">{plugin.description}</p>
+                <p className="break-words text-sm leading-relaxed text-muted-foreground">
+                  {plugin.description}
+                </p>
               ) : null}
 
               {marketplaceSource ? (
@@ -120,7 +134,7 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <h3 className="text-sm font-semibold text-foreground">
                   权限申请
                 </h3>
                 {plugin.permissions.length === 0 ? (
@@ -139,7 +153,7 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <h3 className="text-sm font-semibold text-foreground">
                   节点定义（{plugin.nodeDefinitions.length}）
                 </h3>
                 {plugin.nodeDefinitions.length === 0 ? (
@@ -161,7 +175,7 @@ export function PluginDetailSheet({ pluginId, onOpenChange }: PluginDetailSheetP
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <h3 className="text-sm font-semibold text-foreground">
                   插件清单
                 </h3>
                 <div className="rounded-lg border border-border bg-muted p-3">
@@ -262,12 +276,12 @@ function MarketplaceSourceSection({
 
   return (
     <section className="space-y-3" data-testid="plugin-marketplace-source">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+      <h3 className="text-sm font-semibold text-foreground">
         来自市场
       </h3>
 
       <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
-        <Store className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <Store className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 break-words">
           {source.listingTitle ?? '未记录上架名称'}
         </span>
@@ -306,7 +320,7 @@ function MarketplaceSourceSection({
             data-testid="plugin-uninstall-btn"
             onClick={() => setConfirmingUninstall(true)}
           >
-            <PowerOff className="h-3.5 w-3.5" aria-hidden />
+            <PowerOff aria-hidden />
             卸载（停用副本）
           </Button>
           <p className="text-xs leading-relaxed text-muted-foreground">
@@ -327,15 +341,14 @@ function MarketplaceSourceSection({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={uninstallMutation.isPending}
               onClick={(event) => {
                 event.preventDefault()
                 handleUninstall()
               }}
             >
-              {uninstallMutation.isPending ? (
-                <Spinner size="sm" className="mr-1.5" />
-              ) : null}
+              {uninstallMutation.isPending ? <Spinner size="sm" /> : null}
               停用副本
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -400,11 +413,7 @@ function UpgradeRow({
             disabled={isPending}
             onClick={onUpgrade}
           >
-            {isPending ? (
-              <Spinner size="sm" />
-            ) : (
-              <ArrowUpCircle className="h-3.5 w-3.5" aria-hidden />
-            )}
+            {isPending ? <Spinner size="sm" /> : <ArrowUpCircle aria-hidden />}
             升级到 {target}
           </Button>
         ) : (
@@ -443,11 +452,21 @@ const UPGRADE_BLOCKED_MESSAGE: Record<
   source_replaced: '该上架已换绑到其他插件，无法原地升级。',
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  title,
+  children,
+}: {
+  label: string
+  title?: string
+  children: ReactNode
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-foreground">{children}</dd>
+      <dd className="mt-0.5 truncate text-foreground" title={title}>
+        {children}
+      </dd>
     </div>
   )
 }
@@ -456,20 +475,24 @@ function NodeSummary({ node }: { node: PluginNodeDefinition }) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-foreground">{node.label}</span>
+        <span className="min-w-0 break-words text-sm font-medium text-foreground">
+          {node.label}
+        </span>
         <Badge variant="secondary" size="sm">
           {node.category}
         </Badge>
-        <code className="text-2xs text-muted-foreground">{node.type}</code>
+        <code className="min-w-0 break-all text-2xs text-muted-foreground">{node.type}</code>
       </div>
 
       {node.description ? (
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{node.description}</p>
+        <p className="mt-1 break-words text-xs leading-relaxed text-muted-foreground">
+          {node.description}
+        </p>
       ) : null}
 
       <div className="mt-2 flex items-center gap-2 text-2xs text-muted-foreground">
         <span>{node.inputPorts.length} 入参</span>
-        <ArrowRight className="h-3 w-3" aria-hidden />
+        <ArrowRight className="size-3" aria-hidden />
         <span>{node.outputPorts.length} 出参</span>
       </div>
     </>

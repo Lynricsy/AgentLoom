@@ -4,11 +4,14 @@ import { Activity, AlertCircle, ArrowLeft, Receipt } from 'lucide-react'
 
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { FormField } from '@/shared/components/form-field/FormField'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { PageContainer } from '@/shared/components/page-container'
 import { Button, buttonVariants } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { formatNumber } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import {
   usePluginById,
@@ -23,6 +26,7 @@ import type { PluginUsageRecord } from '../types'
 
 const PAGE_SIZE = 20
 
+// 用量按 UTC 日界结算，表头标注 (UTC)；shared/lib/format 只输出本地时区，这里需固定 UTC
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
   month: '2-digit',
@@ -39,8 +43,6 @@ const usdFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 8,
 })
 
-const numberFormatter = new Intl.NumberFormat('en-US')
-
 /** 计费金额为 null 表示免费执行，不是「零元」 */
 function formatBilling(amount: string | null, currency: string): string {
   if (amount === null) return '免费'
@@ -56,7 +58,7 @@ function formatDuration(durationMs: string | number | null): string {
 
   const value = Number(durationMs)
   if (!Number.isFinite(value)) return '—'
-  if (value < 1000) return `${numberFormatter.format(Math.round(value))} ms`
+  if (value < 1000) return `${formatNumber(Math.round(value))} ms`
 
   return `${(value / 1000).toFixed(2)} s`
 }
@@ -72,9 +74,9 @@ function SummaryTile({ label, value, isLoading }: SummaryTileProps) {
     <div className="rounded-lg border border-border bg-surface p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       {isLoading ? (
-        <Skeleton className="mt-2 h-6 w-24 rounded-md" />
+        <Skeleton className="mt-1 h-7 w-24 rounded-md" />
       ) : (
-        <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+        <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{value}</p>
       )}
     </div>
   )
@@ -118,6 +120,7 @@ export function PluginUsagePage({
         key: 'createdAt',
         header: '时间 (UTC)',
         className: 'w-44',
+        nowrap: true,
         cell: (record) => (
           <span className="text-muted-foreground">
             {DATE_TIME_FORMATTER.format(new Date(record.createdAt))}
@@ -130,10 +133,10 @@ export function PluginUsagePage({
         className: 'w-full max-w-0',
         cell: (record) => (
           <div className="min-w-0">
-            <p className="truncate font-mono text-xs text-foreground">
+            <p className="truncate font-mono text-xs text-foreground" title={record.executionId}>
               {record.executionId}
             </p>
-            <p className="truncate font-mono text-2xs text-muted-foreground">
+            <p className="truncate font-mono text-2xs text-muted-foreground" title={record.stepId}>
               step {record.stepId}
             </p>
           </div>
@@ -143,6 +146,8 @@ export function PluginUsagePage({
         key: 'duration',
         header: '耗时',
         className: 'w-24',
+        nowrap: true,
+        align: 'right',
         hideBelow: 'sm',
         cell: (record) => (
           <span className="text-muted-foreground">
@@ -154,6 +159,8 @@ export function PluginUsagePage({
         key: 'billing',
         header: '计费金额',
         className: 'w-32',
+        nowrap: true,
+        align: 'right',
         cell: (record) => (
           <span className="text-foreground">
             {formatBilling(record.billingAmount, record.currency)}
@@ -163,11 +170,14 @@ export function PluginUsagePage({
       {
         key: 'sourceListing',
         header: '来源 listing',
-        className: 'w-48',
+        className: 'w-48 max-w-48',
         hideBelow: 'lg',
         cell: (record) =>
           record.sourceListingId ? (
-            <span className="truncate font-mono text-xs text-muted-foreground">
+            <span
+              className="block truncate font-mono text-xs text-muted-foreground"
+              title={record.sourceListingId}
+            >
               {record.sourceListingId}
             </span>
           ) : (
@@ -204,20 +214,14 @@ export function PluginUsagePage({
             to="/resources/plugins"
             className={cn(buttonVariants({ variant: 'outline' }))}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft />
             返回插件列表
           </Link>
         }
       />
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 sm:flex-row sm:items-end sm:p-4">
-        <div className="space-y-1.5">
-          <label
-            htmlFor="usage-period-start"
-            className="block text-xs font-medium text-muted-foreground"
-          >
-            开始日期 (UTC)
-          </label>
+      <Card className="flex flex-col gap-3 p-3 sm:flex-row sm:items-end sm:p-4">
+        <FormField label="开始日期 (UTC)" htmlFor="usage-period-start">
           <Input
             id="usage-period-start"
             type="date"
@@ -226,14 +230,8 @@ export function PluginUsagePage({
             onChange={(event) => handlePeriodStartChange(event.target.value)}
             data-testid="usage-period-start"
           />
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor="usage-period-end"
-            className="block text-xs font-medium text-muted-foreground"
-          >
-            结束日期 (UTC)
-          </label>
+        </FormField>
+        <FormField label="结束日期 (UTC)" htmlFor="usage-period-end">
           <Input
             id="usage-period-end"
             type="date"
@@ -242,8 +240,8 @@ export function PluginUsagePage({
             onChange={(event) => handlePeriodEndChange(event.target.value)}
             data-testid="usage-period-end"
           />
-        </div>
-      </div>
+        </FormField>
+      </Card>
 
       <div
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
@@ -252,7 +250,7 @@ export function PluginUsagePage({
         <SummaryTile
           label="总执行次数"
           value={
-            summary ? numberFormatter.format(summary.totalExecutions) : '0'
+            summary ? formatNumber(summary.totalExecutions) : '0'
           }
           isLoading={summaryQuery.isLoading}
         />

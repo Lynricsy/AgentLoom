@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   AlertCircle,
@@ -26,6 +26,7 @@ import {
 } from '@/shared/components/data-table/DataTable'
 import { Badge } from '@/shared/ui/badge'
 import { Button, buttonVariants } from '@/shared/ui/button'
+import { formatDateTime } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import { Input } from '@/shared/ui/input'
 import { Spinner } from '@/shared/components/spinner/Spinner'
@@ -73,14 +74,6 @@ const STATUS_OPTIONS: { value: PluginStatus | typeof ANY; label: string }[] = [
   { value: 'error', label: PLUGIN_STATUS_LABEL.error },
 ]
 
-const DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-
 export function PluginManagementPage() {
   const { notify } = useToast()
   const authToken = useAuthToken()
@@ -95,6 +88,9 @@ export function PluginManagementPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PluginListItem | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  // 退场动画期间 pendingDelete 已置空，文案沿用最近一次的目标
+  const lastPendingDeleteRef = useRef<PluginListItem | null>(null)
+  if (pendingDelete) lastPendingDeleteRef.current = pendingDelete
   const [publishTarget, setPublishTarget] = useState<PluginPublishTarget | null>(
     null,
   )
@@ -189,9 +185,13 @@ export function PluginManagementPage() {
         className: 'w-full max-w-0',
         cell: (plugin) => (
           <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{plugin.name}</p>
-            <p className="flex items-baseline gap-1 text-xs text-muted-foreground">
-              <span className="truncate">{plugin.pluginId}</span>
+            <p className="truncate font-medium text-foreground" title={plugin.name}>
+              {plugin.name}
+            </p>
+            <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+              <span className="min-w-0 truncate" title={plugin.pluginId}>
+                {plugin.pluginId}
+              </span>
               {/* 小屏隐藏了版本列，把版本号并进副标题且不参与截断 */}
               <span className="shrink-0 sm:hidden">v{plugin.version}</span>
             </p>
@@ -202,6 +202,7 @@ export function PluginManagementPage() {
         key: 'version',
         header: '版本',
         className: 'w-24',
+        nowrap: true,
         hideBelow: 'sm',
         cell: (plugin) => <span className="text-muted-foreground">v{plugin.version}</span>,
       },
@@ -210,7 +211,7 @@ export function PluginManagementPage() {
         header: '状态',
         className: 'w-28',
         cell: (plugin) => (
-          <Badge variant={PLUGIN_STATUS_VARIANT[plugin.status]}>
+          <Badge size="sm" variant={PLUGIN_STATUS_VARIANT[plugin.status]}>
             {PLUGIN_STATUS_LABEL[plugin.status]}
           </Badge>
         ),
@@ -218,12 +219,14 @@ export function PluginManagementPage() {
       {
         key: 'origin',
         header: '来源',
-        className: 'w-36',
+        className: 'w-36 max-w-36',
         hideBelow: 'md',
         cell: (plugin) => (
           <div className="min-w-0">
-            <p className="text-foreground">{PLUGIN_ORIGIN_LABEL[getPluginOrigin(plugin)]}</p>
-            <p className="truncate text-xs text-muted-foreground">{plugin.author}</p>
+            <p className="truncate text-foreground">{PLUGIN_ORIGIN_LABEL[getPluginOrigin(plugin)]}</p>
+            <p className="truncate text-xs text-muted-foreground" title={plugin.author}>
+              {plugin.author}
+            </p>
           </div>
         ),
       },
@@ -231,11 +234,10 @@ export function PluginManagementPage() {
         key: 'updatedAt',
         header: '更新时间',
         className: 'w-40',
+        nowrap: true,
         hideBelow: 'lg',
         cell: (plugin) => (
-          <span className="text-muted-foreground">
-            {DATE_FORMATTER.format(new Date(plugin.updatedAt))}
-          </span>
+          <span className="text-muted-foreground">{formatDateTime(plugin.updatedAt)}</span>
         ),
       },
     ]
@@ -247,10 +249,11 @@ export function PluginManagementPage() {
       {
         key: 'actions',
         header: '操作',
-        className: 'w-40 text-right',
+        className: 'w-44',
+        align: 'right',
         cell: (plugin) => (
           <div
-            className="flex justify-end gap-1"
+            className="flex items-center justify-end gap-1"
             onClick={(event) => event.stopPropagation()}
           >
             <Link
@@ -261,7 +264,7 @@ export function PluginManagementPage() {
                 buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
               )}
             >
-              <Receipt className="h-3.5 w-3.5" />
+              <Receipt />
             </Link>
 
             {canRegister && plugin.status === 'active' ? (
@@ -277,7 +280,7 @@ export function PluginManagementPage() {
                   })
                 }
               >
-                <Store className="h-3.5 w-3.5" />
+                <Store />
               </Button>
             ) : null}
 
@@ -297,9 +300,9 @@ export function PluginManagementPage() {
                   {togglingId === plugin.id ? (
                     <Spinner size="sm" />
                   ) : plugin.status === 'active' ? (
-                    <PowerOff className="h-3.5 w-3.5" />
+                    <PowerOff />
                   ) : (
-                    <Power className="h-3.5 w-3.5" />
+                    <Power />
                   )}
                 </Button>
                 <Button
@@ -309,7 +312,7 @@ export function PluginManagementPage() {
                   className="text-muted-foreground hover:text-error"
                   onClick={() => setPendingDelete(plugin)}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 />
                 </Button>
               </>
             ) : null}
@@ -331,7 +334,7 @@ export function PluginManagementPage() {
         actions={
           canRegister ? (
             <Button onClick={() => setRegisterOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus />
               注册插件
             </Button>
           ) : null
@@ -340,7 +343,7 @@ export function PluginManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -405,7 +408,7 @@ export function PluginManagementPage() {
               action={
                 hasFilters || !canRegister ? null : (
                   <Button size="sm" onClick={() => setRegisterOpen(true)}>
-                    <Plus className="mr-1.5 h-4 w-4" />
+                    <Plus />
                     注册插件
                   </Button>
                 )
@@ -450,7 +453,7 @@ export function PluginManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>删除插件</AlertDialogTitle>
           <AlertDialogDescription>
-            {`确定要删除「${pendingDelete?.name ?? ''}」吗？使用了该插件节点的工作流将无法继续执行，此操作不可撤销。`}
+            {`确定要删除「${lastPendingDeleteRef.current?.name ?? ''}」吗？使用了该插件节点的工作流将无法继续执行，此操作不可撤销。`}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -462,7 +465,7 @@ export function PluginManagementPage() {
                 handleConfirmDelete()
               }}
             >
-              {deleteMutation.isPending ? <Spinner size="sm" className="mr-1.5" /> : null}
+              {deleteMutation.isPending ? <Spinner size="sm" /> : null}
               删除
             </AlertDialogAction>
           </AlertDialogFooter>
