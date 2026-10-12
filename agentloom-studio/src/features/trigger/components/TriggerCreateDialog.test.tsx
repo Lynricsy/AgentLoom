@@ -73,7 +73,7 @@ describe('TriggerCreateDialog', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /Webhook/ }))
-    fireEvent.change(screen.getByLabelText('触发器名称'), {
+    fireEvent.change(await screen.findByLabelText('触发器名称'), {
       target: { value: 'QA Webhook Trigger' },
     })
     fireEvent.change(screen.getByLabelText('描述'), {
@@ -107,7 +107,7 @@ describe('TriggerCreateDialog', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /Webhook/ }))
-    fireEvent.change(screen.getByLabelText('触发器名称'), {
+    fireEvent.change(await screen.findByLabelText('触发器名称'), {
       target: { value: 'CIDR Webhook' },
     })
     fireEvent.change(screen.getByLabelText('IP 白名单'), {
@@ -153,7 +153,7 @@ describe('TriggerCreateDialog', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /Webhook/ }))
-    fireEvent.change(screen.getByLabelText('触发器名称'), {
+    fireEvent.change(await screen.findByLabelText('触发器名称'), {
       target: { value: 'GitHub Push' },
     })
     fireEvent.click(screen.getByRole('radio', { name: /GitHub/ }))
@@ -182,7 +182,7 @@ describe('TriggerCreateDialog', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /API Event/ }))
-    fireEvent.change(screen.getByLabelText('触发器名称'), {
+    fireEvent.change(await screen.findByLabelText('触发器名称'), {
       target: { value: 'QA API Event Trigger' },
     })
     fireEvent.change(screen.getByLabelText('事件源'), {
@@ -265,7 +265,7 @@ describe('TriggerCreateDialog', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /API Event/ }))
-    fireEvent.change(screen.getByLabelText('触发器名称'), {
+    fireEvent.change(await screen.findByLabelText('触发器名称'), {
       target: { value: 'QA GitHub Trigger' },
     })
     fireEvent.change(screen.getByLabelText('事件源'), {

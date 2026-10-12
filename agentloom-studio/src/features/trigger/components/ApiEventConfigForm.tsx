@@ -1,5 +1,5 @@
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
-import { Label } from '@/shared/ui/label'
+import { FormField } from '@/shared/components/form-field/FormField'
 import { Input } from '@/shared/ui/input'
 import { Switch } from '@/shared/ui/switch'
 import { Textarea } from '@/shared/ui/textarea'
@@ -22,81 +22,82 @@ export function ApiEventConfigForm({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-2 rounded-lg border border-border/60 bg-background/60 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">启用触发器</p>
-              <p className="text-xs text-muted-foreground">
-                切换后立即生效
-              </p>
-            </div>
-            <Switch
-              checked={isEnabled}
-              onCheckedChange={(checked) =>
-                setValue('isEnabled', checked, { shouldDirty: true, shouldValidate: true })
-              }
-            />
-          </div>
+      {/* 启用开关独立成行（三种触发器表单统一），不与输入框同排拉伸 */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted p-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">启用触发器</p>
+          <p className="text-xs text-muted-foreground">切换后立即生效</p>
         </div>
+        <Switch
+          aria-label="启用触发器"
+          checked={isEnabled}
+          onCheckedChange={(checked) =>
+            setValue('isEnabled', checked, { shouldDirty: true, shouldValidate: true })
+          }
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <label htmlFor="api-event-trigger-name" className="space-y-2">
-          <Label>触发器名称</Label>
+        <FormField label="触发器名称" htmlFor="api-event-trigger-name" error={errors.name?.message}>
           <Input
             id="api-event-trigger-name"
             placeholder="例如：订单状态同步"
             {...register('name')}
           />
-          {errors.name && <p className="text-xs text-error">{errors.name.message}</p>}
-        </label>
+        </FormField>
 
-        <label htmlFor="api-event-source" className="space-y-2">
-          <Label>事件源</Label>
+        <FormField
+          label="事件源"
+          htmlFor="api-event-source"
+          error={errors.apiEvent?.eventSource?.message}
+        >
           <Input
             id="api-event-source"
             placeholder="例如：order-service"
             {...register('apiEvent.eventSource')}
           />
-          {errors.apiEvent?.eventSource && (
-            <p className="text-xs text-error">{errors.apiEvent.eventSource.message}</p>
-          )}
-        </label>
+        </FormField>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <label htmlFor="api-event-type" className="space-y-2">
-          <Label>事件类型</Label>
+        <FormField
+          label="事件类型"
+          htmlFor="api-event-type"
+          error={errors.apiEvent?.eventType?.message}
+        >
           <Input
             id="api-event-type"
             placeholder="例如：order.completed"
             {...register('apiEvent.eventType')}
           />
-          {errors.apiEvent?.eventType && (
-            <p className="text-xs text-error">{errors.apiEvent.eventType.message}</p>
-          )}
-        </label>
+        </FormField>
 
-        <label htmlFor="api-event-filter" className="space-y-2">
-          <Label>过滤表达式</Label>
+        <FormField
+          label="过滤表达式"
+          htmlFor="api-event-filter"
+          hint={
+            <>
+              留空表示不过滤。表达式在服务端沙箱中按 JS 真值判定，可用变量 payload（事件 data）、source、type；
+              求值异常按不匹配处理。示例：
+              <code className="ml-1 rounded-xs bg-muted px-1.5 py-0.5 font-mono text-foreground/90">
+                payload.region == &quot;cn&quot;
+              </code>
+            </>
+          }
+        >
           <Input
             id="api-event-filter"
             placeholder={'例如：payload.region == "cn"'}
             {...register('apiEvent.filterExpression')}
           />
-          <p className="text-xs text-muted-foreground">
-            留空表示不过滤。表达式在服务端沙箱中按 JS 真值判定，可用变量 payload（事件 data）、source、type；
-            求值异常按不匹配处理。示例：
-            <code className="ml-1 rounded bg-black/20 px-1.5 py-0.5 text-foreground/90">
-              payload.region == &quot;cn&quot;
-            </code>
-          </p>
-        </label>
+        </FormField>
       </div>
 
-      <label htmlFor="api-event-secret" className="block space-y-2">
-        <Label>签名密钥</Label>
+      <FormField
+        label="签名密钥"
+        htmlFor="api-event-secret"
+        hint="可选。仅 github 等要求验签的事件源需要填写，服务端据此做 HMAC-SHA256 校验，签名不匹配的事件会被丢弃。"
+      >
         <Input
           id="api-event-secret"
           type="password"
@@ -104,13 +105,13 @@ export function ApiEventConfigForm({
           placeholder="仅需验签的事件源填写"
           {...register('apiEvent.secret')}
         />
-        <p className="text-xs text-muted-foreground">
-          可选。仅 github 等要求验签的事件源需要填写，服务端据此做 HMAC-SHA256 校验，签名不匹配的事件会被丢弃。
-        </p>
-      </label>
+      </FormField>
 
-      <label htmlFor="api-event-trigger-description" className="block space-y-2">
-        <Label>描述</Label>
+      <FormField
+        label="描述"
+        htmlFor="api-event-trigger-description"
+        error={errors.description?.message}
+      >
         <Textarea
           id="api-event-trigger-description"
           rows={3}
@@ -118,10 +119,7 @@ export function ApiEventConfigForm({
           placeholder="说明事件来源、消费目的与触发条件"
           {...register('description')}
         />
-        {errors.description && (
-          <p className="text-xs text-error">{errors.description.message}</p>
-        )}
-      </label>
+      </FormField>
     </div>
   )
 }

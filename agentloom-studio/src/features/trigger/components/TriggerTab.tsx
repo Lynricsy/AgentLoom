@@ -1,6 +1,20 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Loader2, Plus } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Loader2, Plus, TriangleAlert } from 'lucide-react'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { formatNumber } from '@/shared/lib/format'
+import { Alert } from '@/shared/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from '@/shared/ui/alert-dialog'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDeleteTrigger,
@@ -17,6 +31,26 @@ interface TriggerTabProps {
   isPublished: boolean
 }
 
+/** 与 TriggerCard 真实结构同高的加载骨架，避免加载完成时整列跳动 */
+function TriggerCardSkeleton() {
+  return (
+    <Card className="space-y-4 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <Skeleton className="h-12 w-36 rounded-lg" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Skeleton className="h-[4.5rem] rounded-lg" />
+        <Skeleton className="h-[4.5rem] rounded-lg" />
+        <Skeleton className="h-[4.5rem] rounded-lg" />
+      </div>
+    </Card>
+  )
+}
+
 export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
   const { notify } = useToast()
   const triggerQuery = useTriggers(workflowId)
@@ -25,39 +59,37 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null)
   const [historyTrigger, setHistoryTrigger] = useState<Trigger | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Trigger | null>(null)
+  /** 弹窗退场期间目标已置空，用最近一次目标继续渲染文案，避免闪空 */
+  const lastHistoryTriggerRef = useRef<Trigger | null>(null)
+  if (historyTrigger) lastHistoryTriggerRef.current = historyTrigger
+  const lastDeleteTargetRef = useRef<Trigger | null>(null)
+  if (deleteTarget) lastDeleteTargetRef.current = deleteTarget
 
   const triggers = useMemo(() => triggerQuery.data?.data ?? [], [triggerQuery.data])
   const total = triggerQuery.data?.meta?.total ?? triggers.length
 
-  const handleDeleteTrigger = useCallback(
-    async (trigger: Trigger) => {
-      if (deleteMutation.isPending) {
-        return
-      }
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget || deleteMutation.isPending) {
+      return
+    }
 
-      const shouldDelete = window.confirm(`确认删除触发器「${trigger.name}」吗？`)
-
-      if (!shouldDelete) {
-        return
-      }
-
-      try {
-        await deleteMutation.mutateAsync(trigger.id)
-        notify({
-          title: '触发器已删除',
-          description: `已删除「${trigger.name}」。`,
-          variant: 'success',
-        })
-      } catch (error) {
-        notify({
-          title: '删除失败',
-          description: error instanceof Error ? error.message : '请稍后重试。',
-          variant: 'error',
-        })
-      }
-    },
-    [deleteMutation, notify],
-  )
+    try {
+      await deleteMutation.mutateAsync(deleteTarget.id)
+      notify({
+        title: '触发器已删除',
+        description: `已删除「${deleteTarget.name}」。`,
+        variant: 'success',
+      })
+      setDeleteTarget(null)
+    } catch (error) {
+      notify({
+        title: '删除失败',
+        description: error instanceof Error ? error.message : '请稍后重试。',
+        variant: 'error',
+      })
+    }
+  }, [deleteMutation, deleteTarget, notify])
 
   const handleToggleTrigger = useCallback(
     async (trigger: Trigger) => {
@@ -87,57 +119,51 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
     <section className="flex h-full flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground">
             事件驱动触发器
           </p>
           <h2 className="text-base font-semibold text-foreground">触发器管理</h2>
           <p className="text-sm text-muted-foreground">
-            当前共 {total} 个触发器；已支持 Cron、Webhook、API Event 三种自动触发入口。
+            当前共 {formatNumber(total)} 个触发器；已支持 Cron、Webhook、API Event 三种自动触发入口。
           </p>
         </div>
 
-        <Button
-          className="gap-1.5"
-          disabled={!isPublished}
-          title={isPublished ? '新增触发器' : '请先发布工作流后再新增触发器'}
-          onClick={() => setIsCreateOpen(true)}
-        >
+        {/* 未发布时的原因由下方 Alert 可见说明，不依赖 disabled 按钮上不会显示的 title */}
+        <Button disabled={!isPublished} onClick={() => setIsCreateOpen(true)}>
           <Plus />
           添加触发器
         </Button>
       </div>
 
       {!isPublished ? (
-        <div className="rounded-lg border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
+        <Alert variant="warning">
           触发器仅能绑定到已发布的工作流版本。请先发布当前工作流，再启用自动调度入口。
-        </div>
+        </Alert>
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {triggerQuery.isLoading ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-border bg-muted">
-            <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              正在加载触发器…
-            </div>
+          <div className="space-y-3" data-testid="trigger-tab-loading">
+            <TriggerCardSkeleton />
+            <TriggerCardSkeleton />
           </div>
         ) : triggerQuery.isError ? (
-          <div className="flex min-h-[240px] items-center justify-center rounded-lg border border-error/20 bg-error/10 px-6 text-center">
-            <div>
-              <p className="text-base font-medium text-error">加载失败</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {triggerQuery.error instanceof Error
-                  ? triggerQuery.error.message
-                  : '无法加载触发器列表，请稍后重试。'}
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            icon={TriangleAlert}
+            tone="var(--color-error)"
+            title="加载失败"
+            description={
+              triggerQuery.error instanceof Error
+                ? triggerQuery.error.message
+                : '无法加载触发器列表，请稍后重试。'
+            }
+          />
         ) : (
           <TriggerList
             workflowId={workflowId}
             triggers={triggers}
             onEdit={setEditingTrigger}
-            onDelete={(trigger) => void handleDeleteTrigger(trigger)}
+            onDelete={setDeleteTarget}
             onToggle={(trigger) => void handleToggleTrigger(trigger)}
             onViewHistory={setHistoryTrigger}
           />
@@ -158,7 +184,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
 
       <TriggerHistoryDialog
         workflowId={workflowId}
-        trigger={historyTrigger}
+        trigger={historyTrigger ?? lastHistoryTriggerRef.current}
         open={!!historyTrigger}
         onOpenChange={(open) => {
           if (!open) {
@@ -166,6 +192,37 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
           }
         }}
       />
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setDeleteTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent data-testid="trigger-delete-dialog">
+          <AlertDialogTitle>删除触发器</AlertDialogTitle>
+          <AlertDialogDescription>
+            确认删除触发器「{lastDeleteTargetRef.current?.name}」吗？删除后该入口将立即失效。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={(event) => {
+                // 请求完成后再关闭；失败时保留弹窗便于重试
+                event.preventDefault()
+                void handleConfirmDelete()
+              }}
+            >
+              {deleteMutation.isPending ? <Loader2 className="animate-spin" /> : null}
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

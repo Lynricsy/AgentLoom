@@ -1,6 +1,6 @@
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
+import { FormField } from '@/shared/components/form-field/FormField'
 import { cn } from '@/shared/lib/utils'
-import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
 import { Switch } from '@/shared/ui/switch'
@@ -58,35 +58,31 @@ export function WebhookConfigForm({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <label htmlFor="webhook-trigger-name" className="space-y-2">
-          <Label>触发器名称</Label>
-          <Input
-            id="webhook-trigger-name"
-            placeholder="例如：CRM 回调入口"
-            {...register('name')}
-          />
-          {errors.name && <p className="text-xs text-error">{errors.name.message}</p>}
-        </label>
-
-        <div className="space-y-2 rounded-lg border border-border/60 bg-background/60 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">启用触发器</p>
-              <p className="text-xs text-muted-foreground">关闭后该入口会返回 404，不再接受新的 webhook 请求。</p>
-            </div>
-            <Switch
-              checked={isEnabled}
-              onCheckedChange={(checked) =>
-                setValue('isEnabled', checked, { shouldDirty: true, shouldValidate: true })
-              }
-            />
-          </div>
+      {/* 启用开关独立成行（三种触发器表单统一），不与输入框同排拉伸 */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted p-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">启用触发器</p>
+          <p className="text-xs text-muted-foreground">关闭后该入口会返回 404，不再接受新的 webhook 请求。</p>
         </div>
+        <Switch
+          aria-label="启用触发器"
+          className="shrink-0"
+          checked={isEnabled}
+          onCheckedChange={(checked) =>
+            setValue('isEnabled', checked, { shouldDirty: true, shouldValidate: true })
+          }
+        />
       </div>
 
-      <label htmlFor="webhook-trigger-description" className="block space-y-2">
-        <Label>描述</Label>
+      <FormField label="触发器名称" htmlFor="webhook-trigger-name" error={errors.name?.message}>
+        <Input
+          id="webhook-trigger-name"
+          placeholder="例如：CRM 回调入口"
+          {...register('name')}
+        />
+      </FormField>
+
+      <FormField label="描述" htmlFor="webhook-trigger-description" error={errors.description?.message}>
         <Textarea
           id="webhook-trigger-description"
           rows={3}
@@ -94,10 +90,7 @@ export function WebhookConfigForm({
           placeholder="说明这个 webhook 的来源系统与用途"
           {...register('description')}
         />
-        {errors.description && (
-          <p className="text-xs text-error">{errors.description.message}</p>
-        )}
-      </label>
+      </FormField>
 
       <fieldset>
         <legend id="webhook-auth-mode-label" className="mb-2 text-sm font-medium text-foreground">
@@ -125,7 +118,7 @@ export function WebhookConfigForm({
                 'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
                 authMode === option.value
                   ? 'border-primary/50 bg-primary/10'
-                  : 'border-border/60 bg-background/60 hover:border-border',
+                  : 'border-border bg-surface hover:border-border-hover',
               )}
             >
               <RadioGroupItem id={option.id} value={option.value} className="mt-0.5" />
@@ -140,10 +133,12 @@ export function WebhookConfigForm({
         </RadioGroup>
       </fieldset>
 
-      <div className="space-y-2">
-        <label htmlFor="webhook-ip-whitelist" className="block">
-          <Label>IP 白名单</Label>
-        </label>
+      <FormField
+        label="IP 白名单"
+        htmlFor="webhook-ip-whitelist"
+        error={errors.webhook?.ipWhitelist?.message}
+        hint="留空表示不限制来源 IP，支持 IPv4 / IPv6 与 CIDR。来源 IP 不在白名单时请求返回 403。Token 由服务端生成并长期保留；secret 仅会在首次创建成功后展示一次。"
+      >
         <Textarea
           id="webhook-ip-whitelist"
           rows={4}
@@ -151,16 +146,10 @@ export function WebhookConfigForm({
           className="font-mono"
           {...register('webhook.ipWhitelist')}
         />
-        <p className="text-xs text-muted-foreground">
-          留空表示不限制来源 IP，支持 IPv4 / IPv6 与 CIDR。来源 IP 不在白名单时请求返回 403。Token 由服务端生成并长期保留；secret 仅会在首次创建成功后展示一次。
-        </p>
-        {errors.webhook?.ipWhitelist && (
-          <p className="text-xs text-error">{errors.webhook.ipWhitelist.message}</p>
-        )}
-      </div>
+      </FormField>
 
       {webhookConfig ? (
-        <div className="space-y-3 rounded-xl border border-border/70 bg-background/60 p-4">
+        <div className="space-y-3 rounded-lg border border-border bg-muted p-4">
           <div>
             <p className="text-sm font-medium text-foreground">当前 Webhook 入口</p>
             <p className="text-xs text-muted-foreground">
@@ -169,19 +158,19 @@ export function WebhookConfigForm({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-primary">
+            <p className="text-xs font-medium tracking-wide text-primary">
               Webhook URL
             </p>
-            <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">
+            <code className="block break-all rounded-md border border-border bg-surface px-3 py-2 text-xs text-foreground/90">
               {buildWebhookUrl(webhookConfig.token)}
             </code>
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-primary">
+            <p className="text-xs font-medium tracking-wide text-primary">
               Token
             </p>
-            <code className="block break-all rounded-lg border border-border/70 bg-black/20 px-3 py-2 text-xs text-foreground/90">
+            <code className="block break-all rounded-md border border-border bg-surface px-3 py-2 text-xs text-foreground/90">
               {webhookConfig.token}
             </code>
           </div>

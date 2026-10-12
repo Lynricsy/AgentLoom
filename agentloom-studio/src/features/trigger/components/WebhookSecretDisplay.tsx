@@ -96,13 +96,13 @@ export function WebhookSecretDisplay({
   return (
     <section
       className={cn(
-        'space-y-4 rounded-xl border border-primary/30 bg-primary/10 p-4',
+        'space-y-4 rounded-lg border border-primary/30 bg-primary/10 p-4',
         className,
       )}
     >
       <div className="space-y-1">
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium uppercase tracking-wider text-primary">
-          <KeyRound className="h-3.5 w-3.5" />
+        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-2xs font-medium tracking-wide text-primary">
+          <KeyRound className="size-3.5 shrink-0" />
           Webhook 凭证
         </div>
         <p className="text-sm text-foreground">
@@ -111,7 +111,7 @@ export function WebhookSecretDisplay({
       </div>
 
       <CredentialField
-        icon={<LinkIcon className="h-4 w-4" />}
+        icon={<LinkIcon className="size-4" />}
         label="Webhook URL"
         value={webhookUrl}
         copyLabel="Webhook URL"
@@ -119,7 +119,7 @@ export function WebhookSecretDisplay({
       />
 
       <CredentialField
-        icon={<KeyRound className="h-4 w-4" />}
+        icon={<KeyRound className="size-4" />}
         label="Token"
         value={token}
         copyLabel="Token"
@@ -127,7 +127,7 @@ export function WebhookSecretDisplay({
       />
 
       <CredentialField
-        icon={isSecretVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        icon={<KeyRound className="size-4" />}
         label="Secret"
         value={secret}
         displayValue={isSecretVisible ? secret : '•'.repeat(Math.max(secret.length, 24))}
@@ -137,10 +137,13 @@ export function WebhookSecretDisplay({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-2xs text-primary hover:bg-primary/20"
+            size="xs"
+            className="text-primary hover:bg-primary/20"
+            aria-pressed={isSecretVisible}
             onClick={() => setIsSecretVisible((current) => !current)}
           >
+            {/* 图标表达点击后的动作，而不是当前状态 */}
+            {isSecretVisible ? <EyeOff /> : <Eye />}
             {isSecretVisible ? '隐藏' : '显示'}
           </Button>
         }
@@ -246,16 +249,15 @@ function CredentialField({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-7 gap-1 px-2 text-2xs"
+            size="xs"
             onClick={() => void onCopy(value, copyLabel)}
           >
-            <Copy className="h-3.5 w-3.5" />
+            <Copy />
             复制
           </Button>
         </div>
       </div>
-      <code className="block overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs text-foreground">
+      <code className="block select-all break-all rounded-md bg-muted px-3 py-2 text-xs text-foreground">
         {displayValue ?? value}
       </code>
     </div>

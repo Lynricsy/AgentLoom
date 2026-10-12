@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Clock3, ExternalLink, Loader2 } from 'lucide-react'
+import { Clock3, ExternalLink, History, TriangleAlert } from 'lucide-react'
 import { Pagination } from '@/shared/components/Pagination'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { formatDateTime, formatNumber } from '@/shared/lib/format'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -19,48 +21,21 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { cn } from '@/shared/lib/utils'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { useTriggerHistory } from '../api/triggerQueries'
+import { TRIGGER_HISTORY_STATUS_META } from '../lib/triggerMeta'
 import type { Trigger, TriggerHistoryRecord, TriggerHistoryStatus } from '../types'
 
-const statusLabels: Record<TriggerHistoryStatus, string> = {
-  success: '成功',
-  failed: '失败',
-  skipped: '跳过',
-  signature_failed: '签名失败',
-  ip_rejected: 'IP 被拒',
-}
-
-const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
-  success: 'border-success/30 bg-success/10 text-success',
-  failed: 'border-error/30 bg-error/10 text-error',
-  skipped: 'border-border bg-muted text-muted-foreground',
-  signature_failed: 'border-warning/30 bg-warning/10 text-warning',
-  ip_rejected: 'border-error/30 bg-error/10 text-error',
-}
+const STATUS_FILTER_OPTIONS = Object.entries(TRIGGER_HISTORY_STATUS_META) as Array<
+  [TriggerHistoryStatus, (typeof TRIGGER_HISTORY_STATUS_META)[TriggerHistoryStatus]]
+>
 
 interface TriggerHistoryDialogProps {
   workflowId: string
   trigger: Trigger | null
   open: boolean
   onOpenChange: (open: boolean) => void
-}
-
-function formatTriggeredAt(value: string): string {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
 }
 
 export function TriggerHistoryDialog({
@@ -120,7 +95,7 @@ export function TriggerHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="xl" className="sm:max-h-[80vh]">
+      <DialogContent size="xl">
         <DialogHeader>
           <DialogTitle>触发历史记录</DialogTitle>
           <DialogDescription>
@@ -129,13 +104,13 @@ export function TriggerHistoryDialog({
         </DialogHeader>
 
         <DialogBody className="flex min-h-0 flex-col">
-          <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-background/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-xs font-medium tracking-wide text-muted-foreground">
                 筛选条件
               </p>
-              <p className="text-sm text-foreground">
-                {meta ? `共 ${meta.total} 条记录` : '按状态查看最近触发结果'}
+              <p className="text-sm text-foreground tabular-nums">
+                {meta ? `共 ${formatNumber(meta.total)} 条记录` : '按状态查看最近触发结果'}
               </p>
             </div>
 
@@ -152,11 +127,11 @@ export function TriggerHistoryDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部状态</SelectItem>
-                  <SelectItem value="success">成功</SelectItem>
-                  <SelectItem value="failed">失败</SelectItem>
-                  <SelectItem value="skipped">跳过</SelectItem>
-                  <SelectItem value="signature_failed">签名失败</SelectItem>
-                  <SelectItem value="ip_rejected">IP 被拒</SelectItem>
+                  {STATUS_FILTER_OPTIONS.map(([value, statusMeta]) => (
+                    <SelectItem key={value} value={value}>
+                      {statusMeta.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -164,66 +139,66 @@ export function TriggerHistoryDialog({
 
           <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
             {historyQuery.isLoading ? (
-              <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-border/70 bg-background/30">
-                <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  正在加载触发历史…
-                </div>
+              <div className="space-y-3" data-testid="trigger-history-loading">
+                {Array.from({ length: 3 }, (_, index) => (
+                  <Skeleton key={index} className="h-[7.5rem] w-full rounded-lg" />
+                ))}
               </div>
             ) : historyQuery.isError ? (
-              <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-error/20 bg-error/10 px-6 text-center">
-                <p className="text-sm text-error">
-                  无法加载触发历史，请稍后重试。
-                </p>
-              </div>
+              <EmptyState
+                icon={TriangleAlert}
+                tone="var(--color-error)"
+                title="无法加载触发历史"
+                description="请稍后重试。"
+              />
             ) : records.length === 0 ? (
-              <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/30 px-6 text-center">
-                <div>
-                  <p className="text-base font-medium text-foreground">暂无历史记录</p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    当前筛选条件下还没有触发结果。
-                  </p>
-                </div>
-              </div>
+              <EmptyState
+                icon={History}
+                title="暂无历史记录"
+                description="当前筛选条件下还没有触发结果。"
+              />
             ) : (
-              <div className="space-y-3">
+              <div
+                className={cn(
+                  'space-y-3 transition-opacity duration-150',
+                  historyQuery.isFetching && 'opacity-60',
+                )}
+              >
                 {records.map((record) => (
                   <article
                     key={record.id}
-                    className="rounded-xl border border-border/70 bg-background/60 p-4"
+                    className="rounded-lg border border-border bg-surface p-4"
                   >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
+                      <div className="min-w-0 flex-1 space-y-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={cn(
-                              'inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-wider',
-                              statusBadgeClassNames[record.status],
-                            )}
+                          <StatusBadge
+                            tone={TRIGGER_HISTORY_STATUS_META[record.status].tone}
+                            size="sm"
                           >
-                            {statusLabels[record.status]}
-                          </span>
-                          <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock3 className="h-3.5 w-3.5" />
-                            {formatTriggeredAt(record.triggeredAt)}
+                            {TRIGGER_HISTORY_STATUS_META[record.status].label}
+                          </StatusBadge>
+                          <span className="inline-flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                            <Clock3 className="size-3.5 shrink-0" />
+                            {formatDateTime(record.triggeredAt)}
                           </span>
                         </div>
 
                         <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                          <div>
+                          <div className="min-w-0">
                             <span className="font-medium text-foreground">记录 ID：</span>{' '}
-                            <code className="text-xs text-foreground/90">{record.id}</code>
+                            <code className="break-all text-xs text-foreground/90">{record.id}</code>
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <span className="font-medium text-foreground">执行 ID：</span>{' '}
                             {record.executionId ? (
                               <Button
                                 variant="link"
-                                className="h-auto gap-1 p-0 font-normal hover:text-primary/80"
+                                className="h-auto max-w-full gap-1 whitespace-normal break-all p-0 text-left font-normal hover:text-primary/80"
                                 onClick={() => handleViewExecution(record)}
                               >
-                                <code className="text-xs">{record.executionId}</code>
-                                <ExternalLink className="h-3.5 w-3.5" />
+                                <code className="min-w-0 text-xs">{record.executionId}</code>
+                                <ExternalLink className="shrink-0" />
                               </Button>
                             ) : (
                               '—'
@@ -232,7 +207,7 @@ export function TriggerHistoryDialog({
                         </div>
 
                         {record.errorMessage ? (
-                          <div className="rounded-lg border border-error/20 bg-error/10 p-3 text-sm text-error">
+                          <div className="whitespace-pre-wrap break-words rounded-lg border border-error/30 bg-error/10 p-3 text-sm text-error">
                             {record.errorMessage}
                           </div>
                         ) : null}
@@ -242,11 +217,11 @@ export function TriggerHistoryDialog({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="shrink-0 gap-1.5"
+                          className="shrink-0"
                           onClick={() => handleViewExecution(record)}
                         >
                           查看执行
-                          <ExternalLink className="h-3.5 w-3.5" />
+                          <ExternalLink />
                         </Button>
                       ) : null}
                     </div>

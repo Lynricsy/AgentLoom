@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowLeft, CalendarClock, Loader2, RadioTower, Webhook } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { fadeIn } from '@/shared/lib/motion'
+import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -20,6 +23,7 @@ import {
   useUpdateTrigger,
 } from '../api/triggerQueries'
 import { isValidIpAllowlistEntry, parseIpAllowlist } from '../lib/ipAllowlist'
+import { TRIGGER_TYPE_META } from '../lib/triggerMeta'
 import {
   hasWebhookSecret,
   isApiEventConfig,
@@ -40,33 +44,30 @@ import { WebhookSecretDisplay } from './WebhookSecretDisplay'
 
 const cronExpressionPattern = /^(\S+\s+){4}\S+$/
 
+/** 类型选项的文案与图标；配色复用 TRIGGER_TYPE_META，与触发器卡片保持一致 */
 const typeOptions: Array<{
   value: TriggerType
   label: string
   description: string
   icon: React.ReactNode
-  toneClassName: string
 }> = [
   {
     value: 'cron',
     label: 'Cron 定时器',
     description: '按固定时间计划自动运行工作流。',
-    icon: <CalendarClock className="h-5 w-5" />,
-    toneClassName: 'border-info/20 bg-info/10 text-info hover:border-info/40 hover:bg-info/15',
+    icon: <CalendarClock className="size-5" />,
   },
   {
     value: 'webhook',
     label: 'Webhook',
     description: '为外部系统提供 HTTP 回调入口。',
-    icon: <Webhook className="h-5 w-5" />,
-    toneClassName: 'border-primary/20 bg-primary/10 text-primary hover:border-primary/40 hover:bg-primary/15',
+    icon: <Webhook className="size-5" />,
   },
   {
     value: 'api_event',
     label: 'API Event',
     description: '通过事件契约与过滤条件触发工作流执行。',
-    icon: <RadioTower className="h-5 w-5" />,
-    toneClassName: 'border-warning/20 bg-warning/10 text-warning hover:border-warning/40 hover:bg-warning/15',
+    icon: <RadioTower className="size-5" />,
   },
 ]
 
@@ -388,8 +389,9 @@ export function TriggerCreateDialog({
           <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
 
+        <AnimatePresence mode="wait" initial={false}>
         {createdWebhookTrigger?.type === 'webhook' && hasWebhookSecret(createdWebhookTrigger.config) ? (
-          <>
+          <motion.div key="credentials" {...fadeIn} className="flex min-h-0 flex-1 flex-col">
             <DialogBody className="space-y-5">
               <WebhookSecretDisplay
                 token={createdWebhookTrigger.config.token}
@@ -402,13 +404,18 @@ export function TriggerCreateDialog({
                 完成
               </Button>
             </DialogFooter>
-          </>
+          </motion.div>
         ) : selectedType ? (
-          <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <motion.form
+            key="config"
+            {...fadeIn}
+            onSubmit={onSubmit}
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <DialogBody className="space-y-5">
               {!isEditing ? (
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/40 p-4">
-                  <div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted p-4">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">当前类型</p>
                     <p className="text-xs text-muted-foreground">
                       {typeOptions.find((option) => option.value === selectedType)?.label}
@@ -417,10 +424,9 @@ export function TriggerCreateDialog({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="gap-1.5"
                     onClick={() => setSelectedType(null)}
                   >
-                    <ArrowLeft className="h-3.5 w-3.5" />
+                    <ArrowLeft />
                     重新选择
                   </Button>
                 </div>
@@ -458,21 +464,24 @@ export function TriggerCreateDialog({
               <DialogClose asChild>
                 <Button variant="outline">取消</Button>
               </DialogClose>
-              <Button type="submit" className="gap-2" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="animate-spin" /> : null}
                 {isEditing ? '保存更改' : '创建触发器'}
               </Button>
             </DialogFooter>
-          </form>
+          </motion.form>
         ) : (
-          <>
+          <motion.div key="type-select" {...fadeIn} className="flex min-h-0 flex-1 flex-col">
             <DialogBody>
               <div className="grid gap-3 md:grid-cols-3">
                 {typeOptions.map((option) => (
                   <Button
                     key={option.value}
                     variant="ghost"
-                    className={`h-auto flex-col items-start justify-start gap-0 whitespace-normal rounded-xl border p-4 text-left font-normal ${option.toneClassName}`}
+                    className={cn(
+                      'h-auto flex-col items-start justify-start gap-0 whitespace-normal rounded-lg border p-4 text-left font-normal',
+                      TRIGGER_TYPE_META[option.value].optionClassName,
+                    )}
                     onClick={() => handleSelectType(option.value)}
                   >
                     <div className="inline-flex items-center gap-2 text-sm font-medium">
@@ -489,8 +498,9 @@ export function TriggerCreateDialog({
                 <Button variant="outline">取消</Button>
               </DialogClose>
             </DialogFooter>
-          </>
+          </motion.div>
         )}
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

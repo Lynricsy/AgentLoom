@@ -8,11 +8,13 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react'
+import { formatDateTime, formatNumber } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
-import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { Switch } from '@/shared/ui/switch'
+import { TRIGGER_TYPE_META } from '../lib/triggerMeta'
 import {
   isApiEventConfig,
   isCronConfig,
@@ -21,28 +23,6 @@ import {
   type WebhookAuthMode,
 } from '../types'
 import { buildWebhookUrl } from './WebhookSecretDisplay'
-
-/** 触发器类型 → 语义语气：webhook=信息、定时=预警、API 事件=品牌 */
-const TYPE_META: Record<
-  Trigger['type'],
-  { label: string; tone: StatusTone; cardClassName: string }
-> = {
-  cron: {
-    label: '定时触发',
-    tone: 'warning',
-    cardClassName: 'border-warning/20 bg-warning/5',
-  },
-  webhook: {
-    label: 'Webhook',
-    tone: 'info',
-    cardClassName: 'border-info/20 bg-info/5',
-  },
-  api_event: {
-    label: 'API Event',
-    tone: 'primary',
-    cardClassName: 'border-primary/20 bg-primary/5',
-  },
-}
 
 const webhookAuthModeLabels: Record<WebhookAuthMode, string> = {
   simple: 'Simple（仅校验 Token 与 IP 白名单）',
@@ -56,28 +36,6 @@ interface TriggerCardProps {
   onDelete: (trigger: Trigger) => void
   onToggle: (trigger: Trigger) => void
   onViewHistory: (trigger: Trigger) => void
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return '—'
-  }
-
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
 }
 
 function getCronDescription(trigger: Trigger): string | null {
@@ -116,36 +74,34 @@ export const TriggerCard = memo(function TriggerCard({
     return webhookAuthModeLabels[trigger.config.authMode ?? 'signed']
   }, [trigger])
 
-  const typeMeta = TYPE_META[trigger.type]
+  const typeMeta = TRIGGER_TYPE_META[trigger.type]
 
   return (
-    <Card
-      className={cn(
-        'p-4',
-        typeMeta.cardClassName,
-        trigger.isEnabled ? 'hover:border-primary/40' : 'opacity-80 saturate-75',
-      )}
-    >
+    <Card className={cn('p-4', typeMeta.cardClassName)}>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="space-y-4">
+        <div className="min-w-0 flex-1 space-y-4">
           <div className="flex flex-wrap items-start gap-3">
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-semibold text-foreground">{trigger.name}</h3>
-                <StatusBadge
-                  tone={typeMeta.tone}
-                  size="sm"
-                  className="px-2.5 py-1 uppercase tracking-wider"
-                >
+            {/* 停用态只淡化内容，开关区保持满色便于辨认当前状态 */}
+            <div
+              className={cn(
+                'min-w-0 flex-1 space-y-1.5 transition-opacity duration-150',
+                !trigger.isEnabled && 'opacity-70',
+              )}
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h3 className="min-w-0 break-words text-base font-semibold text-foreground">
+                  {trigger.name}
+                </h3>
+                <StatusBadge tone={typeMeta.tone} size="sm" className="shrink-0">
                   {typeMeta.label}
                 </StatusBadge>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="break-words text-sm text-muted-foreground">
                 {trigger.description?.trim() || '未填写描述'}
               </p>
             </div>
 
-            <div className="rounded-lg border border-border bg-surface px-3 py-2">
+            <div className="shrink-0 rounded-lg border border-border bg-surface px-3 py-2">
               <div className="flex items-center gap-3">
                 <div>
                   <p className="text-xs font-medium text-foreground">
@@ -156,6 +112,7 @@ export const TriggerCard = memo(function TriggerCard({
                   </p>
                 </div>
                 <Switch
+                  aria-label="启用触发器"
                   checked={trigger.isEnabled}
                   onCheckedChange={() => onToggle(trigger)}
                 />
@@ -163,22 +120,28 @@ export const TriggerCard = memo(function TriggerCard({
             </div>
           </div>
 
+          <div
+            className={cn(
+              'space-y-4 transition-opacity duration-150',
+              !trigger.isEnabled && 'opacity-70',
+            )}
+          >
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <InfoTile label="最近触发" value={formatDateTime(trigger.lastTriggeredAt)} icon={<Clock3 className="size-4" />} />
             <InfoTile label="下次执行" value={formatDateTime(trigger.nextFireAt)} icon={<Zap className="size-4" />} />
-            <InfoTile label="触发次数" value={`${trigger.triggerCount} 次`} icon={<History className="size-4" />} />
+            <InfoTile label="触发次数" value={`${formatNumber(trigger.triggerCount)} 次`} icon={<History className="size-4" />} />
           </div>
 
           {cronDescription ? (
             <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-wider text-warning">执行计划</p>
-              <p className="mt-2">{cronDescription}</p>
+              <p className="text-xs font-medium tracking-wide text-warning">执行计划</p>
+              <p className="mt-2 break-words">{cronDescription}</p>
             </div>
           ) : null}
 
           {trigger.type === 'webhook' && webhookUrl ? (
             <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-wider text-info">Webhook 入口</p>
+              <p className="text-xs font-medium tracking-wide text-info">Webhook 入口</p>
               <div className="mt-2 flex items-start gap-2 text-muted-foreground">
                 <LinkIcon className="mt-0.5 size-4 shrink-0 text-info" />
                 <code className="break-all text-xs text-foreground">{webhookUrl}</code>
@@ -186,7 +149,7 @@ export const TriggerCard = memo(function TriggerCard({
               {webhookAuthModeLabel ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   验证模式：
-                  <code className="ml-1 rounded-xs bg-surface px-1.5 py-0.5 text-foreground">
+                  <code className="ml-1 break-words rounded-xs bg-surface px-1.5 py-0.5 text-foreground">
                     {webhookAuthModeLabel}
                   </code>
                 </p>
@@ -196,15 +159,15 @@ export const TriggerCard = memo(function TriggerCard({
 
           {trigger.type === 'api_event' && isApiEventConfig(trigger.config) ? (
             <div className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
-              <p className="text-xs font-medium uppercase tracking-wider text-primary">事件契约</p>
+              <p className="text-xs font-medium tracking-wide text-primary">事件契约</p>
               <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-                <span>事件源：{trigger.config.eventSource}</span>
-                <span>事件类型：{trigger.config.eventType}</span>
+                <span className="min-w-0 break-all">事件源：{trigger.config.eventSource}</span>
+                <span className="min-w-0 break-all">事件类型：{trigger.config.eventType}</span>
               </div>
               {trigger.config.filterExpression ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   过滤表达式：
-                  <code className="ml-1 rounded-xs bg-surface px-1.5 py-0.5 text-foreground">
+                  <code className="ml-1 break-all rounded-xs bg-surface px-1.5 py-0.5 text-foreground">
                     {trigger.config.filterExpression}
                   </code>
                 </p>
@@ -216,13 +179,14 @@ export const TriggerCard = memo(function TriggerCard({
               ) : null}
             </div>
           ) : null}
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2 xl:flex-col xl:items-stretch">
           <Button
             variant="outline"
             size="sm"
-            className="justify-center gap-1.5"
+            className="justify-center"
             onClick={() => onViewHistory(trigger)}
           >
             <History />
@@ -231,7 +195,7 @@ export const TriggerCard = memo(function TriggerCard({
           <Button
             variant="ghost"
             size="sm"
-            className="justify-center gap-1.5"
+            className="justify-center"
             onClick={() => onEdit(trigger)}
           >
             <PencilLine />
@@ -240,7 +204,7 @@ export const TriggerCard = memo(function TriggerCard({
           <Button
             variant="ghost"
             size="sm"
-            className="justify-center gap-1.5 text-error hover:bg-error/10 hover:text-error"
+            className="justify-center text-error hover:bg-error/10 hover:text-error"
             onClick={() => onDelete(trigger)}
           >
             <Trash2 />
@@ -261,11 +225,11 @@ interface InfoTileProps {
 function InfoTile({ label, value, icon }: InfoTileProps) {
   return (
     <div className="rounded-lg border border-border bg-muted p-3">
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted-foreground">
         {icon}
         {label}
       </div>
-      <p className="mt-2 text-sm text-foreground">{value}</p>
+      <p className="mt-2 text-sm text-foreground tabular-nums">{value}</p>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from 'react-hook-form'
 import cronstrue from 'cronstrue'
-import { Label } from '@/shared/ui/label'
+import { FormField } from '@/shared/components/form-field/FormField'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -55,31 +55,26 @@ export function CronConfigForm({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <label htmlFor="trigger-name" className="space-y-2">
-          <Label>触发器名称</Label>
-          <Input id="trigger-name" placeholder="例如：工作日早报" {...register('name')} />
-          {errors.name && <p className="text-xs text-error">{errors.name.message}</p>}
-        </label>
-
-        <div className="space-y-2 rounded-lg border border-border/60 bg-background/60 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">启用触发器</p>
-              <p className="text-xs text-muted-foreground">关闭后不再自动触发工作流。</p>
-            </div>
-            <Switch
-              checked={isEnabled}
-              onCheckedChange={(checked) =>
-                setValue('isEnabled', checked, { shouldDirty: true, shouldValidate: true })
-              }
-            />
-          </div>
+      {/* 启用开关独立成行（三种触发器表单统一），不与输入框同排拉伸 */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted p-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">启用触发器</p>
+          <p className="text-xs text-muted-foreground">关闭后不再自动触发工作流。</p>
         </div>
+        <Switch
+          aria-label="启用触发器"
+          checked={isEnabled}
+          onCheckedChange={(checked) =>
+            setValue('isEnabled', checked, { shouldDirty: true, shouldValidate: true })
+          }
+        />
       </div>
 
-      <label htmlFor="trigger-description" className="block space-y-2">
-        <Label>描述</Label>
+      <FormField label="触发器名称" htmlFor="trigger-name" error={errors.name?.message}>
+        <Input id="trigger-name" placeholder="例如：工作日早报" {...register('name')} />
+      </FormField>
+
+      <FormField label="描述" htmlFor="trigger-description" error={errors.description?.message}>
         <Textarea
           id="trigger-description"
           rows={3}
@@ -87,27 +82,23 @@ export function CronConfigForm({
           placeholder="说明这个定时触发器的用途"
           {...register('description')}
         />
-        {errors.description && (
-          <p className="text-xs text-error">{errors.description.message}</p>
-        )}
-      </label>
+      </FormField>
 
       <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
-        <label htmlFor="cron-expression" className="space-y-2">
-          <Label>Cron 表达式</Label>
+        <FormField
+          label="Cron 表达式"
+          htmlFor="cron-expression"
+          hint="使用 5 段格式：分 时 日 月 周"
+          error={errors.cron?.expression?.message}
+        >
           <Input
             id="cron-expression"
             placeholder="例如：0 9 * * 1-5"
             {...register('cron.expression')}
           />
-          <p className="text-xs text-muted-foreground">使用 5 段格式：分 时 日 月 周</p>
-          {errors.cron?.expression && (
-            <p className="text-xs text-error">{errors.cron.expression.message}</p>
-          )}
-        </label>
+        </FormField>
 
-        <div className="space-y-2">
-          <Label>时区</Label>
+        <FormField label="时区" htmlFor="cron-timezone" error={errors.cron?.timezone?.message}>
           <Select
             value={timezone}
             onValueChange={(value) =>
@@ -125,14 +116,11 @@ export function CronConfigForm({
               ))}
             </SelectContent>
           </Select>
-          {errors.cron?.timezone && (
-            <p className="text-xs text-error">{errors.cron.timezone.message}</p>
-          )}
-        </div>
+        </FormField>
       </div>
 
-      <div className="rounded-xl border border-info/20 bg-info/10 p-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-info">执行预览</p>
+      <div className="rounded-lg border border-info/30 bg-info/10 p-4">
+        <p className="text-xs font-medium tracking-wide text-info">执行预览</p>
         <p className="mt-2 text-sm text-foreground">{getCronPreview(expression)}</p>
         <p className="mt-2 text-xs text-muted-foreground">当前时区：{timezone || 'UTC'}</p>
       </div>
