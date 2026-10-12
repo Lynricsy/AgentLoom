@@ -82,13 +82,15 @@ export class SessionStartError extends Error {
 function resolveEffectiveRequest(
   config: SandboxConfig,
   request: CreateSessionRequest,
-): { request: CreateSessionRequest; provider: string; model: string } {
+): { request: CreateSessionRequest; provider: string; model: string; thinkingLevel?: string } {
   const settings = { ...(config.settings ?? {}), ...(request.settings ?? {}) };
   const provider = settings['defaultProvider'];
   const model = settings['defaultModel'];
   if (typeof provider !== 'string' || provider.length === 0 || typeof model !== 'string' || model.length === 0) {
     throw new Error('会话缺少模型配置：settings.defaultProvider / settings.defaultModel 必填');
   }
+  // server 由 Agent 画布 llm-model 节点写入；是否受模型支持由 bridge 判定
+  const thinkingLevel = settings['defaultThinkingLevel'];
   return {
     request: {
       ...request,
@@ -98,6 +100,7 @@ function resolveEffectiveRequest(
     },
     provider,
     model,
+    ...(typeof thinkingLevel === 'string' && thinkingLevel.length > 0 ? { thinkingLevel } : {}),
   };
 }
 
@@ -106,7 +109,7 @@ export function createDshSessionFactory(options: DshSessionFactoryOptions): Sess
   const startupTimeoutMs = options.startupTimeoutMs ?? DSH_STARTUP_TIMEOUT_MS;
 
   return async (cwd, config, rawRequest) => {
-    const { request, provider, model } = resolveEffectiveRequest(config, rawRequest);
+    const { request, provider, model, thinkingLevel } = resolveEffectiveRequest(config, rawRequest);
     const sessionId = request.sessionId;
     if (!sessionId) throw new Error('A sessionId is required to start a dsh session');
 
@@ -138,6 +141,7 @@ export function createDshSessionFactory(options: DshSessionFactoryOptions): Sess
         cwd,
         provider,
         model,
+        ...(thinkingLevel ? { thinkingLevel } : {}),
         ...(request.remoteToolExecution
           ? { remoteToolExecution: request.remoteToolExecution }
           : {}),

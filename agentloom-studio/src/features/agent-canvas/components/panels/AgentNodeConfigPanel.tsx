@@ -8,6 +8,7 @@ import {
 } from '@/features/canvas';
 import { Button } from '@/shared/ui/button';
 import { AgentMainConfigPanel } from './AgentMainConfigPanel';
+import { LlmThinkingLevelField } from './LlmThinkingLevelField';
 import {
   useAgentCanvasSelectedNodeId,
   useAgentCanvasNodes,
@@ -45,9 +46,26 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   if (!selectedNode) return null;
 
   const nodeData = selectedNode.data as CanvasNodeData;
+  const isLlmModelNode = nodeData.nodeType === 'llm-model';
 
   // 查找共享注册表中的面板
   const customPanel = CUSTOM_PANEL_REGISTRY[nodeData.nodeType as string];
+
+  // 共享 LLM 面板切换模型时会整体替换 config，需保留 Agent 画布专属的思考强度
+  const handleCustomPanelChange = (patch: Record<string, unknown>) => {
+    const thinkingLevel = nodeData.config?.thinkingLevel;
+    const patchConfig = patch.config;
+    if (
+      isLlmModelNode &&
+      thinkingLevel !== undefined &&
+      patchConfig !== null &&
+      typeof patchConfig === 'object'
+    ) {
+      handlePatchNode({ ...patch, config: { ...patchConfig, thinkingLevel } });
+      return;
+    }
+    handlePatchNode(patch);
+  };
 
   return (
     <div
@@ -83,11 +101,24 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
         onWheelCapture={handleWheelCapture}
       >
         {customPanel ? (
-          customPanel.render({
-            node: selectedNode as unknown as CanvasNode,
-            onConfigChange: handlePatchNode,
-            onValidationChange: () => {},
-          })
+          <>
+            {customPanel.render({
+              node: selectedNode as unknown as CanvasNode,
+              onConfigChange: handleCustomPanelChange,
+              onValidationChange: () => {},
+            })}
+            {isLlmModelNode && (
+              <LlmThinkingLevelField
+                nodeId={selectedNode.id}
+                config={nodeData.config ?? {}}
+                onChange={(thinkingLevel) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { ...nodeData.config, thinkingLevel },
+                  })
+                }
+              />
+            )}
+          </>
         ) : (
           <AgentOnlyNodeConfig
             nodeData={nodeData}

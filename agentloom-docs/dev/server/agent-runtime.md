@@ -62,6 +62,13 @@ guest 内的 Agent 需要调用服务端工具（MCP、知识库、子 Agent 等
 
 会话初始化请求 `/v1/session` 要等 guest 启动 dsh 子进程，超时按会话内容放宽（`agentloom-server/src/modules/agent/sandbox-model-config.service.ts`）：单次请求 45 s、含就绪重试共 60 s；带 MCP server 时 90 s / 120 s；每个启用的 npm 来源 runtime 插件给单次请求再加 180 s，此时总时长为单次请求加 30 s。
 
+### 主模型思考强度
+
+Agent 画布 `llm-model` 节点 config 的 `thinkingLevel`（`AGENT_THINKING_LEVELS`：`off`、`minimal`、`low`、`medium`、`high`、`xhigh`，与 pi `ThinkingLevel` 对齐）由 `AgentDefinitionService.extractModelConfig` 编译进 `AgentRuntimeConfig.modelConfig.thinkingLevel`；节点 config 保存时不按节点类型校验，非法值在编译时丢弃，等同缺省。经智能路由选模型时 `modelConfig` 只有路由选中的 id，不带思考强度。
+
+- `no_sandbox`：`PiAgentCoreAdapter.createSession` 把它写入 pi Agent 的 `initialState.thinkingLevel`；缺省时不写，pi-agent-core 默认 `off`。
+- `sandbox`：`SandboxModelConfigService` 把它叠加到会话 `PiModelConfig`（租户存储配置与 runtimeConfig 快照回退两条路径都叠加），`PiConfigGeneratorService.generateSettings` 写成 `settings.defaultThinkingLevel`，guest 再交给 bridge（见下文 [agentloom-bridge](#agentloom-bridge)）。缺省时不写，dsh 沿用 adapter 默认。
+
 ### guest 内的 Agent 核心：DeepSeek Harness
 
 guest 内的 Node 服务 `@agentloom/sandbox`（`agentloom-deploy/sandbox/`）对外仍是 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/pty/*` 这组 HTTP/SSE 契约，server 侧的 `agentloom-server/src/modules/agent/sandbox-event-decoder.ts` 按同一套事件解码。契约之下，每个会话对应一个 `dsh --profile agentloom` 子进程（`@deepseek-ai/dsh`，版本见 `agentloom-deploy/sandbox/package.json`），guest 进程本身不跑模型循环。
@@ -117,6 +124,7 @@ sequenceDiagram
 - **敏感配置走 socket**：远程工具描述（含会话回调令牌）与原生工具策略作为 `initialize` 参数下发，不写进 patch 文件，因为 Agent 的终端能读到会话目录。
 - **事件映射**：dsh 的会话事件与助手流帧被映射为 guest 原有的 `SandboxAgentEvent`（`agentloom-deploy/sandbox/src/dsh-bridge/event-mapper.ts`），再由 `agentloom-deploy/sandbox/src/event-stream.ts` 翻译为 SSE。`turn/end` 的 `completed`、`aborted` 分别对应 `done` 的 `end_turn`、`cancelled`；`error` 产生一条错误消息后结束。
 - **原生工具策略**：经 `ctx.tools.guard` 拒绝被关闭的工具，模型收到「该工具已被 Agent 原生工具策略禁用」。读取关闭 `read`、`read_image`、`glob`、`grep`；写入关闭 `write`；编辑关闭 `edit`、`str_replace_editor`；终端关闭 `bash` 与五个 `pty_*` 工具。dsh 的 `skill` 工具不受策略约束。
+- **思考强度**：`initialize` 的 `thinkingLevel` 来自会话 `settings.defaultThinkingLevel`。bridge 用 `ctx.llm.resolveModelInfo` 读取该路由声明的 `reasoning.efforts`，包含该值才作为 `reasoningEffort` 交给 `ctx.llm.resolveCallConfig` 与 `ctx.agents.create`；不包含时经 `ctx.logger` 告警（含强度与 `provider/model`）并省略，沿用 adapter 默认。dsh 对不受支持的强度会在请求前报 `UNSUPPORTED_REASONING_EFFORT`，所以不能原样透传。
 - **PTY**：`pty_spawn`、`pty_write`、`pty_read`、`pty_list`、`pty_kill` 由 bridge 注册，PTY 事件经 `event` 通知进入 `/v1/prompt` 流；guest 的 `/v1/pty/*` 路由经 bridge 代理到最近打开的会话。
 - **进程收尾**：`dispose` 依次请求 `session/dispose`、`shutdown`，再 `SIGTERM`，3 s 后 `SIGKILL`；最后一个 socket 连接断开时 dsh 自行退出，guest 进程被杀后不留孤儿进程。
 

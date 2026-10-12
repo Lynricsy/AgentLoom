@@ -329,11 +329,14 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       importPiAgentCore(),
       importPiAiCompat(),
     ])) as unknown as [PiAgentCoreModule, PiAiCompatModule];
+    // 主模型思考强度来自画布 llm-model 节点；缺省时沿用 pi-agent-core 默认的 off
+    const thinkingLevel = params.runtimeConfig?.modelConfig?.thinkingLevel;
     const agent = new piAgentCore.Agent({
       initialState: {
         systemPrompt: params.systemPrompt ?? '',
         model: model.model,
         tools,
+        ...(thinkingLevel ? { thinkingLevel } : {}),
       },
       // 0.84 起 streamFn 必填；agent loop 会把 getApiKey 的结果注入 options.apiKey
       // 后传给 streamFn，行为与 0.62 内部默认的 streamSimple 一致。

@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
+import type { AgentThinkingLevel } from '../agent-definition/agent-runtime-config.interface';
 import type { McpServerConfig } from '../agent/types/agent-session.types';
 import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from '../llm/private-cloud-auth.constants';
 
 export interface PiModelConfig {
   provider: string;
   model: string;
-  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  thinkingLevel?: AgentThinkingLevel;
   apiProtocol?: string | null;
   apiBaseUrl?: string;
   apiKeyId?: string | null;

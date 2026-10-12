@@ -7,6 +7,7 @@
 export type {
   AgentRuntimeMode,
   AgentModelConfig,
+  AgentThinkingLevel,
   AgentToolBindingBase,
   AgentMcpToolBinding,
   AgentHttpToolBinding,
@@ -28,6 +29,7 @@ export type {
 
 export {
   AGENT_RUNTIME_MODES,
+  AgentThinkingLevelSchema,
   AgentRuntimeConfigSchema,
   AgentModelConfigSchema,
   AgentToolBindingSchema,

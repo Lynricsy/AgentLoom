@@ -31,6 +31,8 @@ interface FakeHost extends BridgeHost {
   createAgentSpy: Mock;
   shutdownSpy: Mock;
   resolveSpy: Mock;
+  reasoningEffortsSpy: Mock;
+  warnSpy: Mock;
   inactiveEntriesSpy: Mock;
 }
 
@@ -41,6 +43,8 @@ function createFakeHost(): FakeHost {
   const createAgentSpy = vi.fn(async () => ({ agent, dispose: vi.fn(async () => undefined) }));
   const shutdownSpy = vi.fn();
   const resolveSpy = vi.fn(async () => undefined);
+  const reasoningEffortsSpy = vi.fn(async (): Promise<readonly string[]> => []);
+  const warnSpy = vi.fn();
   const inactiveEntriesSpy = vi.fn(async (): Promise<InactiveEntry[]> => []);
   return {
     tools,
@@ -49,11 +53,15 @@ function createFakeHost(): FakeHost {
     createAgentSpy,
     shutdownSpy,
     resolveSpy,
+    reasoningEffortsSpy,
+    warnSpy,
     inactiveEntriesSpy,
     awaitLoader: vi.fn(async () => undefined),
     resolveCallConfig: resolveSpy,
+    resolveReasoningEfforts: reasoningEffortsSpy,
     inactiveEntries: inactiveEntriesSpy,
     createAgent: createAgentSpy,
+    warn: warnSpy,
     registerTool: (definition) => {
       tools.set(definition.name, definition);
       return () => tools.delete(definition.name);
@@ -173,7 +181,8 @@ describe('AgentLoomBridge over unix socket', () => {
       },
     });
 
-    expect(host.resolveSpy).toHaveBeenCalledWith('openai', 'gpt-x');
+    expect(host.resolveSpy).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-x' });
+    expect(host.reasoningEffortsSpy).not.toHaveBeenCalled();
     expect(host.createAgentSpy).toHaveBeenCalledWith({
       sessionId: 's1',
       cwd: '/workspace',
@@ -211,6 +220,44 @@ describe('AgentLoomBridge over unix socket', () => {
     );
     expect(host.inactiveEntriesSpy).toHaveBeenCalledWith(['demo', 'auto-review']);
     expect(host.createAgentSpy).not.toHaveBeenCalled();
+  });
+
+  it('思考强度受模型支持时作为 reasoningEffort 下发给校验与 dsh Agent', async () => {
+    host.reasoningEffortsSpy.mockResolvedValueOnce(['off', 'low', 'medium', 'high']);
+
+    await initializeAndCreate({ thinkingLevel: 'medium' });
+
+    expect(host.reasoningEffortsSpy).toHaveBeenCalledWith('openai', 'gpt-x');
+    expect(host.resolveSpy).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'gpt-x',
+      reasoningEffort: 'medium',
+    });
+    expect(host.createAgentSpy).toHaveBeenCalledWith({
+      sessionId: 's1',
+      cwd: '/workspace',
+      provider: 'openai',
+      model: 'gpt-x',
+      reasoningEffort: 'medium',
+    });
+    expect(host.warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('思考强度不受模型支持时告警并省略 reasoningEffort，会话照常创建', async () => {
+    host.reasoningEffortsSpy.mockResolvedValueOnce([]);
+
+    await initializeAndCreate({ thinkingLevel: 'xhigh' });
+
+    expect(host.resolveSpy).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-x' });
+    expect(host.createAgentSpy).toHaveBeenCalledWith({
+      sessionId: 's1',
+      cwd: '/workspace',
+      provider: 'openai',
+      model: 'gpt-x',
+    });
+    expect(host.warnSpy).toHaveBeenCalledOnce();
+    expect(host.warnSpy.mock.calls[0]![0]).toContain('"xhigh"');
+    expect(host.warnSpy.mock.calls[0]![0]).toContain('openai/gpt-x');
   });
 
   it('session/prompt / session/cancel 应驱动 dsh Agent', async () => {

@@ -132,6 +132,38 @@ describe('SandboxModelConfigService', () => {
     });
   });
 
+  it.each([
+    ['设置时写入 defaultThinkingLevel', 'medium', 'medium'],
+    ['缺省时不写 defaultThinkingLevel', undefined, undefined],
+  ] as const)(
+    'llm-model 节点思考强度%s',
+    async (_label, thinkingLevel, expected) => {
+      const withGenerator = new SandboxModelConfigService(
+        {} as never,
+        runtimeDriver as never,
+        undefined,
+        new PiConfigGeneratorService(),
+      );
+
+      const payload = await withGenerator.buildContainerSessionPayload({
+        session: session as never,
+        runtimeConfig: {
+          runtimeMode: 'sandbox',
+          modelConfig: {
+            modelId: 'cfg-1',
+            provider: 'anthropic',
+            modelName: 'claude-sonnet-4-6',
+            ...(thinkingLevel ? { thinkingLevel } : {}),
+          },
+        },
+      });
+
+      const settings = payload.settings as Record<string, unknown>;
+      expect(settings.defaultModel).toBe('claude-sonnet-4-6');
+      expect(settings.defaultThinkingLevel).toBe(expected);
+    },
+  );
+
   it('有技能但缺少 pi generator 时显式失败，而不是静默丢弃技能', async () => {
     await expect(
       service.buildContainerSessionPayload({

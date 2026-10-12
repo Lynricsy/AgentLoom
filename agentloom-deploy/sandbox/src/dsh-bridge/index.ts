@@ -8,7 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-agent';
 import { brandString } from '@deepseek-ai/dsh-brand';
-import type {} from '@deepseek-ai/dsh-llm';
+import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import type { SessionId } from '@deepseek-ai/dsh-session';
 import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-user-approval';
@@ -38,21 +38,36 @@ export function apply(ctx: Context, config: Config): void {
       awaitLoader: async () => {
         await ctx.get('loader')?.await();
       },
-      resolveCallConfig: async (provider, model) => {
-        await ctx.llm.resolveCallConfig({ provider, model });
+      resolveCallConfig: async ({ provider, model, reasoningEffort }) => {
+        await ctx.llm.resolveCallConfig({
+          provider,
+          model,
+          ...(reasoningEffort ? { reasoningEffort: brandString<ReasoningEffortId>(reasoningEffort) } : {}),
+        });
+      },
+      resolveReasoningEfforts: async (provider, model) => {
+        const info = await ctx.llm.resolveModelInfo(provider, model);
+        return info.reasoning?.efforts.map((effort) => String(effort.id)) ?? [];
       },
       inactiveEntries: async (ids) => {
         // cordis-plugin-loader 不是本包的直接依赖，只按审计用到的结构读取 Loader。
         const loader = ctx.get('loader') as LoaderLike | undefined;
         return loader ? findInactiveEntries(loader, ids) : [];
       },
-      createAgent: async ({ sessionId, cwd, provider, model }) => {
+      createAgent: async ({ sessionId, cwd, provider, model, reasoningEffort }) => {
         const handle = await ctx.agents.create({
           sessionId: brandString<SessionId>(sessionId),
           meta: { cwd },
-          agentOptions: { provider, model },
+          agentOptions: {
+            provider,
+            model,
+            ...(reasoningEffort ? { reasoningEffort: brandString<ReasoningEffortId>(reasoningEffort) } : {}),
+          },
         });
         return { agent: handle.agent, dispose: () => handle.dispose() };
+      },
+      warn: (message) => {
+        ctx.logger.warn(`agentloom-bridge: ${message}`);
       },
       registerTool: (definition) => ctx.tools.register(definition),
       guardTools: (guard) => ctx.tools.guard(guard),

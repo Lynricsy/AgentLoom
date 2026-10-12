@@ -198,9 +198,9 @@ export function MfaEnrollDialog({
               )}
 
               {error && (
-                <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2">
-                  <p className="text-sm text-error">{error}</p>
-                </div>
+                <Alert variant="error" role="alert">
+                  {error}
+                </Alert>
               )}
 
               <fieldset className="m-0 border-none p-0">

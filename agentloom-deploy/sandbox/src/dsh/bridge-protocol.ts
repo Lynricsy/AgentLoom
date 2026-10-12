@@ -25,6 +25,11 @@ export interface BridgeInitializeParams {
   /** llm-pi-ai 路由名（= models.providers 的键） */
   provider: string;
   model: string;
+  /**
+   * AgentLoom 画布 llm-model 节点的思考强度（pi ThinkingLevel，来自 settings.defaultThinkingLevel）。
+   * bridge 只在模型声明支持该强度时作为 reasoningEffort 下发，否则告警并忽略。
+   */
+  thinkingLevel?: string;
   /** 远程工具回调配置经 socket 下发，不落盘到 patch 文件（含会话 token） */
   remoteToolExecution?: RemoteToolExecutionConfig;
   nativeToolPolicy?: NativeToolPolicy;

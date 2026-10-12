@@ -296,4 +296,26 @@ describe('createDshSessionFactory', () => {
     session.dispose();
     await vi.waitFor(() => expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false));
   });
+
+  it('settings.defaultThinkingLevel 应作为 thinkingLevel 转给 bridge initialize', async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const child = createFakeChild();
+    const factory = createDshSessionFactory({
+      dshBin: '/opt/dsh/lib/bin.js',
+      bridgeEntry: '/opt/bridge/index.js',
+      spawn: vi.fn(() => {
+        servers.push(startFakeBridge(join(sessionRoot, 'sess-1', 'bridge.sock'), requests));
+        return child as unknown as ChildProcess;
+      }) as unknown as typeof spawnProcess,
+    });
+
+    const session = await factory('/workspace', {}, {
+      ...request,
+      settings: { defaultProvider: 'openai', defaultModel: 'gpt-x', defaultThinkingLevel: 'high' },
+    });
+
+    expect(requests[0]!.params).toMatchObject({ provider: 'openai', model: 'gpt-x', thinkingLevel: 'high' });
+    session.dispose();
+    await vi.waitFor(() => expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false));
+  });
 });

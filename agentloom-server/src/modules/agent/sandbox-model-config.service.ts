@@ -250,9 +250,13 @@ export class SandboxModelConfigService {
       return null;
     }
 
+    // 思考强度属于 Agent 画布 llm-model 节点而非租户模型配置，存储配置与快照回退都要叠加
+    const thinkingLevel = runtimeConfig?.modelConfig?.thinkingLevel;
     const settings = this.parseJsonObject(
       this.piConfigGenerator.generateSettings({
-        modelConfig: resolvedModelConfig.modelConfig,
+        modelConfig: thinkingLevel
+          ? { ...resolvedModelConfig.modelConfig, thinkingLevel }
+          : resolvedModelConfig.modelConfig,
       }),
       'pi settings',
     );

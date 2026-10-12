@@ -152,13 +152,9 @@ export function RegisterPage() {
           className="space-y-4"
         >
           {serverError && (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <span>{serverError}</span>
-            </div>
+            <Alert variant="error" role="alert">
+              {serverError}
+            </Alert>
           )}
 
           <FormItem>

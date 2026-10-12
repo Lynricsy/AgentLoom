@@ -86,6 +86,7 @@ import type {
   HarnessConfig,
   RuntimePluginRef,
 } from './agent-runtime-config.interface';
+import { AgentThinkingLevelSchema } from './agent-runtime-config.interface';
 import { coerceAgentOutputSchema } from './agent-runtime-config.utils';
 import {
   extractMcpToolDescriptors,
@@ -1569,6 +1570,9 @@ export class AgentDefinitionService {
             !Array.isArray(data.auth_config)
           ? (data.auth_config as Record<string, unknown>)
           : undefined;
+    const thinkingLevel = AgentThinkingLevelSchema.safeParse(
+      data.thinkingLevel ?? data.thinking_level,
+    );
 
     return {
       modelId: modelConfigId ?? '',
@@ -1587,6 +1591,8 @@ export class AgentDefinitionService {
       frequencyPenalty: data.frequencyPenalty ?? data.frequency_penalty,
       presencePenalty: data.presencePenalty ?? data.presence_penalty,
       customParameters: data.customParameters ?? data.custom_parameters,
+      // 画布节点 config 保存时不按节点类型校验，非法值按缺省（off）处理，避免运行失败
+      ...(thinkingLevel.success ? { thinkingLevel: thinkingLevel.data } : {}),
     };
   }
 

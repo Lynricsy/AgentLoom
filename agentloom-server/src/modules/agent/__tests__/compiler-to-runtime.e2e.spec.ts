@@ -584,4 +584,32 @@ describe('compiler → runtime tool injection E2E', () => {
     expect(toolNames).not.toContain('fetch_orphan');
     expect(toolNames).not.toContain('call_subagent');
   });
+
+  it.each([
+    ['medium', 'medium', 'medium'],
+    ['非法值', 'turbo', undefined],
+    ['缺省', undefined, undefined],
+  ] as const)(
+    'Thinking level: llm-model 节点 thinkingLevel=%s 时决定 pi Agent 初始思考强度',
+    async (_label, thinkingLevel, expected) => {
+      const modelNode = createNode('model-1', 'llm-model', {
+        llmConfigId: 'model-config-001',
+        modelId: 'gpt-4.1-mini',
+        ...(thinkingLevel ? { thinkingLevel } : {}),
+      });
+
+      const { runtimeConfig } = await compileAndLoadTools({
+        nodes: [...baseNodes, modelNode],
+        edges: [connectToAgentMain('model-1', 'model-in')],
+      });
+      const initialState = hoisted.MockPiAgent.instances[0].options
+        .initialState as Record<string, unknown>;
+
+      expect(runtimeConfig.modelConfig?.modelId).toBe('model-config-001');
+      expect(runtimeConfig.modelConfig?.thinkingLevel).toBe(expected);
+      // 缺省或非法值不下发，由 pi-agent-core 使用默认 off
+      expect(initialState.thinkingLevel).toBe(expected);
+      expect('thinkingLevel' in initialState).toBe(expected !== undefined);
+    },
+  );
 });

@@ -63,20 +63,26 @@ export interface BridgeAgentHandle {
 export interface BridgeHost {
   /** 等待 Loader 把整棵插件树挂载完成 */
   awaitLoader(): Promise<void>;
-  /** 校验 provider/model 路由可用（凭据缺失等会在此抛错） */
-  resolveCallConfig(provider: string, model: string): Promise<void>;
+  /** 校验 provider/model（及思考强度）路由可用（凭据缺失、强度不受支持等会在此抛错） */
+  resolveCallConfig(route: BridgeModelRoute): Promise<void>;
+  /** 该路由 adapter 声明的可选思考强度 id；模型未暴露推理能力时为空 */
+  resolveReasoningEfforts(provider: string, model: string): Promise<readonly string[]>;
   /** Loader 中给定 id 的条目里未激活者（禁用的条目不算），以及未激活的原因 */
   inactiveEntries(ids: readonly string[]): Promise<InactiveEntry[]>;
-  createAgent(options: {
-    sessionId: string;
-    cwd: string;
-    provider: string;
-    model: string;
-  }): Promise<BridgeAgentHandle>;
+  createAgent(options: { sessionId: string; cwd: string } & BridgeModelRoute): Promise<BridgeAgentHandle>;
+  /** 写入 dsh 进程日志（stderr 由 guest 转发） */
+  warn(message: string): void;
   registerTool(definition: ToolDefinition): () => void;
   guardTools(guard: ToolGuard): () => void;
   /** 销毁整棵 Context 并退出 dsh 进程 */
   shutdownProcess(): void;
+}
+
+export interface BridgeModelRoute {
+  provider: string;
+  model: string;
+  /** dsh adapter 的思考强度 id（llm-pi-ai 下即 pi ThinkingLevel）；缺省沿用 adapter 默认 */
+  reasoningEffort?: string;
 }
 
 export interface ApprovalRequest {
@@ -131,7 +137,7 @@ export class AgentLoomBridge {
   private readonly disposers: Array<() => void> = [];
   private readonly ptyManager: PTYManager;
   private remoteToolNames = new Set<string>();
-  private route: { cwd: string; provider: string; model: string } | null = null;
+  private route: ({ cwd: string } & BridgeModelRoute) | null = null;
 
   constructor(
     private readonly host: BridgeHost,
@@ -304,7 +310,12 @@ export class AgentLoomBridge {
     if (this.route) throw new Error('agentloom-bridge is already initialized');
     await this.host.awaitLoader();
     await this.assertPluginEntriesActive(params.pluginEntries ?? []);
-    await this.host.resolveCallConfig(params.provider, params.model);
+    const route: BridgeModelRoute = {
+      provider: params.provider,
+      model: params.model,
+      ...(await this.resolveReasoningEffort(params)),
+    };
+    await this.host.resolveCallConfig(route);
 
     const denied = buildDeniedNativeTools(params.nativeToolPolicy);
     if (denied.size > 0) {
@@ -317,7 +328,26 @@ export class AgentLoomBridge {
     if (params.remoteToolExecution) {
       this.registerRemoteTools(params.remoteToolExecution);
     }
-    this.route = { cwd: params.cwd, provider: params.provider, model: params.model };
+    this.route = { cwd: params.cwd, ...route };
+    return {};
+  }
+
+  /**
+   * AgentLoom 画布的思考强度只在当前模型声明支持时下发：dsh 对不支持的强度会在
+   * 请求前直接报错（UNSUPPORTED_REASONING_EFFORT），这里改为告警并沿用 adapter 默认。
+   */
+  private async resolveReasoningEffort(
+    params: BridgeInitializeParams,
+  ): Promise<{ reasoningEffort?: string }> {
+    const level = params.thinkingLevel;
+    if (!level) return {};
+    const efforts = await this.host.resolveReasoningEfforts(params.provider, params.model);
+    if (efforts.includes(level)) return { reasoningEffort: level };
+    this.host.warn(
+      `思考强度 "${level}" 不受模型 ${params.provider}/${params.model} 支持（可选: ${
+        efforts.length > 0 ? efforts.join(', ') : '无'
+      }），已忽略并沿用模型默认`,
+    );
     return {};
   }
 

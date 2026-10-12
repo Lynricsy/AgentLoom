@@ -20,6 +20,18 @@ export const AGENT_RUNTIME_MODES = ['sandbox', 'no_sandbox'] as const;
 
 export const AgentRuntimeModeSchema = z.enum(AGENT_RUNTIME_MODES);
 
+/** 与 pi-agent-core `ThinkingLevel` 对齐的 Agent 主模型思考强度；缺省等同 `off`。 */
+export const AGENT_THINKING_LEVELS = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+] as const;
+
+export const AgentThinkingLevelSchema = z.enum(AGENT_THINKING_LEVELS);
+
 export const AgentModelConfigSchema = z.object({
   modelId: z.string(),
   provider: z.string().optional(),
@@ -35,6 +47,7 @@ export const AgentModelConfigSchema = z.object({
   frequencyPenalty: z.number().optional(),
   presencePenalty: z.number().optional(),
   customParameters: JsonRecordSchema.optional(),
+  thinkingLevel: AgentThinkingLevelSchema.optional(),
 });
 
 const HttpToolMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
@@ -275,6 +288,7 @@ export const AgentRuntimeConfigSchema = z.object({
 });
 
 export type AgentRuntimeMode = z.infer<typeof AgentRuntimeModeSchema>;
+export type AgentThinkingLevel = z.infer<typeof AgentThinkingLevelSchema>;
 export type AgentModelConfig = z.infer<typeof AgentModelConfigSchema>;
 export type AgentToolBindingBase = z.infer<typeof AgentToolBindingBaseSchema>;
 export type AgentMcpToolBinding = z.infer<typeof AgentMcpToolBindingSchema>;

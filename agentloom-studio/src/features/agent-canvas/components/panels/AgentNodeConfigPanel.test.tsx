@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import type { CanvasNodeData } from '@/features/canvas';
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel';
@@ -27,6 +28,25 @@ vi.mock('@/features/canvas', () => ({
     'mcp-tool': {
       render: () => <div data-testid="mock-mcp-panel">mock mcp panel</div>,
     },
+    'llm-model': {
+      render: ({
+        onConfigChange,
+      }: {
+        onConfigChange: (patch: Record<string, unknown>) => void;
+      }) => (
+        <button
+          type="button"
+          onClick={() =>
+            onConfigChange({
+              config: { llmConfigId: 'cfg-2', modelName: 'claude-sonnet-4-6' },
+              llmConfigId: 'cfg-2',
+            })
+          }
+        >
+          mock switch model
+        </button>
+      ),
+    },
   },
 }));
 
@@ -47,6 +67,19 @@ function createAgentMainNodeData(): CanvasNodeData {
     nodeType: 'agent-main' as unknown as CanvasNodeData['nodeType'],
     category: 'agent',
     config: {},
+    inputPorts: [],
+    outputPorts: [],
+  };
+}
+
+function createLlmModelNodeData(
+  config: Record<string, unknown> = {},
+): CanvasNodeData {
+  return {
+    label: 'LLM 模型',
+    nodeType: 'llm-model',
+    category: 'agent',
+    config,
     inputPorts: [],
     outputPorts: [],
   };
@@ -139,5 +172,55 @@ describe('AgentNodeConfigPanel', () => {
     fireEvent.wheel(screen.getByTestId('agent-node-config-scroll'));
 
     expect(parentWheelHandler).not.toHaveBeenCalled();
+  });
+
+  it('llm-model 节点选择思考强度时写入节点 config.thinkingLevel 并保留其他字段', async () => {
+    const user = userEvent.setup();
+    mocks.selectedNodeId = 'model-1';
+    mocks.nodes = [
+      {
+        id: 'model-1',
+        data: createLlmModelNodeData({ llmConfigId: 'cfg-1', modelName: 'gpt-4o' }),
+      },
+    ];
+
+    render(<AgentNodeConfigPanel />);
+
+    const select = screen.getByRole('combobox', { name: '思考强度' });
+    expect(select).toHaveTextContent('关闭');
+    expect(screen.getByText(/仅对支持推理/)).toBeInTheDocument();
+
+    // Radix Select 是 button + portal，选项只在展开后进入无障碍树
+    await user.click(select);
+    await user.click(await screen.findByRole('option', { name: '中' }));
+
+    expect(mocks.updateNodeData).toHaveBeenCalledWith('model-1', {
+      config: { llmConfigId: 'cfg-1', modelName: 'gpt-4o', thinkingLevel: 'medium' },
+    });
+  });
+
+  it('llm-model 节点切换模型时保留已选思考强度', () => {
+    mocks.selectedNodeId = 'model-1';
+    mocks.nodes = [
+      {
+        id: 'model-1',
+        data: createLlmModelNodeData({ llmConfigId: 'cfg-1', thinkingLevel: 'high' }),
+      },
+    ];
+
+    render(<AgentNodeConfigPanel />);
+
+    expect(screen.getByRole('combobox', { name: '思考强度' })).toHaveTextContent('高');
+
+    fireEvent.click(screen.getByRole('button', { name: 'mock switch model' }));
+
+    expect(mocks.updateNodeData).toHaveBeenCalledWith('model-1', {
+      config: {
+        llmConfigId: 'cfg-2',
+        modelName: 'claude-sonnet-4-6',
+        thinkingLevel: 'high',
+      },
+      llmConfigId: 'cfg-2',
+    });
   });
 });

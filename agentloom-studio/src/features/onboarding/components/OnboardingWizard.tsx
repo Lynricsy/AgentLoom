@@ -113,16 +113,9 @@ export function OnboardingWizard() {
             {currentStep === 2 && (
               <div className="space-y-4">
                 {orgError && (
-                  <div
-                    role="alert"
-                    className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
-                  >
-                    <AlertCircle
-                      className="mt-0.5 h-4 w-4 shrink-0"
-                      aria-hidden
-                    />
-                    <span>{orgError}</span>
-                  </div>
+                  <Alert variant="error" role="alert">
+                    {orgError}
+                  </Alert>
                 )}
                 <OrgSetupStep
                   onSubmit={handleOrgSubmit}
