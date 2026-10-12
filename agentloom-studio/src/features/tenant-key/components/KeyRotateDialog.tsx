@@ -1,6 +1,9 @@
 import { memo, useCallback, useState } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { fadeIn } from '@/shared/lib/motion'
 import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
@@ -90,81 +93,89 @@ export const KeyRotateDialog = memo(function KeyRotateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {state.step === 'confirm' && (
-          <>
-            <DialogBody className="space-y-4">
-              <div className="rounded-lg border border-border bg-muted p-3">
-                <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                  当前密钥指纹
-                </p>
-                <p className="mt-1 break-all font-mono text-xs text-foreground">
-                  {currentFingerprint}
-                </p>
-              </div>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={isProcessing ? 'processing' : state.step}
+            {...fadeIn}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {state.step === 'confirm' && (
+              <>
+                <DialogBody className="space-y-4">
+                  <div className="rounded-lg border border-border bg-muted p-3">
+                    <p className="text-2xs font-medium tracking-wide text-muted-foreground">
+                      当前密钥指纹
+                    </p>
+                    <p className="mt-1 break-all font-mono text-xs text-foreground">
+                      {currentFingerprint}
+                    </p>
+                  </div>
 
-              <Alert variant="warning">
-                <p>轮换后，新数据将使用新密钥加密。请注意：</p>
-                <ul className="mt-1 list-inside list-disc space-y-0.5 pl-1">
-                  <li>已用旧密钥加密的数据仍需旧私钥解密</li>
-                  <li>请确保已备份旧私钥</li>
-                  <li>新私钥生成后请立即下载备份</li>
-                </ul>
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">取消</Button>
-              </DialogClose>
-              <Button onClick={handleRotate}>确认轮换</Button>
-            </DialogFooter>
-          </>
-        )}
+                  <Alert variant="warning">
+                    <p>轮换后，新数据将使用新密钥加密。请注意：</p>
+                    <ul className="mt-1 list-inside list-disc space-y-0.5 pl-1">
+                      <li>已用旧密钥加密的数据仍需旧私钥解密</li>
+                      <li>请确保已备份旧私钥</li>
+                      <li>新私钥生成后请立即下载备份</li>
+                    </ul>
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">取消</Button>
+                  </DialogClose>
+                  <Button onClick={handleRotate}>确认轮换</Button>
+                </DialogFooter>
+              </>
+            )}
 
-        {isProcessing && (
-          <DialogBody>
-            <div className="flex flex-col items-center gap-3 py-6">
-              <Loader2 className="size-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                {state.step === 'generating'
-                  ? '正在生成新的 RSA-4096 密钥对…'
-                  : '正在上传新公钥…'}
-              </p>
-            </div>
-          </DialogBody>
-        )}
+            {isProcessing && (
+              <DialogBody>
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <Spinner size="lg" className="text-primary" />
+                  <p className="text-sm text-muted-foreground">
+                    {state.step === 'generating'
+                      ? '正在生成新的 RSA-4096 密钥对…'
+                      : '正在上传新公钥…'}
+                  </p>
+                </div>
+              </DialogBody>
+            )}
 
-        {state.step === 'done' && (
-          <>
-            <DialogBody>
-              <Alert variant="success" title="密钥轮换成功">
-                <span className="break-all font-mono text-xs">
-                  新指纹：{state.newFingerprint}
-                </span>
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button>完成</Button>
-              </DialogClose>
-            </DialogFooter>
-          </>
-        )}
+            {state.step === 'done' && (
+              <>
+                <DialogBody>
+                  <Alert variant="success" title="密钥轮换成功">
+                    <span className="break-all font-mono text-xs">
+                      新指纹：{state.newFingerprint}
+                    </span>
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button>完成</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </>
+            )}
 
-        {state.step === 'error' && (
-          <>
-            <DialogBody>
-              <Alert variant="error" title="轮换失败">
-                {state.message}
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">关闭</Button>
-              </DialogClose>
-              <Button onClick={handleRotate}>重试</Button>
-            </DialogFooter>
-          </>
-        )}
+            {state.step === 'error' && (
+              <>
+                <DialogBody>
+                  <Alert variant="error" title="轮换失败">
+                    {state.message}
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">关闭</Button>
+                  </DialogClose>
+                  <Button onClick={handleRotate}>重试</Button>
+                </DialogFooter>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

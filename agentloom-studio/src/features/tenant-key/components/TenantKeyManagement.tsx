@@ -2,17 +2,21 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   Key,
-  Loader2,
+  KeyRound,
   Plus,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
 
 import { PageContainer } from '@/shared/components'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { formatDateTime } from '@/shared/lib/format'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import {
   Dialog,
   DialogBody,
@@ -29,17 +33,7 @@ import { useTenantKeys } from '../api/tenantKeyQueries'
 import { KeyGenerateDialog } from './KeyGenerateDialog'
 import { KeyImportDialog } from './KeyImportDialog'
 import { KeyRotateDialog } from './KeyRotateDialog'
-import { KeyStatusBadge } from './KeyStatusBadge'
-
-function formatDate(value: string | null): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
-}
+import { KEY_STATUS_META } from '../lib/keyStatus'
 
 function sortKeysByStatus<
   T extends { status: string; updatedAt: string; createdAt: string },
@@ -91,8 +85,8 @@ export function TenantKeyManagement() {
   if (keysQuery.isLoading) {
     return (
       <PageContainer width="narrow">
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="mr-2 size-5 animate-spin" />
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+          <Spinner />
           加载加密密钥信息…
         </div>
       </PageContainer>
@@ -119,19 +113,17 @@ export function TenantKeyManagement() {
 
   return (
     <PageContainer width="narrow">
-      <div>
-        <h2 className="text-base font-semibold text-foreground">端到端加密</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          管理租户级 RSA-4096
-          加密密钥。私钥不会上传到服务器，但浏览器扩展、同源脚本或本机受损时可能读取本地密钥材料，请务必保留离线备份。
-        </p>
-      </div>
+      <PageHeader
+        icon={KeyRound}
+        title="端到端加密"
+        description="管理租户级 RSA-4096 加密密钥。私钥不会上传到服务器，但浏览器扩展、同源脚本或本机受损时可能读取本地密钥材料，请务必保留离线备份。"
+      />
 
       {hasKey ? (
         <div className="space-y-4">
           <Card className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                   <Key className="size-5 text-primary" />
                 </div>
@@ -144,33 +136,44 @@ export function TenantKeyManagement() {
                   </p>
                 </div>
               </div>
-              <KeyStatusBadge status={activeKey.status} />
+<StatusBadge
+                tone={KEY_STATUS_META[activeKey.status].tone}
+                dot
+                pulse={activeKey.status === 'rotating'}
+                className="shrink-0"
+                data-testid="key-status-badge"
+              >
+                {KEY_STATUS_META[activeKey.status].label}
+              </StatusBadge>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
               <div>
                 <p className="text-muted-foreground">指纹</p>
-                <p className="mt-1 truncate font-mono text-foreground">
+                <p
+                  className="mt-1 truncate font-mono text-foreground"
+                  title={activeKey.keyFingerprint}
+                >
                   {activeKey.keyFingerprint}
                 </p>
               </div>
               <div>
                 <p className="text-muted-foreground">激活时间</p>
                 <p className="mt-1 text-foreground">
-                  {formatDate(activeKey.activatedAt)}
+                  {formatDateTime(activeKey.activatedAt)}
                 </p>
               </div>
               <div>
                 <p className="text-muted-foreground">创建时间</p>
                 <p className="mt-1 text-foreground">
-                  {formatDate(activeKey.createdAt)}
+                  {formatDateTime(activeKey.createdAt)}
                 </p>
               </div>
               {activeKey.rotatedAt && (
                 <div>
                   <p className="text-muted-foreground">最近轮换</p>
                   <p className="mt-1 text-foreground">
-                    {formatDate(activeKey.rotatedAt)}
+                    {formatDateTime(activeKey.rotatedAt)}
                   </p>
                 </div>
               )}
@@ -231,19 +234,30 @@ export function TenantKeyManagement() {
             {historicalKeys.map((key) => (
               <Card
                 key={key.id}
-                className="flex items-center justify-between px-4 py-3"
+                className="flex items-center justify-between gap-3 px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-xs text-muted-foreground">
+                  <p
+                    className="truncate font-mono text-xs text-muted-foreground"
+                    title={key.keyFingerprint}
+                  >
                     {key.keyFingerprint}
                   </p>
                   <p className="mt-0.5 text-2xs text-subtle-foreground">
                     {key.status === 'rotating'
-                      ? `轮换于 ${formatDate(key.rotatedAt)}`
-                      : `撤销于 ${formatDate(key.revokedAt)}`}
+                      ? `轮换于 ${formatDateTime(key.rotatedAt)}`
+                      : `撤销于 ${formatDateTime(key.revokedAt)}`}
                   </p>
                 </div>
-                <KeyStatusBadge status={key.status} />
+<StatusBadge
+                  tone={KEY_STATUS_META[key.status].tone}
+                  dot
+                  pulse={key.status === 'rotating'}
+                  className="shrink-0"
+                  data-testid="key-status-badge"
+                >
+                  {KEY_STATUS_META[key.status].label}
+                </StatusBadge>
               </Card>
             ))}
           </div>
@@ -299,7 +313,7 @@ export function TenantKeyManagement() {
               disabled={revokeMutation.isPending}
             >
               {revokeMutation.isPending ? (
-                <Loader2 className="animate-spin" />
+                <Spinner className="text-current" />
               ) : (
                 <Trash2 />
               )}

@@ -1,6 +1,9 @@
 import { memo, useCallback, useState } from 'react'
-import { Import, Loader2 } from 'lucide-react'
+import { Import } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { fadeIn } from '@/shared/lib/motion'
 import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
@@ -143,85 +146,93 @@ export const KeyImportDialog = memo(function KeyImportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {state.step === 'input' && (
-          <>
-            <DialogBody className="space-y-4">
-              <div>
-                <label htmlFor="pem-input">
-                  <Label>私钥 (PEM)</Label>
-                </label>
-                <Textarea
-                  id="pem-input"
-                  className="mt-2 h-48 resize-none font-mono text-xs"
-                  placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----"
-                  value={pemInput}
-                  onChange={(e) => setPemInput(e.target.value)}
-                />
-              </div>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={state.step}
+            {...fadeIn}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {state.step === 'input' && (
+              <>
+                <DialogBody className="space-y-4">
+                  <div>
+                    <label htmlFor="pem-input">
+                      <Label>私钥 (PEM)</Label>
+                    </label>
+                    <Textarea
+                      id="pem-input"
+                      className="mt-2 h-48 resize-none font-mono text-xs"
+                      placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----END PRIVATE KEY-----"
+                      value={pemInput}
+                      onChange={(e) => setPemInput(e.target.value)}
+                    />
+                  </div>
 
-              <Alert variant="warning">
-                私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM
-                明文字符串。
-                但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">取消</Button>
-              </DialogClose>
-              <Button
-                onClick={handleImport}
-                disabled={!pemInput.trim().startsWith(PEM_HEADER)}
-              >
-                导入
-              </Button>
-            </DialogFooter>
-          </>
-        )}
+                  <Alert variant="warning">
+                    私钥不会发送到服务器，浏览器本地仅保存二进制密钥材料而非 PEM
+                    明文字符串。
+                    但浏览器扩展、同源脚本或本机受损时仍可能读取本地密钥材料。
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">取消</Button>
+                  </DialogClose>
+                  <Button
+                    onClick={handleImport}
+                    disabled={!pemInput.trim().startsWith(PEM_HEADER)}
+                  >
+                    导入
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
 
-        {state.step === 'processing' && (
-          <DialogBody>
-            <div className="flex flex-col items-center gap-3 py-6">
-              <Loader2 className="size-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                正在验证并导入私钥…
-              </p>
-            </div>
-          </DialogBody>
-        )}
+            {state.step === 'processing' && (
+              <DialogBody>
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <Spinner size="lg" className="text-primary" />
+                  <p className="text-sm text-muted-foreground">
+                    正在验证并导入私钥…
+                  </p>
+                </div>
+              </DialogBody>
+            )}
 
-        {state.step === 'done' && (
-          <>
-            <DialogBody>
-              <Alert variant="success" title="私钥导入成功">
-                <span className="break-all font-mono text-xs">
-                  指纹：{state.fingerprint}
-                </span>
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button>完成</Button>
-              </DialogClose>
-            </DialogFooter>
-          </>
-        )}
+            {state.step === 'done' && (
+              <>
+                <DialogBody>
+                  <Alert variant="success" title="私钥导入成功">
+                    <span className="break-all font-mono text-xs">
+                      指纹：{state.fingerprint}
+                    </span>
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button>完成</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </>
+            )}
 
-        {state.step === 'error' && (
-          <>
-            <DialogBody>
-              <Alert variant="error" title="导入失败">
-                {state.message}
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">关闭</Button>
-              </DialogClose>
-              <Button onClick={() => setState({ step: 'input' })}>重试</Button>
-            </DialogFooter>
-          </>
-        )}
+            {state.step === 'error' && (
+              <>
+                <DialogBody>
+                  <Alert variant="error" title="导入失败">
+                    {state.message}
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">关闭</Button>
+                  </DialogClose>
+                  <Button onClick={() => setState({ step: 'input' })}>重试</Button>
+                </DialogFooter>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

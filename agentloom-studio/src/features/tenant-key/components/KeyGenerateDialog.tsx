@@ -1,6 +1,9 @@
 import { memo, useCallback, useState } from 'react'
-import { Download, Key, Loader2 } from 'lucide-react'
+import { Download, Key } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { fadeIn } from '@/shared/lib/motion'
 import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import {
@@ -103,76 +106,84 @@ export const KeyGenerateDialog = memo(function KeyGenerateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {state.step === 'idle' && (
-          <>
-            <DialogBody>
-              <Alert variant="warning">
-                私钥会保存到当前浏览器的本地密钥库中，无法由服务器恢复。生成后请立即下载备份。
-                更换浏览器或清除数据后将无法解密已加密内容。
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">取消</Button>
-              </DialogClose>
-              <Button onClick={handleGenerate}>生成密钥对</Button>
-            </DialogFooter>
-          </>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={isProcessing ? 'processing' : state.step}
+            {...fadeIn}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {state.step === 'idle' && (
+              <>
+                <DialogBody>
+                  <Alert variant="warning">
+                    私钥会保存到当前浏览器的本地密钥库中，无法由服务器恢复。生成后请立即下载备份。
+                    更换浏览器或清除数据后将无法解密已加密内容。
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">取消</Button>
+                  </DialogClose>
+                  <Button onClick={handleGenerate}>生成密钥对</Button>
+                </DialogFooter>
+              </>
+            )}
 
-        {isProcessing && (
-          <DialogBody>
-            <div className="flex flex-col items-center gap-3 py-6">
-              <Loader2 className="size-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                {state.step === 'generating'
-                  ? '正在生成 RSA-4096 密钥对，请稍候…'
-                  : '正在上传公钥…'}
-              </p>
-            </div>
-          </DialogBody>
-        )}
+            {isProcessing && (
+              <DialogBody>
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <Spinner size="lg" className="text-primary" />
+                  <p className="text-sm text-muted-foreground">
+                    {state.step === 'generating'
+                      ? '正在生成 RSA-4096 密钥对，请稍候…'
+                      : '正在上传公钥…'}
+                  </p>
+                </div>
+              </DialogBody>
+            )}
 
-        {state.step === 'done' && (
-          <>
-            <DialogBody className="space-y-4">
-              <Alert variant="success" title="密钥对生成成功">
-                <span className="break-all font-mono text-xs">
-                  指纹：{state.keyPair.fingerprint}
-                </span>
-              </Alert>
+            {state.step === 'done' && (
+              <>
+                <DialogBody className="space-y-4">
+                  <Alert variant="success" title="密钥对生成成功">
+                    <span className="break-all font-mono text-xs">
+                      指纹：{state.keyPair.fingerprint}
+                    </span>
+                  </Alert>
 
-              <Alert variant="warning">
-                请立即下载私钥备份。如果您丢失了私钥，将无法解密任何已加密的数据。
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleDownloadPrivateKey}>
-                <Download />
-                下载私钥
-              </Button>
-              <DialogClose asChild>
-                <Button>完成</Button>
-              </DialogClose>
-            </DialogFooter>
-          </>
-        )}
+                  <Alert variant="warning">
+                    请立即下载私钥备份。如果您丢失了私钥，将无法解密任何已加密的数据。
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <Button variant="outline" onClick={handleDownloadPrivateKey}>
+                    <Download />
+                    下载私钥
+                  </Button>
+                  <DialogClose asChild>
+                    <Button>完成</Button>
+                  </DialogClose>
+                </DialogFooter>
+              </>
+            )}
 
-        {state.step === 'error' && (
-          <>
-            <DialogBody>
-              <Alert variant="error" title="生成失败">
-                {state.message}
-              </Alert>
-            </DialogBody>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">关闭</Button>
-              </DialogClose>
-              <Button onClick={handleGenerate}>重试</Button>
-            </DialogFooter>
-          </>
-        )}
+            {state.step === 'error' && (
+              <>
+                <DialogBody>
+                  <Alert variant="error" title="生成失败">
+                    {state.message}
+                  </Alert>
+                </DialogBody>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">关闭</Button>
+                  </DialogClose>
+                  <Button onClick={handleGenerate}>重试</Button>
+                </DialogFooter>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

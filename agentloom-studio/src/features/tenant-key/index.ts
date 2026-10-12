@@ -32,7 +32,7 @@ export {
   useUploadPublicKey,
 } from './api/tenantKeyMutations'
 
-export { KeyStatusBadge } from './components/KeyStatusBadge'
+export { KEY_STATUS_META } from './lib/keyStatus'
 export { KeyGenerateDialog } from './components/KeyGenerateDialog'
 export { KeyImportDialog } from './components/KeyImportDialog'
 export { KeyRotateDialog } from './components/KeyRotateDialog'
