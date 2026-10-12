@@ -68,8 +68,8 @@ describe("SandboxComputerPanel", () => {
 
     expect(screen.getAllByText("18.4%").length).toBeGreaterThan(0);
     expect(screen.getByText("128 MB / 512 MB")).toBeInTheDocument();
-    // 字节统一走 shared/lib/format:数字与单位之间为不换行空格,整数不补 .0
-    expect(screen.getByText("0\u00A0B / 2\u00A0GB")).toBeInTheDocument();
+    // 字节统一走 shared/lib/format(整数不补 .0);getByText 会把不换行空格归一化为普通空格
+    expect(screen.getByText("0 B / 2 GB")).toBeInTheDocument();
     expect(screen.getByTestId("sandbox-process-table")).toBeInTheDocument();
     expect(screen.getByTestId("sandbox-process-row-1")).toBeInTheDocument();
     expect(screen.getByText("node")).toBeInTheDocument();
