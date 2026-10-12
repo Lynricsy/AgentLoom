@@ -11,6 +11,7 @@ import type {
   LlmModelConfigEntity,
   LlmProviderEntity,
   PrivateCloudModelInfo,
+  ModelThinkingCapability,
   TestConnectionInput,
   UpdateLlmModelInput,
   UpdateLlmProviderInput,
@@ -176,6 +177,16 @@ export async function updateLlmModel(
   const res = await apiClient
     .patch(`llm-models/${id}`, { json: input })
     .json<ApiResponse<LlmModelConfigEntity>>();
+  return res.data;
+}
+
+/** 查询模型配置的思考能力（可选强度来自模型目录，而非前端写死） */
+export async function fetchLlmModelThinkingCapability(
+  id: string,
+): Promise<ModelThinkingCapability> {
+  const res = await apiClient
+    .get(`llm-models/${id}/thinking-capability`)
+    .json<ApiResponse<ModelThinkingCapability>>();
   return res.data;
 }
 

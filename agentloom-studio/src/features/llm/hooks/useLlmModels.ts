@@ -10,6 +10,7 @@ import {
   fetchApiKeys,
   fetchLlmModel,
   fetchLlmModels,
+  fetchLlmModelThinkingCapability,
   fetchProvider,
   fetchProviders,
   lookupModelMetadata,
@@ -222,6 +223,23 @@ export function useLlmModel(id: string | null) {
     },
     enabled: !!id,
     select: adaptModelEntityToInfo,
+  });
+}
+
+/** 获取模型配置的思考能力；切换模型配置（id 变化）即换 key 重新请求 */
+export function useLlmModelThinkingCapability(id: string | null) {
+  return useQuery({
+    queryKey: id
+      ? llmModelKeys.thinkingCapability(id)
+      : [...llmModelKeys.details(), "thinking-capability"],
+    queryFn: async () => {
+      if (!id) {
+        throw new Error("LLM model id is required");
+      }
+
+      return fetchLlmModelThinkingCapability(id);
+    },
+    enabled: !!id,
   });
 }
 

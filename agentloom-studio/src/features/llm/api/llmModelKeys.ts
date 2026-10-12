@@ -9,6 +9,7 @@ export const llmModelKeys = {
   list: (filters?: Record<string, unknown>) => [...llmModelKeys.lists(), filters] as const,
   details: () => [...llmModelKeys.all, 'detail'] as const,
   detail: (id: string) => [...llmModelKeys.details(), id] as const,
+  thinkingCapability: (id: string) => [...llmModelKeys.detail(id), 'thinking-capability'] as const,
   apiKeys: () => [...llmModelKeys.all, 'api-keys'] as const,
 }
 

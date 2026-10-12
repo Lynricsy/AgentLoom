@@ -111,11 +111,14 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
               <LlmThinkingLevelField
                 nodeId={selectedNode.id}
                 config={nodeData.config ?? {}}
-                onChange={(thinkingLevel) =>
+                onChange={(thinkingLevel) => {
+                  // 「默认」= 移除 thinkingLevel，由运行时按模型能力决定
+                  const { thinkingLevel: _previous, ...restConfig } = nodeData.config ?? {};
                   updateNodeData(selectedNode.id, {
-                    config: { ...nodeData.config, thinkingLevel },
-                  })
-                }
+                    config:
+                      thinkingLevel === null ? restConfig : { ...restConfig, thinkingLevel },
+                  });
+                }}
               />
             )}
           </>

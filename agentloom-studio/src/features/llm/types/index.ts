@@ -8,6 +8,7 @@ import type {
   UpdateLlmModelConfigDto,
   UpdateLlmProviderDto,
 } from "@agentloom/api-client";
+import type { AgentThinkingLevel } from "@agentloom/contracts";
 
 // ============================================================================
 // 新 Provider / Model 实体类型 (对应服务端两级结构)
@@ -141,6 +142,25 @@ export interface LiteLLMModelInfo {
   pricing: ModelPricing | null;
   capabilities: ModelCapabilities;
 }
+
+/** 思考能力的判定来源：LiteLLM 模型目录或 pi-ai 内置模型目录 */
+export type ModelThinkingCapabilitySource = "litellm" | "pi-catalog";
+
+/**
+ * 模型配置的思考能力（`GET llm-models/:id/thinking-capability`）。
+ * - supported：`levels` 按词表顺序列出模型实际支持的强度，含 `off` 表示可以不思考运行；
+ * - unsupported：模型不做推理；
+ * - unknown：两个模型目录都没有这个模型。
+ */
+export type ModelThinkingCapability =
+  | {
+      status: "supported";
+      levels: AgentThinkingLevel[];
+      defaultLevel: AgentThinkingLevel | null;
+      source: ModelThinkingCapabilitySource;
+    }
+  | { status: "unsupported"; source: ModelThinkingCapabilitySource }
+  | { status: "unknown" };
 
 // ============================================================================
 // 向后兼容的旧类型 (被画布节点、面板等外部消费者使用)

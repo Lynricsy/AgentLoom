@@ -12,6 +12,8 @@ export type {
   DiscoveredModel,
   ConnectionTestResult,
   LiteLLMModelInfo,
+  ModelThinkingCapability,
+  ModelThinkingCapabilitySource,
   // 向后兼容旧类型
   ApiKeyInfo,
   AuthMethod,
@@ -68,6 +70,7 @@ export {
   createLlmModel,
   updateLlmModel,
   deleteLlmModel,
+  fetchLlmModelThinkingCapability,
   // API Keys
   fetchApiKeys,
 } from "./api/llmModelApi";
@@ -89,6 +92,7 @@ export {
   useLlmModels,
   useUsableChatModels,
   useLlmModel,
+  useLlmModelThinkingCapability,
   useLlmApiKeys,
   useCreateLlmModel,
   useUpdateLlmModel,
