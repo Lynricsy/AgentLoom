@@ -1,6 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { Context } from '@deepseek-ai/cordis';
+import { LlmRuntime } from '@deepseek-ai/dsh-llm';
+import * as llmPiAi from '@deepseek-ai/dsh-llm-pi-ai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import YAML from 'yaml';
 
@@ -410,5 +413,100 @@ describe('writeDshProfile', () => {
         request: { ...baseRequest, harness: { engine: 'dsh', profilePatch: 'id: x\n', plugins: [] } },
       }),
     ).rejects.toThrow('必须是 YAML 列表');
+  });
+});
+
+describe('writeDshProfile reasoningEfforts', () => {
+  const gatewayModels = [
+    { id: 'thinker', reasoningEfforts: { off: null, low: 'low', high: 'high', max: 'max' } },
+    { id: 'none-off', reasoningEfforts: { off: 'none', medium: 'medium', xhigh: 'xhigh' } },
+    { id: 'plain', reasoningEfforts: false },
+    { id: 'unknown' },
+    { id: 'bad-key', reasoningEfforts: { low: 'low', turbo: 'turbo' } },
+    { id: 'bad-value', reasoningEfforts: { low: 'low', high: 3 } },
+    { id: 'null-level', reasoningEfforts: { off: null, high: null } },
+    { id: 'empty-wire', reasoningEfforts: { high: '' } },
+    { id: 'only-off', reasoningEfforts: { off: 'none' } },
+    { id: 'empty', reasoningEfforts: {} },
+    { id: 'array', reasoningEfforts: ['low', 'high'] },
+  ];
+
+  async function writeGatewayProfile() {
+    return writeDshProfile({
+      agentDir,
+      cwd: '/workspace/',
+      provider: 'gateway',
+      model: 'thinker',
+      bridgeEntry: BRIDGE_ENTRY,
+      request: {
+        sessionId: 's1',
+        models: {
+          providers: {
+            gateway: {
+              api: 'openai-completions',
+              apiKey: 'GATEWAY_API_KEY',
+              baseUrl: 'https://gateway.example.com/v1',
+              models: gatewayModels,
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function llmPiAiConfig(patchPath: string): { providers: Record<string, unknown> } {
+    const row = parsePatch(patchPath).find((item) => item.id === 'llm-pi-ai');
+    return row?.config as { providers: Record<string, unknown> };
+  }
+
+  it('应原样转发合法 dict 与 false，整体丢弃非法形状，缺省保持缺省', async () => {
+    const profile = await writeGatewayProfile();
+    const gateway = llmPiAiConfig(profile.patchPath).providers.gateway as {
+      models: Array<Record<string, unknown>>;
+    };
+    expect(gateway.models).toEqual([
+      {
+        id: 'thinker',
+        name: 'thinker',
+        reasoningEfforts: { off: null, low: 'low', high: 'high', max: 'max' },
+      },
+      {
+        id: 'none-off',
+        name: 'none-off',
+        reasoningEfforts: { off: 'none', medium: 'medium', xhigh: 'xhigh' },
+      },
+      { id: 'plain', name: 'plain', reasoningEfforts: false },
+      { id: 'unknown', name: 'unknown' },
+      { id: 'bad-key', name: 'bad-key' },
+      { id: 'bad-value', name: 'bad-value' },
+      { id: 'null-level', name: 'null-level' },
+      { id: 'empty-wire', name: 'empty-wire' },
+      { id: 'only-off', name: 'only-off' },
+      { id: 'empty', name: 'empty' },
+      { id: 'array', name: 'array' },
+    ]);
+  });
+
+  it('真实 llm-pi-ai 物化后 resolveModelInfo 的 efforts 应等于 dict 键', async () => {
+    const profile = await writeGatewayProfile();
+    const ctx = new Context();
+    const llm = ctx.plugin(LlmRuntime);
+    const piAi = ctx.plugin(llmPiAi, llmPiAiConfig(profile.patchPath));
+    try {
+      await llm;
+      await piAi;
+      const efforts = async (model: string) =>
+        (await ctx.llm.resolveModelInfo('gateway', model)).reasoning?.efforts.map((effort) =>
+          String(effort.id),
+        );
+      expect(await efforts('thinker')).toEqual(['off', 'low', 'high', 'max']);
+      expect(await efforts('none-off')).toEqual(['off', 'medium', 'xhigh']);
+      expect(await efforts('plain')).toBeUndefined();
+      expect(await efforts('unknown')).toBeUndefined();
+      expect(await efforts('bad-key')).toBeUndefined();
+    } finally {
+      await piAi.dispose();
+      await llm.dispose();
+    }
   });
 });

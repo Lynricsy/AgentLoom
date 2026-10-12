@@ -30,6 +30,9 @@ const RUNTIME_PLUGIN_LINK_SCOPE = '@agentloom-runtime-plugins';
 const PLUGIN_ROOT_PLACEHOLDER = '__PLUGIN_ROOT__';
 const STDERR_TAIL_BYTES = 2048;
 const AGENTLOOM_PERMISSION_PRESET = 'agentloom';
+/** llm-pi-ai（pi-ai ModelThinkingLevel）思考强度词表，按升级顺序 */
+const REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 
 /**
  * dsh-base 中与 AgentLoom 部署无关或会外连 DeepSeek 服务的条目：DeepSeek 原生
@@ -189,6 +192,7 @@ function buildProviderRoutes(request: CreateSessionRequest): {
                 ? { contextWindow: value.contextWindow }
                 : {}),
               ...(typeof value.maxTokens === 'number' ? { maxTokens: value.maxTokens } : {}),
+              ...readReasoningEfforts(value.reasoningEfforts),
             },
           ];
         })
@@ -207,6 +211,27 @@ function buildProviderRoutes(request: CreateSessionRequest): {
   }
 
   return { providers, env };
+}
+
+/**
+ * models.json 模型条目的 reasoningEfforts → llm-pi-ai PiAiModelProfile.reasoningEfforts。
+ * 只转发 llm-pi-ai 会接受的形状：`false`（不推理），或非空 dict——键属于词表、
+ * 值为非空线路拼写，仅 `off` 可为 null（不发推理参数），且至少含一个 `off` 之外的
+ * 强度。其余形状整体丢弃（不留半个 dict），模型回落为未声明推理能力。
+ */
+function readReasoningEfforts(
+  value: unknown,
+): { reasoningEfforts?: false | Partial<Record<ReasoningLevel, string | null>> } {
+  if (value === false) return { reasoningEfforts: false };
+  if (!isRecord(value)) return {};
+  const efforts: Partial<Record<ReasoningLevel, string | null>> = {};
+  for (const [level, wire] of Object.entries(value)) {
+    if (!(REASONING_LEVELS as readonly string[]).includes(level)) return {};
+    const valid = wire === null ? level === 'off' : typeof wire === 'string' && wire.length > 0;
+    if (!valid) return {};
+    efforts[level as ReasoningLevel] = wire as string | null;
+  }
+  return Object.keys(efforts).some((level) => level !== 'off') ? { reasoningEfforts: efforts } : {};
 }
 
 /**
