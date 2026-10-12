@@ -396,11 +396,17 @@ describe('MarketplacePublishDialog', () => {
       await Promise.resolve();
     });
 
+    // 表单视图退场（fadeIn 150ms）后挂载成功视图；2s 自动关闭从状态变为 success 起算，
+    // 不受视图动画推迟
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
     expect(screen.getByText('提交成功')).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
-    act(() => {
-      vi.advanceTimersByTime(2000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
     });
 
     expect(onOpenChange).toHaveBeenCalledWith(false);

@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { CheckCircle2, Loader2 } from 'lucide-react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -155,8 +155,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* 视图切换只做入场淡入（key 变化即重挂载）：结果态必须同步出现，不等旧视图退场 */}
-        <>
+        <AnimatePresence mode="wait" initial={false}>
           {installedPluginName !== null ? (
             <motion.div
               key="success"
@@ -258,7 +257,7 @@ export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({
               </DialogFooter>
             </motion.form>
           )}
-        </>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

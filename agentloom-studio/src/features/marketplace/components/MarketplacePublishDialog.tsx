@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { AlertCircle, CheckCircle2, Loader2, Store, XCircle } from 'lucide-react'
 import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
@@ -120,7 +120,8 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
   const [tags, setTags] = useState<string[]>([])
   const [tagError, setTagError] = useState<string | null>(null)
   const [dialogState, setDialogState] = useState<DialogState>({ kind: 'form' })
-  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onOpenChangeRef = useRef(onOpenChange)
+  onOpenChangeRef.current = onOpenChange
 
   const publishedVersionId = workflow?.publishedVersionId ?? null
 
@@ -139,10 +140,6 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
   useEffect(() => {
     if (!open) {
       wasOpenRef.current = false
-      if (successTimerRef.current) {
-        clearTimeout(successTimerRef.current)
-        successTimerRef.current = null
-      }
       return
     }
 
@@ -158,14 +155,13 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
     resetSubmitMutationRef.current()
   }, [open, resetForm])
 
+  // 成功后 2s 自动关闭：计时在状态变为 success 的那一刻启动，与视图切换动画无关
+  // （AnimatePresence mode="wait" 会等旧视图退场后才挂载成功视图，不能依赖新视图挂载）
   useEffect(() => {
-    return () => {
-      if (successTimerRef.current) {
-        clearTimeout(successTimerRef.current)
-        successTimerRef.current = null
-      }
-    }
-  }, [])
+    if (!open || dialogState.kind !== 'success') return
+    const timer = setTimeout(() => onOpenChangeRef.current(false), 2000)
+    return () => clearTimeout(timer)
+  }, [open, dialogState.kind])
 
   const onSubmit = useCallback(
     async (values: FormValues) => {
@@ -190,9 +186,6 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
 
         if (response.reviewResult.outcome === 'passed') {
           setDialogState({ kind: 'success' })
-          successTimerRef.current = setTimeout(() => {
-            onOpenChange(false)
-          }, 2000)
         } else {
           setDialogState({ kind: 'review-failed', result: response.reviewResult })
         }
@@ -204,7 +197,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
         }
       }
     },
-    [publishedVersionId, tags, submitMutation, onOpenChange],
+    [publishedVersionId, tags, submitMutation],
   )
 
   const isSubmitting = dialogState.kind === 'submitting'
@@ -239,8 +232,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
           </div>
         </DialogHeader>
 
-        {/* 视图切换只做入场淡入（key 变化即重挂载）：结果态必须同步出现，成功后的自动关闭计时不受退场动画影响 */}
-        <>
+        <AnimatePresence mode="wait" initial={false}>
           {dialogState.kind === 'success' ? (
             <motion.div key={viewKey} {...fadeIn} className="flex min-h-0 flex-1 flex-col">
               <DialogBody className="flex flex-col items-center gap-3 py-12">
@@ -386,7 +378,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
               </DialogFooter>
             </motion.form>
           )}
-        </>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

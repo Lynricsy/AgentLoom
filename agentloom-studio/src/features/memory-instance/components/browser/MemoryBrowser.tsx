@@ -15,7 +15,7 @@ import {
   ArrowLeft,
   Loader2,
 } from 'lucide-react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '@/shared/lib/utils'
 import { fadeIn } from '@/shared/lib/motion'
 import { Collapse } from '@/shared/components/collapse/Collapse'
@@ -416,29 +416,30 @@ export function MemoryBrowser() {
                       editing ? 'border-primary/50' : 'border-border',
                     )}
                   >
-                    {/* 查看/编辑切换只做入场淡入：进入编辑后文本框需立即可用，不等旧视图退场 */}
-                    {editing ? (
-                      <motion.div key="edit" {...fadeIn}>
-                        <Textarea
-                          aria-label="节点内容"
-                          value={editContent}
-                          onChange={(e) => setEditContent(e.target.value)}
-                          className="h-96 w-full resize-y rounded-none border-0 bg-transparent p-6 font-mono text-sm leading-relaxed focus-visible:ring-0"
-                          spellCheck={false}
-                        />
-                      </motion.div>
-                    ) : (
-                      // 内容是 GlossaryHighlighter 输出的 <pre>，不走 typography：
-                      // 原 prose-invert 在浅色主题下给 pre 套深色底 + 浅色字，与 text-foreground 冲突
-                      <motion.div key="view" {...fadeIn} className="p-6 text-sm md:p-8">
-                        <GlossaryHighlighter
-                          content={node.content ?? ''}
-                          glossary={node.glossaryMatches ?? []}
-                          currentNodeUuid={node.nodeUuid}
-                          onNavigate={navigateTo}
-                        />
-                      </motion.div>
-                    )}
+                    <AnimatePresence mode="wait" initial={false}>
+                      {editing ? (
+                        <motion.div key="edit" {...fadeIn}>
+                          <Textarea
+                            aria-label="节点内容"
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            className="h-96 w-full resize-y rounded-none border-0 bg-transparent p-6 font-mono text-sm leading-relaxed focus-visible:ring-0"
+                            spellCheck={false}
+                          />
+                        </motion.div>
+                      ) : (
+                        // 内容是 GlossaryHighlighter 输出的 <pre>，不走 typography：
+                        // 原 prose-invert 在浅色主题下给 pre 套深色底 + 浅色字，与 text-foreground 冲突
+                        <motion.div key="view" {...fadeIn} className="p-6 text-sm md:p-8">
+                          <GlossaryHighlighter
+                            content={node.content ?? ''}
+                            glossary={node.glossaryMatches ?? []}
+                            currentNodeUuid={node.nodeUuid}
+                            onNavigate={navigateTo}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
               )}

@@ -223,7 +223,8 @@ describe('MarketplaceInstallDialog', () => {
 
     // 插件不跳画布：留在成功态，给用户一个「前往插件管理」的去处
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
-    expect(screen.getByTestId('plugin-install-success')).toBeInTheDocument()
+    // 成功视图在表单视图退场后挂载（AnimatePresence mode="wait"）
+    expect(await screen.findByTestId('plugin-install-success')).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: '前往插件管理' }),
     ).toHaveAttribute('href', '/resources/plugins')

@@ -121,7 +121,8 @@ describe('PluginPublishDialog', () => {
         pricePerExecution: undefined,
       })
     })
-    expect(screen.getByTestId('plugin-publish-listed')).toBeInTheDocument()
+    // 结果视图在表单视图退场后挂载（AnimatePresence mode="wait"）
+    expect(await screen.findByTestId('plugin-publish-listed')).toBeInTheDocument()
   })
 
   it('拒绝超过 120 字符的标题且不发请求', async () => {

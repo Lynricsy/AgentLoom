@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { HTTPError } from 'ky'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { AlertCircle, CheckCircle2, Loader2, Puzzle, XCircle } from 'lucide-react'
 
 import { Collapse } from '@/shared/components/collapse/Collapse'
@@ -265,8 +265,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
           </div>
         </DialogHeader>
 
-        {/* 视图切换只做入场淡入（key 变化即重挂载）：结果态必须同步出现，不等旧视图退场 */}
-        <>
+        <AnimatePresence mode="wait" initial={false}>
           {dialogState.kind === 'listed' ? (
             <motion.div key={viewKey} {...fadeIn} className="flex min-h-0 flex-1 flex-col">
               <DialogBody
@@ -511,7 +510,7 @@ export const PluginPublishDialog = memo(function PluginPublishDialog({
               </DialogFooter>
             </motion.form>
           )}
-        </>
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

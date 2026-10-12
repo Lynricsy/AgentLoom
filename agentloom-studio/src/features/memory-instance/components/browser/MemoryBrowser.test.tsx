@@ -188,11 +188,12 @@ describe('MemoryBrowser', () => {
     })
   })
 
-  it('编辑节点时仅提交实际变更字段', () => {
+  it('编辑节点时仅提交实际变更字段', async () => {
     render(<MemoryBrowser />)
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }))
-    fireEvent.change(screen.getByDisplayValue('Root content'), {
+    // 编辑视图在查看视图退场后挂载（AnimatePresence mode="wait"）
+    fireEvent.change(await screen.findByDisplayValue('Root content'), {
       target: { value: 'Updated content' },
     })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
