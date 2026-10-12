@@ -63,6 +63,14 @@ export const panelSlideUp = {
   transition: { duration: DUR.base, ease: EASE },
 } as const
 
+/** 高度展开/收起 — 折叠区、目录树子节点、行内详情 */
+export const expand = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto', opacity: 1 },
+  exit: { height: 0, opacity: 0 },
+  transition: { duration: DUR.base, ease: EASE },
+} as const
+
 /** 列表逐项入场 — 延迟上限 0.3s，避免长列表尾部迟滞 */
 export function staggerList(index: number) {
   return {
