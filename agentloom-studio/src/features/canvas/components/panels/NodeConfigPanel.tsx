@@ -16,7 +16,7 @@ import {
 import { ToolCallList } from '@/features/execution'
 import type { StepStatus } from '@/features/execution'
 import { cn } from '@/shared/lib/utils'
-import { fadeIn, panelSlideRight } from '@/shared/lib/motion'
+import { DUR, EASE, fadeIn, panelSlideRight } from '@/shared/lib/motion'
 import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
 import { Alert } from '@/shared/ui/alert'
 import { Input } from '@/shared/ui/input'
@@ -344,143 +344,153 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
   return (
     <AnimatePresence>
       {node && nodeConfig && !mappingPanelEdgeId ? (
-        <motion.aside
+        // 面板在画布 flex 行内：外层只在挂载/卸载时把占位宽度 0 ↔ auto 过渡，画布随之平滑伸缩；
+        // 拖拽改宽时目标始终是 auto，不会产生滞后。m-2 放在内层，收起到 0 时不残留间距。
+        <motion.div
           key="node-config-panel"
-          data-testid="node-config-panel"
-          initial={panelSlideRight.initial}
-          animate={panelSlideRight.animate}
-          exit={panelSlideRight.exit}
-          transition={panelSlideRight.transition}
-          style={{ width }}
-          className={cn(
-            CANVAS_FLOATING_CLASS,
-            'relative m-2 flex shrink-0 flex-col overflow-hidden',
-            className,
-          )}
+          initial={{ width: 0 }}
+          animate={{ width: 'auto' }}
+          exit={{ width: 0 }}
+          transition={{ duration: DUR.base, ease: EASE }}
+          className="flex shrink-0 overflow-hidden"
         >
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="调整配置面板宽度"
-            aria-valuenow={width}
-            aria-valuemin={PANEL_MIN_WIDTH}
-            aria-valuemax={PANEL_MAX_WIDTH}
-            tabIndex={0}
-            data-testid="node-config-panel-resize-handle"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onKeyDown={handleKeyDown}
+          <motion.aside
+            data-testid="node-config-panel"
+            initial={panelSlideRight.initial}
+            animate={panelSlideRight.animate}
+            exit={panelSlideRight.exit}
+            transition={panelSlideRight.transition}
+            style={{ width }}
             className={cn(
-              'absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize transition-colors hover:bg-primary/70 focus-visible:bg-primary focus-visible:outline-none',
-              isResizing && 'bg-primary',
+              CANVAS_FLOATING_CLASS,
+              'relative m-2 flex shrink-0 flex-col overflow-hidden',
+              className,
             )}
-          />
-
-          <CanvasPanelHeader
-            icon={resolveNodeIcon(nodeConfig.icon)}
-            tone={accentToken}
-            title={
-              <Input
-                aria-label="节点名称"
-                data-testid="node-config-panel-title"
-                value={node.data.label}
-                onChange={(event) => handleLabelChange(event.target.value)}
-                className="h-7 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-transparent hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted"
-              />
-            }
-            description={
-              <span className="px-1.5">
-                {nodeConfig.isKnownType
-                  ? `${nodeConfig.label} 配置`
-                  : `未知节点类型（${nodeConfig.type}）`}
-              </span>
-            }
-            onClose={handleClose}
-            closeLabel="关闭配置面板"
-          />
-
-          <Tabs
-            value={activeTab}
-            defaultValue={activeTab}
-            onValueChange={handleTabChange}
-            className="flex min-h-0 flex-1 flex-col space-y-0"
           >
-            <div className="px-4 pt-3">
-              <TabsList>
-                <TabsTrigger value="config" data-testid="node-config-tab-config">
-                  配置
-                </TabsTrigger>
-                <TabsTrigger value="output" data-testid="node-config-tab-output">
-                  输出
-                </TabsTrigger>
-                {isWaitingIntervention && (
-                  <TabsTrigger
-                    value="intervention"
-                    data-testid="node-config-tab-intervention"
-                  >
-                    介入
-                  </TabsTrigger>
-                )}
-              </TabsList>
-            </div>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整配置面板宽度"
+              aria-valuenow={width}
+              aria-valuemin={PANEL_MIN_WIDTH}
+              aria-valuemax={PANEL_MAX_WIDTH}
+              tabIndex={0}
+              data-testid="node-config-panel-resize-handle"
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onKeyDown={handleKeyDown}
+              className={cn(
+                'absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize transition-colors hover:bg-primary/70 focus-visible:bg-primary focus-visible:outline-none',
+                isResizing && 'bg-primary',
+              )}
+            />
 
-            {/* tab 内容常驻挂载、仅切换可见性：自定义面板持有 Monaco / 草稿等本地状态，卸载会丢编辑上下文。
-                切换节点时以 node.id 重挂内容区，避免同类型节点之间串用面板内部 state，并淡入新内容。 */}
-            <motion.div
-              key={node.id}
-              initial={fadeIn.initial}
-              animate={fadeIn.animate}
-              transition={fadeIn.transition}
-              className="min-h-0 flex-1 overflow-y-auto"
+            <CanvasPanelHeader
+              icon={resolveNodeIcon(nodeConfig.icon)}
+              tone={accentToken}
+              title={
+                <Input
+                  aria-label="节点名称"
+                  data-testid="node-config-panel-title"
+                  value={node.data.label}
+                  onChange={(event) => handleLabelChange(event.target.value)}
+                  className="h-7 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-transparent hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted"
+                />
+              }
+              description={
+                <span className="px-1.5">
+                  {nodeConfig.isKnownType
+                    ? `${nodeConfig.label} 配置`
+                    : `未知节点类型（${nodeConfig.type}）`}
+                </span>
+              }
+              onClose={handleClose}
+              closeLabel="关闭配置面板"
+            />
+
+            <Tabs
+              value={activeTab}
+              defaultValue={activeTab}
+              onValueChange={handleTabChange}
+              className="flex min-h-0 flex-1 flex-col space-y-0"
             >
-              <motion.div
-                initial={false}
-                animate={{ opacity: activeTab === 'config' ? 1 : 0 }}
-                transition={fadeIn.transition}
-                className={cn(activeTab !== 'config' && 'hidden')}
-                data-testid="node-config-tab-panel-config"
-                data-active={activeTab === 'config'}
-              >
-                <NodeConfigDispatch
-                  key={node.id}
-                  node={node}
-                  onConfigChange={handleConfigChange}
-                  onValidationChange={handleValidationChange}
-                />
-              </motion.div>
+              <div className="px-4 pt-3">
+                <TabsList>
+                  <TabsTrigger value="config" data-testid="node-config-tab-config">
+                    配置
+                  </TabsTrigger>
+                  <TabsTrigger value="output" data-testid="node-config-tab-output">
+                    输出
+                  </TabsTrigger>
+                  {isWaitingIntervention && (
+                    <TabsTrigger
+                      value="intervention"
+                      data-testid="node-config-tab-intervention"
+                    >
+                      介入
+                    </TabsTrigger>
+                  )}
+                </TabsList>
+              </div>
 
+              {/* tab 内容常驻挂载、仅切换可见性：自定义面板持有 Monaco / 草稿等本地状态，卸载会丢编辑上下文。
+                  切换节点时以 node.id 重挂内容区，避免同类型节点之间串用面板内部 state，并淡入新内容。 */}
               <motion.div
-                initial={false}
-                animate={{ opacity: activeTab === 'output' ? 1 : 0 }}
+                key={node.id}
+                initial={fadeIn.initial}
+                animate={fadeIn.animate}
                 transition={fadeIn.transition}
-                className={cn(activeTab !== 'output' && 'hidden')}
-                data-testid="node-config-tab-panel-output"
-                data-active={activeTab === 'output'}
+                className="min-h-0 flex-1 overflow-y-auto"
               >
-                <NodeExecutionSection
-                  key={node.id}
-                  nodeId={node.id}
-                  nodeType={node.data.nodeType}
-                />
-              </motion.div>
-
-              {isWaitingIntervention && (
                 <motion.div
                   initial={false}
-                  animate={{ opacity: activeTab === 'intervention' ? 1 : 0 }}
+                  animate={{ opacity: activeTab === 'config' ? 1 : 0 }}
                   transition={fadeIn.transition}
-                  className={cn('px-4 py-4', activeTab !== 'intervention' && 'hidden')}
-                  data-testid="node-config-tab-panel-intervention"
-                  data-active={activeTab === 'intervention'}
+                  className={cn(activeTab !== 'config' && 'hidden')}
+                  data-testid="node-config-tab-panel-config"
+                  data-active={activeTab === 'config'}
                 >
-                  <InterventionPanel nodeId={node.id} />
+                  <NodeConfigDispatch
+                    key={node.id}
+                    node={node}
+                    onConfigChange={handleConfigChange}
+                    onValidationChange={handleValidationChange}
+                  />
                 </motion.div>
-              )}
-            </motion.div>
-          </Tabs>
-        </motion.aside>
+
+                <motion.div
+                  initial={false}
+                  animate={{ opacity: activeTab === 'output' ? 1 : 0 }}
+                  transition={fadeIn.transition}
+                  className={cn(activeTab !== 'output' && 'hidden')}
+                  data-testid="node-config-tab-panel-output"
+                  data-active={activeTab === 'output'}
+                >
+                  <NodeExecutionSection
+                    key={node.id}
+                    nodeId={node.id}
+                    nodeType={node.data.nodeType}
+                  />
+                </motion.div>
+
+                {isWaitingIntervention && (
+                  <motion.div
+                    initial={false}
+                    animate={{ opacity: activeTab === 'intervention' ? 1 : 0 }}
+                    transition={fadeIn.transition}
+                    className={cn('px-4 py-4', activeTab !== 'intervention' && 'hidden')}
+                    data-testid="node-config-tab-panel-intervention"
+                    data-active={activeTab === 'intervention'}
+                  >
+                    <InterventionPanel nodeId={node.id} />
+                  </motion.div>
+                )}
+              </motion.div>
+            </Tabs>
+          </motion.aside>
+        </motion.div>
       ) : null}
     </AnimatePresence>
   )
