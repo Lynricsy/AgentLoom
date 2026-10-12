@@ -10,6 +10,8 @@ export interface EmptyStateProps {
   /** 图标底色，默认品牌色；可传节点类别色统一页面语义 */
   tone?: string
   className?: string
+  /** card：虚线框（独立空态）；plain：无边框（嵌在 DataTable/Card 内） */
+  variant?: 'card' | 'plain'
 }
 
 export function EmptyState({
@@ -19,13 +21,15 @@ export function EmptyState({
   action,
   tone,
   className,
+  variant = 'card',
 }: EmptyStateProps) {
   const accent = tone ?? 'var(--color-primary)'
 
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-14 text-center',
+        'flex flex-col items-center justify-center gap-3 px-6 py-14 text-center',
+        variant === 'card' && 'rounded-lg border border-dashed border-border',
         className,
       )}
     >
