@@ -16,7 +16,7 @@ import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { useToast } from "@/shared/ui/toast";
-import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
+import { TooltipHint } from "@/shared/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -300,23 +300,21 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               )}
             </Button>
             {baseUrlDiffers && (
-              <TooltipProvider delayDuration={300}>
-                <TooltipHint label="恢复默认 URL">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => void handleResetBaseUrl()}
-                    disabled={resetBaseUrlMutation.isPending}
-                    aria-label="恢复默认 URL"
-                  >
-                    {resetBaseUrlMutation.isPending ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <RotateCcw />
-                    )}
-                  </Button>
-                </TooltipHint>
-              </TooltipProvider>
+              <TooltipHint label="恢复默认 URL">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => void handleResetBaseUrl()}
+                  disabled={resetBaseUrlMutation.isPending}
+                  aria-label="恢复默认 URL"
+                >
+                  {resetBaseUrlMutation.isPending ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <RotateCcw />
+                  )}
+                </Button>
+              </TooltipHint>
             )}
           </div>
           {provider.defaultBaseUrl && (

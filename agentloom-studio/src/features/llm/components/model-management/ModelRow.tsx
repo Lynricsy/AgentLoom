@@ -1,7 +1,7 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
-import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
+import { TooltipHint } from "@/shared/ui/tooltip";
 import type { LlmModelInfo } from "../../types";
 import {
   buildPricingBadges,
@@ -74,31 +74,29 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
       </div>
 
       {/* 操作 */}
-      <TooltipProvider delayDuration={300}>
-        <div className="flex shrink-0 items-center gap-1">
-          <TooltipHint label="编辑模型">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`编辑模型 ${model.name}`}
-              onClick={() => onEdit(model)}
-            >
-              <Pencil />
-            </Button>
-          </TooltipHint>
-          <TooltipHint label="删除模型">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`删除模型 ${model.name}`}
-              className="text-muted-foreground hover:text-error"
-              onClick={() => onDelete(model)}
-            >
-              <Trash2 />
-            </Button>
-          </TooltipHint>
-        </div>
-      </TooltipProvider>
+      <div className="flex shrink-0 items-center gap-1">
+        <TooltipHint label="编辑模型">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`编辑模型 ${model.name}`}
+            onClick={() => onEdit(model)}
+          >
+            <Pencil />
+          </Button>
+        </TooltipHint>
+        <TooltipHint label="删除模型">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`删除模型 ${model.name}`}
+            className="text-muted-foreground hover:text-error"
+            onClick={() => onDelete(model)}
+          >
+            <Trash2 />
+          </Button>
+        </TooltipHint>
+      </div>
     </div>
   );
 }

@@ -34,7 +34,7 @@ import { Label } from '@/shared/ui/label';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Textarea } from '@/shared/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs';
-import { TooltipHint, TooltipProvider } from '@/shared/ui/tooltip';
+import { TooltipHint } from '@/shared/ui/tooltip';
 import { formatBytes } from '@/shared/lib/format';
 import { fadeInUp } from '@/shared/lib/motion';
 import { useTheme } from '@/shared/hooks/use-theme';
@@ -157,35 +157,33 @@ function FileItem({
           </p>
         </div>
       </div>
-      <TooltipProvider delayDuration={300}>
-        <div className="flex shrink-0 items-center gap-1">
-          <TooltipHint label="下载">
+      <div className="flex shrink-0 items-center gap-1">
+        <TooltipHint label="下载">
+          <Button
+            aria-label="下载"
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleDownload}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Download />
+          </Button>
+        </TooltipHint>
+        {!isMainContent && (
+          <TooltipHint label="删除">
             <Button
-              aria-label="下载"
+              aria-label="删除"
               variant="ghost"
               size="icon-xs"
-              onClick={handleDownload}
-              className="text-muted-foreground hover:text-foreground"
+              onClick={() => onDelete(file.name)}
+              disabled={isDeleting}
+              className="text-muted-foreground hover:bg-error/10 hover:text-error"
             >
-              <Download />
+              {isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
             </Button>
           </TooltipHint>
-          {!isMainContent && (
-            <TooltipHint label="删除">
-              <Button
-                aria-label="删除"
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onDelete(file.name)}
-                disabled={isDeleting}
-                className="text-muted-foreground hover:bg-error/10 hover:text-error"
-              >
-                {isDeleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-              </Button>
-            </TooltipHint>
-          )}
-        </div>
-      </TooltipProvider>
+        )}
+      </div>
     </div>
   );
 }
