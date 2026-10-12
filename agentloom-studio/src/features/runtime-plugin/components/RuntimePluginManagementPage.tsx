@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Cpu, Plus, Power, PowerOff, Search, Trash2 } from 'lucide-react'
-import { formatBytes } from '@/shared/lib/format'
+import { formatBytes, formatDateTime } from '@/shared/lib/format'
 import { useAuthToken } from '@/features/auth'
 import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import {
   canAdministerPlugins,
   canRegisterPlugins,
-  formatPluginTimestamp,
   resolvePluginErrorMessage,
 } from '@/features/plugin'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
@@ -83,6 +82,9 @@ export function RuntimePluginManagementPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<RuntimePluginRecord | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  // 退场动画期间 pendingDelete 已置空，文案沿用最近一次的目标
+  const lastPendingDeleteRef = useRef<RuntimePluginRecord | null>(null)
+  if (pendingDelete) lastPendingDeleteRef.current = pendingDelete
 
   const params = useMemo(() => {
     const next: RuntimePluginListParams = { page, pageSize: PAGE_SIZE }
@@ -172,9 +174,13 @@ export function RuntimePluginManagementPage() {
         className: 'w-full max-w-0',
         cell: (plugin) => (
           <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{plugin.name}</p>
-            <p className="flex items-baseline gap-1 text-xs text-muted-foreground">
-              <span className="truncate">{plugin.pluginId}</span>
+            <p className="truncate font-medium text-foreground" title={plugin.name}>
+              {plugin.name}
+            </p>
+            <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+              <span className="min-w-0 truncate" title={plugin.pluginId}>
+                {plugin.pluginId}
+              </span>
               {/* 小屏隐藏了版本列，把版本号并进副标题且不参与截断 */}
               <span className="shrink-0 sm:hidden">v{plugin.version}</span>
             </p>
@@ -185,16 +191,19 @@ export function RuntimePluginManagementPage() {
         key: 'version',
         header: '版本',
         className: 'w-24',
+        nowrap: true,
         hideBelow: 'sm',
         cell: (plugin) => <span className="text-muted-foreground">v{plugin.version}</span>,
       },
       {
         key: 'author',
         header: '作者',
-        className: 'w-32',
+        className: 'w-32 max-w-32',
         hideBelow: 'md',
         cell: (plugin) => (
-          <span className="block truncate text-muted-foreground">{plugin.author}</span>
+          <span className="block truncate text-muted-foreground" title={plugin.author}>
+            {plugin.author}
+          </span>
         ),
       },
       {
@@ -202,7 +211,7 @@ export function RuntimePluginManagementPage() {
         header: '状态',
         className: 'w-28',
         cell: (plugin) => (
-          <Badge variant={RUNTIME_PLUGIN_STATUS_VARIANT[plugin.status]}>
+          <Badge size="sm" variant={RUNTIME_PLUGIN_STATUS_VARIANT[plugin.status]}>
             {RUNTIME_PLUGIN_STATUS_LABEL[plugin.status]}
           </Badge>
         ),
@@ -211,6 +220,8 @@ export function RuntimePluginManagementPage() {
         key: 'sizeBytes',
         header: '大小',
         className: 'w-24',
+        nowrap: true,
+        align: 'right',
         hideBelow: 'md',
         cell: (plugin) => (
           <span className="text-muted-foreground">{formatBytes(plugin.sizeBytes)}</span>
@@ -220,11 +231,10 @@ export function RuntimePluginManagementPage() {
         key: 'updatedAt',
         header: '更新时间',
         className: 'w-40',
+        nowrap: true,
         hideBelow: 'lg',
         cell: (plugin) => (
-          <span className="text-muted-foreground">
-            {formatPluginTimestamp(plugin.updatedAt) ?? '—'}
-          </span>
+          <span className="text-muted-foreground">{formatDateTime(plugin.updatedAt)}</span>
         ),
       },
     ]
@@ -238,10 +248,11 @@ export function RuntimePluginManagementPage() {
       {
         key: 'actions',
         header: '操作',
-        className: 'w-28 text-right',
+        className: 'w-24',
+        align: 'right',
         cell: (plugin) => (
           <div
-            className="flex justify-end gap-1"
+            className="flex items-center justify-end gap-1"
             onClick={(event) => event.stopPropagation()}
           >
             <Button
@@ -256,9 +267,9 @@ export function RuntimePluginManagementPage() {
               {togglingId === plugin.id ? (
                 <Spinner size="sm" />
               ) : plugin.status === 'active' ? (
-                <PowerOff className="h-3.5 w-3.5" />
+                <PowerOff />
               ) : (
-                <Power className="h-3.5 w-3.5" />
+                <Power />
               )}
             </Button>
             <Button
@@ -268,7 +279,7 @@ export function RuntimePluginManagementPage() {
               className="text-muted-foreground hover:text-error"
               onClick={() => setPendingDelete(plugin)}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 />
             </Button>
           </div>
         ),
@@ -288,7 +299,7 @@ export function RuntimePluginManagementPage() {
         actions={
           canRegister ? (
             <Button onClick={() => setRegisterOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus />
               上传 runtime 插件
             </Button>
           ) : null
@@ -297,7 +308,7 @@ export function RuntimePluginManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -362,7 +373,7 @@ export function RuntimePluginManagementPage() {
               action={
                 hasFilters || !canRegister ? null : (
                   <Button size="sm" onClick={() => setRegisterOpen(true)}>
-                    <Plus className="mr-1.5 h-4 w-4" />
+                    <Plus />
                     上传 runtime 插件
                   </Button>
                 )
@@ -400,7 +411,7 @@ export function RuntimePluginManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>删除 runtime 插件</AlertDialogTitle>
           <AlertDialogDescription>
-            {`确定要删除「${pendingDelete?.name ?? ''}」吗？引用该插件的 Agent 将无法创建 sandbox 会话，此操作不可撤销。`}
+            {`确定要删除「${lastPendingDeleteRef.current?.name ?? ''}」吗？引用该插件的 Agent 将无法创建 sandbox 会话，此操作不可撤销。`}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -412,7 +423,7 @@ export function RuntimePluginManagementPage() {
                 handleConfirmDelete()
               }}
             >
-              {deleteMutation.isPending ? <Spinner size="sm" className="mr-1.5" /> : null}
+              {deleteMutation.isPending ? <Spinner size="sm" /> : null}
               删除
             </AlertDialogAction>
           </AlertDialogFooter>

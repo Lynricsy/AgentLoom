@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { FileArchive, ShieldAlert, Upload, X } from 'lucide-react'
 import { formatBytes } from '@/shared/lib/format'
+import { fadeInUp } from '@/shared/lib/motion'
 import { PLUGIN_PACKAGE_EXTENSION, isPluginPackageFile } from '@/features/plugin'
 import {
   Dialog,
@@ -11,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import { Progress } from '@/shared/ui/progress'
@@ -141,21 +144,21 @@ export function RegisterRuntimePluginDialog({
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             className={cn(
-              'flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-8 text-center transition-colors',
+              'flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors',
               isDragging ? 'border-primary bg-primary/5' : 'border-border bg-muted',
               isUploading && 'opacity-60',
             )}
           >
             <span
               aria-hidden
-              className="grid h-11 w-11 place-items-center rounded-full bg-primary/10 text-primary"
+              className="grid size-11 place-items-center rounded-full bg-primary/10 text-primary"
             >
-              {file ? <FileArchive className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
+              {file ? <FileArchive className="size-5" /> : <Upload className="size-5" />}
             </span>
 
             {file ? (
-              <div className="flex max-w-full items-center gap-2">
-                <span className="truncate text-sm font-medium text-foreground">
+              <div className="flex min-w-0 max-w-full items-center gap-2">
+                <span className="min-w-0 truncate text-sm font-medium text-foreground" title={file.name}>
                   {file.name}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
@@ -204,28 +207,35 @@ export function RegisterRuntimePluginDialog({
             />
           </div>
 
-          {isUploading ? (
-            <div className="space-y-1.5" data-testid="runtime-plugin-upload-progress">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Spinner size="sm" />
-                  {progress >= 100 ? '正在校验签名…' : '正在上传…'}
-                </span>
-                <span>{progress}%</span>
-              </div>
-              <Progress value={progress} aria-label="runtime 插件上传进度" />
-            </div>
-          ) : null}
+          <AnimatePresence initial={false}>
+            {isUploading ? (
+              <motion.div
+                key="progress"
+                {...fadeInUp}
+                className="space-y-1.5"
+                data-testid="runtime-plugin-upload-progress"
+              >
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Spinner size="sm" />
+                    {progress >= 100 ? '正在校验签名…' : '正在上传…'}
+                  </span>
+                  <span className="tabular-nums">{progress}%</span>
+                </div>
+                <Progress value={progress} aria-label="runtime 插件上传进度" />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
-          {error ? (
-            <div
-              role="alert"
-              className="flex items-start gap-2 rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-xs text-error"
-            >
-              <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          ) : null}
+          <AnimatePresence initial={false}>
+            {error ? (
+              <motion.div key="error" {...fadeInUp}>
+                <Alert variant="error" icon={ShieldAlert} role="alert">
+                  <span className="min-w-0 whitespace-pre-wrap break-words">{error}</span>
+                </Alert>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           <label className="flex items-start gap-2 text-sm text-foreground">
             <Checkbox

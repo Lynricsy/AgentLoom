@@ -38,16 +38,24 @@ export function RuntimePluginDetailSheet({
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{plugin?.name ?? 'Runtime 插件详情'}</SheetTitle>
-          <SheetDescription>
+          <SheetDescription className="break-all">
             {plugin ? `${plugin.pluginId} · v${plugin.version}` : '查看清单摘要与配置 Schema'}
           </SheetDescription>
         </SheetHeader>
 
         <SheetBody className="space-y-5">
           {isLoading ? (
-            <div className="space-y-3" data-testid="runtime-plugin-detail-skeleton">
+            <div className="space-y-5" data-testid="runtime-plugin-detail-skeleton">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <div key={index} className="space-y-1">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-5 w-full" />
+                  </div>
+                ))}
+              </div>
               <Skeleton className="h-16 rounded-lg" />
-              <Skeleton className="h-24 rounded-lg" />
+              <Skeleton className="h-32 rounded-lg" />
             </div>
           ) : isError || !plugin ? (
             <EmptyState
@@ -60,13 +68,17 @@ export function RuntimePluginDetailSheet({
             <>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                 <Field label="状态">
-                  <Badge variant={RUNTIME_PLUGIN_STATUS_VARIANT[plugin.status]}>
+                  <Badge size="sm" variant={RUNTIME_PLUGIN_STATUS_VARIANT[plugin.status]}>
                     {RUNTIME_PLUGIN_STATUS_LABEL[plugin.status]}
                   </Badge>
                 </Field>
                 <Field label="版本">v{plugin.version}</Field>
-                <Field label="作者">{plugin.author}</Field>
-                <Field label="许可协议">{plugin.license ?? '未声明'}</Field>
+                <Field label="作者" title={plugin.author}>
+                  {plugin.author}
+                </Field>
+                <Field label="许可协议" title={plugin.license ?? undefined}>
+                  {plugin.license ?? '未声明'}
+                </Field>
                 <Field label="包大小">{formatBytes(plugin.sizeBytes)}</Field>
                 <Field label="更新时间">
                   {formatPluginTimestamp(plugin.updatedAt) ?? '未记录'}
@@ -74,13 +86,15 @@ export function RuntimePluginDetailSheet({
               </dl>
 
               {plugin.description ? (
-                <p className="text-sm leading-relaxed text-muted-foreground">{plugin.description}</p>
+                <p className="break-words text-sm leading-relaxed text-muted-foreground">
+                  {plugin.description}
+                </p>
               ) : null}
 
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <h3 className="text-sm font-semibold text-foreground">
                   内容哈希（SHA-256）
                 </h3>
                 <code
@@ -94,7 +108,7 @@ export function RuntimePluginDetailSheet({
               <Separator />
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <h3 className="text-sm font-semibold text-foreground">
                   配置 Schema
                 </h3>
                 {plugin.configSchema ? (
@@ -119,11 +133,21 @@ export function RuntimePluginDetailSheet({
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  title,
+  children,
+}: {
+  label: string
+  title?: string
+  children: ReactNode
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-foreground">{children}</dd>
+      <dd className="mt-0.5 truncate text-foreground" title={title}>
+        {children}
+      </dd>
     </div>
   )
 }
