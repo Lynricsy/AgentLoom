@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useState } from "react";
-import { AlertCircle, Loader2, Upload } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 
+import { Collapse } from "@/shared/components/collapse/Collapse";
+import { Alert } from "@/shared/ui/alert";
 import { useToast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -230,100 +232,100 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
             <div className="space-y-3">
               <p className="text-sm font-medium">发布来源</p>
 
-              <RadioGroup
-                name="version-source"
-                value={versionSource}
-                onValueChange={(value) =>
-                  setVersionSource(value as "current" | "existing")
-                }
-                className="gap-3"
-              >
-                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-150 hover:bg-muted">
-                  <RadioGroupItem
-                    value="current"
-                    className="mt-0.5"
-                    data-testid="source-current"
-                  />
-                  <div>
-                    <div className="text-sm font-medium text-foreground">
-                      当前编辑稿
+              <div>
+                <RadioGroup
+                  name="version-source"
+                  value={versionSource}
+                  onValueChange={(value) =>
+                    setVersionSource(value as "current" | "existing")
+                  }
+                  className="gap-3"
+                >
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-150 hover:bg-muted">
+                    <RadioGroupItem
+                      value="current"
+                      className="mt-0.5"
+                      data-testid="source-current"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-foreground">
+                        当前编辑稿
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        使用当前 Agent 画布状态创建一个新的发布版本
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      使用当前 Agent 画布状态创建一个新的发布版本
-                    </div>
-                  </div>
-                </label>
-
-                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-150 hover:bg-muted">
-                  <RadioGroupItem
-                    value="existing"
-                    className="mt-0.5"
-                    data-testid="source-existing"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-foreground">
-                      选择已有记录
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      直接发布某个已保存的历史版本
-                    </div>
-                  </div>
-                </label>
-              </RadioGroup>
-
-              {versionSource === "existing" && (
-                <div className="space-y-2">
-                  <label
-                    htmlFor="agent-version-select"
-                    className="text-sm font-medium"
-                  >
-                    可发布记录
                   </label>
-                  <Select
-                    value={selectedVersionId}
-                    onValueChange={setSelectedVersionId}
-                  >
-                    <SelectTrigger
-                      id="agent-version-select"
-                      aria-label="可发布记录"
-                      data-testid="version-select"
+
+                  <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors duration-150 hover:bg-muted">
+                    <RadioGroupItem
+                      value="existing"
+                      className="mt-0.5"
+                      data-testid="source-existing"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-foreground">
+                        选择已有记录
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        直接发布某个已保存的历史版本
+                      </div>
+                    </div>
+                  </label>
+                </RadioGroup>
+
+                {/* 外扩 1 单位留出 SelectTrigger 焦点环，避免被 overflow-hidden 裁掉 */}
+                <Collapse open={versionSource === "existing"} className="-mx-1 -mb-1 px-1 pb-1">
+                  <div className="space-y-2 pt-3">
+                    <label
+                      htmlFor="agent-version-select"
+                      className="text-sm font-medium"
                     >
-                      <SelectValue placeholder="请选择一条记录" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {publishableVersions.map((version) => (
-                        <SelectItem key={version.id} value={version.id}>
-                          {formatPublishableRecordLabel(version)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {publishableVersions.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      当前没有可直接发布的历史记录
-                    </p>
-                  )}
-                </div>
-              )}
+                      可发布记录
+                    </label>
+                    <Select
+                      value={selectedVersionId}
+                      onValueChange={setSelectedVersionId}
+                    >
+                      <SelectTrigger
+                        id="agent-version-select"
+                        aria-label="可发布记录"
+                        data-testid="version-select"
+                      >
+                        <SelectValue placeholder="请选择一条记录" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {publishableVersions.map((version) => (
+                          <SelectItem key={version.id} value={version.id}>
+                            {formatPublishableRecordLabel(version)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {publishableVersions.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        当前没有可直接发布的历史记录
+                      </p>
+                    )}
+                  </div>
+                </Collapse>
+              </div>
             </div>
 
             {validationErrors.length > 0 && (
-              <div
-                className="rounded-md border border-error/30 bg-error/10 p-3"
+              <Alert
+                variant="error"
+                title="发布失败"
                 data-testid="publish-validation-error"
               >
-                <div className="flex items-center gap-2 text-sm font-medium text-error">
-                  <AlertCircle className="size-4" />
-                  <span>发布失败</span>
-                </div>
-                <ul className="mt-2 space-y-1 text-sm text-error">
+                <ul className="space-y-1">
                   {validationErrors.map((message) => (
                     <li key={message} data-testid="publish-validation-error-item">
                       {message}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Alert>
             )}
           </SheetBody>
 

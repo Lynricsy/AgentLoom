@@ -94,12 +94,12 @@ describe("AgentVersionHistoryPanel", () => {
     };
   });
 
-  it("关闭时面板被移出视口", () => {
+  it("关闭时面板不挂载", () => {
     render(<AgentVersionHistoryPanel {...defaultProps} open={false} />);
 
     expect(
-      screen.getByTestId("agent-version-history-panel").className,
-    ).toContain("translate-x-full");
+      screen.queryByTestId("agent-version-history-panel"),
+    ).not.toBeInTheDocument();
   });
 
   it("无版本时显示空状态", () => {

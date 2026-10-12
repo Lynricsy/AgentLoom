@@ -2,10 +2,11 @@ import { memo } from "react";
 import { History, KeyRound, Loader2, Save, Share2, Tag, Upload } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
-import { Badge, type BadgeProps } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Separator } from "@/shared/ui/separator";
+import { StatusBadge } from "@/shared/ui/status-badge";
 
+import { AGENT_STATUS_META } from "../lib/status";
 import type { AgentStatus } from "../types";
 
 interface AgentVersionToolbarProps {
@@ -24,15 +25,6 @@ interface AgentVersionToolbarProps {
   className?: string;
 }
 
-const STATUS_META: Record<
-  AgentStatus,
-  { label: string; variant: NonNullable<BadgeProps["variant"]> }
-> = {
-  draft: { label: "草稿", variant: "info" },
-  published: { label: "已发布", variant: "success" },
-  archived: { label: "已归档", variant: "secondary" },
-};
-
 export const AgentVersionToolbar = memo(function AgentVersionToolbar({
   agentStatus,
   isCanvasDirty,
@@ -48,7 +40,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
 }: AgentVersionToolbarProps) {
   /** 归档与小屏只读浏览都不应暴露写操作入口 */
   const hideWriteActions = agentStatus === "archived" || isReadOnly;
-  const status = STATUS_META[agentStatus];
+  const status = AGENT_STATUS_META[agentStatus];
 
   return (
     <div
@@ -58,11 +50,13 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
       )}
       data-testid="agent-version-toolbar"
     >
-      <Badge variant={status.variant} data-testid="agent-status-badge">
-        {status.label}
-      </Badge>
-
-      <Separator orientation="vertical" className="mx-1 h-4" />
+      {/* 徽章与分隔线成组不拆行，避免换行时竖线孤立在行首/行尾 */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        <StatusBadge tone={status.tone} data-testid="agent-status-badge">
+          {status.label}
+        </StatusBadge>
+        <Separator orientation="vertical" className="mx-1 h-4" />
+      </div>
 
       {!hideWriteActions && (
         <Button
@@ -73,9 +67,9 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
           data-testid="btn-save-agent-canvas"
         >
           {isCanvasSaving ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="animate-spin" />
           ) : (
-            <Save className="h-3.5 w-3.5" />
+            <Save />
           )}
           {isCanvasSaving ? "保存中…" : "保存画布"}
         </Button>
@@ -88,7 +82,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
           onClick={onOpenCreateVersion}
           data-testid="btn-create-agent-version"
         >
-          <Tag className="h-3.5 w-3.5" />
+          <Tag />
           保存版本
         </Button>
       )}
@@ -99,7 +93,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
         onClick={onOpenVersionHistory}
         data-testid="btn-agent-version-history"
       >
-        <History className="h-3.5 w-3.5" />
+        <History />
         历史记录
       </Button>
 
@@ -110,7 +104,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
           onClick={() => onOpenPublish()}
           data-testid="btn-publish-agent"
         >
-          <Upload className="h-3.5 w-3.5" />
+          <Upload />
           发布
         </Button>
       )}
@@ -122,7 +116,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
           onClick={onShare}
           data-testid="btn-share-agent"
         >
-          <Share2 className="h-3.5 w-3.5" />
+          <Share2 />
           分享
         </Button>
       )}
@@ -134,7 +128,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
           onClick={onOpenApiAccess}
           data-testid="btn-agent-api-access"
         >
-          <KeyRound className="h-3.5 w-3.5" />
+          <KeyRound />
           API 访问
         </Button>
       )}

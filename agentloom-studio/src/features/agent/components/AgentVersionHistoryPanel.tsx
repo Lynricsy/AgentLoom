@@ -1,10 +1,13 @@
 import { memo, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Archive, Clock, History, Tag, Upload, X } from "lucide-react";
 
 import { formatRelativeTime } from "@/features/canvas";
-import { cn } from "@/shared/lib/utils";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { DUR, EASE } from "@/shared/lib/motion";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Skeleton } from "@/shared/ui/skeleton";
 
 import { useAgentVersions } from "../api/agentQueries";
 import type { AgentStatus, AgentVersion } from "../types";
@@ -29,14 +32,16 @@ function formatCreatorInitial(createdBy: string): string {
 function VersionItemSkeleton() {
   return (
     <div
-      className="animate-pulse border-b border-border p-4"
+      className="border-b border-border p-4"
       data-testid="agent-version-item-skeleton"
     >
       <div className="flex items-center gap-2">
-        <div className="h-5 w-10 rounded bg-muted" />
-        <div className="h-4 w-32 rounded bg-muted" />
+        <Skeleton className="h-5 w-10 rounded-md" />
+        <Skeleton className="h-4 w-32" />
       </div>
-      <div className="mt-2 h-3 w-24 rounded bg-muted" />
+      <Skeleton className="mt-2 h-3 w-24" />
+      <Skeleton className="mt-2 h-5 w-40" />
+      <Skeleton className="mt-2 h-3 w-28" />
     </div>
   );
 }
@@ -62,20 +67,23 @@ const VersionItem = memo(function VersionItem({
       className="group border-b border-border p-4 transition-colors hover:bg-muted"
       data-testid={`agent-version-item-${version.versionNumber}`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Badge size="sm" className="shrink-0">
             v{version.versionNumber}
-          </span>
+          </Badge>
           {version.label && (
-            <span className="flex items-center gap-1 text-sm text-foreground">
-              <Tag className="h-3 w-3" />
-              {version.label}
+            <span
+              className="flex min-w-0 items-center gap-1 text-sm text-foreground"
+              title={version.label}
+            >
+              <Tag className="size-3 shrink-0" />
+              <span className="truncate">{version.label}</span>
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {isPublished && <Badge variant="success">当前发布</Badge>}
           {isArchived && (
             <Badge variant="secondary">
@@ -88,36 +96,37 @@ const VersionItem = memo(function VersionItem({
 
       <div className="mt-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
+          <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+            <Clock className="size-3 shrink-0" />
             {formatRelativeTime(new Date(version.createdAt))}
           </span>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 font-medium text-primary">
+          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 font-medium text-primary">
               {formatCreatorInitial(version.createdBy)}
             </span>
             <span
+              className="min-w-0 truncate"
               data-testid={`agent-version-created-by-${version.versionNumber}`}
             >
               {formatCreatorLabel(version.createdBy)}
             </span>
           </div>
 
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground tabular-nums">
             {version.snapshot.metadata.nodeCount} 个节点 ·{" "}
             {version.snapshot.metadata.edgeCount} 条连线
           </div>
 
           {releaseNotes && (
-            <p className="rounded-md border border-border/70 bg-muted px-3 py-2 text-xs leading-5 text-foreground/80">
+            <p className="whitespace-pre-wrap break-words rounded-md border border-border bg-muted px-3 py-2 text-xs leading-5 text-foreground/80">
               {releaseNotes}
             </p>
           )}
         </div>
 
         {!isAgentArchived && !isPublished && !isArchived && onPublish && (
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
             <Button
               variant="ghost"
               size="xs"
@@ -196,65 +205,72 @@ export const AgentVersionHistoryPanel = memo(function AgentVersionHistoryPanel({
   };
 
   return (
-    <aside
-      className={cn(
-        "fixed right-0 top-0 z-40 flex h-full w-[400px] flex-col border-l border-border bg-surface shadow-xl transition-transform duration-300",
-        open ? "translate-x-0" : "translate-x-full",
-      )}
-      data-testid="agent-version-history-panel"
-      aria-label="Agent 历史记录"
-    >
-      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <History className="size-4 shrink-0 text-muted-foreground" />
-          <h2 className="truncate text-sm font-medium">历史记录</h2>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={onClose}
-          aria-label="关闭历史记录"
+    <AnimatePresence>
+      {open ? (
+        <motion.aside
+          key="agent-version-history-panel"
+          initial={{ x: "100%" }}
+          animate={{ x: 0 }}
+          exit={{ x: "100%" }}
+          transition={{ duration: DUR.slow, ease: EASE }}
+          className="fixed right-0 top-0 z-40 flex h-full w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-xl"
+          data-testid="agent-version-history-panel"
+          aria-label="Agent 历史记录"
         >
-          <X />
-        </Button>
-      </div>
+          <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <History className="size-4 shrink-0 text-muted-foreground" />
+              <h2 className="truncate text-sm font-medium">历史记录</h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={onClose}
+              aria-label="关闭历史记录"
+            >
+              <X />
+            </Button>
+          </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {isLoading && page === 1 ? (
-          <div>
-            <VersionItemSkeleton />
-            <VersionItemSkeleton />
-            <VersionItemSkeleton />
-          </div>
-        ) : displayVersions.length === 0 ? (
           <div
-            className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground"
-            data-testid="agent-version-list-empty"
-          >
-            <History className="h-8 w-8 opacity-40" />
-            <p className="text-sm">暂无版本记录</p>
-            <p className="text-xs">
-              保存版本或发布当前 Agent 后，会在这里展示历史记录
-            </p>
-          </div>
-        ) : (
-          <div
-            className="h-full overflow-y-auto"
+            className="flex-1 overflow-y-auto"
             onScroll={handleListScroll}
-            data-testid="agent-version-list"
+            data-testid="agent-version-list-scroll"
           >
-            {displayVersions.map((version) => (
-              <VersionItem
-                key={version.id}
-                version={version}
-                agentStatus={agentStatus}
-                onPublish={onPublish}
-              />
-            ))}
+            {isLoading && page === 1 ? (
+              <div>
+                <VersionItemSkeleton />
+                <VersionItemSkeleton />
+                <VersionItemSkeleton />
+              </div>
+            ) : displayVersions.length === 0 ? (
+              <div
+                className="flex h-full items-center justify-center"
+                data-testid="agent-version-list-empty"
+              >
+                <EmptyState
+                  variant="plain"
+                  icon={History}
+                  title="暂无版本记录"
+                  description="保存版本或发布当前 Agent 后，会在这里展示历史记录"
+                />
+              </div>
+            ) : (
+              <div data-testid="agent-version-list">
+                {displayVersions.map((version) => (
+                  <VersionItem
+                    key={version.id}
+                    version={version}
+                    agentStatus={agentStatus}
+                    onPublish={onPublish}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </aside>
+        </motion.aside>
+      ) : null}
+    </AnimatePresence>
   );
 });

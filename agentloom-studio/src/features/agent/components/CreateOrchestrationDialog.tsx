@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Bot, Loader2 } from 'lucide-react'
+import { Bot, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import {
@@ -124,11 +124,17 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
                       aria-pressed={active}
                       onClick={() => setRuntimeMode(option.value)}
                       className={cn(
-                        'h-auto flex-col items-start gap-1 whitespace-normal rounded-lg px-3 py-3 text-left',
+                        'relative h-auto flex-col items-start gap-1 whitespace-normal rounded-lg px-3 py-3 pr-8 text-left',
                         active &&
                           'border-primary bg-primary/10 hover:border-primary hover:bg-primary/10',
                       )}
                     >
+                      {active ? (
+                        <Check
+                          aria-hidden
+                          className="absolute right-3 top-3 text-primary"
+                        />
+                      ) : null}
                       <span className="text-sm font-medium text-foreground">
                         {option.title}
                       </span>

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import {
@@ -19,10 +19,12 @@ import {
   X,
 } from "lucide-react";
 import { ResourceSourceCategoryTabs } from "@/shared/components";
+import { Collapse } from "@/shared/components/collapse/Collapse";
 import { EntityIcon } from "@/shared/components/entity-icon";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { PageContainer } from "@/shared/components/page-container";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { formatNumber } from "@/shared/lib/format";
 import { staggerList } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
@@ -45,6 +47,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { StatusBadge } from "@/shared/ui/status-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,7 +68,8 @@ import { useAgentList } from "../api/agentQueries";
 import { useDeleteAgent } from "../api/agentMutations";
 import { useAgentStore } from "../stores/agentStore";
 import { CreateOrchestrationDialog } from "./CreateOrchestrationDialog";
-import type { AgentDefinitionSummary, AgentStatus } from "../types";
+import { AGENT_STATUS_META } from "../lib/status";
+import type { AgentDefinitionSummary } from "../types";
 import type { AgentListSearch } from "../lib/agentListSearch";
 
 type ViewMode = "grid" | "list";
@@ -82,30 +86,6 @@ const STATUS_OPTIONS = [
 
 /** Agent 列表统一使用 agent 类别色，与画布 agent 节点同源 */
 const AGENT_TONE = "var(--color-node-agent)";
-
-type StatusVariant = "success" | "secondary" | "warning";
-
-function getStatusVariant(status: AgentStatus): StatusVariant {
-  switch (status) {
-    case "published":
-      return "success";
-    case "archived":
-      return "secondary";
-    default:
-      return "warning";
-  }
-}
-
-function getStatusLabel(status: AgentStatus): string {
-  switch (status) {
-    case "published":
-      return "已发布";
-    case "archived":
-      return "已归档";
-    default:
-      return "草稿";
-  }
-}
 
 /** 已发布 Agent 展示发布版本号；未发布只有草稿快照 */
 function getAgentReleaseLabel(agent: AgentDefinitionSummary): string {
@@ -143,7 +123,7 @@ const AgentRowActions = memo(function AgentRowActions({
           onEdit(agent);
         }}
       >
-        <Edit3 className="h-4 w-4" />
+        <Edit3 />
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -153,7 +133,7 @@ const AgentRowActions = memo(function AgentRowActions({
             aria-label={`更多操作 ${agent.name}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -229,9 +209,9 @@ const AgentCard = memo(function AgentCard({
         </span>
 
         <div className="flex items-center gap-2">
-          <Badge variant={getStatusVariant(agent.status)}>
-            {getStatusLabel(agent.status)}
-          </Badge>
+          <StatusBadge tone={AGENT_STATUS_META[agent.status].tone} dot>
+            {AGENT_STATUS_META[agent.status].label}
+          </StatusBadge>
           <span
             className={cn(
               "z-10 transition-opacity",
@@ -251,14 +231,14 @@ const AgentCard = memo(function AgentCard({
       </div>
 
       <div className="min-w-0 flex-1 space-y-1">
-        <h3 className="truncate text-sm font-semibold text-foreground">
+        <h3 className="min-w-0 text-sm font-semibold text-foreground">
           {/* 标题按钮拉伸覆盖整张卡片，保证唯一可访问名同时整卡可点 */}
           <Button
             variant="link"
-            className="h-auto max-w-full truncate p-0 text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg hover:no-underline"
+            className="h-auto min-w-0 max-w-full p-0 text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg hover:no-underline"
             onClick={() => onClick(agent)}
           >
-            {agent.name}
+            <span className="truncate">{agent.name}</span>
           </Button>
         </h3>
         <p className="line-clamp-2 text-xs text-muted-foreground">
@@ -339,13 +319,13 @@ const AgentListItem = memo(function AgentListItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+          <h3 className="min-w-0 text-sm font-semibold text-foreground">
             <Button
               variant="link"
-              className="h-auto max-w-full truncate p-0 text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg hover:no-underline"
+              className="h-auto min-w-0 max-w-full p-0 text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg hover:no-underline"
               onClick={() => onClick(agent)}
             >
-              {agent.name}
+              <span className="truncate">{agent.name}</span>
             </Button>
           </h3>
           <Badge variant="outline" size="sm">
@@ -358,9 +338,9 @@ const AgentListItem = memo(function AgentListItem({
       </div>
 
       <div className="hidden shrink-0 items-center gap-3 sm:flex">
-        <Badge variant={getStatusVariant(agent.status)}>
-          {getStatusLabel(agent.status)}
-        </Badge>
+        <StatusBadge tone={AGENT_STATUS_META[agent.status].tone} dot>
+          {AGENT_STATUS_META[agent.status].label}
+        </StatusBadge>
         <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:flex">
           <Clock className="h-3 w-3" />
           {formatRelativeTime(new Date(agent.updatedAt))}
@@ -379,19 +359,39 @@ const AgentListItem = memo(function AgentListItem({
   );
 });
 
+/** 骨架与 AgentCard 同结构同高：图标行 + 标题 + 两行描述 + h-8 底栏 */
 function AgentCardSkeleton() {
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card className="flex h-full flex-col gap-3 p-4">
       <div className="flex items-start justify-between">
         <Skeleton className="h-10 w-10 rounded-lg" />
         <Skeleton className="h-5 w-14 rounded-full" />
       </div>
-      <Skeleton className="h-4 w-3/5 rounded" />
-      <Skeleton className="h-3 w-full rounded" />
-      <div className="flex items-center justify-between">
+      <div className="flex-1 space-y-1">
+        <Skeleton className="h-5 w-3/5 rounded" />
+        <div className="flex flex-col gap-1 py-0.5">
+          <Skeleton className="h-3 w-full rounded" />
+          <Skeleton className="h-3 w-4/5 rounded" />
+        </div>
+      </div>
+      <div className="flex h-8 items-center justify-between">
         <Skeleton className="h-3 w-20 rounded" />
         <Skeleton className="h-3 w-10 rounded" />
       </div>
+    </Card>
+  );
+}
+
+/** 列表模式骨架，与 AgentListItem 同高 */
+function AgentListItemSkeleton() {
+  return (
+    <Card className="flex items-center gap-3 px-4 py-3">
+      <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
+      <div className="min-w-0 flex-1">
+        <Skeleton className="h-5 w-2/5 rounded" />
+        <Skeleton className="mt-0.5 h-4 w-3/5 rounded" />
+      </div>
+      <Skeleton className="hidden h-5 w-14 rounded-full sm:block" />
     </Card>
   );
 }
@@ -420,6 +420,9 @@ export function AgentListPage({
   const [deleteTarget, setDeleteTarget] = useState<AgentDefinitionSummary | null>(
     null,
   );
+  /** 关闭时 deleteTarget 先置空，退场动画期间仍展示最后一次目标的名称 */
+  const lastDeleteTargetRef = useRef<AgentDefinitionSummary | null>(null);
+  if (deleteTarget) lastDeleteTargetRef.current = deleteTarget;
 
   useEffect(() => {
     setSearchInput(filters.search);
@@ -598,10 +601,10 @@ export function AgentListPage({
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
+          <div className="flex h-9 items-center gap-0.5 rounded-md border border-border p-0.5">
             <Button
               variant={viewMode === "grid" ? "secondary" : "ghost"}
-              size="icon-sm"
+              size="icon-xs"
               onClick={() => setViewMode("grid")}
               aria-label="网格视图"
               aria-pressed={viewMode === "grid"}
@@ -610,7 +613,7 @@ export function AgentListPage({
             </Button>
             <Button
               variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="icon-sm"
+              size="icon-xs"
               onClick={() => setViewMode("list")}
               aria-label="列表视图"
               aria-pressed={viewMode === "list"}
@@ -620,37 +623,48 @@ export function AgentListPage({
           </div>
         </div>
 
-        {batchMode && (
-          <div className="flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
-            <Checkbox
-              checked={
-                selectedAgentIds.size === agents.length
-                  ? true
-                  : selectedAgentIds.size > 0
-                    ? "indeterminate"
-                    : false
-              }
-              onCheckedChange={handleSelectAll}
-              aria-label="全选"
-            />
-            <span className="text-sm text-foreground">
-              已选择 {selectedAgentIds.size} 项
-            </span>
-            <div className="flex-1" />
-            <Button variant="ghost" size="sm" onClick={clearAgentSelection}>
-              <X />
-              取消选择
-            </Button>
+        {/* -mt-4 抵消父级 gap，由内层 pt-4 随高度一起展开，避免出现瞬间多出 16px */}
+        <Collapse open={batchMode} className="-mt-4">
+          <div className="pt-4">
+            <div className="flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
+              <Checkbox
+                checked={
+                  selectedAgentIds.size === agents.length
+                    ? true
+                    : selectedAgentIds.size > 0
+                      ? "indeterminate"
+                      : false
+                }
+                onCheckedChange={handleSelectAll}
+                aria-label="全选"
+              />
+              <span className="text-sm text-foreground">
+                已选择 {selectedAgentIds.size} 项
+              </span>
+              <div className="flex-1" />
+              <Button variant="ghost" size="sm" onClick={clearAgentSelection}>
+                <X />
+                取消选择
+              </Button>
+            </div>
           </div>
-        )}
+        </Collapse>
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <AgentCardSkeleton key={`skeleton-${String(i)}`} />
-          ))}
-        </div>
+        viewMode === "grid" ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <AgentCardSkeleton key={`skeleton-${String(i)}`} />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <AgentListItemSkeleton key={`skeleton-${String(i)}`} />
+            ))}
+          </div>
+        )
       ) : agents.length === 0 ? (
         <EmptyState
           icon={isFiltered ? Search : MessageSquare}
@@ -716,8 +730,8 @@ export function AgentListPage({
 
       {meta && meta.totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border pt-4">
-          <span className="text-xs text-muted-foreground">
-            {meta.total} 个 Agent, 第 {meta.page}/{meta.totalPages} 页
+          <span className="text-xs tabular-nums text-muted-foreground">
+            共 {formatNumber(meta.total)} 个 · 第 {meta.page}/{meta.totalPages} 页
           </span>
           <div className="flex items-center gap-1">
             <Button
@@ -756,7 +770,7 @@ export function AgentListPage({
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除 Agent &ldquo;{deleteTarget?.name}&rdquo;
+            确定要删除 Agent &ldquo;{lastDeleteTargetRef.current?.name}&rdquo;
             吗？此操作不可撤销，所有关联数据将被永久移除。
           </AlertDialogDescription>
           <AlertDialogFooter>
