@@ -50,7 +50,7 @@ export const TableBody = forwardRef<
 
 /** 行样式基类 — 需要在 `<tr>` 之外的元素（如 motion.tr）上复用时直接引用 */
 export const tableRowClass =
-  'border-b border-border transition-colors hover:bg-muted data-[state=selected]:bg-muted'
+  'border-b border-border align-middle transition-colors hover:bg-muted data-[state=selected]:bg-muted'
 
 export const TableRow = forwardRef<
   HTMLTableRowElement,
@@ -82,7 +82,7 @@ export const TableCell = forwardRef<
   return (
     <td
       ref={ref}
-      className={cn('px-3 py-2.5 align-middle text-foreground', className)}
+      className={cn('px-3 py-2.5 text-foreground', className)}
       {...props}
     />
   )
