@@ -3,7 +3,7 @@ import { memo, useMemo } from 'react'
 import { cn } from '@/shared/lib/utils'
 
 import type { ExecutionStepStatus } from '../../types'
-import { stepStatusMeta, toneFillClass } from '../../lib/presentation'
+import { STEP_STATUS_META, toneFillClass } from '../../lib/presentation'
 
 interface TimelineDurationProps {
   status: ExecutionStepStatus
@@ -50,7 +50,7 @@ export const TimelineDuration = memo(function TimelineDuration({
     }
   }, [startedAt, completedAt, executionStartedAt, executionCompletedAt])
 
-  const meta = stepStatusMeta[status]
+  const meta = STEP_STATUS_META[status]
 
   return (
     <div

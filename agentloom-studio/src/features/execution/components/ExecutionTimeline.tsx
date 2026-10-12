@@ -5,12 +5,11 @@ import type { ExecutionStep } from '../types'
 import {
   formatClockTime,
   formatExecutionDuration,
-  stepStatusMeta,
+  STEP_STATUS_META,
   summarizeDataShape,
   toneFillClass,
 } from '../lib/presentation'
-import { StatusDot } from '@/shared/ui/status-badge'
-import { StepStatusBadge } from './StatusBadge'
+import { StatusBadge, StatusDot } from '@/shared/ui/status-badge'
 import { Card } from '@/shared/ui/card'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { staggerList } from '@/shared/lib/motion'
@@ -88,7 +87,7 @@ function buildTimelineRows(steps: ExecutionStep[]): TimelineRow[] {
       const widthPercent = Math.min(Math.max(rawWidth, minWidth), 100)
       const offsetPercent = Math.min(Math.max(rawOffset, 0), Math.max(100 - widthPercent, 0))
 
-      let summary = `状态：${stepStatusMeta[step.status].label}`
+      let summary = `状态：${STEP_STATUS_META[step.status].label}`
       if (step.errorMessage) {
         summary = `错误：${step.errorMessage}`
       } else if (step.output) {
@@ -140,7 +139,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
         ) : (
           <div className="space-y-3">
             {rows.map((row, index) => {
-              const statusMeta = stepStatusMeta[row.status]
+              const statusMeta = STEP_STATUS_META[row.status]
               const isSelected = row.nodeId === selectedNodeId
 
               return (
@@ -149,36 +148,49 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                   type="button"
                   {...staggerList(index)}
                   className={cn(
-                    'w-full rounded-lg border border-border bg-surface px-4 py-4 text-left transition-colors hover:border-border-hover hover:bg-muted',
-                    isSelected && 'border-primary bg-primary/5',
+                    'w-full rounded-lg border border-border bg-surface px-4 py-4 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                    isSelected
+                      ? 'border-primary bg-primary/5 hover:bg-primary/10'
+                      : 'hover:border-border-hover hover:bg-muted',
                   )}
                   onClick={() => onSelectNode(row.nodeId)}
                   data-testid={`execution-timeline-item-${row.id}`}
                 >
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-2">
                           <StatusDot
                             tone={statusMeta.tone}
                             className="size-2.5"
                             pulse={row.status === 'running'}
                           />
-                          <p className="truncate text-sm font-semibold text-foreground">{row.nodeName}</p>
-                          <span className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
+                          <p className="min-w-0 truncate text-sm font-semibold text-foreground">{row.nodeName}</p>
+                          <span className="shrink-0 text-2xs uppercase tracking-wider text-muted-foreground">
                             {row.nodeType}
                           </span>
                         </div>
                         <p className="mt-1 break-words text-sm text-foreground">{row.summary}</p>
                       </div>
 
-                      <StepStatusBadge status={row.status} />
+                      <StatusBadge
+                        tone={statusMeta.tone}
+                        dot
+                        pulse={row.status === 'running'}
+                        className="shrink-0"
+                        data-testid="step-status-badge"
+                      >
+                        {statusMeta.label}
+                      </StatusBadge>
                     </div>
 
                     <div className="space-y-2">
                       <div className="h-2 rounded-full bg-muted">
                         <div
-                          className={cn('h-full rounded-full', toneFillClass[statusMeta.tone])}
+                          className={cn(
+                            'h-full rounded-full transition-[margin-left,width] duration-300 ease-out-expo',
+                            toneFillClass[statusMeta.tone],
+                          )}
                           style={{
                             marginLeft: `${row.offsetPercent}%`,
                             width: `${row.widthPercent}%`,
@@ -186,7 +198,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                         />
                       </div>
 
-                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <div className="grid gap-2 text-xs text-muted-foreground tabular-nums sm:grid-cols-3">
                         <span>开始：{formatClockTime(row.startedAt)}</span>
                         <span>结束：{formatClockTime(row.completedAt)}</span>
                         <span>耗时：{row.durationLabel}</span>

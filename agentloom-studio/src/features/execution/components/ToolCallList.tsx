@@ -1,6 +1,8 @@
 import { memo, useCallback, useState } from 'react'
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from 'lucide-react'
 
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
@@ -179,25 +181,29 @@ function ToolCallCard({
           <Button
             variant="ghost"
             size="xs"
-            className="h-auto gap-1 px-0 text-2xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
+            aria-expanded={argsExpanded}
+            className="-ml-1.5 gap-1 px-1.5 text-2xs font-medium tracking-wide text-muted-foreground hover:bg-transparent hover:text-foreground"
             onClick={() => setArgsExpanded((v) => !v)}
           >
             <ChevronDown
-              className={`size-3 transition-transform ${argsExpanded ? '' : '-rotate-90'}`}
+              className={cn(
+                'size-3 shrink-0 transition-transform duration-150',
+                !argsExpanded && '-rotate-90',
+              )}
             />
             参数
           </Button>
-          {argsExpanded && (
+          <Collapse open={argsExpanded}>
             <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 font-mono text-2xs leading-5 text-muted-foreground">
               {JSON.stringify(tc.args, null, 2)}
             </pre>
-          )}
+          </Collapse>
         </div>
       )}
 
       {isTerminal && tc.result != null && (
         <div className="mt-2">
-          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-2xs font-medium tracking-wide text-muted-foreground">
             结果
           </p>
           <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1.5 font-mono text-2xs leading-5 text-success">
@@ -210,7 +216,7 @@ function ToolCallCard({
 
       {isTerminal && tc.error && (
         <div className="mt-2">
-          <p className="text-2xs font-medium uppercase tracking-wider text-error">
+          <p className="text-2xs font-medium tracking-wide text-error">
             错误
           </p>
           <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-error/5 px-2 py-1.5 font-mono text-2xs leading-5 text-error">
@@ -298,25 +304,23 @@ function ToolCallCard({
 
           <div className="flex flex-wrap gap-2">
             <Button
-              size="sm"
+              size="xs"
               variant="outline"
-              className="h-7 gap-1 text-xs"
               disabled={submitting !== null}
               onClick={() => void handlePermission('approve')}
               data-testid={`tool-call-approve-${tc.id}`}
             >
               {submitting === 'approve_once' ? (
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <Check className="size-3" />
+                <Check />
               )}
               允许一次
             </Button>
             {permissionRequest?.rememberable && (
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
-                className="h-7 gap-1 text-xs"
                 disabled={submitting !== null}
                 onClick={() =>
                   void handlePermission('approve', 'conversation_category')
@@ -324,33 +328,33 @@ function ToolCallCard({
                 data-testid={`tool-call-approve-session-${tc.id}`}
               >
                 {submitting === 'approve_session' ? (
-                  <Loader2 className="size-3 animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : (
-                  <Check className="size-3" />
+                  <Check />
                 )}
                 本会话同类始终允许
               </Button>
             )}
             <Button
-              size="sm"
+              size="xs"
               variant="outline"
-              className="h-7 gap-1 text-xs text-error hover:text-error"
+              className="text-error hover:text-error"
               disabled={submitting !== null}
               onClick={() => void handlePermission('deny')}
               data-testid={`tool-call-deny-${tc.id}`}
             >
               {submitting === 'deny_once' ? (
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <X className="size-3" />
+                <X />
               )}
               拒绝一次
             </Button>
             {permissionRequest?.rememberable && (
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
-                className="h-7 gap-1 text-xs text-error hover:text-error"
+                className="text-error hover:text-error"
                 disabled={submitting !== null}
                 onClick={() =>
                   void handlePermission('deny', 'conversation_category')
@@ -358,9 +362,9 @@ function ToolCallCard({
                 data-testid={`tool-call-deny-session-${tc.id}`}
               >
                 {submitting === 'deny_session' ? (
-                  <Loader2 className="size-3 animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : (
-                  <X className="size-3" />
+                  <X />
                 )}
                 本会话同类始终拒绝
               </Button>
@@ -398,25 +402,30 @@ export const ToolCallList = memo(function ToolCallList({
     <div className="mt-4" data-testid="tool-call-list">
       <Button
         variant="ghost"
-        className="h-auto w-full justify-between gap-2 px-0 py-0 font-normal hover:bg-transparent"
+        size="xs"
+        aria-expanded={expanded}
+        className="w-full justify-between gap-2 px-0 font-normal hover:bg-transparent"
         onClick={() => setExpanded((v) => !v)}
       >
-        <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground">
           工具调用
-          <span className="ml-1.5 text-2xs text-foreground">
+          <span className="ml-1.5 text-2xs text-foreground tabular-nums">
             ({entries.length})
           </span>
-        </h4>
-        <div className="flex items-center gap-1.5">
+        </span>
+        <span className="flex items-center gap-1.5">
           {hasActive && <StatusDot tone="primary" pulse />}
           <ChevronDown
-            className={`size-3.5 text-muted-foreground transition-transform ${expanded ? '' : '-rotate-90'}`}
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground transition-transform duration-150',
+              !expanded && '-rotate-90',
+            )}
           />
-        </div>
+        </span>
       </Button>
 
-      {expanded && (
-        <div className="mt-2 space-y-2">
+      <Collapse open={expanded}>
+        <div className="space-y-2 pt-2">
           {sorted.map((tc) => (
             <ToolCallCard
               key={tc.id}
@@ -426,7 +435,7 @@ export const ToolCallList = memo(function ToolCallList({
             />
           ))}
         </div>
-      )}
+      </Collapse>
     </div>
   )
 })

@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 
+import { Collapse } from '@/shared/components/collapse/Collapse'
 import { JsonTreeView } from '@/shared/components/json'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
@@ -101,26 +102,32 @@ export const TimelineIO = memo(function TimelineIO({
   const duration = formatExecutionDuration(startedAt, completedAt)
 
   return (
-    <div className={cn('space-y-1', className)} data-testid="timeline-io">
+    <div className={className} data-testid="timeline-io">
       <Button
         variant="ghost"
-        className="h-auto w-full flex-wrap justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+        aria-expanded={expanded}
+        className="h-auto w-full flex-wrap items-start justify-start gap-1.5 whitespace-normal px-0 py-0 text-left text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={(e) => {
           e.stopPropagation()
           setExpanded((prev) => !prev)
         }}
         data-testid="timeline-io-toggle"
       >
-        {expanded ? (
-          <ChevronDown className="size-3.5" />
-        ) : (
-          <ChevronRight className="size-3.5" />
-        )}
-        <span data-testid="timeline-io-input-preview">输入预览：{inputPreview}</span>
+        <ChevronDown
+          className={cn(
+            'mt-0.5 size-3.5 shrink-0 transition-transform duration-150',
+            !expanded && '-rotate-90',
+          )}
+        />
+        <span className="min-w-0 max-w-full truncate" data-testid="timeline-io-input-preview">
+          输入预览：{inputPreview}
+        </span>
         <span className="mx-1">·</span>
-        <span data-testid="timeline-io-output-preview">输出预览：{outputPreview}</span>
+        <span className="min-w-0 max-w-full truncate" data-testid="timeline-io-output-preview">
+          输出预览：{outputPreview}
+        </span>
         <span className="mx-1">·</span>
-        <span data-testid="timeline-io-duration">耗时 {duration}</span>
+        <span className="tabular-nums" data-testid="timeline-io-duration">耗时 {duration}</span>
         {retryCount > 0 && (
           <>
             <span className="mx-1">·</span>
@@ -129,13 +136,13 @@ export const TimelineIO = memo(function TimelineIO({
         )}
       </Button>
 
-      {expanded && (
+      <Collapse open={expanded}>
         <div
-          className="grid gap-2 sm:grid-cols-2"
+          className="grid gap-2 pt-1 sm:grid-cols-2"
           data-testid="timeline-io-expanded"
         >
           <div className="min-w-0 rounded-lg border border-border bg-muted p-3">
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="mb-1 text-2xs font-medium tracking-wide text-muted-foreground">
               输入
             </p>
             <div className="max-h-[300px] overflow-auto">
@@ -153,7 +160,7 @@ export const TimelineIO = memo(function TimelineIO({
             </div>
           </div>
           <div className="min-w-0 rounded-lg border border-border bg-muted p-3">
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="mb-1 text-2xs font-medium tracking-wide text-muted-foreground">
               输出
             </p>
             <div className="max-h-[300px] overflow-auto">
@@ -171,7 +178,7 @@ export const TimelineIO = memo(function TimelineIO({
             </div>
           </div>
           <div
-            className="grid gap-2 text-2xs text-muted-foreground sm:col-span-2 sm:grid-cols-4"
+            className="grid gap-2 text-2xs text-muted-foreground tabular-nums sm:col-span-2 sm:grid-cols-4"
             data-testid="timeline-io-meta"
           >
             <span>开始：{formatClockTime(startedAt)}</span>
@@ -180,7 +187,7 @@ export const TimelineIO = memo(function TimelineIO({
             <span>重试：{retryCount} 次</span>
           </div>
         </div>
-      )}
+      </Collapse>
     </div>
   )
 })

@@ -254,7 +254,9 @@ describe('ToolCallList', () => {
     expect(screen.getByText(/"path": "\/tmp\/test.txt"/)).toBeInTheDocument()
 
     await user.click(screen.getByText('参数'))
-    expect(screen.queryByText(/"path": "\/tmp\/test.txt"/)).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText(/"path": "\/tmp\/test.txt"/)).not.toBeInTheDocument(),
+    )
   })
 
   it('renders all tool calls in reverse order', () => {
@@ -394,7 +396,9 @@ describe('ToolCallList', () => {
     expect(screen.getByTestId('tool-call-tc1')).toBeInTheDocument()
 
     await user.click(screen.getByText('工具调用'))
-    expect(screen.queryByTestId('tool-call-tc1')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByTestId('tool-call-tc1')).not.toBeInTheDocument(),
+    )
 
     await user.click(screen.getByText('工具调用'))
     expect(screen.getByTestId('tool-call-tc1')).toBeInTheDocument()

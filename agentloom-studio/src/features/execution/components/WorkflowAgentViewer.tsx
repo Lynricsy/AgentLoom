@@ -7,11 +7,15 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { ExecutionAgentMessageList } from "./ExecutionAgentMessageList";
-import { ExecutionStatusBadge, StepStatusBadge } from "./StatusBadge";
+import { StatusBadge, type StatusTone } from "@/shared/ui/status-badge";
+import { formatBytes } from "@/shared/lib/format";
+import type { ConnectionStatus } from "../hooks/useExecutionSocket";
 import { useLiveExecutionDetail } from "../hooks/useLiveExecutionDetail";
 import { useNodeExecutionState } from "../stores/executionStore";
 import { buildWorkflowAgentViewerState } from "../lib/workflowAgentViewer";
 import {
+  EXECUTION_STATUS_META,
+  STEP_STATUS_META,
   formatExecutionDateTime,
   formatExecutionDuration,
 } from "../lib/presentation";
@@ -41,6 +45,16 @@ interface WorkflowAgentViewerProps {
 }
 
 const MIN_LEFT_WIDTH = 360;
+
+const CONNECTION_STATUS_META: Record<
+  ConnectionStatus,
+  { label: string; tone: StatusTone }
+> = {
+  connected: { label: "实时已连接", tone: "success" },
+  connecting: { label: "连接中…", tone: "warning" },
+  disconnected: { label: "实时未连接", tone: "neutral" },
+};
+
 const MIN_RIGHT_WIDTH = 300;
 const DEFAULT_LEFT_RATIO = 0.58;
 
@@ -93,8 +107,8 @@ const WorkspaceFilePreviewPanel = memo(function WorkspaceFilePreviewPanel({
           </p>
         </div>
         {selectedFile && (
-          <span className="shrink-0 text-2xs text-muted-foreground">
-            {selectedFile.size} bytes
+          <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
+            {formatBytes(selectedFile.size)}
           </span>
         )}
       </div>
@@ -326,8 +340,8 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         />
         <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[58fr_42fr]">
-            <Skeleton className="h-full min-h-[240px] rounded-xl" />
-            <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
+            <Skeleton className="h-full min-h-[240px] rounded-lg" />
+            <Skeleton className="hidden h-full min-h-[240px] rounded-lg lg:block" />
           </div>
         </div>
       </div>
@@ -380,10 +394,26 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         leading={backButton}
         status={
           <div className="hidden shrink-0 items-center gap-2 md:flex">
-            <ExecutionStatusBadge status={execution.status} prefix="执行" />
-            <StepStatusBadge status={step.status} prefix="节点" />
-            <Badge variant="outline">Socket {monitor.connectionStatus}</Badge>
-            <Badge variant="outline">
+            <StatusBadge
+              tone={EXECUTION_STATUS_META[execution.status].tone}
+              dot
+              pulse={execution.status === "running"}
+              data-testid="execution-status-badge"
+            >
+              执行 {EXECUTION_STATUS_META[execution.status].label}
+            </StatusBadge>
+            <StatusBadge
+              tone={STEP_STATUS_META[step.status].tone}
+              dot
+              pulse={step.status === "running"}
+              data-testid="step-status-badge"
+            >
+              节点 {STEP_STATUS_META[step.status].label}
+            </StatusBadge>
+            <StatusBadge tone={CONNECTION_STATUS_META[monitor.connectionStatus].tone}>
+              {CONNECTION_STATUS_META[monitor.connectionStatus].label}
+            </StatusBadge>
+            <Badge variant="outline" className="tabular-nums">
               耗时 {formatExecutionDuration(step.startedAt, step.completedAt)}
             </Badge>
           </div>
@@ -402,10 +432,12 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           />
         </div>
 
-        <Button
-          variant="ghost"
+        <div
+          role="separator"
+          aria-orientation="vertical"
           aria-label="调整消息流与上下文宽度"
-          className="mx-3 h-auto w-1 shrink-0 cursor-col-resize rounded-full bg-border p-0 hover:bg-primary"
+          tabIndex={0}
+          className="relative mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors duration-150 before:absolute before:inset-y-0 before:-inset-x-2 hover:bg-primary focus-visible:bg-primary focus-visible:outline-none"
           onMouseDown={() => {
             resizingRef.current = true;
           }}
@@ -427,7 +459,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           </div>
 
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-medium tracking-wide text-muted-foreground">
               Workspace
             </span>
             <Button
@@ -439,26 +471,26 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
               }}
               disabled={treeLoading}
             >
-              <RefreshCw
-                className={cn("mr-2 size-3.5", treeLoading && "animate-spin")}
-              />
+              <RefreshCw className={cn(treeLoading && "animate-spin")} />
               刷新
             </Button>
           </div>
 
           <div className="min-h-0 flex-[2] overflow-hidden px-3 pb-3 pt-2">
             <div className="flex h-full min-h-0 flex-col gap-3 xl:flex-row">
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <WorkspaceFileTree
-                  tree={tree}
-                  selectedPath={selectedPath}
-                  onSelectFile={setSelectedPath}
-                />
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                 {workspaceError && (
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="shrink-0 break-words text-xs text-muted-foreground">
                     {workspaceError}
                   </p>
                 )}
+                <div className="min-h-0 flex-1">
+                  <WorkspaceFileTree
+                    tree={tree}
+                    selectedPath={selectedPath}
+                    onSelectFile={setSelectedPath}
+                  />
+                </div>
               </div>
               <div className="min-h-0 flex-[1.1] overflow-hidden">
                 <WorkspaceFilePreviewPanel
@@ -474,11 +506,13 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:hidden">
-        <ExecutionAgentMessageList
-          messages={viewerState.messages}
-          subAgentStreams={viewerState.subAgentStreams}
-          isExecuting={step.status === "running"}
-        />
+        <div className="h-[60dvh] min-h-64 shrink-0">
+          <ExecutionAgentMessageList
+            messages={viewerState.messages}
+            subAgentStreams={viewerState.subAgentStreams}
+            isExecuting={step.status === "running"}
+          />
+        </div>
         <SandboxComputerPanel
           agentName={step.nodeName || "Workflow Agent"}
           terminalEntries={viewerState.terminalEntries}
@@ -489,7 +523,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         />
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-medium tracking-wide text-muted-foreground">
               Workspace
             </span>
             <Button
@@ -501,12 +535,13 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
               }}
               disabled={treeLoading}
             >
-              <RefreshCw
-                className={cn("mr-2 size-3.5", treeLoading && "animate-spin")}
-              />
+              <RefreshCw className={cn(treeLoading && "animate-spin")} />
               刷新
             </Button>
           </div>
+          {workspaceError && (
+            <p className="break-words text-xs text-muted-foreground">{workspaceError}</p>
+          )}
           <WorkspaceFileTree
             tree={tree}
             selectedPath={selectedPath}
@@ -518,9 +553,6 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
             isLoading={selectedFileLoading}
             error={selectedFileError}
           />
-          {workspaceError && (
-            <p className="text-xs text-muted-foreground">{workspaceError}</p>
-          )}
         </div>
       </div>
     </div>

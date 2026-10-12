@@ -1,7 +1,10 @@
-import { memo, useCallback, useRef, useState } from 'react'
-import { Bot, Brain, ChevronDown, ChevronRight, User } from 'lucide-react'
+import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { Bot, Brain, ChevronDown, User } from 'lucide-react'
 import { motion } from 'motion/react'
-import { DUR, EASE } from '@/shared/lib/motion'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { formatTime } from '@/shared/lib/format'
+import { DUR, EASE, fadeInUp } from '@/shared/lib/motion'
+import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer'
 import { ToolCallCard } from '@/shared/components/tool-renderers'
@@ -37,12 +40,11 @@ function toToolCallData(toolCall: ConversationMessage['toolCalls'][number]): Too
   }
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+/** 思考摘要最多展示的字符数，超出才追加省略号 */
+const THINKING_PREVIEW_LENGTH = 60
+
+/** 距底部小于该距离时视为「贴底」，新内容到达时继续跟随滚动 */
+const FOLLOW_THRESHOLD_PX = 80
 
 function TypingIndicator() {
   return (
@@ -71,31 +73,42 @@ const ThinkingBlock = memo(function ThinkingBlock({
   content: string
 }) {
   const [open, setOpen] = useState(false)
+  const preview =
+    content.length > THINKING_PREVIEW_LENGTH
+      ? `${content.slice(0, THINKING_PREVIEW_LENGTH)}…`
+      : content
 
   return (
-    <div className="rounded-lg border border-border bg-muted px-3 py-2">
+    <div className="rounded-lg border border-border bg-muted px-3 py-1">
       <Button
         variant="ghost"
-        className="h-auto w-full cursor-pointer justify-start gap-1.5 px-0 py-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+        size="xs"
+        aria-expanded={open}
+        className="w-full justify-start px-0 font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
         onClick={() => setOpen((value) => !value)}
       >
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        <Brain className="size-3 text-primary" />
-        <span className="font-medium">思考过程</span>
+        <ChevronDown
+          className={cn(
+            'size-3.5 shrink-0 transition-transform duration-150',
+            !open && '-rotate-90',
+          )}
+        />
+        <Brain className="text-primary" />
+        <span className="shrink-0 font-medium">思考过程</span>
         {!open && content.length > 0 && (
-          <span className="ml-auto max-w-[200px] truncate text-2xs text-muted-foreground">
-            {content.slice(0, 60)}…
+          <span className="ml-auto min-w-0 max-w-48 truncate text-2xs text-muted-foreground">
+            {preview}
           </span>
         )}
       </Button>
 
-      {open && (
-        <div className="mt-2 border-l-2 border-primary/20 pl-5">
+      <Collapse open={open}>
+        <div className="mb-1 mt-1 border-l-2 border-primary/20 pl-5">
           <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
             {content}
           </p>
         </div>
-      )}
+      </Collapse>
     </div>
   )
 })
@@ -114,7 +127,7 @@ const UserBubble = memo(function UserBubble({
         <div className="rounded-xl rounded-br-md bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-        <span className="px-1 text-2xs text-muted-foreground">
+        <span className="px-1 text-2xs text-muted-foreground tabular-nums">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -187,7 +200,7 @@ const AssistantMessage = memo(function AssistantMessage({
 
         {message.isStreaming && <TypingIndicator />}
 
-        <span className="block px-1 text-2xs text-muted-foreground">
+        <span className="block px-1 text-2xs text-muted-foreground tabular-nums">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -211,18 +224,21 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
   emptyDescription = '当该节点开始产出文本、工具或思考事件后，这里会显示完整瀑布流。',
 }: ExecutionAgentMessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const [autoScroll, setAutoScroll] = useState(true)
-  const prevMessageCount = useRef(messages.length)
-
-  if (messages.length !== prevMessageCount.current) {
-    prevMessageCount.current = messages.length
-    if (autoScroll) {
-      queueMicrotask(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-      })
-    }
+  const followRef = useRef(true)
+  /** 首次渲染时已存在的消息视为历史，不播放入场；之后追加的消息淡入 */
+  const historyIdsRef = useRef<Set<string> | null>(null)
+  if (historyIdsRef.current === null) {
+    historyIdsRef.current = new Set(messages.map((message) => message.id))
   }
+  const historyIds = historyIdsRef.current
+
+  // 内容变化（包括流式增长）后，仅在用户贴底时跟随到底部
+  useLayoutEffect(() => {
+    const el = containerRef.current
+    if (el && followRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [messages, subAgentStreams, isExecuting])
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current
@@ -230,8 +246,8 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
       return
     }
 
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    setAutoScroll(atBottom)
+    followRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD_PX
   }, [])
 
   const childStreams = Object.values(subAgentStreams).sort((a, b) => {
@@ -262,16 +278,23 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
         </div>
       ) : (
         <div className="space-y-1 py-4">
-          {messages.map((message) =>
-            message.role === 'user' ? (
-              <UserBubble key={message.id} message={message} />
-            ) : (
-              <AssistantMessage key={message.id} message={message} />
-            ),
-          )}
+          {messages.map((message) => (
+            <motion.div
+              key={message.id}
+              initial={historyIds.has(message.id) ? false : fadeInUp.initial}
+              animate={fadeInUp.animate}
+              transition={fadeInUp.transition}
+            >
+              {message.role === 'user' ? (
+                <UserBubble message={message} />
+              ) : (
+                <AssistantMessage message={message} />
+              )}
+            </motion.div>
+          ))}
           {childStreams.length > 0 && (
             <div className="space-y-3 px-4 py-2">
-              <div className="px-1 text-2xs uppercase tracking-wider text-muted-foreground">
+              <div className="px-1 text-2xs font-medium tracking-wide text-muted-foreground">
                 子 Agent 瀑布流
               </div>
               {childStreams.map((stream) => (
@@ -294,7 +317,6 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
             )}
         </div>
       )}
-      <div ref={bottomRef} />
     </div>
   )
 })

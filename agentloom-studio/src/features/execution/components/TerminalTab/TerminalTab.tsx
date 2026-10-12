@@ -45,7 +45,7 @@ export const TerminalTab = memo(function TerminalTab({
       className="flex h-full min-h-0 flex-col overflow-hidden sm:flex-row"
       data-testid="terminal-tab"
     >
-      <div className="max-h-40 shrink-0 overflow-hidden border-b border-border sm:max-h-none sm:w-56 sm:border-b-0 sm:border-r">
+      <div className="flex max-h-40 shrink-0 flex-col overflow-hidden border-b border-border sm:max-h-none sm:w-56 sm:border-b-0 sm:border-r">
         <TerminalSessionList
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -55,7 +55,7 @@ export const TerminalTab = memo(function TerminalTab({
 
       {/* 暗色终端区：底色与 xterm 主题同源，滚动完全交给 xterm 自身 */}
       <div
-        className="min-w-0 flex-1 overflow-hidden"
+        className="min-w-0 flex-1 overflow-hidden p-2"
         style={{ backgroundColor: TERMINAL_THEME.background }}
       >
         {activeSessionId ? (

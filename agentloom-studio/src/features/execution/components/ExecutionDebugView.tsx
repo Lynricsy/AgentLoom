@@ -1,19 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, MessageSquare, TriangleAlert } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useLiveExecutionDetail } from '../hooks/useLiveExecutionDetail'
 import { ReadonlyCanvas } from './ReadonlyCanvas'
 import { ExecutionTimelineVertical } from './timeline'
 import { useTimelineData } from '../hooks/useTimelineData'
 import { ExecutionNodeDetail } from './ExecutionNodeDetail'
-import { ExecutionStatusBadge } from './StatusBadge'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { TerminalTab } from './TerminalTab'
 import { ExecutionTelemetryPanel } from './ExecutionTelemetryPanel'
 import { usePtySessions } from '../hooks/usePtySessions'
 import { sendPtyWrite } from '../api/pty'
 import type { PtySessionState } from '../types/pty'
 import {
+  EXECUTION_STATUS_META,
   formatExecutionDateTime,
   formatExecutionDuration,
   getExecutionStartedAt,
@@ -25,7 +25,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
 import { WorkbenchHeader } from '@/shared/components/workbench-header'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { fadeIn } from '@/shared/lib/motion'
+
 import { EvidenceReferencePanel } from '@/features/evidence'
 import { EvidenceGraphView } from '@/features/evidence'
 
@@ -202,14 +202,14 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
           status={<Skeleton className="h-6 w-24 rounded-full" />}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
+        <div className="border-b border-border px-5 py-2">
           <Skeleton className="h-9 w-64 rounded-lg" />
+        </div>
 
-          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[38fr_34fr_28fr]">
-            <Skeleton className="h-full min-h-[240px] rounded-xl" />
-            <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
-            <Skeleton className="hidden h-full min-h-[240px] rounded-xl lg:block" />
-          </div>
+        <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[38fr_34fr_28fr]">
+          <Skeleton className="h-full min-h-[240px] rounded-lg" />
+          <Skeleton className="hidden h-full min-h-[240px] rounded-lg lg:block" />
+          <Skeleton className="hidden h-full min-h-[240px] rounded-lg lg:block" />
         </div>
       </div>
     )
@@ -272,7 +272,14 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
         leading={backButton}
         status={
           <div className="flex shrink-0 items-center gap-2">
-            <ExecutionStatusBadge status={execution.status} />
+            <StatusBadge
+              tone={EXECUTION_STATUS_META[execution.status].tone}
+              dot
+              pulse={execution.status === 'running'}
+              data-testid="execution-status-badge"
+            >
+              {EXECUTION_STATUS_META[execution.status].label}
+            </StatusBadge>
             <Badge variant="outline" className="hidden sm:inline-flex">
               耗时 {formatExecutionDuration(execution.startedAt, execution.completedAt)}
             </Badge>
@@ -281,7 +288,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
       />
 
       <Tabs defaultValue="debug" value={activeTab} onValueChange={handleTabChange} className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-3 overflow-x-auto border-b border-border px-5 py-2">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-2">
           <TabsList>
             <TabsTrigger value="debug" data-testid="execution-debug-tab-debug">调试面板</TabsTrigger>
             <TabsTrigger value="provenance" data-testid="execution-debug-tab-provenance">溯源图</TabsTrigger>
@@ -308,10 +315,12 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               />
             </div>
 
-            <Button
-              variant="ghost"
+            <div
+              role="separator"
+              aria-orientation="vertical"
               aria-label="调整画布与时间线宽度"
-              className="mx-3 h-auto w-1 shrink-0 cursor-col-resize rounded-full bg-border p-0 hover:bg-primary"
+              tabIndex={0}
+              className="relative mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors duration-150 before:absolute before:inset-y-0 before:-inset-x-2 hover:bg-primary focus-visible:bg-primary focus-visible:outline-none"
               onMouseDown={() => {
                 activeHandleRef.current = 'left'
               }}
@@ -329,23 +338,20 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               />
             </div>
 
-            <Button
-              variant="ghost"
+            <div
+              role="separator"
+              aria-orientation="vertical"
               aria-label="调整时间线与详情宽度"
-              className="mx-3 h-auto w-1 shrink-0 cursor-col-resize rounded-full bg-border p-0 hover:bg-primary"
+              tabIndex={0}
+              className="relative mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors duration-150 before:absolute before:inset-y-0 before:-inset-x-2 hover:bg-primary focus-visible:bg-primary focus-visible:outline-none"
               onMouseDown={() => {
                 activeHandleRef.current = 'right'
               }}
               data-testid="execution-debug-handle-right"
             />
 
-            <div style={{ width: `${rightWidth}%` }} className="flex min-w-0 flex-col gap-3" data-testid="execution-debug-right-panel">
-              {agentViewerButton ? (
-                <div className="flex justify-end">{agentViewerButton}</div>
-              ) : null}
-              <div className="min-h-0 flex-1">
-                <ExecutionNodeDetail step={selectedStep} />
-              </div>
+            <div style={{ width: `${rightWidth}%` }} className="min-w-0" data-testid="execution-debug-right-panel">
+              <ExecutionNodeDetail step={selectedStep} actions={agentViewerButton} />
             </div>
           </div>
 
@@ -364,21 +370,16 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               executionStartedAt={execution.startedAt ?? null}
               executionCompletedAt={execution.completedAt ?? null}
             />
-            {agentViewerButton}
-            <ExecutionNodeDetail step={selectedStep} />
+            <ExecutionNodeDetail step={selectedStep} actions={agentViewerButton} />
           </div>
         </TabsContent>
 
         <TabsContent value="provenance" className="flex-1 overflow-hidden p-4" data-testid="execution-debug-provenance-tab">
-          <motion.div className="h-full" {...fadeIn}>
-            <EvidenceGraphView executionId={executionId} />
-          </motion.div>
+          <EvidenceGraphView executionId={executionId} />
         </TabsContent>
 
         <TabsContent value="telemetry" className="flex-1 overflow-y-auto p-4" data-testid="execution-debug-telemetry-tab">
-          <motion.div {...fadeIn}>
-            <ExecutionTelemetryPanel executionId={executionId} />
-          </motion.div>
+          <ExecutionTelemetryPanel executionId={executionId} />
         </TabsContent>
 
         <TabsContent value="terminals" className="flex-1 overflow-hidden p-4" data-testid="execution-debug-terminals-tab">

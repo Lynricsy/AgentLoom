@@ -59,7 +59,7 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
         {isLoading ? (
           <div className="space-y-3" data-testid="execution-history-loading">
             {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-28 w-full rounded-lg" />
+              <Skeleton key={index} className="h-[5.75rem] w-full rounded-lg" />
             ))}
           </div>
         ) : error ? (
@@ -88,7 +88,10 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
             />
           </div>
         ) : (
-          <div className="space-y-3" data-testid="execution-history-list">
+          <div
+            className={cn('space-y-3 transition-opacity duration-150', isFetching && 'opacity-60')}
+            data-testid="execution-history-list"
+          >
             {executions.map((execution, index) => (
               <motion.div key={execution.id} {...staggerList(index)}>
                 <RunCard execution={execution} />

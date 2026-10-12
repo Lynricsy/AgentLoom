@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from 'react'
 import Markdown from 'react-markdown'
-import { cva } from 'class-variance-authority'
 import {
   Ban,
   Bot,
@@ -24,27 +23,15 @@ import {
 } from '@/features/evidence'
 import { InlineEvidenceRef } from '@/features/evidence'
 import { cn } from '@/shared/lib/utils'
+import { Badge, type BadgeProps } from '@/shared/ui/badge'
 
-const autonomyVariants = cva(
-  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-medium',
-  {
-    variants: {
-      mode: {
-        FIXED: 'border-border bg-muted text-muted-foreground',
-        LLM_SUGGEST: 'border-warning/25 bg-warning/10 text-warning',
-        LLM_DECIDE: 'border-info/25 bg-info/10 text-info',
-      },
-    },
-    defaultVariants: {
-      mode: 'FIXED',
-    },
-  },
-)
-
-const autonomyLabels: Record<string, { label: string; Icon: typeof Bot }> = {
-  FIXED: { label: '固定决策', Icon: ShieldCheck },
-  LLM_SUGGEST: { label: 'LLM 建议', Icon: Sparkles },
-  LLM_DECIDE: { label: 'LLM 决策', Icon: Bot },
+const autonomyLabels: Record<
+  string,
+  { label: string; Icon: typeof Bot; variant: NonNullable<BadgeProps['variant']> }
+> = {
+  FIXED: { label: '固定决策', Icon: ShieldCheck, variant: 'secondary' },
+  LLM_SUGGEST: { label: 'LLM 建议', Icon: Sparkles, variant: 'warning' },
+  LLM_DECIDE: { label: 'LLM 决策', Icon: Bot, variant: 'info' },
 }
 
 interface AutonomyBadgeProps {
@@ -63,18 +50,15 @@ export const AutonomyBadge = memo(function AutonomyBadge({
   const meta = autonomyLabels[mode]!
 
   return (
-    <span
-      className={cn(
-        autonomyVariants({
-          mode: mode as 'FIXED' | 'LLM_SUGGEST' | 'LLM_DECIDE',
-        }),
-        className,
-      )}
+    <Badge
+      variant={meta.variant}
+      size="sm"
+      className={className}
       data-testid={`autonomy-badge-${mode}`}
     >
-      <meta.Icon className="h-3 w-3" />
+      <meta.Icon className="size-3" />
       {meta.label}
-    </span>
+    </Badge>
   )
 })
 
@@ -169,10 +153,10 @@ export const ReasoningBlock = memo(function ReasoningBlock({
       )}
       data-testid="reasoning-block"
     >
-      <p className="mb-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mb-1 text-2xs font-medium tracking-wide text-muted-foreground">
         推理过程
       </p>
-      <div className="space-y-2 break-words text-xs text-foreground [&_code]:rounded-md [&_code]:bg-surface [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:leading-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-surface [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-4">
+      <div className="space-y-2 break-words text-xs text-foreground [&_code]:rounded-md [&_code]:bg-surface [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:leading-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-surface [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-4">
         <Markdown
           skipHtml
           components={{
@@ -341,7 +325,7 @@ export const InterventionTag = memo(function InterventionTag({
 
       {modifiedSummary && (
         <div className="rounded-lg border border-border bg-surface px-2.5 py-2">
-          <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-2xs font-medium tracking-wide text-muted-foreground">
             修改摘要
           </p>
           <p className="mt-1 break-words text-xs text-foreground" data-testid="intervention-modified-content">

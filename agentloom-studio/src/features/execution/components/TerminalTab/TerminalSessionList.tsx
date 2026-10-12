@@ -27,7 +27,7 @@ export const TerminalSessionList = memo(function TerminalSessionList({
 }: TerminalSessionListProps) {
   return (
     <div
-      className="flex h-full flex-col"
+      className="flex h-full min-h-0 flex-1 flex-col"
       data-testid="terminal-session-list"
     >
       <div className="border-b border-border px-3 py-2">

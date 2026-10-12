@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { FileSearch2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 
 import { useEvidenceUiActions } from '@/features/evidence'
@@ -27,26 +28,42 @@ export const EvidenceChips = memo(function EvidenceChips({
     return null
   }
 
+  const label = (
+    <>
+      <FileSearch2 />
+      <span className="tabular-nums">{count} 条证据</span>
+    </>
+  )
+
+  // 没有执行上下文时无法打开证据面板，只展示计数，不渲染成可点按钮
+  if (!executionId) {
+    return (
+      <Badge
+        variant="secondary"
+        size="sm"
+        className={cn('[&_svg]:size-3', className)}
+        data-testid="evidence-chips"
+      >
+        {label}
+      </Badge>
+    )
+  }
+
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="xs"
       className={cn(
-        'h-auto gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-normal text-muted-foreground [&_svg]:size-3',
-        executionId
-          ? 'cursor-pointer hover:bg-primary/10 hover:text-primary'
-          : 'hover:bg-muted',
+        'rounded-full font-normal text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary',
         className,
       )}
       onClick={(e) => {
-        if (!executionId) return
         e.stopPropagation()
         openPanel(executionId, nodeId, nodeName)
       }}
       data-testid="evidence-chips"
     >
-      <FileSearch2 />
-      {count} 条证据
+      {label}
     </Button>
   )
 })

@@ -12,8 +12,8 @@ import {
   type NodeTypes,
 } from '@xyflow/react'
 import type { ExecutionDetail, ExecutionStep, ExecutionStepStatus } from '../types'
-import { stepStatusMeta } from '../lib/presentation'
-import { StepStatusBadge } from './StatusBadge'
+import { STEP_STATUS_META } from '../lib/presentation'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { Badge } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
 import { cn } from '@/shared/lib/utils'
@@ -100,7 +100,7 @@ function readNodeSummary(
 }
 
 function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
-  const statusMeta = stepStatusMeta[data.status]
+  const statusMeta = STEP_STATUS_META[data.status]
 
   return (
     <article
@@ -135,11 +135,19 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
             ) : null}
           </div>
         </div>
-        <StepStatusBadge status={data.status} />
+        <StatusBadge
+          tone={statusMeta.tone}
+          dot
+          pulse={data.status === 'running'}
+          className="shrink-0"
+          data-testid="step-status-badge"
+        >
+          {statusMeta.label}
+        </StatusBadge>
       </div>
 
       {data.summary ? (
-        <p className="relative mt-3 text-2xs leading-4 text-muted-foreground">
+        <p className="relative mt-3 break-words text-2xs leading-4 text-muted-foreground">
           {data.summary}
         </p>
       ) : null}

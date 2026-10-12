@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 
+import { Collapse } from '@/shared/components/collapse/Collapse'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 
@@ -50,15 +51,17 @@ export const TimelineEntry = memo(function TimelineEntry({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border bg-surface transition-colors',
+        'min-w-0 rounded-lg border border-border bg-surface transition-colors duration-150',
         isSelected && 'border-primary bg-primary/5',
         isFailed && 'border-error/40 bg-error/5',
+        !isSelected && !isFailed && 'hover:border-border-hover',
       )}
       data-testid={`timeline-entry-${step.id}`}
     >
       <Button
         variant="ghost"
-        className="flex h-auto w-full flex-col items-stretch gap-2 rounded-none px-4 py-3 text-left font-normal hover:bg-muted"
+        aria-expanded={expanded}
+        className="flex h-auto w-full flex-col items-stretch gap-2 whitespace-normal rounded-lg px-4 py-3 text-left font-normal hover:bg-transparent"
         onClick={() => {
           onSelect()
           setExpanded((prev) => !prev)
@@ -70,6 +73,7 @@ export const TimelineEntry = memo(function TimelineEntry({
           status={step.status}
           startedAt={step.startedAt}
           completedAt={step.completedAt}
+          expanded={expanded}
         />
 
         <TimelineDuration
@@ -79,17 +83,18 @@ export const TimelineEntry = memo(function TimelineEntry({
           executionStartedAt={executionStartedAt}
           executionCompletedAt={executionCompletedAt}
         />
-
-        <div className="flex flex-wrap items-center gap-2">
-          <OutputLevelBadge level={outputFormatLevel} />
-          <EvidenceChips
-            count={evidenceCount}
-            executionId={executionId}
-            nodeId={step.nodeId}
-            nodeName={step.nodeName}
-          />
-        </div>
       </Button>
+
+      {/* 证据 chip 自身是按钮，必须放在头部按钮之外；两者都不渲染时整行隐藏 */}
+      <div className="-mt-1 flex flex-wrap items-center gap-2 px-4 pb-3 empty:hidden">
+        <OutputLevelBadge level={outputFormatLevel} />
+        <EvidenceChips
+          count={evidenceCount}
+          executionId={executionId}
+          nodeId={step.nodeId}
+          nodeName={step.nodeName}
+        />
+      </div>
 
       {(autonomyMode || interventionEvidence) && (
         <div className={cn('px-4', expanded ? 'pb-2' : 'pb-3')}>
@@ -105,7 +110,7 @@ export const TimelineEntry = memo(function TimelineEntry({
         </div>
       )}
 
-      {expanded && (
+      <Collapse open={expanded}>
         <div className="space-y-2 px-4 pb-3">
           <TimelineIO
             input={step.input}
@@ -126,7 +131,7 @@ export const TimelineEntry = memo(function TimelineEntry({
             />
           )}
         </div>
-      )}
+      </Collapse>
     </div>
   )
 })

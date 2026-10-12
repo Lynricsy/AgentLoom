@@ -5,7 +5,7 @@ import { ListTree } from 'lucide-react'
 
 import { Card } from '@/shared/ui/card'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
-import { staggerList } from '@/shared/lib/motion'
+import { fadeInUp } from '@/shared/lib/motion'
 
 import type { TimelineData } from '../../hooks/useTimelineData'
 import { TimelineEntry } from './TimelineEntry'
@@ -63,6 +63,12 @@ export const ExecutionTimelineVertical = memo(
 
     const useVirtual = timelineData.length > VIRTUAL_SCROLL_THRESHOLD
     const parentRef = useRef<HTMLDivElement>(null)
+    /** 首次渲染时已有的分组视为历史，不播放入场；执行中新追加的分组淡入（无延迟） */
+    const historyGroupsRef = useRef<Set<number> | null>(null)
+    if (historyGroupsRef.current === null) {
+      historyGroupsRef.current = new Set(groups.map((group) => group.stepOrder))
+    }
+    const historyGroups = historyGroupsRef.current
 
     const virtualizer = useVirtualizer({
       count: groups.length,
@@ -77,7 +83,7 @@ export const ExecutionTimelineVertical = memo(
         key={group.stepOrder}
         className={
           group.items.length > 1
-            ? 'grid auto-cols-fr grid-flow-col items-start gap-3'
+            ? 'grid grid-cols-1 items-start gap-3 xl:auto-cols-[minmax(0,1fr)] xl:grid-flow-col xl:grid-cols-none'
             : undefined
         }
         data-testid={`timeline-group-${group.stepOrder}`}
@@ -134,13 +140,13 @@ export const ExecutionTimelineVertical = memo(
                   key={virtualRow.key}
                   ref={virtualizer.measureElement}
                   data-index={virtualRow.index}
+                  className="pb-3"
                   style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     width: '100%',
                     transform: `translateY(${virtualRow.start}px)`,
-                    paddingBottom: '12px',
                   }}
                 >
                   {renderGroup(groups[virtualRow.index]!)}
@@ -149,8 +155,13 @@ export const ExecutionTimelineVertical = memo(
             </div>
           ) : (
             <div className="space-y-3">
-              {groups.map((group, index) => (
-                <motion.div key={group.stepOrder} {...staggerList(index)}>
+              {groups.map((group) => (
+                <motion.div
+                  key={group.stepOrder}
+                  initial={historyGroups.has(group.stepOrder) ? false : fadeInUp.initial}
+                  animate={fadeInUp.animate}
+                  transition={fadeInUp.transition}
+                >
                   {renderGroup(group)}
                 </motion.div>
               ))}

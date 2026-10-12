@@ -1,8 +1,9 @@
+import { formatBytes } from '@/shared/lib/format'
 import type { StatusTone } from '@/shared/ui/status-badge'
 import type { ExecutionStatus, ExecutionStepStatus } from '../types'
 import type { ExecutionResponse } from '../api/executionApi'
 
-export const executionStatusMeta: Record<ExecutionStatus, {
+export const EXECUTION_STATUS_META: Record<ExecutionStatus, {
   label: string
   tone: StatusTone
 }> = {
@@ -14,7 +15,7 @@ export const executionStatusMeta: Record<ExecutionStatus, {
   cancelled: { label: '已取消', tone: 'warning' },
 }
 
-export const stepStatusMeta: Record<ExecutionStepStatus, {
+export const STEP_STATUS_META: Record<ExecutionStepStatus, {
   label: string
   tone: StatusTone
   /** 只读画布节点卡片的描边/底色 */
@@ -166,6 +167,5 @@ export function summarizeDataShape(value: Record<string, unknown> | null | undef
 
   const keys = Object.keys(value)
   const bytes = new Blob([JSON.stringify(value)]).size
-  const size = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}KB` : `${bytes}B`
-  return `${keys.length} fields, ${size}`
+  return `${keys.length} fields, ${formatBytes(bytes)}`
 }

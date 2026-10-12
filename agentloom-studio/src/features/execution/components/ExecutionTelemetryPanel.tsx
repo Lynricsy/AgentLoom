@@ -15,6 +15,14 @@ import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
 
 const numberFormatter = new Intl.NumberFormat('zh-CN')
+const oneDecimalFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
+const twoDecimalFormatter = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
 
 function formatLatency(value: number): string {
   if (!Number.isFinite(value)) {
@@ -22,23 +30,26 @@ function formatLatency(value: number): string {
   }
 
   if (value >= 60_000) {
-    return `${(value / 60_000).toFixed(1)} 分钟`
+    return `${oneDecimalFormatter.format(value / 60_000)} 分钟`
   }
 
   if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(2)} 秒`
+    return `${twoDecimalFormatter.format(value / 1_000)} 秒`
   }
 
-  return `${Math.round(value)} 毫秒`
+  return `${numberFormatter.format(Math.round(value))} 毫秒`
 }
 
 function RecordMeta({ record }: { record: ExecutionRecord }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <span className="font-medium text-foreground">
+    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span
+        className="min-w-0 max-w-full break-all font-medium text-foreground"
+        title={record.nodeId ?? record.stepId ?? undefined}
+      >
         {record.nodeId ?? (record.stepId ? `步骤 ${record.stepId.slice(0, 8)}` : '整次执行')}
       </span>
-      <span>{formatExecutionDateTime(record.createdAt)}</span>
+      <span className="tabular-nums">{formatExecutionDateTime(record.createdAt)}</span>
     </div>
   )
 }
@@ -115,8 +126,8 @@ function TelemetryRecordCard({ record }: { record: ExecutionRecord }) {
                 自修复 {telemetry.selfRepairs?.length ?? 0}
               </Badge>
               {telemetry.llmInteractions ? (
-                <Badge variant="info" size="sm">
-                  {telemetry.llmInteractions.totalTokens} tokens ·{' '}
+                <Badge variant="info" size="sm" className="tabular-nums">
+                  {numberFormatter.format(telemetry.llmInteractions.totalTokens)} tokens ·{' '}
                   {formatLatency(telemetry.llmInteractions.latencyMs)}
                 </Badge>
               ) : null}
@@ -188,7 +199,7 @@ export const ExecutionTelemetryPanel = memo(function ExecutionTelemetryPanel({
     return (
       <div className="space-y-3" data-testid="execution-telemetry-loading">
         {Array.from({ length: 3 }, (_, index) => (
-          <Skeleton key={index} className="h-28 rounded-lg" />
+          <Skeleton key={index} className="h-[6.5rem] rounded-lg" />
         ))}
       </div>
     )

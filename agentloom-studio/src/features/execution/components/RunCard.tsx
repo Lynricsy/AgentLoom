@@ -3,12 +3,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Clock3, TimerReset, Zap } from 'lucide-react'
 import type { ExecutionResponse } from '../api/executionApi'
 import {
+  EXECUTION_STATUS_META,
   formatExecutionDateTime,
   formatExecutionDuration,
   formatTriggerSource,
   getExecutionStartedAt,
 } from '../lib/presentation'
-import { ExecutionStatusBadge } from './StatusBadge'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
 
@@ -19,25 +20,33 @@ interface RunCardProps {
 export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
   const navigate = useNavigate()
   const startedAt = getExecutionStartedAt(execution)
+  const statusMeta = EXECUTION_STATUS_META[execution.status]
 
   return (
-    <Card interactive className="overflow-hidden">
+    <Card interactive>
       <Button
         variant="ghost"
         data-testid={`run-card-${execution.id}`}
-        className="group block h-auto w-full whitespace-normal rounded-none p-4 text-left font-normal hover:bg-transparent active:scale-100 focus-visible:ring-primary/40"
+        className="group block h-auto w-full whitespace-normal rounded-lg p-4 text-left font-normal hover:bg-transparent active:scale-100 focus-visible:ring-primary/40"
         onClick={() => void navigate({ to: '/executions/$executionId', params: { executionId: execution.id } })}
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0 flex-1 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <ExecutionStatusBadge status={execution.status} />
+              <StatusBadge
+                tone={statusMeta.tone}
+                dot
+                pulse={execution.status === 'running'}
+                data-testid="execution-status-badge"
+              >
+                {statusMeta.label}
+              </StatusBadge>
               <span className="text-xs uppercase tracking-wider text-muted-foreground">
                 Run #{execution.id.slice(0, 8)}
               </span>
             </div>
 
-            <div className="grid gap-2 text-sm sm:grid-cols-3">
+            <div className="grid gap-2 text-sm tabular-nums sm:grid-cols-3">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock3 className="h-4 w-4 shrink-0" />
                 <span className="truncate">{formatExecutionDateTime(startedAt)}</span>
@@ -54,7 +63,7 @@ export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
           </div>
 
           <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
-            <span className="text-xs text-muted-foreground">
+            <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
               {execution.completedAt ? `结束于 ${formatExecutionDateTime(execution.completedAt)}` : '查看调试视图'}
             </span>
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-transform group-hover:translate-x-0.5">
