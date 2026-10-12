@@ -97,6 +97,7 @@
   "GET /knowledge-bases/:id/documents/:documentId/content": "admin,creator,operator,owner,viewer",
   "GET /llm-models": "admin,creator,operator,owner,viewer",
   "GET /llm-models/:id": "admin,creator,operator,owner,viewer",
+  "GET /llm-models/:id/thinking-capability": "admin,creator,operator,owner,viewer",
   "GET /llm-providers": "admin,creator,operator,owner,viewer",
   "GET /llm-providers/:id": "admin,creator,operator,owner,viewer",
   "GET /llm-providers/:id/litellm-models": "admin,creator,operator,owner",
