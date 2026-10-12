@@ -309,6 +309,7 @@ export function WorkspaceManagementPage() {
           onRowClick={handleOpenWorkspace}
           empty={
             <EmptyState
+              variant="plain"
               icon={FolderOpen}
               tone="var(--color-type-volume)"
               title={hasFilters ? "没有匹配的工作区" : "暂无工作区"}

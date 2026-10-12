@@ -331,6 +331,7 @@ export const OptimizationSuggestionsBoard = memo(
             empty={
               <div data-testid="optimization-suggestions-empty">
                 <EmptyState
+                  variant="plain"
                   icon={Lightbulb}
                   title="暂无优化建议"
                   description="系统会在积累足够的执行样本后，针对模型选型、超时、工具集与自主等级生成优化建议。"

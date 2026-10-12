@@ -256,6 +256,7 @@ export function OrganizationMembersTable({
         rowKey={(member) => member.userId}
         empty={
           <EmptyState
+            variant="plain"
             icon={Users}
             title="暂无成员"
             description="邀请同事加入组织后，成员会出现在这里。"

@@ -283,6 +283,7 @@ export function DeveloperKeysPage() {
             loading={keysQuery.isLoading}
             empty={
               <EmptyState
+                variant="plain"
                 icon={KeyRound}
                 title={
                   statusFilter === ANY_STATUS

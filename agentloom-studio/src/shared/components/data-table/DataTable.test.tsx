@@ -59,7 +59,7 @@ describe('DataTable', () => {
       <DataTable
         columns={columns}
         data={[]}
-        empty={<EmptyState icon={Inbox} title="暂无数据" />}
+        empty={<EmptyState variant="plain" icon={Inbox} title="暂无数据" />}
       />,
     )
 
@@ -83,5 +83,43 @@ describe('DataTable', () => {
 
     await user.click(screen.getByRole('button', { name: '下一页' }))
     expect(onPageChange).toHaveBeenCalledWith(2)
+  })
+
+  it('total 为 0 时不渲染分页行', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        empty={<EmptyState variant="plain" icon={Inbox} title="暂无数据" />}
+        pagination={{ page: 1, pageSize: 20, total: 0, onPageChange: vi.fn() }}
+      />,
+    )
+
+    expect(screen.queryByText(/共 0 条/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '下一页' })).not.toBeInTheDocument()
+  })
+
+  it('align=right 同时作用于表头与单元格', () => {
+    render(
+      <DataTable
+        columns={[{ key: 'n', header: '数量', cell: () => '42', align: 'right' }]}
+        data={[{ id: 'a', name: 'x' }]}
+      />,
+    )
+
+    expect(screen.getByRole('columnheader', { name: '数量' })).toHaveClass('text-right')
+    expect(screen.getByRole('cell', { name: '42' })).toHaveClass('text-right')
+  })
+
+  it('可点击行支持键盘 Enter 触发', async () => {
+    const user = userEvent.setup()
+    const onRowClick = vi.fn()
+
+    render(<DataTable columns={columns} data={rows} onRowClick={onRowClick} />)
+
+    const firstRow = screen.getByText('工作流 A').closest('tr')!
+    firstRow.focus()
+    await user.keyboard('{Enter}')
+    expect(onRowClick).toHaveBeenCalledWith(rows[0], 0)
   })
 })

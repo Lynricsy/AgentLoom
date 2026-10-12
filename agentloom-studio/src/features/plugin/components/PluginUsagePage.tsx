@@ -292,6 +292,7 @@ export function PluginUsagePage({
           loading={usageQuery.isLoading}
           empty={
             <EmptyState
+              variant="plain"
               icon={Activity}
               tone="var(--color-node-plugin)"
               title="该周期内没有用量记录"

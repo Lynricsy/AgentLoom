@@ -543,6 +543,7 @@ export function McpServerManagementPage() {
           onRowClick={handleOpenServer}
           empty={
             <EmptyState
+              variant="plain"
               icon={Server}
               tone={MCP_TONE}
               title={

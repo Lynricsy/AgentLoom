@@ -274,6 +274,7 @@ export function NotificationCenterPage() {
           skeletonRows={6}
           empty={
             <EmptyState
+              variant="plain"
               icon={BellOff}
               title={filter === 'unread' ? '没有未读通知' : '暂无通知'}
               description={

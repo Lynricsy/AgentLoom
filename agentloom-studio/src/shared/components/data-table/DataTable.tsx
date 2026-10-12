@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { cn } from '@/shared/lib/utils'
 import { staggerList } from '@/shared/lib/motion'
@@ -19,8 +19,14 @@ export interface DataTableColumn<T> {
   key: string
   header: ReactNode
   cell: (row: T, index: number) => ReactNode
-  /** 附加到 th/td 的类名，例如宽度或对齐 */
+  /** 附加到 th/td 的类名，例如宽度 */
   className?: string
+  /** 水平对齐，同时作用于 th/td；right 自动加 tabular-nums */
+  align?: 'left' | 'center' | 'right'
+  /** th/td 不换行（日期、数字、版本、操作列） */
+  nowrap?: boolean
+  /** 只附加到 td */
+  cellClassName?: string
   /** 小屏隐藏该列（次要信息） */
   hideBelow?: 'sm' | 'md' | 'lg'
 }
@@ -53,6 +59,17 @@ const HIDE_CLASS = {
   lg: 'hidden lg:table-cell',
 } as const
 
+/** th/td 共用的列类名：宽度、对齐、换行、响应式隐藏 */
+function columnClass<T>(column: DataTableColumn<T>) {
+  return cn(
+    column.className,
+    column.align === 'right' && 'text-right tabular-nums',
+    column.align === 'center' && 'text-center',
+    column.nowrap && 'whitespace-nowrap',
+    column.hideBelow && HIDE_CLASS[column.hideBelow],
+  )
+}
+
 export function DataTable<T>({
   columns,
   data,
@@ -67,23 +84,12 @@ export function DataTable<T>({
   const showEmpty = !loading && data.length === 0
 
   return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-lg border border-border bg-surface',
-        className,
-      )}
-    >
+    <div className={cn('overflow-hidden rounded-lg border border-border bg-surface', className)}>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             {columns.map((column) => (
-              <TableHead
-                key={column.key}
-                className={cn(
-                  column.className,
-                  column.hideBelow && HIDE_CLASS[column.hideBelow],
-                )}
-              >
+              <TableHead key={column.key} className={columnClass(column)}>
                 {column.header}
               </TableHead>
             ))}
@@ -95,14 +101,10 @@ export function DataTable<T>({
             ? Array.from({ length: skeletonRows }, (_, rowIndex) => (
                 <TableRow key={`skeleton-${rowIndex}`} className="hover:bg-transparent">
                   {columns.map((column) => (
-                    <TableCell
-                      key={column.key}
-                      className={cn(
-                        column.className,
-                        column.hideBelow && HIDE_CLASS[column.hideBelow],
-                      )}
-                    >
-                      <Skeleton className="h-4 w-full" />
+                    <TableCell key={column.key} className={columnClass(column)}>
+                      <Skeleton
+                        className={cn('h-5 w-full', column.align === 'right' && 'ml-auto w-16')}
+                      />
                     </TableCell>
                   ))}
                 </TableRow>
@@ -111,16 +113,29 @@ export function DataTable<T>({
                 <motion.tr
                   key={rowKey ? rowKey(row, index) : String(index)}
                   {...staggerList(index)}
-                  className={cn(ROW_CLASS, onRowClick && 'cursor-pointer')}
-                  onClick={onRowClick ? () => onRowClick(row, index) : undefined}
+                  className={cn(
+                    ROW_CLASS,
+                    onRowClick &&
+                      'cursor-pointer focus-visible:bg-muted focus-visible:outline-none',
+                  )}
+                  {...(onRowClick
+                    ? {
+                        tabIndex: 0,
+                        role: 'button',
+                        onClick: () => onRowClick(row, index),
+                        onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            onRowClick(row, index)
+                          }
+                        },
+                      }
+                    : {})}
                 >
                   {columns.map((column) => (
                     <TableCell
                       key={column.key}
-                      className={cn(
-                        column.className,
-                        column.hideBelow && HIDE_CLASS[column.hideBelow],
-                      )}
+                      className={cn(columnClass(column), column.cellClassName)}
                     >
                       {column.cell(row, index)}
                     </TableCell>
@@ -130,26 +145,24 @@ export function DataTable<T>({
         </TableBody>
       </Table>
 
-      {showEmpty ? <div className="px-3 py-10">{empty}</div> : null}
+      {showEmpty ? <div className="px-3 py-2">{empty}</div> : null}
 
       {pagination ? <DataTablePager {...pagination} /> : null}
     </div>
   )
 }
 
-function DataTablePager({
-  page,
-  pageSize,
-  total,
-  onPageChange,
-}: DataTablePagination) {
+function DataTablePager({ page, pageSize, total, onPageChange }: DataTablePagination) {
+  // 空数据不显示「0–0 / 共 0 条」翻页行
+  if (total === 0) return null
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const from = (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, total)
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-      <span>
+      <span className="tabular-nums">
         {from}–{to} / 共 {total} 条
       </span>
 
@@ -163,7 +176,7 @@ function DataTablePager({
         >
           上一页
         </Button>
-        <span className="px-1 text-foreground">
+        <span className="px-1 tabular-nums text-foreground">
           {page} / {totalPages}
         </span>
         <Button

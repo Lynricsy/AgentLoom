@@ -277,6 +277,7 @@ export function ApiTokenPage() {
         empty={
           listError ? (
             <EmptyState
+              variant="plain"
               icon={AlertTriangle}
               tone="var(--color-error)"
               title="加载 API Token 失败"
@@ -293,6 +294,7 @@ export function ApiTokenPage() {
             />
           ) : (
             <EmptyState
+              variant="plain"
               icon={KeyRound}
               title="还没有 API Token"
               description={EMPTY_HINT[status]}

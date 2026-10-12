@@ -900,6 +900,7 @@ function AuditLogContent() {
               }}
               empty={
                 <EmptyState
+                  variant="plain"
                   icon={FileSearch}
                   title="还没有匹配的审计记录"
                   description="调整时间范围、事件类型或操作人后重新筛选。"

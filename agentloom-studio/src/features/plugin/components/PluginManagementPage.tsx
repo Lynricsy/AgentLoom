@@ -392,6 +392,7 @@ export function PluginManagementPage() {
           onRowClick={(plugin) => setDetailId(plugin.id)}
           empty={
             <EmptyState
+              variant="plain"
               icon={Puzzle}
               tone="var(--color-node-plugin)"
               title={hasFilters ? '没有匹配的插件' : '还没有注册任何插件'}

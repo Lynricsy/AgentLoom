@@ -154,6 +154,7 @@ export const RoutingDecisionsPanel = memo(function RoutingDecisionsPanel() {
           empty={
             <div data-testid="routing-decisions-empty">
               <EmptyState
+                variant="plain"
                 icon={Route}
                 title="暂无路由决策记录"
                 description="当工作流中的路由节点实际执行并完成模型选型后，这里会记录每次决策的策略、候选模型与耗时。"

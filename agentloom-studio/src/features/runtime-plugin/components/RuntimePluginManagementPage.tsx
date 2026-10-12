@@ -349,6 +349,7 @@ export function RuntimePluginManagementPage() {
           onRowClick={(plugin) => setDetailId(plugin.id)}
           empty={
             <EmptyState
+              variant="plain"
               icon={Cpu}
               tone={RUNTIME_PLUGIN_TONE}
               title={hasFilters ? '没有匹配的 runtime 插件' : '还没有上传任何 runtime 插件'}

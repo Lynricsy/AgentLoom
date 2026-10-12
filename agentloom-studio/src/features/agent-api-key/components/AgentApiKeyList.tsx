@@ -273,6 +273,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
         empty={
           listError ? (
             <EmptyState
+              variant="plain"
               icon={AlertTriangle}
               tone="var(--color-error)"
               title="加载 API Key 失败"
@@ -285,6 +286,7 @@ export function AgentApiKeyList({ agentId, canManage }: AgentApiKeyListProps) {
             />
           ) : (
             <EmptyState
+              variant="plain"
               icon={KeyRound}
               title={status === 'revoked' ? '没有已吊销的 API Key' : '还没有 API Key'}
               description={
