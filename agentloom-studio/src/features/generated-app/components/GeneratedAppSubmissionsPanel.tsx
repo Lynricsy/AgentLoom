@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
   Eye,
   Inbox,
+  Loader2,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
@@ -12,6 +13,16 @@ import { Pagination } from '@/shared/components/Pagination'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
+import { Alert } from '@/shared/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from '@/shared/ui/alert-dialog'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
@@ -40,9 +51,8 @@ import {
   useGeneratedAppSubmissions,
 } from '../api'
 import {
-  GENERATED_APP_SUBMISSION_STATUS_LABELS,
+  GENERATED_APP_SUBMISSION_STATUS_META,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicWorkflowExecutionHandoff,
@@ -55,6 +65,10 @@ const PAGE_SIZE = 10
 const STATUS_FILTER_ALL = 'all'
 const EMPTY_SUBMISSIONS: GeneratedAppSubmission[] = []
 
+type DeleteTarget =
+  | { kind: 'single'; submission: GeneratedAppSubmission }
+  | { kind: 'bulk'; ids: string[] }
+
 type SubmissionStatusFilter =
   | typeof STATUS_FILTER_ALL
   | GeneratedAppSubmissionStatus
@@ -64,10 +78,10 @@ const SUBMISSION_STATUS_OPTIONS: Array<{
   label: string
 }> = [
   { value: STATUS_FILTER_ALL, label: '全部状态' },
-  { value: 'received', label: GENERATED_APP_SUBMISSION_STATUS_LABELS.received },
-  { value: 'running', label: GENERATED_APP_SUBMISSION_STATUS_LABELS.running },
-  { value: 'completed', label: GENERATED_APP_SUBMISSION_STATUS_LABELS.completed },
-  { value: 'failed', label: GENERATED_APP_SUBMISSION_STATUS_LABELS.failed },
+  { value: 'received', label: GENERATED_APP_SUBMISSION_STATUS_META.received.label },
+  { value: 'running', label: GENERATED_APP_SUBMISSION_STATUS_META.running.label },
+  { value: 'completed', label: GENERATED_APP_SUBMISSION_STATUS_META.completed.label },
+  { value: 'failed', label: GENERATED_APP_SUBMISSION_STATUS_META.failed.label },
 ]
 
 interface GeneratedAppSubmissionsPanelProps {
@@ -90,18 +104,6 @@ function summarizeJson(value: Record<string, unknown> | null): string {
   }
 
   return `${text.slice(0, 140)}…`
-}
-
-function SubmissionStatusBadge({
-  status,
-}: {
-  status: GeneratedAppSubmissionStatus
-}) {
-  return (
-    <StatusBadge tone={getGeneratedAppSubmissionStatusTone(status)}>
-      {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </StatusBadge>
-  )
 }
 
 function SummaryText({ children }: { children: string }) {
@@ -462,14 +464,31 @@ export function GeneratedAppSubmissionsPanel({
     [],
   )
 
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+  // 对话框退场动画期间 deleteTarget 已置空，保留最后一次目标避免文案闪空
+  const lastDeleteTargetRef = useRef<DeleteTarget | null>(null)
+  if (deleteTarget) {
+    lastDeleteTargetRef.current = deleteTarget
+  }
+  const dialogTarget = deleteTarget ?? lastDeleteTargetRef.current
+
   const handleDeleteSubmission = useCallback(
+    (submission: GeneratedAppSubmission) => {
+      setDeleteTarget({ kind: 'single', submission })
+    },
+    [],
+  )
+
+  const handleDeleteSelected = useCallback(() => {
+    const ids = Array.from(selectedIds)
+
+    if (ids.length === 0) return
+
+    setDeleteTarget({ kind: 'bulk', ids })
+  }, [selectedIds])
+
+  const confirmDeleteSingle = useCallback(
     async (submission: GeneratedAppSubmission) => {
-      const shouldDelete = window.confirm(
-        `确认删除提交记录 ${submission.id} 吗？删除后创建者列表、详情和公开结果访问都会收口。`,
-      )
-
-      if (!shouldDelete) return
-
       try {
         const response = await deleteSubmissionMutation.mutateAsync(
           submission.id,
@@ -501,43 +520,43 @@ export function GeneratedAppSubmissionsPanel({
     [deleteSubmissionMutation, notify, selectedSubmissionId],
   )
 
-  const handleDeleteSelected = useCallback(async () => {
-    const ids = Array.from(selectedIds)
+  const confirmDeleteBulk = useCallback(
+    async (ids: string[]) => {
+      try {
+        const response = await deleteSubmissionsMutation.mutateAsync(ids)
 
-    if (ids.length === 0) return
+        if (selectedSubmissionId && ids.includes(selectedSubmissionId)) {
+          setSelectedSubmissionId(null)
+        }
 
-    const shouldDelete = window.confirm(
-      `确认删除选中的 ${ids.length} 条提交记录吗？删除后创建者列表、详情和公开结果访问都会收口。`,
-    )
-
-    if (!shouldDelete) return
-
-    try {
-      const response = await deleteSubmissionsMutation.mutateAsync(ids)
-
-      if (selectedSubmissionId && ids.includes(selectedSubmissionId)) {
-        setSelectedSubmissionId(null)
+        setSelectedIds(new Set())
+        notify({
+          title: '提交记录已批量删除',
+          description: `已删除 ${response.deletedCount} 条提交记录。`,
+          variant: 'success',
+        })
+      } catch (error) {
+        notify({
+          title: '批量删除失败',
+          description: error instanceof Error ? error.message : '请稍后重试。',
+          variant: 'error',
+        })
       }
+    },
+    [deleteSubmissionsMutation, notify, selectedSubmissionId],
+  )
 
-      setSelectedIds(new Set())
-      notify({
-        title: '提交记录已批量删除',
-        description: `已删除 ${response.deletedCount} 条提交记录。`,
-        variant: 'success',
-      })
-    } catch (error) {
-      notify({
-        title: '批量删除失败',
-        description: error instanceof Error ? error.message : '请稍后重试。',
-        variant: 'error',
-      })
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return
+
+    if (deleteTarget.kind === 'single') {
+      await confirmDeleteSingle(deleteTarget.submission)
+    } else {
+      await confirmDeleteBulk(deleteTarget.ids)
     }
-  }, [
-    deleteSubmissionsMutation,
-    notify,
-    selectedIds,
-    selectedSubmissionId,
-  ])
+
+    setDeleteTarget(null)
+  }, [confirmDeleteBulk, confirmDeleteSingle, deleteTarget])
 
   const selectedSubmission = detailQuery.data
 
@@ -573,7 +592,7 @@ export function GeneratedAppSubmissionsPanel({
             size="sm"
             onClick={() => void submissionsQuery.refetch()}
           >
-            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            <RefreshCw />
             重新加载
           </Button>
         </div>
@@ -620,9 +639,9 @@ export function GeneratedAppSubmissionsPanel({
             disabled={selectedCount === 0 || isDeleting}
           >
             {deleteSubmissionsMutation.isPending ? (
-              <Spinner size="sm" className="mr-2" />
+              <Spinner size="sm" />
             ) : (
-              <Trash2 className="mr-2 h-3.5 w-3.5" />
+              <Trash2 />
             )}
             删除所选
             {selectedCount > 0 ? ` (${selectedCount})` : ''}
@@ -684,7 +703,11 @@ export function GeneratedAppSubmissionsPanel({
                   />
                 </TableCell>
                 <TableCell className="whitespace-nowrap py-3">
-                  <SubmissionStatusBadge status={submission.status} />
+                  <StatusBadge
+                    tone={GENERATED_APP_SUBMISSION_STATUS_META[submission.status].tone}
+                  >
+                    {GENERATED_APP_SUBMISSION_STATUS_META[submission.status].label}
+                  </StatusBadge>
                 </TableCell>
                 <TableCell className="py-3">
                   <code className="break-all text-xs text-muted-foreground">
@@ -716,7 +739,7 @@ export function GeneratedAppSubmissionsPanel({
                       onClick={() => setSelectedSubmissionId(submission.id)}
                       aria-label={`查看提交记录 ${submission.id} 详情`}
                     >
-                      <Eye className="mr-2 h-3.5 w-3.5" />
+                      <Eye />
                       查看
                     </Button>
                     <Button
@@ -772,7 +795,7 @@ export function GeneratedAppSubmissionsPanel({
                 size="sm"
                 onClick={() => void detailQuery.refetch()}
               >
-                <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                <RefreshCw />
                 重新加载
               </Button>
             </div>
@@ -785,7 +808,17 @@ export function GeneratedAppSubmissionsPanel({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <SubmissionStatusBadge status={selectedSubmission.status} />
+                  <StatusBadge
+                    tone={
+                      GENERATED_APP_SUBMISSION_STATUS_META[selectedSubmission.status]
+                        .tone
+                    }
+                  >
+                    {
+                      GENERATED_APP_SUBMISSION_STATUS_META[selectedSubmission.status]
+                        .label
+                    }
+                  </StatusBadge>
                   {detailQuery.isFetching ? (
                     <Badge variant="secondary" size="sm">
                       <Spinner size="sm" className="h-3 w-3" />
@@ -831,18 +864,18 @@ export function GeneratedAppSubmissionsPanel({
                 disabled={isDeleting}
               >
                 {deleteSubmissionMutation.isPending ? (
-                  <Spinner size="sm" className="mr-2" />
+                  <Spinner size="sm" />
                 ) : (
-                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  <Trash2 />
                 )}
                 删除提交记录
               </Button>
             </div>
 
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
+            <Alert variant="warning">
               审计信息仅展示匿名会话、应用版本和时间信息；公开分享
               token 不在创建者详情面板明文展示。
-            </div>
+            </Alert>
 
             <WorkflowExecutionStatusBlock submission={selectedSubmission} />
 
@@ -861,6 +894,41 @@ export function GeneratedAppSubmissionsPanel({
           </article>
         )}
       </div>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>
+            {dialogTarget?.kind === 'bulk'
+              ? '批量删除提交记录'
+              : '删除提交记录'}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {dialogTarget?.kind === 'bulk'
+              ? `确认删除选中的 ${dialogTarget.ids.length} 条提交记录吗？`
+              : `确认删除提交记录 ${dialogTarget?.submission.id ?? ''} 吗？`}
+            删除后创建者列表、详情和公开结果访问都会收口。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeleting}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleConfirmDelete()
+              }}
+            >
+              {isDeleting ? <Loader2 className="animate-spin" /> : null}
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

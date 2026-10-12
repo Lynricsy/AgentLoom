@@ -8,15 +8,24 @@ import type {
   GeneratedAppStatus,
   GeneratedAppSubmissionStatus,
 } from '../types'
+import { formatDateTime } from '@/shared/lib/format'
 import type { StatusTone } from '@/shared/ui/status-badge'
 
-export const GENERATED_APP_STATUS_LABELS: Record<GeneratedAppStatus, string> = {
-  app_spec_ready: '规格就绪',
-  preview_ready: '预览就绪',
-  trial_ready: '试用态',
-  publish_candidate: '发布候选',
-  published: '已发布',
-  failed: '失败',
+export interface GeneratedAppStatusMeta {
+  label: string
+  tone: StatusTone
+}
+
+export const GENERATED_APP_STATUS_META: Record<
+  GeneratedAppStatus,
+  GeneratedAppStatusMeta
+> = {
+  app_spec_ready: { label: '规格就绪', tone: 'info' },
+  preview_ready: { label: '预览就绪', tone: 'info' },
+  trial_ready: { label: '试用态', tone: 'warning' },
+  publish_candidate: { label: '发布候选', tone: 'success' },
+  published: { label: '已发布', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
 }
 
 export const GENERATED_APP_READINESS_LABELS: Record<
@@ -29,38 +38,38 @@ export const GENERATED_APP_READINESS_LABELS: Record<
   blocked: '已阻断',
 }
 
-export const GENERATED_APP_GATE_STATUS_LABELS: Record<
+export const GENERATED_APP_GATE_STATUS_META: Record<
   GeneratedAppGateStatus,
-  string
+  GeneratedAppStatusMeta
 > = {
-  pending: '等待中',
-  running: '运行中',
-  passed: '已通过',
-  failed: '失败',
-  warning: 'Warning',
-  skipped: '已跳过',
+  pending: { label: '等待中', tone: 'info' },
+  running: { label: '运行中', tone: 'primary' },
+  passed: { label: '已通过', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+  warning: { label: 'Warning', tone: 'warning' },
+  skipped: { label: '已跳过', tone: 'neutral' },
 }
 
-export const GENERATED_APP_SUBMISSION_STATUS_LABELS: Record<
+export const GENERATED_APP_SUBMISSION_STATUS_META: Record<
   GeneratedAppSubmissionStatus,
-  string
+  GeneratedAppStatusMeta
 > = {
-  received: '已接收',
-  running: '运行中',
-  completed: '已完成',
-  failed: '失败',
+  received: { label: '已接收', tone: 'info' },
+  running: { label: '运行中', tone: 'primary' },
+  completed: { label: '已完成', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
 }
 
-export const GENERATED_APP_GENERATION_RUN_STATUS_LABELS: Record<
+export const GENERATED_APP_GENERATION_RUN_STATUS_META: Record<
   GeneratedAppGenerationRunStatus,
-  string
+  GeneratedAppStatusMeta
 > = {
-  queued: '排队中',
-  running: '运行中',
-  repairing: '修复中',
-  passed: '已通过',
-  failed: '失败',
-  cancelled: '已取消',
+  queued: { label: '排队中', tone: 'info' },
+  running: { label: '运行中', tone: 'primary' },
+  repairing: { label: '修复中', tone: 'warning' },
+  passed: { label: '已通过', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+  cancelled: { label: '已取消', tone: 'error' },
 }
 
 export const GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS: Record<
@@ -73,15 +82,15 @@ export const GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS: Record<
   system: '系统触发',
 }
 
-export const GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS: Record<
+export const GENERATED_APP_REPAIR_ATTEMPT_STATUS_META: Record<
   GeneratedAppRepairAttemptStatus,
-  string
+  GeneratedAppStatusMeta
 > = {
-  planned: '已计划',
-  running: '运行中',
-  completed: '已完成',
-  failed: '失败',
-  skipped: '已跳过',
+  planned: { label: '已计划', tone: 'info' },
+  running: { label: '运行中', tone: 'primary' },
+  completed: { label: '已完成', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+  skipped: { label: '已跳过', tone: 'neutral' },
 }
 
 export function getGeneratedAppReadinessStatusTone(
@@ -99,101 +108,10 @@ export function getGeneratedAppReadinessStatusTone(
   }
 }
 
-export function getGeneratedAppStatusTone(
-  status: GeneratedAppStatus,
-): StatusTone {
-  switch (status) {
-    case 'published':
-    case 'publish_candidate':
-      return 'success'
-    case 'failed':
-      return 'error'
-    case 'trial_ready':
-      return 'warning'
-    default:
-      return 'info'
-  }
-}
-
-export function getGeneratedAppGateStatusTone(
-  status: GeneratedAppGateStatus,
-): StatusTone {
-  switch (status) {
-    case 'passed':
-      return 'success'
-    case 'failed':
-      return 'error'
-    case 'warning':
-      return 'warning'
-    case 'running':
-      return 'primary'
-    case 'skipped':
-      return 'neutral'
-    default:
-      return 'info'
-  }
-}
-
-export function getGeneratedAppSubmissionStatusTone(
-  status: GeneratedAppSubmissionStatus,
-): StatusTone {
-  switch (status) {
-    case 'completed':
-      return 'success'
-    case 'failed':
-      return 'error'
-    case 'running':
-      return 'primary'
-    default:
-      return 'info'
-  }
-}
-
-export function getGeneratedAppGenerationRunStatusTone(
-  status: GeneratedAppGenerationRunStatus,
-): StatusTone {
-  switch (status) {
-    case 'passed':
-      return 'success'
-    case 'failed':
-    case 'cancelled':
-      return 'error'
-    case 'repairing':
-      return 'warning'
-    case 'running':
-      return 'primary'
-    default:
-      return 'info'
-  }
-}
-
-export function getGeneratedAppRepairAttemptStatusTone(
-  status: GeneratedAppRepairAttemptStatus,
-): StatusTone {
-  switch (status) {
-    case 'completed':
-      return 'success'
-    case 'failed':
-      return 'error'
-    case 'running':
-      return 'primary'
-    case 'skipped':
-      return 'neutral'
-    default:
-      return 'info'
-  }
-}
-
 export function formatGeneratedAppDateTime(value?: string | null): string {
   if (!value) return '暂无'
 
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
+  return formatDateTime(value)
 }
 
 export function isGeneratedAppPublicShareEligible(

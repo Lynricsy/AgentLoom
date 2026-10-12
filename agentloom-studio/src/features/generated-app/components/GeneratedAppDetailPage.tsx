@@ -48,13 +48,11 @@ import { GeneratedAppGenerationEvidencePanel } from './GeneratedAppGenerationEvi
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import { GeneratedAppSubmissionsPanel } from './GeneratedAppSubmissionsPanel'
 import {
-  GENERATED_APP_GATE_STATUS_LABELS,
+  GENERATED_APP_GATE_STATUS_META,
   GENERATED_APP_READINESS_LABELS,
-  GENERATED_APP_STATUS_LABELS,
+  GENERATED_APP_STATUS_META,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusTone,
   getGeneratedAppReadinessStatusTone,
-  getGeneratedAppStatusTone,
   isGeneratedAppPublicShareEligible,
 } from '../lib/generatedAppDisplay'
 import type {
@@ -190,8 +188,8 @@ function AcceptanceScenarioList({
 
 function GateStatusBadge({ gate }: { gate: GeneratedAppGateResult }) {
   return (
-    <StatusBadge tone={getGeneratedAppGateStatusTone(gate.status)}>
-      {GENERATED_APP_GATE_STATUS_LABELS[gate.status]}
+    <StatusBadge tone={GENERATED_APP_GATE_STATUS_META[gate.status].tone}>
+      {GENERATED_APP_GATE_STATUS_META[gate.status].label}
     </StatusBadge>
   )
 }
@@ -961,8 +959,8 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
         ]}
         actions={
           <>
-            <StatusBadge tone={getGeneratedAppStatusTone(app.status)}>
-              {GENERATED_APP_STATUS_LABELS[app.status]}
+            <StatusBadge tone={GENERATED_APP_STATUS_META[app.status].tone}>
+              {GENERATED_APP_STATUS_META[app.status].label}
             </StatusBadge>
             <StatusBadge
               tone={getGeneratedAppReadinessStatusTone(app.readiness)}

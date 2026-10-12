@@ -34,14 +34,11 @@ import {
   useGeneratedAppRepairAttempts,
 } from '../api'
 import {
-  GENERATED_APP_GATE_STATUS_LABELS,
-  GENERATED_APP_GENERATION_RUN_STATUS_LABELS,
+  GENERATED_APP_GATE_STATUS_META,
+  GENERATED_APP_GENERATION_RUN_STATUS_META,
   GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS,
-  GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS,
+  GENERATED_APP_REPAIR_ATTEMPT_STATUS_META,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusTone,
-  getGeneratedAppGenerationRunStatusTone,
-  getGeneratedAppRepairAttemptStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppGateEvidence,
@@ -68,20 +65,20 @@ const GENERATION_RUN_STATUS_OPTIONS: Array<{
   label: string
 }> = [
   { value: STATUS_FILTER_ALL, label: '全部运行状态' },
-  { value: 'queued', label: GENERATED_APP_GENERATION_RUN_STATUS_LABELS.queued },
+  { value: 'queued', label: GENERATED_APP_GENERATION_RUN_STATUS_META.queued.label },
   {
     value: 'running',
-    label: GENERATED_APP_GENERATION_RUN_STATUS_LABELS.running,
+    label: GENERATED_APP_GENERATION_RUN_STATUS_META.running.label,
   },
   {
     value: 'repairing',
-    label: GENERATED_APP_GENERATION_RUN_STATUS_LABELS.repairing,
+    label: GENERATED_APP_GENERATION_RUN_STATUS_META.repairing.label,
   },
-  { value: 'passed', label: GENERATED_APP_GENERATION_RUN_STATUS_LABELS.passed },
-  { value: 'failed', label: GENERATED_APP_GENERATION_RUN_STATUS_LABELS.failed },
+  { value: 'passed', label: GENERATED_APP_GENERATION_RUN_STATUS_META.passed.label },
+  { value: 'failed', label: GENERATED_APP_GENERATION_RUN_STATUS_META.failed.label },
   {
     value: 'cancelled',
-    label: GENERATED_APP_GENERATION_RUN_STATUS_LABELS.cancelled,
+    label: GENERATED_APP_GENERATION_RUN_STATUS_META.cancelled.label,
   },
 ]
 
@@ -139,8 +136,8 @@ function GenerationRunStatusBadge({
   status: GeneratedAppGenerationRunStatus
 }) {
   return (
-    <StatusBadge tone={getGeneratedAppGenerationRunStatusTone(status)}>
-      {GENERATED_APP_GENERATION_RUN_STATUS_LABELS[status]}
+    <StatusBadge tone={GENERATED_APP_GENERATION_RUN_STATUS_META[status].tone}>
+      {GENERATED_APP_GENERATION_RUN_STATUS_META[status].label}
     </StatusBadge>
   )
 }
@@ -151,16 +148,16 @@ function RepairAttemptStatusBadge({
   status: GeneratedAppRepairAttemptStatus
 }) {
   return (
-    <StatusBadge tone={getGeneratedAppRepairAttemptStatusTone(status)}>
-      {GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS[status]}
+    <StatusBadge tone={GENERATED_APP_REPAIR_ATTEMPT_STATUS_META[status].tone}>
+      {GENERATED_APP_REPAIR_ATTEMPT_STATUS_META[status].label}
     </StatusBadge>
   )
 }
 
 function GateRunStatusBadge({ status }: { status: GeneratedAppGateRunStatus }) {
   return (
-    <StatusBadge tone={getGeneratedAppGateStatusTone(status)}>
-      {GENERATED_APP_GATE_STATUS_LABELS[status]}
+    <StatusBadge tone={GENERATED_APP_GATE_STATUS_META[status].tone}>
+      {GENERATED_APP_GATE_STATUS_META[status].label}
     </StatusBadge>
   )
 }

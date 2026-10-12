@@ -328,7 +328,7 @@ describe('GeneratedAppSubmissionsPanel', () => {
 
     const detail = screen.getByTestId('generated-app-submission-detail')
     expect(within(detail).getByText('正在刷新')).toBeInTheDocument()
-    expect(screen.queryByText('正在加载提交详情...')).not.toBeInTheDocument()
+    expect(screen.queryByText('正在加载提交详情…')).not.toBeInTheDocument()
 
     const statusBlock = screen.getByTestId('creator-workflow-execution-status')
     expect(statusBlock).toHaveAttribute('data-execution-status', 'paused')
@@ -465,7 +465,6 @@ describe('GeneratedAppSubmissionsPanel', () => {
 
   it('confirms and deletes a single submission', async () => {
     const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     deleteMutation.mutateAsync.mockResolvedValue({ deletedCount: 1 })
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
@@ -474,7 +473,10 @@ describe('GeneratedAppSubmissionsPanel', () => {
       screen.getByRole('button', { name: '删除提交记录 submission-1' }),
     )
 
-    expect(confirmSpy).toHaveBeenCalledOnce()
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/submission-1/)).toBeInTheDocument()
+    expect(deleteMutation.mutateAsync).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: '确认删除' }))
     await waitFor(() => {
       expect(deleteMutation.mutateAsync).toHaveBeenCalledWith('submission-1')
       expect(notifyMock).toHaveBeenCalledWith({
@@ -487,7 +489,6 @@ describe('GeneratedAppSubmissionsPanel', () => {
 
   it('confirms and bulk deletes selected submissions', async () => {
     const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     bulkDeleteMutation.mutateAsync.mockResolvedValue({ deletedCount: 2 })
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
@@ -500,7 +501,10 @@ describe('GeneratedAppSubmissionsPanel', () => {
     )
     await user.click(screen.getByRole('button', { name: '删除所选 (2)' }))
 
-    expect(confirmSpy).toHaveBeenCalledOnce()
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(/2 条提交记录/)).toBeInTheDocument()
+    expect(bulkDeleteMutation.mutateAsync).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: '确认删除' }))
     await waitFor(() => {
       expect(bulkDeleteMutation.mutateAsync).toHaveBeenCalledWith([
         'submission-1',

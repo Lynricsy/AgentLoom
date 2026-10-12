@@ -28,10 +28,9 @@ import {
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import {
   GENERATED_APP_READINESS_LABELS,
-  GENERATED_APP_STATUS_LABELS,
+  GENERATED_APP_STATUS_META,
   formatGeneratedAppDateTime,
   getGeneratedAppReadinessStatusTone,
-  getGeneratedAppStatusTone,
 } from '../lib/generatedAppDisplay'
 import type { GeneratedApp } from '../types'
 
@@ -50,8 +49,8 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
       <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-center gap-1.5">
-            <StatusBadge tone={getGeneratedAppStatusTone(app.status)} size="sm">
-              {GENERATED_APP_STATUS_LABELS[app.status]}
+            <StatusBadge tone={GENERATED_APP_STATUS_META[app.status].tone} size="sm">
+              {GENERATED_APP_STATUS_META[app.status].label}
             </StatusBadge>
             <StatusBadge
               tone={getGeneratedAppReadinessStatusTone(app.readiness)}

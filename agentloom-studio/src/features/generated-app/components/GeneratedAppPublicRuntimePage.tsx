@@ -33,9 +33,8 @@ import {
   useGeneratedAppPublicSubmission,
 } from '../api'
 import {
-  GENERATED_APP_SUBMISSION_STATUS_LABELS,
+  GENERATED_APP_SUBMISSION_STATUS_META,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusTone,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicRuntime,
@@ -124,8 +123,8 @@ function SubmissionStatusBadge({
   status: GeneratedAppPublicSubmission['status']
 }) {
   return (
-    <StatusBadge tone={getGeneratedAppSubmissionStatusTone(status)}>
-      {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
+    <StatusBadge tone={GENERATED_APP_SUBMISSION_STATUS_META[status].tone}>
+      {GENERATED_APP_SUBMISSION_STATUS_META[status].label}
     </StatusBadge>
   )
 }
