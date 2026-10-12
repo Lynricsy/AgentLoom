@@ -186,11 +186,7 @@ export function ApiTokenCreateDialog({
                     aria-label="复制 Token"
                     onClick={handleCopy}
                   >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-success" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
+                    {copied ? <Check className="text-success" /> : <Copy />}
                   </Button>
                 </div>
               </div>

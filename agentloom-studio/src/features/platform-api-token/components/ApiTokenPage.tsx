@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { HTTPError } from 'ky'
 import { AlertTriangle, KeyRound, Plus } from 'lucide-react'
 
@@ -7,7 +7,9 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { formatDateTime } from '@/shared/lib/format'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,26 +51,6 @@ const EMPTY_HINT: Record<PlatformApiTokenStatus, string> = {
   all: '创建一个 Token 即可用它以你的身份调用开放接口。',
 }
 
-function formatTimestamp(value: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const parsed = new Date(value)
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value
-  }
-
-  return parsed.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export function ApiTokenPage() {
   const { notify } = useToast()
 
@@ -76,6 +58,9 @@ export function ApiTokenPage() {
   const [status, setStatus] = useState<PlatformApiTokenStatus>('active')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<PlatformApiToken | null>(null)
+  // 退场动画期间 revokeTarget 已置 null，文案读最后一次的目标避免闪空
+  const lastRevokeRef = useRef<PlatformApiToken | null>(null)
+  if (revokeTarget) lastRevokeRef.current = revokeTarget
 
   const tokensQuery = usePlatformApiTokens({ page, pageSize: PAGE_SIZE, status })
   const revokeMutation = useRevokePlatformApiToken()
@@ -154,8 +139,9 @@ export function ApiTokenPage() {
         key: 'tokenPrefix',
         header: '前缀',
         hideBelow: 'sm',
+        nowrap: true,
         cell: (row) => (
-          <code className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+          <code className="font-mono text-xs text-muted-foreground">
             {row.tokenPrefix}…
           </code>
         ),
@@ -182,7 +168,7 @@ export function ApiTokenPage() {
               {row.expiresAt ? (
                 <span className="hidden whitespace-nowrap text-2xs text-muted-foreground sm:inline">
                   {isExpired ? '过期于 ' : '有效至 '}
-                  {formatTimestamp(row.expiresAt)}
+                  {formatDateTime(row.expiresAt)}
                 </span>
               ) : null}
             </div>
@@ -193,9 +179,10 @@ export function ApiTokenPage() {
         key: 'createdAt',
         header: '创建时间',
         hideBelow: 'md',
+        nowrap: true,
         cell: (row) => (
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
-            {formatTimestamp(row.createdAt)}
+          <span className="text-xs text-muted-foreground">
+            {formatDateTime(row.createdAt)}
           </span>
         ),
       },
@@ -203,9 +190,10 @@ export function ApiTokenPage() {
         key: 'lastUsedAt',
         header: '最后使用',
         hideBelow: 'lg',
+        nowrap: true,
         cell: (row) => (
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
-            {row.lastUsedAt ? formatTimestamp(row.lastUsedAt) : '从未使用'}
+          <span className="text-xs text-muted-foreground">
+            {row.lastUsedAt ? formatDateTime(row.lastUsedAt) : '从未使用'}
           </span>
         ),
       },
@@ -213,18 +201,22 @@ export function ApiTokenPage() {
         key: 'actions',
         // 不用 sr-only：绝对定位元素会逃出 DataTable 的横向滚动容器，撑破小屏文档宽度
         header: '操作',
-        className: 'w-px text-right',
+        align: 'right',
+        nowrap: true,
+        className: 'w-px',
         cell: (row) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`撤销 ${row.name}`}
-            className="whitespace-nowrap text-error hover:bg-error/10"
-            disabled={row.isRevoked}
-            onClick={() => setRevokeTarget(row)}
-          >
-            撤销
-          </Button>
+          <div className="flex justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`撤销 ${row.name}`}
+              className="text-error hover:bg-error/10"
+              disabled={row.isRevoked}
+              onClick={() => setRevokeTarget(row)}
+            >
+              撤销
+            </Button>
+          </div>
         ),
       },
     ],
@@ -232,14 +224,14 @@ export function ApiTokenPage() {
   )
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="api-token-page">
+    <PageContainer data-testid="api-token-page">
       <PageHeader
         icon={KeyRound}
         title="API Token"
         description="以你的身份调用 AgentLoom 开放接口的长期凭据。明文仅在创建时展示一次，泄露后请立即撤销。"
         actions={
           <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
+            <Plus />
             创建 Token
           </Button>
         }
@@ -301,7 +293,7 @@ export function ApiTokenPage() {
               description={EMPTY_HINT[status]}
               action={
                 <Button onClick={() => setIsCreateOpen(true)}>
-                  <Plus className="h-4 w-4" />
+                  <Plus />
                   创建 Token
                 </Button>
               }
@@ -333,7 +325,7 @@ export function ApiTokenPage() {
         <AlertDialogContent>
           <AlertDialogTitle>撤销 API Token？</AlertDialogTitle>
           <AlertDialogDescription>
-            撤销后「{revokeTarget?.name}」将立即失效且无法恢复，所有使用它的集成都会收到
+            撤销后「{lastRevokeRef.current?.name}」将立即失效且无法恢复，所有使用它的集成都会收到
             401。请先确认没有线上服务仍在使用该 Token。
           </AlertDialogDescription>
           <AlertDialogFooter>
@@ -354,6 +346,6 @@ export function ApiTokenPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   )
 }
