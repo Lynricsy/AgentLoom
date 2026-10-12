@@ -39,7 +39,7 @@ describe('VersionToolbar workflow settings toggles', () => {
     expect(defaultProps.onToggleTriggers).toHaveBeenCalledTimes(1)
   })
 
-  it('介入策略打开状态下显示隐藏文案', () => {
+  it('介入策略打开状态下文案不变，以 aria-pressed 表达开启态', () => {
     render(
       <VersionToolbar
         {...defaultProps}
@@ -47,10 +47,12 @@ describe('VersionToolbar workflow settings toggles', () => {
       />,
     )
 
-    expect(screen.getByTestId('btn-intervention-policies')).toHaveTextContent('隐藏介入策略')
+    const button = screen.getByTestId('btn-intervention-policies')
+    expect(button).toHaveTextContent('介入策略')
+    expect(button).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('触发器打开状态下显示隐藏文案', () => {
+  it('触发器打开状态下文案不变，以 aria-pressed 表达开启态', () => {
     render(
       <VersionToolbar
         {...defaultProps}
@@ -58,7 +60,9 @@ describe('VersionToolbar workflow settings toggles', () => {
       />,
     )
 
-    expect(screen.getByTestId('btn-triggers')).toHaveTextContent('隐藏触发器')
+    const button = screen.getByTestId('btn-triggers')
+    expect(button).toHaveTextContent('触发器')
+    expect(button).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('未提供设置 toggle 回调时不显示相关按钮', () => {

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useCanvasStore } from '../../stores/canvasStore';
@@ -47,22 +48,28 @@ describe('VersionToolbar', () => {
   });
 
   describe('按钮可见性', () => {
-    it('草稿状态显示全部操作按钮', () => {
+    it('草稿状态显示全部操作按钮', async () => {
+      const user = userEvent.setup();
       render(<VersionToolbar {...defaultProps} workflowStatus="draft" />);
 
       expect(screen.getByTestId('btn-create-version')).toBeInTheDocument();
       expect(screen.getByTestId('btn-version-history')).toBeInTheDocument();
       expect(screen.getByTestId('btn-publish')).toBeInTheDocument();
-      expect(screen.getByTestId('btn-archive')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '更多操作' }));
+      expect(await screen.findByTestId('btn-archive')).toBeInTheDocument();
     });
 
-    it('已发布状态隐藏发布按钮', () => {
+    it('已发布状态隐藏发布按钮', async () => {
+      const user = userEvent.setup();
       render(<VersionToolbar {...defaultProps} workflowStatus="published" />);
 
       expect(screen.getByTestId('btn-create-version')).toBeInTheDocument();
       expect(screen.getByTestId('btn-version-history')).toBeInTheDocument();
       expect(screen.queryByTestId('btn-publish')).not.toBeInTheDocument();
-      expect(screen.getByTestId('btn-archive')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '更多操作' }));
+      expect(await screen.findByTestId('btn-archive')).toBeInTheDocument();
     });
 
     it('已归档状态只显示版本历史按钮', () => {
@@ -71,7 +78,33 @@ describe('VersionToolbar', () => {
       expect(screen.queryByTestId('btn-create-version')).not.toBeInTheDocument();
       expect(screen.getByTestId('btn-version-history')).toBeInTheDocument();
       expect(screen.queryByTestId('btn-publish')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '更多操作' })).not.toBeInTheDocument();
       expect(screen.queryByTestId('btn-archive')).not.toBeInTheDocument();
+    });
+
+    it('打开更多操作后菜单含导出、导入、分享、归档四项', async () => {
+      const user = userEvent.setup();
+      render(
+        <VersionToolbar
+          {...defaultProps}
+          workflowStatus="published"
+          hasNodes
+          onExport={vi.fn()}
+          onImport={vi.fn()}
+          onShare={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByTestId('btn-export-workflow')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '更多操作' }));
+
+      const items = await screen.findAllByRole('menuitem');
+      expect(items.map((item) => item.textContent)).toEqual(['导出', '导入', '分享', '归档']);
+      expect(screen.getByTestId('btn-export-workflow')).toBeInTheDocument();
+      expect(screen.getByTestId('btn-import-workflow')).toBeInTheDocument();
+      expect(screen.getByTestId('btn-share-workflow')).toBeInTheDocument();
+      expect(screen.getByTestId('btn-archive')).toBeInTheDocument();
     });
 
     it('提供 onToggleInputSchema 时显示输入参数按钮', () => {
@@ -133,21 +166,46 @@ describe('VersionToolbar', () => {
       expect(defaultProps.onOpenPublish).toHaveBeenCalledWith();
     });
 
-    it('点击归档打开归档对话框', () => {
+    it('点击归档打开归档对话框', async () => {
+      const user = userEvent.setup();
       render(<VersionToolbar {...defaultProps} />);
 
       expect(screen.queryByTestId('mock-archive-dialog')).not.toBeInTheDocument();
-      fireEvent.click(screen.getByTestId('btn-archive'));
+      await user.click(screen.getByRole('button', { name: '更多操作' }));
+      await user.click(await screen.findByRole('menuitem', { name: '归档' }));
       expect(screen.getByTestId('mock-archive-dialog')).toBeInTheDocument();
     });
 
-    it('点击输入参数按钮调用 onToggleInputSchema，并在打开时显示隐藏文案', () => {
+    it.each([
+      ['导出', 'onExport'],
+      ['导入', 'onImport'],
+      ['分享', 'onShare'],
+    ] as const)('通过更多操作菜单点击「%s」调用 %s', async (label, callbackName) => {
+      const user = userEvent.setup();
+      const callbacks = { onExport: vi.fn(), onImport: vi.fn(), onShare: vi.fn() };
+      render(
+        <VersionToolbar
+          {...defaultProps}
+          workflowStatus="published"
+          hasNodes
+          {...callbacks}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: '更多操作' }));
+      await user.click(await screen.findByRole('menuitem', { name: label }));
+      expect(callbacks[callbackName]).toHaveBeenCalledTimes(1);
+    });
+
+    it('点击输入参数按钮调用 onToggleInputSchema，并在打开时以 aria-pressed 表达开启态', () => {
       const onToggleInputSchema = vi.fn();
       const { rerender } = render(
         <VersionToolbar {...defaultProps} onToggleInputSchema={onToggleInputSchema} />,
       );
 
-      fireEvent.click(screen.getByTestId('btn-input-schema'));
+      const button = screen.getByTestId('btn-input-schema');
+      expect(button).toHaveAttribute('aria-pressed', 'false');
+      fireEvent.click(button);
       expect(onToggleInputSchema).toHaveBeenCalled();
 
       rerender(
@@ -158,7 +216,8 @@ describe('VersionToolbar', () => {
         />,
       );
 
-      expect(screen.getByTestId('btn-input-schema')).toHaveTextContent('隐藏输入参数');
+      expect(screen.getByTestId('btn-input-schema')).toHaveTextContent('输入参数');
+      expect(screen.getByTestId('btn-input-schema')).toHaveAttribute('aria-pressed', 'true');
     });
   });
 

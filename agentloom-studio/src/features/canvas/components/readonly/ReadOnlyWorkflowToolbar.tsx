@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib/utils'
 import { CANVAS_FLOATING_CLASS } from '../canvasChrome'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Separator } from '@/shared/ui/separator'
 import type { WorkflowStatus } from '@/features/workflow'
 
 interface ReadOnlyWorkflowToolbarProps {
@@ -44,7 +45,7 @@ export const ReadOnlyWorkflowToolbar = memo(function ReadOnlyWorkflowToolbar({
     <div
       className={cn(
         CANVAS_FLOATING_CLASS,
-        'flex flex-wrap items-center justify-end gap-1 px-2 py-1.5',
+        'flex flex-nowrap items-center justify-end gap-1 px-2 py-1.5',
         className,
       )}
       data-testid="readonly-workflow-toolbar"
@@ -58,7 +59,7 @@ export const ReadOnlyWorkflowToolbar = memo(function ReadOnlyWorkflowToolbar({
         {status.label}
       </Badge>
 
-      <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+      <Separator orientation="vertical" className="mx-0.5 h-5" />
 
       <Button
         variant="ghost"
@@ -66,7 +67,7 @@ export const ReadOnlyWorkflowToolbar = memo(function ReadOnlyWorkflowToolbar({
         onClick={onOpenVersionHistory}
         data-testid="btn-version-history"
       >
-        <History className="h-3.5 w-3.5" />
+        <History />
         历史
       </Button>
 
@@ -79,9 +80,9 @@ export const ReadOnlyWorkflowToolbar = memo(function ReadOnlyWorkflowToolbar({
           data-testid="btn-export-workflow"
         >
           {isExporting ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="animate-spin" />
           ) : (
-            <Download className="h-3.5 w-3.5" />
+            <Download />
           )}
           导出
         </Button>

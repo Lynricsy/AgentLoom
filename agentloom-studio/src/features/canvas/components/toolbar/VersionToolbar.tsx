@@ -15,16 +15,26 @@ import {
   Share2,
   Undo2,
   Redo2,
+  MoreHorizontal,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 import { CANVAS_FLOATING_CLASS } from "../canvasChrome";
 import { Badge, type BadgeProps } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
+import { Separator } from "@/shared/ui/separator";
 import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import type { WorkflowStatus } from "@/features/workflow";
 import { CreateVersionDialog } from "@/features/workflow";
 import { ArchiveDialog } from "@/features/workflow";
 import { useCanvasActions, useCanvasHistory } from "../../stores/canvasStore";
+
+const TOOLBAR_SEPARATOR_CLASS = "mx-0.5 h-5";
 
 /** 撤销 / 重做：历史为空时禁用；快捷键见 useCanvasKeyboardShortcuts */
 const CanvasHistoryButtons = memo(function CanvasHistoryButtons() {
@@ -42,7 +52,7 @@ const CanvasHistoryButtons = memo(function CanvasHistoryButtons() {
           disabled={!canUndo}
           data-testid="btn-canvas-undo"
         >
-          <Undo2 className="h-4 w-4" />
+          <Undo2 />
         </Button>
       </TooltipHint>
       <TooltipHint label="重做（Shift+Ctrl/⌘+Z 或 Ctrl+Y）">
@@ -54,10 +64,10 @@ const CanvasHistoryButtons = memo(function CanvasHistoryButtons() {
           disabled={!canRedo}
           data-testid="btn-canvas-redo"
         >
-          <Redo2 className="h-4 w-4" />
+          <Redo2 />
         </Button>
       </TooltipHint>
-      <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+      <Separator orientation="vertical" className={TOOLBAR_SEPARATOR_CLASS} />
     </>
   );
 });
@@ -129,6 +139,10 @@ export const VersionToolbar = memo(function VersionToolbar({
   const handleOpenCreate = useCallback(() => setCreateOpen(true), []);
   const handleOpenArchive = useCallback(() => setArchiveOpen(true), []);
 
+  const canExport = hasNodes && !!onExport;
+  const canShare = isPublished && !!onShare;
+  const hasMoreActions = canExport || !!onImport || canShare || canArchive;
+
   const config = statusConfig[workflowStatus];
 
   return (
@@ -136,7 +150,7 @@ export const VersionToolbar = memo(function VersionToolbar({
       <div
         className={cn(
           CANVAS_FLOATING_CLASS,
-          "flex flex-wrap items-center justify-end gap-1 px-2 py-1.5",
+          "flex flex-nowrap items-center justify-end gap-1 px-2 py-1.5",
           className,
         )}
         data-testid="version-toolbar"
@@ -150,7 +164,7 @@ export const VersionToolbar = memo(function VersionToolbar({
           {config.label}
         </Badge>
 
-        <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+        <Separator orientation="vertical" className={TOOLBAR_SEPARATOR_CLASS} />
 
         {!isArchived && <CanvasHistoryButtons />}
 
@@ -163,7 +177,7 @@ export const VersionToolbar = memo(function VersionToolbar({
               onClick={handleOpenCreate}
               data-testid="btn-create-version"
             >
-              <Save className="h-4 w-4" />
+              <Save />
             </Button>
           </TooltipHint>
         )}
@@ -176,76 +190,75 @@ export const VersionToolbar = memo(function VersionToolbar({
             onClick={onOpenVersionHistory}
             data-testid="btn-version-history"
           >
-            <History className="h-4 w-4" />
+            <History />
           </Button>
         </TooltipHint>
 
-        {hasNodes && onExport && (
-          <TooltipHint label="导出工作流 JSON">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="导出"
-              onClick={onExport}
-              disabled={isExporting}
-              data-testid="btn-export-workflow"
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
+        {hasMoreActions && (
+          <DropdownMenu>
+            <TooltipHint label="更多操作">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="更多操作"
+                  data-testid="btn-toolbar-more"
+                >
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipHint>
+            <DropdownMenuContent align="end" className="w-44">
+              {canExport && (
+                <DropdownMenuItem
+                  onSelect={onExport}
+                  disabled={isExporting}
+                  data-testid="btn-export-workflow"
+                >
+                  {isExporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  导出
+                </DropdownMenuItem>
               )}
-            </Button>
-          </TooltipHint>
-        )}
-
-        {onImport && (
-          <TooltipHint label="导入工作流 JSON">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="导入"
-              onClick={onImport}
-              data-testid="btn-import-workflow"
-            >
-              <FolderInput className="h-4 w-4" />
-            </Button>
-          </TooltipHint>
-        )}
-
-        {isPublished && onShare && (
-          <TooltipHint label="分享工作流">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="分享"
-              onClick={onShare}
-              data-testid="btn-share-workflow"
-            >
-              <Share2 className="h-4 w-4" />
-            </Button>
-          </TooltipHint>
-        )}
-
-        {canArchive && (
-          <TooltipHint label="归档工作流">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="归档"
-              onClick={handleOpenArchive}
-              className={cn(isPublished && "text-warning hover:text-warning")}
-              data-testid="btn-archive"
-            >
-              <Archive className="h-4 w-4" />
-            </Button>
-          </TooltipHint>
+              {onImport && (
+                <DropdownMenuItem
+                  onSelect={onImport}
+                  data-testid="btn-import-workflow"
+                >
+                  <FolderInput className="h-3.5 w-3.5" />
+                  导入
+                </DropdownMenuItem>
+              )}
+              {canShare && (
+                <DropdownMenuItem
+                  onSelect={onShare}
+                  data-testid="btn-share-workflow"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  分享
+                </DropdownMenuItem>
+              )}
+              {canArchive && (
+                <DropdownMenuItem
+                  onSelect={handleOpenArchive}
+                  className={cn(isPublished && "text-warning")}
+                  data-testid="btn-archive"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  归档
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
 
         {(onToggleInterventionPolicies ||
           onToggleInputSchema ||
           onToggleTriggers) && (
-          <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+          <Separator orientation="vertical" className={TOOLBAR_SEPARATOR_CLASS} />
         )}
 
         {onToggleInterventionPolicies && (
@@ -253,11 +266,12 @@ export const VersionToolbar = memo(function VersionToolbar({
             variant="outline"
             size="sm"
             className={cn(isInterventionPoliciesOpen && TOGGLE_ACTIVE_CLASS)}
+            aria-pressed={isInterventionPoliciesOpen}
             onClick={onToggleInterventionPolicies}
             data-testid="btn-intervention-policies"
           >
-            <ShieldAlert className="h-3.5 w-3.5" />
-            {isInterventionPoliciesOpen ? "隐藏介入策略" : "介入策略"}
+            <ShieldAlert />
+            介入策略
           </Button>
         )}
 
@@ -266,11 +280,12 @@ export const VersionToolbar = memo(function VersionToolbar({
             variant="outline"
             size="sm"
             className={cn(isInputSchemaOpen && TOGGLE_ACTIVE_CLASS)}
+            aria-pressed={isInputSchemaOpen}
             onClick={onToggleInputSchema}
             data-testid="btn-input-schema"
           >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            {isInputSchemaOpen ? "隐藏输入参数" : "输入参数"}
+            <SlidersHorizontal />
+            输入参数
           </Button>
         )}
 
@@ -279,18 +294,19 @@ export const VersionToolbar = memo(function VersionToolbar({
             variant="outline"
             size="sm"
             className={cn(isTriggersOpen && TOGGLE_ACTIVE_CLASS)}
+            aria-pressed={isTriggersOpen}
             onClick={onToggleTriggers}
             data-testid="btn-triggers"
           >
-            <Clock3 className="h-3.5 w-3.5" />
-            {isTriggersOpen ? "隐藏触发器" : "触发器"}
+            <Clock3 />
+            触发器
           </Button>
         )}
 
         {(canPublish ||
           (isPublished && onPublishToMarketplace) ||
           (!isArchived && onRun)) && (
-          <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+          <Separator orientation="vertical" className={TOOLBAR_SEPARATOR_CLASS} />
         )}
 
         {isPublished && onPublishToMarketplace && (
@@ -300,7 +316,7 @@ export const VersionToolbar = memo(function VersionToolbar({
             onClick={onPublishToMarketplace}
             data-testid="btn-publish-to-marketplace"
           >
-            <Store className="h-3.5 w-3.5" />
+            <Store />
             发布到市场
           </Button>
         )}
@@ -311,7 +327,7 @@ export const VersionToolbar = memo(function VersionToolbar({
             onClick={() => onOpenPublish()}
             data-testid="btn-publish"
           >
-            <Upload className="h-3.5 w-3.5" />
+            <Upload />
             发布
           </Button>
         )}
@@ -325,12 +341,12 @@ export const VersionToolbar = memo(function VersionToolbar({
           >
             {isRunning ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="animate-spin" />
                 执行中
               </>
             ) : (
               <>
-                <Play className="h-3.5 w-3.5" />
+                <Play />
                 运行
               </>
             )}
