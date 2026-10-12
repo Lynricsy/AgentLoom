@@ -6,9 +6,12 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { motion } from "motion/react";
 import {
+  AlertCircle,
   Download,
   FileCode2,
   FileWarning,
@@ -19,12 +22,18 @@ import {
   Save,
 } from "lucide-react";
 import { detectLanguage } from "@/shared/components/tool-renderers/primitives/codeLanguage";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Spinner } from "@/shared/components/spinner/Spinner";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
+import { useTheme } from "@/shared/hooks/use-theme";
 import type { WorkspaceFilePreview, WorkspaceTextFilePreview } from "../types";
 import { fetchWorkspaceFileRaw } from "../api/workspaceApi";
 import { useUpdateWorkspaceTextFile } from "../api/workspaceMutations";
-import { formatWorkspaceSize } from "../lib/formatSize";
+import { formatBytes } from "@/shared/lib/format";
+import { fadeIn } from "@/shared/lib/motion";
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -74,14 +83,14 @@ function resolveMonacoLanguage(filePath: string): string {
 function TextEditorFallback() {
   return (
     <div
-      className="flex h-full flex-col gap-3 bg-[#111827] px-4 py-5"
+      className="flex h-full flex-col gap-3 bg-surface px-4 py-5"
       data-testid="workspace-preview-text-loading"
     >
-      <div className="h-4 w-40 animate-pulse rounded bg-white/10" />
-      <div className="h-3 w-full animate-pulse rounded bg-white/5" />
-      <div className="h-3 w-5/6 animate-pulse rounded bg-white/5" />
-      <div className="h-3 w-2/3 animate-pulse rounded bg-white/5" />
-      <div className="h-3 w-4/5 animate-pulse rounded bg-white/5" />
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-5/6" />
+      <Skeleton className="h-3 w-2/3" />
+      <Skeleton className="h-3 w-4/5" />
     </div>
   );
 }
@@ -98,16 +107,17 @@ const WorkspaceTextEditor = memo(function WorkspaceTextEditor({
   onChange: (value: string) => void;
 }) {
   const language = useMemo(() => resolveMonacoLanguage(filePath), [filePath]);
+  const { resolvedTheme } = useTheme();
 
   return (
     <Suspense fallback={<TextEditorFallback />}>
-      <div className="h-full bg-[#111827]" data-testid="workspace-preview-text">
+      <div className="h-full bg-surface" data-testid="workspace-preview-text">
         <MonacoEditor
           height="100%"
           language={language}
           value={value}
           onChange={(nextValue) => onChange(nextValue ?? "")}
-          theme="vs-dark"
+          theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
           options={{
             readOnly,
             automaticLayout: true,
@@ -333,11 +343,167 @@ export const WorkspaceFilePreviewPanel = memo(
     const isTextReadOnly =
       !textEditor.isEditing || updateTextMutation.isPending;
 
+    let contentKey: string;
+    let content: ReactNode;
+    if (!selectedPath) {
+      contentKey = "idle";
+      content = (
+        <EmptyState
+          variant="plain"
+          icon={FileCode2}
+          tone="var(--color-info)"
+          title="未选择文件"
+          description="选择左侧文件后，这里会显示当前持久化 workspace 的内容。"
+          className="h-full"
+        />
+      );
+    } else if (isLoading) {
+      contentKey = "loading";
+      content = (
+        <div className="grid h-full place-items-center">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner />
+            <span>正在加载文件预览…</span>
+          </div>
+        </div>
+      );
+    } else if (error) {
+      contentKey = "error";
+      content = (
+        <EmptyState
+          variant="plain"
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载文件预览失败"
+          description={<span className="break-words">{error}</span>}
+          className="h-full"
+        />
+      );
+    } else if (!preview) {
+      contentKey = "unreadable";
+      content = (
+        <EmptyState
+          variant="plain"
+          icon={FileWarning}
+          tone="var(--color-warning)"
+          title="当前文件暂时不可读取"
+          className="h-full"
+        />
+      );
+    } else if (preview.kind === "text") {
+      contentKey = `text:${preview.path}`;
+      content = (
+        <div className="flex h-full min-h-0 flex-col bg-surface">
+          {textEditor.saveError && (
+            <div
+              className="shrink-0 break-words border-b border-border bg-error/10 px-3 py-2 text-xs text-error"
+              role="alert"
+            >
+              {textEditor.saveError}
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
+            <WorkspaceTextEditor
+              filePath={preview.path}
+              value={textEditor.draftContent}
+              readOnly={isTextReadOnly}
+              onChange={handleTextChange}
+            />
+          </div>
+        </div>
+      );
+    } else if (rawLoading) {
+      contentKey = `raw-loading:${preview.path}`;
+      content = (
+        <div className="grid h-full place-items-center">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner />
+            <span>正在加载二进制预览…</span>
+          </div>
+        </div>
+      );
+    } else if (rawError) {
+      contentKey = `raw-error:${preview.path}`;
+      content = (
+        <EmptyState
+          variant="plain"
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载预览失败"
+          description={<span className="break-words">{rawError}</span>}
+          className="h-full"
+        />
+      );
+    } else if (preview.kind === "image" && rawUrl) {
+      contentKey = `image:${preview.path}`;
+      content = (
+        <div className="grid h-full place-items-center overflow-auto bg-background p-4">
+          <img
+            data-testid="workspace-preview-image"
+            src={rawUrl}
+            alt={preview.fileName}
+            className="max-h-full max-w-full rounded-md border border-border object-contain"
+          />
+        </div>
+      );
+    } else if (preview.kind === "pdf" && rawUrl) {
+      contentKey = `pdf:${preview.path}`;
+      content = (
+        <div
+          className="h-full overflow-auto bg-background p-4"
+          data-testid="workspace-preview-pdf"
+        >
+          <Document
+            file={rawUrl}
+            loading={
+              <div className="grid place-items-center py-12">
+                <Spinner />
+              </div>
+            }
+            onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
+          >
+            <div className="space-y-4">
+              {Array.from({ length: pdfPageCount || 1 }, (_, index) => (
+                <Page
+                  key={`${preview.path}-${index + 1}`}
+                  pageNumber={index + 1}
+                  renderAnnotationLayer
+                  renderTextLayer
+                />
+              ))}
+            </div>
+          </Document>
+        </div>
+      );
+    } else {
+      contentKey = `unsupported:${preview.path}`;
+      content = (
+        <div className="h-full" data-testid="workspace-preview-unsupported">
+          <EmptyState
+            variant="plain"
+            icon={FileWarning}
+            tone="var(--color-warning)"
+            title={
+              preview.kind === "unsupported"
+                ? preview.reason
+                : "当前文件暂不支持预览。"
+            }
+            description={
+              preview.canDownload
+                ? "可以使用右上角「下载」按钮在本地查看。"
+                : undefined
+            }
+            className="h-full"
+          />
+        </div>
+      );
+    }
+
     return (
       <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
-        <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
-          <FileCode2 className="size-4 text-info/80" />
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted px-3 py-2">
+          <FileCode2 className="size-4 shrink-0 text-info/80" />
+          <div className="min-w-0 flex-1 basis-40">
             <p className="truncate text-sm font-medium text-foreground">
               {fileName || "文件预览"}
             </p>
@@ -345,182 +511,91 @@ export const WorkspaceFilePreviewPanel = memo(
               {selectedPath || "选择左侧文件后显示当前内容"}
             </p>
           </div>
-          {preview && (
-            <span className="text-2xs text-muted-foreground">
-              {formatWorkspaceSize(preview.size)}
-            </span>
-          )}
-          {textPreview && isDirty && (
-            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning">
-              未保存
-            </span>
-          )}
-          {textPreview &&
-            (textEditor.isEditing ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResetText}
-                  disabled={updateTextMutation.isPending}
-                >
-                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                  撤销
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => void handleSaveText()}
-                  disabled={!isDirty || updateTextMutation.isPending}
-                >
-                  {updateTextMutation.isPending ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Save className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  保存
-                </Button>
-              </>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={handleStartEditing}>
-                <PencilLine className="mr-1.5 h-3.5 w-3.5" />
-                编辑
-              </Button>
-            ))}
-          {preview?.canDownload && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleDownload()}
-              disabled={downloading}
-            >
-              {downloading ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          <div className="flex shrink-0 items-center gap-2">
+            {preview && (
+              <span className="whitespace-nowrap text-2xs tabular-nums text-muted-foreground">
+                {formatBytes(preview.size)}
+              </span>
+            )}
+            {textPreview && isDirty && (
+              <Badge variant="warning" size="sm" className="shrink-0">
+                未保存
+              </Badge>
+            )}
+            {textPreview &&
+              (textEditor.isEditing ? (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetText}
+                    disabled={updateTextMutation.isPending}
+                  >
+                    <RotateCcw />
+                    撤销
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleSaveText()}
+                    disabled={!isDirty || updateTextMutation.isPending}
+                  >
+                    {updateTextMutation.isPending ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Save />
+                    )}
+                    保存
+                  </Button>
+                </>
               ) : (
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              下载
-            </Button>
-          )}
+                <Button variant="ghost" size="sm" onClick={handleStartEditing}>
+                  <PencilLine />
+                  编辑
+                </Button>
+              ))}
+            {preview?.canDownload && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleDownload()}
+                disabled={downloading}
+              >
+                {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+                下载
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
-          {!selectedPath ? (
-            <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-              <div>
-                <FileCode2 className="mx-auto mb-3 size-5 opacity-40" />
-                <p>选择左侧文件后，这里会显示当前持久化 workspace 的内容。</p>
-              </div>
-            </div>
-          ) : isLoading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>正在加载文件预览…</span>
-            </div>
-          ) : error ? (
-            <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-              <p>{error}</p>
-            </div>
-          ) : !preview ? (
-            <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-              <p>当前文件暂时不可读取。</p>
-            </div>
-          ) : preview.kind === "text" ? (
-            <div className="flex h-full min-h-0 flex-col bg-background">
-              {textEditor.saveError && (
-                <div className="border-b border-border bg-error/10 px-3 py-2 text-xs text-error">
-                  {textEditor.saveError}
-                </div>
-              )}
-              <div className="min-h-0 flex-1">
-                <WorkspaceTextEditor
-                  filePath={preview.path}
-                  value={textEditor.draftContent}
-                  readOnly={isTextReadOnly}
-                  onChange={handleTextChange}
-                />
-              </div>
-            </div>
-          ) : rawLoading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>正在加载二进制预览…</span>
-            </div>
-          ) : rawError ? (
-            <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-              <p>{rawError}</p>
-            </div>
-          ) : preview.kind === "image" && rawUrl ? (
-            <div className="flex h-full items-center justify-center overflow-auto bg-background p-4">
-              <img
-                data-testid="workspace-preview-image"
-                src={rawUrl}
-                alt={preview.fileName}
-                className="max-h-full max-w-full rounded-md border border-border object-contain"
-              />
-            </div>
-          ) : preview.kind === "pdf" && rawUrl ? (
-            <div
-              className="h-full overflow-auto bg-background p-4"
-              data-testid="workspace-preview-pdf"
-            >
-              <Document
-                file={rawUrl}
-                loading={
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                }
-                onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
-              >
-                <div className="space-y-4">
-                  {Array.from({ length: pdfPageCount || 1 }, (_, index) => (
-                    <Page
-                      key={`${preview.path}-${index + 1}`}
-                      pageNumber={index + 1}
-                      renderAnnotationLayer
-                      renderTextLayer
-                    />
-                  ))}
-                </div>
-              </Document>
-            </div>
-          ) : (
-            <div
-              className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground"
-              data-testid="workspace-preview-unsupported"
-            >
-              <div>
-                <FileWarning className="mx-auto mb-3 size-5 opacity-50" />
-                {preview.kind === "unsupported" ? (
-                  <p>{preview.reason}</p>
-                ) : (
-                  <p>当前文件暂不支持预览。</p>
-                )}
-                {preview.canDownload && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    可以使用右上角“下载”按钮在本地查看。
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+          <motion.div
+            key={contentKey}
+            initial={fadeIn.initial}
+            animate={fadeIn.animate}
+            transition={fadeIn.transition}
+            className="h-full"
+          >
+            {content}
+          </motion.div>
         </div>
 
         {preview && (
           <div className="border-t border-border bg-muted px-3 py-2 text-2xs text-muted-foreground">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               {preview.kind === "image" ? (
-                <ImageIcon className="h-3.5 w-3.5" />
+                <ImageIcon className="size-3.5 shrink-0" />
               ) : (
-                <FileCode2 className="h-3.5 w-3.5" />
+                <FileCode2 className="size-3.5 shrink-0" />
               )}
-              <span>{preview.mimeType}</span>
+              <span className="shrink-0">{preview.mimeType}</span>
               {preview.kind === "text" && (
-                <span>
+                <span className="shrink-0">
                   {textEditor.isEditing ? "编辑模式" : "只读预览"} · UTF-8
                 </span>
               )}
-              <span className="truncate">{preview.path}</span>
+              <span className="min-w-0 truncate" title={preview.path}>
+                {preview.path}
+              </span>
             </div>
           </div>
         )}

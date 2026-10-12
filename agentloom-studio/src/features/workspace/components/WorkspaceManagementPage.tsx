@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertCircle,
@@ -37,7 +37,7 @@ import { useToast } from "@/shared/ui/toast";
 import { useWorkspaces } from "../api/workspaceQueries";
 import { useDeleteWorkspace } from "../api/workspaceMutations";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
-import { formatWorkspaceSize } from "../lib/formatSize";
+import { formatBytes } from "@/shared/lib/format";
 import {
   WORKSPACE_SOURCE_LABEL,
   WORKSPACE_SOURCE_TONE,
@@ -66,6 +66,9 @@ export function WorkspaceManagementPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Workspace | null>(null);
+  // 退场动画期间 confirmDelete 已置空，文案读最近一次目标，避免名称闪空
+  const lastDeleteRef = useRef<Workspace | null>(null);
+  if (confirmDelete) lastDeleteRef.current = confirmDelete;
 
   const deleteMutation = useDeleteWorkspace();
 
@@ -144,20 +147,20 @@ export function WorkspaceManagementPage() {
           <div className="flex min-w-0 items-center gap-3">
             <span
               aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+              className="grid size-8 shrink-0 place-items-center rounded-lg"
               style={{
                 backgroundColor:
                   "color-mix(in srgb, var(--color-type-volume) 14%, transparent)",
                 color: "var(--color-type-volume)",
               }}
             >
-              <FolderOpen className="h-4 w-4" />
+              <FolderOpen className="size-4" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">
+              <p className="truncate text-sm font-medium text-foreground" title={workspace.name}>
                 {workspace.name}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-xs text-muted-foreground" title={workspace.description || undefined}>
                 {workspace.description || "暂无描述"}
               </p>
             </div>
@@ -195,13 +198,16 @@ export function WorkspaceManagementPage() {
         key: "size",
         header: "大小",
         hideBelow: "sm",
-        className: "w-24 tabular-nums",
-        cell: (workspace) => formatWorkspaceSize(workspace.sizeBytes),
+        align: "right",
+        nowrap: true,
+        className: "w-24",
+        cell: (workspace) => formatBytes(workspace.sizeBytes),
       },
       {
         key: "createdAt",
         header: "创建时间",
         hideBelow: "lg",
+        nowrap: true,
         className: "w-32",
         cell: (workspace) => formatRelativeTime(new Date(workspace.createdAt)),
       },
@@ -209,7 +215,9 @@ export function WorkspaceManagementPage() {
         key: "actions",
         // 不用 sr-only：绝对定位元素会逃出 DataTable 的横向滚动容器，撑破小屏文档宽度
         header: "操作",
-        className: "w-px whitespace-nowrap text-right",
+        align: "right",
+        nowrap: true,
+        className: "w-px",
         cell: (workspace) => (
           <div
             className="flex items-center justify-end gap-1"
@@ -223,7 +231,7 @@ export function WorkspaceManagementPage() {
               className="px-2 sm:px-3"
               onClick={() => handleOpenWorkspace(workspace)}
             >
-              <Eye className="h-3.5 w-3.5 sm:mr-1.5" />
+              <Eye />
               <span className="hidden sm:inline">预览</span>
             </Button>
             <Button
@@ -233,7 +241,7 @@ export function WorkspaceManagementPage() {
               className="text-muted-foreground hover:text-error"
               onClick={() => handleDelete(workspace)}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 />
             </Button>
           </div>
         ),
@@ -251,7 +259,7 @@ export function WorkspaceManagementPage() {
         description="管理 Agent 的持久化工作区存储"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus />
             创建工作区
           </Button>
         }
@@ -259,7 +267,7 @@ export function WorkspaceManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -322,7 +330,7 @@ export function WorkspaceManagementPage() {
               action={
                 hasFilters ? null : (
                   <Button size="sm" onClick={() => setCreateOpen(true)}>
-                    <Plus className="mr-1.5 h-4 w-4" />
+                    <Plus />
                     创建工作区
                   </Button>
                 )
@@ -353,7 +361,7 @@ export function WorkspaceManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除工作区「{confirmDelete?.name}
+            确定要删除工作区「{lastDeleteRef.current?.name}
             」吗？删除将移除存储的数据，此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
@@ -366,9 +374,7 @@ export function WorkspaceManagementPage() {
                 handleConfirmDelete();
               }}
             >
-              {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {deleteMutation.isPending && <Loader2 className="animate-spin" />}
               删除
             </AlertDialogAction>
           </AlertDialogFooter>

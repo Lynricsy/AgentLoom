@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
+import { FormField } from '@/shared/components/form-field/FormField'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { useCreateWorkspace } from '../api/workspaceMutations'
@@ -88,22 +89,16 @@ export function CreateWorkspaceDialog({
         </DialogHeader>
 
         <DialogBody className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="ws-name">
-              名称 <span className="text-error">*</span>
-            </label>
+          <FormField label="名称" htmlFor="ws-name" required>
             <Input
               id="ws-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="工作区名称"
             />
-          </div>
+          </FormField>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="ws-desc">
-              描述
-            </label>
+          <FormField label="描述" htmlFor="ws-desc">
             <Textarea
               id="ws-desc"
               rows={2}
@@ -111,7 +106,7 @@ export function CreateWorkspaceDialog({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="可选描述"
             />
-          </div>
+          </FormField>
         </DialogBody>
 
         <DialogFooter>
@@ -119,9 +114,7 @@ export function CreateWorkspaceDialog({
             <Button variant="outline">取消</Button>
           </DialogClose>
           <Button disabled={!canCreate} onClick={handleCreate}>
-            {createMutation.isPending && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            )}
+            {createMutation.isPending && <Loader2 className="animate-spin" />}
             创建
           </Button>
         </DialogFooter>

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { WorkspaceFileTree } from "@/features/agent-conversation";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageContainer } from "@/shared/components/page-container/PageContainer";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -19,7 +20,7 @@ import {
   useWorkspaceFilePreview,
   useWorkspaceFileTree,
 } from "../api/workspaceQueries";
-import { formatWorkspaceSize } from "../lib/formatSize";
+import { formatBytes, formatDateTime } from "@/shared/lib/format";
 import {
   WORKSPACE_SOURCE_LABEL,
   WORKSPACE_SOURCE_TONE,
@@ -95,21 +96,21 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   if (detailQuery.isLoading) {
     return (
-      <div className="flex h-full flex-col gap-5 p-6">
+      <PageContainer>
         <Skeleton className="h-10 w-72" />
         <div className="grid gap-3 sm:grid-cols-3">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
+          <Skeleton className="h-[4.25rem]" />
+          <Skeleton className="h-[4.25rem]" />
+          <Skeleton className="h-[4.25rem]" />
         </div>
-        <Skeleton className="min-h-0 flex-1" />
-      </div>
+        <Skeleton className="h-[min(70dvh,48rem)] min-h-[480px]" />
+      </PageContainer>
     );
   }
 
   if (!workspace || workspaceError) {
     return (
-      <div className="flex h-full items-center justify-center p-6">
+      <PageContainer>
         <EmptyState
           icon={AlertCircle}
           tone="var(--color-error)"
@@ -124,12 +125,12 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             </Button>
           }
         />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex h-full flex-col gap-5 p-6">
+    <PageContainer>
       <PageHeader
         icon={PackageOpen}
         tone="var(--color-type-volume)"
@@ -138,8 +139,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
           { label: workspace.name },
         ]}
         title={
-          <span className="flex flex-wrap items-center gap-2">
-            {workspace.name}
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="min-w-0 break-words">{workspace.name}</span>
             <Badge size="sm" tone={WORKSPACE_SOURCE_TONE[sourceKind]}>
               {WORKSPACE_SOURCE_LABEL[sourceKind]}
             </Badge>
@@ -152,7 +153,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             size="sm"
             onClick={() => void navigate({ to: "/resources/workspaces" })}
           >
-            <ArrowLeft className="mr-1 h-4 w-4" />
+            <ArrowLeft />
             返回
           </Button>
         }
@@ -160,40 +161,40 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <DetailStat
-          icon={<HardDrive className="h-4 w-4" />}
+          icon={<HardDrive className="size-4" />}
           tone="var(--color-type-volume)"
           label="大小"
-          value={formatWorkspaceSize(workspace.sizeBytes)}
+          value={formatBytes(workspace.sizeBytes)}
         />
         <DetailStat
-          icon={<Calendar className="h-4 w-4" />}
+          icon={<Calendar className="size-4" />}
           tone="var(--color-type-audio)"
           label="创建时间"
-          value={new Date(workspace.createdAt).toLocaleString("zh-CN", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          value={formatDateTime(workspace.createdAt)}
         />
         <DetailStat
-          icon={<FolderTree className="h-4 w-4" />}
+          icon={<FolderTree className="size-4" />}
           tone="var(--color-type-text)"
           label="状态"
           value={STATUS_LABEL[workspace.status] ?? workspace.status}
         />
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="min-h-[320px] xl:min-h-0">
-          <WorkspaceFileTree
-            tree={tree}
-            selectedPath={selectedPath}
-            onSelectFile={setSelectedPath}
-            isLoading={treeQuery.isLoading}
-          />
-          {treeError && <p className="mt-2 text-xs text-error">{treeError}</p>}
+      <div className="grid gap-4 xl:h-[min(70dvh,48rem)] xl:min-h-[480px] xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="flex min-h-[320px] flex-col gap-2 xl:min-h-0">
+          {treeError && (
+            <p className="shrink-0 break-words text-xs text-error" role="alert">
+              {treeError}
+            </p>
+          )}
+          <div className="min-h-0 flex-1">
+            <WorkspaceFileTree
+              tree={tree}
+              selectedPath={selectedPath}
+              onSelectFile={setSelectedPath}
+              isLoading={treeQuery.isLoading}
+            />
+          </div>
         </div>
 
         <div className="min-h-[320px] xl:min-h-0">
@@ -206,7 +207,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
           />
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
@@ -222,12 +223,14 @@ function DetailStat({
   tone: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3">
+    <div className="min-w-0 rounded-lg border border-border bg-surface px-4 py-3">
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        <span style={{ color: tone }}>{icon}</span>
-        <span>{label}</span>
+        <span className="shrink-0" style={{ color: tone }}>{icon}</span>
+        <span className="truncate">{label}</span>
       </div>
-      <p className="text-sm font-semibold text-foreground">{value}</p>
+      <p className="truncate text-sm font-semibold text-foreground" title={value}>
+        {value}
+      </p>
     </div>
   );
 }
