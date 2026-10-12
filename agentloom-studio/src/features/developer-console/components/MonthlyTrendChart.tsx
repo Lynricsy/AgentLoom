@@ -7,7 +7,15 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
+import { Card } from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
 import type { MonthlyTrend } from '../api/developer-earnings.api'
+
+// 与 EarningsSummaryCards / PluginUsageRanking / SettlementHistory 的金额格式保持一致
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+})
 
 interface MonthlyTrendChartProps {
   trends: MonthlyTrend[] | undefined
@@ -24,13 +32,13 @@ export function MonthlyTrendChart({
   }))
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <Card className="p-4">
       <h3 className="mb-4 text-base font-semibold text-foreground">
         月度收入趋势
       </h3>
 
       {isLoading ? (
-        <div className="h-64 w-full animate-pulse rounded bg-muted" />
+        <Skeleton className="h-64 w-full rounded-lg" />
       ) : !chartData || chartData.length === 0 ? (
         <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
           暂无趋势数据
@@ -41,42 +49,42 @@ export function MonthlyTrendChart({
             <LineChart data={chartData}>
               <CartesianGrid
                 strokeDasharray="3 3"
-                stroke="hsl(var(--border))"
+                stroke="var(--color-border)"
               />
               <XAxis
                 dataKey="month"
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                axisLine={{ stroke: 'hsl(var(--border))' }}
-                tickLine={{ stroke: 'hsl(var(--border))' }}
+                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 12 }}
+                axisLine={{ stroke: 'var(--color-border)' }}
+                tickLine={{ stroke: 'var(--color-border)' }}
               />
               <YAxis
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                axisLine={{ stroke: 'hsl(var(--border))' }}
-                tickLine={{ stroke: 'hsl(var(--border))' }}
+                tick={{ fill: 'var(--color-muted-foreground)', fontSize: 12 }}
+                axisLine={{ stroke: 'var(--color-border)' }}
+                tickLine={{ stroke: 'var(--color-border)' }}
                 tickFormatter={(v: number) => `$${v}`}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
+                  backgroundColor: 'var(--color-popover)',
+                  border: '1px solid var(--color-border)',
                   borderRadius: '0.5rem',
-                  color: 'hsl(var(--foreground))',
+                  color: 'var(--color-foreground)',
                 }}
-                formatter={(value) => [`$${Number(value).toFixed(2)}`, '收入']}
-                labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
+                formatter={(value) => [currencyFormatter.format(Number(value)), '收入']}
+                labelStyle={{ color: 'var(--color-muted-foreground)' }}
               />
               <Line
                 type="monotone"
                 dataKey="revenue"
-                stroke="#3b82f6"
+                stroke="var(--color-primary)"
                 strokeWidth={2}
-                dot={{ fill: '#3b82f6', r: 4 }}
-                activeDot={{ r: 6, fill: '#3b82f6' }}
+                dot={{ fill: 'var(--color-primary)', r: 4 }}
+                activeDot={{ r: 6, fill: 'var(--color-primary)' }}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
       )}
-    </div>
+    </Card>
   )
 }

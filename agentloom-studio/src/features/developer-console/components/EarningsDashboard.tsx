@@ -33,6 +33,7 @@ export function EarningsDashboard() {
       <EarningsSummaryCards
         summary={summaryQuery.data}
         isLoading={summaryQuery.isLoading}
+        isError={summaryQuery.isError}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

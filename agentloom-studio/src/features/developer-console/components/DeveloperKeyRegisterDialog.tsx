@@ -163,7 +163,7 @@ export function DeveloperKeyRegisterDialog({
                       void handleCopyFingerprint(registeredKey.keyFingerprint)
                     }}
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    <Copy />
                   </Button>
                 </div>
               </div>
@@ -248,7 +248,7 @@ export function DeveloperKeyRegisterDialog({
             <DialogFooter>
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 onClick={() => handleOpenChange(false)}
               >
                 取消

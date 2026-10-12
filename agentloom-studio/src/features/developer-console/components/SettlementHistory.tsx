@@ -1,6 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { Receipt } from 'lucide-react'
 
-import { Pagination } from '@/shared/components/Pagination'
+import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -62,25 +64,6 @@ interface SettlementHistoryProps {
   canManagePayouts?: boolean
 }
 
-const SKELETON_ROW_KEYS = ['skel-stl-1', 'skel-stl-2', 'skel-stl-3', 'skel-stl-4', 'skel-stl-5']
-const SKELETON_COL_KEYS = ['col-1', 'col-2', 'col-3', 'col-4', 'col-5', 'col-6']
-
-function SkeletonRows() {
-  return (
-    <>
-      {SKELETON_ROW_KEYS.map((rowKey) => (
-        <tr key={rowKey}>
-          {SKELETON_COL_KEYS.map((colKey) => (
-            <td key={colKey} className="px-4 py-3">
-              <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  )
-}
-
 /** 迁移到 completed 时需要一个打款凭证，用对话框收集 */
 interface PendingCompletion {
   record: SettlementRecord
@@ -93,9 +76,7 @@ export function SettlementHistory({
   onPageChange,
   canManagePayouts = false,
 }: SettlementHistoryProps) {
-  const records = settlements?.data
-  const totalPages = settlements?.meta.totalPages ?? 1
-  const columnCount = canManagePayouts ? 7 : 6
+  const records = settlements?.data ?? []
 
   const { notify } = useToast()
   const payoutMutation = useUpdatePayoutStatus()
@@ -103,6 +84,10 @@ export function SettlementHistory({
     useState<PendingCompletion | null>(null)
   const [payoutReference, setPayoutReference] = useState('')
   const [advancingId, setAdvancingId] = useState<string | null>(null)
+  // 对话框退场期间 pendingCompletion 已置 null，描述文案沿用最后一次的记录
+  const lastCompletionRef = useRef<PendingCompletion | null>(null)
+  if (pendingCompletion) lastCompletionRef.current = pendingCompletion
+  const completionRecord = lastCompletionRef.current?.record
 
   const advance = useCallback(
     async (
@@ -142,126 +127,122 @@ export function SettlementHistory({
     [notify, payoutMutation],
   )
 
+  const columns: DataTableColumn<SettlementRecord>[] = [
+    {
+      key: 'period',
+      header: '期间',
+      nowrap: true,
+      cellClassName: 'text-muted-foreground',
+      cell: (record) => formatPeriod(record.periodStart, record.periodEnd),
+    },
+    {
+      key: 'pluginName',
+      header: '插件名',
+      className: 'w-full max-w-0',
+      cell: (record) => (
+        <span className="block truncate font-medium text-foreground" title={record.pluginName}>
+          {record.pluginName}
+        </span>
+      ),
+    },
+    {
+      key: 'totalExecutions',
+      header: '使用量',
+      align: 'right',
+      nowrap: true,
+      cellClassName: 'text-muted-foreground',
+      cell: (record) => numberFormatter.format(record.totalExecutions),
+    },
+    {
+      key: 'totalRevenue',
+      header: '总收入',
+      align: 'right',
+      nowrap: true,
+      cell: (record) => currencyFormatter.format(parseFloat(record.totalRevenue)),
+    },
+    {
+      key: 'developerShare',
+      header: '开发者份额',
+      align: 'right',
+      nowrap: true,
+      cell: (record) => currencyFormatter.format(parseFloat(record.developerShare)),
+    },
+    {
+      key: 'payoutStatus',
+      header: '状态',
+      nowrap: true,
+      cell: (record) => {
+        const statusConfig = STATUS_CONFIG[record.payoutStatus]
+        return <StatusBadge tone={statusConfig.tone}>{statusConfig.label}</StatusBadge>
+      },
+    },
+  ]
+
+  if (canManagePayouts) {
+    columns.push({
+      key: 'actions',
+      header: '打款操作',
+      align: 'right',
+      nowrap: true,
+      cell: (record) => {
+        const transitions = PAYOUT_STATUS_TRANSITIONS[record.payoutStatus]
+
+        return (
+          <div className="flex justify-end gap-1.5">
+            {transitions.length === 0 ? (
+              <span className="text-xs text-muted-foreground">终态</span>
+            ) : (
+              transitions.map((next) => (
+                <Button
+                  key={next}
+                  variant="outline"
+                  size="sm"
+                  disabled={advancingId === record.id}
+                  onClick={() => {
+                    if (next === 'completed') {
+                      setPayoutReference('')
+                      setPendingCompletion({ record })
+                      return
+                    }
+
+                    void advance(record, next)
+                  }}
+                >
+                  {advancingId === record.id ? <Spinner size="sm" /> : null}
+                  {TRANSITION_LABEL[record.payoutStatus][next]}
+                </Button>
+              ))
+            )}
+          </div>
+        )
+      },
+    })
+  }
+
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <div className="border-b border-border px-4 py-3">
         <h3 className="text-base font-semibold text-foreground">结算历史</h3>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-muted-foreground">
-              <th className="px-4 py-3 font-medium">期间</th>
-              <th className="px-4 py-3 font-medium">插件名</th>
-              <th className="px-4 py-3 font-medium">使用量</th>
-              <th className="px-4 py-3 font-medium">总收入</th>
-              <th className="px-4 py-3 font-medium">开发者份额</th>
-              <th className="px-4 py-3 font-medium">状态</th>
-              {canManagePayouts ? (
-                <th className="px-4 py-3 text-right font-medium">打款操作</th>
-              ) : null}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <SkeletonRows />
-            ) : !records || records.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={columnCount}
-                  className="px-4 py-8 text-center text-muted-foreground"
-                >
-                  暂无结算记录
-                </td>
-              </tr>
-            ) : (
-              records.map((record) => {
-                const statusConfig = STATUS_CONFIG[record.payoutStatus]
-                const transitions =
-                  PAYOUT_STATUS_TRANSITIONS[record.payoutStatus]
-
-                return (
-                  <tr
-                    key={record.id}
-                    className="border-b border-border/50 last:border-b-0"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      {formatPeriod(record.periodStart, record.periodEnd)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {record.pluginName}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {numberFormatter.format(record.totalExecutions)}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">
-                      {currencyFormatter.format(
-                        parseFloat(record.totalRevenue),
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">
-                      {currencyFormatter.format(
-                        parseFloat(record.developerShare),
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge tone={statusConfig.tone}>
-                        {statusConfig.label}
-                      </StatusBadge>
-                    </td>
-                    {canManagePayouts ? (
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1.5">
-                          {transitions.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">
-                              终态
-                            </span>
-                          ) : (
-                            transitions.map((next) => (
-                              <Button
-                                key={next}
-                                variant="outline"
-                                size="sm"
-                                disabled={advancingId === record.id}
-                                onClick={() => {
-                                  if (next === 'completed') {
-                                    setPayoutReference('')
-                                    setPendingCompletion({ record })
-                                    return
-                                  }
-
-                                  void advance(record, next)
-                                }}
-                              >
-                                {advancingId === record.id ? (
-                                  <Spinner size="sm" />
-                                ) : null}
-                                {TRANSITION_LABEL[record.payoutStatus][next]}
-                              </Button>
-                            ))
-                          )}
-                        </div>
-                      </td>
-                    ) : null}
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {settlements && totalPages > 1 && (
-        <div className="border-t border-border p-3">
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={onPageChange}
-            isLoading={isLoading}
-          />
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={records}
+        rowKey={(record) => record.id}
+        loading={isLoading}
+        className="rounded-none border-0"
+        empty={<EmptyState variant="plain" icon={Receipt} title="暂无结算记录" />}
+        pagination={
+          settlements
+            ? {
+                page,
+                pageSize: settlements.meta.pageSize,
+                total: settlements.meta.total,
+                onPageChange,
+              }
+            : undefined
+        }
+      />
 
       <Dialog
         open={pendingCompletion !== null}
@@ -273,8 +254,8 @@ export function SettlementHistory({
           <DialogHeader>
             <DialogTitle>标记打款完成</DialogTitle>
             <DialogDescription>
-              {pendingCompletion
-                ? `确认「${pendingCompletion.record.pluginName}」这笔分成已线下打款。完成后状态不可再变更。`
+              {completionRecord
+                ? `确认「${completionRecord.pluginName}」这笔分成已线下打款。完成后状态不可再变更。`
                 : ''}
             </DialogDescription>
           </DialogHeader>
@@ -285,7 +266,7 @@ export function SettlementHistory({
               className="text-sm font-medium text-foreground"
             >
               打款凭证号
-              <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
+              <span className="ml-1 text-xs font-normal text-muted-foreground">（可选）</span>
             </label>
             <Input
               id="payout-reference"

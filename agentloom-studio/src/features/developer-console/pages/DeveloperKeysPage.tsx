@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { KeyRound, Plus } from 'lucide-react'
 
 import {
@@ -6,6 +6,7 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { formatDateTime } from '@/shared/lib/format'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
@@ -50,23 +51,6 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'revoked', label: '已撤销' },
 ]
 
-function formatTimestamp(value?: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
-}
-
 export function DeveloperKeysPage() {
   const { notify } = useToast()
 
@@ -76,6 +60,10 @@ export function DeveloperKeysPage() {
   const [keyPendingRevoke, setKeyPendingRevoke] = useState<DeveloperKey | null>(
     null,
   )
+  // 退场动画期间 keyPendingRevoke 已置 null，描述沿用最后一次的目标
+  const lastRevokeKeyRef = useRef<DeveloperKey | null>(null)
+  if (keyPendingRevoke) lastRevokeKeyRef.current = keyPendingRevoke
+  const revokeLabel = lastRevokeKeyRef.current?.label?.trim() || '未命名密钥'
 
   const listParams = useMemo(
     () => ({
@@ -157,14 +145,15 @@ export function DeveloperKeysPage() {
         header: '创建时间',
         hideBelow: 'md',
         className: 'w-44',
+        nowrap: true,
         cell: (key) => (
           <div className="space-y-0.5">
-            <p className="whitespace-nowrap text-xs text-muted-foreground">
-              {formatTimestamp(key.createdAt)}
+            <p className="text-xs text-muted-foreground">
+              {formatDateTime(key.createdAt)}
             </p>
             {key.status === 'revoked' ? (
-              <p className="whitespace-nowrap text-2xs text-muted-foreground">
-                撤销于 {formatTimestamp(key.revokedAt)}
+              <p className="text-2xs text-muted-foreground">
+                撤销于 {formatDateTime(key.revokedAt)}
               </p>
             ) : null}
           </div>
@@ -173,14 +162,16 @@ export function DeveloperKeysPage() {
       {
         key: 'actions',
         header: '操作',
-        className: 'w-24 text-right',
+        align: 'right',
+        nowrap: true,
+        className: 'w-24',
         cell: (key) =>
           key.status === 'active' ? (
             <Button
               variant="ghost"
               size="sm"
               aria-label={`撤销 ${key.label?.trim() || '未命名密钥'}`}
-              className="whitespace-nowrap text-error hover:bg-error/10"
+              className="text-error hover:bg-error/10"
               onClick={() => setKeyPendingRevoke(key)}
             >
               撤销
@@ -227,7 +218,7 @@ export function DeveloperKeysPage() {
       activeTab="keys"
       actions={
         <Button onClick={() => setIsRegisterOpen(true)}>
-          <Plus className="h-4 w-4" />
+          <Plus />
           注册公钥
         </Button>
       }
@@ -245,7 +236,7 @@ export function DeveloperKeysPage() {
               setPage(1)
             }}
           >
-            <SelectTrigger className="h-8 w-36" aria-label="按状态筛选">
+            <SelectTrigger className="w-36" aria-label="按状态筛选">
               <SelectValue placeholder="全部状态" />
             </SelectTrigger>
             <SelectContent>
@@ -298,7 +289,7 @@ export function DeveloperKeysPage() {
                 }
                 action={
                   <Button size="sm" onClick={() => setIsRegisterOpen(true)}>
-                    <Plus className="h-4 w-4" />
+                    <Plus />
                     注册公钥
                   </Button>
                 }
@@ -334,8 +325,7 @@ export function DeveloperKeysPage() {
         <AlertDialogContent>
           <AlertDialogTitle>撤销开发者密钥？</AlertDialogTitle>
           <AlertDialogDescription>
-            撤销「{keyPendingRevoke?.label?.trim() || '未命名密钥'}
-            」后，使用对应私钥签名的插件包将无法通过验签。此操作不可撤销。
+            撤销「{revokeLabel}」后，使用对应私钥签名的插件包将无法通过验签。此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel asChild>
