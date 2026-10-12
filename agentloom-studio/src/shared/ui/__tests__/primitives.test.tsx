@@ -51,6 +51,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../select'
+import { ToastProvider, useToast } from '../toast'
+
+function ToastTrigger() {
+  const { notify } = useToast()
+  return (
+    <button type="button" onClick={() => notify({ title: '已保存', description: '工作流已更新' })}>
+      通知
+    </button>
+  )
+}
+
+describe('Toast', () => {
+  it('点击关闭按钮后移除通知', async () => {
+    const user = userEvent.setup()
+    render(
+      <ToastProvider>
+        <ToastTrigger />
+      </ToastProvider>,
+    )
+
+    await user.click(screen.getByText('通知'))
+    expect(await screen.findByText('工作流已更新')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.queryByText('工作流已更新')).not.toBeInTheDocument())
+  })
+})
 
 describe('Dialog', () => {
   it('打开后渲染内容，关闭后移除', async () => {

@@ -139,7 +139,8 @@ Tailwind 原生调色板（`slate|gray|zinc|neutral|stone|red|orange|amber|yello
 | `z-20` | 画布内叠层：minimap、状态栏、edge badge |
 | `z-30` | 画布浮动面板 / 工具条 / palette 浮层 |
 | `z-40` | 画布右键菜单 / 节点信息卡 |
-| `z-50` | 所有 portal 浮层：Dialog / Sheet / AlertDialog / Popover / Dropdown / Select / Tooltip / Toast / Command |
+| `z-50` | 所有 portal 浮层：Dialog / Sheet / AlertDialog / Popover / Dropdown / Select / Tooltip / Command |
+| `z-60` | Toast（必须盖住 Dialog 遮罩） |
 
 禁止 `z-[...]`。
 
