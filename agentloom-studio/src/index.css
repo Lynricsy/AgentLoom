@@ -177,6 +177,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Tailwind v4 preflight 把 button 光标重置为 default，这里统一恢复可点击手势 */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}
+
 /* ─── Markdown / Prose 主题定制 ────────────────────────── */
 .prose-agent {
   --tw-prose-body: var(--color-foreground);
@@ -1497,6 +1506,11 @@ body {
 
 /* ─── 无障碍 & reduced-motion（全站唯一一处） ─────────────── */
 @media (prefers-reduced-motion: reduce) {
+  /* Tailwind 的 animate-spin / animate-pulse（Spinner、Loader2、StatusDot 等） */
+  .animate-spin,
+  .animate-pulse {
+    animation: none;
+  }
   .canvas-node-shell:hover {
     transform: none;
   }
