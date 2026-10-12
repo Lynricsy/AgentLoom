@@ -42,6 +42,8 @@ vi.mock("@xyflow/react", () => ({
   ),
   Background: () => <div data-testid="reactflow-background" />,
   BackgroundVariant: { Dots: "dots" },
+  applyNodeChanges: vi.fn(),
+  useReactFlow: () => ({ fitView: vi.fn() }),
 }));
 
 

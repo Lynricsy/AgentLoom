@@ -159,6 +159,46 @@ describe('buildWorkflowPreviewGraph', () => {
     expect(preview.nodes).toHaveLength(0)
   })
 
+  it('收起的容器按收起尺寸显示并隐藏内部节点与相连边', () => {
+    const preview = buildWorkflowPreviewGraph({
+      nodes: [
+        {
+          id: 'loop-1',
+          type: 'control',
+          position: { x: 0, y: 0 },
+          style: { width: 2400, height: 1300 },
+          data: { nodeType: 'loop', config: { isCollapsed: true } },
+        },
+        {
+          id: 'inner',
+          type: 'agent',
+          parentId: 'loop-1',
+          position: { x: 40, y: 200 },
+          data: { nodeType: 'agent' },
+        },
+        {
+          id: 'after',
+          type: 'output',
+          position: { x: 800, y: 0 },
+          data: { nodeType: 'text-output' },
+        },
+      ],
+      edges: [
+        { id: 'e-inner', source: 'inner', target: 'after' },
+        { id: 'e-loop', source: 'loop-1', target: 'after' },
+      ],
+    })
+
+    const byId = new Map(preview.nodes.map((node) => [node.id, node]))
+    expect(byId.get('loop-1')?.style?.width).toBe(360)
+    expect(byId.get('loop-1')?.style?.height).toBeUndefined()
+    expect(byId.get('inner')?.hidden).toBe(true)
+    expect(byId.get('after')?.hidden).toBeUndefined()
+    expect(
+      Object.fromEntries(preview.edges.map((edge) => [edge.id, edge.hidden])),
+    ).toEqual({ 'e-inner': true, 'e-loop': undefined })
+  })
+
   it('为 workflow agent 预览补齐新的 system-prompt-in 端口并保留 no_sandbox 过滤', () => {
     const preview = buildWorkflowPreviewGraph({
       nodes: [

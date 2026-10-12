@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CanvasEdge, CanvasNode } from '../types'
-import { layoutCanvasNodes } from './autoLayout'
+import { hasOverlappingSiblings, layoutCanvasNodes } from './autoLayout'
 import { buildCompoundChildExtent } from './compoundLayout'
 
 const NODE_SIZE = { width: 240, height: 120 }
@@ -159,5 +159,29 @@ describe('layoutCanvasNodes', () => {
 
     expect(hiddenChild.position).toEqual({ x: 77, y: 88 })
     expect(after.position.x).toBeGreaterThan(loop.position.x)
+  })
+})
+
+describe('hasOverlappingSiblings', () => {
+  it('只比较同一父级下的可见节点', () => {
+    const separated = [
+      createNode('a', { position: { x: 0, y: 0 } }),
+      createNode('b', { position: { x: NODE_SIZE.width, y: 0 } }),
+    ]
+    expect(hasOverlappingSiblings(separated)).toBe(false)
+
+    const stacked = [
+      createNode('a', { position: { x: 0, y: 0 } }),
+      createNode('b', { position: { x: 10, y: 10 } }),
+    ]
+    expect(hasOverlappingSiblings(stacked)).toBe(true)
+
+    // 子节点坐标相对父容器，与顶层节点数值重叠不算重叠
+    const parentAndChild = [
+      createNode('loop', { position: { x: 0, y: 0 } }, 'loop'),
+      createNode('a', { position: { x: 1000, y: 0 } }),
+      createNode('child', { parentId: 'loop', position: { x: 1000, y: 0 } }),
+    ]
+    expect(hasOverlappingSiblings(parentAndChild)).toBe(false)
   })
 })

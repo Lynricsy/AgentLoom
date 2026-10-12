@@ -1,4 +1,4 @@
-import type { Edge, Node, Viewport } from '@xyflow/react'
+import type { Viewport } from '@xyflow/react'
 import type { AgentRuntimeMode } from '@/features/agent'
 import type {
   CanvasEdge,
@@ -17,6 +17,9 @@ import {
   clonePortDefinitions,
   hydratePortDefinitions,
 } from '../types/portSchema'
+import { isCompoundContainerNodeType } from '../types/controlFlow.types'
+import { collectCollapsedCompoundDescendantIds } from './collapsedCompoundNodes'
+import { syncCompoundParentLayout } from './canvasStoreHelpers'
 
 const NODE_CATEGORIES = new Set<NodeCategory>([
   'agent',
@@ -100,7 +103,7 @@ function buildFallbackNode(
   rawNode: Record<string, unknown>,
   rawData: Record<string, unknown>,
   position: { x: number; y: number },
-): Node {
+): CanvasNode {
   const fallbackData: CanvasNodeData = {
     ...rawData,
     label:
@@ -139,7 +142,7 @@ const FALLBACK_GRID_COLUMNS = 3
 const FALLBACK_GRID_STEP_X = 320
 const FALLBACK_GRID_STEP_Y = 200
 
-function normalizePreviewNode(rawNode: unknown, index: number): Node | null {
+function normalizePreviewNode(rawNode: unknown, index: number): CanvasNode | null {
   if (!isRecord(rawNode)) {
     return null
   }
@@ -213,7 +216,7 @@ function normalizePreviewNode(rawNode: unknown, index: number): Node | null {
   } satisfies CanvasNode
 }
 
-function normalizePreviewEdge(rawEdge: unknown): Edge | null {
+function normalizePreviewEdge(rawEdge: unknown): CanvasEdge | null {
   if (!isRecord(rawEdge)) {
     return null
   }
@@ -262,23 +265,45 @@ function normalizeViewport(viewport: unknown): Viewport {
   }
 }
 
+export interface WorkflowPreviewGraph {
+  nodes: CanvasNode[]
+  edges: CanvasEdge[]
+  viewport: Viewport
+}
+
 export function buildWorkflowPreviewGraph(
   definition: WorkflowPreviewDefinition | null | undefined,
-): {
-  nodes: Node[]
-  edges: Edge[]
-  viewport: Viewport
-} {
+): WorkflowPreviewGraph {
   const nodes = Array.isArray(definition?.nodes)
     ? definition.nodes
         .map((node, index) => normalizePreviewNode(node, index))
-        .filter((node): node is Node => node !== null)
+        .filter((node): node is CanvasNode => node !== null)
     : []
-  const edges = Array.isArray(definition?.edges)
+  const normalizedEdges = Array.isArray(definition?.edges)
     ? definition.edges
         .map((edge) => normalizePreviewEdge(edge))
-        .filter((edge): edge is Edge => edge !== null)
+        .filter((edge): edge is CanvasEdge => edge !== null)
     : []
+
+  for (const node of nodes) {
+    // 快照里的 measured 是保存时（可能是低缩放、紧凑卡片）的尺寸，预览按实际渲染重新测量
+    delete node.measured
+  }
+  // 与编辑画布一致：容器按收起态定尺寸，收起容器内的节点与相连边不显示
+  for (const node of nodes) {
+    if (isCompoundContainerNodeType(node.data.nodeType)) {
+      syncCompoundParentLayout(nodes, node.id)
+    }
+  }
+  const hiddenIds = collectCollapsedCompoundDescendantIds(nodes)
+  for (const node of nodes) {
+    if (hiddenIds.has(node.id)) node.hidden = true
+  }
+  const edges = normalizedEdges.map((edge) =>
+    hiddenIds.has(edge.source) || hiddenIds.has(edge.target)
+      ? { ...edge, hidden: true }
+      : edge,
+  )
 
   return {
     nodes,

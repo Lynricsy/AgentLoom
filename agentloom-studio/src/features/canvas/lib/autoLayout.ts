@@ -4,13 +4,16 @@ import type { CanvasEdge, CanvasNode } from '../types'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
 import { collectCollapsedCompoundDescendantIds } from './collapsedCompoundNodes'
 import {
-  buildCompoundChildExtent,
   getCompoundFrameInsets,
   getCompoundInitialChildPosition,
   readCompoundNodeDimension,
   resolveCompoundContainerSize,
   type CompoundLayoutSize,
 } from './compoundLayout'
+import {
+  syncCompoundParentLayout,
+  writeCompoundNodeSize,
+} from './canvasStoreHelpers'
 
 /** 尚未被 React Flow 测量（如从未渲染过）的节点按完整卡片的典型尺寸估算 */
 const NODE_FALLBACK_SIZE: CompoundLayoutSize = { width: 240, height: 120 }
@@ -137,12 +140,7 @@ export function layoutCanvasNodes(
   const layoutMemberSize = (node: CanvasNode): CompoundLayoutSize => {
     const children = membersByGroup.get(node.id)
     if (!isCompoundContainerNodeType(node.data.nodeType) || !children?.length) {
-      return {
-        width:
-          readCompoundNodeDimension(node, 'width') ?? NODE_FALLBACK_SIZE.width,
-        height:
-          readCompoundNodeDimension(node, 'height') ?? NODE_FALLBACK_SIZE.height,
-      }
+      return readLayoutSize(node)
     }
 
     const inputPortCount = node.data.inputPorts.length
@@ -164,8 +162,10 @@ export function layoutCanvasNodes(
         COMPOUND_CONTENT_PADDING +
         insets.bottom,
     })
-    applyCompoundSize(node, size, children)
-    return size
+    writeCompoundNodeSize(node, size)
+    // 同步会按子节点包围盒兜底撑开容器，外层布局按最终尺寸留位
+    syncCompoundParentLayout(nodes, node.id)
+    return readLayoutSize(node)
   }
 
   const roots = membersByGroup.get(null)
@@ -178,28 +178,50 @@ export function layoutCanvasNodes(
   layoutGroup(null, roots, origin)
 }
 
-/**
- * 写回 compound 新尺寸并重建子节点 extent。measured 一并更新：
- * readCompoundNodeDimension 优先读 measured，React Flow 重新测量前不能让旧值覆盖新尺寸。
- */
-function applyCompoundSize(
-  node: CanvasNode,
-  size: CompoundLayoutSize,
-  children: readonly CanvasNode[],
-): void {
-  node.style = { ...(node.style ?? {}), width: size.width, height: size.height }
-  if (typeof node.width === 'number') node.width = size.width
-  if (typeof node.height === 'number') node.height = size.height
-  if (node.measured) node.measured = { ...size }
-
-  const extent = buildCompoundChildExtent({
-    inputPortCount: node.data.inputPorts.length,
-    outputPortCount: node.data.outputPorts.length,
-    width: size.width,
-    height: size.height,
-  })
-  for (const child of children) {
-    child.extent = extent
-    child.expandParent = false
+function readLayoutSize(node: CanvasNode): CompoundLayoutSize {
+  return {
+    width: readCompoundNodeDimension(node, 'width') ?? NODE_FALLBACK_SIZE.width,
+    height: readCompoundNodeDimension(node, 'height') ?? NODE_FALLBACK_SIZE.height,
   }
+}
+
+/**
+ * 同一父级下的可见节点是否有矩形相交（收起容器内的后代不可见，不参与判断）。
+ * 只读预览据此决定是否需要自动布局，避免改动作者手排的布局。
+ */
+export function hasOverlappingSiblings(nodes: readonly CanvasNode[]): boolean {
+  const hiddenIds = collectCollapsedCompoundDescendantIds(nodes)
+  const siblingsByParent = new Map<string | null, CanvasNode[]>()
+  for (const node of nodes) {
+    if (hiddenIds.has(node.id) || node.hidden) continue
+    const key = node.parentId ?? null
+    const siblings = siblingsByParent.get(key)
+    if (siblings) {
+      siblings.push(node)
+    } else {
+      siblingsByParent.set(key, [node])
+    }
+  }
+
+  for (const siblings of siblingsByParent.values()) {
+    const rects = siblings.map((node) => ({
+      ...node.position,
+      ...readLayoutSize(node),
+    }))
+    for (let i = 0; i < rects.length; i += 1) {
+      const a = rects[i]!
+      for (let j = i + 1; j < rects.length; j += 1) {
+        const b = rects[j]!
+        if (
+          a.x < b.x + b.width &&
+          b.x < a.x + a.width &&
+          a.y < b.y + b.height &&
+          b.y < a.y + a.height
+        ) {
+          return true
+        }
+      }
+    }
+  }
+  return false
 }

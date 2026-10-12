@@ -70,11 +70,17 @@ action 按职责分组（以 `CanvasActions` 接口为准）：
 通过 API 或 Agent 写入的画布，节点 `position` 由调用方给定，server 不校验也不重排，常见全部落在原点或互相重叠。`agentloom-studio/src/features/canvas/lib/autoLayout.ts` 的 `layoutCanvasNodes(nodes, edges)` 在客户端按真实节点尺寸重排，原地改写传入节点（可以是 immer draft）：
 
 - **分层方向。** 端口左入右出，dagre 用 `rankdir: 'LR'`；节点尺寸取 React Flow 测量的 `measured`，未测量时回退 240×120。
-- **两级布局。** 同一 `parentId` 下的兄弟节点为一组。展开的 Loop / Iteration 容器先在容器本地坐标里排子节点（原点为 `getCompoundInitialChildPosition`），再按内容包围盒加帧内距算出容器尺寸（不小于 `resolveCompoundContainerSize` 的下限），写回 `style`、`width`/`height`（已存在时）与 `measured`，并按新尺寸重建子节点 `extent`；之后容器作为一个整体参与外层布局。跨组的边提升到本组内的祖先节点参与排序。
+- **两级布局。** 同一 `parentId` 下的兄弟节点为一组。展开的 Loop / Iteration 容器先在容器本地坐标里排子节点（原点为 `getCompoundInitialChildPosition`），再按内容包围盒加帧内距算出容器尺寸（不小于 `resolveCompoundContainerSize` 的下限），经 `writeCompoundNodeSize` 写回后调用 `syncCompoundParentLayout` 重建子节点 `extent`；之后容器作为一个整体参与外层布局。跨组的边提升到本组内的祖先节点参与排序。
 - **不动不可见节点。** 收起容器的后代（`collectCollapsedCompoundDescendantIds`）保持原位，容器按收起尺寸参与布局。
 - **锚定原位置。** 顶层布局平移到原顶层包围盒的左上角，避免内容跳到远处。
 
 `useCanvasStore` 与 `useAgentCanvasStore` 都暴露 `autoLayout` action，在一次 `set` 中调用 `layoutCanvasNodes` 并标脏：工作流画布因此形成一个撤销步并走自动保存，Agent 画布需要用户点击「保存画布」。按钮由共用的 `CanvasBackdrop` 渲染在 React Flow `Controls` 中（传入 `onAutoLayout` 才显示，只读画布不传）。`measured` 随细节层级变化（compact 卡片约 156–180 宽，full 为 200–268），所以缩放低于 `LOD_FULL_THRESHOLD` 时按钮先 `zoomTo(1)` 并等两帧让 React Flow 按完整卡片重新测量，再布局，否则放大查看时会重叠；布局后下一帧 `fitView`。视口变化不进撤销历史，撤销仍只有一步。
+
+**容器尺寸同步。** `agentloom-studio/src/features/canvas/lib/canvasStoreHelpers.ts` 的 `syncCompoundParentLayout` 在载入快照、增删子节点、改容器配置与 resize（含 React Flow 每次测量）后调用：收起态只固定宽度（360），去掉 `style.height` 与 `height`，高度由内容撑开——沿用展开时的大框会把收起卡片拉高、出边悬空、`fitView` 与小地图预留空白，写死高度则端口多时输出端口被裁到卡片外。收起分支不能删除 `measured`：它在每次测量后都会执行，删掉会让 React Flow 把节点当作未测量而隐藏并重新测量，形成循环。展开态取「当前尺寸」与「容纳全部子节点所需尺寸」（`computeMinResizeSize`）的较大值，因此从收起态展开时容器按子节点撑开，手动放大过的尺寸在一次收起 / 展开后不保留。展开态尺寸写入走 `writeCompoundNodeSize`，同时改 `style`、已存在的 `width` / `height` 与 `measured`：React Flow 渲染取 `width` / `height` 优先于 `style`，`readCompoundNodeDimension` 又优先读 `measured`，漏改任何一处旧尺寸都会盖过新尺寸。
+
+收起 / 展开切换由 `updateNodeData` 识别 `config.isCollapsed` 的变化，改调 `applyCompoundCollapseToggle`：同步尺寸后按尺寸差平移同一父级下的节点——起点在容器原右边缘及以右的横移，横向与容器相交且位于原下边缘以下的纵移——展开不压住后面的节点，收起不留空白，来回切换位置可还原；刚收起时内容高度尚未测量，按收起尺寸估算。容器嵌套时再同步外层容器。
+
+**只读预览。** 市场详情、模板向导与公开分享页的 `WorkflowPreviewCanvas` 不改快照、不能拖动，所以重叠由预览自己处理：`buildWorkflowPreviewGraph` 丢弃快照里保存时的 `measured`，按上述规则同步容器尺寸并隐藏收起容器内的节点与相连边。预览把节点放在本地 state，`onNodesChange` 只吸收 `dimensions` 变更（不吸收时节点上永远拿不到真实尺寸）；全部可见节点测量完成后，`hasOverlappingSiblings` 判断同一父级下的可见节点是否相交，相交才对副本调用 `layoutCanvasNodes` 并重新 `fitView`，不重叠的快照保留作者的布局。测量期间预览强制 full 细节层级，布局按完整卡片尺寸留间距。
 
 ## 自动保存
 
