@@ -73,17 +73,21 @@ export function getCompoundFrameInsets(inputPortCount: number, outputPortCount: 
   }
 }
 
+/**
+ * 容器最小尺寸。收起态高度按标题 + 端口区 + 摘要估算（与展开态内框上下留白同源），
+ * 渲染时作为 min-height：卡片高度不随细节层级变化，收起 / 展开平移相邻节点时两头用同一高度结算。
+ */
 export function resolveCompoundContainerSize({ inputPortCount, outputPortCount, width, height, isCollapsed = false }: CompoundLayoutOptions): CompoundLayoutSize {
+  const insets = getCompoundFrameInsets(inputPortCount, outputPortCount)
   const minSize = isCollapsed
-    ? COMPOUND_COLLAPSED_SIZE
-    : (() => {
-        const insets = getCompoundFrameInsets(inputPortCount, outputPortCount)
-        return {
-          width: Math.max(COMPOUND_CONTAINER_DEFAULT_SIZE.width, COMPOUND_MIN_FRAME_SIZE.width + insets.left + insets.right),
-          height: Math.max(COMPOUND_CONTAINER_DEFAULT_SIZE.height, COMPOUND_MIN_FRAME_SIZE.height + insets.top + insets.bottom),
-        }
-      })()
-
+    ? {
+        width: COMPOUND_COLLAPSED_SIZE.width,
+        height: Math.max(COMPOUND_COLLAPSED_SIZE.height, insets.top + insets.bottom),
+      }
+    : {
+        width: Math.max(COMPOUND_CONTAINER_DEFAULT_SIZE.width, COMPOUND_MIN_FRAME_SIZE.width + insets.left + insets.right),
+        height: Math.max(COMPOUND_CONTAINER_DEFAULT_SIZE.height, COMPOUND_MIN_FRAME_SIZE.height + insets.top + insets.bottom),
+      }
   return {
     width: typeof width === 'number' && Number.isFinite(width) ? Math.max(width, minSize.width) : minSize.width,
     height: typeof height === 'number' && Number.isFinite(height) ? Math.max(height, minSize.height) : minSize.height,

@@ -106,6 +106,37 @@ describe('canvasStore 撤销/重做历史', () => {
     expect(history().pastStates).toHaveLength(stepsBefore)
   })
 
+  it('撤销后容器重新测量不清空重做栈', () => {
+    actions().addNode({
+      id: 'loop-1',
+      nodeType: 'loop',
+      category: 'control',
+      position: { x: 0, y: 0 },
+      label: 'Loop',
+    })
+    const loop = () =>
+      useCanvasStore.getState().nodes.find((node) => node.id === 'loop-1')
+    const config = loop()?.data.config ?? {}
+
+    actions().updateNodeData('loop-1', {
+      config: { ...config, isCollapsed: true },
+    })
+    actions().undo()
+    expect(loop()?.data.config?.isCollapsed).not.toBe(true)
+    expect(history().futureStates).toHaveLength(1)
+
+    // 撤销恢复展开态后，React Flow 按 style 重新测量容器，经同步回写尺寸与子节点 extent
+    const width = loop()?.style?.width as number
+    const height = loop()?.style?.height as number
+    actions().onNodesChange([
+      { id: 'loop-1', type: 'dimensions', dimensions: { width, height } },
+    ])
+
+    expect(history().futureStates).toHaveLength(1)
+    actions().redo()
+    expect(loop()?.data.config?.isCollapsed).toBe(true)
+  })
+
   it('一次拖拽只产生一步历史，撤销回到拖拽前的位置', () => {
     addTextPair()
     const stepsBefore = history().pastStates.length

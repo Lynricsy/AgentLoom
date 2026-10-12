@@ -303,7 +303,16 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
           ...createInitialState(),
 
           actions: {
-            onNodesChange: (changes) =>
+            onNodesChange: (changes) => {
+              // 纯测量（无 resizing 标记的 dimensions）与选中是渲染派生，不能成为历史步：
+              // 撤销 / 重做后 React Flow 会重新测量容器并经 syncCompoundParentLayout 回写，
+              // 若被记录就会多出一步并清空重做栈
+              const isDerivedOnly = changes.every(
+                (change) =>
+                  change.type === "select" ||
+                  (change.type === "dimensions" && change.resizing === undefined),
+              );
+              const apply = () =>
               set((state) => {
                 // 钳制 compound 子节点拖拽位置到循环体区域内
                 const clampedChanges = changes.map((change) => {
@@ -434,7 +443,13 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                       Array.from(nextSelectedNodeIds).at(-1) ?? null;
                   }
                 }
-              }),
+              });
+              if (isDerivedOnly) {
+                runWithoutHistory(apply);
+              } else {
+                apply();
+              }
+            },
 
             onEdgesChange: (changes) =>
               set((state) => {

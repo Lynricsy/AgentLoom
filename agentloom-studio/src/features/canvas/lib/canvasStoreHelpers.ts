@@ -254,21 +254,25 @@ export function syncCompoundParentLayout(
 }
 
 /**
- * 容器占位尺寸；收起态高度不写死，尚未被 React Flow 测量时按收起尺寸估算。
- * 切换时 config 已是新状态，读切换前尺寸需显式传入旧的收起态。
+ * 平移结算用的容器占位尺寸。收起态一律取 resolveCompoundContainerSize 的收起尺寸（渲染时是
+ * min-height，不随细节层级变化），不读 measured：收起时内容尚未测量、展开时测量值又随缩放
+ * 变化，两头混用估算与实测会让下方节点每轮漂移。展开态尺寸由 style 决定，读当前值。
  */
 function readCompoundFootprint(
   node: CanvasNode,
   isCollapsed: boolean,
 ): CompoundLayoutSize {
-  const fallback = resolveCompoundContainerSize({
+  const minimumSize = resolveCompoundContainerSize({
     inputPortCount: node.data.inputPorts.length,
     outputPortCount: node.data.outputPorts.length,
     isCollapsed,
   });
+  if (isCollapsed) {
+    return minimumSize;
+  }
   return {
-    width: readCompoundNodeDimension(node, "width") ?? fallback.width,
-    height: readCompoundNodeDimension(node, "height") ?? fallback.height,
+    width: readCompoundNodeDimension(node, "width") ?? minimumSize.width,
+    height: readCompoundNodeDimension(node, "height") ?? minimumSize.height,
   };
 }
 
@@ -289,14 +293,7 @@ export function applyCompoundCollapseToggle(
   const isCollapsed = container.data.config?.isCollapsed === true;
   const before = readCompoundFootprint(container, !isCollapsed);
   syncCompoundParentLayout(nodes, containerId);
-  // 刚收起时 measured 仍是展开尺寸，内容高度要等 React Flow 重新测量，先按收起尺寸估算
-  const after = isCollapsed
-    ? resolveCompoundContainerSize({
-        inputPortCount: container.data.inputPorts.length,
-        outputPortCount: container.data.outputPorts.length,
-        isCollapsed: true,
-      })
-    : readCompoundFootprint(container, false);
+  const after = readCompoundFootprint(container, isCollapsed);
   const deltaX = after.width - before.width;
   const deltaY = after.height - before.height;
   const oldLeft = container.position.x;

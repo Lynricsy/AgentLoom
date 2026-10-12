@@ -5,7 +5,10 @@ import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { clonePortDefinitions } from '../types/portSchema'
 import type { TypeEngineCompatibilityResult, TypeEngineServiceLike } from '../lib/typeEngine/contracts'
 import { setTypeEngineServiceForTesting } from '../lib/typeEngine/service'
-import { buildCompoundChildExtent } from '../lib/compoundLayout'
+import {
+  buildCompoundChildExtent,
+  resolveCompoundContainerSize,
+} from '../lib/compoundLayout'
 import { useCanvasStore } from './canvasStore'
 
 const evaluateCompatibilityMock = vi.fn()
@@ -544,44 +547,67 @@ describe('canvasStore', () => {
     const readNode = (id: string) =>
       useCanvasStore.getState().nodes.find((node) => node.id === id)
 
-    updateNodeData('loop-1', {
-      config: { ...loopConfigValue, isCollapsed: true },
-    })
-    // 收起：宽度固定，高度交给内容撑开；同级节点与容器的间距保持不变
-    const collapsed = readNode('loop-1')
-    expect(collapsed?.style?.width).toBe(360)
-    expect(collapsed?.style?.height).toBeUndefined()
-    expect(readNode('right')?.position).toEqual({ x: 360 + 100, y: 0 })
-    expect(readNode('below')?.position).toEqual({ x: 100, y: 220 + 100 })
-    // 不在容器正下方的节点不纵移
-    expect(readNode('left-below')?.position).toEqual({ x: -600, y: 1000 })
+    const gap = 100
+    const collapsedHeight = resolveCompoundContainerSize({
+      inputPortCount: loopConfig.inputPorts.length,
+      outputPortCount: loopConfig.outputPorts.length,
+      isCollapsed: true,
+    }).height
+    const expandedPositions: string[] = []
 
-    // React Flow 按内容测得收起高度后必须保留，清掉会让节点被当作未测量而反复重测
-    onNodesChange([
-      {
-        type: 'dimensions',
-        id: 'loop-1',
-        dimensions: { width: 360, height: 267 },
-      },
-    ])
-    expect(readNode('loop-1')?.measured).toEqual({ width: 360, height: 267 })
+    for (let round = 0; round < 3; round += 1) {
+      updateNodeData('loop-1', {
+        config: { ...loopConfigValue, isCollapsed: true },
+      })
+      // 收起：宽度固定，高度交给内容撑开；同级节点与容器的间距保持不变
+      const collapsed = readNode('loop-1')
+      expect(collapsed?.style?.width).toBe(360)
+      expect(collapsed?.style?.height).toBeUndefined()
+      expect(readNode('right')?.position).toEqual({ x: 360 + gap, y: 0 })
+      expect(readNode('below')?.position).toEqual({
+        x: 100,
+        y: collapsedHeight + gap,
+      })
+      // 不在容器正下方的节点不纵移
+      expect(readNode('left-below')?.position).toEqual({ x: -600, y: 1000 })
 
-    updateNodeData('loop-1', { config: loopConfigValue })
-    const expanded = readNode('loop-1')
-    const child = readNode('agent-1')
-    const extent = child?.extent
-    if (!Array.isArray(extent)) {
-      throw new Error('Expected compound child to receive array extent')
+      // React Flow 按内容测得的收起高度（随细节层级变化）必须保留，清掉会让节点被当作
+      // 未测量而反复重测；它也不能参与平移结算，否则收起 / 展开两头尺寸不一致会累积漂移
+      onNodesChange([
+        {
+          type: 'dimensions',
+          id: 'loop-1',
+          dimensions: { width: 360, height: 267 },
+        },
+      ])
+      expect(readNode('loop-1')?.measured).toEqual({ width: 360, height: 267 })
+      expect(readNode('below')?.position.y).toBe(collapsedHeight + gap)
+
+      updateNodeData('loop-1', { config: loopConfigValue })
+      const expanded = readNode('loop-1')
+      const child = readNode('agent-1')
+      const extent = child?.extent
+      if (!Array.isArray(extent)) {
+        throw new Error('Expected compound child to receive array extent')
+      }
+      // 子节点未测量时按 260×160 兜底估算，必须完整落在内框里且位置不被挤动
+      expect(child?.position).toEqual({ x: 1000, y: 600 })
+      expect(extent[1][0]).toBeGreaterThanOrEqual(1000 + 260)
+      expect(extent[1][1]).toBeGreaterThanOrEqual(600 + 160)
+      // 展开后与容器右边缘、下边缘的间距和最初一致
+      const width = expanded?.style?.width as number
+      const height = expanded?.style?.height as number
+      expect(readNode('right')?.position).toEqual({ x: width + gap, y: 0 })
+      expect(readNode('below')?.position).toEqual({ x: 100, y: height + gap })
+      expandedPositions.push(
+        JSON.stringify(
+          ['right', 'below', 'left-below'].map((id) => readNode(id)?.position),
+        ),
+      )
     }
-    // 子节点未测量时按 260×160 兜底估算，必须完整落在内框里且位置不被挤动
-    expect(child?.position).toEqual({ x: 1000, y: 600 })
-    expect(extent[1][0]).toBeGreaterThanOrEqual(1000 + 260)
-    expect(extent[1][1]).toBeGreaterThanOrEqual(600 + 160)
-    // 展开后不压住同级节点
-    const width = expanded?.style?.width as number
-    const height = expanded?.style?.height as number
-    expect(readNode('right')?.position.x).toBeGreaterThanOrEqual(width)
-    expect(readNode('below')?.position.y).toBeGreaterThanOrEqual(height)
+
+    // 多轮切换坐标不漂移
+    expect(new Set(expandedPositions).size).toBe(1)
   })
 
   it('拖拽 compound 子节点到右下角时不会把节点尺寸重复扣减两次', () => {
