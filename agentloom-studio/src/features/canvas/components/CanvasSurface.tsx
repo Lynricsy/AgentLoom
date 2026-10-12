@@ -1,7 +1,4 @@
 import {
-  Background,
-  BackgroundVariant,
-  Controls,
   ReactFlow,
   type Connection,
   type OnConnectStartParams,
@@ -10,6 +7,7 @@ import {
   type Viewport,
 } from '@xyflow/react'
 import type { ResolvedTheme } from '@/shared/hooks/use-theme'
+import { CanvasBackdrop } from './CanvasBackdrop'
 import { CanvasMiniMap } from './navigation/CanvasMiniMap'
 import {
   WORKFLOW_EDGE_TYPES,
@@ -112,16 +110,7 @@ export function CanvasSurface({
       proOptions={{ hideAttribution: true }}
       colorMode={colorMode}
     >
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={20}
-        size={2}
-        color="var(--color-border)"
-      />
-      <Controls
-        showInteractive={false}
-        className="!bg-muted !border-border !shadow-lg"
-      />
+      <CanvasBackdrop />
       <CanvasMiniMap />
     </ReactFlow>
   )

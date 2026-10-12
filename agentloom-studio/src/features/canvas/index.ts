@@ -69,6 +69,8 @@ export {
   CANVAS_FLOATING_CLASS,
   CANVAS_PANEL_HEADER_CLASS,
 } from './components/canvasChrome'
+export { CanvasPanelHeader } from './components/CanvasPanelHeader'
+export { CanvasBackdrop } from './components/CanvasBackdrop'
 export { buildPaletteGroups } from './components/nodeCategories'
 export { NodePalette } from './components/NodePalette'
 export { AgentNodePalette } from './components/AgentNodePalette'
