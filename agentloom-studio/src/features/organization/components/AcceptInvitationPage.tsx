@@ -1,47 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
-import { motion } from 'motion/react'
-import { useAuthLoading, useAuthStore, useIsAuthenticated } from '@/features/auth'
-import { BrandMark } from '@/shared/components/brand'
-import { fadeInUp } from '@/shared/lib/motion'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { AuthLayout, useAuthLoading, useAuthStore, useIsAuthenticated } from '@/features/auth'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
-import { Card } from '@/shared/ui/card'
 import { useToast } from '@/shared/ui/toast'
 import { useAcceptOrganizationInvitation } from '../api/organizationQueries'
 import { resolveOrganizationErrorMessage } from '../lib/organizationErrors'
 
-/** 邀请页与登录页共用居中卡片视觉，但内容是单一状态机，不复用 AuthLayout 的标题结构 */
+/** 邀请页复用登录页的居中卡片（AuthLayout），内容是单一状态机，不显示标语 */
 function InvitationShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-10">
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div
-          className="absolute -top-56 left-1/2 h-[26rem] w-[34rem] -translate-x-1/2 rounded-full opacity-[0.10] blur-3xl"
-          style={{ backgroundImage: 'var(--color-brand-gradient)' }}
-        />
-      </div>
-
-      <motion.div {...fadeInUp} className="relative w-full max-w-md">
-        <Card className="rounded-xl p-6 shadow-lg sm:p-8">
-          <div className="flex items-center gap-3">
-            <BrandMark size="md" className="bg-surface ring-border" />
-            <div className="flex flex-col">
-              <span className="text-lg font-semibold leading-tight tracking-tight text-foreground">
-                AgentLoom
-              </span>
-              <span className="mt-1 text-2xs font-semibold uppercase leading-none tracking-wider text-primary">
-                Studio
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-7">{children}</div>
-        </Card>
-      </motion.div>
-    </div>
-  )
+  return <AuthLayout subtitle={null}>{children}</AuthLayout>
 }
 
 export function AcceptInvitationPage() {
@@ -148,7 +118,7 @@ export function AcceptInvitationPage() {
   return (
     <InvitationShell>
       <div className="flex items-center gap-3">
-        <Loader2 aria-hidden className="size-5 shrink-0 animate-spin text-primary" />
+        <Spinner size="lg" className="size-5 shrink-0 text-primary" />
         <div>
           <h2 className="text-base font-semibold tracking-tight text-foreground">
             正在接受邀请

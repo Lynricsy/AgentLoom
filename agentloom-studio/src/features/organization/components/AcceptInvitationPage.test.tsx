@@ -20,6 +20,7 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('@/features/auth', () => ({
+  AuthLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useIsAuthenticated: () => mocks.isAuthenticated(),
   useAuthLoading: () => mocks.isAuthLoading(),
   useAuthStore: {
