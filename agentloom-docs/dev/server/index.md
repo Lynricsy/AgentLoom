@@ -70,7 +70,7 @@ agentloom-server/src/
 - `reusable-block`：可复用的工作流片段，前缀 `/reusable-blocks`。
 - `intervention-policy`：工作流级人工介入策略，挂在 `/workflow-definitions/:workflowId/intervention-policies`。
 - `trigger`：工作流触发器，挂在 `/workflow-definitions/:workflowId/triggers`；另有公开的 `/webhooks` 与 `/api-events` 接收端。
-- `template`：工作流模板只读查询，前缀 `/templates`；模板种子数据在 `agentloom-server/src/database/seeds/template-seeds.ts`，经 `pnpm db:seed` 写入（迁移不会更新它）。模板里的 `agent` 节点不带绑定：`WorkflowImportService.create` 按 `template_slug` 实例化时，为每个未绑定的 `agent` 节点在当前租户建一个已发布的 `no_sandbox` Agent（画布为 Agent Main + 连到 `model-in` 的 LLM 模型节点），并把绑定写回节点。模型取请求里的 `model_config_id`，未指定时取租户默认对话模型、再取最早添加的可用对话模型（`WorkflowImportSourceResolverService.resolveFallbackModel`）；Marketplace/分享导入找不到作者的同款模型时也用这条规则替代。
+- `template`：工作流模板只读查询，前缀 `/templates`；模板种子数据在 `agentloom-server/src/database/seeds/template-seeds.ts`，经 `pnpm db:seed` 写入（迁移不会更新它）。模板里的 `agent` 节点不带绑定：`WorkflowImportService.create` 按 `template_slug` 实例化时，为每个未绑定的 `agent` 节点在当前租户建一个已发布的 `no_sandbox` Agent（画布为 Agent Main + 连到 `model-in` 的 LLM 模型节点），并把绑定写回节点。模型取请求里的 `model_config_id`，未指定时取租户默认对话模型、再取最早添加的可用对话模型（`WorkflowImportSourceResolverService.resolveFallbackModel`）；Marketplace/分享导入找不到作者的同款模型、或作者已删除该模型配置时，也用这条规则替代。导入事务以目标租户身份运行（RLS），源租户的 Agent、模型配置与工作区只能经根连接读取（查询显式限定源租户），写入全部留在事务内。
 
 #### 触发器类型
 

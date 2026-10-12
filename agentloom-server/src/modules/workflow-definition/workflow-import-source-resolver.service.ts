@@ -126,13 +126,16 @@ export class WorkflowImportSourceResolverService {
     };
   }
 
-  /** 读取源租户的模型配置；`sourceDb` 的要求同 loadAgentSource。 */
+  /**
+   * 读取源租户的模型配置；`sourceDb` 的要求同 loadAgentSource。
+   * 作者删掉了这条配置时返回 null：目标租户本来就只用它找同款模型，调用方改用备用模型。
+   */
   async loadSourceModel(params: {
     sourceTenantId: string;
     sourceModelBindingId: string;
     context: WorkflowImportSourceContext;
     sourceDb: WorkflowImportDbClient;
-  }): Promise<ImportedWorkflowModelRecord> {
+  }): Promise<ImportedWorkflowModelRecord | null> {
     const cached = params.context.sourceModels.get(params.sourceModelBindingId);
     if (cached) {
       return cached;
@@ -156,12 +159,7 @@ export class WorkflowImportSourceResolverService {
       );
 
     if (!row) {
-      throw new DomainException({
-        type: 'https://agentloom.dev/errors/workflow-import-source-model-not-found',
-        title: '依赖模型配置不存在',
-        status: HttpStatus.NOT_FOUND,
-        detail: `未找到源租户模型配置 ${params.sourceModelBindingId}`,
-      });
+      return null;
     }
 
     params.context.sourceModels.set(params.sourceModelBindingId, row);

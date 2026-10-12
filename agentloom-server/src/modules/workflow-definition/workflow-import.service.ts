@@ -1202,13 +1202,15 @@ export class WorkflowImportService {
       sourceDb: this.db,
     });
     const targetModel =
-      (await this.sourceResolver.resolveTargetModel({
-        sourceModel,
-        runtimeNodeData: params.runtimeNodeData,
-        targetTenantId: params.context.targetTenantId,
-        context: params.context,
-        dbClient: params.dbClient,
-      })) ??
+      (sourceModel
+        ? await this.sourceResolver.resolveTargetModel({
+            sourceModel,
+            runtimeNodeData: params.runtimeNodeData,
+            targetTenantId: params.context.targetTenantId,
+            context: params.context,
+            dbClient: params.dbClient,
+          })
+        : null) ??
       (await this.sourceResolver.resolveFallbackModel({
         preferredModelConfigId: params.context.fallbackModelConfigId,
         targetTenantId: params.context.targetTenantId,
@@ -1217,20 +1219,29 @@ export class WorkflowImportService {
       }));
 
     if (!targetModel) {
-      const providerBaseUrl = this.normalizeOptionalText(
-        sourceModel.provider.baseUrl ??
-          sourceModel.provider.defaultBaseUrl ??
-          undefined,
-      );
+      const requirement = sourceModel
+        ? this.describeSourceModel(sourceModel)
+        : '一个对话模型';
       throw new DomainException({
         type: 'https://agentloom.dev/errors/workflow-import-model-not-found',
         title: '目标租户缺少所需模型配置',
         status: HttpStatus.CONFLICT,
-        detail: `依赖 Agent「${params.sourceAgentName}」需要模型 ${sourceModel.config.modelId}（provider=${sourceModel.provider.slug}${providerBaseUrl ? `, baseUrl=${providerBaseUrl}` : ''}），当前账号也没有可替代的对话模型，请先在「LLM 模型」中添加并启用一个`,
+        detail: `依赖 Agent「${params.sourceAgentName}」需要${requirement}，当前账号也没有可替代的对话模型，请先在「LLM 模型」中添加并启用一个`,
       });
     }
 
     this.bindAgentModelNode(params.node, targetModel);
+  }
+
+  private describeSourceModel(
+    sourceModel: ImportedWorkflowModelRecord,
+  ): string {
+    const providerBaseUrl = this.normalizeOptionalText(
+      sourceModel.provider.baseUrl ??
+        sourceModel.provider.defaultBaseUrl ??
+        undefined,
+    );
+    return `模型 ${sourceModel.config.modelId}（provider=${sourceModel.provider.slug}${providerBaseUrl ? `, baseUrl=${providerBaseUrl}` : ''}）`;
   }
 
   /** 把 Agent 画布上的 llm-model 节点指向目标租户的模型配置 */
