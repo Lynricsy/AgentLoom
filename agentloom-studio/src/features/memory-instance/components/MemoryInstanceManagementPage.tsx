@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Search, Plus, Brain, Loader2, AlertCircle } from 'lucide-react'
 import { motion } from 'motion/react'
 import { staggerList } from '@/shared/lib/motion'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -49,6 +50,9 @@ export function MemoryInstanceManagementPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editingInstance, setEditingInstance] = useState<MemoryInstance | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<MemoryInstance | null>(null)
+  // 退场动画期间 confirmDelete 已置空，文案读最近一次目标，避免名称闪空
+  const lastDeleteRef = useRef<MemoryInstance | null>(null)
+  if (confirmDelete) lastDeleteRef.current = confirmDelete
 
   const deleteMutation = useDeleteMemoryInstance()
   const updateMutation = useUpdateMemoryInstance()
@@ -141,7 +145,7 @@ export function MemoryInstanceManagementPage() {
   const hasFilters = search.trim() !== '' || statusFilter !== 'all'
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+    <PageContainer>
       <PageHeader
         icon={Brain}
         tone={MEMORY_TONE}
@@ -149,7 +153,7 @@ export function MemoryInstanceManagementPage() {
         description="管理 Agent 的图谱记忆实例"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus />
             创建记忆实例
           </Button>
         }
@@ -157,7 +161,7 @@ export function MemoryInstanceManagementPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -209,7 +213,7 @@ export function MemoryInstanceManagementPage() {
           action={
             hasFilters ? null : (
               <Button size="sm" onClick={() => setCreateOpen(true)}>
-                <Plus className="mr-1.5 h-4 w-4" />
+                <Plus />
                 创建记忆实例
               </Button>
             )
@@ -263,7 +267,7 @@ export function MemoryInstanceManagementPage() {
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除记忆实例「{confirmDelete?.name}」吗？此操作不可撤销。
+            确定要删除记忆实例「{lastDeleteRef.current?.name}」吗？此操作不可撤销。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -275,14 +279,12 @@ export function MemoryInstanceManagementPage() {
                 handleConfirmDelete()
               }}
             >
-              {deleteMutation.isPending && (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              )}
+              {deleteMutation.isPending && <Loader2 className="animate-spin" />}
               删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   )
 }

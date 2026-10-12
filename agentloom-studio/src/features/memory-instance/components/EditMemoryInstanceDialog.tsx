@@ -211,9 +211,7 @@ export function EditMemoryInstanceDialog({
             <Button variant="outline">取消</Button>
           </DialogClose>
           <Button disabled={!canSave} onClick={handleSave}>
-            {updateMutation.isPending && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            )}
+            {updateMutation.isPending && <Loader2 className="animate-spin" />}
             保存
           </Button>
         </DialogFooter>
