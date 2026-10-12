@@ -74,29 +74,28 @@ export function AppSidebar() {
           : "w-[var(--spacing-sidebar)]",
       )}
     >
-      {/* 品牌区 + 折叠开关 */}
-      <div
-        className={cn(
-          "flex h-14 items-center gap-2 px-3",
-          collapsed ? "justify-center" : "justify-between",
-        )}
-      >
-        {collapsed ? null : (
-          <Link
-            to="/"
-            className="flex min-w-0 items-center gap-3 rounded-md px-1 py-1 transition-colors hover:bg-muted"
-          >
-            <BrandMark size="sm" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">
-                AgentLoom
-              </p>
-              <p className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
-                Studio
-              </p>
-            </div>
-          </Link>
-        )}
+      {/* 品牌区 + 折叠开关：品牌常驻（flex-1 随宽度收缩并淡出），开关始终贴在右侧；
+          收起后品牌宽度为 0，开关恰好落在 64px 图标列中线，宽度过渡期间不瞬移 */}
+      <div className="flex h-14 items-center px-4">
+        <Link
+          to="/"
+          tabIndex={collapsed ? -1 : undefined}
+          aria-hidden={collapsed || undefined}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-3 overflow-hidden rounded-md py-1 pr-2 transition-[opacity,background-color] duration-150 hover:bg-muted",
+            collapsed && "pointer-events-none opacity-0",
+          )}
+        >
+          <BrandMark size="sm" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              AgentLoom
+            </p>
+            <p className="truncate text-2xs uppercase tracking-wider text-muted-foreground">
+              Studio
+            </p>
+          </div>
+        </Link>
 
         <Button
           variant="ghost"
