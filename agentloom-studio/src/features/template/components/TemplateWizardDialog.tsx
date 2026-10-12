@@ -3,10 +3,14 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { AnimatePresence, motion } from 'motion/react'
 import { Loader2 } from 'lucide-react'
 import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import { WorkflowPreviewCanvas } from '@/features/canvas'
 import { ChatModelSelect, useUsableChatModels } from '@/features/llm'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { fadeInUp } from '@/shared/lib/motion'
+import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
@@ -118,7 +122,9 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
       >
         <DialogHeader>
           <DialogTitle>从模板创建工作流</DialogTitle>
-          <DialogDescription>基于 "{template?.name}" 创建新工作流</DialogDescription>
+          <DialogDescription className="break-words">
+            基于「{template?.name}」创建新工作流
+          </DialogDescription>
         </DialogHeader>
 
         <form
@@ -139,14 +145,14 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                   )}
                 </div>
                 <div
-                  className="h-[200px] overflow-hidden rounded-lg border border-border"
+                  className="h-48 overflow-hidden rounded-lg border border-border"
                   data-testid="template-preview"
                 >
                   <WorkflowPreviewCanvas
                     definition={template.definition}
                     lodOverride="full"
                     emptyFallback={
-                      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                      <div className="grid h-full place-items-center text-sm text-muted-foreground">
                         该模板暂无画布内容
                       </div>
                     }
@@ -155,32 +161,19 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="wf-name"
-                className="block text-sm font-medium text-foreground"
-              >
-                工作流名称
-              </label>
+            <FormField label="工作流名称" htmlFor="wf-name" error={errors.name?.message}>
               <Input
                 id="wf-name"
                 {...register('name')}
                 placeholder="输入工作流名称"
               />
-              {errors.name && (
-                <p className="text-xs font-medium text-error">
-                  {errors.name.message}
-                </p>
-              )}
-            </div>
+            </FormField>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="wf-desc"
-                className="block text-sm font-medium text-foreground"
-              >
-                描述 <span className="font-normal text-muted-foreground">(可选)</span>
-              </label>
+            <FormField
+              label="描述（可选）"
+              htmlFor="wf-desc"
+              error={errors.description?.message}
+            >
               <Textarea
                 id="wf-desc"
                 {...register('description')}
@@ -188,20 +181,13 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                 className="resize-none"
                 placeholder="描述这个工作流的用途"
               />
-              {errors.description && (
-                <p className="text-xs font-medium text-error">
-                  {errors.description.message}
-                </p>
-              )}
-            </div>
+            </FormField>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="wf-agent-model"
-                className="block text-sm font-medium text-foreground"
-              >
-                Agent 使用的模型
-              </label>
+            <FormField
+              label="Agent 使用的模型"
+              htmlFor="wf-agent-model"
+              hint="模板里的每个 Agent 会在你的账号中自动创建并使用这个模型。"
+            >
               <ChatModelSelect
                 id="wf-agent-model"
                 data-testid="template-agent-model-select"
@@ -210,36 +196,35 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                 models={chatModels}
                 disabled={isSubmitting || hasNoUsableChatModel}
               />
-              <p className="text-xs text-muted-foreground">
-                模板里的每个 Agent 会在你的账号中自动创建并使用这个模型。
-              </p>
+            </FormField>
+
+            <AnimatePresence initial={false}>
               {hasNoUsableChatModel && (
-                <div
-                  className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
-                  data-testid="template-no-chat-model-warning"
-                >
-                  你的账号中还没有可用的对话模型，模板里的 Agent 无法创建。请先到{' '}
-                  <Link
-                    to="/resources/llm-models"
-                    className="font-medium underline underline-offset-2"
-                    onClick={() => onOpenChange(false)}
-                  >
-                    模型管理
-                  </Link>{' '}
-                  添加并启用一个对话模型。
-                </div>
+                <motion.div key="no-chat-model" {...fadeInUp}>
+                  <Alert variant="warning" data-testid="template-no-chat-model-warning">
+                    你的账号中还没有可用的对话模型，模板里的 Agent 无法创建。请先到{' '}
+                    <Link
+                      to="/resources/llm-models"
+                      className="font-medium text-foreground underline underline-offset-2"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      模型管理
+                    </Link>{' '}
+                    添加并启用一个对话模型。
+                  </Alert>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
           </DialogBody>
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="ghost">
+              <Button type="button" variant="outline">
                 取消
               </Button>
             </DialogClose>
             <Button type="submit" disabled={isSubmitting || hasNoUsableChatModel}>
-              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting && <Loader2 className="animate-spin" />}
               创建工作流
             </Button>
           </DialogFooter>

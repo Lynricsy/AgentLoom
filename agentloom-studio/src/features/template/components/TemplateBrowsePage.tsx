@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react'
 import { motion } from 'motion/react'
-import { LayoutTemplate, Search } from 'lucide-react'
+import { AlertCircle, LayoutTemplate, Search } from 'lucide-react'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { staggerList } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
@@ -61,16 +63,16 @@ export function TemplateBrowsePage() {
   }, [])
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-5 p-4 sm:p-6">
+    <PageContainer>
       <PageHeader
         icon={LayoutTemplate}
         title="模板"
         description="从官方模板起步，几秒钟得到一条可运行的工作流。"
       />
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-4">
+      <Card className="flex flex-col gap-3 p-3 sm:p-4">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             value={search}
@@ -89,7 +91,7 @@ export function TemplateBrowsePage() {
             ))}
           </TabsList>
         </Tabs>
-      </div>
+      </Card>
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -110,7 +112,7 @@ export function TemplateBrowsePage() {
         </div>
       ) : isError ? (
         <EmptyState
-          icon={LayoutTemplate}
+          icon={AlertCircle}
           tone="var(--color-error)"
           title="模板加载失败"
           description="请稍后重试，或刷新页面后再查看模板画廊。"
@@ -156,6 +158,6 @@ export function TemplateBrowsePage() {
         open={wizardOpen}
         onOpenChange={handleWizardOpenChange}
       />
-    </div>
+    </PageContainer>
   )
 }

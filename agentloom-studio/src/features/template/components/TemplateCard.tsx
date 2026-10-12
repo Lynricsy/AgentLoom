@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
 import { Layers, LayoutTemplate, Zap } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
 import type { TemplateListItem } from '../types'
@@ -34,6 +35,7 @@ export const TemplateCard = memo(function TemplateCard({
   onClick,
 }: TemplateCardProps) {
   const [coverFailed, setCoverFailed] = useState(false)
+  const [coverLoaded, setCoverLoaded] = useState(false)
   const complexity = template.metadata?.complexity ?? 'beginner'
   const nodeCount = template.metadata?.nodeCount ?? 0
 
@@ -64,13 +66,17 @@ export const TemplateCard = memo(function TemplateCard({
             src={template.thumbnailUrl}
             alt=""
             loading="lazy"
-            className="h-full w-full object-cover"
+            className={cn(
+              'h-full w-full object-cover transition-opacity duration-300',
+              coverLoaded ? 'opacity-100' : 'opacity-0',
+            )}
+            onLoad={() => setCoverLoaded(true)}
             onError={() => setCoverFailed(true)}
           />
         ) : (
           <LayoutTemplate
             aria-hidden
-            className="absolute bottom-3 right-3 h-9 w-9"
+            className="absolute bottom-3 right-3 size-9"
             style={{
               color: 'color-mix(in srgb, var(--color-primary) 50%, transparent)',
             }}
@@ -79,8 +85,8 @@ export const TemplateCard = memo(function TemplateCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-2.5 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <h3 className="line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-foreground">
             {template.name}
           </h3>
           <Badge variant="secondary" className="shrink-0">
@@ -97,13 +103,13 @@ export const TemplateCard = memo(function TemplateCard({
         <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
           {complexity && (
             <Badge variant={COMPLEXITY_VARIANTS[complexity] ?? 'secondary'}>
-              <Zap className="h-3 w-3" />
+              <Zap className="size-3" />
               {COMPLEXITY_LABELS[complexity] ?? complexity}
             </Badge>
           )}
           {nodeCount > 0 && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Layers className="h-3 w-3" />
+              <Layers className="size-3" />
               {nodeCount} 节点
             </span>
           )}
