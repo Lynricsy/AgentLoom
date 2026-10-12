@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ServerCog, ShieldAlert } from 'lucide-react'
 import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
 import { useCurrentOrganization } from '@/features/organization'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { MetaTile } from './PrivateDeploymentFormPrimitives'
 import { PrivateDeploymentCertificatesCard } from './PrivateDeploymentCertificatesCard'
@@ -64,13 +66,13 @@ function PrivateDeploymentBlockedState({
   action?: ReactNode
 }) {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
+    <PageContainer width="narrow" data-testid={testId}>
       <PageHeader icon={ServerCog} title="私有部署设置" description={PAGE_DESCRIPTION} />
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
-            <Icon className="h-5 w-5" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+            <Icon className="size-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
@@ -79,17 +81,14 @@ function PrivateDeploymentBlockedState({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 
 /** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
 function PrivateDeploymentOrganizationLoadingState() {
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="private-deployment-organization-loading"
-    >
+    <PageContainer width="narrow" data-testid="private-deployment-organization-loading">
       <PageHeader icon={ServerCog} title="私有部署设置" description={PAGE_DESCRIPTION} />
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -97,11 +96,20 @@ function PrivateDeploymentOrganizationLoadingState() {
         正在确认当前组织…
       </p>
 
-      <div className="space-y-3">
-        <Skeleton className="h-28 rounded-lg" />
-        <Skeleton className="h-44 rounded-lg" />
-      </div>
-    </div>
+      <PrivateDeploymentSkeleton />
+    </PageContainer>
+  )
+}
+
+/** 与真实内容同结构：元数据卡 + SMTP / LLM 代理 / 证书 / License 四张表单卡 */
+function PrivateDeploymentSkeleton() {
+  return (
+    <>
+      <Skeleton className="h-56 rounded-lg" />
+      {Array.from({ length: 4 }, (_, index) => (
+        <Skeleton key={index} className="h-64 rounded-lg" />
+      ))}
+    </>
   )
 }
 
@@ -122,22 +130,16 @@ function PrivateDeploymentContent({
 
   if (isLoading) {
     return (
-      <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="private-deployment-page">
+      <PageContainer width="narrow" data-testid="private-deployment-page">
         <PageHeader icon={ServerCog} title="私有部署设置" description="加载私有部署设置中…" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-20 rounded-lg" />
-          ))}
-        </div>
-        <Skeleton className="h-64 rounded-lg" />
-        <Skeleton className="h-64 rounded-lg" />
-      </div>
+        <PrivateDeploymentSkeleton />
+      </PageContainer>
     )
   }
 
   if (isError || !settings) {
     return (
-      <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="private-deployment-page">
+      <PageContainer width="narrow" data-testid="private-deployment-page">
         <PageHeader icon={ServerCog} title="私有部署设置" description={PAGE_DESCRIPTION} />
 
         <Card className="border-error/40">
@@ -148,14 +150,14 @@ function PrivateDeploymentContent({
             </p>
           </CardContent>
         </Card>
-      </div>
+      </PageContainer>
     )
   }
 
   const resolvedTenantId = tenantClaimId ?? settings.tenantId ?? '—'
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="private-deployment-page">
+    <PageContainer width="narrow" data-testid="private-deployment-page">
       <PageHeader
         icon={ServerCog}
         title="私有部署设置"
@@ -166,9 +168,9 @@ function PrivateDeploymentContent({
       <Card data-testid="private-deployment-metadata">
         <CardHeader>
           <CardTitle>当前部署模式</CardTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            `deploymentMode` 来自服务端环境，不在前端页面中直接编辑。其余配置项会按分组独立提交。
-          </p>
+          <CardDescription className="leading-relaxed">
+            <code className="rounded-xs bg-muted px-1 font-mono">deploymentMode</code> 来自服务端环境，不在前端页面中直接编辑。其余配置项会按分组独立提交。
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
@@ -182,21 +184,21 @@ function PrivateDeploymentContent({
 
             <nav aria-label="私有部署相关操作" className="flex flex-wrap items-center gap-3">
               {PRIVATE_DEPLOYMENT_RELATED_OPERATIONS.map((operation) => (
-                <a
+                <Link
                   key={operation.href}
-                  href={operation.href}
+                  to={operation.href}
                   className="rounded-md text-xs font-medium text-primary transition-colors hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 >
                   {operation.label}
-                </a>
+                </Link>
               ))}
             </nav>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <MetaTile label="部署模式" value={DEPLOYMENT_MODE_LABELS[settings.deploymentMode]} />
-            <MetaTile label="组织 ID" value={settings.organizationId} />
-            <MetaTile label="租户 ID" value={resolvedTenantId} />
+            <MetaTile label="组织 ID" value={settings.organizationId} mono />
+            <MetaTile label="租户 ID" value={resolvedTenantId} mono />
             <MetaTile label="配置版本" value={settings.version} />
           </div>
 
@@ -242,7 +244,7 @@ function PrivateDeploymentContent({
         isSubmitting={drafts.isSubmitting}
         onSubmit={drafts.submitLicense}
       />
-    </div>
+    </PageContainer>
   )
 }
 

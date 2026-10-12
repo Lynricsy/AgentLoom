@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import {
   Field,
@@ -32,9 +32,9 @@ export function PrivateDeploymentSmtpCard({
     <Card data-testid="private-deployment-smtp-form">
       <CardHeader>
         <CardTitle>SMTP</CardTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <CardDescription className="leading-relaxed">
           维护邮件投递通道。页面只展示是否存在受管密码，不会回显任何明文或 secret ref 内容。
-        </p>
+        </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-3">

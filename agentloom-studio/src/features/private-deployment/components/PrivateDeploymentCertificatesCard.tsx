@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -60,9 +60,9 @@ export function PrivateDeploymentCertificatesCard({
     <Card data-testid="private-deployment-certificates-form">
       <CardHeader>
         <CardTitle>证书管理</CardTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          维护 `certificates` 来源、TLS secret 引用和可选过期时间。已上传的证书材料不会在页面中重新显示。
-        </p>
+        <CardDescription className="leading-relaxed">
+          维护 <code className="rounded-xs bg-muted px-1 font-mono">certificates</code> 来源、TLS secret 引用和可选过期时间。已上传的证书材料不会在页面中重新显示。
+        </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-3">
@@ -90,7 +90,7 @@ export function PrivateDeploymentCertificatesCard({
             </Select>
           </Field>
 
-          <p className="self-end rounded-lg border border-border bg-surface p-3 text-2xs leading-relaxed text-muted-foreground">
+          <p className="self-stretch rounded-lg border border-border bg-muted p-3 text-2xs leading-relaxed text-muted-foreground">
             {
               CERTIFICATE_SOURCE_OPTIONS.find(
                 (option) => option.value === draft.source,
@@ -115,7 +115,7 @@ export function PrivateDeploymentCertificatesCard({
             />
           </Field>
 
-          <p className="self-end rounded-lg border border-border bg-surface p-3 text-2xs leading-relaxed text-muted-foreground">
+          <p className="self-stretch rounded-lg border border-border bg-muted p-3 text-2xs leading-relaxed text-muted-foreground">
             当前服务端记录的证书到期时间：{formatTimestamp(serverExpiresAt)}
           </p>
         </div>

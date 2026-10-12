@@ -15,6 +15,14 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
+}))
+
 vi.mock('@/features/execution', () => ({
   useAuthToken: mocks.useAuthToken,
 }))

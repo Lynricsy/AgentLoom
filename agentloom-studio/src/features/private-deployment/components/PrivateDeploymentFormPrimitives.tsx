@@ -25,12 +25,29 @@ export function Field({
   )
 }
 
-/** 元数据小格：统一 label / value 的字号与间距 */
-export function MetaTile({ label, value }: { label: string; value: ReactNode }) {
+/** 元数据小格：统一 label / value 的字号与间距；`mono` 用于 UUID 等标识，单行截断并以 title 展示全文 */
+export function MetaTile({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: ReactNode
+  mono?: boolean
+}) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <div className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</div>
+    <div className="min-w-0 rounded-lg border border-border bg-surface p-3">
+      <p className="text-2xs font-medium tracking-wide text-muted-foreground">{label}</p>
+      {mono ? (
+        <div
+          className="mt-1.5 truncate font-mono text-sm text-foreground"
+          title={typeof value === 'string' ? value : undefined}
+        >
+          {value}
+        </div>
+      ) : (
+        <div className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</div>
+      )}
     </div>
   )
 }
