@@ -19,6 +19,7 @@ import {
   SheetTrigger,
 } from '../sheet'
 import { Popover, PopoverContent, PopoverTrigger } from '../popover'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../dropdown-menu'
 import { Badge } from '../badge'
 import { StatusBadge, StatusDot } from '../status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '../card'
@@ -109,6 +110,27 @@ describe('Popover', () => {
 
     await user.click(screen.getByText('更多'))
     expect(await screen.findByText('浮层内容')).toBeInTheDocument()
+  })
+})
+
+describe('DropdownMenu', () => {
+  it('打开后渲染菜单项，选择后关闭并卸载内容', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger>菜单</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onSelect={onSelect}>导出</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    )
+
+    await user.click(screen.getByText('菜单'))
+    await user.click(await screen.findByRole('menuitem', { name: '导出' }))
+
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
   })
 })
 
