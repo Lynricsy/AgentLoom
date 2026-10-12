@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
+import { FormField } from '@/shared/components/form-field/FormField'
 import {
   Select,
   SelectContent,
@@ -138,14 +138,11 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
         <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogBody className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
-              <label htmlFor="block-name" className="space-y-2">
-                <Label>块名称</Label>
+              <FormField label="块名称" htmlFor="block-name" error={errors.name?.message}>
                 <Input id="block-name" aria-label="块名称" placeholder="输入块名称" {...register('name')} />
-                {errors.name && <p className="text-xs text-error">{errors.name.message}</p>}
-              </label>
+              </FormField>
 
-              <div className="space-y-2">
-                <Label>分类</Label>
+              <FormField label="分类" htmlFor="block-category" error={errors.category?.message}>
                 <Controller
                   control={control}
                   name="category"
@@ -164,12 +161,10 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
                     </Select>
                   )}
                 />
-                {errors.category && <p className="text-xs text-error">{errors.category.message}</p>}
-              </div>
+              </FormField>
             </div>
 
-            <label htmlFor="block-description" className="block space-y-2">
-              <Label>描述</Label>
+            <FormField label="描述" htmlFor="block-description" error={errors.description?.message}>
               <Textarea
                 id="block-description"
                 aria-label="描述"
@@ -177,20 +172,16 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
                 placeholder="描述这个可复用块的用途"
                 {...register('description')}
               />
-              {errors.description && (
-                <p className="text-xs text-error">{errors.description.message}</p>
-              )}
-            </label>
+            </FormField>
 
-            <label htmlFor="block-tags" className="block space-y-2">
-              <Label>标签</Label>
+            <FormField label="标签" htmlFor="block-tags">
               <Input
                 id="block-tags"
                 aria-label="标签"
                 placeholder="使用逗号分隔，例如：report, summary"
                 {...register('tags')}
               />
-            </label>
+            </FormField>
 
             <div className="grid gap-4 lg:grid-cols-2">
               <PortEditorSection
@@ -229,10 +220,10 @@ interface PortEditorSectionProps {
 
 function PortEditorSection({ title, ports, register, fieldPath }: PortEditorSectionProps) {
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
+    <section className="min-w-0 space-y-3 rounded-lg border border-border bg-muted p-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">{title}</h3>
-        <span className="text-xs text-muted-foreground">{ports.length} 个</span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{ports.length} 个</span>
       </div>
 
       {ports.length === 0 ? (
@@ -242,21 +233,28 @@ function PortEditorSection({ title, ports, register, fieldPath }: PortEditorSect
       ) : (
         <div className="space-y-3">
           {ports.map((port, index) => (
-            <div key={port.id} className="rounded-lg border border-border bg-surface p-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-muted-foreground">{port.dataType}</span>
-                <span className="text-2xs text-muted-foreground">
+            <div key={port.id} className="rounded-md bg-surface p-2.5">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="shrink-0 text-xs font-medium text-muted-foreground">{port.dataType}</span>
+                <span
+                  className="min-w-0 truncate font-mono text-2xs text-muted-foreground"
+                  title={`${port.sourceNodeId} · ${port.sourcePortId}`}
+                >
                   {port.sourceNodeId} · {port.sourcePortId}
                 </span>
               </div>
 
-              <div className="mt-2 space-y-2">
-                <Label>端口名称</Label>
+              <FormField
+                label="端口名称"
+                htmlFor={`block-${fieldPath}-${port.id}-label`}
+                className="mt-2"
+              >
                 <Input
+                  id={`block-${fieldPath}-${port.id}-label`}
                   data-testid={`block-${fieldPath === 'inputPorts' ? 'input' : 'output'}-port-label-${port.id}`}
                   {...register(`${fieldPath}.${index}.label`)}
                 />
-              </div>
+              </FormField>
 
               <input type="hidden" {...register(`${fieldPath}.${index}.id`)} />
               <input type="hidden" {...register(`${fieldPath}.${index}.dataType`)} />

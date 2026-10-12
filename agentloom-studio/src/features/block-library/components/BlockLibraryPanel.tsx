@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState, type DragEvent } from 'react';
 
 import { AlertCircle, Package2 } from 'lucide-react';
+import { motion } from 'motion/react';
 
 import { EmptyState } from '@/shared/components/empty-state/EmptyState';
+import { staggerList } from '@/shared/lib/motion';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { Skeleton } from '@/shared/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -79,14 +82,14 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
     >
       <div className="space-y-3 border-b border-border p-3">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-foreground">我的块</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="line-clamp-2 text-xs text-muted-foreground">
               管理并拖拽可复用块到工作流画布。
             </p>
           </div>
 
-          <Button onClick={() => setIsImportOpen(true)} size="sm">
+          <Button onClick={() => setIsImportOpen(true)} size="xs" variant="outline" className="shrink-0">
             导入
           </Button>
         </div>
@@ -95,8 +98,10 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
           data-testid="block-library-search"
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder="搜索块…"
+          aria-label="搜索块"
           type="search"
           value={searchQuery}
+          className="h-8 text-xs"
         />
 
         <Select
@@ -121,7 +126,12 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
 
       <div className="flex-1 overflow-y-auto p-3">
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">加载块库中…</p>
+          <div role="status" className="space-y-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <Skeleton key={index} className="h-24 w-full rounded-lg" />
+            ))}
+            <span className="sr-only">加载块库中…</span>
+          </div>
         ) : null}
 
         {error ? (
@@ -147,12 +157,10 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
 
         {!isLoading && !error && filteredBlocks.length > 0 ? (
           <div className="space-y-3">
-            {filteredBlocks.map((block) => (
-              <BlockLibraryItem
-                block={block}
-                key={block.id}
-                onDragStart={handleItemDragStart}
-              />
+            {filteredBlocks.map((block, index) => (
+              <motion.div key={block.id} {...staggerList(index)}>
+                <BlockLibraryItem block={block} onDragStart={handleItemDragStart} />
+              </motion.div>
             ))}
           </div>
         ) : null}

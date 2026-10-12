@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 
+import { formatBytes } from '@/shared/lib/format';
+import { Alert } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import {
@@ -30,10 +32,6 @@ interface BlockImportDialogProps {
 
 function formatCategoryLabel(category: ExportedBlock['block']['category']): string {
   return category ?? '未分类';
-}
-
-function formatFileSize(bytes: number): string {
-  return `${bytes / 1024 / 1024} MB`;
 }
 
 export function BlockImportDialog({
@@ -169,84 +167,82 @@ export function BlockImportDialog({
               type="file"
             />
             <p className="text-xs text-muted-foreground">
-              支持 `.agentloom-block.json` / `.json`，最大 {formatFileSize(MAX_IMPORT_SIZE)}。
+              支持 <code className="font-mono">.agentloom-block.json</code> /{' '}
+              <code className="font-mono">.json</code>，最大 {formatBytes(MAX_IMPORT_SIZE)}。
             </p>
           </div>
 
           {selectedFileName ? (
             <div className="rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
               当前文件：
-              <span className="ml-1 font-medium text-foreground">
+              <span className="ml-1 break-all font-medium text-foreground">
                 {selectedFileName}
               </span>
             </div>
           ) : null}
 
           {validationErrors.length > 0 ? (
-            <div
-              className="rounded-lg border border-error/50 bg-error/5 px-4 py-3"
-              data-testid="validation-errors"
+            <Alert
+              variant="error"
+              title="文件校验失败"
               role="alert"
+              data-testid="validation-errors"
             >
-              <p className="text-sm font-medium text-foreground">文件校验失败</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              <ul className="list-disc space-y-1 pl-5">
                 {validationErrors.map((error) => (
                   <li key={error}>{error}</li>
                 ))}
               </ul>
-            </div>
+            </Alert>
           ) : null}
 
           {submitError ? (
-            <div
-              className="rounded-lg border border-error/50 bg-error/5 px-4 py-3 text-sm text-muted-foreground"
-              role="alert"
-            >
+            <Alert variant="error" role="alert">
               {submitError}
-            </div>
+            </Alert>
           ) : null}
 
           {previewBlock && previewSummary ? (
-            <Card className="space-y-4 p-4" data-testid="block-preview">
+            <Card className="space-y-3 p-3" data-testid="block-preview">
               <div className="space-y-1">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground">
                   预览
                 </p>
-                <h3 className="text-sm font-semibold text-foreground">
+                <h3 className="break-words text-sm font-semibold text-foreground">
                   {previewBlock.block.name}
                 </h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="break-words text-sm text-muted-foreground">
                   {previewBlock.block.description ?? '这个块没有提供额外描述。'}
                 </p>
               </div>
 
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground">
                     分类
                   </p>
-                  <p className="text-foreground">
+                  <p className="break-words text-foreground">
                     {formatCategoryLabel(previewBlock.block.category)}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground">
                     标签
                   </p>
-                  <p className="text-foreground">
+                  <p className="min-w-0 break-words text-foreground">
                     {previewBlock.block.tags.length > 0
                       ? previewBlock.block.tags.join('、')
                       : '无标签'}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground">
                     节点数量
                   </p>
                   <p className="text-foreground">{previewSummary.nodeCount} 个节点</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground">
                     端口摘要
                   </p>
                   <p className="text-foreground">

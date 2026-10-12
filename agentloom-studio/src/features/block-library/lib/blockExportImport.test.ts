@@ -188,7 +188,7 @@ describe('blockExportImport', () => {
     });
 
     await expect(parseImportFile(file)).rejects.toThrow(
-      '导入文件大小不能超过 5 MB。',
+      '导入文件大小不能超过 5\u00A0MB。',
     );
   });
 });

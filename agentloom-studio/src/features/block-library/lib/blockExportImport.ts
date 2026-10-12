@@ -1,3 +1,4 @@
+import { formatBytes } from '@/shared/lib/format';
 import {
   BLOCK_CATEGORIES,
   type BlockCategory,
@@ -539,7 +540,7 @@ export function validateImportFile(content: string): ImportValidationResult {
 export async function parseImportFile(file: File): Promise<string> {
   if (file.size > MAX_IMPORT_SIZE) {
     throw new Error(
-      `导入文件大小不能超过 ${MAX_IMPORT_SIZE / 1024 / 1024} MB。`,
+      `导入文件大小不能超过 ${formatBytes(MAX_IMPORT_SIZE)}。`,
     );
   }
 

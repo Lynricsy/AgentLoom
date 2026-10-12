@@ -2,6 +2,7 @@ import { memo, type DragEvent, type KeyboardEvent } from 'react';
 import { Layers, Package2, Tag } from 'lucide-react';
 
 import { DRAG_TRANSFER_TYPE } from '@/features/canvas';
+import { Badge } from '@/shared/ui/badge';
 import { Card } from '@/shared/ui/card';
 
 import type { BlockCategory, ReusableBlockListItem } from '../types';
@@ -46,7 +47,8 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
 
   return (
     <Card
-      className="flex w-full cursor-grab flex-col items-start gap-3 p-4 text-left transition-colors duration-150 hover:border-border-hover hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 active:cursor-grabbing"
+      interactive
+      className="flex w-full cursor-grab flex-col items-start gap-2 p-3 text-left active:cursor-grabbing"
       data-testid={`block-item-${block.id}`}
       draggable
       onClick={() => onClick?.(block)}
@@ -63,8 +65,8 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
     >
       <div className="flex w-full items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex items-center gap-2">
-            <Package2 className="h-4 w-4 shrink-0 text-primary" />
+          <div className="flex min-w-0 items-center gap-2">
+            <Package2 className="size-4 shrink-0 text-primary" />
             <span className="truncate text-sm font-medium text-foreground">
               {block.name}
             </span>
@@ -74,21 +76,21 @@ export const BlockLibraryItem = memo(function BlockLibraryItem({
           </p>
         </div>
 
-        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+        <Badge variant="secondary" size="sm" className="shrink-0">
           {categoryLabel}
-        </span>
+        </Badge>
       </div>
 
-      <div className="flex w-full flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <Layers className="h-3.5 w-3.5" />
+      <div className="flex w-full min-w-0 items-center gap-3 text-xs text-muted-foreground">
+        <span className="inline-flex shrink-0 items-center gap-1 tabular-nums">
+          <Layers className="size-3.5 shrink-0" />
           {nodeCount} 节点
         </span>
 
         {block.tags.length > 0 ? (
-          <span className="inline-flex items-center gap-1">
-            <Tag className="h-3.5 w-3.5" />
-            {block.tags.slice(0, 3).join('、')}
+          <span className="flex min-w-0 items-center gap-1">
+            <Tag className="size-3.5 shrink-0" />
+            <span className="truncate">{block.tags.slice(0, 3).join('、')}</span>
           </span>
         ) : null}
       </div>
