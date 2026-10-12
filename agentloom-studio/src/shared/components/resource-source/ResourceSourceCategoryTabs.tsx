@@ -18,7 +18,7 @@ export function ResourceSourceCategoryTabs({
 }: ResourceSourceCategoryTabsProps) {
   return (
     <div className={cn("flex flex-wrap items-center gap-3", className)}>
-      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="text-xs font-medium tracking-wide text-muted-foreground">
         来源分类
       </span>
 
@@ -30,7 +30,7 @@ export function ResourceSourceCategoryTabs({
       >
         <TabsList
           aria-label="来源分类"
-          className="w-auto flex-wrap gap-1 rounded-full border border-border/70 bg-muted"
+          className="w-auto max-w-full gap-1 overflow-x-auto rounded-full border border-border bg-muted"
         >
           {RESOURCE_SOURCE_CATEGORY_OPTIONS.map((option) => (
             <TabsTrigger

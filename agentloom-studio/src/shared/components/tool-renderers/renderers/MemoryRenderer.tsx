@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
 import { Brain } from 'lucide-react'
+import { formatDecimal } from '@/shared/lib/format'
 import type { ToolRendererDefinition, ToolRendererProps, ToolSummaryProps } from '../types'
 
 // --- Shared helpers ---
@@ -284,11 +285,11 @@ const SearchMemoryDetail = memo(function SearchMemoryDetail({ toolCall, state }:
         const uri = entry.uri ?? entry.paths?.[0]?.uri ?? `node:${entry.nodeId ?? i}`
         return (
           <div key={`${uri}-${i}`} className="rounded-lg bg-muted p-3 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs text-info truncate">{uri}</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-mono text-xs text-info">{uri}</span>
               {entry.score != null && (
-                <span className="shrink-0 text-2xs text-muted-foreground">
-                  score: {typeof entry.score === 'number' ? entry.score.toFixed(2) : entry.score}
+                <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+                  score: {typeof entry.score === 'number' ? formatDecimal(entry.score) : entry.score}
                 </span>
               )}
             </div>

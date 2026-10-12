@@ -40,14 +40,13 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     const resolved = resolveTheme(next)
     setResolvedTheme(resolved)
 
-    // Add transition class for smooth theme switch
+    // transition 不继承：由 index.css 的 :root.theme-switching * 规则让所有后代颜色一起过渡
     const root = document.documentElement
-    root.classList.add('transition-colors', 'duration-200')
+    root.classList.add('theme-switching')
     applyTheme(resolved)
 
-    // Remove transition class after animation completes
     setTimeout(() => {
-      root.classList.remove('transition-colors', 'duration-200')
+      root.classList.remove('theme-switching')
     }, 200)
   }, [])
 

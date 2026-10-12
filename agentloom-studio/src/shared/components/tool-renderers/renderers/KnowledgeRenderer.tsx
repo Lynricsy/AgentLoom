@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
 import { BookOpen } from 'lucide-react'
+import { formatDecimal } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import type { ToolRendererDefinition, ToolRendererProps, ToolSummaryProps } from '../types'
 
@@ -107,8 +108,8 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
                 {source}
               </span>
               {entry.score != null && (
-                <span className={cn('shrink-0 text-2xs font-medium', scoreColor(entry.score))}>
-                  {entry.score.toFixed(2)}
+                <span className={cn('shrink-0 text-2xs font-medium tabular-nums', scoreColor(entry.score))}>
+                  {formatDecimal(entry.score)}
                 </span>
               )}
             </div>

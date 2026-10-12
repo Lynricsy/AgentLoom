@@ -18,6 +18,9 @@ interface JsonTreeNodeProps {
   renderString?: (value: string) => ReactNode
 }
 
+const SUMMARY_CLASS =
+  'cursor-pointer rounded-sm text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -40,7 +43,11 @@ function JsonTreeNode({
 
     return (
       <div className="flex gap-2 text-xs leading-6 text-foreground/85">
-        {name ? <span className="shrink-0 text-muted-foreground">{name}:</span> : null}
+        {name ? (
+          <span className="max-w-[40%] shrink-0 truncate text-muted-foreground" title={name}>
+            {name}:
+          </span>
+        ) : null}
         <span className="break-all whitespace-pre-wrap font-mono">{renderedValue}</span>
       </div>
     )
@@ -50,9 +57,11 @@ function JsonTreeNode({
     return (
       <details
         open={depth < defaultExpandedDepth}
-        className="rounded-lg border border-border bg-muted px-3 py-2"
+        className={cn(
+          depth === 0 ? 'rounded-lg border border-border bg-muted px-3 py-2' : 'py-0.5',
+        )}
       >
-        <summary className="cursor-pointer text-xs font-medium text-foreground">
+        <summary className={SUMMARY_CLASS}>
           {name ?? 'Array'} [{value.length}]
         </summary>
         <div className="mt-2 space-y-2 pl-3">
@@ -77,9 +86,11 @@ function JsonTreeNode({
     return (
       <details
         open={depth < defaultExpandedDepth}
-        className="rounded-lg border border-border bg-muted px-3 py-2"
+        className={cn(
+          depth === 0 ? 'rounded-lg border border-border bg-muted px-3 py-2' : 'py-0.5',
+        )}
       >
-        <summary className="cursor-pointer text-xs font-medium text-foreground">
+        <summary className={SUMMARY_CLASS}>
           {name ?? 'Object'} {'{'}
           {entries.length}
           {'}'}

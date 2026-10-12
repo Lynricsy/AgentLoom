@@ -82,7 +82,10 @@ export function PageHeader({
         </div>
 
         {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+          /* min-h-10 与图标芯片同高：按钮组中线对齐芯片/标题行，而不是顶对齐 */
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:min-h-10 sm:max-w-[60%] sm:justify-end">
+            {actions}
+          </div>
         ) : null}
       </div>
     </header>

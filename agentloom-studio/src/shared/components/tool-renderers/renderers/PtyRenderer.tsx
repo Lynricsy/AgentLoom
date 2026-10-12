@@ -274,7 +274,7 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
     <div className="overflow-auto rounded-lg bg-muted">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-border text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border text-2xs font-medium tracking-wider text-muted-foreground">
             <th className="px-3 py-1.5 text-left">状态</th>
             <th className="px-3 py-1.5 text-left">ID</th>
             <th className="px-3 py-1.5 text-left">命令</th>
@@ -287,17 +287,24 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
             <tr key={session.id ?? i} className="border-b border-border/40 last:border-0">
               <td className="px-3 py-1.5">
                 <span
+                  aria-hidden
                   className={cn(
                     'inline-block size-2 rounded-full',
                     session.status === 'running' ? 'bg-success' :
                     session.status === 'exited' ? 'bg-muted-foreground' : 'bg-warning',
                   )}
                 />
+                <span className="sr-only">{session.status ?? '未知'}</span>
               </td>
               <td className="px-3 py-1.5 font-mono text-foreground/80">{session.id ?? '-'}</td>
-              <td className="px-3 py-1.5 font-mono text-foreground/80">{session.command ?? '-'}</td>
-              <td className="px-3 py-1.5 text-right text-muted-foreground">{session.pid ?? '-'}</td>
-              <td className="px-3 py-1.5 text-right text-muted-foreground">{session.lineCount ?? '-'}</td>
+              <td
+                className="max-w-[16rem] truncate px-3 py-1.5 font-mono text-foreground/80"
+                title={session.command}
+              >
+                {session.command ?? '-'}
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{session.pid ?? '-'}</td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{session.lineCount ?? '-'}</td>
             </tr>
           ))}
         </tbody>

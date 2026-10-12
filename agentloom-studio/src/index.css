@@ -186,6 +186,81 @@ body {
   }
 }
 
+/* ─── 主题切换过渡 ───────────────────────────────────── */
+/* theme-provider 切换主题时临时挂 .theme-switching：transition 不继承，必须作用到所有后代 */
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition:
+    background-color 200ms var(--ease-out-expo),
+    border-color 200ms var(--ease-out-expo),
+    color 200ms var(--ease-out-expo),
+    fill 200ms var(--ease-out-expo),
+    stroke 200ms var(--ease-out-expo) !important;
+}
+
+/* ─── 代码高亮（highlight.js）────────────────────────── */
+/* 取代 github-dark.css：配色全部走 token，浅色/深色主题自动切换 */
+.hljs {
+  color: var(--color-foreground);
+  background: transparent;
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--color-subtle-foreground);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-meta .hljs-keyword {
+  color: var(--color-node-control);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta .hljs-string {
+  color: var(--color-success);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-variable.language_,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--color-info);
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-section {
+  color: var(--color-node-agent);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-name,
+.hljs-tag {
+  color: var(--color-node-output);
+}
+.hljs-built_in,
+.hljs-type,
+.hljs-params,
+.hljs-meta {
+  color: var(--color-warning);
+}
+.hljs-deletion {
+  color: var(--color-error);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
+
 /* ─── Markdown / Prose 主题定制 ────────────────────────── */
 .prose-agent {
   --tw-prose-body: var(--color-foreground);
@@ -1510,6 +1585,11 @@ body {
   .animate-spin,
   .animate-pulse {
     animation: none;
+  }
+  :root.theme-switching *,
+  :root.theme-switching *::before,
+  :root.theme-switching *::after {
+    transition: none !important;
   }
   .canvas-node-shell:hover {
     transform: none;

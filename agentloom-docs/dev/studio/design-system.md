@@ -51,6 +51,7 @@ src/features/*                   ← 业务：只组合上面两层，不定义�
 - 节点类别：`node-agent|tool|trigger|knowledge|output|control|plugin|memory|routing|preprocessing|skill`。
 - 兼容性等级：`compat-l0|l1|l2|l3`。
 - 品牌渐变：`var(--color-brand-gradient)`（仅 CSS 变量，无同名 Tailwind 颜色）。
+- 代码高亮（highlight.js）与终端 ANSI 输出的配色也走上述 token（`index.css` 的 `.hljs-*` 规则、`ConsoleBlock` 调色板），不再引入 `highlight.js/styles/*.css` 主题文件；Mermaid 按 `resolvedTheme` 选择 `dark` / `neutral`。
 
 ### 已删除的 token（不得再出现）
 
@@ -255,6 +256,7 @@ feature 内不得自建 `*StatusBadge` / `StatusDot`。业务枚举先映射到 
 | 悬浮提示 | `Tooltip` / `TooltipHint` |
 
 `Dialog`/`Sheet`/`AlertDialog` 自带遮罩、关闭按钮与进退场动画，不要再手写。
+`Tooltip` 在外层没有 `TooltipProvider` 时自带一个（延迟 300ms），调用方无需再包 Provider；需要统一延迟的区域（画布 palette）仍可外包 `TooltipProvider`。
 **注意**：`AlertDialog` 关闭后的卸载是异步的（退场动画），断言「关闭」的测试必须用 `waitFor`。
 
 ---

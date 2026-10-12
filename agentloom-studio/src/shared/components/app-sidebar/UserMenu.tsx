@@ -3,6 +3,7 @@ import { Check, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import { useTheme, type Theme } from '@/shared/hooks/use-theme'
 import { useAuthStore } from '@/features/auth/stores/auth.store'
 import { cn } from '@/shared/lib/utils'
+import { Avatar, AvatarFallback } from '@/shared/ui/avatar'
 import { Button } from '@/shared/ui/button'
 import {
   DropdownMenu,
@@ -43,9 +44,9 @@ export function UserMenu({ collapsed }: { collapsed: boolean }) {
           aria-label={collapsed ? displayName : undefined}
           className="w-full justify-start gap-3 px-2 text-muted-foreground hover:text-foreground"
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
-            {initial}
-          </span>
+          <Avatar>
+            <AvatarFallback>{initial}</AvatarFallback>
+          </Avatar>
           <span
             className={cn(
               'min-w-0 truncate text-left text-foreground transition-[opacity] duration-150',

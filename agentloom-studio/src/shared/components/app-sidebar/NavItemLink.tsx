@@ -3,13 +3,14 @@ import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { cn } from '@/shared/lib/utils'
 import { DUR, EASE } from '@/shared/lib/motion'
+import { TooltipHint } from '@/shared/ui/tooltip'
 
 export interface NavItemLinkProps {
   to: string
   icon: LucideIcon
   label: string
   active: boolean
-  /** 图标列模式：只渲染图标，文字改由 title 提示 */
+  /** 图标列模式：只渲染图标，文字改由 TooltipHint 提示 */
   collapsed?: boolean
   /** 传入后 active 指示条在同组导航项之间滑动（motion layoutId） */
   indicatorLayoutId?: string
@@ -35,11 +36,11 @@ export function NavItemLink({
   onClick,
   exact = false,
 }: NavItemLinkProps) {
-  return (
+  const link = (
     <Link
       to={to}
       onClick={onClick}
-      title={collapsed ? label : undefined}
+      aria-label={collapsed ? label : undefined}
       activeOptions={
         exact ? { exact: true, includeSearch: false } : undefined
       }
@@ -69,5 +70,13 @@ export function NavItemLink({
         {label}
       </span>
     </Link>
+  )
+
+  return collapsed ? (
+    <TooltipHint label={label} side="right">
+      {link}
+    </TooltipHint>
+  ) : (
+    link
   )
 }

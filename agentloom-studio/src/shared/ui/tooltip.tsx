@@ -16,7 +16,18 @@ import {
   type ControllableOpenProps,
 } from './use-controllable-open'
 
-export const TooltipProvider = TooltipPrimitive.Provider
+/** 标记外层是否已有 TooltipProvider；没有时 Tooltip 自带一个，避免调用方必须记得包 Provider */
+const TooltipProviderPresentContext = createContext(false)
+
+export function TooltipProvider(
+  props: ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>,
+) {
+  return (
+    <TooltipProviderPresentContext.Provider value>
+      <TooltipPrimitive.Provider {...props} />
+    </TooltipProviderPresentContext.Provider>
+  )
+}
 
 const TooltipOpenContext = createContext(false)
 
@@ -26,8 +37,9 @@ export type TooltipProps = PropsWithChildren<
 
 export function Tooltip({ children, delayDuration, ...openProps }: TooltipProps) {
   const [open, setOpen] = useControllableOpen(openProps)
+  const hasProvider = useContext(TooltipProviderPresentContext)
 
-  return (
+  const root = (
     <TooltipPrimitive.Root
       open={open}
       onOpenChange={setOpen}
@@ -37,6 +49,12 @@ export function Tooltip({ children, delayDuration, ...openProps }: TooltipProps)
         {children}
       </TooltipOpenContext.Provider>
     </TooltipPrimitive.Root>
+  )
+
+  return hasProvider ? (
+    root
+  ) : (
+    <TooltipPrimitive.Provider delayDuration={300}>{root}</TooltipPrimitive.Provider>
   )
 }
 

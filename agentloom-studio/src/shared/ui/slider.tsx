@@ -18,7 +18,7 @@ export const Slider = forwardRef<HTMLInputElement, SliderProps>(function Slider(
       type="range"
       value={value[0] ?? 0}
       className={cn(
-        'h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-primary disabled:cursor-not-allowed disabled:opacity-50',
+        'h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
       onChange={(event) => {

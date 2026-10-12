@@ -41,7 +41,8 @@ export const ScrollArea = forwardRef<
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
-        className={cn('h-full w-full rounded-[inherit]', viewportClassName)}
+        // Radix 在 Viewport 内包一层 display:table 的 div，会让内部 truncate/break-words 失效
+        className={cn('size-full rounded-[inherit] [&>div]:!block', viewportClassName)}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

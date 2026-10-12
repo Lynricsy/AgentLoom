@@ -68,9 +68,11 @@ export function CommandPalette() {
                   void navigate({ to: item.to })
                 }}
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span>{item.label}</span>
-                <CommandShortcut>{item.to}</CommandShortcut>
+                <Icon className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">{item.label}</span>
+                <CommandShortcut className="tracking-normal text-subtle-foreground">
+                  {item.to}
+                </CommandShortcut>
               </CommandItem>
             )
           })}
@@ -81,9 +83,11 @@ export function CommandPalette() {
               void navigate({ to: '/settings' })
             }}
           >
-            <Settings className="h-4 w-4 shrink-0" />
-            <span>设置</span>
-            <CommandShortcut>/settings</CommandShortcut>
+            <Settings className="size-4 shrink-0" />
+            <span className="min-w-0 truncate">设置</span>
+            <CommandShortcut className="tracking-normal text-subtle-foreground">
+              /settings
+            </CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
@@ -99,7 +103,7 @@ export function CommandPalette() {
                 setOpen(false)
               }}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className="size-4 shrink-0" />
               <span>{label}</span>
             </CommandItem>
           ))}

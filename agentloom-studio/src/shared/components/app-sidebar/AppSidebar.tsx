@@ -126,6 +126,7 @@ export function AppSidebar() {
           label="设置"
           active={settingsActive}
           collapsed={collapsed}
+          indicatorLayoutId="sidebar-app-nav-indicator"
         />
 
         <div

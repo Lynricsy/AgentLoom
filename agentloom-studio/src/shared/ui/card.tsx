@@ -73,7 +73,7 @@ export const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEleme
     return (
       <div
         ref={ref}
-        className={cn('flex items-center gap-2 p-4 pt-0', className)}
+        className={cn('flex items-center gap-2 p-4 pt-0 [&.border-t]:pt-4', className)}
         {...props}
       />
     )

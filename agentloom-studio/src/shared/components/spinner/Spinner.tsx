@@ -2,9 +2,9 @@ import { Loader2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 
 const SIZE_CLASS = {
-  sm: 'h-3.5 w-3.5',
-  default: 'h-4 w-4',
-  lg: 'h-6 w-6',
+  sm: 'size-3.5',
+  default: 'size-4',
+  lg: 'size-6',
 } as const
 
 export interface SpinnerProps {

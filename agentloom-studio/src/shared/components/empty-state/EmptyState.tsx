@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { motion } from 'motion/react'
+import { fadeIn } from '@/shared/lib/motion'
 import { cn } from '@/shared/lib/utils'
 
 export interface EmptyStateProps {
@@ -26,7 +28,8 @@ export function EmptyState({
   const accent = tone ?? 'var(--color-primary)'
 
   return (
-    <div
+    <motion.div
+      {...fadeIn}
       className={cn(
         'flex flex-col items-center justify-center gap-3 px-6 py-14 text-center',
         variant === 'card' && 'rounded-lg border border-dashed border-border',
@@ -35,13 +38,13 @@ export function EmptyState({
     >
       <span
         aria-hidden
-        className="grid size-14 place-items-center rounded-full"
+        className="grid size-12 place-items-center rounded-full"
         style={{
           backgroundColor: `color-mix(in srgb, ${accent} 12%, transparent)`,
           color: accent,
         }}
       >
-        <Icon className="size-7" />
+        <Icon className="size-5" />
       </span>
 
       <div className="max-w-md space-y-1">
@@ -50,6 +53,6 @@ export function EmptyState({
       </div>
 
       {action ? <div className="mt-1">{action}</div> : null}
-    </div>
+    </motion.div>
   )
 }

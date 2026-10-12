@@ -14,7 +14,6 @@ import rehypeHighlight from 'rehype-highlight'
 import { Check, Copy } from 'lucide-react'
 
 import 'katex/dist/katex.min.css'
-import 'highlight.js/styles/github-dark.css'
 
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
@@ -166,9 +165,19 @@ function InlineCode({ className, children, inline, node: _node, ...rest }: CodeC
 
 /* ─── Markdown 组件映射 ────────────────────────────────── */
 
+/** GFM 宽表横向滚动，不撑破消息气泡（border-collapse 下 table 自身的 overflow 无效） */
+function TableBlock({ node: _node, ...props }: ComponentPropsWithoutRef<'table'> & { node?: unknown }) {
+  return (
+    <div className="overflow-x-auto">
+      <table {...props} />
+    </div>
+  )
+}
+
 const markdownComponents = {
   pre: PreBlock,
   code: InlineCode,
+  table: TableBlock,
 } as const
 
 /* ─── MarkdownRenderer ─────────────────────────────────── */
@@ -185,7 +194,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   return (
     <div
       className={cn(
-        'prose prose-sm max-w-none prose-agent',
+        'prose prose-sm max-w-none break-words prose-agent',
         'prose-headings:font-semibold prose-headings:tracking-tight',
         'prose-p:leading-relaxed',
         'prose-li:leading-relaxed',

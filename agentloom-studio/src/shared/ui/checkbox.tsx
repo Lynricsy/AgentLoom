@@ -9,12 +9,12 @@ const checkboxVariants = cva(
   {
     variants: {
       size: {
-        default: 'h-4 w-4',
-        sm: 'h-3.5 w-3.5',
+        default: 'size-4',
+        sm: 'size-3.5',
       },
       variant: {
         default:
-          'border-border bg-background data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary',
+          'cursor-pointer border-border bg-surface hover:border-border-hover data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary',
       },
     },
     defaultVariants: {

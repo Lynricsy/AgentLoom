@@ -197,7 +197,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
               onClick={handlePrev}
               disabled={currentIndex === 0}
               aria-label="上一项"
-              className="size-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
+              className="text-muted-foreground hover:text-foreground disabled:opacity-30"
             >
               <ChevronLeft />
             </Button>
@@ -207,7 +207,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
               onClick={handleNext}
               disabled={currentIndex >= args.edits.length - 1}
               aria-label="下一项"
-              className="size-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
+              className="text-muted-foreground hover:text-foreground disabled:opacity-30"
             >
               <ChevronRight />
             </Button>

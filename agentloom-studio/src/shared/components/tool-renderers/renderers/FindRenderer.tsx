@@ -99,7 +99,7 @@ const FindDetail = memo(function FindDetail({ toolCall, state }: ToolRendererPro
             )}
             <span
               className={cn(
-                'truncate',
+                'min-w-0 truncate',
                 isDir ? 'text-warning' : 'text-foreground/80',
               )}
             >

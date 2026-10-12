@@ -7,23 +7,24 @@ import { Button } from '@/shared/ui/button'
 const ansiConverter = new Convert({
   newline: true,
   escapeXML: true,
+  // 输出容器是 bg-muted（随主题变化），ANSI 调色板走 token，浅色/深色下都可读
   colors: {
-    0: '#1e1e1e',
-    1: '#f44747',
-    2: '#6a9955',
-    3: '#e8ab53',
-    4: '#569cd6',
-    5: '#c586c0',
-    6: '#4ec9b0',
-    7: '#d4d4d4',
-    8: '#808080',
-    9: '#f44747',
-    10: '#6a9955',
-    11: '#e8ab53',
-    12: '#569cd6',
-    13: '#c586c0',
-    14: '#4ec9b0',
-    15: '#d4d4d4',
+    0: 'var(--color-foreground)',
+    1: 'var(--color-error)',
+    2: 'var(--color-success)',
+    3: 'var(--color-warning)',
+    4: 'var(--color-info)',
+    5: 'var(--color-node-agent)',
+    6: 'var(--color-node-knowledge)',
+    7: 'var(--color-muted-foreground)',
+    8: 'var(--color-subtle-foreground)',
+    9: 'var(--color-error)',
+    10: 'var(--color-success)',
+    11: 'var(--color-warning)',
+    12: 'var(--color-info)',
+    13: 'var(--color-node-agent)',
+    14: 'var(--color-node-knowledge)',
+    15: 'var(--color-muted-foreground)',
   },
 })
 
@@ -91,17 +92,20 @@ export const ConsoleBlock = memo(function ConsoleBlock({
         size="icon-xs"
         onClick={() => void handleCopy()}
         aria-label="复制"
-        className="absolute right-2 top-2 z-10 size-6 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 [&_svg]:size-3"
+        className="absolute right-2 top-2 z-10 text-muted-foreground opacity-0 transition-opacity duration-150 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
       >
         {copied ? <Check /> : <Copy />}
       </Button>
 
-      <div className="overflow-auto p-3" style={{ maxHeight }}>
+      {/* pr-10 给右上角复制按钮留位，首行长内容不从按钮下穿过 */}
+      <div className="overflow-auto p-3 pr-10" style={{ maxHeight }}>
         {/* Command line */}
         {command && (
           <div className="mb-1 flex items-start gap-2">
             <span className="select-none text-success">$</span>
-            <span className="text-foreground">{command}</span>
+            <span className="min-w-0 whitespace-pre-wrap break-all text-foreground">
+              {command}
+            </span>
           </div>
         )}
 

@@ -152,7 +152,7 @@ const CallDetail = memo(function CallDetail({
     <div className="space-y-2">
       <div className="rounded-lg bg-muted p-3 space-y-1">
         <div className="flex items-center gap-2">
-          <Bot className="size-4" style={{ color: 'var(--color-node-agent)' }} />
+          <Bot className="size-4 shrink-0 text-[var(--color-node-agent)]" />
           <span className="text-xs font-medium text-foreground">{alias}</span>
           {handle && (
             <span className="text-2xs font-mono text-subtle-foreground">
@@ -217,10 +217,7 @@ const WaitDetail = memo(function WaitDetail({
           className="flex items-center justify-between rounded-lg bg-muted px-3 py-2"
         >
           <div className="flex items-center gap-2">
-            <Bot
-              className="size-3.5"
-              style={{ color: 'var(--color-node-agent)' }}
-            />
+            <Bot className="size-3.5 shrink-0 text-[var(--color-node-agent)]" />
             <span className="font-mono text-xs text-foreground">{h}</span>
           </div>
           <DrillInButton handle={h} />
@@ -251,10 +248,7 @@ const StatusDetail = memo(function StatusDetail({
       <div className="rounded-lg bg-muted p-3">
         {args.handle && (
           <div className="flex items-center gap-2">
-            <Bot
-              className="size-3.5"
-              style={{ color: 'var(--color-node-agent)' }}
-            />
+            <Bot className="size-3.5 shrink-0 text-[var(--color-node-agent)]" />
             <span className="font-mono text-xs text-foreground">
               {args.handle}
             </span>

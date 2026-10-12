@@ -2,17 +2,17 @@ import { memo, useCallback, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   ChevronDown,
-  ChevronRight,
   CheckCircle2,
   XCircle,
   Loader2,
   ShieldAlert,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
-import { DUR, EASE } from '@/shared/lib/motion'
+import { DUR, EASE, fadeInUp } from '@/shared/lib/motion'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
 import { getToolRenderer } from './registry'
 import { defaultRendererDefinition } from './DefaultRenderer'
 import type { ToolCallData, ToolRenderState } from './types'
@@ -39,15 +39,12 @@ export function deriveRenderState(status: string): ToolRenderState {
 /** 工具类型色芯片 —— 统一取数据类型令牌，避免各页面各自着色 */
 const TOOL_TONE = 'var(--color-type-tool)'
 
-const STATE_META = {
-  pending: { label: '排队中', variant: 'secondary' as const },
-  streaming: { label: '执行中', variant: 'info' as const },
-  completed: { label: '完成', variant: 'success' as const },
-  failed: { label: '失败', variant: 'error' as const },
-} satisfies Record<
-  ToolRenderState,
-  { label: string; variant: 'secondary' | 'info' | 'success' | 'error' }
->
+const TOOL_STATE_META: Record<ToolRenderState, { label: string; tone: StatusTone }> = {
+  pending: { label: '排队中', tone: 'neutral' },
+  streaming: { label: '执行中', tone: 'info' },
+  completed: { label: '完成', tone: 'success' },
+  failed: { label: '失败', tone: 'error' },
+}
 
 function StateIcon({ state }: { state: ToolRenderState }) {
   switch (state) {
@@ -61,8 +58,8 @@ function StateIcon({ state }: { state: ToolRenderState }) {
   }
 }
 
-/** 状态徽章：pending / running / success / error 一律走状态色令牌 */
-function StatusBadge({
+/** 状态徽章：pending / running / success / error 一律走 StatusBadge 语气 */
+function ToolStateBadge({
   state,
   awaitingPermission,
 }: {
@@ -71,22 +68,27 @@ function StatusBadge({
 }) {
   if (awaitingPermission) {
     return (
-      <Badge variant="warning" size="sm" className="shrink-0">
+      <StatusBadge tone="warning" size="sm" className="shrink-0">
         <ShieldAlert className="size-3 shrink-0" />
         待授权
-      </Badge>
+      </StatusBadge>
     )
   }
 
-  const meta = STATE_META[state]
+  const meta = TOOL_STATE_META[state]
 
   return (
-    <Badge variant={meta.variant} size="sm" className="shrink-0">
+    <StatusBadge tone={meta.tone} size="sm" className="shrink-0">
       <StateIcon state={state} />
       {meta.label}
-    </Badge>
+    </StatusBadge>
   )
 }
+
+const SECONDS_FORMAT = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
 
 /** 工具耗时文案；时间戳缺失或时长无效时返回 null */
 function formatDuration(startedAt?: number, completedAt?: number): string | null {
@@ -109,7 +111,7 @@ function formatDuration(startedAt?: number, completedAt?: number): string | null
 
   const totalSeconds = elapsedMs / 1000
   if (totalSeconds < 60) {
-    return `${totalSeconds.toFixed(1)}s`
+    return `${SECONDS_FORMAT.format(totalSeconds)}s`
   }
 
   const minutes = Math.floor(totalSeconds / 60)
@@ -260,13 +262,14 @@ export const ToolCallCard = memo(function ToolCallCard({
         variant="ghost"
         onClick={toggleExpanded}
         aria-expanded={expanded}
-        className="h-auto w-full justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal"
+        className="h-auto w-full justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal focus-visible:ring-inset active:scale-100"
       >
-        {expanded ? (
-          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-        )}
+        <ChevronDown
+          className={cn(
+            'size-3 shrink-0 text-muted-foreground transition-transform duration-150',
+            !expanded && '-rotate-90',
+          )}
+        />
 
         <span
           aria-hidden
@@ -279,7 +282,8 @@ export const ToolCallCard = memo(function ToolCallCard({
           <Icon className="size-3.5" />
         </span>
 
-        <div className="min-w-0 flex-1">
+        {/* 块级容器负责省略号：各 renderer 的 Summary 是 inline span，自身 truncate 不生效 */}
+        <div className="min-w-0 flex-1 truncate">
           <renderer.Summary toolCall={toolCall} state={state} />
         </div>
 
@@ -289,12 +293,17 @@ export const ToolCallCard = memo(function ToolCallCard({
           </span>
         ) : null}
 
-        <StatusBadge state={state} awaitingPermission={isAwaitingPermission} />
+        <ToolStateBadge state={state} awaitingPermission={isAwaitingPermission} />
       </Button>
 
       {/* Permission approval buttons (shown when awaiting permission) */}
+      <AnimatePresence initial={false}>
       {isAwaitingPermission && onResolvePermission && (
-        <div className="border-t border-border/60 bg-warning/[0.06] px-3 py-3">
+        <motion.div
+          key="permission"
+          {...fadeInUp}
+          className="break-words border-t border-border/60 bg-warning/[0.06] px-3 py-3"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="warning" size="sm">
               {formatPermissionCategoryLabel(toolCall.permissionCategory)}
@@ -418,8 +427,9 @@ export const ToolCallCard = memo(function ToolCallCard({
               </Button>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Expanded detail area */}
       <AnimatePresence initial={false}>

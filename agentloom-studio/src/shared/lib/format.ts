@@ -67,3 +67,18 @@ export function formatPercent(ratio: number, digits = 1): string {
 export function formatNumber(n: number): string {
   return NUMBER.format(n)
 }
+
+const DECIMAL_CACHE = new Map<number, Intl.NumberFormat>()
+
+/** 固定小数位：0.8734 → 0.87（相关度分数、比率等） */
+export function formatDecimal(n: number, digits = 2): string {
+  let formatter = DECIMAL_CACHE.get(digits)
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('zh-CN', {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })
+    DECIMAL_CACHE.set(digits, formatter)
+  }
+  return formatter.format(n)
+}

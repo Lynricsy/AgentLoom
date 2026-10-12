@@ -96,7 +96,7 @@ const SearchResultLine = memo(function SearchResultLine({
   return (
     <div className="flex items-start gap-2 py-0.5 font-mono text-xs">
       {result.lineNumber !== undefined && (
-        <span className="shrink-0 select-none text-subtle-foreground" style={{ minWidth: '4ch' }}>
+        <span className="min-w-[4ch] shrink-0 select-none text-right tabular-nums text-subtle-foreground">
           {result.lineNumber}
         </span>
       )}

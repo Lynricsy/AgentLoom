@@ -19,6 +19,7 @@ import {
 } from '@/shared/ui/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { EntityIcon } from '@/shared/components/entity-icon'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 
 // Fluent Emoji 3D CDN 基础 URL
 const FLUENT_EMOJI_CDN =
@@ -167,7 +168,7 @@ export const EmojiIconPicker = memo(function EmojiIconPicker({
 
       <PopoverContent
         align="start"
-        className="w-[352px] p-0"
+        className="w-[352px] max-w-[calc(100vw-2rem)] p-0"
       >
         <PickerContent value={value} onChange={handleChange} />
       </PopoverContent>
@@ -195,7 +196,7 @@ const PickerContent = memo(function PickerContent({
       onValueChange={(next) => setTab(next as TabType)}
       className="flex flex-col"
     >
-      <div className="flex flex-col" style={{ height: 380 }}>
+      <div className="flex h-[380px] flex-col">
         {/* Tab 栏 */}
         <div className="p-2 pb-0">
           <TabsList>
@@ -289,7 +290,8 @@ const EmojiTab = memo(function EmojiTab({
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Spinner size="sm" />
         加载中…
       </div>
     )

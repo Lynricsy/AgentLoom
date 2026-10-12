@@ -40,12 +40,12 @@ export function WorkbenchHeader({
         className,
       )}
     >
-      {leading}
+      {leading ? <div className="shrink-0">{leading}</div> : null}
 
       {breadcrumb?.length ? (
         <nav
           aria-label="面包屑"
-          className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex"
+          className="hidden shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground sm:flex"
         >
           {breadcrumb.map((item, index) => (
             <span
@@ -72,7 +72,7 @@ export function WorkbenchHeader({
         </nav>
       ) : null}
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 sm:min-w-24">
         <h1 className="truncate text-sm font-semibold text-foreground">
           {title}
         </h1>
@@ -83,7 +83,7 @@ export function WorkbenchHeader({
         ) : null}
       </div>
 
-      {status}
+      {status ? <div className="shrink-0">{status}</div> : null}
 
       {actions ? (
         <div className="flex shrink-0 items-center gap-2">{actions}</div>

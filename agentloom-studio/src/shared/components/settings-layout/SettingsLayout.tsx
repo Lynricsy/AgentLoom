@@ -83,10 +83,10 @@ export function SettingsLayout() {
 
   return (
     <div className="flex min-h-full flex-col lg:flex-row">
-      <aside className="shrink-0 border-b border-border bg-surface lg:sticky lg:top-0 lg:h-screen lg:w-[var(--spacing-settings-nav)] lg:overflow-y-auto lg:border-b-0 lg:border-r">
+      <aside className="shrink-0 border-b border-border bg-surface lg:sticky lg:top-0 lg:h-dvh lg:w-[var(--spacing-settings-nav)] lg:overflow-y-auto lg:border-b-0 lg:border-r">
         <nav
           aria-label="设置导航"
-          className="flex gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:none] max-lg:pr-6 max-lg:mask-r-from-[calc(100%-1.5rem)] lg:flex-col lg:gap-4 lg:px-2 lg:py-4"
+          className="flex gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:none] max-lg:pr-6 max-lg:mask-r-from-[calc(100%-1.5rem)] max-lg:[&_a]:shrink-0 lg:flex-col lg:gap-4 lg:px-2 lg:py-4"
         >
           {SETTINGS_GROUPS.map((group) => (
             // 小屏用 contents 摊平分组，让所有导航项成为横向条的直接子项

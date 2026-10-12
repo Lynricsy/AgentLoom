@@ -31,7 +31,7 @@ export function MobileTopBar() {
   }, [pathname])
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3">
+    <header className="grid h-14 shrink-0 grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2 border-b border-border bg-surface px-3">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button
@@ -45,7 +45,7 @@ export function MobileTopBar() {
         </SheetTrigger>
 
         <SheetContent side="left" className="p-0">
-          <SheetHeader className="pr-12">
+          <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <BrandMark size="sm" />
               AgentLoom Studio
@@ -67,13 +67,17 @@ export function MobileTopBar() {
               label="设置"
               active={pathname.startsWith('/settings')}
               onClick={() => setOpen(false)}
+              indicatorLayoutId="mobile-app-nav-indicator"
             />
             <UserMenu collapsed={false} />
           </div>
         </SheetContent>
       </Sheet>
 
-      <Link to="/" className="flex items-center gap-2">
+      <Link
+        to="/"
+        className="justify-self-center rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      >
         <span className="text-sm font-semibold text-foreground">AgentLoom</span>
       </Link>
 

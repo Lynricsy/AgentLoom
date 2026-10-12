@@ -7,9 +7,9 @@ import * as AvatarPrimitive from '@radix-ui/react-avatar'
 import { cn } from '@/shared/lib/utils'
 
 const SIZE_CLASS = {
-  sm: 'h-6 w-6 text-2xs',
-  default: 'h-8 w-8 text-xs',
-  lg: 'h-10 w-10 text-sm',
+  sm: 'size-6 text-2xs',
+  default: 'size-8 text-xs',
+  lg: 'size-10 text-sm',
 } as const
 
 export const Avatar = forwardRef<
@@ -52,7 +52,7 @@ export const AvatarFallback = forwardRef<
     <AvatarPrimitive.Fallback
       ref={ref}
       className={cn(
-        'flex h-full w-full items-center justify-center bg-primary/12 font-semibold uppercase text-primary',
+        'flex size-full items-center justify-center bg-primary/12 font-semibold uppercase text-primary',
         className,
       )}
       {...props}

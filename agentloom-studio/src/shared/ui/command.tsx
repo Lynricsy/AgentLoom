@@ -45,7 +45,7 @@ export function CommandDialog({
         size="md"
         // 命令面板无描述文本，显式清空以关闭 Radix 的 aria-describedby 校验告警
         aria-describedby={undefined}
-        className="max-h-[70vh] overflow-hidden p-0 sm:rounded-xl"
+        className="max-h-[70dvh] overflow-hidden p-0 sm:rounded-xl"
       >
         <DialogHiddenTitle>{label}</DialogHiddenTitle>
         <Command loop>{children}</Command>
@@ -151,7 +151,7 @@ export function CommandShortcut({
   return (
     <span
       className={cn(
-        'ml-auto font-mono text-2xs tracking-widest text-muted-foreground',
+        'ml-auto min-w-0 truncate pl-4 font-mono text-2xs tracking-widest text-muted-foreground',
         className,
       )}
       {...props}

@@ -5,7 +5,6 @@ import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { detectLanguage } from "./codeLanguage";
 
-import "highlight.js/styles/github-dark.css";
 
 // eslint-disable-next-line react-refresh/only-export-components
 export { detectLanguage };
@@ -148,15 +147,15 @@ export const CodeViewer = memo(function CodeViewer({
     <div className={cn("group relative rounded-lg bg-muted", className)}>
       {/* Header with language label and copy button */}
       {(resolvedLanguage ?? fileName) && (
-        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <span className="text-2xs font-medium text-muted-foreground">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+          <span className="min-w-0 truncate text-2xs font-medium text-muted-foreground">
             {fileName ?? resolvedLanguage}
           </span>
           <Button
             variant="ghost"
             size="xs"
             onClick={() => void handleCopy()}
-            className="h-6 gap-1 px-1.5 text-2xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             {copied ? (
               <>
@@ -180,15 +179,18 @@ export const CodeViewer = memo(function CodeViewer({
           size="icon-xs"
           onClick={() => void handleCopy()}
           aria-label="复制"
-          className="absolute right-2 top-2 z-10 size-6 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 [&_svg]:size-3"
+          className="absolute right-2 top-2 z-10 text-muted-foreground opacity-0 transition-opacity duration-150 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
         >
           {copied ? <Check /> : <Copy />}
         </Button>
       )}
 
       {/* Code area */}
-      <div className="overflow-auto" style={{ maxHeight }}>
-        <table className="w-full border-collapse font-mono text-xs leading-relaxed">
+      <div
+        className={cn("overflow-auto", !resolvedLanguage && !fileName && "pr-10")}
+        style={{ maxHeight }}
+      >
+        <table className="w-max min-w-full border-collapse font-mono text-xs leading-relaxed">
           <tbody>
             {lines.map((line, i) => (
               <tr key={`${startLine + i}`} className="hover:bg-border/40">
@@ -198,7 +200,7 @@ export const CodeViewer = memo(function CodeViewer({
                 >
                   {startLine + i}
                 </td>
-                <td className="px-3 py-0">
+                <td className="whitespace-pre px-3 py-0">
                   {highlightedHtml ? (
                     <span
                       dangerouslySetInnerHTML={{
