@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   nodes: [] as Array<{ id: string; data: CanvasNodeData }>,
   updateNodeData: vi.fn(),
   deleteSelectedNode: vi.fn(),
+  selectNode: vi.fn(),
   apiGet: vi.fn(),
 }));
 
@@ -27,12 +28,32 @@ vi.mock('../../stores/agent-canvas.store', () => ({
   useAgentCanvasActions: () => ({
     updateNodeData: mocks.updateNodeData,
     deleteSelectedNode: mocks.deleteSelectedNode,
+    selectNode: mocks.selectNode,
   }),
 }));
 
 vi.mock('@/features/canvas', () => ({
   CANVAS_FLOATING_CLASS: 'canvas-floating',
   CANVAS_PANEL_HEADER_CLASS: 'canvas-panel-header',
+  getNodeAccentToken: () => 'var(--color-node-tool)',
+  resolveNodeIcon: () => () => null,
+  CanvasPanelHeader: ({
+    title,
+    actions,
+    onClose,
+  }: {
+    title: React.ReactNode;
+    actions?: React.ReactNode;
+    onClose?: () => void;
+  }) => (
+    <div>
+      <span>{title}</span>
+      {actions}
+      <button type="button" onClick={onClose}>
+        关闭节点配置
+      </button>
+    </div>
+  ),
   CUSTOM_PANEL_REGISTRY: {
     'mcp-tool': {
       render: () => <div data-testid="mock-mcp-panel">mock mcp panel</div>,
@@ -162,6 +183,22 @@ describe('AgentNodeConfigPanel', () => {
 
     expect(screen.getByText('MCP Search Tool')).toBeInTheDocument();
     expect(screen.getByTestId('mock-mcp-panel')).toBeInTheDocument();
+  });
+
+  it('asks for confirmation before deleting the node and closes via selectNode(null)', async () => {
+    const user = userEvent.setup();
+    mocks.selectedNodeId = 'node-1';
+    mocks.nodes = [{ id: 'node-1', data: createMcpNodeData() }];
+
+    render(<AgentNodeConfigPanel />);
+
+    await user.click(screen.getByRole('button', { name: '关闭节点配置' }));
+    expect(mocks.selectNode).toHaveBeenCalledWith(null);
+
+    await user.click(screen.getByRole('button', { name: '删除节点' }));
+    expect(mocks.deleteSelectedNode).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: '删除' }));
+    expect(mocks.deleteSelectedNode).toHaveBeenCalledTimes(1);
   });
 
   it('renders agent-main config and writes nested policy updates', () => {

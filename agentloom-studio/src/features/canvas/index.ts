@@ -83,7 +83,7 @@ export { ReadOnlyCanvasBanner } from './components/readonly/ReadOnlyCanvasBanner
 export { ReadOnlyNodeSheet } from './components/readonly/ReadOnlyNodeSheet'
 export { CanvasMiniMap } from './components/navigation/CanvasMiniMap'
 export { NodeInfoCard } from './components/overlays/NodeInfoCard'
-export { getNodeAccentToken } from './components/node/nodeVisualMeta'
+export { getNodeAccentToken, resolveNodeIcon } from './components/node/nodeVisualMeta'
 export {
   CompatibilityPreview,
   type CompatibilityPreviewProps,

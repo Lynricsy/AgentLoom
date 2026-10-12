@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useAgentList } from '@/features/agent'
 import type { AgentDefinitionSummary } from '@/features/agent'
 
@@ -94,10 +95,13 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
         />
       </div>
 
-      <div className="max-h-52 overflow-y-auto rounded-lg border border-border">
+      <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
         {isLoading ? (
-          <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-            加载中…
+          <div role="status" className="space-y-2 p-3">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-1/2" />
+            <span className="sr-only">加载中…</span>
           </div>
         ) : agents.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
@@ -119,13 +123,13 @@ export const AgentSearchPicker = memo(function AgentSearchPicker({
                     )}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2 min-w-0">
+                      <span className="flex min-w-0 items-center gap-2">
                         <Bot className="shrink-0 text-muted-foreground" />
                         <span className="truncate text-xs font-medium text-foreground">
                           {agent.name}
                         </span>
                       </span>
-                      <span className="flex items-center gap-1.5 shrink-0">
+                      <span className="flex shrink-0 items-center gap-1.5">
                         <Badge variant="success" size="sm">
                           已发布
                         </Badge>

@@ -1,12 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Puzzle } from 'lucide-react'
+import { Puzzle } from 'lucide-react'
 import {
   DynamicConfigForm,
   type NodeConfigFieldSchema,
   type NodeConfigSchema,
 } from '@/features/canvas'
 import { useActiveRuntimePlugins, type RuntimePluginRecord } from '@/features/runtime-plugin'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { Alert } from '@/shared/ui/alert'
+import { Badge } from '@/shared/ui/badge'
 import { Input } from '@/shared/ui/input'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
 import {
   Select,
@@ -178,10 +182,8 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
   return (
     <div className="space-y-5 px-4 py-4" data-testid="runtime-plugin-config-panel">
       <div className="flex items-center gap-2">
-        <Puzzle className="h-4 w-4 text-type-runtime-plugin" />
-        <span className="rounded-full bg-type-runtime-plugin/10 px-2 py-0.5 text-xs font-medium text-type-runtime-plugin">
-          Runtime 插件
-        </span>
+        <Puzzle className="size-4 shrink-0 text-type-runtime-plugin" />
+        <Badge tone="var(--color-type-runtime-plugin)">Runtime 插件</Badge>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -190,7 +192,7 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
         </span>
         <RadioGroup
           aria-label="来源"
-          className="flex gap-4"
+          className="flex flex-wrap gap-x-4 gap-y-2"
           value={parsed.source}
           onValueChange={(value) => patchConfig({ source: value as RuntimePluginSource })}
         >
@@ -207,18 +209,11 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
 
       {parsed.source === 'package' ? (
         <>
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor={`runtime-plugin-select-${nodeId}`}
-              className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
-            >
-              插件
-              <span className="text-error">*</span>
-            </label>
+          <FormField label="插件" htmlFor={`runtime-plugin-select-${nodeId}`} required>
             {isLoading ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>加载中…</span>
+              <div role="status">
+                <Skeleton className="h-9 w-full" />
+                <span className="sr-only">加载中…</span>
               </div>
             ) : activePlugins.length === 0 ? (
               <p className="text-xs text-muted-foreground">
@@ -238,35 +233,31 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
                 </SelectContent>
               </Select>
             )}
-          </div>
+          </FormField>
 
           {isSelectedPluginUnavailable && (
-            <div
-              className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs"
+            <Alert
+              variant="warning"
+              title="当前选择的插件已停用或已删除，请重新选择。"
               data-testid="runtime-plugin-unavailable-warning"
             >
-              <p className="font-medium text-warning">
-                当前选择的插件已停用或已删除，请重新选择。
-              </p>
-              <p className="break-all text-warning/80">
+              <p className="break-all font-mono text-xs">
                 {parsed.pluginName
                   ? `${parsed.pluginName}@${parsed.pluginVersion}`
                   : parsed.runtimePluginId}
               </p>
-            </div>
+            </Alert>
           )}
 
           {parsed.runtimePluginId && formSchema && (
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-foreground">插件配置</span>
-              <div className="-mx-4">
-                <DynamicConfigForm
-                  configSchema={formSchema}
-                  values={pluginConfigValues}
-                  onApply={handlePluginConfigApply}
-                  onValidationChange={setPluginConfigHasErrors}
-                />
-              </div>
+              <DynamicConfigForm
+                configSchema={formSchema}
+                values={pluginConfigValues}
+                onApply={handlePluginConfigApply}
+                onValidationChange={setPluginConfigHasErrors}
+              />
             </div>
           )}
 
@@ -286,14 +277,13 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
         </>
       ) : (
         <>
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor={`runtime-plugin-npm-name-${nodeId}`}
-              className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
-            >
-              npm 包名
-              <span className="text-error">*</span>
-            </label>
+          <FormField
+            label="npm 包名"
+            htmlFor={`runtime-plugin-npm-name-${nodeId}`}
+            required
+            error={npmNameError}
+            hint="package.json 声明了 dsh.bundle.patch 时按 bundle 挂载，否则把包本身作为单个插件挂载；会话启动时在 microVM 内执行 npm install。"
+          >
             <Input
               id={`runtime-plugin-npm-name-${nodeId}`}
               aria-label="npm 包名"
@@ -302,19 +292,13 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
               value={parsed.npmName}
               onChange={(event) => patchConfig({ npmName: event.target.value.trim() })}
             />
-            {npmNameError && <p className="text-xs text-error">{npmNameError}</p>}
-            <p className="text-xs text-muted-foreground">
-              package.json 声明了 dsh.bundle.patch 时按 bundle 挂载，否则把包本身作为单个插件挂载；会话启动时在 microVM 内执行 npm install。
-            </p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor={`runtime-plugin-npm-version-${nodeId}`}
-              className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
-            >
-              版本
-              <span className="text-error">*</span>
-            </label>
+          </FormField>
+          <FormField
+            label="版本"
+            htmlFor={`runtime-plugin-npm-version-${nodeId}`}
+            required
+            error={npmVersionError}
+          >
             <Input
               id={`runtime-plugin-npm-version-${nodeId}`}
               aria-label="版本"
@@ -323,8 +307,7 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
               value={parsed.npmVersion}
               onChange={(event) => patchConfig({ npmVersion: event.target.value.trim() })}
             />
-            {npmVersionError && <p className="text-xs text-error">{npmVersionError}</p>}
-          </div>
+          </FormField>
         </>
       )}
 
@@ -337,6 +320,7 @@ export const RuntimePluginConfigPanel = memo(function RuntimePluginConfigPanel({
         </div>
         <Switch
           aria-label="启用"
+          className="shrink-0"
           checked={parsed.enabled}
           onCheckedChange={(checked) => patchConfig({ enabled: checked })}
         />

@@ -5,6 +5,8 @@ import { shallow } from 'zustand/shallow'
 import { parse as parseYaml } from 'yaml'
 import type { CanvasNodeData } from '@/features/canvas'
 import { RUNTIME_PLUGIN_DSH_VERSION } from '@/features/runtime-plugin'
+import { FormField } from '@/shared/components/form-field/FormField'
+import { Badge } from '@/shared/ui/badge'
 import { Textarea } from '@/shared/ui/textarea'
 import {
   HARNESS_PLUGINS_INPUT_HANDLE,
@@ -69,32 +71,25 @@ export const HarnessConfigPanel = memo(function HarnessConfigPanel({
   return (
     <div className="space-y-5 px-4 py-4" data-testid="harness-config-panel">
       <div className="flex items-center gap-2">
-        <Cpu className="h-4 w-4 text-node-tool" />
-        <span className="rounded-full bg-node-tool/10 px-2 py-0.5 text-xs font-medium text-node-tool">
-          Harness
-        </span>
+        <Cpu className="size-4 shrink-0 text-node-tool" />
+        <Badge tone="var(--color-node-tool)">Harness</Badge>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-foreground">引擎</span>
+      <FormField
+        label="引擎"
+        hint="仅 sandbox 运行态生效；Agent 核心在 microVM 内以 dsh 子进程运行。"
+      >
         <div className="rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground">
           DeepSeek Harness {RUNTIME_PLUGIN_DSH_VERSION}
         </div>
-        <p className="text-xs text-muted-foreground">
-          仅 sandbox 运行态生效；Agent 核心在 microVM 内以 dsh 子进程运行。
-        </p>
-      </div>
+      </FormField>
 
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor={`harness-profile-patch-${nodeId}`}
-          className="text-xs font-medium text-foreground"
-        >
-          Profile patch (YAML)
-        </label>
-        <p className="text-xs text-muted-foreground">
-          cordis.patch.yml 片段，在平台层与插件层之后应用，优先级最高。
-        </p>
+      <FormField
+        label="Profile patch (YAML)"
+        htmlFor={`harness-profile-patch-${nodeId}`}
+        hint="cordis.patch.yml 片段，在平台层与插件层之后应用，优先级最高。"
+        error={patchError}
+      >
         <Textarea
           id={`harness-profile-patch-${nodeId}`}
           aria-label="Profile patch (YAML)"
@@ -107,12 +102,7 @@ export const HarnessConfigPanel = memo(function HarnessConfigPanel({
           onChange={(event) => setDraft(event.target.value)}
           onBlur={handleBlur}
         />
-        {patchError && (
-          <p className="text-xs text-error" data-testid="harness-profile-patch-error">
-            {patchError}
-          </p>
-        )}
-      </div>
+      </FormField>
 
       <div className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-foreground">已挂载插件</span>
@@ -127,9 +117,11 @@ export const HarnessConfigPanel = memo(function HarnessConfigPanel({
                 key={`${index}-${label}`}
                 className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5 text-xs"
               >
-                <span className="text-muted-foreground">{index + 1}.</span>
-                <Puzzle className="h-3.5 w-3.5 shrink-0 text-node-plugin" />
-                <span className="truncate font-mono text-foreground">{label}</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{index + 1}.</span>
+                <Puzzle className="size-3.5 shrink-0 text-node-plugin" />
+                <span className="min-w-0 truncate font-mono text-foreground" title={label}>
+                  {label}
+                </span>
               </li>
             ))}
           </ol>

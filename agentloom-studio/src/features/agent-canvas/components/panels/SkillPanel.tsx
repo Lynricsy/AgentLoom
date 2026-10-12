@@ -4,6 +4,7 @@ import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useSkill, useSkills } from '@/features/skill'
 import type { SkillListItem } from '@/features/skill'
 
@@ -77,14 +78,14 @@ export const SkillPanel = memo(function SkillPanel({
   }, [config, onApply])
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 px-4 py-4">
       {skill.skillId && (
         <div className="rounded-lg border border-border bg-muted p-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-start gap-2 min-w-0">
+            <div className="flex min-w-0 items-start gap-2">
               <BookOpenText className="mt-0.5 size-4 shrink-0 text-[var(--color-node-skill)]" />
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
+                <p className="truncate text-sm font-medium text-foreground">
                   {skill.skillName || skill.skillId}
                 </p>
                 {skill.skillDescription && (
@@ -104,7 +105,7 @@ export const SkillPanel = memo(function SkillPanel({
             </Button>
           </div>
           {isSelectedSkillUnavailable && (
-            <p role="alert" className="mt-2 text-xs text-destructive">
+            <p role="alert" className="mt-2 text-xs text-error">
               该 Skill 已删除或停用，运行时会被跳过，请重新选择
             </p>
           )}
@@ -128,8 +129,11 @@ export const SkillPanel = memo(function SkillPanel({
 
       <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
         {isLoading ? (
-          <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
-            加载中…
+          <div role="status" className="space-y-2 p-3">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-4 w-1/2" />
+            <span className="sr-only">加载中…</span>
           </div>
         ) : skills.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
@@ -151,7 +155,7 @@ export const SkillPanel = memo(function SkillPanel({
                     )}
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-foreground">
+                      <span className="min-w-0 truncate text-xs font-medium text-foreground">
                         {item.name}
                       </span>
                       {isSelected && <Check className="shrink-0 text-primary" />}
@@ -162,9 +166,9 @@ export const SkillPanel = memo(function SkillPanel({
                       </span>
                     )}
                     {item.slug && (
-                      <span className="mt-1 flex items-center gap-2">
-                        <Badge variant="secondary" size="sm">
-                          {item.slug}
+                      <span className="mt-1 flex min-w-0 items-center gap-2">
+                        <Badge variant="secondary" size="sm" className="min-w-0">
+                          <span className="truncate">{item.slug}</span>
                         </Badge>
                         {item.isBuiltin && (
                           <Badge tone="var(--color-node-skill)" size="sm">

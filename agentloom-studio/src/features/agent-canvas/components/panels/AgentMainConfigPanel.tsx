@@ -16,6 +16,7 @@ import type {
 import { Switch } from '@/shared/ui/switch'
 import { cn } from '@/shared/lib/utils'
 import { Card } from '@/shared/ui/card'
+import { Alert } from '@/shared/ui/alert'
 
 interface AgentMainConfigPanelProps {
   config: Record<string, unknown>
@@ -83,7 +84,7 @@ const SectionCard = memo(function SectionCard({
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 size-4 shrink-0 text-[var(--color-node-agent)]" />
         <div className="min-w-0">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+          <h3 className="text-xs font-semibold text-foreground">
             {title}
           </h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
@@ -113,14 +114,14 @@ const ToggleRow = memo(function ToggleRow({
   onCheckedChange,
 }: ToggleRowProps) {
   return (
-    <div
-      className={cn(
-        'flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2.5',
-        disabled && 'opacity-60',
-      )}
-    >
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted px-3 py-2.5">
       <div className="min-w-0">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <div
+          className={cn(
+            'flex items-center gap-2 text-sm font-medium',
+            disabled ? 'text-muted-foreground' : 'text-foreground',
+          )}
+        >
           <Icon className="size-4 shrink-0 text-[var(--color-node-agent)]" />
           <span>{title}</span>
         </div>
@@ -173,13 +174,13 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
   )
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-4 py-4">
       <SectionCard
         title="运行形态"
         description="创建后固定，用于决定 Agent 是否拥有沙箱运行时与工作区能力。"
         icon={Cpu}
       >
-        <div className="rounded-md border border-border bg-muted px-3 py-3">
+        <div className="rounded-lg border border-border bg-muted p-3">
           <div className="text-sm font-medium text-foreground">
             {runtimeMode === 'sandbox' ? '有沙箱' : '无沙箱'}
           </div>
@@ -190,12 +191,9 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
           </p>
         </div>
         {runtimeMode === 'no_sandbox' && hasHarnessNode && (
-          <div
-            className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
-            data-testid="agent-main-harness-warning"
-          >
+          <Alert variant="warning" data-testid="agent-main-harness-warning">
             harness 仅 sandbox 运行态生效；当前 Agent 为无沙箱运行态，发布时会被拒绝，请删除 harness 节点。
-          </div>
+          </Alert>
         )}
       </SectionCard>
 

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Bot, Clock, AlertCircle } from 'lucide-react'
+import { Bot, Clock } from 'lucide-react'
 import { useAgentVersions } from '@/features/agent'
 import type { AgentDefinitionSummary, AgentVersion } from '@/features/agent'
 import {
@@ -12,6 +12,7 @@ import {
 import { cn } from '@/shared/lib/utils'
 import { Input } from '@/shared/ui/input'
 import { Slider } from '@/shared/ui/slider'
+import { FormField } from '@/shared/components/form-field/FormField'
 import {
   useAgentCanvasStore,
   useAgentCanvasNodes,
@@ -197,11 +198,8 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
   )
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-foreground">
-          Agent 选择 <span className="text-error">*</span>
-        </span>
+    <div className="flex flex-col gap-4 px-4 py-4">
+      <FormField label="Agent 选择" required>
         <AgentSearchPicker
           selectedAgentId={parsed.agentDefinitionId}
           excludeAgentId={currentAgentId ?? undefined}
@@ -210,34 +208,22 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
           selectedAgentName={parsed._agentName}
           selectedAgentDescription={parsed._agentDescription}
         />
-      </section>
+      </FormField>
 
       {parsed.agentDefinitionId && (
-        <section className="flex flex-col gap-1.5">
-          <label
-            htmlFor="sub-agent-version"
-            className="text-xs font-medium text-foreground"
-          >
-            版本
-          </label>
+        <FormField label="版本" htmlFor="sub-agent-version">
           <Select
             value={parsed.agentVersionId ?? LATEST_VERSION_VALUE}
             onValueChange={handleVersionChange}
             disabled={versionsLoading}
           >
-            <SelectTrigger
-              id="sub-agent-version"
-              aria-label="版本"
-              className="h-8 text-xs"
-            >
+            <SelectTrigger id="sub-agent-version" aria-label="版本">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={LATEST_VERSION_VALUE} className="text-xs">
-                最新发布版
-              </SelectItem>
+              <SelectItem value={LATEST_VERSION_VALUE}>最新发布版</SelectItem>
               {versions.map((v: AgentVersion) => (
-                <SelectItem key={v.id} value={v.id} className="text-xs">
+                <SelectItem key={v.id} value={v.id}>
                   v{v.versionNumber}
                   {v.label ? ` — ${v.label}` : ''}
                   {v.publishedAt ? '' : ' (未发布)'}
@@ -245,16 +231,16 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
               ))}
             </SelectContent>
           </Select>
-        </section>
+        </FormField>
       )}
 
-      <section className="flex flex-col gap-1.5">
-        <label
-          htmlFor="sub-agent-alias"
-          className="text-xs font-medium text-foreground"
-        >
-          别名 <span className="text-error">*</span>
-        </label>
+      <FormField
+        label="别名"
+        htmlFor="sub-agent-alias"
+        required
+        error={aliasError || undefined}
+        hint="唯一标识，用于在工作流中引用此子 Agent"
+      >
         <Input
           id="sub-agent-alias"
           type="text"
@@ -263,27 +249,19 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
           onBlur={handleAliasBlur}
           placeholder="例如: code-reviewer"
           aria-invalid={aliasError ? true : undefined}
-          className={cn('h-8 text-xs', aliasError && 'border-error')}
+          className={cn(aliasError && 'border-error')}
         />
-        {aliasError && (
-          <p className="flex items-center gap-1 text-xs font-medium text-error">
-            <AlertCircle className="h-3 w-3 shrink-0" />
-            <span>{aliasError}</span>
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">
-          唯一标识，用于在工作流中引用此子 Agent
-        </p>
-      </section>
+      </FormField>
 
-      <section className="flex flex-col gap-1.5">
-        <label
-          htmlFor="sub-agent-timeout"
-          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
-        >
-          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-          最大超时
-        </label>
+      <FormField
+        label={
+          <span className="inline-flex items-center gap-1.5">
+            <Clock className="size-3.5 text-muted-foreground" />
+            最大超时
+          </span>
+        }
+        htmlFor="sub-agent-timeout"
+      >
         <div className="flex items-center gap-3">
           <Slider
             id="sub-agent-timeout"
@@ -298,20 +276,23 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
             {timeoutSec}s
           </span>
         </div>
-      </section>
+      </FormField>
 
       {parsed._agentDescription && (
-        <section className="flex flex-col gap-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-            <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-            描述
-          </span>
-          <div className="rounded-lg border border-border bg-muted px-3 py-2">
-            <p className="text-xs leading-relaxed text-muted-foreground">
+        <FormField
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              <Bot className="size-3.5 text-muted-foreground" />
+              描述
+            </span>
+          }
+        >
+          <div className="rounded-lg border border-border bg-muted p-3">
+            <p className="break-words text-xs leading-relaxed text-muted-foreground">
               {parsed._agentDescription}
             </p>
           </div>
-        </section>
+        </FormField>
       )}
     </div>
   )

@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Bot } from 'lucide-react'
 import type { CanvasNodeData } from '@/features/canvas'
+import { Badge } from '@/shared/ui/badge'
 
 interface SubAgentNodeBodyProps {
   data: CanvasNodeData
@@ -23,8 +24,8 @@ export const SubAgentNodeBody = memo(function SubAgentNodeBody({
 
   if (!agentDefinitionId) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground/60 italic">
-        <Bot className="h-3.5 w-3.5 shrink-0" />
+      <div className="flex items-center gap-2 text-xs italic text-subtle-foreground">
+        <Bot className="size-3.5 shrink-0" />
         <span>选择子 Agent</span>
       </div>
     )
@@ -34,21 +35,23 @@ export const SubAgentNodeBody = memo(function SubAgentNodeBody({
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <Bot className="h-3.5 w-3.5 shrink-0 text-primary/80" />
+      <div className="flex min-w-0 items-center gap-2">
+        <Bot className="size-3.5 shrink-0 text-primary/80" />
         <span className="truncate text-xs font-medium text-foreground">
           {displayName}
         </span>
       </div>
       {(alias || versionLabel) && (
-        <div className="flex flex-wrap gap-1 text-2xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap gap-1">
           {alias && (
-            <span className="rounded bg-muted px-1.5 py-0.5">@{alias}</span>
+            <Badge variant="secondary" size="sm" title={`@${alias}`}>
+              <span className="truncate">@{alias}</span>
+            </Badge>
           )}
           {versionLabel && (
-            <span className="rounded bg-muted px-1.5 py-0.5">
-              {versionLabel}
-            </span>
+            <Badge variant="secondary" size="sm" title={versionLabel}>
+              <span className="truncate">{versionLabel}</span>
+            </Badge>
           )}
         </div>
       )}
