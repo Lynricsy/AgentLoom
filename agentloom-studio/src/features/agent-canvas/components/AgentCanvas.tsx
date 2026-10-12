@@ -1,18 +1,18 @@
 import { memo, useCallback, useRef } from 'react';
 import {
   ReactFlow,
-  Background,
-  Controls,
   type Edge,
   type Connection,
   type ReactFlowInstance,
 } from '@xyflow/react';
 import { cn } from '@/shared/lib/utils';
 import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query';
+import { useTheme } from '@/shared/hooks/use-theme';
 import { CanvasNodeShell } from '@/features/canvas';
 import { SmartEdge } from '@/features/canvas';
 import { AgentNodePalette } from '@/features/canvas';
 import { CANVAS_FLOATING_CLASS } from '@/features/canvas';
+import { CanvasBackdrop } from '@/features/canvas';
 import { arePortDataTypesCompatible } from '@/features/canvas';
 import { useConnectionPreview } from '@/features/canvas';
 import { ReadOnlyNodeSheet } from '@/features/canvas';
@@ -66,6 +66,7 @@ export const AgentCanvas = memo(function AgentCanvas({
   const runtimeMode = useAgentCanvasRuntimeMode();
   const selectedNodeId = useAgentCanvasSelectedNodeId();
   const isDesktopViewport = useMediaQuery(LG_QUERY);
+  const { resolvedTheme } = useTheme();
   /** 小屏（<lg）只读浏览：保留平移 / 缩放，关闭全部编辑入口 */
   const isMobileReadOnly = !isDesktopViewport;
   const {
@@ -184,10 +185,10 @@ export const AgentCanvas = memo(function AgentCanvas({
         minZoom={0.1}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
+        colorMode={resolvedTheme}
       >
-        <Background />
         {/* 节点面板占满左侧整列，缩放控件放右下角避免被遮挡 */}
-        <Controls showInteractive={false} position="bottom-right" />
+        <CanvasBackdrop position="bottom-right" />
       </ReactFlow>
 
       {!isMobileReadOnly && (
@@ -195,7 +196,7 @@ export const AgentCanvas = memo(function AgentCanvas({
           <AgentNodePalette
             className={cn(
               CANVAS_FLOATING_CLASS,
-              'absolute top-3 bottom-3 left-3 z-30 h-auto',
+              'absolute top-16 bottom-4 left-4 z-30 h-auto',
             )}
             runtimeMode={runtimeMode}
           />
