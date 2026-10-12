@@ -31,8 +31,8 @@ describe('NodePalette', () => {
   it('renders tabs for nodes and blocks', () => {
     render(<NodePalette />)
 
-    expect(screen.getByRole('button', { name: '节点' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'My Blocks' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '节点' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'My Blocks' })).toBeInTheDocument()
   })
 
   it('renders all palette groups', () => {
@@ -56,7 +56,7 @@ describe('NodePalette', () => {
     const user = userEvent.setup()
     render(<NodePalette />)
 
-    await user.click(screen.getByRole('button', { name: 'My Blocks' }))
+    await user.click(screen.getByRole('tab', { name: 'My Blocks' }))
 
     expect(screen.getByTestId('block-library-panel')).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('搜索节点...')).not.toBeInTheDocument()

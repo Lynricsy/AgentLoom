@@ -217,21 +217,21 @@ describe('MyMarketplaceListingsPage', () => {
       meta: { total: 0, page: 1, pageSize: 12, totalPages: 0 },
     };
     renderWithProviders(<MyMarketplaceListingsPage />);
-    expect(screen.getByRole('button', { name: '全部' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '全部' })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '已上架' }),
+      screen.getByRole('tab', { name: '已上架' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '审核中' }),
+      screen.getByRole('tab', { name: '审核中' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '审核未通过' }),
+      screen.getByRole('tab', { name: '审核未通过' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: '已下架' }),
+      screen.getByRole('tab', { name: '已下架' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '工作流' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '插件' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '工作流' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '插件' })).toBeInTheDocument();
   });
 
   it('clicking a status filter tab changes the active tab', async () => {
@@ -242,8 +242,8 @@ describe('MyMarketplaceListingsPage', () => {
     };
     renderWithProviders(<MyMarketplaceListingsPage />);
 
-    const listedTab = screen.getByRole('button', { name: '已上架' });
-    const allTab = screen.getByRole('button', { name: '全部' });
+    const listedTab = screen.getByRole('tab', { name: '已上架' });
+    const allTab = screen.getByRole('tab', { name: '全部' });
     expect(allTab).toHaveAttribute('data-state', 'active');
 
     await user.click(listedTab);

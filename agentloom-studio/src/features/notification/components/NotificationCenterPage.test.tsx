@@ -187,7 +187,7 @@ describe('NotificationCenterPage', () => {
     renderPage()
 
     await screen.findByText('工作流执行完成')
-    await user.click(screen.getByRole('button', { name: /未读/ }))
+    await user.click(screen.getByRole('tab', { name: /未读/ }))
 
     await waitFor(() => {
       expect(listNotificationsMock).toHaveBeenLastCalledWith({

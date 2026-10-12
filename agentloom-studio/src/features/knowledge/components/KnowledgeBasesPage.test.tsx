@@ -167,10 +167,10 @@ describe("KnowledgeBasesPage", () => {
     render(<KnowledgeBasesPage />);
 
     expect(
-      screen.getByRole("button", { name: "自己创建" }),
+      screen.getByRole("tab", { name: "自己创建" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "分享导入" }),
+      screen.getByRole("tab", { name: "分享导入" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("自己创建")).toHaveLength(1);
     expect(mocks.useKnowledgeBases).toHaveBeenCalledWith(
@@ -267,7 +267,7 @@ describe("KnowledgeBasesPage", () => {
     setupMocks({ knowledgeBases: [] });
     render(<KnowledgeBasesPage />);
 
-    await userEvent.click(screen.getByRole("button", { name: "分享导入" }));
+    await userEvent.click(screen.getByRole("tab", { name: "分享导入" }));
 
     expect(mocks.useKnowledgeBases).toHaveBeenLastCalledWith(
       expect.objectContaining({ sourceKind: "share_imported" }),

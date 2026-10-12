@@ -179,7 +179,7 @@ describe("SandboxComputerPanel", () => {
     expect(screen.getByText("bash")).toBeInTheDocument();
     expect(screen.getByText("执行中")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /文件变更/i }));
+    await user.click(screen.getByRole("tab", { name: /文件变更/i }));
 
     expect(screen.getByText("a.txt")).toBeInTheDocument();
     expect(screen.getByText("新建")).toBeInTheDocument();

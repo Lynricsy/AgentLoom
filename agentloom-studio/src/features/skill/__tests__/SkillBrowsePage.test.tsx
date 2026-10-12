@@ -194,10 +194,10 @@ describe("SkillBrowsePage", () => {
       render(<SkillBrowsePage />);
 
       expect(
-        screen.getByRole("button", { name: "自己创建" }),
+        screen.getByRole("tab", { name: "自己创建" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "分享导入" }),
+        screen.getByRole("tab", { name: "分享导入" }),
       ).toBeInTheDocument();
       expect(screen.getAllByText("自己创建")).toHaveLength(1);
       expect(useSkillListMock).toHaveBeenCalledWith(
@@ -321,7 +321,7 @@ describe("SkillBrowsePage", () => {
     it("点击顶部来源分类会切换为分享导入", async () => {
       render(<SkillBrowsePage />);
 
-      await userEvent.click(screen.getByRole("button", { name: "分享导入" }));
+      await userEvent.click(screen.getByRole("tab", { name: "分享导入" }));
 
       expect(useSkillListMock).toHaveBeenLastCalledWith(
         expect.objectContaining({ sourceKind: "share_imported" }),

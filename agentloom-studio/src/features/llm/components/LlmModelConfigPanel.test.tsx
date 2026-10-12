@@ -199,7 +199,7 @@ describe("LlmModelConfigPanel", () => {
 
     render(<LlmModelConfigPanel config={null} onApply={onApply} />);
 
-    await user.click(screen.getByRole("button", { name: "选择已有配置" }));
+    await user.click(screen.getByRole("tab", { name: "选择已有配置" }));
     await user.click(screen.getByRole("combobox", { name: "已保存配置" }));
     await user.click(screen.getByRole("option", { name: /OpenAI 主模型/i }));
 
@@ -276,7 +276,7 @@ describe("LlmModelConfigPanel", () => {
 
     render(<LlmModelConfigPanel config={null} onApply={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "选择已有配置" }));
+    await user.click(screen.getByRole("tab", { name: "选择已有配置" }));
     await user.click(screen.getByRole("combobox", { name: "已保存配置" }));
 
     const listbox = screen.getByRole("listbox");

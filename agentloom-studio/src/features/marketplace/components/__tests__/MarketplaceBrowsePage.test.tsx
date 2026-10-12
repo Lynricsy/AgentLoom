@@ -217,7 +217,7 @@ describe('MarketplaceBrowsePage', () => {
 
     renderBrowsePage()
 
-    fireEvent.click(screen.getByRole('button', { name: '分析' }))
+    fireEvent.click(screen.getByRole('tab', { name: '分析' }))
 
     expect(usePublicListingsMock.mock.lastCall?.[0]).toMatchObject({
       category: 'analysis',
@@ -230,7 +230,7 @@ describe('MarketplaceBrowsePage', () => {
 
     renderBrowsePage()
 
-    fireEvent.click(screen.getByRole('button', { name: '插件' }))
+    fireEvent.click(screen.getByRole('tab', { name: '插件' }))
 
     expect(usePublicListingsMock.mock.lastCall?.[0]).toMatchObject({
       listingType: 'plugin',

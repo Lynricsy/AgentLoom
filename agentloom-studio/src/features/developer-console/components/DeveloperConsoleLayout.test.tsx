@@ -39,9 +39,9 @@ describe('DeveloperConsoleLayout', () => {
 
     expect(screen.getByText('开发者控制台')).toBeInTheDocument()
     expect(screen.getByText('密钥内容')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '收益' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '收益' })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: '开发者密钥' }),
+      screen.getByRole('tab', { name: '开发者密钥' }),
     ).toBeInTheDocument()
   })
 
@@ -53,7 +53,7 @@ describe('DeveloperConsoleLayout', () => {
       </DeveloperConsoleLayout>,
     )
 
-    await user.click(screen.getByRole('button', { name: '开发者密钥' }))
+    await user.click(screen.getByRole('tab', { name: '开发者密钥' }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/developer-console/keys',
@@ -68,7 +68,7 @@ describe('DeveloperConsoleLayout', () => {
       </DeveloperConsoleLayout>,
     )
 
-    await user.click(screen.getByRole('button', { name: '收益' }))
+    await user.click(screen.getByRole('tab', { name: '收益' }))
 
     expect(mocks.navigate).not.toHaveBeenCalled()
   })
@@ -94,9 +94,9 @@ describe('DeveloperConsoleLayout', () => {
       </DeveloperConsoleLayout>,
     )
 
-    expect(screen.queryByRole('button', { name: '收益' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: '收益' })).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: '开发者密钥' }),
+      screen.getByRole('tab', { name: '开发者密钥' }),
     ).toBeInTheDocument()
     expect(screen.getByText('密钥内容')).toBeInTheDocument()
   })
@@ -129,9 +129,9 @@ describe('DeveloperConsoleLayout', () => {
       </DeveloperConsoleLayout>,
     )
 
-    expect(screen.queryByRole('button', { name: '收益' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: '收益' })).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: '开发者密钥' }),
+      screen.queryByRole('tab', { name: '开发者密钥' }),
     ).not.toBeInTheDocument()
     expect(screen.getByTestId('developer-console-forbidden')).toBeInTheDocument()
     expect(screen.queryByText('密钥内容')).not.toBeInTheDocument()
