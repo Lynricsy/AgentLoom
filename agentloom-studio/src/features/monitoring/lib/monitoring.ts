@@ -1,3 +1,5 @@
+import { formatDateTime, formatNumber, formatPercent } from '@/shared/lib/format'
+
 import type {
   MonitoringAlertCategory,
   MonitoringAlertSeverity,
@@ -22,7 +24,7 @@ export const MONITORING_WINDOW_OPTIONS: Array<{
   { value: '24h', label: '24h', summaryLabel: '最近 24 小时' },
 ]
 
-const numberFormatter = new Intl.NumberFormat('zh-CN')
+const DURATION_NUMBER = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 })
 
 export function getMonitoringWindowSummaryLabel(window: MonitoringWindow): string {
   return (
@@ -32,11 +34,12 @@ export function getMonitoringWindowSummaryLabel(window: MonitoringWindow): strin
 }
 
 export function formatMonitoringCount(value: number): string {
-  return numberFormatter.format(value)
+  return formatNumber(value)
 }
 
+/** value 为 0–100 的百分数 */
 export function formatMonitoringPercent(value: number): string {
-  return `${value.toFixed(1)}%`
+  return formatPercent(value / 100)
 }
 
 export function formatMonitoringDuration(value: number | null): string {
@@ -45,31 +48,18 @@ export function formatMonitoringDuration(value: number | null): string {
   }
 
   if (value >= 60_000) {
-    return `${(value / 60_000).toFixed(1)} 分钟`
+    return `${DURATION_NUMBER.format(value / 60_000)} 分钟`
   }
 
   if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1)} 秒`
+    return `${DURATION_NUMBER.format(value / 1_000)} 秒`
   }
 
   return `${Math.round(value)} 毫秒`
 }
 
 export function formatMonitoringTimestamp(value?: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
+  return formatDateTime(value)
 }
 
 export function getAlertSeverityLabel(severity: MonitoringAlertSeverity): string {

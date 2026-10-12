@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Activity, AlertTriangle, RadioTower, ShieldAlert } from 'lucide-react'
 import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
@@ -76,17 +77,29 @@ function MonitoringOrganizationLoadingState() {
       <PageHeader icon={Activity} title="运行监控" description={PAGE_DESCRIPTION} />
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Spinner className="size-3.5" />
+        <Spinner size="sm" />
         正在确认当前组织…
       </p>
 
+      <MonitoringContentSkeleton />
+    </PageContainer>
+  )
+}
+
+/** 与真实内容同尺寸：7 张摘要卡（88px）+ 趋势卡/告警列（约 400px） */
+function MonitoringContentSkeleton() {
+  return (
+    <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-[6.5rem] rounded-lg" />
+        {Array.from({ length: 7 }, (_, index) => (
+          <Skeleton key={index} className="h-[5.5rem] rounded-lg" />
         ))}
       </div>
-      <Skeleton className="h-80 rounded-lg" />
-    </PageContainer>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Skeleton className="h-[25rem] rounded-lg" />
+        <Skeleton className="h-[25rem] rounded-lg" />
+      </div>
+    </>
   )
 }
 
@@ -112,7 +125,7 @@ function MonitoringOverviewTab({
         <CardContent className="flex flex-col gap-4 p-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 space-y-2">
             <div className="flex items-center gap-2 text-foreground">
-              <RadioTower className="h-4 w-4" aria-hidden="true" />
+              <RadioTower className="size-4" aria-hidden="true" />
               <h2 className="text-sm font-semibold">当前组织全局视图</h2>
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">
@@ -122,7 +135,7 @@ function MonitoringOverviewTab({
             <p className="flex items-center gap-1.5 text-xs leading-relaxed text-muted-foreground">
               {isFetching && !isLoading ? (
                 <>
-                  <Spinner className="h-3 w-3" />
+                  <Spinner className="size-3" />
                   {`正在按 ${activeWindowLabel} 重新刷新摘要、趋势、告警与热点数据…`}
                 </>
               ) : (
@@ -134,8 +147,8 @@ function MonitoringOverviewTab({
             </p>
           </div>
 
-          <div className="flex flex-col items-start gap-3 xl:items-end">
-            <div role="group" aria-label="监控时间窗口" className="flex flex-wrap gap-1.5">
+          <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
+            <div role="group" aria-label="监控时间窗口" className="flex shrink-0 gap-1.5">
               {MONITORING_WINDOW_OPTIONS.map((option) => {
                 const isActive = option.value === window
 
@@ -143,7 +156,7 @@ function MonitoringOverviewTab({
                   <Button
                     key={option.value}
                     type="button"
-                    size="sm"
+                    size="xs"
                     variant={isActive ? 'default' : 'outline'}
                     aria-pressed={isActive}
                     data-testid={`monitoring-window-${option.value}`}
@@ -155,12 +168,12 @@ function MonitoringOverviewTab({
               })}
             </div>
 
-            <a
-              href="/settings/resource-quotas"
+            <Link
+              to="/settings/resource-quotas"
               className="rounded-md text-xs font-medium text-primary transition-colors hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
             >
               前往资源治理设置
-            </a>
+            </Link>
           </div>
         </CardContent>
       </Card>
@@ -168,18 +181,10 @@ function MonitoringOverviewTab({
       {isLoading ? (
         <div className="space-y-6" data-testid="monitoring-loading-state">
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Spinner className="h-3.5 w-3.5" />
+            <Spinner size="sm" />
             正在加载监控数据…
           </p>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
-              <Skeleton key={index} className="h-[6.5rem] rounded-lg" />
-            ))}
-          </div>
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <Skeleton className="h-80 rounded-lg" />
-            <Skeleton className="h-80 rounded-lg" />
-          </div>
+          <MonitoringContentSkeleton />
         </div>
       ) : null}
 

@@ -1,9 +1,10 @@
+import { Link } from '@tanstack/react-router'
 import { ExternalLink, Flame } from 'lucide-react'
 import { motion } from 'motion/react'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { staggerList } from '@/shared/lib/motion'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import {
   formatMonitoringCount,
   formatMonitoringPercent,
@@ -32,9 +33,9 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
     <Card data-testid="monitoring-hotspots">
       <CardHeader>
         <CardTitle>热点工作流与异常执行</CardTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <CardDescription className="leading-relaxed">
           这里只统计当前组织内部的热点对象，不是跨租户总榜。治理暂停与 execution paused（人工介入）会用不同标签显示。
-        </p>
+        </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-3">
@@ -59,7 +60,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="text-xs font-semibold text-foreground">{hotspot.label}</h3>
+                      <h3 className="min-w-0 max-w-full break-all text-xs font-semibold text-foreground">{hotspot.label}</h3>
                       <Badge variant="outline" size="sm">
                         {getHotspotKindLabel(hotspot.kind)}
                       </Badge>
@@ -77,7 +78,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
 
                 <dl className="mt-3 grid gap-2 sm:grid-cols-3">
                   <div className="rounded-lg border border-border bg-surface p-2.5">
-                    <dt className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <dt className="text-2xs font-medium tracking-wide text-muted-foreground">
                       执行量
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -85,7 +86,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                     </dd>
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-2.5">
-                    <dt className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <dt className="text-2xs font-medium tracking-wide text-muted-foreground">
                       失败率
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -95,7 +96,7 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                     </dd>
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-2.5">
-                    <dt className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+                    <dt className="text-2xs font-medium tracking-wide text-muted-foreground">
                       排队深度
                     </dt>
                     <dd className="mt-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -105,13 +106,13 @@ export function MonitoringHotspotList({ hotspots }: MonitoringHotspotListProps) 
                 </dl>
 
                 {hotspot.linkTarget && linkLabel ? (
-                  <a
-                    href={hotspot.linkTarget.href}
+                  <Link
+                    to={hotspot.linkTarget.href}
                     className="mt-3 inline-flex items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   >
                     {linkLabel}
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </a>
+                    <ExternalLink className="size-3.5" aria-hidden="true" />
+                  </Link>
                 ) : null}
               </motion.article>
             )

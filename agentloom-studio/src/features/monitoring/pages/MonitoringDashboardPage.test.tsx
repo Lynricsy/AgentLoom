@@ -36,6 +36,14 @@ vi.mock('@/features/optimization-suggestion', () => ({
   OptimizationSuggestionsBoard: () => <div data-testid="mock-suggestions-board" />,
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
+}))
+
 function createToken(payload: Record<string, unknown>) {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url')

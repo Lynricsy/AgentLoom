@@ -7,7 +7,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import type { MonitoringTrendPoint } from '../types/monitoring'
 
 interface MonitoringTrendChartProps {
@@ -16,7 +16,7 @@ interface MonitoringTrendChartProps {
 }
 
 /** recharts 只接受具体色值字符串，统一从设计令牌变量读取 */
-const AXIS_TICK = { fill: 'var(--color-muted)', fontSize: 12 }
+const AXIS_TICK = { fill: 'var(--color-muted-foreground)', fontSize: 12 }
 const AXIS_LINE = { stroke: 'var(--color-border)' }
 
 export function MonitoringTrendChart({
@@ -27,9 +27,9 @@ export function MonitoringTrendChart({
     <Card data-testid="monitoring-trend-chart">
       <CardHeader>
         <CardTitle>执行趋势（{activeWindowLabel}）</CardTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <CardDescription className="leading-relaxed">
           这里仅展示当前窗口内的执行量变化。队列深度仍然会出现在摘要卡片、告警与热点中，但只代表当前 queue snapshot，不提供历史曲线。
-        </p>
+        </CardDescription>
       </CardHeader>
 
       <CardContent>
@@ -61,7 +61,7 @@ export function MonitoringTrendChart({
                     borderRadius: 'var(--radius-lg)',
                     color: 'var(--color-foreground)',
                   }}
-                  labelStyle={{ color: 'var(--color-muted)' }}
+                  labelStyle={{ color: 'var(--color-muted-foreground)' }}
                 />
                 <Line
                   yAxisId="execution"

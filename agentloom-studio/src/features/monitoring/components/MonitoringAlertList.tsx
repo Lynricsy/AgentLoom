@@ -1,9 +1,10 @@
+import { Link } from '@tanstack/react-router'
 import { AlertTriangle, ExternalLink, ShieldAlert } from 'lucide-react'
 import { motion } from 'motion/react'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { staggerList } from '@/shared/lib/motion'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import {
   formatMonitoringTimestamp,
   getAlertCategoryLabel,
@@ -50,9 +51,9 @@ export function MonitoringAlertList({
         <CardContent className="flex items-start gap-3 p-4">
           <span
             aria-hidden="true"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"
+            className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"
           >
-            <ShieldAlert className="h-4 w-4" />
+            <ShieldAlert className="size-4" />
           </span>
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -73,10 +74,10 @@ export function MonitoringAlertList({
                 : '当前未检测到租户级治理暂停，但 execution paused（人工介入）仍会在热点列表中单独标识。'}
             </p>
             {riskSummary.primaryLinkTarget && primaryRiskLinkLabel ? (
-              <a href={riskSummary.primaryLinkTarget.href} className={DRILL_DOWN_LINK_CLASS}>
+              <Link to={riskSummary.primaryLinkTarget.href} className={DRILL_DOWN_LINK_CLASS}>
                 {primaryRiskLinkLabel}
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
+                <ExternalLink className="size-3.5" aria-hidden="true" />
+              </Link>
             ) : null}
           </div>
         </CardContent>
@@ -85,9 +86,9 @@ export function MonitoringAlertList({
       <Card data-testid="monitoring-alert-list">
         <CardHeader>
           <CardTitle>告警与治理提示</CardTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <CardDescription className="leading-relaxed">
             所有告警都保持只读，仅提供原因说明与 drill-down 入口，不会在这里直接执行配额修改、治理暂停切换或异常执行终止。
-          </p>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
@@ -112,7 +113,7 @@ export function MonitoringAlertList({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <h3 className="text-xs font-semibold text-foreground">{alert.title}</h3>
+                        <h3 className="min-w-0 break-words text-xs font-semibold text-foreground">{alert.title}</h3>
                         <Badge variant={SEVERITY_VARIANT[alert.severity] ?? 'secondary'} size="sm">
                           {getAlertSeverityLabel(alert.severity)}
                         </Badge>
@@ -127,20 +128,16 @@ export function MonitoringAlertList({
                     </span>
                   </div>
 
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge variant="secondary" size="sm">
-                      影响：{alert.affectedSummary}
-                    </Badge>
-                    <Badge variant="secondary" size="sm">
-                      来源：{alert.source}
-                    </Badge>
+                  <div className="mt-2 space-y-0.5 text-2xs leading-relaxed text-muted-foreground">
+                    <p className="break-words">影响：{alert.affectedSummary}</p>
+                    <p className="break-words">来源：{alert.source}</p>
                   </div>
 
                   {alert.linkTarget && linkLabel ? (
-                    <a href={alert.linkTarget.href} className={`mt-3 ${DRILL_DOWN_LINK_CLASS}`}>
+                    <Link to={alert.linkTarget.href} className={`mt-3 ${DRILL_DOWN_LINK_CLASS}`}>
                       {linkLabel}
-                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                    </a>
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                    </Link>
                   ) : null}
                 </motion.article>
               )
