@@ -15,7 +15,7 @@ import { resolveOrganizationErrorMessage } from '../lib/organizationErrors'
 /** 邀请页与登录页共用居中卡片视觉，但内容是单一状态机，不复用 AuthLayout 的标题结构 */
 function InvitationShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-10">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div
           className="absolute -top-56 left-1/2 h-[26rem] w-[34rem] -translate-x-1/2 rounded-full opacity-[0.10] blur-3xl"
@@ -106,14 +106,14 @@ export function AcceptInvitationPage() {
         <div className="flex flex-col items-start gap-3">
           <span
             aria-hidden
-            className="grid h-11 w-11 place-items-center rounded-lg bg-error/10 text-error"
+            className="grid size-11 place-items-center rounded-lg bg-error/10 text-error"
           >
-            <AlertTriangle className="h-5 w-5" />
+            <AlertTriangle className="size-5" />
           </span>
           <h2 className="text-xl font-semibold tracking-tight text-foreground">
             邀请无法接受
           </h2>
-          <p className="text-sm text-muted-foreground">{error}</p>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{error}</p>
           <Button
             className="mt-2"
             variant="outline"
@@ -132,9 +132,9 @@ export function AcceptInvitationPage() {
         <div className="flex flex-col items-start gap-3">
           <span
             aria-hidden
-            className="grid h-11 w-11 place-items-center rounded-lg bg-success/10 text-success"
+            className="grid size-11 place-items-center rounded-lg bg-success/10 text-success"
           >
-            <CheckCircle2 className="h-5 w-5" />
+            <CheckCircle2 className="size-5" />
           </span>
           <h2 className="text-xl font-semibold tracking-tight text-foreground">
             已加入组织
@@ -148,7 +148,7 @@ export function AcceptInvitationPage() {
   return (
     <InvitationShell>
       <div className="flex items-center gap-3">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <Loader2 aria-hidden className="size-5 shrink-0 animate-spin text-primary" />
         <div>
           <h2 className="text-base font-semibold tracking-tight text-foreground">
             正在接受邀请

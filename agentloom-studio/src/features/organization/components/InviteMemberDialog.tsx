@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Copy, Loader2, Mail } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { Copy, Mail } from 'lucide-react'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { fadeInUp } from '@/shared/lib/motion'
 import { Button } from '@/shared/ui/button'
 import {
   Dialog,
@@ -125,7 +128,7 @@ export function InviteMemberDialog({
               邮箱
             </label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="invite-member-email"
                 type="email"
@@ -165,23 +168,25 @@ export function InviteMemberDialog({
             </p>
           </div>
 
-          {inviteLink ? (
-            <div className="space-y-1.5">
-              <label
-                htmlFor="invite-member-link"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                邀请链接
-              </label>
-              <div className="flex gap-2">
-                <Input id="invite-member-link" readOnly value={inviteLink} />
-                <Button variant="outline" onClick={() => void handleCopyLink()}>
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  复制链接
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          <AnimatePresence initial={false}>
+            {inviteLink ? (
+              <motion.div key="invite-link" {...fadeInUp} className="space-y-1.5">
+                <label
+                  htmlFor="invite-member-link"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  邀请链接
+                </label>
+                <div className="flex gap-2">
+                  <Input id="invite-member-link" readOnly value={inviteLink} />
+                  <Button variant="outline" onClick={() => void handleCopyLink()}>
+                    <Copy />
+                    复制链接
+                  </Button>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           {error ? (
             <p className="text-xs font-medium text-error">{error}</p>
@@ -189,22 +194,29 @@ export function InviteMemberDialog({
         </DialogBody>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={inviteMutation.isPending}
-          >
-            取消
-          </Button>
-          <Button
-            onClick={() => void handleSubmit()}
-            disabled={inviteMutation.isPending}
-          >
-            {inviteMutation.isPending ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : null}
-            生成邀请链接
-          </Button>
+          {inviteLink ? (
+            // 链接已生成：只留「完成」，避免误点再生成一条新邀请
+            <Button onClick={() => onOpenChange(false)}>完成</Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={inviteMutation.isPending}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => void handleSubmit()}
+                disabled={inviteMutation.isPending}
+              >
+                {inviteMutation.isPending ? (
+                  <Spinner size="sm" className="text-current" />
+                ) : null}
+                生成邀请链接
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

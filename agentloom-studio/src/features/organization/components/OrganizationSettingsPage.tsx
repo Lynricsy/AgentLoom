@@ -4,7 +4,9 @@ import { AlertCircle, Building2, UserPlus, Users } from 'lucide-react'
 import { useAuthToken } from '@/features/execution'
 import { getInterventionPolicyRoleFromToken } from '@/features/intervention-policy'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { formatDate } from '@/shared/lib/format'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -17,20 +19,6 @@ import { InviteMemberDialog } from './InviteMemberDialog'
 import { OrganizationMembersTable } from './OrganizationMembersTable'
 
 const ORGANIZATION_TONE = 'var(--color-node-routing)'
-
-function formatCreatedAt(value: string): string {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return '未知时间'
-  }
-
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-}
 
 interface InfoFieldProps {
   label: string
@@ -70,7 +58,7 @@ export function OrganizationSettingsPage() {
     organizationQuery.error.response.status === 404
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+    <PageContainer width="narrow">
       <PageHeader
         icon={Building2}
         tone={ORGANIZATION_TONE}
@@ -79,7 +67,7 @@ export function OrganizationSettingsPage() {
         actions={
           canManage && organization ? (
             <Button onClick={() => setInviteOpen(true)}>
-              <UserPlus className="mr-2 h-4 w-4" />
+              <UserPlus />
               邀请成员
             </Button>
           ) : null
@@ -140,10 +128,12 @@ export function OrganizationSettingsPage() {
               </InfoField>
               <InfoField label="成员数">{organization.memberCount}</InfoField>
               <InfoField label="创建时间">
-                {formatCreatedAt(organization.createdAt)}
+                {formatDate(organization.createdAt)}
               </InfoField>
               <InfoField label="组织 ID">
-                <code className="text-xs">{organization.id}</code>
+                <code className="font-mono text-xs" title={organization.id}>
+                  {organization.id}
+                </code>
               </InfoField>
             </dl>
           </Card>
@@ -184,6 +174,6 @@ export function OrganizationSettingsPage() {
           />
         </>
       )}
-    </div>
+    </PageContainer>
   )
 }

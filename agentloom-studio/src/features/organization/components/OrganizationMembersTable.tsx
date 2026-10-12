@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { AlertCircle, Loader2, UserMinus, Users } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { AlertCircle, UserMinus, Users } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +24,8 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { formatDateTime } from '@/shared/lib/format'
 import {
   useRemoveOrganizationMember,
   useUpdateOrganizationMemberRole,
@@ -46,22 +48,6 @@ const ROLE_BADGE_VARIANT: Record<
   creator: 'info',
   operator: 'secondary',
   viewer: 'secondary',
-}
-
-function formatJoinedAt(value: string): string {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return '未知时间'
-  }
-
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 interface OrganizationMembersTableProps {
@@ -90,6 +76,9 @@ export function OrganizationMembersTable({
   const [confirmRemove, setConfirmRemove] = useState<OrganizationMember | null>(
     null,
   )
+  // 退场动画期间 confirmRemove 已置 null，文案读最后一次的目标避免闪空
+  const lastRemoveRef = useRef<OrganizationMember | null>(null)
+  if (confirmRemove) lastRemoveRef.current = confirmRemove
 
   const handleRoleChange = async (
     member: OrganizationMember,
@@ -169,12 +158,21 @@ export function OrganizationMembersTable({
       key: 'displayName',
       header: '显示名',
       hideBelow: 'sm',
-      cell: (member) => member.displayName ?? <span className="text-muted-foreground">未设置</span>,
+      nowrap: true,
+      className: 'max-w-[10rem]',
+      cell: (member) =>
+        member.displayName ? (
+          <span className="block truncate" title={member.displayName}>
+            {member.displayName}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">未设置</span>
+        ),
     },
     {
       key: 'role',
       header: '角色',
-      className: 'w-40',
+      className: 'w-36',
       cell: (member) =>
         canManage ? (
           <Select
@@ -208,24 +206,28 @@ export function OrganizationMembersTable({
       key: 'createdAt',
       header: '加入时间',
       hideBelow: 'md',
+      nowrap: true,
       className: 'text-muted-foreground',
-      cell: (member) => formatJoinedAt(member.createdAt),
+      cell: (member) => formatDateTime(member.createdAt),
     },
     ...(canManage
       ? [
           {
             key: 'actions',
             header: '操作',
-            className: 'w-16 text-right',
+            align: 'right',
+            className: 'w-16',
             cell: (member: OrganizationMember) => (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`移除 ${member.email}`}
-                onClick={() => setConfirmRemove(member)}
-              >
-                <UserMinus className="h-4 w-4" />
-              </Button>
+              <div className="flex justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`移除 ${member.email}`}
+                  onClick={() => setConfirmRemove(member)}
+                >
+                  <UserMinus />
+                </Button>
+              </div>
             ),
           } satisfies DataTableColumn<OrganizationMember>,
         ]
@@ -274,7 +276,7 @@ export function OrganizationMembersTable({
         <AlertDialogContent>
           <AlertDialogTitle>移除成员</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要把 {confirmRemove?.email} 移出组织吗？该成员将立即失去组织内全部资源的访问权限。
+            确定要把 {lastRemoveRef.current?.email} 移出组织吗？该成员将立即失去组织内全部资源的访问权限。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -286,9 +288,7 @@ export function OrganizationMembersTable({
                 void handleRemove()
               }}
             >
-              {removeMutation.isPending ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : null}
+              {removeMutation.isPending ? <Spinner size="sm" className="text-current" /> : null}
               移除
             </AlertDialogAction>
           </AlertDialogFooter>
