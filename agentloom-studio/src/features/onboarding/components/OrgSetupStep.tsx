@@ -72,10 +72,10 @@ export function OrgSetupStep({
       </FormItem>
 
       <div className="mt-8 flex gap-3">
-        <Button variant="ghost" disabled={isSubmitting} onClick={onBack}>
+        <Button variant="ghost" size="lg" disabled={isSubmitting} onClick={onBack}>
           返回
         </Button>
-        <Button className="flex-1" disabled={isSubmitting} onClick={handleSubmit}>
+        <Button className="flex-1" size="lg" disabled={isSubmitting} onClick={handleSubmit}>
           {isSubmitting ? (
             <>
               <Spinner className="text-primary-foreground" />

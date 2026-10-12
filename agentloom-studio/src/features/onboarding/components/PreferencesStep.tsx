@@ -63,11 +63,12 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
       </div>
 
       <div className="mt-8 flex gap-3">
-        <Button variant="ghost" onClick={onSkip}>
+        <Button variant="ghost" size="lg" onClick={onSkip}>
           跳过
         </Button>
         <Button
           className="flex-1"
+          size="lg"
           onClick={() => onComplete({ language, notifications })}
         >
           完成设置
