@@ -981,6 +981,33 @@ describe('PiAgentCoreAdapter', () => {
         ).resolves.toEqual([{ type: 'done', stopReason: target }]);
       },
     );
+
+    it('agent_end stopReason=error 时 prompt 以上游错误失败，而不是空回复完成', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'agent_end',
+          messages: [
+            {
+              role: 'assistant',
+              stopReason: 'error',
+              errorMessage: 'No available providers',
+            },
+          ],
+        });
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+        ),
+      ).rejects.toThrow('模型调用失败：No available providers');
+      expect((await adapter.loadSession(session.id)).status).toBe('error');
+    });
   });
 
   describe('permission gate', () => {

@@ -185,6 +185,14 @@ const KNOWLEDGE_TOOL_INPUT_SCHEMA = {
   additionalProperties: false,
 } satisfies AiJsonSchemaInput;
 
+/** 模型请求失败（上游报错、鉴权失败、无可用通道等），由 pi 以 stopReason=error 上报。 */
+export class PiAgentModelError extends Error {
+  constructor(readonly upstreamMessage?: string) {
+    super(`模型调用失败：${upstreamMessage ?? '未知错误'}`);
+    this.name = 'PiAgentModelError';
+  }
+}
+
 class AsyncAgentEventSink implements AsyncIterable<AgentEvent> {
   private readonly buffer: AgentEvent[] = [];
   private readonly waiters: Array<{
@@ -385,6 +393,14 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     runtimeSession.activeSink = sink;
 
     const unsubscribe = agent.subscribe((event) => {
+      // pi 不会因模型调用失败而 reject，而是以 stopReason=error 结束；必须转成失败，
+      // 否则节点会以空回复"成功"完成。
+      const modelFailure = this.readModelFailure(event);
+      if (modelFailure) {
+        session.status = 'error';
+        sink.fail(modelFailure);
+        return;
+      }
       const translated = this.translatePiEvent(sessionId, event);
       for (const item of translated) {
         if (item.type === 'message_chunk') {
@@ -1266,6 +1282,17 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     }
 
     return result;
+  }
+
+  private readModelFailure(event: Record<string, unknown>): Error | null {
+    if (event.type !== 'agent_end') {
+      return null;
+    }
+    const last = (event as PiAgentEndEvent).messages?.at(-1);
+    if (last?.stopReason !== 'error') {
+      return null;
+    }
+    return new PiAgentModelError(last.errorMessage);
   }
 
   private mapStopReason(event: PiAgentEndEvent): StopReason {
