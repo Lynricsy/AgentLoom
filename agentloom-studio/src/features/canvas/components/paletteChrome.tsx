@@ -163,7 +163,7 @@ export const PaletteSectionHeader = memo(function PaletteSectionHeader({
       className="h-auto w-full justify-start gap-2 rounded-lg px-2 py-1.5 [&_svg]:size-3.5"
     >
       <PaletteIconChip icon={icon} color={color} size="sm" />
-      <span className="flex-1 text-left text-xs font-semibold tracking-wide">
+      <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold tracking-wide">
         {label}
       </span>
       <ChevronDown
@@ -208,17 +208,18 @@ export const PaletteItemButton = memo(function PaletteItemButton({
       className={cn(
         'h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-lg border border-transparent px-2 py-1.5 text-left font-normal active:scale-100',
         disabled
-          ? 'cursor-default opacity-55 hover:bg-transparent'
+          ? 'cursor-default hover:bg-transparent'
           : 'cursor-grab hover:border-border hover:bg-muted active:cursor-grabbing',
       )}
     >
-      <PaletteIconChip icon={icon} color={color} />
+      {/* 禁用条目只降文字色、芯片去饱和，不整体降透明度，保证「自动创建」等标记仍可读 */}
+      <PaletteIconChip icon={icon} color={color} className={cn(disabled && 'grayscale')} />
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
           <span
             className={cn(
-              'truncate text-xs font-medium',
-              disabled ? 'text-muted-foreground' : 'text-foreground',
+              'min-w-0 truncate text-xs font-medium',
+              disabled ? 'text-subtle-foreground' : 'text-foreground',
             )}
           >
             {label}
@@ -273,7 +274,7 @@ export const PaletteRailItem = memo(function PaletteRailItem({
         className={cn(
           'h-auto w-auto rounded-lg border border-transparent p-1 active:scale-100',
           disabled
-            ? 'cursor-default opacity-55 hover:bg-transparent'
+            ? 'cursor-default grayscale hover:bg-transparent'
             : 'cursor-grab hover:border-border hover:bg-muted active:cursor-grabbing',
         )}
       >

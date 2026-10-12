@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 import {
   useIsExecutionActive,
   useNodeExecutionState,
@@ -100,26 +100,34 @@ function renderConfigValue(value: unknown): ReactNode {
  * 小屏用户只能浏览，编辑一律引导回桌面端。
  */
 export const ReadOnlyNodeSheet = memo(function ReadOnlyNodeSheet({
-  node,
+  node: nodeProp,
   open,
   onOpenChange,
   showOutput = false,
 }: ReadOnlyNodeSheetProps) {
-  const nodeConfig = node
-    ? getResolvedNodeTypeConfig(node.data.nodeType, {
-        category: node.data.category,
-        inputPorts: Array.isArray(node.data.inputPorts)
-          ? node.data.inputPorts
+  // 关闭时调用方会在同一帧把 node 置空；缓存最后一个节点继续渲染，让 Sheet 的退场动画播完
+  const [lastNode, setLastNode] = useState(nodeProp)
+  if (nodeProp && nodeProp !== lastNode) {
+    setLastNode(nodeProp)
+  }
+  const displayNode = nodeProp ?? lastNode
+
+  const nodeConfig = displayNode
+    ? getResolvedNodeTypeConfig(displayNode.data.nodeType, {
+        category: displayNode.data.category,
+        inputPorts: Array.isArray(displayNode.data.inputPorts)
+          ? displayNode.data.inputPorts
           : undefined,
-        outputPorts: Array.isArray(node.data.outputPorts)
-          ? node.data.outputPorts
+        outputPorts: Array.isArray(displayNode.data.outputPorts)
+          ? displayNode.data.outputPorts
           : undefined,
       })
     : null
 
-  if (!node || !nodeConfig) {
+  if (!displayNode || !nodeConfig) {
     return null
   }
+  const node = displayNode
 
   const accentToken = getNodeAccentToken(node.data.nodeType, nodeConfig.category)
   const NodeIcon = resolveNodeIcon(nodeConfig.icon)
@@ -136,19 +144,19 @@ export const ReadOnlyNodeSheet = memo(function ReadOnlyNodeSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="max-h-[78vh]"
+        className="max-h-[78dvh]"
         data-testid="readonly-node-sheet"
       >
         <SheetHeader className="flex-row items-start gap-3">
           <span
             aria-hidden
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg"
             style={{
               backgroundColor: `color-mix(in srgb, ${accentToken} 14%, transparent)`,
               color: accentToken,
             }}
           >
-            <NodeIcon className="h-4 w-4" />
+            <NodeIcon className="size-4" />
           </span>
 
           <div className="min-w-0 flex-1">
@@ -165,7 +173,7 @@ export const ReadOnlyNodeSheet = memo(function ReadOnlyNodeSheet({
 
         <SheetBody className="space-y-5">
           <section data-testid="readonly-node-config">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <h3 className="text-xs font-medium tracking-wide text-muted-foreground">
               配置
             </h3>
 
@@ -222,7 +230,7 @@ const ReadOnlyNodeOutput = memo(function ReadOnlyNodeOutput({
   return (
     <section data-testid="readonly-node-output-section">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-xs font-medium tracking-wide text-muted-foreground">
           输出
         </h3>
 

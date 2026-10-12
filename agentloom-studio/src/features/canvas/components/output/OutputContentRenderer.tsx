@@ -27,7 +27,7 @@ export const OutputContentRenderer = memo(function OutputContentRenderer({
     return (
       <div
         className={cn(
-          'rounded-xl border border-border/70 bg-surface/60 px-4 py-3 text-sm text-muted-foreground',
+          'rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground',
           className,
         )}
         data-testid={dataTestId}
@@ -41,7 +41,7 @@ export const OutputContentRenderer = memo(function OutputContentRenderer({
     return (
       <div
         className={cn(
-          'rounded-xl border border-border/70 bg-surface/60 px-4 py-3',
+          'rounded-lg border border-border bg-muted px-4 py-3',
           className,
         )}
         data-testid={dataTestId}
@@ -61,7 +61,7 @@ export const OutputContentRenderer = memo(function OutputContentRenderer({
       return (
         <div
           className={cn(
-            'rounded-xl border border-border/70 bg-surface/60 px-4 py-3',
+            'rounded-lg border border-border bg-muted px-4 py-3',
             className,
           )}
           data-testid={dataTestId}
@@ -73,9 +73,9 @@ export const OutputContentRenderer = memo(function OutputContentRenderer({
 
     return (
       <div className={cn('space-y-3', className)} data-testid={dataTestId}>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-2xs font-medium text-warning">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          <span>
+        <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-2xs font-medium text-warning">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          <span className="min-w-0">
             {isStreaming
               ? 'JSON 仍在流式拼装，先按原文展示'
               : '当前输出不是合法 JSON，已回退到原文'}
@@ -85,7 +85,7 @@ export const OutputContentRenderer = memo(function OutputContentRenderer({
           code={output}
           language="json"
           maxHeight="520px"
-          className="overflow-hidden rounded-xl border border-border/70"
+          className="overflow-hidden rounded-lg border border-border"
         />
       </div>
     )
@@ -94,7 +94,7 @@ export const OutputContentRenderer = memo(function OutputContentRenderer({
   return (
     <pre
       className={cn(
-        'rounded-xl border border-border/70 bg-surface/60 px-4 py-3 font-mono text-xs leading-6 text-foreground whitespace-pre-wrap break-words',
+        'rounded-lg border border-border bg-muted px-4 py-3 font-mono text-xs leading-6 text-foreground whitespace-pre-wrap break-words',
         className,
       )}
       data-testid={dataTestId}

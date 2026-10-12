@@ -284,6 +284,7 @@ export const SmartEdge = memo(function SmartEdge({
               onFocus={handleMouseEnter}
               onBlur={handleMouseLeave}
               aria-label="打开字段映射"
+              title={badgeText}
               tabIndex={badgeTabIndex}
             >
               {visualLevel === 'L1' ? (
@@ -293,7 +294,7 @@ export const SmartEdge = memo(function SmartEdge({
                   className={`edge-badge__dot edge-badge__dot--${cssLevel}`}
                 />
               )}
-              <span>{badgeText}</span>
+              <span className="min-w-0 max-w-[16rem] truncate">{badgeText}</span>
             </Button>
             {hasWarning && (
               <span

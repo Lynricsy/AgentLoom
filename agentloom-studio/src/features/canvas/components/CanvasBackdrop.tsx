@@ -4,6 +4,7 @@ import {
   Controls,
   type PanelPosition,
 } from '@xyflow/react'
+import { CANVAS_CONTROLS_CLASS } from './canvasChrome'
 
 export interface CanvasBackdropProps {
   /** 缩放控件位置；Agent 画布左侧被节点面板占满时放右下角 */
@@ -26,7 +27,7 @@ export function CanvasBackdrop({ position = 'bottom-left' }: CanvasBackdropProps
       <Controls
         showInteractive={false}
         position={position}
-        className="!border-border !bg-muted !shadow-lg"
+        className={CANVAS_CONTROLS_CLASS}
       />
     </>
   )

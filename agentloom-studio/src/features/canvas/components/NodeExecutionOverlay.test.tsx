@@ -132,7 +132,7 @@ describe('NodeExecutionOverlay', () => {
     render(<NodeExecutionOverlay nodeId="node-1" />)
     const overlay = screen.getByTestId('exec-overlay-node-1')
     expect(overlay.style.getPropertyValue('--exec-color')).toBe(
-      'var(--color-success, #22c55e)',
+      'var(--color-success)',
     )
   })
 

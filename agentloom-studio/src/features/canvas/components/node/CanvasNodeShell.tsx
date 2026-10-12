@@ -195,6 +195,10 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   );
   const shellStatus = getShellStatus(executionStatus, showCompletedAccent);
   const shellAccentClassName = getShellAccentVisual(shellStatus);
+  const [lastAccentClassName, setLastAccentClassName] = useState(shellAccentClassName);
+  if (shellAccentClassName && shellAccentClassName !== lastAccentClassName) {
+    setLastAccentClassName(shellAccentClassName);
+  }
   const isMinimal = lod === "minimal";
   const connectedSmartRoutingModelCount = useMemo(() => {
     if (data.nodeType !== "smart-routing") {
@@ -349,16 +353,18 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      {shellAccentClassName ? (
-        <div
-          data-testid={`canvas-node-shell-accent-${id}`}
-          data-shell-status={shellStatus}
-          className={cn(
-            "pointer-events-none absolute inset-y-2 left-0 z-10 w-1 rounded-full",
-            shellAccentClassName,
-          )}
-        />
-      ) : null}
+      {/* 色条常驻并缓存最近一次状态色：状态清空时只做透明度过渡，与卡片边框 150ms 同步淡出 */}
+      <div
+        data-testid={`canvas-node-shell-accent-${id}`}
+        data-shell-status={shellStatus}
+        data-active={shellAccentClassName ? "true" : "false"}
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute inset-y-2 left-0 z-10 w-1 rounded-full transition-opacity duration-150",
+          lastAccentClassName,
+          !shellAccentClassName && "opacity-0",
+        )}
+      />
 
       {!isMinimal && !previewMode ? (
         <NodeExecutionOverlay nodeId={id} />

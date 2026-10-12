@@ -24,6 +24,11 @@ import {
 } from '../registry/agent-canvas-registry'
 import type { NodeCategory } from '../types'
 import type { AgentRuntimeMode } from '@/features/agent'
+import { motion } from 'motion/react'
+import { fadeIn } from '@/shared/lib/motion'
+import { Collapse } from '@/shared/components/collapse/Collapse'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Badge } from '@/shared/ui/badge'
 
 /** 自动创建的节点类型 — 新画布初始化时自动放置，不可从面板拖入 */
 const AUTO_CREATED_NODE_TYPES = new Set<string>(['agent-main', 'sandbox'])
@@ -192,104 +197,112 @@ export const AgentNodePalette = memo(function AgentNodePalette({
     })).filter((group) => group.items.length > 0)
   }, [searchQuery, visibleGroups])
 
-  if (isPaletteCollapsed) {
-    return (
-      <TooltipProvider delayDuration={200}>
-        <aside
-          className={cn(
-            PALETTE_SHELL_CLASS,
-            'w-[var(--spacing-palette-collapsed)] items-center gap-1 py-3',
-            className,
-          )}
-        >
-          <TooltipHint side="right" label="展开节点面板">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="展开节点面板"
-              onClick={() => setIsPaletteCollapsed(false)}
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </Button>
-          </TooltipHint>
-
-          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-1">
-            {visibleGroups.flatMap((group) =>
-              group.items.map((item) => (
-                <PaletteRailItem
-                  key={item.type}
-                  icon={item.icon}
-                  color={
-                    NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color
-                  }
-                  label={item.label}
-                  description={item.description}
-                  disabled={item.isAutoCreated}
-                  onDragStart={(event) => onDragStart(event, item)}
-                />
-              )),
-            )}
-          </div>
-        </aside>
-      </TooltipProvider>
-    )
-  }
-
   return (
     <TooltipProvider delayDuration={200}>
       <aside
         className={cn(
           PALETTE_SHELL_CLASS,
-          'w-[var(--spacing-palette-expanded)]',
+          'overflow-hidden transition-[width] duration-300 ease-out-expo',
+          isPaletteCollapsed
+            ? 'w-[var(--spacing-palette-collapsed)]'
+            : 'w-[var(--spacing-palette-expanded)]',
           className,
         )}
       >
-        <div className="flex items-center gap-2 border-b border-border p-3">
-          <div className="relative flex-1">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              type="text"
-              placeholder="搜索节点…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 pl-8 text-xs"
-            />
-          </div>
-          <TooltipHint side="right" label="折叠节点面板">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="折叠节点面板"
-              onClick={() => setIsPaletteCollapsed(true)}
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          </TooltipHint>
-        </div>
+        {/* 内容按目标宽度固定排版，宽度过渡期间不重排；切换时只做入场淡入 */}
+        {isPaletteCollapsed ? (
+          <motion.div
+            key="rail"
+            initial={fadeIn.initial}
+            animate={fadeIn.animate}
+            transition={fadeIn.transition}
+            className="flex h-full w-[var(--spacing-palette-collapsed)] shrink-0 flex-col items-center gap-1 py-3"
+          >
+            <TooltipHint side="right" label="展开节点面板">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="展开节点面板"
+                onClick={() => setIsPaletteCollapsed(false)}
+              >
+                <PanelLeftOpen />
+              </Button>
+            </TooltipHint>
 
-        <div className="flex-1 overflow-y-auto p-2">
-          <p className="mb-2 px-2 text-2xs text-muted-foreground">
-            拖拽节点到画布以添加
-          </p>
-          {filteredGroups.map((group) => {
-            const groupKey = getGroupKey(group)
-            return (
-              <AgentPaletteGroupSection
-                key={groupKey}
-                group={group}
-                isCollapsed={collapsedGroups.has(groupKey)}
-                onToggle={() => toggleGroup(groupKey)}
-                onDragStart={onDragStart}
-              />
-            )
-          })}
-          {filteredGroups.length === 0 && (
-            <p className="mt-4 text-center text-sm text-muted-foreground">无匹配节点</p>
-          )}
-        </div>
+            <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-1">
+              {visibleGroups.flatMap((group) =>
+                group.items.map((item) => (
+                  <PaletteRailItem
+                    key={item.type}
+                    icon={item.icon}
+                    color={
+                      NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color
+                    }
+                    label={item.label}
+                    description={item.description}
+                    disabled={item.isAutoCreated}
+                    onDragStart={(event) => onDragStart(event, item)}
+                  />
+                )),
+              )}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="full"
+            initial={fadeIn.initial}
+            animate={fadeIn.animate}
+            transition={fadeIn.transition}
+            className="flex h-full w-[var(--spacing-palette-expanded)] shrink-0 flex-col"
+          >
+            <div className="flex items-center gap-2 border-b border-border p-3">
+              <div className="relative flex-1">
+                <Search
+                  aria-hidden
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  type="text"
+                  placeholder="搜索节点…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <TooltipHint side="right" label="折叠节点面板">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="折叠节点面板"
+                  onClick={() => setIsPaletteCollapsed(true)}
+                >
+                  <PanelLeftClose />
+                </Button>
+              </TooltipHint>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2">
+              <p className="mb-2 px-2 text-2xs text-muted-foreground">
+                拖拽节点到画布以添加
+              </p>
+              {filteredGroups.map((group) => {
+                const groupKey = getGroupKey(group)
+                return (
+                  <AgentPaletteGroupSection
+                    key={groupKey}
+                    group={group}
+                    isCollapsed={collapsedGroups.has(groupKey)}
+                    onToggle={() => toggleGroup(groupKey)}
+                    onDragStart={onDragStart}
+                  />
+                )
+              })}
+              {filteredGroups.length === 0 && (
+                <EmptyState variant="plain" icon={Search} title="无匹配节点" className="px-2 py-8" />
+              )}
+            </div>
+          </motion.div>
+        )}
       </aside>
     </TooltipProvider>
   )
@@ -318,7 +331,7 @@ const AgentPaletteGroupSection = memo(function AgentPaletteGroupSection({
         onToggle={onToggle}
       />
 
-      {!isCollapsed && (
+      <Collapse open={!isCollapsed}>
         <div className="mt-1 space-y-0.5 pl-1">
           {group.items.map((item) => (
             <PaletteItemButton
@@ -332,16 +345,16 @@ const AgentPaletteGroupSection = memo(function AgentPaletteGroupSection({
               disabled={item.isAutoCreated}
               badge={
                 item.isAutoCreated ? (
-                  <span className="inline-flex shrink-0 rounded bg-muted px-1 py-0.5 text-2xs leading-none text-muted-foreground">
+                  <Badge variant="secondary" size="sm" className="shrink-0">
                     自动创建
-                  </span>
+                  </Badge>
                 ) : undefined
               }
               onDragStart={(event) => onDragStart(event, item)}
             />
           ))}
         </div>
-      )}
+      </Collapse>
     </div>
   )
 })

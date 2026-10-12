@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { CanvasNode } from '../../types'
@@ -123,5 +123,19 @@ describe('ReadOnlyNodeSheet', () => {
     render(<ReadOnlyNodeSheet node={null} open onOpenChange={vi.fn()} />)
 
     expect(screen.queryByTestId('readonly-node-sheet')).not.toBeInTheDocument()
+  })
+
+  it('关闭时 node 同帧置空，仍保留最后一个节点内容直到退场结束', async () => {
+    const { rerender } = render(
+      <ReadOnlyNodeSheet node={createNode({})} open onOpenChange={vi.fn()} />,
+    )
+
+    rerender(<ReadOnlyNodeSheet node={null} open={false} onOpenChange={vi.fn()} />)
+
+    // 退场期间标题仍是原节点名，而不是整块瞬间消失
+    expect(screen.getByText('拉取用户资料')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByTestId('readonly-node-sheet')).not.toBeInTheDocument()
+    })
   })
 })

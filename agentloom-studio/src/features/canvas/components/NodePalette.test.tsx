@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DYNAMIC_ONLY_NODE_TYPES, getAllNodeTypes } from '../types/nodeTypeRegistry'
@@ -32,7 +32,7 @@ describe('NodePalette', () => {
     render(<NodePalette />)
 
     expect(screen.getByRole('tab', { name: '节点' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'My Blocks' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '我的块' })).toBeInTheDocument()
   })
 
   it('renders all palette groups', () => {
@@ -56,7 +56,7 @@ describe('NodePalette', () => {
     const user = userEvent.setup()
     render(<NodePalette />)
 
-    await user.click(screen.getByRole('tab', { name: 'My Blocks' }))
+    await user.click(screen.getByRole('tab', { name: '我的块' }))
 
     expect(screen.getByTestId('block-library-panel')).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('搜索节点…')).not.toBeInTheDocument()
@@ -131,7 +131,9 @@ describe('NodePalette', () => {
     }
 
     await user.click(agentHeader)
-    expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()
+    })
 
     await user.click(agentHeader)
     expect(screen.getByText('LLM 模型')).toBeInTheDocument()

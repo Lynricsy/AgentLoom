@@ -40,19 +40,19 @@ function getStatusVisual(status: StepStatus): StatusVisual {
     case 'completed':
       return {
         icon: <Check size={STATUS_SIZE} strokeWidth={3} />,
-        color: 'var(--color-success, #22c55e)',
+        color: 'var(--color-success)',
         label: '已完成',
       }
     case 'failed':
       return {
         icon: <X size={STATUS_SIZE} strokeWidth={3} />,
-        color: 'var(--color-error, #ef4444)',
+        color: 'var(--color-error)',
         label: '执行失败',
       }
     case 'waiting_intervention':
       return {
         icon: <AlertTriangle size={STATUS_SIZE} />,
-        color: 'var(--color-warning, #f59e0b)',
+        color: 'var(--color-warning)',
         label: '等待干预',
         animate: true,
         borderClass: 'exec-overlay--waiting',

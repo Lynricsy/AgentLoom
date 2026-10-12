@@ -22,6 +22,7 @@ import {
   WORKFLOW_EDGE_TYPES,
   WORKFLOW_NODE_TYPES,
 } from "./workflowFlowRegistry";
+import { CANVAS_CONTROLS_CLASS } from "./canvasChrome";
 
 interface WorkflowPreviewCanvasProps {
   definition: WorkflowPreviewDefinition | null | undefined;
@@ -100,7 +101,7 @@ export const WorkflowPreviewCanvas = memo(function WorkflowPreviewCanvas({
           {showControls ? (
             <Controls
               showInteractive={false}
-              className="!border-border !bg-muted !shadow-lg"
+              className={CANVAS_CONTROLS_CLASS}
             />
           ) : null}
           {showMiniMap ? <MiniMap /> : null}

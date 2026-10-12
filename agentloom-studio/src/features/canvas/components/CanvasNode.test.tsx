@@ -687,8 +687,8 @@ describe("CanvasNodeShell", () => {
       "completed",
     );
     expect(
-      screen.queryByTestId("canvas-node-shell-accent-node-completed"),
-    ).not.toBeInTheDocument();
+      screen.getByTestId("canvas-node-shell-accent-node-completed"),
+    ).toHaveAttribute("data-active", "false");
   });
 
   it("isolates preview nodes from editor stores and protected queries", () => {

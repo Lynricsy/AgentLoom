@@ -13,3 +13,9 @@ export const CANVAS_FLOATING_CLASS =
 /** 画布侧面板的头部行（属性面板、版本历史、执行记录…） */
 export const CANVAS_PANEL_HEADER_CLASS =
   'flex items-center gap-3 border-b border-border px-4 py-3'
+
+/**
+ * React Flow `<Controls>` 外观。库自带样式特异性较高，只能用 `!` 覆盖；
+ * 集中在这里，避免各画布各写一份。
+ */
+export const CANVAS_CONTROLS_CLASS = '!border-border !bg-muted !shadow-lg'
