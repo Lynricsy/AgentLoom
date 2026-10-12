@@ -19,11 +19,14 @@ import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
 import { useCurrentOrganization } from '@/features/organization'
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
+import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
+import { formatDateTime } from '@/shared/lib/format'
+import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -33,6 +36,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
+import { StatusBadge, type StatusTone } from '@/shared/ui/status-badge'
 import { Textarea } from '@/shared/ui/textarea'
 import { useToast } from '@/shared/ui/toast'
 import {
@@ -170,25 +174,14 @@ const UUID_PATTERN =
 const PAGE_DESCRIPTION =
   '管理租户的执行配额、治理暂停与异常执行终止。这里的治理暂停只会阻止新的执行进入，不等同于执行中的 paused 状态。'
 
-function formatTimestamp(value?: string | null): string {
-  if (!value) {
-    return '—'
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
+/** 治理状态 → 文案与 StatusBadge 语气 */
+const GOVERNANCE_STATUS_META: Record<ExecutionGovernanceState, { label: string; tone: StatusTone }> = {
+  active: { label: '治理放行', tone: 'success' },
+  paused: { label: '治理暂停', tone: 'warning' },
 }
 
 function getGovernanceStatusLabel(status: ExecutionGovernanceState): string {
-  return status === 'paused' ? '治理暂停' : '治理放行'
+  return GOVERNANCE_STATUS_META[status].label
 }
 
 function createDraftId() {
@@ -265,20 +258,29 @@ function validateIntegerValue(
   return value
 }
 
-function GovernanceStatusBadge({ status }: { status: ExecutionGovernanceState }) {
+/** 元数据小格：统一 label / value 的字号与间距；`mono` 用于 UUID 等标识，单行截断并以 title 展示全文 */
+function MetaTile({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: ReactNode
+  mono?: boolean
+}) {
   return (
-    <Badge variant={status === 'paused' ? 'warning' : 'success'} size="sm">
-      {getGovernanceStatusLabel(status)}
-    </Badge>
-  )
-}
-
-/** 元数据小格：统一 label / value 的字号与间距 */
-function MetaTile({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <p className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <div className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</div>
+    <div className="min-w-0 rounded-lg border border-border bg-surface p-3">
+      <dt className="text-2xs font-medium tracking-wide text-muted-foreground">{label}</dt>
+      {mono ? (
+        <dd
+          className="mt-1.5 truncate font-mono text-sm text-foreground"
+          title={typeof value === 'string' ? value : undefined}
+        >
+          {value}
+        </dd>
+      ) : (
+        <dd className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</dd>
+      )}
     </div>
   )
 }
@@ -293,7 +295,7 @@ function ActionSummaryCard({ testId, title, action }: ActionSummaryCardProps) {
         <div className="min-w-0">
           <p className="text-xs font-semibold text-foreground">{title}</p>
           <p className="mt-1 text-2xs text-muted-foreground">
-            操作人：{action.operator ?? '—'} · 生效时间：{formatTimestamp(action.effectedAt)}
+            操作人：{action.operator ?? '—'} · 生效时间：{formatDateTime(action.effectedAt)}
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -342,13 +344,13 @@ function ResourceGovernanceBlockedState({
   action?: ReactNode
 }) {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
+    <PageContainer width="narrow" data-testid={testId}>
       <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
 
       <Card className="border-warning/30">
         <CardContent className="flex items-start gap-3 p-5">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
-            <Icon className="h-5 w-5" />
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+            <Icon className="size-5" />
           </span>
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
@@ -357,17 +359,14 @@ function ResourceGovernanceBlockedState({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 
 /** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
 function ResourceGovernanceOrganizationLoadingState() {
   return (
-    <div
-      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
-      data-testid="resource-governance-organization-loading"
-    >
+    <PageContainer width="narrow" data-testid="resource-governance-organization-loading">
       <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
 
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -379,7 +378,7 @@ function ResourceGovernanceOrganizationLoadingState() {
         <Skeleton className="h-28 rounded-lg" />
         <Skeleton className="h-44 rounded-lg" />
       </div>
-    </div>
+    </PageContainer>
   )
 }
 
@@ -466,7 +465,7 @@ function ResourceGovernanceContent({
       {
         key: 'label',
         header: '配额项',
-        className: 'align-top',
+        className: 'w-full max-w-0',
         cell: (field) => (
           <div className="min-w-0 space-y-1">
             <p className="text-xs font-medium text-foreground">{field.label}</p>
@@ -477,13 +476,15 @@ function ResourceGovernanceContent({
       {
         key: 'current',
         header: '当前值',
-        className: 'w-24 align-top',
+        className: 'w-24',
+        align: 'right',
+        nowrap: true,
         hideBelow: 'sm',
         cell: (field) => {
           const current = state?.quota[field.key] ?? null
 
           return (
-            <span className="text-xs tabular-nums text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {current == null ? '未限制' : current}
             </span>
           )
@@ -492,7 +493,7 @@ function ResourceGovernanceContent({
       {
         key: 'draft',
         header: '新值',
-        className: 'w-[12rem] align-top',
+        className: 'w-48',
         cell: (field) => (
           <Input
             id={`resource-governance-quota-${field.key}`}
@@ -715,7 +716,7 @@ function ResourceGovernanceContent({
 
   if (isLoading) {
     return (
-      <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-page">
+      <PageContainer width="narrow" data-testid="resource-governance-page">
         <PageHeader icon={Gauge} title="资源治理" description="加载资源治理设置中…" />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => (
@@ -723,29 +724,24 @@ function ResourceGovernanceContent({
           ))}
         </div>
         <Skeleton className="h-72 rounded-lg" />
-      </div>
+      </PageContainer>
     )
   }
 
   if (isError || !state) {
     return (
-      <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-page">
+      <PageContainer width="narrow" data-testid="resource-governance-page">
         <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
 
-        <Card className="border-error/40">
-          <CardContent className="space-y-1 p-5">
-            <p className="text-sm font-medium text-foreground">加载资源治理设置失败</p>
-            <p className="text-xs font-medium text-error">
-              {error instanceof Error ? error.message : '未知错误'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <Alert variant="error" title="加载资源治理设置失败">
+          {error instanceof Error ? error.message : '未知错误'}
+        </Alert>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-page">
+    <PageContainer width="narrow" data-testid="resource-governance-page">
       <PageHeader
         icon={Gauge}
         title="资源治理"
@@ -758,34 +754,40 @@ function ResourceGovernanceContent({
           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2 text-foreground">
-                <PauseCircle className="h-4 w-4" />
+                <PauseCircle className="size-4" />
                 <CardTitle>当前组织状态</CardTitle>
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">
+              <CardDescription className="leading-relaxed">
                 这里展示后端返回的当前资源治理状态。租户级治理状态为{' '}
                 <span className="font-medium text-foreground">
                   {getGovernanceStatusLabel(state.governance.tenantControl.status)}
                 </span>
                 。
-              </p>
+              </CardDescription>
             </div>
-            <GovernanceStatusBadge status={state.governance.tenantControl.status} />
+            <StatusBadge
+              tone={GOVERNANCE_STATUS_META[state.governance.tenantControl.status].tone}
+              size="sm"
+              className="shrink-0"
+            >
+              {getGovernanceStatusLabel(state.governance.tenantControl.status)}
+            </StatusBadge>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <MetaTile label="组织 ID" value={state.organizationId} />
-            <MetaTile label="租户 ID" value={resolvedTenantId} />
+          <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <MetaTile label="组织 ID" value={state.organizationId} mono />
+            <MetaTile label="租户 ID" value={resolvedTenantId} mono />
             <MetaTile label="配额版本" value={state.quota.version} />
             <MetaTile label="治理版本" value={state.governance.version} />
-          </div>
+          </dl>
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
             <span>配额更新人：{state.quota.updatedBy ?? '—'}</span>
-            <span>配额更新时间：{formatTimestamp(state.quota.updatedAt)}</span>
+            <span>配额更新时间：{formatDateTime(state.quota.updatedAt)}</span>
             <span>治理更新人：{state.governance.tenantControl.updatedBy ?? '—'}</span>
-            <span>治理更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}</span>
+            <span>治理更新时间：{formatDateTime(state.governance.tenantControl.updatedAt)}</span>
           </div>
         </CardContent>
       </Card>
@@ -793,9 +795,9 @@ function ResourceGovernanceContent({
       <Card data-testid="resource-governance-quota-form">
         <CardHeader>
           <CardTitle>资源配额</CardTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <CardDescription className="leading-relaxed">
             配额会直接影响新的执行请求、API 调用和沙箱容量。除 API 每分钟限流外，其余字段留空表示不设置额外上限。
-          </p>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -827,9 +829,9 @@ function ResourceGovernanceContent({
       <Card data-testid="resource-governance-controls-form">
         <CardHeader>
           <CardTitle>治理暂停控制</CardTitle>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <CardDescription className="leading-relaxed">
             治理暂停只会阻止新的执行进入，不会把已经运行中的执行改成 paused。若需要解除某个治理暂停，请把状态切回 active。
-          </p>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -837,9 +839,15 @@ function ResourceGovernanceContent({
             <div className="rounded-lg border border-border bg-muted p-4">
               <p className="text-xs font-semibold text-foreground">当前租户总控</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <GovernanceStatusBadge status={state.governance.tenantControl.status} />
+                <StatusBadge
+              tone={GOVERNANCE_STATUS_META[state.governance.tenantControl.status].tone}
+              size="sm"
+              className="shrink-0"
+            >
+              {getGovernanceStatusLabel(state.governance.tenantControl.status)}
+            </StatusBadge>
                 <span className="text-2xs text-muted-foreground">
-                  更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}
+                  更新时间：{formatDateTime(state.governance.tenantControl.updatedAt)}
                 </span>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
@@ -1066,12 +1074,12 @@ function ResourceGovernanceContent({
       <Card data-testid="resource-governance-terminate-form">
         <CardHeader>
           <div className="flex items-center gap-2 text-foreground">
-            <OctagonAlert className="h-4 w-4" />
+            <OctagonAlert className="size-4" />
             <CardTitle>终止异常执行</CardTitle>
           </div>
-          <p className="text-xs leading-relaxed text-muted-foreground">
+          <CardDescription className="leading-relaxed">
             仅在确认执行异常且需要立即止损时使用。这个动作会直接终止指定执行，不会把治理暂停误写成执行 paused。
-          </p>
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -1136,7 +1144,7 @@ function ResourceGovernanceContent({
           ) : null}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   )
 }
 
