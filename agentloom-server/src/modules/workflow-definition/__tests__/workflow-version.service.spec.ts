@@ -2657,11 +2657,17 @@ describe('WorkflowVersionService', () => {
       },
     };
 
-    const createInsertReturning = (result: unknown) => ({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([result]),
-      }),
-    });
+    const createInsertReturning = (result: unknown) => {
+      const returning = vi
+        .fn()
+        .mockResolvedValue(result === undefined ? [] : [result]);
+      return {
+        values: vi.fn().mockReturnValue({
+          returning,
+          onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
+        }),
+      };
+    };
 
     it('应创建空白工作流（无模板）', async () => {
       const mockResult = createDraftWorkflow({
@@ -2732,7 +2738,10 @@ describe('WorkflowVersionService', () => {
     }
 
     /** 模板实例化的写入顺序：Agent → Agent 版本 →（Agent 发布）→ 工作流 → 工作流版本 →（工作流发布） */
-    function mockTemplateInstantiation(modelRows: unknown[]) {
+    function mockTemplateInstantiation(
+      modelRows: unknown[],
+      { agentSlugConflicts = 0 } = {},
+    ) {
       templateService.findBySlug.mockResolvedValue(MOCK_TEMPLATE);
       db.select.mockReturnValueOnce(createSelectChainWithInnerJoin(modelRows));
       const workflow = createDraftWorkflow({ name: '模板副本' });
@@ -2741,6 +2750,10 @@ describe('WorkflowVersionService', () => {
         status: 'published' as const,
         publishedVersionId: VERSION_ID,
       };
+      // slug 冲突时 ON CONFLICT DO NOTHING 返回空行
+      for (let i = 0; i < agentSlugConflicts; i += 1) {
+        db.insert.mockReturnValueOnce(createInsertReturning(undefined));
+      }
       db.insert
         .mockReturnValueOnce(
           createInsertReturning({
@@ -2824,6 +2837,33 @@ describe('WorkflowVersionService', () => {
         templateSlug: 'code-review-assistant',
         templateName: '代码审查助手',
       });
+    });
+
+    it('同租户再次从模板创建时，Agent slug 冲突换后缀重试，不抛唯一约束错误', async () => {
+      const published = mockTemplateInstantiation(
+        [
+          createModelRow({
+            id: MODEL_IDS.defaultChat,
+            createdAt: '2026-03-01',
+            isDefault: true,
+          }),
+        ],
+        { agentSlugConflicts: 1 },
+      );
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, MOCK_DTO_WITH_TEMPLATE),
+      ).resolves.toEqual(published);
+
+      const [conflictInsert, retriedInsert] = db.insert.mock.results.map(
+        (call) => call.value.values.mock.calls[0][0],
+      );
+      expect(conflictInsert.slug).not.toBe(retriedInsert.slug);
+      expect(retriedInsert.slug.startsWith(conflictInsert.slug)).toBe(true);
+      expect(
+        db.insert.mock.results[0].value.values.mock.results[0].value
+          .onConflictDoNothing,
+      ).toHaveBeenCalled();
     });
 
     it('没有默认对话模型时取最早添加的可用对话模型，跳过已停用的提供商', async () => {

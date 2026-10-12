@@ -24,7 +24,11 @@ function insertChain(result: unknown, onWrite: () => void) {
   return {
     values: vi.fn().mockImplementation(() => {
       onWrite();
-      return { returning: vi.fn().mockResolvedValue([result]) };
+      const returning = vi.fn().mockResolvedValue([result]);
+      return {
+        returning,
+        onConflictDoNothing: vi.fn().mockReturnValue({ returning }),
+      };
     }),
   };
 }

@@ -1415,95 +1415,97 @@ export class WorkflowImportService {
   ): Promise<ImportedWorkflowAgentCloneResult> {
     let slug = generateSlug(input.name);
 
+    // 调用方通常在事务里：唯一约束报错会让整个事务进入 aborted 状态，之后的重试必然失败。
+    // 所以 slug 冲突用 ON CONFLICT DO NOTHING 探测，而不是捕获 23505。
     for (
       let attempt = 0;
       attempt <= WorkflowImportService.MAX_SLUG_RETRIES;
       attempt += 1
     ) {
-      try {
-        const [createdAgent] = await dbClient
-          .insert(schema.agentDefinitions)
-          .values({
-            tenantId: context.targetTenantId,
-            name: input.name,
-            slug,
-            description: input.description,
-            icon: input.icon,
+      const [createdAgent] = await dbClient
+        .insert(schema.agentDefinitions)
+        .values({
+          tenantId: context.targetTenantId,
+          name: input.name,
+          slug,
+          description: input.description,
+          icon: input.icon,
+          runtimeMode: input.runtimeMode,
+          systemPrompt: input.systemPrompt,
+          nodes: cloneJson(input.nodes),
+          edges: cloneJson(input.edges),
+          viewport: cloneJson(input.viewport),
+          metadata: cloneJson(input.metadata),
+          sandboxConfig:
+            input.runtimeMode === 'sandbox' ? input.sandboxConfig : null,
+          workspaceSnapshotId: null,
+          version: 1,
+          status: 'draft',
+          createdBy: context.targetUserId,
+          updatedBy: context.targetUserId,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.agentDefinitions.tenantId,
+            schema.agentDefinitions.slug,
+          ],
+        })
+        .returning();
+
+      if (!createdAgent) {
+        slug = appendSlugSuffix(slug);
+        continue;
+      }
+
+      const [createdVersion] = await dbClient
+        .insert(schema.agentVersions)
+        .values({
+          agentDefinitionId: createdAgent.id,
+          tenantId: context.targetTenantId,
+          versionNumber: 1,
+          label: input.versionLabel,
+          snapshot: {
             runtimeMode: input.runtimeMode,
-            systemPrompt: input.systemPrompt,
             nodes: cloneJson(input.nodes),
             edges: cloneJson(input.edges),
             viewport: cloneJson(input.viewport),
-            metadata: cloneJson(input.metadata),
+            systemPrompt: input.systemPrompt,
             sandboxConfig:
               input.runtimeMode === 'sandbox' ? input.sandboxConfig : null,
             workspaceSnapshotId: null,
-            version: 1,
-            status: 'draft',
-            createdBy: context.targetUserId,
-            updatedBy: context.targetUserId,
-          })
-          .returning();
-
-        const [createdVersion] = await dbClient
-          .insert(schema.agentVersions)
-          .values({
-            agentDefinitionId: createdAgent.id,
-            tenantId: context.targetTenantId,
-            versionNumber: 1,
-            label: input.versionLabel,
-            snapshot: {
-              runtimeMode: input.runtimeMode,
-              nodes: cloneJson(input.nodes),
-              edges: cloneJson(input.edges),
-              viewport: cloneJson(input.viewport),
-              systemPrompt: input.systemPrompt,
-              sandboxConfig:
-                input.runtimeMode === 'sandbox' ? input.sandboxConfig : null,
-              workspaceSnapshotId: null,
-              metadata: {
-                nodeCount: input.nodes.length,
-                edgeCount: input.edges.length,
-                createdFromVersion: 1,
-                releaseNotes: input.releaseNotes,
-              },
+            metadata: {
+              nodeCount: input.nodes.length,
+              edgeCount: input.edges.length,
+              createdFromVersion: 1,
+              releaseNotes: input.releaseNotes,
             },
-            publishedAt: new Date(),
-            createdBy: context.targetUserId,
-          })
-          .returning();
+          },
+          publishedAt: new Date(),
+          createdBy: context.targetUserId,
+        })
+        .returning();
 
-        await dbClient
-          .update(schema.agentDefinitions)
-          .set({
-            status: 'published',
-            publishedVersionId: createdVersion.id,
-            updatedBy: context.targetUserId,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.agentDefinitions.id, createdAgent.id));
-
-        return {
-          agentDefinitionId: createdAgent.id,
+      await dbClient
+        .update(schema.agentDefinitions)
+        .set({
+          status: 'published',
           publishedVersionId: createdVersion.id,
-          name: createdAgent.name,
-          runtimeMode: createdAgent.runtimeMode,
-        };
-      } catch (error: unknown) {
-        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
+          updatedBy: context.targetUserId,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.agentDefinitions.id, createdAgent.id));
 
-        if (
-          !isUniqueViolation ||
-          attempt === WorkflowImportService.MAX_SLUG_RETRIES
-        ) {
-          throw error;
-        }
-
-        slug = appendSlugSuffix(slug);
-      }
+      return {
+        agentDefinitionId: createdAgent.id,
+        publishedVersionId: createdVersion.id,
+        name: createdAgent.name,
+        runtimeMode: createdAgent.runtimeMode,
+      };
     }
 
-    throw new Error('Unreachable: agent slug retry loop exhausted');
+    throw new Error(
+      `Agent slug "${slug}" still conflicts after ${WorkflowImportService.MAX_SLUG_RETRIES} retries`,
+    );
   }
 
   private getImportedAgentNodeType(node: schema.ReactFlowNode): string {
