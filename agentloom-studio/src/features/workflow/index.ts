@@ -36,6 +36,7 @@ export {
   useImportWorkflow,
 } from './api/workflowMutations'
 export { versionKeys } from './api/versionKeys'
+export { WORKFLOW_STATUS_META } from './lib/status'
 export { useWorkflowVersions, usePublishedVersion } from './api/versionQueries'
 export {
   useCreateVersion,

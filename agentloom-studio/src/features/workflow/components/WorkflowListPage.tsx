@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import {
@@ -18,14 +18,17 @@ import {
   X,
 } from "lucide-react";
 import { ResourceSourceCategoryTabs } from "@/shared/components";
+import { Collapse } from "@/shared/components/collapse/Collapse";
 import { EntityIcon } from "@/shared/components/entity-icon";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageContainer } from "@/shared/components/page-container";
 import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
   getResourceSourceLabel,
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
+import { formatNumber } from "@/shared/lib/format";
 import { staggerList } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
@@ -48,15 +51,17 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { StatusBadge } from "@/shared/ui/status-badge";
 import { useToast } from "@/shared/ui/toast";
 import { formatRelativeTime } from "@/features/canvas";
 import { useExportWorkflow } from "../api/workflowMutations";
 import { useWorkflowList } from "../api/workflowQueries";
 import { downloadWorkflowExport } from "../lib/workflowExportImport";
+import { WORKFLOW_STATUS_META } from "../lib/status";
 import { useWorkflowStore } from "../stores/workflowStore";
 import { CreateWorkflowDialog } from "./CreateWorkflowDialog";
 import { ArchiveDialog } from "./ArchiveDialog";
-import type { WorkflowDefinitionSummary, WorkflowStatus } from "../types";
+import type { WorkflowDefinitionSummary } from "../types";
 import type { WorkflowListSearch } from "../lib/workflowListSearch";
 
 type ViewMode = "grid" | "list";
@@ -73,30 +78,6 @@ const STATUS_OPTIONS = [
 
 /** 工作流列表统一使用编排类别色，与画布 routing 节点同源 */
 const WORKFLOW_TONE = "var(--color-node-routing)";
-
-type StatusVariant = "success" | "secondary" | "warning";
-
-function getStatusVariant(status: WorkflowStatus): StatusVariant {
-  switch (status) {
-    case "published":
-      return "success";
-    case "archived":
-      return "secondary";
-    default:
-      return "warning";
-  }
-}
-
-function getStatusLabel(status: WorkflowStatus): string {
-  switch (status) {
-    case "published":
-      return "已发布";
-    case "archived":
-      return "已归档";
-    default:
-      return "草稿";
-  }
-}
 
 /** 已发布工作流展示发布版本号；未发布只有草稿快照 */
 function getWorkflowReleaseLabel(workflow: WorkflowDefinitionSummary): string {
@@ -126,7 +107,7 @@ const WorkflowRowActions = memo(function WorkflowRowActions({
   const sourceKind = workflow.resourceSourceKind;
 
   return (
-    <div className="flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+    <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -136,7 +117,7 @@ const WorkflowRowActions = memo(function WorkflowRowActions({
           onEdit(workflow);
         }}
       >
-        <Edit3 className="h-4 w-4" />
+        <Edit3 />
       </Button>
       <Button
         variant="ghost"
@@ -147,7 +128,7 @@ const WorkflowRowActions = memo(function WorkflowRowActions({
           onExport(workflow);
         }}
       >
-        <Download className="h-4 w-4" />
+        <Download />
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -157,7 +138,7 @@ const WorkflowRowActions = memo(function WorkflowRowActions({
             aria-label={`更多操作 ${workflow.name}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -235,9 +216,9 @@ const WorkflowCard = memo(function WorkflowCard({
         </span>
 
         <div className="flex items-center gap-2">
-          <Badge variant={getStatusVariant(workflow.status)}>
-            {getStatusLabel(workflow.status)}
-          </Badge>
+          <StatusBadge tone={WORKFLOW_STATUS_META[workflow.status].tone} dot>
+            {WORKFLOW_STATUS_META[workflow.status].label}
+          </StatusBadge>
           <span
             className={cn(
               "z-10 transition-opacity",
@@ -275,7 +256,7 @@ const WorkflowCard = memo(function WorkflowCard({
       <div className="flex h-8 items-center justify-between gap-2">
         <span className="inline-flex min-w-0 items-center gap-2">
           <span className="inline-flex items-center gap-1 truncate text-xs text-muted-foreground">
-            <Clock className="h-3 w-3 shrink-0" />
+            <Clock className="size-3 shrink-0" />
             {formatRelativeTime(new Date(workflow.updatedAt))}
           </span>
           <Badge variant="outline" size="sm">
@@ -366,11 +347,11 @@ const WorkflowListItem = memo(function WorkflowListItem({
       </div>
 
       <div className="hidden shrink-0 items-center gap-3 sm:flex">
-        <Badge variant={getStatusVariant(workflow.status)}>
-          {getStatusLabel(workflow.status)}
-        </Badge>
+        <StatusBadge tone={WORKFLOW_STATUS_META[workflow.status].tone} dot>
+          {WORKFLOW_STATUS_META[workflow.status].label}
+        </StatusBadge>
         <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:flex">
-          <Clock className="h-3 w-3" />
+          <Clock className="size-3" />
           {formatRelativeTime(new Date(workflow.updatedAt))}
         </span>
       </div>
@@ -390,17 +371,35 @@ const WorkflowListItem = memo(function WorkflowListItem({
 
 function WorkflowCardSkeleton() {
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card className="flex h-full flex-col gap-3 p-4">
       <div className="flex items-start justify-between">
-        <Skeleton className="h-10 w-10 rounded-lg" />
+        <Skeleton className="size-10 rounded-lg" />
         <Skeleton className="h-5 w-14 rounded-full" />
       </div>
-      <Skeleton className="h-4 w-3/5 rounded" />
-      <Skeleton className="h-3 w-full rounded" />
-      <div className="flex items-center justify-between">
+      <div className="flex-1 space-y-1">
+        <Skeleton className="h-5 w-3/5 rounded" />
+        <div className="flex flex-col gap-1 py-0.5">
+          <Skeleton className="h-3 w-full rounded" />
+          <Skeleton className="h-3 w-4/5 rounded" />
+        </div>
+      </div>
+      <div className="flex h-8 items-center justify-between">
         <Skeleton className="h-3 w-20 rounded" />
         <Skeleton className="h-3 w-10 rounded" />
       </div>
+    </Card>
+  );
+}
+
+function WorkflowListItemSkeleton() {
+  return (
+    <Card className="flex items-center gap-3 px-4 py-3">
+      <Skeleton className="size-9 shrink-0 rounded-lg" />
+      <div className="min-w-0 flex-1">
+        <Skeleton className="h-5 w-2/5 rounded" />
+        <Skeleton className="mt-0.5 h-4 w-3/5 rounded" />
+      </div>
+      <Skeleton className="hidden h-5 w-14 rounded-full sm:block" />
     </Card>
   );
 }
@@ -429,12 +428,14 @@ export function WorkflowListPage({
   const [archiveTarget, setArchiveTarget] = useState<WorkflowDefinitionSummary | null>(
     null,
   );
+  /** 归档弹窗退场期间 archiveTarget 已置空，用最近一次目标继续渲染 */
+  const lastArchiveTargetRef = useRef<WorkflowDefinitionSummary | null>(null);
+  if (archiveTarget) lastArchiveTargetRef.current = archiveTarget;
 
   const exportWorkflow = useExportWorkflow();
   useEffect(() => {
     setSearchInput(filters.search);
   }, [filters.search]);
-
 
   const { data, isLoading, isError, refetch } = useWorkflowList({
     page: filters.page,
@@ -561,8 +562,8 @@ export function WorkflowListPage({
   const isFiltered = Boolean(filters.search || filters.status);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-4 sm:px-6">
+    <PageContainer>
+      <div className="flex flex-col gap-4">
         <PageHeader
           title="工作流"
           description="管理和配置你的工作流"
@@ -570,22 +571,23 @@ export function WorkflowListPage({
           tone={WORKFLOW_TONE}
           actions={
             <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
+              <Plus />
               新建
             </Button>
           }
         />
 
-        <div className="mt-4">
-          <ResourceSourceCategoryTabs
-            value={filters.sourceKind}
-            onChange={handleSourceKindChange}
-          />
-        </div>
+        <ResourceSourceCategoryTabs
+          value={filters.sourceKind}
+          onChange={handleSourceKindChange}
+        />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="relative min-w-0 flex-1 basis-full sm:basis-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle-foreground"
+            />
             <Input
               placeholder="搜索工作流…"
               value={searchInput}
@@ -611,130 +613,139 @@ export function WorkflowListPage({
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
+          <div className="flex h-9 items-center gap-0.5 rounded-md border border-border p-0.5">
             <Button
               variant={viewMode === "grid" ? "secondary" : "ghost"}
-              size="icon-sm"
+              size="icon-xs"
               onClick={() => setViewMode("grid")}
               aria-label="网格视图"
               aria-pressed={viewMode === "grid"}
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid />
             </Button>
             <Button
               variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="icon-sm"
+              size="icon-xs"
               onClick={() => setViewMode("list")}
               aria-label="列表视图"
               aria-pressed={viewMode === "list"}
             >
-              <List className="h-4 w-4" />
+              <List />
             </Button>
           </div>
         </div>
 
-        {batchMode && (
-          <div className="mt-3 flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
-            <Checkbox
-              checked={
-                selectedWorkflowIds.size === workflows.length
-                  ? true
-                  : selectedWorkflowIds.size > 0
-                    ? "indeterminate"
-                    : false
-              }
-              onCheckedChange={handleSelectAll}
-              aria-label="全选"
-            />
-            <span className="text-sm text-foreground">
-              已选择 {selectedWorkflowIds.size} 项
-            </span>
-            <div className="flex-1" />
-            <Button variant="ghost" size="sm" onClick={clearSelection}>
-              <X className="h-3.5 w-3.5" />
-              取消选择
-            </Button>
+        {/* -mt-4 抵消父级 gap，由内层 pt-4 随高度一起展开，避免出现瞬间多出 16px */}
+        <Collapse open={batchMode} className="-mt-4">
+          <div className="pt-4">
+            <div className="flex items-center gap-3 rounded-lg bg-primary/5 px-3 py-2">
+              <Checkbox
+                checked={
+                  selectedWorkflowIds.size === workflows.length
+                    ? true
+                    : selectedWorkflowIds.size > 0
+                      ? "indeterminate"
+                      : false
+                }
+                onCheckedChange={handleSelectAll}
+                aria-label="全选"
+              />
+              <span className="text-sm text-foreground">
+                已选择 {selectedWorkflowIds.size} 项
+              </span>
+              <div className="flex-1" />
+              <Button variant="ghost" size="sm" onClick={clearSelection}>
+                <X />
+                取消选择
+              </Button>
+            </div>
           </div>
-        )}
+        </Collapse>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        {isLoading ? (
+      {isLoading ? (
+        viewMode === "grid" ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <WorkflowCardSkeleton key={`skeleton-${String(i)}`} />
             ))}
           </div>
-        ) : workflows.length === 0 ? (
-          <EmptyState
-            icon={Workflow}
-            tone={WORKFLOW_TONE}
-            title={
-              isFiltered
-                ? "没有找到匹配的工作流"
-                : `还没有${getResourceSourceLabel(filters.sourceKind)}的工作流`
-            }
-            description={
-              isFiltered
-                ? "换个关键词或状态筛选试试"
-                : "工作流把触发器、模型与工具编排成一条可执行链路"
-            }
-            action={
-              !isFiltered && filters.sourceKind === "manual" ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCreateDialogOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  创建第一个工作流
-                </Button>
-              ) : null
-            }
-          />
-        ) : viewMode === "grid" ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {workflows.map((workflow, i) => (
-              <motion.div key={workflow.id} {...staggerList(i)}>
-                <WorkflowCard
-                  workflow={workflow}
-                  selected={selectedWorkflowIds.has(workflow.id)}
-                  batchMode={batchMode}
-                  onSelect={toggleSelection}
-                  onClick={handleWorkflowClick}
-                  onEdit={handleEdit}
-                  onExport={handleExport}
-                  onArchive={handleArchive}
-                  onConvertSource={handleConvertSource}
-                />
-              </motion.div>
-            ))}
-          </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {workflows.map((workflow, i) => (
-              <motion.div key={workflow.id} {...staggerList(i)}>
-                <WorkflowListItem
-                  workflow={workflow}
-                  selected={selectedWorkflowIds.has(workflow.id)}
-                  batchMode={batchMode}
-                  onSelect={toggleSelection}
-                  onClick={handleWorkflowClick}
-                  onEdit={handleEdit}
-                  onExport={handleExport}
-                  onArchive={handleArchive}
-                  onConvertSource={handleConvertSource}
-                />
-              </motion.div>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <WorkflowListItemSkeleton key={`skeleton-${String(i)}`} />
             ))}
           </div>
-        )}
-      </div>
+        )
+      ) : workflows.length === 0 ? (
+        <EmptyState
+          icon={isFiltered ? Search : Workflow}
+          tone={WORKFLOW_TONE}
+          title={
+            isFiltered
+              ? "没有找到匹配的工作流"
+              : `还没有${getResourceSourceLabel(filters.sourceKind)}的工作流`
+          }
+          description={
+            isFiltered
+              ? "换个关键词或状态筛选试试"
+              : "工作流把触发器、模型与工具编排成一条可执行链路"
+          }
+          action={
+            !isFiltered && filters.sourceKind === "manual" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                <Plus />
+                创建第一个工作流
+              </Button>
+            ) : null
+          }
+        />
+      ) : viewMode === "grid" ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {workflows.map((workflow, i) => (
+            <motion.div key={workflow.id} {...staggerList(i)}>
+              <WorkflowCard
+                workflow={workflow}
+                selected={selectedWorkflowIds.has(workflow.id)}
+                batchMode={batchMode}
+                onSelect={toggleSelection}
+                onClick={handleWorkflowClick}
+                onEdit={handleEdit}
+                onExport={handleExport}
+                onArchive={handleArchive}
+                onConvertSource={handleConvertSource}
+              />
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {workflows.map((workflow, i) => (
+            <motion.div key={workflow.id} {...staggerList(i)}>
+              <WorkflowListItem
+                workflow={workflow}
+                selected={selectedWorkflowIds.has(workflow.id)}
+                batchMode={batchMode}
+                onSelect={toggleSelection}
+                onClick={handleWorkflowClick}
+                onEdit={handleEdit}
+                onExport={handleExport}
+                onArchive={handleArchive}
+                onConvertSource={handleConvertSource}
+              />
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 sm:px-6">
-          <span className="text-xs text-muted-foreground">
-            {meta.total} 个工作流, 第 {meta.page}/{meta.totalPages} 页
+        <div className="flex items-center justify-between border-t border-border pt-4">
+          <span className="text-xs tabular-nums text-muted-foreground">
+            共 {formatNumber(meta.total)} 个 · 第 {meta.page}/{meta.totalPages} 页
           </span>
           <div className="flex items-center gap-1">
             <Button
@@ -744,7 +755,7 @@ export function WorkflowListPage({
               disabled={filters.page <= 1}
               aria-label="上一页"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft />
             </Button>
             <Button
               variant="ghost"
@@ -753,7 +764,7 @@ export function WorkflowListPage({
               disabled={filters.page >= meta.totalPages}
               aria-label="下一页"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight />
             </Button>
           </div>
         </div>
@@ -764,15 +775,13 @@ export function WorkflowListPage({
         onOpenChange={setCreateDialogOpen}
       />
 
-      {archiveTarget && (
-        <ArchiveDialog
-          open
-          workflowId={archiveTarget.id}
-          onOpenChange={(open) => {
-            if (!open) setArchiveTarget(null);
-          }}
-        />
-      )}
-    </div>
+      <ArchiveDialog
+        open={archiveTarget !== null}
+        workflowId={lastArchiveTargetRef.current?.id ?? ""}
+        onOpenChange={(open) => {
+          if (!open) setArchiveTarget(null);
+        }}
+      />
+    </PageContainer>
   );
 }

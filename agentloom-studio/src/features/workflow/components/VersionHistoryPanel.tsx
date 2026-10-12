@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   History,
   X,
@@ -9,8 +10,17 @@ import {
   Loader2,
   Archive,
 } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
 import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { DUR, EASE } from "@/shared/lib/motion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -67,10 +77,12 @@ function VersionItemSkeleton() {
   return (
     <div className="border-b border-border p-4" data-testid="version-item-skeleton">
       <div className="flex items-center gap-2">
-        <Skeleton className="h-5 w-10 rounded" />
-        <Skeleton className="h-4 w-32 rounded" />
+        <Skeleton className="h-5 w-10 rounded-md" />
+        <Skeleton className="h-4 w-32" />
       </div>
-      <Skeleton className="mt-2 h-3 w-24 rounded" />
+      <Skeleton className="mt-2 h-3 w-24" />
+      <Skeleton className="mt-2 h-5 w-40" />
+      <Skeleton className="mt-2 h-3 w-28" />
     </div>
   );
 }
@@ -104,25 +116,31 @@ const VersionItem = memo(function VersionItem({
       className="group border-b border-border p-4 transition-colors hover:bg-muted"
       data-testid={`version-item-${version.versionNumber}`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge variant={isReleased ? "default" : "secondary"} className="rounded-md">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Badge
+            variant={isReleased ? "default" : "secondary"}
+            className="shrink-0 rounded-md"
+          >
             {formatVersionRecordLabel(version)}
           </Badge>
           {version.label && (
-            <span className="flex items-center gap-1 text-sm text-foreground">
-              <Tag className="h-3 w-3" />
-              {version.label}
+            <span
+              className="flex min-w-0 items-center gap-1 text-sm text-foreground"
+              title={version.label}
+            >
+              <Tag className="size-3 shrink-0" />
+              <span className="truncate">{version.label}</span>
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {isPublished && <Badge variant="success">当前发布</Badge>}
           {!isPublished && isReleased && <Badge variant="info">历史发布</Badge>}
           {isArchived && (
             <Badge variant="secondary">
-              <Archive className="h-3 w-3" />
+              <Archive className="size-3" />
               已归档
             </Badge>
           )}
@@ -131,36 +149,39 @@ const VersionItem = memo(function VersionItem({
 
       <div className="mt-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
+          <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+            <Clock className="size-3 shrink-0" />
             {formatRelativeTime(new Date(version.createdAt))}
           </span>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-2xs font-medium text-primary">
+          <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xs font-medium text-primary">
               {formatCreatorInitial(version.createdBy)}
             </span>
-            <span data-testid={`version-created-by-${version.versionNumber}`}>
+            <span
+              className="min-w-0 truncate"
+              data-testid={`version-created-by-${version.versionNumber}`}
+            >
               {creatorLabel}
             </span>
           </div>
 
           {version.snapshot?.metadata && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground tabular-nums">
               {version.snapshot.metadata.nodeCount} 个节点 ·{" "}
               {version.snapshot.metadata.edgeCount} 条连线
             </div>
           )}
 
           {releaseNotes && (
-            <p className="rounded-lg border border-border bg-muted px-3 py-2 text-xs leading-5 text-foreground">
+            <p className="whitespace-pre-wrap break-words rounded-lg border border-border bg-muted px-3 py-2 text-xs leading-5 text-foreground">
               {releaseNotes}
             </p>
           )}
         </div>
 
         {!isWorkflowArchived && (
-          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
             {!isPublished && !isArchived && onPublish && (
               <Button
                 variant="ghost"
@@ -169,7 +190,7 @@ const VersionItem = memo(function VersionItem({
                 onClick={() => onPublish(version.id)}
                 data-testid={`publish-version-${version.versionNumber}`}
               >
-                <Upload className="h-3 w-3" />
+                <Upload />
                 {publishActionLabel}
               </Button>
             )}
@@ -182,9 +203,9 @@ const VersionItem = memo(function VersionItem({
               data-testid={`rollback-version-${version.versionNumber}`}
             >
               {isRollingBack ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RotateCcw className="h-3 w-3" />
+                <RotateCcw />
               )}
               回滚
             </Button>
@@ -208,6 +229,9 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
   const [rollbackTarget, setRollbackTarget] = useState<WorkflowVersion | null>(
     null,
   );
+  /** 回滚确认框退场期间 rollbackTarget 已置空，用最近一次目标继续渲染文案 */
+  const lastRollbackTargetRef = useRef<WorkflowVersion | null>(null);
+  if (rollbackTarget) lastRollbackTargetRef.current = rollbackTarget;
   const [rollingBackId, setRollingBackId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching } = useWorkflowVersions(workflowId, {
@@ -326,124 +350,141 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
     [hasMorePages, isFetching],
   );
 
-  return (
-    <aside
-      className={cn(
-        "fixed right-0 top-0 z-40 flex h-full w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-lg transition-transform duration-300",
-        open ? "translate-x-0" : "translate-x-full",
-      )}
-      data-testid="version-history-panel"
-      aria-label="历史记录"
-    >
-      {/* 头部 */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium text-foreground">历史记录</h2>
-          {total > 0 && <span className="text-xs text-muted-foreground">({total})</span>}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClose}
-          aria-label="关闭历史记录"
-          data-testid="close-version-history"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+  const rollbackDialogTarget = lastRollbackTargetRef.current;
 
-      {/* 回滚确认 */}
-      {rollbackTarget && (
-        <div
-          className="border-b border-warning/25 bg-warning/5 p-4"
-          data-testid="rollback-confirm"
-        >
-          <p className="text-sm text-foreground">
-            确定要回滚到{formatHistoryRecordLabel(rollbackTarget)}
-            {rollbackTarget.label ? `（${rollbackTarget.label}）` : ""}
+  return (
+    <>
+      <AnimatePresence>
+        {open ? (
+          <motion.aside
+            key="version-history-panel"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ duration: DUR.slow, ease: EASE }}
+            className="fixed right-0 top-0 z-40 flex h-full w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-lg"
+            data-testid="version-history-panel"
+            aria-label="历史记录"
+          >
+            {/* 头部 */}
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <History className="size-4 shrink-0 text-muted-foreground" />
+                <h2 className="truncate text-sm font-medium text-foreground">历史记录</h2>
+                {total > 0 && (
+                  <span className="text-xs text-muted-foreground tabular-nums">({total})</span>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onClose}
+                aria-label="关闭历史记录"
+                data-testid="close-version-history"
+              >
+                <X />
+              </Button>
+            </div>
+
+            {/* 版本列表：唯一滚动容器 */}
+            <div
+              className="flex-1 overflow-y-auto"
+              onScroll={handleListScroll}
+              data-testid="version-list-scroll"
+            >
+              {isInitialLoading ? (
+                <div data-testid="version-list-loading">
+                  <VersionItemSkeleton />
+                  <VersionItemSkeleton />
+                  <VersionItemSkeleton />
+                </div>
+              ) : displayVersions.length === 0 ? (
+                <div className="p-4" data-testid="version-list-empty">
+                  <EmptyState
+                    icon={History}
+                    title="暂无发布记录或快照"
+                    description="保存快照或发布当前画布后，会在这里展示历史记录"
+                  />
+                </div>
+              ) : (
+                <div data-testid="version-list">
+                  {displayVersions.map((version) => (
+                    <VersionItem
+                      key={version.id}
+                      version={version}
+                      workflowStatus={workflowStatus}
+                      onRollback={handleRollback}
+                      onPublish={onPublish}
+                      isRollingBack={rollingBackId === version.id}
+                    />
+                  ))}
+                  {isFetching && hasMorePages && (
+                    <div
+                      className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground"
+                      data-testid="version-list-loading-more"
+                    >
+                      <Loader2 className="size-4 animate-spin" />
+                      正在加载更多版本…
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {footerLabel && (
+              <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2">
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  已加载 {displayVersions.length}/{total} 条记录
+                </span>
+                <span className="text-xs text-muted-foreground">{footerLabel}</span>
+              </div>
+            )}
+          </motion.aside>
+        ) : null}
+      </AnimatePresence>
+
+      {/* 回滚会丢弃未保存更改，属破坏性操作，走 AlertDialog */}
+      <AlertDialog
+        open={rollbackTarget !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !rollingBackId) cancelRollback();
+        }}
+      >
+        <AlertDialogContent data-testid="rollback-confirm">
+          <AlertDialogTitle>确认回滚</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定要回滚到
+            {rollbackDialogTarget ? formatHistoryRecordLabel(rollbackDialogTarget) : ""}
+            {rollbackDialogTarget?.label ? `（${rollbackDialogTarget.label}）` : ""}
             吗？当前未保存的更改将丢失。
-          </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              size="sm"
-              className="bg-warning text-white hover:bg-warning/90"
-              onClick={confirmRollback}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={!!rollingBackId}
+              data-testid="cancel-rollback"
+            >
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={(event) => {
+                // 等请求完成后再由 confirmRollback 关闭
+                event.preventDefault();
+                void confirmRollback();
+              }}
               disabled={!!rollingBackId}
               data-testid="confirm-rollback"
             >
               {rollingBackId ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RotateCcw className="h-3 w-3" />
+                <RotateCcw />
               )}
               确认回滚
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={cancelRollback}
-              data-testid="cancel-rollback"
-            >
-              取消
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 版本列表 */}
-      <div className="flex-1 overflow-y-auto">
-        {isInitialLoading ? (
-          <div data-testid="version-list-loading">
-            <VersionItemSkeleton />
-            <VersionItemSkeleton />
-            <VersionItemSkeleton />
-          </div>
-        ) : displayVersions.length === 0 ? (
-          <div className="p-4" data-testid="version-list-empty">
-            <EmptyState
-              icon={History}
-              title="暂无发布记录或快照"
-              description="保存快照或发布当前画布后，会在这里展示历史记录"
-            />
-          </div>
-        ) : (
-          <div
-            data-testid="version-list"
-            onScroll={handleListScroll}
-            className="h-full overflow-y-auto"
-          >
-            {displayVersions.map((version) => (
-              <VersionItem
-                key={version.id}
-                version={version}
-                workflowStatus={workflowStatus}
-                onRollback={handleRollback}
-                onPublish={onPublish}
-                isRollingBack={rollingBackId === version.id}
-              />
-            ))}
-            {isFetching && hasMorePages && (
-              <div
-                className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground"
-                data-testid="version-list-loading-more"
-              >
-                <Loader2 className="h-4 w-4 animate-spin" />
-                正在加载更多版本…
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {footerLabel && (
-        <div className="flex items-center justify-between border-t border-border px-4 py-2">
-          <span className="text-xs text-muted-foreground">
-            已加载 {displayVersions.length}/{total} 条记录
-          </span>
-          <span className="text-xs text-muted-foreground">{footerLabel}</span>
-        </div>
-      )}
-    </aside>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 });

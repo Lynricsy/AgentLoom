@@ -1,3 +1,4 @@
+import { formatBytes } from '@/shared/lib/format'
 import type { WorkflowExportEnvelope } from '../types'
 
 export const WORKFLOW_EXPORT_FILE_EXTENSION = '.agentloom-workflow.json'
@@ -22,7 +23,7 @@ export function downloadWorkflowExport(data: WorkflowExportEnvelope, workflowSlu
 
 export async function parseImportFile(file: File): Promise<string> {
   if (file.size > MAX_IMPORT_FILE_SIZE) {
-    throw new Error(`文件大小超出限制 (最大 ${(MAX_IMPORT_FILE_SIZE / 1024 / 1024).toFixed(0)}MB)`)
+    throw new Error(`文件大小超出限制（最大 ${formatBytes(MAX_IMPORT_FILE_SIZE)}）`)
   }
 
   return file.text()

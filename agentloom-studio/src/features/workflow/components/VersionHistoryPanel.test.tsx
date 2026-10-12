@@ -105,18 +105,16 @@ describe("VersionHistoryPanel", () => {
     };
   });
 
-  it("关闭时面板被移出视口", () => {
+  it("关闭时面板不挂载", () => {
     render(<VersionHistoryPanel {...defaultProps} open={false} />);
 
-    const panel = screen.getByTestId("version-history-panel");
-    expect(panel.className).toContain("translate-x-full");
+    expect(screen.queryByTestId("version-history-panel")).not.toBeInTheDocument();
   });
 
   it("打开时面板可见", () => {
     render(<VersionHistoryPanel {...defaultProps} open={true} />);
 
-    const panel = screen.getByTestId("version-history-panel");
-    expect(panel.className).toContain("translate-x-0");
+    expect(screen.getByTestId("version-history-panel")).toBeInTheDocument();
   });
 
   it("加载时显示骨架屏", () => {
@@ -314,14 +312,16 @@ describe("VersionHistoryPanel", () => {
       });
     });
 
-    it("取消回滚隐藏确认提示", () => {
+    it("取消回滚隐藏确认提示", async () => {
       render(<VersionHistoryPanel {...defaultProps} />);
 
       fireEvent.click(screen.getByTestId("rollback-version-2"));
       expect(screen.getByTestId("rollback-confirm")).toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId("cancel-rollback"));
-      expect(screen.queryByTestId("rollback-confirm")).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.queryByTestId("rollback-confirm")).not.toBeInTheDocument();
+      });
     });
   });
 
@@ -333,7 +333,7 @@ describe("VersionHistoryPanel", () => {
 
     render(<VersionHistoryPanel {...defaultProps} />);
 
-    const list = screen.getByTestId("version-list");
+    const list = screen.getByTestId("version-list-scroll");
     Object.defineProperty(list, "scrollHeight", {
       configurable: true,
       value: 600,

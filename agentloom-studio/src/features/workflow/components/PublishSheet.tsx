@@ -1,15 +1,13 @@
 import { memo, useCallback, useEffect, useState } from 'react'
 import {
-  AlertCircle,
   AlertTriangle,
-  CheckCircle2,
   ChevronDown,
-  ChevronRight,
   Loader2,
   Upload,
-  X,
 } from 'lucide-react'
+import { Collapse } from '@/shared/components/collapse/Collapse'
 import { cn } from '@/shared/lib/utils'
+import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -225,39 +223,22 @@ export const PublishSheet = memo(function PublishSheet({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" hideClose data-testid="publish-sheet">
-        <SheetHeader className="pr-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <SheetTitle>发布工作流</SheetTitle>
-              <SheetDescription className="mt-0.5 text-xs">
-                发布后工作流将可被执行引擎调用
-              </SheetDescription>
-            </div>
-            <SheetClose asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="关闭"
-                data-testid="close-publish-sheet"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </SheetClose>
-          </div>
+      <SheetContent side="right" data-testid="publish-sheet">
+        <SheetHeader>
+          <SheetTitle>发布工作流</SheetTitle>
+          <SheetDescription className="mt-0.5 text-xs">
+            发布后工作流将可被执行引擎调用
+          </SheetDescription>
         </SheetHeader>
 
         {publishWarnings ? (
           <>
             <SheetBody className="space-y-4">
-              <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-success">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>工作流已成功发布</span>
-              </div>
+              <Alert variant="success">工作流已成功发布</Alert>
 
               <div className="space-y-2" data-testid="publish-warnings-list">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-warning">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="size-4 shrink-0" />
                   <span>{publishWarnings.length} 条兼容性警告</span>
                 </div>
 
@@ -267,7 +248,7 @@ export const PublishSheet = memo(function PublishSheet({
                   return (
                     <div
                       key={`${warning.sourceNodeId}-${warning.targetNodeId}-${String(index)}`}
-                      className="overflow-hidden rounded-lg border border-warning/25 bg-warning/5"
+                      className="overflow-hidden rounded-lg border border-warning/30 bg-warning/10"
                       data-testid="publish-warning-item"
                     >
                       <Button
@@ -277,32 +258,33 @@ export const PublishSheet = memo(function PublishSheet({
                         aria-expanded={expanded}
                         data-testid="publish-warning-toggle"
                       >
-                        {expanded ? (
-                          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
-                        ) : (
-                          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
-                        )}
-                        <span>{warning.message}</span>
+                        <ChevronDown
+                          className={cn(
+                            'mt-0.5 shrink-0 text-warning transition-transform duration-150',
+                            !expanded && '-rotate-90',
+                          )}
+                        />
+                        <span className="min-w-0 break-words">{warning.message}</span>
                       </Button>
 
-                      {expanded && (
+                      <Collapse open={expanded}>
                         <div
-                          className="border-t border-warning/25 px-3 py-2 text-xs text-muted-foreground"
+                          className="border-t border-warning/30 px-3 py-2 text-xs text-muted-foreground"
                           data-testid="publish-warning-detail"
                         >
                           <div className="flex flex-wrap items-center gap-1 font-mono">
-                            <span>{warning.sourceNodeId}.{warning.sourcePort.name}</span>
+                            <span className="min-w-0 break-all">{warning.sourceNodeId}.{warning.sourcePort.name}</span>
                             <Badge variant="warning" size="sm">
                               {warning.sourcePort.dataType}
                             </Badge>
                             <span>→</span>
-                            <span>{warning.targetNodeId}.{warning.targetPort.name}</span>
+                            <span className="min-w-0 break-all">{warning.targetNodeId}.{warning.targetPort.name}</span>
                             <Badge variant="warning" size="sm">
                               {warning.targetPort.dataType}
                             </Badge>
                           </div>
                         </div>
-                      )}
+                      </Collapse>
                     </div>
                   )
                 })}
@@ -323,19 +305,19 @@ export const PublishSheet = memo(function PublishSheet({
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             <SheetBody className="space-y-6">
               {validationErrors.length > 0 && (
-                <div
-                  className="flex items-start gap-2 rounded-lg border border-error/25 bg-error/10 p-3 text-sm text-error"
-                  data-testid="publish-validation-error"
-                >
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <Alert variant="error" data-testid="publish-validation-error">
                   <div className="space-y-1">
                     {validationErrors.map((message) => (
-                      <p key={message} data-testid="publish-validation-error-item">
+                      <p
+                        key={message}
+                        className="break-words"
+                        data-testid="publish-validation-error-item"
+                      >
                         {message}
                       </p>
                     ))}
                   </div>
-                </div>
+                </Alert>
               )}
 
               <div className="flex flex-col gap-1.5">
@@ -412,8 +394,9 @@ export const PublishSheet = memo(function PublishSheet({
                 </RadioGroup>
               </fieldset>
 
-              {versionSource === 'existing' && (
-                <div className="flex flex-col gap-1.5">
+              {/* space-y-6 的外边距不参与高度动画：外层抵消、内层 pt-6 随展开一起过渡 */}
+              <Collapse open={versionSource === 'existing'} className="!mt-0">
+                <div className="flex flex-col gap-1.5 pt-6">
                   <Label id="version-select-label">选择记录</Label>
                   {unpublishedVersions.length === 0 ? (
                     <p className="text-xs text-muted-foreground">暂无可发布记录，请先保存快照</p>
@@ -438,25 +421,24 @@ export const PublishSheet = memo(function PublishSheet({
                     </Select>
                   )}
                 </div>
-              )}
+              </Collapse>
             </SheetBody>
 
             <SheetFooter>
               <SheetClose asChild>
-                <Button type="button" variant="ghost" data-testid="cancel-publish">
+                <Button type="button" variant="outline" data-testid="cancel-publish">
                   取消
                 </Button>
               </SheetClose>
               <Button
                 type="submit"
-                className="bg-success text-white hover:bg-success/90"
                 disabled={publishMutation.isPending}
                 data-testid="confirm-publish"
               >
                 {publishMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="animate-spin" />
                 ) : (
-                  <Upload className="h-4 w-4" />
+                  <Upload />
                 )}
                 发布
               </Button>
