@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { BellRing } from 'lucide-react'
+import { AlertCircle, BellRing } from 'lucide-react'
 import { PageContainer } from '@/shared/components'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
@@ -98,7 +99,7 @@ export function NotificationPreferencesPage() {
         <Card>
           <CardContent className="space-y-3 p-4">
             {Array.from({ length: 6 }, (_, index) => (
-              <Skeleton key={index} className="h-10 rounded-lg" />
+              <Skeleton key={index} className="h-15 rounded-lg" />
             ))}
           </CardContent>
         </Card>
@@ -110,12 +111,12 @@ export function NotificationPreferencesPage() {
     return (
       <PageContainer width="narrow" data-testid="notification-preferences-page">
         <PageHeader icon={BellRing} title="通知偏好" description={PAGE_DESCRIPTION} />
-        <Card className="border-error/40">
-          <CardContent className="space-y-3 p-5">
-            <p className="text-sm font-medium text-foreground">加载通知偏好失败</p>
-            <p className="text-xs font-medium text-error">
-              {error instanceof Error ? error.message : '未知错误'}
-            </p>
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载通知偏好失败"
+          description={error instanceof Error ? error.message : '未知错误'}
+          action={
             <Button
               variant="outline"
               size="sm"
@@ -124,8 +125,8 @@ export function NotificationPreferencesPage() {
             >
               重试
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       </PageContainer>
     )
   }
@@ -168,7 +169,7 @@ export function NotificationPreferencesPage() {
 
               return (
                 <TableRow key={type} className="hover:bg-transparent">
-                  <TableCell className="align-top">
+                  <TableCell>
                     <span className="block text-sm font-medium text-foreground">
                       {meta?.label ?? type}
                     </span>
@@ -185,16 +186,18 @@ export function NotificationPreferencesPage() {
                       DEFAULT_ENABLED
 
                     return (
-                      <TableCell key={channel.value} className="text-center">
-                        <Switch
-                          className="mx-auto"
-                          checked={enabled}
-                          onCheckedChange={(next) =>
-                            handleToggle(type, channel.value, next)
-                          }
-                          aria-label={`${meta?.label ?? type} · ${channel.label}`}
-                          data-testid={`preference-${type}-${channel.value}`}
-                        />
+                      <TableCell key={channel.value}>
+                        {/* Switch 是 inline-flex label，放进 flex 容器避免受行高影响下沉 */}
+                        <div className="flex justify-center">
+                          <Switch
+                            checked={enabled}
+                            onCheckedChange={(next) =>
+                              handleToggle(type, channel.value, next)
+                            }
+                            aria-label={`${meta?.label ?? type} · ${channel.label}`}
+                            data-testid={`preference-${type}-${channel.value}`}
+                          />
+                        </div>
                       </TableCell>
                     )
                   })}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, BellOff, CheckCheck } from 'lucide-react'
+import { AlertCircle, Bell, BellOff, CheckCheck } from 'lucide-react'
 import { formatRelativeTime } from '@/features/canvas'
 import { PageContainer } from '@/shared/components'
 import {
@@ -10,9 +10,9 @@ import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { Card, CardContent } from '@/shared/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
+import { formatDateTime } from '@/shared/lib/format'
 import { cn } from '@/shared/lib/utils'
 import {
   useMarkAllAsRead,
@@ -114,20 +114,20 @@ export function NotificationCenterPage() {
             <span
               aria-hidden
               className={cn(
-                'mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border',
+                'mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border',
                 TONE_ICON_CLASS[meta.tone],
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="size-4" />
             </span>
 
             <div className="min-w-0">
               <div className="flex items-center gap-2">
+                {/* 未读只用圆点 + 粗体表达（原先再叠一个「未读」徽标，三重标记） */}
                 {notification.isRead ? null : (
-                  <span
-                    aria-hidden
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-                  />
+                  <span className="size-1.5 shrink-0 rounded-full bg-primary">
+                    <span className="sr-only">未读</span>
+                  </span>
                 )}
                 <span
                   className={cn(
@@ -137,11 +137,6 @@ export function NotificationCenterPage() {
                 >
                   {notification.title}
                 </span>
-                {notification.isRead ? null : (
-                  <Badge size="sm" variant="default">
-                    未读
-                  </Badge>
-                )}
               </div>
 
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -182,12 +177,13 @@ export function NotificationCenterPage() {
     {
       key: 'createdAt',
       header: '时间',
-      className: 'w-28 whitespace-nowrap',
+      className: 'w-28',
+      nowrap: true,
       hideBelow: 'sm',
       cell: (notification) => (
         <span
           className="text-xs text-muted-foreground"
-          title={new Date(notification.createdAt).toLocaleString('zh-CN')}
+          title={formatDateTime(notification.createdAt)}
         >
           {formatRelativeTime(new Date(notification.createdAt))}
         </span>
@@ -196,7 +192,9 @@ export function NotificationCenterPage() {
     {
       key: 'actions',
       header: '操作',
-      className: 'w-28 whitespace-nowrap text-right',
+      className: 'w-28',
+      align: 'right',
+      nowrap: true,
       cell: (notification) =>
         notification.isRead ? (
           <span className="text-xs text-muted-foreground">已读</span>
@@ -249,12 +247,12 @@ export function NotificationCenterPage() {
       </Tabs>
 
       {isError ? (
-        <Card className="border-error/40">
-          <CardContent className="space-y-3 p-5">
-            <p className="text-sm font-medium text-foreground">加载通知失败</p>
-            <p className="text-xs font-medium text-error">
-              {error instanceof Error ? error.message : '未知错误'}
-            </p>
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载通知失败"
+          description={error instanceof Error ? error.message : '未知错误'}
+          action={
             <Button
               variant="outline"
               size="sm"
@@ -263,8 +261,8 @@ export function NotificationCenterPage() {
             >
               重试
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <DataTable
           columns={columns}

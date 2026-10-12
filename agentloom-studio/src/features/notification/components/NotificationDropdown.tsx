@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
-import { Link } from '@tanstack/react-router'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { Link, useRouter } from '@tanstack/react-router'
+import { ArrowRight } from 'lucide-react'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { Button } from '@/shared/ui/button'
 import {
   useMarkAllAsRead,
@@ -17,6 +18,7 @@ function getTimelineUrl(body: Record<string, unknown> | null): string | null {
 
 export function NotificationDropdown() {
   const { setDropdownOpen } = useNotificationActions()
+  const router = useRouter()
   const {
     data,
     isLoading,
@@ -48,10 +50,11 @@ export function NotificationDropdown() {
 
       if (timelineUrl) {
         setDropdownOpen(false)
-        globalThis.location.assign(timelineUrl)
+        // timelineUrl 是站内路径（可能带 query），走路由 history 而非整页刷新
+        router.history.push(timelineUrl)
       }
     },
-    [markAsReadMutation, setDropdownOpen],
+    [markAsReadMutation, router, setDropdownOpen],
   )
 
   const handleMarkAllAsRead = useCallback(async () => {
@@ -83,7 +86,7 @@ export function NotificationDropdown() {
 
       {isLoading && visibleNotifications.length === 0 ? (
         <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
+          <Spinner />
           加载通知中…
         </div>
       ) : null}

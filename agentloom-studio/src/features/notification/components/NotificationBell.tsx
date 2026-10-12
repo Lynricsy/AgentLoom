@@ -1,4 +1,5 @@
 import { Bell } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover'
 import { useUnreadCount } from '../api/notificationQueries'
@@ -28,12 +29,13 @@ export function NotificationBell() {
           <Bell aria-hidden="true" />
 
           {displayCount > 0 ? (
-            <span
-              className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-error px-1.5 py-0.5 text-2xs font-semibold leading-none text-white"
+            <Badge
+              size="sm"
+              className="absolute -right-1 -top-1 min-w-5 justify-center border-transparent bg-error font-semibold text-white"
               data-testid="notification-badge"
             >
               {displayCount > 99 ? '99+' : displayCount}
-            </span>
+            </Badge>
           ) : null}
         </Button>
       </PopoverTrigger>

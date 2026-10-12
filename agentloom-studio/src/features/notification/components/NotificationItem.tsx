@@ -15,7 +15,7 @@ interface NotificationItemProps {
 }
 
 const itemVariants = cva(
-  'flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-none border-l-2 px-4 py-3 text-left font-normal transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-60',
+  'flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-none border-l-2 px-4 py-3 text-left font-normal transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 active:scale-100 disabled:pointer-events-none disabled:opacity-60',
   {
     variants: {
       unread: {
