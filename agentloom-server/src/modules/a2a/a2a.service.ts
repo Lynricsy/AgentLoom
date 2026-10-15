@@ -87,8 +87,9 @@ export class A2aService {
   }
 
   /**
-   * 把 A2A 消息转成 run：无 contextId 时新建对话；`messageId` 作为幂等键，
-   * 客户端重发同一条消息得到同一个任务。
+   * 把 A2A 消息转成 run：`messageId` 作为幂等键，客户端重发同一条消息得到同一个任务。
+   * 无 contextId 时对话与 run 在同一事务里创建，重放返回首次创建的任务（同一 contextId），
+   * 不会再新建对话；同一 messageId 换内容重发报 -32602。
    */
   async startMessageRun(
     key: AgentApiKeyContext,
@@ -128,29 +129,33 @@ export class A2aService {
       );
     }
 
-    let conversationId: string;
+    const idempotencyKey = `a2a:${message.messageId}`;
     if (message.contextId === undefined) {
-      conversationId = (await this.agentApiService.createConversation(key, {}))
-        .id;
-    } else {
-      try {
-        conversationId = (
-          await this.agentApiService.getConversation(key, message.contextId)
-        ).id;
-      } catch (error) {
-        if (error instanceof AgentApiConversationNotFoundException) {
-          throw new A2aRpcError(
-            JSON_RPC_ERRORS.InvalidParams,
-            `context ${message.contextId} not found`,
-          );
-        }
-        throw error;
+      const { run } = await this.agentApiService.createRunInNewConversation(
+        key,
+        { conversation: {}, body: body.data, idempotencyKey },
+      );
+      return run;
+    }
+
+    let conversationId: string;
+    try {
+      conversationId = (
+        await this.agentApiService.getConversation(key, message.contextId)
+      ).id;
+    } catch (error) {
+      if (error instanceof AgentApiConversationNotFoundException) {
+        throw new A2aRpcError(
+          JSON_RPC_ERRORS.InvalidParams,
+          `context ${message.contextId} not found`,
+        );
       }
+      throw error;
     }
 
     const { run } = await this.agentApiService.createRun(key, conversationId, {
       body: body.data,
-      idempotencyKey: `a2a:${message.messageId}`,
+      idempotencyKey,
     });
     return run;
   }

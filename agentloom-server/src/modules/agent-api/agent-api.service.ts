@@ -92,8 +92,16 @@ const RUN_DISPATCH_FAILED_ERROR: AgentApiRunError = {
 
 type Page<T> = { data: T[]; meta: AgentApiPageMeta };
 
+/**
+ * run 写入的对话：已有对话，或在建 run 的同一事务里新建的对话（A2A 不带 contextId 的消息）。
+ * 新建对话与 run 同事务提交，幂等重放不会留下多余的空对话。
+ */
+type RunTarget =
+  | { conversationId: string }
+  | { newConversation: CreateAgentApiConversationDto };
+
 type InsertRunOutcome =
-  | { kind: 'created'; runId: string; messageId: string }
+  | { kind: 'created'; conversationId: string; runId: string; messageId: string }
   | { kind: 'replayed'; run: AgentApiRun };
 
 export interface CreateAgentApiRunResult {
@@ -188,22 +196,7 @@ export class AgentApiService {
       key.tenantId,
       async (tx) => {
         await this.assertAgentAvailable(tx, key);
-
-        const [row] = await tx
-          .insert(agentConversations)
-          .values({
-            agentDefinitionId: key.agentDefinitionId,
-            tenantId: key.tenantId,
-            title: dto.title ?? null,
-            metadata: dto.metadata ?? {},
-            createdBy: null,
-            source: 'api',
-            apiKeyId: key.keyId,
-            externalUserId: dto.externalUserId ?? null,
-          })
-          .returning();
-
-        return row;
+        return this.insertConversation(tx, key, dto);
       },
     );
 
@@ -347,13 +340,47 @@ export class AgentApiService {
     conversationId: string,
     params: { body: CreateAgentApiRunDto; idempotencyKey?: string },
   ): Promise<CreateAgentApiRunResult> {
+    return this.startRun(key, { conversationId }, params);
+  }
+
+  /**
+   * 在同一事务里新建对话并创建首个 run。幂等键命中时返回首次创建的 run（及其对话），
+   * 不再新建对话；并发重发由 Key 行锁串行化，只产生一个对话与一个 run。
+   */
+  async createRunInNewConversation(
+    key: AgentApiKeyContext,
+    params: {
+      conversation: CreateAgentApiConversationDto;
+      body: CreateAgentApiRunDto;
+      idempotencyKey?: string;
+    },
+  ): Promise<CreateAgentApiRunResult> {
+    return this.startRun(
+      key,
+      { newConversation: params.conversation },
+      { body: params.body, idempotencyKey: params.idempotencyKey },
+    );
+  }
+
+  private async startRun(
+    key: AgentApiKeyContext,
+    target: RunTarget,
+    params: { body: CreateAgentApiRunDto; idempotencyKey?: string },
+  ): Promise<CreateAgentApiRunResult> {
     if (process.env.APP_SANDBOX_MAINTENANCE_MODE === 'true') {
       throw new SandboxMaintenanceException('execute');
     }
 
-    // 路径里的对话 id 一并参与哈希：同一 Idempotency-Key 换对话重放视为不同请求
+    // 目标对话一并参与哈希：同一 Idempotency-Key 换对话重放视为不同请求；
+    // 新建对话的请求以对话创建参数代替对话 id，重放时与首次请求哈希一致
     const requestHash = createHash('sha256')
-      .update(canonicalJson({ conversationId, body: params.body }))
+      .update(
+        canonicalJson(
+          'conversationId' in target
+            ? { conversationId: target.conversationId, body: params.body }
+            : { newConversation: target.newConversation, body: params.body },
+        ),
+      )
       .digest('hex');
     const { idempotencyKey } = params;
 
@@ -374,7 +401,7 @@ export class AgentApiService {
       try {
         outcome = await this.insertRun(
           key,
-          conversationId,
+          target,
           params.body,
           idempotencyKey,
           requestHash,
@@ -382,10 +409,13 @@ export class AgentApiService {
       } catch (error) {
         const constraint = readUniqueViolationConstraint(error);
 
-        if (constraint === ACTIVE_CONVERSATION_RUN_CONSTRAINT) {
+        if (
+          constraint === ACTIVE_CONVERSATION_RUN_CONSTRAINT &&
+          'conversationId' in target
+        ) {
           const activeRunId = await this.runService.findActiveRunId(
             key.tenantId,
-            conversationId,
+            target.conversationId,
           );
           if (activeRunId) {
             throw new ConversationBusyException(activeRunId);
@@ -416,7 +446,7 @@ export class AgentApiService {
       return { run: outcome.run, replayed: true };
     }
 
-    const { runId, messageId } = outcome;
+    const { conversationId, runId, messageId } = outcome;
     const [run] = await runInTenantTransaction(
       this.db,
       key.tenantId,
@@ -657,22 +687,24 @@ export class AgentApiService {
 
   private async insertRun(
     key: AgentApiKeyContext,
-    conversationId: string,
+    target: RunTarget,
     body: CreateAgentApiRunDto,
     idempotencyKey: string | undefined,
     requestHash: string,
   ): Promise<InsertRunOutcome> {
     return runInTenantTransaction(this.db, key.tenantId, async (tx) => {
-      const conversation = await this.loadOwnedConversation(
-        tx,
-        key,
-        conversationId,
-      );
-      if (
-        conversation.status === 'ended' ||
-        conversation.status === 'failed'
-      ) {
-        throw new ConversationEndedException(conversationId);
+      if ('conversationId' in target) {
+        const conversation = await this.loadOwnedConversation(
+          tx,
+          key,
+          target.conversationId,
+        );
+        if (
+          conversation.status === 'ended' ||
+          conversation.status === 'failed'
+        ) {
+          throw new ConversationEndedException(target.conversationId);
+        }
       }
 
       await this.assertAgentAvailable(tx, key);
@@ -690,7 +722,7 @@ export class AgentApiService {
         throw new AgentApiKeyInvalidException();
       }
 
-      // 持锁后再查一次：并发的同 key 请求可能刚提交
+      // 持锁后再查一次：并发的同 key 请求可能刚提交（新建对话的请求也在此之前不写任何行）
       if (idempotencyKey) {
         const replay = await this.findIdempotentRun(
           tx,
@@ -718,18 +750,26 @@ export class AgentApiService {
         );
       }
 
-      const [activeConversationRun] = await tx
-        .select({ id: agentApiRuns.id })
-        .from(agentApiRuns)
-        .where(
-          and(
-            eq(agentApiRuns.conversationId, conversationId),
-            inArray(agentApiRuns.status, [...ACTIVE_RUN_STATUSES]),
-          ),
-        )
-        .limit(1);
-      if (activeConversationRun) {
-        throw new ConversationBusyException(activeConversationRun.id);
+      let conversationId: string;
+      if ('conversationId' in target) {
+        conversationId = target.conversationId;
+        const [activeConversationRun] = await tx
+          .select({ id: agentApiRuns.id })
+          .from(agentApiRuns)
+          .where(
+            and(
+              eq(agentApiRuns.conversationId, conversationId),
+              inArray(agentApiRuns.status, [...ACTIVE_RUN_STATUSES]),
+            ),
+          )
+          .limit(1);
+        if (activeConversationRun) {
+          throw new ConversationBusyException(activeConversationRun.id);
+        }
+      } else {
+        conversationId = (
+          await this.insertConversation(tx, key, target.newConversation)
+        ).id;
       }
 
       const message = await this.insertUserMessage(
@@ -751,8 +791,34 @@ export class AgentApiService {
         })
         .returning({ id: agentApiRuns.id });
 
-      return { kind: 'created', runId: run.id, messageId: message.id };
+      return {
+        kind: 'created',
+        conversationId,
+        runId: run.id,
+        messageId: message.id,
+      };
     });
+  }
+
+  private async insertConversation(
+    tx: DrizzleDB,
+    key: AgentApiKeyContext,
+    dto: CreateAgentApiConversationDto,
+  ): Promise<AgentConversation> {
+    const [row] = await tx
+      .insert(agentConversations)
+      .values({
+        agentDefinitionId: key.agentDefinitionId,
+        tenantId: key.tenantId,
+        title: dto.title ?? null,
+        metadata: dto.metadata ?? {},
+        createdBy: null,
+        source: 'api',
+        apiKeyId: key.keyId,
+        externalUserId: dto.externalUserId ?? null,
+      })
+      .returning();
+    return row;
   }
 
   /** 附件沿用 Studio 对话同一套规则；规则以 400 报错，这里统一为契约的 422 */

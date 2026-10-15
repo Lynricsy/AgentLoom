@@ -1,9 +1,16 @@
 import type { AgentApiRun } from '@agentloom/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AgentApiConversationNotFoundException } from '../../agent-api/agent-api.exceptions';
+import {
+  AgentApiConversationNotFoundException,
+  IdempotencyKeyReusedException,
+} from '../../agent-api/agent-api.exceptions';
 import type { AgentApiKeyContext } from '../../agent-api/agent-api.types';
-import { A2aAgentNotFoundException, A2aRpcError } from '../a2a.exceptions';
+import {
+  A2aAgentNotFoundException,
+  A2aRpcError,
+  toRpcError,
+} from '../a2a.exceptions';
 import { A2aService } from '../a2a.service';
 import {
   A2A_BLOCKING_WAIT_SECONDS,
@@ -78,6 +85,10 @@ function createService(cardRows: unknown[] = []) {
     createConversation: vi.fn(async () => ({ id: CONVERSATION_ID })),
     getConversation: vi.fn(async () => ({ id: CONVERSATION_ID })),
     createRun: vi.fn(async () => ({ run: runDto('queued'), replayed: false })),
+    createRunInNewConversation: vi.fn(async () => ({
+      run: runDto('queued'),
+      replayed: false,
+    })),
     waitForRun: vi.fn(async () => runDto('completed')),
     findRunById: vi.fn(async () => runDto('running')),
     cancelRun: vi.fn(async () => runDto('cancelled')),
@@ -124,16 +135,18 @@ describe('A2aService', () => {
   });
 
   describe('sendMessage', () => {
-    it('无 contextId 时新建对话，文本 parts 以换行拼接，messageId 作为幂等键并阻塞等待', async () => {
+    it('无 contextId 时在同一事务新建对话与 run，文本 parts 以换行拼接，messageId 作为幂等键并阻塞等待', async () => {
       const { service, agentApi } = createService();
 
       const result = await service.sendMessage(KEY, params());
 
-      expect(agentApi.createConversation).toHaveBeenCalledWith(KEY, {});
-      expect(agentApi.createRun).toHaveBeenCalledWith(KEY, CONVERSATION_ID, {
+      expect(agentApi.createRunInNewConversation).toHaveBeenCalledWith(KEY, {
+        conversation: {},
         body: { input: { content: '你好\n请介绍一下自己' } },
         idempotencyKey: 'a2a:m-1',
       });
+      expect(agentApi.createConversation).not.toHaveBeenCalled();
+      expect(agentApi.createRun).not.toHaveBeenCalled();
       expect(agentApi.waitForRun).toHaveBeenCalledWith(
         KEY,
         runDto('queued'),
@@ -142,6 +155,46 @@ describe('A2aService', () => {
       );
       expect(result.task.status.state).toBe('TASK_STATE_COMPLETED');
       expect(result.task.artifacts[0]?.parts[0]?.text).toBe('你好！');
+    });
+
+    it('无 contextId 重放同一 messageId 返回首次的任务 id 与 contextId，不另建对话', async () => {
+      const { service, agentApi } = createService();
+      agentApi.createRunInNewConversation
+        .mockResolvedValueOnce({ run: runDto('queued'), replayed: false })
+        .mockResolvedValueOnce({ run: runDto('running'), replayed: true });
+
+      const first = await service.sendMessage(
+        KEY,
+        params({}, { returnImmediately: true }),
+      );
+      const replay = await service.sendMessage(
+        KEY,
+        params({}, { returnImmediately: true }),
+      );
+
+      expect(replay.task.id).toBe(first.task.id);
+      expect(replay.task.contextId).toBe(first.task.contextId);
+      expect(replay.task.contextId).toBe(CONVERSATION_ID);
+      expect(agentApi.createRunInNewConversation).toHaveBeenNthCalledWith(
+        2,
+        KEY,
+        expect.objectContaining({ idempotencyKey: 'a2a:m-1' }),
+      );
+      expect(agentApi.createConversation).not.toHaveBeenCalled();
+    });
+
+    it('同一 messageId 换内容重发映射为 -32602', async () => {
+      const { service, agentApi } = createService();
+      agentApi.createRunInNewConversation.mockRejectedValueOnce(
+        new IdempotencyKeyReusedException(),
+      );
+
+      const error = await service
+        .sendMessage(KEY, params({ parts: [{ text: '另一条' }] }))
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(IdempotencyKeyReusedException);
+      expect(toRpcError(error).error.code).toBe(JSON_RPC_ERRORS.InvalidParams);
     });
 
     it('带 contextId 时复用该对话', async () => {
@@ -154,6 +207,11 @@ describe('A2aService', () => {
         CONVERSATION_ID,
       );
       expect(agentApi.createConversation).not.toHaveBeenCalled();
+      expect(agentApi.createRunInNewConversation).not.toHaveBeenCalled();
+      expect(agentApi.createRun).toHaveBeenCalledWith(KEY, CONVERSATION_ID, {
+        body: { input: { content: '你好\n请介绍一下自己' } },
+        idempotencyKey: 'a2a:m-1',
+      });
     });
 
     it('contextId 不存在时报 -32602', async () => {
@@ -198,6 +256,7 @@ describe('A2aService', () => {
         service.sendMessage(KEY, params({ parts: [{ text: '' }] })),
       ).rejects.toMatchObject({ code: JSON_RPC_ERRORS.InvalidParams });
       expect(agentApi.createRun).not.toHaveBeenCalled();
+      expect(agentApi.createRunInNewConversation).not.toHaveBeenCalled();
     });
   });
 

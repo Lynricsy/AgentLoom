@@ -525,6 +525,122 @@ describe('AgentApiService', () => {
     });
   });
 
+  describe('createRunInNewConversation', () => {
+    const IDEMPOTENCY_KEY = 'a2a:m-1';
+
+    /** [事务外幂等查询]、Agent、锁 Key、持锁幂等复查、Key 活跃计数、插入对话、插入 run */
+    function newConversationQueries(): QueryResult[] {
+      return [
+        [],
+        PUBLISHED_AGENT,
+        [{ id: KEY_ID, maxConcurrentRuns: 2 }],
+        [],
+        [{ activeRuns: 0 }],
+        (op) => [conversationRow(op.values)],
+        [{ id: RUN_ID }],
+      ];
+    }
+
+    async function createFirst() {
+      const first = createService(newConversationQueries());
+      const created = await first.service.createRunInNewConversation(KEY, {
+        conversation: {},
+        body: RUN_BODY,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      });
+      const inserts = first.operations.filter((op) => op.kind === 'insert');
+      return { first, created, inserts };
+    }
+
+    it('同一事务内先建对话再写消息与 run，提交后派发到新对话', async () => {
+      const { first, created, inserts } = await createFirst();
+
+      expect(created).toEqual({ run: runDto(), replayed: false });
+      expect(inserts).toHaveLength(2);
+      expect(inserts[0]?.values).toMatchObject({
+        source: 'api',
+        createdBy: null,
+        apiKeyId: KEY_ID,
+      });
+      expect(inserts[1]?.values).toMatchObject({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: IDEMPOTENCY_KEY,
+      });
+      expect(first.conversationService.insertUserMessage).toHaveBeenCalledWith(
+        expect.anything(),
+        CONVERSATION_ID,
+        TENANT_ID,
+        expect.objectContaining({ content: RUN_BODY.input.content }),
+      );
+      expect(first.executionService.dispatchExecution).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('同幂等键同内容重放返回首次的 run 与对话，不再建对话', async () => {
+      const { inserts } = await createFirst();
+      const existing = [
+        { id: RUN_ID, requestHash: inserts[1]?.values?.requestHash },
+      ];
+
+      const replay = createService([existing]);
+      const replayed = await replay.service.createRunInNewConversation(KEY, {
+        conversation: {},
+        body: { input: { content: '我的订单还没发货' } },
+        idempotencyKey: IDEMPOTENCY_KEY,
+      });
+      expect(replayed).toEqual({ run: runDto(), replayed: true });
+      expect(replayed.run.conversationId).toBe(CONVERSATION_ID);
+      expect(replay.operations.some((op) => op.kind === 'insert')).toBe(false);
+      expect(replay.executionService.dispatchExecution).not.toHaveBeenCalled();
+
+      // 并发重发：事务外未命中，持 Key 行锁后复查命中，同样不写任何行
+      const racing = createService([
+        [],
+        PUBLISHED_AGENT,
+        [{ id: KEY_ID, maxConcurrentRuns: 2 }],
+        existing,
+      ]);
+      await expect(
+        racing.service.createRunInNewConversation(KEY, {
+          conversation: {},
+          body: RUN_BODY,
+          idempotencyKey: IDEMPOTENCY_KEY,
+        }),
+      ).resolves.toEqual({ run: runDto(), replayed: true });
+      expect(racing.operations.some((op) => op.kind === 'insert')).toBe(false);
+    });
+
+    it('同幂等键换内容或改投已有对话返回 422 idempotency-key-reused', async () => {
+      const { inserts } = await createFirst();
+      const existing = [
+        { id: RUN_ID, requestHash: inserts[1]?.values?.requestHash },
+      ];
+
+      const reused = createService([existing]);
+      await expect(
+        reused.service.createRunInNewConversation(KEY, {
+          conversation: {},
+          body: { input: { content: '另一条消息' } },
+          idempotencyKey: IDEMPOTENCY_KEY,
+        }),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/idempotency-key-reused',
+        status: 422,
+      });
+      expect(reused.operations.some((op) => op.kind === 'insert')).toBe(false);
+
+      const existingConversation = createService([existing]);
+      await expect(
+        existingConversation.service.createRun(KEY, CONVERSATION_ID, {
+          body: RUN_BODY,
+          idempotencyKey: IDEMPOTENCY_KEY,
+        }),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+  });
+
   describe('waitForRun', () => {
     it('等待期内收到终态事件时返回终态 run', async () => {
       const { service, eventStream } = createService([]);

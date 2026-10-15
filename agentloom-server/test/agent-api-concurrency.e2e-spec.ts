@@ -12,6 +12,8 @@ import {
 } from 'vitest';
 
 import { agentApiRuns } from '../src/database/schema/agent-api-runs.schema';
+import { agentConversations } from '../src/database/schema/agent-conversations.schema';
+import { A2aService } from '../src/modules/a2a/a2a.service';
 import { AgentApiEventStreamService } from '../src/modules/agent-api-runtime/agent-api-event-stream.service';
 import { AgentApiRunService } from '../src/modules/agent-api-runtime/agent-api-run.service';
 import type { AgentApiKeyContext } from '../src/modules/agent-api/agent-api.types';
@@ -193,6 +195,55 @@ describe('Agent API run concurrency (testcontainers)', () => {
     expect(first.run.id).toBe(second.run.id);
     expect([first.replayed, second.replayed].sort()).toEqual([false, true]);
     expect(await countActiveRuns()).toBe(1);
+  });
+
+  it('A2A 无 contextId 并发重发同一 messageId：只产生一个对话与一个 run，返回同一任务；换内容被拒', async () => {
+    const a2a = new A2aService(context.db, service);
+    const params = {
+      message: {
+        messageId: 'a2a-msg-1',
+        role: 'ROLE_USER' as const,
+        parts: [{ text: '用一句话介绍你自己' }],
+      },
+    };
+
+    const [first, second] = await Promise.all([
+      a2a.startMessageRun(fixture.key, params),
+      a2a.startMessageRun(fixture.key, params),
+    ]);
+    const later = await a2a.startMessageRun(fixture.key, params);
+
+    expect(second.id).toBe(first.id);
+    expect(second.conversationId).toBe(first.conversationId);
+    expect(later.id).toBe(first.id);
+    expect(later.conversationId).toBe(first.conversationId);
+
+    const [conversations, runs] = await withTenantContext(
+      context.db,
+      fixture.tenantId,
+      (tx) =>
+        Promise.all([
+          tx
+            .select({ id: agentConversations.id })
+            .from(agentConversations)
+            .where(eq(agentConversations.apiKeyId, fixture.key.keyId)),
+          tx
+            .select({ id: agentApiRuns.id })
+            .from(agentApiRuns)
+            .where(eq(agentApiRuns.apiKeyId, fixture.key.keyId)),
+        ]),
+    );
+    expect(conversations.map((row) => row.id)).toEqual([first.conversationId]);
+    expect(runs.map((row) => row.id)).toEqual([first.id]);
+
+    await expect(
+      a2a.startMessageRun(fixture.key, {
+        message: { ...params.message, parts: [{ text: '另一条内容' }] },
+      }),
+    ).rejects.toMatchObject({
+      type: `${ERROR_TYPE_BASE}idempotency-key-reused`,
+      status: 422,
+    });
   });
 
   it('取消 queued run 释放并发名额，对话仍可继续建 run', async () => {

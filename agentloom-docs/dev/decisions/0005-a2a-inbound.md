@@ -27,8 +27,8 @@ docType: explanation
 | 议题 | 选择 | 被否决的方案及原因 |
 | --- | --- | --- |
 | 方向 | 只做入站：AgentLoom 作为 A2A 服务端 | **同时做出站**（工作流调用外部 A2A Agent）：需要新的节点类型、外部凭证管理与回调，和入站没有共享代码，单独立项 |
-| 执行与持久化 | 新模块 `agentloom-server/src/modules/a2a/` 只做协议映射，全部调用 `AgentApiService`；唯一新增服务方法 `findRunById`（A2A 的 taskId 不携带对话 id） | **独立的 A2A 任务表与执行路径**：与 run 重复建模，限流、并发、清扫、事件镜像都要再做一遍 |
-| 标识映射 | `contextId` = 对话 id，`taskId` = run id；`messageId` 作为 run 的幂等键 `a2a:<messageId>` | **taskId 映射到对话**：一个对话有多次调用，无法表达每次调用的终态与产物 |
+| 执行与持久化 | 新模块 `agentloom-server/src/modules/a2a/` 只做协议映射，全部调用 `AgentApiService`；新增服务方法只有 `findRunById`（A2A 的 taskId 不携带对话 id）与 `createRunInNewConversation`（不带 contextId 的消息在同一事务里建对话与 run） | **独立的 A2A 任务表与执行路径**：与 run 重复建模，限流、并发、清扫、事件镜像都要再做一遍 |
+| 标识映射 | `contextId` = 对话 id，`taskId` = run id；`messageId` 作为 run 的幂等键 `a2a:<messageId>`。不带 contextId 时请求哈希以对话创建参数代替对话 id，重放返回首次的 run 与对话；建对话放在持 Key 行锁、复查幂等键之后，并发重发只产生一个对话一个 run | **taskId 映射到对话**：一个对话有多次调用，无法表达每次调用的终态与产物；**先建对话再建 run（两个事务）**：每次重放都新建对话，哈希里的对话 id 不同，重发被当作复用幂等键拒绝并留下空对话；**另加 advisory lock 或对话侧唯一约束**：Key 行 `FOR UPDATE` 已串行化同一 Key 的建 run，`uq_agent_api_runs_idempotency` 兜底，无需迁移 |
 | 鉴权 | 复用 `alak_` Key，路径中的 Agent 必须与 Key 绑定的 Agent 一致；Agent Card 公开并声明 Bearer 方案 | **OAuth2 / OpenID Connect**：平台没有面向第三方的授权服务器；新凭证类型会绕开既有限流与并发上限 |
 | 协议绑定 | 仅 JSON-RPC；每个 Agent 一个 RPC 端点，Agent Card 按 Agent 定义暴露 | **gRPC / HTTP+JSON 绑定**：多一套路由与编码，没有调用方要求 |
 | 任务续写 | 不支持 `message.taskId`；同一 context 的消息串行（沿用对话至多一个活跃 run） | **把后续消息并入进行中的任务**：对应 `INPUT_REQUIRED` 语义，而 API 对话没有需要用户输入的中间态（F5） |
