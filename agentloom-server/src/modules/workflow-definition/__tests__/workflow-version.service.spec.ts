@@ -1983,6 +1983,37 @@ describe('WorkflowVersionService', () => {
       ).resolves.toBeDefined();
     });
 
+    // 防回归：规范化后 team 节点的 node.type 是分类 agent，绑定校验须按具体节点类型判断
+    it('同属 agent 分类的 team 节点不受 Agent 绑定校验影响', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'team-node',
+            type: 'team',
+            position: { x: 0, y: 0 },
+            data: { label: '团队' },
+          },
+        ],
+        edges: [],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 1 }]));
+      db.insert.mockReturnValueOnce(
+        createInsertChain([
+          createMockVersion({ versionNumber: 2, publishedAt: NOW }),
+        ]),
+      );
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).resolves.toBeDefined();
+    });
+
     it('发布时 data.config 内嵌 Agent 绑定也算通过', async () => {
       const workflow = createDraftWorkflow({
         nodes: [

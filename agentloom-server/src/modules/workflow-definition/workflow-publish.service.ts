@@ -582,7 +582,9 @@ export class WorkflowPublishService {
    */
   private assertWorkflowAgentBindings(nodes: schema.ReactFlowNode[]): void {
     const violations = nodes.flatMap((node) => {
-      if (node.type !== 'agent' && node.type !== 'chat-agent') {
+      // 规范化后 node.type 是分类（team、llm-model 等同属 agent 分类），必须按具体节点类型判断
+      const nodeType = this.getWorkflowNodeType(node);
+      if (nodeType !== 'agent' && nodeType !== 'chat-agent') {
         return [];
       }
 
