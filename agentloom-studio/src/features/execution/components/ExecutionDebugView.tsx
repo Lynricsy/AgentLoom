@@ -9,6 +9,7 @@ import { ExecutionNodeDetail } from './ExecutionNodeDetail'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TerminalTab } from './TerminalTab'
 import { ExecutionTelemetryPanel } from './ExecutionTelemetryPanel'
+import { TeamRunPanel } from './team/TeamRunPanel'
 import { usePtySessions } from '../hooks/usePtySessions'
 import { sendPtyWrite } from '../api/pty'
 import type { PtySessionState } from '../types/pty'
@@ -29,6 +30,8 @@ import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { EvidenceReferencePanel } from '@/features/evidence'
 import { EvidenceGraphView } from '@/features/evidence'
 
+type DebugTab = 'debug' | 'provenance' | 'telemetry' | 'terminals' | 'team'
+
 interface ExecutionDebugViewProps {
   executionId: string
 }
@@ -46,11 +49,9 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   const { notify } = useToast()
   const { data: execution, isLoading, error } = useLiveExecutionDetail(executionId)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<
-    'debug' | 'provenance' | 'telemetry' | 'terminals'
-  >('debug')
+  const [activeTab, setActiveTab] = useState<DebugTab>('debug')
   const handleTabChange = useCallback((value: string) => {
-    setActiveTab(value as 'debug' | 'provenance' | 'telemetry' | 'terminals')
+    setActiveTab(value as DebugTab)
   }, [])
   const { timelineData } = useTimelineData(
     executionId,
@@ -165,6 +166,10 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
     [execution?.steps, selectedNodeId],
   )
   const isAgentStep = selectedStep?.nodeType?.includes('agent') ?? false
+  const teamSteps = useMemo(
+    () => (execution?.steps ?? []).filter((step) => step.nodeType === 'team'),
+    [execution?.steps],
+  )
 
   const goBackToWorkflow = useCallback(() => {
     if (execution?.workflowDefinitionId) {
@@ -301,6 +306,11 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
                 </Badge>
               )}
             </TabsTrigger>
+            {teamSteps.length > 0 ? (
+              <TabsTrigger value="team" data-testid="execution-debug-tab-team">
+                团队
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </div>
 
@@ -391,6 +401,19 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
             onInput={handleTerminalInput}
           />
         </TabsContent>
+
+        {teamSteps.length > 0 ? (
+          <TabsContent value="team" className="flex-1 overflow-y-auto p-4" data-testid="execution-debug-team-tab">
+            {teamSteps.map((step) => (
+              <TeamRunPanel
+                key={step.id}
+                executionId={executionId}
+                stepId={step.id}
+                nodeName={step.nodeName}
+              />
+            ))}
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <EvidenceReferencePanel />

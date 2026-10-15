@@ -68,6 +68,12 @@ vi.mock('./ExecutionTelemetryPanel', () => ({
   ),
 }))
 
+vi.mock('./team/TeamRunPanel', () => ({
+  TeamRunPanel: ({ stepId }: { stepId: string }) => (
+    <div data-testid="mock-team-run-panel">{stepId}</div>
+  ),
+}))
+
 vi.mock('@/features/evidence', () => ({
   EvidenceReferencePanel: () => (
     <div data-testid="mock-evidence-reference-panel" />
@@ -200,5 +206,29 @@ describe('ExecutionDebugView', () => {
     expect(screen.getByTestId('execution-debug-telemetry-tab')).toBeInTheDocument()
     expect(screen.getByTestId('mock-telemetry-panel')).toHaveTextContent('exec-001')
     expect(screen.queryByTestId('execution-debug-desktop-layout')).not.toBeInTheDocument()
+  })
+
+  it('没有 team 步骤时不显示团队 tab', () => {
+    renderView()
+
+    expect(screen.queryByTestId('execution-debug-tab-team')).not.toBeInTheDocument()
+  })
+
+  it('存在 team 步骤时显示团队 tab，每个 team 步骤一个面板', () => {
+    const execution = createExecutionDetail()
+    execution.steps[1] = { ...execution.steps[1]!, nodeType: 'team' }
+    mocks.useLiveExecutionDetailMock.mockReturnValue({
+      data: execution,
+      isLoading: false,
+      error: null,
+    })
+    renderView()
+
+    fireEvent.click(screen.getByTestId('execution-debug-tab-team'))
+
+    expect(screen.getByTestId('execution-debug-team-tab')).toBeInTheDocument()
+    expect(screen.getAllByTestId('mock-team-run-panel').map((panel) => panel.textContent)).toEqual([
+      'step-2',
+    ])
   })
 })
