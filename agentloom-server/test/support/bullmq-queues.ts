@@ -24,4 +24,5 @@ export const BULLMQ_QUEUE_NAMES = [
   'evidence-export-cleanup',
   'document-processing',
   'document-indexing',
+  'team-runtime',
 ] as const;

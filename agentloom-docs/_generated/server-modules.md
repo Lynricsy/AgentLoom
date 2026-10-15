@@ -43,6 +43,7 @@
 | `shared-resources` |  |  |  |
 | `skill` | `/api/v1/skills` |  |  |
 | `smart-routing` | `/api/v1` |  | `routing-learning` |
+| `team` | `/api/v1/team-runs` |  | `team-runtime` |
 | `template` | `/api/v1/templates` |  |  |
 | `tenant-key` | `/api/v1/tenant-keys` |  |  |
 | `trigger` | `/api/v1/api-events`<br>`/api/v1/webhooks`<br>`/api/v1/workflow-definitions/:workflowId/triggers` |  | `trigger-scheduler` |

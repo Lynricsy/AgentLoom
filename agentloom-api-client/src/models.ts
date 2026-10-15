@@ -7555,6 +7555,533 @@ export interface SubmitReviewDto {
 /**
  * 
  * @export
+ * @interface TeamMessageListResponseDto
+ */
+export interface TeamMessageListResponseDto {
+    /**
+     * 
+     * @type {Array<TeamMessageListResponseDtoDataInner>}
+     * @memberof TeamMessageListResponseDto
+     */
+    data: Array<TeamMessageListResponseDtoDataInner>;
+    /**
+     * 
+     * @type {TeamMessageListResponseDtoMeta}
+     * @memberof TeamMessageListResponseDto
+     */
+    meta: TeamMessageListResponseDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface TeamMessageListResponseDtoDataInner
+ */
+export interface TeamMessageListResponseDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    fromRole: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    toRole: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    kind: TeamMessageListResponseDtoDataInnerKindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    content: string;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    refs: Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    deliveryStatus: TeamMessageListResponseDtoDataInnerDeliveryStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    decisionRecordId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    deliveredAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamMessageListResponseDtoDataInner
+     */
+    consumedAt: string | null;
+}
+
+
+/**
+ * @export
+ */
+export const TeamMessageListResponseDtoDataInnerKindEnum = {
+    Observation: 'observation',
+    Request: 'request',
+    Reply: 'reply',
+    Artifact: 'artifact',
+    System: 'system'
+} as const;
+export type TeamMessageListResponseDtoDataInnerKindEnum = typeof TeamMessageListResponseDtoDataInnerKindEnum[keyof typeof TeamMessageListResponseDtoDataInnerKindEnum];
+
+/**
+ * @export
+ */
+export const TeamMessageListResponseDtoDataInnerDeliveryStatusEnum = {
+    Pending: 'pending',
+    Delivered: 'delivered',
+    Consumed: 'consumed',
+    Suppressed: 'suppressed',
+    Expired: 'expired'
+} as const;
+export type TeamMessageListResponseDtoDataInnerDeliveryStatusEnum = typeof TeamMessageListResponseDtoDataInnerDeliveryStatusEnum[keyof typeof TeamMessageListResponseDtoDataInnerDeliveryStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface TeamMessageListResponseDtoMeta
+ */
+export interface TeamMessageListResponseDtoMeta {
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamMessageListResponseDtoMeta
+     */
+    total: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamMessageListResponseDtoMeta
+     */
+    page: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamMessageListResponseDtoMeta
+     */
+    limit: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamMessageListResponseDtoMeta
+     */
+    totalPages: number;
+}
+/**
+ * 
+ * @export
+ * @interface TeamRunDetailResponseDto
+ */
+export interface TeamRunDetailResponseDto {
+    /**
+     * 
+     * @type {TeamRunDetailResponseDtoData}
+     * @memberof TeamRunDetailResponseDto
+     */
+    data: TeamRunDetailResponseDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface TeamRunDetailResponseDtoData
+ */
+export interface TeamRunDetailResponseDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    executionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    stepId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    nodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    status: TeamRunDetailResponseDtoDataStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    taskText: string;
+    /**
+     * 
+     * @type {TeamRunDetailResponseDtoDataBudget}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    budget: TeamRunDetailResponseDtoDataBudget;
+    /**
+     * 
+     * @type {TeamRunListResponseDtoDataInnerUsage}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    usage: TeamRunListResponseDtoDataInnerUsage;
+    /**
+     * 
+     * @type {Array<TeamRunDetailResponseDtoDataMembersInner>}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    members: Array<TeamRunDetailResponseDtoDataMembersInner>;
+    /**
+     * 
+     * @type {{ [key: string]: any; }}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    result: { [key: string]: any; } | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    failureReason: TeamRunDetailResponseDtoDataFailureReasonEnum | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    failureDetail: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    startedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoData
+     */
+    completedAt: string | null;
+}
+
+
+/**
+ * @export
+ */
+export const TeamRunDetailResponseDtoDataStatusEnum = {
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled'
+} as const;
+export type TeamRunDetailResponseDtoDataStatusEnum = typeof TeamRunDetailResponseDtoDataStatusEnum[keyof typeof TeamRunDetailResponseDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const TeamRunDetailResponseDtoDataFailureReasonEnum = {
+    BudgetExhausted: 'budget_exhausted',
+    DeadlineExceeded: 'deadline_exceeded',
+    NoResult: 'no_result',
+    MemberFailed: 'member_failed',
+    SchemaInvalid: 'schema_invalid',
+    Cancelled: 'cancelled'
+} as const;
+export type TeamRunDetailResponseDtoDataFailureReasonEnum = typeof TeamRunDetailResponseDtoDataFailureReasonEnum[keyof typeof TeamRunDetailResponseDtoDataFailureReasonEnum];
+
+/**
+ * 
+ * @export
+ * @interface TeamRunDetailResponseDtoDataBudget
+ */
+export interface TeamRunDetailResponseDtoDataBudget {
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunDetailResponseDtoDataBudget
+     */
+    maxTotalTokens: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunDetailResponseDtoDataBudget
+     */
+    maxMessages: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataBudget
+     */
+    deadlineAt: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunDetailResponseDtoDataBudget
+     */
+    usedTokens: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunDetailResponseDtoDataBudget
+     */
+    messageCount: number;
+}
+/**
+ * 
+ * @export
+ * @interface TeamRunDetailResponseDtoDataMembersInner
+ */
+export interface TeamRunDetailResponseDtoDataMembersInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    role: string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    isLead: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    agentDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    agentName: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    conversationId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    status: TeamRunDetailResponseDtoDataMembersInnerStatusEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    turnCount: number;
+    /**
+     * 
+     * @type {TeamRunListResponseDtoDataInnerUsage}
+     * @memberof TeamRunDetailResponseDtoDataMembersInner
+     */
+    usage: TeamRunListResponseDtoDataInnerUsage;
+}
+
+
+/**
+ * @export
+ */
+export const TeamRunDetailResponseDtoDataMembersInnerStatusEnum = {
+    Idle: 'idle',
+    Running: 'running',
+    Ended: 'ended',
+    Failed: 'failed'
+} as const;
+export type TeamRunDetailResponseDtoDataMembersInnerStatusEnum = typeof TeamRunDetailResponseDtoDataMembersInnerStatusEnum[keyof typeof TeamRunDetailResponseDtoDataMembersInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface TeamRunListResponseDto
+ */
+export interface TeamRunListResponseDto {
+    /**
+     * 
+     * @type {Array<TeamRunListResponseDtoDataInner>}
+     * @memberof TeamRunListResponseDto
+     */
+    data: Array<TeamRunListResponseDtoDataInner>;
+}
+/**
+ * 
+ * @export
+ * @interface TeamRunListResponseDtoDataInner
+ */
+export interface TeamRunListResponseDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    executionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    stepId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    nodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    status: TeamRunListResponseDtoDataInnerStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    failureReason: TeamRunListResponseDtoDataInnerFailureReasonEnum | null;
+    /**
+     * 
+     * @type {TeamRunListResponseDtoDataInnerUsage}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    usage: TeamRunListResponseDtoDataInnerUsage;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    messageCount: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    startedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    completedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TeamRunListResponseDtoDataInner
+     */
+    createdAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const TeamRunListResponseDtoDataInnerStatusEnum = {
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled'
+} as const;
+export type TeamRunListResponseDtoDataInnerStatusEnum = typeof TeamRunListResponseDtoDataInnerStatusEnum[keyof typeof TeamRunListResponseDtoDataInnerStatusEnum];
+
+/**
+ * @export
+ */
+export const TeamRunListResponseDtoDataInnerFailureReasonEnum = {
+    BudgetExhausted: 'budget_exhausted',
+    DeadlineExceeded: 'deadline_exceeded',
+    NoResult: 'no_result',
+    MemberFailed: 'member_failed',
+    SchemaInvalid: 'schema_invalid',
+    Cancelled: 'cancelled'
+} as const;
+export type TeamRunListResponseDtoDataInnerFailureReasonEnum = typeof TeamRunListResponseDtoDataInnerFailureReasonEnum[keyof typeof TeamRunListResponseDtoDataInnerFailureReasonEnum];
+
+/**
+ * 
+ * @export
+ * @interface TeamRunListResponseDtoDataInnerUsage
+ */
+export interface TeamRunListResponseDtoDataInnerUsage {
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunListResponseDtoDataInnerUsage
+     */
+    inputTokens: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunListResponseDtoDataInnerUsage
+     */
+    outputTokens: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof TeamRunListResponseDtoDataInnerUsage
+     */
+    costUsd: number;
+}
+/**
+ * 
+ * @export
  * @interface TenantKeyDetailResponseDto
  */
 export interface TenantKeyDetailResponseDto {

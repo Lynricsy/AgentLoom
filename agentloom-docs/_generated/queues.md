@@ -18,5 +18,6 @@
 | `plugin-execution` | `PLUGIN_EXECUTION_QUEUE` | `PluginExecutionWorker` | `agentloom-server/src/modules/plugin/plugin.constants.ts` |
 | `routing-learning` | `ROUTING_LEARNING_QUEUE` | `RoutingLearningWorker` | `agentloom-server/src/modules/smart-routing/learning/routing-learning.types.ts` |
 | `sandbox-lifecycle` | `SANDBOX_LIFECYCLE_QUEUE` | `SandboxLifecycleWorker` | `agentloom-server/src/modules/sandbox/sandbox.constants.ts` |
+| `team-runtime` | `TEAM_RUNTIME_QUEUE` | `TeamRuntimeWorker` | `agentloom-server/src/modules/team/team.constants.ts` |
 | `trigger-scheduler` | `TRIGGER_QUEUE` | `TriggerSchedulerProcessor` | `agentloom-server/src/modules/trigger/trigger.constants.ts` |
 | `workflow-execution` | `EXECUTION_QUEUE` | `ExecutionWorker` | `agentloom-server/src/modules/execution/execution.constants.ts` |
