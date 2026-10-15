@@ -38,6 +38,10 @@
 | `APP_MINIO_USE_SSL` | `false` |  |
 | `APP_MINIO_BUCKET` | `agentloom-documents` |  |
 | `APP_QDRANT_URL` | `http://qdrant:6333` |  |
+| `APP_TYPESAFE_API_KEY` |  | TypeSafe Jev 决策 API Key；设置后以影子模式调用 Jev 并写入 decision_records，留空即不调用 |
+| `APP_TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | TypeSafe API 基址 |
+| `APP_TYPESAFE_MODEL` | `jev-1.13.0` | 钉版的 Jev 模型名 |
+| `APP_TYPESAFE_TIMEOUT_MS` | `3000` | 单次 Jev 影子调用超时（毫秒） |
 | `COMPOSE_PROFILES` | `sandbox` | Sandbox 由 Firecracker runtime manager 通过 KVM microVM 承载。 单机 compose 即单节点；跨服务器部署时每台宿主机各跑一个 runtime 容器， 用 scripts/generate-firecracker-pki.sh add-node 签发证书后经 /api/v1/sandbox-nodes 注册（详见 README「沙箱运行时节点」）。 首次部署前运行 scripts/generate-firecracker-pki.sh 和 firecracker/build-artifacts.sh。 firecracker-runtime 属于 compose profile `sandbox`。server/worker 对它是可选依赖：runtime 预检失败或 未启用 sandbox profile 时 server/worker 照常启动，仅 sandbox 运行态的 Agent 不可用（no_sandbox 不受影响）。 宿主不满足预检（KVM、内核 6.18.x、关闭 swap 等）时去掉 sandbox，省掉一个反复重启的容器。 |
 | `FIRECRACKER_RUNTIME_IMAGE` | `agentloom/firecracker-runtime:1.16.1` |  |
 | `FIRECRACKER_GUEST_CIDR` | `172.30.0.0/16` |  |

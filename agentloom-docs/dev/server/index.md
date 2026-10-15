@@ -106,6 +106,7 @@ agentloom-server/src/
 - `api-key`：LLM 提供商 API Key 的加密存储与轮换，前缀 `/api-keys`。
 - `mcp`：MCP 服务器配置、工具发现与导入，前缀 `/mcp`。
 - `smart-routing`：模型智能路由，路由在 `/smart-routing/…` 与 `/routing-decisions`。
+- `decision`：可替换决策服务 `DecisionService`：规则给出主结果，配置 `APP_TYPESAFE_API_KEY` 时另以影子模式调用 TypeSafe Jev 并只做记录，记录在 `decision_records`，查询路由 `/decision-records`。机制见 [决策服务](/dev/server/decision)。
 - `knowledge`：知识库、文档解析与向量化、RAG 检索，前缀 `/knowledge-bases`，Socket.IO 命名空间 `/knowledge`；向量存储在 Qdrant。
 - `plugin`：`.alp` 插件的上传验签、WASM 沙箱执行、开发者密钥、使用量与收益结算，前缀 `/plugins`、`/plugins/developer-keys`、`/plugins/marketplace`。内部机制见 [插件系统](/dev/server/plugins)。
 - `runtime-plugin`：sandbox 运行态 Agent 的 runtime 插件（DeepSeek Harness 的 Cordis 插件包）上传验签、存储与启停，前缀 `/runtime-plugins`；上传入口与 `plugin` 共用签名校验。机制见 [Runtime 插件](/dev/server/runtime-plugins)。

@@ -26,6 +26,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: '插件执行', link: '/dev/server/plugins' },
       { text: 'Runtime 插件', link: '/dev/server/runtime-plugins' },
       { text: '生成应用', link: '/dev/server/generated-apps' },
+      { text: '决策服务', link: '/dev/server/decision' },
     ],
   },
   {
