@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DOCS_ROOT, REPO_ROOT, read, rel, repoPath, walk } from './lib';
@@ -60,7 +61,13 @@ export function checkPaths(): CheckResult {
       if (/[<*$]/.test(path)) continue;
       for (const candidate of expandBraces(path)) {
         checked++;
-        if (!existsSync(join(REPO_ROOT, candidate))) failures.push(`${rel(file)}:${line}: ${candidate}`);
+        if (existsSync(join(REPO_ROOT, candidate))) continue;
+        // 被 .gitignore 忽略的路径是本地生成的中间产物（如 sdk/typescript-models），
+        // 干净检出（CI）中不存在，不能据此判定文档过期。check-ignore 任一参数被忽略即退出码 0；
+        // 带 `/` 的那份用于匹配只对目录生效的规则（路径不存在时 git 无法判断它是目录）
+        const ignored = spawnSync('git', ['check-ignore', candidate, `${candidate}/`], { cwd: REPO_ROOT });
+        if (ignored.status === 0) continue;
+        failures.push(`${rel(file)}:${line}: ${candidate}`);
       }
     }
   }
