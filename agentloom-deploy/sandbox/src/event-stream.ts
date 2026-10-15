@@ -104,6 +104,13 @@ export function translateEvent(
         ...(event.data !== undefined ? { data: event.data } : {}),
         timestamp: event.timestamp,
       };
+    case "usage":
+      return {
+        type: "usage",
+        usage: event.usage,
+        ...(event.modelId !== undefined ? { modelId: event.modelId } : {}),
+        ...(event.provider !== undefined ? { provider: event.provider } : {}),
+      };
     default:
       return null;
   }

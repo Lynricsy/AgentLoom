@@ -55,7 +55,8 @@ export type SandboxAgentEvent =
       exitSignal?: number | string;
     }
   | { type: 'pty_killed'; sessionId: string }
-  | HarnessTraceAgentEvent;
+  | HarnessTraceAgentEvent
+  | UsageAgentEvent;
 
 /** dsh 会话事件的精简轨迹（turn/step/tool 边界），供 Studio Harness trace 面板展示 */
 export interface HarnessTraceAgentEvent {
@@ -67,6 +68,21 @@ export interface HarnessTraceAgentEvent {
   data?: Record<string, unknown>;
   /** ISO 8601 */
   timestamp: string;
+}
+
+/** 一条 assistant 消息的 token 用量（取自 dsh assistant/message.data.usage） */
+export interface UsageAgentEvent {
+  type: 'usage';
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    totalTokens?: number;
+  };
+  /** 产出该消息的 provider 模型 id（dsh message.source.model） */
+  modelId?: string;
+  provider?: string;
 }
 
 export type AgentEventListener = (event: SandboxAgentEvent) => void;
@@ -247,7 +263,8 @@ export type SseEventParams =
       step?: number;
       data?: Record<string, unknown>;
       timestamp: string;
-    };
+    }
+  | UsageAgentEvent;
 
 /** 容器 → AgentLoom 服务器的权限请求（POST 到 permissionCallbackUrl） */
 export interface PermissionCallbackRequest {

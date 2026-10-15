@@ -353,6 +353,40 @@ describe('AgentLoomBridge over unix socket', () => {
     ]);
   });
 
+  it('assistant/message 带 usage 时应在 harness_trace 之后追加 usage 事件', async () => {
+    await initializeAndCreate();
+    const message = {
+      role: 'assistant',
+      content: [],
+      source: { kind: 'model', provider: 'deepseek', model: 'deepseek-chat' },
+    };
+    bridge.handleSessionEvent(
+      's1',
+      sessionEvent('assistant/message', {
+        turn: 1,
+        step: 1,
+        message,
+        stream: [],
+        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2 },
+      }),
+    );
+    bridge.handleSessionEvent(
+      's1',
+      sessionEvent('assistant/message', { turn: 1, step: 2, message, stream: [] }),
+    );
+    await flush();
+
+    expect(eventsOf().filter((event) => event.type === 'usage')).toEqual([
+      {
+        type: 'usage',
+        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, totalTokens: 15 },
+        modelId: 'deepseek-chat',
+        provider: 'deepseek',
+      },
+    ]);
+    expect(eventsOf()[0]).toMatchObject({ type: 'harness_trace', kind: 'assistant/message' });
+  });
+
   it('助手流帧应只转发可见文本增量', async () => {
     await initializeAndCreate();
     bridge.handleAssistantFrame('s1', { type: 'start' } as never);
@@ -515,6 +549,22 @@ describe('translateEvent harness_trace', () => {
       step: 3,
       data: {},
       timestamp: '2026-10-07T00:00:00.000Z',
+    });
+  });
+});
+
+describe('translateEvent usage', () => {
+  it('应把 usage 透传到 SSE 参数', () => {
+    expect(
+      translateEvent({
+        type: 'usage',
+        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+        modelId: 'm1',
+      }),
+    ).toEqual({
+      type: 'usage',
+      usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+      modelId: 'm1',
     });
   });
 });

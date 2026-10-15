@@ -76,6 +76,29 @@ export function mapSessionEvent(
       });
       break;
     }
+    case 'assistant/message': {
+      const usage = event.data.usage;
+      if (!usage) break;
+      const source = event.data.message.source;
+      mapped.push({
+        type: 'usage',
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          ...(usage.cacheReadTokens !== undefined
+            ? { cacheReadTokens: usage.cacheReadTokens }
+            : {}),
+          ...(usage.cacheWriteTokens !== undefined
+            ? { cacheWriteTokens: usage.cacheWriteTokens }
+            : {}),
+          totalTokens:
+            usage.totalTokens ?? usage.inputTokens + usage.outputTokens,
+        },
+        modelId: source.model,
+        provider: source.provider,
+      });
+      break;
+    }
     default:
       break;
   }
