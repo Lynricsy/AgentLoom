@@ -6,12 +6,10 @@ import { TeamConfigPanel } from '../TeamConfigPanel'
 
 const mocks = vi.hoisted(() => ({
   useAgentList: vi.fn(),
-  useAgentVersions: vi.fn(),
 }))
 
 vi.mock('@/features/agent', () => ({
   useAgentList: mocks.useAgentList,
-  useAgentVersions: mocks.useAgentVersions,
 }))
 
 const AGENT_A = '0190f2a4-1c3b-7a6e-9f00-000000000001'
@@ -56,7 +54,6 @@ describe('TeamConfigPanel', () => {
       },
       isLoading: false,
     })
-    mocks.useAgentVersions.mockReturnValue({ data: { data: [] }, isLoading: false })
   })
 
   it('合法配置上报无错误，并只拉取已发布 Agent', async () => {

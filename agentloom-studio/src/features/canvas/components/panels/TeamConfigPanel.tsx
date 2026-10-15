@@ -7,7 +7,7 @@ import {
   TEAM_PRESET_TRIAGE,
   TeamNodeConfigSchema,
 } from '@agentloom/contracts'
-import { useAgentList, useAgentVersions } from '@/features/agent'
+import { useAgentList } from '@/features/agent'
 import { Alert } from '@/shared/ui/alert'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -23,9 +23,6 @@ import {
 } from '@/shared/ui/select'
 import { Textarea } from '@/shared/ui/textarea'
 import { FormField } from '@/shared/components/form-field/FormField'
-
-/** 版本下拉中「使用最新发布版本」的哨兵值，落库时映射回 null */
-const LATEST_VERSION_SENTINEL = '__latest__'
 
 const OutputSchemaObjectSchema = z.record(z.string(), z.unknown())
 
@@ -128,46 +125,6 @@ function describeIssue(issue: TeamConfigIssue, members: TeamMemberDraft[]): stri
   if (head === 'outputSchema') return '输出 Schema 必须是 JSON 对象'
   return `${issue.path.join('.')}：${issue.message}`
 }
-
-interface TeamMemberVersionSelectProps {
-  memberIndex: number
-  agentDefinitionId: string
-  value: string | null
-  onChange: (versionId: string | null) => void
-}
-
-const TeamMemberVersionSelect = memo(function TeamMemberVersionSelect({
-  memberIndex,
-  agentDefinitionId,
-  value,
-  onChange,
-}: TeamMemberVersionSelectProps) {
-  const { data, isLoading } = useAgentVersions(agentDefinitionId, { pageSize: 50 })
-  const publishedVersions = useMemo(
-    () => (data?.data ?? []).filter((version) => version.publishedAt !== null),
-    [data],
-  )
-
-  return (
-    <Select
-      value={value ?? LATEST_VERSION_SENTINEL}
-      onValueChange={(next) => onChange(next === LATEST_VERSION_SENTINEL ? null : next)}
-      disabled={!agentDefinitionId || isLoading}
-    >
-      <SelectTrigger aria-label={`成员 ${memberIndex + 1} 版本`}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={LATEST_VERSION_SENTINEL}>使用最新发布版本</SelectItem>
-        {publishedVersions.map((version) => (
-          <SelectItem key={version.id} value={version.id}>
-            {version.label ? `v${version.versionNumber} · ${version.label}` : `v${version.versionNumber}`}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-})
 
 interface TeamConfigPanelProps {
   config: Record<string, unknown>
@@ -446,12 +403,8 @@ export const TeamConfigPanel = memo(function TeamConfigPanel({
                 <p className="text-xs text-warning">所选 Agent 不在已发布列表中，请重新选择</p>
               ) : null}
 
-              <TeamMemberVersionSelect
-                memberIndex={index}
-                agentDefinitionId={member.agentDefinitionId}
-                value={member.agentVersionId}
-                onChange={(agentVersionId) => updateMember(index, { agentVersionId })}
-              />
+              {/* 成员对话总是运行 Agent 当前已发布版本，故不提供版本选择 */}
+              <p className="text-xs text-muted-foreground">运行时使用该 Agent 当前已发布版本</p>
 
               <div className="space-y-1.5">
                 <span className="text-xs text-muted-foreground">可发送消息给</span>
