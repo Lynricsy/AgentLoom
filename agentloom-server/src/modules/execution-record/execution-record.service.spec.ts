@@ -596,6 +596,64 @@ describe('ExecutionRecordService', () => {
     });
   });
 
+  it('should carry step costUsd into telemetry and sum totalCostUsd into the summary', async () => {
+    tenantDb.queueSelectResult('limit', [
+      createStep({
+        result: {
+          modelId: 'gpt-4o-mini',
+          promptTokens: 1000,
+          completionTokens: 500,
+          totalTokens: 1500,
+          costUsd: 0.0105,
+        },
+      }),
+    ]);
+
+    await service.handleStepStatusChanged(createStepPayload());
+
+    const stepRecord = tenantDb.insertValues[0] as {
+      telemetryData: StepTelemetryData;
+    };
+    expect(stepRecord.telemetryData.llmInteractions).toMatchObject({
+      totalTokens: 1500,
+      costUsd: 0.0105,
+    });
+
+    const llmInteractions = (costUsd?: number) => ({
+      modelId: 'gpt-4o-mini',
+      promptTokens: 1,
+      completionTokens: 1,
+      totalTokens: 2,
+      latencyMs: 10,
+      ...(costUsd !== undefined ? { costUsd } : {}),
+    });
+    tenantDb.queueSelectResult('where', [
+      {
+        telemetryData: createTelemetryData({
+          llmInteractions: llmInteractions(0.1),
+        }),
+      },
+      {
+        telemetryData: createTelemetryData({
+          llmInteractions: llmInteractions(0.2),
+        }),
+      },
+      {
+        telemetryData: createTelemetryData({
+          llmInteractions: llmInteractions(),
+        }),
+      },
+    ]);
+    tenantDb.queueSelectResult('where', [createStep()]);
+
+    await service.handleExecutionStatusChanged(createExecutionStatusPayload());
+
+    const summaryRecord = tenantDb.insertValues[1] as {
+      summaryData: ExecutionSummaryData;
+    };
+    expect(summaryRecord.summaryData.totalCostUsd).toBe(0.3);
+  });
+
   it('should warn instead of throwing when execution summary recording fails', async () => {
     mocks.runInTenantTransaction.mockRejectedValueOnce(
       new Error('summary write failed'),

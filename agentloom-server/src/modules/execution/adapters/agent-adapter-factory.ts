@@ -6,6 +6,7 @@ import { AgentDefinitionService } from '../../agent-definition/agent-definition.
 import { SubAgentToolsProvider } from '../../agent-execution/subagent';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
+import { LlmCostService } from '../../llm/llm-cost.service';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 import { EventBridgeService } from '../services/event-bridge.service';
 
@@ -19,6 +20,7 @@ export class AgentAdapterFactory {
     private readonly eventBridge: EventBridgeService,
     private readonly subAgentToolsProvider?: SubAgentToolsProvider,
     private readonly skillResolverService?: SkillResolverService,
+    private readonly llmCostService?: LlmCostService,
   ) {}
 
   createFromAgentDefinition(
@@ -35,6 +37,7 @@ export class AgentAdapterFactory {
         eventBridge: this.eventBridge,
         subAgentToolsProvider: this.subAgentToolsProvider,
         skillResolverService: this.skillResolverService,
+        llmCostService: this.llmCostService,
       },
       {
         agentDefinitionId,

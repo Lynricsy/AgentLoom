@@ -57,6 +57,8 @@ export interface LlmInteractionRecord {
   completionTokens: number;
   totalTokens: number;
   latencyMs: number;
+  /** 按模型配置定价换算的成本（USD）；模型未定价时缺省 */
+  costUsd?: number;
 }
 
 export interface StepTelemetryData {
@@ -78,6 +80,8 @@ export interface ExecutionSummaryData {
   totalLatencyMs: number;
   avgStepLatencyMs: number;
   executionDurationMs: number;
+  /** 全部步骤 LLM 成本之和（USD）；没有任何步骤带成本时缺省 */
+  totalCostUsd?: number;
 }
 
 export const recordTypeEnum = pgEnum('record_type', [

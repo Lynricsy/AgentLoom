@@ -238,6 +238,9 @@ export class ExecutionRecordService {
           step.startedAt && step.completedAt
             ? step.completedAt.getTime() - step.startedAt.getTime()
             : 0,
+        ...(typeof result?.costUsd === 'number'
+          ? { costUsd: result.costUsd }
+          : {}),
       },
     };
   }
@@ -268,6 +271,7 @@ export class ExecutionRecordService {
     let totalTokens = 0;
     let totalLatencyMs = 0;
     let telemetryRecordCount = 0;
+    let totalCostUsd: number | undefined;
 
     for (const record of records) {
       const data = record.telemetryData;
@@ -281,6 +285,9 @@ export class ExecutionRecordService {
       totalSelfRepairs += data.selfRepairs.length;
       totalTokens += data.llmInteractions?.totalTokens ?? 0;
       totalLatencyMs += data.llmInteractions?.latencyMs ?? 0;
+      if (typeof data.llmInteractions?.costUsd === 'number') {
+        totalCostUsd = (totalCostUsd ?? 0) + data.llmInteractions.costUsd;
+      }
     }
 
     const completedSteps = steps.filter(
@@ -315,6 +322,10 @@ export class ExecutionRecordService {
           ? Math.round(totalLatencyMs / telemetryRecordCount)
           : 0,
       executionDurationMs,
+      // 浮点累加后按微美元取整，避免 0.1+0.2 式误差进入摘要
+      ...(totalCostUsd !== undefined
+        ? { totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000 }
+        : {}),
     };
   }
 

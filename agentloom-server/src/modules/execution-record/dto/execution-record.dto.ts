@@ -56,6 +56,7 @@ const LlmInteractionRecordSchema = z.object({
   completionTokens: z.number(),
   totalTokens: z.number(),
   latencyMs: z.number(),
+  costUsd: z.number().optional(),
 });
 
 export const StepTelemetryDataSchema = z.object({
@@ -77,6 +78,7 @@ export const ExecutionSummaryDataSchema = z.object({
   totalLatencyMs: z.number(),
   avgStepLatencyMs: z.number(),
   executionDurationMs: z.number(),
+  totalCostUsd: z.number().optional(),
 });
 
 export const ExecutionRecordResponseSchema = z.object({

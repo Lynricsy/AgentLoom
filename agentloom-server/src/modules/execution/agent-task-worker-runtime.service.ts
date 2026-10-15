@@ -42,6 +42,8 @@ import { SessionPersistenceService } from './services/session-persistence.servic
 import { InterventionPolicyService } from '../intervention-policy/intervention-policy.service';
 import { NotificationService } from '../notification/notification.service';
 import { LlmEncryptionService } from '../llm/llm-encryption.service';
+import { LlmCostService } from '../llm/llm-cost.service';
+import type { AgentUsage } from '../agent/types/agent-event.types';
 import {
   AgentExecutionException,
   InterventionNotAllowedException,
@@ -153,8 +155,52 @@ export class AgentTaskWorkerRuntimeService {
     @Optional()
     @Inject(SkillResolverService)
     protected readonly skillResolverService?: SkillResolverService,
+    @Optional()
+    @Inject(LlmCostService)
+    protected readonly llmCostService?: LlmCostService,
   ) {
     void throttleService;
+  }
+
+  /**
+   * 把 Agent 循环累计的 token 用量换算为步骤结果遥测字段（执行记录读取
+   * promptTokens/completionTokens/totalTokens/modelId/costUsd）。
+   */
+  public async buildUsageStepResult(params: {
+    tenantId: string;
+    llmModelConfigId?: string;
+    usage?: AgentUsage;
+    modelId?: string;
+  }): Promise<Record<string, unknown>> {
+    const { usage } = params;
+    if (!usage) {
+      return {};
+    }
+    let costUsd: number | null = null;
+    if (this.llmCostService && params.llmModelConfigId) {
+      try {
+        costUsd = this.llmCostService.estimateCostUsd(
+          await this.llmCostService.resolvePricing(
+            params.tenantId,
+            params.llmModelConfigId,
+          ),
+          usage,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to resolve model pricing for ${params.llmModelConfigId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return {
+      promptTokens: usage.inputTokens,
+      completionTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+      ...(params.modelId ? { modelId: params.modelId } : {}),
+      ...(costUsd !== null ? { costUsd } : {}),
+    };
   }
 
   protected get tenantDb(): DrizzleDB {
@@ -185,6 +231,8 @@ export class AgentTaskWorkerRuntimeService {
     decision?: Record<string, unknown>;
     toolCalls: ToolCallEvent[];
     segments: ConversationMessageSegmentRecord[];
+    usage?: AgentUsage;
+    modelId?: string;
   }> {
     let { accumulatedContent, decision, chunkIndex } = params;
     let contentBlocks = params.initialContentBlocks;
@@ -222,7 +270,8 @@ export class AgentTaskWorkerRuntimeService {
           params.sessionId,
           contentBlocks,
         )) {
-          if (event.type !== 'message_chunk') {
+          // token 用量只累计进步骤结果，不推送实时事件
+          if (event.type !== 'message_chunk' && event.type !== 'usage') {
             this.stepStateMachine.broadcastAgentEvent(
               params.tenantId,
               params.executionId,
@@ -434,6 +483,8 @@ export class AgentTaskWorkerRuntimeService {
       decision,
       toolCalls,
       segments,
+      usage: accumulator.usage,
+      modelId: accumulator.modelId,
     };
   }
 

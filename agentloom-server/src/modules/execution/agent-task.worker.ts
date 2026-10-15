@@ -49,6 +49,7 @@ import type {
   ToolCallStatus,
   ToolCallTransitionSource,
 } from '../agent/types/tool-call-event.types';
+import type { AgentUsage } from '../agent/types/agent-event.types';
 import {
   AGENT_TASK_QUEUE,
   MAX_ESCALATION_ATTEMPTS,
@@ -811,6 +812,7 @@ export class AgentTaskWorker extends WorkerHost {
     let chunkIndex = 0;
     let toolCalls: ToolCallEvent[] = [];
     let segments: ConversationMessageSegmentRecord[] = [];
+    let loopUsage: { usage?: AgentUsage; modelId?: string } = {};
     const effectiveAutonomyMode =
       await this.runtimeService.resolveEffectiveAutonomyMode(
         tenantId,
@@ -901,6 +903,7 @@ export class AgentTaskWorker extends WorkerHost {
         decision = loopResult.decision;
         toolCalls = loopResult.toolCalls;
         segments = loopResult.segments;
+        loopUsage = { usage: loopResult.usage, modelId: loopResult.modelId };
       } else {
         await this.runtimeService.withTenantContext(tenantId, async () => {
           await this.stepStateMachine.updateStepStatus(
@@ -1035,6 +1038,7 @@ export class AgentTaskWorker extends WorkerHost {
         decision = loopResult.decision;
         toolCalls = loopResult.toolCalls;
         segments = loopResult.segments;
+        loopUsage = { usage: loopResult.usage, modelId: loopResult.modelId };
       }
 
       if (lastStopReason === 'intervention_required') {
@@ -1064,6 +1068,14 @@ export class AgentTaskWorker extends WorkerHost {
       const result: Record<string, unknown> = {
         content: accumulatedContent,
         'exec-out': { triggered: true },
+        ...(await this.runtimeService.buildUsageStepResult({
+          tenantId,
+          llmModelConfigId:
+            typeof nodeData.llmModelConfigId === 'string'
+              ? nodeData.llmModelConfigId
+              : undefined,
+          ...loopUsage,
+        })),
       };
       if (lastStopReason && lastStopReason !== 'end_turn') {
         result.stopReason = lastStopReason;

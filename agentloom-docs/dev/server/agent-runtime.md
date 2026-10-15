@@ -153,6 +153,24 @@ dsh 以 danger-full-access 运行，内置的 bash、文件工具不会发起审
 
 远程工具（服务端工具）不进这条回路：bridge 对它们直接放行审批请求，审批由远程工具回调的 preflight / execute 两阶段完成。
 
+## Token 用量与成本
+
+两种运行态都在每条 assistant 消息结束时产出一条 `usage` AgentEvent（`{ usage: { inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens?, totalTokens }, modelId?, provider? }`，契约 `UsageEventSchema` 在 `agentloom-contracts/src/agent-events.ts`）：
+
+- `no_sandbox`：`PiAgentCoreAdapter.translatePiEvent` 把 pi 的 `message_end`（`role: 'assistant'`）上的 pi-ai `Usage{input, output, cacheRead, cacheWrite, totalTokens}` 映射过来，`modelId`、`provider` 取消息的 `model`、`provider`；非数字字段按 0 处理。
+- `sandbox`：bridge 在 dsh `assistant/message` 带 `usage`（dsh `TokenUsage`）时，于该事件的 `harness_trace` 之后追加 `usage` 事件，`modelId`、`provider` 取 `message.source`；dsh 省略 `totalTokens` 时用 `inputTokens + outputTokens` 补齐。guest 经 SSE 原样透传，server 的 `sandbox-event-decoder.ts` 解码为同一 AgentEvent。
+
+`usage` 只在服务端累计，不推送实时事件：对话 worker、工作流 agent 适配器与 agent-task worker 都在广播前跳过它，子 Agent 的 `usage` 也不进对话时间线。一轮内多条 assistant 消息（工具续轮）逐字段求和（`addAgentUsage`，`agentloom-server/src/modules/agent/shared/agent-turn-event-accumulator.ts`）。
+
+成本由 `LlmCostService`（`agentloom-server/src/modules/llm/llm-cost.service.ts`）按 `llm_model_configs.pricing` 换算，单位美元：阶梯价取 `aboveTokens <= inputTokens` 的最高档，否则用基础价；`(inputTokens − cacheReadTokens) × 输入价 + cacheReadTokens × 缓存读价 + cacheWriteTokens × 缓存写价 + outputTokens × 输出价`，再除以 1M，四舍六入五成双保留 6 位。缓存读/写缺少专门单价时按输入价计。模型配置未定价时成本为 `null`（区分「未知」与「免费」）；定价按租户 + 模型配置在进程内缓存 60 s。
+
+落库位置：
+
+| 路径 | 写入 |
+| --- | --- |
+| 对话 | 本轮 assistant 消息 `metadata` 写入 `usage`、`modelId`、`costUsd`（按会话 `llmModelConfigId` 定价；定价查询在落库事务之外，失败只丢成本）。事务提交后经 EventEmitter2 发 `agent-conversation.turn-persisted`（`{ conversationId, tenantId, assistantMessageId, processedMessageIds, usage?, costUsd, stopReason }`，常量与类型在 `agentloom-server/src/modules/agent-execution/agent-execution.events.ts`） |
+| 工作流 agent 节点 | 步骤 `result` 写入 `promptTokens`、`completionTokens`、`totalTokens`、`modelId`、`costUsd`；`execution-record` 模块把它们读进 `step_telemetry` 的 `llmInteractions`，执行汇总的 `totalCostUsd` 为各步骤 `costUsd` 之和（没有任何步骤带成本时缺省） |
+
 ## 沙箱驱动与多节点调度
 
 VM 的生命周期操作通过端口 `SandboxRuntimeDriver`（`agentloom-server/src/modules/sandbox/sandbox-runtime-driver.port.ts`）完成，`SandboxModule` 把令牌 `SANDBOX_RUNTIME_DRIVER` 以 `useExisting` 绑定到 `FirecrackerRuntimeService`（`agentloom-server/src/modules/sandbox/sandbox.module.ts:37-40`）。VM 的创建由 `sandbox-lifecycle` 队列异步执行（`SandboxLifecycleWorker.handleCreate`，`agentloom-server/src/modules/sandbox/sandbox-lifecycle.worker.ts:85-114`），成功后把 runtime handle 写回 `sandbox_sessions`。

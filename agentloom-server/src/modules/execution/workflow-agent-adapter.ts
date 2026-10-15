@@ -25,7 +25,9 @@ import type {
   DecisionEvent,
   StopReason,
   AgentEvent,
+  AgentUsage,
 } from '../agent/types/agent-event.types';
+import { addAgentUsage } from '../agent/shared/agent-turn-event-accumulator';
 import type { ContentBlock } from '../agent/types/content-block.types';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
@@ -74,6 +76,7 @@ import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandb
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
+import type { LlmCostService } from '../llm/llm-cost.service';
 import {
   appendTextConversationMessageSegment,
   appendThinkingConversationMessageSegment,
@@ -93,6 +96,7 @@ interface WorkflowAgentAdapterDependencies {
   readonly eventBridge: EventBridgeService;
   readonly subAgentToolsProvider?: SubAgentToolsProvider;
   readonly skillResolverService?: SkillResolverService;
+  readonly llmCostService?: LlmCostService;
 }
 
 interface WorkflowAgentAdapterConfig {
@@ -134,6 +138,13 @@ export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
    */
   readonly outputSchema?: Record<string, unknown>;
   readonly subAgents?: Record<string, WorkflowAgentExecutionResult>;
+  /** 本次执行全部 assistant 消息的 token 用量（执行记录遥测读取） */
+  readonly promptTokens?: number;
+  readonly completionTokens?: number;
+  readonly totalTokens?: number;
+  readonly modelId?: string;
+  /** 按模型配置定价换算的成本（USD）；未定价时缺省 */
+  readonly costUsd?: number;
 }
 
 interface CompiledWorkflowAgentDefinition {
@@ -297,6 +308,8 @@ export class WorkflowAgentAdapter {
     let accumulatedContent = '';
     let decision: Record<string, unknown> | undefined;
     let stopReason: StopReason = 'end_turn';
+    let usage: AgentUsage | undefined;
+    let usageModelId: string | undefined;
     let chunkIndex = 0;
     let turnInput = promptBlocks;
     let toolCalls: ToolCallEvent[] = [];
@@ -357,6 +370,13 @@ export class WorkflowAgentAdapter {
         stopReason = 'end_turn';
 
         for await (const event of runtime.prompt(session.id, turnInput)) {
+          if (event.type === 'usage') {
+            // token 用量只在服务端累计写入步骤结果，不推送实时事件
+            usage = addAgentUsage(usage, event.usage);
+            usageModelId = event.modelId ?? usageModelId;
+            continue;
+          }
+
           if (subAgentEnvelope && subAgentStream) {
             const persistedEvent = normalizeSubAgentEventForPersistence(event);
             if (persistedEvent) {
@@ -504,6 +524,9 @@ export class WorkflowAgentAdapter {
         ? parseAgentStructuredOutput(accumulatedContent, outputSchema)
         : undefined;
 
+    const costUsd = usage
+      ? await this.estimateCostUsd(params.tenantId, session, usage)
+      : null;
     const result: WorkflowAgentExecutionResult = {
       content: accumulatedContent,
       'exec-out': { triggered: true },
@@ -511,6 +534,15 @@ export class WorkflowAgentAdapter {
       ...(decision ? { decision } : {}),
       ...(structured !== undefined ? { structured } : {}),
       ...(outputSchema ? { outputSchema } : {}),
+      ...(usage
+        ? {
+            promptTokens: usage.inputTokens,
+            completionTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+          }
+        : {}),
+      ...(usageModelId ? { modelId: usageModelId } : {}),
+      ...(costUsd !== null ? { costUsd } : {}),
     };
 
     this.logger.debug(
@@ -518,6 +550,31 @@ export class WorkflowAgentAdapter {
     );
 
     return result;
+  }
+
+  /** 按会话模型配置定价换算成本；未注入成本服务、无模型配置或查询失败时为 null */
+  private async estimateCostUsd(
+    tenantId: string,
+    session: AgentSession,
+    usage: AgentUsage,
+  ): Promise<number | null> {
+    const { llmCostService } = this.dependencies;
+    if (!llmCostService || !session.llmModelConfigId) {
+      return null;
+    }
+    try {
+      return llmCostService.estimateCostUsd(
+        await llmCostService.resolvePricing(tenantId, session.llmModelConfigId),
+        usage,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve model pricing for ${session.llmModelConfigId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
   }
 
   private async loadCompiledDefinition(params: {

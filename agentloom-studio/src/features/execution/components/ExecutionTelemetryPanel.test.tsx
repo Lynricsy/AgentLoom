@@ -127,6 +127,26 @@ describe('ExecutionTelemetryPanel', () => {
     expect(screen.getByTestId('execution-telemetry-empty')).toBeInTheDocument()
   })
 
+  it('汇总带 totalCostUsd 时显示总成本，缺省时不显示', () => {
+    mocks.useExecutionRecords.mockReturnValue(
+      withRecords([
+        {
+          ...summaryRecord,
+          summaryData: { ...summaryRecord.summaryData!, totalCostUsd: 0.0105 },
+        },
+      ]),
+    )
+    const { unmount } = renderPanel()
+
+    expect(screen.getByText('总成本')).toBeInTheDocument()
+    expect(screen.getByText('$0.0105')).toBeInTheDocument()
+    unmount()
+
+    mocks.useExecutionRecords.mockReturnValue(withRecords([summaryRecord]))
+    renderPanel()
+    expect(screen.queryByText('总成本')).not.toBeInTheDocument()
+  })
+
   it('按 recordType 分组渲染汇总与步骤遥测', () => {
     mocks.useExecutionRecords.mockReturnValue(
       withRecords([summaryRecord, stepRecord]),

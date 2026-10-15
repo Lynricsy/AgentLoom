@@ -23,6 +23,12 @@ const twoDecimalFormatter = new Intl.NumberFormat('zh-CN', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 6,
+})
 
 function formatLatency(value: number): string {
   if (!Number.isFinite(value)) {
@@ -67,6 +73,9 @@ function SummaryRecordCard({ record }: { record: ExecutionRecord }) {
         ['Tokens', numberFormatter.format(summary.totalTokens)],
         ['平均步骤耗时', formatLatency(summary.avgStepLatencyMs)],
         ['执行总耗时', formatLatency(summary.executionDurationMs)],
+        ...(summary.totalCostUsd !== undefined
+          ? ([['总成本', usdFormatter.format(summary.totalCostUsd)]] as const)
+          : []),
       ] as const)
     : []
 

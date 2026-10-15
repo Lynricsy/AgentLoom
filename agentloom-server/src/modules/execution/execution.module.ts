@@ -12,6 +12,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { InterventionPolicyModule } from '../intervention-policy/intervention-policy.module';
 import { NotificationModule } from '../notification/notification.module';
 import { LlmModule } from '../llm/llm.module';
+import { LlmCostService } from '../llm/llm-cost.service';
 import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { OrganizationModule } from '../organization/organization.module';
@@ -132,6 +133,7 @@ import {
         sandboxService,
         eventBridge,
         skillResolverService,
+        llmCostService,
       ) =>
         new AgentAdapterFactory(
           db,
@@ -142,6 +144,7 @@ import {
           eventBridge,
           new SubAgentToolsProvider(db, agentDefinitionService, eventBridge),
           skillResolverService,
+          llmCostService,
         ),
       inject: [
         DRIZZLE,
@@ -151,6 +154,7 @@ import {
         SandboxService,
         EventBridgeService,
         SkillResolverService,
+        LlmCostService,
       ],
     },
     RbacCacheService,

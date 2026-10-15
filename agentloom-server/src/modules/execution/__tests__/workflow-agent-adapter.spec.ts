@@ -105,6 +105,9 @@ function createAdapter(
   if (deps.subAgentToolsProvider) {
     adapterDeps.subAgentToolsProvider = deps.subAgentToolsProvider;
   }
+  if (deps.llmCostService) {
+    adapterDeps.llmCostService = deps.llmCostService;
+  }
 
   return new WorkflowAgentAdapter(adapterDeps as never, config as never);
 }
@@ -993,6 +996,84 @@ describe('WorkflowAgentAdapter', () => {
 
     expect(mockSandboxRuntime.prompt).toHaveBeenCalledTimes(2);
     expect(result.content).toBe('准备调用工具...工具结果处理完毕');
+  });
+
+  it('跨轮累加 usage 写入结果遥测字段，按会话模型配置换算成本且不广播 usage 事件', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({
+      id: 'session-1',
+      llmModelConfigId: 'model-1',
+    });
+    mockSandboxRuntime.prompt
+      .mockReturnValueOnce(
+        emit([
+          {
+            type: 'usage',
+            usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+            modelId: 'gpt-test',
+          },
+          { type: 'done', stopReason: 'tool_use' },
+        ]),
+      )
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: '完成' },
+          {
+            type: 'usage',
+            usage: { inputTokens: 200, outputTokens: 30, totalTokens: 230 },
+          },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+    const pricing = { inputPer1MTokens: 3, outputPer1MTokens: 15 };
+    const llmCostService = {
+      resolvePricing: vi.fn().mockResolvedValue(pricing),
+      estimateCostUsd: vi.fn().mockReturnValue(0.00165),
+    };
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+      llmCostService,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(result).toMatchObject({
+      promptTokens: 300,
+      completionTokens: 50,
+      totalTokens: 350,
+      modelId: 'gpt-test',
+      costUsd: 0.00165,
+    });
+    expect(llmCostService.resolvePricing).toHaveBeenCalledWith(
+      TENANT_ID,
+      'model-1',
+    );
+    expect(llmCostService.estimateCostUsd).toHaveBeenCalledWith(pricing, {
+      inputTokens: 300,
+      outputTokens: 50,
+      totalTokens: 350,
+    });
+    expect(
+      mockEventBridge.emitStepAgentEvent.mock.calls.some(
+        ([, , payload]) => payload.event.type === 'usage',
+      ),
+    ).toBe(false);
   });
 
   it('system trigger 的 no_sandbox workflow agent 会从 execution 记录判定自动授权并传给 runtime session', async () => {
