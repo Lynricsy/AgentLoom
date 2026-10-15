@@ -39,6 +39,7 @@ export const NODE_TYPES = [
   "input-preprocessor",
   "memory",
   "agent",
+  "team",
   "skill",
   "workspace",
   "merge",
@@ -64,6 +65,7 @@ export const EXEC_PORT_NODE_TYPES: ReadonlySet<NodeType> = new Set([
   "smart-routing",
   "memory",
   "agent",
+  "team",
   "skill",
   "workspace",
   "merge",
@@ -1108,6 +1110,36 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         maxConnections: null,
         description:
           "配置输出 Schema 时，Agent 最终回复按 Schema 解析并校验后的 JSON；回复不符合 Schema 时节点失败",
+      }),
+    ],
+    configSchema: EMPTY_CONFIG_SCHEMA,
+  },
+  team: {
+    type: "team",
+    category: "agent",
+    label: "Agent 团队",
+    icon: "Users",
+    description:
+      "多个固定角色的 Agent 在预算与截止时间内协作完成任务，由负责人提交结果",
+    colorToken: CATEGORY_COLOR_TOKENS.agent,
+    inputPorts: [
+      createExecInPort("执行流入口，前序节点完成后启动团队任务"),
+      createPort("task-in", "任务", "input", "text", {
+        required: true,
+        description: "团队要完成的任务描述",
+      }),
+      createPort("context-in", "上下文", "input", "json", {
+        description: "可选的补充上下文，原样提供给全部成员",
+      }),
+    ],
+    outputPorts: [
+      createExecOutPort("执行流出口，负责人提交结果后触发下游节点"),
+      createPort("result-out", "结果", "output", "json", {
+        description:
+          "负责人提交的结果：summary、artifact、knownLimitations、members、usage",
+      }),
+      createPort("summary-out", "摘要", "output", "text", {
+        description: "结果摘要文本",
       }),
     ],
     configSchema: EMPTY_CONFIG_SCHEMA,

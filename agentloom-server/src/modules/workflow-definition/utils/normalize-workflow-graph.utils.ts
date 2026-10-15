@@ -86,6 +86,7 @@ const WORKFLOW_NODE_CATEGORY_BY_NODE_TYPE: Record<
   'llm-model': 'agent',
   'smart-routing': 'agent',
   agent: 'agent',
+  team: 'agent',
   skill: 'agent',
   'http-tool': 'tool',
   'code-tool': 'tool',
@@ -833,6 +834,20 @@ const DEFAULT_PORT_TEMPLATES_BY_NODE_TYPE: Record<
         multiple: true,
         maxConnections: null,
       }),
+    ],
+  },
+  team: {
+    input: [
+      createExecInPortTemplate(),
+      createPortTemplate('task-in', '任务', 'input', 'text', {
+        required: true,
+      }),
+      createPortTemplate('context-in', '上下文', 'input', 'json'),
+    ],
+    output: [
+      createExecOutPortTemplate(),
+      createPortTemplate('result-out', '结果', 'output', 'json'),
+      createPortTemplate('summary-out', '摘要', 'output', 'text'),
     ],
   },
   skill: {

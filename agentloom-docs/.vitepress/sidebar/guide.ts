@@ -53,6 +53,7 @@ const guide: DefaultTheme.SidebarItem[] = [
           { text: 'LLM 模型', link: '/guide/nodes/llm-model' },
           { text: '智能路由', link: '/guide/nodes/smart-routing' },
           { text: 'Agent', link: '/guide/nodes/agent' },
+          { text: 'Agent 团队', link: '/guide/nodes/team' },
           { text: 'Skill', link: '/guide/nodes/skill' },
         ],
       },

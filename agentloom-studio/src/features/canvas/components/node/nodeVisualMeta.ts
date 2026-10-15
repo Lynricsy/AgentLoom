@@ -27,6 +27,7 @@ import {
   RefreshCcw,
   Repeat,
   Repeat2,
+  Users,
   Webhook,
   type LucideIcon,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   ArrowRightFromLine,
   CircleOff,
   FastForward,
+  Users,
 };
 
 /** 解析注册表图标名；未收录时回退通用 Bot 图标 */

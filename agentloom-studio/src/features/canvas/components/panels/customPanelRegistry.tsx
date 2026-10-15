@@ -25,6 +25,7 @@ import { ReusableBlockPanel } from './ReusableBlockPanel'
 import { SmartRoutingConfigPanel } from './SmartRoutingConfigPanel'
 import { PluginConfigPanel } from './PluginConfigPanel'
 import { AgentNodeConfigPanel } from './AgentNodeConfigPanel'
+import { TeamConfigPanel } from './TeamConfigPanel'
 import { MemoryConfigPanel } from './MemoryConfigPanel'
 import { WorkspaceConfigPanel } from './WorkspaceConfigPanel'
 import { InputPreprocessorConfigPanel } from './InputPreprocessorConfigPanel'
@@ -143,6 +144,18 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
         node={node}
         config={node.data.config}
         onApply={onConfigChange}
+      />
+    ),
+  },
+  'team': {
+    handlesValidation: true,
+    // 输出 Schema 文本草稿保存在面板内部状态，切换节点时按 id 重建面板
+    render: ({ node, onConfigChange, onValidationChange }) => (
+      <TeamConfigPanel
+        key={node.id}
+        config={node.data.config}
+        onApply={(config) => onConfigChange({ config })}
+        onValidationChange={onValidationChange}
       />
     ),
   },

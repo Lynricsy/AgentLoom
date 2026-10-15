@@ -708,6 +708,7 @@ describe('normalizeWorkflowNodesAndEdges', () => {
       'input-preprocessor',
       'memory',
       'agent',
+      'team',
       'skill',
       'workspace',
       'merge',
@@ -747,6 +748,39 @@ describe('normalizeWorkflowNodesAndEdges', () => {
         expect(port).toHaveProperty('maxConnections');
       }
     }
+  });
+
+  it('应把 team 节点归入 agent 类别并补齐与 Studio 一致的端口', () => {
+    const { nodes } = normalizeWorkflowNodesAndEdges(
+      [
+        {
+          id: 'team-1',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: { node_type: 'team' },
+        },
+      ],
+      [],
+    );
+
+    const data = nodes[0]?.data as {
+      category: string;
+      inputPorts: Array<{ id: string; dataType: string; required: boolean }>;
+      outputPorts: Array<{ id: string; dataType: string }>;
+    };
+    expect(data.category).toBe('agent');
+    expect(
+      data.inputPorts.map((port) => [port.id, port.dataType, port.required]),
+    ).toEqual([
+      ['exec-in', 'exec', false],
+      ['task-in', 'text', true],
+      ['context-in', 'json', false],
+    ]);
+    expect(data.outputPorts.map((port) => [port.id, port.dataType])).toEqual([
+      ['exec-out', 'exec'],
+      ['result-out', 'json'],
+      ['summary-out', 'text'],
+    ]);
   });
 
   it('应归一化节点级 legacy metadata 且 canonical 值优先', () => {

@@ -32,6 +32,7 @@
 | `input-preprocessor` | 输入预处理器 | Tool | 对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本） | 是 |
 | `memory` | Memory | Memory | 图谱记忆实例节点 | 是 |
 | `agent` | Agent | Agent | 调用已发布的 Agent Definition 执行任务 | 是 |
+| `team` | Agent 团队 | Agent | 多个固定角色的 Agent 在预算与截止时间内协作完成任务，由负责人提交结果 | 是 |
 | `skill` | Skill | Agent | Agent prompt 增强指令 | 是 |
 | `workspace` | Workspace | Tool | 持久化工作区卷 | 是 |
 | `merge` | Merge | Control | 合并多分支数据 | 是 |

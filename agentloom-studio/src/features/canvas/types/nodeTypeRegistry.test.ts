@@ -48,6 +48,7 @@ describe("nodeTypeRegistry", () => {
       "input-preprocessor",
       "memory",
       "agent",
+      "team",
       "skill",
       "workspace",
       "merge",
@@ -279,6 +280,29 @@ describe("nodeTypeRegistry", () => {
     );
   });
 
+  it("team 节点为 agent 分类、带 exec 端口且没有 sandbox-in", () => {
+    const teamNode = getNodeTypeConfig("team");
+
+    expect(DYNAMIC_ONLY_NODE_TYPES.has("team")).toBe(false);
+    expect(EXEC_PORT_NODE_TYPES.has("team")).toBe(true);
+    expect(teamNode.category).toBe("agent");
+    expect(teamNode.icon).toBe("Users");
+    expect(
+      teamNode.inputPorts.map((port) => [port.id, port.dataType, port.required]),
+    ).toEqual([
+      ["exec-in", "exec", false],
+      ["task-in", "text", true],
+      ["context-in", "json", false],
+    ]);
+    expect(
+      teamNode.outputPorts.map((port) => [port.id, port.dataType]),
+    ).toEqual([
+      ["exec-out", "exec"],
+      ["result-out", "json"],
+      ["summary-out", "text"],
+    ]);
+  });
+
   it("workflow agent 输入端口会跟随 agent runtimeMode 移除 sandbox 句柄", () => {
     expect(
       getWorkflowAgentInputPorts("sandbox").map((port) => port.id),
@@ -308,6 +332,7 @@ describe("nodeTypeRegistry", () => {
       "llm-model",
       "smart-routing",
       "agent",
+      "team",
       "skill",
       "http-tool",
       "code-tool",
