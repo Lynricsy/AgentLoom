@@ -2,7 +2,7 @@
 
 AgentLoom 是多智能体工作流编排平台：在可视化画布上把 AI Agent、工具、知识库、记忆与控制节点连成 DAG 工作流并执行；Agent 也可以独立对话、版本化发布，并通过 API 对外提供服务。
 
-- 状态：开发中，无 CI/CD；生产实例 <https://agentloom.ling.plus/>
+- 状态：开发中；GitHub Actions 跑 `pnpm typecheck:all` + `pnpm test:all`，E2E 仍在本地运行；生产实例 <https://agentloom.ling.plus/>
 - 文档站：<https://agentloom.ling.plus/documentation/>（源码在 `agentloom-docs/`）
 
 ## 仓库布局

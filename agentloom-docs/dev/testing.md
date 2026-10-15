@@ -24,6 +24,8 @@ pnpm typecheck:all && pnpm test:all
 
 全部包通过时退出码为 0。不允许留下失败的测试：任何失败都视为本次改动引入的回归，查到根因修复，不跳过、不删除断言。
 
+GitHub Actions 工作流 `.github/workflows/ci.yml` 在推送到 `main` 与每个 pull request 时运行同样的 `pnpm install --frozen-lockfile`、`pnpm typecheck:all`、`pnpm test:all`（Node 22）。server E2E 需要 Docker 与 Redis，不在 CI 内，仍在本地运行。
+
 ## 只跑一部分
 
 ### JS 包（Vitest 4）

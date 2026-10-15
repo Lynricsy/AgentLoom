@@ -3,7 +3,7 @@
 ## 项目
 
 AgentLoom — 多智能体工作流编排平台：用户在可视化画布上把 AI Agent 组合为 DAG 工作流并执行。Agent 与 Workflow 是并列的顶层概念（Agent 有独立的定义/版本/对话/执行体系，可作为 workflow `agent` 节点执行）。
-生产地址 `https://agentloom.ling.plus/`，文档站 `https://agentloom.ling.plus/documentation/`。仅开发环境，无 CI/CD。命令见根 `README.md` 与各包 `README.md`。
+生产地址 `https://agentloom.ling.plus/`，文档站 `https://agentloom.ling.plus/documentation/`。仅开发环境，无 CD；GitHub Actions（`.github/workflows/ci.yml`）跑 `typecheck:all` + `test:all`，E2E 仍本地。命令见根 `README.md` 与各包 `README.md`。
 
 ## 文档路由（改动前先读）
 
