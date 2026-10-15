@@ -161,12 +161,12 @@ server 与 worker 不持有 KVM、网络或 cgroup 特权；这些只在运行 `
 
 | 环节 | 机制 | 入口 |
 | --- | --- | --- |
-| 启动 | `TeamNodeExecutor` 校验配置、把步骤置为 running，经事件 `team.run.start-requested` 请求启动；`TeamRunService.start` 在一个租户事务内写 `team_runs`、每个成员一条 `source='team'` 的对话与 `team_members` 行、成员简报（第一条用户消息），提交后派发成员对话并登记截止任务 | `agentloom-server/src/modules/execution/node-executors/team-node.executor.ts`、`agentloom-server/src/modules/team/team-run.service.ts` |
-| 成员执行 | 每个成员就是一条对话，复用对话执行队列；对话 worker 为 `source='team'` 的会话注册团队工具 | `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`（`registerTeamToolsProvider`）、`agentloom-server/src/modules/team/team-tools.provider.ts` |
+| 启动 | `TeamNodeExecutor` 校验配置、把步骤置为 running，经事件 `team.run.start-requested` 请求启动；`TeamRunService.start` 在一个租户事务内先取消同一步骤仍在运行的旧运行，再写 `team_runs`、每个成员一条 `source='team'` 的对话与 `team_members` 行、成员简报（第一条用户消息），提交后派发成员对话并登记截止任务（失败只记录，由清扫兜底） | `agentloom-server/src/modules/execution/node-executors/team-node.executor.ts`、`agentloom-server/src/modules/team/team-run.service.ts` |
+| 成员执行 | 每个成员就是一条对话，复用对话执行队列；对话 worker 只为 `source='team'` 对话自身的会话注册团队工具（成员的子 Agent 会话不注册），工具脱离调用方事务、以独立短事务写入 | `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`（`registerTeamToolsProvider`）、`agentloom-server/src/modules/team/team-tools.provider.ts` |
 | 消息 | `team_send_message` 写 `team_messages`（每个接收者一行 `pending`），提交后逐条锁行写入接收者对话并置 `delivered`、派发接收者；接收者下一回合处理后置 `consumed` | `agentloom-server/src/modules/team/team-mailbox.service.ts` |
-| 记账 | 订阅 `agent-conversation.turn-persisted` 累计成员与团队用量，超出 tokens 预算即失败；订阅 `agent-conversation.loop-ended` 处理成员失败 | `agentloom-server/src/modules/agent-execution/agent-execution.events.ts` |
-| 结束 | lead 的 `team_submit_result`、预算、截止（`team-runtime` 队列延迟任务）、全体空闲催办用尽、执行取消，都经 `finalize`：结束成员对话、广播 `execution.node.team-status`，完成时 `onNodeCompleted`、失败时 `onNodeFailed`（错误类型 `team/<reason>`） | `agentloom-server/src/modules/team/team-run.service.ts` |
-| 可靠性 | `team-runtime` 队列每 30 秒清扫：重投超时 `pending`、重新派发超时未消费的接收者、过期截止后的消息、催办空闲团队 | `agentloom-server/src/modules/team/team-runtime.worker.ts` |
+| 结算 | 订阅 `agent-conversation.turn-persisted`：锁定运行行，从成员对话已落库 assistant 消息的 `metadata.usage/costUsd` 重算成员与团队用量（输入含缓存读写 token），超出 tokens 预算即失败；lead 的 `team_submit_result` 只登记待定结果，lead 提交回合落库后同一事务内结算并完成。订阅 `agent-conversation.loop-ended` 处理成员失败与有待定结果的 lead 结束 | `agentloom-server/src/modules/agent-execution/agent-execution.events.ts`、`agentloom-server/src/modules/team/team-run.service.ts`（`settle`） |
+| 结束 | 结算完成、预算、截止（`team-runtime` 队列延迟任务）、全体空闲催办用尽、执行进入终态都经 `finalizeInTx`：结束成员对话、广播 `execution.node.team-status`；完成/失败时在一个事务内校验仍是该步骤最新运行，再写步骤终态并 `onNodeCompleted` / `onNodeFailed`（错误类型 `team/<reason>`）；执行终态与重跑取代只取消，不推进步骤 | `agentloom-server/src/modules/team/team-run.service.ts` |
+| 可靠性 | `team-runtime` 队列每 30 秒清扫。邮箱：重投超时 `pending`、按接收者持久游标补标 `consumed`、重新派发超时未消费的接收者、过期截止后的消息。运行：已过截止时间直接截止、重算用量并结算（含待定结果兜底）、重新派发无落库回合的成员、催办空闲团队、重做终态团队未推进的步骤、结束终态团队残留的成员对话 | `agentloom-server/src/modules/team/team-runtime.worker.ts` |
 
 模块依赖为 `agent-execution → team → execution`；团队运行时派发/结束成员对话经事件 `team.member-conversation.dispatch/cancel`，由 `agentloom-server/src/modules/agent-execution/team-conversation-bridge.listener.ts` 调用 `AgentExecutionService`。
 
