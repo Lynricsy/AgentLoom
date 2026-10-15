@@ -12,6 +12,7 @@ import {
   resolveSelectedModelLabel,
 } from '../lib/presentation'
 import type { RoutingDecision } from '../types'
+import { JevShadowBadge } from '@/features/decision-record'
 import {
   DataTable,
   type DataTableColumn,
@@ -69,17 +70,30 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
 
       // 选中/未选中统一同一种单行文本形态，行高与基线一致；长模型 ID 截断并保留 title
       return (
-        <span
-          className={
-            selected
-              ? 'block max-w-56 truncate text-xs font-medium text-foreground'
-              : 'block max-w-56 truncate text-xs text-muted-foreground'
-          }
-          title={label}
-          data-testid={selected ? undefined : 'routing-decision-model-unselected'}
-        >
-          {label}
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <span
+            className={
+              selected
+                ? 'block max-w-56 truncate text-xs font-medium text-foreground'
+                : 'block max-w-56 truncate text-xs text-muted-foreground'
+            }
+            title={label}
+            data-testid={selected ? undefined : 'routing-decision-model-unselected'}
+          >
+            {label}
+          </span>
+          {/* 只有工作流路由节点的决策会经 DecisionService 产生 Jev 影子记录 */}
+          {decision.executionStepId ? (
+            <JevShadowBadge
+              subjectType="routing_decision"
+              subjectId={decision.id}
+              choiceLabels={Object.fromEntries(
+                decision.modelsEvaluated.map((model) => [model.modelId, model.modelName]),
+              )}
+              className="self-start"
+            />
+          ) : null}
+        </div>
       )
     },
   },

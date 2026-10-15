@@ -13,6 +13,7 @@
 | `auth` | 是 |
 | `block-library` | 是 |
 | `canvas` | 是 |
+| `decision-record` | 是 |
 | `developer-console` | 是 |
 | `discover` | 是 |
 | `evidence` | 是 |

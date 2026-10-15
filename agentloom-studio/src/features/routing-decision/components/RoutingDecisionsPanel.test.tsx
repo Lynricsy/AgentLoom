@@ -6,12 +6,17 @@ import { RoutingDecisionsPanel } from './RoutingDecisionsPanel'
 import type { RoutingDecision } from '../types'
 
 const mocks = vi.hoisted(() => ({
+  useDecisionRecords: vi.fn(),
   useProviderHealth: vi.fn(),
   useRoutingDecisions: vi.fn(),
 }))
 
 vi.mock('../api/routing-decision-queries', () => ({
   useRoutingDecisions: mocks.useRoutingDecisions,
+}))
+
+vi.mock('@/features/decision-record/api/decision-record-queries', () => ({
+  useDecisionRecords: mocks.useDecisionRecords,
 }))
 
 vi.mock('@/features/smart-routing', () => ({
@@ -76,6 +81,7 @@ describe('RoutingDecisionsPanel', () => {
       refetch: vi.fn(),
     })
     mocks.useRoutingDecisions.mockReturnValue(listQuery())
+    mocks.useDecisionRecords.mockReturnValue({ data: undefined })
   })
 
   it('加载中只渲染骨架行，不渲染空态', () => {
@@ -151,6 +157,58 @@ describe('RoutingDecisionsPanel', () => {
     expect(badges).toHaveLength(1)
     expect(badges[0]).toHaveTextContent('回退：LLM 超时')
     expect(badges[0]).toHaveAttribute('title', '回退来源：已配置回退模型')
+  })
+
+  it('工作流步骤决策有 Jev 影子记录时显示影子选择，对话决策不查询影子', () => {
+    mocks.useDecisionRecords.mockImplementation(({ subjectId }: { subjectId: string }) => ({
+      data:
+        subjectId === 'decision-step'
+          ? {
+              data: [
+                {
+                  id: 'record-shadow',
+                  mode: 'shadow',
+                  model: 'jev-1.13.0',
+                  outcome: {
+                    type: 'choice',
+                    choice: 'model-a',
+                    probabilities: { 'model-a': 0.7 },
+                    confidence: 0.64,
+                  },
+                  error: null,
+                },
+                { id: 'record-primary', mode: 'primary', outcome: null, error: null },
+              ],
+            }
+          : { data: [] },
+    }))
+    mocks.useRoutingDecisions.mockReturnValue(
+      listQuery({
+        data: {
+          data: [
+            createDecision({ id: 'decision-step' }),
+            createDecision({
+              id: 'decision-conversation',
+              executionStepId: null,
+              conversationId: 'conversation-1',
+            }),
+          ],
+          meta: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
+        },
+      }),
+    )
+    renderPanel()
+
+    const badges = screen.getAllByTestId('jev-shadow-badge')
+    expect(badges).toHaveLength(1)
+    expect(badges[0]).toHaveTextContent('Jev 影子：GPT-4o mini conf=0.64')
+    expect(mocks.useDecisionRecords).toHaveBeenCalledWith({
+      subjectType: 'routing_decision',
+      subjectId: 'decision-step',
+    })
+    expect(mocks.useDecisionRecords).not.toHaveBeenCalledWith(
+      expect.objectContaining({ subjectId: 'decision-conversation' }),
+    )
   })
 
   it('selectedModelId 为 null 时展示未选中模型徽章', () => {

@@ -15,6 +15,7 @@
 | `agent-memory` | `/api/v1/memory-instances` | `/memory` |  |
 | `api-key` | `/api/v1/api-keys` |  |  |
 | `auth` | `/api/v1/auth`<br>`/api/v1/auth/mfa`<br>`/api/v1/auth/oauth` |  |  |
+| `decision` | `/api/v1/decision-records` |  |  |
 | `evidence` | `/api/v1/audit-logs`<br>`/api/v1/evidence-exports`<br>`/api/v1/executions/:executionId/evidence` |  | `audit-log-retention`<br>`evidence-export`<br>`evidence-export-cleanup` |
 | `execution` | `/api/v1` | `/execution` | `agent-task`<br>`workflow-execution` |
 | `execution-record` | `/api/v1/execution-records` |  |  |
