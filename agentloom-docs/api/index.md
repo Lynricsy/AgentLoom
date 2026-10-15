@@ -31,7 +31,7 @@ curl -s http://localhost:3000/api/v1/health
 | --- | --- | --- | --- |
 | 用户会话 JWT | `Authorization: Bearer <access_token>` | 除 `/agent-api/*` 外的全部受保护接口 | Studio 登录后的会话；或 `POST /api/v1/auth/login`，取响应 `data.tokens.access_token` |
 | 平台 API Token | `X-Api-Key: al_<64 位十六进制>` | 同 JWT | Studio「设置 → API Token」（`/settings/api-tokens`），或 `POST /api/v1/platform-api-tokens` |
-| Agent API Key | `Authorization: Bearer alak_<64 位十六进制>` | 仅 `/api/v1/agent-api/*`，且只能访问创建它的那个 Agent | Agent 版本工具栏「API 访问」，见 [Agent 对外 API](/api/agent-api) |
+| Agent API Key | `Authorization: Bearer alak_<64 位十六进制>` | 仅 `/api/v1/agent-api/*` 与 `/api/v1/a2a/agents/{agentId}/rpc`，且只能访问创建它的那个 Agent | Agent 版本工具栏「API 访问」，见 [Agent 对外 API](/api/agent-api)、[A2A 入站接入](/api/a2a) |
 
 ### 用户会话 JWT
 

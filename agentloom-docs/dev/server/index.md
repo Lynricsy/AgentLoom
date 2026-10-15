@@ -98,6 +98,7 @@ agentloom-server/src/
 
 - `agent-api`：第三方以 `Authorization: Bearer alak_…` 调用已发布 Agent 的接口，前缀 `/agent-api`；不走全局 JWT 认证与角色守卫，由 `AgentApiKeyGuard` 认证。Agent API Key 的管理在 `/agent-definitions/:agentId/api-keys`。协议见 [Agent API](/api/agent-api)。
 - `agent-api-runtime`：对外 API 中 run 的运行时：run 状态机（`AgentApiRunService`）、每个 run 一条 Redis Stream 的事件流（`AgentApiEventStreamService`）、执行事件镜像与定期清理。它不依赖 `agent-execution`，由 `agent-execution` 与 `agent-api` 共同导入。本模块没有 controller。
+- `a2a`：A2A 1.0 入站适配（JSON-RPC 绑定），前缀 `/a2a`：公开的 Agent Card 与按 Agent 的 RPC 端点，鉴权复用 `AgentApiKeyGuard`，执行全部委托给 `agent-api` 的 `AgentApiService`（`contextId` = 对话，`taskId` = run）。协议见 [A2A 入站接入](/api/a2a)。
 
 ### 模型与工具
 
@@ -223,6 +224,8 @@ graph LR
     AE --> AAR[agent-api-runtime]
     API[agent-api] --> AE
     API --> AAR
+    A2A[a2a] --> API
+    A2A --> AAR
     AM --> SHR[shared-resources]
     SHR --> SB
     RG --> EV[evidence]

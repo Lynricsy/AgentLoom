@@ -77,6 +77,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: '0001 Agent 对外 API', link: '/dev/decisions/0001-agent-external-api' },
       { text: '0002 文档体系', link: '/dev/decisions/0002-docs-system' },
       { text: '0003 sandbox 运行态切换为 dsh', link: '/dev/decisions/0003-dsh-sandbox-runtime' },
+      { text: '0005 A2A 入站适配', link: '/dev/decisions/0005-a2a-inbound' },
     ],
   },
 ]

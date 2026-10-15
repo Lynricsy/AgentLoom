@@ -17,6 +17,7 @@ AgentLoom 的 Agent 循环、沙箱运行态与微虚拟机都建立在外部项
 | Firecracker | `https://github.com/firecracker-microvm/firecracker` | `agentloom-deploy/firecracker/build-artifacts.sh` | 宿主机微虚拟机，由 `agentloom-firecracker-runtime/` 驱动 | [Firecracker 运行时](/dev/firecracker-runtime)、[Firecracker 部署](/deploy/firecracker) | `v1.16.1`（提交 f4ebf3c9，2026-08-09） |
 | firecracker-go-sdk | `https://github.com/firecracker-microvm/firecracker-go-sdk` | `agentloom-firecracker-runtime/go.mod` | `agentloom-firecracker-runtime/internal/` | [Firecracker 运行时](/dev/firecracker-runtime) | 伪版本 `v1.0.1-0.20251224190957-6fb280e993d4`（提交 f4ebf3c9，2026-08-09） |
 | GrokSearchMCP（`grok-search`） | `https://github.com/Lynricsy/GrokSearchMCP` | `agentloom-deploy/sandbox/package.json` | 预装进 guest 镜像的 stdio MCP server，`agentloom-deploy/sandbox/src/mcp-client.ts` 把 `npx -y grok-search` 改写为本地二进制 | — | `0.3.0`（提交 3caaf763，2026-03-29） |
+| A2A 协议（JSON-RPC 绑定，仅入站） | `https://a2a-protocol.org/latest/specification/` | `agentloom-server/src/modules/a2a/a2a.types.ts` 的 `A2A_PROTOCOL_VERSION` | `agentloom-server/src/modules/a2a/` | [A2A 入站接入](/api/a2a)、[ADR-0005](/dev/decisions/0005-a2a-inbound) | 规范 `1.0`（2026-10-15） |
 
 登记标准：AgentLoom 在其 API 或协议之上写了适配层，或把它预装进运行镜像，上游的行为变化或新能力会直接改变平台能力。框架与工具库（NestJS、React、Drizzle 等）按普通依赖升级，不在此登记。
 
