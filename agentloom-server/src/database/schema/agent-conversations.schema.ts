@@ -23,10 +23,11 @@ export const conversationStatusEnum = pgEnum('conversation_status_enum', [
   'failed',
 ]);
 
-/** 对话来源：Studio 用户发起，或第三方经 Agent 专用 API Key 发起 */
+/** 对话来源：Studio 用户发起、第三方经 Agent 专用 API Key 发起，或团队运行时的成员对话 */
 export const conversationSourceEnum = pgEnum('conversation_source_enum', [
   'studio',
   'api',
+  'team',
 ]);
 
 export const messageRoleEnum = pgEnum('message_role_enum', [
@@ -101,9 +102,10 @@ export const agentConversations = pgTable(
       table.externalUserId,
       table.createdAt,
     ),
+    // team 分支用 ::text 比较：避免与新增枚举值的迁移同事务应用时触发「unsafe use of new value」
     check(
       'chk_agent_conversations_source_actor',
-      sql`(${table.source} = 'studio' AND ${table.createdBy} IS NOT NULL) OR (${table.source} = 'api' AND ${table.apiKeyId} IS NOT NULL)`,
+      sql`(${table.source} = 'studio' AND ${table.createdBy} IS NOT NULL) OR (${table.source} = 'api' AND ${table.apiKeyId} IS NOT NULL) OR (${table.source}::text = 'team')`,
     ),
     ...createDirectTenantPolicies('agent_conversations'),
   ],

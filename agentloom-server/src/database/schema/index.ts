@@ -413,6 +413,30 @@ export {
   type NewAgentApiRun,
 } from './agent-api-runs.schema';
 export {
+  teamRunStatusEnum,
+  teamRuns,
+  type TeamRun,
+  type NewTeamRun,
+} from './team-runs.schema';
+export {
+  teamMemberStatusEnum,
+  teamMembers,
+  type TeamMember,
+  type NewTeamMember,
+} from './team-members.schema';
+export {
+  teamMessageKindEnum,
+  teamMessageDeliveryStatusEnum,
+  teamMessages,
+  type TeamMessage,
+  type NewTeamMessage,
+} from './team-messages.schema';
+export {
+  decisionRecords,
+  type DecisionRecord,
+  type NewDecisionRecord,
+} from './decision-records.schema';
+export {
   workspaceSnapshotStatusEnum,
   workspaceSnapshots,
   type WorkspaceSnapshot,
