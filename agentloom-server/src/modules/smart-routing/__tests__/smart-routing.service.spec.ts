@@ -5,21 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIZZLE } from '../../../database/database.module';
 import { executionSteps } from '../../../database/schema/execution-steps.schema';
 import { routingDecisions } from '../../../database/schema/routing-decisions.schema';
-import { LlmService } from '../../llm/llm.service';
 import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
 import { RouterRegistry } from '../core/router-registry';
 import type { QueryRoutingDecisionsDto } from '../dto/query-routing-decisions.dto';
-import {
-  type RoutingContext,
-  ROUTING_STRATEGIES,
-  type RoutingDecisionResult,
-  type RoutingStrategy,
-} from '../dto/routing-context.dto';
+import { llmModelConfigs } from '../../../database/schema/llm-model-configs.schema';
+import { routerModels } from '../../../database/schema/router-models.schema';
 import { EmbeddingIntegrationService } from '../embedding/embedding.service';
-import {
-  InsufficientModelsException,
-  InvalidRoutingStrategyException,
-} from '../smart-routing.exceptions';
 import { SmartRoutingService } from '../smart-routing.service';
 
 const {
@@ -27,10 +18,8 @@ const {
   createMockDb,
   createMockCircuitBreakerService,
   createMockEmbeddingService,
-  createMockLlmService,
   createMockRouterRegistry,
   createSelectChain,
-  mockModelConfigs,
 } = vi.hoisted(() => {
   type SelectChain<T> = {
     select: ReturnType<typeof vi.fn>;
@@ -75,27 +64,7 @@ const {
     }),
     createMockCircuitBreakerService: () => ({}),
     createMockEmbeddingService: () => ({}),
-    createMockLlmService: () => ({
-      findByIds: vi.fn(),
-    }),
     createMockRouterRegistry: () => ({}),
-    mockModelConfigs: [
-      {
-        id: 'model-1',
-        modelId: 'gpt-4o',
-        provider: { slug: 'openai' },
-      },
-      {
-        id: 'model-2',
-        modelId: 'claude-sonnet-4-20250514',
-        provider: { slug: 'anthropic' },
-      },
-      {
-        id: 'model-3',
-        modelId: 'gemini-1.5-pro',
-        provider: { slug: 'google' },
-      },
-    ],
   };
 });
 
@@ -116,6 +85,7 @@ function createRoutingDecisionRecord(
     ...overrides,
     id: '00000000-0000-0000-0000-000000000100',
     executionStepId: EXECUTION_ID,
+    conversationId: null,
     tenantId: TENANT_ID,
     routingNodeId: 'routing-node-1',
     strategy: 'QUALITY_FIRST',
@@ -133,6 +103,8 @@ function createRoutingDecisionRecord(
     routingLatencyMs: 12,
     createdAt: NOW,
     routerType: overrides.routerType ?? null,
+    fallbackReason: null,
+    fallbackSource: null,
   };
 }
 
@@ -144,35 +116,7 @@ describe('SmartRoutingService', () => {
     typeof createMockCircuitBreakerService
   >;
   let mockEmbeddingService: ReturnType<typeof createMockEmbeddingService>;
-  let mockLlmService: ReturnType<typeof createMockLlmService>;
   let mockRouterRegistry: ReturnType<typeof createMockRouterRegistry>;
-
-  type LegacyEvaluateFn = (
-    modelConfigIds: string[],
-    context: RoutingContext,
-    strategy: RoutingStrategy,
-    tenantId: string,
-  ) => Promise<RoutingDecisionResult>;
-
-  const callLegacyEvaluate: LegacyEvaluateFn = (
-    modelConfigIds: string[],
-    context: RoutingContext,
-    strategy: RoutingStrategy,
-    tenantId: string,
-  ) => {
-    const legacyEvaluate = Reflect.get(
-      service as object,
-      'evaluate',
-    ) as LegacyEvaluateFn;
-
-    return legacyEvaluate.call(
-      service,
-      modelConfigIds,
-      context,
-      strategy,
-      tenantId,
-    );
-  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -183,14 +127,12 @@ describe('SmartRoutingService', () => {
     db = createMockDb();
     mockCircuitBreakerService = createMockCircuitBreakerService();
     mockEmbeddingService = createMockEmbeddingService();
-    mockLlmService = createMockLlmService();
     mockRouterRegistry = createMockRouterRegistry();
 
     module = await Test.createTestingModule({
       providers: [
         SmartRoutingService,
         { provide: DRIZZLE, useValue: db },
-        { provide: LlmService, useValue: mockLlmService },
         { provide: RouterRegistry, useValue: mockRouterRegistry },
         {
           provide: CircuitBreakerService,
@@ -212,158 +154,77 @@ describe('SmartRoutingService', () => {
     vi.restoreAllMocks();
   });
 
-  describe('evaluate', () => {
-    it('对未知策略抛出 InvalidRoutingStrategyException', async () => {
-      await expect(
-        callLegacyEvaluate(
-          ['model-1', 'model-2'],
-          { inputTokenCount: 1_000 },
-          'UNKNOWN_STRATEGY' as RoutingStrategy,
-          TENANT_ID,
-        ),
-      ).rejects.toBeInstanceOf(InvalidRoutingStrategyException);
-
-      expect(mockLlmService.findByIds).not.toHaveBeenCalled();
-    });
-
-    it('在模型配置少于 2 个时抛出 InsufficientModelsException', async () => {
-      await expect(
-        callLegacyEvaluate(
-          ['model-1'],
-          { inputTokenCount: 1_000 },
-          'QUALITY_FIRST',
-          TENANT_ID,
-        ),
-      ).rejects.toBeInstanceOf(InsufficientModelsException);
-
-      expect(mockLlmService.findByIds).not.toHaveBeenCalled();
-    });
-
-    it('在 findByIds 仅返回 1 个模型时抛出 InsufficientModelsException', async () => {
-      mockLlmService.findByIds.mockResolvedValue([mockModelConfigs[0]]);
-
-      await expect(
-        callLegacyEvaluate(
-          ['model-1', 'model-2'],
-          { inputTokenCount: 1_000 },
-          'QUALITY_FIRST',
-          TENANT_ID,
-        ),
-      ).rejects.toBeInstanceOf(InsufficientModelsException);
-
-      expect(mockLlmService.findByIds).toHaveBeenCalledWith(
-        ['model-1', 'model-2'],
-        TENANT_ID,
-      );
-    });
-
-    it.each([
-      {
-        strategy: 'TOKEN_OPTIMIZED' as const,
-        context: { inputTokenCount: 150_000 },
-        selectedModelId: 'model-3',
-      },
-      {
-        strategy: 'COST_OPTIMIZED' as const,
-        context: { inputTokenCount: 10_000 },
-        selectedModelId: 'model-3',
-      },
-      {
-        strategy: 'QUALITY_FIRST' as const,
-        context: { inputTokenCount: 10_000 },
-        selectedModelId: 'model-2',
-      },
-      {
-        strategy: 'LATENCY_FIRST' as const,
-        context: { inputTokenCount: 10_000 },
-        selectedModelId: 'model-1',
-      },
-      {
-        strategy: 'HISTORICAL_BEST' as const,
-        context: {
-          inputTokenCount: 10_000,
-          historicalMetrics: {
-            'model-1': {
-              successRate: 0.85,
-              avgLatencyMs: 700,
-              avgTokenUsage: 3_000,
-              lastUsedAt: '2024-12-30T00:00:00.000Z',
-            },
-            'model-2': {
-              successRate: 0.9,
-              avgLatencyMs: 900,
-              avgTokenUsage: 4_000,
-              lastUsedAt: '2024-12-31T00:00:00.000Z',
-            },
-            'model-3': {
-              successRate: 0.99,
-              avgLatencyMs: 600,
-              avgTokenUsage: 2_000,
-              lastUsedAt: '2024-12-29T00:00:00.000Z',
-            },
-          },
+  describe('loadCandidates', () => {
+    it('按传入顺序组装候选：router_models 元数据优先，缺省回落到提供商目录，忽略不存在的配置', async () => {
+      const configChain = createSelectChain([
+        {
+          id: 'model-2',
+          name: 'Claude',
+          providerSlug: 'anthropic',
+          modelId: 'claude-sonnet-4-20250514',
         },
-        selectedModelId: 'model-3',
-      },
-      {
-        strategy: 'FALLBACK_CHAIN' as const,
-        context: { inputTokenCount: 10_000 },
-        selectedModelId: 'model-1',
-      },
-    ] satisfies ReadonlyArray<{
-      strategy: (typeof ROUTING_STRATEGIES)[number];
-      context: RoutingContext;
-      selectedModelId: string;
-    }>)(
-      '应当使用 $strategy 返回排序后的评估结果',
-      async ({ strategy, context, selectedModelId }) => {
-        mockLlmService.findByIds.mockResolvedValue(mockModelConfigs);
-
-        const result = await callLegacyEvaluate(
-          mockModelConfigs.map((config) => config.id),
-          context,
-          strategy,
-          TENANT_ID,
-        );
-
-        expect(mockLlmService.findByIds).toHaveBeenCalledWith(
-          ['model-1', 'model-2', 'model-3'],
-          TENANT_ID,
-        );
-        expect(result.selectedModelId).toBe(selectedModelId);
-        expect(result.evaluatedModels[0]?.modelId).toBe(selectedModelId);
-        expect(result.evaluatedModels).toHaveLength(3);
-        expect(result.evaluatedModels.map((model) => model.score)).toEqual(
-          [...result.evaluatedModels]
-            .map((model) => model.score)
-            .sort((a, b) => b - a),
-        );
-        expect(result.strategy).toBe(strategy);
-        expect(result.reasoning).toContain(strategy);
-        expect(result.latencyMs).toBeGreaterThanOrEqual(0);
-      },
-    );
-
-    it('应保留传入的候选模型顺序，供 FALLBACK_CHAIN 直接使用', async () => {
-      mockLlmService.findByIds.mockResolvedValue([
-        mockModelConfigs[2],
-        mockModelConfigs[0],
-        mockModelConfigs[1],
+        {
+          id: 'model-1',
+          name: 'GPT-4o',
+          providerSlug: 'openai',
+          modelId: 'gpt-4o',
+        },
       ]);
+      const metaChain = createSelectChain([
+        {
+          modelConfigId: 'model-1',
+          providerName: 'openai-proxy',
+          routingMeta: {
+            contextWindow: '64000',
+            costs: { inputPer1kTokens: 0.5, outputPer1kTokens: 1.5 },
+            qualityRank: 77,
+            avgLatencyMs: 321,
+          },
+          eloRating: 1333,
+        },
+      ]);
+      db.select
+        .mockReturnValueOnce(configChain)
+        .mockReturnValueOnce(metaChain);
 
-      const result = await callLegacyEvaluate(
-        ['model-2', 'model-1', 'model-3'],
-        { inputTokenCount: 1_000 },
-        'FALLBACK_CHAIN',
+      const candidates = await service.loadCandidates(
+        ['model-1', 'model-missing', 'model-2'],
         TENANT_ID,
       );
 
-      expect(result.selectedModelId).toBe('model-2');
-      expect(result.evaluatedModels.map((model) => model.modelId)).toEqual([
-        'model-2',
+      expect(configChain.from).toHaveBeenCalledWith(llmModelConfigs);
+      expect(metaChain.from).toHaveBeenCalledWith(routerModels);
+      expect(candidates.map((candidate) => candidate.id)).toEqual([
         'model-1',
-        'model-3',
+        'model-2',
       ]);
+      expect(candidates[0]).toEqual({
+        id: 'model-1',
+        modelConfigId: 'model-1',
+        name: 'GPT-4o',
+        provider: 'openai-proxy',
+        routingMeta: {
+          contextWindow: 64000,
+          costs: { input: 0.5, output: 1.5 },
+          qualityRank: 77,
+          avgLatencyMs: 321,
+          maxInputTokens: 64000,
+          eloRating: 1333,
+        },
+        healthStatus: 'healthy',
+      });
+      expect(candidates[1]).toMatchObject({
+        id: 'model-2',
+        provider: 'anthropic',
+        routingMeta: { eloRating: 1200 },
+        healthStatus: 'healthy',
+      });
+      expect(candidates[1].routingMeta.contextWindow).toBeGreaterThan(0);
+    });
+
+    it('空 id 列表直接返回空数组且不查询', async () => {
+      await expect(service.loadCandidates([], TENANT_ID)).resolves.toEqual([]);
+      expect(db.select).not.toHaveBeenCalled();
     });
   });
 
@@ -471,7 +332,7 @@ describe('SmartRoutingService', () => {
       const insertChain = createInsertChain();
       db.insert.mockReturnValueOnce(insertChain);
 
-      const decision: RoutingDecisionResult = {
+      const decision = {
         selectedModelId: 'model-2',
         strategy: 'QUALITY_FIRST',
         reasoning: '选择了 claude-sonnet-4-20250514',
@@ -488,7 +349,7 @@ describe('SmartRoutingService', () => {
       };
 
       const routingDecisionId = await service.recordDecision(
-        'step-1',
+        { executionStepId: 'step-1' },
         TENANT_ID,
         'routing-node-1',
         decision,
@@ -539,7 +400,7 @@ describe('SmartRoutingService', () => {
       };
 
       await service.recordDecision(
-        'step-2',
+        { executionStepId: 'step-2' },
         TENANT_ID,
         'routing-node-2',
         decision,
@@ -570,7 +431,39 @@ describe('SmartRoutingService', () => {
         decisionReasoning: '选择了 gemini-1.5-pro',
         routingLatencyMs: 7,
         routerType: 'round_robin',
+        fallbackReason: null,
+        fallbackSource: null,
       });
+    });
+
+    it('对话主体写 conversationId 且透传回退标记', async () => {
+      const insertChain = createInsertChain();
+      db.insert.mockReturnValueOnce(insertChain);
+
+      await service.recordDecision(
+        { conversationId: 'conversation-1' },
+        TENANT_ID,
+        'conversation',
+        {
+          selectedModelId: 'model-1',
+          strategy: 'llm_as_router',
+          reasoning: 'LLM 路由回退（llm_timeout）：规则回退',
+          evaluatedModels: [],
+          latencyMs: 3001,
+          routerType: 'llm_as_router',
+          fallbackReason: 'llm_timeout',
+          fallbackSource: 'rules',
+        },
+      );
+
+      const values = insertChain.values.mock.calls[0][0];
+      expect(values).toMatchObject({
+        conversationId: 'conversation-1',
+        routingNodeId: 'conversation',
+        fallbackReason: 'llm_timeout',
+        fallbackSource: 'rules',
+      });
+      expect(values).not.toHaveProperty('executionStepId');
     });
   });
 

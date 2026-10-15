@@ -124,6 +124,7 @@ describe('smart migrated scenarios', () => {
   let mockSmartRoutingService: {
     recordDecision: ReturnType<typeof vi.fn>;
     getHistoricalMetrics: ReturnType<typeof vi.fn>;
+    loadCandidates: ReturnType<typeof vi.fn>;
   };
   let mockRouterRegistry: {
     get: ReturnType<typeof vi.fn>;
@@ -228,6 +229,11 @@ describe('smart migrated scenarios', () => {
     mockSmartRoutingService = {
       recordDecision: vi.fn().mockResolvedValue('routing-decision-1'),
       getHistoricalMetrics: vi.fn().mockResolvedValue({}),
+      loadCandidates: vi
+        .fn()
+        .mockImplementation(async (ids: string[]) =>
+          ids.map((id) => ({ id, modelConfigId: id, name: id })),
+        ),
     };
     mockRouterRegistry = {
       get: vi.fn().mockReturnValue({
@@ -402,51 +408,7 @@ describe('smart migrated scenarios', () => {
       });
       db.select
         .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
-        .mockReturnValueOnce(createSelectChain(steps))
-        .mockReturnValueOnce(
-          createSelectChain([
-            {
-              id: 'model-1',
-              name: 'gpt-4o',
-              provider: 'openai',
-              modelName: 'gpt-4o',
-            },
-            {
-              id: 'model-2',
-              name: 'claude-sonnet-4-20250514',
-              provider: 'anthropic',
-              modelName: 'claude-sonnet-4-20250514',
-            },
-          ]),
-        )
-        .mockReturnValueOnce(
-          createSelectChain([
-            {
-              modelConfigId: 'model-1',
-              providerName: 'openai',
-              routingMeta: {
-                contextWindow: 128000,
-                costs: { inputPer1kTokens: 0.01, outputPer1kTokens: 0.03 },
-                qualityRank: 88,
-                avgLatencyMs: 600,
-                maxInputTokens: 128000,
-              },
-              eloRating: 1200,
-            },
-            {
-              modelConfigId: 'model-2',
-              providerName: 'anthropic',
-              routingMeta: {
-                contextWindow: 200000,
-                costs: { inputPer1kTokens: 0.02, outputPer1kTokens: 0.04 },
-                qualityRank: 92,
-                avgLatencyMs: 900,
-                maxInputTokens: 200000,
-              },
-              eloRating: 1300,
-            },
-          ]),
-        );
+        .mockReturnValueOnce(createSelectChain(steps));
 
       await service.scheduleNode(EXECUTION_ID, 'R', TENANT_ID, snapshot, steps);
 
@@ -474,8 +436,12 @@ describe('smart migrated scenarios', () => {
           tenantId: TENANT_ID,
         }),
       );
+      expect(mockSmartRoutingService.loadCandidates).toHaveBeenCalledWith(
+        ['model-1', 'model-2'],
+        TENANT_ID,
+      );
       expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
-        'step-r',
+        { executionStepId: 'step-r' },
         TENANT_ID,
         'R',
         expect.objectContaining({
@@ -559,24 +525,7 @@ describe('smart migrated scenarios', () => {
       });
       db.select
         .mockReturnValueOnce(createSelectChain([makeExecution(snapshot)]))
-        .mockReturnValueOnce(createSelectChain(steps))
-        .mockReturnValueOnce(
-          createSelectChain([
-            {
-              id: 'model-1',
-              name: 'gpt-4o',
-              provider: 'openai',
-              modelName: 'gpt-4o',
-            },
-            {
-              id: 'model-2',
-              name: 'claude-sonnet-4-20250514',
-              provider: 'anthropic',
-              modelName: 'claude-sonnet-4-20250514',
-            },
-          ]),
-        )
-        .mockReturnValueOnce(createSelectChain([]));
+        .mockReturnValueOnce(createSelectChain(steps));
       mockSmartRoutingService.getHistoricalMetrics.mockResolvedValueOnce({
         'model-1': {
           successRate: 0.9,

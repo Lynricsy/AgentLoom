@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { RoutingCandidate } from './routing-candidate';
 import type { RoutingContext } from './routing-context';
 import type { RoutingDecision } from './routing-decision';
+import { NoEligibleCandidateException } from '../smart-routing.exceptions';
 
 export type RouterCategory = 'simple' | 'ml' | 'rag' | 'plugin';
 
@@ -40,9 +41,11 @@ export abstract class BaseRouterStrategy {
     );
 
     if (validCandidates.length === 0) {
-      throw new Error(
-        `No valid candidates after filtering: ${candidates.length} total, ${healthyCandidates.length} healthy, 0 within token limit`,
-      );
+      throw new NoEligibleCandidateException({
+        total: candidates.length,
+        healthy: healthyCandidates.length,
+        inputTokenCount: context.inputTokenCount,
+      });
     }
 
     const decision = await this.routeSingle(validCandidates, context);

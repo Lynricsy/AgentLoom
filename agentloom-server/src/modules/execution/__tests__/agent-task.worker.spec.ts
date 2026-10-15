@@ -1250,7 +1250,7 @@ describe('AgentTaskWorker', () => {
         }),
       );
       expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
-        'step-routing',
+        { executionStepId: 'step-routing' },
         TENANT_ID,
         'routing-node-1',
         expect.objectContaining({

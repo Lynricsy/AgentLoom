@@ -52,6 +52,8 @@ import type { PreparationPhase } from '../execution/types/execution-event.types'
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
+import { RouterRegistry } from '../smart-routing/core/router-registry';
+import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
@@ -115,7 +117,6 @@ import {
 import {
   applyConversationInputPreprocessors,
   estimateConversationTokenCount,
-  normalizeConversationRoutingStrategy,
 } from './conversation-runtime-input';
 import {
   buildConversationTurnResult,
@@ -934,6 +935,8 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     private readonly smartRoutingService?: SmartRoutingService,
     private readonly agentApiRunService?: AgentApiRunService,
+    routerRegistry?: RouterRegistry,
+    healthMonitorService?: HealthMonitorService,
     @Optional()
     injectedPersistenceService?: AgentExecutionWorkerPersistenceService,
     @Optional()
@@ -981,6 +984,8 @@ export class AgentExecutionWorker extends WorkerHost {
         conversationTitleService,
         selfEvolutionToolsProvider,
         smartRoutingService,
+        routerRegistry,
+        healthMonitorService,
       );
   }
 

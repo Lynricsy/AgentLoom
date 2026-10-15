@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, getTableColumns, gte, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -6,27 +6,20 @@ import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { executionSteps } from '../../database/schema/execution-steps.schema';
+import { llmModelConfigs } from '../../database/schema/llm-model-configs.schema';
+import { llmProviders } from '../../database/schema/llm-providers.schema';
+import { routerModels } from '../../database/schema/router-models.schema';
 import { routingDecisions } from '../../database/schema/routing-decisions.schema';
-import { LlmService } from '../llm/llm.service';
 import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
 import { RouterRegistry } from './core/router-registry';
-import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
-import {
-  tokenOptimized,
-  costOptimized,
-  qualityFirst,
-  latencyFirst,
-  historicalBest,
-  fallbackChain,
-} from './strategies';
-import type { StrategyFn, ModelCandidate } from './strategies';
-import { EmbeddingIntegrationService } from './embedding/embedding.service';
+import type { RoutingCandidate } from './core/routing-candidate';
 import type {
-  RoutingStrategy,
-  RoutingContext,
-  RoutingDecisionResult,
-} from './dto/routing-context.dto';
-import { ROUTING_STRATEGIES } from './dto/routing-context.dto';
+  RoutingFallbackReason,
+  RoutingFallbackSource,
+} from './core/routing-decision';
+import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
+import { EmbeddingIntegrationService } from './embedding/embedding.service';
+import type { RoutingContext } from './dto/routing-context.dto';
 import type {
   ProviderHealthStatusesResponseDtoType,
   ProviderHealthStatusDto,
@@ -37,10 +30,6 @@ import type {
   SmartRoutingStrategiesResponseDtoType,
   SmartRoutingStrategyDto,
 } from './dto/smart-routing-strategies.dto';
-import {
-  InvalidRoutingStrategyException,
-  InsufficientModelsException,
-} from './smart-routing.exceptions';
 
 const PUBLIC_ROUTER_STRATEGY_NAMES = new Set([
   'random',
@@ -55,16 +44,12 @@ const PUBLIC_ROUTER_STRATEGY_NAMES = new Set([
   'wasm_plugin',
 ]);
 
-const STRATEGY_REGISTRY: Record<RoutingStrategy, StrategyFn> = {
-  TOKEN_OPTIMIZED: tokenOptimized,
-  COST_OPTIMIZED: costOptimized,
-  QUALITY_FIRST: qualityFirst,
-  LATENCY_FIRST: latencyFirst,
-  HISTORICAL_BEST: historicalBest,
-  FALLBACK_CHAIN: fallbackChain,
-};
+/** 路由决策的主体：工作流步骤或 Agent 对话（二选一，库表有 check 约束） */
+export type RoutingDecisionSubject =
+  | { executionStepId: string }
+  | { conversationId: string };
 
-interface PersistedRoutingDecision {
+export interface PersistedRoutingDecision {
   selectedModelId: string | null;
   strategy: string;
   reasoning: string;
@@ -77,15 +62,31 @@ interface PersistedRoutingDecision {
   }>;
   latencyMs: number;
   routerType?: string;
+  fallbackReason?: RoutingFallbackReason;
+  fallbackSource?: RoutingFallbackSource;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
 }
 
 @Injectable()
 export class SmartRoutingService {
-  private readonly logger = new Logger(SmartRoutingService.name);
-
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
-    private readonly llmService: LlmService,
     private readonly routerRegistry: RouterRegistry,
     private readonly circuitBreakerService: CircuitBreakerService,
     private readonly embeddingService: EmbeddingIntegrationService,
@@ -109,12 +110,6 @@ export class SmartRoutingService {
     }
 
     return and(...conditions);
-  }
-
-  private touchNewRoutingDependencies(): void {
-    void this.routerRegistry;
-    void this.circuitBreakerService;
-    void this.embeddingService;
   }
 
   private isTerminalStepStatus(status: string): boolean {
@@ -213,7 +208,8 @@ export class SmartRoutingService {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const routingRows = await this.tenantDb
       .select({
-        routingStepId: routingDecisions.executionStepId,
+        // 内连接保证与 routing_decisions.execution_step_id 相等且非空（对话路由决策不参与历史指标）
+        routingStepId: executionSteps.id,
         executionId: executionSteps.executionId,
         selectedModelId: routingDecisions.selectedModelId,
         routingLatencyMs: routingDecisions.routingLatencyMs,
@@ -392,82 +388,129 @@ export class SmartRoutingService {
   }
 
   /**
-   * @deprecated 已由 RouterRegistry + BaseRouterStrategy 路径取代，仅保留给旧调用方兼容使用。
+   * 按传入顺序加载候选模型：模型配置 + router_models 中的路由元数据（缺省回落到提供商目录）。
+   * 不存在于本租户的模型配置 id 被忽略；健康状态由调用方经 HealthMonitorService 过滤。
    */
-  async evaluate(
+  async loadCandidates(
     modelConfigIds: string[],
-    context: RoutingContext,
-    strategy: RoutingStrategy,
     tenantId: string,
-  ): Promise<RoutingDecisionResult> {
-    this.touchNewRoutingDependencies();
-
-    if (!ROUTING_STRATEGIES.includes(strategy)) {
-      throw new InvalidRoutingStrategyException(strategy);
+  ): Promise<RoutingCandidate[]> {
+    if (modelConfigIds.length === 0) {
+      return [];
     }
 
-    if (modelConfigIds.length < 2) {
-      throw new InsufficientModelsException(modelConfigIds.length);
-    }
+    const modelConfigs = await this.tenantDb
+      .select({
+        id: llmModelConfigs.id,
+        name: llmModelConfigs.name,
+        providerSlug: llmProviders.slug,
+        modelId: llmModelConfigs.modelId,
+      })
+      .from(llmModelConfigs)
+      .innerJoin(llmProviders, eq(llmModelConfigs.providerId, llmProviders.id))
+      .where(
+        and(
+          eq(llmModelConfigs.tenantId, tenantId),
+          inArray(llmModelConfigs.id, modelConfigIds),
+        ),
+      );
 
-    const startTime = performance.now();
-
-    const modelConfigs = await this.llmService.findByIds(
-      modelConfigIds,
-      tenantId,
-    );
+    const routingMetadataRows = await this.tenantDb
+      .select({
+        modelConfigId: routerModels.modelId,
+        providerName: routerModels.providerName,
+        routingMeta: routerModels.routingMeta,
+        eloRating: routerModels.eloRating,
+      })
+      .from(routerModels)
+      .where(
+        and(
+          eq(routerModels.tenantId, tenantId),
+          eq(routerModels.isActive, true),
+          inArray(routerModels.modelId, modelConfigIds),
+        ),
+      );
 
     const configsById = new Map(
       modelConfigs.map((config) => [config.id, config]),
     );
-    const orderedModelConfigs = modelConfigIds
-      .map((id) => configsById.get(id))
-      .filter((config): config is NonNullable<typeof config> =>
-        Boolean(config),
-      );
-
-    const candidates: ModelCandidate[] = orderedModelConfigs.map((config) => ({
-      id: config.id,
-      name: config.modelId,
-      provider: config.provider.slug,
-      routingMeta: getModelRoutingMeta(config.provider.slug, config.modelId),
-    }));
-
-    if (candidates.length < 2) {
-      throw new InsufficientModelsException(candidates.length);
-    }
-
-    const strategyFn = STRATEGY_REGISTRY[strategy];
-    const evaluatedModels = strategyFn(candidates, context);
-    const selected = evaluatedModels[0];
-
-    const latencyMs = Math.round(performance.now() - startTime);
-
-    this.logger.debug(
-      `路由决策完成: strategy=${strategy}, selected=${selected.modelName}, score=${selected.score}, latency=${latencyMs}ms`,
+    const routingMetadataById = new Map(
+      routingMetadataRows.map((row) => [row.modelConfigId, row]),
     );
 
-    return {
-      selectedModelId: selected.modelId,
-      strategy,
-      reasoning: `策略 ${strategy} 选择了 ${selected.modelName} (${selected.provider})，得分 ${selected.score}/100。${selected.reasoning}`,
-      evaluatedModels,
-      latencyMs,
-    };
+    const candidates: RoutingCandidate[] = [];
+
+    for (const modelConfigId of modelConfigIds) {
+      const modelConfig = configsById.get(modelConfigId);
+      if (!modelConfig) {
+        continue;
+      }
+
+      const routingMetadata = routingMetadataById.get(modelConfigId);
+      const fallbackMeta = getModelRoutingMeta(
+        modelConfig.providerSlug,
+        modelConfig.modelId,
+      );
+      const rawRoutingMeta = isRecord(routingMetadata?.routingMeta)
+        ? routingMetadata.routingMeta
+        : undefined;
+      const rawCosts = isRecord(rawRoutingMeta?.costs)
+        ? rawRoutingMeta.costs
+        : undefined;
+
+      candidates.push({
+        id: modelConfig.id,
+        modelConfigId: modelConfig.id,
+        name: modelConfig.name,
+        provider: routingMetadata?.providerName ?? modelConfig.providerSlug,
+        routingMeta: {
+          contextWindow: readNumber(
+            rawRoutingMeta?.contextWindow,
+            fallbackMeta.contextWindow,
+          ),
+          costs: {
+            input: readNumber(
+              rawCosts?.inputPer1kTokens,
+              fallbackMeta.costPer1kInputTokens,
+            ),
+            output: readNumber(
+              rawCosts?.outputPer1kTokens,
+              fallbackMeta.costPer1kOutputTokens,
+            ),
+          },
+          qualityRank: readNumber(
+            rawRoutingMeta?.qualityRank,
+            fallbackMeta.qualityRank,
+          ),
+          avgLatencyMs: readNumber(
+            rawRoutingMeta?.avgLatencyMs,
+            fallbackMeta.avgLatencyMs,
+          ),
+          maxInputTokens: readNumber(
+            rawRoutingMeta?.maxInputTokens,
+            readNumber(rawRoutingMeta?.contextWindow, fallbackMeta.contextWindow),
+          ),
+          eloRating: readNumber(routingMetadata?.eloRating, 1200),
+        },
+        healthStatus: 'healthy',
+      });
+    }
+
+    return candidates;
   }
 
   async recordDecision(
-    executionStepId: string,
+    subject: RoutingDecisionSubject,
     tenantId: string,
     routingNodeId: string,
     decision: PersistedRoutingDecision,
   ): Promise<string> {
-    this.touchNewRoutingDependencies();
-
     const [inserted] = await this.tenantDb
       .insert(routingDecisions)
       .values({
-        executionStepId,
+        ...('executionStepId' in subject
+          ? { executionStepId: subject.executionStepId }
+          : { conversationId: subject.conversationId }),
         tenantId,
         routingNodeId,
         strategy: decision.strategy,
@@ -482,6 +525,8 @@ export class SmartRoutingService {
         decisionReasoning: decision.reasoning,
         routingLatencyMs: decision.latencyMs,
         routerType: decision.routerType ?? null,
+        fallbackReason: decision.fallbackReason ?? null,
+        fallbackSource: decision.fallbackSource ?? null,
       })
       .returning({ id: routingDecisions.id });
 

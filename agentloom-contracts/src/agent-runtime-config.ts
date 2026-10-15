@@ -133,6 +133,8 @@ export const AgentRoutingConfigSchema = z.object({
   strategy: z.string(),
   candidateModelIds: z.array(z.string()).optional(),
   fallbackModelId: z.string().optional(),
+  /** 透传给路由策略的配置（如 llm_as_router 的 routerModelId、fallbackRules） */
+  strategyConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const AgentInputPreprocessorSchema = z.object({

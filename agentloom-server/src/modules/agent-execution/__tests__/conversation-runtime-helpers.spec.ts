@@ -19,7 +19,6 @@ import {
 import {
   applyConversationInputPreprocessors,
   estimateConversationTokenCount,
-  normalizeConversationRoutingStrategy,
 } from '../conversation-runtime-input';
 import {
   extractConversationSkillIds,
@@ -225,18 +224,7 @@ describe('conversation memory and runtime input helpers', () => {
     expect(prependSystemPrompt('   ', undefined)).toBeUndefined();
   });
 
-  it('normalizes routing aliases and estimates serialized token sizes', () => {
-    expect(normalizeConversationRoutingStrategy(undefined)).toBe(
-      'FALLBACK_CHAIN',
-    );
-    expect(normalizeConversationRoutingStrategy('   ')).toBe('FALLBACK_CHAIN');
-    expect(normalizeConversationRoutingStrategy('quality_first')).toBe(
-      'QUALITY_FIRST',
-    );
-    expect(normalizeConversationRoutingStrategy('LATENCY_FIRST')).toBe(
-      'LATENCY_FIRST',
-    );
-    expect(normalizeConversationRoutingStrategy('unsupported')).toBeNull();
+  it('estimates serialized token sizes', () => {
     expect(estimateConversationTokenCount('12345')).toBe(2);
     expect(estimateConversationTokenCount(null)).toBe(1);
     expect(estimateConversationTokenCount({ a: 1 })).toBe(2);

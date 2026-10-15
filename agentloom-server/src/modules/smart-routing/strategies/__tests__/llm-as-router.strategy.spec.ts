@@ -113,10 +113,22 @@ describe('LlmAsRouterStrategy', () => {
     expect(invalid.success).toBe(false);
   });
 
-  it('configSchema 应该允许可选 promptTemplate', () => {
+  it('configSchema 应该允许可选 promptTemplate、fallbackModelId 与 fallbackRules', () => {
     const result = strategy.configSchema.safeParse({
       routerModelId: 'gpt-4o-mini',
       promptTemplate: '自定义提示词: {candidates}',
+      fallbackModelId: 'candidate-2',
+      fallbackRules: [
+        {
+          condition: {
+            field: 'taskCategory',
+            operator: 'equals',
+            value: 'code',
+          },
+          targetModelId: 'candidate-3',
+          priority: 0,
+        },
+      ],
     });
     expect(result.success).toBe(true);
   });
@@ -155,29 +167,34 @@ describe('LlmAsRouterStrategy', () => {
     expect(selectedScore!.score).toBe(100);
   });
 
-  it('LLM 超时时应该回退到随机选择', async () => {
+  function expectRulesFallback(
+    decision: Awaited<ReturnType<LlmAsRouterStrategy['route']>>,
+    reason: string,
+  ) {
+    // 未配置回退模型与规则：规则路由无匹配，确定性地取候选首位
+    expect(decision.selectedModelId).toBe('candidate-1');
+    expect(decision.fallback).toEqual({ reason, source: 'rules' });
+    expect(decision.routerType).toBe('llm_as_router');
+    expect(decision.reasoning).toContain(`LLM 路由回退（${reason}）`);
+    expect(decision.scores).toHaveLength(3);
+  }
+
+  it('LLM 超时时应该确定性回退并标记 llm_timeout', async () => {
     const abortError = new DOMException(
       'The operation was aborted',
       'AbortError',
     );
     mockFetch.mockRejectedValueOnce(abortError);
 
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    const decision = await strategy.route(candidates, context);
-
-    expect(decision.selectedModelId).toBeTruthy();
-    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
-      true,
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
     );
-    expect(decision.reasoning).toContain('超时');
-    expect(decision.scores).toHaveLength(3);
+
+    expectRulesFallback(decision, 'llm_timeout');
   });
 
-  it('LLM 返回无效 JSON 时应该回退到随机选择', async () => {
+  it('LLM 返回无效 JSON 时应该确定性回退并标记 llm_invalid_response', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -191,21 +208,31 @@ describe('LlmAsRouterStrategy', () => {
       }),
     });
 
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    const decision = await strategy.route(candidates, context);
-
-    expect(decision.selectedModelId).toBeTruthy();
-    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
-      true,
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
     );
-    expect(decision.reasoning).toContain('回退');
+
+    expectRulesFallback(decision, 'llm_invalid_response');
   });
 
-  it('LLM 返回不存在的模型 ID 时应该回退到随机选择', async () => {
+  it('响应体不是 JSON 时应该标记 llm_invalid_response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    });
+
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+    );
+
+    expectRulesFallback(decision, 'llm_invalid_response');
+  });
+
+  it('LLM 返回不存在的模型 ID 时应该确定性回退并标记 llm_invalid_response', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -222,53 +249,142 @@ describe('LlmAsRouterStrategy', () => {
       }),
     });
 
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    const decision = await strategy.route(candidates, context);
-
-    expect(decision.selectedModelId).toBeTruthy();
-    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
-      true,
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
     );
-    expect(decision.reasoning).toContain('回退');
+
+    expectRulesFallback(decision, 'llm_invalid_response');
   });
 
-  it('fetch 网络错误时应该回退到随机选择', async () => {
+  it('fetch 网络错误时应该确定性回退并标记 llm_http_error', async () => {
     mockFetch.mockRejectedValueOnce(new Error('网络连接失败'));
 
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    const decision = await strategy.route(candidates, context);
-
-    expect(decision.selectedModelId).toBeTruthy();
-    expect(candidates.some((c) => c.id === decision.selectedModelId)).toBe(
-      true,
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
     );
-    expect(decision.reasoning).toContain('回退');
+
+    expectRulesFallback(decision, 'llm_http_error');
   });
 
-  it('HTTP 非 200 响应时应该回退到随机选择', async () => {
+  it('HTTP 非 200 响应时应该确定性回退并标记 llm_http_error', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 429,
       statusText: 'Too Many Requests',
     });
 
-    const candidates = makeCandidates();
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+    );
+
+    expectRulesFallback(decision, 'llm_http_error');
+  });
+
+  it('路由器模型配置解析失败时不发请求并标记 llm_config_error', async () => {
+    findById.mockRejectedValueOnce(new Error('模型配置不存在'));
+
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+    );
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expectRulesFallback(decision, 'llm_config_error');
+  });
+
+  it('凭据解密失败时标记 llm_config_error', async () => {
+    decryptConfiguredApiKey.mockRejectedValueOnce(new Error('解密失败'));
+
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+    );
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expectRulesFallback(decision, 'llm_config_error');
+  });
+
+  it('配置了候选内的 fallbackModelId 时优先使用该模型', async () => {
+    mockFetch.mockRejectedValueOnce(
+      new DOMException('The operation was aborted', 'AbortError'),
+    );
+
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({
+        strategyConfig: {
+          routerModelId: 'gpt-4o-mini',
+          fallbackModelId: 'candidate-2',
+          fallbackRules: [
+            {
+              condition: {
+                field: 'taskCategory',
+                operator: 'equals',
+                value: 'code_generation',
+              },
+              targetModelId: 'candidate-3',
+              priority: 0,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(decision.selectedModelId).toBe('candidate-2');
+    expect(decision.fallback).toEqual({
+      reason: 'llm_timeout',
+      source: 'configured_model',
+    });
+    expect(decision.reasoning).toBe(
+      'LLM 路由回退（llm_timeout）：使用已配置回退模型 claude-sonnet',
+    );
+  });
+
+  it('fallbackModelId 不在候选内时改用 fallbackRules，规则命中目标', async () => {
+    mockFetch.mockRejectedValueOnce(
+      new DOMException('The operation was aborted', 'AbortError'),
+    );
+
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({
+        strategyConfig: {
+          routerModelId: 'gpt-4o-mini',
+          fallbackModelId: 'not-a-candidate',
+          fallbackRules: [
+            {
+              condition: {
+                field: 'taskCategory',
+                operator: 'equals',
+                value: 'code_generation',
+              },
+              targetModelId: 'candidate-3',
+              priority: 0,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(decision.selectedModelId).toBe('candidate-3');
+    expect(decision.fallback).toEqual({ reason: 'llm_timeout', source: 'rules' });
+    expect(decision.reasoning).toContain('LLM 路由回退（llm_timeout）：规则匹配');
+  });
+
+  it('同样的失败多次路由结果一致（不含随机）', async () => {
     const context = makeContext({
       strategyConfig: { routerModelId: 'gpt-4o-mini' },
     });
-
-    const decision = await strategy.route(candidates, context);
-
-    expect(decision.selectedModelId).toBeTruthy();
-    expect(decision.reasoning).toContain('回退');
+    const selected = new Set<string | null>();
+    for (let i = 0; i < 5; i += 1) {
+      mockFetch.mockRejectedValueOnce(new Error('网络连接失败'));
+      const decision = await strategy.route(makeCandidates(), context);
+      selected.add(decision.selectedModelId);
+    }
+    expect([...selected]).toEqual(['candidate-1']);
   });
 
   it('应该在 fetch 调用中使用 AbortSignal', async () => {

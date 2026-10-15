@@ -5,7 +5,7 @@ import type { RoutingCandidate } from '../core/routing-candidate';
 import type { RoutingContext } from '../core/routing-context';
 import type { RoutingDecision } from '../core/routing-decision';
 
-const routingRuleSchema = z.object({
+export const routingRuleSchema = z.object({
   condition: z.object({
     field: z.enum(['taskCategory', 'inputTokenCount']),
     operator: z.enum(['equals', 'greater_than', 'less_than', 'contains']),

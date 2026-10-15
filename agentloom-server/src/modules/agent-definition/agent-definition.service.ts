@@ -2019,10 +2019,17 @@ export class AgentDefinitionService {
         ? connectedCandidateModelIds
         : directCandidateModelIds;
 
+    const strategyConfig = data.strategyConfig ?? data.strategy_config;
+
     return {
       strategy: data.strategy ?? 'FALLBACK_CHAIN',
       ...(candidateModelIds.length > 0 ? { candidateModelIds } : {}),
       fallbackModelId: data.fallbackModelId ?? data.fallback_model_id,
+      ...(strategyConfig &&
+      typeof strategyConfig === 'object' &&
+      !Array.isArray(strategyConfig)
+        ? { strategyConfig: strategyConfig as Record<string, unknown> }
+        : {}),
     };
   }
 

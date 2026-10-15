@@ -34,6 +34,8 @@ import { SelfEvolutionModule } from '../self-evolution/self-evolution.module';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
+import { RouterRegistry } from '../smart-routing/core/router-registry';
+import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
@@ -84,6 +86,8 @@ const agentExecutionWorkerProvider: Provider = {
     selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     smartRoutingService?: SmartRoutingService,
     agentApiRunService?: AgentApiRunService,
+    routerRegistry?: RouterRegistry,
+    healthMonitorService?: HealthMonitorService,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -103,6 +107,8 @@ const agentExecutionWorkerProvider: Provider = {
       selfEvolutionToolsProvider,
       smartRoutingService,
       agentApiRunService,
+      routerRegistry,
+      healthMonitorService,
     ),
   inject: [
     DRIZZLE,
@@ -122,6 +128,8 @@ const agentExecutionWorkerProvider: Provider = {
     { token: SelfEvolutionToolsProvider, optional: true },
     { token: SmartRoutingService, optional: true },
     AgentApiRunService,
+    { token: RouterRegistry, optional: true },
+    { token: HealthMonitorService, optional: true },
   ],
 };
 

@@ -1276,7 +1276,7 @@ export class AgentTaskWorker extends WorkerHost {
 
         await this.runtimeService.withTenantContext(tenantId, async () => {
           nextRoutingDecisionId = await this.smartRoutingService.recordDecision(
-            smartRouting.routingStepId,
+            { executionStepId: smartRouting.routingStepId },
             tenantId,
             smartRouting.routingNodeId,
             fallbackDecision,

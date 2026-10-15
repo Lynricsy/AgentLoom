@@ -25,6 +25,8 @@ const {
   mockSelfEvolutionToolsProvider,
   mockConversationTitleService,
   mockSmartRoutingService,
+  mockRouterRegistry,
+  mockHealthMonitorService,
 } = vi.hoisted(() => ({
   mockDbSelectChain: {
     from: vi.fn().mockReturnThis(),
@@ -105,7 +107,14 @@ const {
     createSessionToolProvider: vi.fn(),
   },
   mockSmartRoutingService: {
-    evaluate: vi.fn(),
+    loadCandidates: vi.fn(),
+    recordDecision: vi.fn(),
+  },
+  mockRouterRegistry: {
+    get: vi.fn(),
+  },
+  mockHealthMonitorService: {
+    filterHealthyCandidates: vi.fn(),
   },
 }));
 
@@ -182,10 +191,12 @@ type WorkerInternals = {
   runConversationTurn: ReturnType<typeof vi.fn>;
   resolveConversationStartupRuntimeConfig: (
     runtimeConfig: Record<string, unknown>,
+    conversationId: string,
     tenantId: string,
     pendingMessages: unknown[],
   ) => Promise<Record<string, unknown>>;
   selectConversationRoutingModelId: (params: {
+    conversationId: string;
     tenantId: string;
     routingConfig: Record<string, unknown>;
     candidateModelIds: string[];
@@ -359,7 +370,20 @@ describe('AgentExecutionWorker', () => {
       .mockReset()
       .mockResolvedValue('自动标题');
     mockSelfEvolutionToolsProvider.createSessionToolProvider.mockReset();
-    mockSmartRoutingService.evaluate.mockReset();
+    mockSmartRoutingService.loadCandidates
+      .mockReset()
+      .mockImplementation(async (ids: string[]) =>
+        ids.map((id) => ({ id, name: id, provider: 'openai' })),
+      );
+    mockSmartRoutingService.recordDecision
+      .mockReset()
+      .mockResolvedValue('routing-decision-1');
+    mockRouterRegistry.get.mockReset();
+    mockHealthMonitorService.filterHealthyCandidates
+      .mockReset()
+      .mockImplementation(async (_tenantId: string, candidates: unknown[]) =>
+        candidates,
+      );
 
     worker = new AgentExecutionWorker(
       mockDb as never,
@@ -378,6 +402,9 @@ describe('AgentExecutionWorker', () => {
       mockConversationTitleService as never,
       mockSelfEvolutionToolsProvider as never,
       mockSmartRoutingService as never,
+      undefined,
+      mockRouterRegistry as never,
+      mockHealthMonitorService as never,
     );
     workerInternals = worker as unknown as WorkerInternals;
   });
@@ -1693,13 +1720,14 @@ describe('AgentExecutionWorker', () => {
         }>;
       };
 
-      mockSmartRoutingService.evaluate.mockResolvedValue({
+      const route = vi.fn().mockResolvedValue({
         selectedModelId: 'model-2',
-        strategy: 'FALLBACK_CHAIN',
+        scores: [],
         reasoning: '优先使用第二个候选模型',
-        evaluatedModels: [],
+        routerType: 'fallback_chain',
         latencyMs: 7,
       });
+      mockRouterRegistry.get.mockReturnValue({ route });
       mockSandboxRuntime.createSession.mockResolvedValue(
         makeSession({ id: 'sandbox-session-routing' }),
       );
@@ -1722,14 +1750,32 @@ describe('AgentExecutionWorker', () => {
         [{ id: 'message-1', content: '请总结这个需求', createdAt: new Date() }],
       );
 
-      expect(mockSmartRoutingService.evaluate).toHaveBeenCalledWith(
+      expect(mockRouterRegistry.get).toHaveBeenCalledWith('fallback_chain');
+      expect(mockSmartRoutingService.loadCandidates).toHaveBeenCalledWith(
         ['model-1', 'model-2'],
+        'tenant-1',
+      );
+      expect(route).toHaveBeenCalledWith(
+        [
+          { id: 'model-1', name: 'model-1', provider: 'openai' },
+          { id: 'model-2', name: 'model-2', provider: 'openai' },
+        ],
         expect.objectContaining({
-          taskType: 'agent_conversation',
+          taskCategory: 'agent_conversation',
+          tenantId: 'tenant-1',
           inputTokenCount: expect.any(Number),
         }),
-        'FALLBACK_CHAIN',
+      );
+      expect(mockSmartRoutingService.recordDecision).toHaveBeenCalledWith(
+        { conversationId: 'conversation-1' },
         'tenant-1',
+        'conversation',
+        expect.objectContaining({
+          selectedModelId: 'model-2',
+          strategy: 'fallback_chain',
+          routerType: 'fallback_chain',
+          fallbackReason: undefined,
+        }),
       );
       expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -3065,6 +3111,7 @@ describe('AgentExecutionWorker', () => {
       await expect(
         workerInternals.resolveConversationStartupRuntimeConfig(
           unchanged,
+          'conversation-1',
           'tenant-1',
           [],
         ),
@@ -3072,25 +3119,46 @@ describe('AgentExecutionWorker', () => {
 
       await expect(
         workerInternals.selectConversationRoutingModelId({
+          conversationId: 'conversation-1',
           tenantId: 'tenant-1',
           routingConfig: {},
           candidateModelIds: ['model-only'],
           pendingMessages: [],
         }),
       ).resolves.toBe('model-only');
-      expect(mockSmartRoutingService.evaluate).not.toHaveBeenCalled();
+      expect(mockRouterRegistry.get).not.toHaveBeenCalled();
+      expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
 
+      // 未注册的策略：注册表抛错 → 候选首位，并记录 router_error
+      mockRouterRegistry.get.mockImplementationOnce(() => {
+        throw new Error('Strategy "unsupported-strategy" not found');
+      });
       await expect(
         workerInternals.selectConversationRoutingModelId({
+          conversationId: 'conversation-1',
           tenantId: 'tenant-1',
           routingConfig: { strategy: 'unsupported-strategy' },
           candidateModelIds: ['model-first', 'model-second'],
           pendingMessages: [],
         }),
       ).resolves.toBe('model-first');
+      expect(mockSmartRoutingService.recordDecision).toHaveBeenLastCalledWith(
+        { conversationId: 'conversation-1' },
+        'tenant-1',
+        'conversation',
+        expect.objectContaining({
+          selectedModelId: 'model-first',
+          strategy: 'unsupported-strategy',
+          routerType: 'unsupported-strategy',
+          reasoning: 'Strategy "unsupported-strategy" not found',
+          fallbackReason: 'router_error',
+          fallbackSource: 'first_candidate',
+        }),
+      );
 
-      mockSmartRoutingService.evaluate.mockResolvedValueOnce({
-        selectedModelId: undefined,
+      // 策略未选出模型：视为路由器错误，回退到候选首位
+      mockRouterRegistry.get.mockReturnValueOnce({
+        route: vi.fn().mockResolvedValue({ selectedModelId: null, scores: [] }),
       });
       const noDecisionConfig = {
         routingConfig: {
@@ -3101,22 +3169,65 @@ describe('AgentExecutionWorker', () => {
       await expect(
         workerInternals.resolveConversationStartupRuntimeConfig(
           noDecisionConfig,
+          'conversation-1',
           'tenant-1',
           [],
         ),
-      ).resolves.toBe(noDecisionConfig);
+      ).resolves.toEqual({
+        ...noDecisionConfig,
+        modelConfig: { modelId: 'model-first' },
+      });
 
-      mockSmartRoutingService.evaluate.mockRejectedValueOnce(
-        'routing service unavailable',
-      );
+      // 路由抛错且配置了候选内的 fallbackModelId：使用该模型
+      mockRouterRegistry.get.mockReturnValueOnce({
+        route: vi.fn().mockRejectedValue('routing service unavailable'),
+      });
       await expect(
         workerInternals.selectConversationRoutingModelId({
+          conversationId: 'conversation-1',
           tenantId: 'tenant-1',
-          routingConfig: { strategy: 'FALLBACK_CHAIN' },
+          routingConfig: {
+            strategy: 'FALLBACK_CHAIN',
+            fallbackModelId: 'model-second',
+          },
           candidateModelIds: ['model-first', 'model-second'],
           pendingMessages: [{ content: 'route this request' }],
         }),
-      ).resolves.toBe('model-first');
+      ).resolves.toBe('model-second');
+      expect(mockSmartRoutingService.recordDecision).toHaveBeenLastCalledWith(
+        { conversationId: 'conversation-1' },
+        'tenant-1',
+        'conversation',
+        expect.objectContaining({
+          selectedModelId: 'model-second',
+          reasoning: 'routing service unavailable',
+          fallbackReason: 'router_error',
+          fallbackSource: 'configured_model',
+        }),
+      );
+
+      // 决策记录失败只告警，不影响选择结果
+      mockRouterRegistry.get.mockReturnValueOnce({
+        route: vi.fn().mockResolvedValue({
+          selectedModelId: 'model-second',
+          scores: [],
+          reasoning: 'ok',
+          routerType: 'fallback_chain',
+          latencyMs: 1,
+        }),
+      });
+      mockSmartRoutingService.recordDecision.mockRejectedValueOnce(
+        new Error('insert failed'),
+      );
+      await expect(
+        workerInternals.selectConversationRoutingModelId({
+          conversationId: 'conversation-1',
+          tenantId: 'tenant-1',
+          routingConfig: { strategy: 'FALLBACK_CHAIN' },
+          candidateModelIds: ['model-first', 'model-second'],
+          pendingMessages: [],
+        }),
+      ).resolves.toBe('model-second');
     });
 
     it('restores an existing sandbox runtime session and reuses its watcher binding', async () => {

@@ -8,6 +8,7 @@ import type {
 } from '../routing-candidate';
 import type { RoutingContext } from '../routing-context';
 import type { RoutingDecision } from '../routing-decision';
+import { NoEligibleCandidateException } from '../../smart-routing.exceptions';
 
 type CandidateOverrides = Partial<Omit<RoutingCandidate, 'routingMeta'>> & {
   routingMeta?: Partial<ExtendedRoutingMeta> & {
@@ -130,7 +131,7 @@ describe('BaseRouterStrategy', () => {
     );
   });
 
-  it('route() 在过滤后没有可用候选时抛出描述性错误', async () => {
+  it('route() 在过滤后没有可用候选时抛出 NoEligibleCandidateException', async () => {
     const candidates = [
       createCandidate('open-model', { healthStatus: 'open' }),
       createCandidate('too-small-model', {
@@ -138,10 +139,21 @@ describe('BaseRouterStrategy', () => {
       }),
     ];
 
-    await expect(strategy.route(candidates, context)).rejects.toThrow(
-      'No valid candidates after filtering: 2 total, 1 healthy, 0 within token limit',
+    const error = await strategy.route(candidates, context).catch((e) => e);
+    expect(error).toBeInstanceOf(NoEligibleCandidateException);
+    expect(error.getStatus()).toBe(503);
+    expect(error.type).toContain('routing/no-eligible-candidate');
+    expect(error.message).toBe('没有满足条件的候选模型');
+    expect(error.detail).toBe(
+      `候选模型共 2 个，健康 1 个，其中上下文窗口不小于输入 ${context.inputTokenCount} tokens 的为 0 个`,
     );
     expect(strategy.routeSingleMock).not.toHaveBeenCalled();
+  });
+
+  it('route() 在候选为空时抛出 NoEligibleCandidateException', async () => {
+    await expect(strategy.route([], context)).rejects.toBeInstanceOf(
+      NoEligibleCandidateException,
+    );
   });
 
   it('route() 只把过滤后的候选传给 routeSingle()', async () => {
