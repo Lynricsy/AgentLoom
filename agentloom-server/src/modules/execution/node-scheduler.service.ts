@@ -136,6 +136,9 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     private readonly agentTaskQueue: Queue,
   ) {}
 
+  /** 正在派发的 pending 步骤（见 scheduleNode），防止并发前驱重复派发同一步骤 */
+  private readonly stepsBeingScheduled = new Set<string>();
+
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
   }
@@ -293,6 +296,35 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     if (!step) return;
     if (step.status !== 'pending') return;
 
+    // 多个前驱在同一进程内并发完成（startExecution 并行调度多个根节点）时会对同一后继各调度一次：
+    // 两次都读到同一 pending 行并各自派发，后到者 pending→running 抛非法转换，整个执行被判失败。
+    // 以「步骤 id + 该 pending 行的 updatedAt」标识一次调度，同一行只派发一次；
+    // 循环轮次重置步骤会刷新 updatedAt，同步递归调度下一轮不受影响。
+    const claimKey = `${step.id}@${new Date(step.updatedAt).getTime()}`;
+    if (this.stepsBeingScheduled.has(claimKey)) return;
+    this.stepsBeingScheduled.add(claimKey);
+    try {
+      await this.dispatchPendingStep(
+        executionId,
+        nodeId,
+        tenantId,
+        step,
+        resolvedSnapshot,
+        resolvedSteps,
+      );
+    } finally {
+      this.stepsBeingScheduled.delete(claimKey);
+    }
+  }
+
+  private async dispatchPendingStep(
+    executionId: string,
+    nodeId: string,
+    tenantId: string,
+    step: ExecutionStep,
+    resolvedSnapshot: { nodes: schema.ReactFlowNode[]; edges: ReactFlowEdge[] },
+    resolvedSteps: ExecutionStep[],
+  ): Promise<void> {
     let input: Record<string, unknown>;
     const transformWarnings: PortTransformWarning[] = [];
     try {

@@ -1032,5 +1032,76 @@ describe('facade migrated scenarios', () => {
         );
       expect(typeMismatchCalls).toHaveLength(0);
     });
+
+    it('并发前驱对同一 pending 步骤的重复调度只派发一次', async () => {
+      const snapshot = makeSnapshot([makeNode('B', 'team')], []);
+      const stepB = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'pending',
+        nodeType: 'team',
+      });
+      db.update.mockReturnValue(createUpdateChainVoid());
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const dispatch = vi
+        .spyOn(nodeDispatcher, 'dispatch')
+        .mockImplementation(async () => {
+          await released;
+          return true;
+        });
+
+      const first = service.scheduleNode(
+        EXECUTION_ID,
+        'B',
+        TENANT_ID,
+        snapshot,
+        [stepB],
+      );
+      const second = service.scheduleNode(
+        EXECUTION_ID,
+        'B',
+        TENANT_ID,
+        snapshot,
+        [stepB],
+      );
+      await second;
+      release();
+      await first;
+
+      expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('循环轮次重置后的步骤（updatedAt 变化）在上一轮派发中仍可递归调度', async () => {
+      const snapshot = makeSnapshot([makeNode('B', 'merge')], []);
+      const firstRound = makeStep({
+        id: 'step-b',
+        nodeId: 'B',
+        status: 'pending',
+        nodeType: 'merge',
+      });
+      const nextRound = {
+        ...firstRound,
+        updatedAt: new Date(NOW.getTime() + 1),
+      };
+      db.update.mockReturnValue(createUpdateChainVoid());
+      const dispatch = vi
+        .spyOn(nodeDispatcher, 'dispatch')
+        .mockImplementationOnce(async () => {
+          await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [
+            nextRound,
+          ]);
+          return true;
+        })
+        .mockResolvedValueOnce(true);
+
+      await service.scheduleNode(EXECUTION_ID, 'B', TENANT_ID, snapshot, [
+        firstRound,
+      ]);
+
+      expect(dispatch).toHaveBeenCalledTimes(2);
+    });
   });
 });
