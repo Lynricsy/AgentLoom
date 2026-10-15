@@ -7,3 +7,4 @@ export * from './conversation-events';
 export * from './agent-runtime-config';
 export * from './agent-api-events';
 export * from './rbac';
+export * from './team';
