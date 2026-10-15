@@ -128,7 +128,7 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `mcp/connection-failed` | 502 | 无法连接 MCP 服务 | 检查 MCP 服务地址与凭据，见 [MCP 工具](/guide/integrations/mcp-tools) |
 | `mcp/connection-timeout` | 504 | 连接 MCP 服务超时 | 确认服务可从 AgentLoom 服务端访问 |
 | `mcp/discovery-failed` | 502 | MCP 工具发现失败 | 确认服务实现了工具列表接口 |
-| `routing/insufficient-models` | 400 | 智能路由的候选模型不足 | 至少连接两个模型，见[智能路由](/guide/nodes/smart-routing) |
+| `routing/no-eligible-candidate` | 503 | 没有满足条件的候选模型：候选为空，或全部断路，或上下文窗口都小于输入 token 数 | 按 `detail` 中的候选数与健康数检查模型连接、Provider 状态与输入长度，见[智能路由](/guide/nodes/smart-routing) |
 | `routing/fallback-exhausted` | 503 | 所有候选模型都不可用 | 检查各模型的健康状态 |
 
 ## 沙箱

@@ -62,7 +62,7 @@ erDiagram
     workflow_executions ||--o{ evidence_records : "execution_id"
     execution_steps ||--o{ evidence_records : "step_id"
     evidence_records |o--o{ evidence_records : "parent_evidence_id"
-    execution_steps ||--o{ routing_decisions : "execution_step_id"
+    execution_steps |o--o{ routing_decisions : "execution_step_id"
     workflow_definitions ||--o{ workflow_shares : "workflow_definition_id"
     workflow_definitions ||--o{ workflow_triggers : "workflow_definition_id"
     workflow_triggers ||--o{ workflow_trigger_history : "trigger_id"
@@ -86,6 +86,7 @@ erDiagram
     agent_api_keys |o--o{ agent_conversations : "api_key_id"
     agent_api_keys ||--o{ agent_api_runs : "api_key_id"
     agent_conversations ||--o{ agent_api_runs : "conversation_id"
+    agent_conversations |o--o{ routing_decisions : "conversation_id"
     agent_messages ||--o| agent_api_runs : "user_message_id"
     agent_messages |o--o{ agent_api_runs : "assistant_message_id"
 ```

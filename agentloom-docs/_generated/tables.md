@@ -61,7 +61,7 @@
 | `revoked_tokens` | 4 | 否 | `revoked-tokens.schema.ts` |
 | `router_models` | 11 | 是 | `router-models.schema.ts` |
 | `routing_benchmarks` | 10 | 否 | `routing-benchmarks.schema.ts` |
-| `routing_decisions` | 11 | 是 | `routing-decisions.schema.ts` |
+| `routing_decisions` | 14 | 是 | `routing-decisions.schema.ts` |
 | `runtime_plugins` | 21 | 是 | `runtime-plugins.schema.ts` |
 | `sandbox_logs` | 5 | 否 | `sandbox-logs.schema.ts` |
 | `sandbox_runtime_migrations` | 19 | 是 | `sandbox-runtime-migrations.schema.ts` |
@@ -1258,7 +1258,8 @@
 | 列 | 类型 | 非空 | 默认值 |
 | --- | --- | --- | --- |
 | `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
-| `execution_step_id` | `uuid` | 是 |  |
+| `execution_step_id` | `uuid` |  |  |
+| `conversation_id` | `uuid` |  |  |
 | `tenant_id` | `uuid` | 是 |  |
 | `routing_node_id` | `text` | 是 |  |
 | `strategy` | `varchar(30)` | 是 |  |
@@ -1267,6 +1268,8 @@
 | `selected_model_id` | `uuid` |  |  |
 | `decision_reasoning` | `text` | 是 |  |
 | `routing_latency_ms` | `integer` | 是 |  |
+| `fallback_reason` | `varchar(40)` |  |  |
+| `fallback_source` | `varchar(20)` |  |  |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
 
 ### runtime_plugins

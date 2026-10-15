@@ -123,7 +123,25 @@ agentloom-server/src/
 | `HISTORICAL_BEST` | `historical_best` |
 | `FALLBACK_CHAIN` | `fallback_chain` |
 
-`GET /smart-routing/strategies` 只列出 `PUBLIC_ROUTER_STRATEGY_NAMES` 中的策略（`agentloom-server/src/modules/smart-routing/smart-routing.service.ts:45`）。`fallback_chain` 下，Agent 任务失败且不是认证失败时，切换到候选列表中的下一个模型重试（`agentloom-server/src/modules/execution/agent-task-failure-policy.ts`）。路由决策写入 `routing_decisions` 表，`selected_model_id` 可为空。
+`GET /smart-routing/strategies` 只列出 `PUBLIC_ROUTER_STRATEGY_NAMES` 中的策略（`agentloom-server/src/modules/smart-routing/smart-routing.service.ts:34`）。`fallback_chain` 下，Agent 任务失败且不是认证失败时，切换到候选列表中的下一个模型重试（`agentloom-server/src/modules/execution/agent-task-failure-policy.ts`）。
+
+候选由 `SmartRoutingService.loadCandidates` 按传入顺序加载（模型配置 + `router_models` 路由元数据，缺省回落到提供商目录），经 `HealthMonitorService.filterHealthyCandidates` 过滤后交给策略；`BaseRouterStrategy.route` 再按上下文窗口过滤，过滤后为空抛 `NoEligibleCandidateException`（503，`routing/no-eligible-candidate`）。
+
+`llm_as_router` 调用路由模型失败时不随机选择，而是确定性回退（`agentloom-server/src/modules/smart-routing/strategies/llm-as-router.strategy.ts`）：`strategyConfig.fallbackModelId` 在候选内则选它，否则交给 `RulesRouter` 按 `strategyConfig.fallbackRules` 匹配，无匹配取候选首位。回退决策带 `fallback: { reason, source }`：
+
+| `reason` | 触发条件 |
+| --- | --- |
+| `llm_timeout` | 路由模型请求超过 3 秒被中止 |
+| `llm_invalid_response` | 响应不是 JSON、没有 `selectedModelId`，或 ID 不在候选内 |
+| `llm_http_error` | 非 2xx 响应或网络层失败 |
+| `llm_config_error` | 发请求前失败：路由模型配置不存在、没有 base URL、凭据解密失败 |
+| `router_error` | 对话启动路由时策略本身抛错（见下文） |
+
+`source` 取 `configured_model`、`rules` 或 `first_candidate`。
+
+Agent 对话启动时，若编译后的 `routingConfig.candidateModelIds` 多于一个，`AgentExecutionWorkerRuntimeService.selectConversationRoutingModelId` 用同一套注册表、候选加载与健康过滤选模型，`routingConfig.strategyConfig` 透传给策略，`taskCategory` 固定为 `agent_conversation`。策略抛错或未选出模型时选 `routingConfig.fallbackModelId`（须在候选内）否则候选首位，记 `router_error`。
+
+路由决策写入 `routing_decisions` 表，主体二选一：工作流路由步骤（`execution_step_id`）或 Agent 对话（`conversation_id`，`routing_node_id` 固定为 `conversation`），由 `chk_routing_decisions_subject` 约束；`fallback_reason`、`fallback_source` 仅在回退时有值，`selected_model_id` 可为空。`GET /routing-decisions` 与历史指标只统计工作流步骤上的决策。
 
 ### 生成应用
 
