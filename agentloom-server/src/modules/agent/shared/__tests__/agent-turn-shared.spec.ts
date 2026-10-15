@@ -4,6 +4,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentTurnEventAccumulator } from '../agent-turn-event-accumulator';
 import {
+  promptTokensOf,
+  sumAgentUsage,
+  toUsageTelemetryFields,
+} from '../agent-usage';
+import {
   bindMemoryToolSession,
   unbindMemoryToolSession,
 } from '../memory-tool-session-binder';
@@ -95,11 +100,11 @@ describe('AgentTurnEventAccumulator', () => {
     expect(accumulator.stopReason).toBeUndefined();
   });
 
-  it('多条 assistant 消息的 usage 逐字段求和并记录最近模型', () => {
+  it('多条 assistant 消息的 usage 逐次保留（不提前合并）并记录最近模型', () => {
     const accumulator = new AgentTurnEventAccumulator({
       mapDecision: (event) => event,
     });
-    expect(accumulator.usage).toBeUndefined();
+    expect(accumulator.usageCalls).toEqual([]);
 
     expect(
       accumulator.consume({
@@ -114,17 +119,61 @@ describe('AgentTurnEventAccumulator', () => {
         inputTokens: 20,
         outputTokens: 7,
         cacheReadTokens: 4,
-        totalTokens: 27,
+        totalTokens: 31,
       },
     });
 
-    expect(accumulator.usage).toEqual({
+    expect(accumulator.usageCalls).toEqual([
+      { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      { inputTokens: 20, outputTokens: 7, cacheReadTokens: 4, totalTokens: 31 },
+    ]);
+    expect(accumulator.modelId).toBe('m1');
+  });
+});
+
+describe('agent usage helpers', () => {
+  it('sumAgentUsage 逐字段求和，缓存字段全部缺失时保持缺失', () => {
+    expect(sumAgentUsage([])).toBeUndefined();
+    expect(
+      sumAgentUsage([
+        { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        { inputTokens: 20, outputTokens: 7, totalTokens: 27 },
+      ]),
+    ).toEqual({ inputTokens: 30, outputTokens: 12, totalTokens: 42 });
+    expect(
+      sumAgentUsage([
+        { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        {
+          inputTokens: 20,
+          outputTokens: 7,
+          cacheReadTokens: 4,
+          cacheWriteTokens: 2,
+          totalTokens: 33,
+        },
+      ]),
+    ).toEqual({
       inputTokens: 30,
       outputTokens: 12,
       cacheReadTokens: 4,
-      totalTokens: 42,
+      cacheWriteTokens: 2,
+      totalTokens: 48,
     });
-    expect(accumulator.modelId).toBe('m1');
+  });
+
+  it('遥测 promptTokens 含缓存读/写输入，totalTokens 取上游值', () => {
+    const usage = {
+      inputTokens: 1000,
+      outputTokens: 50,
+      cacheReadTokens: 400,
+      cacheWriteTokens: 100,
+      totalTokens: 1550,
+    };
+    expect(promptTokensOf(usage)).toBe(1500);
+    expect(toUsageTelemetryFields(usage)).toEqual({
+      promptTokens: 1500,
+      completionTokens: 50,
+      totalTokens: 1550,
+    });
   });
 });
 

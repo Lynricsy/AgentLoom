@@ -6,6 +6,7 @@ import { AgentExecutionWorkerPersistenceService } from '../agent-execution-worke
 import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
+import { LlmCostService } from '../../llm/llm-cost.service';
 
 const {
   mockDb,
@@ -381,8 +382,8 @@ describe('AgentExecutionWorker', () => {
     mockRouterRegistry.get.mockReset();
     mockHealthMonitorService.filterHealthyCandidates
       .mockReset()
-      .mockImplementation(async (_tenantId: string, candidates: unknown[]) =>
-        candidates,
+      .mockImplementation(
+        async (_tenantId: string, candidates: unknown[]) => candidates,
       );
 
     worker = new AgentExecutionWorker(
@@ -3866,13 +3867,24 @@ describe('AgentExecutionWorker', () => {
         expect(afterCommitHooks).toHaveLength(0);
       });
 
-      it('有 usage 时 assistant metadata 写入 usage/modelId/costUsd，并在提交后发出 turn-persisted 事件', async () => {
+      it('有 usage 时 assistant metadata 写入求和 usage/modelId/逐次定价 costUsd，并在提交后发出 turn-persisted 事件', async () => {
         mockAgentApiRunService.finalizeTurnInTransaction.mockResolvedValue([]);
-        const pricing = { inputPer1MTokens: 3, outputPer1MTokens: 15 };
-        const llmCostService = {
-          resolvePricing: vi.fn().mockResolvedValue(pricing),
-          estimateCostUsd: vi.fn().mockReturnValue(0.0105),
-        };
+        const llmCostService = new LlmCostService({} as never);
+        const resolvePricing = vi
+          .spyOn(llmCostService, 'resolvePricing')
+          .mockResolvedValue({
+            inputPer1MTokens: 3,
+            outputPer1MTokens: 15,
+            cachedReadPer1MTokens: 0.3,
+            tiers: [
+              {
+                aboveTokens: 200_000,
+                inputPer1MTokens: 6,
+                outputPer1MTokens: 22.5,
+                cachedReadPer1MTokens: 0.6,
+              },
+            ],
+          });
         const eventEmitter = { emit: vi.fn() };
         const usagePersistence = new AgentExecutionWorkerPersistenceService(
           persistenceDb as never,
@@ -3901,38 +3913,49 @@ describe('AgentExecutionWorker', () => {
           },
           'loadConversationMetadata',
         ).mockResolvedValue({});
+        // 两次工具续轮调用，各自完整 prompt 120k（未缓存 + 缓存读）
+        const usageCalls = [
+          {
+            inputTokens: 120_000,
+            outputTokens: 500,
+            totalTokens: 120_500,
+          },
+          {
+            inputTokens: 100_000,
+            outputTokens: 500,
+            cacheReadTokens: 20_000,
+            totalTokens: 120_500,
+          },
+        ];
         const usage = {
-          inputTokens: 1000,
-          outputTokens: 500,
-          totalTokens: 1500,
+          inputTokens: 220_000,
+          outputTokens: 1000,
+          cacheReadTokens: 20_000,
+          totalTokens: 241_000,
         };
+        // 逐次基础价：120000*3 + 100000*3 + 20000*0.3 + 1000*15 = 681000 → 0.681
+        //（先累加再定价会落入 >200k 档：220000*6 + 20000*0.6 + 1000*22.5 → 1.3545）
+        const costUsd = 0.681;
 
         await usagePersistence.persistConversationTurn(
           'c-1',
           't-1',
           pending,
           turnResult({
-            usage,
+            usageCalls,
             modelId: 'gpt-test',
             llmModelConfigId: 'model-config-1',
           }) as never,
           'session-1',
         );
 
-        expect(llmCostService.resolvePricing).toHaveBeenCalledWith(
-          't-1',
-          'model-config-1',
-        );
-        expect(llmCostService.estimateCostUsd).toHaveBeenCalledWith(
-          pricing,
-          usage,
-        );
+        expect(resolvePricing).toHaveBeenCalledWith('t-1', 'model-config-1');
         expect(insertChain.values).toHaveBeenLastCalledWith(
           expect.objectContaining({
             metadata: expect.objectContaining({
               usage,
               modelId: 'gpt-test',
-              costUsd: 0.0105,
+              costUsd,
             }),
           }),
         );
@@ -3948,7 +3971,7 @@ describe('AgentExecutionWorker', () => {
             assistantMessageId: 'assistant-1',
             processedMessageIds: ['msg-1'],
             usage,
-            costUsd: 0.0105,
+            costUsd,
             stopReason: 'end_turn',
           },
         );

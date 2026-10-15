@@ -26,8 +26,8 @@ export type ConversationTurnResult = {
   toolResults: Array<Record<string, unknown>>;
   segments: ConversationMessageSegmentRecord[];
   subAgentStreams: Record<string, PersistedSubAgentStreamRecord>;
-  /** 本轮全部 assistant 消息的 token 用量之和 */
-  usage?: AgentUsage;
+  /** 本轮每次 assistant 调用的 token 用量（按调用顺序；成本逐次定价） */
+  usageCalls?: AgentUsage[];
   /** provider 返回的模型 id */
   modelId?: string;
   /** 本轮使用的模型配置（用于按定价换算成本） */
@@ -36,7 +36,7 @@ export type ConversationTurnResult = {
 
 export type ConversationTurnUsage = Pick<
   ConversationTurnResult,
-  'usage' | 'modelId' | 'llmModelConfigId'
+  'usageCalls' | 'modelId' | 'llmModelConfigId'
 >;
 
 export function buildPromptBlocks(
@@ -90,7 +90,9 @@ export function buildConversationTurnResult(
     toolResults,
     segments,
     subAgentStreams,
-    ...(turnUsage.usage ? { usage: turnUsage.usage } : {}),
+    ...(turnUsage.usageCalls && turnUsage.usageCalls.length > 0
+      ? { usageCalls: turnUsage.usageCalls }
+      : {}),
     ...(turnUsage.modelId ? { modelId: turnUsage.modelId } : {}),
     ...(turnUsage.llmModelConfigId
       ? { llmModelConfigId: turnUsage.llmModelConfigId }

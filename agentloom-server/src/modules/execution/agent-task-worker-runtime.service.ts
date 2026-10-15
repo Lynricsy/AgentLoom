@@ -93,6 +93,10 @@ import {
   extractAgentThinkingContent,
 } from '../agent/shared/agent-turn-event-accumulator';
 import {
+  sumAgentUsage,
+  toUsageTelemetryFields,
+} from '../agent/shared/agent-usage';
+import {
   bindMemoryToolSession,
   unbindMemoryToolSession,
 } from '../agent/shared/memory-tool-session-binder';
@@ -163,41 +167,28 @@ export class AgentTaskWorkerRuntimeService {
   }
 
   /**
-   * 把 Agent 循环累计的 token 用量换算为步骤结果遥测字段（执行记录读取
-   * promptTokens/completionTokens/totalTokens/modelId/costUsd）。
+   * 把 Agent 循环逐次调用的 token 用量换算为步骤结果遥测字段（执行记录读取
+   * promptTokens/completionTokens/totalTokens/modelId/costUsd）；成本逐次调用定价。
    */
   public async buildUsageStepResult(params: {
     tenantId: string;
     llmModelConfigId?: string;
-    usage?: AgentUsage;
+    usageCalls?: AgentUsage[];
     modelId?: string;
   }): Promise<Record<string, unknown>> {
-    const { usage } = params;
+    const usageCalls = params.usageCalls ?? [];
+    const usage = sumAgentUsage(usageCalls);
     if (!usage) {
       return {};
     }
-    let costUsd: number | null = null;
-    if (this.llmCostService && params.llmModelConfigId) {
-      try {
-        costUsd = this.llmCostService.estimateCostUsd(
-          await this.llmCostService.resolvePricing(
-            params.tenantId,
-            params.llmModelConfigId,
-          ),
-          usage,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Failed to resolve model pricing for ${params.llmModelConfigId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
+    const costUsd =
+      (await this.llmCostService?.estimateCallsCostUsd(
+        params.tenantId,
+        params.llmModelConfigId,
+        usageCalls,
+      )) ?? null;
     return {
-      promptTokens: usage.inputTokens,
-      completionTokens: usage.outputTokens,
-      totalTokens: usage.totalTokens,
+      ...toUsageTelemetryFields(usage),
       ...(params.modelId ? { modelId: params.modelId } : {}),
       ...(costUsd !== null ? { costUsd } : {}),
     };
@@ -231,7 +222,7 @@ export class AgentTaskWorkerRuntimeService {
     decision?: Record<string, unknown>;
     toolCalls: ToolCallEvent[];
     segments: ConversationMessageSegmentRecord[];
-    usage?: AgentUsage;
+    usageCalls?: AgentUsage[];
     modelId?: string;
   }> {
     let { accumulatedContent, decision, chunkIndex } = params;
@@ -483,7 +474,7 @@ export class AgentTaskWorkerRuntimeService {
       decision,
       toolCalls,
       segments,
-      usage: accumulator.usage,
+      usageCalls: accumulator.usageCalls,
       modelId: accumulator.modelId,
     };
   }

@@ -379,7 +379,8 @@ describe('AgentLoomBridge over unix socket', () => {
     expect(eventsOf().filter((event) => event.type === 'usage')).toEqual([
       {
         type: 'usage',
-        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, totalTokens: 15 },
+        // 计数互不重叠：缺 totalTokens 时 input + cacheRead + cacheWrite + output
+        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, totalTokens: 17 },
         modelId: 'deepseek-chat',
         provider: 'deepseek',
       },

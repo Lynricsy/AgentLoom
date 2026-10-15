@@ -812,7 +812,7 @@ export class AgentTaskWorker extends WorkerHost {
     let chunkIndex = 0;
     let toolCalls: ToolCallEvent[] = [];
     let segments: ConversationMessageSegmentRecord[] = [];
-    let loopUsage: { usage?: AgentUsage; modelId?: string } = {};
+    let loopUsage: { usageCalls?: AgentUsage[]; modelId?: string } = {};
     const effectiveAutonomyMode =
       await this.runtimeService.resolveEffectiveAutonomyMode(
         tenantId,
@@ -903,7 +903,10 @@ export class AgentTaskWorker extends WorkerHost {
         decision = loopResult.decision;
         toolCalls = loopResult.toolCalls;
         segments = loopResult.segments;
-        loopUsage = { usage: loopResult.usage, modelId: loopResult.modelId };
+        loopUsage = {
+          usageCalls: loopResult.usageCalls,
+          modelId: loopResult.modelId,
+        };
       } else {
         await this.runtimeService.withTenantContext(tenantId, async () => {
           await this.stepStateMachine.updateStepStatus(
@@ -1038,7 +1041,10 @@ export class AgentTaskWorker extends WorkerHost {
         decision = loopResult.decision;
         toolCalls = loopResult.toolCalls;
         segments = loopResult.segments;
-        loopUsage = { usage: loopResult.usage, modelId: loopResult.modelId };
+        loopUsage = {
+          usageCalls: loopResult.usageCalls,
+          modelId: loopResult.modelId,
+        };
       }
 
       if (lastStopReason === 'intervention_required') {

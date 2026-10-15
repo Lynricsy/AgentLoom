@@ -185,7 +185,7 @@ describe('decodeSandboxServerSentEvent', () => {
     expect(decode({ type: 'harness_trace', turn: 1 }).events).toEqual([]);
   });
 
-  it('JSON-RPC usage 转成 usage 事件，缺 totalTokens 时补 input+output，缺 usage 不产生事件', () => {
+  it('JSON-RPC usage 转成 usage 事件，缺 totalTokens 时按不重叠计数四项求和，缺 usage 不产生事件', () => {
     expect(
       decode({
         jsonrpc: '2.0',
@@ -205,7 +205,7 @@ describe('decodeSandboxServerSentEvent', () => {
             inputTokens: 10,
             outputTokens: 5,
             cacheReadTokens: 2,
-            totalTokens: 15,
+            totalTokens: 17,
           },
           modelId: 'deepseek-chat',
           provider: 'deepseek',

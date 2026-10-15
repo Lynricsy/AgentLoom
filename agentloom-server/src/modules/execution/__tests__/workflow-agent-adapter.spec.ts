@@ -8,6 +8,7 @@ import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { SubAgentToolsProvider } from '../../agent-execution/subagent';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../../skill/skill.types';
+import { LlmCostService } from '../../llm/llm-cost.service';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 
 const { mockResolveSubAgent } = vi.hoisted(() => ({
@@ -998,7 +999,7 @@ describe('WorkflowAgentAdapter', () => {
     expect(result.content).toBe('准备调用工具...工具结果处理完毕');
   });
 
-  it('跨轮累加 usage 写入结果遥测字段，按会话模型配置换算成本且不广播 usage 事件', async () => {
+  it('跨轮 usage 求和写入遥测字段，成本逐次调用按阶梯定价且不广播 usage 事件', async () => {
     setupNoSandboxAgent();
     mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
       modelConfig: { modelId: 'model-1' },
@@ -1013,7 +1014,12 @@ describe('WorkflowAgentAdapter', () => {
         emit([
           {
             type: 'usage',
-            usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
+            usage: {
+              inputTokens: 100_000,
+              cacheReadTokens: 20_000,
+              outputTokens: 1000,
+              totalTokens: 121_000,
+            },
             modelId: 'gpt-test',
           },
           { type: 'done', stopReason: 'tool_use' },
@@ -1024,16 +1030,29 @@ describe('WorkflowAgentAdapter', () => {
           { type: 'message_chunk', content: '完成' },
           {
             type: 'usage',
-            usage: { inputTokens: 200, outputTokens: 30, totalTokens: 230 },
+            usage: {
+              inputTokens: 120_000,
+              outputTokens: 2000,
+              totalTokens: 122_000,
+            },
           },
           { type: 'done', stopReason: 'end_turn' },
         ]),
       );
-    const pricing = { inputPer1MTokens: 3, outputPer1MTokens: 15 };
-    const llmCostService = {
-      resolvePricing: vi.fn().mockResolvedValue(pricing),
-      estimateCostUsd: vi.fn().mockReturnValue(0.00165),
-    };
+    const llmCostService = new LlmCostService({} as never);
+    const resolvePricing = vi
+      .spyOn(llmCostService, 'resolvePricing')
+      .mockResolvedValue({
+        inputPer1MTokens: 3,
+        outputPer1MTokens: 15,
+        tiers: [
+          {
+            aboveTokens: 200_000,
+            inputPer1MTokens: 6,
+            outputPer1MTokens: 22.5,
+          },
+        ],
+      });
 
     const adapter = createAdapter({
       db,
@@ -1053,22 +1072,16 @@ describe('WorkflowAgentAdapter', () => {
       versionSnapshot: makeSnapshot('no-sandbox-node'),
     });
 
+    // 每次调用完整 prompt 120k，都按基础价：输入 240000*3 = 720000（0.72），
+    // 输出 3000*15 = 45000；累加后再定价会落入 >200k 档
     expect(result).toMatchObject({
-      promptTokens: 300,
-      completionTokens: 50,
-      totalTokens: 350,
+      promptTokens: 240_000,
+      completionTokens: 3000,
+      totalTokens: 243_000,
       modelId: 'gpt-test',
-      costUsd: 0.00165,
+      costUsd: 0.765,
     });
-    expect(llmCostService.resolvePricing).toHaveBeenCalledWith(
-      TENANT_ID,
-      'model-1',
-    );
-    expect(llmCostService.estimateCostUsd).toHaveBeenCalledWith(pricing, {
-      inputTokens: 300,
-      outputTokens: 50,
-      totalTokens: 350,
-    });
+    expect(resolvePricing).toHaveBeenCalledWith(TENANT_ID, 'model-1');
     expect(
       mockEventBridge.emitStepAgentEvent.mock.calls.some(
         ([, , payload]) => payload.event.type === 'usage',

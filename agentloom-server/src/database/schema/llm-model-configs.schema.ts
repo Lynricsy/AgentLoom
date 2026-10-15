@@ -38,6 +38,7 @@ export interface ModelCapabilities {
  * 阶梯定价（per 1M tokens, USD）
  */
 export interface PricingTier {
+  /** 单次调用完整 prompt（未缓存 + 缓存读 + 缓存写）严格超过该值时生效 */
   aboveTokens: number;
   inputPer1MTokens: number;
   outputPer1MTokens: number;

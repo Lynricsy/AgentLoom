@@ -988,7 +988,7 @@ export class AgentExecutionWorkerRuntimeService {
                 subAgentCaptureToken,
               ),
               {
-                usage: accumulator.usage,
+                usageCalls: accumulator.usageCalls,
                 modelId: accumulator.modelId,
                 llmModelConfigId: session.llmModelConfigId,
               },
@@ -1014,7 +1014,7 @@ export class AgentExecutionWorkerRuntimeService {
           subAgentCaptureToken,
         ),
         {
-          usage: accumulator.usage,
+          usageCalls: accumulator.usageCalls,
           modelId: accumulator.modelId,
           llmModelConfigId: session.llmModelConfigId,
         },

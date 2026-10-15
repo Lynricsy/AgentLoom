@@ -70,6 +70,7 @@ import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
 import { AgentTurnEventAccumulator } from '../agent/shared/agent-turn-event-accumulator';
+import { sumAgentUsage } from '../agent/shared/agent-usage';
 import { bindMemoryToolSession } from '../agent/shared/memory-tool-session-binder';
 import {
   buildConversationPromptBlocks,
@@ -240,8 +241,16 @@ export class AgentExecutionWorkerPersistenceService {
       aborted?: boolean;
     },
   ): Promise<ConversationExecutionMetadata> {
-    // 定价查询放在落库事务之外：查询失败只丢失成本，不影响本轮消息落库
-    const costUsd = await this.estimateTurnCostUsd(tenantId, turnResult);
+    // 用量逐字段求和后落库；成本逐次调用定价。定价查询放在落库事务之外：
+    // 查询失败只丢失成本，不影响本轮消息落库
+    const usageCalls = turnResult.usageCalls ?? [];
+    const usage = sumAgentUsage(usageCalls);
+    const costUsd =
+      (await this.llmCostService?.estimateCallsCostUsd(
+        tenantId,
+        turnResult.llmModelConfigId,
+        usageCalls,
+      )) ?? null;
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
       const currentMetadata = await this.loadConversationMetadata(
         dbClient,
@@ -301,9 +310,9 @@ export class AgentExecutionWorkerPersistenceService {
               ...(options?.rawErrorMessage
                 ? { rawErrorMessage: options.rawErrorMessage }
                 : {}),
-              ...(turnResult.usage
+              ...(usage
                 ? {
-                    usage: turnResult.usage,
+                    usage,
                     ...(turnResult.modelId
                       ? { modelId: turnResult.modelId }
                       : {}),
@@ -372,7 +381,7 @@ export class AgentExecutionWorkerPersistenceService {
           tenantId,
           assistantMessageId: lastAssistantMessageId ?? null,
           processedMessageIds: pendingMessages.map((message) => message.id),
-          ...(turnResult.usage ? { usage: turnResult.usage } : {}),
+          ...(usage ? { usage } : {}),
           costUsd,
           stopReason: turnResult.stopReason,
         };
@@ -383,34 +392,6 @@ export class AgentExecutionWorkerPersistenceService {
 
       return executionMetadata;
     });
-  }
-
-  /** 按本轮模型配置定价换算成本；无用量、无模型配置或查询失败时为 null */
-  private async estimateTurnCostUsd(
-    tenantId: string,
-    turnResult: ConversationTurnResult,
-  ): Promise<number | null> {
-    if (
-      !this.llmCostService ||
-      !turnResult.usage ||
-      !turnResult.llmModelConfigId
-    ) {
-      return null;
-    }
-    try {
-      const pricing = await this.llmCostService.resolvePricing(
-        tenantId,
-        turnResult.llmModelConfigId,
-      );
-      return this.llmCostService.estimateCostUsd(pricing, turnResult.usage);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to resolve model pricing for ${turnResult.llmModelConfigId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return null;
-    }
   }
 
   public async updateExecutionMetadata(

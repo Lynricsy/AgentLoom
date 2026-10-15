@@ -91,8 +91,13 @@ export function mapSessionEvent(
           ...(usage.cacheWriteTokens !== undefined
             ? { cacheWriteTokens: usage.cacheWriteTokens }
             : {}),
+          // dsh TokenUsage 计数互不重叠：缺 totalTokens 时四项求和
           totalTokens:
-            usage.totalTokens ?? usage.inputTokens + usage.outputTokens,
+            usage.totalTokens ??
+            usage.inputTokens +
+              (usage.cacheReadTokens ?? 0) +
+              (usage.cacheWriteTokens ?? 0) +
+              usage.outputTokens,
         },
         modelId: source.model,
         provider: source.provider,

@@ -46,6 +46,7 @@ import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { AgentSession } from '../../agent/types/agent-session.types';
 import { MemoryToolsService } from '../../agent-memory/memory-tools.service';
 import { MemoryFusionService } from '../../agent-memory/services/memory-fusion.service';
+import { LlmCostService } from '../../llm/llm-cost.service';
 
 vi.mock(
   '../../../common/interceptors/tenant-transaction.context',
@@ -2791,6 +2792,97 @@ describe('AgentTaskWorker', () => {
             result: expect.objectContaining({
               content: '完成',
               'exec-out': { triggered: true },
+            }),
+          }),
+        );
+      });
+
+      it('多轮 usage 求和写入步骤遥测，成本逐次调用按阶梯定价', async () => {
+        mockDb.select.mockReturnValue(
+          createSelectChain(
+            makeStep({
+              nodeData: { agentId: AGENT_ID, llmModelConfigId: 'model-1' },
+            }),
+          ),
+        );
+        mockDb.update.mockReturnValue(createUpdateChain());
+        mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+        // 测试模块未注入运行时服务时 worker 自建实例（不含成本服务），这里补上真实成本换算
+        const llmCostService = new LlmCostService({} as never);
+        vi.spyOn(llmCostService, 'resolvePricing').mockResolvedValue({
+          inputPer1MTokens: 3,
+          outputPer1MTokens: 15,
+          tiers: [
+            {
+              aboveTokens: 200_000,
+              inputPer1MTokens: 6,
+              outputPer1MTokens: 22.5,
+            },
+          ],
+        });
+        Object.defineProperty(worker['runtimeService'], 'llmCostService', {
+          value: llmCostService,
+        });
+        mockAgentRuntime.prompt
+          .mockReturnValueOnce(
+            createEventStream([
+              {
+                type: 'usage',
+                usage: {
+                  inputTokens: 120_000,
+                  outputTokens: 0,
+                  totalTokens: 120_000,
+                },
+                modelId: 'gpt-test',
+              },
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-1',
+                  tool: 'search',
+                  args: { q: 'test' },
+                  status: 'pending',
+                },
+              },
+              { type: 'done', stopReason: 'tool_use' },
+            ]),
+          )
+          .mockReturnValueOnce(
+            createEventStream([
+              { type: 'message_chunk', content: '完成' },
+              {
+                type: 'usage',
+                usage: {
+                  inputTokens: 100_000,
+                  cacheWriteTokens: 20_000,
+                  outputTokens: 0,
+                  totalTokens: 120_000,
+                },
+              },
+              { type: 'done', stopReason: 'end_turn' },
+            ]),
+          );
+
+        await worker.process(createMockJob());
+
+        expect(llmCostService.resolvePricing).toHaveBeenCalledWith(
+          TENANT_ID,
+          'model-1',
+        );
+        // 每次完整 prompt 120k 都按基础价：240000*3 = 720000 → 0.72
+        //（先累加再定价会落入 >200k 档得到 1.44）
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          STEP_ID,
+          'completed',
+          expect.objectContaining({
+            result: expect.objectContaining({
+              content: '完成',
+              promptTokens: 240_000,
+              completionTokens: 0,
+              totalTokens: 240_000,
+              modelId: 'gpt-test',
+              costUsd: 0.72,
             }),
           }),
         );

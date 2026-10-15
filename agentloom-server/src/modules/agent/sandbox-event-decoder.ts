@@ -225,7 +225,10 @@ function decodeHarnessTrace(
   };
 }
 
-/** usage 的 usage/modelId/provider 位于 envelope 顶层；缺 totalTokens 时补 input+output。 */
+/**
+ * usage 的 usage/modelId/provider 位于 envelope 顶层。计数互不重叠，
+ * 缺 totalTokens 时补 未缓存输入 + 缓存读 + 缓存写 + 输出。
+ */
 function decodeUsage(envelope: ContainerEventEnvelope): AgentEvent | null {
   const usage = isRecord(envelope.usage) ? envelope.usage : null;
   if (!usage) return null;
@@ -243,7 +246,11 @@ function decodeUsage(envelope: ContainerEventEnvelope): AgentEvent | null {
       ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
       ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
       totalTokens:
-        readTokenCount(usage.totalTokens) ?? inputTokens + outputTokens,
+        readTokenCount(usage.totalTokens) ??
+        inputTokens +
+          (cacheReadTokens ?? 0) +
+          (cacheWriteTokens ?? 0) +
+          outputTokens,
     },
     ...(modelId ? { modelId } : {}),
     ...(provider ? { provider } : {}),

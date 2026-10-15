@@ -27,7 +27,10 @@ import type {
   AgentEvent,
   AgentUsage,
 } from '../agent/types/agent-event.types';
-import { addAgentUsage } from '../agent/shared/agent-turn-event-accumulator';
+import {
+  sumAgentUsage,
+  toUsageTelemetryFields,
+} from '../agent/shared/agent-usage';
 import type { ContentBlock } from '../agent/types/content-block.types';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
@@ -138,12 +141,15 @@ export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
    */
   readonly outputSchema?: Record<string, unknown>;
   readonly subAgents?: Record<string, WorkflowAgentExecutionResult>;
-  /** 本次执行全部 assistant 消息的 token 用量（执行记录遥测读取） */
+  /**
+   * 本次执行全部 assistant 调用的 token 用量之和（执行记录遥测读取）：
+   * promptTokens 含缓存读/写输入，totalTokens 为上游 totalTokens 之和
+   */
   readonly promptTokens?: number;
   readonly completionTokens?: number;
   readonly totalTokens?: number;
   readonly modelId?: string;
-  /** 按模型配置定价换算的成本（USD）；未定价时缺省 */
+  /** 按模型配置定价逐次调用换算后求和的成本（USD）；未定价时缺省 */
   readonly costUsd?: number;
 }
 
@@ -308,7 +314,7 @@ export class WorkflowAgentAdapter {
     let accumulatedContent = '';
     let decision: Record<string, unknown> | undefined;
     let stopReason: StopReason = 'end_turn';
-    let usage: AgentUsage | undefined;
+    const usageCalls: AgentUsage[] = [];
     let usageModelId: string | undefined;
     let chunkIndex = 0;
     let turnInput = promptBlocks;
@@ -371,8 +377,8 @@ export class WorkflowAgentAdapter {
 
         for await (const event of runtime.prompt(session.id, turnInput)) {
           if (event.type === 'usage') {
-            // token 用量只在服务端累计写入步骤结果，不推送实时事件
-            usage = addAgentUsage(usage, event.usage);
+            // token 用量只在服务端逐次记录（阶梯价按单次调用选择），不推送实时事件
+            usageCalls.push(event.usage);
             usageModelId = event.modelId ?? usageModelId;
             continue;
           }
@@ -524,9 +530,13 @@ export class WorkflowAgentAdapter {
         ? parseAgentStructuredOutput(accumulatedContent, outputSchema)
         : undefined;
 
-    const costUsd = usage
-      ? await this.estimateCostUsd(params.tenantId, session, usage)
-      : null;
+    const usage = sumAgentUsage(usageCalls);
+    const costUsd =
+      (await this.dependencies.llmCostService?.estimateCallsCostUsd(
+        params.tenantId,
+        session.llmModelConfigId,
+        usageCalls,
+      )) ?? null;
     const result: WorkflowAgentExecutionResult = {
       content: accumulatedContent,
       'exec-out': { triggered: true },
@@ -534,13 +544,7 @@ export class WorkflowAgentAdapter {
       ...(decision ? { decision } : {}),
       ...(structured !== undefined ? { structured } : {}),
       ...(outputSchema ? { outputSchema } : {}),
-      ...(usage
-        ? {
-            promptTokens: usage.inputTokens,
-            completionTokens: usage.outputTokens,
-            totalTokens: usage.totalTokens,
-          }
-        : {}),
+      ...(usage ? toUsageTelemetryFields(usage) : {}),
       ...(usageModelId ? { modelId: usageModelId } : {}),
       ...(costUsd !== null ? { costUsd } : {}),
     };
@@ -550,31 +554,6 @@ export class WorkflowAgentAdapter {
     );
 
     return result;
-  }
-
-  /** 按会话模型配置定价换算成本；未注入成本服务、无模型配置或查询失败时为 null */
-  private async estimateCostUsd(
-    tenantId: string,
-    session: AgentSession,
-    usage: AgentUsage,
-  ): Promise<number | null> {
-    const { llmCostService } = this.dependencies;
-    if (!llmCostService || !session.llmModelConfigId) {
-      return null;
-    }
-    try {
-      return llmCostService.estimateCostUsd(
-        await llmCostService.resolvePricing(tenantId, session.llmModelConfigId),
-        usage,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to resolve model pricing for ${session.llmModelConfigId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return null;
-    }
   }
 
   private async loadCompiledDefinition(params: {
