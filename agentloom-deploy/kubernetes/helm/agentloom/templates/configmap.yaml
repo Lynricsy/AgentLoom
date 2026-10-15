@@ -25,6 +25,9 @@ data:
   APP_SANDBOX_MAINTENANCE_MODE: {{ .Values.env.shared.APP_SANDBOX_MAINTENANCE_MODE | quote }}
   APP_SANDBOX_ROLLBACK_HOURS: {{ .Values.env.shared.APP_SANDBOX_ROLLBACK_HOURS | quote }}
   APP_SANDBOX_NODE_ADMIN_TENANT_IDS: {{ .Values.env.shared.APP_SANDBOX_NODE_ADMIN_TENANT_IDS | default "" | quote }}
+  APP_TYPESAFE_BASE_URL: {{ .Values.env.shared.APP_TYPESAFE_BASE_URL | quote }}
+  APP_TYPESAFE_MODEL: {{ .Values.env.shared.APP_TYPESAFE_MODEL | quote }}
+  APP_TYPESAFE_TIMEOUT_MS: {{ .Values.env.shared.APP_TYPESAFE_TIMEOUT_MS | quote }}
 ---
 apiVersion: v1
 kind: ConfigMap

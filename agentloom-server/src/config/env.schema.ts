@@ -126,6 +126,27 @@ const baseEnvSchema = z.object({
   /** 对外公开访问的站点基址（如 `https://agentloom.example.com`）；A2A Agent Card 用它拼接 RPC 地址，缺省时取请求的协议与主机 */
   APP_PUBLIC_BASE_URL: optionalUrlFromEnv('无效的公开访问基址 URL'),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
+  /** TypeSafe Jev 决策 API Key；设置后 DecisionService 以影子模式调用 Jev 并记录结果，未设置时不调用 */
+  APP_TYPESAFE_API_KEY: optionalNonEmptyStringFromEnv(
+    'TypeSafe API Key 不能为空',
+  ),
+  APP_TYPESAFE_BASE_URL: z.preprocess(
+    emptyStringToUndefined,
+    z
+      .string()
+      .url('无效的 TypeSafe API 基址')
+      .default('https://api.typesafe.ai'),
+  ),
+  /** 钉版的 Jev 模型名，升级需走上游审阅 */
+  APP_TYPESAFE_MODEL: z.preprocess(
+    emptyStringToUndefined,
+    z.string().min(1).default('jev-1.13.0'),
+  ),
+  /** 单次 Jev 影子调用超时（毫秒） */
+  APP_TYPESAFE_TIMEOUT_MS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(3000),
+  ),
   /** Firebase 服务账号 JSON；缺省时推送通知禁用 */
   FIREBASE_SERVICE_ACCOUNT:
     optionalNonEmptyStringFromEnv('Firebase 服务账号不能为空'),
