@@ -924,6 +924,10 @@ export class AgentExecutionWorkerRuntimeService {
               });
               continue;
             }
+            if (event.type === 'usage') {
+              // token 用量只在服务端累计落库，不推送实时事件
+              continue;
+            }
 
             this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
               stepId: conversationId,
@@ -965,6 +969,11 @@ export class AgentExecutionWorkerRuntimeService {
                 conversationId,
                 subAgentCaptureToken,
               ),
+              {
+                usage: accumulator.usage,
+                modelId: accumulator.modelId,
+                llmModelConfigId: session.llmModelConfigId,
+              },
             ),
           );
         }
@@ -986,6 +995,11 @@ export class AgentExecutionWorkerRuntimeService {
           conversationId,
           subAgentCaptureToken,
         ),
+        {
+          usage: accumulator.usage,
+          modelId: accumulator.modelId,
+          llmModelConfigId: session.llmModelConfigId,
+        },
       );
     } finally {
       this.eventBridge.clearSubAgentConversationCapture(

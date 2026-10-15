@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { TenantKeyModule } from '../tenant-key/tenant-key.module';
+import { LlmCostService } from './llm-cost.service';
 import { LlmEncryptionService } from './llm-encryption.service';
 import { LlmController } from './llm.controller';
 import { LlmProviderController } from './llm-provider.controller';
@@ -22,6 +23,7 @@ import { ThinkingCapabilityService } from './thinking-capability.service';
     LlmEncryptionService,
     ModelDiscoveryService,
     ThinkingCapabilityService,
+    LlmCostService,
   ],
   exports: [
     LlmService,
@@ -30,6 +32,7 @@ import { ThinkingCapabilityService } from './thinking-capability.service';
     LlmEncryptionService,
     ModelDiscoveryService,
     ThinkingCapabilityService,
+    LlmCostService,
   ],
 })
 export class LlmModule {}

@@ -54,6 +54,8 @@ import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-too
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { RouterRegistry } from '../smart-routing/core/router-registry';
 import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
+import { LlmCostService } from '../llm/llm-cost.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
@@ -937,6 +939,8 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly agentApiRunService?: AgentApiRunService,
     routerRegistry?: RouterRegistry,
     healthMonitorService?: HealthMonitorService,
+    llmCostService?: LlmCostService,
+    eventEmitter?: EventEmitter2,
     @Optional()
     injectedPersistenceService?: AgentExecutionWorkerPersistenceService,
     @Optional()
@@ -963,6 +967,8 @@ export class AgentExecutionWorker extends WorkerHost {
         selfEvolutionToolsProvider,
         smartRoutingService,
         agentApiRunService,
+        llmCostService,
+        eventEmitter,
       );
     this.runtimeService =
       injectedRuntimeService ??

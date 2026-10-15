@@ -1,6 +1,7 @@
 import { Module, type Provider } from '@nestjs/common';
 import { BullModule, getQueueToken } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
 import type Redis from 'ioredis';
 
@@ -36,6 +37,8 @@ import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { RouterRegistry } from '../smart-routing/core/router-registry';
 import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
+import { LlmModule } from '../llm/llm.module';
+import { LlmCostService } from '../llm/llm-cost.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
@@ -88,6 +91,8 @@ const agentExecutionWorkerProvider: Provider = {
     agentApiRunService?: AgentApiRunService,
     routerRegistry?: RouterRegistry,
     healthMonitorService?: HealthMonitorService,
+    llmCostService?: LlmCostService,
+    eventEmitter?: EventEmitter2,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -109,6 +114,8 @@ const agentExecutionWorkerProvider: Provider = {
       agentApiRunService,
       routerRegistry,
       healthMonitorService,
+      llmCostService,
+      eventEmitter,
     ),
   inject: [
     DRIZZLE,
@@ -130,6 +137,8 @@ const agentExecutionWorkerProvider: Provider = {
     AgentApiRunService,
     { token: RouterRegistry, optional: true },
     { token: HealthMonitorService, optional: true },
+    LlmCostService,
+    EventEmitter2,
   ],
 };
 
@@ -143,6 +152,7 @@ const agentExecutionWorkerProvider: Provider = {
     SandboxModule,
     AgentMemoryModule,
     SmartRoutingModule,
+    LlmModule,
     SkillModule,
     SelfEvolutionModule,
     AgentApiRuntimeModule,

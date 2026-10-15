@@ -2,6 +2,7 @@
  * Conversation execution 的消息持久化、子代理与会话资源服务。
  */
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
@@ -55,6 +56,7 @@ import type { PreparationPhase } from '../execution/types/execution-event.types'
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
+import { LlmCostService } from '../llm/llm-cost.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
@@ -127,6 +129,10 @@ import {
   type ConversationTurnResult,
   turnResultHasPersistableOutput,
 } from './conversation-turn-values';
+import {
+  AGENT_CONVERSATION_TURN_PERSISTED_EVENT,
+  type ConversationTurnPersistedEvent,
+} from './agent-execution.events';
 
 type ConversationExecutionContext = {
   conversation: {
@@ -209,6 +215,8 @@ export class AgentExecutionWorkerPersistenceService {
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     protected readonly smartRoutingService?: SmartRoutingService,
     protected readonly agentApiRunService?: AgentApiRunService,
+    protected readonly llmCostService?: LlmCostService,
+    protected readonly eventEmitter?: EventEmitter2,
   ) {}
 
   public async persistConversationTurn(
@@ -226,6 +234,8 @@ export class AgentExecutionWorkerPersistenceService {
       aborted?: boolean;
     },
   ): Promise<ConversationExecutionMetadata> {
+    // 定价查询放在落库事务之外：查询失败只丢失成本，不影响本轮消息落库
+    const costUsd = await this.estimateTurnCostUsd(tenantId, turnResult);
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
       const currentMetadata = await this.loadConversationMetadata(
         dbClient,
@@ -285,6 +295,15 @@ export class AgentExecutionWorkerPersistenceService {
               ...(options?.rawErrorMessage
                 ? { rawErrorMessage: options.rawErrorMessage }
                 : {}),
+              ...(turnResult.usage
+                ? {
+                    usage: turnResult.usage,
+                    ...(turnResult.modelId
+                      ? { modelId: turnResult.modelId }
+                      : {}),
+                    costUsd,
+                  }
+                : {}),
             },
           })
           .returning({ id: agentMessages.id });
@@ -340,8 +359,52 @@ export class AgentExecutionWorkerPersistenceService {
         })
         .where(eq(agentConversations.id, conversationId));
 
+      if (this.eventEmitter && pendingMessages.length > 0) {
+        const eventEmitter = this.eventEmitter;
+        const event: ConversationTurnPersistedEvent = {
+          conversationId,
+          tenantId,
+          assistantMessageId: lastAssistantMessageId ?? null,
+          processedMessageIds: pendingMessages.map((message) => message.id),
+          ...(turnResult.usage ? { usage: turnResult.usage } : {}),
+          costUsd,
+          stopReason: turnResult.stopReason,
+        };
+        registerAfterCommitHook(async () => {
+          eventEmitter.emit(AGENT_CONVERSATION_TURN_PERSISTED_EVENT, event);
+        });
+      }
+
       return executionMetadata;
     });
+  }
+
+  /** 按本轮模型配置定价换算成本；无用量、无模型配置或查询失败时为 null */
+  private async estimateTurnCostUsd(
+    tenantId: string,
+    turnResult: ConversationTurnResult,
+  ): Promise<number | null> {
+    if (
+      !this.llmCostService ||
+      !turnResult.usage ||
+      !turnResult.llmModelConfigId
+    ) {
+      return null;
+    }
+    try {
+      const pricing = await this.llmCostService.resolvePricing(
+        tenantId,
+        turnResult.llmModelConfigId,
+      );
+      return this.llmCostService.estimateCostUsd(pricing, turnResult.usage);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve model pricing for ${turnResult.llmModelConfigId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
   }
 
   public async updateExecutionMetadata(

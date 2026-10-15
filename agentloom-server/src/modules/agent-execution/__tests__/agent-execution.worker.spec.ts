@@ -3865,6 +3865,94 @@ describe('AgentExecutionWorker', () => {
 
         expect(afterCommitHooks).toHaveLength(0);
       });
+
+      it('有 usage 时 assistant metadata 写入 usage/modelId/costUsd，并在提交后发出 turn-persisted 事件', async () => {
+        mockAgentApiRunService.finalizeTurnInTransaction.mockResolvedValue([]);
+        const pricing = { inputPer1MTokens: 3, outputPer1MTokens: 15 };
+        const llmCostService = {
+          resolvePricing: vi.fn().mockResolvedValue(pricing),
+          estimateCostUsd: vi.fn().mockReturnValue(0.0105),
+        };
+        const eventEmitter = { emit: vi.fn() };
+        const usagePersistence = new AgentExecutionWorkerPersistenceService(
+          persistenceDb as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          mockAgentApiRunService as never,
+          llmCostService as never,
+          eventEmitter as never,
+        );
+        vi.spyOn(
+          usagePersistence as unknown as {
+            loadConversationMetadata: () => Promise<Record<string, unknown>>;
+          },
+          'loadConversationMetadata',
+        ).mockResolvedValue({});
+        const usage = {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+        };
+
+        await usagePersistence.persistConversationTurn(
+          'c-1',
+          't-1',
+          pending,
+          turnResult({
+            usage,
+            modelId: 'gpt-test',
+            llmModelConfigId: 'model-config-1',
+          }) as never,
+          'session-1',
+        );
+
+        expect(llmCostService.resolvePricing).toHaveBeenCalledWith(
+          't-1',
+          'model-config-1',
+        );
+        expect(llmCostService.estimateCostUsd).toHaveBeenCalledWith(
+          pricing,
+          usage,
+        );
+        expect(insertChain.values).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            metadata: expect.objectContaining({
+              usage,
+              modelId: 'gpt-test',
+              costUsd: 0.0105,
+            }),
+          }),
+        );
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+
+        await Promise.all(afterCommitHooks.map((hook) => hook()));
+
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          'agent-conversation.turn-persisted',
+          {
+            conversationId: 'c-1',
+            tenantId: 't-1',
+            assistantMessageId: 'assistant-1',
+            processedMessageIds: ['msg-1'],
+            usage,
+            costUsd: 0.0105,
+            stopReason: 'end_turn',
+          },
+        );
+      });
     });
   });
 });

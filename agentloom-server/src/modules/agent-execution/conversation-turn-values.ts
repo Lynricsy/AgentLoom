@@ -1,4 +1,5 @@
 import type {
+  AgentUsage,
   DecisionEvent,
   StopReason,
 } from '../agent/types/agent-event.types';
@@ -25,7 +26,19 @@ export type ConversationTurnResult = {
   toolResults: Array<Record<string, unknown>>;
   segments: ConversationMessageSegmentRecord[];
   subAgentStreams: Record<string, PersistedSubAgentStreamRecord>;
+  /** 本轮全部 assistant 消息的 token 用量之和 */
+  usage?: AgentUsage;
+  /** provider 返回的模型 id */
+  modelId?: string;
+  /** 本轮使用的模型配置（用于按定价换算成本） */
+  llmModelConfigId?: string;
 };
+
+export type ConversationTurnUsage = Pick<
+  ConversationTurnResult,
+  'usage' | 'modelId' | 'llmModelConfigId'
+>;
+
 export function buildPromptBlocks(
   pendingMessages: PendingConversationPromptMessage[],
   hasPriorTurns: boolean,
@@ -55,6 +68,7 @@ export function buildConversationTurnResult(
   toolCalls: Iterable<ToolCallEvent> | Map<string, ToolCallEvent>,
   segments: ConversationMessageSegmentRecord[],
   subAgentStreams: Record<string, PersistedSubAgentStreamRecord>,
+  turnUsage: ConversationTurnUsage = {},
 ): ConversationTurnResult {
   const toolCallList =
     toolCalls instanceof Map ? [...toolCalls.values()] : [...toolCalls];
@@ -76,6 +90,11 @@ export function buildConversationTurnResult(
     toolResults,
     segments,
     subAgentStreams,
+    ...(turnUsage.usage ? { usage: turnUsage.usage } : {}),
+    ...(turnUsage.modelId ? { modelId: turnUsage.modelId } : {}),
+    ...(turnUsage.llmModelConfigId
+      ? { llmModelConfigId: turnUsage.llmModelConfigId }
+      : {}),
   };
 }
 
