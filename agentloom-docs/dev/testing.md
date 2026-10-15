@@ -77,6 +77,8 @@ E2E_REDIS_URL=redis://127.0.0.1:46379 pnpm test:e2e -- trigger
 
 用 `vi.mock('ioredis')` 完全打桩 Redis 的 spec 还必须覆盖全部队列：遍历 `agentloom-server/test/support/bullmq-queues.ts` 的 `BULLMQ_QUEUE_NAMES` 覆盖 `getQueueToken(name)`。`vi.mock` 管不到 bullmq 内部的 ioredis，漏掉的队列会连真实 Redis。新增 `BullModule.registerQueue` 时同步加进这个列表。
 
+依赖真实队列 worker 推进流程的 AppModule spec（如 `agentloom-server/test/team-runtime.e2e-spec.ts`）必须隔离 BullMQ key 前缀：并行的其他 AppModule spec 连同一个 Redis、使用默认前缀 `bull`，它们的 worker 会取走本 spec 入队的任务（例如 jobId 为对话 id 的对话执行任务），在自己的数据库里查不到对话后静默完成，本 spec 的任务就此丢失。用 `agentloom-server/test/support/bullmq-isolation.ts` 的 `createBullMqIsolation()` 覆盖共享配置（`.overrideProvider(isolation.token).useValue(isolation.config)`），并在 `afterAll` 关闭应用后调用 `isolation.cleanup()` 删除该前缀下的 key。
+
 ### 覆盖率
 
 ```bash

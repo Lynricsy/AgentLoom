@@ -47,6 +47,10 @@ import {
   seedWorkflowDefinition,
   type RlsTestContext,
 } from './rls/rls-test-utils';
+import {
+  createBullMqIsolation,
+  type BullMqIsolation,
+} from './support/bullmq-isolation';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
 const WAIT_TIMEOUT_MS = 30_000;
@@ -382,6 +386,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
     result: string;
   }> = [];
 
+  let bullIsolation: BullMqIsolation;
   let tenantId: string;
   let headers: Record<string, string>;
   let userId: string;
@@ -395,6 +400,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
     process.env.APP_JWT_SECRET = JWT_SECRET;
     await fakeModel.start();
     ctx = await createRlsTestContext();
+    bullIsolation = createBullMqIsolation();
     // 成员对话、执行 worker、团队清扫并发持有连接：应用使用独立的更大连接池
     appSql = postgres(ctx.container.getConnectionUri(), { max: 20 });
     const appDb = drizzle(appSql, { schema });
@@ -412,6 +418,9 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
       })
       .overrideProvider(DRIZZLE)
       .useValue(appDb)
+      // 并行的其他 AppModule spec 也在同一 Redis 上跑 worker：独立前缀防止本 spec 的任务被其取走
+      .overrideProvider(bullIsolation.token)
+      .useValue(bullIsolation.config)
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(
@@ -469,6 +478,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
 
   afterAll(async () => {
     await app?.close();
+    await bullIsolation?.cleanup();
     await fakeModel.stop();
     await appSql?.end();
     await ctx?.close();
