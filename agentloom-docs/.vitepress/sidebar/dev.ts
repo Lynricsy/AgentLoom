@@ -66,6 +66,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: '新增环境变量', link: '/dev/howto/add-env-var' },
       { text: '新增 Socket 事件', link: '/dev/howto/add-socket-event' },
       { text: '文档维护指南', link: '/dev/docs-maintenance' },
+      { text: '上游追踪', link: '/dev/upstreams' },
     ],
   },
   {
