@@ -4007,6 +4007,236 @@ export interface CreateWorkflowDefinitionDto {
 /**
  * 
  * @export
+ * @interface DecisionRecordListResponseDto
+ */
+export interface DecisionRecordListResponseDto {
+    /**
+     * 
+     * @type {Array<DecisionRecordListResponseDtoDataInner>}
+     * @memberof DecisionRecordListResponseDto
+     */
+    data: Array<DecisionRecordListResponseDtoDataInner>;
+    /**
+     * 
+     * @type {ExecutionListResponseSwaggerDtoMeta}
+     * @memberof DecisionRecordListResponseDto
+     */
+    meta: ExecutionListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface DecisionRecordListResponseDtoDataInner
+ */
+export interface DecisionRecordListResponseDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    kind: DecisionRecordListResponseDtoDataInnerKindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    subjectType: DecisionRecordListResponseDtoDataInnerSubjectTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    subjectId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    provider: DecisionRecordListResponseDtoDataInnerProviderEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    model: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    mode: DecisionRecordListResponseDtoDataInnerModeEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    definitionVersion: number;
+    /**
+     * 
+     * @type {DecisionRecordListResponseDtoDataInnerOutcome}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    outcome: DecisionRecordListResponseDtoDataInnerOutcome | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    confidence: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    latencyMs: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    inputTokens: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    outputTokens: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    error: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInner
+     */
+    createdAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const DecisionRecordListResponseDtoDataInnerKindEnum = {
+    TeamMessageRelevance: 'team.message_relevance',
+    RoutingModelChoice: 'routing.model_choice'
+} as const;
+export type DecisionRecordListResponseDtoDataInnerKindEnum = typeof DecisionRecordListResponseDtoDataInnerKindEnum[keyof typeof DecisionRecordListResponseDtoDataInnerKindEnum];
+
+/**
+ * @export
+ */
+export const DecisionRecordListResponseDtoDataInnerSubjectTypeEnum = {
+    TeamMessage: 'team_message',
+    RoutingDecision: 'routing_decision'
+} as const;
+export type DecisionRecordListResponseDtoDataInnerSubjectTypeEnum = typeof DecisionRecordListResponseDtoDataInnerSubjectTypeEnum[keyof typeof DecisionRecordListResponseDtoDataInnerSubjectTypeEnum];
+
+/**
+ * @export
+ */
+export const DecisionRecordListResponseDtoDataInnerProviderEnum = {
+    Rule: 'rule',
+    Jev: 'jev'
+} as const;
+export type DecisionRecordListResponseDtoDataInnerProviderEnum = typeof DecisionRecordListResponseDtoDataInnerProviderEnum[keyof typeof DecisionRecordListResponseDtoDataInnerProviderEnum];
+
+/**
+ * @export
+ */
+export const DecisionRecordListResponseDtoDataInnerModeEnum = {
+    Primary: 'primary',
+    Shadow: 'shadow'
+} as const;
+export type DecisionRecordListResponseDtoDataInnerModeEnum = typeof DecisionRecordListResponseDtoDataInnerModeEnum[keyof typeof DecisionRecordListResponseDtoDataInnerModeEnum];
+
+/**
+ * @type DecisionRecordListResponseDtoDataInnerOutcome
+ * 
+ * @export
+ */
+export type DecisionRecordListResponseDtoDataInnerOutcome = DecisionRecordListResponseDtoDataInnerOutcomeOneOf | DecisionRecordListResponseDtoDataInnerOutcomeOneOf1;
+/**
+ * 
+ * @export
+ * @interface DecisionRecordListResponseDtoDataInnerOutcomeOneOf
+ */
+export interface DecisionRecordListResponseDtoDataInnerOutcomeOneOf {
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInnerOutcomeOneOf
+     */
+    type: DecisionRecordListResponseDtoDataInnerOutcomeOneOfTypeEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInnerOutcomeOneOf
+     */
+    value: number;
+}
+
+
+/**
+ * @export
+ */
+export const DecisionRecordListResponseDtoDataInnerOutcomeOneOfTypeEnum = {
+    Noul: 'noul'
+} as const;
+export type DecisionRecordListResponseDtoDataInnerOutcomeOneOfTypeEnum = typeof DecisionRecordListResponseDtoDataInnerOutcomeOneOfTypeEnum[keyof typeof DecisionRecordListResponseDtoDataInnerOutcomeOneOfTypeEnum];
+
+/**
+ * 
+ * @export
+ * @interface DecisionRecordListResponseDtoDataInnerOutcomeOneOf1
+ */
+export interface DecisionRecordListResponseDtoDataInnerOutcomeOneOf1 {
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInnerOutcomeOneOf1
+     */
+    type: DecisionRecordListResponseDtoDataInnerOutcomeOneOf1TypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof DecisionRecordListResponseDtoDataInnerOutcomeOneOf1
+     */
+    choice: string;
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof DecisionRecordListResponseDtoDataInnerOutcomeOneOf1
+     */
+    probabilities: { [key: string]: number; };
+    /**
+     * 
+     * @type {number}
+     * @memberof DecisionRecordListResponseDtoDataInnerOutcomeOneOf1
+     */
+    confidence: number;
+}
+
+
+/**
+ * @export
+ */
+export const DecisionRecordListResponseDtoDataInnerOutcomeOneOf1TypeEnum = {
+    Choice: 'choice'
+} as const;
+export type DecisionRecordListResponseDtoDataInnerOutcomeOneOf1TypeEnum = typeof DecisionRecordListResponseDtoDataInnerOutcomeOneOf1TypeEnum[keyof typeof DecisionRecordListResponseDtoDataInnerOutcomeOneOf1TypeEnum];
+
+/**
+ * 
+ * @export
  * @interface DeleteGeneratedAppSubmissionsDto
  */
 export interface DeleteGeneratedAppSubmissionsDto {

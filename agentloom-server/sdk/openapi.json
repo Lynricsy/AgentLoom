@@ -14070,6 +14070,94 @@
         ]
       }
     },
+    "/api/v1/decision-records": {
+      "get": {
+        "operationId": "Decision_listDecisionRecords",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "team.message_relevance",
+                "routing.model_choice"
+              ]
+            }
+          },
+          {
+            "name": "subjectType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "team_message",
+                "routing_decision"
+              ]
+            }
+          },
+          {
+            "name": "subjectId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "按创建时间倒序分页的决策记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionRecordListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "查询决策记录（规则主结果与 Jev 影子结果）",
+        "tags": [
+          "decision"
+        ]
+      }
+    },
     "/api/v1/resource-sources/{resourceType}/{resourceId}/convert-to-manual": {
       "post": {
         "operationId": "ResourceSource_convertToManual",
@@ -22942,7 +23030,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-12T11:15:38.305Z",
+                  "default": "2026-10-15T10:39:46.352Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
@@ -23993,6 +24081,204 @@
               "page",
               "pageSize",
               "total"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "DecisionRecordListResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "team.message_relevance",
+                    "routing.model_choice"
+                  ]
+                },
+                "subjectType": {
+                  "type": "string",
+                  "enum": [
+                    "team_message",
+                    "routing_decision"
+                  ]
+                },
+                "subjectId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "provider": {
+                  "type": "string",
+                  "enum": [
+                    "rule",
+                    "jev"
+                  ]
+                },
+                "model": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "primary",
+                    "shadow"
+                  ]
+                },
+                "definitionVersion": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "outcome": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "noul"
+                          ]
+                        },
+                        "value": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "choice"
+                          ]
+                        },
+                        "choice": {
+                          "type": "string"
+                        },
+                        "probabilities": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        },
+                        "confidence": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "choice",
+                        "probabilities",
+                        "confidence"
+                      ]
+                    }
+                  ],
+                  "nullable": true
+                },
+                "confidence": {
+                  "type": "number",
+                  "nullable": true
+                },
+                "latencyMs": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "nullable": true
+                },
+                "outputTokens": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "nullable": true
+                },
+                "error": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "subjectType",
+                "subjectId",
+                "provider",
+                "model",
+                "mode",
+                "definitionVersion",
+                "outcome",
+                "confidence",
+                "latencyMs",
+                "inputTokens",
+                "outputTokens",
+                "error",
+                "createdAt"
+              ]
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "pageSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "totalPages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "total",
+              "page",
+              "limit",
+              "pageSize",
+              "totalPages"
             ]
           }
         },
