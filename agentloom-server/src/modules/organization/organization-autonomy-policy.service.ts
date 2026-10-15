@@ -595,6 +595,12 @@ export class OrganizationAutonomyPolicyService {
 
   private isAgentNode(node: ReactFlowNode): boolean {
     const nodeData = this.asRecord(node.data) ?? {};
+    // 规范化后 node.type 是分类（team、llm-model 等同属 agent 分类且没有节点级自治模式），
+    // 有具体节点类型时只按它判断；缺失时才回退到 node.type 与分类
+    const nodeType = this.readString(nodeData.nodeType, nodeData.node_type);
+    if (nodeType) {
+      return nodeType === 'agent' || nodeType === 'llm-agent';
+    }
 
     return (
       node.type === 'agent' ||

@@ -594,6 +594,38 @@ describe('MarketplaceReviewService', () => {
     );
   });
 
+  it('规范化后分类为 agent 的 team 节点不按 Agent 节点要求绑定', async () => {
+    db.select
+      .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            snapshot: createWorkflowSnapshot({
+              nodes: [
+                createNode({
+                  type: 'agent',
+                  data: { nodeType: 'team', category: 'agent', config: {} },
+                }),
+              ],
+            }),
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
+
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
+
+    expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE').status).toBe(
+      'passed',
+    );
+  });
+
   it('没有完成执行记录时应返回近期成功执行缺失', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))

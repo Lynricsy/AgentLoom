@@ -293,10 +293,18 @@ export class OptimizationAnalysisService {
   }
 
   private isAgentNode(node: ReactFlowNode): boolean {
+    const nodeData = this.asRecord(node.data) ?? {};
+    // 规范化后 node.type 是分类（team、llm-model 等同属 agent 分类），
+    // 有具体节点类型时只按它判断；缺失时才回退到 node.type 与分类
+    const nodeType = this.readString(nodeData.nodeType, nodeData.node_type);
+    if (nodeType) {
+      return nodeType === 'agent' || nodeType === 'llm-agent';
+    }
+
     return (
       node.type === 'agent' ||
       node.type === 'llm-agent' ||
-      this.readString(node.data?.category) === 'agent'
+      this.readString(nodeData.category) === 'agent'
     );
   }
 

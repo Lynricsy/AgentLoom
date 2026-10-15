@@ -692,6 +692,44 @@ describe('OrganizationAutonomyPolicyService', () => {
         violations: [],
       });
     });
+
+    it('ignores team and llm-model nodes that share the normalized agent category', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationAutonomyPolicies.findFirst.mockResolvedValue(
+        makePolicy({ autonomyCap: 'MANUAL_CONFIRM' }),
+      );
+
+      const result = await service.inspectWorkflowNodesAgainstPolicy({
+        tenantId: TENANT_ID,
+        workflowId: 'wf-team',
+        workflowName: 'Team workflow',
+        nodes: [
+          {
+            id: 'team-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: { nodeType: 'team', category: 'agent' },
+          },
+          {
+            id: 'model-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: { nodeType: 'llm-model', category: 'agent' },
+          },
+          {
+            id: 'agent-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: { nodeType: 'agent', category: 'agent' },
+          },
+        ],
+      });
+
+      // 只有真正的 agent 节点（未配置 → FULL_AUTO）超过上限
+      expect(result.violations.map((violation) => violation.nodeId)).toEqual([
+        'agent-1',
+      ]);
+    });
   });
 
   describe('previewAutonomyDowngrade', () => {

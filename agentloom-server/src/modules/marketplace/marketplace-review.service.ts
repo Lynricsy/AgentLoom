@@ -242,7 +242,14 @@ export class MarketplaceReviewService {
         ),
       );
     }
-    const agentNodes = nodes.filter((n) => n.type === 'agent');
+    // 规范化后 node.type 是分类（team、llm-model 等同属 agent 分类），必须按具体节点类型判断
+    const agentNodes = nodes.filter(
+      (n) =>
+        this.readNonEmptyString(
+          this.isRecord(n.data) ? n.data.nodeType : undefined,
+          n.type,
+        ) === 'agent',
+    );
     const misconfiguredNodes: Array<{
       nodeId: string;
       nodeType: string;
