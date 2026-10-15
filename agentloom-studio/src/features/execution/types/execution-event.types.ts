@@ -1,6 +1,11 @@
 // 客户端执行事件类型 — 与服务端 execution-event.types.ts 保持对齐
 
 import type {
+  TeamMessagePayload,
+  TeamStatusPayload,
+} from '@agentloom/contracts'
+
+import type {
   AgentEvent,
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
@@ -20,7 +25,12 @@ export const ExecutionEventName = {
   NODE_TOOL_CALL_STATUS: 'execution.node.tool-call-status',
   NODE_TOOL_PERMISSION_REQUIRED: 'execution.node.tool-permission-required',
   NODE_TOOL_PERMISSION_RESOLVED: 'execution.node.tool-permission-resolved',
+  TEAM_STATUS: 'execution.node.team-status',
+  TEAM_MESSAGE: 'execution.node.team-message',
 } as const
+
+// 团队事件为新增 wire 形状，直接复用契约层类型，不再手写镜像
+export type { TeamMessagePayload, TeamStatusPayload }
 
 export type ExecutionEventNameValue =
   (typeof ExecutionEventName)[keyof typeof ExecutionEventName]
@@ -206,6 +216,12 @@ export interface ServerToClientEvents {
   ) => void
   [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]: (
     event: ExecutionEvent<ToolPermissionResolvedPayload>,
+  ) => void
+  [ExecutionEventName.TEAM_STATUS]: (
+    event: ExecutionEvent<TeamStatusPayload>,
+  ) => void
+  [ExecutionEventName.TEAM_MESSAGE]: (
+    event: ExecutionEvent<TeamMessagePayload>,
   ) => void
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void
   error: (error: { message: string; code?: string }) => void

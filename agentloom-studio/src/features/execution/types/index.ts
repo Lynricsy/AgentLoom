@@ -31,6 +31,8 @@ export type {
   StepStatusChangedPayload,
   SubscribeAck,
   SubscribePayload,
+  TeamMessagePayload,
+  TeamStatusPayload,
   UnsubscribePayload,
 } from './execution-event.types'
 

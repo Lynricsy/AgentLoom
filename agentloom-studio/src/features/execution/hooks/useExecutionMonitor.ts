@@ -32,6 +32,8 @@ export function useExecutionMonitor(
     updateToolCall,
     setToolPermissionRequired,
     resolveToolPermissionEvent,
+    updateTeamStatus,
+    upsertTeamMessage,
     addAgentEvent,
   } = useExecutionActions()
 
@@ -56,6 +58,8 @@ export function useExecutionMonitor(
     onToolCallStatusChanged: updateToolCall,
     onToolPermissionRequired: setToolPermissionRequired,
     onToolPermissionResolved: resolveToolPermissionEvent,
+    onTeamStatus: updateTeamStatus,
+    onTeamMessage: upsertTeamMessage,
     onStepAgentEvent: (event) => {
       const node = Object.values(useExecutionStore.getState().nodes).find(
         (currentNode) => currentNode.stepId === event.data.stepId,

@@ -19,6 +19,8 @@ import type {
   InterventionRequiredPayload,
   InterventionResolvedPayload,
   ToolCallStatusPayload,
+  TeamStatusPayload,
+  TeamMessagePayload,
 } from '../types/execution-event.types';
 
 const TENANT = 'tenant-1';
@@ -367,6 +369,77 @@ describe('EventBridgeService', () => {
           index: payload.index,
           executionType: 'conversation',
         }),
+      );
+    });
+  });
+
+  describe('emitTeamStatus', () => {
+    it('应创建标准信封并广播', () => {
+      const payload: TeamStatusPayload = {
+        stepId: 's1',
+        nodeId: 'team-1',
+        teamRunId: 'tr-1',
+        status: 'running',
+        members: [
+          {
+            memberId: 'm1',
+            role: 'implementer',
+            isLead: true,
+            status: 'running',
+            usedTokens: 120,
+          },
+        ],
+        budget: {
+          usedTokens: 120,
+          maxTotalTokens: 500_000,
+          messageCount: 0,
+          maxMessages: 200,
+          deadlineAt: '2026-10-15T09:00:00.000Z',
+        },
+      };
+
+      const result = service.emitTeamStatus(TENANT, EXEC, payload);
+
+      expect(result).toMatchObject({
+        eventId: 1,
+        event: ExecutionEventName.TEAM_STATUS,
+        data: payload,
+      });
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledWith(
+        TENANT,
+        EXEC,
+        'execution.node.team-status',
+        expect.objectContaining({ eventId: 1 }),
+      );
+    });
+  });
+
+  describe('emitTeamMessage', () => {
+    it('应创建标准信封并广播', () => {
+      const payload: TeamMessagePayload = {
+        stepId: 's1',
+        teamRunId: 'tr-1',
+        messageId: 'msg-1',
+        fromRole: null,
+        toRole: 'implementer',
+        kind: 'system',
+        preview: '所有成员已空闲',
+        deliveryStatus: 'delivered',
+        createdAt: '2026-10-15T08:00:00.000Z',
+      };
+
+      const result = service.emitTeamMessage(TENANT, EXEC, payload);
+
+      expect(result).toMatchObject({
+        eventId: 1,
+        event: ExecutionEventName.TEAM_MESSAGE,
+        data: payload,
+      });
+      expect(gateway.broadcastTypedEvent).toHaveBeenCalledWith(
+        TENANT,
+        EXEC,
+        'execution.node.team-message',
+        expect.objectContaining({ eventId: 1 }),
       );
     });
   });

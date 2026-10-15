@@ -7,6 +7,13 @@ import {
   ToolCallStatusSchema,
   ToolCallTransitionSourceSchema,
 } from './agent-events';
+import {
+  TeamFailureReasonSchema,
+  TeamMemberStatusSchema,
+  TeamMessageDeliveryStatusSchema,
+  TeamMessageKindSchema,
+  TeamRunStatusSchema,
+} from './team';
 
 /**
  * Socket.IO `/execution` 与 `/agent-conversation` namespace 的 wire 契约。
@@ -29,6 +36,8 @@ export const EXECUTION_EVENT_NAMES = [
   'execution.node.tool-call-status',
   'execution.node.tool-permission-required',
   'execution.node.tool-permission-resolved',
+  'execution.node.team-status',
+  'execution.node.team-message',
 ] as const;
 
 export const ExecutionEventNameSchema = z.enum(EXECUTION_EVENT_NAMES);
@@ -208,6 +217,45 @@ export const ToolPermissionResolvedPayloadSchema = z.object({
   action: z.enum(['approve', 'deny']),
 });
 
+/** 团队运行整体状态快照：每次状态、成员或预算变化时整份推送，客户端直接覆盖。 */
+export const TeamStatusPayloadSchema = z.object({
+  stepId: z.string(),
+  nodeId: z.string(),
+  teamRunId: z.string(),
+  status: TeamRunStatusSchema,
+  members: z.array(
+    z.object({
+      memberId: z.string(),
+      role: z.string(),
+      isLead: z.boolean(),
+      status: TeamMemberStatusSchema,
+      usedTokens: z.number().int(),
+    }),
+  ),
+  budget: z.object({
+    usedTokens: z.number().int(),
+    maxTotalTokens: z.number().int(),
+    messageCount: z.number().int(),
+    maxMessages: z.number().int(),
+    deadlineAt: z.string(),
+  }),
+  failureReason: TeamFailureReasonSchema.optional(),
+});
+
+/** 团队消息的创建或投递状态变化；同一 `messageId` 会随状态推进多次推送。 */
+export const TeamMessagePayloadSchema = z.object({
+  stepId: z.string(),
+  teamRunId: z.string(),
+  messageId: z.string(),
+  /** null 表示系统消息 */
+  fromRole: z.string().nullable(),
+  toRole: z.string(),
+  kind: TeamMessageKindSchema,
+  preview: z.string().max(200),
+  deliveryStatus: TeamMessageDeliveryStatusSchema,
+  createdAt: z.string(),
+});
+
 export const EXECUTION_EVENT_PAYLOAD_SCHEMAS = {
   'execution.status.changed': ExecutionStatusChangedPayloadSchema,
   'execution.node.status-changed': StepStatusChangedPayloadSchema,
@@ -221,6 +269,8 @@ export const EXECUTION_EVENT_PAYLOAD_SCHEMAS = {
     ToolPermissionRequiredPayloadSchema,
   'execution.node.tool-permission-resolved':
     ToolPermissionResolvedPayloadSchema,
+  'execution.node.team-status': TeamStatusPayloadSchema,
+  'execution.node.team-message': TeamMessagePayloadSchema,
 } as const;
 
 /**
@@ -304,6 +354,8 @@ export type ToolPermissionRequiredPayload = z.infer<
 export type ToolPermissionResolvedPayload = z.infer<
   typeof ToolPermissionResolvedPayloadSchema
 >;
+export type TeamStatusPayload = z.infer<typeof TeamStatusPayloadSchema>;
+export type TeamMessagePayload = z.infer<typeof TeamMessagePayloadSchema>;
 export type StepSnapshot = z.infer<typeof StepSnapshotSchema>;
 export type ExecutionStateSnapshot = z.infer<
   typeof ExecutionStateSnapshotSchema
@@ -320,6 +372,8 @@ export interface ExecutionEventPayloadMap {
   'execution.node.tool-call-status': ToolCallStatusPayload;
   'execution.node.tool-permission-required': ToolPermissionRequiredPayload;
   'execution.node.tool-permission-resolved': ToolPermissionResolvedPayload;
+  'execution.node.team-status': TeamStatusPayload;
+  'execution.node.team-message': TeamMessagePayload;
 }
 
 export interface ExecutionEvent<

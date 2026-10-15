@@ -16,6 +16,8 @@ import {
   type ToolCallStatusPayload,
   type ToolPermissionRequiredPayload,
   type ToolPermissionResolvedPayload,
+  type TeamStatusPayload,
+  type TeamMessagePayload,
   type LegacyEventName,
   LEGACY_EVENT_MAP,
 } from '../types/execution-event.types';
@@ -299,6 +301,38 @@ export class EventBridgeService implements OnModuleDestroy {
   ): ExecutionEvent<typeof ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED> {
     const envelope = this.createEnvelope(
       ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  /** 团队运行状态快照（成员、预算、终态原因），客户端整份覆盖。 */
+  emitTeamStatus(
+    tenantId: string,
+    executionId: string,
+    payload: TeamStatusPayload,
+  ): ExecutionEvent<typeof ExecutionEventName.TEAM_STATUS> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.TEAM_STATUS,
+      tenantId,
+      executionId,
+      payload,
+    );
+    this.broadcast(tenantId, executionId, envelope);
+    return envelope;
+  }
+
+  /** 团队消息创建或投递状态推进（pending → delivered → consumed 等）。 */
+  emitTeamMessage(
+    tenantId: string,
+    executionId: string,
+    payload: TeamMessagePayload,
+  ): ExecutionEvent<typeof ExecutionEventName.TEAM_MESSAGE> {
+    const envelope = this.createEnvelope(
+      ExecutionEventName.TEAM_MESSAGE,
       tenantId,
       executionId,
       payload,

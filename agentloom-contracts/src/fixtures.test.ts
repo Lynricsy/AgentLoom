@@ -28,6 +28,8 @@ const PAYLOAD_FIXTURES: Record<string, ExecutionEventName> = {
     'execution.node.tool-permission-required',
   'node-tool-permission-resolved.json':
     'execution.node.tool-permission-resolved',
+  'node-team-status.json': 'execution.node.team-status',
+  'node-team-message.json': 'execution.node.team-message',
 };
 
 function readFixture(...segments: string[]): unknown {

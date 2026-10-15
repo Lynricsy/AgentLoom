@@ -28,6 +28,8 @@ import type {
   StepStatus,
   StepStatusChangedPayload,
   StructuredErrorDetail,
+  TeamMessagePayload,
+  TeamStatusPayload,
   ToolCallEventData,
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
@@ -74,6 +76,25 @@ export interface NodeExecutionState {
   subAgentStreams: Record<string, SubAgentStream>
 }
 
+/** 团队运行的实时视图：状态事件整份覆盖，消息事件按 messageId 增量合并。 */
+export interface TeamRunLiveState {
+  teamRunId: string
+  stepId: string
+  /** 尚未收到状态事件（只收到消息）时为 null */
+  status: TeamStatusPayload['status'] | null
+  members: TeamStatusPayload['members']
+  budget: TeamStatusPayload['budget'] | null
+  failureReason?: TeamStatusPayload['failureReason']
+  /** 按到达顺序保留，同一 messageId 原位更新，最多 {@link MAX_TEAM_MESSAGES} 条 */
+  messages: TeamMessagePayload[]
+}
+
+/** REST 快照 hydrate 入参；messages 缺省视为空。 */
+export type TeamRunHydrateSnapshot = Omit<
+  TeamRunLiveState,
+  'teamRunId' | 'messages'
+> & { messages?: TeamMessagePayload[] }
+
 export interface ExecutionStoreState {
   executionId: string | null
   status: ExecutionStatus | null
@@ -83,6 +104,8 @@ export interface ExecutionStoreState {
   nodes: Record<string, NodeExecutionState>
   /** 保留最新 50 条用于调试 */
   recentEvents: ExecutionEvent[]
+  /** teamRunId → 团队运行实时状态 */
+  teamRuns: Record<string, TeamRunLiveState>
 }
 
 export interface ExecutionStoreActions {
@@ -115,6 +138,13 @@ export interface ExecutionStoreActions {
     resolveToolPermissionEvent: (
       event: ExecutionEvent<ToolPermissionResolvedPayload>,
     ) => void
+    updateTeamStatus: (event: ExecutionEvent<TeamStatusPayload>) => void
+    upsertTeamMessage: (event: ExecutionEvent<TeamMessagePayload>) => void
+    /** REST 快照只在该 teamRunId 尚无 socket 数据时写入，之后由 socket 驱动 */
+    hydrateTeamRun: (
+      teamRunId: string,
+      snapshot: TeamRunHydrateSnapshot,
+    ) => void
     addAgentEvent: (
       nodeId: string,
       agentEvent: AgentEvent,
@@ -136,6 +166,7 @@ export interface ExecutionStoreActions {
 }
 
 const MAX_RECENT_EVENTS = 50
+export const MAX_TEAM_MESSAGES = 500
 
 function createInitialState(): ExecutionStoreState {
   return {
@@ -145,6 +176,7 @@ function createInitialState(): ExecutionStoreState {
     totalSteps: 0,
     nodes: {},
     recentEvents: [],
+    teamRuns: {},
   }
 }
 
@@ -152,6 +184,44 @@ function pushEvent(state: ExecutionStoreState, event: ExecutionEvent): void {
   state.recentEvents.push(event)
   if (state.recentEvents.length > MAX_RECENT_EVENTS) {
     state.recentEvents = state.recentEvents.slice(-MAX_RECENT_EVENTS)
+  }
+}
+
+function ensureTeamRun(
+  state: ExecutionStoreState,
+  teamRunId: string,
+  stepId: string,
+): TeamRunLiveState {
+  const existing = state.teamRuns[teamRunId]
+  if (existing) {
+    return existing
+  }
+  const created: TeamRunLiveState = {
+    teamRunId,
+    stepId,
+    status: null,
+    members: [],
+    budget: null,
+    messages: [],
+  }
+  state.teamRuns[teamRunId] = created
+  return state.teamRuns[teamRunId]
+}
+
+function mergeTeamMessage(
+  messages: TeamMessagePayload[],
+  message: TeamMessagePayload,
+): void {
+  const index = messages.findIndex(
+    (current) => current.messageId === message.messageId,
+  )
+  if (index >= 0) {
+    messages[index] = message
+    return
+  }
+  messages.push(message)
+  if (messages.length > MAX_TEAM_MESSAGES) {
+    messages.splice(0, messages.length - MAX_TEAM_MESSAGES)
   }
 }
 
@@ -640,6 +710,57 @@ export const useExecutionStore = create<
                   event.data.action === 'approve' ? 'in_progress' : 'denied'
               }
               pushEvent(state, event)
+            })
+          },
+
+          updateTeamStatus: (event: ExecutionEvent<TeamStatusPayload>) => {
+            set((state) => {
+              const run = ensureTeamRun(
+                state,
+                event.data.teamRunId,
+                event.data.stepId,
+              )
+              run.status = event.data.status
+              run.members = event.data.members
+              run.budget = event.data.budget
+              run.failureReason = event.data.failureReason
+              pushEvent(state, event)
+            })
+          },
+
+          upsertTeamMessage: (event: ExecutionEvent<TeamMessagePayload>) => {
+            set((state) => {
+              const run = ensureTeamRun(
+                state,
+                event.data.teamRunId,
+                event.data.stepId,
+              )
+              mergeTeamMessage(run.messages, event.data)
+              pushEvent(state, event)
+            })
+          },
+
+          hydrateTeamRun: (
+            teamRunId: string,
+            snapshot: TeamRunHydrateSnapshot,
+          ) => {
+            set((state) => {
+              if (state.teamRuns[teamRunId]) {
+                return
+              }
+              const run: TeamRunLiveState = {
+                teamRunId,
+                stepId: snapshot.stepId,
+                status: snapshot.status,
+                members: snapshot.members,
+                budget: snapshot.budget,
+                failureReason: snapshot.failureReason,
+                messages: [],
+              }
+              for (const message of snapshot.messages ?? []) {
+                mergeTeamMessage(run.messages, message)
+              }
+              state.teamRuns[teamRunId] = run
             })
           },
 

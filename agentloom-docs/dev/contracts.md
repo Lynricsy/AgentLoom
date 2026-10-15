@@ -21,6 +21,7 @@ docType: reference
 | Agent 配置 | `agentloom-contracts/src/agent-runtime-config.ts` | `AGENT_RUNTIME_MODES`（`sandbox` \| `no_sandbox`）、模型（含 `AGENT_THINKING_LEVELS` 主模型思考强度词表 `off`…`max`；单个模型的可选集合不在契约里，由 server `GET /api/v1/llm-models/:id/thinking-capability` 按 LiteLLM → pi-ai 目录 → unknown 的顺序从模型能力推导，不支持的配置值在运行时按 pi `clampThinkingLevel` 收敛，见 [Agent 运行态](/dev/server/agent-runtime#主模型思考强度)）、工具、知识库、路由、沙箱配置与递归子 Agent |
 | 对外 API | `agentloom-contracts/src/agent-api-events.ts` | `/api/v1/agent-api/**` 的 run 资源与 SSE 事件，见 [Agent API](/api/agent-api) |
 | 权限 | `agentloom-contracts/src/rbac.ts` | `ORG_ROLES`、`OrgRole`、`RBAC_PERMISSION_MATRIX`、`Permission`、`PERMISSIONS`、`hasPermission()`、`parsePlatformApiScopes()`；server 的 `@RequirePermission` / `RolesGuard` / `ApiScopeGuard` 与 Studio 导航过滤共用这一份矩阵，平台 API Token 的 `scopes` 取值也是这里的权限名 |
+| 团队运行时 | `agentloom-contracts/src/team.ts` | workflow `team` 节点配置 `TeamNodeConfigSchema`（成员、预算、`outputSchema`；校验恰好一个负责人、角色唯一、`canMessage` 只指向现有角色或 `*` 且不含自己）、三角色模板 `TEAM_PRESET_TRIAGE`，以及团队运行 / 成员 / 消息投递状态与失败原因的取值表；团队 socket 事件载荷在 `execution-events.ts` |
 | fixtures | `agentloom-contracts/fixtures/` | 合法 server wire JSON，随包发布（`./fixtures/*` 导出），供 contracts、server、Studio、mobile 的契约测试读取 |
 
 Socket 事件信封与载荷保持 camelCase，不套用 REST 的大小写转换。server 的部分模块路径会再导出 contracts 的类型；定义源只在本包，不要在 server 再声明同名契约。
@@ -34,6 +35,7 @@ Socket 事件信封与载荷保持 camelCase，不套用 REST 的大小写转换
 | `agentloom-contracts/src/fixtures.test.ts` | 事件信封与回放快照 fixture 精确解析；`fixtures/execution-events/` 的文件集合与 `EXECUTION_EVENT_NAMES` 一一对应，且每个载荷通过对应 schema；runtime config fixture 保持 canonical 字段名，旧别名（如 `scoreThreshold`）不被接受 |
 | `agentloom-contracts/src/agent-api-events.test.ts` | `fixtures/agent-api/` 下的 SSE 事件 fixture |
 | `agentloom-contracts/src/callback-header.test.ts` | 沙箱回调令牌头名在 guest、runtime-manager、server 三端一致，见 [Firecracker 沙箱运行时](/dev/firecracker-runtime) |
+| `agentloom-contracts/src/team.test.ts` | 三角色模板补上 Agent ID 后通过 `TeamNodeConfigSchema`；负责人数量、角色重名、`canMessage` 指向不存在角色或自己时失败 |
 
 `port-data-type.test.ts` 比对的四个镜像：
 

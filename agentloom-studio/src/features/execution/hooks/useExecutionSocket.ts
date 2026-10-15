@@ -14,6 +14,8 @@ import type {
   StepRetryingPayload,
   StepStatusChangedPayload,
   SubscribeAck,
+  TeamMessagePayload,
+  TeamStatusPayload,
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
@@ -90,6 +92,8 @@ export interface ExecutionSocketCallbacks {
   onToolPermissionResolved?: (
     event: ExecutionEvent<ToolPermissionResolvedPayload>,
   ) => void
+  onTeamStatus?: (event: ExecutionEvent<TeamStatusPayload>) => void
+  onTeamMessage?: (event: ExecutionEvent<TeamMessagePayload>) => void
   onSnapshot?: (snapshot: ExecutionStateSnapshot) => void
   onError?: (error: { message: string; code?: string }) => void
 }
@@ -258,6 +262,16 @@ export function useExecutionSocket(
       callbacksRef.current.onToolPermissionResolved?.(event)
     }
 
+    const handleTeamStatus = (event: ExecutionEvent<TeamStatusPayload>) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onTeamStatus?.(event)
+    }
+
+    const handleTeamMessage = (event: ExecutionEvent<TeamMessagePayload>) => {
+      trackEventId(event.eventId)
+      callbacksRef.current.onTeamMessage?.(event)
+    }
+
     const handleSnapshot = (snapshot: ExecutionStateSnapshot) => {
       if (snapshot.lastEventId != null) {
         trackEventId(snapshot.lastEventId)
@@ -304,6 +318,8 @@ export function useExecutionSocket(
       ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED,
       handleToolPermissionResolved,
     )
+    socket.on(ExecutionEventName.TEAM_STATUS, handleTeamStatus)
+    socket.on(ExecutionEventName.TEAM_MESSAGE, handleTeamMessage)
     socket.on('execution.state.snapshot', handleSnapshot)
     socket.on('error', handleError)
 

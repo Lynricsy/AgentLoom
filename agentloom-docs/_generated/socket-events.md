@@ -26,6 +26,8 @@
 | `/execution` | server→client | `execution.node.output-chunk` | `agentloom-contracts/src/execution-events.ts` |
 | `/execution` | server→client | `execution.node.retrying` | `agentloom-contracts/src/execution-events.ts` |
 | `/execution` | server→client | `execution.node.status-changed` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.team-message` | `agentloom-contracts/src/execution-events.ts` |
+| `/execution` | server→client | `execution.node.team-status` | `agentloom-contracts/src/execution-events.ts` |
 | `/execution` | server→client | `execution.node.tool-call-status` | `agentloom-contracts/src/execution-events.ts` |
 | `/execution` | server→client | `execution.node.tool-permission-required` | `agentloom-contracts/src/execution-events.ts` |
 | `/execution` | server→client | `execution.node.tool-permission-resolved` | `agentloom-contracts/src/execution-events.ts` |

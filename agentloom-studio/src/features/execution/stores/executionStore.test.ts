@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useExecutionStore, type NodeExecutionState } from './executionStore'
+import {
+  MAX_TEAM_MESSAGES,
+  useExecutionStore,
+  type NodeExecutionState,
+} from './executionStore'
 import { resolveIntervention, resolveToolPermission } from '../api/executionApi'
 import type {
   AgentEvent,
@@ -11,6 +15,8 @@ import type {
   OutputChunkPayload,
   StepRetryingPayload,
   StepStatusChangedPayload,
+  TeamMessagePayload,
+  TeamStatusPayload,
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
@@ -1114,6 +1120,149 @@ describe('executionStore', () => {
       actions.addAgentEvent('non-existent', agentEvent)
 
       expect(useExecutionStore.getState().nodes['non-existent']).toBeUndefined()
+    })
+  })
+
+  describe('teamRuns', () => {
+    function makeTeamStatusEvent(
+      overrides: Partial<TeamStatusPayload> = {},
+    ): ExecutionEvent<TeamStatusPayload> {
+      return makeEvent({
+        event: 'execution.node.team-status',
+        data: {
+          stepId: 'step-1',
+          nodeId: 'team-1',
+          teamRunId: 'tr-1',
+          status: 'running',
+          members: [
+            {
+              memberId: 'm-1',
+              role: 'implementer',
+              isLead: true,
+              status: 'running',
+              usedTokens: 100,
+            },
+          ],
+          budget: {
+            usedTokens: 100,
+            maxTotalTokens: 1000,
+            messageCount: 1,
+            maxMessages: 10,
+            deadlineAt: '2026-10-15T09:00:00.000Z',
+          },
+          ...overrides,
+        },
+      })
+    }
+
+    function makeTeamMessageEvent(
+      overrides: Partial<TeamMessagePayload> = {},
+    ): ExecutionEvent<TeamMessagePayload> {
+      return makeEvent({
+        event: 'execution.node.team-message',
+        data: {
+          stepId: 'step-1',
+          teamRunId: 'tr-1',
+          messageId: 'msg-1',
+          fromRole: 'locator',
+          toRole: 'implementer',
+          kind: 'observation',
+          preview: '入口在 foo.ts:42',
+          deliveryStatus: 'pending',
+          createdAt: '2026-10-15T08:00:00.000Z',
+          ...overrides,
+        },
+      })
+    }
+
+    it('状态事件整份覆盖 status/members/budget/failureReason', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateTeamStatus(makeTeamStatusEvent())
+      actions.updateTeamStatus(
+        makeTeamStatusEvent({
+          status: 'failed',
+          members: [],
+          failureReason: 'budget_exhausted',
+        }),
+      )
+
+      const run = useExecutionStore.getState().teamRuns['tr-1']
+      expect(run?.status).toBe('failed')
+      expect(run?.members).toEqual([])
+      expect(run?.failureReason).toBe('budget_exhausted')
+      expect(run?.budget?.maxMessages).toBe(10)
+    })
+
+    it('同一 messageId 的消息事件原位更新而不重复', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.upsertTeamMessage(makeTeamMessageEvent())
+      actions.upsertTeamMessage(
+        makeTeamMessageEvent({ messageId: 'msg-2', toRole: 'verifier' }),
+      )
+      actions.upsertTeamMessage(
+        makeTeamMessageEvent({ deliveryStatus: 'delivered' }),
+      )
+      actions.upsertTeamMessage(
+        makeTeamMessageEvent({ deliveryStatus: 'consumed' }),
+      )
+
+      const messages = useExecutionStore.getState().teamRuns['tr-1']?.messages
+      expect(messages?.map((message) => message.messageId)).toEqual([
+        'msg-1',
+        'msg-2',
+      ])
+      expect(messages?.[0]?.deliveryStatus).toBe('consumed')
+      // 只有消息、尚无状态事件时状态为 null
+      expect(useExecutionStore.getState().teamRuns['tr-1']?.status).toBeNull()
+    })
+
+    it('消息超过上限时丢弃最早的', () => {
+      const { actions } = useExecutionStore.getState()
+      for (let index = 0; index < MAX_TEAM_MESSAGES + 5; index += 1) {
+        actions.upsertTeamMessage(
+          makeTeamMessageEvent({ messageId: `msg-${index}` }),
+        )
+      }
+
+      const messages =
+        useExecutionStore.getState().teamRuns['tr-1']?.messages ?? []
+      expect(messages).toHaveLength(MAX_TEAM_MESSAGES)
+      expect(messages[0]?.messageId).toBe('msg-5')
+    })
+
+    it('hydrateTeamRun 只在没有 socket 数据时写入', () => {
+      const { actions } = useExecutionStore.getState()
+      const snapshot = {
+        stepId: 'step-1',
+        status: 'completed' as const,
+        members: [],
+        budget: null,
+        messages: [makeTeamMessageEvent({ messageId: 'rest-1' }).data],
+      }
+
+      actions.hydrateTeamRun('tr-rest', snapshot)
+      expect(useExecutionStore.getState().teamRuns['tr-rest']).toMatchObject({
+        teamRunId: 'tr-rest',
+        status: 'completed',
+        messages: [expect.objectContaining({ messageId: 'rest-1' })],
+      })
+
+      actions.updateTeamStatus(makeTeamStatusEvent())
+      actions.hydrateTeamRun('tr-1', snapshot)
+      expect(useExecutionStore.getState().teamRuns['tr-1']?.status).toBe(
+        'running',
+      )
+      expect(useExecutionStore.getState().teamRuns['tr-1']?.messages).toEqual(
+        [],
+      )
+    })
+
+    it('reset 清空 teamRuns', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateTeamStatus(makeTeamStatusEvent())
+      actions.reset()
+
+      expect(useExecutionStore.getState().teamRuns).toEqual({})
     })
   })
 

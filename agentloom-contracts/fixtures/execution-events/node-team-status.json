@@ -1,0 +1,29 @@
+{
+  "stepId": "0195c3a1-9a01-7f10-b2c4-118d5e7a3b22",
+  "nodeId": "team-1",
+  "teamRunId": "0195c3a2-0b11-7c20-9d33-4a5b6c7d8e9f",
+  "status": "running",
+  "members": [
+    {
+      "memberId": "0195c3a2-1c22-7d31-8e44-5b6c7d8e9f01",
+      "role": "locator",
+      "isLead": false,
+      "status": "running",
+      "usedTokens": 1200
+    },
+    {
+      "memberId": "0195c3a2-1c22-7d31-8e44-5b6c7d8e9f02",
+      "role": "implementer",
+      "isLead": true,
+      "status": "idle",
+      "usedTokens": 800
+    }
+  ],
+  "budget": {
+    "usedTokens": 2000,
+    "maxTotalTokens": 500000,
+    "messageCount": 3,
+    "maxMessages": 200,
+    "deadlineAt": "2026-10-15T09:00:00.000Z"
+  }
+}

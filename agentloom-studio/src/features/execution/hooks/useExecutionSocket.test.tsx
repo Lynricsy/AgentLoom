@@ -8,6 +8,8 @@ import type {
   StepAgentEventPayload,
   StepRetryingPayload,
   StepStatusChangedPayload,
+  TeamMessagePayload,
+  TeamStatusPayload,
 } from '../types'
 import { ExecutionEventName } from '../types'
 import {
@@ -415,6 +417,71 @@ describe('useExecutionSocket', () => {
     })
 
     expect(onOutputChunk).toHaveBeenCalledWith(event)
+  })
+
+  it('handles team status and team message events', () => {
+    const { socket, handlers } = createMockSocket()
+    ioMock.mockReturnValue(socket)
+    const onTeamStatus = vi.fn()
+    const onTeamMessage = vi.fn()
+
+    const { result } = renderHook(() =>
+      useExecutionSocket({
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+        onTeamStatus,
+        onTeamMessage,
+      }),
+    )
+
+    const statusEvent: ExecutionEvent<TeamStatusPayload> = {
+      eventId: 6,
+      event: ExecutionEventName.TEAM_STATUS,
+      timestamp: '2025-01-01T00:00:00Z',
+      executionId: 'exec-1',
+      tenantId: 'tenant-1',
+      data: {
+        stepId: 'step-1',
+        nodeId: 'team-1',
+        teamRunId: 'tr-1',
+        status: 'running',
+        members: [],
+        budget: {
+          usedTokens: 0,
+          maxTotalTokens: 1000,
+          messageCount: 0,
+          maxMessages: 10,
+          deadlineAt: '2025-01-01T01:00:00Z',
+        },
+      },
+    }
+    const messageEvent: ExecutionEvent<TeamMessagePayload> = {
+      eventId: 7,
+      event: ExecutionEventName.TEAM_MESSAGE,
+      timestamp: '2025-01-01T00:00:01Z',
+      executionId: 'exec-1',
+      tenantId: 'tenant-1',
+      data: {
+        stepId: 'step-1',
+        teamRunId: 'tr-1',
+        messageId: 'msg-1',
+        fromRole: 'locator',
+        toRole: 'implementer',
+        kind: 'observation',
+        preview: '发现入口',
+        deliveryStatus: 'pending',
+        createdAt: '2025-01-01T00:00:01Z',
+      },
+    }
+
+    act(() => {
+      handlers[ExecutionEventName.TEAM_STATUS]?.(statusEvent)
+      handlers[ExecutionEventName.TEAM_MESSAGE]?.(messageEvent)
+    })
+
+    expect(onTeamStatus).toHaveBeenCalledWith(statusEvent)
+    expect(onTeamMessage).toHaveBeenCalledWith(messageEvent)
+    expect(result.current.lastEventId).toBe(7)
   })
 
   it('tracks lastEventId monotonically', () => {

@@ -78,7 +78,7 @@ const EXEC = ENVELOPE_FIXTURE.executionId;
 
 /**
  * 每个事件名对应的 payload fixture 与实际 emit 入口。
- * 覆盖全部 10 个事件名 —— 少一个就说明有事件绕过了契约校验。
+ * 覆盖全部契约事件名 —— 少一个就说明有事件绕过了契约校验。
  */
 const EMIT_CASES: ReadonlyArray<{
   event: ContractExecutionEventName;
@@ -145,6 +145,16 @@ const EMIT_CASES: ReadonlyArray<{
     fixture: 'node-tool-permission-resolved.json',
     emit: (service, payload) =>
       service.emitToolPermissionResolved(TENANT, EXEC, payload),
+  },
+  {
+    event: ExecutionEventName.TEAM_STATUS,
+    fixture: 'node-team-status.json',
+    emit: (service, payload) => service.emitTeamStatus(TENANT, EXEC, payload),
+  },
+  {
+    event: ExecutionEventName.TEAM_MESSAGE,
+    fixture: 'node-team-message.json',
+    emit: (service, payload) => service.emitTeamMessage(TENANT, EXEC, payload),
   },
 ];
 

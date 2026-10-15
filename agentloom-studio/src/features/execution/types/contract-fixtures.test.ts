@@ -203,6 +203,8 @@ describe('Studio 执行事件契约 fixture', () => {
         'node-tool-permission-required.json',
       [ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED]:
         'node-tool-permission-resolved.json',
+      [ExecutionEventName.TEAM_STATUS]: 'node-team-status.json',
+      [ExecutionEventName.TEAM_MESSAGE]: 'node-team-message.json',
     }
 
     for (const [eventName, file] of Object.entries(files)) {

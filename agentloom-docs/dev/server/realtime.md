@@ -67,7 +67,7 @@ interface ExecutionEvent<T extends ExecutionEventName = ExecutionEventName> {
 }
 ```
 
-- `eventId` 由 `EventBridgeService.nextEventId()` 按 `executionId` 计数，从 1 开始（`agentloom-server/src/modules/execution/services/event-bridge.service.ts:529`）。
+- `eventId` 由 `EventBridgeService.nextEventId()` 按 `executionId` 计数，从 1 开始（`agentloom-server/src/modules/execution/services/event-bridge.service.ts:563`）。
 - 载荷 schema 按事件名登记在 `EXECUTION_EVENT_PAYLOAD_SCHEMAS`；需要逐字段校验时调用 `parseExecutionEvent()`。
 - 其他命名空间的信封不同：
   - `/agent-conversation`：`{ conversationId, tenantId, timestamp, eventId, ...载荷 }`，`eventId` 读自 EventBridge 中该 `conversationId` 的当前计数（`agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts:904`）。回放时下发的是原始 `ExecutionEvent`。
@@ -112,8 +112,8 @@ sequenceDiagram
 
 | 常量 | 值 | 定义处 | 作用 |
 | --- | --- | --- | --- |
-| `EVENT_BUFFER_CAPACITY` | 500 | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:53` | 每个执行的回放环形缓冲区上限，超出丢最旧 |
-| `TERMINAL_EVENT_RETENTION_MS` | 30 000 ms | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:54` | 终态后保留计数器与缓冲区的时长 |
+| `EVENT_BUFFER_CAPACITY` | 500 | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:55` | 每个执行的回放环形缓冲区上限，超出丢最旧 |
+| `TERMINAL_EVENT_RETENTION_MS` | 30 000 ms | `agentloom-server/src/modules/execution/services/event-bridge.service.ts:56` | 终态后保留计数器与缓冲区的时长 |
 | `BACKPRESSURE_QUEUE_LIMIT` | 500 | `agentloom-server/src/modules/execution/execution.gateway.ts:36` | 每个执行的背压队列上限，满时丢最旧并记 warn |
 | `BACKPRESSURE_DRAIN_INTERVAL_MS` | 100 ms | `agentloom-server/src/modules/execution/execution.gateway.ts:39` | 背压队列排空定时器间隔 |
 | `ThrottleService.RATE_LIMIT` | 100 | `agentloom-server/src/modules/execution/services/throttle.service.ts:44` | 令牌桶容量与每秒补充量（按执行计） |
@@ -206,6 +206,13 @@ socket.on("execution.node.status-changed", (event) => {
 适配器还把 `maxHttpBufferSize` 提高到至少 `MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES`（`agentloom-server/src/modules/agent-conversation/conversation-attachment.ts`），以容纳带 base64 附件的对话消息。
 
 ### 事件清单
+
+团队节点（`team`）的两个 `/execution` 事件语义如下，载荷 schema 为 `agentloom-contracts/src/execution-events.ts` 的 `TeamStatusPayloadSchema` 与 `TeamMessagePayloadSchema`：
+
+| 事件 | 发送方法 | 语义 | Studio 消费 |
+| --- | --- | --- | --- |
+| `execution.node.team-status` | `EventBridgeService.emitTeamStatus()` | 团队运行整份状态快照：`status`、成员（角色、负责人、状态、已用 tokens）、预算（tokens / 消息数 / 截止时间）、终态 `failureReason` | `executionStore.updateTeamStatus` 按 `teamRunId` 整份覆盖 |
+| `execution.node.team-message` | `EventBridgeService.emitTeamMessage()` | 一条团队消息的创建或投递状态推进（`pending → delivered → consumed`，或 `suppressed` / `expired`），`preview` 最长 200 字符 | `executionStore.upsertTeamMessage` 按 `messageId` 原位更新，每个团队最多保留 500 条 |
 
 生成列：命名空间 | 方向 | 事件 | 来源文件。
 

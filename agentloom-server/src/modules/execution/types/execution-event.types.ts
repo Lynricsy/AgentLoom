@@ -23,6 +23,8 @@ export type {
   ToolCallStatusPayload,
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
+  TeamStatusPayload,
+  TeamMessagePayload,
   ExecutionEventPayloadMap,
   ExecutionEvent,
   StepSnapshot,
@@ -61,6 +63,8 @@ export const ExecutionEventName = {
   NODE_TOOL_CALL_STATUS: 'execution.node.tool-call-status',
   NODE_TOOL_PERMISSION_REQUIRED: 'execution.node.tool-permission-required',
   NODE_TOOL_PERMISSION_RESOLVED: 'execution.node.tool-permission-resolved',
+  TEAM_STATUS: 'execution.node.team-status',
+  TEAM_MESSAGE: 'execution.node.team-message',
 } as const satisfies Record<string, ExecutionEventNameType>;
 
 export type ExecutionEventName =
@@ -154,6 +158,12 @@ export interface ServerToClientEvents {
     event: ExecutionEvent<
       typeof ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED
     >,
+  ) => void;
+  [ExecutionEventName.TEAM_STATUS]: (
+    event: ExecutionEvent<typeof ExecutionEventName.TEAM_STATUS>,
+  ) => void;
+  [ExecutionEventName.TEAM_MESSAGE]: (
+    event: ExecutionEvent<typeof ExecutionEventName.TEAM_MESSAGE>,
   ) => void;
   'execution.state.snapshot': (snapshot: ExecutionStateSnapshot) => void;
   error: (error: { message: string; code?: string }) => void;
