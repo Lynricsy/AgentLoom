@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { RawServerDefault } from 'fastify';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import multipart from '@fastify/multipart';
@@ -34,6 +35,17 @@ async function bootstrap() {
       files: 50,
     },
   });
+
+  // A2A 客户端可能以 `application/a2a+json` 提交 JSON-RPC 请求体，按 JSON 解析
+  const parseJson = app
+    .getHttpAdapter()
+    .getInstance()
+    .getDefaultJsonParser('error', 'error');
+  app.useBodyParser<RawServerDefault>(
+    'application/a2a+json',
+    {},
+    (request, body, done) => parseJson(request, body.toString('utf8'), done),
+  );
 
   // Socket.IO Redis adapter — 多实例部署时跨进程广播
   const redisIoAdapter = RedisIoAdapter.create(app);

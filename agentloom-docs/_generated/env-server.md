@@ -33,6 +33,7 @@
 | `APP_SANDBOX_NODE_ADMIN_TENANT_IDS` | 否 | `""` |  | 允许管理沙箱节点的租户 ID（逗号分隔）；saas 模式下留空即全部拒绝，private 模式无条件放行 |
 | `APP_SANDBOX_CALLBACK_BASE_URL` | 否 |  |  | 可选：sandbox 容器回调当前进程的 API 基址（容器化部署建议显式配置） |
 | `APP_AGENT_API_CONVERSATION_IDLE_HOURS` | 否 | `24` |  | Agent 对外 API：API 对话空闲多少小时后由维护任务自动结束 |
+| `APP_PUBLIC_BASE_URL` | 否 |  |  | 可选：对外公开访问的站点基址（A2A Agent Card 中的 RPC 地址以它为前缀）；留空时取请求的协议与主机 |
 | `APP_QDRANT_URL` | 否 | `http://localhost:6333` |  | 向量数据库（Qdrant） |
 | `FIREBASE_SERVICE_ACCOUNT` | 否 |  |  | Firebase Cloud Messaging（推送通知） Firebase 服务账号 JSON 字符串，留空即禁用推送，例如 {"type":"service_account","project_id":"...","private_key":"...","client_email":"..."} |
 | `GENERATED_APP_WORKSPACE_ROOT` | 否 |  |  | 生成应用门禁（可选） 生成工作区根目录，留空使用系统临时目录下的 agentloom-generated-app-workspaces |

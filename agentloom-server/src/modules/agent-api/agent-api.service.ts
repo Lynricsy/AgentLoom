@@ -550,6 +550,47 @@ export class AgentApiService {
   }
 
   /**
+   * 只凭 run id 读取 run（A2A 的 taskId 不携带对话 id）：
+   * run 必须由当前 Key 创建且所属对话属于其绑定的 Agent，否则 404。
+   */
+  async findRunById(
+    key: AgentApiKeyContext,
+    runId: string,
+  ): Promise<AgentApiRun> {
+    if (!UUID_PATTERN.test(runId)) {
+      throw new AgentApiRunNotFoundException(runId);
+    }
+
+    return runInTenantTransaction(this.db, key.tenantId, async (tx) => {
+      const [owned] = await tx
+        .select({ id: agentApiRuns.id })
+        .from(agentApiRuns)
+        .innerJoin(
+          agentConversations,
+          eq(agentConversations.id, agentApiRuns.conversationId),
+        )
+        .where(
+          and(
+            eq(agentApiRuns.id, runId),
+            eq(agentApiRuns.apiKeyId, key.keyId),
+            eq(agentConversations.apiKeyId, key.keyId),
+            eq(agentConversations.agentDefinitionId, key.agentDefinitionId),
+          ),
+        )
+        .limit(1);
+      if (!owned) {
+        throw new AgentApiRunNotFoundException(runId);
+      }
+
+      const [run] = await this.runService.loadRunDtos(tx, [owned.id]);
+      if (!run) {
+        throw new AgentApiRunNotFoundException(runId);
+      }
+      return run;
+    });
+  }
+
+  /**
    * 幂等取消：queued 直接标记 cancelled；同时中止该对话可能已在准备阶段或执行中的 loop，
    * running run 由执行进程中止后终结为 cancelled。只中止执行，不结束对话。
    */

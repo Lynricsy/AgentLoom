@@ -4,6 +4,7 @@
 
 | 模块 | REST 前缀 | Socket 命名空间 | BullMQ 队列 |
 | --- | --- | --- | --- |
+| `a2a` | `/api/v1/a2a` |  |  |
 | `acp-gateway` |  |  |  |
 | `agent` | `/api/v1/agent-runtime` |  |  |
 | `agent-api` | `/api/v1/agent-api`<br>`/api/v1/agent-definitions/:agentId/api-keys` |  |  |

@@ -17,6 +17,6 @@ import { AgentApiService } from './agent-api.service';
   ],
   controllers: [AgentApiKeyController, AgentApiController],
   providers: [AgentApiKeyService, AgentApiKeyGuard, AgentApiService],
-  exports: [AgentApiKeyService, AgentApiKeyGuard],
+  exports: [AgentApiKeyService, AgentApiKeyGuard, AgentApiService],
 })
 export class AgentApiModule {}

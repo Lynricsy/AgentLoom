@@ -123,6 +123,8 @@ const baseEnvSchema = z.object({
   APP_SANDBOX_CALLBACK_BASE_URL: optionalUrlFromEnv('无效的沙箱回调 URL'),
   /** Agent 对外 API 对话空闲多少小时后由维护任务自动结束 */
   APP_AGENT_API_CONVERSATION_IDLE_HOURS: positiveNumberFromEnv(24),
+  /** 对外公开访问的站点基址（如 `https://agentloom.example.com`）；A2A Agent Card 用它拼接 RPC 地址，缺省时取请求的协议与主机 */
+  APP_PUBLIC_BASE_URL: optionalUrlFromEnv('无效的公开访问基址 URL'),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
   /** Firebase 服务账号 JSON；缺省时推送通知禁用 */
   FIREBASE_SERVICE_ACCOUNT:

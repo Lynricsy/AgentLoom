@@ -256,6 +256,31 @@ describe('AgentApiService', () => {
       });
     });
 
+    it('findRunById 只返回当前 Key 创建的 run，否则 404', async () => {
+      const owned = createService([[{ id: RUN_ID }]]);
+      await expect(owned.service.findRunById(KEY, RUN_ID)).resolves.toEqual(
+        runDto(),
+      );
+      expect(owned.runService.loadRunDtos).toHaveBeenCalledWith(
+        expect.anything(),
+        [RUN_ID],
+      );
+
+      const foreign = createService([[]]);
+      await expect(
+        foreign.service.findRunById(KEY, RUN_ID),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/agent-api-run-not-found',
+        status: 404,
+      });
+      expect(foreign.runService.loadRunDtos).not.toHaveBeenCalled();
+
+      const malformed = createService([]);
+      await expect(
+        malformed.service.findRunById(KEY, 'not-a-uuid'),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
     it('对外对话不暴露执行进程写入的 metadata.execution', async () => {
       const { service } = createService([
         [
