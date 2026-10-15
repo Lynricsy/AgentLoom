@@ -8,7 +8,8 @@ import type { JsonSchema, ProviderHealthRecord, StrategyInfo } from '../types'
 
 export interface RoutingDecisionRecord {
   id: string
-  executionStepId: string
+  executionStepId: string | null
+  conversationId: string | null
   routingNodeId: string
   strategy: string
   modelsEvaluated: Array<{
@@ -21,6 +22,8 @@ export interface RoutingDecisionRecord {
   selectedModelId: string | null
   decisionReasoning: string
   routingLatencyMs: number
+  fallbackReason: string | null
+  fallbackSource: string | null
   createdAt: string
 }
 

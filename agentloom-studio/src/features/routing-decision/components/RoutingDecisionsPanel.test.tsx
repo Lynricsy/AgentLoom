@@ -22,6 +22,7 @@ function createDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecisi
   return {
     id: 'decision-1',
     executionStepId: 'step-1',
+    conversationId: null,
     tenantId: 'tenant-1',
     routingNodeId: 'router-node-1',
     strategy: 'cost_optimized',
@@ -38,6 +39,8 @@ function createDecision(overrides: Partial<RoutingDecision> = {}): RoutingDecisi
     selectedModelId: 'model-a',
     decisionReasoning: '在成本优先策略下选择了 GPT-4o mini',
     routingLatencyMs: 128,
+    fallbackReason: null,
+    fallbackSource: null,
     createdAt: '2026-03-10T10:00:00.000Z',
     ...overrides,
   }
@@ -124,6 +127,30 @@ describe('RoutingDecisionsPanel', () => {
     expect(screen.getByText('GPT-4o mini')).toBeInTheDocument()
     expect(screen.getByText('128 毫秒')).toBeInTheDocument()
     expect(screen.getByText('router-node-1')).toBeInTheDocument()
+  })
+
+  it('确定性回退的决策显示回退徽标，非回退决策不显示', () => {
+    mocks.useRoutingDecisions.mockReturnValue(
+      listQuery({
+        data: {
+          data: [
+            createDecision({
+              id: 'decision-fallback',
+              fallbackReason: 'llm_timeout',
+              fallbackSource: 'configured_model',
+            }),
+            createDecision({ id: 'decision-normal' }),
+          ],
+          meta: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
+        },
+      }),
+    )
+    renderPanel()
+
+    const badges = screen.getAllByTestId('routing-decision-fallback')
+    expect(badges).toHaveLength(1)
+    expect(badges[0]).toHaveTextContent('回退：LLM 超时')
+    expect(badges[0]).toHaveAttribute('title', '回退来源：已配置回退模型')
   })
 
   it('selectedModelId 为 null 时展示未选中模型徽章', () => {

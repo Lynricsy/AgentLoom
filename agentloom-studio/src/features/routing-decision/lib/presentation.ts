@@ -57,6 +57,21 @@ export const ROUTING_STRATEGY_LABELS: Record<string, string> = {
   failover: '故障转移',
 }
 
+/** 回退原因的徽标文案；未收录的原因保持服务端原值 */
+export const ROUTING_FALLBACK_REASON_LABELS: Record<string, string> = {
+  llm_timeout: 'LLM 超时',
+  llm_invalid_response: 'LLM 响应无效',
+  llm_http_error: 'LLM 请求失败',
+  llm_config_error: '路由模型配置错误',
+  router_error: '路由器异常',
+}
+
+export const ROUTING_FALLBACK_SOURCE_LABELS: Record<string, string> = {
+  configured_model: '已配置回退模型',
+  rules: '规则路由',
+  first_candidate: '首个候选',
+}
+
 /**
  * 解析被选中的模型展示名。
  * `selectedModelId` 可为 null（策略未选中任何模型）；有 id 但候选列表里查不到名称时退回短 id。

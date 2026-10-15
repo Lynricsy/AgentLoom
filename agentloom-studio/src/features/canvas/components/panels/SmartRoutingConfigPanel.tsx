@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import type { CanvasNode } from '../../types'
 import type { RoutingStrategy } from '../../types'
-import { useCanvasActions } from '../../stores/canvasStore'
+import { useCanvasActions, useCanvasEdges, useCanvasNodes } from '../../stores/canvasStore'
 import { createPort } from '../../types/portSchema'
 import {
   STRATEGY_META,
@@ -36,6 +36,7 @@ import type {
   JsonSchemaProperty,
 } from '@/features/smart-routing'
 import { useProviderHealth, useConfigSchema, useStrategies } from '@/features/smart-routing'
+import { useUsableChatModels } from '@/features/llm'
 import {
   Select,
   SelectContent,
@@ -74,6 +75,17 @@ const MIN_MODEL_PORTS = 2
 const MAX_MODEL_PORTS = 10
 
 const CATEGORY_ORDER: StrategyCategory[] = ['simple', 'ml', 'rag', 'plugin']
+
+/** llm_as_router 的回退字段由专用控件编辑，不走通用 SchemaField（fallbackRules 为规则数组，面板内不提供编辑） */
+const LLM_ROUTER_DEDICATED_FIELDS = new Set(['fallbackModelId', 'fallbackRules'])
+
+/** Select 不接受空字符串作为选项值，用哨兵表示“不设置回退模型” */
+const NO_FALLBACK_MODEL = '__none__'
+
+interface FallbackModelOption {
+  id: string
+  label: string
+}
 
 function getNextModelPortIndex(portIds: string[]): number {
   const currentMax = portIds.reduce((max, portId) => {
@@ -268,6 +280,39 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
     [modelInputPorts],
   )
 
+  const isLlmRouter = strategy === 'llm_as_router'
+  const canvasNodes = useCanvasNodes()
+  const canvasEdges = useCanvasEdges()
+  const { data: usableModels } = useUsableChatModels({ enabled: isLlmRouter })
+
+  // 回退模型只在候选内才生效：优先列出接入模型端口的 LLM 节点所选模型；
+  // 画布上尚未接入（或不在工作流画布中）时退回账号内可用的对话模型
+  const fallbackModelOptions = useMemo<FallbackModelOption[]>(() => {
+    if (!isLlmRouter) return []
+    const modelPortIds = new Set(modelInputPorts.map((port) => port.id))
+    const nodesById = new Map(canvasNodes.map((canvasNode) => [canvasNode.id, canvasNode]))
+    const modelNameById = new Map((usableModels ?? []).map((model) => [model.id, model.name]))
+    const connected: FallbackModelOption[] = []
+    for (const edge of canvasEdges) {
+      if (edge.target !== node.id || !edge.targetHandle || !modelPortIds.has(edge.targetHandle)) {
+        continue
+      }
+      const sourceNode = nodesById.get(edge.source)
+      const modelConfigId = sourceNode?.data.llmConfigId
+      if (typeof modelConfigId !== 'string' || !modelConfigId) continue
+      if (connected.some((option) => option.id === modelConfigId)) continue
+      connected.push({
+        id: modelConfigId,
+        label: modelNameById.get(modelConfigId) ?? sourceNode?.data.label ?? modelConfigId,
+      })
+    }
+    if (connected.length > 0) return connected
+    return (usableModels ?? []).map((model) => ({ id: model.id, label: model.name }))
+  }, [canvasEdges, canvasNodes, isLlmRouter, modelInputPorts, node.id, usableModels])
+
+  const fallbackModelId =
+    typeof strategyConfig.fallbackModelId === 'string' ? strategyConfig.fallbackModelId : ''
+
   const { data: healthData } = useProviderHealth()
   const { data: configSchema } = useConfigSchema(strategy as StrategyName)
   const healthList = healthData ?? []
@@ -293,6 +338,19 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
       onConfigChange({
         strategyConfig: { ...strategyConfig, [key]: val },
       })
+    },
+    [strategyConfig, onConfigChange],
+  )
+
+  const handleFallbackModelChange = useCallback(
+    (value: string) => {
+      const nextConfig = { ...strategyConfig }
+      if (value === NO_FALLBACK_MODEL) {
+        delete nextConfig.fallbackModelId
+      } else {
+        nextConfig.fallbackModelId = value
+      }
+      onConfigChange({ strategyConfig: nextConfig })
     },
     [strategyConfig, onConfigChange],
   )
@@ -342,7 +400,9 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
   )
 
   const schemaProperties = configSchema?.properties ?? {}
-  const schemaPropertyEntries = Object.entries(schemaProperties)
+  const schemaPropertyEntries = Object.entries(schemaProperties).filter(
+    ([key]) => !(isLlmRouter && LLM_ROUTER_DEDICATED_FIELDS.has(key)),
+  )
   const hasStrategyOptions = CATEGORY_ORDER.some(
     (cat) => strategyNamesByCategory[cat].length > 0,
   )
@@ -457,6 +517,40 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
               onChange={handleConfigParamChange}
             />
           ))}
+        </div>
+      ) : null}
+
+      {isLlmRouter ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="llm-router-fallback-model" className="text-xs font-medium text-foreground">
+            回退模型
+          </label>
+          <Select
+            value={fallbackModelId || NO_FALLBACK_MODEL}
+            onValueChange={handleFallbackModelChange}
+          >
+            <SelectTrigger
+              id="llm-router-fallback-model"
+              data-testid="llm-router-fallback-model"
+              aria-label="回退模型"
+            >
+              <SelectValue placeholder="不设置" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_FALLBACK_MODEL}>不设置（按规则回退，无匹配取首个候选）</SelectItem>
+              {fallbackModelId && !fallbackModelOptions.some((option) => option.id === fallbackModelId) ? (
+                <SelectItem value={fallbackModelId}>{fallbackModelId}（不在候选中）</SelectItem>
+              ) : null}
+              {fallbackModelOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            路由模型超时、出错或返回无效结果时使用；须为候选模型之一，否则按回退规则选择。
+          </p>
         </div>
       ) : null}
 

@@ -37,12 +37,21 @@ const mocks = vi.hoisted(() => ({
   }),
   useProviderHealth: vi.fn().mockReturnValue({ data: undefined }),
   useConfigSchema: vi.fn().mockReturnValue({ data: undefined }),
+  canvasNodes: [] as unknown[],
+  canvasEdges: [] as unknown[],
+  useUsableChatModels: vi.fn().mockReturnValue({ data: [] }),
 }))
 
 vi.mock('../../../stores/canvasStore', () => ({
   useCanvasActions: () => ({
     updateNodeData: mocks.updateNodeData,
   }),
+  useCanvasNodes: () => mocks.canvasNodes,
+  useCanvasEdges: () => mocks.canvasEdges,
+}))
+
+vi.mock('@/features/llm', () => ({
+  useUsableChatModels: mocks.useUsableChatModels,
 }))
 
 vi.mock('@/features/smart-routing', async (importOriginal) => {
@@ -130,6 +139,9 @@ describe('SmartRoutingConfigPanel', () => {
     })
     mocks.useProviderHealth.mockReturnValue({ data: undefined })
     mocks.useConfigSchema.mockReturnValue({ data: undefined })
+    mocks.canvasNodes = []
+    mocks.canvasEdges = []
+    mocks.useUsableChatModels.mockReturnValue({ data: [] })
   })
 
   describe('基础渲染', () => {
@@ -646,6 +658,118 @@ describe('SmartRoutingConfigPanel', () => {
       expect(mocks.updateNodeData).toHaveBeenCalledWith('smart-routing-1', {
         inputPorts: expect.not.arrayContaining([expect.objectContaining({ id: 'model-in-2' })]),
         fallbackPriority: ['model-in-0', 'model-in-1'],
+      })
+    })
+  })
+
+  describe('llm_as_router 回退模型', () => {
+    const llmRouterSchema = {
+      data: {
+        type: 'object',
+        properties: {
+          routerModelId: { type: 'string' },
+          fallbackModelId: { type: 'string' },
+          fallbackRules: { type: 'array' },
+        },
+      },
+    }
+
+    function connectModels() {
+      mocks.canvasNodes = [
+        { id: 'llm-a', data: { label: '节点 A', llmConfigId: 'model-a' } },
+        { id: 'llm-b', data: { label: '节点 B', llmConfigId: 'model-b' } },
+      ]
+      mocks.canvasEdges = [
+        { id: 'e1', source: 'llm-a', target: 'smart-routing-1', targetHandle: 'model-in-0' },
+        { id: 'e2', source: 'llm-b', target: 'smart-routing-1', targetHandle: 'model-in-1' },
+        // 不是本节点模型端口的连线不算候选
+        { id: 'e3', source: 'llm-a', target: 'other-node', targetHandle: 'model-in-0' },
+      ]
+      mocks.useUsableChatModels.mockReturnValue({
+        data: [
+          { id: 'model-a', name: 'GPT-4o' },
+          { id: 'model-c', name: '未接入的模型' },
+        ],
+      })
+    }
+
+    it('非 llm_as_router 策略不显示回退模型', () => {
+      render(
+        <SmartRoutingConfigPanel node={createSmartRoutingNode()} onConfigChange={onConfigChange} />,
+      )
+
+      expect(screen.queryByTestId('llm-router-fallback-model')).not.toBeInTheDocument()
+    })
+
+    it('从接入的候选模型中选择回退模型并写入 strategyConfig', () => {
+      connectModels()
+      mocks.useConfigSchema.mockReturnValue(llmRouterSchema)
+
+      render(
+        <SmartRoutingConfigPanel
+          node={createSmartRoutingNode({
+            strategy: 'llm_as_router',
+            strategyConfig: { routerModelId: 'router-1' },
+          })}
+          onConfigChange={onConfigChange}
+        />,
+      )
+
+      // 回退字段由专用控件编辑，不渲染为通用参数
+      expect(screen.getByTestId('strategy-param-routerModelId')).toBeInTheDocument()
+      expect(screen.queryByTestId('strategy-param-fallbackModelId')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('strategy-param-fallbackRules')).not.toBeInTheDocument()
+
+      const trigger = screen.getByTestId('llm-router-fallback-model')
+      openSelect(trigger)
+      expect(screen.getByRole('option', { name: 'GPT-4o' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: '节点 B' })).toBeInTheDocument()
+      expect(screen.queryByRole('option', { name: '未接入的模型' })).not.toBeInTheDocument()
+      fireEvent.keyDown(screen.getByRole('option', { name: '节点 B' }), { key: 'Enter' })
+
+      expect(onConfigChange).toHaveBeenCalledWith({
+        strategyConfig: { routerModelId: 'router-1', fallbackModelId: 'model-b' },
+      })
+    })
+
+    it('选择“不设置”时移除 fallbackModelId', () => {
+      connectModels()
+
+      render(
+        <SmartRoutingConfigPanel
+          node={createSmartRoutingNode({
+            strategy: 'llm_as_router',
+            strategyConfig: { routerModelId: 'router-1', fallbackModelId: 'model-a' },
+          })}
+          onConfigChange={onConfigChange}
+        />,
+      )
+
+      const trigger = screen.getByTestId('llm-router-fallback-model')
+      expect(trigger).toHaveTextContent('GPT-4o')
+      chooseOption(trigger, '不设置（按规则回退，无匹配取首个候选）')
+
+      expect(onConfigChange).toHaveBeenCalledWith({
+        strategyConfig: { routerModelId: 'router-1' },
+      })
+    })
+
+    it('尚未接入候选时退回账号内可用对话模型', () => {
+      mocks.useUsableChatModels.mockReturnValue({
+        data: [{ id: 'model-c', name: '可用模型 C' }],
+      })
+
+      render(
+        <SmartRoutingConfigPanel
+          node={createSmartRoutingNode({ strategy: 'llm_as_router' })}
+          onConfigChange={onConfigChange}
+        />,
+      )
+
+      chooseOption(screen.getByTestId('llm-router-fallback-model'), '可用模型 C')
+
+      expect(onConfigChange).toHaveBeenCalledWith({
+        strategyConfig: { fallbackModelId: 'model-c' },
       })
     })
   })

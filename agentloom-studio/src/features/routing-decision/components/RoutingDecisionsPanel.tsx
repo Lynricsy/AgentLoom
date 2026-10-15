@@ -4,6 +4,8 @@ import { ProviderHealthBar } from './ProviderHealthBar'
 import { ROUTING_DECISION_PAGE_SIZE } from '../api/routing-decision-api'
 import { useRoutingDecisions } from '../api/routing-decision-queries'
 import {
+  ROUTING_FALLBACK_REASON_LABELS,
+  ROUTING_FALLBACK_SOURCE_LABELS,
   ROUTING_STRATEGY_LABELS,
   formatRoutingLatency,
   formatRoutingTimestamp,
@@ -15,6 +17,7 @@ import {
   type DataTableColumn,
 } from '@/shared/components/data-table/DataTable'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Badge } from '@/shared/ui/badge'
 import { Card, CardContent } from '@/shared/ui/card'
 import { useToast } from '@/shared/ui/toast'
 
@@ -39,6 +42,21 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
         </span>
         {decision.routerType ? (
           <span className="text-2xs text-muted-foreground">{decision.routerType}</span>
+        ) : null}
+        {decision.fallbackReason ? (
+          <Badge
+            variant="warning"
+            size="sm"
+            className="self-start"
+            data-testid="routing-decision-fallback"
+            title={
+              decision.fallbackSource
+                ? `回退来源：${ROUTING_FALLBACK_SOURCE_LABELS[decision.fallbackSource] ?? decision.fallbackSource}`
+                : undefined
+            }
+          >
+            回退：{ROUTING_FALLBACK_REASON_LABELS[decision.fallbackReason] ?? decision.fallbackReason}
+          </Badge>
         ) : null}
       </div>
     ),
