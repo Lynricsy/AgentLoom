@@ -9220,7 +9220,8 @@
               "type": "string",
               "enum": [
                 "studio",
-                "api"
+                "api",
+                "team"
               ]
             }
           }
@@ -21146,7 +21147,8 @@
                   "type": "string",
                   "enum": [
                     "studio",
-                    "api"
+                    "api",
+                    "team"
                   ]
                 },
                 "apiKeyId": {
@@ -21261,7 +21263,8 @@
                 "type": "string",
                 "enum": [
                   "studio",
-                  "api"
+                  "api",
+                  "team"
                 ]
               },
               "apiKeyId": {

@@ -301,7 +301,9 @@ describe('ConversationTitleService', () => {
   });
 
   it('未传 userId 时应读取会话创建者并解析其偏好', async () => {
-    const creatorSelectChain = createSelectChain([{ createdBy: 'creator-1' }]);
+    const creatorSelectChain = createSelectChain([
+      { createdBy: 'creator-1', source: 'studio' },
+    ]);
     const messageSelectChain = createSelectChain([
       { role: 'user', content: '从创建者读取偏好' },
     ]);
@@ -326,6 +328,23 @@ describe('ConversationTitleService', () => {
       'tenant-1',
     );
   });
+
+  it.each(['api', 'team'] as const)(
+    '未传 userId 且对话来源为 %s 时应跳过标题生成',
+    async (source) => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([{ createdBy: null, source }]),
+      );
+
+      await expect(
+        service.generateTitle('conversation-1', 'tenant-1'),
+      ).resolves.toBeNull();
+
+      expect(mockDb.select).toHaveBeenCalledTimes(1);
+      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockGenerateText).not.toHaveBeenCalled();
+    },
+  );
 
   it('发布版本存在时应从版本快照解析 fallback 路由模型', async () => {
     const messageSelectChain = createSelectChain([

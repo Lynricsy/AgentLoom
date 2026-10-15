@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 
 import {
   hasActiveTenantTransaction,
@@ -287,7 +287,7 @@ export class AgentConversationService {
       page: number;
       limit: number;
       status?: string;
-      source?: 'studio' | 'api';
+      source?: 'studio' | 'api' | 'team';
     },
   ) {
     const { page, limit, status, source } = query;
@@ -308,6 +308,9 @@ export class AgentConversationService {
 
     if (source) {
       conditions.push(eq(agentConversations.source, source));
+    } else {
+      // 团队成员对话是团队运行时内部载体，不进 Agent 的默认对话列表
+      conditions.push(ne(agentConversations.source, 'team'));
     }
 
     const whereClause = and(...conditions);

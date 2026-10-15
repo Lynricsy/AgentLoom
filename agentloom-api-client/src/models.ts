@@ -1348,7 +1348,8 @@ export type ConversationDetailResponseSwaggerDtoDataStatusEnum = typeof Conversa
  */
 export const ConversationDetailResponseSwaggerDtoDataSourceEnum = {
     Studio: 'studio',
-    Api: 'api'
+    Api: 'api',
+    Team: 'team'
 } as const;
 export type ConversationDetailResponseSwaggerDtoDataSourceEnum = typeof ConversationDetailResponseSwaggerDtoDataSourceEnum[keyof typeof ConversationDetailResponseSwaggerDtoDataSourceEnum];
 
@@ -1850,7 +1851,8 @@ export type ConversationListResponseSwaggerDtoDataInnerStatusEnum = typeof Conve
  */
 export const ConversationListResponseSwaggerDtoDataInnerSourceEnum = {
     Studio: 'studio',
-    Api: 'api'
+    Api: 'api',
+    Team: 'team'
 } as const;
 export type ConversationListResponseSwaggerDtoDataInnerSourceEnum = typeof ConversationListResponseSwaggerDtoDataInnerSourceEnum[keyof typeof ConversationListResponseSwaggerDtoDataInnerSourceEnum];
 

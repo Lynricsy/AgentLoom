@@ -200,7 +200,7 @@ export class ConversationTitleService {
     );
   }
 
-  /** 返回 null 表示 API 来源的对话（无人类创建人，不消耗 LLM 生成标题） */
+  /** 返回 null 表示非 Studio 来源的对话（API / 团队成员：无人类创建人，不消耗 LLM 生成标题） */
   private async resolveUserId(conversationId: string): Promise<string | null> {
     const [conv] = await this.tenantDb
       .select({
@@ -211,7 +211,7 @@ export class ConversationTitleService {
       .where(eq(agentConversations.id, conversationId))
       .limit(1);
 
-    if (conv?.source === 'api') {
+    if (conv && conv.source !== 'studio') {
       return null;
     }
 

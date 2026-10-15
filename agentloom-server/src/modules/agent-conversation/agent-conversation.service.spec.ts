@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../database/database.module';
@@ -372,6 +373,44 @@ describe('AgentConversationService', () => {
 
       expect(listChain.limit).toHaveBeenCalledWith(10);
       expect(listChain.offset).toHaveBeenCalledWith(20);
+    });
+
+    it('未传 source 时应排除团队成员对话', async () => {
+      const listChain = createPaginatedSelectChain([]);
+      const countChain = createCountSelectChain([{ total: 0 }]);
+
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+
+      await service.listByAgent(AGENT_ID, { page: 1, limit: 20 });
+
+      const query = new PgDialect().sqlToQuery(
+        listChain.where.mock.calls[0][0],
+      );
+      expect(query.sql).toContain('"agent_conversations"."source" <> $');
+      expect(query.params).toContain('team');
+      expect(countChain.where).toHaveBeenCalledWith(
+        listChain.where.mock.calls[0][0],
+      );
+    });
+
+    it('显式传 source=team 时应只按该来源过滤', async () => {
+      const listChain = createPaginatedSelectChain([]);
+      const countChain = createCountSelectChain([{ total: 0 }]);
+
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+
+      await service.listByAgent(AGENT_ID, {
+        page: 1,
+        limit: 20,
+        source: 'team',
+      });
+
+      const query = new PgDialect().sqlToQuery(
+        listChain.where.mock.calls[0][0],
+      );
+      expect(query.sql).toContain('"agent_conversations"."source" = $');
+      expect(query.sql).not.toContain('<>');
+      expect(query.params).toContain('team');
     });
   });
 
