@@ -45,6 +45,7 @@ import { HttpNodeExecutor } from './node-executors/http-node.executor';
 import { ResourceNodeExecutor } from './node-executors/resource-node.executor';
 import { SmartRoutingNodeExecutor } from './node-executors/smart-routing-node.executor';
 import { SubAgentNodeExecutor } from './node-executors/sub-agent-node.executor';
+import { TeamNodeExecutor } from './node-executors/team-node.executor';
 import { TriggerNodeExecutor } from './node-executors/trigger-node.executor';
 import { ValueNodeExecutor } from './node-executors/value-node.executor';
 import { WorkflowAgentNodeExecutor } from './node-executors/workflow-agent-node.executor';
@@ -113,6 +114,7 @@ import {
     ResourceNodeExecutor,
     SmartRoutingNodeExecutor,
     SubAgentNodeExecutor,
+    TeamNodeExecutor,
     TriggerNodeExecutor,
     ValueNodeExecutor,
     WorkflowAgentNodeExecutor,

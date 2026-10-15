@@ -16,6 +16,7 @@ import type {
 import { ResourceNodeExecutor } from './node-executors/resource-node.executor';
 import { SmartRoutingNodeExecutor } from './node-executors/smart-routing-node.executor';
 import { SubAgentNodeExecutor } from './node-executors/sub-agent-node.executor';
+import { TeamNodeExecutor } from './node-executors/team-node.executor';
 import { TriggerNodeExecutor } from './node-executors/trigger-node.executor';
 import { ValueNodeExecutor } from './node-executors/value-node.executor';
 import { WorkflowAgentNodeExecutor } from './node-executors/workflow-agent-node.executor';
@@ -38,6 +39,7 @@ export class NodeDispatcherService {
     extension: ExtensionNodeExecutor,
     subAgent: SubAgentNodeExecutor,
     deprecated: DeprecatedNodeExecutor,
+    team: TeamNodeExecutor,
   ) {
     this.executors = {
       agent: workflowAgent,
@@ -75,6 +77,7 @@ export class NodeDispatcherService {
       skill: extension,
       'mcp-tool': extension,
       'sub-agent': subAgent,
+      team,
     };
   }
 

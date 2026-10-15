@@ -10,6 +10,7 @@ import {
 } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getQueueToken } from '@nestjs/bullmq';
 import { DRIZZLE } from '../../../database/database.module';
 import { NodeSchedulerService } from '../node-scheduler.service';
@@ -26,6 +27,7 @@ import { HttpNodeExecutor } from '../node-executors/http-node.executor';
 import { ResourceNodeExecutor } from '../node-executors/resource-node.executor';
 import { SmartRoutingNodeExecutor } from '../node-executors/smart-routing-node.executor';
 import { SubAgentNodeExecutor } from '../node-executors/sub-agent-node.executor';
+import { TeamNodeExecutor } from '../node-executors/team-node.executor';
 import { TriggerNodeExecutor } from '../node-executors/trigger-node.executor';
 import { ValueNodeExecutor } from '../node-executors/value-node.executor';
 import { WorkflowAgentNodeExecutor } from '../node-executors/workflow-agent-node.executor';
@@ -97,6 +99,7 @@ export const NODE_EXECUTION_PROVIDERS = [
   ResourceNodeExecutor,
   SmartRoutingNodeExecutor,
   SubAgentNodeExecutor,
+  TeamNodeExecutor,
   TriggerNodeExecutor,
   ValueNodeExecutor,
   WorkflowAgentNodeExecutor,
@@ -105,6 +108,8 @@ export const NODE_EXECUTION_PROVIDERS = [
     useValue: mockOrganizationAutonomyPolicyService,
   },
   { provide: DecisionService, useValue: mockDecisionService },
+  // TeamNodeExecutor 经事件请求启动团队运行
+  { provide: EventEmitter2, useValue: new EventEmitter2() },
 ] as const;
 
 const EXECUTION_ID = '019577a0-0000-7000-8000-000000000001';
