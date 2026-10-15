@@ -1,0 +1,1 @@
+ALTER TABLE "team_runs" ADD COLUMN "result_submitted_at" timestamp with time zone;

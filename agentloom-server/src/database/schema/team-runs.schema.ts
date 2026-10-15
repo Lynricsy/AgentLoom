@@ -30,7 +30,8 @@ export const teamRunStatusEnum = pgEnum('team_run_status_enum', [
  * 工作流 `team` 节点的一次团队运行。
  *
  * 同一步骤同时只能有一个 running 的运行（部分唯一索引）；恢复重跑会新建一行，
- * 旧行保留为历史。预算与累计用量都落在本行，由 TeamRunService 在事务内递增。
+ * 旧行保留为历史。累计用量由 TeamRunService 按成员对话已落库的 assistant 消息重算（幂等），
+ * 不按事件增量累加。
  */
 export const teamRuns = pgTable(
   'team_runs',
@@ -72,8 +73,13 @@ export const teamRuns = pgTable(
     messageCount: integer('message_count').notNull().default(0),
     nudgeCount: integer('nudge_count').notNull().default(0),
     schemaInvalidCount: integer('schema_invalid_count').notNull().default(0),
-    /** lead 经 team_submit_result 提交的结果 */
+    /**
+     * lead 经 team_submit_result 提交的结果。运行仍为 running 时表示「已提交、待结算」：
+     * lead 本回合落库并结算用量后才完成（或因超预算失败）。
+     */
     result: jsonb('result').$type<Record<string, unknown>>(),
+    /** 结果提交时间（数据库时钟）；与成员 assistant 消息 created_at 比较判断提交回合是否已落库 */
+    resultSubmittedAt: timestamp('result_submitted_at', { withTimezone: true }),
     failureReason: varchar('failure_reason', {
       length: 40,
     }).$type<TeamFailureReason>(),

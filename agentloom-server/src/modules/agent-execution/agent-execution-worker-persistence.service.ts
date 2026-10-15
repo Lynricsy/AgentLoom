@@ -705,8 +705,6 @@ export class AgentExecutionWorkerPersistenceService {
     parentUsesSandboxRuntime: boolean;
     visitedAgentIds?: Set<string>;
     subAgentTracker: SubAgentExecutionTracker;
-    /** 父对话来源：子代理会话据此决定是否注册团队工具 */
-    conversationSource?: ConversationSource;
   }): void {
     if (
       !params.runtimeConfig.subAgents?.length ||
@@ -726,9 +724,6 @@ export class AgentExecutionWorkerPersistenceService {
           tenantId: params.tenantId,
           parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
           parentAbortSignal: params.parentAbortSignal,
-          ...(params.conversationSource
-            ? { conversationSource: params.conversationSource }
-            : {}),
           visitedAgentIds: new Set([
             ...(params.visitedAgentIds ?? []),
             params.currentAgentDefinitionId,
@@ -742,6 +737,8 @@ export class AgentExecutionWorkerPersistenceService {
 
   /**
    * 团队成员对话（source='team'）注册团队工具；成员身份按对话解析，非成员对话不注册。
+   * 只在成员对话自身的会话上调用：子代理会话不注册团队工具（子代理在覆盖其整个执行的租户事务里运行，
+   * 团队工具的写入会长期持有 team_runs 行锁、推迟投递并阻塞截止/取消）。
    */
   public async registerTeamToolsProvider(params: {
     runtime: IAgentRuntime;
@@ -1010,14 +1007,6 @@ export class AgentExecutionWorkerPersistenceService {
         parentUsesSandboxRuntime: usesSandboxRuntime,
         visitedAgentIds: params.parentContext.visitedAgentIds,
         subAgentTracker,
-        conversationSource: params.parentContext.conversationSource,
-      });
-      await this.registerTeamToolsProvider({
-        runtime,
-        sessionId: nextSessionId,
-        conversationId,
-        tenantId: params.parentContext.tenantId,
-        conversationSource: params.parentContext.conversationSource,
       });
 
       try {

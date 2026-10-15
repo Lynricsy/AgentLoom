@@ -8,7 +8,17 @@
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  sql,
+} from 'drizzle-orm';
 
 import {
   runInTenantTransaction,
@@ -414,7 +424,10 @@ export class TeamMailboxService {
    * 周期清扫（跨租户，原始连接）：
    * 1. pending 已过期（超过团队截止时间）→ expired；
    * 2. pending 超过重投阈值（提交后投递丢失）→ 重新投递；
-   * 3. delivered 超过阈值仍未消费 → 重新派发接收者对话（运行中的团队）。
+   * 3. delivered 且对应 agent_messages 已被接收者对话的持久游标
+   *    （`metadata.execution.lastProcessedMessageId`，按 created_at、id 排序）覆盖 → consumed
+   *    （回合落库事件丢失时的补偿）；
+   * 4. delivered 超过阈值仍未消费 → 重新派发接收者对话（运行中的团队）。
    */
   async sweep(): Promise<void> {
     const now = Date.now();
@@ -452,6 +465,21 @@ export class TeamMailboxService {
         tenantId,
         rows.map((row) => row.id),
       );
+    }
+
+    const consumed = await this.db
+      .update(teamMessages)
+      .set({ deliveryStatus: 'consumed', consumedAt: new Date(now) })
+      .where(
+        and(
+          eq(teamMessages.deliveryStatus, 'delivered'),
+          isNotNull(teamMessages.agentMessageId),
+          sql`EXISTS (SELECT 1 FROM ${teamMembers} AS recipient JOIN ${agentConversations} AS conversation ON conversation.id = recipient.conversation_id JOIN ${agentMessages} AS delivered ON delivered.id = ${teamMessages.agentMessageId} JOIN ${agentMessages} AS cursor_message ON cursor_message.conversation_id = conversation.id AND cursor_message.id::text = conversation.metadata #>> '{execution,lastProcessedMessageId}' WHERE recipient.id = ${teamMessages.recipientMemberId} AND (delivered.created_at, delivered.id) <= (cursor_message.created_at, cursor_message.id))`,
+        ),
+      )
+      .returning();
+    for (const [tenantId, rows] of groupByTenant(consumed)) {
+      await this.emitMessageEvents(tenantId, rows);
     }
 
     const unconsumed = await this.db

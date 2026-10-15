@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolSet } from 'ai';
 
+import { transactionStorage } from '../../../common/interceptors/tenant-transaction.context';
+
 import { TeamToolsProvider } from '../team-tools.provider';
 import type { TeamMemberContext } from '../team.types';
 
@@ -42,6 +44,7 @@ const run = {
   usedInputTokens: 1,
   usedOutputTokens: 2,
   messageCount: 0,
+  result: null as Record<string, unknown> | null,
   deadlineAt: new Date('2026-01-01T00:00:00Z'),
 };
 
@@ -76,7 +79,7 @@ function setup() {
   const teamRunService = {
     loadSnapshot: vi.fn().mockResolvedValue({ run, members }),
     fail: vi.fn().mockResolvedValue(true),
-    complete: vi.fn().mockResolvedValue(true),
+    submitResult: vi.fn().mockResolvedValue('submitted'),
     incrementSchemaInvalid: vi.fn(),
   };
   const decisionService = {
@@ -287,7 +290,7 @@ describe('TeamToolsProvider', () => {
       },
     });
 
-    it('产物符合 Schema 时完成团队', async () => {
+    it('产物符合 Schema 时只登记待定结果，不立即完成团队', async () => {
       const { provider, teamRunService } = setup();
       const toolSet = await tools(provider, lead);
 
@@ -296,11 +299,44 @@ describe('TeamToolsProvider', () => {
         artifact: { patch: 'diff' },
       });
 
-      expect(result).toBe('已提交，团队任务结束');
-      expect(teamRunService.complete).toHaveBeenCalledWith(TENANT_ID, RUN_ID, {
-        summary: '已修复',
-        artifact: { patch: 'diff' },
+      expect(result).toMatch(/^已提交：团队将在你本回合结束、用量结算后完成/);
+      expect(teamRunService.submitResult).toHaveBeenCalledWith(
+        TENANT_ID,
+        RUN_ID,
+        { summary: '已修复', artifact: { patch: 'diff' } },
+      );
+      expect(teamRunService.fail).not.toHaveBeenCalled();
+    });
+
+    it('已提交过结果时拒绝再次提交，且不计 Schema 失败', async () => {
+      const { provider, teamRunService } = setup();
+      teamRunService.loadSnapshot.mockResolvedValue({
+        run: { ...run, result: { summary: '已修复' } },
+        members,
       });
+      const toolSet = await tools(provider, lead);
+
+      const result = await call(toolSet, 'team_submit_result', {
+        summary: '再来一次',
+        artifact: { wrong: true },
+      });
+
+      expect(result).toBe('错误：结果已提交，不能重复提交');
+      expect(teamRunService.incrementSchemaInvalid).not.toHaveBeenCalled();
+      expect(teamRunService.submitResult).not.toHaveBeenCalled();
+    });
+
+    it('并发提交被运行行条件拒绝时返回重复提交错误', async () => {
+      const { provider, teamRunService } = setup();
+      teamRunService.submitResult.mockResolvedValueOnce('already_submitted');
+      const toolSet = await tools(provider, lead);
+
+      await expect(
+        call(toolSet, 'team_submit_result', {
+          summary: '已修复',
+          artifact: { patch: 'diff' },
+        }),
+      ).resolves.toBe('错误：结果已提交，不能重复提交');
     });
 
     it('不符合 Schema 时计数，第三次失败使团队失败', async () => {
@@ -327,7 +363,24 @@ describe('TeamToolsProvider', () => {
         'schema_invalid',
         expect.any(String),
       );
-      expect(teamRunService.complete).not.toHaveBeenCalled();
+      expect(teamRunService.submitResult).not.toHaveBeenCalled();
     });
+  });
+
+  it('工具脱离调用方的租户事务执行，写入不会并入外层长事务', async () => {
+    const { provider, teamRunService } = setup();
+    let storeSeen: unknown = 'unset';
+    teamRunService.loadSnapshot.mockImplementation(async () => {
+      storeSeen = transactionStorage.getStore();
+      return { run, members };
+    });
+    const toolSet = await tools(provider, memberContext());
+
+    await transactionStorage.run(
+      { db: {} as never, afterCommitHooks: [] },
+      () => call(toolSet, 'team_get_status', {}),
+    );
+
+    expect(storeSeen).toBeUndefined();
   });
 });

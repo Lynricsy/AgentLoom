@@ -216,13 +216,17 @@ describe('TeamMailboxService', () => {
     expect(ctx.emitMessageEvents).toHaveBeenCalledWith(TENANT_ID, consumed);
   });
 
-  it('清扫：过期 pending 置 expired、超时 pending 重投、未消费 delivered 重新派发', async () => {
+  it('清扫：过期 pending 置 expired、超时 pending 重投、游标覆盖的 delivered 置 consumed、未消费 delivered 重新派发', async () => {
     const expired = [
       makeMessage({ id: 'expired-1', deliveryStatus: 'expired' }),
+    ];
+    const covered = [
+      makeMessage({ id: 'covered-1', deliveryStatus: 'consumed' }),
     ];
     const ctx = setup([
       expired,
       [{ id: 'stale-1', tenantId: TENANT_ID }],
+      covered,
       [{ conversationId: 'conversation-impl', tenantId: TENANT_ID }],
     ]);
     const deliver = vi
@@ -236,7 +240,14 @@ describe('TeamMailboxService', () => {
     });
     expect(ctx.emitMessageEvents).toHaveBeenCalledWith(TENANT_ID, expired);
     expect(deliver).toHaveBeenCalledWith(TENANT_ID, ['stale-1']);
-    expect(ctx.calls[2].op).toBe('selectDistinct');
+    // 回合落库事件丢失：按接收者对话持久游标补标 consumed
+    expect(ctx.calls[2].op).toBe('update');
+    expect(ctx.argsOf(ctx.calls[2], 'set')?.[0]).toMatchObject({
+      deliveryStatus: 'consumed',
+      consumedAt: expect.any(Date),
+    });
+    expect(ctx.emitMessageEvents).toHaveBeenCalledWith(TENANT_ID, covered);
+    expect(ctx.calls[3].op).toBe('selectDistinct');
     expect(ctx.eventEmitter.emitAsync).toHaveBeenCalledWith(
       TEAM_MEMBER_CONVERSATION_DISPATCH_EVENT,
       { conversationId: 'conversation-impl', tenantId: TENANT_ID },

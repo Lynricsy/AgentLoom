@@ -26,7 +26,7 @@ export class TeamConversationBridgeListener {
         payload.tenantId,
       );
     } catch (error) {
-      // 派发失败（维护模式、入队失败）由团队清扫按未消费消息重新派发
+      // 派发失败（维护模式、入队失败）由团队清扫重新派发：未消费消息唤醒接收者、无落库回合的成员重新启动
       this.logger.warn(
         `派发团队成员对话 ${payload.conversationId} 失败：${
           error instanceof Error ? error.message : String(error)
@@ -48,7 +48,18 @@ export class TeamConversationBridgeListener {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      await this.executionService.abortExecution(payload.conversationId);
+      try {
+        await this.executionService.abortExecution(payload.conversationId);
+      } catch (abortError) {
+        // 对话仍 active 时由团队清扫（终态团队仍有 active 成员对话）重做取消
+        this.logger.warn(
+          `中止团队成员对话 ${payload.conversationId} 失败，等待清扫重做：${
+            abortError instanceof Error
+              ? abortError.message
+              : String(abortError)
+          }`,
+        );
+      }
     }
   }
 }

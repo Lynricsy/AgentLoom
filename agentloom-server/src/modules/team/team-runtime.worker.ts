@@ -11,7 +11,8 @@ import {
 } from './team.constants';
 
 /**
- * 团队运行时队列：截止时间到达 → deadline_exceeded；周期清扫 → 邮箱重投/唤醒/过期 + 空闲催办。
+ * 团队运行时队列：截止时间到达 → 截止处理；周期清扫 → 邮箱重投/唤醒/过期/按游标消费 + 运行结算、截止兜底、
+ * 启动重派、空闲催办与终态恢复（步骤推进、成员对话结束）。
  */
 @Injectable()
 @Processor(TEAM_RUNTIME_QUEUE)
@@ -30,7 +31,7 @@ export class TeamRuntimeWorker extends WorkerHost {
     }
     if (job.name === TEAM_SWEEP_JOB_NAME) {
       await this.mailbox.sweep();
-      await this.teamRunService.sweepIdleRuns();
+      await this.teamRunService.sweep();
     }
   }
 }

@@ -662,7 +662,6 @@ export class AgentExecutionWorkerRuntimeService {
           currentDepth: 0,
           parentUsesSandboxRuntime: hasSandboxRuntime,
           subAgentTracker,
-          conversationSource: context.conversation.source,
         });
         await this.persistence.registerTeamToolsProvider({
           runtime,
@@ -737,7 +736,6 @@ export class AgentExecutionWorkerRuntimeService {
       currentDepth: 0,
       parentUsesSandboxRuntime: hasSandboxRuntime,
       subAgentTracker,
-      conversationSource: context.conversation.source,
     });
     await this.persistence.registerTeamToolsProvider({
       runtime,

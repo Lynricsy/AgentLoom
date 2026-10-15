@@ -24,6 +24,18 @@ export const TEAM_MAX_NUDGES = 2;
 /** 结果不符合输出 Schema 的提交次数上限，达到后以 schema_invalid 失败 */
 export const TEAM_MAX_SCHEMA_INVALID = 3;
 
+/** 结果已提交但 lead 提交回合迟迟未落库（结算事件丢失）且 lead 不在运行：超过该时长由清扫兜底结算 */
+export const TEAM_SUBMITTED_SETTLE_AFTER_MS = 60_000;
+
+/** 成员启动后超过该时长仍无落库回合且未在运行（启动派发丢失）：清扫重新派发 */
+export const TEAM_START_REDISPATCH_AFTER_MS = 60_000;
+
+/**
+ * 团队终态超过该时长而步骤仍 running（推进步骤失败或进程在推进前退出）、或成员对话仍 active：
+ * 清扫幂等重做步骤终态与调度、结束成员对话
+ */
+export const TEAM_FINALIZE_RECOVERY_AFTER_MS = 15_000;
+
 export const TEAM_MESSAGE_CONTENT_MAX = 32_000;
 
 /** context-in 输入序列化后的大小上限，超过时截断 */

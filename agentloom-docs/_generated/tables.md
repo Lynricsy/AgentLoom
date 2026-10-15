@@ -71,7 +71,7 @@
 | `skills` | 16 | 是 | `skills.schema.ts` |
 | `team_members` | 18 | 是 | `team-members.schema.ts` |
 | `team_messages` | 16 | 是 | `team-messages.schema.ts` |
-| `team_runs` | 25 | 是 | `team-runs.schema.ts` |
+| `team_runs` | 26 | 是 | `team-runs.schema.ts` |
 | `tenant_encryption_keys` | 11 | 是 | `tenant-encryption-keys.schema.ts` |
 | `tenant_quotas` | 15 | 是 | `tenant-quotas.schema.ts` |
 | `tool_definitions` | 16 | 是 | `tool-definitions.schema.ts` |
@@ -1494,6 +1494,7 @@
 | `nudge_count` | `integer` | 是 | `0` |
 | `schema_invalid_count` | `integer` | 是 | `0` |
 | `result` | `jsonb` |  |  |
+| `result_submitted_at` | `timestamp with time zone` |  |  |
 | `failure_reason` | `varchar(40)` |  |  |
 | `failure_detail` | `text` |  |  |
 | `started_at` | `timestamp with time zone` | 是 | `now()` |

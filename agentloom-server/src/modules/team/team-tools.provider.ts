@@ -1,6 +1,9 @@
 /**
  * 团队成员会话工具：team_send_message、team_get_status，以及仅 lead 拥有的 team_submit_result。
  * 工具返回字符串，越权与预算错误以「错误：…」文本返回给模型，不抛出。
+ *
+ * 工具只注册在成员对话自身的会话上，并且一律脱离调用方可能存在的租户事务执行：
+ * 每次写入都是独立短事务，不会因外层长事务长期持有 team_runs 行锁、推迟投递或阻塞截止/取消。
  */
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
@@ -8,6 +11,7 @@ import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { TEAM_BROADCAST_TARGET } from '@agentloom/contracts';
 
+import { transactionStorage } from '../../common/interceptors/tenant-transaction.context';
 import type { SessionToolProvider } from '../agent/ports/agent-runtime.port';
 import { DecisionService } from '../decision/decision.service';
 import { parseAgentStructuredOutput } from '../execution/agent-structured-output.util';
@@ -74,20 +78,23 @@ export class TeamToolsProvider {
         description:
           '向团队成员发送消息（发现、请求、回复或产物）。消息在接收者当前回合结束后送达；只能发给你有权通信的角色。',
         inputSchema: TeamSendMessageInputSchema,
-        execute: async (input) => this.sendMessage(member, input),
+        execute: async (input) =>
+          transactionStorage.exit(() => this.sendMessage(member, input)),
       }),
       team_get_status: tool({
         description: '查看团队成员状态、未读消息数与预算使用情况。',
         inputSchema: z.object({}),
-        execute: async () => this.getStatus(member),
+        execute: async () =>
+          transactionStorage.exit(() => this.getStatus(member)),
       }),
       ...(member.isLead
         ? {
             team_submit_result: tool({
               description:
-                '负责人提交团队最终结果，团队任务随即结束。summary 必填；节点配置了输出 Schema 时 artifact 必须符合。',
+                '负责人提交团队最终结果（只能提交一次）。提交后团队在你本回合结束、用量结算后完成。summary 必填；节点配置了输出 Schema 时 artifact 必须符合。',
               inputSchema: TeamSubmitResultInputSchema,
-              execute: async (input) => this.submitResult(member, input),
+              execute: async (input) =>
+                transactionStorage.exit(() => this.submitResult(member, input)),
             }),
           }
         : {}),
@@ -214,7 +221,7 @@ export class TeamToolsProvider {
         maxMessages: run.budgetMaxMessages,
         deadlineAt: run.deadlineAt.toISOString(),
       },
-      submitted: run.status === 'completed',
+      submitted: run.result !== null,
     });
   }
 
@@ -222,6 +229,17 @@ export class TeamToolsProvider {
     member: TeamMemberContext,
     input: TeamSubmitResultInput,
   ): Promise<string> {
+    const snapshot = await this.teamRunService.loadSnapshot(
+      member.tenantId,
+      member.teamRunId,
+    );
+    if (!snapshot || snapshot.run.status !== 'running') {
+      return TEAM_ENDED_ERROR;
+    }
+    if (snapshot.run.result !== null) {
+      return ALREADY_SUBMITTED_ERROR;
+    }
+
     let artifact = input.artifact;
     if (member.outputSchema) {
       try {
@@ -236,7 +254,7 @@ export class TeamToolsProvider {
           member.teamRunId,
         );
         if (count === null) {
-          return '错误：团队任务已结束';
+          return TEAM_ENDED_ERROR;
         }
         if (count >= TEAM_MAX_SCHEMA_INVALID) {
           await this.teamRunService.fail(
@@ -251,7 +269,8 @@ export class TeamToolsProvider {
       }
     }
 
-    const completed = await this.teamRunService.complete(
+    // 只登记待定结果：本回合落库、用量结算后团队才完成（超预算则失败）
+    const outcome = await this.teamRunService.submitResult(
       member.tenantId,
       member.teamRunId,
       {
@@ -262,9 +281,18 @@ export class TeamToolsProvider {
           : {}),
       },
     );
-    return completed ? '已提交，团队任务结束' : '错误：团队任务已结束';
+    if (outcome === 'already_submitted') {
+      return ALREADY_SUBMITTED_ERROR;
+    }
+    if (outcome === 'not_running') {
+      return TEAM_ENDED_ERROR;
+    }
+    return '已提交：团队将在你本回合结束、用量结算后完成，不要再次提交。';
   }
 }
+
+const TEAM_ENDED_ERROR = '错误：团队任务已结束';
+const ALREADY_SUBMITTED_ERROR = '错误：结果已提交，不能重复提交';
 
 /** 按通信矩阵解析接收者；越权或角色不存在抛 TeamMemberNotAllowedException */
 export function resolveRecipients<T extends { id: string; role: string }>(
