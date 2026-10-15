@@ -1283,6 +1283,36 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         ];
       }
 
+      case 'message_end': {
+        // 每条 assistant 消息结束时上报 token 用量（pi-ai Usage{input,output,cacheRead,cacheWrite,totalTokens}）
+        const message = this.asRecord(event.message);
+        const usage = this.asRecord(message?.usage);
+        if (message?.role !== 'assistant' || !usage) {
+          return [];
+        }
+        const inputTokens = this.readTokenCount(usage.input);
+        const outputTokens = this.readTokenCount(usage.output);
+        const totalTokens = this.readTokenCount(usage.totalTokens);
+        return [
+          {
+            type: 'usage',
+            usage: {
+              inputTokens,
+              outputTokens,
+              cacheReadTokens: this.readTokenCount(usage.cacheRead),
+              cacheWriteTokens: this.readTokenCount(usage.cacheWrite),
+              totalTokens: totalTokens || inputTokens + outputTokens,
+            },
+            ...(typeof message.model === 'string'
+              ? { modelId: message.model }
+              : {}),
+            ...(typeof message.provider === 'string'
+              ? { provider: message.provider }
+              : {}),
+          },
+        ];
+      }
+
       case 'agent_end':
         return [
           {
@@ -1294,6 +1324,13 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       default:
         return [];
     }
+  }
+
+  /** 非负整数 token 计数；非数字或非法值按 0 处理 */
+  private readTokenCount(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? Math.floor(value)
+      : 0;
   }
 
   private extractToolResultPayload(result: unknown): unknown {

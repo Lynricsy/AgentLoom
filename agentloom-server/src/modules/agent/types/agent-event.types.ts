@@ -109,6 +109,23 @@ export interface HarnessTraceEvent {
   readonly timestamp: string;
 }
 
+/** token 用量（字段语义与 `@agentloom/contracts` 的 `AgentUsage` 一致） */
+export interface AgentUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
+  readonly totalTokens: number;
+}
+
+/** 每条 assistant 消息结束时上报的 token 用量 */
+export interface UsageEvent {
+  readonly type: 'usage';
+  readonly usage: AgentUsage;
+  readonly modelId?: string;
+  readonly provider?: string;
+}
+
 export type AgentEvent =
   | PlanEvent
   | MessageChunkEvent
@@ -120,7 +137,8 @@ export type AgentEvent =
   | PtyOutputEvent
   | PtyExitEvent
   | PtyKilledEvent
-  | HarnessTraceEvent;
+  | HarnessTraceEvent
+  | UsageEvent;
 
 export function isPlanEvent(event: AgentEvent): event is PlanEvent {
   return event.type === 'plan';

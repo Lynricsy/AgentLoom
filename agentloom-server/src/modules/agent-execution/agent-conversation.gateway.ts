@@ -600,6 +600,9 @@ export class AgentConversationGateway
       case 'harness_trace':
         conversationEvent = ConversationEventName.AGENT_HARNESS_TRACE;
         break;
+      case 'usage':
+        // token 用量只用于服务端成本落库，不推送到对话时间线
+        return;
       default:
         conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
         break;

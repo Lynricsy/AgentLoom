@@ -38,6 +38,8 @@ export {
   type PtyKilledEvent,
   type PtyEvent,
   type AgentEvent,
+  type AgentUsage,
+  type UsageEvent,
   isPlanEvent,
   isMessageChunkEvent,
   isToolCallEvent,

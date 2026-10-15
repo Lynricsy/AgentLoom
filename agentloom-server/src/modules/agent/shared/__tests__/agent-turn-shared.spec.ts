@@ -94,6 +94,38 @@ describe('AgentTurnEventAccumulator', () => {
     accumulator.beginRound();
     expect(accumulator.stopReason).toBeUndefined();
   });
+
+  it('多条 assistant 消息的 usage 逐字段求和并记录最近模型', () => {
+    const accumulator = new AgentTurnEventAccumulator({
+      mapDecision: (event) => event,
+    });
+    expect(accumulator.usage).toBeUndefined();
+
+    expect(
+      accumulator.consume({
+        type: 'usage',
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+        modelId: 'm1',
+      }),
+    ).toEqual({ kind: 'other' });
+    accumulator.consume({
+      type: 'usage',
+      usage: {
+        inputTokens: 20,
+        outputTokens: 7,
+        cacheReadTokens: 4,
+        totalTokens: 27,
+      },
+    });
+
+    expect(accumulator.usage).toEqual({
+      inputTokens: 30,
+      outputTokens: 12,
+      cacheReadTokens: 4,
+      totalTokens: 42,
+    });
+    expect(accumulator.modelId).toBe('m1');
+  });
 });
 
 describe('memory tool session binder', () => {

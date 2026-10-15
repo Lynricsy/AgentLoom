@@ -176,6 +176,23 @@ export const HarnessTraceEventSchema = z.object({
   timestamp: z.string(),
 });
 
+/** 单次 assistant 消息（或其累加）的 token 用量。 */
+export const AgentUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
+  totalTokens: z.number().int().nonnegative(),
+});
+
+/** 每条 assistant 消息结束时上报的 token 用量（进程内取 pi-ai usage，沙箱取 dsh usage）。 */
+export const UsageEventSchema = z.object({
+  type: z.literal('usage'),
+  usage: AgentUsageSchema,
+  modelId: z.string().optional(),
+  provider: z.string().optional(),
+});
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   PlanEventSchema,
   MessageChunkEventSchema,
@@ -188,6 +205,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   PtyExitEventSchema,
   PtyKilledEventSchema,
   HarnessTraceEventSchema,
+  UsageEventSchema,
 ]);
 
 export const SUB_AGENT_RUN_STATUSES = [
@@ -236,6 +254,8 @@ export type PtyOutputEvent = z.infer<typeof PtyOutputEventSchema>;
 export type PtyExitEvent = z.infer<typeof PtyExitEventSchema>;
 export type PtyKilledEvent = z.infer<typeof PtyKilledEventSchema>;
 export type HarnessTraceEvent = z.infer<typeof HarnessTraceEventSchema>;
+export type AgentUsage = z.infer<typeof AgentUsageSchema>;
+export type UsageEvent = z.infer<typeof UsageEventSchema>;
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
 export type SubAgentRunStatus = z.infer<typeof SubAgentRunStatusSchema>;
 export type SubAgentHandle = z.infer<typeof SubAgentHandleSchema>;

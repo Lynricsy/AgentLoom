@@ -185,6 +185,10 @@ function translateContainerEvent(
       const trace = decodeHarnessTrace(envelope, context);
       return trace ? { events: [trace] } : { events: [] };
     }
+    case 'usage': {
+      const usage = decodeUsage(envelope);
+      return usage ? { events: [usage] } : { events: [] };
+    }
     default:
       return { events: [] };
   }
@@ -218,6 +222,31 @@ function decodeHarnessTrace(
     ...(isRecord(envelope.data) ? { data: envelope.data } : {}),
     timestamp:
       readString(envelope.timestamp) ?? context.fallbackTransitionTimestamp,
+  };
+}
+
+/** usage 的 usage/modelId/provider 位于 envelope 顶层；缺 totalTokens 时补 input+output。 */
+function decodeUsage(envelope: ContainerEventEnvelope): AgentEvent | null {
+  const usage = isRecord(envelope.usage) ? envelope.usage : null;
+  if (!usage) return null;
+  const inputTokens = readTokenCount(usage.inputTokens) ?? 0;
+  const outputTokens = readTokenCount(usage.outputTokens) ?? 0;
+  const cacheReadTokens = readTokenCount(usage.cacheReadTokens);
+  const cacheWriteTokens = readTokenCount(usage.cacheWriteTokens);
+  const modelId = readString(envelope.modelId);
+  const provider = readString(envelope.provider);
+  return {
+    type: 'usage',
+    usage: {
+      inputTokens,
+      outputTokens,
+      ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+      ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+      totalTokens:
+        readTokenCount(usage.totalTokens) ?? inputTokens + outputTokens,
+    },
+    ...(modelId ? { modelId } : {}),
+    ...(provider ? { provider } : {}),
   };
 }
 
@@ -451,6 +480,12 @@ function readString(value: unknown): string | undefined {
 
 function readInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value)
+    ? value
+    : undefined;
+}
+
+function readTokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
     ? value
     : undefined;
 }

@@ -4,6 +4,7 @@
  */
 import type {
   AgentEvent,
+  AgentUsage,
   DecisionEvent,
   StopReason,
 } from '../types/agent-event.types';
@@ -42,6 +43,8 @@ export class AgentTurnEventAccumulator<TDecision = DecisionEvent> {
   private segmentsValue: ConversationMessageSegmentRecord[];
   private readonly outputChunkIndexOffset: number;
   private readonly mapDecision: (event: DecisionEvent) => TDecision;
+  private usageValue: AgentUsage | undefined;
+  private modelIdValue: string | undefined;
 
   constructor(options: AgentTurnEventAccumulatorOptions<TDecision>) {
     this.assistantTextValue = options.assistantText ?? '';
@@ -99,6 +102,13 @@ export class AgentTurnEventAccumulator<TDecision = DecisionEvent> {
       return { kind: 'decision' };
     }
 
+    if (event.type === 'usage') {
+      // 一轮内可能有多条 assistant 消息（工具续轮），逐字段求和
+      this.usageValue = addAgentUsage(this.usageValue, event.usage);
+      this.modelIdValue = event.modelId ?? this.modelIdValue;
+      return { kind: 'other' };
+    }
+
     if (event.type === 'done') {
       this.stopReasonValue = event.stopReason;
       return { kind: 'done', stopReason: event.stopReason };
@@ -144,6 +154,40 @@ export class AgentTurnEventAccumulator<TDecision = DecisionEvent> {
   get segments(): ConversationMessageSegmentRecord[] {
     return this.segmentsValue;
   }
+
+  get usage(): AgentUsage | undefined {
+    return this.usageValue;
+  }
+
+  get modelId(): string | undefined {
+    return this.modelIdValue;
+  }
+}
+
+/** 两份 token 用量逐字段求和；缓存字段两侧都缺失时保持缺失 */
+export function addAgentUsage(
+  previous: AgentUsage | undefined,
+  next: AgentUsage,
+): AgentUsage {
+  if (!previous) {
+    return { ...next };
+  }
+  const cacheReadTokens =
+    previous.cacheReadTokens === undefined && next.cacheReadTokens === undefined
+      ? undefined
+      : (previous.cacheReadTokens ?? 0) + (next.cacheReadTokens ?? 0);
+  const cacheWriteTokens =
+    previous.cacheWriteTokens === undefined &&
+    next.cacheWriteTokens === undefined
+      ? undefined
+      : (previous.cacheWriteTokens ?? 0) + (next.cacheWriteTokens ?? 0);
+  return {
+    inputTokens: previous.inputTokens + next.inputTokens,
+    outputTokens: previous.outputTokens + next.outputTokens,
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+    totalTokens: previous.totalTokens + next.totalTokens,
+  };
 }
 
 export function mergeAgentToolCallEvent(

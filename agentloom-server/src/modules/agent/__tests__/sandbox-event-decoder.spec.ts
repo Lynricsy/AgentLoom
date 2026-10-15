@@ -184,4 +184,34 @@ describe('decodeSandboxServerSentEvent', () => {
     ]);
     expect(decode({ type: 'harness_trace', turn: 1 }).events).toEqual([]);
   });
+
+  it('JSON-RPC usage 转成 usage 事件，缺 totalTokens 时补 input+output，缺 usage 不产生事件', () => {
+    expect(
+      decode({
+        jsonrpc: '2.0',
+        method: 'event',
+        params: {
+          type: 'usage',
+          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2 },
+          modelId: 'deepseek-chat',
+          provider: 'deepseek',
+        },
+      }),
+    ).toEqual({
+      events: [
+        {
+          type: 'usage',
+          usage: {
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 2,
+            totalTokens: 15,
+          },
+          modelId: 'deepseek-chat',
+          provider: 'deepseek',
+        },
+      ],
+    });
+    expect(decode({ type: 'usage' }).events).toEqual([]);
+  });
 });

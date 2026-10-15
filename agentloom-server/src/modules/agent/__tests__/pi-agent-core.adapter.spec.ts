@@ -1765,6 +1765,53 @@ describe('PiAgentCoreAdapter', () => {
       expect(events).toEqual([{ type: 'done', stopReason: 'end_turn' }]);
     });
 
+    it('assistant message_end 带 usage 时翻译为 usage 事件，非 assistant 或无 usage 时忽略', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'message_end',
+          message: {
+            role: 'assistant',
+            model: 'gpt-test',
+            provider: 'openai',
+            usage: { input: 10, output: 5, totalTokens: 15 },
+          },
+        });
+        agent.emit({
+          type: 'message_end',
+          message: { role: 'user', usage: { input: 1, output: 1 } },
+        });
+        agent.emit({ type: 'message_end', message: { role: 'assistant' } });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hi' }]),
+      );
+      expect(events).toEqual([
+        {
+          type: 'usage',
+          usage: {
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 15,
+          },
+          modelId: 'gpt-test',
+          provider: 'openai',
+        },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+    });
+
     it('tool_execution_end isError=true 时使用 stringifyToolError', async () => {
       mockDb.select.mockReturnValueOnce(
         createSelectChain([defaultModelConfig]),
