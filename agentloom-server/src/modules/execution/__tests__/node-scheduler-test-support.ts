@@ -72,8 +72,15 @@ import type {
   ReactFlowNode,
 } from '../../../database/schema';
 import type { DagExecutionPlan } from '../dag-resolver.service';
+import { DecisionService } from '../../decision/decision.service';
 export const mockOrganizationAutonomyPolicyService = {
   resolveEffectiveAutonomyMode: vi.fn().mockResolvedValue('FULL_AUTO'),
+};
+export const mockDecisionService = {
+  decide: vi.fn().mockResolvedValue({
+    outcome: { type: 'noul', value: 1 },
+    recordId: 'decision-record-1',
+  }),
 };
 
 export const NODE_EXECUTION_PROVIDERS = [
@@ -97,6 +104,7 @@ export const NODE_EXECUTION_PROVIDERS = [
     provide: OrganizationAutonomyPolicyService,
     useValue: mockOrganizationAutonomyPolicyService,
   },
+  { provide: DecisionService, useValue: mockDecisionService },
 ] as const;
 
 const EXECUTION_ID = '019577a0-0000-7000-8000-000000000001';

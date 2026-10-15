@@ -83,6 +83,7 @@ import {
   makeExecution,
   createSelectChain,
   createUpdateChainVoid,
+  mockDecisionService,
 } from './node-scheduler-test-support';
 
 describe('smart migrated scenarios', () => {
@@ -229,11 +230,23 @@ describe('smart migrated scenarios', () => {
     mockSmartRoutingService = {
       recordDecision: vi.fn().mockResolvedValue('routing-decision-1'),
       getHistoricalMetrics: vi.fn().mockResolvedValue({}),
-      loadCandidates: vi
-        .fn()
-        .mockImplementation(async (ids: string[]) =>
-          ids.map((id) => ({ id, modelConfigId: id, name: id })),
-        ),
+      loadCandidates: vi.fn().mockImplementation(async (ids: string[]) =>
+        ids.map((id) => ({
+          id,
+          modelConfigId: id,
+          name: id,
+          provider: 'openai',
+          healthStatus: 'healthy',
+          routingMeta: {
+            contextWindow: 128000,
+            costs: { input: 0.001, output: 0.002 },
+            qualityRank: 1,
+            avgLatencyMs: 500,
+            maxInputTokens: 128000,
+            eloRating: 1000,
+          },
+        })),
+      ),
     };
     mockRouterRegistry = {
       get: vi.fn().mockReturnValue({
@@ -450,6 +463,18 @@ describe('smart migrated scenarios', () => {
           routerType: 'fallback_chain',
         }),
       );
+      expect(mockDecisionService.decide).toHaveBeenCalledWith({
+        kind: 'routing.model_choice',
+        tenantId: TENANT_ID,
+        subject: { type: 'routing_decision', id: 'routing-decision-1' },
+        input: expect.objectContaining({
+          selectedModelId: 'model-2',
+          inputTokenCount: expect.any(Number),
+          candidates: expect.arrayContaining([
+            expect.objectContaining({ id: 'model-1', name: 'model-1' }),
+          ]),
+        }),
+      });
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         'step-r',

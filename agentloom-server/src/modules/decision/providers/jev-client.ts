@@ -73,7 +73,8 @@ export class JevClient {
       configService.get<string>('APP_TYPESAFE_BASE_URL') ??
       'https://api.typesafe.ai'
     ).replace(/\/+$/, '');
-    this.model = configService.get<string>('APP_TYPESAFE_MODEL') ?? 'jev-1.13.0';
+    this.model =
+      configService.get<string>('APP_TYPESAFE_MODEL') ?? 'jev-1.13.0';
   }
 
   /** 未配置 API Key 时影子模式关闭，调用方不得发起请求 */
@@ -81,7 +82,10 @@ export class JevClient {
     return Boolean(this.apiKey);
   }
 
-  async evaluate(request: JevRequest, signal: AbortSignal): Promise<JevResponse> {
+  async evaluate(
+    request: JevRequest,
+    signal: AbortSignal,
+  ): Promise<JevResponse> {
     if (!this.apiKey) {
       throw new Error('APP_TYPESAFE_API_KEY 未配置，Jev 不可用');
     }

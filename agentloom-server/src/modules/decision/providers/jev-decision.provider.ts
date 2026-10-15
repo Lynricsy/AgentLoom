@@ -26,7 +26,8 @@ export class JevDecisionProvider implements DecisionProvider {
     input: I,
     signal: AbortSignal,
   ): Promise<DecisionProviderEvaluation> {
-    const criteria = def.type === 'choice' ? def.buildOptions?.(input) : def.criteria;
+    const criteria =
+      def.type === 'choice' ? def.buildOptions?.(input) : def.criteria;
     const response = await this.client.evaluate(
       {
         state: def.buildState(input),

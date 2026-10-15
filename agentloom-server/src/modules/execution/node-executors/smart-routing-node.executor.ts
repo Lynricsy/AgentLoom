@@ -1,9 +1,11 @@
 /**
- * 智能路由节点执行器：解析节点配置，经 SmartRoutingService 加载候选、健康过滤、路由决策并持久化。
+ * 智能路由节点执行器：解析节点配置，经 SmartRoutingService 加载候选、健康过滤、路由决策并持久化，
+ * 再经 DecisionService 记录 routing.model_choice（规则 = 实际选择；配置 Jev 时异步写影子结果）。
  */
 import { Injectable } from '@nestjs/common';
 import type { ExecutionStep } from '../../../database/schema';
 import { AgentExecutionException } from '../execution.exceptions';
+import { DecisionService } from '../../decision/decision.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { RouterRegistry } from '../../smart-routing/core/router-registry';
 import type { RoutingContext as SmartRoutingContext } from '../../smart-routing/core/routing-context';
@@ -37,6 +39,7 @@ export class SmartRoutingNodeExecutor implements NodeExecutor {
     private readonly embeddingService: EmbeddingIntegrationService,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly failurePolicy: NodeExecutionFailurePolicy,
+    private readonly decisionService: DecisionService,
   ) {}
 
   async execute(context: NodeExecutionContext): Promise<void> {
@@ -139,6 +142,25 @@ export class SmartRoutingNodeExecutor implements NodeExecutor {
           fallbackSource: decision.fallback?.source,
         },
       );
+      await this.decisionService.decide({
+        kind: 'routing.model_choice',
+        tenantId,
+        subject: { type: 'routing_decision', id: routingDecisionId },
+        input: {
+          queryText: queryText ?? null,
+          taskCategory: taskCategory ?? null,
+          inputTokenCount,
+          candidates: healthyCandidates.map((candidate) => ({
+            id: candidate.id,
+            name: candidate.name,
+            provider: candidate.provider,
+            qualityRank: candidate.routingMeta.qualityRank,
+            avgLatencyMs: candidate.routingMeta.avgLatencyMs,
+            costs: candidate.routingMeta.costs,
+          })),
+          selectedModelId: decision.selectedModelId,
+        },
+      });
 
       const candidateModelIds = evaluatedModels.map((model) => model.modelId);
       const currentModelIndex = Math.max(

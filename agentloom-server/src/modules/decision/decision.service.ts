@@ -242,7 +242,9 @@ function canonicalJson(value: unknown): string {
     return `{${Object.keys(record)
       .filter((field) => record[field] !== undefined)
       .sort()
-      .map((field) => `${JSON.stringify(field)}:${canonicalJson(record[field])}`)
+      .map(
+        (field) => `${JSON.stringify(field)}:${canonicalJson(record[field])}`,
+      )
       .join(',')}}`;
   }
   return JSON.stringify(value);

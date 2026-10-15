@@ -14,6 +14,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { LlmModule } from '../llm/llm.module';
 import { LlmCostService } from '../llm/llm-cost.service';
 import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
+import { DecisionModule } from '../decision/decision.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { OrganizationModule } from '../organization/organization.module';
 import { ResourceGovernanceModule } from '../resource-governance/resource-governance.module';
@@ -74,6 +75,7 @@ import {
     NotificationModule,
     LlmModule,
     SmartRoutingModule,
+    DecisionModule,
     PluginModule,
     OrganizationModule,
     ResourceGovernanceModule,
