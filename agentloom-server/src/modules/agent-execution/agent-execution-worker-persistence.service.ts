@@ -16,6 +16,7 @@ import type { DrizzleDB } from '../../database/database.module';
 import {
   agentConversations,
   agentMessages,
+  type AgentConversation,
 } from '../../database/schema/agent-conversations.schema';
 import {
   agentDefinitions,
@@ -133,11 +134,15 @@ import {
   AGENT_CONVERSATION_TURN_PERSISTED_EVENT,
   type ConversationTurnPersistedEvent,
 } from './agent-execution.events';
+import type { TeamToolsProvider } from '../team/team-tools.provider';
+
+type ConversationSource = AgentConversation['source'];
 
 type ConversationExecutionContext = {
   conversation: {
     id: string;
     agentDefinitionId: string;
+    source: 'studio' | 'api' | 'team';
     tenantId: string;
     status: 'active' | 'paused' | 'ended' | 'failed';
     metadata: Record<string, unknown>;
@@ -217,6 +222,7 @@ export class AgentExecutionWorkerPersistenceService {
     protected readonly agentApiRunService?: AgentApiRunService,
     protected readonly llmCostService?: LlmCostService,
     protected readonly eventEmitter?: EventEmitter2,
+    protected readonly teamToolsProvider?: TeamToolsProvider,
   ) {}
 
   public async persistConversationTurn(
@@ -718,6 +724,8 @@ export class AgentExecutionWorkerPersistenceService {
     parentUsesSandboxRuntime: boolean;
     visitedAgentIds?: Set<string>;
     subAgentTracker: SubAgentExecutionTracker;
+    /** 父对话来源：子代理会话据此决定是否注册团队工具 */
+    conversationSource?: ConversationSource;
   }): void {
     if (
       !params.runtimeConfig.subAgents?.length ||
@@ -737,6 +745,9 @@ export class AgentExecutionWorkerPersistenceService {
           tenantId: params.tenantId,
           parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
           parentAbortSignal: params.parentAbortSignal,
+          ...(params.conversationSource
+            ? { conversationSource: params.conversationSource }
+            : {}),
           visitedAgentIds: new Set([
             ...(params.visitedAgentIds ?? []),
             params.currentAgentDefinitionId,
@@ -746,6 +757,33 @@ export class AgentExecutionWorkerPersistenceService {
           this.executeSubAgent(subAgentParams, params.subAgentTracker),
       ),
     );
+  }
+
+  /**
+   * 团队成员对话（source='team'）注册团队工具；成员身份按对话解析，非成员对话不注册。
+   */
+  public async registerTeamToolsProvider(params: {
+    runtime: IAgentRuntime;
+    sessionId: string;
+    conversationId: string;
+    tenantId: string;
+    conversationSource: ConversationSource | undefined;
+  }): Promise<void> {
+    if (
+      params.conversationSource !== 'team' ||
+      !this.teamToolsProvider ||
+      !params.runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    const provider = await this.teamToolsProvider.createForConversation(
+      params.conversationId,
+      params.tenantId,
+    );
+    if (provider) {
+      params.runtime.registerSessionToolProvider(params.sessionId, provider);
+    }
   }
 
   public async registerSelfEvolutionToolsProvider(params: {
@@ -991,6 +1029,14 @@ export class AgentExecutionWorkerPersistenceService {
         parentUsesSandboxRuntime: usesSandboxRuntime,
         visitedAgentIds: params.parentContext.visitedAgentIds,
         subAgentTracker,
+        conversationSource: params.parentContext.conversationSource,
+      });
+      await this.registerTeamToolsProvider({
+        runtime,
+        sessionId: nextSessionId,
+        conversationId,
+        tenantId: params.parentContext.tenantId,
+        conversationSource: params.parentContext.conversationSource,
       });
 
       try {

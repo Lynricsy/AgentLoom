@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
 import { AgentConversationModule } from '../agent-conversation/agent-conversation.module';
+import { DecisionModule } from '../decision/decision.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { TeamController } from './team.controller';
 import {
@@ -13,6 +14,7 @@ import { TeamRunQueryService } from './team-run-query.service';
 import { TeamRunService } from './team-run.service';
 import { TeamRuntimeScheduler } from './team-runtime.scheduler';
 import { TeamRuntimeWorker } from './team-runtime.worker';
+import { TeamToolsProvider } from './team-tools.provider';
 
 /**
  * 受控团队运行时：团队运行、成员邮箱、成员工具、截止与清扫。
@@ -24,6 +26,7 @@ import { TeamRuntimeWorker } from './team-runtime.worker';
 @Module({
   imports: [
     AgentConversationModule,
+    DecisionModule,
     ExecutionModule,
     BullModule.registerQueue({
       name: TEAM_RUNTIME_QUEUE,
@@ -35,8 +38,10 @@ import { TeamRuntimeWorker } from './team-runtime.worker';
     TeamMailboxService,
     TeamRunService,
     TeamRunQueryService,
+    TeamToolsProvider,
     TeamRuntimeWorker,
     TeamRuntimeScheduler,
   ],
+  exports: [TeamToolsProvider],
 })
 export class TeamModule {}

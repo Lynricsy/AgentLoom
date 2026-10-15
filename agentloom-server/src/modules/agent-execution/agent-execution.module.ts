@@ -42,6 +42,8 @@ import { LlmCostService } from '../llm/llm-cost.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
+import { TeamModule } from '../team/team.module';
+import { TeamToolsProvider } from '../team/team-tools.provider';
 import { WorkspaceIntegrationService } from './workspace-integration.service';
 import { SubAgentToolsProvider } from './subagent';
 import {
@@ -51,6 +53,7 @@ import {
 } from './agent-execution.service';
 import { AgentExecutionWorker } from './agent-execution.worker';
 import { AgentConversationGateway } from './agent-conversation.gateway';
+import { TeamConversationBridgeListener } from './team-conversation-bridge.listener';
 
 const agentExecutionServiceProvider: Provider = {
   provide: AgentExecutionService,
@@ -93,6 +96,7 @@ const agentExecutionWorkerProvider: Provider = {
     healthMonitorService?: HealthMonitorService,
     llmCostService?: LlmCostService,
     eventEmitter?: EventEmitter2,
+    teamToolsProvider?: TeamToolsProvider,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -116,6 +120,7 @@ const agentExecutionWorkerProvider: Provider = {
       healthMonitorService,
       llmCostService,
       eventEmitter,
+      teamToolsProvider,
     ),
   inject: [
     DRIZZLE,
@@ -139,6 +144,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: HealthMonitorService, optional: true },
     LlmCostService,
     EventEmitter2,
+    { token: TeamToolsProvider, optional: true },
   ],
 };
 
@@ -156,6 +162,7 @@ const agentExecutionWorkerProvider: Provider = {
     SkillModule,
     SelfEvolutionModule,
     AgentApiRuntimeModule,
+    TeamModule,
     BullModule.registerQueue({
       name: AGENT_CONVERSATION_EXECUTION_QUEUE,
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -167,6 +174,7 @@ const agentExecutionWorkerProvider: Provider = {
     AgentConversationGateway,
     RbacCacheService,
     SubAgentToolsProvider,
+    TeamConversationBridgeListener,
   ],
   exports: [AgentExecutionService],
 })

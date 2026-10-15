@@ -126,11 +126,17 @@ import {
   type ConversationTurnResult,
   turnResultHasPersistableOutput,
 } from './conversation-turn-values';
+import { TeamToolsProvider } from '../team/team-tools.provider';
+import {
+  AGENT_CONVERSATION_LOOP_ENDED_EVENT,
+  type ConversationLoopEndedEvent,
+} from './agent-execution.events';
 
 type ConversationExecutionContext = {
   conversation: {
     id: string;
     agentDefinitionId: string;
+    source: 'studio' | 'api' | 'team';
     tenantId: string;
     status: 'active' | 'paused' | 'ended' | 'failed';
     metadata: Record<string, unknown>;
@@ -940,7 +946,8 @@ export class AgentExecutionWorker extends WorkerHost {
     routerRegistry?: RouterRegistry,
     healthMonitorService?: HealthMonitorService,
     llmCostService?: LlmCostService,
-    eventEmitter?: EventEmitter2,
+    private readonly eventEmitter?: EventEmitter2,
+    teamToolsProvider?: TeamToolsProvider,
     @Optional()
     injectedPersistenceService?: AgentExecutionWorkerPersistenceService,
     @Optional()
@@ -969,6 +976,7 @@ export class AgentExecutionWorker extends WorkerHost {
         agentApiRunService,
         llmCostService,
         eventEmitter,
+        teamToolsProvider,
       );
     this.runtimeService =
       injectedRuntimeService ??
@@ -1562,6 +1570,14 @@ export class AgentExecutionWorker extends WorkerHost {
         terminalStatus,
         failureDetail,
       );
+      this.eventEmitter?.emit(AGENT_CONVERSATION_LOOP_ENDED_EVENT, {
+        conversationId,
+        tenantId,
+        status: terminalStatus === 'completed' ? 'idle' : terminalStatus,
+        ...(terminalStatus === 'failed' && failureDetail
+          ? { errorMessage: failureDetail }
+          : {}),
+      } satisfies ConversationLoopEndedEvent);
     }
 
     await this.persistenceService.safeUpdateExecutionMetadata(

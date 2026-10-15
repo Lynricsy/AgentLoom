@@ -144,6 +144,7 @@ type ConversationExecutionContext = {
   conversation: {
     id: string;
     agentDefinitionId: string;
+    source: 'studio' | 'api' | 'team';
     tenantId: string;
     status: 'active' | 'paused' | 'ended' | 'failed';
     metadata: Record<string, unknown>;
@@ -253,6 +254,7 @@ export class AgentExecutionWorkerRuntimeService {
         .select({
           id: agentConversations.id,
           agentDefinitionId: agentConversations.agentDefinitionId,
+          source: agentConversations.source,
           tenantId: agentConversations.tenantId,
           status: agentConversations.status,
           metadata: agentConversations.metadata,
@@ -660,6 +662,14 @@ export class AgentExecutionWorkerRuntimeService {
           currentDepth: 0,
           parentUsesSandboxRuntime: hasSandboxRuntime,
           subAgentTracker,
+          conversationSource: context.conversation.source,
+        });
+        await this.persistence.registerTeamToolsProvider({
+          runtime,
+          sessionId: session.id,
+          conversationId,
+          tenantId,
+          conversationSource: context.conversation.source,
         });
         if (hasSandboxRuntime) {
           await this.startConversationWorkspaceWatcher(
@@ -727,6 +737,14 @@ export class AgentExecutionWorkerRuntimeService {
       currentDepth: 0,
       parentUsesSandboxRuntime: hasSandboxRuntime,
       subAgentTracker,
+      conversationSource: context.conversation.source,
+    });
+    await this.persistence.registerTeamToolsProvider({
+      runtime,
+      sessionId: nextSessionId,
+      conversationId,
+      tenantId,
+      conversationSource: context.conversation.source,
     });
 
     let session: AgentSession;

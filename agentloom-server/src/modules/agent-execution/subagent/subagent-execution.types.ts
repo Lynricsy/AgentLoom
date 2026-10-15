@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { AgentConversation } from '../../../database/schema/agent-conversations.schema';
+
 /** 子代理句柄 — 前缀 'sa_' + 12位随机字符 */
 export type SubAgentHandle = `sa_${string}`;
 
@@ -113,6 +115,8 @@ export interface SubAgentParentContext {
   parentAbortSignal?: AbortSignal;
   /** 已访问的 Agent IDs (用于循环检测) */
   visitedAgentIds: Set<string>;
+  /** 父对话来源（conversation 场景）：团队成员对话的子代理会话同样注册团队工具 */
+  conversationSource?: AgentConversation['source'];
 }
 
 /** 子代理完成通知 (注入到父对话的轻量消息) */
