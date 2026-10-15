@@ -19,7 +19,7 @@ docType: reference
 - 关系线的标签是子表上的外键列。`||` 表示外键列 `NOT NULL`，`|o` 表示可空；`o|` 在子表一侧表示该外键列上有唯一索引（一对一）。
 - 绝大多数表都有 `created_by` / `updated_by` 等指向 `users.id` 的外键，除「身份与组织」图外均省略。
 - 各表的 `tenant_id` 列是普通 `uuid`，不是外键；例外是 `router_models.tenant_id` 与 `provider_health_status.tenant_id`，它们引用 `organizations.tenant_id`。
-- 没有任何外键的表不出现在图中：`acp_conversation_sessions`、`audit_logs`、`audit_log_archives`、`optimization_suggestions`、`revoked_tokens`、`sandbox_runtime_nodes`、`workflow_templates`。
+- 没有任何外键的表不出现在图中：`acp_conversation_sessions`、`audit_logs`、`audit_log_archives`、`decision_records`、`optimization_suggestions`、`revoked_tokens`、`sandbox_runtime_nodes`、`workflow_templates`。
 - `users.supabase_user_id` 引用 Supabase 的 `auth.users.id`（不在本仓库 schema 内，图中省略）。
 
 ### 身份与组织
@@ -92,6 +92,23 @@ erDiagram
 ```
 
 `agent_api_runs` 在 `conversation_id` 上的唯一索引只覆盖 `queued` / `running` 状态，即同一对话同时只有一个进行中的 run（`agentloom-server/src/database/schema/agent-api-runs.schema.ts:86`）。
+
+### 团队运行时
+
+```mermaid
+erDiagram
+    workflow_executions ||--o{ team_runs : "execution_id"
+    execution_steps ||--o{ team_runs : "step_id"
+    team_runs ||--o{ team_members : "team_run_id"
+    agent_definitions ||--o{ team_members : "agent_definition_id"
+    agent_conversations ||--o| team_members : "conversation_id"
+    team_runs ||--o{ team_messages : "team_run_id"
+    team_members |o--o{ team_messages : "sender_member_id"
+    team_members ||--o{ team_messages : "recipient_member_id"
+    agent_messages |o--o| team_messages : "agent_message_id"
+```
+
+每个团队成员的运行载体是一条 `source = 'team'` 的 `agent_conversations`（`team_members.conversation_id` 唯一）。`team_runs` 在 `step_id` 上的唯一索引只覆盖 `running` 状态，同一步骤重跑会新建一行、旧行保留为历史（`agentloom-server/src/database/schema/team-runs.schema.ts`）。`team_messages` 每个接收者一行，本身即 Outbox；`decision_record_id` 指向 `decision_records`，但后者是 append-only 表（只有 SELECT / INSERT 策略与授权），因此不建外键。
 
 ### 沙箱运行时与工作区
 

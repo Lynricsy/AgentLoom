@@ -16,6 +16,7 @@
 | `api_keys` | 18 | 是 | `api-keys.schema.ts` |
 | `audit_log_archives` | 13 | 是 | `audit-logs.schema.ts` |
 | `audit_logs` | 13 | 是 | `audit-logs.schema.ts` |
+| `decision_records` | 17 | 是 | `decision-records.schema.ts` |
 | `device_tokens` | 7 | 否 | `device-tokens.schema.ts` |
 | `evidence_export_jobs` | 17 | 是 | `evidence-export-jobs.schema.ts` |
 | `evidence_records` | 11 | 是 | `evidence.schema.ts` |
@@ -68,6 +69,9 @@
 | `sandbox_runtime_nodes` | 6 | 否 | `sandbox-runtime-nodes.schema.ts` |
 | `sandbox_sessions` | 12 | 是 | `sandbox-sessions.schema.ts` |
 | `skills` | 16 | 是 | `skills.schema.ts` |
+| `team_members` | 18 | 是 | `team-members.schema.ts` |
+| `team_messages` | 16 | 是 | `team-messages.schema.ts` |
+| `team_runs` | 25 | 是 | `team-runs.schema.ts` |
 | `tenant_encryption_keys` | 11 | 是 | `tenant-encryption-keys.schema.ts` |
 | `tenant_quotas` | 15 | 是 | `tenant-quotas.schema.ts` |
 | `tool_definitions` | 16 | 是 | `tool-definitions.schema.ts` |
@@ -324,6 +328,30 @@
 | `before` | `jsonb` |  |  |
 | `after` | `jsonb` |  |  |
 | `metadata` | `jsonb` |  |  |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+
+### decision_records
+
+定义：`agentloom-server/src/database/schema/decision-records.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `kind` | `varchar(64)` | 是 |  |
+| `subject_type` | `varchar(32)` | 是 |  |
+| `subject_id` | `uuid` | 是 |  |
+| `provider` | `varchar(16)` | 是 |  |
+| `model` | `varchar(64)` |  |  |
+| `mode` | `varchar(16)` | 是 |  |
+| `definition_version` | `integer` | 是 |  |
+| `input_digest` | `char(64)` | 是 |  |
+| `outcome` | `jsonb` |  |  |
+| `confidence` | `real` |  |  |
+| `latency_ms` | `integer` | 是 |  |
+| `input_tokens` | `integer` |  |  |
+| `output_tokens` | `integer` |  |  |
+| `error` | `text` |  |  |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
 
 ### device_tokens
@@ -1390,6 +1418,86 @@
 | `version` | `integer` | 是 | `1` |
 | `created_by` | `uuid` | 是 |  |
 | `updated_by` | `uuid` | 是 |  |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+| `updated_at` | `timestamp with time zone` | 是 | `now()` |
+
+### team_members
+
+定义：`agentloom-server/src/database/schema/team-members.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `team_run_id` | `uuid` | 是 |  |
+| `role` | `varchar(64)` | 是 |  |
+| `agent_definition_id` | `uuid` | 是 |  |
+| `agent_version_id` | `uuid` |  |  |
+| `conversation_id` | `uuid` | 是 |  |
+| `is_lead` | `boolean` | 是 | `false` |
+| `can_message` | `jsonb` | 是 | `[]` |
+| `instructions` | `text` |  |  |
+| `status` | `team_member_status_enum` | 是 | `"idle"` |
+| `used_input_tokens` | `bigint` | 是 | `0` |
+| `used_output_tokens` | `bigint` | 是 | `0` |
+| `used_cost_usd` | `numeric(14, 6)` | 是 | `0` |
+| `turn_count` | `integer` | 是 | `0` |
+| `last_turn_at` | `timestamp with time zone` |  |  |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+| `updated_at` | `timestamp with time zone` | 是 | `now()` |
+
+### team_messages
+
+定义：`agentloom-server/src/database/schema/team-messages.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `team_run_id` | `uuid` | 是 |  |
+| `sender_member_id` | `uuid` |  |  |
+| `recipient_member_id` | `uuid` | 是 |  |
+| `kind` | `team_message_kind_enum` | 是 |  |
+| `content` | `text` | 是 |  |
+| `refs` | `jsonb` | 是 | `[]` |
+| `reply_to_message_id` | `uuid` |  |  |
+| `delivery_status` | `team_message_delivery_status_enum` | 是 | `"pending"` |
+| `agent_message_id` | `uuid` |  |  |
+| `decision_record_id` | `uuid` |  |  |
+| `expires_at` | `timestamp with time zone` |  |  |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+| `delivered_at` | `timestamp with time zone` |  |  |
+| `consumed_at` | `timestamp with time zone` |  |  |
+
+### team_runs
+
+定义：`agentloom-server/src/database/schema/team-runs.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `execution_id` | `uuid` | 是 |  |
+| `step_id` | `uuid` | 是 |  |
+| `node_id` | `text` | 是 |  |
+| `status` | `team_run_status_enum` | 是 | `"running"` |
+| `config` | `jsonb` | 是 |  |
+| `task_text` | `text` | 是 |  |
+| `context` | `jsonb` |  |  |
+| `budget_max_total_tokens` | `integer` | 是 |  |
+| `budget_max_messages` | `integer` | 是 |  |
+| `deadline_at` | `timestamp with time zone` | 是 |  |
+| `used_input_tokens` | `bigint` | 是 | `0` |
+| `used_output_tokens` | `bigint` | 是 | `0` |
+| `used_cost_usd` | `numeric(14, 6)` | 是 | `0` |
+| `message_count` | `integer` | 是 | `0` |
+| `nudge_count` | `integer` | 是 | `0` |
+| `schema_invalid_count` | `integer` | 是 | `0` |
+| `result` | `jsonb` |  |  |
+| `failure_reason` | `varchar(40)` |  |  |
+| `failure_detail` | `text` |  |  |
+| `started_at` | `timestamp with time zone` | 是 | `now()` |
+| `completed_at` | `timestamp with time zone` |  |  |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
 | `updated_at` | `timestamp with time zone` | 是 | `now()` |
 
