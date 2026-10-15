@@ -88,6 +88,7 @@ agentloom-server/src/
 - `agent`：Agent 运行时适配层。`ports/` 定义运行时端口，`in-process-agent.adapter.ts` 与 `sandbox-agent.adapter.ts` 分别在进程内和沙箱中运行 Agent；对外只有 `/agent-runtime` 下的沙箱工具回调路由。
 - `agent-conversation`：对话的创建、消息、标题生成、工具权限与对话工作区读取，路由在 `/agent-conversations/…` 与 `/agent-definitions/:agentId/conversations`。
 - `agent-execution`：对话轮次的执行进程。`AgentExecutionWorker` 消费对话队列，`AgentConversationGateway` 推送 `/agent-conversation` 命名空间事件，`subagent/` 提供子 Agent 工具。本模块没有 controller。
+- `team`：受控团队运行时（工作流 `team` 节点）。`TeamRunService` 管理团队运行的启动、用量记账与确定性结束，`TeamMailboxService` 以 `team_messages` 为 Outbox 在回合边界把消息投递到成员对话，`TeamToolsProvider` 为 `source='team'` 的成员对话注册 `team_send_message` / `team_get_status` / `team_submit_result`，`team-runtime` 队列承载截止任务与 30 秒清扫；只读路由 `/team-runs`。与 `agent-execution`、`execution` 的反向调用经进程内事件，设计见 [ADR-0004](/dev/decisions/0004-team-runtime)。
 - `agent-memory`：图结构的 Agent 记忆（节点、边、路径、术语、版本与审核），前缀 `/memory-instances`，Socket.IO 命名空间 `/memory`。
 - `skill`：Skill 的增删改查与文件管理，前缀 `/skills`；文件存放在 MinIO，`SkillResolverService` 在运行时解析 Agent 绑定的 Skill。
 - `self-evolution`：Agent 的自进化工具集。会话内提供 `query_state`、`query_resource_pool`、`propose_change` 三个读工具和 `apply_change`、`create_resource` 两个写工具，写工具受 Agent 定义中的 `selfEvolutionPolicy` 与权限审批约束（`agentloom-server/src/modules/self-evolution/self-evolution.service.ts`）。本模块没有 controller。
@@ -241,6 +242,10 @@ graph LR
     AE --> EX
     AE --> AM[agent-memory]
     AE --> AAR[agent-api-runtime]
+    AE --> TM[team]
+    TM --> EX
+    TM --> AC
+    TM --> DEC[decision]
     API[agent-api] --> AE
     API --> AAR
     A2A[a2a] --> API

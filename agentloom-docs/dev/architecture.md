@@ -155,6 +155,21 @@ server 与 worker 不持有 KVM、网络或 cgroup 特权；这些只在运行 `
 
 沙箱节点登记、容量择优、handle 路由以及 guest 内的 dsh 会话见 [Agent 运行态](/dev/server/agent-runtime)；manager 的 HTTP API 见 [Firecracker 运行时](/dev/firecracker-runtime)。
 
+## 团队运行时
+
+工作流的 `team` 节点让多个固定角色的 Agent 在预算与截止时间内协作，由 lead 提交结果（用户操作见 [Team 节点](/guide/nodes/team)，设计取舍见 [ADR-0004](/dev/decisions/0004-team-runtime)）。代码在 `agentloom-server/src/modules/team/`：
+
+| 环节 | 机制 | 入口 |
+| --- | --- | --- |
+| 启动 | `TeamNodeExecutor` 校验配置、把步骤置为 running，经事件 `team.run.start-requested` 请求启动；`TeamRunService.start` 在一个租户事务内写 `team_runs`、每个成员一条 `source='team'` 的对话与 `team_members` 行、成员简报（第一条用户消息），提交后派发成员对话并登记截止任务 | `agentloom-server/src/modules/execution/node-executors/team-node.executor.ts`、`agentloom-server/src/modules/team/team-run.service.ts` |
+| 成员执行 | 每个成员就是一条对话，复用对话执行队列；对话 worker 为 `source='team'` 的会话注册团队工具 | `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`（`registerTeamToolsProvider`）、`agentloom-server/src/modules/team/team-tools.provider.ts` |
+| 消息 | `team_send_message` 写 `team_messages`（每个接收者一行 `pending`），提交后逐条锁行写入接收者对话并置 `delivered`、派发接收者；接收者下一回合处理后置 `consumed` | `agentloom-server/src/modules/team/team-mailbox.service.ts` |
+| 记账 | 订阅 `agent-conversation.turn-persisted` 累计成员与团队用量，超出 tokens 预算即失败；订阅 `agent-conversation.loop-ended` 处理成员失败 | `agentloom-server/src/modules/agent-execution/agent-execution.events.ts` |
+| 结束 | lead 的 `team_submit_result`、预算、截止（`team-runtime` 队列延迟任务）、全体空闲催办用尽、执行取消，都经 `finalize`：结束成员对话、广播 `execution.node.team-status`，完成时 `onNodeCompleted`、失败时 `onNodeFailed`（错误类型 `team/<reason>`） | `agentloom-server/src/modules/team/team-run.service.ts` |
+| 可靠性 | `team-runtime` 队列每 30 秒清扫：重投超时 `pending`、重新派发超时未消费的接收者、过期截止后的消息、催办空闲团队 | `agentloom-server/src/modules/team/team-runtime.worker.ts` |
+
+模块依赖为 `agent-execution → team → execution`；团队运行时派发/结束成员对话经事件 `team.member-conversation.dispatch/cancel`，由 `agentloom-server/src/modules/agent-execution/team-conversation-bridge.listener.ts` 调用 `AgentExecutionService`。
+
 ## 关键文件
 
 | 文件 | 内容 |

@@ -32,6 +32,7 @@ docType: reference
 | `routing-learning` | 3 | exponential 2000ms | 100 / 500 | `smart-routing/learning/routing-learning.types.ts` | `jobId` 为 routingDecisionId |
 | `trigger-scheduler` | 3 | exponential 2000ms | 100 / 500 | `trigger/trigger.constants.ts` | — |
 | `agent-api-maintenance` | 1 | — | 100 / 500 | `agent-api-runtime/agent-api-runtime.constants.ts` | — |
+| `team-runtime` | 3 | exponential 2000ms | 500 / 1000 | `team/team.constants.ts`（`TEAM_RUNTIME_QUEUE_DEFAULT_JOB_OPTIONS`） | 截止任务 `jobId` 为 `team-deadline-<teamRunId>`、delay 为距截止时间的毫秒数，团队结束时移除（`team/team-run.service.ts`） |
 
 同一队列可能在多个模块中被重复注册（如 `agent-task` 在 `monitoring` 模块中注册用于只读统计、`routing-learning` 在 `smart-routing` 模块中再次注册），这些注册不带 `defaultJobOptions`；生产者所在模块的注册决定默认值。
 
@@ -57,6 +58,7 @@ docType: reference
 | `trigger-scheduler` | 每个 cron 触发器一个，id 为 trigger id | 触发器配置的 `expression` 与 `timezone` | `trigger/trigger-scheduler.service.ts` |
 | `agent-api-maintenance` | `agent-api-maintenance-sweep` | 每 5 分钟 | `agent-api-runtime/agent-api-runtime.constants.ts`、`agent-api-runtime/agent-api-maintenance.scheduler.ts` |
 | `sandbox-lifecycle` | 每个会话一个 `sandbox-workspace-lease-renew-<sessionId>` | 每 60 秒，会话结束时移除 | `sandbox/sandbox-lifecycle.producer.ts` |
+| `team-runtime` | `team-sweep` | 每 30 秒 | `team/team.constants.ts`、`team/team-runtime.scheduler.ts` |
 
 ## 死信队列（DLQ）
 
