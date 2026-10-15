@@ -42,6 +42,8 @@ import { filterNavGroupsByRole } from "./navigation";
 describe("AppSidebar", () => {
   beforeEach(() => {
     mocks.role = "owner";
+    // 折叠状态写入 localStorage；不清理时上一个用例的「收起侧边栏」会让后续用例以收起态渲染
+    localStorage.clear();
   });
 
   it("渲染当前角色可见的全部导航分组与其条目", () => {
