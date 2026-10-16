@@ -45,7 +45,9 @@
 | `memory_versions` | 11 | 是 | `memory-versions.schema.ts` |
 | `notification_preferences` | 6 | 是 | `notifications.schema.ts` |
 | `notifications` | 8 | 是 | `notifications.schema.ts` |
-| `optimization_suggestions` | 20 | 是 | `optimization-suggestions.schema.ts` |
+| `optimization_evaluation_runs` | 10 | 是 | `optimization-proposals.schema.ts` |
+| `optimization_evaluations` | 15 | 是 | `optimization-proposals.schema.ts` |
+| `optimization_proposals` | 28 | 是 | `optimization-proposals.schema.ts` |
 | `organization_autonomy_policies` | 9 | 是 | `org-autonomy-policies.schema.ts` |
 | `organization_invitations` | 12 | 否 | `organizations.schema.ts` |
 | `organization_members` | 6 | 否 | `organizations.schema.ts` |
@@ -911,9 +913,48 @@
 | `is_read` | `boolean` | 是 | `false` |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
 
-### optimization_suggestions
+### optimization_evaluation_runs
 
-定义：`agentloom-server/src/database/schema/optimization-suggestions.schema.ts`
+定义：`agentloom-server/src/database/schema/optimization-proposals.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `evaluation_id` | `uuid` | 是 |  |
+| `arm` | `optimization_evaluation_arm_enum` | 是 |  |
+| `case_index` | `integer` | 是 |  |
+| `execution_id` | `uuid` |  |  |
+| `status` | `optimization_evaluation_run_status_enum` | 是 | `"running"` |
+| `metrics` | `jsonb` |  |  |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+| `completed_at` | `timestamp with time zone` |  |  |
+
+### optimization_evaluations
+
+定义：`agentloom-server/src/database/schema/optimization-proposals.schema.ts`
+
+| 列 | 类型 | 非空 | 默认值 |
+| --- | --- | --- | --- |
+| `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
+| `tenant_id` | `uuid` | 是 |  |
+| `proposal_id` | `uuid` | 是 |  |
+| `status` | `optimization_evaluation_status_enum` | 是 | `"running"` |
+| `base_version_id` | `uuid` | 是 |  |
+| `candidate_version_id` | `uuid` | 是 |  |
+| `cases` | `jsonb` | 是 |  |
+| `summary` | `jsonb` |  |  |
+| `failure_reason` | `varchar(40)` |  |  |
+| `deadline_at` | `timestamp with time zone` | 是 |  |
+| `started_by_user_id` | `uuid` | 是 |  |
+| `started_at` | `timestamp with time zone` | 是 | `now()` |
+| `completed_at` | `timestamp with time zone` |  |  |
+| `created_at` | `timestamp with time zone` | 是 | `now()` |
+| `updated_at` | `timestamp with time zone` | 是 | `now()` |
+
+### optimization_proposals
+
+定义：`agentloom-server/src/database/schema/optimization-proposals.schema.ts`
 
 | 列 | 类型 | 非空 | 默认值 |
 | --- | --- | --- | --- |
@@ -921,20 +962,28 @@
 | `tenant_id` | `uuid` | 是 |  |
 | `workflow_definition_id` | `uuid` | 是 |  |
 | `node_id` | `text` | 是 |  |
-| `suggestion_type` | `suggestion_type` | 是 |  |
-| `status` | `suggestion_status` | 是 | `"pending"` |
-| `confidence` | `real` | 是 |  |
-| `current_value` | `jsonb` | 是 |  |
-| `suggested_value` | `jsonb` | 是 |  |
+| `node_type` | `varchar(40)` | 是 |  |
+| `proposal_type` | `optimization_proposal_type_enum` | 是 |  |
+| `status` | `optimization_proposal_status_enum` | 是 | `"proposed"` |
+| `config_path` | `text` | 是 |  |
+| `current_value` | `jsonb` |  |  |
+| `proposed_value` | `jsonb` | 是 |  |
 | `rationale` | `text` | 是 |  |
-| `impact_estimate` | `jsonb` |  |  |
-| `analysis_metadata` | `jsonb` |  |  |
-| `analysis_period_start` | `timestamp with time zone` | 是 |  |
-| `analysis_period_end` | `timestamp with time zone` | 是 |  |
-| `applied_at` | `timestamp with time zone` |  |  |
-| `applied_by_user_id` | `uuid` |  |  |
+| `evidence` | `jsonb` | 是 |  |
+| `base_version_id` | `uuid` | 是 |  |
+| `candidate_version_id` | `uuid` |  |  |
+| `published_version_id` | `uuid` |  |  |
+| `current_evaluation_id` | `uuid` |  |  |
+| `verdict` | `optimization_evaluation_verdict_enum` |  |  |
+| `publish_report` | `jsonb` |  |  |
+| `evaluated_at` | `timestamp with time zone` |  |  |
+| `published_at` | `timestamp with time zone` |  |  |
+| `published_by_user_id` | `uuid` |  |  |
+| `rolled_back_at` | `timestamp with time zone` |  |  |
+| `rolled_back_by_user_id` | `uuid` |  |  |
 | `dismissed_at` | `timestamp with time zone` |  |  |
 | `dismissed_by_user_id` | `uuid` |  |  |
+| `superseded_at` | `timestamp with time zone` |  |  |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
 | `updated_at` | `timestamp with time zone` | 是 | `now()` |
 

@@ -28,7 +28,7 @@
 | `monitoring` | 是 |
 | `notification` | 是 |
 | `onboarding` | 是 |
-| `optimization-suggestion` | 是 |
+| `optimization-proposal` | 是 |
 | `organization` | 是 |
 | `organization-autonomy-policy` | 是 |
 | `platform-api-token` | 是 |

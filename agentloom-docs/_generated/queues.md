@@ -14,7 +14,7 @@
 | `evidence-export` | `EVIDENCE_EXPORT_QUEUE` | `EvidenceExportWorker` | `agentloom-server/src/modules/evidence/evidence-export.constants.ts` |
 | `evidence-export-cleanup` | `EVIDENCE_EXPORT_CLEANUP_QUEUE` | `EvidenceExportCleanupWorker` | `agentloom-server/src/modules/evidence/evidence-export.constants.ts` |
 | `notification` | `NOTIFICATION_QUEUE` | `NotificationProcessor` | `agentloom-server/src/modules/notification/notification.constants.ts` |
-| `optimization-analysis` | `OPTIMIZATION_ANALYSIS_QUEUE` | `OptimizationAnalysisWorker` | `agentloom-server/src/modules/optimization-suggestion/optimization-analysis.constants.ts` |
+| `optimization-proposal` | `OPTIMIZATION_QUEUE` | `OptimizationProposalWorker` | `agentloom-server/src/modules/optimization-proposal/optimization-proposal.constants.ts` |
 | `plugin-execution` | `PLUGIN_EXECUTION_QUEUE` | `PluginExecutionWorker` | `agentloom-server/src/modules/plugin/plugin.constants.ts` |
 | `routing-learning` | `ROUTING_LEARNING_QUEUE` | `RoutingLearningWorker` | `agentloom-server/src/modules/smart-routing/learning/routing-learning.types.ts` |
 | `sandbox-lifecycle` | `SANDBOX_LIFECYCLE_QUEUE` | `SandboxLifecycleWorker` | `agentloom-server/src/modules/sandbox/sandbox.constants.ts` |

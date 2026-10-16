@@ -13,6 +13,7 @@ docType: index
 | [0003](/dev/decisions/0003-dsh-sandbox-runtime) | sandbox 运行态切换为 DeepSeek Harness 并开放 runtime 插件 | 已实施 | 2026-10-07 |
 | [0004](/dev/decisions/0004-team-runtime) | 受控团队运行时：成员即对话、回合边界递送、team_messages 即 Outbox | 已实施 | 2026-10-15 |
 | [0005](/dev/decisions/0005-a2a-inbound) | A2A 入站适配：复用 Agent 对外 API 的薄协议层 | 已实施 | 2026-10-15 |
+| [0006](/dev/decisions/0006-evidence-driven-optimization) | 证据驱动配置优化：提案 → 回放评测 → 审批发布 → 回滚 | 已实施 | 2026-10-16 |
 
 ## 模板
 

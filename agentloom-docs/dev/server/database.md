@@ -19,7 +19,7 @@ docType: reference
 - 关系线的标签是子表上的外键列。`||` 表示外键列 `NOT NULL`，`|o` 表示可空；`o|` 在子表一侧表示该外键列上有唯一索引（一对一）。
 - 绝大多数表都有 `created_by` / `updated_by` 等指向 `users.id` 的外键，除「身份与组织」图外均省略。
 - 各表的 `tenant_id` 列是普通 `uuid`，不是外键；例外是 `router_models.tenant_id` 与 `provider_health_status.tenant_id`，它们引用 `organizations.tenant_id`。
-- 没有任何外键的表不出现在图中：`acp_conversation_sessions`、`audit_logs`、`audit_log_archives`、`decision_records`、`optimization_suggestions`、`revoked_tokens`、`sandbox_runtime_nodes`、`workflow_templates`。
+- 没有任何外键的表不出现在图中：`acp_conversation_sessions`、`audit_logs`、`audit_log_archives`、`decision_records`、`revoked_tokens`、`sandbox_runtime_nodes`、`workflow_templates`。
 - `users.supabase_user_id` 引用 Supabase 的 `auth.users.id`（不在本仓库 schema 内，图中省略）。
 
 ### 身份与组织
@@ -109,6 +109,20 @@ erDiagram
 ```
 
 每个团队成员的运行载体是一条 `source = 'team'` 的 `agent_conversations`（`team_members.conversation_id` 唯一）。`team_runs` 在 `step_id` 上的唯一索引只覆盖 `running` 状态，同一步骤重跑会新建一行、旧行保留为历史（`agentloom-server/src/database/schema/team-runs.schema.ts`）。`team_messages` 每个接收者一行，本身即 Outbox；`decision_record_id` 指向 `decision_records`，但后者是 append-only 表（只有 SELECT / INSERT 策略与授权），因此不建外键。
+
+### 配置优化提案
+
+```mermaid
+erDiagram
+    workflow_definitions ||--o{ optimization_proposals : "workflow_definition_id"
+    workflow_versions ||--o{ optimization_proposals : "base_version_id"
+    workflow_versions |o--o{ optimization_proposals : "candidate_version_id"
+    optimization_proposals ||--o{ optimization_evaluations : "proposal_id"
+    optimization_evaluations ||--o{ optimization_evaluation_runs : "evaluation_id"
+    workflow_executions |o--o{ optimization_evaluation_runs : "execution_id"
+```
+
+`optimization_proposals` 在 `(workflow_definition_id, node_id, proposal_type)` 上的唯一索引只覆盖 `proposed` / `evaluating` / `evaluated` 状态，同一节点同一类提案同时只有一条在处理（`agentloom-server/src/database/schema/optimization-proposals.schema.ts`）。`published_version_id`、`current_evaluation_id` 不建外键；`optimization_evaluation_runs` 在 `(evaluation_id, arm, case_index)` 上唯一，启动重试幂等，`execution_id` 为空表示启动失败。
 
 ### 沙箱运行时与工作区
 

@@ -19,6 +19,7 @@ docType: index
 | 手动运行、查看执行状态与历史 | [运行与监控](/guide/workflows/running) |
 | 找出某个节点失败或输出不对的原因 | [调试工作流](/guide/workflows/debugging) |
 | 保存快照、发布、回看历史 | [版本管理](/guide/workflows/versions) |
+| 按运行证据评测并发布团队、路由节点的配置修改 | [配置优化提案](/guide/workflows/optimization) |
 | 分享、导出、导入工作流 | [分享与导出](/guide/workflows/sharing) |
 | 从模板开始 | [使用模板](/guide/workflows/templates) |
 | 按定时、Webhook 或 API 事件自动运行 | [触发器与自动化](/guide/triggers/) |

@@ -28,7 +28,7 @@
 | `mcp` | `/api/v1/mcp` |  |  |
 | `monitoring` | `/api/v1` |  |  |
 | `notification` | `/api/v1`<br>`/api/v1/devices` | `/notification` | `notification` |
-| `optimization-suggestion` | `/api/v1/optimization-suggestions` |  | `optimization-analysis` |
+| `optimization-proposal` | `/api/v1/optimization-proposals` |  | `optimization-proposal` |
 | `organization` | `/api/v1` |  |  |
 | `platform-api-token` | `/api/v1/platform-api-tokens` |  |  |
 | `plugin` | `/api/v1/plugins`<br>`/api/v1/plugins/developer-keys`<br>`/api/v1/plugins/marketplace` |  | `earnings-settlement`<br>`plugin-execution` |

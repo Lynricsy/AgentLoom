@@ -25,7 +25,7 @@ docType: reference
 | `document-processing` | 队列默认 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | 每次入队都设 attempts `DOCUMENT_PROCESSING_MAX_ATTEMPTS`（3，`knowledge/knowledge.constants.ts`）+ exponential 2000ms（`knowledge/document.service.ts`） |
 | `document-indexing` | 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | — |
 | `notification` | 3 | exponential 1000ms | 100 / 500 | `notification/notification.constants.ts` | `jobId` 为 notification id，事务提交后入队 |
-| `optimization-analysis` | 1 | — | `{count:10}` / `{count:50}` | `optimization-suggestion/optimization-analysis.constants.ts` | — |
+| `optimization-proposal` | 3 | exponential 2000ms | `{count:500}` / `{count:1000}` | `optimization-proposal/optimization-proposal.constants.ts`（`OPTIMIZATION_QUEUE_DEFAULT_JOB_OPTIONS`） | 评测启动任务 `jobId` 为 `optimization-evaluate-<evaluationId>`，事务提交后入队（`optimization-proposal/optimization-proposal.service.ts`） |
 | `plugin-execution` | 3 | exponential 2000ms | 1000 / 5000 | `plugin/plugin.constants.ts`（`pluginExecutionQueueDefaultJobOptions`） | — |
 | `earnings-settlement` | 3 | exponential 5000ms | 100 / 500 | `plugin/plugin.constants.ts`（`earningsSettlementQueueDefaultJobOptions`） | — |
 | `sandbox-lifecycle` | 3 | exponential 1000ms | 1000 / 5000 | `sandbox/sandbox.module.ts`（内联） | 超时检查、对话空闲结束检查、租约续期均 attempts 1（`sandbox/sandbox-lifecycle.producer.ts`） |
@@ -53,7 +53,8 @@ docType: reference
 | --- | --- | --- | --- |
 | `audit-log-retention` | `audit-log-retention-daily` | cron `0 3 * * *` UTC | `evidence/audit-log-retention.constants.ts`、`evidence/audit-log-retention.scheduler.ts` |
 | `evidence-export-cleanup` | `evidence-export-cleanup-hourly` | cron `0 * * * *` UTC | `evidence/evidence-export.constants.ts`、`evidence/evidence-export.cleanup.scheduler.ts` |
-| `optimization-analysis` | `optimization-analysis-weekly` | cron `0 2 * * 1` UTC | `optimization-suggestion/optimization-analysis.scheduler.ts` |
+| `optimization-proposal` | `optimization-analyze-weekly` | cron `0 2 * * 1` UTC | `optimization-proposal/optimization-proposal.constants.ts`、`optimization-proposal/optimization-proposal.scheduler.ts` |
+| `optimization-proposal` | `optimization-sweep` | 每 60 秒（评测超时、终态补偿结算、启动恢复） | 同上 |
 | `earnings-settlement` | `dispatch-plugin-earnings-settlement` | cron `0 3 1 * *` UTC（派发上一自然月的结算） | `plugin/plugin.constants.ts`、`plugin/earnings-settlement.scheduler.ts` |
 | `trigger-scheduler` | 每个 cron 触发器一个，id 为 trigger id | 触发器配置的 `expression` 与 `timezone` | `trigger/trigger-scheduler.service.ts` |
 | `agent-api-maintenance` | `agent-api-maintenance-sweep` | 每 5 分钟 | `agent-api-runtime/agent-api-runtime.constants.ts`、`agent-api-runtime/agent-api-maintenance.scheduler.ts` |

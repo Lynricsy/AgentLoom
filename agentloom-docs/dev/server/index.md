@@ -178,7 +178,7 @@ Agent 对话启动时，若编译后的 `routingConfig.candidateModelIds` 多于
 - `resource-governance`：组织级资源配额与执行治理（暂停租户或单个工作流、终止执行），路由在 `/organizations/:id/resource-governance/…`。
 - `monitoring`：组织运行监控面板，`GET /organizations/:id/monitoring`，时间窗口 `15m`、`1h`、`24h`，默认 `1h`。
 - `evidence`：审计日志（`/audit-logs`）、执行证据（`/executions/:executionId/evidence`）与证据导出（`/evidence-exports`）。
-- `optimization-suggestion`：周期分析 Agent 节点配置并生成优化建议，前缀 `/optimization-suggestions`，提供列表、采纳率统计、采纳与忽略。
+- `optimization-proposal`：证据驱动的配置优化。按团队运行与路由决策证据为已发布工作流的 `team` / `smart-routing` 节点生成单字段修改提案，评测时把最近的真实输入同时回放到基线与候选版本，只有结论为 `improved` 的提案可发布（以 `versionId` 把候选版本置为发布版本），可回滚到基线版本。前缀 `/optimization-proposals`，读取需 `workflow:read`，分析/评测/发布/回滚/忽略需 `workflow:manage`；`optimization-proposal` 队列承载每周分析、评测启动与 60 秒清扫。设计见 [ADR-0006](/dev/decisions/0006-evidence-driven-optimization)。
 - `private-deployment`：私有部署设置（SMTP、LLM 代理、TLS 证书、许可证），`/organizations/:id/private-deployment`。
 
 #### 资源配额维度
@@ -202,10 +202,6 @@ Agent 对话启动时，若编译后的 `routingConfig.candidateModelIds` 多于
 - 热表 `audit_logs` 与归档表 `audit_log_archives` 共用同一组列（`agentloom-server/src/database/schema/audit-logs.schema.ts`），两表都只允许追加。
 - 归档由 `AuditLogRetentionScheduler` 以 `upsertJobScheduler()` 注册单例重复任务完成。
 - 查询同时读取两张表，按 `id` 去重（热表优先），再按 `(createdAt, id)` 排序（`agentloom-server/src/modules/evidence/audit-log.service.ts:260`）。
-
-#### 优化建议当前不可采纳
-
-建议类型有 `model_downgrade`、`timeout_adjustment`、`tool_pruning`、`autonomy_upgrade`，但 `APPLICABLE_SUGGESTION_TYPES` 是空集合（`agentloom-server/src/modules/optimization-suggestion/optimization-suggestion.service.ts:37`）。`POST /optimization-suggestions/:id/apply` 读出建议并检查状态后，在读取工作流和写入任何数据之前返回 409 `optimization-suggestion-not-applicable`：这些建议改写的字段不参与工作流 `agent` 节点的执行。忽略（`POST /optimization-suggestions/:id/dismiss`）不受影响。
 
 ### 沙箱与运行环境
 
@@ -254,6 +250,9 @@ graph LR
     SHR --> SB
     RG --> EV[evidence]
     AM --> EV
+    OP[optimization-proposal] --> EX
+    OP --> WD
+    OP --> EV
 ```
 
 ## 模块清单

@@ -80,6 +80,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: '0003 sandbox 运行态切换为 dsh', link: '/dev/decisions/0003-dsh-sandbox-runtime' },
       { text: '0004 受控团队运行时', link: '/dev/decisions/0004-team-runtime' },
       { text: '0005 A2A 入站适配', link: '/dev/decisions/0005-a2a-inbound' },
+      { text: '0006 证据驱动配置优化', link: '/dev/decisions/0006-evidence-driven-optimization' },
     ],
   },
 ]

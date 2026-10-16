@@ -24,6 +24,7 @@ const guide: DefaultTheme.SidebarItem[] = [
       { text: '输入参数', link: '/guide/workflows/input-parameters' },
       { text: '调试工作流', link: '/guide/workflows/debugging' },
       { text: '版本管理', link: '/guide/workflows/versions' },
+      { text: '配置优化提案', link: '/guide/workflows/optimization' },
       { text: '分享与导出', link: '/guide/workflows/sharing' },
       { text: '使用模板', link: '/guide/workflows/templates' },
     ],
