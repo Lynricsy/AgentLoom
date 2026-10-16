@@ -71,11 +71,10 @@ export type OptimizationEvaluationVerdict =
 /** 评测失败原因（目前只有超时） */
 export type OptimizationEvaluationFailureReason = 'timeout';
 
-export interface ProposalPatch {
-  /** 相对节点 `data` 的点路径，如 `config.budget.maxMessages` */
-  configPath: string;
-  currentValue: unknown;
-  proposedValue: unknown;
+/** 评测启动任务数据 */
+export interface OptimizationEvaluateJobData {
+  tenantId: string;
+  evaluationId: string;
 }
 
 export interface ProposalEvidence {
