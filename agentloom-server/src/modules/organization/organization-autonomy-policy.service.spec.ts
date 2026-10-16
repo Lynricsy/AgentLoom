@@ -128,7 +128,6 @@ describe('OrganizationAutonomyPolicyService', () => {
       organizations: { findFirst: ReturnType<typeof vi.fn> };
       organizationMembers: { findFirst: ReturnType<typeof vi.fn> };
       organizationAutonomyPolicies: { findFirst: ReturnType<typeof vi.fn> };
-      optimizationSuggestions: { findMany: ReturnType<typeof vi.fn> };
     };
     select: ReturnType<typeof vi.fn>;
     insert: ReturnType<typeof vi.fn>;
@@ -143,7 +142,6 @@ describe('OrganizationAutonomyPolicyService', () => {
         organizations: { findFirst: vi.fn() },
         organizationMembers: { findFirst: vi.fn() },
         organizationAutonomyPolicies: { findFirst: vi.fn() },
-        optimizationSuggestions: { findMany: vi.fn().mockResolvedValue([]) },
       },
       select: vi.fn().mockReturnValue(createSelectChain([])),
       insert: vi.fn(),
@@ -502,90 +500,6 @@ describe('OrganizationAutonomyPolicyService', () => {
             workflowCount: 1,
             nodeCount: 2,
           },
-        }),
-      );
-    });
-
-    it('blocks pending autonomy_upgrade suggestions that exceed a tightened cap', async () => {
-      const updatedPolicy = makePolicy({
-        autonomyCap: 'RULE_BASED',
-        version: 2,
-      });
-      const blockedSuggestionUpdate = createUpdateChain([
-        {
-          id: '019577a0-0000-7000-8000-000000000777',
-          status: 'blocked',
-          analysisMetadata: {
-            analyzerVersion: 'optimization-analysis-v1',
-            totalRecords: 64,
-            policyBlock: {
-              autonomyCap: 'RULE_BASED',
-              reasonCode: 'mode_exceeds_cap',
-            },
-          },
-        },
-      ]);
-
-      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
-      db.query.organizationMembers.findFirst.mockResolvedValue(
-        makeMembership(),
-      );
-      db.query.organizationAutonomyPolicies.findFirst.mockResolvedValue(
-        makePolicy({ autonomyCap: 'LLM_SUGGEST', version: 1 }),
-      );
-      db.query.optimizationSuggestions.findMany.mockResolvedValue([
-        {
-          id: '019577a0-0000-7000-8000-000000000777',
-          tenantId: TENANT_ID,
-          workflowDefinitionId: 'wf-1',
-          nodeId: 'agent-1',
-          suggestionType: 'autonomy_upgrade',
-          status: 'pending',
-          suggestedValue: { autonomyMode: 'LLM_SUGGEST' },
-          analysisMetadata: {
-            analyzerVersion: 'optimization-analysis-v1',
-            totalRecords: 64,
-          },
-        },
-        {
-          id: '019577a0-0000-7000-8000-000000000778',
-          tenantId: TENANT_ID,
-          workflowDefinitionId: 'wf-1',
-          nodeId: 'agent-2',
-          suggestionType: 'autonomy_upgrade',
-          status: 'pending',
-          suggestedValue: { autonomyMode: 'RULE_BASED' },
-          analysisMetadata: {
-            analyzerVersion: 'optimization-analysis-v1',
-            totalRecords: 32,
-          },
-        },
-      ]);
-      db.update
-        .mockReturnValueOnce(createUpdateChain([updatedPolicy]))
-        .mockReturnValueOnce(blockedSuggestionUpdate);
-
-      await service.updateAutonomyPolicy(
-        ORG_ID,
-        {
-          autonomyCap: 'RULE_BASED',
-        },
-        OWNER_ID,
-      );
-
-      expect(db.query.optimizationSuggestions.findMany).toHaveBeenCalledTimes(
-        1,
-      );
-      expect(db.update).toHaveBeenCalledTimes(2);
-      expect(blockedSuggestionUpdate.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'blocked',
-          analysisMetadata: expect.objectContaining({
-            policyBlock: expect.objectContaining({
-              autonomyCap: 'RULE_BASED',
-              reasonCode: 'mode_exceeds_cap',
-            }),
-          }),
         }),
       );
     });

@@ -102,7 +102,9 @@ export async function cleanupTables(sqlClient: TestSql) {
   await sqlClient`DELETE FROM "audit_logs"`;
   await sqlClient`DELETE FROM "marketplace_listings"`;
   await sqlClient`DELETE FROM "reusable_blocks"`;
-  await sqlClient`DELETE FROM "optimization_suggestions"`;
+  await sqlClient`DELETE FROM "optimization_evaluation_runs"`;
+  await sqlClient`DELETE FROM "optimization_evaluations"`;
+  await sqlClient`DELETE FROM "optimization_proposals"`;
   await sqlClient`DELETE FROM "knowledge_nodes"`;
   await sqlClient`DELETE FROM "documents"`;
   await sqlClient`DELETE FROM "knowledge_bases"`;

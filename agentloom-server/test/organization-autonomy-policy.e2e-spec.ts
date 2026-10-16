@@ -352,7 +352,6 @@ describe('Organization Autonomy Policy E2E (testcontainers)', () => {
 
   beforeEach(async () => {
     await sql`DELETE FROM "audit_logs"`;
-    await sql`DELETE FROM "optimization_suggestions"`;
     await sql`DELETE FROM "organization_autonomy_policies"`;
     await sql`DELETE FROM "workflow_definitions"`;
     await sql`DELETE FROM "organization_members"`;

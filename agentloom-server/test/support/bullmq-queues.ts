@@ -17,7 +17,7 @@ export const BULLMQ_QUEUE_NAMES = [
   'notification',
   'trigger-scheduler',
   'sandbox-lifecycle',
-  'optimization-analysis',
+  'optimization-proposal',
   'routing-learning',
   'audit-log-retention',
   'evidence-export',

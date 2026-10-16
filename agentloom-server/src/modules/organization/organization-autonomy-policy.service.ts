@@ -2,9 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import type { AnalysisMetadata } from '../../database/schema/optimization-suggestions.schema';
 import {
-  optimizationSuggestions,
   organizationAutonomyPolicies,
   organizationMembers,
   organizations,
@@ -14,7 +12,6 @@ import {
 import type { AutonomyMode } from '../agent/dto/autonomy.dto';
 import {
   clampAutonomyModeToCap,
-  compareAutonomyModes,
   explainAutonomyViolation,
   type AutonomyViolationExplanation,
 } from '../agent/autonomy-mode-compat';
@@ -152,8 +149,6 @@ export class OrganizationAutonomyPolicyService {
     const previousCap =
       (existingPolicy?.autonomyCap as AutonomyMode | undefined) ??
       SYSTEM_DEFAULT_ORGANIZATION_AUTONOMY_POLICY.autonomyCap;
-    const isTightened =
-      compareAutonomyModes(validated.autonomyCap, previousCap) < 0;
 
     if (!existingPolicy) {
       const [created] = await this.tenantDb
@@ -166,14 +161,6 @@ export class OrganizationAutonomyPolicyService {
           updatedBy: userId,
         })
         .returning();
-
-      if (isTightened) {
-        await this.blockPendingAutonomyUpgradeSuggestions(
-          this.tenantDb,
-          organization.tenantId,
-          validated.autonomyCap,
-        );
-      }
 
       this.logger.log(
         `Created organization autonomy policy for ${organizationId}`,
@@ -207,14 +194,6 @@ export class OrganizationAutonomyPolicyService {
       })
       .where(eq(organizationAutonomyPolicies.id, existingPolicy.id))
       .returning();
-
-    if (isTightened) {
-      await this.blockPendingAutonomyUpgradeSuggestions(
-        this.tenantDb,
-        organization.tenantId,
-        validated.autonomyCap,
-      );
-    }
 
     this.logger.log(
       `Updated organization autonomy policy for ${organizationId}`,
@@ -282,8 +261,6 @@ export class OrganizationAutonomyPolicyService {
     const previousCap =
       (existingPolicy?.autonomyCap as AutonomyMode | undefined) ??
       SYSTEM_DEFAULT_ORGANIZATION_AUTONOMY_POLICY.autonomyCap;
-    const isTightened =
-      compareAutonomyModes(validated.autonomyCap, previousCap) < 0;
     const impact = await this.buildDowngradeImpact(
       organization.tenantId,
       validated.autonomyCap,
@@ -346,14 +323,6 @@ export class OrganizationAutonomyPolicyService {
             })
             .where(eq(workflowDefinitions.id, workflow.workflowId))
             .returning();
-        }
-
-        if (isTightened) {
-          await this.blockPendingAutonomyUpgradeSuggestions(
-            tx,
-            organization.tenantId,
-            validated.autonomyCap,
-          );
         }
 
         return policy;
@@ -665,76 +634,6 @@ export class OrganizationAutonomyPolicyService {
     });
   }
 
-  private async blockPendingAutonomyUpgradeSuggestions(
-    tenantDb: unknown,
-    tenantId: string,
-    autonomyCap: AutonomyMode,
-  ) {
-    const scopedDb = tenantDb as Pick<DrizzleDB, 'query' | 'update'>;
-    const pendingSuggestions =
-      await scopedDb.query.optimizationSuggestions.findMany({
-        where: and(
-          eq(optimizationSuggestions.tenantId, tenantId),
-          eq(optimizationSuggestions.suggestionType, 'autonomy_upgrade'),
-          eq(optimizationSuggestions.status, 'pending'),
-        ),
-      });
-
-    const blockedAt = new Date();
-
-    for (const suggestion of pendingSuggestions) {
-      const suggestedValue = this.asRecord(suggestion.suggestedValue) ?? {};
-      const suggestedMode =
-        this.readString(suggestedValue.autonomyMode, suggestedValue.mode) ??
-        'MANUAL_CONFIRM';
-      const explanation = explainAutonomyViolation(suggestedMode, autonomyCap);
-
-      if (!explanation.exceedsCap) {
-        continue;
-      }
-
-      await scopedDb
-        .update(optimizationSuggestions)
-        .set({
-          status: 'blocked',
-          analysisMetadata: this.buildBlockedAnalysisMetadata(
-            this.asRecord(suggestion.analysisMetadata) ?? {},
-            autonomyCap,
-            explanation,
-            blockedAt,
-          ),
-          updatedAt: blockedAt,
-        })
-        .where(eq(optimizationSuggestions.id, suggestion.id))
-        .returning();
-    }
-  }
-
-  private buildBlockedAnalysisMetadata(
-    analysisMetadata: Record<string, unknown>,
-    autonomyCap: AutonomyMode,
-    explanation: AutonomyViolationExplanation,
-    blockedAt: Date,
-  ): AnalysisMetadata {
-    return {
-      ...analysisMetadata,
-      totalRecords: this.readNumber(analysisMetadata.totalRecords) ?? 0,
-      analyzerVersion:
-        this.readString(analysisMetadata.analyzerVersion) ??
-        'optimization-analysis-v1',
-      policyBlock: {
-        autonomyCap,
-        rawMode: explanation.rawMode,
-        canonicalMode: explanation.canonicalMode,
-        replacementMode: explanation.replacementMode,
-        source: explanation.source,
-        reasonCode: explanation.reasonCode,
-        message: explanation.message,
-        blockedAt: blockedAt.toISOString(),
-      },
-    };
-  }
-
   private createImpactAuditMetadata(
     autonomyCap: AutonomyMode,
     impact: OrganizationAutonomyDowngradeImpact,
@@ -818,13 +717,5 @@ export class OrganizationAutonomyPolicyService {
     );
 
     return resolved ?? null;
-  }
-
-  private readNumber(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    return null;
   }
 }
