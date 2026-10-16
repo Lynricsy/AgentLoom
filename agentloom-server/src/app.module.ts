@@ -60,6 +60,7 @@ import { AgentApiModule } from './modules/agent-api/agent-api.module';
 import { A2aModule } from './modules/a2a/a2a.module';
 import { DecisionModule } from './modules/decision/decision.module';
 import { TeamModule } from './modules/team/team.module';
+import { OptimizationProposalModule } from './modules/optimization-proposal/optimization-proposal.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -151,6 +152,7 @@ function createThrottlerOptions(configService: ConfigService) {
     A2aModule,
     DecisionModule,
     TeamModule,
+    OptimizationProposalModule,
   ],
   providers: [
     RbacCacheService,
