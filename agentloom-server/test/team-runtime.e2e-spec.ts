@@ -16,9 +16,6 @@ vi.mock('@anatine/zod-nestjs', async () => {
 });
 
 import * as crypto from 'node:crypto';
-import { once } from 'node:events';
-import * as http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { Test } from '@nestjs/testing';
@@ -51,6 +48,12 @@ import {
   createBullMqIsolation,
   type BullMqIsolation,
 } from './support/bullmq-isolation';
+import {
+  FakeChatModel,
+  messageText,
+  type FakeChatRequest,
+  type FakeReply,
+} from './support/fake-chat-model';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
 const WAIT_TIMEOUT_MS = 30_000;
@@ -59,25 +62,8 @@ type TeamRole = (typeof TEAM_ROLES)[number];
 type Scenario = 'complete' | 'budget' | 'cancel' | 'schema';
 
 // ---------------------------------------------------------------------------
-// OpenAI 兼容假模型
+// OpenAI 兼容假模型（传输层见 support/fake-chat-model.ts）
 // ---------------------------------------------------------------------------
-
-interface ChatMessage {
-  role: string;
-  content?: unknown;
-}
-
-interface ChatRequestBody {
-  model?: string;
-  stream?: boolean;
-  messages?: ChatMessage[];
-  tools?: Array<{ function?: { name?: string; description?: string } }>;
-}
-
-type FakeReply =
-  | { kind: 'text'; text: string }
-  | { kind: 'tool'; name: string; args: Record<string, unknown> }
-  | { kind: 'hold' };
 
 interface MemberScript {
   /** 本成员已发出的工具调用次数 */
@@ -90,60 +76,9 @@ interface MemberScript {
   seenSchemas?: { brief?: string; tool?: string };
 }
 
-const FAKE_USAGE = { prompt_tokens: 120, completion_tokens: 30 };
-
-function messageText(message: ChatMessage): string {
-  if (typeof message.content === 'string') {
-    return message.content;
-  }
-  if (Array.isArray(message.content)) {
-    return message.content
-      .map((part: unknown) =>
-        part && typeof part === 'object' && 'text' in part
-          ? String(part.text)
-          : '',
-      )
-      .join('');
-  }
-  return '';
-}
-
+/** 按「场景 + 角色 + 回合」记录每个成员的脚本状态，给出确定性回复 */
 class FakeTeamModel {
-  private server!: http.Server;
   private readonly scripts = new Map<string, MemberScript>();
-  private readonly held = new Set<http.ServerResponse>();
-  private sequence = 0;
-  baseUrl = '';
-
-  async start(): Promise<void> {
-    this.server = http.createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
-      req.on('end', () => {
-        if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
-          res.writeHead(404).end();
-          return;
-        }
-        const body = JSON.parse(
-          Buffer.concat(chunks).toString('utf8'),
-        ) as ChatRequestBody;
-        this.respond(body, res);
-      });
-    });
-    this.server.listen(0, '127.0.0.1');
-    await once(this.server, 'listening');
-    const { port } = this.server.address() as AddressInfo;
-    this.baseUrl = `http://127.0.0.1:${port}`;
-  }
-
-  async stop(): Promise<void> {
-    for (const res of this.held) {
-      res.destroy();
-    }
-    this.held.clear();
-    this.server.close();
-    await once(this.server, 'close');
-  }
 
   script(runKey: string, role: TeamRole): MemberScript {
     const key = `${runKey}:${role}`;
@@ -155,11 +90,7 @@ class FakeTeamModel {
     return script;
   }
 
-  heldCount(): number {
-    return this.held.size;
-  }
-
-  private respond(body: ChatRequestBody, res: http.ServerResponse): void {
+  decide(body: FakeChatRequest): FakeReply {
     const messages = body.messages ?? [];
     const transcript = messages.map(messageText).join('\n');
     const role = /- 角色：([a-z][a-z0-9_-]*)/.exec(transcript)?.[1] as
@@ -168,8 +99,7 @@ class FakeTeamModel {
       Scenario | undefined;
     const runKey = /\[run:([0-9a-f-]+)\]/.exec(transcript)?.[1];
     if (!role || !scenario || !runKey) {
-      this.write(body, res, { kind: 'text', text: '好的。' });
-      return;
+      return { kind: 'text', text: '好的。' };
     }
 
     const script = this.script(runKey, role);
@@ -191,85 +121,7 @@ class FakeTeamModel {
     if (reply.kind === 'tool') {
       script.toolCalls += 1;
     }
-    this.write(body, res, reply);
-  }
-
-  private write(
-    body: ChatRequestBody,
-    res: http.ServerResponse,
-    reply: FakeReply,
-  ): void {
-    if (reply.kind === 'hold') {
-      // 挂起不回复：模拟成员正在生成，直到被取消（客户端断开）或测试结束
-      this.held.add(res);
-      res.on('close', () => this.held.delete(res));
-      return;
-    }
-
-    this.sequence += 1;
-    const id = `chatcmpl-${this.sequence}`;
-    const created = Math.floor(Date.now() / 1000);
-    const model = body.model ?? 'fake-team-model';
-    const usage = {
-      ...FAKE_USAGE,
-      total_tokens: FAKE_USAGE.prompt_tokens + FAKE_USAGE.completion_tokens,
-    };
-    const delta =
-      reply.kind === 'text'
-        ? { role: 'assistant', content: reply.text }
-        : {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              {
-                index: 0,
-                id: `call_${this.sequence}`,
-                type: 'function',
-                function: {
-                  name: reply.name,
-                  arguments: JSON.stringify(reply.args),
-                },
-              },
-            ],
-          };
-    const finishReason = reply.kind === 'text' ? 'stop' : 'tool_calls';
-
-    if (body.stream === false) {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          id,
-          object: 'chat.completion',
-          created,
-          model,
-          choices: [
-            {
-              index: 0,
-              message: delta,
-              finish_reason: finishReason,
-            },
-          ],
-          usage,
-        }),
-      );
-      return;
-    }
-
-    res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      connection: 'keep-alive',
-    });
-    const send = (payload: unknown) =>
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    const base = { id, object: 'chat.completion.chunk', created, model };
-    send({ ...base, choices: [{ index: 0, delta, finish_reason: null }] });
-    send({
-      ...base,
-      choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
-    });
-    send({ ...base, choices: [], usage });
-    res.end('data: [DONE]\n\n');
+    return reply;
   }
 }
 
@@ -429,7 +281,8 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
   let ctx: RlsTestContext;
   let appSql: postgres.Sql;
   let app: NestFastifyApplication;
-  const fakeModel = new FakeTeamModel();
+  const fakeTeam = new FakeTeamModel();
+  const fakeModel = new FakeChatModel((body) => fakeTeam.decide(body));
   const toolResults: Array<{
     teamRunId: string;
     role: string;
@@ -815,10 +668,10 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
     });
 
     // implementer 提交时可用 team_submit_result；非 lead 成员没有该工具
-    expect(fakeModel.script(runKey, 'implementer').toolNames[0]).toEqual(
+    expect(fakeTeam.script(runKey, 'implementer').toolNames[0]).toEqual(
       expect.arrayContaining(['team_send_message', 'team_submit_result']),
     );
-    expect(fakeModel.script(runKey, 'locator').toolNames[0]).not.toContain(
+    expect(fakeTeam.script(runKey, 'locator').toolNames[0]).not.toContain(
       'team_submit_result',
     );
 
@@ -1004,7 +857,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
       return run?.status === 'completed' ? run : null;
     });
 
-    const seen = fakeModel.script(runKey, 'implementer').seenSchemas;
+    const seen = fakeTeam.script(runKey, 'implementer').seenSchemas;
     expect(JSON.parse(seen?.brief ?? 'null')).toEqual(outputSchema);
     expect(JSON.parse(seen?.tool ?? 'null')).toEqual(outputSchema);
 
