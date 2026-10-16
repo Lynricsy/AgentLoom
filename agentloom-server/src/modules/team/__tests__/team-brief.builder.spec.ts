@@ -23,6 +23,7 @@ describe('buildMemberBrief', () => {
       },
       member: { role: 'locator', isLead: false, instructions: '只读定位' },
       members,
+      outputSchema: null,
     });
 
     expect(brief).toContain('# 团队任务');
@@ -45,6 +46,7 @@ describe('buildMemberBrief', () => {
       budget: { maxTotalTokens: 1, maxMessages: 1, deadlineAt: new Date(0) },
       member: { role: 'implementer', isLead: true, instructions: '' },
       members,
+      outputSchema: null,
     });
 
     expect(brief).toContain(
@@ -52,6 +54,43 @@ describe('buildMemberBrief', () => {
     );
     expect(brief).not.toContain('## 上下文');
     expect(brief).not.toContain('## 目标');
+    expect(brief).not.toContain('# 输出 Schema');
+  });
+
+  it('仅在节点配置 Schema、任务文本不含结构时，简报仍向 lead 给出完整 Schema', () => {
+    const outputSchema = {
+      type: 'object',
+      properties: {
+        patch: { type: 'string' },
+        riskLevel: { type: 'string', enum: ['low', 'high'] },
+      },
+      required: ['patch', 'riskLevel'],
+    };
+    const taskText = '修复登录跳转 404';
+    const base = {
+      objective: '',
+      taskText,
+      context: null,
+      budget: { maxTotalTokens: 1, maxMessages: 1, deadlineAt: new Date(0) },
+      members,
+      outputSchema,
+    };
+
+    const leadBrief = buildMemberBrief({
+      ...base,
+      member: { role: 'implementer', isLead: true, instructions: '' },
+    });
+    expect(taskText).not.toContain('riskLevel');
+    expect(leadBrief).toContain('# 输出 Schema');
+    expect(leadBrief).toContain(JSON.stringify(outputSchema, null, 2));
+    expect(leadBrief).toContain('`artifact` 必须是符合下列 JSON Schema');
+
+    const memberBrief = buildMemberBrief({
+      ...base,
+      member: { role: 'locator', isLead: false, instructions: '' },
+    });
+    expect(memberBrief).toContain(JSON.stringify(outputSchema, null, 2));
+    expect(memberBrief).toContain('负责人最终提交的 `artifact` 必须符合');
   });
 });
 

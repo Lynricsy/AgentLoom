@@ -23,6 +23,8 @@ export interface TeamBriefInput {
     isLead: boolean;
     canMessage: string[];
   }>;
+  /** 节点配置的输出 Schema；null 表示不校验产物 */
+  outputSchema: Record<string, unknown> | null;
 }
 
 export function buildMemberBrief(input: TeamBriefInput): string {
@@ -76,6 +78,21 @@ export function buildMemberBrief(input: TeamBriefInput): string {
       : '- 负责人会调用 `team_submit_result` 提交最终结果；你的发现要及时发给相关成员。',
   ];
   sections.push(ruleLines.join('\n'));
+
+  if (input.outputSchema) {
+    // 结构只在节点配置里，任务文本通常不会重复；不注入时 lead 只能猜，容易耗尽 schema_invalid 次数
+    sections.push(
+      [
+        '# 输出 Schema',
+        input.member.isLead
+          ? '调用 `team_submit_result` 时，`artifact` 必须是符合下列 JSON Schema 的 JSON 值（直接传对象/数组/值，不要序列化成字符串）：'
+          : '负责人最终提交的 `artifact` 必须符合下列 JSON Schema；提供材料时按此结构组织，便于负责人整合：',
+        '```json',
+        JSON.stringify(input.outputSchema, null, 2),
+        '```',
+      ].join('\n'),
+    );
+  }
 
   sections.push(
     [

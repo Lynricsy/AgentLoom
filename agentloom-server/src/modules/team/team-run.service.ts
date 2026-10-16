@@ -282,6 +282,7 @@ export class TeamRunService {
                   instructions: member.instructions,
                 },
                 members: config.members,
+                outputSchema: config.outputSchema,
               }),
               contentType: 'text',
               metadata: { type: 'team_brief', teamRunId: run.id },

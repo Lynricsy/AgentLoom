@@ -56,7 +56,7 @@ const JWT_SECRET = 'test-e2e-jwt-secret';
 const WAIT_TIMEOUT_MS = 30_000;
 const TEAM_ROLES = ['locator', 'implementer', 'verifier'] as const;
 type TeamRole = (typeof TEAM_ROLES)[number];
-type Scenario = 'complete' | 'budget' | 'cancel';
+type Scenario = 'complete' | 'budget' | 'cancel' | 'schema';
 
 // ---------------------------------------------------------------------------
 // OpenAI 兼容假模型
@@ -71,7 +71,7 @@ interface ChatRequestBody {
   model?: string;
   stream?: boolean;
   messages?: ChatMessage[];
-  tools?: Array<{ function?: { name?: string } }>;
+  tools?: Array<{ function?: { name?: string; description?: string } }>;
 }
 
 type FakeReply =
@@ -86,6 +86,8 @@ interface MemberScript {
   requests: number;
   /** 每次请求可用的工具名 */
   toolNames: string[][];
+  /** schema 场景：lead 首次请求中从简报与提交工具描述读到的 Schema 原文 */
+  seenSchemas?: { brief?: string; tool?: string };
 }
 
 const FAKE_USAGE = { prompt_tokens: 120, completion_tokens: 30 };
@@ -182,6 +184,9 @@ class FakeTeamModel {
       script,
       lastRole: last?.role ?? '',
       transcript,
+      submitToolDescription:
+        body.tools?.find((tool) => tool.function?.name === 'team_submit_result')
+          ?.function?.description ?? '',
     });
     if (reply.kind === 'tool') {
       script.toolCalls += 1;
@@ -275,11 +280,37 @@ function decideReply(params: {
   script: MemberScript;
   lastRole: string;
   transcript: string;
+  submitToolDescription: string;
 }): FakeReply {
   const { scenario, role, script, lastRole, transcript } = params;
 
   if (scenario === 'cancel') {
     return { kind: 'hold' };
+  }
+
+  if (scenario === 'schema') {
+    // lead 只能从它实际收到的内容（简报与提交工具描述）得知产物结构；任务文本不含结构
+    if (role !== 'implementer' || lastRole === 'tool') {
+      return { kind: 'text', text: '好的。' };
+    }
+    const briefSchema = /# 输出 Schema\n[^\n]*\n```json\n([\s\S]*?)\n```/.exec(
+      transcript,
+    )?.[1];
+    const toolSchema = /\n(\{[\s\S]*\})$/.exec(
+      params.submitToolDescription,
+    )?.[1];
+    script.seenSchemas = { brief: briefSchema, tool: toolSchema };
+    return {
+      kind: 'tool',
+      name: 'team_submit_result',
+      args: {
+        summary: '按 Schema 提交',
+        artifact: {
+          ...artifactFromSchema(briefSchema),
+          ...artifactFromSchema(toolSchema),
+        },
+      },
+    };
   }
 
   if (scenario === 'complete') {
@@ -334,6 +365,26 @@ function decideReply(params: {
     };
   }
   return { kind: 'text', text: '收到。' };
+}
+
+/** 按 Schema 的 required 字段构造最小合规产物；看不到 Schema 时返回空对象（会被校验拒绝） */
+function artifactFromSchema(raw: string | undefined): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+  const parsed = JSON.parse(raw) as {
+    properties?: Record<string, { type?: string; enum?: unknown[] }>;
+    required?: string[];
+  };
+  return Object.fromEntries(
+    (parsed.required ?? []).map((key) => {
+      const property = parsed.properties?.[key] ?? {};
+      return [
+        key,
+        property.enum?.[0] ?? (property.type === 'number' ? 1 : 'x'),
+      ];
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +631,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
   async function startTeamWorkflow(params: {
     scenario: Scenario;
     maxMessages?: number;
+    outputSchema?: postgres.JSONValue;
   }): Promise<{ executionId: string; runKey: string }> {
     const runKey = crypto.randomUUID();
     const workflowId = crypto.randomUUID();
@@ -614,7 +666,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
         maxMessages: params.maxMessages ?? 30,
         deadlineMinutes: 10,
       },
-      outputSchema: null,
+      outputSchema: params.outputSchema ?? null,
     };
 
     await seedWorkflowDefinition(ctx.adminSql, {
@@ -930,5 +982,45 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
       fakeModel.heldCount() === 0 ? true : null,
     );
     expect(await loadExecutionStatus(executionId)).toBe('cancelled');
+  }, 90_000);
+
+  it('仅在节点配置输出 Schema（任务文本不含结构）：lead 从简报与工具描述得到 Schema，一次提交即通过', async () => {
+    const outputSchema = {
+      type: 'object',
+      properties: {
+        patch: { type: 'string' },
+        riskLevel: { type: 'string', enum: ['low', 'high'] },
+      },
+      required: ['patch', 'riskLevel'],
+      additionalProperties: false,
+    };
+    const { executionId, runKey } = await startTeamWorkflow({
+      scenario: 'schema',
+      outputSchema,
+    });
+
+    const teamRun = await waitFor('团队运行 completed', async () => {
+      const run = await loadTeamRun(executionId);
+      return run?.status === 'completed' ? run : null;
+    });
+
+    const seen = fakeModel.script(runKey, 'implementer').seenSchemas;
+    expect(JSON.parse(seen?.brief ?? 'null')).toEqual(outputSchema);
+    expect(JSON.parse(seen?.tool ?? 'null')).toEqual(outputSchema);
+
+    const submits = toolResults.filter(
+      (entry) =>
+        entry.teamRunId === teamRun.id && entry.tool === 'team_submit_result',
+    );
+    expect(submits).toHaveLength(1);
+    expect(submits[0].result).toMatch(/^已提交/);
+
+    const teamStep = await waitFor('team 步骤 completed', async () => {
+      const step = await loadStep(executionId, 'team-1');
+      return step?.status === 'completed' ? step : null;
+    });
+    expect(teamStep.result?.['result-out']).toMatchObject({
+      artifact: { patch: 'x', riskLevel: 'low' },
+    });
   }, 90_000);
 });

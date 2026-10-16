@@ -45,7 +45,9 @@ export const TeamSubmitResultInputSchema = z.object({
   artifact: z
     .unknown()
     .optional()
-    .describe('结构化产物；节点配置了输出 Schema 时必须符合该 Schema'),
+    .describe(
+      '结构化产物；节点配置了输出 Schema 时必填且必须符合该 Schema（见工具描述）',
+    ),
   knownLimitations: z.array(z.string().max(1000)).max(50).optional(),
 });
 
@@ -90,8 +92,10 @@ export class TeamToolsProvider {
       ...(member.isLead
         ? {
             team_submit_result: tool({
-              description:
-                '负责人提交团队最终结果（只能提交一次）。提交后团队在你本回合结束、用量结算后完成。summary 必填；节点配置了输出 Schema 时 artifact 必须符合。',
+              // 描述随每次模型请求下发：即使简报被上下文压缩，lead 仍能看到产物结构
+              description: member.outputSchema
+                ? `负责人提交团队最终结果（只能提交一次）。提交后团队在你本回合结束、用量结算后完成。summary 必填；artifact 必填，必须是符合以下 JSON Schema 的 JSON 值（直接传对象，不要序列化成字符串），连续 ${TEAM_MAX_SCHEMA_INVALID} 次不符合则团队失败：\n${JSON.stringify(member.outputSchema)}`
+                : '负责人提交团队最终结果（只能提交一次）。提交后团队在你本回合结束、用量结算后完成。summary 必填；artifact 可选，用于结构化产物。',
               inputSchema: TeamSubmitResultInputSchema,
               execute: async (input) =>
                 transactionStorage.exit(() => this.submitResult(member, input)),

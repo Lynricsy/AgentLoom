@@ -290,6 +290,27 @@ describe('TeamToolsProvider', () => {
       },
     });
 
+    it('配置了 Schema 时提交工具描述携带完整 Schema，lead 无需从任务文本猜结构', async () => {
+      const { provider } = setup();
+      const toolSet = await tools(provider, lead);
+
+      const description = toolSet.team_submit_result.description ?? '';
+      expect(description).toContain(JSON.stringify(lead.outputSchema));
+      expect(description).toContain('artifact 必填');
+    });
+
+    it('未配置 Schema 时提交工具描述不提 Schema 约束', async () => {
+      const { provider } = setup();
+      const toolSet = await tools(
+        provider,
+        memberContext({ role: 'implementer', isLead: true, canMessage: ['*'] }),
+      );
+
+      expect(toolSet.team_submit_result.description).not.toContain(
+        'JSON Schema',
+      );
+    });
+
     it('产物符合 Schema 时只登记待定结果，不立即完成团队', async () => {
       const { provider, teamRunService } = setup();
       const toolSet = await tools(provider, lead);
