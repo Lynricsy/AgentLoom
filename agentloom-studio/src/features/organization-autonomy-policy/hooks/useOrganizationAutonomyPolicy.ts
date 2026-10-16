@@ -3,7 +3,6 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { optimizationSuggestionKeys } from '@/features/optimization-suggestion'
 import {
   confirmOrganizationAutonomyDowngrade,
   fetchOrganizationAutonomyPolicy,
@@ -41,14 +40,9 @@ export function useUpdateOrganizationAutonomyPolicy(organizationId?: string) {
     onSuccess: async () => {
       const resolvedOrganizationId = requireOrganizationId(organizationId)
 
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: organizationAutonomyPolicyKeys.detail(resolvedOrganizationId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: optimizationSuggestionKeys.all,
-        }),
-      ])
+      await queryClient.invalidateQueries({
+        queryKey: organizationAutonomyPolicyKeys.detail(resolvedOrganizationId),
+      })
     },
   })
 }
@@ -69,14 +63,9 @@ export function useConfirmOrganizationAutonomyDowngrade(organizationId?: string)
     onSuccess: async () => {
       const resolvedOrganizationId = requireOrganizationId(organizationId)
 
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: organizationAutonomyPolicyKeys.detail(resolvedOrganizationId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: optimizationSuggestionKeys.all,
-        }),
-      ])
+      await queryClient.invalidateQueries({
+        queryKey: organizationAutonomyPolicyKeys.detail(resolvedOrganizationId),
+      })
     },
   })
 }

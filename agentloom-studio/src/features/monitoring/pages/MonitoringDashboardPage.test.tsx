@@ -32,8 +32,8 @@ vi.mock('@/features/routing-decision', () => ({
   RoutingDecisionsPanel: () => <div data-testid="mock-routing-decisions-panel" />,
 }))
 
-vi.mock('@/features/optimization-suggestion', () => ({
-  OptimizationSuggestionsBoard: () => <div data-testid="mock-suggestions-board" />,
+vi.mock('@/features/optimization-proposal', () => ({
+  OptimizationProposalsBoard: () => <div data-testid="mock-proposals-board" />,
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -352,8 +352,8 @@ describe('MonitoringDashboardPage', () => {
     expect(screen.getByTestId('mock-routing-decisions-panel')).toBeInTheDocument()
     expect(screen.queryByTestId('monitoring-overview')).not.toBeInTheDocument()
 
-    await user.click(screen.getByTestId('monitoring-tab-suggestions'))
-    expect(screen.getByTestId('mock-suggestions-board')).toBeInTheDocument()
+    await user.click(screen.getByTestId('monitoring-tab-proposals'))
+    expect(screen.getByTestId('mock-proposals-board')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-routing-decisions-panel')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('monitoring-tab-overview'))

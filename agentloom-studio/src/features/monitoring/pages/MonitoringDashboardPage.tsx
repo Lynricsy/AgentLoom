@@ -18,7 +18,7 @@ import { Card, CardContent } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { RoutingDecisionsPanel } from '@/features/routing-decision'
-import { OptimizationSuggestionsBoard } from '@/features/optimization-suggestion'
+import { OptimizationProposalsBoard } from '@/features/optimization-proposal'
 import { useMonitoringDashboard } from '../hooks/useMonitoringDashboard'
 import {
   DEFAULT_MONITORING_WINDOW,
@@ -254,8 +254,8 @@ function MonitoringDashboardContent({ organizationId }: { organizationId: string
           <TabsTrigger value="routing" data-testid="monitoring-tab-routing">
             路由决策
           </TabsTrigger>
-          <TabsTrigger value="suggestions" data-testid="monitoring-tab-suggestions">
-            优化建议
+          <TabsTrigger value="proposals" data-testid="monitoring-tab-proposals">
+            优化提案
           </TabsTrigger>
         </TabsList>
 
@@ -271,8 +271,8 @@ function MonitoringDashboardContent({ organizationId }: { organizationId: string
           <RoutingDecisionsPanel />
         </TabsContent>
 
-        <TabsContent value="suggestions" data-testid="monitoring-suggestions-tab">
-          <OptimizationSuggestionsBoard />
+        <TabsContent value="proposals" data-testid="monitoring-proposals-tab">
+          <OptimizationProposalsBoard />
         </TabsContent>
       </Tabs>
     </PageContainer>

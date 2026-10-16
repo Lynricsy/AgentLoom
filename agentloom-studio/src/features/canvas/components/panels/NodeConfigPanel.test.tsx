@@ -111,20 +111,6 @@ vi.mock('./customPanelRegistry', async (importOriginal) => {
   return { ...mod, CUSTOM_PANEL_REGISTRY: filtered }
 })
 
-vi.mock('@/features/optimization-suggestion', () => ({
-  OptimizationSuggestionsPanel: ({
-    workflowDefinitionId,
-    nodeId,
-  }: {
-    workflowDefinitionId: string
-    nodeId: string
-  }) => (
-    <div data-testid="optimization-suggestions-panel-mock">
-      Optimization Suggestions Panel {workflowDefinitionId}:{nodeId}
-    </div>
-  ),
-}))
-
 vi.mock('./DynamicConfigForm', () => ({
   DynamicConfigForm: ({
     configSchema,

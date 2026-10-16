@@ -1222,6 +1222,32 @@ export type AgentDefinitionListResponseSwaggerDtoDataInnerResourceSourceKindEnum
 /**
  * 
  * @export
+ * @interface AnalyzeResponseDto
+ */
+export interface AnalyzeResponseDto {
+    /**
+     * 
+     * @type {Array<ProposalListResponseDtoDataInner>}
+     * @memberof AnalyzeResponseDto
+     */
+    data: Array<ProposalListResponseDtoDataInner>;
+}
+/**
+ * 
+ * @export
+ * @interface AnalyzeWorkflowDto
+ */
+export interface AnalyzeWorkflowDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof AnalyzeWorkflowDto
+     */
+    workflowDefinitionId: string;
+}
+/**
+ * 
+ * @export
  * @interface ChangePasswordDto
  */
 export interface ChangePasswordDto {
@@ -6232,6 +6258,871 @@ export interface PlatformApiTokenListResponseSwaggerDtoMeta {
 /**
  * 
  * @export
+ * @interface ProposalDetailResponseDto
+ */
+export interface ProposalDetailResponseDto {
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoData}
+     * @memberof ProposalDetailResponseDto
+     */
+    data: ProposalDetailResponseDtoData;
+}
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoData
+ */
+export interface ProposalDetailResponseDtoData {
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    workflowDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    workflowName: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    nodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    nodeType: ProposalDetailResponseDtoDataNodeTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    proposalType: ProposalDetailResponseDtoDataProposalTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    status: ProposalDetailResponseDtoDataStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    configPath: string;
+    /**
+     * 
+     * @type {any}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    currentValue: any | null;
+    /**
+     * 
+     * @type {any}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    proposedValue: any | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    rationale: string;
+    /**
+     * 
+     * @type {ProposalListResponseDtoDataInnerEvidence}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    evidence: ProposalListResponseDtoDataInnerEvidence;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    baseVersionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    candidateVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    publishedVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    verdict: ProposalDetailResponseDtoDataVerdictEnum | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    currentEvaluationId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    evaluatedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    publishedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    rolledBackAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    dismissedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    updatedAt: string;
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataLatestEvaluation}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    latestEvaluation: ProposalDetailResponseDtoDataLatestEvaluation | null;
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataPublishReport}
+     * @memberof ProposalDetailResponseDtoData
+     */
+    publishReport: ProposalDetailResponseDtoDataPublishReport | null;
+}
+
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataNodeTypeEnum = {
+    Team: 'team',
+    SmartRouting: 'smart-routing'
+} as const;
+export type ProposalDetailResponseDtoDataNodeTypeEnum = typeof ProposalDetailResponseDtoDataNodeTypeEnum[keyof typeof ProposalDetailResponseDtoDataNodeTypeEnum];
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataProposalTypeEnum = {
+    TeamBudgetTokens: 'team_budget_tokens',
+    TeamBudgetMessages: 'team_budget_messages',
+    TeamDeadline: 'team_deadline',
+    RoutingFallbackModel: 'routing_fallback_model'
+} as const;
+export type ProposalDetailResponseDtoDataProposalTypeEnum = typeof ProposalDetailResponseDtoDataProposalTypeEnum[keyof typeof ProposalDetailResponseDtoDataProposalTypeEnum];
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataStatusEnum = {
+    Proposed: 'proposed',
+    Evaluating: 'evaluating',
+    Evaluated: 'evaluated',
+    Published: 'published',
+    RolledBack: 'rolled_back',
+    Dismissed: 'dismissed',
+    Superseded: 'superseded'
+} as const;
+export type ProposalDetailResponseDtoDataStatusEnum = typeof ProposalDetailResponseDtoDataStatusEnum[keyof typeof ProposalDetailResponseDtoDataStatusEnum];
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataVerdictEnum = {
+    Improved: 'improved',
+    Neutral: 'neutral',
+    Regressed: 'regressed'
+} as const;
+export type ProposalDetailResponseDtoDataVerdictEnum = typeof ProposalDetailResponseDtoDataVerdictEnum[keyof typeof ProposalDetailResponseDtoDataVerdictEnum];
+
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluation
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluation {
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    proposalId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    status: ProposalDetailResponseDtoDataLatestEvaluationStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    baseVersionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    candidateVersionId: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    caseCount: number;
+    /**
+     * 
+     * @type {Array<ProposalDetailResponseDtoDataLatestEvaluationCasesInner>}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    cases: Array<ProposalDetailResponseDtoDataLatestEvaluationCasesInner>;
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataLatestEvaluationSummary}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    summary: ProposalDetailResponseDtoDataLatestEvaluationSummary | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    failureReason: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    deadlineAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    startedAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    completedAt: string | null;
+    /**
+     * 
+     * @type {Array<ProposalDetailResponseDtoDataLatestEvaluationRunsInner>}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluation
+     */
+    runs: Array<ProposalDetailResponseDtoDataLatestEvaluationRunsInner>;
+}
+
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataLatestEvaluationStatusEnum = {
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed'
+} as const;
+export type ProposalDetailResponseDtoDataLatestEvaluationStatusEnum = typeof ProposalDetailResponseDtoDataLatestEvaluationStatusEnum[keyof typeof ProposalDetailResponseDtoDataLatestEvaluationStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluationCasesInner
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluationCasesInner {
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationCasesInner
+     */
+    index: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationCasesInner
+     */
+    sourceExecutionId: string;
+}
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluationRunsInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    arm: ProposalDetailResponseDtoDataLatestEvaluationRunsInnerArmEnum;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    caseIndex: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    executionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    status: ProposalDetailResponseDtoDataLatestEvaluationRunsInnerStatusEnum;
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    metrics: ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInner
+     */
+    completedAt: string | null;
+}
+
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataLatestEvaluationRunsInnerArmEnum = {
+    Baseline: 'baseline',
+    Candidate: 'candidate'
+} as const;
+export type ProposalDetailResponseDtoDataLatestEvaluationRunsInnerArmEnum = typeof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerArmEnum[keyof typeof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerArmEnum];
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataLatestEvaluationRunsInnerStatusEnum = {
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled'
+} as const;
+export type ProposalDetailResponseDtoDataLatestEvaluationRunsInnerStatusEnum = typeof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerStatusEnum[keyof typeof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics {
+    /**
+     * 
+     * @type {boolean}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    passed: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    executionStatus: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    durationMs: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    costUsd: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    totalTokens: number | null;
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    team: ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetrics
+     */
+    error: string | null;
+}
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam {
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam
+     */
+    status: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam
+     */
+    failureReason: string | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam
+     */
+    usedTokens: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationRunsInnerMetricsTeam
+     */
+    messageCount: number;
+}
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluationSummary
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluationSummary {
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummary
+     */
+    baseline: ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline;
+    /**
+     * 
+     * @type {ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummary
+     */
+    candidate: ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummary
+     */
+    passRateDelta: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummary
+     */
+    costDeltaRatio: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummary
+     */
+    verdict: ProposalDetailResponseDtoDataLatestEvaluationSummaryVerdictEnum;
+}
+
+
+/**
+ * @export
+ */
+export const ProposalDetailResponseDtoDataLatestEvaluationSummaryVerdictEnum = {
+    Improved: 'improved',
+    Neutral: 'neutral',
+    Regressed: 'regressed'
+} as const;
+export type ProposalDetailResponseDtoDataLatestEvaluationSummaryVerdictEnum = typeof ProposalDetailResponseDtoDataLatestEvaluationSummaryVerdictEnum[keyof typeof ProposalDetailResponseDtoDataLatestEvaluationSummaryVerdictEnum];
+
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+ */
+export interface ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline {
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+     */
+    cases: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+     */
+    passed: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+     */
+    passRate: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+     */
+    meanCostUsd: number | null;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+     */
+    meanDurationMs: number | null;
+    /**
+     * 
+     * @type {{ [key: string]: number; }}
+     * @memberof ProposalDetailResponseDtoDataLatestEvaluationSummaryBaseline
+     */
+    teamFailureReasons: { [key: string]: number; };
+}
+/**
+ * 
+ * @export
+ * @interface ProposalDetailResponseDtoDataPublishReport
+ */
+export interface ProposalDetailResponseDtoDataPublishReport {
+    /**
+     * 
+     * @type {boolean}
+     * @memberof ProposalDetailResponseDtoDataPublishReport
+     */
+    draftSynced: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalDetailResponseDtoDataPublishReport
+     */
+    note: string | null;
+}
+/**
+ * 
+ * @export
+ * @interface ProposalListResponseDto
+ */
+export interface ProposalListResponseDto {
+    /**
+     * 
+     * @type {Array<ProposalListResponseDtoDataInner>}
+     * @memberof ProposalListResponseDto
+     */
+    data: Array<ProposalListResponseDtoDataInner>;
+    /**
+     * 
+     * @type {ExecutionListResponseSwaggerDtoMeta}
+     * @memberof ProposalListResponseDto
+     */
+    meta: ExecutionListResponseSwaggerDtoMeta;
+}
+/**
+ * 
+ * @export
+ * @interface ProposalListResponseDtoDataInner
+ */
+export interface ProposalListResponseDtoDataInner {
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    id: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    workflowDefinitionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    workflowName: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    nodeId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    nodeType: ProposalListResponseDtoDataInnerNodeTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    proposalType: ProposalListResponseDtoDataInnerProposalTypeEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    status: ProposalListResponseDtoDataInnerStatusEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    configPath: string;
+    /**
+     * 
+     * @type {any}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    currentValue: any | null;
+    /**
+     * 
+     * @type {any}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    proposedValue: any | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    rationale: string;
+    /**
+     * 
+     * @type {ProposalListResponseDtoDataInnerEvidence}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    evidence: ProposalListResponseDtoDataInnerEvidence;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    baseVersionId: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    candidateVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    publishedVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    verdict: ProposalListResponseDtoDataInnerVerdictEnum | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    currentEvaluationId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    evaluatedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    publishedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    rolledBackAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    dismissedAt: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    createdAt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInner
+     */
+    updatedAt: string;
+}
+
+
+/**
+ * @export
+ */
+export const ProposalListResponseDtoDataInnerNodeTypeEnum = {
+    Team: 'team',
+    SmartRouting: 'smart-routing'
+} as const;
+export type ProposalListResponseDtoDataInnerNodeTypeEnum = typeof ProposalListResponseDtoDataInnerNodeTypeEnum[keyof typeof ProposalListResponseDtoDataInnerNodeTypeEnum];
+
+/**
+ * @export
+ */
+export const ProposalListResponseDtoDataInnerProposalTypeEnum = {
+    TeamBudgetTokens: 'team_budget_tokens',
+    TeamBudgetMessages: 'team_budget_messages',
+    TeamDeadline: 'team_deadline',
+    RoutingFallbackModel: 'routing_fallback_model'
+} as const;
+export type ProposalListResponseDtoDataInnerProposalTypeEnum = typeof ProposalListResponseDtoDataInnerProposalTypeEnum[keyof typeof ProposalListResponseDtoDataInnerProposalTypeEnum];
+
+/**
+ * @export
+ */
+export const ProposalListResponseDtoDataInnerStatusEnum = {
+    Proposed: 'proposed',
+    Evaluating: 'evaluating',
+    Evaluated: 'evaluated',
+    Published: 'published',
+    RolledBack: 'rolled_back',
+    Dismissed: 'dismissed',
+    Superseded: 'superseded'
+} as const;
+export type ProposalListResponseDtoDataInnerStatusEnum = typeof ProposalListResponseDtoDataInnerStatusEnum[keyof typeof ProposalListResponseDtoDataInnerStatusEnum];
+
+/**
+ * @export
+ */
+export const ProposalListResponseDtoDataInnerVerdictEnum = {
+    Improved: 'improved',
+    Neutral: 'neutral',
+    Regressed: 'regressed'
+} as const;
+export type ProposalListResponseDtoDataInnerVerdictEnum = typeof ProposalListResponseDtoDataInnerVerdictEnum[keyof typeof ProposalListResponseDtoDataInnerVerdictEnum];
+
+/**
+ * 
+ * @export
+ * @interface ProposalListResponseDtoDataInnerEvidence
+ */
+export interface ProposalListResponseDtoDataInnerEvidence {
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    analyzerVersion: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    windowDays: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    windowStart: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    windowEnd: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    sampleCount: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    matchedCount: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    matchedRate: number;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    sampleIds: Array<string>;
+    /**
+     * 
+     * @type {string}
+     * @memberof ProposalListResponseDtoDataInnerEvidence
+     */
+    modelName?: string;
+}
+/**
+ * 
+ * @export
  * @interface ProviderHealthStatusesResponseDto
  */
 export interface ProviderHealthStatusesResponseDto {
@@ -6291,6 +7182,25 @@ export const ProviderHealthStatusesResponseDtoDataInnerStatusEnum = {
 } as const;
 export type ProviderHealthStatusesResponseDtoDataInnerStatusEnum = typeof ProviderHealthStatusesResponseDtoDataInnerStatusEnum[keyof typeof ProviderHealthStatusesResponseDtoDataInnerStatusEnum];
 
+/**
+ * 
+ * @export
+ * @interface PublishProposalDto
+ */
+export interface PublishProposalDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof PublishProposalDto
+     */
+    label?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PublishProposalDto
+     */
+    releaseNotes?: string;
+}
 /**
  * 
  * @export
@@ -7366,6 +8276,19 @@ export const StartConversationDtoContentTypeEnum = {
 } as const;
 export type StartConversationDtoContentTypeEnum = typeof StartConversationDtoContentTypeEnum[keyof typeof StartConversationDtoContentTypeEnum];
 
+/**
+ * 
+ * @export
+ * @interface StartEvaluationDto
+ */
+export interface StartEvaluationDto {
+    /**
+     * 
+     * @type {number}
+     * @memberof StartEvaluationDto
+     */
+    caseCount?: number;
+}
 /**
  * 
  * @export

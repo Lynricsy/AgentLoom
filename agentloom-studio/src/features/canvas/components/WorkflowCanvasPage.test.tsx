@@ -189,12 +189,6 @@ vi.mock(
   }),
 );
 
-vi.mock("@/features/optimization-suggestion", () => ({
-  OptimizationSuggestionsPanel: () => (
-    <div data-testid="optimization-suggestions-panel" />
-  ),
-}));
-
 vi.mock("./NodePalette", () => ({
   NodePalette: () => <div>Node Palette</div>,
 }));

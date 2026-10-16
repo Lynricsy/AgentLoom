@@ -1,0 +1,41 @@
+import type { ProposalDetail } from '../api/optimizationProposalApi'
+
+export function makeProposal(overrides: Partial<ProposalDetail> = {}): ProposalDetail {
+  return {
+    id: 'proposal-1',
+    workflowDefinitionId: 'wf-1',
+    workflowName: '登录修复',
+    nodeId: 'team-1',
+    nodeType: 'team',
+    proposalType: 'team_budget_messages',
+    status: 'proposed',
+    configPath: 'config.budget.maxMessages',
+    currentValue: 1,
+    proposedValue: 2,
+    rationale: '最近 28 天 3 次团队运行中 3 次因消息数达到上限失败（100%），建议把消息数上限从 1 提高到 2',
+    evidence: {
+      analyzerVersion: 1,
+      windowDays: 28,
+      windowStart: '2026-01-01T00:00:00.000Z',
+      windowEnd: '2026-01-29T00:00:00.000Z',
+      sampleCount: 3,
+      matchedCount: 3,
+      matchedRate: 1,
+      sampleIds: [],
+    },
+    baseVersionId: 'v-a',
+    candidateVersionId: null,
+    publishedVersionId: null,
+    verdict: null,
+    currentEvaluationId: null,
+    evaluatedAt: null,
+    publishedAt: null,
+    rolledBackAt: null,
+    dismissedAt: null,
+    createdAt: '2026-01-29T00:00:00.000Z',
+    updatedAt: '2026-01-29T00:00:00.000Z',
+    latestEvaluation: null,
+    publishReport: null,
+    ...overrides,
+  }
+}
