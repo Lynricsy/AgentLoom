@@ -42,8 +42,9 @@ import { filterNavGroupsByRole } from "./navigation";
 describe("AppSidebar", () => {
   beforeEach(() => {
     mocks.role = "owner";
-    // 折叠状态写入 localStorage；不清理时上一个用例的「收起侧边栏」会让后续用例以收起态渲染
-    localStorage.clear();
+    // 折叠状态写入 localStorage；不清理时上一个用例的「收起侧边栏」会让后续用例以收起态渲染。
+    // Node 25+ 自带的全局 localStorage 在未指定 --localstorage-file 时为 undefined（遮蔽 jsdom 的实现），故可选调用
+    globalThis.localStorage?.clear();
   });
 
   it("渲染当前角色可见的全部导航分组与其条目", () => {
