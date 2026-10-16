@@ -1524,6 +1524,59 @@ describe('WorkflowVersionService', () => {
     });
   });
 
+  describe('createVersionFromSnapshot', () => {
+    it('应当原样写入给定快照并建为未发布版本，不读取草稿', async () => {
+      const snapshot = {
+        nodes: [
+          {
+            id: 'team-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: { nodeType: 'team', config: { budget: { maxMessages: 2 } } },
+          },
+        ],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 7 },
+      };
+      db.select
+        .mockReturnValueOnce(createSelectChain([createDraftWorkflow()]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 4 }]));
+      const insertChain = createInsertChain([
+        createMockVersion({ versionNumber: 5 }),
+      ]);
+      db.insert.mockReturnValueOnce(insertChain);
+
+      const result = await service.createVersionFromSnapshot(WORKFLOW_ID, {
+        snapshot: snapshot as never,
+        label: '优化提案',
+        userId: USER_ID,
+      });
+
+      const insertValues = insertChain.values.mock.calls[0][0];
+      expect(insertValues.snapshot).toBe(snapshot);
+      expect(insertValues.publishedAt).toBeNull();
+      expect(insertValues.versionNumber).toBe(5);
+      expect(insertValues.label).toBe('优化提案');
+      expect(result.versionNumber).toBe(5);
+    });
+
+    it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createDraftWorkflow({ status: 'archived' })]),
+      );
+
+      await expect(
+        service.createVersionFromSnapshot(WORKFLOW_ID, {
+          snapshot: {} as never,
+          label: null,
+          userId: USER_ID,
+        }),
+      ).rejects.toBeInstanceOf(WorkflowArchivedException);
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listVersions', () => {
     it('应当返回分页版本列表', async () => {
       // findWorkflowOrThrow

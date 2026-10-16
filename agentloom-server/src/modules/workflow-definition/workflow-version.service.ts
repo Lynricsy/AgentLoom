@@ -647,6 +647,62 @@ export class WorkflowVersionService {
     return this.toResponseDto(version);
   }
 
+  /**
+   * 以给定快照原样建一个未发布版本（不读草稿、不重建快照）。
+   *
+   * 优化提案评测用：候选快照 = 基线发布快照 + 单节点补丁，必须与草稿无关，
+   * 否则草稿上的无关编辑会混进评测与发布。
+   */
+  async createVersionFromSnapshot(
+    workflowId: string,
+    params: {
+      snapshot: schema.WorkflowVersionSnapshot;
+      label: string | null;
+      userId: string;
+    },
+  ): Promise<VersionResponseDto> {
+    const version = await this.withWorkflowWriteLock(
+      workflowId,
+      async (dbClient) => {
+        const workflow = await this.findWorkflowOrThrow(dbClient, workflowId);
+
+        if (workflow.status === 'archived') {
+          throw new WorkflowArchivedException(workflowId);
+        }
+
+        const [createdVersion] = await dbClient
+          .insert(schema.workflowVersions)
+          .values({
+            workflowDefinitionId: workflowId,
+            tenantId: workflow.tenantId,
+            versionNumber: await this.getNextVersionNumber(
+              dbClient,
+              workflowId,
+            ),
+            label: params.label,
+            snapshot: params.snapshot,
+            publishedAt: null,
+            createdBy: params.userId,
+          })
+          .returning();
+
+        return createdVersion;
+      },
+    );
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'version_created_from_snapshot',
+        workflowId,
+        versionId: version.id,
+        versionNumber: version.versionNumber,
+        userId: params.userId,
+      }),
+    );
+
+    return this.toResponseDto(version);
+  }
+
   // ─── 列出版本历史 ─────────────────────────────────────────────
 
   async listVersions(
