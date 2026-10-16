@@ -39,6 +39,7 @@ import {
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
 import { resolveWorkflowInputParams } from '../workflow/utils/workflow-input-validation.util';
+import { WorkflowVersionNotFoundException } from '../workflow-definition/workflow-version.exceptions';
 import {
   attachExecutionRuntimeMeta,
   isTrackedExecutionStep,
@@ -527,18 +528,24 @@ export class ExecutionService {
         )
       : buildExecutionInputParams(runRequest);
 
+    // 评测执行可显式指定版本（含未发布的候选版本）；缺省走当前发布版本
+    const requestedVersionId = runRequest?.workflowVersionId;
+    const versionId = requestedVersionId ?? workflow.publishedVersionId;
     const [publishedVersion] = await this.tenantDb
       .select()
       .from(schema.workflowVersions)
       .where(
         and(
-          eq(schema.workflowVersions.id, workflow.publishedVersionId),
+          eq(schema.workflowVersions.id, versionId),
           eq(schema.workflowVersions.workflowDefinitionId, workflowId),
           eq(schema.workflowVersions.tenantId, tenantId),
         ),
       );
 
     if (!publishedVersion) {
+      if (requestedVersionId) {
+        throw new WorkflowVersionNotFoundException(requestedVersionId);
+      }
       throw new WorkflowNotPublishedException(workflowId);
     }
 
@@ -578,7 +585,7 @@ export class ExecutionService {
       .insert(schema.workflowExecutions)
       .values({
         workflowDefinitionId: workflowId,
-        workflowVersionId: workflow.publishedVersionId,
+        workflowVersionId: versionId,
         tenantId,
         status: 'pending',
         triggerType: runRequest?.triggerType ?? 'manual',

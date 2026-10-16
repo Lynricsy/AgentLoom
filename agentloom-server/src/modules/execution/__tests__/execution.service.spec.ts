@@ -24,6 +24,7 @@ import {
   ResourceGovernanceDecisionBlockedException,
   type ResourceGovernanceDecisionBlockDetail,
 } from '../../resource-governance/resource-governance.exceptions';
+import { WorkflowVersionNotFoundException } from '../../workflow-definition/workflow-version.exceptions';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -722,6 +723,75 @@ describe('ExecutionService', () => {
           targetHandle: 'content-in',
         }),
       ]);
+    });
+
+    it('给定 workflowVersionId 时应按该版本快照启动并记录该版本', async () => {
+      const CANDIDATE_VERSION_ID = '00000000-0000-0000-0000-0000000000c1';
+      const candidateVersion = {
+        ...mockVersion,
+        id: CANDIDATE_VERSION_ID,
+        publishedAt: null,
+        snapshot: {
+          ...mockSnapshot,
+          nodes: [
+            {
+              id: 'candidate-output',
+              type: 'output',
+              position: { x: 0, y: 0 },
+              data: { label: 'Candidate Output', nodeType: 'text-output' },
+            },
+          ],
+          edges: [],
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([candidateVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          inputParams: { topic: 'eval' },
+          launchSource: 'evaluation',
+          triggerType: 'system',
+          workflowVersionId: CANDIDATE_VERSION_ID,
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.workflowVersionId).toBe(CANDIDATE_VERSION_ID);
+      expect(insertValues.triggerType).toBe('system');
+      expect(insertValues.definitionSnapshot.nodes).toEqual([
+        expect.objectContaining({ id: 'candidate-output' }),
+      ]);
+      expect(insertValues.inputParams).toEqual({
+        topic: 'eval',
+        _meta: { launchSource: 'evaluation' },
+      });
+    });
+
+    it('给定的 workflowVersionId 不存在时应抛出 WorkflowVersionNotFoundException', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.runWorkflow(
+          WORKFLOW_ID,
+          { workflowVersionId: '00000000-0000-0000-0000-0000000000c2' },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(WorkflowVersionNotFoundException);
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('应将 launchSource 合并到 inputParams._meta 中', async () => {

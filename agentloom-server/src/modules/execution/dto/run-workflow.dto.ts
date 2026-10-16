@@ -26,7 +26,8 @@ export type InternalLaunchSource =
   | NonNullable<PublicRunWorkflowInput['launchSource']>
   | 'cron-trigger'
   | 'webhook-trigger'
-  | 'api-event-trigger';
+  | 'api-event-trigger'
+  | 'evaluation';
 
 export type ExecutionTriggerType = 'manual' | 'api' | 'webhook' | 'system';
 
@@ -35,6 +36,8 @@ export type InternalRunWorkflowRequest = {
   launchSource?: InternalLaunchSource;
   schemaVersion?: PublicRunWorkflowInput['schemaVersion'];
   triggerType?: ExecutionTriggerType;
+  /** 仅服务端内部：按指定版本快照启动（优化提案评测用），缺省为当前发布版本。 */
+  workflowVersionId?: string;
 };
 
 export class RunWorkflowDto extends createZodDto(runWorkflowSchema) {}
