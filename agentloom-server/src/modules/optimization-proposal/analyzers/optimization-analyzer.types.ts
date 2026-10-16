@@ -64,7 +64,9 @@ export interface ProposalCandidate {
   evidence: ProposalEvidence;
 }
 
-export type TeamAnalyzer = (evidence: TeamNodeEvidence) => ProposalCandidate | null;
+export type TeamAnalyzer = (
+  evidence: TeamNodeEvidence,
+) => ProposalCandidate | null;
 export type RoutingAnalyzer = (
   evidence: RoutingNodeEvidence,
 ) => ProposalCandidate | null;

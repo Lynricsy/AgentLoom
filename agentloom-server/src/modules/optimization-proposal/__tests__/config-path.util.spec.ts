@@ -18,7 +18,11 @@ describe('config-path.util', () => {
   });
 
   it('缺失中间层创建为对象；undefined 删除末级键', () => {
-    const created = setConfigPathValue({}, 'strategyConfig.fallbackModelId', 'm');
+    const created = setConfigPathValue(
+      {},
+      'strategyConfig.fallbackModelId',
+      'm',
+    );
     expect(created).toEqual({ strategyConfig: { fallbackModelId: 'm' } });
     expect(
       setConfigPathValue(created, 'strategyConfig.fallbackModelId', undefined),
@@ -26,7 +30,11 @@ describe('config-path.util', () => {
   });
 
   it('中间层不是对象时抛错；读取时返回 undefined', () => {
-    expect(() => setConfigPathValue({ config: 'x' }, 'config.budget', 1)).toThrow();
-    expect(getConfigPathValue({ config: 'x' }, 'config.budget')).toBeUndefined();
+    expect(() =>
+      setConfigPathValue({ config: 'x' }, 'config.budget', 1),
+    ).toThrow();
+    expect(
+      getConfigPathValue({ config: 'x' }, 'config.budget'),
+    ).toBeUndefined();
   });
 });

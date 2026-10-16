@@ -62,39 +62,48 @@ export class OptimizationEvaluationService {
   ) {}
 
   /** worker 入口：为缺失的 (臂, 用例) 启动评测执行 */
-  async run({ tenantId, evaluationId }: OptimizationEvaluateJobData): Promise<void> {
-    const loaded = await runInTenantTransaction(this.db, tenantId, async (tx) => {
-      const [evaluation] = await tx
-        .select({
-          id: optimizationEvaluations.id,
-          status: optimizationEvaluations.status,
-          cases: optimizationEvaluations.cases,
-          baseVersionId: optimizationEvaluations.baseVersionId,
-          candidateVersionId: optimizationEvaluations.candidateVersionId,
-          startedByUserId: optimizationEvaluations.startedByUserId,
-          workflowDefinitionId: optimizationProposals.workflowDefinitionId,
-        })
-        .from(optimizationEvaluations)
-        .innerJoin(
-          optimizationProposals,
-          eq(optimizationProposals.id, optimizationEvaluations.proposalId),
-        )
-        .where(eq(optimizationEvaluations.id, evaluationId));
-      if (!evaluation || evaluation.status !== 'running') {
-        return null;
-      }
-      const existing = await tx
-        .select({
-          arm: optimizationEvaluationRuns.arm,
-          caseIndex: optimizationEvaluationRuns.caseIndex,
-        })
-        .from(optimizationEvaluationRuns)
-        .where(eq(optimizationEvaluationRuns.evaluationId, evaluationId));
-      return {
-        evaluation,
-        existing: new Set(existing.map((row) => `${row.arm}:${row.caseIndex}`)),
-      };
-    });
+  async run({
+    tenantId,
+    evaluationId,
+  }: OptimizationEvaluateJobData): Promise<void> {
+    const loaded = await runInTenantTransaction(
+      this.db,
+      tenantId,
+      async (tx) => {
+        const [evaluation] = await tx
+          .select({
+            id: optimizationEvaluations.id,
+            status: optimizationEvaluations.status,
+            cases: optimizationEvaluations.cases,
+            baseVersionId: optimizationEvaluations.baseVersionId,
+            candidateVersionId: optimizationEvaluations.candidateVersionId,
+            startedByUserId: optimizationEvaluations.startedByUserId,
+            workflowDefinitionId: optimizationProposals.workflowDefinitionId,
+          })
+          .from(optimizationEvaluations)
+          .innerJoin(
+            optimizationProposals,
+            eq(optimizationProposals.id, optimizationEvaluations.proposalId),
+          )
+          .where(eq(optimizationEvaluations.id, evaluationId));
+        if (!evaluation || evaluation.status !== 'running') {
+          return null;
+        }
+        const existing = await tx
+          .select({
+            arm: optimizationEvaluationRuns.arm,
+            caseIndex: optimizationEvaluationRuns.caseIndex,
+          })
+          .from(optimizationEvaluationRuns)
+          .where(eq(optimizationEvaluationRuns.evaluationId, evaluationId));
+        return {
+          evaluation,
+          existing: new Set(
+            existing.map((row) => `${row.arm}:${row.caseIndex}`),
+          ),
+        };
+      },
+    );
     if (!loaded) {
       return;
     }
@@ -180,7 +189,10 @@ export class OptimizationEvaluationService {
     );
   }
 
-  async settleByExecution(tenantId: string, executionId: string): Promise<void> {
+  async settleByExecution(
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     const evaluationId = await runInTenantTransaction(
       this.db,
       tenantId,
@@ -337,7 +349,8 @@ export class OptimizationEvaluationService {
         .select()
         .from(optimizationEvaluationRuns)
         .where(eq(optimizationEvaluationRuns.evaluationId, evaluationId));
-      const expected = evaluation.cases.length * OPTIMIZATION_EVALUATION_ARMS.length;
+      const expected =
+        evaluation.cases.length * OPTIMIZATION_EVALUATION_ARMS.length;
       if (
         runs.length < expected ||
         runs.some((run) => run.status === 'running' || !run.metrics)
@@ -415,7 +428,11 @@ export class OptimizationEvaluationService {
       .where(
         and(
           eq(optimizationEvaluationRuns.status, 'running'),
-          inArray(workflowExecutions.status, ['completed', 'failed', 'cancelled']),
+          inArray(workflowExecutions.status, [
+            'completed',
+            'failed',
+            'cancelled',
+          ]),
         ),
       );
     for (const run of unsettled) {
@@ -426,7 +443,9 @@ export class OptimizationEvaluationService {
       );
     }
 
-    const launchCutoff = new Date(now.getTime() - EVALUATION_LAUNCH_RECOVERY_AFTER_MS);
+    const launchCutoff = new Date(
+      now.getTime() - EVALUATION_LAUNCH_RECOVERY_AFTER_MS,
+    );
     const stalled = await this.db
       .select({
         id: optimizationEvaluations.id,
@@ -442,7 +461,10 @@ export class OptimizationEvaluationService {
       );
     for (const evaluation of stalled) {
       await this.guard(`重做评测 ${evaluation.id} 启动`, () =>
-        this.run({ tenantId: evaluation.tenantId, evaluationId: evaluation.id }),
+        this.run({
+          tenantId: evaluation.tenantId,
+          evaluationId: evaluation.id,
+        }),
       );
     }
   }
@@ -475,7 +497,10 @@ export class OptimizationEvaluationService {
       for (const run of running) {
         if (run.executionId) {
           try {
-            await this.executionService.cancelExecution(run.executionId, tenantId);
+            await this.executionService.cancelExecution(
+              run.executionId,
+              tenantId,
+            );
           } catch (error) {
             if (
               !(error instanceof ExecutionNotCancellableException) &&

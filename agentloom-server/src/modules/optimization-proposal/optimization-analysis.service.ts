@@ -68,7 +68,9 @@ export function resolveAnalyzableNodeType(
 }
 
 /** strategyConfig 在节点 data 中的位置；运行期按 `{...data.config, ...data}` 合并读取 */
-function resolveStrategyConfigPath(data: Record<string, unknown>): string | null {
+function resolveStrategyConfigPath(
+  data: Record<string, unknown>,
+): string | null {
   if (isRecord(data.strategyConfig)) {
     return 'strategyConfig';
   }
@@ -116,9 +118,7 @@ export class OptimizationAnalysisService {
       try {
         const created = await this.analyzeTenant(tenantId);
         if (created.length > 0) {
-          this.logger.log(
-            `租户 ${tenantId} 新建优化提案 ${created.length} 条`,
-          );
+          this.logger.log(`租户 ${tenantId} 新建优化提案 ${created.length} 条`);
         }
       } catch (error) {
         this.logger.warn(
@@ -227,7 +227,9 @@ export class OptimizationAnalysisService {
   ): Promise<OptimizationProposal[]> {
     const end = new Date();
     const window: EvidenceWindow = {
-      start: new Date(end.getTime() - OPTIMIZATION_EVIDENCE_WINDOW_DAYS * DAY_MS),
+      start: new Date(
+        end.getTime() - OPTIMIZATION_EVIDENCE_WINDOW_DAYS * DAY_MS,
+      ),
       end,
     };
     const created: OptimizationProposal[] = [];
@@ -322,7 +324,10 @@ export class OptimizationAnalysisService {
               .select({ one: sql`1` })
               .from(optimizationEvaluationRuns)
               .where(
-                eq(optimizationEvaluationRuns.executionId, teamRuns.executionId),
+                eq(
+                  optimizationEvaluationRuns.executionId,
+                  teamRuns.executionId,
+                ),
               ),
           ),
         ),
@@ -331,7 +336,10 @@ export class OptimizationAnalysisService {
 
     // 只用与已发布配置同预算的运行作证据：旧预算下的失败不说明当前预算不够
     const runs = rows
-      .filter((row) => row.config?.budget && sameBudget(row.config.budget, config.budget))
+      .filter(
+        (row) =>
+          row.config?.budget && sameBudget(row.config.budget, config.budget),
+      )
       .map((row) => ({
         id: row.id,
         status: row.status,
@@ -390,7 +398,10 @@ export class OptimizationAnalysisService {
               .select({ one: sql`1` })
               .from(optimizationEvaluationRuns)
               .where(
-                eq(optimizationEvaluationRuns.executionId, workflowExecutions.id),
+                eq(
+                  optimizationEvaluationRuns.executionId,
+                  workflowExecutions.id,
+                ),
               ),
           ),
         ),

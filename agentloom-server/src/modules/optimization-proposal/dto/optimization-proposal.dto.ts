@@ -1,9 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import {
-  OPTIMIZATION_EVAL_MAX_CASES,
-} from '../optimization-proposal.constants';
+import { OPTIMIZATION_EVAL_MAX_CASES } from '../optimization-proposal.constants';
 import {
   OPTIMIZATION_EVALUATION_ARMS,
   OPTIMIZATION_EVALUATION_RUN_STATUSES,
@@ -32,7 +30,12 @@ export const AnalyzeWorkflowSchema = z.object({
 export class AnalyzeWorkflowDto extends createZodDto(AnalyzeWorkflowSchema) {}
 
 export const StartEvaluationSchema = z.object({
-  caseCount: z.number().int().min(1).max(OPTIMIZATION_EVAL_MAX_CASES).optional(),
+  caseCount: z
+    .number()
+    .int()
+    .min(1)
+    .max(OPTIMIZATION_EVAL_MAX_CASES)
+    .optional(),
 });
 export class StartEvaluationDto extends createZodDto(StartEvaluationSchema) {}
 

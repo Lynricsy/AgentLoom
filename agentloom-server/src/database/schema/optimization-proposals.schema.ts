@@ -131,9 +131,7 @@ export const optimizationProposals = pgTable(
     ),
     uniqueIndex('uq_optimization_proposals_active')
       .on(table.workflowDefinitionId, table.nodeId, table.proposalType)
-      .where(
-        sql`${table.status} IN ('proposed', 'evaluating', 'evaluated')`,
-      ),
+      .where(sql`${table.status} IN ('proposed', 'evaluating', 'evaluated')`),
     ...createDirectTenantPolicies('optimization_proposals'),
   ],
 );

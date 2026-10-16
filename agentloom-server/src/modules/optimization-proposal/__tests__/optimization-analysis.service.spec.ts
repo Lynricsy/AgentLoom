@@ -19,7 +19,12 @@ const budget = (maxMessages: number) => ({
 const teamConfig = {
   objective: '修复问题',
   members: [
-    { role: 'lead', agentDefinitionId: AGENT_ID, isLead: true, canMessage: ['worker'] },
+    {
+      role: 'lead',
+      agentDefinitionId: AGENT_ID,
+      isLead: true,
+      canMessage: ['worker'],
+    },
     { role: 'worker', agentDefinitionId: AGENT_ID, canMessage: ['lead'] },
   ],
   budget: budget(1),
@@ -76,7 +81,9 @@ describe('OptimizationAnalysisService.analyzeWorkflow', () => {
     );
 
     expect(result).toEqual([{ id: 'proposal-1' }]);
-    const [inserted] = stub.argsOf('insert', 'values') as Array<Record<string, any>>;
+    const [inserted] = stub.argsOf('insert', 'values') as Array<
+      Record<string, any>
+    >;
     expect(inserted).toMatchObject({
       tenantId: TENANT_ID,
       workflowDefinitionId: WORKFLOW_ID,
@@ -131,7 +138,12 @@ describe('OptimizationAnalysisService.analyzeWorkflow', () => {
     const stub = createQueryDb([
       [publishedWorkflow],
       versionWith([
-        { id: 'text-1', type: 'output', position: { x: 0, y: 0 }, data: { nodeType: 'text' } },
+        {
+          id: 'text-1',
+          type: 'output',
+          position: { x: 0, y: 0 },
+          data: { nodeType: 'text' },
+        },
       ]),
     ]);
     const service = new OptimizationAnalysisService(stub.db);

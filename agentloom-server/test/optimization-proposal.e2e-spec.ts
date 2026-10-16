@@ -353,16 +353,60 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       createdBy: userId,
       updatedBy: userId,
       nodes: [
-        { id: 'trigger', type: 'manual-trigger', position: { x: 0, y: 0 }, data: { label: '开始' } },
-        { id: 'task', type: 'text', position: { x: 0, y: 200 }, data: { label: '任务', content: TASK_TEXT } },
-        { id: 'team-1', type: 'team', position: { x: 300, y: 0 }, data: { label: '团队', config: teamConfig } },
-        { id: 'out', type: 'json-output', position: { x: 600, y: 0 }, data: { label: '结果' } },
+        {
+          id: 'trigger',
+          type: 'manual-trigger',
+          position: { x: 0, y: 0 },
+          data: { label: '开始' },
+        },
+        {
+          id: 'task',
+          type: 'text',
+          position: { x: 0, y: 200 },
+          data: { label: '任务', content: TASK_TEXT },
+        },
+        {
+          id: 'team-1',
+          type: 'team',
+          position: { x: 300, y: 0 },
+          data: { label: '团队', config: teamConfig },
+        },
+        {
+          id: 'out',
+          type: 'json-output',
+          position: { x: 600, y: 0 },
+          data: { label: '结果' },
+        },
       ],
       edges: [
-        { id: 'e-trigger-team', source: 'trigger', sourceHandle: 'exec-out', target: 'team-1', targetHandle: 'exec-in' },
-        { id: 'e-task-team', source: 'task', sourceHandle: 'text-out', target: 'team-1', targetHandle: 'task-in' },
-        { id: 'e-team-out-exec', source: 'team-1', sourceHandle: 'exec-out', target: 'out', targetHandle: 'exec-in' },
-        { id: 'e-team-out-result', source: 'team-1', sourceHandle: 'result-out', target: 'out', targetHandle: 'content-in' },
+        {
+          id: 'e-trigger-team',
+          source: 'trigger',
+          sourceHandle: 'exec-out',
+          target: 'team-1',
+          targetHandle: 'exec-in',
+        },
+        {
+          id: 'e-task-team',
+          source: 'task',
+          sourceHandle: 'text-out',
+          target: 'team-1',
+          targetHandle: 'task-in',
+        },
+        {
+          id: 'e-team-out-exec',
+          source: 'team-1',
+          sourceHandle: 'exec-out',
+          target: 'out',
+          targetHandle: 'exec-in',
+        },
+        {
+          id: 'e-team-out-result',
+          source: 'team-1',
+          sourceHandle: 'result-out',
+          target: 'out',
+          targetHandle: 'content-in',
+        },
       ],
       viewport: { x: 0, y: 0, zoom: 1 },
     });
@@ -419,7 +463,8 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
   const waitExecutionTerminal = (executionId: string) =>
     waitFor(`执行 ${executionId} 终态`, async () => {
       const execution = await loadExecution(executionId);
-      return execution && ['completed', 'failed', 'cancelled'].includes(execution.status)
+      return execution &&
+        ['completed', 'failed', 'cancelled'].includes(execution.status)
         ? execution
         : null;
     });
@@ -431,7 +476,10 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       SELECT nodes, published_version_id FROM workflow_definitions
       WHERE id = ${workflowId}::uuid
     `;
-    return { teamNode: teamNodeOf(row.nodes), publishedVersionId: row.published_version_id };
+    return {
+      teamNode: teamNodeOf(row.nodes),
+      publishedVersionId: row.published_version_id,
+    };
   }
 
   it('1. 三次真实运行都因消息预算耗尽失败', async () => {
@@ -483,7 +531,9 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       .set(headers)
       .send({});
     expect(response.status).toBe(409);
-    expect(response.body.type).toContain('optimization-proposal-status-conflict');
+    expect(response.body.type).toContain(
+      'optimization-proposal-status-conflict',
+    );
   });
 
   it('4-5. 评测：基线 3 次失败、候选 3 次完成，结论 improved', async () => {
@@ -501,11 +551,17 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
     expect(versionC).toBeTruthy();
 
     const [candidate] = await ctx.adminSql<
-      Array<{ label: string; published_at: Date | null; snapshot: { nodes: TeamNodeRow[] } }>
+      Array<{
+        label: string;
+        published_at: Date | null;
+        snapshot: { nodes: TeamNodeRow[] };
+      }>
     >`SELECT label, published_at, snapshot FROM workflow_versions WHERE id = ${versionC}::uuid`;
     expect(candidate.published_at).toBeNull();
     expect(candidate.label).toMatch(/^优化提案/);
-    expect(teamNodeOf(candidate.snapshot.nodes)?.data.config.budget.maxMessages).toBe(2);
+    expect(
+      teamNodeOf(candidate.snapshot.nodes)?.data.config.budget.maxMessages,
+    ).toBe(2);
 
     const detail = await waitFor(
       '评测完成',
@@ -586,7 +642,8 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
     const inFlight = await waitExecutionTerminal(inFlightExecutionId);
     expect(inFlight.workflow_version_id).toBe(versionA);
     expect(
-      teamNodeOf(inFlight.definition_snapshot.nodes)?.data.config.budget.maxMessages,
+      teamNodeOf(inFlight.definition_snapshot.nodes)?.data.config.budget
+        .maxMessages,
     ).toBe(1);
     const inFlightTeam = await loadTeamRun(inFlightExecutionId);
     expect(inFlightTeam?.config.budget.maxMessages).toBe(1);
@@ -616,7 +673,9 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
     const execution = await waitExecutionTerminal(afterRollback);
     expect(execution.workflow_version_id).toBe(versionA);
     expect(execution.status).toBe('failed');
-    expect((await loadTeamRun(afterRollback))?.failure_reason).toBe('budget_exhausted');
+    expect((await loadTeamRun(afterRollback))?.failure_reason).toBe(
+      'budget_exhausted',
+    );
   }, 120_000);
 
   it('9. 跨租户不可见', async () => {
@@ -632,12 +691,21 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       otherUserId,
       otherTenantId,
     );
-    await seedMember(ctx.adminSql, otherTenantId, otherUserId, 'owner', otherUserId);
+    await seedMember(
+      ctx.adminSql,
+      otherTenantId,
+      otherUserId,
+      'owner',
+      otherUserId,
+    );
     await ctx.adminSql`
       UPDATE users SET current_organization_id = ${otherTenantId}::uuid
       WHERE id = ${otherUserId}::uuid
     `;
-    const otherHeaders = authHeaders({ id: otherUserId, email: otherEmail }, otherTenantId);
+    const otherHeaders = authHeaders(
+      { id: otherUserId, email: otherEmail },
+      otherTenantId,
+    );
     const server = app.getHttpServer();
 
     const list = await request(server)

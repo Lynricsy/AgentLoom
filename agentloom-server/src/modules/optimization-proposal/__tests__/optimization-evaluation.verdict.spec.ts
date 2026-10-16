@@ -9,7 +9,10 @@ import type {
   EvaluationRunMetrics,
 } from '../optimization-proposal.types';
 
-function arm(passRate: number, meanCostUsd: number | null): EvaluationArmSummary {
+function arm(
+  passRate: number,
+  meanCostUsd: number | null,
+): EvaluationArmSummary {
   return {
     cases: 4,
     passed: passRate * 4,
@@ -20,7 +23,9 @@ function arm(passRate: number, meanCostUsd: number | null): EvaluationArmSummary
   };
 }
 
-function metrics(overrides: Partial<EvaluationRunMetrics>): EvaluationRunMetrics {
+function metrics(
+  overrides: Partial<EvaluationRunMetrics>,
+): EvaluationRunMetrics {
   return {
     passed: true,
     executionStatus: 'completed',
@@ -43,7 +48,9 @@ describe('computeEvaluationVerdict', () => {
     ['持平且基线成本为 0', arm(1, 0), arm(1, 5), 'neutral'],
     ['持平且成本缺失', arm(1, null), arm(1, 0.5), 'neutral'],
   ] as const)('%s → %s', (_label, baseline, candidate, expected) => {
-    expect(computeEvaluationVerdict(baseline, candidate).verdict).toBe(expected);
+    expect(computeEvaluationVerdict(baseline, candidate).verdict).toBe(
+      expected,
+    );
   });
 
   it('输出通过率差与成本变化比', () => {
@@ -62,9 +69,18 @@ describe('summarizeEvaluationArm', () => {
         executionStatus: 'failed',
         costUsd: 0.4,
         durationMs: 3000,
-        team: { status: 'failed', failureReason: 'budget_exhausted', usedTokens: 10, messageCount: 1 },
+        team: {
+          status: 'failed',
+          failureReason: 'budget_exhausted',
+          usedTokens: 10,
+          messageCount: 1,
+        },
       }),
-      metrics({ passed: false, executionStatus: 'launch_failed', error: 'quota' }),
+      metrics({
+        passed: false,
+        executionStatus: 'launch_failed',
+        error: 'quota',
+      }),
     ]);
     expect(summary).toEqual({
       cases: 3,

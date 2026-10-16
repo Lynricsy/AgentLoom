@@ -7,7 +7,9 @@ import type {
 import { routingFallbackModelAnalyzer } from '../../analyzers/routing-fallback-model.analyzer';
 
 function decisions(
-  spec: Array<[selected: string | null, fallback: string | null, count: number]>,
+  spec: Array<
+    [selected: string | null, fallback: string | null, count: number]
+  >,
 ): RoutingDecisionEvidenceRow[] {
   let seq = 0;
   return spec.flatMap(([selectedModelId, fallbackReason, count]) =>
@@ -86,7 +88,10 @@ describe('routingFallbackModelAnalyzer', () => {
       routingFallbackModelAnalyzer(
         makeEvidence({
           decisions: enough,
-          strategyConfig: { routerModelId: 'router', fallbackModelId: 'model-x' },
+          strategyConfig: {
+            routerModelId: 'router',
+            fallbackModelId: 'model-x',
+          },
         }),
       ),
     ).toBeNull();
@@ -115,7 +120,9 @@ describe('routingFallbackModelAnalyzer', () => {
   it('全部为回退决策时没有可建议的模型', () => {
     expect(
       routingFallbackModelAnalyzer(
-        makeEvidence({ decisions: decisions([['model-b', 'llm_timeout', 10]]) }),
+        makeEvidence({
+          decisions: decisions([['model-b', 'llm_timeout', 10]]),
+        }),
       ),
     ).toBeNull();
   });

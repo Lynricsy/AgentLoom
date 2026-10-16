@@ -252,7 +252,9 @@ describe('Optimization proposal RLS isolation (testcontainers)', () => {
     let thrown: unknown;
     try {
       await withTenantContext(context.db, tenantTwo.tenantId, (db) =>
-        db.insert(table as typeof optimizationProposals).values(values as never),
+        db
+          .insert(table as typeof optimizationProposals)
+          .values(values as never),
       );
     } catch (error) {
       thrown = error;

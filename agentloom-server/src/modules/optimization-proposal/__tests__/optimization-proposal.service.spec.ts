@@ -1,7 +1,10 @@
 import type { Queue } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { OptimizationProposal, WorkflowVersionSnapshot } from '../../../database/schema';
+import type {
+  OptimizationProposal,
+  WorkflowVersionSnapshot,
+} from '../../../database/schema';
 import type { AuditLogService } from '../../evidence/audit-log.service';
 import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
 import type { OptimizationAnalysisService } from '../optimization-analysis.service';
@@ -26,7 +29,12 @@ const AGENT_ID = '019577a0-0000-7000-8000-0000000000ee';
 const teamConfig = {
   objective: '修复问题',
   members: [
-    { role: 'lead', agentDefinitionId: AGENT_ID, isLead: true, canMessage: ['worker'] },
+    {
+      role: 'lead',
+      agentDefinitionId: AGENT_ID,
+      isLead: true,
+      canMessage: ['worker'],
+    },
     { role: 'worker', agentDefinitionId: AGENT_ID, canMessage: ['lead'] },
   ],
   budget: { maxTotalTokens: 500_000, maxMessages: 1, deadlineMinutes: 10 },
@@ -46,7 +54,9 @@ const baseSnapshot: WorkflowVersionSnapshot = {
   metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 3 },
 } as unknown as WorkflowVersionSnapshot;
 
-function makeProposal(overrides: Partial<OptimizationProposal> = {}): OptimizationProposal {
+function makeProposal(
+  overrides: Partial<OptimizationProposal> = {},
+): OptimizationProposal {
   const now = new Date('2026-02-01T00:00:00Z');
   return {
     id: PROPOSAL_ID,
@@ -120,8 +130,21 @@ function createService(results: unknown[]) {
 describe('OptimizationProposalService', () => {
   it('评测结论为 neutral 时拒绝发布（422）且不触发版本发布', async () => {
     const { service, stub, workflowVersionService } = createService([
-      [{ status: 'evaluated', baseVersionId: BASE_ID, publishedVersionId: BASE_ID }],
-      [makeProposal({ status: 'evaluated', verdict: 'neutral', currentEvaluationId: EVALUATION_ID, candidateVersionId: CANDIDATE_ID })],
+      [
+        {
+          status: 'evaluated',
+          baseVersionId: BASE_ID,
+          publishedVersionId: BASE_ID,
+        },
+      ],
+      [
+        makeProposal({
+          status: 'evaluated',
+          verdict: 'neutral',
+          currentEvaluationId: EVALUATION_ID,
+          candidateVersionId: CANDIDATE_ID,
+        }),
+      ],
       [{ status: 'completed', summary: { verdict: 'neutral' } }],
     ]);
 
@@ -135,7 +158,13 @@ describe('OptimizationProposalService', () => {
 
   it('基线版本已不是发布版本时在独立事务置 superseded 并抛 409', async () => {
     const { service, stub } = createService([
-      [{ status: 'proposed', baseVersionId: BASE_ID, publishedVersionId: CANDIDATE_ID }],
+      [
+        {
+          status: 'proposed',
+          baseVersionId: BASE_ID,
+          publishedVersionId: CANDIDATE_ID,
+        },
+      ],
       [], // superseded 更新
     ]);
 
@@ -145,7 +174,10 @@ describe('OptimizationProposalService', () => {
       ),
     ).rejects.toBeInstanceOf(OptimizationProposalStaleException);
     expect(stub.argsOf('update', 'set')).toEqual([
-      expect.objectContaining({ status: 'superseded', supersededAt: expect.any(Date) }),
+      expect.objectContaining({
+        status: 'superseded',
+        supersededAt: expect.any(Date),
+      }),
     ]);
     expect(stub.calls.some((call) => call.method === 'for')).toBe(false);
   });
@@ -167,7 +199,13 @@ describe('OptimizationProposalService', () => {
 
   it('没有已结束的真实执行可回放时评测返回 422，不建评测、不入队', async () => {
     const { service, stub, queue } = createService([
-      [{ status: 'proposed', baseVersionId: BASE_ID, publishedVersionId: BASE_ID }],
+      [
+        {
+          status: 'proposed',
+          baseVersionId: BASE_ID,
+          publishedVersionId: BASE_ID,
+        },
+      ],
       [makeProposal()],
       [workflowRow(BASE_ID)],
       [{ snapshot: baseSnapshot }],
@@ -176,7 +214,9 @@ describe('OptimizationProposalService', () => {
 
     await expect(
       inTenantContext(stub.db, () =>
-        service.startEvaluation(TENANT_ID, PROPOSAL_ID, USER_ID, { caseCount: 3 }),
+        service.startEvaluation(TENANT_ID, PROPOSAL_ID, USER_ID, {
+          caseCount: 3,
+        }),
       ),
     ).rejects.toBeInstanceOf(OptimizationEvaluationNoCasesException);
     expect(stub.argsOf('insert', 'values')).toEqual([]);
@@ -186,7 +226,10 @@ describe('OptimizationProposalService', () => {
   describe('buildCandidateSnapshot', () => {
     it('只改补丁路径，其余配置与基线快照保持不变且不修改基线', () => {
       const { service } = createService([]);
-      const snapshot = service.buildCandidateSnapshot(makeProposal(), baseSnapshot);
+      const snapshot = service.buildCandidateSnapshot(
+        makeProposal(),
+        baseSnapshot,
+      );
       const data = snapshot.nodes[0].data as Record<string, any>;
 
       expect(data.config.budget).toEqual({
@@ -198,14 +241,18 @@ describe('OptimizationProposalService', () => {
       expect(data.label).toBe('团队');
       expect(snapshot.metadata.releaseNotes).toBe('消息数不足');
       expect(
-        (baseSnapshot.nodes[0].data as Record<string, any>).config.budget.maxMessages,
+        (baseSnapshot.nodes[0].data as Record<string, any>).config.budget
+          .maxMessages,
       ).toBe(1);
     });
 
     it('补丁后团队配置违反契约时抛 422', () => {
       const { service } = createService([]);
       expect(() =>
-        service.buildCandidateSnapshot(makeProposal({ proposedValue: 5000 }), baseSnapshot),
+        service.buildCandidateSnapshot(
+          makeProposal({ proposedValue: 5000 }),
+          baseSnapshot,
+        ),
       ).toThrow(OptimizationProposalInvalidPatchException);
     });
   });

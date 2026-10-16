@@ -50,7 +50,9 @@ export class FakeChatModel {
   private sequence = 0;
   baseUrl = '';
 
-  constructor(private readonly decide: (request: FakeChatRequest) => FakeReply) {}
+  constructor(
+    private readonly decide: (request: FakeChatRequest) => FakeReply,
+  ) {}
 
   async start(): Promise<void> {
     this.server = http.createServer((req, res) => {

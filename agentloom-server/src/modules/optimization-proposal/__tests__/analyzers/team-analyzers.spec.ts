@@ -13,13 +13,22 @@ const AGENT_ID = '019577a0-0000-7000-8000-000000000001';
 const VERSION_ID = '019577a0-0000-7000-8000-000000000002';
 
 function makeEvidence(
-  budget: { maxTotalTokens?: number; maxMessages?: number; deadlineMinutes?: number },
+  budget: {
+    maxTotalTokens?: number;
+    maxMessages?: number;
+    deadlineMinutes?: number;
+  },
   runs: TeamRunEvidenceRow[],
 ): TeamNodeEvidence {
   const config = TeamNodeConfigSchema.parse({
     objective: '修复问题',
     members: [
-      { role: 'lead', agentDefinitionId: AGENT_ID, isLead: true, canMessage: ['worker'] },
+      {
+        role: 'lead',
+        agentDefinitionId: AGENT_ID,
+        isLead: true,
+        canMessage: ['worker'],
+      },
       { role: 'worker', agentDefinitionId: AGENT_ID, canMessage: ['lead'] },
     ],
     budget,
@@ -38,7 +47,9 @@ function makeEvidence(
   };
 }
 
-function run(overrides: Partial<TeamRunEvidenceRow> & { id: string }): TeamRunEvidenceRow {
+function run(
+  overrides: Partial<TeamRunEvidenceRow> & { id: string },
+): TeamRunEvidenceRow {
   return {
     status: 'failed',
     failureReason: 'budget_exhausted',
@@ -94,7 +105,9 @@ describe('teamBudgetMessagesAnalyzer', () => {
         ?.proposedValue,
     ).toBe(300);
     expect(
-      teamBudgetMessagesAnalyzer(makeEvidence({ maxMessages: 1000 }, rows(1000))),
+      teamBudgetMessagesAnalyzer(
+        makeEvidence({ maxMessages: 1000 }, rows(1000)),
+      ),
     ).toBeNull();
   });
 
@@ -124,7 +137,12 @@ describe('teamBudgetMessagesAnalyzer', () => {
 describe('teamBudgetTokensAnalyzer', () => {
   it('提议值向上取整到千', () => {
     const rows = ['r1', 'r2', 'r3'].map((id) =>
-      run({ id, usedTotalTokens: 1001, budgetMaxTotalTokens: 1001, messageCount: 0 }),
+      run({
+        id,
+        usedTotalTokens: 1001,
+        budgetMaxTotalTokens: 1001,
+        messageCount: 0,
+      }),
     );
     expect(
       teamBudgetTokensAnalyzer(makeEvidence({ maxTotalTokens: 1001 }, rows))
@@ -141,16 +159,22 @@ describe('teamDeadlineAnalyzer', () => {
   it('超时失败占比达阈值时 60 → 90', () => {
     expect(
       teamDeadlineAnalyzer(makeEvidence({ deadlineMinutes: 60 }, deadlineRows)),
-    ).toMatchObject({ configPath: 'config.budget.deadlineMinutes', proposedValue: 90 });
+    ).toMatchObject({
+      configPath: 'config.budget.deadlineMinutes',
+      proposedValue: 90,
+    });
   });
 
   it('已到 1440 分钟上限不提案；1000 封顶到 1440', () => {
     expect(
-      teamDeadlineAnalyzer(makeEvidence({ deadlineMinutes: 1440 }, deadlineRows)),
+      teamDeadlineAnalyzer(
+        makeEvidence({ deadlineMinutes: 1440 }, deadlineRows),
+      ),
     ).toBeNull();
     expect(
-      teamDeadlineAnalyzer(makeEvidence({ deadlineMinutes: 1000 }, deadlineRows))
-        ?.proposedValue,
+      teamDeadlineAnalyzer(
+        makeEvidence({ deadlineMinutes: 1000 }, deadlineRows),
+      )?.proposedValue,
     ).toBe(1440);
   });
 });

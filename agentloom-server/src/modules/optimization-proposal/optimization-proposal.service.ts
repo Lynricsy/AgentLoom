@@ -4,7 +4,16 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { TeamNodeConfigSchema } from '@agentloom/contracts';
 import type { Queue } from 'bullmq';
-import { and, asc, count, desc, eq, inArray, notExists, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  notExists,
+  sql,
+} from 'drizzle-orm';
 
 import {
   hasActiveTenantTransaction,
@@ -125,16 +134,16 @@ export class OptimizationProposalService {
           .from(optimizationProposals)
           .innerJoin(
             workflowDefinitions,
-            eq(workflowDefinitions.id, optimizationProposals.workflowDefinitionId),
+            eq(
+              workflowDefinitions.id,
+              optimizationProposals.workflowDefinitionId,
+            ),
           )
           .where(where)
           .orderBy(desc(optimizationProposals.createdAt))
           .limit(query.limit)
           .offset((query.page - 1) * query.limit),
-        tx
-          .select({ total: count() })
-          .from(optimizationProposals)
-          .where(where),
+        tx.select({ total: count() }).from(optimizationProposals).where(where),
       ]);
 
       return {
@@ -150,7 +159,10 @@ export class OptimizationProposalService {
     });
   }
 
-  async getDetail(tenantId: string, proposalId: string): Promise<ProposalDetail> {
+  async getDetail(
+    tenantId: string,
+    proposalId: string,
+  ): Promise<ProposalDetail> {
     return runInTenantTransaction(this.db, tenantId, async (tx) => {
       const [row] = await tx
         .select({
@@ -160,7 +172,10 @@ export class OptimizationProposalService {
         .from(optimizationProposals)
         .innerJoin(
           workflowDefinitions,
-          eq(workflowDefinitions.id, optimizationProposals.workflowDefinitionId),
+          eq(
+            workflowDefinitions.id,
+            optimizationProposals.workflowDefinitionId,
+          ),
         )
         .where(
           and(
@@ -177,7 +192,9 @@ export class OptimizationProposalService {
         const [evaluation] = await tx
           .select()
           .from(optimizationEvaluations)
-          .where(eq(optimizationEvaluations.id, row.proposal.currentEvaluationId));
+          .where(
+            eq(optimizationEvaluations.id, row.proposal.currentEvaluationId),
+          );
         if (evaluation) {
           const runs = await tx
             .select()
@@ -230,7 +247,10 @@ export class OptimizationProposalService {
       const proposal = await this.lockProposal(tx, tenantId, proposalId);
       this.assertStatus(proposal, ['proposed', 'evaluated']);
 
-      const workflow = await this.loadWorkflow(tx, proposal.workflowDefinitionId);
+      const workflow = await this.loadWorkflow(
+        tx,
+        proposal.workflowDefinitionId,
+      );
       if (workflow.publishedVersionId !== proposal.baseVersionId) {
         throw new OptimizationProposalStaleException(
           proposalId,
@@ -249,14 +269,15 @@ export class OptimizationProposalService {
 
       let candidateVersionId = proposal.candidateVersionId;
       if (!candidateVersionId) {
-        const version = await this.workflowVersionService.createVersionFromSnapshot(
-          proposal.workflowDefinitionId,
-          {
-            snapshot: candidateSnapshot,
-            label: `优化提案 ${proposal.proposalType} ${proposal.id.slice(0, 8)}`,
-            userId,
-          },
-        );
+        const version =
+          await this.workflowVersionService.createVersionFromSnapshot(
+            proposal.workflowDefinitionId,
+            {
+              snapshot: candidateSnapshot,
+              label: `优化提案 ${proposal.proposalType} ${proposal.id.slice(0, 8)}`,
+              userId,
+            },
+          );
         candidateVersionId = version.id;
       }
 
@@ -298,7 +319,10 @@ export class OptimizationProposalService {
       const enqueue = async () => {
         await this.queue.add(
           OPTIMIZATION_EVALUATE_JOB_NAME,
-          { tenantId, evaluationId: evaluation.id } satisfies OptimizationEvaluateJobData,
+          {
+            tenantId,
+            evaluationId: evaluation.id,
+          } satisfies OptimizationEvaluateJobData,
           { jobId: buildOptimizationEvaluateJobId(evaluation.id) },
         );
       };
@@ -331,7 +355,9 @@ export class OptimizationProposalService {
             await tx
               .select()
               .from(optimizationEvaluations)
-              .where(eq(optimizationEvaluations.id, proposal.currentEvaluationId))
+              .where(
+                eq(optimizationEvaluations.id, proposal.currentEvaluationId),
+              )
           )[0]
         : undefined;
       if (
@@ -346,7 +372,10 @@ export class OptimizationProposalService {
         );
       }
 
-      const workflow = await this.loadWorkflow(tx, proposal.workflowDefinitionId);
+      const workflow = await this.loadWorkflow(
+        tx,
+        proposal.workflowDefinitionId,
+      );
       if (workflow.publishedVersionId !== proposal.baseVersionId) {
         throw new OptimizationProposalStaleException(
           proposalId,
@@ -409,7 +438,10 @@ export class OptimizationProposalService {
       const proposal = await this.lockProposal(tx, tenantId, proposalId);
       this.assertStatus(proposal, ['published']);
 
-      const workflow = await this.loadWorkflow(tx, proposal.workflowDefinitionId);
+      const workflow = await this.loadWorkflow(
+        tx,
+        proposal.workflowDefinitionId,
+      );
       if (
         !proposal.candidateVersionId ||
         workflow.publishedVersionId !== proposal.candidateVersionId
@@ -507,7 +539,10 @@ export class OptimizationProposalService {
         .from(optimizationProposals)
         .innerJoin(
           workflowDefinitions,
-          eq(workflowDefinitions.id, optimizationProposals.workflowDefinitionId),
+          eq(
+            workflowDefinitions.id,
+            optimizationProposals.workflowDefinitionId,
+          ),
         )
         .where(
           and(
@@ -656,7 +691,10 @@ export class OptimizationProposalService {
       }
     }
     node.data = patched as typeof node.data;
-    snapshot.metadata = { ...snapshot.metadata, releaseNotes: proposal.rationale };
+    snapshot.metadata = {
+      ...snapshot.metadata,
+      releaseNotes: proposal.rationale,
+    };
     return snapshot;
   }
 
@@ -681,7 +719,10 @@ export class OptimizationProposalService {
               .select({ one: sql`1` })
               .from(optimizationEvaluationRuns)
               .where(
-                eq(optimizationEvaluationRuns.executionId, workflowExecutions.id),
+                eq(
+                  optimizationEvaluationRuns.executionId,
+                  workflowExecutions.id,
+                ),
               ),
           ),
         ),
@@ -692,13 +733,17 @@ export class OptimizationProposalService {
       throw new OptimizationEvaluationNoCasesException(workflowId);
     }
     return rows.map((row, index) => {
-      const inputParams = isRecord(row.inputParams) ? { ...row.inputParams } : {};
+      const inputParams = isRecord(row.inputParams)
+        ? { ...row.inputParams }
+        : {};
       delete inputParams._meta;
       return { index, sourceExecutionId: row.id, inputParams };
     });
   }
 
-  private resolveEvaluationTimeoutMs(snapshot: WorkflowVersionSnapshot): number {
+  private resolveEvaluationTimeoutMs(
+    snapshot: WorkflowVersionSnapshot,
+  ): number {
     let maxDeadlineMinutes = 0;
     for (const node of snapshot.nodes) {
       if (resolveAnalyzableNodeType(node) !== 'team') continue;
@@ -772,7 +817,9 @@ export class OptimizationProposalService {
     return { draftSynced: true, note: null };
   }
 
-  private auditMetadata(proposal: OptimizationProposal): Record<string, unknown> {
+  private auditMetadata(
+    proposal: OptimizationProposal,
+  ): Record<string, unknown> {
     return {
       proposalId: proposal.id,
       proposalType: proposal.proposalType,

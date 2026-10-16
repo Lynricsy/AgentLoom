@@ -1,4 +1,7 @@
-import type { RoutingAnalyzer, TeamAnalyzer } from './optimization-analyzer.types';
+import type {
+  RoutingAnalyzer,
+  TeamAnalyzer,
+} from './optimization-analyzer.types';
 import { routingFallbackModelAnalyzer } from './routing-fallback-model.analyzer';
 import { teamBudgetMessagesAnalyzer } from './team-budget-messages.analyzer';
 import { teamBudgetTokensAnalyzer } from './team-budget-tokens.analyzer';

@@ -10,7 +10,9 @@ const TENANT_ID = '019577a0-0000-7000-8000-000000000099';
 const EVALUATION_ID = '019577a0-0000-7000-8000-0000000000dd';
 const PROPOSAL_ID = '019577a0-0000-7000-8000-0000000000a1';
 
-function makeRun(overrides: Partial<OptimizationEvaluationRun>): OptimizationEvaluationRun {
+function makeRun(
+  overrides: Partial<OptimizationEvaluationRun>,
+): OptimizationEvaluationRun {
   return {
     id: 'run-1',
     tenantId: TENANT_ID,
@@ -46,9 +48,35 @@ describe('OptimizationEvaluationService.settleRun', () => {
   it('团队步骤用量取 team_runs、其余步骤取 step result，合并为执行成本', async () => {
     const startedAt = new Date('2026-02-01T00:00:00Z');
     const { service, stub } = createService([
-      [{ status: 'failed', startedAt, completedAt: null, failedAt: new Date(startedAt.getTime() + 4000), cancelledAt: null }],
-      [{ team_runs: 1, team_cost: 0.3, team_tokens: 150, step_cost_rows: 1, step_cost: 0.05, step_token_rows: 1, step_tokens: 20 }],
-      [{ status: 'failed', failureReason: 'budget_exhausted', usedInputTokens: 100, usedOutputTokens: 50, messageCount: 1 }],
+      [
+        {
+          status: 'failed',
+          startedAt,
+          completedAt: null,
+          failedAt: new Date(startedAt.getTime() + 4000),
+          cancelledAt: null,
+        },
+      ],
+      [
+        {
+          team_runs: 1,
+          team_cost: 0.3,
+          team_tokens: 150,
+          step_cost_rows: 1,
+          step_cost: 0.05,
+          step_token_rows: 1,
+          step_tokens: 20,
+        },
+      ],
+      [
+        {
+          status: 'failed',
+          failureReason: 'budget_exhausted',
+          usedInputTokens: 100,
+          usedOutputTokens: 50,
+          messageCount: 1,
+        },
+      ],
       [{ id: 'run-1' }],
     ]);
 
@@ -65,7 +93,12 @@ describe('OptimizationEvaluationService.settleRun', () => {
           durationMs: 4000,
           costUsd: expect.closeTo(0.35, 10),
           totalTokens: 170,
-          team: { status: 'failed', failureReason: 'budget_exhausted', usedTokens: 150, messageCount: 1 },
+          team: {
+            status: 'failed',
+            failureReason: 'budget_exhausted',
+            usedTokens: 150,
+            messageCount: 1,
+          },
           error: null,
         },
       },
@@ -80,15 +113,42 @@ describe('OptimizationEvaluationService.settleRun', () => {
 
   it('没有团队运行也没有成本字段时成本与 token 为 null', async () => {
     const { service, stub } = createService([
-      [{ status: 'completed', startedAt: null, completedAt: new Date(), failedAt: null, cancelledAt: null }],
-      [{ team_runs: 0, team_cost: null, team_tokens: null, step_cost_rows: 0, step_cost: null, step_token_rows: 0, step_tokens: null }],
+      [
+        {
+          status: 'completed',
+          startedAt: null,
+          completedAt: new Date(),
+          failedAt: null,
+          cancelledAt: null,
+        },
+      ],
+      [
+        {
+          team_runs: 0,
+          team_cost: null,
+          team_tokens: null,
+          step_cost_rows: 0,
+          step_cost: null,
+          step_token_rows: 0,
+          step_tokens: null,
+        },
+      ],
       [],
       [{ id: 'run-1' }],
     ]);
     await service.settleRun(stub.db, makeRun({}));
-    const [set] = stub.argsOf('update', 'set') as Array<{ status: string; metrics: EvaluationRunMetrics }>;
+    const [set] = stub.argsOf('update', 'set') as Array<{
+      status: string;
+      metrics: EvaluationRunMetrics;
+    }>;
     expect(set.status).toBe('completed');
-    expect(set.metrics).toMatchObject({ passed: true, costUsd: null, totalTokens: null, durationMs: null, team: null });
+    expect(set.metrics).toMatchObject({
+      passed: true,
+      costUsd: null,
+      totalTokens: null,
+      durationMs: null,
+      team: null,
+    });
   });
 });
 
@@ -100,14 +160,30 @@ describe('OptimizationEvaluationService.run', () => {
       .mockResolvedValueOnce({ id: 'exec-candidate' });
     const { service, stub } = createService(
       [
-        [{ ...runningEvaluation, baseVersionId: 'v-base', candidateVersionId: 'v-cand', startedByUserId: 'u-1', workflowDefinitionId: 'wf-1' }],
+        [
+          {
+            ...runningEvaluation,
+            baseVersionId: 'v-base',
+            candidateVersionId: 'v-cand',
+            startedByUserId: 'u-1',
+            workflowDefinitionId: 'wf-1',
+          },
+        ],
         [], // 已有 run 行
         [], // 基线 launch_failed 行
         [], // 候选 running 行
         [runningEvaluation], // tryFinalize 锁评测
         [
-          makeRun({ status: 'failed', executionId: null, metrics: { passed: false } as EvaluationRunMetrics }),
-          makeRun({ id: 'run-2', arm: 'candidate', executionId: 'exec-candidate' }),
+          makeRun({
+            status: 'failed',
+            executionId: null,
+            metrics: { passed: false } as EvaluationRunMetrics,
+          }),
+          makeRun({
+            id: 'run-2',
+            arm: 'candidate',
+            executionId: 'exec-candidate',
+          }),
         ],
       ],
       runWorkflow,
@@ -117,17 +193,34 @@ describe('OptimizationEvaluationService.run', () => {
 
     expect(runWorkflow).toHaveBeenCalledTimes(2);
     expect(runWorkflow.mock.calls.map((call) => call[1])).toEqual([
-      { inputParams: { q: 1 }, launchSource: 'evaluation', triggerType: 'system', workflowVersionId: 'v-base' },
-      { inputParams: { q: 1 }, launchSource: 'evaluation', triggerType: 'system', workflowVersionId: 'v-cand' },
+      {
+        inputParams: { q: 1 },
+        launchSource: 'evaluation',
+        triggerType: 'system',
+        workflowVersionId: 'v-base',
+      },
+      {
+        inputParams: { q: 1 },
+        launchSource: 'evaluation',
+        triggerType: 'system',
+        workflowVersionId: 'v-cand',
+      },
     ]);
     expect(stub.argsOf('insert', 'values')).toEqual([
       expect.objectContaining({
         arm: 'baseline',
         executionId: null,
         status: 'failed',
-        metrics: expect.objectContaining({ executionStatus: 'launch_failed', error: '配额不足' }),
+        metrics: expect.objectContaining({
+          executionStatus: 'launch_failed',
+          error: '配额不足',
+        }),
       }),
-      expect.objectContaining({ arm: 'candidate', executionId: 'exec-candidate', status: 'running' }),
+      expect.objectContaining({
+        arm: 'candidate',
+        executionId: 'exec-candidate',
+        status: 'running',
+      }),
     ]);
     expect(stub.argsOf('update', 'set')).toEqual([]);
   });
@@ -148,7 +241,12 @@ describe('OptimizationEvaluationService.tryFinalize', () => {
       [runningEvaluation],
       [
         makeRun({ status: 'failed', metrics: metrics(false) }),
-        makeRun({ id: 'run-2', arm: 'candidate', status: 'completed', metrics: metrics(true) }),
+        makeRun({
+          id: 'run-2',
+          arm: 'candidate',
+          status: 'completed',
+          metrics: metrics(true),
+        }),
       ],
       [],
       [],
@@ -156,7 +254,9 @@ describe('OptimizationEvaluationService.tryFinalize', () => {
 
     await service.tryFinalize(TENANT_ID, EVALUATION_ID);
 
-    const [evaluationSet, proposalSet] = stub.argsOf('update', 'set') as Array<Record<string, any>>;
+    const [evaluationSet, proposalSet] = stub.argsOf('update', 'set') as Array<
+      Record<string, any>
+    >;
     expect(evaluationSet).toMatchObject({
       status: 'completed',
       summary: {
@@ -166,6 +266,9 @@ describe('OptimizationEvaluationService.tryFinalize', () => {
         candidate: { passRate: 1 },
       },
     });
-    expect(proposalSet).toMatchObject({ status: 'evaluated', verdict: 'improved' });
+    expect(proposalSet).toMatchObject({
+      status: 'evaluated',
+      verdict: 'improved',
+    });
   });
 });
