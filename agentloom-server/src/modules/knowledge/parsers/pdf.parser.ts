@@ -6,6 +6,7 @@ import type {
   ParsedSection,
 } from '../interfaces/document-parser.interface';
 import { DocumentParseException } from '../knowledge.exceptions';
+import { normalizeCjkRadicals } from './cjk-radical-normalizer';
 
 @Injectable()
 export class PdfParser implements IDocumentParser {
@@ -19,14 +20,19 @@ export class PdfParser implements IDocumentParser {
     const parser = new PDFParse({ data: buffer });
     try {
       const result = await parser.getText();
+      // 字体把常用汉字映射成部首字符（「同⼀」「运⾏」），切段与偏移计算前先归一化
+      const pages = result.pages.map((page) => ({
+        num: page.num,
+        text: normalizeCjkRadicals(page.text),
+      }));
 
       // 使用各页文本拼接完整文本，避免默认分页标记
-      const fullText = result.pages.map((p) => p.text).join('\n\n');
+      const fullText = pages.map((p) => p.text).join('\n\n');
 
       const sections: ParsedSection[] = [];
       let charOffset = 0;
 
-      for (const page of result.pages) {
+      for (const page of pages) {
         let paragraphIndex = 0;
         const paragraphs = page.text.split(/\n\s*\n/);
 
