@@ -80,13 +80,17 @@ import {
   type GeneratedAppGate3RunnerResult,
 } from '../generated-app.workspace';
 
-const { mockTenantDb } = vi.hoisted(() => ({
-  mockTenantDb: {
+const { mockTenantDb } = vi.hoisted(() => {
+  const db = {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
-  },
-}));
+    // 嵌套事务（savepoint）在单测里直接复用同一个 mock
+    transaction: <T>(operation: (tx: unknown) => Promise<T>): Promise<T> =>
+      operation(db),
+  };
+  return { mockTenantDb: db };
+});
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: vi.fn(() => mockTenantDb),

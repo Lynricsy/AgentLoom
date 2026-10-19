@@ -678,25 +678,29 @@ export class GeneratedAppRuntimeBindingService {
 
     for (let attempt = 0; attempt <= 5; attempt += 1) {
       try {
-        const [workflow] = await this.repository.tenantDb
-          .insert(schema.workflowDefinitions)
-          .values({
-            tenantId,
-            name: `${app.appName} - 生成应用运行时`,
-            slug,
-            description:
-              '由 Generated App Gate 7 自动生成并发布的运行时 Workflow，用于公开提交的异步执行入口；公开端只暴露安全 execution handoff。',
-            icon: 'WandSparkles',
-            nodes,
-            edges,
-            viewport,
-            metadata,
-            inputSchema,
-            status: 'draft',
-            createdBy: userId,
-            updatedBy: userId,
-          })
-          .returning({ id: schema.workflowDefinitions.id });
+        // 请求在租户事务内执行：slug 冲突会让整个事务 aborted，后续重试与查询全部失败。
+        // insert 放进嵌套事务（savepoint），冲突只回滚到 savepoint。
+        const [workflow] = await this.repository.tenantDb.transaction((tx) =>
+          tx
+            .insert(schema.workflowDefinitions)
+            .values({
+              tenantId,
+              name: `${app.appName} - 生成应用运行时`,
+              slug,
+              description:
+                '由 Generated App Gate 7 自动生成并发布的运行时 Workflow，用于公开提交的异步执行入口；公开端只暴露安全 execution handoff。',
+              icon: 'WandSparkles',
+              nodes,
+              edges,
+              viewport,
+              metadata,
+              inputSchema,
+              status: 'draft',
+              createdBy: userId,
+              updatedBy: userId,
+            })
+            .returning({ id: schema.workflowDefinitions.id }),
+        );
 
         if (!workflow) {
           throw new Error(
