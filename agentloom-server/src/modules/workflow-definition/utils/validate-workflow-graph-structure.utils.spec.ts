@@ -159,4 +159,37 @@ describe('collectWorkflowGraphStructureErrors', () => {
       ),
     ).toEqual([]);
   });
+
+  it('portMappingMetadata 声明的动态端口（如 MCP 工具参数）视为合法 handle', () => {
+    const nodes = [
+      node('src', 'text', {
+        data: {
+          nodeType: 'text',
+          portMappingMetadata: {
+            outputs: [{ name: 'output-text', dataType: 'text' }],
+          },
+        },
+      }),
+      node('tool', 'mcp-tool', {
+        data: {
+          nodeType: 'mcp-tool',
+          portMappingMetadata: {
+            inputs: [{ name: 'query', dataType: 'text' }],
+          },
+        },
+      }),
+    ];
+    const dataEdge = (targetHandle: string): ReactFlowEdge => ({
+      id: `e-${targetHandle}`,
+      source: 'src',
+      target: 'tool',
+      sourceHandle: 'output-text',
+      targetHandle,
+    });
+
+    expect(collect(nodes, [dataEdge('query')])).toEqual([]);
+    expect(collect(nodes, [dataEdge('nope')])).toEqual([
+      expect.stringContaining('目标端口 nope'),
+    ]);
+  });
 });

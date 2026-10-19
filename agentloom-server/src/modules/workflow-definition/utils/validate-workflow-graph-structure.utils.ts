@@ -3,23 +3,40 @@ import { readCompoundParentNodeId } from '../../execution/compound-runtime.util'
 import { resolveDagPlan } from '../../execution/dag-resolver.service';
 import { CyclicGraphException } from '../../execution/execution.exceptions';
 
+function readIdList(entries: unknown, idKey: 'id' | 'name'): string[] {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) {
+      return [];
+    }
+    const value: unknown = (entry as Record<string, unknown>)[idKey];
+    return typeof value === 'string' ? [value] : [];
+  });
+}
+
+/**
+ * 节点声明的端口 id：模板端口（inputPorts/outputPorts）加上动态端口
+ * （portMappingMetadata.inputs/outputs 的 name，MCP 工具等节点在运行期按此解析）。
+ */
 function readPortIds(
   node: ReactFlowNode,
   key: 'inputPorts' | 'outputPorts',
 ): string[] {
-  const ports: unknown = node.data?.[key];
-  if (!Array.isArray(ports)) {
-    return [];
-  }
+  const metadata: unknown = node.data?.portMappingMetadata;
+  const dynamicPorts =
+    typeof metadata === 'object' && metadata !== null
+      ? (metadata as Record<string, unknown>)[
+          key === 'inputPorts' ? 'inputs' : 'outputs'
+        ]
+      : undefined;
 
-  return ports.flatMap((port: unknown) =>
-    typeof port === 'object' &&
-    port !== null &&
-    'id' in port &&
-    typeof port.id === 'string'
-      ? [port.id]
-      : [],
-  );
+  return [
+    ...readIdList(node.data?.[key], 'id'),
+    ...readIdList(dynamicPorts, 'name'),
+  ];
 }
 
 function describeNode(node: ReactFlowNode): string {
