@@ -100,6 +100,18 @@ describe('execution dto schemas', () => {
     });
   });
 
+  it('run workflow body 拒绝未知字段（拼错的 inputs 不能被静默丢弃后以空输入运行）', () => {
+    for (const body of [
+      { inputs: { id: 1 } },
+      { inputParams: { id: 1 }, schemaVersion: 1, extra: true },
+    ]) {
+      expect(() => transformWithDto(body, RunWorkflowDto, 'body')).toThrow(
+        ZodValidationException,
+      );
+    }
+    expect(transformWithDto({}, RunWorkflowDto, 'body')).toEqual({});
+  });
+
   it('应兼容 resolve tool permission body 的 snake_case 与 camelCase rememberScope', () => {
     expect(
       resolveToolPermissionSchema.parse({

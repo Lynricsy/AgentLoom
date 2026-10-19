@@ -14,6 +14,8 @@ export const runWorkflowSchema = z
     schemaVersion: SchemaVersionSchema,
     schema_version: SchemaVersionSchema,
   })
+  // strict：拼错的字段（如 inputs）必须 422，不能被静默丢弃后以空输入启动执行。
+  .strict()
   .transform((value) => ({
     inputParams: value.inputParams ?? value.input_params,
     launchSource: value.launchSource ?? value.launch_source,
