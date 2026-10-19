@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { generateText, type LanguageModel } from 'ai';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
@@ -19,6 +19,7 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import { LlmService } from '../llm/llm.service';
 import { PiAiAdapter, type ResolvedModelConfig } from '../llm/pi-ai-adapter';
 import { UserPreferenceService } from '../user-preference/user-preference.service';
+import { ConversationNotFoundException } from './agent-conversation.exceptions';
 
 const TITLE_GENERATION_PROMPT = `You are a conversation title generator. Based on the conversation below, generate a concise title.
 
@@ -53,18 +54,66 @@ export class ConversationTitleService {
   }
 
   /**
-   * 生成对话标题。userId 可选 — 未提供时从 conversation.createdBy 读取。
+   * 手动（重新）生成标题：覆盖现有标题。userId 可选 — 未提供时从 conversation.createdBy 读取。
+   * 对话不在当前租户内时抛 404。
    */
   async generateTitle(
     conversationId: string,
     tenantId: string,
     userId?: string,
   ): Promise<string | null> {
+    return this.runTitleGeneration(conversationId, tenantId, {
+      userId,
+      overwrite: true,
+    });
+  }
+
+  /**
+   * 首轮回复后的自动标题：对话已有标题（用户创建时指定或已手动改名）时跳过，
+   * 且只在标题仍为空时落库，避免覆盖生成期间用户的改名。
+   */
+  async generateInitialTitle(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<string | null> {
+    return this.runTitleGeneration(conversationId, tenantId, {
+      overwrite: false,
+    });
+  }
+
+  private async runTitleGeneration(
+    conversationId: string,
+    tenantId: string,
+    options: { userId?: string; overwrite: boolean },
+  ): Promise<string | null> {
     try {
       return await runInTenantTransaction(this.db, tenantId, async () => {
-        // 如果没有 userId，从对话记录中获取；API 来源的对话不自动生成标题
+        const [conversation] = await this.tenantDb
+          .select({
+            createdBy: agentConversations.createdBy,
+            source: agentConversations.source,
+            title: agentConversations.title,
+          })
+          .from(agentConversations)
+          .where(eq(agentConversations.id, conversationId))
+          .limit(1);
+
+        if (!conversation) {
+          if (options.overwrite) {
+            throw new ConversationNotFoundException(conversationId);
+          }
+          return null;
+        }
+        if (!options.overwrite && conversation.title?.trim()) {
+          return null;
+        }
+
+        // API / 团队成员对话没有人类创建人，不自动消耗 LLM 生成标题
         const resolvedUserId =
-          userId ?? (await this.resolveUserId(conversationId));
+          options.userId ??
+          (conversation.source === 'studio'
+            ? (conversation.createdBy ?? '')
+            : null);
         if (resolvedUserId === null) {
           return null;
         }
@@ -113,8 +162,12 @@ export class ConversationTitleService {
             return null;
           }
 
-          await this.persistTitle(conversationId, tenantId, fallbackTitle);
-          return fallbackTitle;
+          return this.persistTitle(
+            conversationId,
+            tenantId,
+            fallbackTitle,
+            options.overwrite,
+          );
         }
 
         let title = fallbackTitle;
@@ -138,11 +191,17 @@ export class ConversationTitleService {
           return null;
         }
 
-        await this.persistTitle(conversationId, tenantId, title);
-
-        return title;
+        return this.persistTitle(
+          conversationId,
+          tenantId,
+          title,
+          options.overwrite,
+        );
       });
     } catch (error) {
+      if (error instanceof ConversationNotFoundException) {
+        throw error;
+      }
       this.logger.warn(
         `Failed to generate title for conversation ${conversationId}: ${
           error instanceof Error ? error.message : String(error)
@@ -179,15 +238,35 @@ export class ConversationTitleService {
     return `${FALLBACK_TITLE_PREFIX}${summary}`.slice(0, 255);
   }
 
+  /** overwrite=false 时只在标题为空时写入；未写入返回 null 且不广播 */
   private async persistTitle(
     conversationId: string,
     tenantId: string,
     title: string,
-  ): Promise<void> {
-    await this.tenantDb
+    overwrite: boolean,
+  ): Promise<string | null> {
+    const update = this.tenantDb
       .update(agentConversations)
-      .set({ title, updatedAt: new Date() })
-      .where(eq(agentConversations.id, conversationId));
+      .set({ title, updatedAt: new Date() });
+
+    if (overwrite) {
+      await update.where(eq(agentConversations.id, conversationId));
+    } else {
+      const updated = await update
+        .where(
+          and(
+            eq(agentConversations.id, conversationId),
+            or(
+              isNull(agentConversations.title),
+              eq(agentConversations.title, ''),
+            ),
+          ),
+        )
+        .returning({ id: agentConversations.id });
+      if (updated.length === 0) {
+        return null;
+      }
+    }
 
     this.eventEmitter.emit('conversation.title.updated', {
       conversationId,
@@ -198,24 +277,7 @@ export class ConversationTitleService {
     this.logger.log(
       `Generated title for conversation ${conversationId}: ${title}`,
     );
-  }
-
-  /** 返回 null 表示非 Studio 来源的对话（API / 团队成员：无人类创建人，不消耗 LLM 生成标题） */
-  private async resolveUserId(conversationId: string): Promise<string | null> {
-    const [conv] = await this.tenantDb
-      .select({
-        createdBy: agentConversations.createdBy,
-        source: agentConversations.source,
-      })
-      .from(agentConversations)
-      .where(eq(agentConversations.id, conversationId))
-      .limit(1);
-
-    if (conv && conv.source !== 'studio') {
-      return null;
-    }
-
-    return conv?.createdBy ?? '';
+    return title;
   }
 
   private async resolveModel(

@@ -102,7 +102,7 @@ const {
     createLoadSkillToolProvider: vi.fn(),
   },
   mockConversationTitleService: {
-    generateTitle: vi.fn(),
+    generateInitialTitle: vi.fn(),
   },
   mockSelfEvolutionToolsProvider: {
     createSessionToolProvider: vi.fn(),
@@ -367,7 +367,7 @@ describe('AgentExecutionWorker', () => {
     mockSkillResolverService.resolveSkillsForAgent.mockReset();
     mockSkillResolverService.buildSkillAugmentedPrompt.mockReset();
     mockSkillResolverService.createLoadSkillToolProvider.mockReset();
-    mockConversationTitleService.generateTitle
+    mockConversationTitleService.generateInitialTitle
       .mockReset()
       .mockResolvedValue('自动标题');
     mockSelfEvolutionToolsProvider.createSessionToolProvider.mockReset();
@@ -988,7 +988,7 @@ describe('AgentExecutionWorker', () => {
           { type: 'done', stopReason: 'end_turn' },
         ]),
       );
-      mockConversationTitleService.generateTitle.mockRejectedValueOnce(
+      mockConversationTitleService.generateInitialTitle.mockRejectedValueOnce(
         new Error('title model unavailable'),
       );
 

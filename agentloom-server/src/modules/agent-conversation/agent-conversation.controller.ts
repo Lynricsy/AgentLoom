@@ -305,6 +305,7 @@ export class AgentConversationController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate or regenerate conversation title' })
   @ApiResponse({ status: 200, description: 'Title generated' })
+  @ApiResponse({ status: 404, description: '对话不存在' })
   async generateTitle(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() tenantId: string,

@@ -43,6 +43,22 @@ function createUpdateChain() {
   };
 }
 
+/** 每次生成都会先在租户内读取对话（存在性、来源与现有标题） */
+function createConversationChain(overrides: Record<string, unknown> = {}) {
+  return createSelectChain([
+    { createdBy: 'user-1', source: 'studio', title: null, ...overrides },
+  ]);
+}
+
+/** 自动标题的条件更新：只有标题仍为空时 returning 才有行 */
+function createConditionalUpdateChain(rows: unknown[]) {
+  return {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(rows),
+  };
+}
+
 describe('ConversationTitleService', () => {
   let mockDb: {
     select: ReturnType<typeof vi.fn>;
@@ -117,6 +133,7 @@ describe('ConversationTitleService', () => {
     const conversationSelectChain = createSelectChain([]);
     const updateChain = createUpdateChain();
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(selectChain)
       .mockReturnValueOnce(conversationSelectChain);
     mockDb.update.mockReturnValue(updateChain);
@@ -173,6 +190,7 @@ describe('ConversationTitleService', () => {
     const updateChain = createUpdateChain();
 
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(messageSelectChain)
       .mockReturnValueOnce(conversationSelectChain)
       .mockReturnValueOnce(definitionSelectChain);
@@ -220,6 +238,7 @@ describe('ConversationTitleService', () => {
     const conversationSelectChain = createSelectChain([]);
     const updateChain = createUpdateChain();
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(messageSelectChain)
       .mockReturnValueOnce(conversationSelectChain);
     mockDb.update.mockReturnValue(updateChain);
@@ -253,7 +272,9 @@ describe('ConversationTitleService', () => {
 
   it('没有任何消息时返回 null 且不更新标题', async () => {
     const selectChain = createSelectChain([]);
-    mockDb.select.mockReturnValue(selectChain);
+    mockDb.select
+      .mockReturnValueOnce(createConversationChain())
+      .mockReturnValue(selectChain);
 
     const title = await service.generateTitle(
       'conversation-1',
@@ -273,7 +294,9 @@ describe('ConversationTitleService', () => {
     const updateChain = createUpdateChain();
     const preferredConfig = { id: 'preferred-model' };
     const preferredModel = { provider: 'preferred' };
-    mockDb.select.mockReturnValueOnce(messageSelectChain);
+    mockDb.select
+      .mockReturnValueOnce(createConversationChain())
+      .mockReturnValueOnce(messageSelectChain);
     mockDb.update.mockReturnValue(updateChain);
     mockUserPreferenceService.findByUser.mockResolvedValue({
       titleModelConfigId: ' preferred-model ',
@@ -372,6 +395,7 @@ describe('ConversationTitleService', () => {
       },
     ]);
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(messageSelectChain)
       .mockReturnValueOnce(conversationSelectChain)
       .mockReturnValueOnce(definitionSelectChain)
@@ -423,6 +447,7 @@ describe('ConversationTitleService', () => {
       },
     ]);
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(messageSelectChain)
       .mockReturnValueOnce(conversationSelectChain)
       .mockReturnValueOnce(definitionSelectChain);
@@ -455,6 +480,7 @@ describe('ConversationTitleService', () => {
     const conversationSelectChain = createSelectChain([]);
     const updateChain = createUpdateChain();
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(messageSelectChain)
       .mockReturnValueOnce(conversationSelectChain);
     mockDb.update.mockReturnValue(updateChain);
@@ -481,6 +507,7 @@ describe('ConversationTitleService', () => {
     ]);
     const conversationSelectChain = createSelectChain([]);
     mockDb.select
+      .mockReturnValueOnce(createConversationChain())
       .mockReturnValueOnce(messageSelectChain)
       .mockReturnValueOnce(conversationSelectChain);
     mockDb.update.mockReturnValue(createUpdateChain());
@@ -501,5 +528,119 @@ describe('ConversationTitleService', () => {
         prompt: expect.stringContaining(`${'甲'.repeat(500)}...`),
       }),
     );
+  });
+
+  it('手动生成时对话不存在或属于他租户应抛 404 conversation-not-found', async () => {
+    mockDb.select.mockReturnValueOnce(createSelectChain([]));
+
+    await expect(
+      service.generateTitle('missing-conversation', 'tenant-1', 'user-1'),
+    ).rejects.toMatchObject({
+      status: 404,
+      type: 'https://agentloom.dev/errors/conversation-not-found',
+    });
+    expect(mockDb.select).toHaveBeenCalledTimes(1);
+    expect(mockDb.update).not.toHaveBeenCalled();
+  });
+
+  it('手动生成会覆盖已有标题', async () => {
+    const updateChain = createUpdateChain();
+    mockDb.select
+      .mockReturnValueOnce(createConversationChain({ title: '用户标题' }))
+      .mockReturnValueOnce(
+        createSelectChain([{ role: 'user', content: '重新生成标题' }]),
+      )
+      .mockReturnValueOnce(createSelectChain([]));
+    mockDb.update.mockReturnValue(updateChain);
+    mockUserPreferenceService.findByUser.mockResolvedValue(null);
+    mockLlmService.findDefaultByType.mockResolvedValue({ id: 'model-1' });
+    mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+    mockGenerateText.mockResolvedValue({ text: '🔁 重新生成' });
+
+    await expect(
+      service.generateTitle('conversation-1', 'tenant-1', 'user-1'),
+    ).resolves.toBe('🔁 重新生成');
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '🔁 重新生成' }),
+    );
+  });
+
+  describe('generateInitialTitle（首轮自动标题）', () => {
+    it('对话已有用户指定的标题时跳过，不调用模型也不更新', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createConversationChain({ title: 'e2e-c1-g4-conv' }),
+      );
+
+      await expect(
+        service.generateInitialTitle('conversation-1', 'tenant-1'),
+      ).resolves.toBeNull();
+
+      expect(mockDb.select).toHaveBeenCalledTimes(1);
+      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('对话不存在时静默返回 null', async () => {
+      mockDb.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.generateInitialTitle('missing-conversation', 'tenant-1'),
+      ).resolves.toBeNull();
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('标题为空时生成并以条件更新落库', async () => {
+      const updateChain = createConditionalUpdateChain([
+        { id: 'conversation-1' },
+      ]);
+      mockDb.select
+        .mockReturnValueOnce(createConversationChain())
+        .mockReturnValueOnce(
+          createSelectChain([{ role: 'user', content: '自我介绍' }]),
+        )
+        .mockReturnValueOnce(createSelectChain([]));
+      mockDb.update.mockReturnValue(updateChain);
+      mockUserPreferenceService.findByUser.mockResolvedValue(null);
+      mockLlmService.findDefaultByType.mockResolvedValue({ id: 'model-1' });
+      mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+      mockGenerateText.mockResolvedValue({ text: '🤖 自我介绍' });
+
+      await expect(
+        service.generateInitialTitle('conversation-1', 'tenant-1'),
+      ).resolves.toBe('🤖 自我介绍');
+      expect(mockUserPreferenceService.findByUser).toHaveBeenCalledWith(
+        'user-1',
+        'tenant-1',
+      );
+      expect(updateChain.returning).toHaveBeenCalled();
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'conversation.title.updated',
+        {
+          conversationId: 'conversation-1',
+          tenantId: 'tenant-1',
+          title: '🤖 自我介绍',
+        },
+      );
+    });
+
+    it('生成期间用户已改名时条件更新不命中，不覆盖也不广播', async () => {
+      mockDb.select
+        .mockReturnValueOnce(createConversationChain())
+        .mockReturnValueOnce(
+          createSelectChain([{ role: 'user', content: '自我介绍' }]),
+        )
+        .mockReturnValueOnce(createSelectChain([]));
+      mockDb.update.mockReturnValue(createConditionalUpdateChain([]));
+      mockUserPreferenceService.findByUser.mockResolvedValue(null);
+      mockLlmService.findDefaultByType.mockResolvedValue({ id: 'model-1' });
+      mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+      mockGenerateText.mockResolvedValue({ text: '🤖 自我介绍' });
+
+      await expect(
+        service.generateInitialTitle('conversation-1', 'tenant-1'),
+      ).resolves.toBeNull();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
   });
 });

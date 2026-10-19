@@ -1419,14 +1419,14 @@ export class AgentExecutionWorker extends WorkerHost {
         );
         shouldRebuildHistoryOnce = false;
 
-        // 首轮 assistant 回复后自动生成标题（fire-and-forget）
+        // 首轮 assistant 回复后自动生成标题（fire-and-forget）；已有标题的对话由服务跳过
         if (
           !hadPriorAssistant &&
           executionMetadata.lastAssistantMessageId &&
           this.conversationTitleService
         ) {
           void this.conversationTitleService
-            .generateTitle(conversationId, tenantId)
+            .generateInitialTitle(conversationId, tenantId)
             .catch((error: unknown) => {
               this.logger.warn(
                 `Failed to generate conversation title: ${error instanceof Error ? error.message : String(error)}`,
