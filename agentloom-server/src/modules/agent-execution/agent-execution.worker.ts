@@ -52,8 +52,7 @@ import type { PreparationPhase } from '../execution/types/execution-event.types'
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
-import { RouterRegistry } from '../smart-routing/core/router-registry';
-import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
+import { ModelRoutingService } from '../smart-routing/model-routing.service';
 import { LlmCostService } from '../llm/llm-cost.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
@@ -729,24 +728,6 @@ export class AgentExecutionWorker extends WorkerHost {
     this.runtimeService.resolveConversationStartupRuntimeConfig = value;
   }
 
-  public get selectConversationRoutingModelId(): AgentExecutionWorkerRuntimeService['selectConversationRoutingModelId'] {
-    return (
-      (this.delegatedOverrides.get('selectConversationRoutingModelId') as
-        | AgentExecutionWorkerRuntimeService['selectConversationRoutingModelId']
-        | undefined) ??
-      this.runtimeService.selectConversationRoutingModelId.bind(
-        this.runtimeService,
-      )
-    );
-  }
-
-  public set selectConversationRoutingModelId(
-    value: AgentExecutionWorkerRuntimeService['selectConversationRoutingModelId'],
-  ) {
-    this.delegatedOverrides.set('selectConversationRoutingModelId', value);
-    this.runtimeService.selectConversationRoutingModelId = value;
-  }
-
   public get prepareRuntimeSession(): AgentExecutionWorkerRuntimeService['prepareRuntimeSession'] {
     return (
       (this.delegatedOverrides.get('prepareRuntimeSession') as
@@ -943,8 +924,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     private readonly smartRoutingService?: SmartRoutingService,
     private readonly agentApiRunService?: AgentApiRunService,
-    routerRegistry?: RouterRegistry,
-    healthMonitorService?: HealthMonitorService,
+    modelRoutingService?: ModelRoutingService,
     llmCostService?: LlmCostService,
     private readonly eventEmitter?: EventEmitter2,
     teamToolsProvider?: TeamToolsProvider,
@@ -997,9 +977,7 @@ export class AgentExecutionWorker extends WorkerHost {
         subAgentToolsProvider,
         conversationTitleService,
         selfEvolutionToolsProvider,
-        smartRoutingService,
-        routerRegistry,
-        healthMonitorService,
+        modelRoutingService,
       );
   }
 

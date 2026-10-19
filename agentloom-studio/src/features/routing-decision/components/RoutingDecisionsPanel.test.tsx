@@ -159,7 +159,7 @@ describe('RoutingDecisionsPanel', () => {
     expect(badges[0]).toHaveAttribute('title', '回退来源：已配置回退模型')
   })
 
-  it('工作流步骤决策有 Jev 影子记录时显示影子选择，对话决策不查询影子', () => {
+  it('工作流步骤与对话的路由决策都查询 Jev 影子记录，有记录时显示影子选择', () => {
     mocks.useDecisionRecords.mockImplementation(({ subjectId }: { subjectId: string }) => ({
       data:
         subjectId === 'decision-step'
@@ -206,9 +206,10 @@ describe('RoutingDecisionsPanel', () => {
       subjectType: 'routing_decision',
       subjectId: 'decision-step',
     })
-    expect(mocks.useDecisionRecords).not.toHaveBeenCalledWith(
-      expect.objectContaining({ subjectId: 'decision-conversation' }),
-    )
+    expect(mocks.useDecisionRecords).toHaveBeenCalledWith({
+      subjectType: 'routing_decision',
+      subjectId: 'decision-conversation',
+    })
   })
 
   it('selectedModelId 为 null 时展示未选中模型徽章', () => {

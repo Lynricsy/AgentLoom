@@ -82,17 +82,15 @@ const COLUMNS: DataTableColumn<RoutingDecision>[] = [
           >
             {label}
           </span>
-          {/* 只有工作流路由节点的决策会经 DecisionService 产生 Jev 影子记录 */}
-          {decision.executionStepId ? (
-            <JevShadowBadge
-              subjectType="routing_decision"
-              subjectId={decision.id}
-              choiceLabels={Object.fromEntries(
-                decision.modelsEvaluated.map((model) => [model.modelId, model.modelName]),
-              )}
-              className="self-start"
-            />
-          ) : null}
+          {/* 工作流路由节点、工作流 Agent 节点与对话的路由决策都经 DecisionService 记录，可能有 Jev 影子 */}
+          <JevShadowBadge
+            subjectType="routing_decision"
+            subjectId={decision.id}
+            choiceLabels={Object.fromEntries(
+              decision.modelsEvaluated.map((model) => [model.modelId, model.modelName]),
+            )}
+            className="self-start"
+          />
         </div>
       )
     },

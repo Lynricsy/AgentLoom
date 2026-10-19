@@ -57,6 +57,7 @@ import { SandboxSessionRuntimeService } from '../../agent/sandbox-session-runtim
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
+import { ModelRoutingService } from '../../smart-routing/model-routing.service';
 import { RouterRegistry } from '../../smart-routing/core/router-registry';
 import { HealthMonitorService } from '../../smart-routing/circuit-breaker/health-monitor.service';
 import { EmbeddingIntegrationService } from '../../smart-routing/embedding/embedding.service';
@@ -107,6 +108,7 @@ export const NODE_EXECUTION_PROVIDERS = [
   HttpNodeExecutor,
   ResourceNodeExecutor,
   SmartRoutingNodeExecutor,
+  ModelRoutingService,
   SubAgentNodeExecutor,
   TeamNodeExecutor,
   TriggerNodeExecutor,

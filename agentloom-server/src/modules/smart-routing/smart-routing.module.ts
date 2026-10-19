@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { ApiKeyModule } from '../api-key/api-key.module';
+import { DecisionModule } from '../decision/decision.module';
 import { LlmService } from '../llm/llm.service';
 import { LlmModule } from '../llm/llm.module';
 import { PiAiAdapter } from '../llm/pi-ai-adapter';
@@ -26,6 +27,7 @@ import { EmbeddingIntegrationService } from './embedding/embedding.service';
 import { RoutingLearningModule } from './learning/routing-learning.module';
 import { ROUTING_LEARNING_QUEUE } from './learning/routing-learning.types';
 import { RoutingMemoryStore } from './learning/routing-memory.store';
+import { ModelRoutingService } from './model-routing.service';
 import { SmartRoutingController } from './smart-routing.controller';
 import { SmartRoutingService } from './smart-routing.service';
 import { CostOptimizedRouter } from './strategies/cost-optimized.strategy';
@@ -104,6 +106,7 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
     EmbeddingModule,
     RoutingLearningModule,
     PluginModule,
+    DecisionModule,
   ],
   controllers: [SmartRoutingController],
   providers: [
@@ -266,9 +269,11 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
       ],
     },
     SmartRoutingService,
+    ModelRoutingService,
   ],
   exports: [
     SmartRoutingService,
+    ModelRoutingService,
     RouterRegistry,
     CircuitBreakerService,
     HealthMonitorService,

@@ -60,14 +60,7 @@ import { EventBridgeService } from '../execution/services/event-bridge.service';
 import type { PreparationPhase } from '../execution/types/execution-event.types';
 import { InputPreprocessorHandlerImpl } from '../execution/node-handlers/input-preprocessor.handler';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
-import { SmartRoutingService } from '../smart-routing/smart-routing.service';
-import { RouterRegistry } from '../smart-routing/core/router-registry';
-import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
-import type { RoutingFallbackSource } from '../smart-routing/core/routing-decision';
-import {
-  mapRoutingDecisionScores,
-  normalizeSmartRoutingStrategyName,
-} from '../execution/smart-routing-input.util';
+import { ModelRoutingService } from '../smart-routing/model-routing.service';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { MemoryToolsService } from '../agent-memory/memory-tools.service';
@@ -129,10 +122,7 @@ import {
   resolveSkillPayloadsForGraph,
   toSkillInput,
 } from './conversation-skill-resolution';
-import {
-  applyConversationInputPreprocessors,
-  estimateConversationTokenCount,
-} from './conversation-runtime-input';
+import { applyConversationInputPreprocessors } from './conversation-runtime-input';
 import {
   buildConversationTurnResult,
   buildPromptBlocks as buildConversationWorkerPromptBlocks,
@@ -240,9 +230,7 @@ export class AgentExecutionWorkerRuntimeService {
     protected readonly subAgentToolsProvider?: SubAgentToolsProvider,
     protected readonly conversationTitleService?: ConversationTitleService,
     protected readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
-    protected readonly smartRoutingService?: SmartRoutingService,
-    protected readonly routerRegistry?: RouterRegistry,
-    protected readonly healthMonitorService?: HealthMonitorService,
+    protected readonly modelRoutingService?: ModelRoutingService,
   ) {}
 
   public async loadConversationExecutionContext(
@@ -398,169 +386,25 @@ export class AgentExecutionWorkerRuntimeService {
     });
   }
 
+  /** 对话启动时按 Agent 画布智能路由选出运行模型，决策以对话为主体落库 */
   public async resolveConversationStartupRuntimeConfig(
     runtimeConfig: AgentRuntimeConfig,
     conversationId: string,
     tenantId: string,
     pendingMessages: PendingMessage[],
   ): Promise<AgentRuntimeConfig> {
-    const routingConfig = runtimeConfig.routingConfig;
-    const candidateModelIds = extractStringArray(
-      routingConfig?.candidateModelIds,
-    );
-
-    if (!routingConfig || candidateModelIds.length === 0) {
+    if (!this.modelRoutingService) {
       return runtimeConfig;
     }
-
-    const selectedModelId = await this.selectConversationRoutingModelId({
-      conversationId,
+    return this.modelRoutingService.routeAgentRuntimeConfig(runtimeConfig, {
       tenantId,
-      routingConfig,
-      candidateModelIds,
-      pendingMessages,
+      subject: { conversationId },
+      routingNodeId: 'conversation',
+      taskCategory: 'agent_conversation',
+      queryText: formatLatestPendingMessages(
+        pendingMessages as PendingConversationPromptMessage[],
+      ),
     });
-
-    if (!selectedModelId) {
-      return runtimeConfig;
-    }
-
-    return {
-      ...runtimeConfig,
-      modelConfig: {
-        ...(runtimeConfig.modelConfig ?? {}),
-        modelId: selectedModelId,
-      },
-      routingConfig: {
-        ...routingConfig,
-        candidateModelIds,
-      },
-    };
-  }
-
-  /**
-   * 对话启动时的模型路由：经 RouterRegistry 选择策略、健康过滤后路由，并以对话为主体落库决策。
-   * 路由器抛错时确定性回退到 fallbackModelId（须在候选内）或候选首位，同样落库（fallbackReason=router_error）。
-   */
-  public async selectConversationRoutingModelId(params: {
-    conversationId: string;
-    tenantId: string;
-    routingConfig: NonNullable<AgentRuntimeConfig['routingConfig']>;
-    candidateModelIds: string[];
-    pendingMessages: PendingMessage[];
-  }): Promise<string | undefined> {
-    const { conversationId, tenantId, routingConfig, candidateModelIds } =
-      params;
-    if (candidateModelIds.length === 1) {
-      return candidateModelIds[0];
-    }
-
-    if (
-      !this.smartRoutingService ||
-      !this.routerRegistry ||
-      !this.healthMonitorService
-    ) {
-      return candidateModelIds[0];
-    }
-
-    const strategyName = normalizeSmartRoutingStrategyName(
-      routingConfig.strategy?.trim() || 'FALLBACK_CHAIN',
-    );
-    const latestPrompt = formatLatestPendingMessages(
-      params.pendingMessages as PendingConversationPromptMessage[],
-    );
-    const startedAt = Date.now();
-
-    try {
-      const router = this.routerRegistry.get(strategyName);
-      const smartRoutingService = this.smartRoutingService;
-      const candidates = await runInTenantTransaction(this.db, tenantId, () =>
-        smartRoutingService.loadCandidates(candidateModelIds, tenantId),
-      );
-      const healthyCandidates =
-        await this.healthMonitorService.filterHealthyCandidates(
-          tenantId,
-          candidates,
-        );
-      const decision = await router.route(healthyCandidates, {
-        inputTokenCount: estimateConversationTokenCount(latestPrompt),
-        tenantId,
-        taskCategory: 'agent_conversation',
-        ...(latestPrompt ? { queryText: latestPrompt } : {}),
-        ...(routingConfig.strategyConfig
-          ? { strategyConfig: routingConfig.strategyConfig }
-          : {}),
-      });
-      if (!decision.selectedModelId) {
-        throw new Error(`路由策略 ${strategyName} 未选出模型`);
-      }
-
-      await this.recordConversationRoutingDecision(conversationId, tenantId, {
-        selectedModelId: decision.selectedModelId,
-        strategy: strategyName,
-        reasoning: decision.reasoning,
-        evaluatedModels: mapRoutingDecisionScores(decision),
-        latencyMs: decision.latencyMs,
-        routerType: decision.routerType,
-        fallbackReason: decision.fallback?.reason,
-        fallbackSource: decision.fallback?.source,
-      });
-      return decision.selectedModelId;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const configuredFallback =
-        routingConfig.fallbackModelId &&
-        candidateModelIds.includes(routingConfig.fallbackModelId)
-          ? routingConfig.fallbackModelId
-          : undefined;
-      const selectedModelId = configuredFallback ?? candidateModelIds[0];
-      const fallbackSource: RoutingFallbackSource = configuredFallback
-        ? 'configured_model'
-        : 'first_candidate';
-      this.logger.warn(
-        `Conversation smart routing failed, falling back to ${fallbackSource} ${selectedModelId}: ${message}`,
-      );
-
-      await this.recordConversationRoutingDecision(conversationId, tenantId, {
-        selectedModelId,
-        strategy: strategyName,
-        reasoning: message,
-        evaluatedModels: [],
-        latencyMs: Date.now() - startedAt,
-        routerType: strategyName,
-        fallbackReason: 'router_error',
-        fallbackSource,
-      });
-      return selectedModelId;
-    }
-  }
-
-  /** 对话路由决策落库；记录失败不影响对话执行 */
-  private async recordConversationRoutingDecision(
-    conversationId: string,
-    tenantId: string,
-    decision: Parameters<SmartRoutingService['recordDecision']>[3],
-  ): Promise<void> {
-    const smartRoutingService = this.smartRoutingService;
-    if (!smartRoutingService) {
-      return;
-    }
-    try {
-      await runInTenantTransaction(this.db, tenantId, () =>
-        smartRoutingService.recordDecision(
-          { conversationId },
-          tenantId,
-          'conversation',
-          decision,
-        ),
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to record conversation routing decision for ${conversationId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
   }
 
   public async prepareRuntimeSession(

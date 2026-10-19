@@ -35,8 +35,7 @@ import { SelfEvolutionModule } from '../self-evolution/self-evolution.module';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
 import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
 import { SmartRoutingService } from '../smart-routing/smart-routing.service';
-import { RouterRegistry } from '../smart-routing/core/router-registry';
-import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
+import { ModelRoutingService } from '../smart-routing/model-routing.service';
 import { LlmModule } from '../llm/llm.module';
 import { LlmCostService } from '../llm/llm-cost.service';
 import { SkillModule } from '../skill/skill.module';
@@ -92,8 +91,7 @@ const agentExecutionWorkerProvider: Provider = {
     selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
     smartRoutingService?: SmartRoutingService,
     agentApiRunService?: AgentApiRunService,
-    routerRegistry?: RouterRegistry,
-    healthMonitorService?: HealthMonitorService,
+    modelRoutingService?: ModelRoutingService,
     llmCostService?: LlmCostService,
     eventEmitter?: EventEmitter2,
     teamToolsProvider?: TeamToolsProvider,
@@ -116,8 +114,7 @@ const agentExecutionWorkerProvider: Provider = {
       selfEvolutionToolsProvider,
       smartRoutingService,
       agentApiRunService,
-      routerRegistry,
-      healthMonitorService,
+      modelRoutingService,
       llmCostService,
       eventEmitter,
       teamToolsProvider,
@@ -140,8 +137,7 @@ const agentExecutionWorkerProvider: Provider = {
     { token: SelfEvolutionToolsProvider, optional: true },
     { token: SmartRoutingService, optional: true },
     AgentApiRunService,
-    { token: RouterRegistry, optional: true },
-    { token: HealthMonitorService, optional: true },
+    { token: ModelRoutingService, optional: true },
     LlmCostService,
     EventEmitter2,
     { token: TeamToolsProvider, optional: true },

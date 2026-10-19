@@ -143,9 +143,9 @@ agentloom-server/src/
 
 `knn` 与 `memory_bank` 从 Qdrant 集合 `routing_memory` 检索相似历史任务，读写都经 `RoutingMemoryStore`（`agentloom-server/src/modules/smart-routing/learning/routing-memory.store.ts`）：集合由 `RoutingLearningWorker` 首次写入路由记忆时按实际向量维度创建（同时建 `tenant_id` 等 payload 索引），不需要单独的初始化脚本；集合尚不存在时检索返回空，两个策略按冷启动处理（`router_models` + `routing_benchmarks` 基准评分，再无数据时按质量排名选择）。集合存在但检索失败（如 Qdrant 不可用）时错误照常抛出，节点失败。
 
-Agent 对话启动时，若编译后的 `routingConfig.candidateModelIds` 多于一个，`AgentExecutionWorkerRuntimeService.selectConversationRoutingModelId` 用同一套注册表、候选加载与健康过滤选模型，`routingConfig.strategyConfig` 透传给策略，`taskCategory` 固定为 `agent_conversation`。策略抛错或未选出模型时选 `routingConfig.fallbackModelId`（须在候选内）否则候选首位，记 `router_error`。
+Agent 画布上的智能路由（编译后的 `routingConfig`）由 `ModelRoutingService.routeAgentRuntimeConfig`（`agentloom-server/src/modules/smart-routing/model-routing.service.ts`）统一解析，对话启动（`AgentExecutionWorkerRuntimeService.resolveConversationStartupRuntimeConfig`，`taskCategory` 为 `agent_conversation`，`routing_node_id` 为 `conversation`）与工作流 Agent 节点（`WorkflowAgentAdapter.execute`，`taskCategory` 为 `agent_workflow`，决策主体为该步骤，`routing_node_id` 为节点 id）共用：`candidateModelIds` 只有一个时直接使用，多于一个时用同一套注册表、候选加载与健康过滤选模型，`routingConfig.strategyConfig` 透传给策略。策略抛错或未选出模型时选 `routingConfig.fallbackModelId`（须在候选内）否则候选首位，记 `router_error`。
 
-路由决策写入 `routing_decisions` 表，主体二选一：工作流路由步骤（`execution_step_id`）或 Agent 对话（`conversation_id`，`routing_node_id` 固定为 `conversation`），由 `chk_routing_decisions_subject` 约束；`fallback_reason`、`fallback_source` 仅在回退时有值，`selected_model_id` 可为空。`GET /routing-decisions` 与历史指标只统计工作流步骤上的决策。
+路由决策写入 `routing_decisions` 表，主体二选一：工作流路由步骤（`execution_step_id`）或 Agent 对话（`conversation_id`，`routing_node_id` 固定为 `conversation`），由 `chk_routing_decisions_subject` 约束；`fallback_reason`、`fallback_source` 仅在回退时有值，`selected_model_id` 可为空。三条路径（智能路由节点、对话、工作流 Agent 节点）都经 `ModelRoutingService.recordDecision` 在同一租户事务内写决策并调用 `DecisionService.decide` 记 `routing.model_choice`（`decision_records`，主体为该路由决策）。`GET /routing-decisions` 返回全部决策（左连接执行步骤），可按 `executionId`、`conversationId`、`routingNodeId` 过滤；历史指标（`historical_best`）只统计工作流步骤上的决策。
 
 ### 生成应用
 

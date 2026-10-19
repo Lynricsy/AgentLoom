@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { Logger } from '@nestjs/common';
 
+import { ModelRoutingService } from '../../smart-routing/model-routing.service';
 import { AgentExecutionWorker } from '../agent-execution.worker';
 import { AgentExecutionWorkerPersistenceService } from '../agent-execution-worker-persistence.service';
 import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
@@ -28,6 +29,7 @@ const {
   mockSmartRoutingService,
   mockRouterRegistry,
   mockHealthMonitorService,
+  mockDecisionService,
 } = vi.hoisted(() => ({
   mockDbSelectChain: {
     from: vi.fn().mockReturnThis(),
@@ -117,6 +119,9 @@ const {
   mockHealthMonitorService: {
     filterHealthyCandidates: vi.fn(),
   },
+  mockDecisionService: {
+    decide: vi.fn(),
+  },
 }));
 
 const { afterCommitHooks } = vi.hoisted(() => ({
@@ -196,13 +201,6 @@ type WorkerInternals = {
     tenantId: string,
     pendingMessages: unknown[],
   ) => Promise<Record<string, unknown>>;
-  selectConversationRoutingModelId: (params: {
-    conversationId: string;
-    tenantId: string;
-    routingConfig: Record<string, unknown>;
-    candidateModelIds: string[];
-    pendingMessages: unknown[];
-  }) => Promise<string | undefined>;
   describeConversationExecutionError: (error: unknown) => {
     errorMessage: string;
     errorCode?: string;
@@ -374,7 +372,16 @@ describe('AgentExecutionWorker', () => {
     mockSmartRoutingService.loadCandidates
       .mockReset()
       .mockImplementation(async (ids: string[]) =>
-        ids.map((id) => ({ id, name: id, provider: 'openai' })),
+        ids.map((id) => ({
+          id,
+          name: id,
+          provider: 'openai',
+          routingMeta: {
+            qualityRank: 80,
+            avgLatencyMs: 500,
+            costs: { input: 0.001, output: 0.002 },
+          },
+        })),
       );
     mockSmartRoutingService.recordDecision
       .mockReset()
@@ -404,8 +411,13 @@ describe('AgentExecutionWorker', () => {
       mockSelfEvolutionToolsProvider as never,
       mockSmartRoutingService as never,
       undefined,
-      mockRouterRegistry as never,
-      mockHealthMonitorService as never,
+      new ModelRoutingService(
+        mockDb as never,
+        mockSmartRoutingService as never,
+        mockRouterRegistry as never,
+        mockHealthMonitorService as never,
+        mockDecisionService as never,
+      ),
     );
     workerInternals = worker as unknown as WorkerInternals;
   });
@@ -1758,8 +1770,8 @@ describe('AgentExecutionWorker', () => {
       );
       expect(route).toHaveBeenCalledWith(
         [
-          { id: 'model-1', name: 'model-1', provider: 'openai' },
-          { id: 'model-2', name: 'model-2', provider: 'openai' },
+          expect.objectContaining({ id: 'model-1' }),
+          expect.objectContaining({ id: 'model-2' }),
         ],
         expect.objectContaining({
           taskCategory: 'agent_conversation',
@@ -1776,6 +1788,18 @@ describe('AgentExecutionWorker', () => {
           strategy: 'fallback_chain',
           routerType: 'fallback_chain',
           fallbackReason: undefined,
+        }),
+      );
+      // D-120：对话路由决策同样记入决策账本
+      expect(mockDecisionService.decide).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'routing.model_choice',
+          tenantId: 'tenant-1',
+          subject: { type: 'routing_decision', id: 'routing-decision-1' },
+          input: expect.objectContaining({
+            selectedModelId: 'model-2',
+            taskCategory: 'agent_conversation',
+          }),
         }),
       );
       expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
@@ -3108,6 +3132,17 @@ describe('AgentExecutionWorker', () => {
 
   describe('branch contracts — runtime defaults and failures', () => {
     it('model routing covers absent, single, unsupported, empty-decision and thrown strategies', async () => {
+      const route = (
+        routingConfig: Record<string, unknown>,
+        pendingMessages: unknown[] = [],
+      ) =>
+        workerInternals.resolveConversationStartupRuntimeConfig(
+          { routingConfig },
+          'conversation-1',
+          'tenant-1',
+          pendingMessages,
+        ) as Promise<{ modelConfig?: { modelId?: string } }>;
+
       const unchanged = { modelConfig: { modelId: 'model-original' } };
       await expect(
         workerInternals.resolveConversationStartupRuntimeConfig(
@@ -3119,14 +3154,8 @@ describe('AgentExecutionWorker', () => {
       ).resolves.toBe(unchanged);
 
       await expect(
-        workerInternals.selectConversationRoutingModelId({
-          conversationId: 'conversation-1',
-          tenantId: 'tenant-1',
-          routingConfig: {},
-          candidateModelIds: ['model-only'],
-          pendingMessages: [],
-        }),
-      ).resolves.toBe('model-only');
+        route({ strategy: 'rules', candidateModelIds: ['model-only'] }),
+      ).resolves.toMatchObject({ modelConfig: { modelId: 'model-only' } });
       expect(mockRouterRegistry.get).not.toHaveBeenCalled();
       expect(mockSmartRoutingService.recordDecision).not.toHaveBeenCalled();
 
@@ -3135,14 +3164,11 @@ describe('AgentExecutionWorker', () => {
         throw new Error('Strategy "unsupported-strategy" not found');
       });
       await expect(
-        workerInternals.selectConversationRoutingModelId({
-          conversationId: 'conversation-1',
-          tenantId: 'tenant-1',
-          routingConfig: { strategy: 'unsupported-strategy' },
+        route({
+          strategy: 'unsupported-strategy',
           candidateModelIds: ['model-first', 'model-second'],
-          pendingMessages: [],
         }),
-      ).resolves.toBe('model-first');
+      ).resolves.toMatchObject({ modelConfig: { modelId: 'model-first' } });
       expect(mockSmartRoutingService.recordDecision).toHaveBeenLastCalledWith(
         { conversationId: 'conversation-1' },
         'tenant-1',
@@ -3184,17 +3210,15 @@ describe('AgentExecutionWorker', () => {
         route: vi.fn().mockRejectedValue('routing service unavailable'),
       });
       await expect(
-        workerInternals.selectConversationRoutingModelId({
-          conversationId: 'conversation-1',
-          tenantId: 'tenant-1',
-          routingConfig: {
+        route(
+          {
             strategy: 'FALLBACK_CHAIN',
             fallbackModelId: 'model-second',
+            candidateModelIds: ['model-first', 'model-second'],
           },
-          candidateModelIds: ['model-first', 'model-second'],
-          pendingMessages: [{ content: 'route this request' }],
-        }),
-      ).resolves.toBe('model-second');
+          [{ content: 'route this request' }],
+        ),
+      ).resolves.toMatchObject({ modelConfig: { modelId: 'model-second' } });
       expect(mockSmartRoutingService.recordDecision).toHaveBeenLastCalledWith(
         { conversationId: 'conversation-1' },
         'tenant-1',
@@ -3221,14 +3245,11 @@ describe('AgentExecutionWorker', () => {
         new Error('insert failed'),
       );
       await expect(
-        workerInternals.selectConversationRoutingModelId({
-          conversationId: 'conversation-1',
-          tenantId: 'tenant-1',
-          routingConfig: { strategy: 'FALLBACK_CHAIN' },
+        route({
+          strategy: 'FALLBACK_CHAIN',
           candidateModelIds: ['model-first', 'model-second'],
-          pendingMessages: [],
         }),
-      ).resolves.toBe('model-second');
+      ).resolves.toMatchObject({ modelConfig: { modelId: 'model-second' } });
     });
 
     it('restores an existing sandbox runtime session and reuses its watcher binding', async () => {

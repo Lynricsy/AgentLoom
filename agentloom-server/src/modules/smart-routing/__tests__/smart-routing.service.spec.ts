@@ -27,6 +27,7 @@ const {
     select: ReturnType<typeof vi.fn>;
     from: ReturnType<typeof vi.fn>;
     innerJoin: ReturnType<typeof vi.fn>;
+    leftJoin: ReturnType<typeof vi.fn>;
     where: ReturnType<typeof vi.fn>;
     orderBy: ReturnType<typeof vi.fn>;
     limit: ReturnType<typeof vi.fn>;
@@ -38,6 +39,7 @@ const {
     chain.select = vi.fn().mockReturnValue(chain);
     chain.from = vi.fn().mockReturnValue(chain);
     chain.innerJoin = vi.fn().mockReturnValue(chain);
+    chain.leftJoin = vi.fn().mockReturnValue(chain);
     chain.where = vi.fn().mockReturnValue(chain);
     chain.orderBy = vi.fn().mockReturnValue(chain);
     chain.limit = vi.fn().mockReturnValue(chain);
@@ -491,12 +493,12 @@ describe('SmartRoutingService', () => {
         },
       });
       expect(countChain.from).toHaveBeenCalledWith(routingDecisions);
-      expect(countChain.innerJoin).toHaveBeenCalledWith(
+      expect(countChain.leftJoin).toHaveBeenCalledWith(
         executionSteps,
         expect.anything(),
       );
       expect(dataChain.from).toHaveBeenCalledWith(routingDecisions);
-      expect(dataChain.innerJoin).toHaveBeenCalledWith(
+      expect(dataChain.leftJoin).toHaveBeenCalledWith(
         executionSteps,
         expect.anything(),
       );
@@ -552,6 +554,30 @@ describe('SmartRoutingService', () => {
 
       expect(countChain.where).toHaveBeenCalledTimes(1);
       expect(dataChain.where).toHaveBeenCalledTimes(1);
+    });
+
+    it('对话路由决策（无执行步骤）也能查到：左连接执行步骤并按 conversationId 过滤', async () => {
+      const conversationDecision = createRoutingDecisionRecord({
+        executionStepId: null,
+        conversationId: '00000000-0000-0000-0000-000000000020',
+        routingNodeId: 'conversation',
+      });
+      const countChain = createSelectChain([{ total: 1 }]);
+      const dataChain = createSelectChain([conversationDecision]);
+      db.select.mockReturnValueOnce(countChain).mockReturnValueOnce(dataChain);
+
+      const result = await service.findByExecution(TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+        conversationId: '00000000-0000-0000-0000-000000000020',
+      });
+
+      expect(countChain.leftJoin).toHaveBeenCalledTimes(1);
+      expect(dataChain.leftJoin).toHaveBeenCalledTimes(1);
+      expect(countChain.innerJoin).not.toHaveBeenCalled();
+      expect(dataChain.innerJoin).not.toHaveBeenCalled();
+      expect(dataChain.where).toHaveBeenCalledTimes(1);
+      expect(result.data).toEqual([conversationDecision]);
     });
 
     it('在没有记录时返回空结果', async () => {

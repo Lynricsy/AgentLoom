@@ -548,9 +548,13 @@ export class SmartRoutingService {
     data: (typeof routingDecisions.$inferSelect)[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
   }> {
-    const { page, pageSize, executionId, routingNodeId } = query;
+    const { page, pageSize, executionId, conversationId, routingNodeId } =
+      query;
 
     const conditions = [eq(routingDecisions.tenantId, tenantId)];
+    if (conversationId) {
+      conditions.push(eq(routingDecisions.conversationId, conversationId));
+    }
     if (routingNodeId) {
       conditions.push(eq(routingDecisions.routingNodeId, routingNodeId));
     }
@@ -563,7 +567,8 @@ export class SmartRoutingService {
     const baseQuery = this.tenantDb
       .select({ total: sql<number>`count(*)::int` })
       .from(routingDecisions)
-      .innerJoin(
+      // 左连接：对话路由决策没有执行步骤，同样要能查到；按 executionId 过滤时自然只剩步骤决策
+      .leftJoin(
         executionSteps,
         eq(executionSteps.id, routingDecisions.executionStepId),
       );
@@ -577,7 +582,7 @@ export class SmartRoutingService {
     const dataQuery = this.tenantDb
       .select(getTableColumns(routingDecisions))
       .from(routingDecisions)
-      .innerJoin(
+      .leftJoin(
         executionSteps,
         eq(executionSteps.id, routingDecisions.executionStepId),
       )

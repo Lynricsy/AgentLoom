@@ -8,6 +8,21 @@ import {
   it,
   vi,
 } from 'vitest';
+
+// ModelRoutingService 在租户事务内写决策；单测直接在 mock db 上执行
+vi.mock(
+  '../../../common/interceptors/tenant-transaction.context',
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    runInTenantTransaction: vi.fn(
+      async (
+        db: unknown,
+        _tenantId: string,
+        operation: (tenantDb: unknown) => Promise<unknown>,
+      ) => operation(db),
+    ),
+  }),
+);
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
