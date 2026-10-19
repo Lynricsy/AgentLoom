@@ -37,6 +37,8 @@ export const CreateWorkflowDefinitionSchema = z
       .uuid({ message: '模型配置 ID 必须是合法的 UUID' })
       .optional(),
   })
+  // 未知键必须拒绝：例如 camelCase 的 templateSlug 被静默剥离会建出一个空白工作流。
+  .strict()
   .refine(
     (value) => {
       const sources = [
