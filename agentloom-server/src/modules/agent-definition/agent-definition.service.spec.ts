@@ -3493,8 +3493,20 @@ describe('AgentDefinitionService', () => {
       const canvas = makeHarnessCanvas();
       const agent = makeAgent({
         runtimeMode: 'sandbox',
-        nodes: canvas.nodes,
-        edges: canvas.edges,
+        nodes: [
+          ...canvas.nodes,
+          { id: 'sandbox-1', type: 'sandbox', data: { nodeType: 'sandbox' } },
+        ],
+        edges: [
+          ...canvas.edges,
+          {
+            id: 'e-sandbox',
+            source: 'sandbox-1',
+            target: 'main',
+            sourceHandle: 'sandbox-out',
+            targetHandle: 'sandbox-in',
+          },
+        ],
       });
       mockTxClient.select.mockImplementation(() => {
         const c: Record<string, any> = {};
@@ -3541,6 +3553,7 @@ describe('AgentDefinitionService', () => {
           runtimeMode: 'sandbox',
           nodes: [{ id: 'n1', type: 'llm-model', data: {} }],
           edges: [],
+          sandboxConfig: { cpu: 1, memory: 512, disk: 1, timeout: 0 },
           viewport: null,
           metadata: {
             nodeCount: 1,
@@ -3676,6 +3689,50 @@ describe('AgentDefinitionService', () => {
       await expect(
         service.publish('agent-1', makePublishAgentDto(), 'user-1'),
       ).rejects.toThrow(AgentPublishValidationException);
+    });
+
+    it('sandbox 运行态且 agent-main 未连接 Sandbox 节点时拒绝发布', async () => {
+      const agent = makeAgent({
+        runtimeMode: 'sandbox',
+        nodes: [
+          { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+          { id: 'model', type: 'agent', data: { nodeType: 'llm-model' } },
+        ],
+        edges: [
+          {
+            id: 'e-model',
+            source: 'model',
+            target: 'main',
+            sourceHandle: 'model-out',
+            targetHandle: 'model-in',
+          },
+        ],
+        // agent-main 存在时运行时不回退定义级配置，发布校验也不能放行
+        sandboxConfig: { cpu: 1, memory: 512, disk: 1, timeout: 0 },
+      });
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+      mockTxClient.update.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue(undefined);
+        return c;
+      });
+
+      const error = await service
+        .publish('agent-1', makePublishAgentDto(), 'user-1')
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(AgentPublishValidationException);
+      expect(error).toMatchObject({
+        detail:
+          'sandbox 运行态的 Agent 必须将一个 Sandbox 节点连接到 agent-main 的 sandbox-in 端口',
+      });
+      expect(mockTxClient.insert).not.toHaveBeenCalled();
     });
   });
   describe('CRUD、资源来源、OCC 与事务边界补充', () => {
@@ -4225,6 +4282,7 @@ describe('AgentDefinitionService', () => {
           runtimeMode: 'sandbox',
           nodes: [{ id: 'node', type: 'text', data: { nodeType: 'text' } }],
           edges: [],
+          sandboxConfig: { cpu: 1, memory: 512, disk: 1, timeout: 0 },
           viewport: null,
           systemPrompt: null,
           metadata: {

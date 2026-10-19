@@ -657,6 +657,12 @@ export class AgentDefinitionService {
           'Agent 画布不包含任何节点，无法发布',
         );
       }
+      this.assertSandboxConnected(
+        updatedDraft.runtimeMode,
+        updatedDraft.nodes,
+        updatedDraft.edges ?? [],
+        updatedDraft.sandboxConfig,
+      );
       await this.assertRuntimePluginsPublishable(
         updatedDraft.tenantId,
         updatedDraft.runtimeMode,
@@ -1338,6 +1344,12 @@ export class AgentDefinitionService {
           existingVersion.snapshot.nodes ?? [],
           existingVersion.snapshot.edges ?? [],
         );
+        this.assertSandboxConnected(
+          existingVersion.snapshot.runtimeMode ?? agent.runtimeMode,
+          existingVersion.snapshot.nodes ?? [],
+          existingVersion.snapshot.edges ?? [],
+          existingVersion.snapshot.sandboxConfig ?? agent.sandboxConfig,
+        );
         await this.assertRuntimePluginsPublishable(
           agent.tenantId,
           existingVersion.snapshot.runtimeMode ?? agent.runtimeMode,
@@ -1380,6 +1392,12 @@ export class AgentDefinitionService {
           agent.runtimeMode,
           agent.nodes ?? [],
           agent.edges ?? [],
+        );
+        this.assertSandboxConnected(
+          agent.runtimeMode,
+          agent.nodes ?? [],
+          agent.edges ?? [],
+          agent.sandboxConfig,
         );
         await this.assertRuntimePluginsPublishable(
           agent.tenantId,
@@ -2392,6 +2410,36 @@ export class AgentDefinitionService {
       edges as never,
       fallbackConfig ?? null,
     );
+  }
+
+  /**
+   * 发布前确认 sandbox 运行态能解析出 sandbox 配置，规则与运行时
+   * （agent-execution-worker-runtime.service 的 agent-sandbox-not-connected）一致；
+   * 草稿保存不校验，允许先搭画布再连 sandbox。
+   */
+  private assertSandboxConnected(
+    runtimeMode: AgentRuntimeMode,
+    nodes: unknown[],
+    edges: unknown[],
+    fallbackConfig:
+      | AgentRuntimeConfig['sandboxConfig']
+      | Record<string, unknown>
+      | null
+      | undefined,
+  ): void {
+    if (
+      runtimeMode === 'sandbox' &&
+      this.derivePersistedSandboxConfig(
+        nodes,
+        edges,
+        fallbackConfig,
+        runtimeMode,
+      ) === null
+    ) {
+      throw new AgentPublishValidationException(
+        'sandbox 运行态的 Agent 必须将一个 Sandbox 节点连接到 agent-main 的 sandbox-in 端口',
+      );
+    }
   }
 
   private async assertRuntimeModeConstraints(
