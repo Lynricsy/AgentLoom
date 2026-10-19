@@ -81,6 +81,37 @@ describe('collectWorkflowGraphStructureErrors', () => {
     ).toEqual(['复合节点 「循环」(loop) 内部的连线存在环路']);
   });
 
+  it('连到迭代容器 Result 输出键端口的边不报错，无需手写容器 outputPorts（D-158）', () => {
+    expect(
+      collect(
+        [
+          node('trig', 'manual-trigger'),
+          node('iter', 'iteration', {
+            data: { nodeType: 'iteration', label: '逐条校验' },
+          }),
+          node('start', 'iteration-start', { parentId: 'iter' }),
+          node('res', 'result', {
+            parentId: 'iter',
+            data: { nodeType: 'result', config: { outputKey: 'rec' } },
+          }),
+          node('m', 'merge'),
+        ],
+        [
+          execEdge('trig', 'iter'),
+          execEdge('start', 'res'),
+          execEdge('iter', 'm'),
+          {
+            id: 'e-iter-rec-m',
+            source: 'iter',
+            target: 'm',
+            sourceHandle: 'rec',
+            targetHandle: 'input-0',
+          },
+        ],
+      ),
+    ).toEqual([]);
+  });
+
   it('悬空端点与不存在的端口逐条报错', () => {
     expect(
       collect(

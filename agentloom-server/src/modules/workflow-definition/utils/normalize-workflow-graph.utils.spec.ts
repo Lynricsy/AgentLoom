@@ -1002,4 +1002,72 @@ describe('normalizeWorkflowNodesAndEdges', () => {
     expect(inputPort('break-a')).toMatchObject({ acceptsAnyDataType: true });
     expect(inputPort('merge-a')?.acceptsAnyDataType).toBeUndefined();
   });
+
+  it('迭代/循环容器按内部 Result 的输出键补齐同名输出端口，已有端口保持不变（D-158）', () => {
+    const node = (
+      id: string,
+      nodeType: string,
+      extra: Record<string, unknown> = {},
+    ) => ({
+      id,
+      type: 'control',
+      position: { x: 0, y: 0 },
+      data: { nodeType, config: {} },
+      ...extra,
+    });
+    const { nodes, edges } = normalizeWorkflowNodesAndEdges(
+      [
+        node('iter', 'iteration'),
+        node('res', 'result', {
+          parentId: 'iter',
+          data: { nodeType: 'result', config: { outputKey: 'rec' } },
+        }),
+        node('res-default', 'result', { parentId: 'iter' }),
+        node('loop', 'loop', {
+          data: {
+            nodeType: 'loop',
+            outputPorts: [{ id: 'exec-out' }, { id: 'total', label: '总数' }],
+          },
+        }),
+        node('res-loop', 'result', {
+          parentId: 'loop',
+          data: { nodeType: 'result', config: { outputKey: 'total' } },
+        }),
+        node('merge', 'merge'),
+      ] as never,
+      [
+        {
+          id: 'e1',
+          source: 'iter',
+          sourceHandle: 'rec',
+          target: 'merge',
+          targetHandle: 'input-0',
+        },
+      ] as never,
+    );
+
+    const outputPorts = (nodeId: string) =>
+      nodes.find((item) => item.id === nodeId)?.data.outputPorts as Array<
+        Record<string, unknown>
+      >;
+
+    expect(outputPorts('iter').map((port) => port.id)).toEqual([
+      'exec-out',
+      'rec',
+      'result',
+    ]);
+    expect(outputPorts('iter')[1]).toMatchObject({
+      direction: 'output',
+      dataType: 'json',
+      acceptsAnyDataType: true,
+      multiple: true,
+      maxConnections: null,
+    });
+    expect(outputPorts('loop').map((port) => port.id)).toEqual([
+      'exec-out',
+      'total',
+    ]);
+    expect(outputPorts('loop')[1]).toMatchObject({ label: '总数' });
+    expect(edges[0]).toMatchObject({ sourceHandle: 'rec' });
+  });
 });

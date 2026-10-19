@@ -1388,6 +1388,65 @@ function dropUnconnectedSubAgentsPort(
     : { ...node, data: { ...node.data, inputPorts: keptPorts } };
 }
 
+const COMPOUND_CONTAINER_NODE_TYPES = new Set(['loop', 'iteration']);
+
+/**
+ * 循环/迭代容器按容器内 Result 节点的输出键补齐同名输出端口（与 Studio buildCompoundOutputPorts、
+ * guide/nodes/iteration.md 一致），REST 直接提交的图不必手写容器 outputPorts（D-158）。
+ * 只补缺失的端口、不删已有端口：旧快照里的自定义端口保持原样，由发布期连线校验兜底。
+ */
+function deriveCompoundOutputPorts(nodes: ReactFlowNode[]): ReactFlowNode[] {
+  const outputKeysByContainer = new Map<string, string[]>();
+  for (const node of nodes) {
+    const parentId = readNonEmptyString(
+      node.parentId,
+      (node as unknown as JsonRecord).parent_id,
+    );
+    if (!parentId || node.data?.nodeType !== 'result') {
+      continue;
+    }
+    const config = isRecord(node.data.config) ? node.data.config : {};
+    const outputKey =
+      readNonEmptyString(
+        config.outputKey,
+        config.output_key,
+        node.data.outputKey,
+      ) ?? 'result';
+    const keys = outputKeysByContainer.get(parentId) ?? [];
+    if (!keys.includes(outputKey)) {
+      keys.push(outputKey);
+    }
+    outputKeysByContainer.set(parentId, keys);
+  }
+
+  return nodes.map((node) => {
+    const outputKeys = outputKeysByContainer.get(node.id);
+    if (
+      !outputKeys ||
+      !COMPOUND_CONTAINER_NODE_TYPES.has(String(node.data?.nodeType))
+    ) {
+      return node;
+    }
+    const outputPorts = readNodePortRecords(node.data, 'output');
+    const missingPorts = outputKeys
+      .filter((outputKey) => !outputPorts.some((port) => port.id === outputKey))
+      .map((outputKey) =>
+        portTemplateToRecord({
+          ...createAnyJsonPortTemplate(outputKey, outputKey, 'output'),
+          description: `由 result 节点输出到父容器的 ${outputKey}`,
+          multiple: true,
+          maxConnections: null,
+        }),
+      );
+    return missingPorts.length === 0
+      ? node
+      : {
+          ...node,
+          data: { ...node.data, outputPorts: [...outputPorts, ...missingPorts] },
+        };
+  });
+}
+
 export function normalizeWorkflowNodesAndEdges(
   nodes: ReactFlowNode[] | null | undefined,
   edges: ReactFlowEdge[] | null | undefined,
@@ -1396,7 +1455,7 @@ export function normalizeWorkflowNodesAndEdges(
   edges: ReactFlowEdge[];
 } {
   const normalizedNodes = Array.isArray(nodes)
-    ? nodes.map(normalizeWorkflowNode)
+    ? deriveCompoundOutputPorts(nodes.map(normalizeWorkflowNode))
     : [];
   const nodesById = new Map(normalizedNodes.map((node) => [node.id, node]));
   const normalizedEdges = Array.isArray(edges)
