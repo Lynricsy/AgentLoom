@@ -19,6 +19,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `validation-error` | 422 | 请求体或参数未通过校验 | 按 `errors` 中每项的 `field` 与 `message` 修正后重试 |
 | `http-error` | 随原错误 | 未归类的 HTTP 错误，`detail` 为原始消息 | 按 `status` 与 `detail` 判断 |
 | `internal-server-error` | 500 | 未处理的服务端异常 | 记录 `instance` 与发生时间，交给部署管理员查服务端日志 |
+| `not-found` | 404 | 路径或查询参数中的资源 ID 不是合法 UUID，资源不可能存在 | 核对链接或请求中的 ID |
 | `rate-limit-exceeded` | 429 | 超过每分钟请求上限 | 按响应头 `Retry-After` 等待后重试；`X-RateLimit-*` 头给出上限与剩余次数 |
 | `resource-governance-decision-blocked` | 429 或 409 | 被组织的资源治理策略拦截；平台 API Token 超出每分钟调用上限时为 429，其他治理拦截为 409 | 查看 `detail`，联系组织管理员调整配额或策略 |
 | `resource-governance-access-denied` | 403 | 资源治理拒绝访问 | 联系组织管理员 |
@@ -115,6 +116,24 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `document-empty-file` | 422 | 文件为空 | 检查文件内容 |
 | `document-parse-failed` | 422 | 文档解析失败 | 确认文件未损坏，或转换格式后重新上传 |
 | `document-chunk-failed` | 500 | 文档切分失败 | 重新上传；持续出现时联系部署管理员 |
+| `knowledge-base-embedding-model-invalid` | 422 | 知识库绑定的模型配置不是 Embedding 类型 | 选择模型类型为 Embedding 的模型配置 |
+| `document-multipart-required` | 415 | 文档上传请求不是 `multipart/form-data` | 以 `multipart/form-data` 上传，文件放在 `file` 字段 |
+
+## Skill
+
+| type | HTTP 状态 | 含义 | 处理建议 |
+| --- | --- | --- | --- |
+| `skill-not-found` | 404 | Skill 不存在或不属于当前组织 | 确认链接与当前组织 |
+| `skill-file-not-found` | 404 | 内置 Skill 的文件不存在 | 确认文件名 |
+| `skill-builtin-readonly` | 403 | 内置 Skill 不能修改、归档、删除或增删文件 | 复制为自建 Skill 后再修改 |
+| `skill-name-conflict` | 409 | 组织内已有同名 Skill | 换一个名称 |
+| `skill-version-conflict` | 409 | Skill 已被其他用户或其他标签页修改 | 刷新后重新编辑 |
+| `skill-already-archived` | 409 | Skill 已归档 | 无需再次归档 |
+| `skill-file-name-invalid` | 400 | 文件名或相对路径不合法 | 去掉 `..`、绝对路径与非法字符 |
+| `skill-file-name-conflict` | 409 | 同一次上传中有重复的文件路径 | 去掉重复文件后重新上传 |
+| `skill-file-required` | 400 | multipart 请求中没有文件 | 至少选择一个文件 |
+| `skill-file-too-large` | 400 | 单个文件超过 5 MB | 缩小或拆分文件 |
+| `skill-multipart-required` | 415 | 上传请求不是 `multipart/form-data` | 以 `multipart/form-data` 上传 |
 
 ## 模型、MCP 与智能路由
 
@@ -125,12 +144,21 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `llm/config-not-found` | 404 | 引用的模型配置不存在 | 在 Agent 画布的 LLM 模型节点中重新选择配置 |
 | `llm/config-validation` | 400 | 模型配置校验失败 | 按 `detail` 修正配置 |
 | `llm/provider-deletion-forbidden` | 403 | 内置模型服务商不能删除 | 无需处理 |
+| `llm/config-name-conflict` | 409 | 组织内已有同名模型配置 | 换一个名称 |
+| `llm/provider-not-found` | 404 | 模型服务商不存在或不属于当前组织 | 确认服务商未被删除 |
+| `llm/provider-slug-conflict` | 409 | 组织内已有相同 slug 的模型服务商 | 换一个 slug |
+| `llm/builtin-provider-field-immutable` | 403 | 内置模型服务商的 slug 与接口协议不能修改 | 只修改 Base URL、API Key 等可编辑字段 |
 | `mcp/connection-failed` | 502 | 无法连接 MCP 服务 | 检查 MCP 服务地址与凭据，见 [MCP 工具](/guide/integrations/mcp-tools) |
 | `mcp/connection-timeout` | 504 | 连接 MCP 服务超时 | 确认服务可从 AgentLoom 服务端访问 |
 | `mcp/discovery-failed` | 502 | MCP 工具发现失败 | 确认服务实现了工具列表接口 |
 | `mcp/stdio-disabled` | 403 | 当前部署禁止在服务端启动 stdio MCP 进程 | 改用 SSE 或 HTTP 传输；单租户自托管可由管理员设置 `APP_MCP_STDIO_ENABLED=true`，见 [MCP 工具](/guide/integrations/mcp-tools) |
+| `mcp/server-config-not-found` | 404 | MCP 服务器配置不存在或已被删除 | 在「资源 → MCP 服务」重新接入；删除配置会同时停用其导入的工具 |
+| `mcp/tool-not-found` | 404 | MCP 工具不存在 | 刷新工具列表 |
+| `mcp/tool-deactivation-not-allowed` | 409 | 只能停用从 MCP 服务导入的工具 | 内置或自定义工具无需停用 |
+| `mcp/import-conflict` | 409 | 导入的工具与已有工具冲突 | 选择「跳过」或「覆盖」冲突策略 |
 | `routing/no-eligible-candidate` | 503 | 没有满足条件的候选模型：候选为空，或全部断路，或上下文窗口都小于输入 token 数 | 按 `detail` 中的候选数与健康数检查模型连接、Provider 状态与输入长度，见[智能路由](/guide/nodes/smart-routing) |
 | `routing/fallback-exhausted` | 503 | 所有候选模型都不可用 | 检查各模型的健康状态 |
+| `routing/strategy-not-found` | 404 | 路由策略不存在或未公开 | 从策略列表中选择 |
 
 ## 沙箱
 
@@ -144,6 +172,9 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `sandbox-config-validation` | 400 | 沙箱资源配置不合法 | 按 `detail` 修正 CPU、内存、磁盘或超时 |
 | `sandbox-skill-payload-too-large` | 422 | 下发到沙箱会话的文件（技能与 runtime 插件包文件）单个超过 1 MiB 或合计超过 16 MiB | 减少 Agent 绑定的技能或插件，或缩小其中的文件 |
 | `sandbox-runtime-plugin-unsupported-file` | 422 | runtime 插件包含非文本文件，不能下发到沙箱 | 请插件开发者移除二进制文件后重新打包上传 |
+| `sandbox-node-not-found` | 404 | 沙箱运行时节点不存在 | 刷新节点列表 |
+| `sandbox-node-conflict` | 409 | 节点名称或地址已登记，或节点未停用、仍有 microVM、无法探测时不能删除 | 按 `detail` 处理：先把节点状态改为 disabled、销毁其上的 microVM；节点不可达时带 `force=true` 删除 |
+| `sandbox-stats-unavailable` | 409 | 当前无法获取沙箱统计信息 | 稍后重试 |
 
 ## API Token
 
@@ -160,10 +191,41 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | --- | --- | --- | --- |
 | `generated-app-public-share-not-ready` | 409 | 应用就绪状态不是发布候选，不能开启公开分享 | 见[生成应用](/guide/generated-apps/#门禁与就绪状态) |
 | `generated-app-public-submission-invalid` | 422 | 公开应用的提交内容未通过校验 | 按页面提示补齐必填字段 |
+| `generated-app-not-found` | 404 | 生成应用不存在或不属于当前组织 | 确认链接与当前组织 |
+| `generated-app-artifact-not-found` | 404 | 生成应用的交付物不存在 | 重新生成 |
+| `generated-app-submission-not-found` | 404 | 生成应用的提交记录不存在 | 确认提交 ID |
 | `share-expired` | 410 | 分享链接已过期 | 请分享者重新生成链接 |
 | `share-revoked` | 410 | 分享链接已撤销 | 同上 |
 | `share-workflow-not-published` | 409 | 被分享的工作流尚未发布 | 请分享者发布工作流 |
 | `workflow-import-validation` | 422 | 导入的工作流文件无效 | 检查导出文件是否完整 |
 | `workflow-import-model-not-found` | 409 | 当前组织缺少工作流依赖的模型配置 | 先创建所需模型配置，再导入 |
+
+## 插件与市场
+
+| type | HTTP 状态 | 含义 | 处理建议 |
+| --- | --- | --- | --- |
+| `plugin-not-found` | 404 | 插件不存在或不属于当前组织 | 确认插件未被删除 |
+| `plugin-already-exists` | 409 | 该插件 ID 与版本已在当前组织注册 | 提升 `version` 后重新构建上传；从市场重装已卸载的插件会直接重新启用原副本 |
+| `plugin-version-conflict` | 409 | 插件已被其他用户修改 | 刷新后重试 |
+| `plugin-validation-failed` | 422 | 插件包校验失败，`detail` 为原因 | 按 `detail` 修正插件包 |
+| `plugin-inactive` | 422 | 插件未启用 | 在「插件」列表中启用后重试 |
+| `plugin-signature-missing` | 400 | 插件包没有签名 | 用 `agentloom-plugin publish -k` 签名后上传 |
+| `plugin-signature-invalid` | 401 | 签名校验失败：归档被改动，或签名公钥未在本组织登记 / 已撤销 | 重新签名，确认公钥已登记且未撤销 |
+| `plugin-developer-key-invalid` | 400 | 开发者公钥格式无效：需要 RSA-2048 位或更长的 PEM 公钥 | 重新导出公钥 |
+| `plugin-developer-key-not-found` | 404 | 开发者公钥不存在或不属于当前组织 | 刷新公钥列表 |
+| `plugin-developer-key-conflict` | 409 | 相同指纹的公钥已登记；已撤销的公钥不能重新登记 | 使用已登记的公钥，或生成新的密钥对 |
+| `plugin-developer-key-already-revoked` | 409 | 公钥已被撤销 | 无需再次撤销 |
+| `runtime-plugin-not-found` | 404 | runtime 插件不存在或不属于当前组织 | 确认插件未被删除 |
+| `runtime-plugin-already-exists` | 409 | 该 runtime 插件 ID 与版本已注册 | 提升版本后重新上传 |
+| `runtime-plugin-version-conflict` | 409 | runtime 插件已被其他用户修改 | 刷新后重试 |
+| `runtime-plugin-validation-failed` | 422 | runtime 插件包校验失败 | 按 `detail` 修正插件包 |
+| `runtime-plugin-unsupported-dsh-version` | 422 | runtime 插件声明的 dsh 版本不受支持 | 按[开发 runtime 插件](/api/plugins/runtime)改用支持的 `dshVersion` |
+| `marketplace-listing-not-found` | 404 | 市场条目不存在、未上架或无权访问 | 确认条目仍在市场中 |
+| `marketplace-listing-conflict` | 409 | 市场条目当前状态不允许该操作，响应带 `currentStatus` | 刷新后按当前状态操作 |
+| `marketplace-workflow-version-not-found` | 404 | 提交到市场的工作流版本不存在 | 选择已发布的工作流版本 |
+| `marketplace-review-failed` | 422 | 上架审查未通过，响应带 `reviewResult` | 按未通过的检查项修正后重新提交 |
+| `marketplace-review-conflict` | 409 | 你已评价过该条目 | 每个账号对同一条目只能评价一次 |
+| `marketplace-review-install-required` | 403 | 评价插件条目前需要本组织已安装该插件 | 先安装插件 |
+| `marketplace-review-own-listing` | 403 | 不能评价本组织发布的条目 | 无需处理 |
 
 插件上传、签名与运行的错误类型见[插件开发](/api/plugins/)；runtime 插件的上传错误见[开发 runtime 插件](/api/plugins/runtime#出错时)。
