@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TokenBlacklistModule } from '../../common/services/token-blacklist.module';
 import { DatabaseModule } from '../../database/database.module';
+import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
 import { AuditLogService } from '../evidence/audit-log.service';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 import { McpModule } from '../mcp/mcp.module';
@@ -28,6 +29,7 @@ import { ACP_TEST_SANDBOX_RUNTIME_PROVIDER } from './testing/acp-test-sandbox-ru
   imports: [
     ConfigModule,
     DatabaseModule,
+    AgentDefinitionModule,
     TokenBlacklistModule,
     McpModule,
     SandboxModule,

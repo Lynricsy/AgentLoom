@@ -1,11 +1,25 @@
 import { isAbsolute } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { and, eq } from 'drizzle-orm';
+import { validate as isUuid } from 'uuid';
 import type { IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import { DomainException } from '../../../common/exceptions/domain.exception';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import {
+  agentDefinitions,
+  agentVersions,
+} from '../../../database/schema/agent-definitions.schema';
+import { AgentNotPublishedException } from '../../agent-api/agent-api.exceptions';
+import {
+  AgentArchivedException,
+  AgentNotFoundException,
+} from '../../agent-definition/agent-definition.exceptions';
+import { AgentDefinitionService } from '../../agent-definition/agent-definition.service';
 import { resolveAcpAgentRuntime } from '../resolve-acp-agent-runtime';
 import type {
+  CreateSessionParams,
   McpServerConfig,
   ServerSandboxBinding,
 } from '../../agent/types/agent-session.types';
@@ -30,6 +44,7 @@ export class SessionNewHandler {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly moduleRef: ModuleRef,
     private readonly mcpSessionService: AcpSessionMcpRegistryService,
+    private readonly agentDefinitionService: AgentDefinitionService,
   ) {}
 
   async handle(
@@ -43,11 +58,17 @@ export class SessionNewHandler {
 
     const normalizedParams = this.readParams(params);
     try {
-      return await runInTenantTransaction(this.db, tenantId, async () => {
+      return await runInTenantTransaction(this.db, tenantId, async (tx) => {
+        const agentRuntimeParams = await this.resolvePublishedAgent(
+          tx,
+          tenantId,
+          normalizedParams.agentId,
+        );
         const session = await this.getAgentRuntime().createSession({
           agentId: normalizedParams.agentId,
           mode: 'conversation',
           tenantId,
+          ...agentRuntimeParams,
           ...(normalizedParams.cwd === undefined
             ? {}
             : { cwd: normalizedParams.cwd }),
@@ -101,7 +122,10 @@ export class SessionNewHandler {
         };
       });
     } catch (error) {
-      if (error instanceof AcpJsonRpcError) {
+      if (
+        error instanceof AcpJsonRpcError ||
+        error instanceof DomainException
+      ) {
         throw error;
       }
 
@@ -109,6 +133,97 @@ export class SessionNewHandler {
         reason: this.getErrorMessage(error),
       });
     }
+  }
+
+  /**
+   * 会话按 Agent 的已发布版本运行：Agent 必须属于当前租户（RLS 事务内查询）、
+   * 未归档且已发布。ACP 会话由进程内运行时执行，sandbox 运行态的 Agent 不能在此运行，
+   * 否则沙箱隔离（及 stdio MCP 只在沙箱内执行的约束）会被绕过。
+   */
+  private async resolvePublishedAgent(
+    tx: DrizzleDB,
+    tenantId: string,
+    agentId: string,
+  ): Promise<
+    Pick<CreateSessionParams, 'llmModelConfigId' | 'systemPrompt'> &
+      Required<Pick<CreateSessionParams, 'runtimeConfig'>>
+  > {
+    if (!isUuid(agentId)) {
+      throw new AgentNotFoundException(agentId);
+    }
+
+    const [agent] = await tx
+      .select({
+        status: agentDefinitions.status,
+        runtimeMode: agentDefinitions.runtimeMode,
+        publishedVersionId: agentDefinitions.publishedVersionId,
+      })
+      .from(agentDefinitions)
+      .where(
+        and(
+          eq(agentDefinitions.id, agentId),
+          eq(agentDefinitions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!agent) {
+      throw new AgentNotFoundException(agentId);
+    }
+    if (agent.status === 'archived') {
+      throw new AgentArchivedException(agentId);
+    }
+    if (agent.status !== 'published' || !agent.publishedVersionId) {
+      throw new AgentNotPublishedException(agentId);
+    }
+
+    const [version] = await tx
+      .select({ snapshot: agentVersions.snapshot })
+      .from(agentVersions)
+      .where(
+        and(
+          eq(agentVersions.id, agent.publishedVersionId),
+          eq(agentVersions.agentDefinitionId, agentId),
+        ),
+      )
+      .limit(1);
+    if (!version) {
+      throw new AgentNotPublishedException(agentId);
+    }
+
+    const { snapshot } = version;
+    const runtimeMode =
+      snapshot.runtimeMode === 'sandbox' ||
+      snapshot.runtimeMode === 'no_sandbox'
+        ? snapshot.runtimeMode
+        : agent.runtimeMode;
+    if (runtimeMode !== 'no_sandbox') {
+      throw new AcpJsonRpcError(-32602, 'Invalid params', {
+        agentId,
+        reason: 'Only no_sandbox agents can run over ACP',
+      });
+    }
+
+    const runtimeConfig =
+      this.agentDefinitionService.buildRuntimeConfigFromNodes(
+        snapshot.nodes,
+        snapshot.edges,
+        agentId,
+        runtimeMode,
+      );
+    const systemPrompt =
+      this.agentDefinitionService.resolveSystemPromptFromNodes(
+        snapshot.nodes,
+        snapshot.edges,
+      ) ?? snapshot.systemPrompt;
+
+    return {
+      runtimeConfig,
+      ...(runtimeConfig.modelConfig?.modelId
+        ? { llmModelConfigId: runtimeConfig.modelConfig.modelId }
+        : {}),
+      ...(systemPrompt ? { systemPrompt } : {}),
+    };
   }
 
   private getAgentRuntime(): IAgentRuntime {
