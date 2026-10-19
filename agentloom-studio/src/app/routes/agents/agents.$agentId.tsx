@@ -132,8 +132,10 @@ function AgentCanvasPage() {
     [notify],
   );
 
+  /** 离开确认框打开期间暂停自动保存，否则「放弃修改并离开」前修改已被自动保存 */
+  const [isLeavePending, setIsLeavePending] = useState(false);
   useAgentCanvasAutoSave(agentId, {
-    enabled: !isMobileReadOnly,
+    enabled: !isMobileReadOnly && !isLeavePending,
     saveCanvas,
     onError: (error) => void handleAutoSaveError(error),
   });
@@ -182,7 +184,10 @@ function AgentCanvasPage() {
     <ReactFlowProvider>
       <div className="relative h-full w-full">
         <AgentCanvas agentId={agentId} />
-        <AgentCanvasLeaveGuard onSave={ensureCanvasSaved} />
+        <AgentCanvasLeaveGuard
+          onSave={ensureCanvasSaved}
+          onPendingChange={setIsLeavePending}
+        />
 
         <div
           className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"

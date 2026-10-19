@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { useBlocker } from '@tanstack/react-router';
 import {
   AlertDialog,
@@ -19,13 +19,18 @@ function hasUnsavedChanges(): boolean {
 interface AgentCanvasLeaveGuardProps {
   /** 保存当前画布；返回 false 表示保存失败（调用方已提示），留在页面 */
   onSave: () => Promise<boolean>;
+  /** 确认框打开 / 关闭；打开期间调用方须暂停自动保存，「放弃修改」才真正不落库 */
+  onPendingChange: (pending: boolean) => void;
 }
 
 /**
  * 有未保存修改（含自动保存防抖期内与保存进行中）时拦截离开：
  * 站内跳转弹出确认框，可「保存并离开」「放弃修改」或留下；刷新 / 关闭标签页走浏览器原生 beforeunload 提示。
  */
-export function AgentCanvasLeaveGuard({ onSave }: AgentCanvasLeaveGuardProps) {
+export function AgentCanvasLeaveGuard({
+  onSave,
+  onPendingChange,
+}: AgentCanvasLeaveGuardProps) {
   const [isSaving, setIsSaving] = useState(false);
   const blocker = useBlocker({
     shouldBlockFn: ({ current, next }) =>
@@ -34,6 +39,10 @@ export function AgentCanvasLeaveGuard({ onSave }: AgentCanvasLeaveGuardProps) {
     withResolver: true,
   });
   const isBlocked = blocker.status === 'blocked';
+
+  useEffect(() => {
+    onPendingChange(isBlocked);
+  }, [isBlocked, onPendingChange]);
 
   const handleSaveAndLeave = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();

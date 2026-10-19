@@ -16,6 +16,7 @@ export interface UseAgentCanvasAutoSaveOptions {
  * 有未保存修改且内容变化后防抖保存。
  * - 保存进行中的编辑不立即排期；保存返回后若仍有未保存修改（advanceVersion 推进了版本），再排一次。
  * - 保存失败不自动重试，避免失败提示刷屏；下一次编辑会重新排期。
+ * - enabled 关闭期间（如离开确认框打开）不保存；重新开启时已有未保存修改则立即排期。
  */
 export function useAgentCanvasAutoSave(
   agentId: string,
@@ -32,6 +33,20 @@ export function useAgentCanvasAutoSave(
     }
 
     let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const scheduleSave = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const state = useAgentCanvasStore.getState();
+        // 手动保存可能已在途或已完成：在途时由其返回后的状态变化重新排期
+        if (state.agentId !== agentId || !state.isDirty || state.isSaving) {
+          return;
+        }
+        void saveCanvasRef.current().catch((error: unknown) => {
+          onErrorRef.current(error);
+        });
+      }, AUTOSAVE_DEBOUNCE_MS);
+    };
 
     const unsubscribe = useAgentCanvasStore.subscribe(
       (state) => ({
@@ -70,20 +85,15 @@ export function useAgentCanvasAutoSave(
           return;
         }
 
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          const state = useAgentCanvasStore.getState();
-          // 手动保存可能已在途或已完成：在途时由其返回后的状态变化重新排期
-          if (state.agentId !== agentId || !state.isDirty || state.isSaving) {
-            return;
-          }
-          void saveCanvasRef.current().catch((error: unknown) => {
-            onErrorRef.current(error);
-          });
-        }, AUTOSAVE_DEBOUNCE_MS);
+        scheduleSave();
       },
       { equalityFn: shallow },
     );
+
+    const initial = useAgentCanvasStore.getState();
+    if (initial.agentId === agentId && initial.isDirty && !initial.isSaving) {
+      scheduleSave();
+    }
 
     return () => {
       unsubscribe();

@@ -111,4 +111,25 @@ describe("useAgentCanvasAutoSave", () => {
 
     expect(saveCanvas).not.toHaveBeenCalled();
   });
+
+  it("防抖期内被暂停（离开确认框打开）则不保存，恢复后补存未保存修改", async () => {
+    const { rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useAgentCanvasAutoSave("agent-1", { enabled, saveCanvas, onError }),
+      { initialProps: { enabled: true } },
+    );
+
+    editInputSchema("a");
+    rerender({ enabled: false });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS * 2);
+    });
+    expect(saveCanvas).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS);
+    });
+    expect(saveCanvas).toHaveBeenCalledTimes(1);
+  });
 });

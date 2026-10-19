@@ -11,14 +11,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAgentCanvasStore } from '../stores/agent-canvas.store';
 import { AgentCanvasLeaveGuard } from './AgentCanvasLeaveGuard';
 
-function renderGuard(onSave: () => Promise<boolean>) {
+function renderGuard(
+  onSave: () => Promise<boolean>,
+  onPendingChange: (pending: boolean) => void = vi.fn(),
+) {
   const rootRoute = createRootRoute();
   const canvasRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/agents/a-1',
     component: () => (
       <>
-        <AgentCanvasLeaveGuard onSave={onSave} />
+        <AgentCanvasLeaveGuard
+          onSave={onSave}
+          onPendingChange={onPendingChange}
+        />
         <Link to="/agents">返回列表</Link>
       </>
     ),
@@ -56,16 +62,20 @@ describe('AgentCanvasLeaveGuard', () => {
       useAgentCanvasStore.setState({ isDirty: false });
       return true;
     });
-    renderGuard(onSave);
+    const onPendingChange = vi.fn();
+    renderGuard(onSave, onPendingChange);
 
     fireEvent.click(await screen.findByText('返回列表'));
     expect(
       await screen.findByTestId('agent-canvas-leave-dialog'),
     ).toBeInTheDocument();
+    // 确认框打开期间通知调用方暂停自动保存，关闭后恢复
+    expect(onPendingChange).toHaveBeenLastCalledWith(true);
     fireEvent.click(screen.getByRole('button', { name: '留在此页' }));
     await waitFor(() =>
       expect(screen.queryByTestId('agent-canvas-leave-dialog')).toBeNull(),
     );
+    expect(onPendingChange).toHaveBeenLastCalledWith(false);
     expect(screen.queryByText('Agent 列表')).toBeNull();
 
     fireEvent.click(screen.getByText('返回列表'));
