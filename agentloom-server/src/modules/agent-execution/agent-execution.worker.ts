@@ -1373,6 +1373,7 @@ export class AgentExecutionWorker extends WorkerHost {
           Boolean(executionMetadata.lastProcessedMessageId),
           historyMessages,
           conversationMetadata,
+          abort.signal,
         );
 
         const hadPriorAssistant = !!executionMetadata.lastAssistantMessageId;

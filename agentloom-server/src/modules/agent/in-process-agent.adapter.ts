@@ -25,6 +25,11 @@ interface SessionMetadata {
   readonly stepId: string;
 }
 
+/** 进行中的 prompt：cancel 落在调用 core prompt 之前的等待间隙时，由它把本轮判为取消。 */
+interface InFlightPrompt {
+  cancelled: boolean;
+}
+
 @Injectable()
 export class InProcessAgentAdapter implements IAgentRuntime {
   private readonly logger = new Logger(InProcessAgentAdapter.name);
@@ -35,6 +40,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     SessionToolProvider[]
   >();
   private readonly runtimeSessionIds = new Map<string, string>();
+  private readonly inFlightPrompts = new Map<string, InFlightPrompt>();
   private readonly coreAdapter: PiAgentCoreAdapter;
 
   constructor(
@@ -180,9 +186,30 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     sessionId: string,
     content: ContentBlock[],
   ): AsyncGenerator<AgentEvent> {
+    const inFlight: InFlightPrompt = { cancelled: false };
+    this.inFlightPrompts.set(sessionId, inFlight);
+    try {
+      yield* this.promptInFlight(sessionId, content, inFlight);
+    } finally {
+      if (this.inFlightPrompts.get(sessionId) === inFlight) {
+        this.inFlightPrompts.delete(sessionId);
+      }
+    }
+  }
+
+  private async *promptInFlight(
+    sessionId: string,
+    content: ContentBlock[],
+    inFlight: InFlightPrompt,
+  ): AsyncGenerator<AgentEvent> {
     const snapshot = await this.loadSession(sessionId);
 
-    if (snapshot.status === 'completed') {
+    // 对话 session 的取消只结束当前回合，之后的 prompt 照常执行；
+    // 工作流 session 被取消即该步骤结束，不再接受 prompt。
+    if (
+      inFlight.cancelled ||
+      (snapshot.mode !== 'conversation' && snapshot.status === 'completed')
+    ) {
       yield { type: 'done', stopReason: 'cancelled' } as const;
       await this.persistSnapshot(sessionId, snapshot);
       return;
@@ -199,6 +226,11 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       sessionId,
       snapshot,
     );
+    if (inFlight.cancelled) {
+      yield { type: 'done', stopReason: 'cancelled' } as const;
+      await this.persistSnapshot(sessionId, snapshot);
+      return;
+    }
     const promptBlocks = restored
       ? [...snapshot.context.history, ...content]
       : content;
@@ -247,8 +279,16 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     }
   }
 
+  /**
+   * 取消只终止进行中的回合：对话 session 仍可继续 prompt（与 sandbox 适配器、ACP session/cancel 语义一致）；
+   * 工作流 session 标记为 completed，该步骤不再接受 prompt。
+   */
   async cancel(sessionId: string): Promise<void> {
     const runtimeSessionId = this.runtimeSessionIds.get(sessionId) ?? sessionId;
+    const inFlight = this.inFlightPrompts.get(sessionId);
+    if (inFlight) {
+      inFlight.cancelled = true;
+    }
 
     try {
       await this.coreAdapter.cancel(runtimeSessionId);
@@ -262,7 +302,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
         meta.stepId,
       );
       if (session) {
-        session.status = 'completed';
+        session.status =
+          session.mode === 'conversation' ? 'active' : 'completed';
         session.updatedAt = new Date();
         await this.persistSnapshot(sessionId, session);
       }
@@ -270,7 +311,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
 
     const snapshot = this.sessionSnapshots.get(sessionId);
     if (snapshot) {
-      snapshot.status = 'completed';
+      snapshot.status =
+        snapshot.mode === 'conversation' ? 'active' : 'completed';
       snapshot.updatedAt = new Date();
       await this.persistSnapshot(sessionId, snapshot);
     }

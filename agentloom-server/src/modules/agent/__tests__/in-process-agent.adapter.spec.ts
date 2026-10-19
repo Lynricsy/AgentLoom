@@ -506,11 +506,16 @@ describe('InProcessAgentAdapter', () => {
       );
     });
 
-    it('已完成 session 再次 prompt 时会直接返回 cancelled', async () => {
+    it('已完成的 workflow session 再次 prompt 时会直接返回 cancelled', async () => {
       const session = await adapter.createSession({
         agentId: 'agent-001',
-        mode: 'conversation',
+        mode: 'workflow',
         tenantId: 'tenant-001',
+        context: {
+          executionId: 'exec-001',
+          stepId: 'step-001',
+          nodeId: 'node-001',
+        },
       });
       hoisted.setRuntimeSession({
         ...(await adapter.loadSession(session.id)),
@@ -520,6 +525,82 @@ describe('InProcessAgentAdapter', () => {
       await expect(
         collectEvents(adapter.prompt(session.id, [textBlock])),
       ).resolves.toEqual([{ type: 'done', stopReason: 'cancelled' }]);
+      expect(hoisted.prompt).not.toHaveBeenCalled();
+    });
+
+    it('conversation 取消上一回合后，下一次 prompt 照常执行', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+      });
+      hoisted.queuePromptBehavior({
+        events: [{ type: 'done', stopReason: 'cancelled' }],
+      });
+      await collectEvents(adapter.prompt(session.id, [textBlock]));
+      await adapter.cancel(session.id);
+
+      hoisted.queuePromptBehavior({
+        events: [
+          { type: 'message_chunk', content: '收到' },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
+      });
+      await expect(
+        collectEvents(adapter.prompt(session.id, [textBlock])),
+      ).resolves.toEqual([
+        { type: 'message_chunk', content: '收到' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+      expect(hoisted.prompt).toHaveBeenCalledTimes(2);
+    });
+
+    it('durable store 中残留 completed 的 conversation session 恢复后仍可 prompt', async () => {
+      mockSessionPersistence.loadConversationSession.mockResolvedValue({
+        id: 'persisted-session',
+        agentId: 'agent-001',
+        mode: 'conversation',
+        context: { history: [] },
+        status: 'completed',
+        tenantId: 'tenant-001',
+        createdAt: NOW,
+        updatedAt: NOW,
+      } satisfies AgentSession);
+
+      await expect(
+        collectEvents(adapter.prompt('persisted-session', [textBlock])),
+      ).resolves.toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+      expect(hoisted.prompt).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancel 落在调用 core prompt 之前时本轮直接 cancelled，不调用模型', async () => {
+      const session = await adapter.createSession({
+        agentId: 'agent-001',
+        mode: 'conversation',
+        tenantId: 'tenant-001',
+      });
+      let releaseReplay!: () => void;
+      mockSessionPersistence.appendConversationReplayEntry.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseReplay = resolve;
+          }),
+      );
+
+      const iterator = adapter
+        .prompt(session.id, [textBlock])
+        [Symbol.asyncIterator]();
+      const first = iterator.next();
+      await vi.waitFor(() => expect(releaseReplay).toBeTypeOf('function'));
+      await adapter.cancel(session.id);
+      releaseReplay();
+
+      await expect(first).resolves.toEqual({
+        done: false,
+        value: { type: 'done', stopReason: 'cancelled' },
+      });
+      await expect(iterator.next()).resolves.toMatchObject({ done: true });
+      expect(hoisted.prompt).not.toHaveBeenCalled();
     });
   });
 
@@ -575,7 +656,7 @@ describe('InProcessAgentAdapter', () => {
   });
 
   describe('cancel', () => {
-    it('conversation cancel 后会把 completed 状态写回 durable store', async () => {
+    it('conversation cancel 只终止当前回合，durable store 中 session 保持 active', async () => {
       const session = await adapter.createSession({
         agentId: 'agent-001',
         mode: 'conversation',
@@ -590,7 +671,7 @@ describe('InProcessAgentAdapter', () => {
       ).toHaveBeenLastCalledWith(
         expect.objectContaining({
           id: session.id,
-          status: 'completed',
+          status: 'active',
         }),
       );
     });

@@ -741,6 +741,7 @@ export class AgentExecutionWorkerRuntimeService {
     hasPriorTurns: boolean,
     historyMessages: ConversationHistoryMessage[] = [],
     conversationMetadata: Record<string, unknown> = {},
+    abortSignal?: AbortSignal,
   ): Promise<ConversationTurnResult> {
     const accumulator = new AgentTurnEventAccumulator<DecisionEvent>({
       mapDecision: (event) => event,
@@ -772,6 +773,12 @@ export class AgentExecutionWorkerRuntimeService {
       });
 
       while (true) {
+        // 取消可能落在 loop 检查之后、本轮调用 runtime 之前；runtime 的 cancel 只终止进行中的回合，
+        // 这里不再发起 prompt，否则该次取消会丢失。
+        if (abortSignal?.aborted) {
+          accumulator.consume({ type: 'done', stopReason: 'cancelled' });
+          break;
+        }
         try {
           for await (const event of runtime.prompt(session.id, promptBlocks)) {
             const accumulatedEvent = accumulator.consume(event);

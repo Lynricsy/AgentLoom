@@ -1222,6 +1222,7 @@ describe('AgentExecutionWorker', () => {
             sessionId: 'session-1',
           }),
         }),
+        expect.any(AbortSignal),
       );
     });
   });
@@ -2499,6 +2500,46 @@ describe('AgentExecutionWorker', () => {
       );
     });
 
+    it('loop 已被取消时不再调用 runtime.prompt，本轮以 cancelled 结束', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+          historyMessages: unknown[],
+          conversationMetadata: Record<string, unknown>,
+          abortSignal: AbortSignal,
+        ) => Promise<{ assistantText: string; stopReason: string }>;
+      };
+      const abort = new AbortController();
+      abort.abort();
+
+      const result = await turnWorker.runConversationTurn(
+        mockRuntime as never,
+        makeSession(),
+        'conversation-1',
+        'tenant-1',
+        [{ id: 'message-1', content: '你好', createdAt: new Date() }],
+        false,
+        [],
+        {},
+        abort.signal,
+      );
+
+      expect(result).toMatchObject({
+        assistantText: '',
+        stopReason: 'cancelled',
+      });
+      expect(mockRuntime.prompt).not.toHaveBeenCalled();
+    });
+
     it('应把本轮子代理实时流打包进 turnResult，供历史瀑布回放', async () => {
       const turnWorker = worker as unknown as {
         runConversationTurn: (
@@ -3643,6 +3684,7 @@ describe('AgentExecutionWorker', () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
+        expect.any(AbortSignal),
       );
     });
 
