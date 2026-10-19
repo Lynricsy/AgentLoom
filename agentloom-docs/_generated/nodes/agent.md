@@ -9,11 +9,12 @@
 | `exec-in` |  | `exec` |  |  | 执行流入口，前序节点完成后触发 Agent 执行 |
 | `text-in` | 文本 | `text` | 是 |  | 发送给 Agent 的输入文本，通常来自上游节点或触发数据 |
 | `system-prompt-in` | 系统提示词 | `text` |  |  | 覆盖被调用 Agent 的系统提示词，用于为本次工作流调用注入局部角色约束 |
+| `model-in` | 模型 | `model` |  |  | 覆盖被调用 Agent 的模型与智能路由，本次调用改用上游 LLM 模型或智能路由选出的模型 |
 | `sandbox-in` | 沙箱 | `sandbox` |  |  | 绑定沙箱执行环境，Agent 可在其中运行代码和终端命令 |
 | `context-in` | 上下文 | `json` |  |  | 传入附加上下文 JSON 数据，Agent 推理时可作为参考信息 |
+| `knowledge-in` | 知识库 | `knowledge` |  | 不限 | 追加知识库节点提供的知识库，Agent 可在对话中检索其中的文档进行回答 |
 | `skills-in` | Skills | `skill` |  | 不限 | 启用 Skill 能力模板，Agent 在对话中可按需激活使用 |
-| `tools-in` | 扩展工具 | `tool` |  | 不限 | 额外挂载 MCP 工具，Agent 可在对话中按需调用这些工具 |
-| `sub-agents-in` | 子 Agent | `agent` |  | 不限 | 注册可调度的子 Agent，主 Agent 可将子任务委派给它们 |
+| `tools-in` | 扩展工具 | `tool` |  | 不限 | 额外挂载 MCP 工具节点提供的工具，Agent 可在对话中按需调用；HTTP / 代码工具在工作流中是执行步骤，不能作为 Agent 工具 |
 | `schema-in` | Schema | `json` |  |  | 定义 Agent 输出的 JSON Schema，约束回复格式为结构化数据 |
 
 **输出端口**

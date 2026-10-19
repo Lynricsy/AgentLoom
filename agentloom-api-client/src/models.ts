@@ -4489,7 +4489,13 @@ export interface ExecutionEnvelopeResponseSwaggerDtoData {
      * @type {string}
      * @memberof ExecutionEnvelopeResponseSwaggerDtoData
      */
-    workflowVersionId: string;
+    workflowVersionId: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof ExecutionEnvelopeResponseSwaggerDtoData
+     */
+    definitionSource: ExecutionEnvelopeResponseSwaggerDtoDataDefinitionSourceEnum;
     /**
      * 
      * @type {string}
@@ -4588,6 +4594,15 @@ export interface ExecutionEnvelopeResponseSwaggerDtoData {
     steps?: Array<ExecutionEnvelopeResponseSwaggerDtoDataStepsInner>;
 }
 
+
+/**
+ * @export
+ */
+export const ExecutionEnvelopeResponseSwaggerDtoDataDefinitionSourceEnum = {
+    Version: 'version',
+    Draft: 'draft'
+} as const;
+export type ExecutionEnvelopeResponseSwaggerDtoDataDefinitionSourceEnum = typeof ExecutionEnvelopeResponseSwaggerDtoDataDefinitionSourceEnum[keyof typeof ExecutionEnvelopeResponseSwaggerDtoDataDefinitionSourceEnum];
 
 /**
  * @export

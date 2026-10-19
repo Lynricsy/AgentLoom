@@ -80,7 +80,7 @@
 | `user_preferences` | 7 | 是 | `user-preferences.schema.ts` |
 | `users` | 9 | 否 | `users.schema.ts` |
 | `workflow_definitions` | 18 | 是 | `workflow-definitions.schema.ts` |
-| `workflow_executions` | 18 | 是 | `workflow-executions.schema.ts` |
+| `workflow_executions` | 19 | 是 | `workflow-executions.schema.ts` |
 | `workflow_shares` | 12 | 是 | `workflow-shares.schema.ts` |
 | `workflow_templates` | 13 | 否 | `workflow-templates.schema.ts` |
 | `workflow_trigger_history` | 8 | 是 | `workflow-triggers.schema.ts` |
@@ -1677,7 +1677,8 @@
 | --- | --- | --- | --- |
 | `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
 | `workflow_definition_id` | `uuid` | 是 |  |
-| `workflow_version_id` | `uuid` | 是 |  |
+| `workflow_version_id` | `uuid` |  |  |
+| `definition_source` | `execution_definition_source_enum` | 是 | `"version"` |
 | `tenant_id` | `uuid` | 是 |  |
 | `status` | `execution_status_enum` | 是 | `"pending"` |
 | `trigger_type` | `execution_trigger_type_enum` | 是 | `"manual"` |
