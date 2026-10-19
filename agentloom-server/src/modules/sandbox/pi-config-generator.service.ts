@@ -4,6 +4,11 @@ import type { AgentThinkingLevel } from '../agent-definition/agent-runtime-confi
 import type { DshReasoningEfforts } from '../llm/thinking-capability.util';
 import type { McpServerConfig } from '../agent/types/agent-session.types';
 import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from '../llm/private-cloud-auth.constants';
+import {
+  appendTerminalPath,
+  stripTerminalPath,
+  trimTrailingSlashes,
+} from '../llm/llm-base-url.util';
 
 export interface PiModelConfig {
   provider: string;
@@ -103,34 +108,6 @@ const PROVIDER_API_KEY_ENV_MAP: Record<string, string> = {
 };
 
 const OPENAI_COMPAT_APIS = new Set(['openai-completions']);
-
-function trimTrailingSlashes(value: string): string {
-  return value.replace(/\/+$/, '');
-}
-
-function hasTerminalPath(baseUrl: string, suffix: string): boolean {
-  return trimTrailingSlashes(baseUrl)
-    .toLowerCase()
-    .endsWith(suffix.toLowerCase());
-}
-
-function appendTerminalPath(baseUrl: string, suffix: string): string {
-  if (hasTerminalPath(baseUrl, suffix)) {
-    return trimTrailingSlashes(baseUrl);
-  }
-
-  return `${trimTrailingSlashes(baseUrl)}${suffix}`;
-}
-
-function stripTerminalPath(baseUrl: string, suffix: string): string {
-  const trimmedBaseUrl = trimTrailingSlashes(baseUrl);
-  if (!hasTerminalPath(trimmedBaseUrl, suffix)) {
-    return trimmedBaseUrl;
-  }
-
-  const normalizedSuffix = trimTrailingSlashes(suffix);
-  return trimmedBaseUrl.slice(0, -normalizedSuffix.length) || trimmedBaseUrl;
-}
 
 function resolvePrivateCloudApi(model: string): string {
   if (model.trim().toLowerCase().startsWith('claude')) {

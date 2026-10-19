@@ -151,6 +151,24 @@ describe('ModelDiscoveryService', () => {
       },
     );
 
+    it.each(['https://gw.test/v1', 'https://gw.test/v1/', 'https://gw.test'])(
+      'baseUrl %s 的连接探测与模型发现都只打一次 /v1',
+      async (baseUrl) => {
+        const fetchMock = vi
+          .fn()
+          .mockResolvedValue(response(200, { data: [] }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        await service.testConnection(provider({ baseUrl }));
+        await service.discoverModels(provider({ baseUrl }));
+
+        expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+          'https://gw.test/v1/models',
+          'https://gw.test/v1/models',
+        ]);
+      },
+    );
+
     it('使用自定义 base URL、Bearer 认证并保留部分模型字段', async () => {
       decryptConfiguredApiKey.mockResolvedValue('secret-token');
       const fetchMock = vi.fn().mockResolvedValue(

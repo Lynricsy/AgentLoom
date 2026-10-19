@@ -9,6 +9,7 @@ import type {
   PricingTier,
 } from '../../database/schema/llm-model-configs.schema';
 import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
+import { appendTerminalPath, trimTrailingSlashes } from './llm-base-url.util';
 
 // ---------------------------------------------------------------------------
 // 公开接口类型
@@ -180,7 +181,7 @@ export class ModelDiscoveryService {
     switch (provider.apiProtocol) {
       case 'anthropic':
         return {
-          url: `${baseUrl}/v1/models`,
+          url: `${appendTerminalPath(baseUrl, '/v1')}/models`,
           method: 'GET',
           // buildProviderHeaders 已按 anthropic 协议注入 x-api-key 与 anthropic-version。
           headers: {},
@@ -188,14 +189,14 @@ export class ModelDiscoveryService {
         };
       case 'google':
         return {
-          url: `${baseUrl}/v1beta/models`,
+          url: `${appendTerminalPath(baseUrl, '/v1beta')}/models`,
           method: 'GET',
           headers: {},
           isValidBody: hasArrayField('models'),
         };
       case 'cohere':
         return {
-          url: `${baseUrl}/v1/check-api-key`,
+          url: `${appendTerminalPath(baseUrl, '/v1')}/check-api-key`,
           method: 'POST',
           headers: {},
           isValidBody: (body) =>
@@ -205,7 +206,7 @@ export class ModelDiscoveryService {
       case 'openai_responses':
       default:
         return {
-          url: `${baseUrl}/v1/models`,
+          url: `${appendTerminalPath(baseUrl, '/v1')}/models`,
           method: 'GET',
           headers: {},
           isValidBody: hasArrayField('data'),
@@ -274,7 +275,7 @@ export class ModelDiscoveryService {
 
     try {
       const res = await this.fetchWithTimeout(
-        `${baseUrl}/v1/models`,
+        `${appendTerminalPath(baseUrl, '/v1')}/models`,
         { headers },
         15_000,
       );
@@ -433,7 +434,7 @@ export class ModelDiscoveryService {
    */
   private resolveBaseUrl(provider: LlmProvider): string {
     const url = provider.baseUrl ?? provider.defaultBaseUrl ?? '';
-    return url.replace(/\/+$/, '');
+    return trimTrailingSlashes(url);
   }
 
   /**

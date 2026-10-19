@@ -6,6 +6,7 @@ import type { LlmProvider } from '../../database/schema/llm-providers.schema';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from './private-cloud-auth.constants';
 import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
+import { appendTerminalPath } from './llm-base-url.util';
 import { ThinkingCapabilityService } from './thinking-capability.service';
 import {
   resolvePiModelApi,
@@ -412,11 +413,11 @@ export class PiAiAdapter {
 
     switch (api) {
       case 'anthropic-messages':
-        return this.appendTerminalPath(configuredBaseUrl, '/v1');
+        return appendTerminalPath(configuredBaseUrl, '/v1');
       case 'google-generative-ai':
-        return this.appendTerminalPath(configuredBaseUrl, '/v1beta');
+        return appendTerminalPath(configuredBaseUrl, '/v1beta');
       default:
-        return this.appendTerminalPath(configuredBaseUrl, '/v1');
+        return appendTerminalPath(configuredBaseUrl, '/v1');
     }
   }
 
@@ -456,20 +457,6 @@ export class PiAiAdapter {
     return typeof value === 'string' && value.trim().length > 0
       ? value.trim()
       : undefined;
-  }
-
-  private appendTerminalPath(baseUrl: string, suffix: string): string {
-    const trimmedBaseUrl = this.trimTrailingSlashes(baseUrl);
-    const normalizedSuffix = this.trimTrailingSlashes(suffix).toLowerCase();
-    if (trimmedBaseUrl.toLowerCase().endsWith(normalizedSuffix)) {
-      return trimmedBaseUrl;
-    }
-
-    return `${trimmedBaseUrl}${suffix}`;
-  }
-
-  private trimTrailingSlashes(value: string): string {
-    return value.replace(/\/+$/, '');
   }
 
   private wrapModelWithRetry(
