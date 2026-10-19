@@ -16,6 +16,7 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CreateLlmProviderDto } from './dto/create-llm-provider.dto';
+import { LookupModelMetadataQueryDto } from './dto/lookup-model-metadata-query.dto';
 import { TestProviderConnectionDto } from './dto/test-provider-connection.dto';
 import { UpdateLlmProviderDto } from './dto/update-llm-provider.dto';
 import { LlmProviderService } from './llm-provider.service';
@@ -38,13 +39,11 @@ export class LlmProviderController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '查询 LiteLLM 模型元数据' })
   @ApiResponse({ status: 200, description: '返回模型元数据（可能为 null）' })
-  async lookupModelMetadata(
-    @Query('providerSlug') providerSlug: string,
-    @Query('modelId') modelId: string,
-  ) {
+  @ApiResponse({ status: 422, description: '缺少 providerSlug 或 modelId' })
+  async lookupModelMetadata(@Query() query: LookupModelMetadataQueryDto) {
     const metadata = await this.modelDiscoveryService.lookupModelMetadata(
-      providerSlug,
-      modelId,
+      query.providerSlug,
+      query.modelId,
     );
     return { data: metadata };
   }

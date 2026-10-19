@@ -442,7 +442,10 @@ describe('LlmProviderController', () => {
 
   describe('lookupModelMetadata', () => {
     it('应调用 lookupModelMetadata 并返回 { data }', async () => {
-      const result = await controller.lookupModelMetadata('openai', 'gpt-4o');
+      const result = await controller.lookupModelMetadata({
+        providerSlug: 'openai',
+        modelId: 'gpt-4o',
+      });
 
       expect(discoveryService.lookupModelMetadata).toHaveBeenCalledWith(
         'openai',
