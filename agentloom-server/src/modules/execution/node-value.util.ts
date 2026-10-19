@@ -298,12 +298,18 @@ export function extractOutputValue(input: Record<string, unknown>): unknown {
     return input.value;
   }
 
-  const values = Object.values(input);
+  // exec 线只传递执行信号，不是数据：只连 exec 线时没有值（Text Output 记录空字符串）
+  const dataInputs = stripExecOnlyInputs(input);
+  if (!dataInputs) {
+    return undefined;
+  }
+
+  const values = Object.values(dataInputs);
   if (values.length === 1) {
     return values[0];
   }
 
-  return input;
+  return dataInputs;
 }
 
 export function stringifyOutputValue(value: unknown): string {

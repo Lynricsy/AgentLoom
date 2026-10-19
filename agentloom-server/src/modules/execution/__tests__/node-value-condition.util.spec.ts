@@ -179,6 +179,22 @@ describe('node-value.util', () => {
     expect(normalizeJsonOutputValue(false)).toEqual({ value: false });
   });
 
+  it('输出节点只连 exec 线时没有值，不把执行信号当内容', () => {
+    const execSignal = { triggered: true, llmModelConfigId: 'model-1' };
+    expect(extractOutputValue({ 'exec-in': execSignal })).toBeUndefined();
+    expect(extractOutputValue({ exec_in: execSignal })).toBeUndefined();
+    expect(
+      stringifyOutputValue(extractOutputValue({ 'exec-in': execSignal })),
+    ).toBe('');
+    expect(
+      extractOutputValue({ 'exec-in': execSignal, payload: { id: 1 } }),
+    ).toEqual({ id: 1 });
+    expect(extractOutputValue({ 'exec-in': execSignal, a: 1, b: 2 })).toEqual({
+      a: 1,
+      b: 2,
+    });
+  });
+
   it('解析 JSON-like 字符串并过滤非法键值对', () => {
     expect(parseJsonLikeValue(' {"enabled":true} ')).toEqual({ enabled: true });
     expect(parseJsonLikeValue(' plain text ')).toBe('plain text');
