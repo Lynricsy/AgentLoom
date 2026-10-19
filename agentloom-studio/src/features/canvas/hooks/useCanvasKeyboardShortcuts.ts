@@ -28,12 +28,13 @@ export interface UseCanvasKeyboardShortcutsOptions {
   toggleSearch: () => void
   deleteSelectedNode: () => void
   deleteSelectedNodes: () => void
+  deleteSelectedEdge: () => void
   undo: () => void
   redo: () => void
 }
 
 /**
- * 画布级快捷键：Ctrl/Cmd+F 打开搜索；Backspace / Delete 删除选中节点；
+ * 画布级快捷键：Ctrl/Cmd+F 打开搜索；Backspace / Delete 删除选中节点（无选中节点时删除选中边）；
  * Ctrl/Cmd+Z 撤销，Shift+Ctrl/Cmd+Z 与 Ctrl+Y 重做。
  * 搜索快捷键在只读态也可用；编辑类快捷键只在可编辑态生效，且输入类元素内不拦截。
  * 字段映射面板打开时 Ctrl/Cmd+Z 由 useFieldMappingInteractions 处理映射撤销。
@@ -43,19 +44,25 @@ export function useCanvasKeyboardShortcuts({
   toggleSearch,
   deleteSelectedNode,
   deleteSelectedNodes,
+  deleteSelectedEdge,
   undo,
   redo,
 }: UseCanvasKeyboardShortcutsOptions) {
   const handleDeleteSelection = useCallback(() => {
-    const { selectedNodeIds: currentSelectedNodeIds } =
+    const { selectedNodeIds, selectedNodeId, selectedEdgeId } =
       useCanvasStore.getState()
-    if (currentSelectedNodeIds.size > 1) {
+    if (selectedNodeIds.size > 1) {
       deleteSelectedNodes()
       return
     }
-
-    deleteSelectedNode()
-  }, [deleteSelectedNode, deleteSelectedNodes])
+    if (selectedNodeId) {
+      deleteSelectedNode()
+      return
+    }
+    if (selectedEdgeId) {
+      deleteSelectedEdge()
+    }
+  }, [deleteSelectedEdge, deleteSelectedNode, deleteSelectedNodes])
 
   useEffect(() => {
     const handleWindowKeyDown = (event: KeyboardEvent) => {

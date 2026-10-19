@@ -220,6 +220,8 @@ interface CanvasActions {
     selectNodes: (nodeIds: string[]) => void;
     clearSelection: () => void;
     deleteSelectedNodes: () => void;
+    /** 删除当前选中的边（与 React Flow 删除边同一路径：解绑 Agent 绑定、进撤销栈） */
+    deleteSelectedEdge: () => void;
     /** 「封装为可复用块」：用封装后的图替换画布，并选中新块节点 */
     applyEncapsulation: (result: {
       nodes: CanvasNode[];
@@ -299,7 +301,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
   devtools(
     subscribeWithSelector(
       temporal(
-        immer((set) => ({
+        immer((set, get) => ({
           ...createInitialState(),
 
           actions: {
@@ -1010,6 +1012,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   state.selectedNodeIds = new Set();
                 }
               }),
+
+            deleteSelectedEdge: () => {
+              const { selectedEdgeId, actions } = get();
+              if (!selectedEdgeId) return;
+              actions.onEdgesChange([{ type: "remove", id: selectedEdgeId }]);
+            },
 
             openFieldMapping: (edgeId) =>
               set((state) => {

@@ -51,6 +51,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     clearSelection,
     commitViewport,
     createConnection,
+    deleteSelectedEdge,
     deleteSelectedNode,
     deleteSelectedNodes,
     onEdgesChange,
@@ -131,6 +132,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     toggleSearch,
     deleteSelectedNode,
     deleteSelectedNodes,
+    deleteSelectedEdge,
     undo,
     redo,
   })

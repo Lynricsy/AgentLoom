@@ -48,6 +48,7 @@ docType: howto
 ## 删除与查找节点
 
 - 选中节点后按 Delete 或 Backspace 删除；选中多个节点时一起删除。在输入框中按这两个键不会删除节点。
+- 点击连线选中后按 Delete 或 Backspace 删除该连线，也可以点击连线中部标签旁的「删除连接」按钮。删除连线可以撤销。
 - 在节点上右键，上下文菜单中有「删除」。
 - 按 Ctrl+F（macOS 为 Cmd+F）打开「搜索节点」，Enter 跳到下一个结果，Shift+Enter 跳到上一个，Esc 关闭。
 
