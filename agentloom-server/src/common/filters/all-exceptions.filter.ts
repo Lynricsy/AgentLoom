@@ -13,6 +13,40 @@ import { DomainException } from '../exceptions/domain.exception';
 import { problemType } from '../exceptions/problem-type';
 import type { ProblemDetails } from '../types/problem-details.type';
 
+const INVALID_TEXT_REPRESENTATION = '22P02';
+const POSTGRES_ERROR_CAUSE_MAX_DEPTH = 4;
+
+/**
+ * 在异常及其 cause 链（Drizzle 把驱动错误包在 DrizzleQueryError.cause）中
+ * 查找 uuid 文本转换失败的 Postgres 错误。
+ *
+ * 只认 uuid：路径或查询参数里的非法 id 等价于「资源不存在」；其他类型的
+ * 22P02（integer/json/enum 等）多为服务端未校验的数据，保持 500 以免掩盖缺陷。
+ */
+function isInvalidUuidTextError(error: unknown): boolean {
+  let current: unknown = error;
+
+  for (
+    let depth = 0;
+    depth <= POSTGRES_ERROR_CAUSE_MAX_DEPTH &&
+    typeof current === 'object' &&
+    current !== null;
+    depth += 1
+  ) {
+    const record = current as Record<string, unknown>;
+    if (record.code === INVALID_TEXT_REPRESENTATION) {
+      return (
+        record.routine === 'string_to_uuid' ||
+        (typeof record.message === 'string' &&
+          record.message.includes('type uuid'))
+      );
+    }
+    current = record.cause;
+  }
+
+  return false;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -46,8 +80,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     exception: unknown,
     instance: string,
   ): ProblemDetails {
-    if (exception instanceof ZodValidationException) {
-      const zodError = exception.getZodError() as z.ZodError | undefined;
+    // 服务内手写 `Schema.parse()` 抛出的裸 ZodError 同样是输入不合法，
+    // 与 ZodValidationPipe 输出同形的 422，而不是 500。
+    if (
+      exception instanceof ZodValidationException ||
+      exception instanceof z.ZodError
+    ) {
+      const zodError =
+        exception instanceof z.ZodError
+          ? exception
+          : (exception.getZodError() as z.ZodError | undefined);
       return {
         type: problemType('validation-error'),
         title: 'Validation Error',
@@ -89,6 +131,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
         title: HttpStatus[status] ?? 'Error',
         status,
         detail,
+        instance,
+      };
+    }
+
+    if (isInvalidUuidTextError(exception)) {
+      return {
+        type: problemType('not-found'),
+        title: 'Not Found',
+        status: HttpStatus.NOT_FOUND,
+        detail: '资源不存在：标识符不是合法的 UUID',
         instance,
       };
     }

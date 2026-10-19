@@ -12,6 +12,7 @@ import type {
 } from '@nestjs/common/interfaces';
 import { Test } from '@nestjs/testing';
 import type { FastifyRequest } from 'fastify';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { ZodValidationException } from 'nestjs-zod';
 import { z } from 'zod';
 import { DomainException } from '../../exceptions/domain.exception';
@@ -182,6 +183,71 @@ describe('AllExceptionsFilter', () => {
       })),
     });
     expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('将服务内手写 parse 抛出的裸 ZodError 映射为与管道同形的 422', () => {
+    const schema = z.object({ type: z.string() });
+    let exception: unknown;
+    try {
+      schema.parse({});
+    } catch (error) {
+      exception = error;
+    }
+
+    expect(exception).toBeInstanceOf(z.ZodError);
+    filter.catch(exception, host);
+
+    expectProblemResponse(reply, {
+      type: 'https://agentloom.dev/errors/validation-error',
+      title: 'Validation Error',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: 'Request validation failed',
+      instance: request.url,
+      errors: (exception as z.ZodError).issues.map((issue) => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+      })),
+    });
+    expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('将 Drizzle 包装的 uuid 文本转换失败（22P02）映射为 404 not-found', () => {
+    const pgError = Object.assign(
+      new Error('invalid input syntax for type uuid: "not-a-uuid"'),
+      { code: '22P02', routine: 'string_to_uuid' },
+    );
+    const exception = new DrizzleQueryError(
+      'select * from "llm_model_configs" where "id" = $1',
+      ['not-a-uuid'],
+      pgError,
+    );
+
+    filter.catch(exception, host);
+
+    expectProblemResponse(reply, {
+      type: 'https://agentloom.dev/errors/not-found',
+      title: 'Not Found',
+      status: HttpStatus.NOT_FOUND,
+      detail: '资源不存在：标识符不是合法的 UUID',
+      instance: request.url,
+    });
+    expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('非 uuid 的 22P02（如 integer 转换失败）仍按未处理异常返回 500', () => {
+    const exception = new DrizzleQueryError(
+      'select $1::integer',
+      ['abc'],
+      Object.assign(new Error('invalid input syntax for type integer: "abc"'), {
+        code: '22P02',
+        routine: 'pg_strtoint32_safe',
+      }),
+    );
+
+    filter.catch(exception, host);
+
+    expect(reply.status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(loggerErrorSpy).toHaveBeenCalledTimes(2);
   });
 
   it('将 DomainException 映射为领域 problem details', () => {
