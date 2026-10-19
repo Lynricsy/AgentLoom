@@ -260,9 +260,12 @@ export class WorkflowVersionService {
 
     const conditions = [];
 
-    if (status) {
-      conditions.push(eq(schema.workflowDefinitions.status, status));
-    }
+    // 未指定 status 时不返回已归档工作流；需要查看归档请显式传 status=archived
+    conditions.push(
+      status
+        ? eq(schema.workflowDefinitions.status, status)
+        : ne(schema.workflowDefinitions.status, 'archived'),
+    );
 
     if (search) {
       const searchTerm = `%${search}%`;

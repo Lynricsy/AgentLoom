@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 vi.mock('@anatine/zod-nestjs', async () => {
   const { createZodDto } = await import('nestjs-zod');
@@ -422,7 +423,17 @@ describe('WorkflowVersionService', () => {
         createListDefinitionsQuery(),
       );
 
-      expect(selectDefinitions.where).toHaveBeenCalledWith(undefined);
+      // D-054：未指定 status 时默认排除已归档
+      const defaultWhere = new PgDialect().sqlToQuery(
+        selectDefinitions.where.mock.calls[0]?.[0],
+      );
+      expect(defaultWhere.sql).toContain(
+        '"workflow_definitions"."status" <> $',
+      );
+      expect(defaultWhere.params).toEqual(['archived']);
+      expect(selectCount.where).toHaveBeenCalledWith(
+        selectDefinitions.where.mock.calls[0]?.[0],
+      );
       expect(selectDefinitions.limit).toHaveBeenCalledWith(20);
       expect(selectDefinitions.offset).toHaveBeenCalledWith(0);
       expect(result).toEqual({
@@ -526,6 +537,10 @@ describe('WorkflowVersionService', () => {
       const whereClause = selectDefinitions.where.mock.calls[0]?.[0];
       expect(whereClause).toBeDefined();
       expect(selectCount.where).toHaveBeenCalledWith(whereClause);
+      const statusWhere = new PgDialect().sqlToQuery(whereClause);
+      expect(statusWhere.sql).toContain('"workflow_definitions"."status" = $');
+      expect(statusWhere.sql).not.toContain('<>');
+      expect(statusWhere.params).toEqual(['published']);
       expect(result.data[0]?.status).toBe('published');
     });
 
