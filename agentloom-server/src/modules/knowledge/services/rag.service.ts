@@ -3,6 +3,7 @@ import { CohereRerank } from '@llamaindex/cohere';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { QdrantVectorStore } from '@llamaindex/qdrant';
+import { metadataDictToNode } from '@llamaindex/core/vector-store';
 import {
   MetadataMode,
   TextNode,
@@ -501,19 +502,32 @@ export class RagService {
     };
   }
 
+  /**
+   * 还原 LlamaIndex 节点。两种来源：
+   * - Qdrant point payload：`QdrantVectorStore.add` 经 `nodeToMetadata` 写入，
+   *   metadata 平铺在顶层，`_node_content` 里不含 metadata，必须用
+   *   `metadataDictToNode` 合并回来；
+   * - `knowledge_nodes.payload`：`TextNode.toJSON()`，metadata 嵌在节点 JSON 内。
+   */
   private parseLlamaIndexNodeFromPayload(
     payload: Record<string, unknown>,
   ): TextNode | null {
     const serializedNode = payload._node_content;
-    if (
-      typeof serializedNode !== 'string' ||
-      serializedNode.trim().length === 0
-    ) {
+    const isVectorPayload =
+      typeof serializedNode === 'string' && serializedNode.trim().length > 0;
+    const isSerializedNode =
+      typeof payload.type === 'string' &&
+      typeof payload.id_ === 'string' &&
+      this.readRecordValue(payload, 'metadata') !== null;
+
+    if (!isVectorPayload && !isSerializedNode) {
       return null;
     }
 
     try {
-      return jsonToNode(JSON.parse(serializedNode)) as TextNode;
+      return (
+        isVectorPayload ? metadataDictToNode(payload) : jsonToNode(payload)
+      ) as TextNode;
     } catch (error) {
       this.logger.warn(
         `Failed to parse llamaindex node payload: ${error instanceof Error ? error.message : String(error)}`,

@@ -1,5 +1,6 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { nodeToMetadata } from '@llamaindex/core/vector-store';
 import { TextNode } from 'llamaindex';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
@@ -219,15 +220,19 @@ describe('RagService', () => {
     );
   });
 
-  it('searchSingleKnowledgeBase 应解析 llamaindex payload 并执行纯向量检索', async () => {
+  it('searchSingleKnowledgeBase 应从 qdrant 平铺 payload 还原来源元数据并用 window 回填内容', async () => {
     const firstNode = new TextNode({
       id_: 'node-1',
       text: 'search_knowledge',
       metadata: {
         documentId: 'doc-1',
         fileName: 'prd.md',
+        heading: '工具',
+        paragraph: 3,
+        absoluteCharOffset: 40,
+        absoluteCharLength: 16,
         sourceSectionIndex: 0,
-        window: 'search_knowledge',
+        window: '前一句。search_knowledge。后一句。',
       },
     });
     const secondNode = new TextNode({
@@ -246,20 +251,15 @@ describe('RagService', () => {
         {
           id: 'node-1',
           score: 0.83,
-          payload: {
-            _node_content: JSON.stringify(firstNode.toJSON()),
-            _node_type: 'TextNode',
-          },
+          // 与 QdrantVectorStore.add 写入的 payload 结构一致：metadata 平铺在顶层
+          payload: nodeToMetadata(firstNode),
         },
       ])
       .mockResolvedValueOnce([
         {
           id: 'node-2',
           score: 0.74,
-          payload: {
-            _node_content: JSON.stringify(secondNode.toJSON()),
-            _node_type: 'TextNode',
-          },
+          payload: nodeToMetadata(secondNode),
         },
       ]);
     embeddingService.generateEmbeddings.mockResolvedValue([
@@ -357,11 +357,25 @@ describe('RagService', () => {
     expect(result).toEqual([
       expect.objectContaining({
         nodeId: 'node-1',
-        content: 'search_knowledge',
+        content: '前一句。search_knowledge。后一句。',
+        documentId: 'doc-1',
+        fileName: 'prd.md',
+        chunkIndex: 0,
+        location: {
+          page: null,
+          paragraph: 3,
+          heading: '工具',
+          charOffset: 40,
+          charLength: 16,
+        },
+        metadata: expect.objectContaining({ documentId: 'doc-1' }),
       }),
       expect.objectContaining({
         nodeId: 'node-2',
         content: 'knowledgeBaseIds',
+        documentId: 'doc-1',
+        fileName: 'prd.md',
+        chunkIndex: 1,
       }),
     ]);
   });
@@ -485,10 +499,8 @@ describe('RagService', () => {
     mockDb.limit.mockResolvedValueOnce([
       {
         id: 'lexical-node-1',
-        payload: {
-          _node_content: JSON.stringify(lexicalNode.toJSON()),
-          _node_type: 'TextNode',
-        },
+        // knowledge_nodes.payload 为 TextNode.toJSON()，metadata 嵌在节点内
+        payload: lexicalNode.toJSON(),
         score: 2,
       },
     ]);
@@ -570,10 +582,7 @@ describe('RagService', () => {
     mockDb.limit.mockResolvedValueOnce([
       {
         id: 'lexical-node-2',
-        payload: {
-          _node_content: JSON.stringify(lexicalNode.toJSON()),
-          _node_type: 'TextNode',
-        },
+        payload: lexicalNode.toJSON(),
         score: 2,
       },
     ]);
