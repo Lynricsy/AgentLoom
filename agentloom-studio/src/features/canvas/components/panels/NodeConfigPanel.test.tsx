@@ -85,7 +85,8 @@ vi.mock('./SandboxConfigPanel', () => ({
   SandboxConfigPanel: () => <div>Sandbox Panel</div>,
 }))
 
-vi.mock('./InterventionPanel', () => ({
+vi.mock('@/features/execution', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   InterventionPanel: () => <div data-testid="intervention-panel-mock">Intervention Panel</div>,
 }))
 

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/shared/ui/toast'
 import { ExecutionDebugView } from './ExecutionDebugView'
+import { useExecutionStore } from '../stores/executionStore'
 import type { ExecutionDetail } from '../types'
 
 const mocks = vi.hoisted(() => ({
@@ -212,6 +213,41 @@ describe('ExecutionDebugView', () => {
     renderView()
 
     expect(screen.queryByTestId('execution-debug-tab-team')).not.toBeInTheDocument()
+  })
+
+  it('等待干预的节点在执行页提供批准 / 修改 / 拒绝（D-127）', async () => {
+    useExecutionStore.getState().actions.applySnapshot({
+      executionId: 'exec-001',
+      status: 'paused',
+      completedSteps: 1,
+      totalSteps: 2,
+      steps: [
+        {
+          stepId: 'step-1',
+          nodeId: 'node-1',
+          status: 'waiting_intervention',
+          result: null,
+          checkpointData: {
+            partialContent: 'Agent 草稿回复',
+            interventionNodeName: 'Agent',
+            interventionRequestedAt: '2026-10-19T16:03:11.581Z',
+          },
+        },
+      ],
+    } as never)
+    renderView()
+    const desktopLayout = screen.getByTestId('execution-debug-desktop-layout')
+
+    fireEvent.click(within(desktopLayout).getByRole('button', { name: 'select node 1' }))
+
+    expect(within(desktopLayout).getByTestId('intervention-panel')).toBeInTheDocument()
+    expect(within(desktopLayout).getByTestId('intervention-approve')).toBeEnabled()
+    expect(within(desktopLayout).getByTestId('intervention-modify')).toBeEnabled()
+    expect(within(desktopLayout).getByTestId('intervention-reject')).toBeEnabled()
+
+    fireEvent.click(within(desktopLayout).getByRole('button', { name: 'select node 2' }))
+    expect(within(desktopLayout).queryByTestId('intervention-panel')).toBeNull()
+    useExecutionStore.getState().actions.reset()
   })
 
   it('存在 team 步骤时显示团队 tab，每个 team 步骤一个面板', () => {

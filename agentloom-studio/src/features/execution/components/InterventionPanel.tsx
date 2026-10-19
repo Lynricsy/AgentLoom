@@ -10,7 +10,7 @@ import {
   useNodeExecutionState,
   useExecutionActions,
   useExecutionId,
-} from '@/features/execution'
+} from '../stores/executionStore'
 
 type InterventionMode = 'idle' | 'modifying' | 'rejecting'
 
@@ -33,7 +33,8 @@ interface InterventionPanelProps {
 /**
  * 人工干预面板 — 当节点进入 waiting_intervention 状态时显示。
  * 展示 AI 决策建议（rationale / confidence / suggestedContent），
- * 提供批准、修改、拒绝三种操作。
+ * 提供批准、修改、拒绝三种操作。画布节点配置面板与执行页节点详情共用，
+ * 状态来自 executionStore（执行页与重进画布时均由服务端快照 hydrate）。
  */
 export const InterventionPanel = memo(function InterventionPanel({
   nodeId,

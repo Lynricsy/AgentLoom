@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   resolveIntervention: vi.fn(),
 }))
 
-vi.mock('@/features/execution', () => ({
+vi.mock('../stores/executionStore', () => ({
   useNodeIntervention: () => mocks.intervention,
   useNodeExecutionState: () => mocks.nodeState,
   useExecutionId: () => mocks.executionId,
@@ -32,7 +32,7 @@ vi.mock('@/features/execution', () => ({
   }),
 }))
 
-vi.mock('@/features/execution/api/executionApi', () => ({
+vi.mock('../api/executionApi', () => ({
   resolveIntervention: (...args: unknown[]) =>
     mocks.resolveIntervention(...args),
 }))

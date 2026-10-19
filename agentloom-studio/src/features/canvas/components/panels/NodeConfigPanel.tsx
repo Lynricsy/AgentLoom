@@ -34,7 +34,7 @@ import {
   resolveNodeIcon,
 } from '../node/nodeVisualMeta'
 import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
-import { InterventionPanel } from './InterventionPanel'
+import { InterventionPanel } from '@/features/execution'
 import { DynamicConfigForm } from './DynamicConfigForm'
 import { OutputContentRenderer } from '../output/OutputContentRenderer'
 import { CANVAS_FLOATING_CLASS } from '../canvasChrome'

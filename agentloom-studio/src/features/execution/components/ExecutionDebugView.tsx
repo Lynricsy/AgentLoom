@@ -6,6 +6,7 @@ import { ReadonlyCanvas } from './ReadonlyCanvas'
 import { ExecutionTimelineVertical } from './timeline'
 import { useTimelineData } from '../hooks/useTimelineData'
 import { ExecutionNodeDetail } from './ExecutionNodeDetail'
+import { InterventionPanel } from './InterventionPanel'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TerminalTab } from './TerminalTab'
 import { ExecutionTelemetryPanel } from './ExecutionTelemetryPanel'
@@ -360,8 +361,16 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               data-testid="execution-debug-handle-right"
             />
 
-            <div style={{ width: `${rightWidth}%` }} className="min-w-0" data-testid="execution-debug-right-panel">
-              <ExecutionNodeDetail step={selectedStep} actions={agentViewerButton} />
+            <div
+              style={{ width: `${rightWidth}%` }}
+              className="flex min-w-0 flex-col gap-3"
+              data-testid="execution-debug-right-panel"
+            >
+              {/* 等待干预的节点在执行页即可批准 / 修改 / 拒绝，不依赖发起执行的画布会话 */}
+              {selectedNodeId ? <InterventionPanel nodeId={selectedNodeId} /> : null}
+              <div className="min-h-0 flex-1">
+                <ExecutionNodeDetail step={selectedStep} actions={agentViewerButton} />
+              </div>
             </div>
           </div>
 
@@ -380,6 +389,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               executionStartedAt={execution.startedAt ?? null}
               executionCompletedAt={execution.completedAt ?? null}
             />
+            {selectedNodeId ? <InterventionPanel nodeId={selectedNodeId} /> : null}
             <ExecutionNodeDetail step={selectedStep} actions={agentViewerButton} />
           </div>
         </TabsContent>
