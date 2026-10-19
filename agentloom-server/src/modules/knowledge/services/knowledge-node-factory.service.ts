@@ -28,9 +28,14 @@ interface KnowledgeSourceDocument {
  * （所有内置缩写都以 `.` 结尾，遮蔽后 URI 内不再命中缩写，且仍不会被断句），
  * 花括号换成圆括号（不再与占位符撞车）。分词结果是遮蔽文本的连续片段，按同一偏移
  * 从原文切回即得到原样文本。
+ *
+ * 分词器遇到 `.` 就断句、不要求其后有空白，`Node.js`、`package.json`、`10.34.6` 会被拆开，
+ * 窗口再用空格拼回就成了 `Node. js`。紧跟字母/数字的 `.` 不是句末，同样遮蔽成 `_`。
  */
 const URI_PATTERN =
   /(https?:\/\/\S+|www\.\S+|ftp:\/\/\S+|(mailto:)?[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|file:\/\/\S+)/gi;
+
+const INTRA_WORD_DOT_PATTERN = /\.(?=[A-Za-z0-9_])/g;
 
 function splitPreservingSource(
   text: string,
@@ -38,6 +43,7 @@ function splitPreservingSource(
 ): string[] {
   const masked = text
     .replace(URI_PATTERN, (uri) => uri.replace(/[.?!…]/g, '_'))
+    .replace(INTRA_WORD_DOT_PATTERN, '_')
     .replace(/[{}]/g, (brace) => (brace === '{' ? '(' : ')'));
   if (masked === text) {
     return split(text);

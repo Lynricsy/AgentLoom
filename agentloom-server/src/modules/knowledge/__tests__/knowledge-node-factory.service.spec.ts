@@ -81,4 +81,45 @@ describe('KnowledgeNodeFactoryService', () => {
     expect(joined).toContain('Template {{ABBREV_0}} stays as is.');
     expect(joined).toContain('https://agentloom.ling.plus/');
   });
+
+  it.each(STRATEGIES)(
+    '$type 切块不在词内点号处断句（Node.js / package.json / 版本号）',
+    (strategy) => {
+      const text =
+        '需要 Node.js 22 与 pnpm 10.34.6（根 `package.json` 的 packageManager）。' +
+        'Run it with node.exe or use .js files, e.g. index.ts. Next sentence starts here.';
+      const nodes = factory.createNodes(
+        SOURCE_DOCUMENT,
+        parsedDocument(text),
+        strategy,
+      );
+
+      const contents = nodes.map((node) => node.text);
+      const windows = nodes.map((node) =>
+        String(node.metadata.window ?? node.text),
+      );
+      for (const value of [...contents, ...windows]) {
+        expect(value).not.toMatch(/Node\. js|10\.34\. 6|package\. json/);
+      }
+      const joined = contents.join('\n');
+      for (const word of [
+        'Node.js',
+        '10.34.6',
+        'package.json',
+        'node.exe',
+        '.js files',
+        'index.ts',
+      ]) {
+        expect(joined).toContain(word);
+      }
+      for (const node of nodes) {
+        const offset = node.metadata.absoluteCharOffset as number;
+        expect(text.slice(offset, offset + node.text.length)).toBe(node.text);
+      }
+      if (strategy.type === 'sentence_window') {
+        // 句末的「. 」仍然断句
+        expect(contents).toContain('Next sentence starts here.');
+      }
+    },
+  );
 });
