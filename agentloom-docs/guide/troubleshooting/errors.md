@@ -43,6 +43,10 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `session-revoke-current` | 400 | 不能在会话列表中注销当前会话 | 使用「退出登录」 |
 | `auth-unavailable` | 503 | 认证服务当前不可用 | 稍后重试；持续出现时联系部署管理员 |
 | `session-verification-unavailable` | 503 | 服务端暂时无法确认登录会话是否仍有效 | 稍后重试；持续出现时联系部署管理员 |
+| `refresh-invalid` | 401 | 刷新凭证无效或已失效 | 重新登录 |
+| `session-not-found` | 404 | 要注销的登录会话不存在 | 刷新会话列表 |
+| `mfa-enrollment-failed` | 400 | 双因素认证登记失败 | 关闭对话框后重新开始登记 |
+| `mfa-factor-not-found` | 404 | 双因素认证因子不存在 | 刷新安全设置页面 |
 
 账户安全设置见[账户安全](/guide/account/security)。
 
@@ -58,6 +62,19 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `invitation-email-mismatch` | 403 | 当前登录账号的邮箱与邀请邮箱不一致 | 退出后用受邀邮箱登录，再打开邀请链接 |
 | `pending-invitation-exists` | 409 | 已有一份待接受的邀请 | 等待对方接受或撤回原邀请 |
 | `already-organization-member` | 409 | 对方已是组织成员 | 无需再次邀请 |
+| `organization-not-found` | 404 | 组织不存在或你不是该组织成员 | 确认链接与当前组织 |
+| `organization-member-not-found` | 404 | 目标用户不是该组织成员 | 刷新成员列表 |
+| `invitation-not-found` | 404 | 邀请不存在 | 请管理员重新邀请 |
+| `admin-cannot-invite-owner` | 403 | admin 不能邀请 owner | 请 owner 发出邀请 |
+| `admin-cannot-grant-owner` | 403 | 只有 owner 能把成员设为 owner | 请 owner 调整角色 |
+| `admin-cannot-remove-owner` | 403 | admin 不能修改或移除 owner | 请 owner 操作 |
+| `notification-not-found` | 404 | 通知不存在或不属于当前用户 | 刷新通知列表 |
+| `tenant-key-not-found` | 404 | 组织加密密钥不存在 | 刷新密钥列表 |
+| `tenant-key-invalid` | 400 | 上传的公钥无效 | 按 `detail` 重新导出公钥 |
+| `tenant-key-already-exists` | 409 | 组织已有一把启用中的加密密钥 | 改用轮换替换现有密钥 |
+| `tenant-key-fingerprint-conflict` | 409 | 该公钥已在本组织登记过（含已轮换或已撤销的） | 生成新的密钥对 |
+| `tenant-key-not-active` | 409 | 只有启用中的密钥可以轮换 | 对当前启用中的密钥执行轮换 |
+| `tenant-key-revoked` | 409 | 密钥已撤销 | 无需处理，或上传新密钥 |
 
 ## 工作流与执行
 
@@ -191,6 +208,9 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `platform-api-token-expired` | 401 | API Token 已过期 | 新建一个 Token |
 | `platform-api-token-limit-exceeded` | 409 | 你在当前组织的 API Token 数量已达上限 | 吊销不再使用的 Token，见 [API Token](/guide/integrations/api-keys) |
 | `insufficient-scope` | 403 | API Token 的作用域不包含该接口所需的权限，或该接口尚未声明权限 | 新建一个包含所需作用域的 Token，或留空作用域以继承账号权限，见 [API Token](/guide/integrations/api-keys) |
+| `platform-api-token-invalid` | 401 | API Token 无效或已撤销 | 新建一个 Token |
+| `platform-api-token-not-found` | 404 | API Token 不存在 | 刷新 Token 列表 |
+| `platform-api-token-already-revoked` | 409 | API Token 已被撤销 | 无需再次撤销 |
 
 ## 生成应用、分享与导入
 
