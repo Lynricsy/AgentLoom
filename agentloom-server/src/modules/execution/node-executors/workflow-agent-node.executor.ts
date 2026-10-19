@@ -10,6 +10,7 @@ import { OrganizationAutonomyPolicyService } from '../../organization/organizati
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { InvalidStepTransitionException } from '../execution.exceptions';
 import { StepStateMachineService } from '../step-state-machine.service';
+import { WorkflowAgentStepFailedError } from '../workflow-agent-adapter';
 import {
   buildWorkflowAgentCheckpointData,
   getExecutionSandboxBinding,
@@ -244,6 +245,10 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
         step.id,
         'failed',
         {
+          // 模型已调用后才失败（如回复不符合输出 Schema）：写入真实用量与原始回复，执行记录据此计量
+          ...(error instanceof WorkflowAgentStepFailedError
+            ? { result: error.stepResult }
+            : {}),
           errorMessage: {
             message,
             ...(error instanceof DomainException

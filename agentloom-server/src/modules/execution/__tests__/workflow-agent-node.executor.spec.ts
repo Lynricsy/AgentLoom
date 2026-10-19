@@ -29,6 +29,7 @@ import { SubAgentNodeExecutor } from '../node-executors/sub-agent-node.executor'
 import { TriggerNodeExecutor } from '../node-executors/trigger-node.executor';
 import { ValueNodeExecutor } from '../node-executors/value-node.executor';
 import { WorkflowAgentNodeExecutor } from '../node-executors/workflow-agent-node.executor';
+import { WorkflowAgentStepFailedError } from '../workflow-agent-adapter';
 import { DagResolverService } from '../dag-resolver.service';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { EventBridgeService } from '../services/event-bridge.service';
@@ -729,4 +730,67 @@ describe('workflow migrated scenarios', () => {
       }),
     );
   });
+
+  it('模型调用后结构化解析失败：失败步骤的 result 记录真实 token 用量与原始回复', async () => {
+    const step = makeStep({
+      id: 'step-schema-failed',
+      nodeId: 'schema-failed-agent',
+      status: 'queued',
+      nodeType: 'agent',
+      nodeData: {
+        agentDefinitionId: 'agent-def-schema',
+        autonomyMode: 'FULL_AUTO',
+      },
+    });
+    const stepResult = {
+      content: 'not json',
+      promptTokens: 3000,
+      completionTokens: 80,
+      totalTokens: 3080,
+      modelId: 'minimax-test',
+    };
+    mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
+      execute: vi
+        .fn()
+        .mockRejectedValue(
+          new WorkflowAgentStepFailedError(
+            'Agent 回复不是合法 JSON，无法输出到「结构化」端口（…）',
+            stepResult,
+          ),
+        ),
+    });
+    const runtime = {
+      pauseForIntervention: vi.fn(),
+      onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+      onNodeFailed: vi.fn().mockResolvedValue(undefined),
+    } as unknown as NodeSchedulerService;
+
+    await workflowAgentNodeExecutor.executeWorkflowAgentNode(
+      step,
+      {},
+      TENANT_ID,
+      EXECUTION_ID,
+      [],
+      [step],
+      runtime,
+    );
+
+    expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      TENANT_ID,
+      step.id,
+      'failed',
+      expect.objectContaining({
+        result: stepResult,
+        errorMessage: expect.objectContaining({
+          message: expect.stringContaining('Agent 回复不是合法 JSON'),
+        }),
+      }),
+    );
+    expect(runtime.onNodeFailed).toHaveBeenCalledWith(
+      EXECUTION_ID,
+      step.id,
+      TENANT_ID,
+    );
+  });
+
 });

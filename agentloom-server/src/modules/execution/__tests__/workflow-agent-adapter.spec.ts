@@ -9,7 +9,10 @@ import { SubAgentToolsProvider } from '../../agent-execution/subagent';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../../skill/skill.types';
 import { LlmCostService } from '../../llm/llm-cost.service';
-import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
+import {
+  WorkflowAgentAdapter,
+  WorkflowAgentStepFailedError,
+} from '../workflow-agent-adapter';
 
 const { mockResolveSubAgent } = vi.hoisted(() => ({
   mockResolveSubAgent: vi.fn(),
@@ -1609,6 +1612,161 @@ describe('WorkflowAgentAdapter', () => {
           versionSnapshot: makeSnapshot('no-sandbox-node'),
         }),
       ).rejects.toThrow('Agent 回复不符合输出 Schema');
+    });
+
+    function setupStructuredAgentWithRounds(rounds: unknown[][]) {
+      const adapter = setupStructuredAgent('');
+      mockSandboxRuntime.prompt.mockReset();
+      for (const events of rounds) {
+        mockSandboxRuntime.prompt.mockReturnValueOnce(emit(events as never));
+      }
+      return adapter;
+    }
+
+    const searchCall = (status: string) => ({
+      type: 'tool_call',
+      call: {
+        id: 'tool-kb',
+        tool: 'search_knowledge',
+        args: { query: '审计日志' },
+        status,
+      },
+    });
+
+    it('同一轮内工具调用前的前言（minimax 形态）不参与解析，只解析最后一次工具调用之后的回复', async () => {
+      const adapter = setupStructuredAgentWithRounds([
+        [
+          { type: 'message_chunk', content: 'Need the sidebar table chunk…' },
+          searchCall('pending'),
+          searchCall('completed'),
+          { type: 'message_chunk', content: '{"answer": ' },
+          { type: 'message_chunk', content: '"42"}' },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
+      ]);
+
+      const result = await adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { prompt: 'q' },
+        tenantId: TENANT_ID,
+        versionSnapshot: makeSnapshot('no-sandbox-node'),
+      });
+
+      expect(result.structured).toEqual({ answer: '42' });
+      // 「回复」端口仍是完整回复
+      expect(result.content).toBe(
+        'Need the sidebar table chunk…{"answer": "42"}',
+      );
+    });
+
+    it('跨工具轮的前言（Claude 形态：tool_use 后再起一轮）不参与解析', async () => {
+      const adapter = setupStructuredAgentWithRounds([
+        [
+          { type: 'message_chunk', content: "I'll search the knowledge " },
+          { type: 'message_chunk', content: 'base first.' },
+          searchCall('pending'),
+          { type: 'done', stopReason: 'tool_use' },
+        ],
+        [
+          searchCall('completed'),
+          {
+            type: 'message_chunk',
+            content: '```json\n{"answer": "路由是 /audit-logs"}\n```',
+          },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
+      ]);
+
+      const result = await adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { prompt: 'q' },
+        tenantId: TENANT_ID,
+        versionSnapshot: makeSnapshot('no-sandbox-node'),
+      });
+
+      expect(result.structured).toEqual({ answer: '路由是 /audit-logs' });
+    });
+
+    it('最后一次工具调用之后的回复仍不是合法 JSON 时节点失败', async () => {
+      const adapter = setupStructuredAgentWithRounds([
+        [
+          { type: 'message_chunk', content: '{"answer": "前言里的 JSON"}' },
+          searchCall('completed'),
+          { type: 'message_chunk', content: '没有找到答案' },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
+      ]);
+
+      await expect(
+        adapter.execute({
+          executionId: EXECUTION_ID,
+          step: makeStep(),
+          input: { prompt: 'q' },
+          tenantId: TENANT_ID,
+          versionSnapshot: makeSnapshot('no-sandbox-node'),
+        }),
+      ).rejects.toThrow('Agent 回复不是合法 JSON');
+    });
+
+    it('解析失败时错误携带本次真实 token 用量与成本，供步骤失败记录', async () => {
+      setupStructuredAgent('');
+      mockSandboxRuntime.createSession.mockResolvedValue({
+        id: 'session-1',
+        llmModelConfigId: 'model-1',
+      });
+      mockSandboxRuntime.prompt.mockReset();
+      mockSandboxRuntime.prompt.mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: 'not json' },
+          {
+            type: 'usage',
+            usage: { inputTokens: 1000, outputTokens: 50, totalTokens: 1050 },
+            modelId: 'minimax-test',
+          },
+          {
+            type: 'usage',
+            usage: { inputTokens: 2000, outputTokens: 30, totalTokens: 2030 },
+          },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+      const llmCostService = new LlmCostService({} as never);
+      vi.spyOn(llmCostService, 'resolvePricing').mockResolvedValue({
+        inputPer1MTokens: 1,
+        outputPer1MTokens: 10,
+      });
+      const adapter = createAdapter({
+        db,
+        agentRuntime: mockAgentRuntime,
+        runtimeAdapterFactory: mockRuntimeAdapterFactory,
+        agentDefinitionService: mockAgentDefinitionService,
+        sandboxService: mockSandboxService,
+        eventBridge: mockEventBridge,
+        llmCostService,
+      });
+
+      const error: unknown = await adapter
+        .execute({
+          executionId: EXECUTION_ID,
+          step: makeStep(),
+          input: { prompt: 'q' },
+          tenantId: TENANT_ID,
+          versionSnapshot: makeSnapshot('no-sandbox-node'),
+        })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(WorkflowAgentStepFailedError);
+      expect((error as Error).message).toContain('Agent 回复不是合法 JSON');
+      expect((error as WorkflowAgentStepFailedError).stepResult).toEqual({
+        content: 'not json',
+        promptTokens: 3000,
+        completionTokens: 80,
+        totalTokens: 3080,
+        modelId: 'minimax-test',
+        costUsd: 0.0038,
+      });
     });
   });
 

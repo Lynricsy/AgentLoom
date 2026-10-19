@@ -20,7 +20,7 @@ docType: reference
 - 「知识库」端口接一个或多个 [Knowledge Base](/guide/nodes/knowledge-base) 节点的「知识库」端口，与 Agent 自己画布上的知识库合并（同一知识库只算一次），Agent 运行时通过 `search_knowledge` 工具检索。
 - 「扩展工具」端口只接 [MCP Tool](/guide/nodes/mcp-tool) 节点的「工具」端口。工作流里的 [HTTP Request](/guide/nodes/http-tool)、[Code Executor](/guide/nodes/code-tool) 是按顺序执行的步骤，输出的是数据而不是工具，不能连到这里；要让 Agent 把它们当工具调用，在 Agent 画布上把它们连到 Agent Main 的「工具」端口。
 - 工作流 Agent 节点没有「子 Agent」端口：工作流里没有节点能产出子 Agent，子 Agent 在被调用 Agent 的画布上连到 Agent Main。旧工作流中连到 `sub-agents-in` 的连线会让发布失败（422），错误信息为 `工作流 Agent 节点 <节点名> 不支持「子 Agent」端口 (sub-agents-in)：子 Agent 请在被调用 Agent 的 Agent 画布上连接到 Agent Main`，删除该连线后再发布。
-- 「回复」端口输出 Agent 的文本回复。「Schema」端口（或 Agent 定义里的输出 Schema）会被追加到系统提示词中，要求模型按 Schema 回复 JSON；配置了 Schema 时，节点结束后服务端把回复解析为 JSON（包住整段回复的 ```` ```json ```` 围栏会被去掉）并按 Schema 校验，通过后从「结构化」端口输出该对象。回复不是合法 JSON 或不符合 Schema 时节点失败，错误信息以 `Agent 回复不是合法 JSON` 或 `Agent 回复不符合输出 Schema` 开头。没有配置 Schema 时「结构化」端口没有值。
+- 「回复」端口输出 Agent 的文本回复（各轮回复拼接，含调用工具前说的话）。「Schema」端口（或 Agent 定义里的输出 Schema）会被追加到系统提示词中，要求模型按 Schema 回复 JSON；配置了 Schema 时，节点结束后服务端把回复解析为 JSON 并按 Schema 校验，通过后从「结构化」端口输出该对象。解析时先尝试整段回复（包住整段回复的 ```` ```json ```` 围栏会被去掉）；不是合法 JSON 时，取回复末尾的那段 JSON（可带 ```` ```json ```` 围栏），因此模型在调用工具前先说一句话（如「我先检索一下知识库」）不影响结果。末尾 JSON 之后还有文字、或回复中没有合法 JSON、或不符合 Schema 时节点失败，错误信息以 `Agent 回复不是合法 JSON` 或 `Agent 回复不符合输出 Schema` 开头；失败步骤仍记录这次运行实际消耗的 token 与原始回复，计入执行记录的用量统计。没有配置 Schema 时「结构化」端口没有值。
 - 节点暂停等待人工干预后，「批准」采用的原回复和「修改」提交的内容都会按同一 Schema 重新校验，通过后写入「结构化」端口；修改后的内容不符合 Schema 时节点失败。
 - 组织的 [自治策略](/guide/collaboration/autonomy-policy) 为人工确认模式，或 Agent 主动请求干预时，节点会暂停在等待干预状态，处理后再继续，而不是直接完成。
 - 有沙箱的 Agent 运行结束（成功或失败）后，沙箱中的工作区会被归档。

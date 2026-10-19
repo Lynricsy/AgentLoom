@@ -158,6 +158,21 @@ export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
   readonly costUsd?: number;
 }
 
+/**
+ * 模型调用已完成、节点仍要失败的错误（如回复不符合输出 Schema）。stepResult 携带本次真实的
+ * token 用量、成本与原始回复，执行器写入失败步骤的 result，执行记录据此统计用量。
+ */
+export class WorkflowAgentStepFailedError extends Error {
+  constructor(
+    message: string,
+    readonly stepResult: Record<string, unknown>,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'WorkflowAgentStepFailedError';
+  }
+}
+
 interface CompiledWorkflowAgentDefinition {
   readonly runtimeConfig: AgentRuntimeConfig;
   readonly systemPrompt?: string;
@@ -550,16 +565,7 @@ export class WorkflowAgentAdapter {
       unregisterCancellation?.();
     }
 
-    // 「结构化」端口契约：工作流节点配置了 outputSchema 时，最终回复必须是通过校验的 JSON。
-    // 子 Agent 调用的回复交回父 Agent 作为工具结果，不经过端口，不在这里校验。
-    const outputSchema = params.subAgentInvocation
-      ? undefined
-      : coerceAgentOutputSchema(runtimeConfigWithExtensions.outputSchema);
-    const structured =
-      outputSchema && stopReason === 'end_turn'
-        ? parseAgentStructuredOutput(accumulatedContent, outputSchema)
-        : undefined;
-
+    // 用量与成本先于结构化解析计算：解析失败时模型调用已经发生，步骤失败也要如实记录用量。
     const usage = sumAgentUsage(usageCalls);
     const costUsd =
       (await this.dependencies.llmCostService?.estimateCallsCostUsd(
@@ -567,6 +573,33 @@ export class WorkflowAgentAdapter {
         session.llmModelConfigId,
         usageCalls,
       )) ?? null;
+    const usageResult = {
+      ...(usage ? toUsageTelemetryFields(usage) : {}),
+      ...(usageModelId ? { modelId: usageModelId } : {}),
+      ...(costUsd !== null ? { costUsd } : {}),
+    };
+
+    // 「结构化」端口契约：工作流节点配置了 outputSchema 时，最终回复必须是通过校验的 JSON。
+    // 子 Agent 调用的回复交回父 Agent 作为工具结果，不经过端口，不在这里校验。
+    const outputSchema = params.subAgentInvocation
+      ? undefined
+      : coerceAgentOutputSchema(runtimeConfigWithExtensions.outputSchema);
+    let structured: unknown;
+    if (outputSchema && stopReason === 'end_turn') {
+      try {
+        structured = parseAgentStructuredOutput(
+          accumulatedContent,
+          outputSchema,
+        );
+      } catch (error) {
+        throw new WorkflowAgentStepFailedError(
+          error instanceof Error ? error.message : String(error),
+          { content: accumulatedContent, ...usageResult },
+          { cause: error },
+        );
+      }
+    }
+
     const result: WorkflowAgentExecutionResult = {
       content: accumulatedContent,
       'exec-out': { triggered: true },
@@ -574,9 +607,7 @@ export class WorkflowAgentAdapter {
       ...(decision ? { decision } : {}),
       ...(structured !== undefined ? { structured } : {}),
       ...(outputSchema ? { outputSchema } : {}),
-      ...(usage ? toUsageTelemetryFields(usage) : {}),
-      ...(usageModelId ? { modelId: usageModelId } : {}),
-      ...(costUsd !== null ? { costUsd } : {}),
+      ...usageResult,
     };
 
     this.logger.debug(
