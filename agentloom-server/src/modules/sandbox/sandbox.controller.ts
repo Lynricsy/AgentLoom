@@ -110,10 +110,14 @@ export class SandboxController {
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: 'Get sandbox logs' })
   @ApiResponse({ status: 200, description: 'Sandbox log list' })
+  @ApiResponse({ status: 404, description: 'Sandbox session not found' })
   async getSandboxLogs(@Param('sessionId', ParseUUIDPipe) sessionId: string) {
+    // 日志表受 RLS 过滤，不存在或他租户的会话会得到空列表；先按租户断言会话存在
+    await this.sandboxService.getSessionById(sessionId);
     const logs = await this.sandboxService.getSandboxLogs(sessionId);
     return { data: logs };
   }
+
   private presentSession<T extends { runtimeHandle?: unknown }>(
     session: T,
   ): Omit<T, 'runtimeHandle'> {

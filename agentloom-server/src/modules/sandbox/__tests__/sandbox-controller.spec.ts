@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { SandboxController } from '../sandbox.controller';
 import { SandboxService } from '../sandbox.service';
+import { SandboxNotFoundException } from '../sandbox.exceptions';
 
 const SESSION_ID = '019391d4-a000-7000-0000-000000000001';
 
@@ -23,6 +24,7 @@ const mockLogs = [
 ];
 
 const mockService: Record<string, ReturnType<typeof vi.fn>> = {
+  getSessionById: vi.fn(),
   getSandboxLogs: vi.fn(),
   listSandboxes: vi.fn(),
 };
@@ -57,6 +59,17 @@ describe('SandboxController', () => {
       const result = await controller.getSandboxLogs(SESSION_ID);
 
       expect(result).toEqual({ data: [] });
+    });
+
+    it('会话不存在或属于他租户时应抛出 404 且不查询日志', async () => {
+      mockService.getSessionById.mockRejectedValue(
+        new SandboxNotFoundException(SESSION_ID),
+      );
+
+      await expect(
+        controller.getSandboxLogs(SESSION_ID),
+      ).rejects.toBeInstanceOf(SandboxNotFoundException);
+      expect(mockService.getSandboxLogs).not.toHaveBeenCalled();
     });
   });
 
