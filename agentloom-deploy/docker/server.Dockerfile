@@ -61,6 +61,13 @@ ENV COREPACK_ENABLE_AUTO_INSTALL=1
 
 RUN corepack enable
 
+# Code Executor（code-tool）的 Python 语言以子进程 `python3` 运行，与 node / bash 同一套约束：
+# node 用户、只继承白名单环境变量、按节点超时终止（agentloom-server/src/modules/agent/code-execution.service.ts）。
+# 只装解释器与标准库，不带 pip。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # workspace 布局整体搬运：contracts / api-client / plugin-sdk 由根 node_modules 的
