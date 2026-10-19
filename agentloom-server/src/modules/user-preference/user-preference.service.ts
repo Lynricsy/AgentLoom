@@ -2,7 +2,8 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { userPreferences } from '../../database/schema';
+import { llmModelConfigs, userPreferences } from '../../database/schema';
+import { LlmModelConfigNotFoundException } from '../llm/llm.exceptions';
 import type { UserPreference } from '../../database/schema';
 import type { UpdateUserPreferenceDto } from './dto';
 import {
@@ -95,6 +96,10 @@ export class UserPreferenceService {
   ): Promise<UserPreferenceResponseDto> {
     const now = new Date();
 
+    if (dto.titleModelConfigId) {
+      await this.assertModelConfigInTenant(dto.titleModelConfigId, tenantId);
+    }
+
     // 构建更新字段集
     const updateFields: Record<string, unknown> = { updatedAt: now };
     if (dto.titleModelConfigId !== undefined) {
@@ -123,5 +128,26 @@ export class UserPreferenceService {
     );
 
     return toUserPreferenceResponse(upserted);
+  }
+
+  /** FK 不受 RLS 约束：必须先在当前租户内确认模型配置存在，避免存下跨租户引用 */
+  private async assertModelConfigInTenant(
+    modelConfigId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const [config] = await this.tenantDb
+      .select({ id: llmModelConfigs.id })
+      .from(llmModelConfigs)
+      .where(
+        and(
+          eq(llmModelConfigs.id, modelConfigId),
+          eq(llmModelConfigs.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!config) {
+      throw new LlmModelConfigNotFoundException(modelConfigId);
+    }
   }
 }
