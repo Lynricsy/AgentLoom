@@ -54,14 +54,13 @@ const SLUG_TO_LITELLM_PROVIDERS: Record<string, string[]> = {
 };
 
 /**
- * 不支持 OpenAI-compatible /v1/models 发现端点的 API 协议集合。
- * 这些协议的 discoverModels 直接返回空数组。
+ * 不提供 `/v1/models` 形状模型列表的 API 协议集合，discoverModels 直接返回空数组。
+ * anthropic 的 `/v1/models` 与 OpenAI 同为 `{ data: [{ id }] }`，因此可以发现。
  */
-const NON_OPENAI_COMPATIBLE_PROTOCOLS = new Set([
-  'anthropic',
-  'google',
-  'cohere',
-]);
+const MODEL_LIST_UNSUPPORTED_PROTOCOLS: Record<string, true> = {
+  google: true,
+  cohere: true,
+};
 
 // ---------------------------------------------------------------------------
 // ModelDiscoveryService
@@ -259,11 +258,11 @@ export class ModelDiscoveryService {
   }
 
   /**
-   * 通过 /v1/models (OpenAI-compatible) 发现提供商的可用模型。
-   * 对于 anthropic / google / cohere 协议直接返回空数组（它们不支持此端点）。
+   * 通过 `/v1/models` 发现提供商的可用模型（OpenAI 兼容协议与 anthropic）。
+   * google / cohere 协议直接返回空数组。
    */
   async discoverModels(provider: LlmProvider): Promise<DiscoveredModel[]> {
-    if (NON_OPENAI_COMPATIBLE_PROTOCOLS.has(provider.apiProtocol)) {
+    if (MODEL_LIST_UNSUPPORTED_PROTOCOLS[provider.apiProtocol]) {
       this.logger.debug(
         `提供商 ${provider.slug} (协议 ${provider.apiProtocol}) 不支持 /v1/models 发现，跳过`,
       );

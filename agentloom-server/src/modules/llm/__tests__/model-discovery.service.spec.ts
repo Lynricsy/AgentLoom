@@ -138,8 +138,8 @@ describe('ModelDiscoveryService', () => {
     }) as unknown as Response;
 
   describe('provider protocol discovery and connection', () => {
-    it.each(['anthropic', 'google', 'cohere'] as const)(
-      '%s 协议不请求 OpenAI 模型目录',
+    it.each(['google', 'cohere'] as const)(
+      '%s 协议不请求模型目录',
       async (apiProtocol) => {
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
@@ -150,6 +150,38 @@ describe('ModelDiscoveryService', () => {
         expect(fetchMock).not.toHaveBeenCalled();
       },
     );
+
+    it('anthropic 协议用 x-api-key 拉取 /v1/models 模型目录', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('anthropic-secret');
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          response(200, { data: [{ id: 'claude-sonnet-5-5' }] }),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        service.discoverModels(
+          provider({
+            slug: 'vm2api',
+            apiProtocol: 'anthropic',
+            apiKeyId: 'key-id',
+          }),
+        ),
+      ).resolves.toEqual([
+        {
+          id: 'claude-sonnet-5-5',
+          name: 'claude-sonnet-5-5',
+          ownedBy: undefined,
+        },
+      ]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.test/v1/models',
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'x-api-key': 'anthropic-secret' }),
+        }),
+      );
+    });
 
     it.each(['https://gw.test/v1', 'https://gw.test/v1/', 'https://gw.test'])(
       'baseUrl %s 的连接探测与模型发现都只打一次 /v1',
