@@ -7,7 +7,7 @@ import type {
 } from '../../../database/schema/workflow-definitions.schema';
 import {
   type WorkflowInputSchema,
-  workflowInputSchemaSchema,
+  workflowInputSchemaWriteSchema,
 } from '../../workflow/dto/workflow-input-schema.dto';
 import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 
@@ -210,7 +210,7 @@ export function validateImportFile(content: unknown): ImportValidationResult {
   const inputSchemaResult =
     workflow.input_schema === null
       ? { success: true as const, data: null }
-      : workflowInputSchemaSchema.safeParse(workflow.input_schema);
+      : workflowInputSchemaWriteSchema.safeParse(workflow.input_schema);
 
   if (!inputSchemaResult.success) {
     return {

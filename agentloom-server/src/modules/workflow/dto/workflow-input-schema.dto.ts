@@ -55,6 +55,77 @@ export const workflowInputSchemaSchema = z
     });
   });
 
+/**
+ * 写入（PATCH / 导入）时的一致性校验。读取已存储 schema 仍用宽松的
+ * `workflowInputSchemaSchema`，避免历史数据在运行/读取时直接报错。
+ */
+function refineWorkflowInputSchemaForWrite(
+  schema: WorkflowInputSchema,
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    (schema.collectionMode === 'conversation' ||
+      schema.collectionMode === 'hybrid') &&
+    !schema.conversationPlan
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['conversationPlan'],
+      message: '对话/混合收集模式必须配置 conversationPlan',
+    });
+  }
+
+  const seenIds = new Set<string>();
+  schema.fields.forEach((field, index) => {
+    if (seenIds.has(field.id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fields', index, 'id'],
+        message: `字段 ID「${field.id}」重复`,
+      });
+    }
+    seenIds.add(field.id);
+
+    if (
+      (field.type === 'single_select' || field.type === 'multi_select') &&
+      (!field.options || field.options.length === 0)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fields', index, 'options'],
+        message: '选择类字段必须提供至少一个选项',
+      });
+    }
+
+    const validation = field.validation;
+    if (
+      validation?.minLength !== undefined &&
+      validation.maxLength !== undefined &&
+      validation.minLength > validation.maxLength
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fields', index, 'validation', 'minLength'],
+        message: 'minLength 不能大于 maxLength',
+      });
+    }
+    if (
+      validation?.min !== undefined &&
+      validation.max !== undefined &&
+      validation.min > validation.max
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fields', index, 'validation', 'min'],
+        message: 'min 不能大于 max',
+      });
+    }
+  });
+}
+
+export const workflowInputSchemaWriteSchema =
+  workflowInputSchemaSchema.superRefine(refineWorkflowInputSchemaForWrite);
+
 export type WorkflowInputSchema = z.infer<typeof workflowInputSchemaSchema>;
 export type InputFieldDefinition = z.infer<typeof inputFieldDefinitionSchema>;
 export type InputFieldVisibility = z.infer<typeof inputFieldVisibilitySchema>;
