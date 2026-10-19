@@ -102,6 +102,13 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `agent-sandbox-not-connected` | 409 | 有沙箱的 Agent 画布上没有连接沙箱，无法开始对话 | 在 Agent 画布上把 Sandbox 节点连到 Agent Main |
 | `agent-canvas-invalid-mcp-tool-binding` | 422 | Agent 画布上的 MCP 节点配置不完整 | 在 MCP 节点中选择服务与工具 |
 | `agent-canvas-invalid-harness` | 422 | Harness 或 Runtime 插件节点配置无效，或无沙箱 Agent 使用了 Harness | 按 `detail` 修正节点，见 [用 Harness 定制 Agent 运行时](/guide/agents/harness) |
+| `agent-not-published` | 409 | Agent 尚未发布（对外 API、ACP `session/new` 也会返回） | 先发布 Agent |
+| `agent-version-not-found` | 404 | Agent 版本不存在 | 刷新版本列表 |
+| `conversation-not-found` | 404 | 对话不存在或不属于当前组织 | 确认链接与当前组织 |
+| `conversation-ended` | 409 | 对话已结束或失败，不能再发消息或取消 | 新建对话 |
+| `tool-call-not-found` | 404 | 工具调用不存在 | 刷新后确认待审批的工具调用 |
+| `team/run-not-found` | 404 | 团队运行不存在 | 确认运行 ID |
+| `a2a/agent-not-found` | 404 | A2A 调用的 Agent 不存在或未发布 | 确认 Agent ID 且 Agent 已发布 |
 
 Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 
@@ -194,6 +201,9 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `generated-app-not-found` | 404 | 生成应用不存在或不属于当前组织 | 确认链接与当前组织 |
 | `generated-app-artifact-not-found` | 404 | 生成应用的交付物不存在 | 重新生成 |
 | `generated-app-submission-not-found` | 404 | 生成应用的提交记录不存在 | 确认提交 ID |
+| `share-not-found` | 404 | 分享链接不存在或无权访问 | 确认链接完整 |
+| `share-copy-not-allowed` | 409 | 该分享链接不允许导入副本 | 请分享者改为可复制的分享 |
+| `share-agent-not-published` | 409 | 被分享的 Agent 尚未发布，无法导入 | 请分享者发布 Agent |
 | `share-expired` | 410 | 分享链接已过期 | 请分享者重新生成链接 |
 | `share-revoked` | 410 | 分享链接已撤销 | 同上 |
 | `share-workflow-not-published` | 409 | 被分享的工作流尚未发布 | 请分享者发布工作流 |
