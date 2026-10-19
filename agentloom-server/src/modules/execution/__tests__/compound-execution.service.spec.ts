@@ -224,6 +224,10 @@ describe('CompoundExecutionService', () => {
     );
     context.breakRequested = true;
     context.roundOutputs = { review: 'approved' };
+    // break 那一轮的 loop-state 已提交 {i:3}：finalState 必须是提交后的状态
+    context.loopState = { i: 2 };
+    context.nextStateProvided = true;
+    context.nextState = { i: 3 };
     const runtime = {
       loadExecutionContext: vi.fn().mockResolvedValue({
         execution: {},
@@ -255,7 +259,10 @@ describe('CompoundExecutionService', () => {
       expect.objectContaining({
         result: expect.objectContaining({
           review: 'approved',
-          compound: expect.objectContaining({ mode: 'loop' }),
+          compound: expect.objectContaining({
+            mode: 'loop',
+            finalState: { i: 3 },
+          }),
         }),
       }),
     );

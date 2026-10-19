@@ -722,6 +722,11 @@ export class CompoundExecutionService {
         context.previousResult = { ...context.roundOutputs };
       }
 
+      // break 所在轮的 loop-state 已经提交，与正常推进到下一轮（advanceCompoundRound）一致地落入 finalState
+      if (context.nextStateProvided) {
+        context.loopState = context.nextState;
+      }
+
       await this.finalizeCompoundExecution(context, tenantId, runtime);
       return;
     }

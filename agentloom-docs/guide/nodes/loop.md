@@ -43,6 +43,7 @@ docType: reference
 - 容器上通过「添加输入」增加的输入端口，以及 Break、Continue 的表达式输入端口，都可接收任意类型的上游值（例如沙箱、工作区等资源端口），值原样传入，不做类型转换。
 - Continue 会丢弃当前轮已提交的 Result；Break 触发时，当前轮中已就绪的 Result 仍会执行，其结果会被保留（配置面板中「当前轮半成品会被丢弃」的说明与服务端行为不一致，以服务端为准）。
 - 循环最多执行 100 轮，达到上限时以 `max_iterations` 结束；该上限目前不能在界面中修改。没有 Break 的循环会一直运行到上限。
+- 循环结束后，执行详情中 Loop 步骤的 `compound` 字段记录 `rounds`（完成轮数）与 `finalState`（结束时的状态）。`finalState` 包含最后一轮 Loop State 提交的值，Break 结束的那一轮也计入。
 - 容器内节点按依赖顺序逐个执行；任一内部节点失败，整个 Loop 失败。
 - Result、Break、Continue 在 [Iteration](/guide/nodes/iteration) 容器中同样可用；Loop State 只用于 Loop。
 - 点击容器标题栏的箭头可收起容器：收起后容器缩成卡片，内部节点与相连连线不显示；再次展开时容器撑开到能容纳全部内部节点。配置面板勾选「保存为收起态」效果相同。
