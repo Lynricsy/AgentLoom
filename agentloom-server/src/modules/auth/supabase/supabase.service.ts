@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import {
+  AuthApiError,
+  createClient,
+  SupabaseClient,
+} from '@supabase/supabase-js';
 
 import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
 import type { OAuthProvider } from '../dto/oauth.dto';
@@ -101,20 +105,42 @@ export class SupabaseService {
     return data.user;
   }
 
-  async updateUserPassword(supabaseUserId: string, newPassword: string) {
-    const { data, error } =
-      await this.getAdminClient().auth.admin.updateUserById(supabaseUserId, {
-        password: newPassword,
-      });
+  /**
+   * 以用户自己的会话修改密码：GoTrue 用户态改密只注销该用户的其他会话、保留当前会话，
+   * 而 admin `updateUserById` 会注销全部会话。auth-js 的 `updateUser` 依赖本地持久会话，
+   * 服务端 user client 不持久化会话，因此直接调用 GoTrue `PUT /auth/v1/user`。
+   */
+  async updatePasswordForSession(accessToken: string, newPassword: string) {
+    this.ensureAvailable();
 
-    if (error) {
-      this.logger.warn(
-        `UpdateUserPassword failed for ${supabaseUserId}: ${error.message}`,
+    const response = await fetch(
+      `${this.supabaseUrl!.replace(/\/+$/, '')}/auth/v1/user`,
+      {
+        method: 'PUT',
+        headers: {
+          apikey: this.supabaseAnonKey!,
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: newPassword }),
+      },
+    );
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as {
+        msg?: string;
+        message?: string;
+        error_code?: string;
+        code?: string;
+      } | null;
+      const message = body?.msg ?? body?.message ?? `HTTP ${response.status}`;
+      this.logger.warn(`UpdatePassword failed: ${message}`);
+      throw new AuthApiError(
+        message,
+        response.status,
+        body?.error_code ?? body?.code,
       );
-      throw error;
     }
-
-    return data;
   }
 
   // ─── OAuth 社交登录 ─────────────────────────────────────────

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigService } from '@nestjs/config';
+import type * as SupabaseJs from '@supabase/supabase-js';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
 
@@ -38,7 +39,8 @@ const { createClientMock, adminClient, oauthClient } = vi.hoisted(() => {
   };
 });
 
-vi.mock('@supabase/supabase-js', () => ({
+vi.mock('@supabase/supabase-js', async (importOriginal) => ({
+  ...(await importOriginal<typeof SupabaseJs>()),
   createClient: createClientMock,
 }));
 
@@ -119,5 +121,65 @@ describe('SupabaseService', () => {
     expect(
       oauthClient.auth.mfa.getAuthenticatorAssuranceLevel,
     ).toHaveBeenCalledWith('aal2-access-token');
+  });
+
+  describe('updatePasswordForSession', () => {
+    const config = {
+      APP_DEPLOYMENT_MODE: 'saas',
+      APP_SUPABASE_URL: 'https://example.supabase.co/',
+      APP_SUPABASE_ANON_KEY: 'anon-key',
+      APP_SUPABASE_SERVICE_KEY: 'service-key',
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('以当前会话的 JWT 调用 GoTrue PUT /user（不走 admin API，保留当前会话）', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response('{}', { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const service = new SupabaseService(createMockConfigService(config));
+
+      await service.updatePasswordForSession('session-jwt', 'NewPass123');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://example.supabase.co/auth/v1/user',
+        {
+          method: 'PUT',
+          headers: {
+            apikey: 'anon-key',
+            Authorization: 'Bearer session-jwt',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ password: 'NewPass123' }),
+        },
+      );
+    });
+
+    it('GoTrue 返回错误时抛出 AuthApiError', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              msg: 'weak password',
+              error_code: 'weak_password',
+            }),
+            { status: 422 },
+          ),
+        ),
+      );
+      const service = new SupabaseService(createMockConfigService(config));
+
+      await expect(
+        service.updatePasswordForSession('session-jwt', 'weak'),
+      ).rejects.toMatchObject({
+        name: 'AuthApiError',
+        status: 422,
+        code: 'weak_password',
+      });
+    });
   });
 });

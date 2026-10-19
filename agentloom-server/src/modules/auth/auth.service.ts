@@ -392,8 +392,8 @@ export class AuthService {
     }
 
     try {
-      await this.supabaseService.updateUserPassword(
-        supabaseUser.id,
+      await this.supabaseService.updatePasswordForSession(
+        accessToken,
         newPassword,
       );
     } catch (error) {

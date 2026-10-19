@@ -34,7 +34,7 @@ function createMockSupabaseService() {
     signOut: vi.fn(),
     getUser: vi.fn(),
     listFactors: vi.fn(),
-    updateUserPassword: vi.fn(),
+    updatePasswordForSession: vi.fn(),
   };
 }
 
@@ -83,7 +83,7 @@ describe('AuthService.changePassword', () => {
       user: mockSupabaseUser,
       session: mockSession,
     });
-    supabaseService.updateUserPassword.mockResolvedValue({});
+    supabaseService.updatePasswordForSession.mockResolvedValue(undefined);
 
     const result = await authService.changePassword(
       MOCK_ACCESS_TOKEN,
@@ -97,8 +97,9 @@ describe('AuthService.changePassword', () => {
       MOCK_EMAIL,
       MOCK_CURRENT_PASSWORD,
     );
-    expect(supabaseService.updateUserPassword).toHaveBeenCalledWith(
-      MOCK_SUPABASE_UUID,
+    // 用当前会话的 access token 改密：GoTrue 只注销其他会话，当前会话保留
+    expect(supabaseService.updatePasswordForSession).toHaveBeenCalledWith(
+      MOCK_ACCESS_TOKEN,
       MOCK_NEW_PASSWORD,
     );
   });
@@ -125,7 +126,7 @@ describe('AuthService.changePassword', () => {
       );
     }
 
-    expect(supabaseService.updateUserPassword).not.toHaveBeenCalled();
+    expect(supabaseService.updatePasswordForSession).not.toHaveBeenCalled();
   });
 
   it('新旧密码相同: 抛出 400 same-password，不调用 Supabase', async () => {
@@ -145,7 +146,7 @@ describe('AuthService.changePassword', () => {
 
     expect(supabaseService.getUser).not.toHaveBeenCalled();
     expect(supabaseService.signIn).not.toHaveBeenCalled();
-    expect(supabaseService.updateUserPassword).not.toHaveBeenCalled();
+    expect(supabaseService.updatePasswordForSession).not.toHaveBeenCalled();
   });
 
   it('getUser 失败 (token 无效): 抛出 401 unauthorized', async () => {
@@ -167,7 +168,7 @@ describe('AuthService.changePassword', () => {
     }
 
     expect(supabaseService.signIn).not.toHaveBeenCalled();
-    expect(supabaseService.updateUserPassword).not.toHaveBeenCalled();
+    expect(supabaseService.updatePasswordForSession).not.toHaveBeenCalled();
   });
 
   it('signIn 因非凭据原因失败: 抛出 500 change-password-failed', async () => {
@@ -193,14 +194,14 @@ describe('AuthService.changePassword', () => {
     }
   });
 
-  it('updateUserPassword 失败: 抛出 500 change-password-failed', async () => {
+  it('updatePasswordForSession 失败: 抛出 500 change-password-failed', async () => {
     supabaseService.getUser.mockResolvedValue(mockSupabaseUser);
     supabaseService.signIn.mockResolvedValue({
       user: mockSupabaseUser,
       session: mockSession,
     });
-    supabaseService.updateUserPassword.mockRejectedValue(
-      new Error('Admin API error'),
+    supabaseService.updatePasswordForSession.mockRejectedValue(
+      new Error('GoTrue error'),
     );
 
     try {
