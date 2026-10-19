@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
 import { io } from 'socket.io-client'
-import { useToast } from '@/shared/ui/toast'
+import { useToast, type ToastOptions, type ToastVariant } from '@/shared/ui/toast'
 import { notificationKeys } from '../api/notificationKeys'
 import type { NotificationType, NotificationTypeEnum } from '../types'
 
@@ -82,7 +82,7 @@ export interface UseNotificationSocketResult {
   error: string | null
 }
 
-function getToastVariant(type: NotificationTypeEnum) {
+function getToastVariant(type: NotificationTypeEnum): ToastVariant {
   switch (type) {
     case 'execution_completed':
       return 'success'
@@ -99,7 +99,9 @@ function getToastVariant(type: NotificationTypeEnum) {
  * 实时通知 toast 文案：执行类通知带工作流名，同一工作流同类通知合并为一条（×N），
  * 避免同租户批量执行时 toast 堆叠且看不出是哪个工作流
  */
-export function buildNotificationToast(notification: NotificationType) {
+export function buildNotificationToast(
+  notification: NotificationType,
+): ToastOptions {
   const variant = getToastVariant(notification.type)
   const workflowName = notification.body?.workflowName
   const workflowId = notification.body?.workflowId

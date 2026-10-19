@@ -13,7 +13,7 @@ import { cn } from '@/shared/lib/utils'
 import { panelSlideRight } from '@/shared/lib/motion'
 import { Button } from './button'
 
-type ToastVariant = 'info' | 'success' | 'warning' | 'error'
+export type ToastVariant = 'info' | 'success' | 'warning' | 'error'
 
 export interface ToastOptions {
   title?: string
