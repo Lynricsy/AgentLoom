@@ -77,7 +77,7 @@ describe('所有 Socket.IO 命名空间与 HTTP 使用同一用户身份 (E2E)',
         },
         {
           provide: TokenBlacklistService,
-          useValue: { isBlacklisted: vi.fn().mockResolvedValue(false) },
+          useValue: { checkToken: vi.fn().mockResolvedValue('active') },
         },
         {
           provide: UserIdentityResolverService,

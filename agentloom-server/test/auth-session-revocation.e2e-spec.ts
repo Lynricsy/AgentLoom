@@ -32,7 +32,16 @@ const AUTH_SESSIONS_DDL = `
   )
 `;
 
-function signAccessToken(userId: string, sessionId: string) {
+// GoTrue auth.mfa_factors 的最小子集：TokenBlacklistService 只读 user_id 与 status。
+const AUTH_MFA_FACTORS_DDL = `
+  CREATE TABLE IF NOT EXISTS auth.mfa_factors (
+    id uuid PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    status text NOT NULL
+  )
+`;
+
+function signAccessToken(userId: string, sessionId: string, aal = 'aal1') {
   return jwt.sign(
     {
       sub: userId,
@@ -40,6 +49,7 @@ function signAccessToken(userId: string, sessionId: string) {
       aud: 'authenticated',
       role: 'authenticated',
       session_id: sessionId,
+      aal,
     },
     JWT_SECRET,
     { algorithm: 'HS256', expiresIn: '1h' },
@@ -78,6 +88,7 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
   beforeAll(async () => {
     context = await createRlsTestContext();
     await context.adminSql.unsafe(AUTH_SESSIONS_DDL);
+    await context.adminSql.unsafe(AUTH_MFA_FACTORS_DDL);
 
     const blacklist = new TokenBlacklistService(context.db);
     const resolver = { resolveAppUserId: async (sub: string) => sub };
@@ -95,6 +106,7 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
   });
 
   beforeEach(async () => {
+    await context.adminSql`DELETE FROM auth.mfa_factors`;
     await context.adminSql`DELETE FROM auth.sessions`;
     await context.reset();
 
@@ -169,6 +181,40 @@ describe('会话吊销使已签发的 access token 失效 (testcontainers)', () 
         guard.canActivate(createHttpContext(expired.token).context),
       ),
     ).toBe('https://agentloom.dev/errors/token-revoked');
+  });
+
+  it('已启用 MFA 的用户仅凭密码（aal1）拿到的 token 被拒绝，aal2 放行', async () => {
+    await context.adminSql`
+      INSERT INTO auth.mfa_factors (id, user_id, status)
+      VALUES (${crypto.randomUUID()}::uuid, ${userId}::uuid, 'verified')
+    `;
+
+    expect(
+      await rejectionType(
+        guard.canActivate(createHttpContext(currentToken).context),
+      ),
+    ).toBe('https://agentloom.dev/errors/mfa-required');
+    expect(
+      await rejectionType(
+        guard.canActivate(
+          createHttpContext(signAccessToken(userId, currentSessionId, 'aal2'))
+            .context,
+        ),
+      ),
+    ).toBe('accepted');
+  });
+
+  it('只有未验证因子（注册中途放弃）时 aal1 token 仍可用', async () => {
+    await context.adminSql`
+      INSERT INTO auth.mfa_factors (id, user_id, status)
+      VALUES (${crypto.randomUUID()}::uuid, ${userId}::uuid, 'unverified')
+    `;
+
+    expect(
+      await rejectionType(
+        guard.canActivate(createHttpContext(currentToken).context),
+      ),
+    ).toBe('accepted');
   });
 
   it('auth.sessions 不可读时 fail-closed：带 session_id 的 token 被拒绝', async () => {

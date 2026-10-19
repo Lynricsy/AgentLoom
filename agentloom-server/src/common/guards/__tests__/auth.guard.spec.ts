@@ -152,7 +152,7 @@ describe('AuthGuard', () => {
         {
           provide: TokenBlacklistService,
           useValue: {
-            isBlacklisted: vi.fn().mockResolvedValue(false),
+            checkToken: vi.fn().mockResolvedValue('active'),
           },
         },
         {
@@ -272,7 +272,7 @@ describe('AuthGuard', () => {
   it('ブラックリストに登録されたトークン: token-revoked で 401', async () => {
     const token = createValidToken();
     const { context } = createMockExecutionContext(`Bearer ${token}`);
-    vi.mocked(tokenBlacklist.isBlacklisted).mockResolvedValue(true);
+    vi.mocked(tokenBlacklist.checkToken).mockResolvedValue('revoked');
 
     try {
       await authGuard.canActivate(context as never);

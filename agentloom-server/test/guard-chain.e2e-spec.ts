@@ -139,7 +139,7 @@ const mockTxExecute = vi.fn().mockResolvedValue(undefined);
     {
       provide: TokenBlacklistService,
       useValue: {
-        isBlacklisted: vi.fn().mockResolvedValue(false),
+        checkToken: vi.fn().mockResolvedValue('active'),
       },
     },
     {

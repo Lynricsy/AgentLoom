@@ -27,7 +27,7 @@ function createAccessToken(payload: Record<string, unknown>) {
 
 async function createModule() {
   const tokenBlacklistService = {
-    isBlacklisted: vi.fn().mockResolvedValue(false),
+    checkToken: vi.fn().mockResolvedValue('active'),
   };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
@@ -77,7 +77,7 @@ describe('AuthenticateHandler', () => {
       state,
     );
 
-    expect(tokenBlacklistService.isBlacklisted).toHaveBeenCalledOnce();
+    expect(tokenBlacklistService.checkToken).toHaveBeenCalledOnce();
     expect(result).toEqual({ authenticated: true });
     expect(state.authContext).toEqual({
       userId: 'user-1',
@@ -94,7 +94,7 @@ describe('AuthenticateHandler', () => {
     const state: AcpConnectionState = {
       initialized: true,
     };
-    tokenBlacklistService.isBlacklisted.mockResolvedValueOnce(true);
+    tokenBlacklistService.checkToken.mockResolvedValueOnce('revoked');
 
     await expect(
       handler.handle({ token: createAccessToken({}) }, state),

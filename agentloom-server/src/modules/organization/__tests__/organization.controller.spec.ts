@@ -43,7 +43,7 @@ const mockedFactories = vi.hoisted(() => ({
     confirmAutonomyDowngrade: vi.fn(),
   }),
   createMockTokenBlacklistService: () => ({
-    isBlacklisted: vi.fn().mockResolvedValue(false),
+    checkToken: vi.fn().mockResolvedValue('active'),
   }),
   createMockRbacCacheService: () => ({
     getUserRole: vi.fn(),

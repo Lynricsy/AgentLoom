@@ -58,7 +58,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON FUNCTIONS TO '"$POSTGRES_US
 ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON SEQUENCES TO '"$POSTGRES_USER"', anon, authenticated, service_role;
 
 -- 不创建 auth.users 桩表 — GoTrue 首次启动时会自动创建完整 auth schema
--- 启动 Supabase 后需执行: GRANT SELECT, DELETE ON auth.sessions TO $POSTGRES_USER;
+-- 启动 Supabase 后需执行: GRANT SELECT, DELETE ON auth.sessions TO $POSTGRES_USER; GRANT SELECT ON auth.mfa_factors TO $POSTGRES_USER;
 SQL'
 }
 

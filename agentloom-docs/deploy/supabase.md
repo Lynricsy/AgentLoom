@@ -28,11 +28,11 @@ GoTrue 的固定行为（写在 compose 文件中，不经变量）：允许注�
 
 `./scripts/init-db.sh` 按这个顺序执行：创建角色与 `auth` schema → 若 `auth.users` 不存在，执行 `docker compose -f docker-compose.supabase.yml up -d --wait` 并等待 GoTrue 建表 → 执行迁移。因此首次部署只需运行一次 init-db，它会顺带启动整个 Supabase 栈；`auth.users` 已存在时（再次运行）跳过启动。
 
-server 会读取和删除 `auth.sessions` 中的行（`agentloom-server/src/modules/auth/auth.service.ts`）。Compose 默认的 `APP_DATABASE_URL` 使用 `POSTGRES_USER`，它是 PostgreSQL 镜像创建的超级用户，GoTrue 建的表也归它所有，不需要额外授权。若你把 `APP_DATABASE_URL` 换成非超级用户的角色，按 `./scripts/init-db.sh` 的提示执行：
+server 会读取和删除 `auth.sessions` 中的行（`agentloom-server/src/modules/auth/auth.service.ts`），并在每次鉴权时读取 `auth.mfa_factors`（`agentloom-server/src/common/services/token-blacklist.service.ts`）。Compose 默认的 `APP_DATABASE_URL` 使用 `POSTGRES_USER`，它是 PostgreSQL 镜像创建的超级用户，GoTrue 建的表也归它所有，不需要额外授权。若你把 `APP_DATABASE_URL` 换成非超级用户的角色，按 `./scripts/init-db.sh` 的提示执行：
 
 ```bash
 docker compose exec -T postgres sh -lc \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "GRANT SELECT, DELETE ON auth.sessions TO <业务角色>"'
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "GRANT SELECT, DELETE ON auth.sessions TO <业务角色>; GRANT SELECT ON auth.mfa_factors TO <业务角色>"'
 ```
 
 `<业务角色>` 换成 `APP_DATABASE_URL` 中的用户名。

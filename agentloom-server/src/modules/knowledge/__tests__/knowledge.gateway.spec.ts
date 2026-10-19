@@ -15,7 +15,7 @@ function createGateway() {
     get: vi.fn().mockReturnValue('test-jwt-secret'),
   } as unknown as ConfigService;
   const tokenBlacklistService = {
-    isBlacklisted: vi.fn().mockResolvedValue(false),
+    checkToken: vi.fn().mockResolvedValue('active'),
   } as unknown as TokenBlacklistService;
 
   const userIdentityResolver = {

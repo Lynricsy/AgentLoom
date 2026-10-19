@@ -76,7 +76,7 @@ describe('ExecutionGateway', () => {
     emitExecutionStatusChanged: Mock;
     clearExecution: Mock;
   };
-  let mockTokenBlacklist: { isBlacklisted: Mock };
+  let mockTokenBlacklist: { checkToken: Mock };
   let mockServer: { to: Mock; use: Mock };
 
   beforeEach(() => {
@@ -107,7 +107,7 @@ describe('ExecutionGateway', () => {
       use: vi.fn(),
     };
     mockTokenBlacklist = {
-      isBlacklisted: vi.fn().mockResolvedValue(false),
+      checkToken: vi.fn().mockResolvedValue('active'),
     };
 
     gateway = new ExecutionGateway(
@@ -186,7 +186,7 @@ describe('ExecutionGateway', () => {
 
       await middleware(socket, next);
 
-      expect(mockTokenBlacklist.isBlacklisted).toHaveBeenCalledWith(token);
+      expect(mockTokenBlacklist.checkToken).toHaveBeenCalledWith(token);
       expect(socket.data.user).toMatchObject({
         sub: 'user-snake',
         email: '',
@@ -225,7 +225,7 @@ describe('ExecutionGateway', () => {
 
       await middleware(socket, next);
 
-      expect(mockTokenBlacklist.isBlacklisted).toHaveBeenCalledWith(token);
+      expect(mockTokenBlacklist.checkToken).toHaveBeenCalledWith(token);
       expect(socket.data.user).toMatchObject({
         email: 'user@example.com',
         tenantId: 'tenant-camel',
@@ -235,7 +235,7 @@ describe('ExecutionGateway', () => {
     });
 
     it('rejects a blacklisted token with the authentication close code', async () => {
-      mockTokenBlacklist.isBlacklisted.mockResolvedValue(true);
+      mockTokenBlacklist.checkToken.mockResolvedValue('revoked');
       gateway.afterInit(mockServer as any);
       const middleware = mockServer.use.mock.calls[0][0];
       const next = vi.fn();
@@ -303,7 +303,7 @@ describe('ExecutionGateway', () => {
     });
 
     it('blacklist 查询异常时不向客户端透出内部错误信息', async () => {
-      mockTokenBlacklist.isBlacklisted.mockRejectedValue(
+      mockTokenBlacklist.checkToken.mockRejectedValue(
         new Error('MFA provider unavailable'),
       );
       gateway.afterInit(mockServer as any);

@@ -18,7 +18,7 @@ const {
   });
 
   const createMockTokenBlacklistService = () => ({
-    isBlacklisted: vi.fn().mockResolvedValue(false),
+    checkToken: vi.fn().mockResolvedValue('active'),
   });
 
   const createMockServer = () => {
@@ -169,7 +169,7 @@ describe('MemoryGateway', () => {
     });
 
     it('should reject blacklisted token', async () => {
-      mockTokenBlacklistService.isBlacklisted.mockResolvedValueOnce(true);
+      mockTokenBlacklistService.checkToken.mockResolvedValueOnce('revoked');
       const socket = createMockSocket();
       const next = vi.fn();
 

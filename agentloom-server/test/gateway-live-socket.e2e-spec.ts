@@ -182,7 +182,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
     };
     conversationSnapshotMessages = vi.fn().mockResolvedValue([]);
     const tokenBlacklist = {
-      isBlacklisted: vi.fn().mockResolvedValue(false),
+      checkToken: vi.fn().mockResolvedValue('active'),
     };
     const identityResolver = {
       resolveAppUserId: vi.fn(async (userId: string) => userId),

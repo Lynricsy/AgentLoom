@@ -67,8 +67,12 @@ export class WsAuthService {
       throw new WsAuthError('Authentication required');
     }
 
-    if (await this.tokenBlacklist.isBlacklisted(token)) {
+    const tokenState = await this.tokenBlacklist.checkToken(token);
+    if (tokenState === 'revoked') {
       throw new WsAuthError('Token has been revoked');
+    }
+    if (tokenState === 'mfa_required') {
+      throw new WsAuthError('MFA verification required');
     }
 
     let verified: string | jwt.JwtPayload;

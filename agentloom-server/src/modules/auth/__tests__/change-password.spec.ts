@@ -65,7 +65,7 @@ describe('AuthService.changePassword', () => {
         { provide: DRIZZLE, useValue: createMockDb() },
         {
           provide: TokenBlacklistService,
-          useValue: { add: vi.fn(), isBlacklisted: vi.fn() },
+          useValue: { add: vi.fn(), checkToken: vi.fn() },
         },
         {
           provide: ConfigService,

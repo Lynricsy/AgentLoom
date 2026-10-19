@@ -21,13 +21,17 @@ export class AcpAuthenticationService {
   }
 
   async authenticate(token: string): Promise<AcpAuthContext> {
-    if (await this.tokenBlacklistService.isBlacklisted(token)) {
+    const tokenState = await this.tokenBlacklistService.checkToken(token);
+    if (tokenState === 'revoked') {
       throw new DomainException({
         type: 'https://agentloom.dev/errors/token-revoked',
         title: 'Unauthorized',
         status: 401,
         detail: 'Token has been revoked',
       });
+    }
+    if (tokenState === 'mfa_required') {
+      throw new MfaRequiredException();
     }
 
     try {

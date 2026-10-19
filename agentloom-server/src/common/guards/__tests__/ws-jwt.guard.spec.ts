@@ -53,14 +53,14 @@ function createExecutionContext(client: Record<string, unknown>) {
 
 describe('WsJwtGuard', () => {
   let guard: WsJwtGuard;
-  let tokenBlacklist: { isBlacklisted: ReturnType<typeof vi.fn> };
+  let tokenBlacklist: { checkToken: ReturnType<typeof vi.fn> };
   let userIdentityResolver: { resolveAppUserId: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     tokenBlacklist = {
-      isBlacklisted: vi.fn().mockResolvedValue(false),
+      checkToken: vi.fn().mockResolvedValue('active'),
     };
 
     userIdentityResolver = {
@@ -86,7 +86,7 @@ describe('WsJwtGuard', () => {
     await expect(
       guard.canActivate(createExecutionContext(client) as never),
     ).resolves.toBe(true);
-    expect(tokenBlacklist.isBlacklisted).not.toHaveBeenCalled();
+    expect(tokenBlacklist.checkToken).not.toHaveBeenCalled();
   });
 
   it('缺失 token 时应抛出 WsException', async () => {
@@ -96,7 +96,7 @@ describe('WsJwtGuard', () => {
   });
 
   it('黑名单 token 时应拒绝访问', async () => {
-    tokenBlacklist.isBlacklisted.mockResolvedValue(true);
+    tokenBlacklist.checkToken.mockResolvedValue('revoked');
     const client = createClient({
       handshake: {
         auth: { token: createToken({ sub: 'user-1', email: 'u@example.com' }) },

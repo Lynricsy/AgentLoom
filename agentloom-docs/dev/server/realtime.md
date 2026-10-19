@@ -37,6 +37,7 @@ docType: reference
 | --- | --- |
 | 从 `handshake.auth.token` 或 `Authorization: Bearer` 头取令牌 | `Authentication required` |
 | 令牌吊销与会话存活（`TokenBlacklistService`，见 [/dev/server/security](/dev/server/security)） | `Token has been revoked` |
+| 已启用 MFA 的用户持 aal1 令牌（同上） | `MFA verification required` |
 | `jwt.verify`：HS256、`audience: 'authenticated'`，密钥为 `APP_JWT_SECRET` | `Token has expired` / `Invalid or expired token` |
 | 拒绝 `type: 'mfa_pending'` 的令牌 | `MFA verification required` |
 | `sub`、`aud`、`exp`、`iat` 齐全 | `Invalid token claims` |

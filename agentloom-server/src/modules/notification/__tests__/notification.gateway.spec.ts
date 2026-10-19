@@ -36,7 +36,7 @@ function createSocket(overrides: Record<string, unknown> = {}) {
 describe('NotificationGateway', () => {
   let gateway: NotificationGateway;
   let configService: { get: ReturnType<typeof vi.fn> };
-  let tokenBlacklistService: { isBlacklisted: ReturnType<typeof vi.fn> };
+  let tokenBlacklistService: { checkToken: ReturnType<typeof vi.fn> };
   let userIdentityResolver: { resolveAppUserId: ReturnType<typeof vi.fn> };
   let server: { use: ReturnType<typeof vi.fn>; to: ReturnType<typeof vi.fn> };
 
@@ -47,7 +47,7 @@ describe('NotificationGateway', () => {
       get: vi.fn().mockReturnValue(JWT_SECRET),
     };
     tokenBlacklistService = {
-      isBlacklisted: vi.fn().mockResolvedValue(false),
+      checkToken: vi.fn().mockResolvedValue('active'),
     };
     userIdentityResolver = {
       resolveAppUserId: vi.fn().mockResolvedValue(APP_USER_ID),
@@ -90,7 +90,7 @@ describe('NotificationGateway', () => {
   });
 
   it('鉴权中间件应拒绝黑名单 token', async () => {
-    tokenBlacklistService.isBlacklisted.mockResolvedValue(true);
+    tokenBlacklistService.checkToken.mockResolvedValue('revoked');
     gateway.afterInit(server as never);
     const middleware = server.use.mock.calls[0]?.[0] as (
       socket: ReturnType<typeof createSocket>,

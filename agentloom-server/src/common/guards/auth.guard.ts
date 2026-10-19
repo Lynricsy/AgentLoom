@@ -112,13 +112,17 @@ export class AuthGuard implements CanActivate {
     request: FastifyRequest,
     token: string,
   ): Promise<boolean> {
-    if (await this.tokenBlacklist.isBlacklisted(token)) {
+    const tokenState = await this.tokenBlacklist.checkToken(token);
+    if (tokenState === 'revoked') {
       throw new DomainException({
         type: 'https://agentloom.dev/errors/token-revoked',
         title: 'Unauthorized',
         status: 401,
         detail: 'Token has been revoked',
       });
+    }
+    if (tokenState === 'mfa_required') {
+      throw new MfaRequiredException();
     }
 
     try {

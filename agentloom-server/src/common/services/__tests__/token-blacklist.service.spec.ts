@@ -125,38 +125,86 @@ describe('TokenBlacklistService (DB-backed)', () => {
     });
   });
 
-  describe('isBlacklisted', () => {
-    it('DB にハッシュが存在する場合 true を返す', async () => {
+  describe('checkToken', () => {
+    const SESSION_ID = '0190a5d2-6c3f-7000-8000-000000000001';
+    const sessionToken = (aal?: string) =>
+      jwt.sign(
+        { sub: 'u', session_id: SESSION_ID, ...(aal ? { aal } : {}) },
+        's',
+      );
+    const scopedWithRow = (row: unknown) => {
+      const execute = vi.fn().mockResolvedValue(row ? [row] : []);
+      return {
+        execute,
+        service: new TokenBlacklistService({
+          execute,
+          query: { revokedTokens: { findFirst: mockFindFirst } },
+        } as unknown as DrizzleDB),
+      };
+    };
+
+    it('无 session_id 且 DB 有哈希时返回 revoked', async () => {
       mockFindFirst.mockResolvedValue({ tokenHash: hashToken('some-token') });
 
-      const result = await service.isBlacklisted('some-token');
-
-      expect(result).toBe(true);
+      await expect(service.checkToken('some-token')).resolves.toBe('revoked');
       expect(mockFindFirst).toHaveBeenCalled();
     });
 
-    it('DB にハッシュが無い場合 false を返す', async () => {
+    it('无 session_id 且 DB 无哈希时返回 active', async () => {
       mockFindFirst.mockResolvedValue(undefined);
 
-      const result = await service.isBlacklisted('unknown-token');
-
-      expect(result).toBe(false);
+      await expect(service.checkToken('unknown-token')).resolves.toBe('active');
     });
 
     it('session_id 不是 UUID 时按已吊销处理，不查询会话表', async () => {
-      const execute = vi.fn();
-      const scoped = new TokenBlacklistService({
-        execute,
-        query: { revokedTokens: { findFirst: mockFindFirst } },
-      } as unknown as DrizzleDB);
+      const { execute, service: scoped } = scopedWithRow(null);
       const token = jwt.sign({ sub: 'u', session_id: 'not-a-uuid' }, 's');
 
-      await expect(scoped.isBlacklisted(token)).resolves.toBe(true);
+      await expect(scoped.checkToken(token)).resolves.toBe('revoked');
       expect(execute).not.toHaveBeenCalled();
       expect(mockFindFirst).not.toHaveBeenCalled();
     });
 
-    it('auth.sessions 不可读时 fail-closed：抛 503，不退回只按哈希判断', async () => {
+    it('会话已失效时 revoked 优先于 MFA 判断', async () => {
+      const { service: scoped } = scopedWithRow({
+        revoked: true,
+        mfa_required: true,
+      });
+
+      await expect(scoped.checkToken(sessionToken('aal1'))).resolves.toBe(
+        'revoked',
+      );
+    });
+
+    it('已启用 MFA 的用户持 aal1 token 时返回 mfa_required', async () => {
+      const { service: scoped } = scopedWithRow({
+        revoked: false,
+        mfa_required: true,
+      });
+
+      await expect(scoped.checkToken(sessionToken('aal1'))).resolves.toBe(
+        'mfa_required',
+      );
+    });
+
+    it('会话存活且无需第二因素时返回 active', async () => {
+      const { service: scoped } = scopedWithRow({
+        revoked: false,
+        mfa_required: false,
+      });
+
+      await expect(scoped.checkToken(sessionToken('aal2'))).resolves.toBe(
+        'active',
+      );
+    });
+
+    it('查询无结果时按吊销处理', async () => {
+      const { service: scoped } = scopedWithRow(null);
+
+      await expect(scoped.checkToken(sessionToken())).resolves.toBe('revoked');
+    });
+
+    it('auth 表不可读时 fail-closed：抛 503，不退回只按哈希判断', async () => {
       const execute = vi
         .fn()
         .mockRejectedValue(
@@ -166,12 +214,8 @@ describe('TokenBlacklistService (DB-backed)', () => {
         execute,
         query: { revokedTokens: { findFirst: mockFindFirst } },
       } as unknown as DrizzleDB);
-      const token = jwt.sign(
-        { sub: 'u', session_id: '0190a5d2-6c3f-7000-8000-000000000001' },
-        's',
-      );
 
-      await expect(scoped.isBlacklisted(token)).rejects.toMatchObject({
+      await expect(scoped.checkToken(sessionToken())).rejects.toMatchObject({
         type: 'https://agentloom.dev/errors/session-verification-unavailable',
         status: 503,
       });

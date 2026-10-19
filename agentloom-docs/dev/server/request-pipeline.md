@@ -106,7 +106,7 @@ sequenceDiagram
 
 - 路由或 controller 标了 `@Public()`（`agentloom-server/src/common/decorators/public.decorator.ts`）时直接放行。
 - **带 `Authorization: Bearer …` 时只走 JWT 分支**，不会回退到 API Key：
-  1. 按令牌 SHA-256 查 `revoked_tokens`；令牌带 `session_id` 时同一条 SQL 还检查 `auth.sessions` 中该会话仍存在且未过 `not_after`。任一不满足返回 401 `token-revoked`；`auth.sessions` 不可读时返回 503 `session-verification-unavailable`。细节见 [/dev/server/security](/dev/server/security)。
+  1. 按令牌 SHA-256 查 `revoked_tokens`；令牌带 `session_id` 时同一条 SQL 还检查 `auth.sessions` 中该会话仍存在且未过 `not_after`，以及用户有已验证 MFA 因子时令牌 `aal` 必须为 `aal2`。吊销或会话失效返回 401 `token-revoked`；MFA 等级不足返回 403 `mfa-required`；auth 表不可读时返回 503 `session-verification-unavailable`。细节见 [/dev/server/security](/dev/server/security)。
   2. 用 `APP_JWT_SECRET` 以 HS256 验签，要求 `aud` 为 `authenticated`。过期返回 `token-expired`，其他失败返回 `token-invalid`。
   3. payload 的 `type` 为 `mfa_pending`（登录第一步签发的临时令牌）时返回 403 `mfa-required`。
   4. 用 `UserIdentityResolverService` 把 Supabase 用户 ID 换成应用内用户 ID：`req.user.sub` 是应用用户 ID，原始值保存在 `req.user.supabaseUserId`。找不到应用用户返回 401。
@@ -177,7 +177,7 @@ RLS 策略本身见 [/dev/server/security](/dev/server/security#数据库行级�
 
 Socket.IO 连接不经过上面的 HTTP 管线：中间件、全局守卫、interceptor 和 filter 都不作用于握手。所有 gateway 共用 `WsAuthService`（`agentloom-server/src/common/services/ws-auth.service.ts`），分两层：
 
-1. **握手阶段**：`afterInit()` 调用 `WsAuthService.attachHandshake(server)` 给本 namespace 注册 Socket.IO 中间件。令牌取自 `handshake.auth.token`，或 `Authorization: Bearer` 头；依次检查吊销与会话存活（同 HTTP）、HS256 验签（`aud` 为 `authenticated`）、拒绝 `mfa_pending` 令牌、要求 `sub`/`aud`/`exp`/`iat` 齐全、把 Supabase `sub` 解析为应用用户 ID，然后把身份写入 `socket.data.user`。任一步失败，连接在握手阶段被拒绝。
+1. **握手阶段**：`afterInit()` 调用 `WsAuthService.attachHandshake(server)` 给本 namespace 注册 Socket.IO 中间件。令牌取自 `handshake.auth.token`，或 `Authorization: Bearer` 头；依次检查吊销、会话存活与 MFA 等级（同 HTTP）、HS256 验签（`aud` 为 `authenticated`）、拒绝 `mfa_pending` 令牌、要求 `sub`/`aud`/`exp`/`iat` 齐全、把 Supabase `sub` 解析为应用用户 ID，然后把身份写入 `socket.data.user`。任一步失败，连接在握手阶段被拒绝。
 2. **消息阶段**：class 上的 `@UseGuards(WsJwtGuard)` 作用于每个 `@SubscribeMessage` 处理器。`WsJwtGuard`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）发现 `socket.data.user` 已存在就直接放行；否则委托同一个 `WsAuthService` 完成校验。
 
 | Namespace | Gateway 源文件 | 握手中间件 | `WsJwtGuard` |

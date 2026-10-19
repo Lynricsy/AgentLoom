@@ -20,7 +20,7 @@ const mockEventBridgeService = {
 };
 
 const mockTokenBlacklistService = {
-  isBlacklisted: vi.fn().mockReturnValue(false),
+  checkToken: vi.fn().mockResolvedValue('active'),
 };
 
 const mockAgentExecutionService = {
@@ -1272,9 +1272,7 @@ describe('AgentConversationGateway', () => {
         tenantId: 'tenant-snake',
         tenantRole: 'member',
       });
-      expect(mockTokenBlacklistService.isBlacklisted).toHaveBeenCalledWith(
-        token,
-      );
+      expect(mockTokenBlacklistService.checkToken).toHaveBeenCalledWith(token);
     });
 
     it('auth token 应优先于无效 Authorization header', async () => {
@@ -1306,7 +1304,7 @@ describe('AgentConversationGateway', () => {
     });
 
     it('黑名单 token 应在签名校验前被拒绝', async () => {
-      mockTokenBlacklistService.isBlacklisted.mockResolvedValueOnce(true);
+      mockTokenBlacklistService.checkToken.mockResolvedValueOnce('revoked');
       const middleware = installMiddleware();
       const next = vi.fn();
 

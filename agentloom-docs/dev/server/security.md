@@ -24,15 +24,18 @@ docType: explanation
 
 JWT 以 `APP_JWT_SECRET` 按 HS256 验签，要求 `aud=authenticated`。验签前先查吊销表：`TokenBlacklistService`（`agentloom-server/src/common/services/token-blacklist.service.ts`）把 token 的 SHA-256 哈希与过期时间写入数据库表 `revoked_tokens`，不使用 Redis。
 
-GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token 在校验时，同一条 SQL 同时检查 `revoked_tokens` 与 `auth.sessions`：会话行不存在或已过 `not_after` 即视为吊销（`token-revoked`）。因此 `DELETE /api/v1/auth/sessions/:id`、`POST /api/v1/auth/sessions/revoke-all`、GoTrue 侧登出与会话超时都会让该会话已签发的 access token 立即失效；`POST /api/v1/auth/logout` 另外把当前 token 写入 `revoked_tokens`。`session_id` 不是 UUID 时直接按吊销处理。
+GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token 在校验时，同一条 SQL 同时检查 `revoked_tokens`、`auth.sessions` 与 `auth.mfa_factors`：
 
-`auth.sessions` 不可读（表不存在、权限不足、查询失败）时 fail-closed：返回 503 `https://agentloom.dev/errors/session-verification-unavailable`，不退化为只查哈希黑名单。应用的 `APP_DATABASE_URL` 必须能读到 GoTrue 的 `auth.sessions`。HTTP `AuthGuard`、Socket.IO 握手与 ACP 认证共用这一检查。
+- 会话行不存在或已过 `not_after` 即视为吊销（`token-revoked`）。因此 `DELETE /api/v1/auth/sessions/:id`、`POST /api/v1/auth/sessions/revoke-all`、GoTrue 侧登出与会话超时都会让该会话已签发的 access token 立即失效；`POST /api/v1/auth/logout` 另外把当前 token 写入 `revoked_tokens`。`session_id` 不是 UUID 或缺少 `sub` 时直接按吊销处理。
+- 用户在 `auth.mfa_factors` 中有 `status = 'verified'` 的因子、而 token 的 `aal` 声明不是 `aal2` 时，拒绝为 403 `mfa-required`。仅凭密码拿到的 aal1 token（直连 GoTrue 登录，或 `mfa_pending` 临时令牌中携带的 aal1 token）因此无法访问业务接口。
+
+上述表不可读（表不存在、权限不足、查询失败）时 fail-closed：返回 503 `https://agentloom.dev/errors/session-verification-unavailable`，不退化为只查哈希黑名单。应用的 `APP_DATABASE_URL` 必须能读到 GoTrue 的 `auth.sessions` 与 `auth.mfa_factors`。HTTP `AuthGuard`、Socket.IO 握手与 ACP 认证共用这一检查（`TokenBlacklistService.checkToken`）。
 
 验签成功后，`UserIdentityResolver` 把 Supabase `sub` 换成应用内用户 ID，写入 `req.user`。
 
 ### MFA
 
-用户绑定了已验证的 TOTP 因子时，`POST /api/v1/auth/login` 先签发 `type: 'mfa_pending'`、有效期 5 分钟的临时 JWT；客户端用它调用 `POST /api/v1/auth/mfa/login/verify` 换取正式令牌。`AuthGuard`、`WsJwtGuard`、各 gateway 握手中间件和 ACP `authenticate` 都拒绝 `mfa_pending` 令牌（HTTP 返回 403 `mfa-required`）。TOTP 绑定与解绑路由在 `agentloom-server/src/modules/auth/mfa.controller.ts`。
+用户绑定了已验证的 TOTP 因子时，`POST /api/v1/auth/login` 先签发 `type: 'mfa_pending'`、有效期 5 分钟的临时 JWT；客户端用它调用 `POST /api/v1/auth/mfa/login/verify` 换取 aal2 令牌。`AuthGuard`、`WsJwtGuard`、各 gateway 握手中间件和 ACP `authenticate` 都拒绝 `mfa_pending` 令牌，也拒绝已启用 MFA 用户的 aal1 令牌（见上文；HTTP 返回 403 `mfa-required`，Socket.IO 握手为 `MFA verification required`）。TOTP 绑定与解绑路由在 `agentloom-server/src/modules/auth/mfa.controller.ts`。
 
 ### OAuth
 

@@ -108,7 +108,7 @@ describe('AuthService', () => {
   let supabaseService: ReturnType<typeof createMockSupabaseService>;
   let tokenBlacklist: {
     add: ReturnType<typeof vi.fn>;
-    isBlacklisted: ReturnType<typeof vi.fn>;
+    checkToken: ReturnType<typeof vi.fn>;
   };
   let mockInsert: ReturnType<typeof vi.fn>;
   let mockInsertReturning: ReturnType<typeof vi.fn>;
@@ -120,7 +120,7 @@ describe('AuthService', () => {
     supabaseService.listFactors.mockResolvedValue({ totp: [] });
     tokenBlacklist = {
       add: vi.fn().mockResolvedValue(undefined),
-      isBlacklisted: vi.fn().mockResolvedValue(false),
+      checkToken: vi.fn().mockResolvedValue('active'),
     };
     const {
       db,

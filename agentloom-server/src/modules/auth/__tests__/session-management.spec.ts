@@ -88,7 +88,7 @@ describe('AuthService — session management', () => {
         { provide: DRIZZLE, useValue: db },
         {
           provide: TokenBlacklistService,
-          useValue: { add: vi.fn(), isBlacklisted: vi.fn() },
+          useValue: { add: vi.fn(), checkToken: vi.fn() },
         },
         {
           provide: ConfigService,
