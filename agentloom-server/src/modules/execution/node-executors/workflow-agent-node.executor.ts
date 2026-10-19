@@ -133,6 +133,11 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
             ? { agentVersionId: nodeData.agent_version_id }
             : {}),
       });
+      if (result.stopReason === 'cancelled') {
+        // 会话只会因执行取消被中止：cancelExecution 已把步骤置为 cancelled，
+        // 不再推进步骤状态或调度下游（cancelled → completed 不是合法转换）。
+        return;
+      }
       // outputSchema 只用于干预恢复时重新校验，不进入步骤 result（下游端口与执行详情不需要它）。
       const { outputSchema, ...stepResult } = result;
       const effectiveAutonomyMode =

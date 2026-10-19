@@ -5,6 +5,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { ExecutionService } from '../execution.service';
 import { EventBridgeService } from '../services/event-bridge.service';
+import { ExecutionCancellationService } from '../services/execution-cancellation.service';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
 import { SYSTEM_TRIGGER_USER_ID } from '../../trigger/trigger.constants';
 import {
@@ -357,6 +358,10 @@ const mockResourceGovernanceService: Record<string, Mock> = {
   recordBlockedDecision: vi.fn(),
 };
 
+const mockExecutionCancellation = {
+  cancelExecution: vi.fn(),
+};
+
 function createBlockedDecision(
   overrides: Partial<ResourceGovernanceDecisionBlockDetail>,
 ): ResourceGovernanceDecisionBlockDetail {
@@ -411,6 +416,8 @@ describe('ExecutionService', () => {
     mockAgentTaskQueue.getJobCounts.mockReset();
     mockAgentTaskQueue.getJob.mockReset();
     mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockReset();
+    mockExecutionCancellation.cancelExecution.mockReset();
+    mockExecutionCancellation.cancelExecution.mockResolvedValue(undefined);
     mockResourceGovernanceService.recordBlockedDecision.mockReset();
     mockResourceGovernanceService.resolveExecutionAdmissionDecision.mockResolvedValue(
       null,
@@ -438,6 +445,10 @@ describe('ExecutionService', () => {
         {
           provide: ResourceGovernanceService,
           useValue: mockResourceGovernanceService,
+        },
+        {
+          provide: ExecutionCancellationService,
+          useValue: mockExecutionCancellation,
         },
       ],
     }).compile();
@@ -2351,6 +2362,23 @@ describe('ExecutionService', () => {
           executionId: EXECUTION_ID,
           status: 'cancelled',
         }),
+      );
+
+      // 运行中的 agent 步骤必须一并取消，并中止其会话（D-050）
+      const stepWhere =
+        db.update.mock.results[1].value.set.mock.results[0].value.where.mock
+          .calls[0]?.[0];
+      expect(new PgDialect().sqlToQuery(stepWhere).params).toEqual(
+        expect.arrayContaining([
+          EXECUTION_ID,
+          'pending',
+          'queued',
+          'running',
+          'waiting_intervention',
+        ]),
+      );
+      expect(mockExecutionCancellation.cancelExecution).toHaveBeenCalledWith(
+        EXECUTION_ID,
       );
     });
 

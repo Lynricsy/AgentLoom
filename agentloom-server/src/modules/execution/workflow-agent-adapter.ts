@@ -60,6 +60,7 @@ import {
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import { parseAgentStructuredOutput } from './agent-structured-output.util';
 import { EventBridgeService } from './services/event-bridge.service';
+import type { ExecutionCancellationService } from './services/execution-cancellation.service';
 import {
   createPersistedSubAgentStream,
   clonePersistedSubAgentStream,
@@ -100,6 +101,7 @@ interface WorkflowAgentAdapterDependencies {
   readonly subAgentToolsProvider?: SubAgentToolsProvider;
   readonly skillResolverService?: SkillResolverService;
   readonly llmCostService?: LlmCostService;
+  readonly executionCancellation?: ExecutionCancellationService;
 }
 
 interface WorkflowAgentAdapterConfig {
@@ -311,6 +313,14 @@ export class WorkflowAgentAdapter {
       throw error;
     }
 
+    // 执行被取消时由 ExecutionCancellationService 调 runtime.cancel，prompt 迭代以 cancelled 结束。
+    const unregisterCancellation =
+      this.dependencies.executionCancellation?.registerSession(
+        params.executionId,
+        runtime,
+        session.id,
+      );
+
     let accumulatedContent = '';
     let decision: Record<string, unknown> | undefined;
     let stopReason: StopReason = 'end_turn';
@@ -518,6 +528,8 @@ export class WorkflowAgentAdapter {
         await flushProgressCheckpoint(MAX_TOOL_ROUNDS, true);
       }
       throw error;
+    } finally {
+      unregisterCancellation?.();
     }
 
     // 「结构化」端口契约：工作流节点配置了 outputSchema 时，最终回复必须是通过校验的 JSON。

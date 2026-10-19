@@ -21,6 +21,7 @@ import {
   WorkflowArchivedException,
 } from './execution.exceptions';
 import { EventBridgeService } from './services/event-bridge.service';
+import { ExecutionCancellationService } from './services/execution-cancellation.service';
 import { ResourceGovernanceService } from '../resource-governance/resource-governance.service';
 import { ResourceGovernanceDecisionBlockedException } from '../resource-governance/resource-governance.exceptions';
 import {
@@ -420,6 +421,7 @@ export class ExecutionService {
     @InjectQueue(AGENT_TASK_QUEUE) private readonly agentTaskQueue: Queue,
     private readonly eventBridge: EventBridgeService,
     private readonly resourceGovernanceService: ResourceGovernanceService,
+    private readonly executionCancellation: ExecutionCancellationService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -790,6 +792,8 @@ export class ExecutionService {
       .where(eq(schema.workflowExecutions.id, executionId))
       .returning();
 
+    // 运行中 / 等待干预的步骤一并置为 cancelled：执行器随后无法再把它们推进到 completed
+    // （cancelled → completed 不是合法转换），终态快照与执行状态一致。
     await this.tenantDb
       .update(schema.executionSteps)
       .set({
@@ -799,7 +803,12 @@ export class ExecutionService {
       .where(
         and(
           eq(schema.executionSteps.executionId, executionId),
-          inArray(schema.executionSteps.status, ['pending', 'queued']),
+          inArray(schema.executionSteps.status, [
+            'pending',
+            'queued',
+            'running',
+            'waiting_intervention',
+          ]),
         ),
       );
 
@@ -829,6 +838,16 @@ export class ExecutionService {
       executionId,
       status: 'cancelled',
     });
+
+    // 中止运行中的 Agent 会话（停止 LLM 调用）。必须在请求事务提交后：
+    // 否则会话结束得比 cancelled 状态落库早，执行器会把步骤推进到 completed。
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => {
+        await this.executionCancellation.cancelExecution(executionId);
+      });
+    } else {
+      await this.executionCancellation.cancelExecution(executionId);
+    }
 
     this.logger.log(`Execution cancelled: ${JSON.stringify({ executionId })}`);
 

@@ -54,6 +54,7 @@ import { AgentTaskWorkerSupportService } from './agent-task-worker-support.servi
 import { AgentTaskWorkerRuntimeService } from './agent-task-worker-runtime.service';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
+import { ExecutionCancellationService } from './services/execution-cancellation.service';
 import { ExecutionWorkspaceRealtimeBridgeService } from './services/execution-workspace-realtime-bridge.service';
 import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
@@ -96,6 +97,7 @@ import {
   controllers: [ExecutionController],
   providers: [
     ExecutionService,
+    ExecutionCancellationService,
     ExecutionWorker,
     ExecutionGateway,
     StepStateMachineService,
@@ -138,6 +140,7 @@ import {
         eventBridge,
         skillResolverService,
         llmCostService,
+        executionCancellation,
       ) =>
         new AgentAdapterFactory(
           db,
@@ -149,6 +152,7 @@ import {
           new SubAgentToolsProvider(db, agentDefinitionService, eventBridge),
           skillResolverService,
           llmCostService,
+          executionCancellation,
         ),
       inject: [
         DRIZZLE,
@@ -159,6 +163,7 @@ import {
         EventBridgeService,
         SkillResolverService,
         LlmCostService,
+        ExecutionCancellationService,
       ],
     },
     RbacCacheService,

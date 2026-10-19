@@ -9,6 +9,7 @@ import { SkillResolverService } from '../../skill/skill-resolver.service';
 import { LlmCostService } from '../../llm/llm-cost.service';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 import { EventBridgeService } from '../services/event-bridge.service';
+import type { ExecutionCancellationService } from '../services/execution-cancellation.service';
 
 export class AgentAdapterFactory {
   constructor(
@@ -21,6 +22,7 @@ export class AgentAdapterFactory {
     private readonly subAgentToolsProvider?: SubAgentToolsProvider,
     private readonly skillResolverService?: SkillResolverService,
     private readonly llmCostService?: LlmCostService,
+    private readonly executionCancellation?: ExecutionCancellationService,
   ) {}
 
   createFromAgentDefinition(
@@ -38,6 +40,7 @@ export class AgentAdapterFactory {
         subAgentToolsProvider: this.subAgentToolsProvider,
         skillResolverService: this.skillResolverService,
         llmCostService: this.llmCostService,
+        executionCancellation: this.executionCancellation,
       },
       {
         agentDefinitionId,

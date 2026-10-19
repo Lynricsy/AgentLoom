@@ -618,6 +618,49 @@ describe('workflow migrated scenarios', () => {
     );
   });
 
+  it('执行被取消导致 Agent 会话以 cancelled 结束时，不再推进步骤或调度下游', async () => {
+    const step = makeStep({
+      id: 'step-cancelled',
+      nodeId: 'cancelled-agent',
+      status: 'queued',
+      nodeType: 'agent',
+      nodeData: {
+        agentDefinitionId: 'agent-def-cancelled',
+        autonomyMode: 'FULL_AUTO',
+      },
+    });
+    mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue({
+      execute: vi.fn().mockResolvedValue({
+        content: '写到一半',
+        stopReason: 'cancelled',
+      }),
+    });
+    const runtime = {
+      pauseForIntervention: vi.fn(),
+      onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+      onNodeFailed: vi.fn().mockResolvedValue(undefined),
+    } as unknown as NodeSchedulerService;
+
+    await workflowAgentNodeExecutor.executeWorkflowAgentNode(
+      step,
+      {},
+      TENANT_ID,
+      EXECUTION_ID,
+      [],
+      [step],
+      runtime,
+    );
+
+    expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+      TENANT_ID,
+      step.id,
+      'completed',
+      expect.anything(),
+    );
+    expect(runtime.onNodeCompleted).not.toHaveBeenCalled();
+    expect(runtime.onNodeFailed).not.toHaveBeenCalled();
+  });
+
   it('outputSchema 只交给干预暂停写入 checkpoint，不进入步骤 result', async () => {
     const outputSchema = { type: 'object', required: ['answer'] };
     const makeAgentStep = (id: string, autonomyMode: string) =>

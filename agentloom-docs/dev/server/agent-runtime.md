@@ -49,12 +49,12 @@ pi 系列包只发布 ESM，而 NestJS server 以 CJS 运行，因此不能顶�
 
 `SandboxAgentAdapter`（`agentloom-server/src/modules/agent/sandbox-agent.adapter.ts`）同样实现 `IAgentRuntime`，但把职责拆给几个边界服务：
 
-| 服务 | 职责 |
-| --- | --- |
-| `SandboxSessionRuntimeService` | 解析 sandbox 绑定、等待 guest 就绪、代理 `/v1/prompt` 与 `/v1/abort` |
-| `SandboxModelConfigService` | 由租户模型配置生成会话的 `settings`/`models`（格式由 `agentloom-server/src/modules/sandbox/pi-config-generator.service.ts` 产出）、解析运行时密钥、组装 `harness` 载荷与 runtime 插件文件，并初始化 guest 会话（`/v1/session`） |
-| `SandboxToolRegistryService` | 把服务端工具序列化为远程工具描述，生成回调地址与回调令牌 |
-| `SandboxPtyService` | 终端（PTY）代理 |
+| 服务                           | 职责                                                                                                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SandboxSessionRuntimeService` | 解析 sandbox 绑定、等待 guest 就绪、代理 `/v1/prompt` 与 `/v1/abort`                                                                                                                                                            |
+| `SandboxModelConfigService`    | 由租户模型配置生成会话的 `settings`/`models`（格式由 `agentloom-server/src/modules/sandbox/pi-config-generator.service.ts` 产出）、解析运行时密钥、组装 `harness` 载荷与 runtime 插件文件，并初始化 guest 会话（`/v1/session`） |
+| `SandboxToolRegistryService`   | 把服务端工具序列化为远程工具描述，生成回调地址与回调令牌                                                                                                                                                                        |
+| `SandboxPtyService`            | 终端（PTY）代理                                                                                                                                                                                                                 |
 
 guest 内的 Agent 需要调用服务端工具（MCP、知识库、子 Agent 等）时，回调 `POST /api/v1/agent-runtime/sessions/:sessionId/tool-executions`（`agentloom-server/src/modules/agent/agent-runtime.controller.ts:18-23`）。该路由标记 `@Public()`，鉴权靠每个会话独立的回调令牌（`agentloom-server/src/modules/agent/sandbox-tool-registry.service.ts:634-692`）。回调基址取 `APP_SANDBOX_CALLBACK_BASE_URL`；未设置时在容器内回退为 `http://<HOSTNAME>:<APP_PORT>/api/v1`（同文件 `:649-666`）。server 与 worker 各自需要一个 guest 能访问到的地址，部署时分别配置，见 [/deploy/firecracker](/deploy/firecracker)。
 
@@ -113,17 +113,17 @@ sequenceDiagram
 
 平台层把 dsh-base 改造成适合 microVM 的形态：
 
-| 条目 | 处理 | 原因 |
-| --- | --- | --- |
-| `sandbox-policy` | `mode: danger-full-access`，`workspaceRoot` 为会话 cwd | microVM 本身是隔离边界，dsh 内置的进程沙箱不再叠加 |
-| `approval` | `policy: ask` | 审批请求交给 bridge，转成 AgentLoom 的审批卡片 |
-| `system-prompt` | `personaPrefix` 为 Agent 的系统提示词，不加 dsh 自身身份段 | 提示词由画布决定 |
-| `session-persistence-jsonl` | 写到 `dsh-home/sessions` | 只是会话内的临时记录，会话销毁时随目录删除；权威记录仍在 PostgreSQL |
-| `agent-default-model`、`llm-pi-ai` | 会话模型；`models.providers` 每项转成一条 `llm-pi-ai` 路由，密钥只经环境变量传入 | 子 Agent 等未显式选模型的入口也用会话模型；密钥不落盘 |
-| `permission` | 预设表换成只有一个 `agentloom`（`danger-full-access` + `ask`） | dsh-base 的预设表没有这个组合，原样挂载会报错；禁用它又会让依赖 `permissionPresets` 的插件（如 `@deepseek-ai/dsh-experimental-auto-review`）一直等待服务 |
-| `skill-filesystem` | 只扫描会话目录下的 `skills/` | 技能只来自画布绑定 |
-| DeepSeek 账号与原生模型、遥测、web 工具、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true` | 会外连 DeepSeek 服务或允许运行期改写 profile |
-| `insert` | `agentloom-bridge`（绝对路径）与每个 MCP server 一条 `@deepseek-ai/dsh-mcp-client` | MCP 不支持 SSE transport，SSE 类型的 server 被跳过并写 stderr 警告 |
+| 条目                                                                                                                                 | 处理                                                                               | 原因                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sandbox-policy`                                                                                                                     | `mode: danger-full-access`，`workspaceRoot` 为会话 cwd                             | microVM 本身是隔离边界，dsh 内置的进程沙箱不再叠加                                                                                                       |
+| `approval`                                                                                                                           | `policy: ask`                                                                      | 审批请求交给 bridge，转成 AgentLoom 的审批卡片                                                                                                           |
+| `system-prompt`                                                                                                                      | `personaPrefix` 为 Agent 的系统提示词，不加 dsh 自身身份段                         | 提示词由画布决定                                                                                                                                         |
+| `session-persistence-jsonl`                                                                                                          | 写到 `dsh-home/sessions`                                                           | 只是会话内的临时记录，会话销毁时随目录删除；权威记录仍在 PostgreSQL                                                                                      |
+| `agent-default-model`、`llm-pi-ai`                                                                                                   | 会话模型；`models.providers` 每项转成一条 `llm-pi-ai` 路由，密钥只经环境变量传入   | 子 Agent 等未显式选模型的入口也用会话模型；密钥不落盘                                                                                                    |
+| `permission`                                                                                                                         | 预设表换成只有一个 `agentloom`（`danger-full-access` + `ask`）                     | dsh-base 的预设表没有这个组合，原样挂载会报错；禁用它又会让依赖 `permissionPresets` 的插件（如 `@deepseek-ai/dsh-experimental-auto-review`）一直等待服务 |
+| `skill-filesystem`                                                                                                                   | 只扫描会话目录下的 `skills/`                                                       | 技能只来自画布绑定                                                                                                                                       |
+| DeepSeek 账号与原生模型、遥测、web 工具、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true`                                                                   | 会外连 DeepSeek 服务或允许运行期改写 profile                                                                                                             |
+| `insert`                                                                                                                             | `agentloom-bridge`（绝对路径）与每个 MCP server 一条 `@deepseek-ai/dsh-mcp-client` | MCP 不支持 SSE transport，SSE 类型的 server 被跳过并写 stderr 警告                                                                                       |
 
 禁用条目的完整列表是 `profile-writer.ts` 的 `DISABLED_BASE_ROWS`。runtime 插件与用户 patch 叠在平台层之后，可以覆盖平台层的任何条目；插件包的来源、校验与下发见 [Runtime 插件](/dev/server/runtime-plugins)。
 
@@ -173,10 +173,10 @@ dsh 以 danger-full-access 运行，内置的 bash、文件工具不会发起审
 
 落库位置：
 
-| 路径 | 写入 |
-| --- | --- |
-| 对话 | 本轮 assistant 消息 `metadata` 写入 `usage`（各次调用逐字段之和，计数不重叠）、`modelId`、`costUsd`（按会话 `llmModelConfigId` 逐次定价；定价查询在落库事务之外，失败只丢成本）。事务提交后经 EventEmitter2 发 `agent-conversation.turn-persisted`（`{ conversationId, tenantId, assistantMessageId, processedMessageIds, usage?, costUsd, stopReason }`，常量与类型在 `agentloom-server/src/modules/agent-execution/agent-execution.events.ts`） |
-| 工作流 agent 节点（agent 适配器与 agent-task worker） | 步骤 `result` 写入 `promptTokens`（含缓存读/写输入，即各次完整 prompt 之和）、`completionTokens`（输出）、`totalTokens`（上游 totalTokens 之和）、`modelId`、`costUsd`（逐次定价）；`execution-record` 模块把它们读进 `step_telemetry` 的 `llmInteractions`，执行汇总的 `totalCostUsd` 为各步骤 `costUsd` 之和（没有任何步骤带成本时缺省） |
+| 路径                                                  | 写入                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 对话                                                  | 本轮 assistant 消息 `metadata` 写入 `usage`（各次调用逐字段之和，计数不重叠）、`modelId`、`costUsd`（按会话 `llmModelConfigId` 逐次定价；定价查询在落库事务之外，失败只丢成本）。事务提交后经 EventEmitter2 发 `agent-conversation.turn-persisted`（`{ conversationId, tenantId, assistantMessageId, processedMessageIds, usage?, costUsd, stopReason }`，常量与类型在 `agentloom-server/src/modules/agent-execution/agent-execution.events.ts`） |
+| 工作流 agent 节点（agent 适配器与 agent-task worker） | 步骤 `result` 写入 `promptTokens`（含缓存读/写输入，即各次完整 prompt 之和）、`completionTokens`（输出）、`totalTokens`（上游 totalTokens 之和）、`modelId`、`costUsd`（逐次定价）；`execution-record` 模块把它们读进 `step_telemetry` 的 `llmInteractions`，执行汇总的 `totalCostUsd` 为各步骤 `costUsd` 之和（没有任何步骤带成本时缺省）                                                                                                        |
 
 ## 沙箱驱动与多节点调度
 
@@ -217,12 +217,12 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 
 运行态在父子之间的组合规则：
 
-| 父 Agent 实际运行态 | 子 Agent `runtime_mode` | 结果 |
-| --- | --- | --- |
-| sandbox | `sandbox` | 子 Agent 使用自己的 sandbox 配置 |
-| sandbox | `no_sandbox` | 复用父 Agent 的 sandbox 绑定执行，原生工具策略降为只读（`buildReadOnlyNativeToolPolicy`：只开读，关闭写、编辑、终端） |
-| 进程内 | `no_sandbox` | 进程内执行 |
-| 进程内 | `sandbox` | 拒绝，抛出「无 sandbox Agent 不支持调用有 sandbox 的子 Agent」 |
+| 父 Agent 实际运行态 | 子 Agent `runtime_mode` | 结果                                                                                                                  |
+| ------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| sandbox             | `sandbox`               | 子 Agent 使用自己的 sandbox 配置                                                                                      |
+| sandbox             | `no_sandbox`            | 复用父 Agent 的 sandbox 绑定执行，原生工具策略降为只读（`buildReadOnlyNativeToolPolicy`：只开读，关闭写、编辑、终端） |
+| 进程内              | `no_sandbox`            | 进程内执行                                                                                                            |
+| 进程内              | `sandbox`               | 拒绝，抛出「无 sandbox Agent 不支持调用有 sandbox 的子 Agent」                                                        |
 
 对话路径的判定在 `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:832-866`，工作流路径的判定在 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts:183-219`。拒绝最后一种组合的原因是：进程内父 Agent 没有可交给子 Agent 的 VM 绑定。
 
@@ -250,12 +250,12 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 
 两种运行态的技能投递方式不同：
 
-| 路径 | 技能进入 Agent 的方式 |
-| --- | --- |
-| 对话，`no_sandbox` | 提示词内联 + 注册 `load_skill`（新建会话与恢复会话都注册，`agentloom-server/src/modules/agent-execution/agent-execution-worker-runtime.service.ts`） |
-| 对话，`sandbox` | 不进系统提示词。技能随 guest 会话请求的 `files` 下发为 `skills/<dir>/SKILL.md` 等文件（`SandboxModelConfigService.buildContainerSessionPayload`），由 dsh 的 `skill-filesystem` 从会话目录的 `skills/` 发现，模型经 dsh 的 `skill` 工具加载。技能与 runtime 插件文件共用会话文件上限：单文件超过 `SANDBOX_SESSION_FILE_MAX_BYTES`（1 MiB）或总量超过 `SANDBOX_SESSION_TOTAL_MAX_BYTES`（16 MiB）时，server 在下发前以 422 拒绝（`SandboxSessionPayloadTooLargeException`，problem type 沿用 `sandbox-skill-payload-too-large`，`agentloom-server/src/modules/sandbox/sandbox.exceptions.ts`） |
-| 子 Agent（两种运行态） | 提示词内联 + 注册 `load_skill`（`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`）；sandbox 运行态的 `load_skill` 经服务端工具回调执行 |
-| 工作流 agent 节点 | `WorkflowAgentAdapter` 合并 `skillIds` 与上游技能后内联 + 注册 `load_skill`；`agent-task.worker.ts` 对上游技能同样内联 + 注册 `load_skill` |
+| 路径                   | 技能进入 Agent 的方式                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 对话，`no_sandbox`     | 提示词内联 + 注册 `load_skill`（新建会话与恢复会话都注册，`agentloom-server/src/modules/agent-execution/agent-execution-worker-runtime.service.ts`）                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 对话，`sandbox`        | 不进系统提示词。技能随 guest 会话请求的 `files` 下发为 `skills/<dir>/SKILL.md` 等文件（`SandboxModelConfigService.buildContainerSessionPayload`），由 dsh 的 `skill-filesystem` 从会话目录的 `skills/` 发现，模型经 dsh 的 `skill` 工具加载。技能与 runtime 插件文件共用会话文件上限：单文件超过 `SANDBOX_SESSION_FILE_MAX_BYTES`（1 MiB）或总量超过 `SANDBOX_SESSION_TOTAL_MAX_BYTES`（16 MiB）时，server 在下发前以 422 拒绝（`SandboxSessionPayloadTooLargeException`，problem type 沿用 `sandbox-skill-payload-too-large`，`agentloom-server/src/modules/sandbox/sandbox.exceptions.ts`） |
+| 子 Agent（两种运行态） | 提示词内联 + 注册 `load_skill`（`agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts`）；sandbox 运行态的 `load_skill` 经服务端工具回调执行                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 工作流 agent 节点      | `WorkflowAgentAdapter` 合并 `skillIds` 与上游技能后内联 + 注册 `load_skill`；`agent-task.worker.ts` 对上游技能同样内联 + 注册 `load_skill`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 技能解析失败只记录 warning 并退回基础提示词，不会中断执行。
 
@@ -263,14 +263,24 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 
 对话执行队列 `agent-conversation-execution` 以 conversationId 作为 jobId，同一对话同一时刻只有一个 loop，它可能运行在任一 server / worker 实例上。新消息、取消请求可能落在另一个实例，`AgentExecutionService`（`agentloom-server/src/modules/agent-execution/agent-execution.service.ts`）用两个 Redis pub/sub 频道把它们送到 loop 所在实例，所有实例在 `onModuleInit` 时订阅：
 
-| 频道 | 常量 | 发布时机 | 收到后 |
-| --- | --- | --- | --- |
-| `__agent_conversation_cancel__` | `AGENT_CONVERSATION_CANCEL_CHANNEL` | `abortExecution`：先中止本实例的 loop，再发布 | 中止本实例上该对话的活跃 loop |
-| `__agent_conversation_notify__` | `AGENT_CONVERSATION_NOTIFY_CHANNEL` | 派发时发现该对话的 job 处于 `active` 状态 | 唤醒本实例上空闲等待新消息的 loop |
+| 频道                            | 常量                                | 发布时机                                                                                                                                                                                                                                                                               | 收到后                            |
+| ------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `__agent_conversation_cancel__` | `AGENT_CONVERSATION_CANCEL_CHANNEL` | `abortExecution`：先中止本实例的 loop，再发布。调用方为 `cancelExecution`（Socket `conversation:cancel`）与 `agent-conversation.ended` 事件监听（REST `POST agent-conversations/:id/cancel`、`DELETE agent-conversations/:id`、对外 API 结束对话与空闲清扫都会在事务提交后发出该事件） | 中止本实例上该对话的活跃 loop     |
+| `__agent_conversation_notify__` | `AGENT_CONVERSATION_NOTIFY_CHANNEL` | 派发时发现该对话的 job 处于 `active` 状态                                                                                                                                                                                                                                              | 唤醒本实例上空闲等待新消息的 loop |
 
 派发顺序（`dispatchConversationExecution`，在租户事务提交后执行）：本实例有活跃 loop 时直接唤醒；否则查已有 job，`completed` / `failed` 的先删除再入队，`active` 的经通知频道唤醒、不重复入队，其余状态直接跳过。
 
 loop 可能恰好在唤醒消息到达前因空闲超时退出，此时新消息无人处理。`AgentExecutionWorker.onCompleted`（`agentloom-server/src/modules/agent-execution/agent-execution.worker.ts`）在每个对话 job 完成后检查：对话仍为 `active`、运行状态为 `idle`，且存在 `lastProcessedMessageId` 之后的用户消息时，重新调用 `dispatchExecution` 补发。
+
+## 工作流执行取消
+
+`POST /api/v1/executions/:id/cancel`（`ExecutionService.cancelExecution`）在请求事务内把执行置为 `cancelled`，并把 `pending`、`queued`、`running`、`waiting_intervention` 状态的步骤一并置为 `cancelled`；事务提交后由 `ExecutionCancellationService`（`agentloom-server/src/modules/execution/services/execution-cancellation.service.ts`）中止该执行运行中的 Agent 会话。工作流 agent 节点可能运行在任一实例的执行 worker 上，所以与对话取消采用同一模式：
+
+| 频道                            | 常量                                | 发布时机                                                 | 收到后                                                         |
+| ------------------------------- | ----------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| `__workflow_execution_cancel__` | `WORKFLOW_EXECUTION_CANCEL_CHANNEL` | `cancelExecution` 提交后：先中止本实例登记的会话，再发布 | 对本实例上该执行登记的每个会话调用 `runtime.cancel(sessionId)` |
+
+`WorkflowAgentAdapter.execute` 在会话创建后登记、prompt 循环结束时注销（子 Agent 会话同样登记）。取消信号早于会话创建时，实例会记住该执行 10 分钟，晚到的会话登记时立即被中止。被中止的 prompt 以 `stopReason: 'cancelled'` 结束，`WorkflowAgentNodeExecutor` 不再推进步骤状态或调度下游，步骤保持 `cancelled`。
 
 ## Agent 对外 API 运行链
 
