@@ -79,6 +79,12 @@ server 用 `APP_TRUST_PROXY_HOPS` 判断请求的来源 IP：它是 server 前�
 
 值小于实际代理层数时，来源 IP 是某一层代理的地址，配置了 IP 白名单的 Webhook 会对所有调用返回 403；值大于实际层数时，调用方可以伪造来源 IP。
 
+### Agent 对话执行并发
+
+`APP_AGENT_CONVERSATION_CONCURRENCY`（默认 `10`）是单个 server 或 worker 进程同时执行的 Agent 对话数。server 与 worker 都消费对话执行队列，Compose 默认部署的总并发是两者之和 20；Helm 按副本数累加。对话超过总并发时，新对话的 run 保持 `queued`，直到有对话结束本轮。同一对话的 run 始终串行（对外 API 上一个 run 未结束时返回 409 `conversation-busy`），与这个值无关。
+
+提高之前按两点估算：每个进行中的对话在进程内持有一个 Agent 会话，进程内存限额（Compose 默认 2G）要容纳得下；所有对话共用模型供应商的并发与速率配额。
+
 ### Studio 运行时变量
 
 Studio 镜像（`agentloom-deploy/docker/studio.Dockerfile`）构建时把四个 Vite 变量设为占位符，容器启动时由 `/docker-entrypoint.d/40-runtime-env.sh` 在 `/usr/share/nginx/html` 下所有 `.html`、`.js`、`.css` 文件中替换：

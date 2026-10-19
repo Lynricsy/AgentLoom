@@ -27,6 +27,7 @@ data:
   APP_SANDBOX_ROLLBACK_HOURS: {{ .Values.env.shared.APP_SANDBOX_ROLLBACK_HOURS | quote }}
   APP_SANDBOX_NODE_ADMIN_TENANT_IDS: {{ .Values.env.shared.APP_SANDBOX_NODE_ADMIN_TENANT_IDS | default "" | quote }}
   APP_MCP_STDIO_ENABLED: {{ .Values.env.shared.APP_MCP_STDIO_ENABLED | default "false" | quote }}
+  APP_AGENT_CONVERSATION_CONCURRENCY: {{ .Values.env.shared.APP_AGENT_CONVERSATION_CONCURRENCY | default "10" | quote }}
   APP_TYPESAFE_BASE_URL: {{ .Values.env.shared.APP_TYPESAFE_BASE_URL | quote }}
   APP_TYPESAFE_MODEL: {{ .Values.env.shared.APP_TYPESAFE_MODEL | quote }}
   APP_TYPESAFE_TIMEOUT_MS: {{ .Values.env.shared.APP_TYPESAFE_TIMEOUT_MS | quote }}

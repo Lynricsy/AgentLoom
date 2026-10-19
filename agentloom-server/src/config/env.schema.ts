@@ -156,6 +156,11 @@ const baseEnvSchema = z.object({
   APP_SANDBOX_CALLBACK_BASE_URL: optionalUrlFromEnv('无效的沙箱回调 URL'),
   /** Agent 对外 API 对话空闲多少小时后由维护任务自动结束 */
   APP_AGENT_API_CONVERSATION_IDLE_HOURS: positiveNumberFromEnv(24),
+  /** 每个 server/worker 进程同时执行的 Agent 对话 loop 数（agent-conversation-execution 队列并发）；同一对话始终串行 */
+  APP_AGENT_CONVERSATION_CONCURRENCY: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(10),
+  ),
   /** 对外公开访问的站点基址（如 `https://agentloom.example.com`）；A2A Agent Card 用它拼接 RPC 地址，缺省时取请求的协议与主机 */
   APP_PUBLIC_BASE_URL: optionalUrlFromEnv('无效的公开访问基址 URL'),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),

@@ -367,6 +367,11 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** 队列里是否有排队等待执行的对话；loop 据此决定是否空闲等待，见 AgentExecutionWorker.executeAgentLoop。 */
+  async hasWaitingExecutions(): Promise<boolean> {
+    return (await this.executionQueue.getWaitingCount()) > 0;
+  }
+
   private async dispatchConversationExecution(
     conversationId: string,
     tenantId: string,

@@ -18,6 +18,7 @@ const { mockQueue, mockConversationService } = vi.hoisted(() => ({
   mockQueue: {
     add: vi.fn(),
     getJob: vi.fn(),
+    getWaitingCount: vi.fn(),
   },
   mockConversationService: {
     sendMessage: vi.fn(),
@@ -272,6 +273,13 @@ describe('AgentExecutionService', () => {
     expect(activeJob.getState).toHaveBeenCalledTimes(1);
     expect(activeJob.remove).not.toHaveBeenCalled();
     expect(mockQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('hasWaitingExecutions 反映队列中排队等待的对话 job', async () => {
+    mockQueue.getWaitingCount.mockResolvedValueOnce(0).mockResolvedValueOnce(3);
+
+    await expect(service.hasWaitingExecutions()).resolves.toBe(false);
+    await expect(service.hasWaitingExecutions()).resolves.toBe(true);
   });
 
   it('job 在另一个实例运行时，新消息经频道唤醒那个实例空闲等待中的 loop', async () => {

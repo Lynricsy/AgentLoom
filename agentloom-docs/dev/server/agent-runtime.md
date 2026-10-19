@@ -279,6 +279,12 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 
 loop 可能恰好在唤醒消息到达前因空闲超时退出，此时新消息无人处理。`AgentExecutionWorker.onCompleted`（`agentloom-server/src/modules/agent-execution/agent-execution.worker.ts`）在每个对话 job 完成后检查：对话仍为 `active`、运行状态为 `idle`，且存在 `lastProcessedMessageId` 之后的用户消息时，重新调用 `dispatchExecution` 补发。
 
+### 并发与空闲等待
+
+`AgentExecutionWorker` 在 `onApplicationBootstrap` 把 BullMQ worker 的并发设为 `APP_AGENT_CONVERSATION_CONCURRENCY`（默认 10），每个 server / worker 进程各自生效。一个 loop 处理完待处理消息后，若队列里已有排队的对话 job（`AgentExecutionService.hasWaitingExecutions`，即 `getWaitingCount() > 0`），loop 直接结束、让出槽位，本对话之后的消息重新入队，排在已排队的对话后面；没有排队时才空闲等待 `AGENT_CONVERSATION_IDLE_WAIT_MS`（5000ms），等到新消息就在同一个 loop、同一个运行时会话里继续，省去重新准备上下文。这样连续多轮的对话不会在有人排队时一直占住槽位。
+
+同一对话的串行由三层保证，与并发值无关：jobId 为 conversationId，同一对话最多一个待处理或执行中的 job；`registerActiveRun` 在本进程内拒绝第二个 loop；对外 API 建 run 时同一对话已有 `queued` / `running` 的 run 返回 409 `conversation-busy`。
+
 ## 工作流执行取消
 
 `POST /api/v1/executions/:id/cancel`（`ExecutionService.cancelExecution`）在请求事务内把执行置为 `cancelled`，并把 `pending`、`queued`、`running`、`waiting_intervention` 状态的步骤一并置为 `cancelled`；事务提交后由 `ExecutionCancellationService`（`agentloom-server/src/modules/execution/services/execution-cancellation.service.ts`）中止该执行运行中的 Agent 会话。工作流 agent 节点可能运行在任一实例的执行 worker 上，所以与对话取消采用同一模式：

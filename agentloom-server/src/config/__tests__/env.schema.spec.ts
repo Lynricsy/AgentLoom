@@ -227,6 +227,24 @@ describe('envSchema', () => {
     );
   });
 
+  it('Agent 对话执行并发默认 10，只接受正整数', () => {
+    expect(
+      envSchema.parse(createBaseEnv()).APP_AGENT_CONVERSATION_CONCURRENCY,
+    ).toBe(10);
+    expect(
+      envSchema.parse(
+        createBaseEnv({ APP_AGENT_CONVERSATION_CONCURRENCY: '25' }),
+      ).APP_AGENT_CONVERSATION_CONCURRENCY,
+    ).toBe(25);
+    for (const value of ['0', '1.5', 'abc']) {
+      expect(
+        envSchema.safeParse(
+          createBaseEnv({ APP_AGENT_CONVERSATION_CONCURRENCY: value }),
+        ).success,
+      ).toBe(false);
+    }
+  });
+
   /**
    * schema 外的变量不会被启动校验、拿不到默认值，也不会进 `pnpm docs:gen`
    * 生成的 env 参考表。凡是以字面量读取的 key 都必须在 schema 中声明。

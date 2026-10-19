@@ -1,11 +1,12 @@
 import { Module, type Provider } from '@nestjs/common';
 import { BullModule, getQueueToken } from '@nestjs/bullmq';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
 import type Redis from 'ioredis';
 
 import { REDIS_CLIENT } from '../../common/redis/redis.constants';
+import type { EnvConfig } from '../../config/env.schema';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -95,6 +96,7 @@ const agentExecutionWorkerProvider: Provider = {
     llmCostService?: LlmCostService,
     eventEmitter?: EventEmitter2,
     teamToolsProvider?: TeamToolsProvider,
+    configService?: ConfigService<EnvConfig, true>,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -118,6 +120,9 @@ const agentExecutionWorkerProvider: Provider = {
       llmCostService,
       eventEmitter,
       teamToolsProvider,
+      undefined,
+      undefined,
+      configService,
     ),
   inject: [
     DRIZZLE,
@@ -141,6 +146,7 @@ const agentExecutionWorkerProvider: Provider = {
     LlmCostService,
     EventEmitter2,
     { token: TeamToolsProvider, optional: true },
+    ConfigService,
   ],
 };
 

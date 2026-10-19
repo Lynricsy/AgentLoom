@@ -1,10 +1,17 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  type OnApplicationBootstrap,
+  Optional,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import type { EnvConfig } from '../../config/env.schema';
 import type { DrizzleDB } from '../../database/database.module';
 import {
   agentConversations,
@@ -194,7 +201,10 @@ import { AgentExecutionWorkerRuntimeService } from './agent-execution-worker-run
 
 @Injectable()
 @Processor(AGENT_CONVERSATION_EXECUTION_QUEUE)
-export class AgentExecutionWorker extends WorkerHost {
+export class AgentExecutionWorker
+  extends WorkerHost
+  implements OnApplicationBootstrap
+{
   private readonly delegatedOverrides = new Map<string, Function>();
 
   public get persistConversationTurn(): AgentExecutionWorkerPersistenceService['persistConversationTurn'] {
@@ -932,6 +942,8 @@ export class AgentExecutionWorker extends WorkerHost {
     injectedPersistenceService?: AgentExecutionWorkerPersistenceService,
     @Optional()
     injectedRuntimeService?: AgentExecutionWorkerRuntimeService,
+    @Optional()
+    private readonly configService?: ConfigService<EnvConfig, true>,
   ) {
     super();
     this.persistenceService =
@@ -979,6 +991,20 @@ export class AgentExecutionWorker extends WorkerHost {
         selfEvolutionToolsProvider,
         modelRoutingService,
       );
+  }
+
+  /**
+   * worker 由 BullModule 在 onModuleInit 创建，这里再按配置调整并发；
+   * 同一对话由 jobId=conversationId 与 registerActiveRun 保证同一时刻只有一个 loop。
+   */
+  onApplicationBootstrap(): void {
+    const concurrency = this.configService?.get(
+      'APP_AGENT_CONVERSATION_CONCURRENCY',
+      { infer: true },
+    );
+    if (concurrency) {
+      this.worker.concurrency = concurrency;
+    }
   }
 
   async process(job: Job<AgentConversationExecutionJobData>): Promise<void> {
@@ -1319,6 +1345,11 @@ export class AgentExecutionWorker extends WorkerHost {
         seededPendingMessages = [];
 
         if (currentPendingMessages.length === 0) {
+          // 空闲等待只在有空闲槽位时才值得：队列里已有对话在排队时直接结束 loop 让出槽位，
+          // 本对话的下一条消息重新入队、排在它们之后；否则一个连续对话的 loop 会一直占住槽位。
+          if (await this.executionService.hasWaitingExecutions()) {
+            break;
+          }
           const waitResult = await this.executionService.waitForNotification(
             conversationId,
             abort.signal,

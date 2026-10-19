@@ -61,6 +61,7 @@ const {
     registerActiveRun: vi.fn(),
     clearActiveRun: vi.fn(),
     waitForNotification: vi.fn(),
+    hasWaitingExecutions: vi.fn(),
     dispatchExecution: vi.fn(),
   },
   mockEventBridge: {
@@ -2780,6 +2781,103 @@ describe('AgentExecutionWorker', () => {
         'c-1',
         expect.objectContaining({ status: 'cancelled' }),
       );
+    });
+  });
+
+  describe('executeAgentLoop() — 并发槽位', () => {
+    it('队列中有对话排队时，本轮结束后不空闲等待、直接让出槽位', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.hasWaitingExecutions.mockResolvedValueOnce(true);
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [{ id: 'msg-1', content: '你好', createdAt: new Date() }],
+          [],
+        ],
+      });
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockExecutionService.hasWaitingExecutions).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(mockExecutionService.waitForNotification).not.toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenLastCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({ status: 'completed' }),
+      );
+    });
+
+    it('没有排队的对话时照常空闲等待新消息', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.hasWaitingExecutions.mockResolvedValueOnce(false);
+      mockExecutionService.waitForNotification.mockResolvedValueOnce('timeout');
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [{ id: 'msg-1', content: '你好', createdAt: new Date() }],
+          [],
+        ],
+      });
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockExecutionService.waitForNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('启动后按 APP_AGENT_CONVERSATION_CONCURRENCY 设置 worker 并发', () => {
+      const configService = {
+        get: vi.fn().mockReturnValue(12),
+      };
+      const configuredWorker = new AgentExecutionWorker(
+        mockDb as never,
+        mockRuntime as never,
+        mockAdapterFactory as never,
+        mockExecutionService as never,
+        mockEventBridge as never,
+        mockSandboxService as never,
+        mockWorkspaceIntegrationService as never,
+        mockAgentDefinitionService as never,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        configService as never,
+      );
+      const bullWorker = { concurrency: 1 };
+      vi.spyOn(configuredWorker, 'worker', 'get').mockReturnValue(
+        bullWorker as never,
+      );
+
+      configuredWorker.onApplicationBootstrap();
+
+      expect(configService.get).toHaveBeenCalledWith(
+        'APP_AGENT_CONVERSATION_CONCURRENCY',
+        { infer: true },
+      );
+      expect(bullWorker.concurrency).toBe(12);
     });
   });
 
