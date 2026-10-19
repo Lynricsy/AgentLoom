@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { DrizzleDB } from '../../../database/database.module';
+import { WorkflowArchivedException } from '../../workflow-definition/workflow-version.exceptions';
+import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
 import { GeneratedAppService } from '../generated-app.service';
 import { GeneratedAppRepository } from '../generated-app.repository';
 import { GeneratedAppArtifactService } from '../generated-app-artifact.service';
@@ -26,6 +28,7 @@ describe('GeneratedAppService facade', () => {
   let repairService: GeneratedAppGenerationRepairService;
   let orchestrator: GeneratedAppGenerationOrchestratorService;
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
+  let workflowVersionService: { archive: Mock };
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -59,6 +62,7 @@ describe('GeneratedAppService facade', () => {
       artifactService,
       runtimeBindingService,
     );
+    workflowVersionService = { archive: vi.fn().mockResolvedValue(undefined) };
     service = new GeneratedAppService(
       mockTenantDb as unknown as DrizzleDB,
       configService,
@@ -76,6 +80,7 @@ describe('GeneratedAppService facade', () => {
       repairService,
       orchestrator,
       publicRuntimeService,
+      workflowVersionService as unknown as WorkflowVersionService,
     );
   });
 
@@ -169,5 +174,67 @@ describe('GeneratedAppService facade', () => {
 
     await expect(service.getPublicApp('public-token')).rejects.toBe(error);
     expect(delegate).toHaveBeenCalledWith('public-token');
+  });
+
+  describe('delete', () => {
+    function stubApp(runtimeWorkflowIds: string[]) {
+      vi.spyOn(repository, 'findOne').mockResolvedValue({
+        id: APP_ID,
+      } as never);
+      const listRuntime = vi
+        .spyOn(runtimeBindingService, 'listActiveGeneratedWorkflowRuntimeIds')
+        .mockResolvedValue(runtimeWorkflowIds);
+      const remove = vi
+        .spyOn(repository, 'delete')
+        .mockResolvedValue(undefined);
+      return { listRuntime, remove };
+    }
+
+    it('先归档自动创建的运行时工作流再删除应用', async () => {
+      const { listRuntime, remove } = stubApp(['wf-1', 'wf-2']);
+
+      await service.delete(TENANT_ID, USER_ID, APP_ID);
+
+      expect(listRuntime).toHaveBeenCalledWith(TENANT_ID, APP_ID);
+      expect(workflowVersionService.archive.mock.calls).toEqual([
+        ['wf-1', USER_ID],
+        ['wf-2', USER_ID],
+      ]);
+      expect(remove).toHaveBeenCalledWith(TENANT_ID, APP_ID);
+      expect(
+        workflowVersionService.archive.mock.invocationCallOrder[1],
+      ).toBeLessThan(remove.mock.invocationCallOrder[0]);
+    });
+
+    it('工作流已被并发归档时仍删除应用；其他归档失败时保留应用', async () => {
+      const { remove } = stubApp(['wf-1']);
+      workflowVersionService.archive.mockRejectedValueOnce(
+        new WorkflowArchivedException('wf-1'),
+      );
+      await service.delete(TENANT_ID, USER_ID, APP_ID);
+      expect(remove).toHaveBeenCalledTimes(1);
+
+      const error = new Error('db down');
+      workflowVersionService.archive.mockRejectedValueOnce(error);
+      await expect(service.delete(TENANT_ID, USER_ID, APP_ID)).rejects.toBe(
+        error,
+      );
+      expect(remove).toHaveBeenCalledTimes(1);
+    });
+
+    it('应用不存在时不归档任何工作流', async () => {
+      const error = new Error('not found');
+      vi.spyOn(repository, 'findOne').mockRejectedValue(error);
+      const listRuntime = vi.spyOn(
+        runtimeBindingService,
+        'listActiveGeneratedWorkflowRuntimeIds',
+      );
+
+      await expect(service.delete(TENANT_ID, USER_ID, APP_ID)).rejects.toBe(
+        error,
+      );
+      expect(listRuntime).not.toHaveBeenCalled();
+      expect(workflowVersionService.archive).not.toHaveBeenCalled();
+    });
   });
 });

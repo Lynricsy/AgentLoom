@@ -217,6 +217,8 @@ import {
   workflowInputSchemaSchema,
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
+import { WorkflowArchivedException } from '../workflow-definition/workflow-version.exceptions';
+import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 
 import { GeneratedAppRepository } from './generated-app.repository';
 import { GeneratedAppArtifactService } from './generated-app-artifact.service';
@@ -258,6 +260,8 @@ export class GeneratedAppService {
     @Optional() repairService?: GeneratedAppGenerationRepairService,
     @Optional() orchestrator?: GeneratedAppGenerationOrchestratorService,
     @Optional() publicRuntimeService?: GeneratedAppPublicRuntimeService,
+    @Optional()
+    private readonly workflowVersionService?: WorkflowVersionService,
   ) {
     this.repository =
       repository ?? new GeneratedAppRepository(db, configService);
@@ -339,7 +343,27 @@ export class GeneratedAppService {
     return this.repository.update(tenantId, userId, appId, dto);
   }
 
-  async delete(tenantId: string, appId: string): Promise<void> {
+  /**
+   * 删除应用时归档 Gate 7 为它自动创建并发布的运行时工作流，否则工作流仍为 published、
+   * 可被继续执行。先归档再删应用：归档失败时应用仍在，可重试删除。
+   */
+  async delete(tenantId: string, userId: string, appId: string): Promise<void> {
+    await this.repository.findOne(tenantId, appId);
+    if (this.workflowVersionService) {
+      const workflowIds =
+        await this.runtimeBindingService.listActiveGeneratedWorkflowRuntimeIds(
+          tenantId,
+          appId,
+        );
+      for (const workflowId of workflowIds) {
+        try {
+          await this.workflowVersionService.archive(workflowId, userId);
+        } catch (error) {
+          // 并发删除时可能已被归档，目标状态已达成
+          if (!(error instanceof WorkflowArchivedException)) throw error;
+        }
+      }
+    }
     return this.repository.delete(tenantId, appId);
   }
 

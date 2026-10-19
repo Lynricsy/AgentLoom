@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
   computeContentHash as computePluginArchiveContentHash,
   readArchiveManifest,
@@ -623,6 +623,32 @@ export class GeneratedAppRuntimeBindingService {
       .limit(1);
 
     return workflow ?? null;
+  }
+
+  /** 该应用自动创建且尚未归档的运行时工作流（删除应用时一并归档） */
+  public async listActiveGeneratedWorkflowRuntimeIds(
+    tenantId: string,
+    appId: string,
+  ): Promise<string[]> {
+    const workflows = await this.repository.tenantDb
+      .select({ id: schema.workflowDefinitions.id })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+          ne(schema.workflowDefinitions.status, 'archived'),
+          eq(
+            sql`${schema.workflowDefinitions.metadata}->>'source'`,
+            GENERATED_APP_WORKFLOW_RUNTIME_METADATA_SOURCE,
+          ),
+          eq(
+            sql`${schema.workflowDefinitions.metadata}->>'generatedAppId'`,
+            appId,
+          ),
+        ),
+      );
+
+    return workflows.map((workflow) => workflow.id);
   }
 
   public async createGeneratedWorkflowRuntimeBinding(

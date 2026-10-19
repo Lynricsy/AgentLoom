@@ -508,18 +508,22 @@ export class GeneratedAppController {
     return { data };
   }
 
-  // 硬删除前由仓储在同一事务撤销公开分享，且只有 owner/admin 可执行破坏性操作。
+  // 硬删除前由仓储在同一事务撤销公开分享，且只有 owner/admin 可执行破坏性操作；
+  // Gate 7 自动创建的运行时工作流同步归档。
   @Delete(':appId')
   @Roles('owner', 'admin')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: '永久删除生成应用任务' })
+  @ApiOperation({
+    summary: '永久删除生成应用任务，并归档其自动创建的运行时工作流',
+  })
   @ApiResponse({ status: 204, description: '生成应用任务已删除' })
   @ApiResponse({ status: 404, description: '生成应用任务不存在' })
   async delete(
     @Param('appId', ParseUUIDPipe) appId: string,
     @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
   ): Promise<void> {
-    await this.generatedAppService.delete(tenantId, appId);
+    await this.generatedAppService.delete(tenantId, userId, appId);
   }
 
   @Patch(':appId/gates')

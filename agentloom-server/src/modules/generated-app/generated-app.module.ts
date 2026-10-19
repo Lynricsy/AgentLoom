@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { ExecutionModule } from '../execution/execution.module';
 import { PluginModule } from '../plugin/plugin.module';
+import { WorkflowDefinitionModule } from '../workflow-definition/workflow-definition.module';
 import {
   GeneratedAppController,
   GeneratedAppPublicController,
@@ -21,7 +22,12 @@ import { GeneratedAppPublicRuntimeService } from './generated-app-public-runtime
 import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
 
 @Module({
-  imports: [ConfigModule, ExecutionModule, PluginModule],
+  imports: [
+    ConfigModule,
+    ExecutionModule,
+    PluginModule,
+    WorkflowDefinitionModule,
+  ],
   controllers: [GeneratedAppController, GeneratedAppPublicController],
   providers: [
     GeneratedAppService,
