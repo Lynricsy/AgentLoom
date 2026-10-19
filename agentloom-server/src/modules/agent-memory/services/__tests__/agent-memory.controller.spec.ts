@@ -1,3 +1,5 @@
+import { HttpStatus } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 
@@ -1451,6 +1453,19 @@ describe('AgentMemoryController', () => {
         VERSION_ID,
         USER_ID,
       );
+    });
+  });
+
+  describe('非创建型 POST 的状态码', () => {
+    it('rollback 与 review 不创建资源，应返回 200 而非 201', () => {
+      const prototype = AgentMemoryController.prototype;
+
+      expect(
+        Reflect.getMetadata(HTTP_CODE_METADATA, prototype.rollbackVersion),
+      ).toBe(HttpStatus.OK);
+      expect(
+        Reflect.getMetadata(HTTP_CODE_METADATA, prototype.reviewVersion),
+      ).toBe(HttpStatus.OK);
     });
   });
 

@@ -985,6 +985,7 @@ export class AgentMemoryController {
 
   @Post(':id/nodes/:nodeId/rollback')
   @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '回滚到指定版本' })
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
@@ -1086,6 +1087,7 @@ export class AgentMemoryController {
 
   @Post(':id/nodes/:nodeId/versions/:versionId/review')
   @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '审核版本（批准或拒绝）' })
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
