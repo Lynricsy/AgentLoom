@@ -19,6 +19,7 @@ env:
     APP_MINIO_SECRET_KEY: ""
     APP_MINIO_USE_SSL: "false"
     APP_MINIO_BUCKET: agentloom-documents
+    APP_MINIO_PUBLIC_URL: ""
     APP_QDRANT_URL: ""
   server:
     APP_JWT_SECRET: replace-me-jwt-secret

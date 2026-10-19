@@ -87,6 +87,34 @@ const baseEnvSchema = z.object({
     .default('false')
     .transform((val) => val === 'true'),
   APP_MINIO_BUCKET: z.string().min(1).default('agentloom-documents'),
+  /**
+   * 浏览器访问对象存储的地址，预签名下载链接（知识库原文、证据导出）按它签名；未设置时
+   * 沿用 APP_MINIO_ENDPOINT。MinIO 按 path-style 寻址，只能是 协议://主机[:端口]，不能带路径。
+   */
+  APP_MINIO_PUBLIC_URL: z.preprocess(
+    emptyStringToUndefined,
+    z
+      .string()
+      .url('无效的 MinIO 公网地址')
+      .refine(
+        (value) => {
+          // url() 失败时 refine 仍会执行，先确认可解析
+          if (!URL.canParse(value)) return false;
+          const url = new URL(value);
+          return (
+            ['http:', 'https:'].includes(url.protocol) &&
+            url.pathname === '/' &&
+            !url.search &&
+            !url.hash
+          );
+        },
+        {
+          message:
+            'APP_MINIO_PUBLIC_URL 只能是 http(s)://主机[:端口]，不能带路径或查询参数',
+        },
+      )
+      .optional(),
+  ),
 
   APP_SANDBOX_MAINTENANCE_MODE: z
     .enum(['true', 'false'])

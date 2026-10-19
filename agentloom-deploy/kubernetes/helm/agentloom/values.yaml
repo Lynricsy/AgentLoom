@@ -25,6 +25,8 @@ env:
     APP_MINIO_SECRET_KEY: ""
     APP_MINIO_USE_SSL: "false"
     APP_MINIO_BUCKET: agentloom-documents
+    # 预签名下载链接的浏览器地址；留空且 minio.enabled + ingress.enabled 时取 Ingress 主机
+    APP_MINIO_PUBLIC_URL: ""
     APP_QDRANT_URL: ""
     APP_FIRECRACKER_RUNTIME_URL: ""
     APP_FIRECRACKER_RUNTIME_CA: /run/secrets/firecracker/manager-ca.crt

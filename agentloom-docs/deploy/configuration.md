@@ -62,6 +62,9 @@ docType: reference
 | `APP_OAUTH_REDIRECT_URL` | `https://agentloom.example.com/api/v1/auth/oauth/callback` |
 | `SUPABASE_SITE_URL` | `https://agentloom.example.com` |
 | `SUPABASE_GOTRUE_EXTERNAL_URL` | GoTrue 对外地址，见 [自托管 Supabase](/deploy/supabase) |
+| `APP_MINIO_PUBLIC_URL` | `https://agentloom.example.com`（Compose 留空时取 `APP_FRONTEND_URL`） |
+
+`APP_MINIO_PUBLIC_URL` 是浏览器打开预签名下载链接（知识库「查看原文」、证据导出下载）的地址。签名包含主机名，server 用这个地址签名，链接才能在浏览器里打开；Compose 的 `reverse-proxy` 把 `/agentloom-documents/`（bucket 名）转给 MinIO，因此它与 Studio 入口同源，只能写 `协议://主机[:端口]`，不能带路径。Helm 在 `minio.enabled` 与 `ingress.enabled` 时留空即取 Ingress 主机，并在 Ingress 中加 `/<bucket>` 路由。修改 `APP_MINIO_BUCKET` 时同步修改 `agentloom-deploy/nginx.conf` 中该 location 的路径。未设置（本地开发）时沿用 `APP_MINIO_ENDPOINT`。
 
 ### 来源 IP 与可信代理
 

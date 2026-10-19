@@ -274,4 +274,74 @@ describe('StorageService', () => {
       expect(mockMinioClient.presignedGetObject).not.toHaveBeenCalled();
     });
   });
+
+  describe('getPresignedUrl（配置 APP_MINIO_PUBLIC_URL）', () => {
+    const PUBLIC_CONFIG: Record<string, string> = {
+      APP_MINIO_BUCKET: BUCKET_NAME,
+      APP_MINIO_PUBLIC_URL: 'https://agentloom.example.com',
+      APP_MINIO_ACCESS_KEY: 'agentloom',
+      APP_MINIO_SECRET_KEY: 'secret',
+    };
+
+    async function createPublicService() {
+      const configService = {
+        get: vi.fn((key: string, defaultValue?: string) =>
+          key in PUBLIC_CONFIG ? PUBLIC_CONFIG[key] : defaultValue,
+        ),
+        getOrThrow: vi.fn((key: string) => PUBLIC_CONFIG[key]),
+      };
+      const internalClient = {
+        ...mockMinioClient,
+        getBucketRegionAsync: vi.fn().mockResolvedValue('us-east-1'),
+      };
+      const module = await Test.createTestingModule({
+        providers: [
+          StorageService,
+          { provide: MINIO_CLIENT, useValue: internalClient },
+          { provide: ConfigService, useValue: configService },
+        ],
+      }).compile();
+      return { service: module.get(StorageService), internalClient };
+    }
+
+    it('按公网地址签名，不返回内网 endpoint', async () => {
+      const { service, internalClient } = await createPublicService();
+      const key = 'tenants/t1/kb/kb1/doc1/README.md';
+      internalClient.statObject.mockResolvedValue({ size: 100 });
+
+      const url = new URL(await service.getPresignedUrl(key, 600));
+
+      expect(url.origin).toBe('https://agentloom.example.com');
+      expect(url.pathname).toBe(`/${BUCKET_NAME}/${key}`);
+      expect(url.searchParams.get('X-Amz-Expires')).toBe('600');
+      expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
+      expect(url.searchParams.get('X-Amz-Credential')).toContain('agentloom/');
+      expect(internalClient.presignedGetObject).not.toHaveBeenCalled();
+    });
+
+    it('region 只向内网 MinIO 查询一次', async () => {
+      const { service, internalClient } = await createPublicService();
+      internalClient.statObject.mockResolvedValue({ size: 100 });
+
+      await service.getPresignedUrl('a');
+      await service.getPresignedUrl('b');
+
+      expect(internalClient.getBucketRegionAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it('查询 region 失败时抛出 StorageUnavailableException 且下次重试', async () => {
+      const { service, internalClient } = await createPublicService();
+      internalClient.statObject.mockResolvedValue({ size: 100 });
+      internalClient.getBucketRegionAsync.mockRejectedValueOnce(
+        new Error('ECONNREFUSED'),
+      );
+
+      await expect(service.getPresignedUrl('a')).rejects.toThrow(
+        StorageUnavailableException,
+      );
+      await expect(service.getPresignedUrl('a')).resolves.toMatch(
+        /^https:\/\/agentloom\.example\.com\//,
+      );
+    });
+  });
 });

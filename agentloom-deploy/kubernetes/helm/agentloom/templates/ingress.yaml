@@ -37,6 +37,16 @@ spec:
                 name: {{ include "agentloom.serverFullname" . }}
                 port:
                   number: {{ .Values.server.service.port }}
+          {{- if .Values.minio.enabled }}
+          # 预签名下载（知识库原文、证据导出）：SigV4 签了 Host 与路径，原样转给 MinIO
+          - path: /{{ .Values.env.shared.APP_MINIO_BUCKET }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "agentloom.minioFullname" . }}
+                port:
+                  number: {{ .Values.minio.service.apiPort }}
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:

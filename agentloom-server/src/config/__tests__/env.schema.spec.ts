@@ -171,6 +171,31 @@ describe('envSchema', () => {
     expect(result.APP_SANDBOX_MAINTENANCE_MODE).toBe(true);
   });
 
+  it('APP_MINIO_PUBLIC_URL 可省略，只接受不带路径的 http(s) 地址', () => {
+    expect(
+      envSchema.parse(createBaseEnv({ APP_MINIO_PUBLIC_URL: '' }))
+        .APP_MINIO_PUBLIC_URL,
+    ).toBeUndefined();
+    expect(
+      envSchema.parse(
+        createBaseEnv({
+          APP_MINIO_PUBLIC_URL: 'https://agentloom.example.com',
+        }),
+      ).APP_MINIO_PUBLIC_URL,
+    ).toBe('https://agentloom.example.com');
+    for (const value of [
+      'https://agentloom.example.com/storage',
+      'https://agentloom.example.com/?a=1',
+      'ftp://agentloom.example.com',
+      'not a url',
+    ]) {
+      expect(
+        envSchema.safeParse(createBaseEnv({ APP_MINIO_PUBLIC_URL: value }))
+          .success,
+      ).toBe(false);
+    }
+  });
+
   it('补齐的变量有默认值，省略时 ConfigService 也能读到', () => {
     const result = envSchema.parse(createBaseEnv());
 

@@ -108,7 +108,7 @@ helm install agentloom agentloom-deploy/kubernetes/helm/agentloom \
 | `ingress.host` | `agentloom.local` | 唯一 host 规则 |
 | `ingress.tls.enabled` / `ingress.tls.secretName` | `false` / `""` | 启用后用该 Secret 终止 TLS |
 
-Ingress 只有三条 `Prefix` 路径：`/api` 与 `/socket.io` 到 server Service，`/` 到 studio Service。没有 `/documentation/` 与 `/auth/`，与 Compose 的 [反向代理](/deploy/reverse-proxy) 不同。
+Ingress 有三条 `Prefix` 路径：`/api` 与 `/socket.io` 到 server Service，`/` 到 studio Service；`minio.enabled: true` 时再加一条 `/<APP_MINIO_BUCKET>`（默认 `/agentloom-documents`）到内置 MinIO Service，供浏览器打开预签名下载链接。没有 `/documentation/` 与 `/auth/`，与 Compose 的 [反向代理](/deploy/reverse-proxy) 不同。
 
 ### 环境变量
 
@@ -119,6 +119,7 @@ Ingress 只有三条 `Prefix` 路径：`/api` 与 `/socket.io` 到 server Servic
 | `env.shared.APP_DATABASE_URL` | Secret | `postgres.enabled: true` 时由 `postgres.auth.*` 拼出；否则渲染失败，报 `env.shared.APP_DATABASE_URL must be set when postgres.enabled=false` |
 | `env.shared.APP_REDIS_URL` | Secret | 同上规则，取 `redis.auth.password` |
 | `env.shared.APP_MINIO_ENDPOINT` / `APP_MINIO_PORT` / `APP_MINIO_ACCESS_KEY` / `APP_MINIO_SECRET_KEY` | ConfigMap / Secret | 同上规则，取内置 MinIO 的 Service 名、`minio.service.apiPort`、`minio.auth.*` |
+| `env.shared.APP_MINIO_PUBLIC_URL` | ConfigMap | `minio.enabled` 与 `ingress.enabled` 时取 `http(s)://<ingress.host>`（`ingress.tls.enabled` 决定协议）；否则为空，预签名链接沿用 `APP_MINIO_ENDPOINT`，外部 MinIO 需自行填浏览器可达地址 |
 | `env.shared.APP_QDRANT_URL` | ConfigMap | 同上规则，取内置 Qdrant Service |
 | `env.shared.APP_FIRECRACKER_RUNTIME_URL` | ConfigMap | `https://<release>-agentloom-firecracker-runtime:<firecrackerRuntime.service.port>` |
 | `env.shared.APP_FIRECRACKER_RUNTIME_CA` / `_CERT` / `_KEY` | ConfigMap | 默认指向 `/run/secrets/firecracker/` 下的 client PKI 文件 |

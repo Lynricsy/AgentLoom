@@ -23,7 +23,11 @@ function createService() {
     statObject: vi.fn(),
     presignedGetObject: vi.fn(),
   };
-  const config = { get: vi.fn().mockReturnValue(BUCKET) };
+  const config = {
+    get: vi.fn((key: string) =>
+      key === 'APP_MINIO_BUCKET' ? BUCKET : undefined,
+    ),
+  };
   return {
     client,
     service: new StorageService(

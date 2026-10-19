@@ -12,6 +12,7 @@ data:
   APP_MINIO_PORT: {{ include "agentloom.minioPort" . | quote }}
   APP_MINIO_USE_SSL: {{ .Values.env.shared.APP_MINIO_USE_SSL | quote }}
   APP_MINIO_BUCKET: {{ .Values.env.shared.APP_MINIO_BUCKET | quote }}
+  APP_MINIO_PUBLIC_URL: {{ include "agentloom.minioPublicUrl" . | quote }}
   APP_QDRANT_URL: {{ include "agentloom.qdrantUrl" . | quote }}
   APP_OAUTH_REDIRECT_URL: {{ .Values.env.server.APP_OAUTH_REDIRECT_URL | quote }}
   APP_FRONTEND_URL: {{ .Values.env.server.APP_FRONTEND_URL | quote }}

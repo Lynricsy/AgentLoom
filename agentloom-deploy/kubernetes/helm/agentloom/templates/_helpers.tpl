@@ -135,6 +135,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{/* 预签名下载链接的浏览器地址：显式值优先；内置 MinIO + Ingress 时取 Ingress 主机（Ingress 把 /<bucket> 转给 MinIO） */}}
+{{- define "agentloom.minioPublicUrl" -}}
+{{- if .Values.env.shared.APP_MINIO_PUBLIC_URL -}}
+{{- .Values.env.shared.APP_MINIO_PUBLIC_URL -}}
+{{- else if and .Values.minio.enabled .Values.ingress.enabled -}}
+{{- printf "%s://%s" (ternary "https" "http" .Values.ingress.tls.enabled) .Values.ingress.host -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "agentloom.qdrantUrl" -}}
 {{- if .Values.env.shared.APP_QDRANT_URL -}}
 {{- .Values.env.shared.APP_QDRANT_URL -}}

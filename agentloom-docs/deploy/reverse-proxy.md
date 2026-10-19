@@ -16,6 +16,7 @@ Compose 拓扑中 `reverse-proxy` 服务（镜像 `openresty/openresty:alpine`�
 | `/documentation/` | `docs:8081` | 默认 | 文档站，构建时 base 为 `/documentation/` |
 | `/auth/` | `supabase-kong:8000` | 默认 | 透传 `apikey` 与 `Authorization` 头；Studio 未配置 `VITE_SUPABASE_URL` 时经此访问 GoTrue |
 | `/docs` | `server:3000` | 默认 | server 的 Swagger UI |
+| `^~ /agentloom-documents/` | `minio:9000` | `proxy_buffering off` | 预签名下载（知识库原文、证据导出）；`limit_except GET HEAD` 拒绝其他方法；`Host` 取 `$http_host` 原样转发（SigV4 签名包含 Host 与路径）；路径前缀即 `APP_MINIO_BUCKET`，改 bucket 名时同步修改 |
 | `/` | `studio:8080` | 默认 | `Cache-Control: no-cache, no-store, must-revalidate`，保证容器启动时注入的运行时变量生效 |
 | `/assets/` | `studio:8080` | 默认 | `Cache-Control: public, max-age=31536000, immutable`（Vite 产物文件名带 hash） |
 

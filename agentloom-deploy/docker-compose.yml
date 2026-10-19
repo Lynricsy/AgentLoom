@@ -28,6 +28,8 @@ x-server-app: &server-app
     APP_MINIO_SECRET_KEY: ${APP_MINIO_SECRET_KEY:-change-me-minio-password}
     APP_MINIO_USE_SSL: ${APP_MINIO_USE_SSL:-false}
     APP_MINIO_BUCKET: ${APP_MINIO_BUCKET:-agentloom-documents}
+    # 预签名下载经 reverse-proxy 的 /<bucket>/ 转发，默认与 Studio 入口同源
+    APP_MINIO_PUBLIC_URL: ${APP_MINIO_PUBLIC_URL:-${APP_FRONTEND_URL:-http://localhost:8080}}
     APP_QDRANT_URL: ${APP_QDRANT_URL:-http://qdrant:6333}
     APP_FIRECRACKER_RUNTIME_URL: ${APP_FIRECRACKER_RUNTIME_URL:-https://firecracker-runtime:8443}
     APP_FIRECRACKER_RUNTIME_CA: /run/secrets/firecracker-manager-ca
@@ -394,6 +396,8 @@ services:
       - minio_data:/data
     networks:
       - app_net
+      # reverse-proxy 经 /agentloom-documents/ 转发预签名下载
+      - frontend_net
     deploy:
       resources:
         limits:

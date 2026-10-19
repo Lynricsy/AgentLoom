@@ -68,7 +68,7 @@ Compose 声明了 5 个网络。主栈 4 个网络名带前缀 `AGENTLOOM_NETWOR
 
 | 网络键 | Docker 网络名 | internal | 成员 |
 | --- | --- | --- | --- |
-| `frontend_net` | `<前缀>-frontend`（默认 `agentloom-frontend`） | 否 | reverse-proxy、studio、docs、server |
+| `frontend_net` | `<前缀>-frontend`（默认 `agentloom-frontend`） | 否 | reverse-proxy、studio、docs、server、minio（reverse-proxy 经 `/agentloom-documents/` 转发预签名下载） |
 | `app_net` | `<前缀>-app`（默认 `agentloom-app`） | 是 | server、worker、firecracker-runtime、postgres、redis、minio、qdrant、createbuckets、server-migrator、sandbox-cutover |
 | `data_net` | `<前缀>-data`（默认 `agentloom-data`） | 是 | postgres、server-migrator |
 | `sandbox_egress_net` | `<前缀>-sandbox-egress`（默认 `agentloom-sandbox-egress`） | 否 | firecracker-runtime（guest 出站） |

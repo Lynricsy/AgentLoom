@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Client } from 'minio';
+import { Client } from 'minio';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -24,6 +24,8 @@ type ResolvedUploadSource = {
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private readonly bucket: string;
+  private readonly publicUrl: URL | undefined;
+  private presignClient: Promise<Client> | undefined;
 
   constructor(
     @Inject(MINIO_CLIENT) private readonly minioClient: Client,
@@ -33,6 +35,8 @@ export class StorageService implements OnModuleInit {
       'APP_MINIO_BUCKET',
       'agentloom-documents',
     );
+    const publicUrl = this.configService.get<string>('APP_MINIO_PUBLIC_URL');
+    this.publicUrl = publicUrl ? new URL(publicUrl) : undefined;
   }
 
   async onModuleInit() {
@@ -124,7 +128,8 @@ export class StorageService implements OnModuleInit {
     await this.assertObjectExists(normalizedKey);
 
     try {
-      return await this.minioClient.presignedGetObject(
+      const signer = await this.resolvePresignClient();
+      return await signer.presignedGetObject(
         this.bucket,
         normalizedKey,
         expirySeconds,
@@ -144,6 +149,42 @@ export class StorageService implements OnModuleInit {
 
   private normalizeKey(key: string): string {
     return key.trim();
+  }
+
+  /**
+   * 预签名 URL 交给浏览器打开，SigV4 把 host 签进签名，必须用浏览器可达的地址签名；
+   * 内网连接地址（compose 里的 `minio:9000`）公网不可达。配置了 APP_MINIO_PUBLIC_URL 时
+   * 用该地址单独建一个只做签名的客户端，region 取自内网客户端，签名本身不发请求。
+   */
+  private resolvePresignClient(): Promise<Client> {
+    const publicUrl = this.publicUrl;
+    if (!publicUrl) {
+      return Promise.resolve(this.minioClient);
+    }
+
+    this.presignClient ??= this.minioClient
+      .getBucketRegionAsync(this.bucket)
+      .then((region) => {
+        const useSSL = publicUrl.protocol === 'https:';
+        return new Client({
+          endPoint: publicUrl.hostname,
+          port: publicUrl.port ? Number(publicUrl.port) : useSSL ? 443 : 80,
+          useSSL,
+          accessKey: this.configService.getOrThrow<string>(
+            'APP_MINIO_ACCESS_KEY',
+          ),
+          secretKey: this.configService.getOrThrow<string>(
+            'APP_MINIO_SECRET_KEY',
+          ),
+          region,
+        });
+      })
+      .catch((error: unknown) => {
+        this.presignClient = undefined;
+        throw error;
+      });
+
+    return this.presignClient;
   }
 
   private async assertObjectExists(key: string): Promise<void> {
