@@ -42,10 +42,12 @@ export function buildInitialAppSpec(prompt: string): GeneratedAppSpec {
       {
         id: 'req-1',
         text: prompt,
+        source: 'prompt',
       },
       {
         id: 'req-2',
         text: '公开应用提交内容默认持久化，并提供给创建者查看。',
+        source: 'platform',
       },
     ],
     pages: [
@@ -73,6 +75,7 @@ export function buildInitialAppSpec(prompt: string): GeneratedAppSpec {
       {
         id: 'scenario-1',
         title: '创建者可以从一句话进入可验证生成流程',
+        scope: 'platform',
         requirementIds: ['req-1'],
         given: ['创建者已登录 AgentLoom Studio'],
         when: [`创建者提交需求“${prompt}”`],
@@ -85,6 +88,7 @@ export function buildInitialAppSpec(prompt: string): GeneratedAppSpec {
       {
         id: 'scenario-2',
         title: '终端用户数据保存策略可追踪',
+        scope: 'platform',
         requirementIds: ['req-2'],
         given: ['生成应用进入公开运行面'],
         when: ['终端用户提交业务输入'],
@@ -233,12 +237,22 @@ export function buildGate0Checks(appSpec: unknown): Gate0Check[] {
       .filter((id): id is string => id !== null),
   );
   const coveredRequirementIds = new Set<string>();
+  // 只有 requirement 场景（scope 省略或为 requirement）才算验证了需求本身
+  const verifiedRequirementIds = new Set<string>();
 
   for (const scenario of acceptanceScenarios) {
+    const verifiesRequirement = scenario.scope !== 'platform';
     for (const requirementId of getStringArray(scenario.requirementIds)) {
       coveredRequirementIds.add(requirementId);
+      if (verifiesRequirement) verifiedRequirementIds.add(requirementId);
     }
   }
+  const unverifiedPromptRequirementIds = coreRequirements
+    .filter((requirement) => requirement.source === 'prompt')
+    .map((requirement) => getNonEmptyString(requirement.id))
+    .filter(
+      (id): id is string => id !== null && !verifiedRequirementIds.has(id),
+    );
 
   const traceability = getRecordArray(appSpec.traceability);
   const traceabilityRequirementIds = new Set(
@@ -369,6 +383,17 @@ export function buildGate0Checks(appSpec: unknown): Gate0Check[] {
       summary: `检查 ${traceability.length} 条 traceability 是否连接需求、场景和证据。`,
       issues: traceabilityIssues,
     },
+    {
+      id: 'prompt-requirement-verification',
+      label: '需求本身的验收场景',
+      passed: unverifiedPromptRequirementIds.length === 0,
+      summary:
+        '检查来自创建者需求的核心需求是否有验证其业务行为的 acceptance scenario（平台流程场景不计入）。',
+      issues: unverifiedPromptRequirementIds.map(
+        (requirementId) =>
+          `需求 ${requirementId} 只被平台流程场景引用，没有验证该需求本身的验收场景`,
+      ),
+    },
   ];
 }
 
@@ -403,15 +428,20 @@ export function evaluateGate0AppSpec(
         })),
       },
     };
+    const onlyPromptVerificationFailed = failedChecks.every(
+      (check) => check.id === 'prompt-requirement-verification',
+    );
 
     return {
       status: 'failed',
-      summary:
-        'Gate 0 失败：AppSpec 缺少可验证生成所需的结构化字段或需求覆盖证据。',
+      summary: onlyPromptVerificationFailed
+        ? 'Gate 0 失败：AppSpec 没有从需求推导出验证业务行为的验收场景（初稿由固定模板生成，只含平台流程场景），无法验证生成的应用实现了需求。'
+        : 'Gate 0 失败：AppSpec 缺少可验证生成所需的结构化字段或需求覆盖证据。',
       evidence,
       failure,
-      repairInstructions:
-        '补齐 AppSpec 的核心需求、页面/流程、数据策略、acceptance scenarios 与 traceability 后重新启动门禁运行器。',
+      repairInstructions: onlyPromptVerificationFailed
+        ? '服务端目前只能按固定模板生成 AppSpec 初稿，尚不能从需求推导页面、表单字段、工作流绑定与验收场景，AppSpec 也不支持手动编辑；在需求推导能力上线前，此类应用无法通过 Gate 0。'
+        : '补齐 AppSpec 的核心需求、页面/流程、数据策略、acceptance scenarios 与 traceability 后重新启动门禁运行器。',
     };
   }
 

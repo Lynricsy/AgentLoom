@@ -244,7 +244,18 @@ export class GeneratedAppRepository {
   ): Promise<GeneratedAppResponseDto> {
     const prompt = dto.prompt.trim();
     const appSpec = buildInitialAppSpec(prompt);
-    const gateResults = createInitialGeneratedAppGateResults();
+    // 初始 Gate 0 按 AppSpec 实际评估，不再无条件写 passed
+    const gate0 = evaluateGate0AppSpec(appSpec);
+    const gateResults = createInitialGeneratedAppGateResults().map((gate) =>
+      gate.gateId === 'gate-0'
+        ? {
+            ...gate,
+            status: gate0.status,
+            summary: gate0.summary,
+            evidence: gate0.evidence,
+          }
+        : gate,
+    );
     const readiness = evaluateGeneratedAppReadiness(gateResults);
     const status: GeneratedAppStatus = 'app_spec_ready';
 

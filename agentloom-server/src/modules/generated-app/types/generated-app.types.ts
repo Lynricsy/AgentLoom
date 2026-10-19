@@ -14,6 +14,11 @@ export interface GeneratedAppAcceptanceScenario {
   given: string[];
   when: string[];
   then: string[];
+  /**
+   * platform：验证平台流程（生成、门禁、数据策略），不验证应用本身的业务需求；
+   * 省略视为 requirement。Gate 0 不把 platform 场景计入 prompt 需求的覆盖。
+   */
+  scope?: 'requirement' | 'platform';
 }
 
 export interface GeneratedAppSpec {
@@ -25,6 +30,8 @@ export interface GeneratedAppSpec {
   coreRequirements: Array<{
     id: string;
     text: string;
+    /** prompt：来自创建者需求，必须有 requirement 场景验证；platform：平台固有约束 */
+    source?: 'prompt' | 'platform';
   }>;
   pages: Array<{
     id: string;

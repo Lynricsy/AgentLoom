@@ -27,7 +27,9 @@ stateDiagram-v2
 
 ### 1. 创建：AppSpec 初稿
 
-`POST /api/v1/generated-apps` 只接收 `prompt`。`buildInitialAppSpec(prompt)`（`agentloom-server/src/modules/generated-app/generated-app.app-spec.util.ts`）按固定模板确定性地构造 AppSpec 初稿：应用名、目标、核心需求、页面（创建者工作台、公开运行页）、验收场景等，不调用模型。应用以 `app_spec_ready` 状态写入 `generated_apps`。
+`POST /api/v1/generated-apps` 只接收 `prompt`。`buildInitialAppSpec(prompt)`（`agentloom-server/src/modules/generated-app/generated-app.app-spec.util.ts`）按固定模板确定性地构造 AppSpec 初稿：应用名、目标、核心需求（`req-1` 原样取 prompt，`source: 'prompt'`；`req-2` 为提交持久化约束，`source: 'platform'`）、页面（创建者工作台、公开运行页）、两条 `scope: 'platform'` 的平台流程验收场景，不调用模型。创建时即按 `evaluateGate0AppSpec` 写入 Gate 0 结果，应用以 `app_spec_ready` 状态写入 `generated_apps`。
+
+Gate 0 的 `prompt-requirement-verification` 检查要求每条 `source: 'prompt'` 的需求至少被一条非 `platform` 场景引用；模板初稿不满足，Gate 0 失败（`app-spec-incomplete`）。公开运行表单（`generated-app.runtime.ts` 的 8 个固定字段）与 Gate 7 创建的运行时工作流（`generated-app.runtime-binding.util.ts`：manual-trigger → text-output 回显）同样是模板，不随需求变化。从需求推导 AppSpec、表单与工作流绑定尚未实现。
 
 ### 2. 生成运行：门禁序列
 
