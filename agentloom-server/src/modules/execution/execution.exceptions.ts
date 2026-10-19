@@ -178,6 +178,18 @@ export class ExecutionResumeNodeNotFoundException extends DomainException {
   }
 }
 
+/** 步骤不存在或不属于路径中的执行（不区分两者，避免泄露其他执行的步骤 id）。 */
+export class ExecutionStepNotFoundException extends DomainException {
+  constructor(executionId: string, stepId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/execution-step-not-found',
+      title: '执行步骤不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `执行 ${executionId} 中不存在步骤 ${stepId}`,
+    });
+  }
+}
+
 export class InvalidToolCallTransitionException extends DomainException {
   constructor(from: string, to: string) {
     super({

@@ -45,6 +45,7 @@ import {
   InterventionNotAllowedException,
   NodeInputResolutionException,
   InterventionPermissionDeniedException,
+  ExecutionStepNotFoundException,
 } from '../execution.exceptions';
 import {
   ToolCallNotFoundException,
@@ -659,7 +660,20 @@ describe('intervention migrated scenarios', () => {
       ).rejects.toThrow(AgentExecutionException);
     });
 
-    it('step 不属于 execution 时抛出 AgentExecutionException', async () => {
+    it('step 不存在时抛出 404 ExecutionStepNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      const error = await service
+        .resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
+          action: 'approve',
+        })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ExecutionStepNotFoundException);
+      expect((error as ExecutionStepNotFoundException).getStatus()).toBe(404);
+    });
+
+    it('step 不属于 execution 时抛出 404 ExecutionStepNotFoundException', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([
           makeStep({
@@ -675,7 +689,7 @@ describe('intervention migrated scenarios', () => {
         service.resolveIntervention(EXECUTION_ID, STEP_ID, TENANT_ID, USER_ID, {
           action: 'approve',
         }),
-      ).rejects.toThrow(AgentExecutionException);
+      ).rejects.toThrow(ExecutionStepNotFoundException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
@@ -852,24 +866,21 @@ describe('intervention migrated scenarios', () => {
       });
     });
 
-    it('步骤不存在时抛出 AgentExecutionException', async () => {
+    it('步骤不存在时抛出 404 ExecutionStepNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(
-        service.resolveToolPermission(
-          EXECUTION_ID,
-          STEP_ID,
-          TOOL_CALL_ID,
-          TENANT_ID,
-          {
-            toolCallId: TOOL_CALL_ID,
-            action: 'approve',
-          },
-        ),
-      ).rejects.toThrow(AgentExecutionException);
+      const error = await service
+        .resolveToolPermission(EXECUTION_ID, STEP_ID, TOOL_CALL_ID, TENANT_ID, {
+          toolCallId: TOOL_CALL_ID,
+          action: 'approve',
+        })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ExecutionStepNotFoundException);
+      expect((error as ExecutionStepNotFoundException).getStatus()).toBe(404);
     });
 
-    it('step 不属于 execution 时抛出 AgentExecutionException', async () => {
+    it('step 不属于 execution 时抛出 ExecutionStepNotFoundException', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([
           makeStep({
@@ -892,7 +903,7 @@ describe('intervention migrated scenarios', () => {
             action: 'approve',
           },
         ),
-      ).rejects.toThrow(AgentExecutionException);
+      ).rejects.toThrow(ExecutionStepNotFoundException);
 
       expect(mockQueue.add).not.toHaveBeenCalled();
       expect(mockEventBridge.emitToolPermissionResolved).not.toHaveBeenCalled();
@@ -901,7 +912,14 @@ describe('intervention migrated scenarios', () => {
     it('步骤不在 running 时抛出 ToolPermissionResolutionNotAllowedException', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([
-          makeStep({ id: STEP_ID, status: 'waiting_intervention' }),
+          makeStep({
+            id: STEP_ID,
+            status: 'waiting_intervention',
+            checkpointData: {
+              sessionId: SESSION_ID,
+              toolCalls: [{ id: TOOL_CALL_ID, status: 'awaiting_permission' }],
+            },
+          }),
         ]),
       );
 
@@ -917,6 +935,31 @@ describe('intervention migrated scenarios', () => {
           },
         ),
       ).rejects.toThrow(ToolPermissionResolutionNotAllowedException);
+    });
+
+    it('已结束步骤上的未知 tool call 应返回 404 而不是把步骤状态当工具调用状态', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          makeStep({
+            id: STEP_ID,
+            status: 'completed',
+            checkpointData: { sessionId: SESSION_ID, toolCalls: [] },
+          }),
+        ]),
+      );
+
+      await expect(
+        service.resolveToolPermission(
+          EXECUTION_ID,
+          STEP_ID,
+          TOOL_CALL_ID,
+          TENANT_ID,
+          {
+            toolCallId: TOOL_CALL_ID,
+            action: 'approve',
+          },
+        ),
+      ).rejects.toThrow(ToolCallNotFoundException);
     });
 
     it('检查点找不到 tool call 时抛出 ToolCallNotFoundException', async () => {

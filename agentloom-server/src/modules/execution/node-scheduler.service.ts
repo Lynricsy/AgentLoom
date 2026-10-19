@@ -37,6 +37,7 @@ import {
   AgentExecutionException,
   InterventionPermissionDeniedException,
   InvalidStepTransitionException,
+  ExecutionStepNotFoundException,
   NodeTypeMismatchException,
   isPortTypeCompatible,
   type TypeMismatchDetail,
@@ -868,14 +869,8 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.id, stepId));
 
-    if (!step) {
-      throw new AgentExecutionException(`步骤 ${stepId} 不存在`);
-    }
-
-    if (step.executionId !== executionId) {
-      throw new AgentExecutionException(
-        `步骤 ${stepId} 不属于执行 ${executionId}`,
-      );
+    if (!step || step.executionId !== executionId) {
+      throw new ExecutionStepNotFoundException(executionId, stepId);
     }
 
     if (step.status !== 'waiting_intervention') {
@@ -1013,14 +1008,20 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.id, stepId));
 
-    if (!step) {
-      throw new AgentExecutionException(`步骤 ${stepId} 不存在`);
+    if (!step || step.executionId !== executionId) {
+      throw new ExecutionStepNotFoundException(executionId, stepId);
     }
 
-    if (step.executionId !== executionId) {
-      throw new AgentExecutionException(
-        `步骤 ${stepId} 不属于执行 ${executionId}`,
-      );
+    const checkpoint = step.checkpointData ?? {};
+    const toolCalls = Array.isArray(checkpoint.toolCalls)
+      ? (checkpoint.toolCalls as ToolCallEvent[])
+      : [];
+    const toolCall = toolCalls.find((tc) => tc.id === toolCallId);
+
+    // 先确认工具调用存在，再判断步骤状态：否则已结束步骤上的未知 toolCallId
+    // 会被报告为「工具调用当前状态为 completed」，其实那是步骤状态。
+    if (!toolCall) {
+      throw new ToolCallNotFoundException(toolCallId);
     }
 
     if (step.status !== 'running') {
@@ -1030,7 +1031,6 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       );
     }
 
-    const checkpoint = step.checkpointData ?? {};
     const sessionId =
       typeof checkpoint.sessionId === 'string'
         ? checkpoint.sessionId
@@ -1038,15 +1038,6 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
 
     if (!sessionId) {
       throw new AgentExecutionException('步骤检查点数据缺少 sessionId');
-    }
-
-    const toolCalls = Array.isArray(checkpoint.toolCalls)
-      ? (checkpoint.toolCalls as ToolCallEvent[])
-      : [];
-    const toolCall = toolCalls.find((tc) => tc.id === toolCallId);
-
-    if (!toolCall) {
-      throw new ToolCallNotFoundException(toolCallId);
     }
 
     if (toolCall.status !== 'awaiting_permission') {
