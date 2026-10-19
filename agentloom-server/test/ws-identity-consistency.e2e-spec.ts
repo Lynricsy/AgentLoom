@@ -91,7 +91,6 @@ describe('所有 Socket.IO 命名空间与 HTTP 使用同一用户身份 (E2E)',
           provide: StateReplayService,
           useValue: {
             getExecutionSnapshot: vi.fn(),
-            checkExecutionExists: vi.fn().mockResolvedValue(false),
           },
         },
         {

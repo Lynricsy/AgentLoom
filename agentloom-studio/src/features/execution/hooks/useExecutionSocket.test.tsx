@@ -561,6 +561,53 @@ describe('useExecutionSocket', () => {
     expect(result.current.lastEventId).toBe(10)
   })
 
+  it('resets the cursor to the snapshot lastEventId when the server falls back to a snapshot', () => {
+    const { socket, handlers } = createMockSocket()
+    ioMock.mockReturnValue(socket)
+
+    const { result } = renderHook(() =>
+      useExecutionSocket({
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+      }),
+    )
+
+    act(() => {
+      handlers[ExecutionEventName.STEP_STATUS_CHANGED]?.({
+        eventId: 35,
+        event: ExecutionEventName.STEP_STATUS_CHANGED,
+        timestamp: '2025-01-01T00:00:00Z',
+        executionId: 'exec-1',
+        tenantId: 'tenant-1',
+        data: { stepId: 's1', nodeId: 'n1', from: 'pending', to: 'running' },
+      })
+    })
+    expect(result.current.lastEventId).toBe(35)
+
+    // 服务端计数器已清空：快照把游标拉回 0，重连时不再带超前的旧游标。
+    act(() => {
+      handlers['execution.state.snapshot']?.({
+        executionId: 'exec-1',
+        status: 'completed',
+        completedSteps: 1,
+        totalSteps: 1,
+        steps: [],
+        snapshotAt: '2025-01-01T00:01:00Z',
+        lastEventId: 0,
+      })
+    })
+    expect(result.current.lastEventId).toBe(0)
+
+    act(() => {
+      handlers.connect?.()
+    })
+    expect(socket.emit).toHaveBeenLastCalledWith(
+      'execution:subscribe',
+      { tenantId: 'tenant-1', executionId: 'exec-1', lastEventId: undefined },
+      expect.any(Function),
+    )
+  })
+
   it('handles error events', () => {
     const { socket, handlers } = createMockSocket()
     ioMock.mockReturnValue(socket)

@@ -272,9 +272,13 @@ export function useExecutionSocket(
       callbacksRef.current.onTeamMessage?.(event)
     }
 
+    // 服务端只在无法增量补发时推送快照（计数器清空/重启后 eventId 从 1 重新开始），
+    // 快照的 lastEventId 是新的游标起点，必须覆盖而不是取最大值，否则重连会带着
+    // 超前的旧游标漏掉新一轮事件。游标偏小只会导致重复补发，不会丢事件。
     const handleSnapshot = (snapshot: ExecutionStateSnapshot) => {
       if (snapshot.lastEventId != null) {
-        trackEventId(snapshot.lastEventId)
+        lastEventIdRef.current = snapshot.lastEventId
+        setLastEventId(snapshot.lastEventId)
       }
       callbacksRef.current.onSnapshot?.(snapshot)
     }

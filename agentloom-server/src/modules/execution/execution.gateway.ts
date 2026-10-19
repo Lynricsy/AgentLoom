@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
+import { z } from 'zod';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
 import { WsAuthService } from '../../common/services/ws-auth.service';
 import { StateReplayService } from './services/state-replay.service';
@@ -56,11 +57,14 @@ const INITIAL_REPLAY_EVENT_NAMES = new Set<ExecutionEventName>([
   ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED,
 ]);
 
-interface SubscribePayload {
-  tenantId?: string;
-  executionId: string;
-  lastEventId?: number;
-}
+/** Socket 载荷不经过 HTTP 管道，订阅前自行校验；非法载荷 ack INVALID_PAYLOAD 而不是抛异常 */
+const SubscribePayloadSchema = z.object({
+  tenantId: z.string().optional(),
+  executionId: z.uuid(),
+  lastEventId: z.number().int().nonnegative().nullish(),
+});
+
+type SubscribePayload = z.infer<typeof SubscribePayloadSchema>;
 
 interface UnsubscribePayload {
   tenantId?: string;
@@ -287,7 +291,7 @@ export class ExecutionGateway
 
   private async subscribe(
     client: Socket,
-    payload: SubscribePayload,
+    payload: unknown,
   ): Promise<SubscribeAck> {
     const user = client.data?.user as JwtPayload | undefined;
     if (!user?.tenantId) {
@@ -298,7 +302,16 @@ export class ExecutionGateway
       };
     }
 
-    if (payload.tenantId && payload.tenantId !== user.tenantId) {
+    const parsed = SubscribePayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      return {
+        status: 'error',
+        error: 'INVALID_PAYLOAD',
+        currentState: null,
+      };
+    }
+
+    if (parsed.data.tenantId && parsed.data.tenantId !== user.tenantId) {
       return {
         status: 'error',
         error: 'FORBIDDEN',
@@ -307,16 +320,11 @@ export class ExecutionGateway
     }
 
     const tenantId = user.tenantId;
-    const { executionId, lastEventId } = payload;
+    const { executionId } = parsed.data;
+    const lastEventId = parsed.data.lastEventId ?? undefined;
 
-    if (!executionId) {
-      return {
-        status: 'error',
-        error: 'INVALID_PAYLOAD',
-        currentState: null,
-      };
-    }
-
+    // 快照查询已按 tenantId 限定；不存在与跨租户统一返回 NOT_FOUND，
+    // 不暴露其他租户的执行 id 是否存在（与 /agent-conversation 订阅一致）。
     const snapshot = await this.stateReplayService.getExecutionSnapshot(
       executionId,
       tenantId,
@@ -324,11 +332,9 @@ export class ExecutionGateway
     );
 
     if (!snapshot) {
-      const exists =
-        await this.stateReplayService.checkExecutionExists(executionId);
       return {
         status: 'error',
-        error: exists ? 'FORBIDDEN' : 'NOT_FOUND',
+        error: 'NOT_FOUND',
         currentState: null,
       };
     }
@@ -350,27 +356,37 @@ export class ExecutionGateway
     this.logger.debug(`Client ${client.id} left room ${room}`);
   }
 
+  /**
+   * 订阅后的补发：
+   * - 客户端游标与服务端计数器一致（且计数器仍在）：已是最新，不补发；
+   * - 客户端落后且环形缓冲区覆盖缺口：增量补发；
+   * - 其他情况（缓冲区不覆盖、计数器在终态保留期后被清空或服务重启后归零导致
+   *   客户端游标超前）：无法增量补发，回退为全量快照。
+   */
   private replaySnapshot(
     client: Socket,
     snapshot: ExecutionStateSnapshot,
     lastEventId?: number,
   ): void {
-    if (lastEventId != null) {
-      const currentEventId =
-        this.eventBridgeService.getLastEventId(snapshot.executionId) ?? 0;
-      if (lastEventId >= currentEventId) {
+    if (lastEventId !== undefined) {
+      const currentEventId = this.eventBridgeService.getLastEventId(
+        snapshot.executionId,
+      );
+      if (currentEventId > 0 && lastEventId === currentEventId) {
         return;
       }
 
-      const missedEvents = this.eventBridgeService.getEventsSince(
-        snapshot.executionId,
-        lastEventId,
-      );
-      if (missedEvents && missedEvents.length > 0) {
-        for (const event of missedEvents) {
-          client.emit(event.event satisfies `${string}`, event);
+      if (lastEventId < currentEventId) {
+        const missedEvents = this.eventBridgeService.getEventsSince(
+          snapshot.executionId,
+          lastEventId,
+        );
+        if (missedEvents && missedEvents.length > 0) {
+          for (const event of missedEvents) {
+            client.emit(event.event satisfies `${string}`, event);
+          }
+          return;
         }
-        return;
       }
     }
 

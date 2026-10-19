@@ -20,7 +20,7 @@ docType: reference
 | `/notification` | `agentloom-server/src/modules/notification/notification.gateway.ts` | `tenant:{tenantId}:user:{userId}` | 连接即自动加入；`notification:subscribe` / `notification:unsubscribe` 可重复加入/退出 | `{ status: 'subscribed' \| 'unsubscribed' \| 'error' }` |
 | `/knowledge` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` | `knowledge:{tenantId}:{knowledgeBaseId}` | `join` / `leave`，载荷 `{ knowledgeBaseId, tenantId? }` | `{ status: 'joined' \| 'left' \| 'error', knowledgeBaseId?, error? }` |
 
-房间名里的 `tenantId` 一律取自 JWT，不取自客户端载荷。`/execution`、`/agent-conversation`、`/knowledge` 允许载荷里带 `tenantId` 作为回声，但与 JWT 不一致时直接返回 `FORBIDDEN`（`agentloom-server/src/modules/knowledge/knowledge.gateway.ts:217`）。订阅失败的 `error` 取值为 `FORBIDDEN`、`INVALID_PAYLOAD`，`/execution` 另有 `NOT_FOUND`（执行不存在）。
+房间名里的 `tenantId` 一律取自 JWT，不取自客户端载荷。`/execution`、`/agent-conversation`、`/knowledge` 允许载荷里带 `tenantId` 作为回声，但与 JWT 不一致时直接返回 `FORBIDDEN`（`agentloom-server/src/modules/knowledge/knowledge.gateway.ts:217`）。订阅失败的 `error` 取值为 `FORBIDDEN`、`INVALID_PAYLOAD`，`/execution` 另有 `NOT_FOUND`（执行不存在或属于其他租户）。
 
 所有 Gateway 的 `cors` 均为 `{ origin: '*' }`。
 
@@ -133,11 +133,11 @@ sequenceDiagram
 
 #### 订阅与断线续传
 
-`execution:subscribe` 的载荷为 `{ executionId, lastEventId?, tenantId? }`。服务端先通过 `StateReplayService.getExecutionSnapshot()` 取快照（取不到则返回 `FORBIDDEN` 或 `NOT_FOUND`），加入房间后按下面的规则补发（`agentloom-server/src/modules/execution/execution.gateway.ts:425`）：
+`execution:subscribe` 的载荷为 `{ executionId, lastEventId?, tenantId? }`。`executionId` 不是 UUID、`lastEventId` 不是非负整数（`null` 视为未提供）或载荷缺失时，ack `INVALID_PAYLOAD`。随后服务端通过 `StateReplayService.getExecutionSnapshot()` 在当前租户内取快照；执行不存在或属于其他租户都返回 `NOT_FOUND`，不区分两者，避免跨租户探测执行 id。加入房间后按下面的规则补发（`agentloom-server/src/modules/execution/execution.gateway.ts` 的 `replaySnapshot`）：
 
-- 带 `lastEventId`，且不小于服务端当前 `eventId`：不补发。
-- 带 `lastEventId`，且环形缓冲区仍覆盖缺口：逐条补发 `eventId > lastEventId` 的事件。
-- 其他情况：发送 `execution.state.snapshot`，再补发缓冲区中仍处于 `queued`、`running`、`waiting_intervention` 状态的步骤的节点级事件。
+- 带 `lastEventId`，且等于服务端当前 `eventId`（计数器仍在）：不补发。
+- 带 `lastEventId`，小于服务端当前 `eventId`，且环形缓冲区仍覆盖缺口：逐条补发 `eventId > lastEventId` 的事件。
+- 其他情况（未带 `lastEventId`、缓冲区不覆盖缺口、计数器在终态 30 秒后被清空或服务重启后归零导致 `lastEventId` 超前）：发送 `execution.state.snapshot`，再补发缓冲区中仍处于 `queued`、`running`、`waiting_intervention` 状态的步骤的节点级事件。客户端应以快照的 `lastEventId` 作为新的游标起点。
 
 ack 的 `currentState` 总是携带快照。
 

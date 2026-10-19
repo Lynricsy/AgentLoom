@@ -20,10 +20,16 @@ import type { TokenBlacklistService } from '../../../common/services/token-black
 import type { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
 import { WsAuthService } from '../../../common/services/ws-auth.service';
 import type { ExecutionStateSnapshot } from '../types/execution-event.types';
+import type { Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
+
+type SubscribePayload = Parameters<ExecutionGateway['handleSubscribe']>[1];
 
 vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
 vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+
+const EXEC_ID = '01900000-0000-7000-8000-000000000001';
+const FOREIGN_EXEC_ID = '01900000-0000-7000-8000-000000000002';
 
 function makeSocket(overrides: Record<string, unknown> = {}) {
   return {
@@ -41,7 +47,7 @@ function makeSnapshot(
   overrides: Partial<ExecutionStateSnapshot> = {},
 ): ExecutionStateSnapshot {
   return {
-    executionId: 'exec-1',
+    executionId: EXEC_ID,
     status: 'running',
     completedSteps: 0,
     totalSteps: 3,
@@ -57,7 +63,6 @@ describe('ExecutionGateway', () => {
   let mockConfig: { get: Mock };
   let mockStateReplay: {
     getExecutionSnapshot: Mock;
-    checkExecutionExists: Mock;
   };
   let mockThrottle: {
     registerFlushHandler: Mock;
@@ -83,7 +88,6 @@ describe('ExecutionGateway', () => {
     mockConfig = { get: vi.fn().mockReturnValue('test-secret') };
     mockStateReplay = {
       getExecutionSnapshot: vi.fn().mockResolvedValue(makeSnapshot()),
-      checkExecutionExists: vi.fn().mockResolvedValue(false),
     };
     mockThrottle = {
       registerFlushHandler: vi.fn(),
@@ -139,13 +143,13 @@ describe('ExecutionGateway', () => {
       gateway.onModuleInit();
       const handler = mockThrottle.registerFlushHandler.mock.calls[0][0];
 
-      handler('tenant-1:exec-1', [
+      handler(`tenant-1:${EXEC_ID}`, [
         { stepId: 'step-1', chunk: 'hello ', startIndex: 0, endIndex: 2 },
       ]);
 
       expect(mockEventBridge.emitOutputChunk).toHaveBeenCalledWith(
         'tenant-1',
-        'exec-1',
+        EXEC_ID,
         { stepId: 'step-1', chunk: 'hello ', index: 0 },
       );
     });
@@ -340,30 +344,30 @@ describe('ExecutionGateway', () => {
   describe('handleSubscribe / handleJoin', () => {
     it('joins room with tenant from JWT', async () => {
       const client = makeSocket();
-      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+      await gateway.handleSubscribe(client as any, { executionId: EXEC_ID });
 
-      expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+      expect(client.join).toHaveBeenCalledWith(`execution:tenant-1:${EXEC_ID}`);
     });
 
     it('handleJoin delegates to same subscribe logic', async () => {
       const client = makeSocket();
-      await gateway.handleJoin(client as any, { executionId: 'exec-1' });
+      await gateway.handleJoin(client as any, { executionId: EXEC_ID });
 
-      expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+      expect(client.join).toHaveBeenCalledWith(`execution:tenant-1:${EXEC_ID}`);
     });
 
     it('legacy subscribe returns the same acknowledgement', async () => {
       const client = makeSocket();
 
       const result = await gateway.handleSubscribeLegacy(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
       });
 
       expect(result).toEqual({
         status: 'subscribed',
         currentState: makeSnapshot(),
       });
-      expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+      expect(client.join).toHaveBeenCalledWith(`execution:tenant-1:${EXEC_ID}`);
     });
 
     it('returns FORBIDDEN error when no tenant context', async () => {
@@ -372,7 +376,7 @@ describe('ExecutionGateway', () => {
       });
 
       const result = await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
       });
 
       expect(result).toEqual({
@@ -388,7 +392,7 @@ describe('ExecutionGateway', () => {
 
       const result = await gateway.handleSubscribe(client as any, {
         tenantId: 'other-tenant',
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
       });
 
       expect(result).toEqual({
@@ -414,16 +418,55 @@ describe('ExecutionGateway', () => {
       expect(client.join).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['non-UUID executionId', { executionId: 'not-a-uuid' }],
+      ['non-string executionId', { executionId: 42 }],
+      ['missing payload', undefined],
+      ['negative lastEventId', { executionId: EXEC_ID, lastEventId: -1 }],
+      ['fractional lastEventId', { executionId: EXEC_ID, lastEventId: 1.5 }],
+      ['string lastEventId', { executionId: EXEC_ID, lastEventId: '3' }],
+    ])('acks INVALID_PAYLOAD for %s without querying', async (_, payload) => {
+      const client = makeSocket();
+
+      const result = await gateway.handleSubscribe(
+        client as unknown as Socket,
+        payload as unknown as SubscribePayload,
+      );
+
+      expect(result).toEqual({
+        status: 'error',
+        error: 'INVALID_PAYLOAD',
+        currentState: null,
+      });
+      expect(mockStateReplay.getExecutionSnapshot).not.toHaveBeenCalled();
+      expect(client.join).not.toHaveBeenCalled();
+    });
+
+    it('accepts null lastEventId as absent', async () => {
+      const client = makeSocket();
+
+      const result = await gateway.handleSubscribe(
+        client as unknown as Socket,
+        { executionId: EXEC_ID, lastEventId: null },
+      );
+
+      expect(result.status).toBe('subscribed');
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.state.snapshot',
+        makeSnapshot(),
+      );
+    });
+
     it('emits state snapshot on subscribe', async () => {
       const snapshot = makeSnapshot();
       mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
       mockEventBridge.getLastEventId.mockReturnValue(5);
 
       const client = makeSocket();
-      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+      await gateway.handleSubscribe(client as any, { executionId: EXEC_ID });
 
       expect(mockStateReplay.getExecutionSnapshot).toHaveBeenCalledWith(
-        'exec-1',
+        EXEC_ID,
         'tenant-1',
         mockEventBridge,
       );
@@ -463,7 +506,7 @@ describe('ExecutionGateway', () => {
           eventId: 1,
           event: 'execution.node.output-chunk',
           timestamp: '2025-01-01T00:00:02.000Z',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
           data: { stepId: 'step-active', chunk: 'Hello', index: 1 },
         },
@@ -471,7 +514,7 @@ describe('ExecutionGateway', () => {
           eventId: 2,
           event: 'execution.node.tool-call-status',
           timestamp: '2025-01-01T00:00:03.000Z',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
           data: {
             stepId: 'step-active',
@@ -485,7 +528,7 @@ describe('ExecutionGateway', () => {
           eventId: 3,
           event: 'execution.node.output-chunk',
           timestamp: '2025-01-01T00:00:04.000Z',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
           data: { stepId: 'step-done', chunk: 'Ignore', index: 9 },
         },
@@ -493,15 +536,15 @@ describe('ExecutionGateway', () => {
           eventId: 4,
           event: 'execution.status.changed',
           timestamp: '2025-01-01T00:00:05.000Z',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
-          data: { executionId: 'exec-1', status: 'running' },
+          data: { executionId: EXEC_ID, status: 'running' },
         },
       ];
       mockEventBridge.getBufferedEvents.mockReturnValue(bufferedEvents);
 
       const client = makeSocket();
-      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+      await gateway.handleSubscribe(client as any, { executionId: EXEC_ID });
 
       expect(client.emit).toHaveBeenCalledTimes(3);
       expect(client.emit).toHaveBeenNthCalledWith(
@@ -528,7 +571,7 @@ describe('ExecutionGateway', () => {
 
       const client = makeSocket();
       await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
         lastEventId: 5,
       });
 
@@ -542,8 +585,43 @@ describe('ExecutionGateway', () => {
 
       const client = makeSocket();
       await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
         lastEventId: 3,
+      });
+
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.state.snapshot',
+        snapshot,
+      );
+    });
+
+    it('falls back to snapshot when the event counter was cleared after terminal retention', async () => {
+      const snapshot = makeSnapshot({ status: 'completed', lastEventId: 0 });
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+      mockEventBridge.getLastEventId.mockReturnValue(0);
+
+      const client = makeSocket();
+      await gateway.handleSubscribe(client as unknown as Socket, {
+        executionId: EXEC_ID,
+        lastEventId: 35,
+      });
+
+      expect(mockEventBridge.getEventsSince).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.state.snapshot',
+        snapshot,
+      );
+    });
+
+    it('falls back to snapshot when the client cursor is ahead of a restarted counter', async () => {
+      const snapshot = makeSnapshot({ lastEventId: 3 });
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+      mockEventBridge.getLastEventId.mockReturnValue(3);
+
+      const client = makeSocket();
+      await gateway.handleSubscribe(client as unknown as Socket, {
+        executionId: EXEC_ID,
+        lastEventId: 35,
       });
 
       expect(client.emit).toHaveBeenCalledWith(
@@ -559,7 +637,7 @@ describe('ExecutionGateway', () => {
 
       const client = makeSocket();
       await expect(
-        gateway.handleSubscribe(client as any, { executionId: 'exec-1' }),
+        gateway.handleSubscribe(client as any, { executionId: EXEC_ID }),
       ).rejects.toThrow('DB down');
 
       expect(client.join).not.toHaveBeenCalled();
@@ -571,7 +649,7 @@ describe('ExecutionGateway', () => {
 
       const client = makeSocket();
       const result = await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
       });
 
       expect(result).toEqual({
@@ -582,18 +660,25 @@ describe('ExecutionGateway', () => {
       expect(client.join).not.toHaveBeenCalled();
     });
 
-    it('returns FORBIDDEN when execution exists in different tenant', async () => {
+    it('returns NOT_FOUND for another tenant execution without probing existence', async () => {
       mockStateReplay.getExecutionSnapshot.mockResolvedValue(null);
-      mockStateReplay.checkExecutionExists.mockResolvedValue(true);
 
       const client = makeSocket();
-      const result = await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-foreign',
-      });
+      const result = await gateway.handleSubscribe(
+        client as unknown as Socket,
+        {
+          executionId: FOREIGN_EXEC_ID,
+        },
+      );
 
+      expect(mockStateReplay.getExecutionSnapshot).toHaveBeenCalledWith(
+        FOREIGN_EXEC_ID,
+        'tenant-1',
+        mockEventBridge,
+      );
       expect(result).toEqual({
         status: 'error',
-        error: 'FORBIDDEN',
+        error: 'NOT_FOUND',
         currentState: null,
       });
       expect(client.join).not.toHaveBeenCalled();
@@ -612,11 +697,11 @@ describe('ExecutionGateway', () => {
 
       const client = makeSocket();
       await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
         lastEventId: 3,
       });
 
-      expect(mockEventBridge.getEventsSince).toHaveBeenCalledWith('exec-1', 3);
+      expect(mockEventBridge.getEventsSince).toHaveBeenCalledWith(EXEC_ID, 3);
       expect(client.emit).toHaveBeenCalledTimes(2);
       expect(client.emit).toHaveBeenCalledWith(
         'execution.node.status-changed',
@@ -636,7 +721,7 @@ describe('ExecutionGateway', () => {
 
       const client = makeSocket();
       await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
         lastEventId: 3,
       });
 
@@ -646,7 +731,7 @@ describe('ExecutionGateway', () => {
       );
     });
 
-    it('falls back to event id zero and ignores invalid buffered step ids', async () => {
+    it('falls back to snapshot for an unknown counter and ignores invalid buffered step ids', async () => {
       const snapshot = makeSnapshot({
         steps: [
           {
@@ -667,7 +752,7 @@ describe('ExecutionGateway', () => {
         {
           eventId: 1,
           event: 'execution.node.output-chunk',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
           timestamp: '2025-01-01T00:00:00.000Z',
           data: {},
@@ -675,7 +760,7 @@ describe('ExecutionGateway', () => {
         {
           eventId: 2,
           event: 'execution.node.output-chunk',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
           timestamp: '2025-01-01T00:00:01.000Z',
           data: { stepId: 42 },
@@ -683,7 +768,7 @@ describe('ExecutionGateway', () => {
         {
           eventId: 3,
           event: 'execution.node.output-chunk',
-          executionId: 'exec-1',
+          executionId: EXEC_ID,
           tenantId: 'tenant-1',
           timestamp: '2025-01-01T00:00:02.000Z',
           data: { stepId: '' },
@@ -692,11 +777,11 @@ describe('ExecutionGateway', () => {
       const client = makeSocket();
 
       await gateway.handleSubscribe(client as any, {
-        executionId: 'exec-1',
-        lastEventId: -1,
+        executionId: EXEC_ID,
+        lastEventId: 0,
       });
 
-      expect(mockEventBridge.getEventsSince).toHaveBeenCalledWith('exec-1', -1);
+      expect(mockEventBridge.getEventsSince).not.toHaveBeenCalled();
       expect(client.emit).toHaveBeenCalledTimes(1);
       expect(client.emit).toHaveBeenCalledWith(
         'execution.state.snapshot',
@@ -721,7 +806,7 @@ describe('ExecutionGateway', () => {
       mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
       const client = makeSocket();
 
-      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+      await gateway.handleSubscribe(client as any, { executionId: EXEC_ID });
 
       expect(mockEventBridge.getBufferedEvents).not.toHaveBeenCalled();
       expect(client.emit).toHaveBeenCalledOnce();
@@ -731,36 +816,42 @@ describe('ExecutionGateway', () => {
   describe('handleUnsubscribe / handleLeave', () => {
     it('leaves room using JWT tenant', () => {
       const client = makeSocket();
-      gateway.handleUnsubscribe(client as any, { executionId: 'exec-1' });
+      gateway.handleUnsubscribe(client as any, { executionId: EXEC_ID });
 
-      expect(client.leave).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+      expect(client.leave).toHaveBeenCalledWith(
+        `execution:tenant-1:${EXEC_ID}`,
+      );
     });
 
     it('handleLeave delegates to unsubscribe logic', () => {
       const client = makeSocket();
-      gateway.handleLeave(client as any, { executionId: 'exec-1' });
+      gateway.handleLeave(client as any, { executionId: EXEC_ID });
 
-      expect(client.leave).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+      expect(client.leave).toHaveBeenCalledWith(
+        `execution:tenant-1:${EXEC_ID}`,
+      );
     });
 
     it('uses empty tenantId when no user context', () => {
       const client = makeSocket({ data: {} });
       gateway.handleUnsubscribe(client as any, {
         tenantId: 'tenant-x',
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
       });
 
-      expect(client.leave).toHaveBeenCalledWith('execution::exec-1');
+      expect(client.leave).toHaveBeenCalledWith(`execution::${EXEC_ID}`);
     });
 
     it('legacy unsubscribe delegates to the same leave behavior', () => {
       const client = makeSocket();
 
       gateway.handleUnsubscribeLegacy(client as any, {
-        executionId: 'exec-1',
+        executionId: EXEC_ID,
       });
 
-      expect(client.leave).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+      expect(client.leave).toHaveBeenCalledWith(
+        `execution:tenant-1:${EXEC_ID}`,
+      );
     });
   });
 

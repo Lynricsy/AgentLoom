@@ -178,7 +178,6 @@ describe('Gateway live Socket.IO (E2E)', () => {
       getExecutionSnapshot: vi.fn(async (executionId: string) =>
         snapshots.get(executionId),
       ),
-      checkExecutionExists: vi.fn().mockResolvedValue(false),
     };
     conversationSnapshotMessages = vi.fn().mockResolvedValue([]);
     const tokenBlacklist = {
@@ -364,7 +363,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
       await expect(snapshotEvent).resolves.toEqual(snapshots.get(executionId));
     });
 
-    it('lastEventId 大于等于 currentEventId 时不发送任何回放包', async () => {
+    it('lastEventId 等于 currentEventId 时不发送任何回放包', async () => {
       const executionId = crypto.randomUUID();
       eventBridge.emitStepStatusChanged(TENANT_A, executionId, {
         stepId: 'step-1',
