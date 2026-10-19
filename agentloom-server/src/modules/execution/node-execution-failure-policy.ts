@@ -1,7 +1,7 @@
 /**
  * 节点执行失败策略：统一异常结构化、step 失败落库与 workflow failure 推进语义。
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { ExecutionStep } from '../../database/schema';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { InvalidStepTransitionException } from './execution.exceptions';
@@ -27,6 +27,8 @@ export interface NodeExecutionFailureContext {
 
 @Injectable()
 export class NodeExecutionFailurePolicy {
+  private readonly logger = new Logger(NodeExecutionFailurePolicy.name);
+
   constructor(private readonly stepStateMachine: StepStateMachineService) {}
 
   /** 状态机非法转换必须向上抛出；其他执行错误落库后由调度器推进 workflow failure。 */
@@ -37,6 +39,11 @@ export class NodeExecutionFailurePolicy {
     if (error instanceof InvalidStepTransitionException) throw error;
 
     const message = error instanceof Error ? error.message : String(error);
+    // 堆栈只写服务端日志：步骤 errorMessage 会原样返回给客户端（执行详情、Socket）。
+    this.logger.warn(
+      `Node execution failed: ${JSON.stringify({ executionId: context.executionId, stepId: context.step.id, error: message })}`,
+      error instanceof Error ? error.stack : undefined,
+    );
     await this.stepStateMachine.updateStepStatus(
       context.tenantId,
       context.step.id,
@@ -45,7 +52,6 @@ export class NodeExecutionFailurePolicy {
         ...(context.result !== undefined ? { result: context.result } : {}),
         errorMessage: {
           message,
-          ...(error instanceof Error ? { stack: error.stack } : {}),
           ...(error instanceof DomainException
             ? {
                 type: error.type,

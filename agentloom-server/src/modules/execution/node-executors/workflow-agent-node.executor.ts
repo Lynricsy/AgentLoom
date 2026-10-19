@@ -1,7 +1,7 @@
 /**
  * 工作流 Agent 节点执行器：拥有 runtime adapter、sandbox 绑定与 workspace 归档生命周期。
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { ExecutionStep, ReactFlowEdge } from '../../../database/schema';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
@@ -24,6 +24,8 @@ import type {
 
 @Injectable()
 export class WorkflowAgentNodeExecutor implements NodeExecutor {
+  private readonly logger = new Logger(WorkflowAgentNodeExecutor.name);
+
   constructor(
     private readonly workflowAgentAdapterFactory: AgentAdapterFactory,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
@@ -217,6 +219,11 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
       }
 
       const message = error instanceof Error ? error.message : String(error);
+      // 堆栈只写服务端日志：步骤 errorMessage 会原样返回给客户端
+      this.logger.warn(
+        `Workflow agent node failed: ${JSON.stringify({ executionId, stepId: step.id, error: message })}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       const workflowSandboxNodeId =
         getExecutionSandboxBinding(
           step.nodeId,
@@ -239,7 +246,6 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
         {
           errorMessage: {
             message,
-            ...(error instanceof Error ? { stack: error.stack } : {}),
             ...(error instanceof DomainException
               ? {
                   type: error.type,

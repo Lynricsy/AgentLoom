@@ -74,9 +74,12 @@ describe('NodeExecutionFailurePolicy', () => {
         errorMessage: expect.objectContaining({
           message: 'runner failed',
           nodeId: step.nodeId,
-          stack: expect.any(String),
         }),
       },
+    );
+    // 堆栈只进服务端日志，不落库到会返回给客户端的 errorMessage（D-051）
+    expect(updateStepStatus.mock.calls[0][3].errorMessage).not.toHaveProperty(
+      'stack',
     );
     expect(onNodeFailed).toHaveBeenCalledWith(
       'execution-1',

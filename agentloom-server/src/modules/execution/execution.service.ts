@@ -974,9 +974,9 @@ export class ExecutionService {
           .set({
             status: 'failed',
             failedAt: new Date(),
+            // 堆栈只写服务端日志，errorMessage 会原样返回给客户端
             errorMessage: {
               message: error.message,
-              stack: error.stack,
             },
             updatedAt: new Date(),
           })
@@ -1014,6 +1014,7 @@ export class ExecutionService {
 
     this.logger.error(
       `Execution failed: ${JSON.stringify({ executionId, error: error.message })}`,
+      error.stack,
     );
   }
 

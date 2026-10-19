@@ -120,14 +120,14 @@ describe('StateReplayService', () => {
     expect(step.completedAt).toBeNull();
   });
 
-  it('should extract error message from jsonb errorMessage and preserve errorDetail', async () => {
+  it('should extract error message from jsonb errorMessage and preserve errorDetail without server stack', async () => {
     const errorDetail = {
       message: 'Something broke',
       title: '端口类型不匹配',
       detail: '上游输出与下游输入的数据类型不兼容',
       type: 'https://agentloom.dev/errors/node-type-mismatch',
       nodeId: 'node-a',
-      stack: '...',
+      stack: 'Error: boom\n    at /root/app/src/x.ts:1:1',
       errors: [
         {
           field: 'input.image',
@@ -158,7 +158,9 @@ describe('StateReplayService', () => {
 
     const snapshot = await service.getExecutionSnapshot(EXEC_ID, TENANT_ID);
     expect(snapshot!.steps[0].errorMessage).toBe('Something broke');
-    expect(snapshot!.steps[0].errorDetail).toEqual(errorDetail);
+    const { stack: _stack, ...publicDetail } = errorDetail;
+    expect(snapshot!.steps[0].errorDetail).toEqual(publicDetail);
+    expect(snapshot!.steps[0].errorDetail).not.toHaveProperty('stack');
   });
 
   it('should omit errorMessage when null', async () => {

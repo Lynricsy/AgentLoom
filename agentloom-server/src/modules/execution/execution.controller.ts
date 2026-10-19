@@ -40,6 +40,7 @@ import { InterveneStepDto } from './dto/intervene-step.dto';
 import { ResolveToolPermissionDto } from './dto/resolve-tool-permission.dto';
 import { InterventionPermissionDeniedException } from './execution.exceptions';
 import { NodeSchedulerService } from './node-scheduler.service';
+import { toPublicExecutionErrorMessage } from './execution-error-message.util';
 
 const INTERVENTION_NOT_ALLOWED_RESPONSE = {
   error: 'INTERVENTION_NOT_ALLOWED',
@@ -424,6 +425,7 @@ export class ExecutionController {
       ...rest,
       workflowId: execution.workflowDefinitionId,
       definitionSnapshot: { ...execution.definitionSnapshot },
+      errorMessage: toPublicExecutionErrorMessage(execution.errorMessage),
       startedAt: execution.startedAt?.toISOString() ?? null,
       completedAt: execution.completedAt?.toISOString() ?? null,
       failedAt: execution.failedAt?.toISOString() ?? null,
@@ -434,6 +436,7 @@ export class ExecutionController {
         ? {
             steps: steps.map((step) => ({
               ...step,
+              errorMessage: toPublicExecutionErrorMessage(step.errorMessage),
               startedAt: step.startedAt?.toISOString() ?? null,
               completedAt: step.completedAt?.toISOString() ?? null,
               createdAt: step.createdAt.toISOString(),

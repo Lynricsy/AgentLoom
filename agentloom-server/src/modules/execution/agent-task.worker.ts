@@ -1181,6 +1181,11 @@ export class AgentTaskWorker extends WorkerHost {
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
+      // 堆栈只进服务端日志：步骤 errorMessage 会原样返回给客户端（执行详情、Socket）。
+      this.logger.error(
+        `Agent task failed: ${JSON.stringify({ executionId, stepId, error: err.message })}`,
+        err.stack,
+      );
 
       const errorPartial =
         typeof (error as Record<string, unknown>)?.partialContent === 'string'
@@ -1251,7 +1256,6 @@ export class AgentTaskWorker extends WorkerHost {
             {
               errorMessage: {
                 message: err.message,
-                stack: err.stack,
                 ...(err instanceof DomainException
                   ? {
                       type: err.type,
@@ -1320,7 +1324,6 @@ export class AgentTaskWorker extends WorkerHost {
             {
               errorMessage: {
                 message: err.message,
-                stack: err.stack,
                 ...(err instanceof DomainException
                   ? {
                       type: err.type,
@@ -1404,7 +1407,6 @@ export class AgentTaskWorker extends WorkerHost {
             {
               errorMessage: {
                 message: err.message,
-                stack: err.stack,
                 ...(err instanceof DomainException
                   ? {
                       type: err.type,
@@ -1486,7 +1488,6 @@ export class AgentTaskWorker extends WorkerHost {
           {
             errorMessage: {
               message: finalError.message,
-              stack: finalError.stack,
               attempts: allAttempts,
               ...(finalError instanceof DomainException
                 ? {

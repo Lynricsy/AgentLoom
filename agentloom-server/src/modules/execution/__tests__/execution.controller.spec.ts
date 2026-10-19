@@ -212,6 +212,44 @@ describe('ExecutionController', () => {
         },
       ]);
     });
+
+    it('历史数据中执行与步骤 errorMessage 的服务器堆栈不对外输出', async () => {
+      const stack = 'Error: 工作流图存在环路\n    at /root/app/src/x.ts:1:1';
+      mockService.getExecution.mockResolvedValue({
+        ...mockExecution,
+        status: 'failed' as const,
+        errorMessage: { message: '工作流图存在环路', stack },
+        steps: [
+          {
+            id: STEP_ID,
+            executionId: EXECUTION_ID,
+            nodeId: 'node-1',
+            stepOrder: 0,
+            status: 'failed' as const,
+            nodeType: 'agent',
+            nodeData: null,
+            input: null,
+            result: null,
+            attemptCount: 1,
+            checkpointData: null,
+            errorMessage: { message: 'boom', nodeId: 'node-1', stack },
+            isEncrypted: false,
+            startedAt: CREATED_AT,
+            completedAt: UPDATED_AT,
+            createdAt: CREATED_AT,
+            updatedAt: UPDATED_AT,
+          },
+        ],
+      });
+
+      const result = await controller.getExecution(EXECUTION_ID);
+
+      expect(result.data.errorMessage).toEqual({ message: '工作流图存在环路' });
+      expect(result.data.steps?.[0].errorMessage).toEqual({
+        message: 'boom',
+        nodeId: 'node-1',
+      });
+    });
   });
 
   describe('listExecutions', () => {

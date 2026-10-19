@@ -7,6 +7,7 @@ import type {
   StepSnapshot,
 } from '../types/execution-event.types';
 import type { EventBridgeService } from './event-bridge.service';
+import { toPublicExecutionErrorMessage } from '../execution-error-message.util';
 
 @Injectable()
 export class StateReplayService {
@@ -79,8 +80,9 @@ export class StateReplayService {
         ...(step.errorMessage
           ? {
               errorMessage: (step.errorMessage as { message: string }).message,
-              errorDetail:
-                step.errorMessage as unknown as StepSnapshot['errorDetail'],
+              errorDetail: toPublicExecutionErrorMessage(
+                step.errorMessage,
+              ) as unknown as StepSnapshot['errorDetail'],
             }
           : {}),
         result: step.result ?? null,

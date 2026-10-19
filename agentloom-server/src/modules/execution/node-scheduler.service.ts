@@ -339,6 +339,11 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
     } catch (error) {
       if (error instanceof InvalidStepTransitionException) throw error;
       const message = error instanceof Error ? error.message : String(error);
+      // 堆栈只写服务端日志：步骤 errorMessage 会原样返回给客户端
+      this.logger.warn(
+        `Node input resolution failed: ${JSON.stringify({ executionId, stepId: step.id, error: message })}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
@@ -346,7 +351,6 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
         {
           errorMessage: {
             message,
-            ...(error instanceof Error ? { stack: error.stack } : {}),
             ...(error instanceof DomainException
               ? { type: error.type, title: error.message, detail: error.detail }
               : {}),
