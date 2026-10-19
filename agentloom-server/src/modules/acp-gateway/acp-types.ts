@@ -72,6 +72,8 @@ export interface AcpTrackedSession {
   cwd?: SessionContext['cwd'];
   serverSandbox?: ServerSandboxBinding;
   activePromptRequestId?: JsonRpcId;
+  /** `session/cancel` 经此中止进行中的 prompt，使其以 `stopReason: 'cancelled'` 应答 */
+  activePromptAbort?: AbortController;
   pendingPermissionRequestId?: JsonRpcId;
   pendingPermissionToolCallId?: string;
   pendingFsRequestIds?: JsonRpcId[];

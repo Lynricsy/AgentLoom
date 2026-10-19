@@ -53,6 +53,8 @@ export class SessionCancelHandler {
     }
 
     state.sessions?.delete(trackedSession.sessionId);
+    // 先让进行中的 prompt 立即以 cancelled 应答，不等运行时迭代器自行结束
+    trackedSession.activePromptAbort?.abort();
 
     const cleanupFailures: SessionCleanupFailure[] = [];
 

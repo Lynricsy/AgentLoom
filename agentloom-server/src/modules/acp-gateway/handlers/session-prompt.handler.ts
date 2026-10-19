@@ -84,14 +84,37 @@ export class SessionPromptHandler {
     }
 
     trackedSession.activePromptRequestId = requestId;
+    const promptAbort = new AbortController();
+    trackedSession.activePromptAbort = promptAbort;
+    // tsconfig lib 为 ES2023，没有 Promise.withResolvers
+    const aborted = new Promise<'aborted'>((resolve) => {
+      promptAbort.signal.addEventListener('abort', () => resolve('aborted'), {
+        once: true,
+      });
+    });
 
     try {
+      const events = this.getAgentRuntime()
+        .prompt(trackedSession.runtimeSessionId, normalizedParams.content)
+        [Symbol.asyncIterator]();
       let terminalStopReason: StopReason | null = null;
 
-      for await (const event of this.getAgentRuntime().prompt(
-        trackedSession.runtimeSessionId,
-        normalizedParams.content,
-      )) {
+      while (true) {
+        const pending = events.next();
+        const next = promptAbort.signal.aborted
+          ? 'aborted'
+          : await Promise.race([pending, aborted]);
+        if (next === 'aborted') {
+          // 运行时取消后迭代器不保证产出终态事件；放弃等待并吞掉其后续结果
+          pending.catch(() => undefined);
+          void events.return?.(undefined).catch(() => undefined);
+          return { stopReason: 'cancelled' };
+        }
+        if (next.done) {
+          break;
+        }
+
+        const event = next.value;
         if (event.type === 'done') {
           terminalStopReason = event.stopReason;
           continue;
@@ -120,6 +143,7 @@ export class SessionPromptHandler {
       };
     } finally {
       delete trackedSession.activePromptRequestId;
+      delete trackedSession.activePromptAbort;
     }
   }
 

@@ -1,5 +1,6 @@
 import { ModuleRef } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
+import { SessionCancelHandler } from '../handlers/session-cancel.handler';
 import { SessionPromptHandler } from '../handlers/session-prompt.handler';
 import type { AcpConnectionState } from '../acp-types';
 
@@ -448,5 +449,72 @@ describe('SessionPromptHandler', () => {
     expect(result).toEqual({
       stopReason: 'cancelled',
     });
+  });
+
+  it('session/cancel 中止进行中的 prompt 时立即以 cancelled 应答，即使运行时迭代器不结束（D-021）', async () => {
+    let firstChunkEmitted!: () => void;
+    const chunkEmitted = new Promise<void>((resolve) => {
+      firstChunkEmitted = resolve;
+    });
+    const runtime = {
+      prompt: vi.fn().mockReturnValue(
+        (async function* () {
+          yield { type: 'message_chunk', content: '第一段' };
+          // 模拟 runtime.cancel 后迭代器既不产出终态事件也不结束
+          await new Promise(() => undefined);
+        })(),
+      ),
+      cancel: vi.fn().mockResolvedValue(undefined),
+    };
+    const moduleRef = {
+      get: vi.fn().mockReturnValue(runtime),
+    } as unknown as ModuleRef;
+    const state: AcpConnectionState = {
+      initialized: true,
+      authContext: {
+        userId: 'user-1',
+        email: 'user@example.com',
+        tenantId: 'tenant-1',
+        tenantRole: 'owner',
+        orgId: 'org-1',
+        authMethod: 'jwt',
+      },
+      sessions: new Map([
+        [
+          'session-hang',
+          {
+            sessionId: 'session-hang',
+            runtimeSessionId: 'runtime-session-hang',
+            agentId: 'agent-001',
+            tenantId: 'tenant-1',
+          },
+        ],
+      ]),
+      emitNotification: vi.fn().mockImplementation(async () => {
+        firstChunkEmitted();
+      }),
+    };
+    const promptHandler = new SessionPromptHandler(moduleRef);
+    const cancelHandler = new SessionCancelHandler(
+      moduleRef,
+      {
+        cleanupSessionTerminals: vi.fn().mockResolvedValue(undefined),
+      } as never,
+      { cleanupSessionTools: vi.fn().mockResolvedValue(undefined) } as never,
+    );
+
+    const prompt = promptHandler.handle(
+      {
+        sessionId: 'session-hang',
+        content: [{ type: 'text', text: '写 800 字' }],
+      },
+      state,
+      21,
+    );
+    await chunkEmitted;
+    await cancelHandler.handle({ sessionId: 'session-hang' }, state);
+
+    await expect(prompt).resolves.toEqual({ stopReason: 'cancelled' });
+    expect(runtime.cancel).toHaveBeenCalledWith('runtime-session-hang');
   });
 });

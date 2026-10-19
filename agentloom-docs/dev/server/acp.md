@@ -46,10 +46,10 @@ flowchart LR
 | `initialize` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/initialize.handler.ts` | `protocolVersion`、`clientCapabilities`（均必填） | `{ protocolVersion, serverInfo: { name: 'agentloom', version, capabilities } }` |
 | `initialized` | 通知 | 路由器内联 | 无 | 仅记录已收到，无响应 |
 | `authenticate` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/authenticate.handler.ts` | `token`：Supabase 签发的 JWT | 认证上下文 |
-| `session/new` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-new.handler.ts` | `agentId`、`cwd?`（必须为绝对路径）、`mcpServers?`、`serverSandbox?`（`executionId` 或 `agentConversationId`） | `{ sessionId }` |
+| `session/new` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-new.handler.ts` | `agentId`（当前租户内已发布、未归档的 `no_sandbox` Agent）、`cwd?`（必须为绝对路径）、`mcpServers?`、`serverSandbox?`（`executionId` 或 `agentConversationId`） | `{ sessionId }` |
 | `session/load` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-load.handler.ts` | `sessionId` | 先重放历史，再响应 |
 | `session/prompt` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-prompt.handler.ts` | `sessionId`、`content`（ContentBlock 数组） | `{ stopReason }` |
-| `session/cancel` | 通知或请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-cancel.handler.ts` | `sessionId` | 始终为 `null` |
+| `session/cancel` | 通知或请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-cancel.handler.ts` | `sessionId` | 请求形式回包 `result: null`；通知形式不回包 |
 | `terminal/create` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/acp-terminal.handler.ts` | `sessionId`、命令、`cwd?`、`mode?` | `terminalId` |
 | `terminal/output` | 请求 | 同上 | `sessionId`、`terminalId`、`offset?`、`outputByteLimit?` | `{ terminalId, output, nextOffset, truncated }` |
 | `terminal/wait_for_exit` | 请求 | 同上 | `sessionId`、`terminalId`、`timeoutMs?` | 退出状态 |
@@ -76,13 +76,13 @@ flowchart LR
 
 ### 会话与持久化
 
-`session/new` 在租户事务中创建 `conversation` 模式的运行时会话，并通过 `AcpSessionMcpRegistryService` 注册客户端提供的 MCP 工具。会话状态持久化到 `acp_conversation_sessions`（`agentloom-server/src/database/schema/acp-conversation-sessions.schema.ts`，列含 `session_snapshot`、`replay_entries`）。
+`session/new` 在租户事务中按 `agentId` 读取 Agent：不存在、不是 UUID 或属于其他租户返回 `-32000`（`data.type` 为 `agent-not-found`），已归档为 `agent-archived`，未发布为 `agent-not-published`；`sandbox` 运行态的 Agent 返回 `-32602`（`data.reason` 为 `Only no_sandbox agents can run over ACP`），因为 ACP 会话由进程内运行时执行，不能绕过沙箱。通过校验后，网关用已发布版本快照经 `AgentDefinitionService.buildRuntimeConfigFromNodes` 编译运行配置（模型、画布工具与知识库绑定），系统提示词取画布解析结果，缺省时取快照的 `systemPrompt`，据此创建 `conversation` 模式的运行时会话，再通过 `AcpSessionMcpRegistryService` 注册客户端提供的 MCP 工具。记忆、技能、子 Agent 等对话执行器（`agent-execution`）注册的工具不在 ACP 会话中提供。会话状态持久化到 `acp_conversation_sessions`（`agentloom-server/src/database/schema/acp-conversation-sessions.schema.ts`，列含 `session_snapshot`、`replay_entries`）。
 
 `session/load` 在返回响应**之前**，把每条持久化重放条目作为 `session/update` 通知发出（`update.replayed = true`），随后恢复 MCP 工具与终端。租户不匹配或会话模式不对时返回 `-32602`，`data.reason` 为 `Session not found`。
 
 `session/prompt` 期间服务端持续发送 `session/update`；同一会话已有进行中的 prompt 时返回 `-32003 Prompt already in progress`（`agentloom-server/src/modules/acp-gateway/handlers/session-prompt.handler.ts:80`）。
 
-`session/cancel` 移除会话跟踪，把等待中的权限请求按 `cancelled` 应答、把等待中的 fs 代理请求按 `{ cancelled: true }` 应答，清理 MCP 工具与终端，再取消运行时。任一清理步骤失败时返回 `-32603`，`data.cleanupFailures` 列出失败项。
+`session/cancel` 移除会话跟踪，先中止进行中的 `session/prompt`（该 prompt 立即以 `{ stopReason: 'cancelled' }` 应答，不等运行时迭代器结束），再把等待中的权限请求按 `cancelled` 应答、把等待中的 fs 代理请求按 `{ cancelled: true }` 应答，清理 MCP 工具与终端，最后取消运行时。任一清理步骤失败时返回 `-32603`，`data.cleanupFailures` 列出失败项。取消后该 `sessionId` 不再可用，后续 `session/prompt` 返回 `-32602 Session not found`。
 
 ## 出站消息（服务端 → 客户端）
 
@@ -150,9 +150,9 @@ stateDiagram-v2
 | `-32700` | `Parse error`：消息不是合法 JSON | `agentloom-server/src/modules/acp-gateway/acp-jsonrpc.ts` |
 | `-32600` | `Invalid Request`：信封不合法，或非通知方法以通知形式发送 | `acp-jsonrpc.ts`、`acp-message-router.ts` |
 | `-32601` | `Method not found` | `acp-message-router.ts` |
-| `-32602` | `Invalid params`；`data.reason` 可为 `Session not found`、`Relative fs path requires session cwd`、`terminal_not_found`、`terminal_output_offset_invalid`；协议版本不符 | 各处理器 |
+| `-32602` | `Invalid params`；`data.reason` 可为 `Session not found`、`Relative fs path requires session cwd`、`terminal_not_found`、`terminal_output_offset_invalid`、`Only no_sandbox agents can run over ACP`；协议版本不符 | 各处理器 |
 | `-32603` | `Internal error` 及处理器失败（创建会话、MCP 转发初始化/恢复、历史重放、取消清理、prompt 无终态事件、权限应答不合法、终端创建失败、fs 代理失败）；stdio 层未捕获异常也以此返回且 `id` 为 `null` | `acp-message-router.ts`、各处理器、`agentloom-server/src/acp-stdio.ts` |
-| `-32000` | `DomainException` 转换，`data` 含 `status`、`type`、`detail`、`errors?`、`extensions?`（认证失败走这里） | `acp-message-router.ts` |
+| `-32000` | `DomainException` 转换，`data` 含 `status`、`type`、`detail`、`errors?`、`extensions?`（认证失败与 `session/new` 的 `agent-not-found` / `agent-archived` / `agent-not-published` 走这里） | `acp-message-router.ts` |
 | `-32001` | `Server not initialized` | `acp-message-router.ts` |
 | `-32002` | `Authentication required`；`session/new` 缺少租户上下文时也返回 | `acp-message-router.ts`、`handlers/session-new.handler.ts` |
 | `-32003` | `Prompt already in progress` | `handlers/session-prompt.handler.ts` |
