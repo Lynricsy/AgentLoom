@@ -6,7 +6,8 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import type { PluginDeveloperKey } from '../../database/schema';
 import { pluginDeveloperKeys } from '../../database/schema';
 import {
-  PluginDeveloperKeyInvalidException,
+  PluginDeveloperKeyAlreadyRevokedException,
+  PluginDeveloperKeyConflictException,
   PluginDeveloperKeyNotFoundException,
 } from './plugin.exceptions';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
@@ -200,15 +201,35 @@ describe('PluginDeveloperKeyService', () => {
       });
     });
 
-    it('已存在相同指纹的密钥时应抛出异常', async () => {
+    it('已存在相同指纹的密钥时应抛出 409 冲突', async () => {
       const selectQuery = createSelectChainWithLimit([createDeveloperKey()]);
 
       db.select.mockReturnValueOnce(selectQuery.chain);
 
-      await expect(
-        service.registerKey(TENANT_ID, ORG_ID, USER_ID, PUBLIC_KEY, '重复密钥'),
-      ).rejects.toBeInstanceOf(PluginDeveloperKeyInvalidException);
+      const error = await service
+        .registerKey(TENANT_ID, ORG_ID, USER_ID, PUBLIC_KEY, '重复密钥')
+        .catch((caught: unknown) => caught);
 
+      expect(error).toBeInstanceOf(PluginDeveloperKeyConflictException);
+      expect((error as PluginDeveloperKeyConflictException).getStatus()).toBe(
+        409,
+      );
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('重新登记已撤销的密钥时提示生成新密钥对', async () => {
+      const selectQuery = createSelectChainWithLimit([
+        createDeveloperKey({ status: 'revoked' }),
+      ]);
+
+      db.select.mockReturnValueOnce(selectQuery.chain);
+
+      await expect(
+        service.registerKey(TENANT_ID, ORG_ID, USER_ID, PUBLIC_KEY),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/plugin-developer-key-conflict',
+        detail: expect.stringContaining('请生成新的密钥对'),
+      });
       expect(db.insert).not.toHaveBeenCalled();
     });
   });
@@ -316,7 +337,7 @@ describe('PluginDeveloperKeyService', () => {
       );
     });
 
-    it('重复撤销时应抛出异常', async () => {
+    it('重复撤销时应抛出 409 already-revoked', async () => {
       const revokedKey = createDeveloperKey({
         status: 'revoked',
         revokedAt: new Date('2025-01-03T00:00:00.000Z'),
@@ -325,10 +346,14 @@ describe('PluginDeveloperKeyService', () => {
 
       db.select.mockReturnValueOnce(selectQuery.chain);
 
-      await expect(
-        service.revokeKey(ORG_ID, KEY_ID, ADMIN_ACTOR),
-      ).rejects.toBeInstanceOf(PluginDeveloperKeyInvalidException);
+      const error = await service
+        .revokeKey(ORG_ID, KEY_ID, ADMIN_ACTOR)
+        .catch((caught: unknown) => caught);
 
+      expect(error).toBeInstanceOf(PluginDeveloperKeyAlreadyRevokedException);
+      expect(
+        (error as PluginDeveloperKeyAlreadyRevokedException).getStatus(),
+      ).toBe(409);
       expect(db.update).not.toHaveBeenCalled();
     });
   });

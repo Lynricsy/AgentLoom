@@ -13,7 +13,8 @@ import {
   type QueryDeveloperKeysDtoType,
 } from './dto/plugin-developer-key.dto';
 import {
-  PluginDeveloperKeyInvalidException,
+  PluginDeveloperKeyAlreadyRevokedException,
+  PluginDeveloperKeyConflictException,
   PluginDeveloperKeyNotFoundException,
 } from './plugin.exceptions';
 import { PluginSignatureService } from './plugin-signature.service';
@@ -75,8 +76,9 @@ export class PluginDeveloperKeyService {
       .limit(1);
 
     if (existing) {
-      throw new PluginDeveloperKeyInvalidException(
-        `指纹为 "${keyFingerprint.slice(0, 16)}..." 的密钥已注册。`,
+      throw new PluginDeveloperKeyConflictException(
+        keyFingerprint,
+        existing.status === 'revoked',
       );
     }
 
@@ -174,7 +176,7 @@ export class PluginDeveloperKeyService {
     const key = await this.findById(orgId, keyId, actor);
 
     if (key.status === 'revoked') {
-      throw new PluginDeveloperKeyInvalidException('该密钥已被撤销。');
+      throw new PluginDeveloperKeyAlreadyRevokedException(keyId);
     }
 
     const revokedAt = new Date();

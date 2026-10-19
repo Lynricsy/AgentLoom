@@ -77,7 +77,8 @@ export class PluginDeveloperKeyController {
     description: '密钥注册成功。',
     type: DeveloperKeyResponseDto,
   })
-  @ApiResponse({ status: 400, description: '公钥无效或已注册。' })
+  @ApiResponse({ status: 400, description: '公钥无效。' })
+  @ApiResponse({ status: 409, description: '相同指纹的密钥已注册或已撤销。' })
   async registerKey(
     @CurrentTenant() tenantId: string,
     @CurrentUser() user: JwtPayload,
@@ -135,7 +136,7 @@ export class PluginDeveloperKeyController {
     description: '密钥已撤销。',
     type: DeveloperKeyResponseDto,
   })
-  @ApiResponse({ status: 400, description: '密钥已撤销。' })
+  @ApiResponse({ status: 409, description: '密钥已撤销。' })
   @ApiResponse({ status: 404, description: '密钥不存在。' })
   async revokeKey(
     @CurrentTenant() tenantId: string,

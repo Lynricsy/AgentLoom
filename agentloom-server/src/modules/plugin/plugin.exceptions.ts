@@ -144,6 +144,30 @@ export class PluginDeveloperKeyNotFoundException extends DomainException {
   }
 }
 
+export class PluginDeveloperKeyConflictException extends DomainException {
+  constructor(fingerprint: string, revoked: boolean) {
+    super({
+      type: problemType('plugin-developer-key-conflict'),
+      title: 'Plugin Developer Key Conflict',
+      status: HttpStatus.CONFLICT,
+      detail: revoked
+        ? `指纹为 "${fingerprint.slice(0, 16)}..." 的密钥已被撤销，撤销不可恢复，请生成新的密钥对。`
+        : `指纹为 "${fingerprint.slice(0, 16)}..." 的密钥已注册。`,
+    });
+  }
+}
+
+export class PluginDeveloperKeyAlreadyRevokedException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: problemType('plugin-developer-key-already-revoked'),
+      title: 'Plugin Developer Key Already Revoked',
+      status: HttpStatus.CONFLICT,
+      detail: `开发者密钥 ${id} 已被撤销`,
+    });
+  }
+}
+
 export class PluginExecutionTimeoutException extends DomainException {
   constructor(pluginId: string, timeoutMs: number) {
     super({
