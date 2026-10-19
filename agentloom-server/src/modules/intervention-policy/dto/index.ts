@@ -1,11 +1,15 @@
 export {
   CreateInterventionPolicySchema,
-  type CreateInterventionPolicyDto,
+  CreateInterventionPolicyDto,
 } from './create-intervention-policy.dto';
 export {
   UpdateInterventionPolicySchema,
-  type UpdateInterventionPolicyDto,
+  UpdateInterventionPolicyDto,
 } from './update-intervention-policy.dto';
+export {
+  ListInterventionPoliciesQuerySchema,
+  ListInterventionPoliciesQueryDto,
+} from './list-intervention-policies-query.dto';
 export type {
   InterventionPolicyResponseDto,
   ResolvedPolicyResponseDto,

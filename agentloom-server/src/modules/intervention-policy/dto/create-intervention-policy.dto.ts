@@ -1,3 +1,4 @@
+import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 const VALID_ROLES = [
@@ -10,9 +11,9 @@ const VALID_ROLES = [
 const VALID_TIMEOUT_ACTIONS = ['approve', 'reject', 'escalate'] as const;
 const VALID_NOTIFY_CHANNELS = ['in_app', 'email', 'push'] as const;
 
+// workflowId 只取自路由参数，body 中的同名字段会被剥离，不能借此改写目标工作流。
 export const CreateInterventionPolicySchema = z
   .object({
-    workflowId: z.string().uuid(),
     nodeId: z.string().max(255).nullish(),
     allowedRoles: z
       .array(z.enum(VALID_ROLES))
@@ -45,6 +46,6 @@ export const CreateInterventionPolicySchema = z
     },
   );
 
-export type CreateInterventionPolicyDto = z.infer<
-  typeof CreateInterventionPolicySchema
->;
+export class CreateInterventionPolicyDto extends createZodDto(
+  CreateInterventionPolicySchema,
+) {}

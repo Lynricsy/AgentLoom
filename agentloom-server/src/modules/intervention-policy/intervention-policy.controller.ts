@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -9,7 +10,6 @@ import {
   Patch,
   Post,
   Query,
-  Body,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,6 +23,9 @@ import {
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CreateInterventionPolicyDto } from './dto/create-intervention-policy.dto';
+import { ListInterventionPoliciesQueryDto } from './dto/list-intervention-policies-query.dto';
+import { UpdateInterventionPolicyDto } from './dto/update-intervention-policy.dto';
 import { InterventionPolicyService } from './intervention-policy.service';
 
 @ApiTags('Intervention Policies')
@@ -41,31 +44,25 @@ export class InterventionPolicyController {
   @ApiQuery({
     name: 'page',
     required: false,
-    description: '页码（默认 1）',
+    description: '页码（默认 1，最小 1）',
     type: Number,
   })
   @ApiQuery({
     name: 'pageSize',
     required: false,
-    description: '每页数量（默认 20）',
+    description: '每页数量（默认 20，范围 1-100）',
     type: Number,
   })
   @ApiResponse({ status: 200, description: '介入策略列表获取成功' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
-  @ApiResponse({ status: 404, description: '工作流不存在' })
+  @ApiResponse({ status: 422, description: '分页参数无效' })
   async findAll(
     @CurrentTenant() tenantId: string,
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query() query: ListInterventionPoliciesQueryDto,
   ) {
-    return this.interventionPolicyService.findAll(
-      tenantId,
-      workflowId,
-      page ? parseInt(page, 10) : 1,
-      pageSize ? parseInt(pageSize, 10) : 20,
-    );
+    return this.interventionPolicyService.findAll(tenantId, workflowId, query);
   }
 
   @Get('resolve')
@@ -106,10 +103,12 @@ export class InterventionPolicyController {
   @ApiResponse({ status: 404, description: '介入策略不存在' })
   async findById(
     @CurrentTenant() tenantId: string,
+    @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Param('policyId', ParseUUIDPipe) policyId: string,
   ) {
     const policy = await this.interventionPolicyService.findById(
       tenantId,
+      workflowId,
       policyId,
     );
     return { data: policy };
@@ -121,23 +120,25 @@ export class InterventionPolicyController {
   @ApiOperation({ summary: '创建工作流介入策略' })
   @ApiParam({ name: 'workflowId', description: '工作流 ID', type: String })
   @ApiResponse({ status: 201, description: '介入策略创建成功' })
-  @ApiResponse({ status: 400, description: '请求参数无效' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 404, description: '工作流不存在' })
+  @ApiResponse({
+    status: 409,
+    description: '同一工作流（或同一节点）已存在介入策略',
+  })
+  @ApiResponse({ status: 422, description: '请求参数无效' })
   async create(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
-    @Body() body: Record<string, unknown>,
+    @Body() dto: CreateInterventionPolicyDto,
   ) {
     const policy = await this.interventionPolicyService.create(
       tenantId,
       userId,
-      {
-        ...body,
-        workflowId,
-      },
+      workflowId,
+      dto,
     );
     return { data: policy };
   }
@@ -148,19 +149,22 @@ export class InterventionPolicyController {
   @ApiParam({ name: 'workflowId', description: '工作流 ID', type: String })
   @ApiParam({ name: 'policyId', description: '介入策略 ID', type: String })
   @ApiResponse({ status: 200, description: '介入策略更新成功' })
-  @ApiResponse({ status: 400, description: '请求参数无效' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 404, description: '介入策略不存在' })
+  @ApiResponse({ status: 409, description: '版本冲突' })
+  @ApiResponse({ status: 422, description: '请求参数无效' })
   async update(
     @CurrentTenant() tenantId: string,
+    @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Param('policyId', ParseUUIDPipe) policyId: string,
-    @Body() body: Record<string, unknown>,
+    @Body() dto: UpdateInterventionPolicyDto,
   ) {
     const policy = await this.interventionPolicyService.update(
       tenantId,
+      workflowId,
       policyId,
-      body,
+      dto,
     );
     return { data: policy };
   }
@@ -177,8 +181,9 @@ export class InterventionPolicyController {
   @ApiResponse({ status: 404, description: '介入策略不存在' })
   async remove(
     @CurrentTenant() tenantId: string,
+    @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Param('policyId', ParseUUIDPipe) policyId: string,
   ) {
-    await this.interventionPolicyService.remove(tenantId, policyId);
+    await this.interventionPolicyService.remove(tenantId, workflowId, policyId);
   }
 }

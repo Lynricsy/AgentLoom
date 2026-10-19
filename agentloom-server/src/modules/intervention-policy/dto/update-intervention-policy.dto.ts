@@ -1,3 +1,4 @@
+import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 const VALID_ROLES = [
@@ -45,6 +46,6 @@ export const UpdateInterventionPolicySchema = z
     },
   );
 
-export type UpdateInterventionPolicyDto = z.infer<
-  typeof UpdateInterventionPolicySchema
->;
+export class UpdateInterventionPolicyDto extends createZodDto(
+  UpdateInterventionPolicySchema,
+) {}

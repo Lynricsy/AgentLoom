@@ -1,10 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import { CreateInterventionPolicySchema } from './dto/create-intervention-policy.dto';
-import { UpdateInterventionPolicySchema } from './dto/update-intervention-policy.dto';
+import { WorkflowNotFoundException } from '../workflow-definition/workflow-version.exceptions';
+import type { CreateInterventionPolicyDto } from './dto/create-intervention-policy.dto';
+import type { UpdateInterventionPolicyDto } from './dto/update-intervention-policy.dto';
+import type { ListInterventionPoliciesQueryDto } from './dto/list-intervention-policies-query.dto';
 import type {
   InterventionPolicyResponseDto,
   ResolvedPolicyResponseDto,
@@ -33,7 +36,11 @@ export class InterventionPolicyService {
     return getTenantDb(this.db);
   }
 
-  async findAll(tenantId: string, workflowId: string, page = 1, pageSize = 20) {
+  async findAll(
+    tenantId: string,
+    workflowId: string,
+    { page, pageSize }: ListInterventionPoliciesQueryDto,
+  ) {
     const offset = (page - 1) * pageSize;
 
     const [policies, countResult] = await Promise.all([
@@ -73,13 +80,15 @@ export class InterventionPolicyService {
     };
   }
 
-  async findById(tenantId: string, policyId: string) {
+  // 策略只能经其所属工作流的路由访问：路径 workflowId 与策略不符时按不存在处理。
+  async findById(tenantId: string, workflowId: string, policyId: string) {
     const [policy] = await this.tenantDb
       .select()
       .from(schema.interventionPolicies)
       .where(
         and(
           eq(schema.interventionPolicies.tenantId, tenantId),
+          eq(schema.interventionPolicies.workflowId, workflowId),
           eq(schema.interventionPolicies.id, policyId),
         ),
       )
@@ -95,41 +104,51 @@ export class InterventionPolicyService {
   async create(
     tenantId: string,
     userId: string,
-    dto: unknown,
+    workflowId: string,
+    dto: CreateInterventionPolicyDto,
   ): Promise<InterventionPolicyResponseDto> {
-    const validated = CreateInterventionPolicySchema.parse(dto);
+    const [workflow] = await this.tenantDb
+      .select({ id: schema.workflowDefinitions.id })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, workflowId),
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
 
     try {
       const [created] = await this.tenantDb
         .insert(schema.interventionPolicies)
         .values({
-          workflowId: validated.workflowId,
+          workflowId,
           tenantId,
-          nodeId: validated.nodeId ?? null,
-          allowedRoles: validated.allowedRoles,
-          timeoutSeconds: validated.timeoutSeconds,
-          timeoutAction: validated.timeoutAction,
-          escalateToRole: validated.escalateToRole ?? null,
-          notifyChannels: validated.notifyChannels,
-          isActive: validated.isActive,
+          nodeId: dto.nodeId ?? null,
+          allowedRoles: dto.allowedRoles,
+          timeoutSeconds: dto.timeoutSeconds,
+          timeoutAction: dto.timeoutAction,
+          escalateToRole: dto.escalateToRole ?? null,
+          notifyChannels: dto.notifyChannels,
+          isActive: dto.isActive,
           createdBy: userId,
         })
         .returning();
 
       this.logger.log(
-        `Created intervention policy ${created.id} for workflow ${validated.workflowId}`,
+        `Created intervention policy ${created.id} for workflow ${workflowId}`,
       );
 
       return this.toResponseDto(created);
     } catch (error: unknown) {
-      if (
-        error instanceof Error &&
-        error.message?.includes('uq_intervention_policies_workflow_node')
-      ) {
-        throw new InterventionPolicyConflictException(
-          validated.workflowId,
-          validated.nodeId,
-        );
+      // 唯一索引 (workflow_id, COALESCE(node_id, '__workflow_level__'))；
+      // Drizzle 把 pg 错误包在 cause 里，必须沿 cause 链判断错误码。
+      if (hasPostgresErrorCode(error, '23505')) {
+        throw new InterventionPolicyConflictException(workflowId, dto.nodeId);
       }
       throw error;
     }
@@ -137,11 +156,11 @@ export class InterventionPolicyService {
 
   async update(
     tenantId: string,
+    workflowId: string,
     policyId: string,
-    dto: unknown,
+    dto: UpdateInterventionPolicyDto,
   ): Promise<InterventionPolicyResponseDto> {
-    const validated = UpdateInterventionPolicySchema.parse(dto);
-    const { version, ...updateFields } = validated;
+    const { version, ...updateFields } = dto;
 
     const [updated] = await this.tenantDb
       .update(schema.interventionPolicies)
@@ -153,6 +172,7 @@ export class InterventionPolicyService {
       .where(
         and(
           eq(schema.interventionPolicies.tenantId, tenantId),
+          eq(schema.interventionPolicies.workflowId, workflowId),
           eq(schema.interventionPolicies.id, policyId),
           eq(schema.interventionPolicies.version, version),
         ),
@@ -166,6 +186,7 @@ export class InterventionPolicyService {
         .where(
           and(
             eq(schema.interventionPolicies.tenantId, tenantId),
+            eq(schema.interventionPolicies.workflowId, workflowId),
             eq(schema.interventionPolicies.id, policyId),
           ),
         )
@@ -184,12 +205,17 @@ export class InterventionPolicyService {
     return this.toResponseDto(updated);
   }
 
-  async remove(tenantId: string, policyId: string): Promise<void> {
+  async remove(
+    tenantId: string,
+    workflowId: string,
+    policyId: string,
+  ): Promise<void> {
     const [deleted] = await this.tenantDb
       .delete(schema.interventionPolicies)
       .where(
         and(
           eq(schema.interventionPolicies.tenantId, tenantId),
+          eq(schema.interventionPolicies.workflowId, workflowId),
           eq(schema.interventionPolicies.id, policyId),
         ),
       )
