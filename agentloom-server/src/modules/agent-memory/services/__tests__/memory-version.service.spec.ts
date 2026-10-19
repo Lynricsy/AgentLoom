@@ -132,7 +132,11 @@ describe('MemoryVersionService', () => {
   let rawDb: MockDb;
   let tenantDb: MockDb;
   let txDb: MockDb;
-  let gateway: { emitVersionCreated: Mock; emitVersionRollback: Mock };
+  let gateway: {
+    emitVersionCreated: Mock;
+    emitVersionRollback: Mock;
+    emitReviewSubmitted: Mock;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -150,6 +154,7 @@ describe('MemoryVersionService', () => {
     gateway = {
       emitVersionCreated: vi.fn(),
       emitVersionRollback: vi.fn(),
+      emitReviewSubmitted: vi.fn(),
     };
 
     service = new MemoryVersionService(
@@ -447,17 +452,21 @@ describe('MemoryVersionService', () => {
   });
 
   describe('updateReviewStatus', () => {
-    it('应只更新属于路由节点的版本', async () => {
+    const REVIEWER_ID = '99999999-9999-4999-8999-999999999999';
+
+    it('应只更新属于路由节点的版本并广播 memory.review.submitted', async () => {
       const updated = createVersion({ reviewStatus: 'approved' });
       const updateQuery = createUpdateChain([updated]);
 
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       tenantDb.update.mockReturnValueOnce(updateQuery.chain);
 
       await expect(
         service.updateReviewStatus({
           nodeId: NODE_ID,
           versionId: VERSION_ID,
-          status: 'approved',
+          action: 'approve',
+          reviewer: REVIEWER_ID,
         }),
       ).resolves.toEqual(updated);
 
@@ -470,18 +479,57 @@ describe('MemoryVersionService', () => {
           mocks.operators.eq(memoryVersions.nodeId, NODE_ID),
         ),
       );
+      expect(gateway.emitReviewSubmitted).toHaveBeenCalledWith(
+        TENANT_ID,
+        INSTANCE_ID,
+        {
+          instanceId: INSTANCE_ID,
+          nodeId: NODE_ID,
+          versionId: VERSION_ID,
+          action: 'approve',
+          reviewer: REVIEWER_ID,
+        },
+      );
     });
 
-    it('版本不存在或不属于该节点时应抛出 404 memory-version-not-found', async () => {
+    it('reject 应写入 rejected', async () => {
+      const updateQuery = createUpdateChain([
+        createVersion({ reviewStatus: 'rejected' }),
+      ]);
+
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
+      tenantDb.update.mockReturnValueOnce(updateQuery.chain);
+
+      await service.updateReviewStatus({
+        nodeId: NODE_ID,
+        versionId: VERSION_ID,
+        action: 'reject',
+        reviewer: REVIEWER_ID,
+      });
+
+      expect(updateQuery.set).toHaveBeenCalledWith({
+        reviewStatus: 'rejected',
+      });
+      expect(gateway.emitReviewSubmitted).toHaveBeenCalledWith(
+        TENANT_ID,
+        INSTANCE_ID,
+        expect.objectContaining({ action: 'reject' }),
+      );
+    });
+
+    it('版本不存在或不属于该节点时应抛出 404 且不广播', async () => {
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
       await expect(
         service.updateReviewStatus({
           nodeId: NODE_ID,
           versionId: VERSION_ID,
-          status: 'rejected',
+          action: 'reject',
+          reviewer: REVIEWER_ID,
         }),
       ).rejects.toBeInstanceOf(MemoryVersionNotFoundException);
+      expect(gateway.emitReviewSubmitted).not.toHaveBeenCalled();
     });
   });
 });

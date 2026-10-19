@@ -185,6 +185,7 @@ socket.on("execution.node.status-changed", (event) => {
 
 - 背压队列只在已有积压时才入队，排空时一次发完，没有令牌桶限速。
 - 断线续传的游标从**握手查询参数** `lastEventId` 读取（`client.handshake.query.lastEventId`），不在 `memory:subscribe` 载荷里；订阅成功后补发该实例回放缓冲区中 `eventId` 更大的事件。
+- 版本审核（`POST /memory-instances/:id/nodes/:nodeId/versions/:versionId/review`）在事务提交后发 `memory.review.submitted`，`data` 为 `{ instanceId, nodeId, versionId, action, reviewer }`：`action` 为 `approve` 或 `reject`，`reviewer` 为审核人用户 ID（`MemoryVersionService.updateReviewStatus()`）。Studio 审计页（`agentloom-studio/src/features/agent-memory/components/audit/MemoryAuditPage.tsx`）收到后刷新审计日志与待审核列表。
 - `flushMemoryQueue()`、`clearMemoryQueue()` 是公开方法，当前只有 `agentloom-server/src/modules/agent-memory/services/__tests__/memory.gateway.spec.ts` 调用。
 
 ### /notification

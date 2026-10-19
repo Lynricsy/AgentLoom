@@ -1097,7 +1097,8 @@ export class AgentMemoryController {
     const version = await this.memoryVersionService.updateReviewStatus({
       nodeId,
       versionId,
-      status: dto.action === 'approve' ? 'approved' : 'rejected',
+      action: dto.action,
+      reviewer: userId,
     });
 
     await this.auditLogService.record({

@@ -1558,7 +1558,8 @@ describe('AgentMemoryController', () => {
       expect(mockVersionService.updateReviewStatus).toHaveBeenCalledWith({
         nodeId: NODE_ID,
         versionId: VERSION_ID,
-        status: 'approved',
+        action: 'approve',
+        reviewer: USER_ID,
       });
       expect(mockAuditService.record).toHaveBeenCalledWith({
         tenantId: TENANT_ID,
@@ -1593,7 +1594,8 @@ describe('AgentMemoryController', () => {
       expect(mockVersionService.updateReviewStatus).toHaveBeenCalledWith({
         nodeId: NODE_ID,
         versionId: VERSION_ID,
-        status: 'rejected',
+        action: 'reject',
+        reviewer: USER_ID,
       });
       expect(mockAuditService.record).toHaveBeenCalledWith(
         expect.objectContaining({

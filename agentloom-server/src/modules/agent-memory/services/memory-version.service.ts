@@ -28,12 +28,14 @@ export interface PatchMemoryVersionInput {
   newString: string;
 }
 
-export type MemoryVersionReviewDecision = 'approved' | 'rejected';
+export type MemoryVersionReviewAction = 'approve' | 'reject';
 
 export interface MemoryVersionReviewInput {
   nodeId: string;
   versionId: string;
-  status: MemoryVersionReviewDecision;
+  action: MemoryVersionReviewAction;
+  /** 审核人用户 ID，随 memory.review.submitted 下发 */
+  reviewer: string;
 }
 
 type VersionQueryClient = Pick<DrizzleDB, 'select' | 'insert' | 'update'>;
@@ -269,15 +271,19 @@ export class MemoryVersionService {
   }
 
   /**
-   * 审核版本：只命中属于 `nodeId` 的版本，避免借一个节点的路由审核另一个节点的版本。
+   * 审核版本：只命中属于 `nodeId` 的版本，避免借一个节点的路由审核另一个节点的版本；
+   * 提交后广播 memory.review.submitted（Studio 审计页据此刷新待审核列表）。
    */
   async updateReviewStatus(
     input: MemoryVersionReviewInput,
   ): Promise<MemoryVersion> {
     const tenantDb = getTenantDb(this.db);
+    const node = await this.findNodeOrThrow(input.nodeId);
     const [updatedVersion] = await tenantDb
       .update(memoryVersions)
-      .set({ reviewStatus: input.status })
+      .set({
+        reviewStatus: input.action === 'approve' ? 'approved' : 'rejected',
+      })
       .where(
         and(
           eq(memoryVersions.id, input.versionId),
@@ -289,6 +295,16 @@ export class MemoryVersionService {
     if (!updatedVersion) {
       throw new MemoryVersionNotFoundException(input.nodeId, input.versionId);
     }
+
+    this.broadcastAfterCommit(() =>
+      this.gateway.emitReviewSubmitted(node.tenantId, node.instanceId, {
+        instanceId: node.instanceId,
+        nodeId: node.id,
+        versionId: updatedVersion.id,
+        action: input.action,
+        reviewer: input.reviewer,
+      }),
+    );
 
     return updatedVersion;
   }
