@@ -196,6 +196,14 @@ describe('Knowledge request contracts', () => {
     });
   });
 
+  it('rebuild DTO 允许省略 body，等价于 force=true', async () => {
+    expect(
+      transformWithDto(undefined, RebuildKnowledgeBaseDto, 'body'),
+    ).toEqual({
+      force: true,
+    });
+  });
+
   it('knowledge base 列表 query 应支持 page_size', async () => {
     expect(
       transformWithDto(
