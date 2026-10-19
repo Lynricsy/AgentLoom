@@ -318,6 +318,19 @@ describe('AgentExecutionService', () => {
     expect(notifySpy).toHaveBeenCalledTimes(1);
   });
 
+  it('REST 取消/删除对话发出 agent-conversation.ended 时中止活跃 loop（D-022）', async () => {
+    const abort = new AbortController();
+    service.registerActiveRun('conversation-1', abort);
+
+    await service.handleConversationEnded({ conversationId: 'conversation-1' });
+
+    expect(abort.signal.aborted).toBe(true);
+    expect(redis.publish).toHaveBeenLastCalledWith(
+      AGENT_CONVERSATION_CANCEL_CHANNEL,
+      JSON.stringify({ conversationId: 'conversation-1' }),
+    );
+  });
+
   it('取消请求发到另一个实例时，经频道中止本实例的活跃 loop', async () => {
     mockConversationService.cancel.mockResolvedValue({ data: {} });
     const otherInstance = createService(bus.client());

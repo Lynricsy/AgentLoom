@@ -167,6 +167,17 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 对话被结束（REST 取消/删除、对外 API 空闲清扫等）时中止仍在运行的 loop，
+   * 否则已结束的对话会继续流式输出并落库回复。事件在事务提交后发出。
+   */
+  @OnEvent('agent-conversation.ended')
+  async handleConversationEnded(payload: {
+    conversationId: string;
+  }): Promise<void> {
+    await this.abortExecution(payload.conversationId);
+  }
+
+  /**
    * 同步派发对话执行，派发失败（维护模式、入队失败）直接抛给调用方。
    * `@OnEvent` 监听器的异常会被事件总线吞掉，需要感知派发结果的调用方（对外 API）改走这里，
    * 随后发出的 message-sent 事件须带 `executionDispatched: true`，避免重复派发。
