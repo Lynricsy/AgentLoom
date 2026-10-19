@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useExecutionStore } from '../stores/executionStore'
@@ -54,6 +54,7 @@ function pausedExecutionDetail(id: string) {
       tenantId: 'tenant-1',
       workflowDefinitionId: 'wf-1',
       workflowVersionId: 'ver-1',
+      definitionSource: 'version',
       status: 'paused',
       triggerType: 'manual',
       inputParams: {},
@@ -150,16 +151,42 @@ describe('useRestoreWorkflowExecution（D-127 画布侧）', () => {
     expect(mocks.getExecutionMock).not.toHaveBeenCalled()
   })
 
-  it('画布已在跟踪执行（本次会话刚运行）时不覆盖、不查询', async () => {
+  it('画布已在跟踪执行（本次会话刚运行）时不覆盖', async () => {
+    mocks.listExecutionsMock.mockResolvedValue(
+      listResponse([listItem('exec-paused', 'paused')]),
+    )
     useExecutionStore.getState().actions.initExecution('exec-current')
 
     renderHook(() => useRestoreWorkflowExecution('wf-1'), {
       wrapper: createWrapper(),
     })
 
+    await waitFor(() => expect(mocks.listExecutionsMock).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(mocks.listExecutionsMock).not.toHaveBeenCalled()
     expect(useExecutionStore.getState().executionId).toBe('exec-current')
+    expect(mocks.getExecutionMock).not.toHaveBeenCalled()
+  })
+
+  it('从执行页返回：首次渲染仍是执行页的 executionId、随后被执行页卸载清空，仍恢复', async () => {
+    mocks.listExecutionsMock.mockResolvedValue(
+      listResponse([listItem('exec-paused', 'paused')]),
+    )
+    mocks.getExecutionMock.mockResolvedValue(pausedExecutionDetail('exec-paused'))
+    useExecutionStore.getState().actions.initExecution('exec-viewed')
+
+    renderHook(() => useRestoreWorkflowExecution('wf-1'), {
+      wrapper: createWrapper(),
+    })
+    act(() => {
+      useExecutionStore.getState().actions.reset()
+    })
+
+    await waitFor(() => {
+      expect(
+        useExecutionStore.getState().nodes['node-agent']?.intervention,
+      ).toBeDefined()
+    })
+    expect(useExecutionStore.getState().executionId).toBe('exec-paused')
   })
 
   it('恢复详情返回前用户已开始新执行时，不用旧快照覆盖', async () => {
