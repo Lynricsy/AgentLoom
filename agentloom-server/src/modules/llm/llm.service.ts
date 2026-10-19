@@ -68,6 +68,10 @@ export class LlmService {
 
     const orgId = orgResult[0].id;
 
+    // FK 校验绕过 RLS：先在本组织内确认 provider 存在，
+    // 否则随机 id 触发 FK 500，他租户 id 会产生本租户不可见的孤儿配置
+    await this.llmProviderService.findById(dto.providerId, tenantId);
+
     const existing = await this.tenantDb
       .select({ id: llmModelConfigs.id })
       .from(llmModelConfigs)
@@ -228,6 +232,13 @@ export class LlmService {
 
   async update(id: string, dto: UpdateLlmModelConfigDto, tenantId: string) {
     const existing = await this.findById(id, tenantId);
+
+    if (
+      dto.providerId !== undefined &&
+      dto.providerId !== existing.providerId
+    ) {
+      await this.llmProviderService.findById(dto.providerId, tenantId);
+    }
 
     const modelType = dto.modelType ?? existing.modelType;
     const embeddingDimensions =

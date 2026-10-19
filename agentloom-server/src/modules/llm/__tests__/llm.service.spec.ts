@@ -9,6 +9,7 @@ import {
   LlmModelConfigConflictException,
   LlmModelConfigNotFoundException,
   LlmModelConfigValidationException,
+  LlmProviderNotFoundException,
 } from '../llm.exceptions';
 import { LlmProviderService } from '../llm-provider.service';
 import { LlmService } from '../llm.service';
@@ -154,6 +155,7 @@ describe('LlmService', () => {
 
     llmProviderService = {
       syncBuiltinProviders: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn().mockResolvedValue(mockProvider()),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -208,6 +210,28 @@ describe('LlmService', () => {
         service.create(createDto({ name: 'Dup' }), TENANT_ID, USER_ID),
       ).rejects.toBeInstanceOf(LlmModelConfigConflictException);
 
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('应当在 providerId 不属于本组织时抛出 404 且不插入', async () => {
+      const foreignProviderId = '00000000-0000-0000-0000-000000000999';
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      llmProviderService.findById.mockRejectedValueOnce(
+        new LlmProviderNotFoundException(foreignProviderId),
+      );
+
+      await expect(
+        service.create(
+          createDto({ providerId: foreignProviderId }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(LlmProviderNotFoundException);
+
+      expect(llmProviderService.findById).toHaveBeenCalledWith(
+        foreignProviderId,
+        TENANT_ID,
+      );
       expect(db.insert).not.toHaveBeenCalled();
     });
 
@@ -338,6 +362,38 @@ describe('LlmService', () => {
       await expect(
         service.update(CONFIG_ID, updateDto({ name: 'Conflict' }), TENANT_ID),
       ).rejects.toBeInstanceOf(LlmModelConfigConflictException);
+    });
+
+    it('应当在改为不属于本组织的 providerId 时抛出 404 且不更新', async () => {
+      const foreignProviderId = '00000000-0000-0000-0000-000000000999';
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
+      llmProviderService.findById.mockRejectedValueOnce(
+        new LlmProviderNotFoundException(foreignProviderId),
+      );
+
+      await expect(
+        service.update(
+          CONFIG_ID,
+          updateDto({ providerId: foreignProviderId }),
+          TENANT_ID,
+        ),
+      ).rejects.toBeInstanceOf(LlmProviderNotFoundException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('providerId 未变化时不重复校验 provider', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
+      db.update.mockReturnValueOnce(createUpdateChain([mockConfig()]));
+
+      await service.update(
+        CONFIG_ID,
+        updateDto({ providerId: PROVIDER_ID }),
+        TENANT_ID,
+      );
+
+      expect(llmProviderService.findById).not.toHaveBeenCalled();
     });
 
     it('应当在 isDefault=true 时清除其他默认配置', async () => {
