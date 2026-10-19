@@ -1266,13 +1266,23 @@ describe('SandboxAgentAdapter', () => {
       }
     });
 
-    it('缺少 conversation session 映射时应抛错', async () => {
+    it('缺少 conversation session 映射时应返回 404 sandbox-not-found 而非 500', async () => {
       await expect(
         adapter.awaitToolPermission('missing-conversation', {
           toolCallId: 'tool-1',
           toolName: 'fs/write_text_file',
         }),
-      ).rejects.toThrow('Sandbox conversation session not found');
+      ).rejects.toMatchObject({
+        status: 404,
+        type: 'https://agentloom.dev/errors/sandbox-not-found',
+      });
+      await expect(
+        adapter.resolveConversationToolPermission(
+          'missing-conversation',
+          'tool-1',
+          'approve',
+        ),
+      ).rejects.toMatchObject({ status: 404 });
     });
 
     it('重复挂起同一 toolCallId 时应抛错', async () => {

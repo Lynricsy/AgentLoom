@@ -182,6 +182,7 @@ export class AgentConversationController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '接收沙箱容器的工具权限回调请求' })
   @ApiResponse({ status: 200, description: '返回是否允许工具执行' })
+  @ApiResponse({ status: 404, description: '本进程没有该对话的沙箱会话' })
   async requestToolPermission(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ToolPermissionCallbackDto,

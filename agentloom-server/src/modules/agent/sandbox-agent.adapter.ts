@@ -654,9 +654,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         return sessionId;
       }
     }
-    throw new Error(
-      `Sandbox conversation session not found for ${conversationId}`,
-    );
+    // 公开回调与鉴权解析共用：只按本进程内存会话判断，404 不暴露对话是否存在
+    throw new SandboxNotFoundException(`conversation ${conversationId}`);
   }
 
   async listPtySessions(
