@@ -55,3 +55,25 @@ export class TenantKeyRevokedException extends DomainException {
     });
   }
 }
+
+export class TenantKeyNotActiveException extends DomainException {
+  constructor(keyId: string, status: string) {
+    super({
+      type: 'https://agentloom.dev/errors/tenant-key-not-active',
+      title: '密钥不是活跃状态',
+      status: 409,
+      detail: `密钥 ${keyId} 当前状态为 ${status}，只有活跃密钥可以轮换`,
+    });
+  }
+}
+
+export class TenantKeyFingerprintConflictException extends DomainException {
+  constructor(keyFingerprint: string) {
+    super({
+      type: 'https://agentloom.dev/errors/tenant-key-fingerprint-conflict',
+      title: '公钥已登记',
+      status: 409,
+      detail: `指纹为 ${keyFingerprint} 的公钥已在本组织登记过（含已轮换或撤销的密钥），请生成新的密钥对`,
+    });
+  }
+}

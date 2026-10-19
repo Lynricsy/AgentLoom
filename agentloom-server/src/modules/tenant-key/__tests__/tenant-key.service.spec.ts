@@ -9,6 +9,8 @@ import {
 import { UploadPublicKeyDto } from '../dto/tenant-key.dto';
 import {
   TenantKeyAlreadyExistsException,
+  TenantKeyFingerprintConflictException,
+  TenantKeyNotActiveException,
   TenantKeyNotFoundException,
   TenantKeyRevokedException,
   TenantOrganizationNotFoundException,
@@ -16,11 +18,18 @@ import {
 import { TenantKeyService } from '../tenant-key.service';
 
 const mocks = vi.hoisted(() => ({
-  createMockDb: () => ({
-    select: vi.fn(),
-    insert: vi.fn(),
-    update: vi.fn(),
-  }),
+  createMockDb: () => {
+    const db = {
+      select: vi.fn(),
+      insert: vi.fn(),
+      update: vi.fn(),
+      transaction: vi.fn(),
+    };
+    db.transaction.mockImplementation(
+      (operation: (tx: typeof db) => Promise<unknown>) => operation(db),
+    );
+    return db;
+  },
   getTenantDb: vi.fn(),
   validateRsaPublicKey: vi.fn(),
   computeKeyFingerprint: vi.fn(),
@@ -103,6 +112,14 @@ function createUpdateChain<TResult>(result: TResult[]) {
   };
 }
 
+function createFingerprintQuery<TResult>(result: TResult[]) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+
+  return { chain: { from }, limit };
+}
+
 describe('TenantKeyService', () => {
   let module: TestingModule;
   let service: TenantKeyService;
@@ -134,7 +151,9 @@ describe('TenantKeyService', () => {
       const activeKeyQuery = createSelectChain<TenantEncryptionKey>([]);
       const insertQuery = createInsertChain([createdKey]);
 
-      db.select.mockReturnValueOnce(activeKeyQuery.chain);
+      db.select
+        .mockReturnValueOnce(activeKeyQuery.chain)
+        .mockReturnValueOnce(createFingerprintQuery([]).chain);
       db.insert.mockReturnValueOnce(insertQuery.chain);
 
       const result = await service.uploadPublicKey(TENANT_ID, ORG_ID, dto);
@@ -173,6 +192,18 @@ describe('TenantKeyService', () => {
       ).rejects.toBeInstanceOf(TenantOrganizationNotFoundException);
 
       expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('重新上传曾登记过（已撤销）的公钥时抛出 409 且不插入', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain<TenantEncryptionKey>([]).chain)
+        .mockReturnValueOnce(createFingerprintQuery([{ id: KEY_ID }]).chain);
+
+      await expect(
+        service.uploadPublicKey(TENANT_ID, ORG_ID, { publicKey: PUBLIC_KEY }),
+      ).rejects.toBeInstanceOf(TenantKeyFingerprintConflictException);
+
       expect(db.insert).not.toHaveBeenCalled();
     });
   });
@@ -237,7 +268,9 @@ describe('TenantKeyService', () => {
       const insertQuery = createInsertChain([createdKey]);
 
       mocks.computeKeyFingerprint.mockReturnValue('b'.repeat(64));
-      db.select.mockReturnValueOnce(selectQuery.chain);
+      db.select
+        .mockReturnValueOnce(selectQuery.chain)
+        .mockReturnValueOnce(createFingerprintQuery([]).chain);
       db.update.mockReturnValueOnce(updateQuery.chain);
       db.insert.mockReturnValueOnce(insertQuery.chain);
 
@@ -299,45 +332,63 @@ describe('TenantKeyService', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
 
-    it('插入新密钥失败时应恢复旧密钥状态', async () => {
+    it('轮换中的旧密钥不能再次轮换', async () => {
       const dto: UploadPublicKeyDto = { publicKey: NEXT_PUBLIC_KEY };
-      const existingKey = createTenantKey({
-        rotatedAt: new Date('2025-01-01T00:00:00.000Z'),
+      db.select.mockReturnValueOnce(
+        createSelectChain([createTenantKey({ status: 'rotating' })]).chain,
+      );
+
+      await expect(
+        service.rotateKey(TENANT_ID, KEY_ID, dto),
+      ).rejects.toBeInstanceOf(TenantKeyNotActiveException);
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('用已登记过的公钥（含当前公钥）轮换时抛出 409 且不写库', async () => {
+      const dto: UploadPublicKeyDto = { publicKey: PUBLIC_KEY };
+      db.select
+        .mockReturnValueOnce(createSelectChain([createTenantKey()]).chain)
+        .mockReturnValueOnce(createFingerprintQuery([{ id: KEY_ID }]).chain);
+
+      await expect(
+        service.rotateKey(TENANT_ID, KEY_ID, dto),
+      ).rejects.toBeInstanceOf(TenantKeyFingerprintConflictException);
+
+      expect(db.transaction).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('并发冲突撞唯一索引时在嵌套事务内回滚并映射为 409', async () => {
+      const dto: UploadPublicKeyDto = { publicKey: NEXT_PUBLIC_KEY };
+      const uniqueViolation = Object.assign(new Error('Failed query'), {
+        cause: {
+          code: '23505',
+          constraint_name: 'uq_tenant_encryption_keys_org_active',
+        },
       });
-      const selectQuery = createSelectChain([existingKey]);
-      const updateBeforeInsert = createUpdateChain([
-        createTenantKey({
-          status: 'rotating',
-          rotatedAt: new Date('2025-01-02T00:00:00.000Z'),
-          updatedAt: new Date('2025-01-02T00:00:00.000Z'),
-        }),
-      ]);
-      const rollbackWhere = vi.fn().mockResolvedValue(undefined);
-      const rollbackSet = vi.fn().mockReturnValue({ where: rollbackWhere });
 
       mocks.computeKeyFingerprint.mockReturnValue('b'.repeat(64));
-      db.select.mockReturnValueOnce(selectQuery.chain);
-      db.update
-        .mockReturnValueOnce(updateBeforeInsert.chain)
-        .mockReturnValueOnce({ set: rollbackSet });
+      db.select
+        .mockReturnValueOnce(createSelectChain([createTenantKey()]).chain)
+        .mockReturnValueOnce(createFingerprintQuery([]).chain);
+      db.update.mockReturnValueOnce(
+        createUpdateChain([createTenantKey({ status: 'rotating' })]).chain,
+      );
       db.insert.mockReturnValueOnce({
         values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockRejectedValue(new Error('insert failed')),
+          returning: vi.fn().mockRejectedValue(uniqueViolation),
         }),
       });
 
-      await expect(service.rotateKey(TENANT_ID, KEY_ID, dto)).rejects.toThrow(
-        'insert failed',
-      );
+      await expect(
+        service.rotateKey(TENANT_ID, KEY_ID, dto),
+      ).rejects.toBeInstanceOf(TenantKeyAlreadyExistsException);
 
-      expect(rollbackSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'active',
-          rotatedAt: existingKey.rotatedAt,
-          updatedAt: expect.any(Date),
-        }),
-      );
-      expect(rollbackWhere).toHaveBeenCalledOnce();
+      expect(db.transaction).toHaveBeenCalledOnce();
+      // 回滚交给事务，不再在已中止的事务里补偿 UPDATE
+      expect(db.update).toHaveBeenCalledOnce();
     });
   });
 
