@@ -24,7 +24,8 @@ class EmbeddingApiError extends Error {
 export interface EmbeddingRuntimeConfig {
   organizationId: string;
   tenantId: string;
-  provider: 'openai' | 'private_cloud';
+  /** 提供商 slug：仅 private_cloud 有特殊鉴权语义，其余按 OpenAI 兼容 Bearer 处理 */
+  provider: string;
   modelName: string;
   apiKeyId?: string | null;
   endpointUrl?: string | null;

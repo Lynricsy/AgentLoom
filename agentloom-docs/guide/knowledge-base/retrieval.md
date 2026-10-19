@@ -12,7 +12,7 @@ docType: howto
 
 | 设置 | 选项与默认值 |
 | --- | --- |
-| Embedding 模型 | 默认「使用默认 Embedding Key + 模型名」，也可选择已有模型配置 |
+| Embedding 模型 | 默认「使用组织默认 Embedding 模型」（取「LLM 模型」中设为默认的 Embedding 模型配置），也可选择已有模型配置。模型所属提供商必须是 OpenAI 兼容协议（`openai_chat` / `openai_responses`，包括 Ollama、SiliconFlow 等自定义提供商）或私有云 |
 | 分块策略 | 「Sentence Window」（默认，Window Size 默认 3）、「句子分块」（Chunk Size 默认 512，最小 64；Chunk Overlap 默认 64）、「Markdown 分块」 |
 | 检索 Top K | 默认 8，最小 1 |
 | 相似度阈值 | 0 到 1；留空表示不限制（默认） |

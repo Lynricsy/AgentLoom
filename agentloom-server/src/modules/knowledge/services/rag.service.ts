@@ -838,12 +838,15 @@ export class RagService {
       );
     }
 
+    // embeddings 走 OpenAI 兼容的 `/v1/embeddings`；协议不兼容的提供商（anthropic/google/cohere）
+    // 直接拒绝，避免对它们发出注定失败的请求。
     if (
-      config.provider.slug !== 'openai' &&
-      config.provider.slug !== 'private_cloud'
+      config.provider.slug !== 'private_cloud' &&
+      config.provider.apiProtocol !== 'openai_chat' &&
+      config.provider.apiProtocol !== 'openai_responses'
     ) {
       throw new Error(
-        `Embedding 模型仅支持 openai/private_cloud，当前为 ${config.provider.slug}`,
+        `Embedding 模型仅支持 OpenAI 兼容协议（openai_chat/openai_responses）或 private_cloud 提供商，当前为 ${config.provider.slug}(${config.provider.apiProtocol})`,
       );
     }
 

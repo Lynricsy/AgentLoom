@@ -663,6 +663,7 @@ describe('RagService behavior contracts', () => {
       embeddingDimensions: 1536,
       provider: {
         slug: 'openai',
+        apiProtocol: 'openai_responses',
         apiKeyId: 'default-key',
         baseUrl: null,
         defaultBaseUrl: 'https://api.openai.com',
@@ -726,6 +727,32 @@ describe('RagService behavior contracts', () => {
     });
   });
 
+  it('embedding config accepts a custom OpenAI-compatible provider (e.g. Ollama)', async () => {
+    db.limit
+      .mockResolvedValueOnce([{ id: 'org-custom' }])
+      .mockResolvedValueOnce([{ embeddingModelConfigId: 'config-ollama' }]);
+    llm.findById.mockResolvedValue({
+      modelType: 'embedding',
+      modelId: 'nomic-embed-text',
+      embeddingDimensions: 768,
+      provider: {
+        slug: 'ollama-embed',
+        apiProtocol: 'openai_chat',
+        apiKeyId: 'ollama-key',
+        baseUrl: 'http://ollama:11434/v1',
+      },
+    });
+
+    await expect(
+      internals.resolveEmbeddingConfig(TENANT_ID, KB_ID),
+    ).resolves.toMatchObject({
+      provider: 'ollama-embed',
+      modelName: 'nomic-embed-text',
+      endpointUrl: 'http://ollama:11434/v1',
+      dimensions: 768,
+    });
+  });
+
   it('embedding config rejects missing knowledge bases, wrong model types, and unsupported providers', async () => {
     db.limit.mockResolvedValueOnce([{ id: 'org' }]).mockResolvedValueOnce([]);
     await expect(
@@ -748,12 +775,12 @@ describe('RagService behavior contracts', () => {
       .mockResolvedValueOnce([{ embeddingModelConfigId: 'unsupported' }]);
     llm.findById.mockResolvedValueOnce({
       modelType: 'embedding',
-      provider: { slug: 'anthropic' },
+      provider: { slug: 'anthropic', apiProtocol: 'anthropic' },
     });
     await expect(
       internals.resolveEmbeddingConfig(TENANT_ID, KB_ID),
     ).rejects.toThrow(
-      'Embedding 模型仅支持 openai/private_cloud，当前为 anthropic',
+      'Embedding 模型仅支持 OpenAI 兼容协议（openai_chat/openai_responses）或 private_cloud 提供商，当前为 anthropic(anthropic)',
     );
   });
 });

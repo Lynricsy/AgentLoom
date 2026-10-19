@@ -1,18 +1,18 @@
-import type { Dispatch, SetStateAction } from 'react'
-import { Loader2, Save } from 'lucide-react'
-import type { LlmModelInfo } from '@/features/llm'
-import { Button } from '@/shared/ui/button'
-import { Card } from '@/shared/ui/card'
-import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
-import { Textarea } from '@/shared/ui/textarea'
+import type { Dispatch, SetStateAction } from "react";
+import { Loader2, Save } from "lucide-react";
+import type { LlmModelInfo } from "@/features/llm";
+import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Textarea } from "@/shared/ui/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/shared/ui/select'
+} from "@/shared/ui/select";
 import {
   CHUNKING_STRATEGY_OPTIONS,
   QUERY_ORCHESTRATION_OPTIONS,
@@ -20,22 +20,22 @@ import {
   USE_DEFAULT_MODEL,
   createDefaultSettings,
   type KnowledgeBaseSettingsDraft,
-} from '../lib/knowledgeBaseDetail'
+} from "../lib/knowledgeBaseDetail";
 import type {
   KnowledgeChunkingStrategy,
   KnowledgeQueryOrchestration,
   KnowledgeRerankingStrategy,
   KnowledgeRetrievalStrategy,
-} from '../types'
+} from "../types";
 
 export interface KnowledgeBaseSettingsFormProps {
-  settings: KnowledgeBaseSettingsDraft
-  setSettings: Dispatch<SetStateAction<KnowledgeBaseSettingsDraft>>
-  embeddingModels: LlmModelInfo[]
-  chatModels: LlmModelInfo[]
-  isDirty: boolean
-  isSaving: boolean
-  onSave: () => void
+  settings: KnowledgeBaseSettingsDraft;
+  setSettings: Dispatch<SetStateAction<KnowledgeBaseSettingsDraft>>;
+  embeddingModels: LlmModelInfo[];
+  chatModels: LlmModelInfo[];
+  isDirty: boolean;
+  isSaving: boolean;
+  onSave: () => void;
 }
 
 /** 单个知识库的分块 / 检索 / 重排 / query orchestration 策略表单 */
@@ -48,11 +48,15 @@ export function KnowledgeBaseSettingsForm({
   isSaving,
   onSave,
 }: KnowledgeBaseSettingsFormProps) {
-  const defaultSettings = createDefaultSettings()
-  const chunkingStrategy = settings.chunkingStrategy ?? defaultSettings.chunkingStrategy
-  const retrievalStrategy = settings.retrievalStrategy ?? defaultSettings.retrievalStrategy
-  const rerankingStrategy = settings.rerankingStrategy ?? defaultSettings.rerankingStrategy
-  const queryOrchestration = settings.queryOrchestration ?? defaultSettings.queryOrchestration
+  const defaultSettings = createDefaultSettings();
+  const chunkingStrategy =
+    settings.chunkingStrategy ?? defaultSettings.chunkingStrategy;
+  const retrievalStrategy =
+    settings.retrievalStrategy ?? defaultSettings.retrievalStrategy;
+  const rerankingStrategy =
+    settings.rerankingStrategy ?? defaultSettings.rerankingStrategy;
+  const queryOrchestration =
+    settings.queryOrchestration ?? defaultSettings.queryOrchestration;
 
   return (
     <Card className="space-y-4 p-5">
@@ -79,14 +83,16 @@ export function KnowledgeBaseSettingsForm({
                 ...current,
                 embeddingModelConfigId:
                   value === USE_DEFAULT_MODEL ? null : value,
-              }))
+              }));
             }}
           >
             <SelectTrigger aria-label="Embedding 模型">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={USE_DEFAULT_MODEL}>使用默认 Embedding Key + 模型名</SelectItem>
+              <SelectItem value={USE_DEFAULT_MODEL}>
+                使用组织默认 Embedding 模型
+              </SelectItem>
               {embeddingModels.map((model) => (
                 <SelectItem key={model.id} value={model.id}>
                   {model.name} · {model.modelName}
@@ -102,16 +108,16 @@ export function KnowledgeBaseSettingsForm({
             value={chunkingStrategy.type}
             onValueChange={(value) => {
               const nextStrategy: KnowledgeChunkingStrategy =
-                value === 'sentence'
-                  ? { type: 'sentence', chunkSize: 512, chunkOverlap: 64 }
-                  : value === 'markdown'
-                    ? { type: 'markdown' }
-                    : { type: 'sentence_window', windowSize: 3 }
+                value === "sentence"
+                  ? { type: "sentence", chunkSize: 512, chunkOverlap: 64 }
+                  : value === "markdown"
+                    ? { type: "markdown" }
+                    : { type: "sentence_window", windowSize: 3 };
 
               setSettings((current) => ({
                 ...current,
                 chunkingStrategy: nextStrategy,
-              }))
+              }));
             }}
           >
             <SelectTrigger aria-label="分块策略">
@@ -127,7 +133,7 @@ export function KnowledgeBaseSettingsForm({
           </Select>
         </div>
 
-        {chunkingStrategy.type === 'sentence' && (
+        {chunkingStrategy.type === "sentence" && (
           <>
             <label className="flex flex-col gap-1.5">
               <Label>Chunk Size</Label>
@@ -137,15 +143,15 @@ export function KnowledgeBaseSettingsForm({
                 max={8192}
                 value={chunkingStrategy.chunkSize}
                 onChange={(event) => {
-                  const chunkSize = Number(event.target.value)
+                  const chunkSize = Number(event.target.value);
                   setSettings((current) => ({
                     ...current,
                     chunkingStrategy: {
-                      type: 'sentence',
+                      type: "sentence",
                       chunkSize,
                       chunkOverlap: chunkingStrategy.chunkOverlap,
                     },
-                  }))
+                  }));
                 }}
               />
             </label>
@@ -157,22 +163,22 @@ export function KnowledgeBaseSettingsForm({
                 max={4096}
                 value={chunkingStrategy.chunkOverlap}
                 onChange={(event) => {
-                  const chunkOverlap = Number(event.target.value)
+                  const chunkOverlap = Number(event.target.value);
                   setSettings((current) => ({
                     ...current,
                     chunkingStrategy: {
-                      type: 'sentence',
+                      type: "sentence",
                       chunkSize: chunkingStrategy.chunkSize,
                       chunkOverlap,
                     },
-                  }))
+                  }));
                 }}
               />
             </label>
           </>
         )}
 
-        {chunkingStrategy.type === 'sentence_window' && (
+        {chunkingStrategy.type === "sentence_window" && (
           <label className="flex flex-col gap-1.5">
             <Label>Window Size</Label>
             <Input
@@ -181,14 +187,14 @@ export function KnowledgeBaseSettingsForm({
               max={12}
               value={chunkingStrategy.windowSize}
               onChange={(event) => {
-                const windowSize = Number(event.target.value)
+                const windowSize = Number(event.target.value);
                 setSettings((current) => ({
                   ...current,
                   chunkingStrategy: {
-                    type: 'sentence_window',
+                    type: "sentence_window",
                     windowSize,
                   },
-                }))
+                }));
               }}
             />
           </label>
@@ -202,15 +208,15 @@ export function KnowledgeBaseSettingsForm({
             max={50}
             value={retrievalStrategy.topK}
             onChange={(event) => {
-              const topK = Number(event.target.value)
+              const topK = Number(event.target.value);
               const nextStrategy: KnowledgeRetrievalStrategy = {
                 ...retrievalStrategy,
                 topK,
-              }
+              };
               setSettings((current) => ({
                 ...current,
                 retrievalStrategy: nextStrategy,
-              }))
+              }));
             }}
           />
         </label>
@@ -222,18 +228,18 @@ export function KnowledgeBaseSettingsForm({
             min={0}
             max={1}
             step="0.01"
-            value={retrievalStrategy.similarityThreshold ?? ''}
+            value={retrievalStrategy.similarityThreshold ?? ""}
             onChange={(event) => {
-              const rawValue = event.target.value
+              const rawValue = event.target.value;
               const similarityThreshold =
-                rawValue.trim() === '' ? null : Number(rawValue)
+                rawValue.trim() === "" ? null : Number(rawValue);
               setSettings((current) => ({
                 ...current,
                 retrievalStrategy: {
                   ...retrievalStrategy,
                   similarityThreshold,
                 },
-              }))
+              }));
             }}
             placeholder="留空表示不限制"
           />
@@ -245,20 +251,20 @@ export function KnowledgeBaseSettingsForm({
             value={rerankingStrategy.type}
             onValueChange={(value) => {
               const nextStrategy: KnowledgeRerankingStrategy =
-                value === 'cohere'
+                value === "cohere"
                   ? {
-                      type: 'cohere',
-                      model: 'rerank-english-v2.0',
+                      type: "cohere",
+                      model: "rerank-english-v2.0",
                       topN: 5,
                       apiKeyId: null,
                       baseUrl: null,
                       timeoutMs: null,
                     }
-                  : { type: 'none' }
+                  : { type: "none" };
               setSettings((current) => ({
                 ...current,
                 rerankingStrategy: nextStrategy,
-              }))
+              }));
             }}
           >
             <SelectTrigger aria-label="重排策略">
@@ -274,7 +280,7 @@ export function KnowledgeBaseSettingsForm({
           </Select>
         </div>
 
-        {rerankingStrategy.type === 'cohere' && (
+        {rerankingStrategy.type === "cohere" && (
           <>
             <label className="flex flex-col gap-1.5">
               <Label>Cohere 模型</Label>
@@ -287,7 +293,7 @@ export function KnowledgeBaseSettingsForm({
                       ...rerankingStrategy,
                       model: event.target.value,
                     },
-                  }))
+                  }));
                 }}
               />
             </label>
@@ -305,7 +311,7 @@ export function KnowledgeBaseSettingsForm({
                       ...rerankingStrategy,
                       topN: Number(event.target.value),
                     },
-                  }))
+                  }));
                 }}
               />
             </label>
@@ -318,18 +324,18 @@ export function KnowledgeBaseSettingsForm({
             value={queryOrchestration.type}
             onValueChange={(value) => {
               const nextStrategy: KnowledgeQueryOrchestration =
-                value === 'hyde'
+                value === "hyde"
                   ? {
-                      type: 'hyde',
+                      type: "hyde",
                       modelConfigId: null,
                       promptTemplate: null,
                     }
-                  : { type: 'none' }
+                  : { type: "none" };
 
               setSettings((current) => ({
                 ...current,
                 queryOrchestration: nextStrategy,
-              }))
+              }));
             }}
           >
             <SelectTrigger aria-label="Query Orchestration">
@@ -345,7 +351,7 @@ export function KnowledgeBaseSettingsForm({
           </Select>
         </div>
 
-        {queryOrchestration.type === 'hyde' && (
+        {queryOrchestration.type === "hyde" && (
           <>
             <div className="flex flex-col gap-1.5">
               <Label>HyDE 模型</Label>
@@ -356,17 +362,18 @@ export function KnowledgeBaseSettingsForm({
                     ...current,
                     queryOrchestration: {
                       ...queryOrchestration,
-                      modelConfigId:
-                        value === USE_DEFAULT_MODEL ? null : value,
+                      modelConfigId: value === USE_DEFAULT_MODEL ? null : value,
                     },
-                  }))
+                  }));
                 }}
               >
                 <SelectTrigger aria-label="HyDE 模型">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={USE_DEFAULT_MODEL}>使用默认聊天模型</SelectItem>
+                  <SelectItem value={USE_DEFAULT_MODEL}>
+                    使用默认聊天模型
+                  </SelectItem>
                   {chatModels.map((model) => (
                     <SelectItem key={model.id} value={model.id}>
                       {model.name} · {model.modelName}
@@ -379,7 +386,7 @@ export function KnowledgeBaseSettingsForm({
             <label className="flex flex-col gap-1.5 md:col-span-2">
               <Label>HyDE Prompt Template</Label>
               <Textarea
-                value={queryOrchestration.promptTemplate ?? ''}
+                value={queryOrchestration.promptTemplate ?? ""}
                 onChange={(event) => {
                   setSettings((current) => ({
                     ...current,
@@ -387,7 +394,7 @@ export function KnowledgeBaseSettingsForm({
                       ...queryOrchestration,
                       promptTemplate: event.target.value || null,
                     },
-                  }))
+                  }));
                 }}
                 rows={5}
                 placeholder="支持 {{query}} 占位符；留空则使用系统默认 HyDE 提示词"
@@ -397,5 +404,5 @@ export function KnowledgeBaseSettingsForm({
         )}
       </div>
     </Card>
-  )
+  );
 }
