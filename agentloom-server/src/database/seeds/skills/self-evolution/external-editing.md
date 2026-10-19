@@ -36,7 +36,7 @@
 - `manual-trigger`: `exec-out`, `payload-out`
 - `text`: `text-out`
 - `input-preprocessor`: `exec-in`, `text-in`, `json-in`, `exec-out`, `text-out`, `json-out`
-- `agent`: `text-in`, `system-prompt-in`, `sandbox-in`, `context-in`, `skills-in`, `tools-in`, `sub-agents-in`, `schema-in`, `agent-out`, `structured-out`
+- `agent`: `text-in`, `system-prompt-in`, `model-in`, `sandbox-in`, `context-in`, `knowledge-in`, `skills-in`, `tools-in`, `schema-in`, `agent-out`, `structured-out`
 - `text-output`: `exec-in`, `content-in`
 - `json-output`: `exec-in`, `content-in`
 

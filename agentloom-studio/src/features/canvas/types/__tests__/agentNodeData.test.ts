@@ -90,8 +90,8 @@ describe("createDefaultAgentNodeData", () => {
 describe("agent 端口定义", () => {
   const agentType = getNodeTypeConfig("agent");
 
-  it("包含 9 个输入端口和 3 个输出端口", () => {
-    expect(agentType.inputPorts).toHaveLength(9);
+  it("包含 10 个输入端口和 3 个输出端口", () => {
+    expect(agentType.inputPorts).toHaveLength(10);
     expect(agentType.outputPorts).toHaveLength(3);
   });
 
@@ -120,6 +120,14 @@ describe("agent 端口定义", () => {
       expect(port.required).toBe(false);
     });
 
+    it("model-in 端口: model 类型, 单连接", () => {
+      const port = findPort(agentType.inputPorts, "model-in");
+      expect(port.dataType).toBe("model");
+      expect(port.multiple).toBe(false);
+      expect(port.maxConnections).toBe(1);
+      expect(port.required).toBe(false);
+    });
+
     it("sandbox-in 端口: sandbox 类型, 单连接", () => {
       const port = findPort(agentType.inputPorts, "sandbox-in");
       expect(port.dataType).toBe("sandbox");
@@ -133,6 +141,14 @@ describe("agent 端口定义", () => {
       expect(port.dataType).toBe("json");
       expect(port.multiple).toBe(false);
       expect(port.maxConnections).toBe(1);
+      expect(port.required).toBe(false);
+    });
+
+    it("knowledge-in 端口: knowledge 类型, 多连接", () => {
+      const port = findPort(agentType.inputPorts, "knowledge-in");
+      expect(port.dataType).toBe("knowledge");
+      expect(port.multiple).toBe(true);
+      expect(port.maxConnections).toBeNull();
       expect(port.required).toBe(false);
     });
 
@@ -152,12 +168,10 @@ describe("agent 端口定义", () => {
       expect(port.required).toBe(false);
     });
 
-    it("sub-agents-in 端口: agent 类型, 多连接", () => {
-      const port = findPort(agentType.inputPorts, "sub-agents-in");
-      expect(port.dataType).toBe("agent");
-      expect(port.multiple).toBe(true);
-      expect(port.maxConnections).toBeNull();
-      expect(port.required).toBe(false);
+    it("工作流 Agent 节点不提供 sub-agents-in：工作流中没有产出 agent 类型的节点", () => {
+      expect(
+        agentType.inputPorts.some((port) => port.id === "sub-agents-in"),
+      ).toBe(false);
     });
 
     it("schema-in 端口: json 类型, 单连接", () => {

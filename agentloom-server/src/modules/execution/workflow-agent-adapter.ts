@@ -59,6 +59,7 @@ import {
 } from './node-handlers/sub-agent.handler';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import { parseAgentStructuredOutput } from './agent-structured-output.util';
+import { extractModelConfigIds } from './smart-routing-input.util';
 import { EventBridgeService } from './services/event-bridge.service';
 import type { ExecutionCancellationService } from './services/execution-cancellation.service';
 import {
@@ -738,6 +739,14 @@ export class WorkflowAgentAdapter {
   ): AgentRuntimeConfig {
     const merged = cloneAgentRuntimeConfig(runtimeConfig);
 
+    // model-in（上游 LLM 模型 / 智能路由的选定模型）整体替换 Agent 自身的模型与路由，
+    // 与 Agent 画布子 Agent 的模型覆盖同一语义：推理参数取该模型配置，思考强度按默认
+    const upstreamModelId = extractModelConfigIds(input['model-in'])[0];
+    if (upstreamModelId) {
+      merged.modelConfig = { modelId: upstreamModelId };
+      merged.routingConfig = undefined;
+    }
+
     const upstreamTools = this.extractUpstreamMcpToolBindings(input);
     if (upstreamTools.length > 0) {
       merged.tools = this.mergeToolBindings(merged.tools ?? [], upstreamTools);
@@ -1037,7 +1046,8 @@ export class WorkflowAgentAdapter {
           key === 'skills-in' ||
           key === 'skills' ||
           key === 'tools-in' ||
-          key === 'sub-agents-in' ||
+          key === 'model-in' ||
+          key === 'knowledge-in' ||
           key === 'system-prompt-in' ||
           key === 'schema-in' ||
           key === 'systemPromptIn' ||

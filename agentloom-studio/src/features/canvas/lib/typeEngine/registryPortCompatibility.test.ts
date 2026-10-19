@@ -95,6 +95,29 @@ describe('内置节点端口兼容性（WASM 与 fallback 一致）', () => {
   })
 
   it.each([
+    ['knowledge-base', 'knowledge-out', 'knowledge-in'],
+    ['llm-model', 'model-out', 'model-in'],
+    ['smart-routing', 'model-out', 'model-in'],
+    ['mcp-tool', 'tool-out', 'tools-in'],
+  ] as const)('%s「%s」→ Agent「%s」可直连', (nodeType, sourcePortId, targetPortId) => {
+    const result = evaluateBoth(
+      findPort(nodeType, 'output', sourcePortId),
+      findPort('agent', 'input', targetPortId),
+    )
+
+    expect(result.level).toBe('EXACT')
+  })
+
+  it('HTTP Request「响应体」(json) → Agent「扩展工具」(tool) 不兼容：HTTP 工具在工作流中是执行步骤', () => {
+    const result = evaluateBoth(
+      findPort('http-tool', 'output', 'response-out'),
+      findPort('agent', 'input', 'tools-in'),
+    )
+
+    expect(result.level).toBe('INCOMPATIBLE')
+  })
+
+  it.each([
     ['code-tool', 'result-out'],
     ['merge', 'merged-out'],
     ['manual-trigger', 'payload-out'],

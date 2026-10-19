@@ -19,14 +19,16 @@ docType: howto
 | --- | --- | --- |
 | 文本 | 输入（必填） | 交给 Agent 的输入，如 [Text](/guide/nodes/text) 节点或上游节点的文本输出 |
 | 系统提示词 | 输入 | 一个 Text 节点，为本次调用覆盖 Agent 的系统提示词 |
+| 模型 | 输入 | 一个 [LLM 模型](/guide/nodes/llm-model) 或 [智能路由](/guide/nodes/smart-routing) 节点，为本次调用覆盖 Agent 的模型与智能路由 |
 | 上下文 | 输入 | 附加的 JSON，例如触发器的「触发数据」 |
-| Skills / 扩展工具 / 子 Agent | 输入 | 为本次调用额外挂载 [Skill](/guide/nodes/skill)、[MCP Tool](/guide/nodes/mcp-tool) 或子 Agent |
+| 知识库 | 输入 | 一个或多个 [Knowledge Base](/guide/nodes/knowledge-base) 节点，与 Agent 自己的知识库合并后供检索 |
+| Skills / 扩展工具 | 输入 | 为本次调用额外挂载 [Skill](/guide/nodes/skill) 或 [MCP Tool](/guide/nodes/mcp-tool) |
 | Schema | 输入 | 一个 JSON Schema，约束「结构化」输出 |
 | 沙箱 | 输入 | 一个 [Sandbox](/guide/nodes/sandbox) 节点（仅有沙箱 Agent 显示该端口） |
 | 回复 | 输出 | Agent 的文本回复，常接 [Text Output](/guide/nodes/text-output) |
 | 结构化 | 输出 | 按 Schema 生成的 JSON，常接 [JSON Output](/guide/nodes/json-output) 或 [Condition](/guide/nodes/condition) |
 
-模型、知识库和记忆由所绑定 Agent 自己的画布决定，工作流里的 Agent 节点没有这些端口。
+记忆与子 Agent 由所绑定 Agent 自己的画布决定，工作流里的 Agent 节点没有这些端口；HTTP Request 与 Code Executor 在工作流中是执行步骤，不能接到「扩展工具」。
 
 ## 运行时行为
 

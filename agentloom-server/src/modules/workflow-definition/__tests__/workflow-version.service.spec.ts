@@ -2449,6 +2449,118 @@ describe('WorkflowVersionService', () => {
       ).resolves.toBeDefined();
     });
 
+    it.each([
+      [
+        'knowledge-base',
+        'knowledge-out',
+        'knowledge-in',
+        { knowledgeBaseId: 'kb-1' },
+      ],
+      ['llm-model', 'model-out', 'model-in', { llmModelConfigId: 'model-1' }],
+      ['smart-routing', 'model-out', 'model-in', { strategy: 'random' }],
+    ])(
+      '%s「%s」→ 工作流 Agent「%s」可以发布',
+      async (sourceType, sourceHandle, targetHandle, sourceData) => {
+        const workflow = createDraftWorkflow({
+          nodes: [
+            {
+              id: 'source',
+              type: sourceType,
+              position: { x: 0, y: 0 },
+              data: sourceData,
+            },
+            {
+              id: 'agent',
+              type: 'agent',
+              position: { x: 200, y: 0 },
+              data: {
+                selectedAgentId: 'published-agent-definition-1',
+                agentRuntimeMode: 'no_sandbox',
+              },
+            },
+          ],
+          edges: [
+            {
+              id: 'source-to-agent',
+              source: 'source',
+              target: 'agent',
+              sourceHandle,
+              targetHandle,
+            },
+          ],
+        });
+        db.select
+          .mockReturnValueOnce(createSelectChain([workflow]))
+          .mockReturnValueOnce(createSelectChain([]))
+          .mockReturnValueOnce(createSelectChain([{ maxVersion: 1 }]));
+        db.insert.mockReturnValueOnce(
+          createInsertChain([
+            createMockVersion({ versionNumber: 2, publishedAt: NOW }),
+          ]),
+        );
+        db.update
+          .mockReturnValueOnce(createUpdateChainVoid())
+          .mockReturnValueOnce(createUpdateChainVoid());
+
+        await expect(
+          service.publish(WORKFLOW_ID, {}, USER_ID),
+        ).resolves.toBeDefined();
+      },
+    );
+
+    it('存量图连到工作流 Agent「子 Agent」(sub-agents-in) 时以 422 阻止发布并指明改法', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createDraftWorkflow({
+            nodes: [
+              {
+                id: 'sub',
+                type: 'agent',
+                position: { x: 0, y: 0 },
+                data: { selectedAgentId: 'published-agent-definition-1' },
+              },
+              {
+                id: 'agent',
+                type: 'agent',
+                position: { x: 200, y: 0 },
+                data: {
+                  label: '主 Agent',
+                  selectedAgentId: 'published-agent-definition-2',
+                  inputPorts: [
+                    { id: 'exec-in', dataType: 'exec' },
+                    { id: 'sub-agents-in', dataType: 'agent' },
+                  ],
+                },
+              },
+            ],
+            edges: [
+              {
+                id: 'sub-to-agent',
+                source: 'sub',
+                target: 'agent',
+                sourceHandle: 'agent-out',
+                targetHandle: 'sub-agents-in',
+              },
+            ],
+          }),
+        ]),
+      );
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).rejects.toMatchObject({
+        status: 422,
+        errors: [
+          {
+            field: 'edges.sub-to-agent',
+            message:
+              '工作流 Agent 节点 主 Agent 不支持「子 Agent」端口 (sub-agents-in)：子 Agent 请在被调用 Agent 的 Agent 画布上连接到 Agent Main',
+          },
+        ],
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
     it('存在 canonical 超限自治节点时应阻止发布并返回节点级错误', async () => {
       const workflow = createAutonomyWorkflow('LLM_SUGGEST', 'canonical');
       db.select.mockReturnValueOnce(createSelectChain([workflow]));

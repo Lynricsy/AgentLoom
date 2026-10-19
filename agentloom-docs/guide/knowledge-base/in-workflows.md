@@ -6,7 +6,7 @@ docType: howto
 
 本页说明如何让 Agent 检索知识库，并在工作流中使用这个 Agent。前提：知识库中至少有一个状态为「已就绪」的文档。
 
-知识库是挂在 Agent 上的：工作流画布中的 [Agent 节点](/guide/nodes/agent) 没有知识库输入端口，它使用所绑定 Agent 自己画布上的知识库。
+知识库有两种接法：挂在 Agent 画布上，Agent 在对话和所有工作流里都能检索；或者在工作流画布上连到 [Agent 节点](/guide/nodes/agent) 的「知识库」端口，只对这一次调用生效。两种接法可以同时使用，知识库会合并（同一知识库只算一次）。
 
 ## 把知识库连到 Agent
 
@@ -20,5 +20,13 @@ docType: howto
 ## 在工作流中调用
 
 在工作流中添加 Agent 节点并选择上述 Agent，把问题连到它的「文本」端口，把「回复」连到 [Text Output](/guide/nodes/text-output)。运行后可在执行调试页中点击「打开 Agent 运行视图」，查看 Agent 的检索调用与结果。
+
+## 只在工作流中追加知识库
+
+1. 在工作流画布中，从节点面板「Knowledge」分组把「Knowledge Base」节点拖到画布上，在配置面板中「选择知识库」。
+2. 把它的「知识库」端口连到 Agent 节点的「知识库」端口；可以连接多个知识库节点。
+3. 发布并运行工作流。Agent 本次调用可以检索这些知识库，Agent 自己的画布不受影响。
+
+知识库节点的「知识库」端口只能连到「知识库」端口，连到「上下文」等 JSON 端口会在画布上被拒绝，发布时返回 422。
 
 知识库节点的端口与运行时行为见 [Knowledge Base 节点](/guide/nodes/knowledge-base)。完整示例见 [RAG 文档分析](/guide/use-cases/document-analysis)。

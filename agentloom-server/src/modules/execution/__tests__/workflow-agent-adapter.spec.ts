@@ -1247,6 +1247,170 @@ describe('WorkflowAgentAdapter', () => {
     );
   });
 
+  it.each([
+    [
+      'LLM 模型',
+      {
+        llmModelConfigId: 'model-upstream',
+        modelConfigId: 'model-upstream',
+        modelId: 'model-upstream',
+      },
+    ],
+    [
+      '智能路由',
+      { selectedModelId: 'model-upstream', llmModelConfigId: 'model-upstream' },
+    ],
+  ])(
+    'model-in 接%s时整体替换 Agent 自身模型并停用其路由，且不进入 prompt',
+    async (_label, upstreamModel) => {
+      mockRuntimeAdapterFactory.selectAdapter.mockImplementation(
+        (hasSandbox: boolean) =>
+          hasSandbox ? mockSandboxRuntime : mockAgentRuntime,
+      );
+      selectWhereMock.mockResolvedValueOnce([{ triggerType: 'manual' }]);
+      mockAgentDefinitionService.findDetailById.mockResolvedValue({
+        id: 'routed-agent',
+        publishedVersionId: 'routed-agent-version',
+        systemPrompt: '你是助手',
+        sandboxConfig: null,
+        runtimeMode: 'no_sandbox',
+      });
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+        modelConfig: { modelId: 'model-own', thinkingLevel: 'high' },
+        routingConfig: {
+          strategy: 'rules',
+          candidateModelIds: ['model-a', 'model-b'],
+        },
+        runtimeMode: 'no_sandbox',
+        subAgents: [],
+      });
+      const modelRoutingService = {
+        routeAgentRuntimeConfig: vi.fn(
+          async (runtimeConfig: Record<string, unknown>) =>
+            runtimeConfig.routingConfig
+              ? { ...runtimeConfig, modelConfig: { modelId: 'model-a' } }
+              : runtimeConfig,
+        ),
+      };
+      mockAgentRuntime.createSession.mockResolvedValue({
+        id: 'session-model-in',
+      });
+      mockAgentRuntime.prompt.mockImplementation(
+        (_sessionId: string, content: ContentBlock[]) => {
+          const promptText = content
+            .map((block) => ('text' in block ? block.text : ''))
+            .join('\n');
+          expect(promptText).not.toContain('model-upstream');
+          return emit([
+            { type: 'message_chunk', content: '好的' },
+            { type: 'done', stopReason: 'end_turn' },
+          ]);
+        },
+      );
+
+      const adapter = createAdapter(
+        {
+          db,
+          agentRuntime: mockAgentRuntime,
+          runtimeAdapterFactory: mockRuntimeAdapterFactory,
+          agentDefinitionService: mockAgentDefinitionService,
+          sandboxService: mockSandboxService,
+          eventBridge: mockEventBridge,
+          modelRoutingService,
+        },
+        { agentDefinitionId: 'routed-agent' },
+      );
+
+      await adapter.execute({
+        executionId: EXECUTION_ID,
+        step: makeStep(),
+        input: { 'text-in': '介绍一下你自己', 'model-in': upstreamModel },
+        tenantId: TENANT_ID,
+        versionSnapshot: {
+          ...makeSnapshot('routed-agent-main'),
+          runtimeMode: 'no_sandbox',
+        } as AgentVersionSnapshot,
+      });
+
+      const sessionParams = mockAgentRuntime.createSession.mock.calls[0]?.[0];
+      expect(sessionParams.llmModelConfigId).toBe('model-upstream');
+      expect(sessionParams.context.input).toEqual({
+        'text-in': '介绍一下你自己',
+      });
+      expect(sessionParams.runtimeConfig.modelConfig).toEqual({
+        modelId: 'model-upstream',
+      });
+      expect(sessionParams.runtimeConfig.routingConfig).toBeUndefined();
+    },
+  );
+
+  it('knowledge-in 的知识库节点输出追加为知识库绑定，且不进入 prompt', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-parent' },
+      knowledgeBindings: [{ knowledgeBaseId: 'kb-base', enabled: true }],
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({
+      id: 'knowledge-session',
+    });
+    mockSandboxRuntime.prompt.mockImplementation(
+      (_sessionId: string, content: ContentBlock[]) => {
+        const promptText = content
+          .map((block) => ('text' in block ? block.text : ''))
+          .join('\n');
+        expect(promptText).toContain('根据知识库回答');
+        expect(promptText).not.toContain('kb-upstream');
+        return emit([
+          { type: 'message_chunk', content: 'knowledge-output' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]);
+      },
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {
+        'text-in': '根据知识库回答',
+        'knowledge-in': [
+          {
+            type: 'knowledge-base',
+            knowledgeBaseId: 'kb-upstream',
+            knowledgeBaseName: '上游知识库',
+            topK: 3,
+          },
+          { type: 'knowledge-base', knowledgeBaseId: 'kb-base' },
+        ],
+      },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeConfig: expect.objectContaining({
+          knowledgeBindings: [
+            { knowledgeBaseId: 'kb-base', enabled: true },
+            { knowledgeBaseId: 'kb-upstream', enabled: true, topK: 3 },
+          ],
+        }),
+        context: expect.objectContaining({
+          input: { 'text-in': '根据知识库回答' },
+        }),
+      }),
+    );
+  });
+
   it('execution 记录不是 system 时不应被 exec-in 的旧 triggerType 误放行', async () => {
     mockRuntimeAdapterFactory.selectAdapter.mockImplementation(
       (hasSandbox: boolean) =>

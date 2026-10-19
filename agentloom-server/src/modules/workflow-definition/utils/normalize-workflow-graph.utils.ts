@@ -804,19 +804,22 @@ const DEFAULT_PORT_TEMPLATES_BY_NODE_TYPE: Record<
       createPortTemplate('system-prompt-in', '系统提示词', 'input', 'text', {
         maxConnections: 1,
       }),
+      createPortTemplate('model-in', '模型', 'input', 'model', {
+        maxConnections: 1,
+      }),
       createPortTemplate('sandbox-in', '沙箱', 'input', 'sandbox', {
         maxConnections: 1,
       }),
       createPortTemplate('context-in', '上下文', 'input', 'json'),
+      createPortTemplate('knowledge-in', '知识库', 'input', 'knowledge', {
+        multiple: true,
+        maxConnections: null,
+      }),
       createPortTemplate('skills-in', 'Skills', 'input', 'skill', {
         multiple: true,
         maxConnections: null,
       }),
       createPortTemplate('tools-in', '扩展工具', 'input', 'tool', {
-        multiple: true,
-        maxConnections: null,
-      }),
-      createPortTemplate('sub-agents-in', '子 Agent', 'input', 'agent', {
         multiple: true,
         maxConnections: null,
       }),
@@ -1356,6 +1359,35 @@ function normalizeWorkflowEdge(
   };
 }
 
+/**
+ * 工作流 Agent 节点已移除「子 Agent」端口（工作流里没有产出 agent 类型的节点）。存量节点 data
+ * 残留的 sub-agents-in 在没有连线时丢弃，画布不再显示死端口；仍有连线时保留端口，让连线在画布上
+ * 可见、可删，发布期由 workflow-publish 给出明确的 422。
+ */
+function dropUnconnectedSubAgentsPort(
+  node: ReactFlowNode,
+  edges: ReactFlowEdge[],
+): ReactFlowNode {
+  const inputPorts = node.data?.inputPorts;
+  if (
+    node.data?.nodeType !== 'agent' ||
+    !Array.isArray(inputPorts) ||
+    edges.some(
+      (edge) =>
+        edge.target === node.id && edge.targetHandle === 'sub-agents-in',
+    )
+  ) {
+    return node;
+  }
+
+  const keptPorts = inputPorts.filter(
+    (port) => !isRecord(port) || port.id !== 'sub-agents-in',
+  );
+  return keptPorts.length === inputPorts.length
+    ? node
+    : { ...node, data: { ...node.data, inputPorts: keptPorts } };
+}
+
 export function normalizeWorkflowNodesAndEdges(
   nodes: ReactFlowNode[] | null | undefined,
   edges: ReactFlowEdge[] | null | undefined,
@@ -1372,7 +1404,9 @@ export function normalizeWorkflowNodesAndEdges(
     : [];
 
   return {
-    nodes: normalizedNodes,
+    nodes: normalizedNodes.map((node) =>
+      dropUnconnectedSubAgentsPort(node, normalizedEdges),
+    ),
     edges: normalizedEdges,
   };
 }

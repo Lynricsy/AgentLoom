@@ -265,6 +265,10 @@ export class WorkflowPublishService {
           ? graphSource.edges
           : [];
         const normalizedGraph = normalizeWorkflowNodesAndEdges(nodes, edges);
+        this.assertNoWorkflowAgentSubAgentEdges(
+          normalizedGraph.nodes,
+          normalizedGraph.edges,
+        );
         const graphStructureErrors = collectWorkflowGraphStructureErrors(
           normalizedGraph.nodes,
           normalizedGraph.edges,
@@ -557,6 +561,39 @@ export class WorkflowPublishService {
         {
           field: `edges.${edge.id}`,
           message: `节点 ${detail.sourceNodeId} 的输出端口 "${detail.sourcePortId}" (${detail.sourceType}) 与节点 ${detail.targetNodeId} 的输入端口 "${detail.targetPortId}" (${detail.targetType}) 类型不兼容`,
+        },
+      ];
+    });
+
+    if (errors.length > 0) {
+      throw new WorkflowPublishValidationException(errors);
+    }
+  }
+
+  /**
+   * 工作流 Agent 节点不提供「子 Agent」端口：工作流中没有产出 agent 类型的节点，子 Agent
+   * 只能在被调用 Agent 的 Agent 画布上连到 Agent Main。存量图里连到 sub-agents-in 的边
+   * 运行期既无输入也无语义，发布期直接拒绝并指明改法，先于端口存在性校验给出准确原因。
+   */
+  private assertNoWorkflowAgentSubAgentEdges(
+    nodes: schema.ReactFlowNode[],
+    edges: schema.ReactFlowEdge[],
+  ): void {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const errors: FieldError[] = edges.flatMap((edge) => {
+      const targetHandle = this.readEdgeHandle(edge, 'target');
+      const targetNode = nodeMap.get(edge.target);
+      if (
+        targetHandle !== 'sub-agents-in' ||
+        !targetNode ||
+        this.getWorkflowNodeType(targetNode) !== 'agent'
+      ) {
+        return [];
+      }
+      return [
+        {
+          field: `edges.${edge.id}`,
+          message: `工作流 Agent 节点 ${this.getWorkflowNodeLabel(targetNode) ?? targetNode.id} 不支持「子 Agent」端口 (sub-agents-in)：子 Agent 请在被调用 Agent 的 Agent 画布上连接到 Agent Main`,
         },
       ];
     });

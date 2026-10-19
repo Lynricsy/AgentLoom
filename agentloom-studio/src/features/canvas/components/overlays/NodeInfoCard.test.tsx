@@ -77,7 +77,7 @@ describe("NodeInfoCard", () => {
     expect(screen.getByTestId("node-info-card-icon")).toBeInTheDocument();
     expect(screen.getByText("分析 Agent")).toBeInTheDocument();
     expect(screen.getAllByText("Agent")).toHaveLength(2);
-    expect(screen.getByText("9 输入, 3 输出")).toBeInTheDocument();
+    expect(screen.getByText("10 输入, 3 输出")).toBeInTheDocument();
   });
 
   it("节点靠近画布右缘时卡片翻到节点左侧", () => {

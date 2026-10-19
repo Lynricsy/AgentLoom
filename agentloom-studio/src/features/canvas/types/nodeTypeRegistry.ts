@@ -526,7 +526,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     outputPorts: [
       createExecOutPort("执行流出口，知识库节点完成后触发下游节点"),
       createPort("knowledge-out", "知识库", "output", "knowledge", {
-        description: "向量知识库，连接后 Agent 可检索其中的文档进行回答",
+        description:
+          "向量知识库，连接到 Agent 的「知识库」端口后，Agent 可检索其中的文档进行回答",
       }),
     ],
     configSchema: {
@@ -939,7 +940,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort("model-out", "选定模型", "output", "model", {
         multiple: true,
         maxConnections: 5,
-        description: "根据路由策略（如成本优先、质量优先）选出的模型实例",
+        description:
+          "根据路由策略（如成本优先、质量优先）选出的模型实例，连接到 Agent 的「模型」端口后该 Agent 本次改用此模型",
       }),
     ],
     configSchema: {
@@ -1071,12 +1073,23 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         description:
           "覆盖被调用 Agent 的系统提示词，用于为本次工作流调用注入局部角色约束",
       }),
+      createPort("model-in", "模型", "input", "model", {
+        maxConnections: 1,
+        description:
+          "覆盖被调用 Agent 的模型与智能路由，本次调用改用上游 LLM 模型或智能路由选出的模型",
+      }),
       createPort("sandbox-in", "沙箱", "input", "sandbox", {
         maxConnections: 1,
         description: "绑定沙箱执行环境，Agent 可在其中运行代码和终端命令",
       }),
       createPort("context-in", "上下文", "input", "json", {
         description: "传入附加上下文 JSON 数据，Agent 推理时可作为参考信息",
+      }),
+      createPort("knowledge-in", "知识库", "input", "knowledge", {
+        multiple: true,
+        maxConnections: null,
+        description:
+          "追加知识库节点提供的知识库，Agent 可在对话中检索其中的文档进行回答",
       }),
       createPort("skills-in", "Skills", "input", "skill", {
         multiple: true,
@@ -1086,12 +1099,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort("tools-in", "扩展工具", "input", "tool", {
         multiple: true,
         maxConnections: null,
-        description: "额外挂载 MCP 工具，Agent 可在对话中按需调用这些工具",
-      }),
-      createPort("sub-agents-in", "子 Agent", "input", "agent", {
-        multiple: true,
-        maxConnections: null,
-        description: "注册可调度的子 Agent，主 Agent 可将子任务委派给它们",
+        description:
+          "额外挂载 MCP 工具节点提供的工具，Agent 可在对话中按需调用；HTTP / 代码工具在工作流中是执行步骤，不能作为 Agent 工具",
       }),
       createPort("schema-in", "Schema", "input", "json", {
         maxConnections: 1,

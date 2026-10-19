@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { evaluateCompatibilityFallback } from "../lib/typeEngine/fallback";
 import { buildPaletteGroups } from "../components/nodeCategories";
 import { PORT_DATA_TYPES } from "./typeSchema";
 import {
@@ -316,6 +317,25 @@ describe("nodeTypeRegistry", () => {
     expect(
       getWorkflowAgentInputPorts("no_sandbox").map((port) => port.id),
     ).toContain("system-prompt-in");
+  });
+
+  it("workflow agent 每个数据输入端口在工作流调色板中都有可连接的上游端口", () => {
+    const paletteOutputPorts = buildPaletteGroups()
+      .flatMap((group) => group.items)
+      .flatMap((item) => getNodeTypeConfig(item.type).outputPorts);
+    const unreachablePortIds = getWorkflowAgentInputPorts("sandbox")
+      .filter((port) => port.dataType !== "exec")
+      .filter(
+        (port) =>
+          !paletteOutputPorts.some(
+            (source) =>
+              evaluateCompatibilityFallback(source, port).level !==
+              "INCOMPATIBLE",
+          ),
+      )
+      .map((port) => port.id);
+
+    expect(unreachablePortIds).toEqual([]);
   });
 
   it("exposes every registry entry through ordered helpers and palette groups", () => {

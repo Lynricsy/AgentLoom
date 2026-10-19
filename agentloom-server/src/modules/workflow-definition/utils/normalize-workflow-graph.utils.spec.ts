@@ -783,6 +783,77 @@ describe('normalizeWorkflowNodesAndEdges', () => {
     ]);
   });
 
+  it('工作流 Agent 节点提供 model-in / knowledge-in，存量 sub-agents-in 端口仅在仍有连线时保留', () => {
+    const storedAgentData = {
+      nodeType: 'agent',
+      inputPorts: [
+        { id: 'exec-in', dataType: 'exec' },
+        { id: 'text-in', dataType: 'text' },
+        { id: 'sub-agents-in', dataType: 'agent' },
+      ],
+    };
+    const { nodes } = normalizeWorkflowNodesAndEdges(
+      [
+        {
+          id: 'idle',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: storedAgentData,
+        },
+        {
+          id: 'wired',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: storedAgentData,
+        },
+        {
+          id: 'up',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: { nodeType: 'agent' },
+        },
+      ],
+      [
+        {
+          id: 'legacy-sub-agent-edge',
+          source: 'up',
+          target: 'wired',
+          sourceHandle: 'agent-out',
+          targetHandle: 'sub-agents-in',
+        },
+      ],
+    );
+
+    const inputPorts = (nodeId: string) => {
+      const ports: unknown = nodes.find((node) => node.id === nodeId)?.data
+        ?.inputPorts;
+      return Array.isArray(ports)
+        ? ports.map((port: { id: string; dataType: string }) => [
+            port.id,
+            port.dataType,
+          ])
+        : [];
+    };
+    const templatePorts = [
+      ['exec-in', 'exec'],
+      ['text-in', 'text'],
+      ['system-prompt-in', 'text'],
+      ['model-in', 'model'],
+      ['sandbox-in', 'sandbox'],
+      ['context-in', 'json'],
+      ['knowledge-in', 'knowledge'],
+      ['skills-in', 'skill'],
+      ['tools-in', 'tool'],
+      ['schema-in', 'json'],
+    ];
+    expect(inputPorts('idle')).toEqual(templatePorts);
+    expect(inputPorts('up')).toEqual(templatePorts);
+    expect(inputPorts('wired')).toEqual([
+      ...templatePorts,
+      ['sub-agents-in', 'agent'],
+    ]);
+  });
+
   it('应归一化节点级 legacy metadata 且 canonical 值优先', () => {
     const { nodes } = normalizeWorkflowNodesAndEdges(
       [

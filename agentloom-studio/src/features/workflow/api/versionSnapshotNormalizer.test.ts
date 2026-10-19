@@ -53,10 +53,11 @@ describe("normalizeWorkflowVersionSnapshot", () => {
       "exec-in",
       "text-in",
       "system-prompt-in",
+      "model-in",
       "context-in",
+      "knowledge-in",
       "skills-in",
       "tools-in",
-      "sub-agents-in",
       "schema-in",
     ]);
     expect(agentNode?.data.inputPorts[0]?.schema.kind).toBe("exec");
