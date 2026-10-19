@@ -8,12 +8,11 @@ import {
   updateInterventionPolicy,
 } from './interventionPolicyApi'
 
-const { getMock, postMock, patchMock, deleteMock, toSnakeBodyMock } = vi.hoisted(() => ({
+const { getMock, postMock, patchMock, deleteMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
   patchMock: vi.fn(),
   deleteMock: vi.fn(),
-  toSnakeBodyMock: vi.fn((body: unknown) => body),
 }))
 
 vi.mock('@/shared/api/client', () => ({
@@ -23,7 +22,6 @@ vi.mock('@/shared/api/client', () => ({
     patch: patchMock,
     delete: deleteMock,
   },
-  toSnakeBody: toSnakeBodyMock,
 }))
 
 describe('interventionPolicyApi', () => {
@@ -136,7 +134,7 @@ describe('interventionPolicyApi', () => {
     )
   })
 
-  it('创建策略时应先做 snake_case 转换并返回解包后的数据', async () => {
+  it('创建策略时按服务端 DTO 的 camelCase 原样发送并返回解包后的数据', async () => {
     postMock.mockReturnValue({
       json: vi.fn().mockResolvedValue({
         data: {
@@ -169,16 +167,15 @@ describe('interventionPolicyApi', () => {
       }),
     )
 
-    expect(toSnakeBodyMock).toHaveBeenCalledWith({
-      nodeId: null,
-      allowedRoles: ['owner', 'admin'],
-      timeoutSeconds: 86400,
-      timeoutAction: 'reject',
-      escalateToRole: null,
-      notifyChannels: ['in_app'],
-    })
     expect(postMock).toHaveBeenCalledWith('workflow-definitions/wf-001/intervention-policies', {
-      json: expect.objectContaining({ timeoutSeconds: 86400 }),
+      json: {
+        nodeId: null,
+        allowedRoles: ['owner', 'admin'],
+        timeoutSeconds: 86400,
+        timeoutAction: 'reject',
+        escalateToRole: null,
+        notifyChannels: ['in_app'],
+      },
     })
   })
 
@@ -200,16 +197,18 @@ describe('interventionPolicyApi', () => {
     })
     deleteMock.mockResolvedValue(undefined)
 
+    const updateData = {
+      nodeId: null,
+      allowedRoles: ['owner' as const],
+      timeoutSeconds: 3600,
+      timeoutAction: 'approve' as const,
+      escalateToRole: null,
+      notifyChannels: ['in_app' as const],
+      version: 3,
+    }
+
     await expect(
-      updateInterventionPolicy('wf-001', 'policy-workflow', {
-        nodeId: null,
-        allowedRoles: ['owner'],
-        timeoutSeconds: 3600,
-        timeoutAction: 'approve',
-        escalateToRole: null,
-        notifyChannels: ['in_app'],
-        version: 3,
-      }),
+      updateInterventionPolicy('wf-001', 'policy-workflow', updateData),
     ).resolves.toEqual(
       expect.objectContaining({
         id: 'policy-workflow',
@@ -221,10 +220,18 @@ describe('interventionPolicyApi', () => {
       deleteInterventionPolicy('wf-001', 'policy-workflow'),
     ).resolves.toBeUndefined()
 
+    // PATCH DTO 为 strict 且不含 nodeId：即使调用方带上 nodeId 也不能发送
     expect(patchMock).toHaveBeenCalledWith(
       'workflow-definitions/wf-001/intervention-policies/policy-workflow',
       {
-        json: expect.objectContaining({ timeoutAction: 'approve', version: 3 }),
+        json: {
+          allowedRoles: ['owner'],
+          timeoutSeconds: 3600,
+          timeoutAction: 'approve',
+          escalateToRole: null,
+          notifyChannels: ['in_app'],
+          version: 3,
+        },
       },
     )
     expect(deleteMock).toHaveBeenCalledWith(

@@ -1,4 +1,4 @@
-import { apiClient, toSnakeBody } from '@/shared/api/client'
+import { apiClient } from '@/shared/api/client'
 import type { ApiResponse, PaginatedResponse } from '@/shared/types/api'
 import type {
   CreateInterventionPolicyData,
@@ -78,9 +78,10 @@ export async function createInterventionPolicy(
   workflowId: string,
   data: CreateInterventionPolicyData,
 ): Promise<InterventionPolicy> {
+  // 服务端 DTO 为 camelCase，不能经 toSnakeBody 转换（snake 键会被剥离或被 strict 拒绝）
   const response = await apiClient
     .post(`workflow-definitions/${workflowId}/intervention-policies`, {
-      json: toSnakeBody(data),
+      json: data,
     })
     .json<InterventionPolicyDetailResponse>()
 
@@ -92,9 +93,17 @@ export async function updateInterventionPolicy(
   policyId: string,
   data: UpdateInterventionPolicyData,
 ): Promise<InterventionPolicy> {
+  // PATCH DTO 为 strict 且不含 nodeId（节点归属在创建时确定），只发送可更新字段
   const response = await apiClient
     .patch(`workflow-definitions/${workflowId}/intervention-policies/${policyId}`, {
-      json: toSnakeBody(data),
+      json: {
+        allowedRoles: data.allowedRoles,
+        timeoutSeconds: data.timeoutSeconds,
+        timeoutAction: data.timeoutAction,
+        escalateToRole: data.escalateToRole,
+        notifyChannels: data.notifyChannels,
+        version: data.version,
+      },
     })
     .json<InterventionPolicyDetailResponse>()
 

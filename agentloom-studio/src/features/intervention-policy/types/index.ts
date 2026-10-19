@@ -72,7 +72,7 @@ export interface InterventionPolicyMutationData {
 }
 
 export type CreateInterventionPolicyData = InterventionPolicyMutationData
-export type UpdateInterventionPolicyData = InterventionPolicyMutationData & {
+export type UpdateInterventionPolicyData = Omit<InterventionPolicyMutationData, 'nodeId'> & {
   version: number
 }
 
