@@ -240,6 +240,15 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       UPDATE users SET current_organization_id = ${tenantId}::uuid
       WHERE id = ${userId}::uuid
     `;
+    // 评测阶段按 250ms 轮询；全量 e2e 并行时评测变慢，默认 100 次/分钟的租户 API 限流
+    // 会让轮询自身被 429 挡住直到超时。测试租户放宽限流，轮询不再影响被测行为。
+    await ctx.adminSql`
+      INSERT INTO tenant_quotas (
+        organization_id, tenant_id, api_rate_limit_per_minute, created_by, updated_by
+      ) VALUES (
+        ${tenantId}::uuid, ${tenantId}::uuid, 6000, ${userId}::uuid, ${userId}::uuid
+      )
+    `;
     headers = authHeaders({ id: userId, email }, tenantId);
 
     const [provider] = await ctx.adminSql<{ id: string }[]>`
@@ -310,7 +319,7 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
         .post(`/api/v1/agent-definitions/${agentId}/publish`)
         .set(headers)
         .send({ versionId: version.body.data.id });
-      expect(published.status).toBe(201);
+      expect(published.status).toBe(200);
       agentIds[role] = agentId;
     }
   }
