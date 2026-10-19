@@ -3,6 +3,7 @@ import {
   DiscoverMcpToolsDto,
   ImportMcpToolsDto,
   TestMcpConnectionDto,
+  UpdateMcpServerConfigDto,
 } from '../dto';
 
 describe('MCP DTO', () => {
@@ -250,6 +251,26 @@ describe('MCP DTO', () => {
           (issue) => issue.path.join('.') === 'conflictStrategy',
         ),
       ).toBe(true);
+    });
+  });
+
+  describe('UpdateMcpServerConfigDto', () => {
+    it('未知字段应校验失败', () => {
+      const result = UpdateMcpServerConfigDto.schema.safeParse({
+        name: 'renamed',
+        bogusField: 1,
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('只含已知字段时应通过', () => {
+      const result = UpdateMcpServerConfigDto.schema.safeParse({
+        name: 'renamed',
+        status: 'inactive',
+      });
+
+      expect(result.success).toBe(true);
     });
   });
 });

@@ -20,18 +20,21 @@ const streamableHttpConnectionSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
-export const UpdateMcpServerConfigSchema = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().nullable().optional(),
-  status: z.enum(['active', 'inactive']).optional(),
-  connection: z
-    .discriminatedUnion('transportType', [
-      stdioConnectionSchema,
-      sseConnectionSchema,
-      streamableHttpConnectionSchema,
-    ])
-    .optional(),
-});
+// strict：拼错的字段名（如 `desc`）应返回 422，而不是被静默丢弃后 200
+export const UpdateMcpServerConfigSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    status: z.enum(['active', 'inactive']).optional(),
+    connection: z
+      .discriminatedUnion('transportType', [
+        stdioConnectionSchema,
+        sseConnectionSchema,
+        streamableHttpConnectionSchema,
+      ])
+      .optional(),
+  })
+  .strict();
 
 export class UpdateMcpServerConfigDto extends createZodDto(
   UpdateMcpServerConfigSchema,
