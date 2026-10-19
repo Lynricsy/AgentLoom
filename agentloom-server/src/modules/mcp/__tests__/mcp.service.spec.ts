@@ -97,6 +97,7 @@ import { ResourceSourceService } from '../../resource-source/resource-source.ser
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
+  McpServerConfigNotFoundException,
   McpToolDeactivationNotAllowedException,
   McpToolNotFoundException,
 } from '../mcp.exceptions';
@@ -1335,6 +1336,32 @@ describe('McpService', () => {
       });
     });
 
+    it('配置已删除（FK 置空）的 MCP 工具也应允许停用', async () => {
+      const deactivateTool = getCallableMethod<
+        [toolDefinitionId: string, tenantId: string],
+        Promise<unknown>
+      >(service, 'deactivateTool');
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createToolDefinitionRecord({ mcpServerConfigId: null }),
+        ]),
+      );
+      db.update.mockReturnValueOnce(
+        createUpdateChain([
+          createToolDefinitionRecord({
+            mcpServerConfigId: null,
+            isActive: false,
+          }),
+        ]),
+      );
+
+      await expect(deactivateTool(TOOL_ID, TENANT_ID)).resolves.toMatchObject({
+        id: TOOL_ID,
+        isActive: false,
+      });
+    });
+
     it('应当拒绝停用非 MCP 来源的工具', async () => {
       const deactivateTool = getCallableMethod<
         [toolDefinitionId: string, tenantId: string],
@@ -1369,6 +1396,40 @@ describe('McpService', () => {
       await expect(deactivateTool(TOOL_ID, TENANT_ID)).rejects.toBeInstanceOf(
         McpToolNotFoundException,
       );
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteConfig', () => {
+    it('应先停用该配置导入的工具再删除配置，避免残留 active 孤儿工具', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createMcpServerConfigRecord()]),
+      );
+      const toolUpdateWhere = vi.fn().mockResolvedValue(undefined);
+      const toolUpdateSet = vi.fn().mockReturnValue({ where: toolUpdateWhere });
+      db.update.mockReturnValueOnce({ set: toolUpdateSet });
+      const deleteWhere = vi.fn().mockResolvedValue(undefined);
+      db.delete.mockReturnValueOnce({ where: deleteWhere });
+
+      await service.deleteConfig(TENANT_ID, CONFIG_ID);
+
+      expect(db.update).toHaveBeenCalledWith(toolDefinitions);
+      expect(toolUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({ isActive: false }),
+      );
+      expect(db.delete).toHaveBeenCalledWith(mcpServerConfigs);
+      expect(db.update.mock.invocationCallOrder[0]).toBeLessThan(
+        db.delete.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('配置不存在时应抛出 404 且不改动工具', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.deleteConfig(TENANT_ID, CONFIG_ID),
+      ).rejects.toBeInstanceOf(McpServerConfigNotFoundException);
       expect(db.update).not.toHaveBeenCalled();
       expect(db.delete).not.toHaveBeenCalled();
     });
@@ -2031,6 +2092,11 @@ describe('McpService', () => {
         .mockReturnValueOnce(createSelectChain([]));
       db.delete.mockReturnValueOnce({
         where: deleteWhere,
+      });
+      db.update.mockReturnValueOnce({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
       });
 
       await expect(

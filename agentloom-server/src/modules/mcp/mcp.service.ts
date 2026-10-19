@@ -270,7 +270,8 @@ export class McpService {
       );
     }
 
-    if (existingTool.source !== 'mcp' || !existingTool.mcpServerConfigId) {
+    // 配置删除后 FK 置空的 MCP 工具同样允许停用（历史数据中可能存在这类孤儿）
+    if (existingTool.source !== 'mcp') {
       throw new McpToolDeactivationNotAllowedException(
         '仅支持停用 MCP 导入工具',
       );
@@ -511,8 +512,26 @@ export class McpService {
     };
   }
 
+  /**
+   * 删除服务器配置并级联停用其导入的工具。
+   *
+   * tool_definitions.mcp_server_config_id 的 FK 为 ON DELETE SET NULL，
+   * 不停用就会留下仍为 active、却再也连不上服务器的孤儿工具。
+   * 与其他资源一致，删除不检查 Agent 画布引用；引用已删除配置的 Agent
+   * 调用该工具时得到 mcp/server-config-not-found。
+   */
   async deleteConfig(tenantId: string, configId: string): Promise<void> {
     await this.getSavedConfigOrThrow(configId, tenantId);
+
+    await this.tenantDb
+      .update(toolDefinitions)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(toolDefinitions.mcpServerConfigId, configId),
+          eq(toolDefinitions.tenantId, tenantId),
+        ),
+      );
 
     await this.tenantDb
       .delete(mcpServerConfigs)
