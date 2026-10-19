@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -24,6 +25,7 @@ import { and, count, desc, eq, inArray, not, sql } from 'drizzle-orm';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -44,6 +46,8 @@ import {
   CreateMemoryNodeDto,
   CreateMemoryPathDto,
   CreateMemoryVersionDto,
+  CreateMemoryVersionSchema,
+  type CreateMemoryVersionInput,
   ListAuditLogQueryDto,
   MemoryAuditListResponseSwaggerDto,
   ListMemoryEdgesQueryDto,
@@ -933,14 +937,21 @@ export class AgentMemoryController {
   @ApiOperation({ summary: '创建新版本（支持 create/patch/append 模式）' })
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
+  @ApiBody({ type: CreateMemoryVersionDto })
   @ApiResponse({ status: 201, description: '创建成功' })
   @ApiResponse({ status: 404, description: '实例或节点不存在' })
+  @ApiResponse({
+    status: 422,
+    description:
+      '缺少当前 mode 所需字段（create/append 需 content，patch 需 oldString 与 newString）',
+  })
   async createVersion(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
     @Param('id') id: string,
     @Param('nodeId') nodeId: string,
-    @Body() dto: CreateMemoryVersionDto,
+    @Body(new ZodValidationPipe(CreateMemoryVersionSchema))
+    dto: CreateMemoryVersionInput,
   ) {
     await this.assertNodeInInstance(id, nodeId);
     let version;
@@ -949,22 +960,21 @@ export class AgentMemoryController {
       case 'patch':
         version = await this.memoryVersionService.patchVersion(
           nodeId,
-          { oldString: dto.oldString!, newString: dto.newString! },
+          { oldString: dto.oldString, newString: dto.newString },
           userId,
         );
         break;
       case 'append':
         version = await this.memoryVersionService.appendVersion(
           nodeId,
-          dto.content!,
+          dto.content,
           userId,
         );
         break;
       case 'create':
-      default:
         version = await this.memoryVersionService.createVersion(
           nodeId,
-          dto.content!,
+          dto.content,
           userId,
         );
         break;

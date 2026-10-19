@@ -62,7 +62,7 @@ import type {
   CreateMemoryInstanceDto,
   CreateMemoryNodeDto,
   CreateMemoryPathDto,
-  CreateMemoryVersionDto,
+  CreateMemoryVersionInput,
   ListAuditLogQueryDto,
   ListMemoryEdgesQueryDto,
   ListMemoryInstancesQueryDto,
@@ -1353,7 +1353,7 @@ describe('AgentMemoryController', () => {
         USER_ID,
         INSTANCE_ID,
         NODE_ID,
-        d<CreateMemoryVersionDto>({
+        d<CreateMemoryVersionInput>({
           mode: 'create',
           content: '# 内容',
         }),
@@ -1376,9 +1376,8 @@ describe('AgentMemoryController', () => {
         USER_ID,
         INSTANCE_ID,
         NODE_ID,
-        d<CreateMemoryVersionDto>({
+        d<CreateMemoryVersionInput>({
           mode: 'patch',
-          content: undefined,
           oldString: '旧文本',
           newString: '新文本',
         }),
@@ -1401,7 +1400,7 @@ describe('AgentMemoryController', () => {
         USER_ID,
         INSTANCE_ID,
         NODE_ID,
-        d<CreateMemoryVersionDto>({
+        d<CreateMemoryVersionInput>({
           mode: 'append',
           content: '追加内容',
         }),
@@ -1415,26 +1414,21 @@ describe('AgentMemoryController', () => {
       );
     });
 
-    it('未指定 mode 时应默认使用 create', async () => {
-      const version = createVersion();
-      mockVersionService.createVersion.mockResolvedValueOnce(version);
-
-      await controller.createVersion(
-        TENANT_ID,
-        USER_ID,
-        INSTANCE_ID,
-        NODE_ID,
-        d<CreateMemoryVersionDto>({
-          mode: 'create',
-          content: '默认创建',
-        }),
+    it('应先校验节点属于实例再写版本', async () => {
+      scopeGuards.assertNodeInInstance.mockRejectedValueOnce(
+        new MemoryNodeNotFoundException(NODE_ID, INSTANCE_ID),
       );
 
-      expect(mockVersionService.createVersion).toHaveBeenCalledWith(
-        NODE_ID,
-        '默认创建',
-        USER_ID,
-      );
+      await expect(
+        controller.createVersion(
+          TENANT_ID,
+          USER_ID,
+          INSTANCE_ID,
+          NODE_ID,
+          d<CreateMemoryVersionInput>({ mode: 'create', content: 'x' }),
+        ),
+      ).rejects.toBeInstanceOf(MemoryNodeNotFoundException);
+      expect(mockVersionService.createVersion).not.toHaveBeenCalled();
     });
   });
 

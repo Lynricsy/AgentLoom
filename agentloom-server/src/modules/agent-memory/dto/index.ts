@@ -13,6 +13,8 @@ export {
 } from './memory-edge.dto';
 export {
   CreateMemoryVersionDto,
+  CreateMemoryVersionSchema,
+  type CreateMemoryVersionInput,
   RollbackVersionDto,
   ListMemoryVersionsQueryDto,
 } from './memory-version.dto';
