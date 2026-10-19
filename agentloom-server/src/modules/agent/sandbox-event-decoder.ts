@@ -32,6 +32,9 @@ type ContainerEventEnvelope = {
   [key: string]: unknown;
 };
 
+/** guest 侧会话丢失（运行时重启 / OOM / 会话不存在）：本轮失败，下一轮重建会话 */
+export const SANDBOX_SESSION_LOST_CODE = 'SANDBOX_SESSION_LOST';
+
 export class SandboxPromptError extends Error {
   constructor(
     readonly rawMessage: string,

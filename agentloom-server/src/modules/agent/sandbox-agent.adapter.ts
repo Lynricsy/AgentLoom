@@ -27,12 +27,15 @@ import type {
 } from './ports/agent-runtime.port';
 import {
   decodeSandboxServerSentEvent,
+  SANDBOX_SESSION_LOST_CODE,
+  SandboxPromptError,
   type SandboxEventDecodeResult,
 } from './sandbox-event-decoder';
 import { SandboxModelConfigService } from './sandbox-model-config.service';
 import { SandboxPtyService } from './sandbox-pty.service';
 import {
   SandboxSessionRuntimeService,
+  type GuestSessionLossKind,
   type SandboxBinding,
 } from './sandbox-session-runtime.service';
 import { SandboxToolRegistryService } from './sandbox-tool-registry.service';
@@ -259,14 +262,24 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       );
     }
 
+    const abortSignal = this.abortControllers.get(sessionId)?.signal;
     try {
       const response = await this.sessionRuntime.requestPrompt(
         sandboxBinding,
         tenantId,
         sessionId,
         content,
-        this.abortControllers.get(sessionId)?.signal,
+        abortSignal,
       );
+      if (response.status === 404) {
+        // guest 内没有该会话：guest 运行时重启过（如 OOM），内存中的会话已丢失
+        throw await this.failLostGuestSession(
+          sessionId,
+          sandboxBinding,
+          tenantId,
+          'session_missing',
+        );
+      }
       if (!response.ok || !response.body) {
         throw new Error(
           `Sandbox agent request failed with status ${response.status}`,
@@ -277,7 +290,23 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       const decoder = new TextDecoder();
       let buffer = '';
       while (true) {
-        const { done, value } = await reader.read();
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+          chunk = await reader.read();
+        } catch (error) {
+          if (
+            abortSignal?.aborted ||
+            (error instanceof Error && error.name === 'AbortError')
+          ) {
+            throw error;
+          }
+          // 连接在终止帧之前被切断（guest 运行时崩溃 / 重启）：按流提前结束处理
+          this.logger.warn(
+            `Sandbox prompt 流中断: session=${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          chunk = { done: true, value: undefined };
+        }
+        const { done, value } = chunk;
         buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
         const frames = buffer.split('\n\n');
         buffer = frames.pop() ?? '';
@@ -297,11 +326,26 @@ export class SandboxAgentAdapter implements IAgentRuntime {
             reader,
           );
           for (const event of terminal.events) yield event;
-          return;
+          if (terminal.done) return;
+          if (abortSignal?.aborted) {
+            yield { type: 'done', stopReason: 'cancelled' };
+            return;
+          }
+          // guest 正常结束必发 done 或 error 帧；流在此之前结束说明运行时中途退出，
+          // 本轮不能按正常结束保存
+          throw await this.failLostGuestSession(
+            sessionId,
+            sandboxBinding,
+            tenantId,
+            'stream_interrupted',
+          );
         }
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (
+        abortSignal?.aborted ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
         yield { type: 'done', stopReason: 'cancelled' };
         return;
       }
@@ -418,6 +462,36 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     this.remoteToolNames.delete(sessionId);
     this.abortControllers.delete(sessionId);
     this.logger.debug(`取消 Sandbox 会话: ${sessionId}`);
+  }
+
+  /**
+   * guest 侧会话已丢失：从本进程移除该会话，使下一轮经 loadSession 失败走既有的新建会话路径
+   * （对话执行会重建会话并重载历史）；返回带原因（OOM / 运行时重启）的本轮错误。
+   */
+  private async failLostGuestSession(
+    sessionId: string,
+    binding: SandboxBinding,
+    tenantId: string,
+    kind: GuestSessionLossKind,
+  ): Promise<SandboxPromptError> {
+    const message = await this.sessionRuntime.describeGuestSessionLoss(
+      binding,
+      tenantId,
+      kind,
+    );
+    this.sessions.delete(sessionId);
+    if (
+      binding.agentConversationId &&
+      this.conversationSessionIds.get(binding.agentConversationId) === sessionId
+    ) {
+      this.conversationSessionIds.delete(binding.agentConversationId);
+    }
+    this.clearPendingPermissions(sessionId, 'cancelled');
+    this.toolRegistry.disposeSession(sessionId);
+    this.remoteToolNames.delete(sessionId);
+    this.abortControllers.delete(sessionId);
+    this.logger.warn(`Sandbox 会话 ${sessionId} 在 guest 侧丢失: ${message}`);
+    return new SandboxPromptError(message, SANDBOX_SESSION_LOST_CODE);
   }
 
   async executeSessionToolCallback(

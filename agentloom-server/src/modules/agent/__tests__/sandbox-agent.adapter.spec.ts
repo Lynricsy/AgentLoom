@@ -15,6 +15,7 @@ import type { CreateSessionParams } from '../types/agent-session.types';
 import type { AgentEvent } from '../types/agent-event.types';
 import { RagService } from '../../knowledge/services/rag.service';
 import { PiConfigGeneratorService } from '../../sandbox/pi-config-generator.service';
+import { SandboxNotFoundException } from '../../sandbox/sandbox.exceptions';
 import type { SandboxRuntimeDriver } from '../../sandbox/sandbox-runtime-driver.port';
 import type { RequestInit as UndiciRequestInit } from 'undici';
 import { ToolPermissionResolutionNotAllowedException } from '../../../common/exceptions/tool-call.exceptions';
@@ -1093,6 +1094,149 @@ describe('SandboxAgentAdapter', () => {
       ).rejects.toThrow('Connection refused');
 
       globalThis.fetch = originalFetch;
+    });
+
+    describe('guest 会话丢失（运行时重启 / OOM）', () => {
+      const oomDiagnostics = {
+        guestdStartedAt: '2026-10-19T17:30:00Z',
+        uptimeSeconds: 120,
+        runtimeRestarts: 1,
+        lastRuntimeExit: {
+          at: '2026-10-19T17:30:44Z',
+          error: 'signal: killed',
+        },
+        oomKillCount: 1,
+        oomKills: [{ pid: 715, command: 'npm install', secondsSinceBoot: 108 }],
+      };
+
+      function routeGuest(promptResponse: Response | (() => Response)): void {
+        mockSandboxService.getSandboxSession.mockResolvedValue({
+          id: 'sandbox-001',
+          status: 'ready',
+          runtimeHandle: 'abc123def456',
+          config: { cpu: 1, memory: 512, disk: 4 },
+        });
+        globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+          const href = String(url);
+          if (href.endsWith('/v1/runtime/diagnostics')) {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => oomDiagnostics,
+            } as unknown as Response;
+          }
+          if (href.endsWith('/v1/prompt')) {
+            return typeof promptResponse === 'function'
+              ? promptResponse()
+              : promptResponse;
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true }),
+          } as unknown as Response;
+        }) as typeof globalThis.fetch;
+      }
+
+      async function expectSessionLost(
+        sessionId: string,
+        expectedPrefix: string,
+      ): Promise<void> {
+        const error = await collectEvents(
+          adapter.prompt(sessionId, [{ type: 'text', text: 'npm install' }]),
+        ).catch((value: Error & { code?: string }) => value);
+
+        expect(error).toBeInstanceOf(Error);
+        expect(error).toMatchObject({ code: 'SANDBOX_SESSION_LOST' });
+        const message = (error as Error).message;
+        expect(message.startsWith(expectedPrefix)).toBe(true);
+        expect(message).toContain(
+          '沙箱 VM 内存不足，内核 OOM 终止了进程：npm install（pid 715，12 秒前）',
+        );
+        expect(message).toContain(
+          'guest Agent 运行时已重启 1 次（最近一次退出：signal: killed）',
+        );
+        expect(message).toContain(
+          '请在 Agent 画布的 Sandbox 节点调高内存（当前 512 MB）后重试',
+        );
+        // 本进程移除会话：下一轮 loadSession 失败，执行侧走新建会话并重载历史
+        await expect(adapter.loadSession(sessionId)).rejects.toBeInstanceOf(
+          SandboxNotFoundException,
+        );
+      }
+
+      it('流在 done 帧之前结束时本轮应失败并说明 OOM 原因，不得按正常结束返回', async () => {
+        const session = await adapter.createSession(defaultParams);
+        routeGuest(
+          createSseResponse([
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"delta":"Validation exists; check existing tests."}}}\n\n',
+          ]),
+        );
+
+        await expectSessionLost(
+          session.id,
+          '沙箱 Agent 运行时在本轮回复完成前中断',
+        );
+      });
+
+      it('读流时连接被切断（undici terminated）应按会话丢失处理', async () => {
+        const session = await adapter.createSession(defaultParams);
+        const encoder = new TextEncoder();
+        let calls = 0;
+        routeGuest({
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: vi.fn(async () => {
+                calls += 1;
+                if (calls === 1) {
+                  return {
+                    done: false,
+                    value: encoder.encode(
+                      'data: {"type":"message_chunk","content":"partial"}\n\n',
+                    ),
+                  };
+                }
+                throw new TypeError('terminated');
+              }),
+            }),
+          },
+        } as unknown as Response);
+
+        await expectSessionLost(
+          session.id,
+          '沙箱 Agent 运行时在本轮回复完成前中断',
+        );
+      });
+
+      it('guest 返回 404（会话不存在）应识别为会话丢失而非不透明状态码', async () => {
+        const session = await adapter.createSession(defaultParams);
+        routeGuest({
+          ok: false,
+          status: 404,
+          body: null,
+        } as unknown as Response);
+
+        await expectSessionLost(session.id, '沙箱 Agent 会话已丢失');
+      });
+
+      it('诊断不可用时仍给出会话丢失说明', async () => {
+        const session = await adapter.createSession(defaultParams);
+        globalThis.fetch = vi.fn(async (url: string | URL | Request) =>
+          String(url).endsWith('/v1/prompt')
+            ? ({ ok: false, status: 404, body: null } as unknown as Response)
+            : ({ ok: false, status: 404 } as unknown as Response),
+        ) as typeof globalThis.fetch;
+
+        await expect(
+          collectEvents(
+            adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+          ),
+        ).rejects.toThrow(
+          '沙箱 Agent 会话已丢失（guest 中已不存在该会话，通常是沙箱运行时重启所致）；重试时会自动重建沙箱会话，工作区文件仍保留。',
+        );
+      });
     });
 
     it('AbortError 应返回 cancelled stopReason', async () => {

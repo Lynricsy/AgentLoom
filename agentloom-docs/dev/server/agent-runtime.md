@@ -62,6 +62,13 @@ guest 内的 Agent 需要调用服务端工具（MCP、知识库、子 Agent 等
 
 会话初始化请求 `/v1/session` 要等 guest 启动 dsh 子进程，超时按会话内容放宽（`agentloom-server/src/modules/agent/sandbox-model-config.service.ts`）：单次请求 45 s、含就绪重试共 60 s；带 MCP server 时 90 s / 120 s；每个启用的 npm 来源 runtime 插件给单次请求再加 180 s，此时总时长为单次请求加 30 s。
 
+guest 侧会话丢失（guest 运行时在回合中途退出或重启、内存中的会话随之消失）有两种表现，`SandboxAgentAdapter.prompt` 都按本轮失败处理，抛出 `code` 为 `SANDBOX_SESSION_LOST` 的 `SandboxPromptError`：
+
+- `/v1/prompt` 的 SSE 流在 `done`/`error` 帧之前结束或读流时连接被切断（guest 正常结束必发其一）。被截断的回复不按正常结束返回，对话执行把已有的部分输出标为 `incomplete` 落库并记录错误；
+- `/v1/prompt` 返回 404（guest 中不存在该会话）。
+
+错误信息由 `SandboxSessionRuntimeService.describeGuestSessionLoss` 生成：读取 guestd 的 `GET /v1/runtime/diagnostics`（3 s 超时，见 [Firecracker 运行时](/dev/firecracker-runtime)），写出内核 OOM 终止的进程（命令、pid、距今秒数）、guest 运行时的重启次数与最近退出原因，有 OOM 时提示调高 Sandbox 节点内存（附当前 MB）；诊断不可用时只给通用说明。adapter 随后从进程内移除该会话，下一轮 `loadSession` 失败，对话 worker 按既有路径新建会话、重新初始化 guest 会话并重载对话历史。用户主动取消（abort 信号）仍按 `cancelled` 结束，不计为会话丢失。
+
 ### 主模型思考强度
 
 Agent 画布 `llm-model` 节点 config 的 `thinkingLevel` 由 `AgentDefinitionService.extractModelConfig` 编译进 `AgentRuntimeConfig.modelConfig.thinkingLevel`；节点 config 保存时不按节点类型校验，非法值在编译时丢弃，等同缺省。经智能路由选模型时 `modelConfig` 只有路由选中的 id，不带思考强度。`AGENT_THINKING_LEVELS`（`off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，与 pi-ai `ModelThinkingLevel` 对齐）只是词表；单个模型能选哪些强度由模型真实能力决定，不维护任何按模型硬编码的列表。
