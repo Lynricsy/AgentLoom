@@ -11,6 +11,7 @@ import {
 } from '../../database/schema';
 import { OrganizationService } from './organization.service';
 import {
+  AdminCannotGrantOwnerException,
   AdminCannotInviteOwnerException,
   AdminCannotRemoveOwnerException,
   AlreadyOrganizationMemberException,
@@ -945,9 +946,11 @@ describe('OrganizationService', () => {
       db.query.organizations.findFirst.mockResolvedValue(
         createOrganizationRecord(),
       );
-      db.query.organizationMembers.findFirst.mockResolvedValueOnce(
-        createMemberRecord({ userId: TARGET_USER_ID, role: 'viewer' }),
-      );
+      db.query.organizationMembers.findFirst
+        .mockResolvedValueOnce(
+          createMemberRecord({ userId: TARGET_USER_ID, role: 'viewer' }),
+        )
+        .mockResolvedValueOnce(createMemberRecord({ role: 'owner' }));
       db.update.mockReturnValue(updateChain);
 
       const result = await service.updateMemberRole(
@@ -965,6 +968,94 @@ describe('OrganizationService', () => {
         createOrganizationRecord().tenantId,
         TARGET_USER_ID,
       );
+    });
+
+    it('admin 把自己提升为 owner 时抛出 AdminCannotGrantOwnerException', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst.mockResolvedValueOnce(
+        createMemberRecord({ userId: USER_ID, role: 'admin' }),
+      );
+
+      await expect(
+        service.updateMemberRole(ORG_ID, USER_ID, { role: 'owner' }, USER_ID),
+      ).rejects.toBeInstanceOf(AdminCannotGrantOwnerException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('admin 把其他成员提升为 owner 时抛出 AdminCannotGrantOwnerException', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst
+        .mockResolvedValueOnce(
+          createMemberRecord({ userId: TARGET_USER_ID, role: 'viewer' }),
+        )
+        .mockResolvedValueOnce(createMemberRecord({ role: 'admin' }));
+
+      await expect(
+        service.updateMemberRole(
+          ORG_ID,
+          TARGET_USER_ID,
+          { role: 'owner' },
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(AdminCannotGrantOwnerException);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('admin 修改 owner 的角色时抛出 AdminCannotRemoveOwnerException', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst
+        .mockResolvedValueOnce(
+          createMemberRecord({ userId: TARGET_USER_ID, role: 'owner' }),
+        )
+        .mockResolvedValueOnce(createMemberRecord({ role: 'admin' }));
+
+      await expect(
+        service.updateMemberRole(
+          ORG_ID,
+          TARGET_USER_ID,
+          { role: 'viewer' },
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(AdminCannotRemoveOwnerException);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('owner 可以把成员提升为 owner', async () => {
+      const updatedMember = createMemberRecord({
+        userId: TARGET_USER_ID,
+        role: 'owner',
+      });
+      const updateChain = createUpdateChain([updatedMember]);
+
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst
+        .mockResolvedValueOnce(
+          createMemberRecord({ userId: TARGET_USER_ID, role: 'admin' }),
+        )
+        .mockResolvedValueOnce(createMemberRecord({ role: 'owner' }));
+      db.update.mockReturnValue(updateChain);
+
+      await expect(
+        service.updateMemberRole(
+          ORG_ID,
+          TARGET_USER_ID,
+          { role: 'owner' },
+          USER_ID,
+        ),
+      ).resolves.toEqual(updatedMember);
+      expect(updateChain.set).toHaveBeenCalledWith({ role: 'owner' });
     });
 
     it('唯一 owner 降级时抛出 SoleOwnerConstraintException', async () => {

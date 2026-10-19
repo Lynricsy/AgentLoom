@@ -12,11 +12,11 @@ docType: explanation
 
 服务端接受三种凭证，彼此不互相回退：
 
-| 凭证 | 传递方式 | 校验位置 | 可访问范围 |
-| --- | --- | --- | --- |
-| Supabase JWT | `Authorization: Bearer <jwt>` | `AuthGuard`（HTTP）、`WsJwtGuard` 与各 gateway 握手中间件（Socket.IO）、`agentloom-server/src/modules/acp-gateway/acp-authentication.service.ts`（ACP） | 全部非公开路由 |
-| 平台 API Token（`al_` 前缀） | `X-Api-Key: al_…` | `AuthGuard` 调用 `PlatformApiTokenService.validateToken` | 普通 REST 路由，按 token 的 scopes 与签发者角色 |
-| Agent API Key（`alak_` 前缀） | `Authorization: Bearer alak_…` | `AgentApiKeyGuard`（`agentloom-server/src/modules/agent-api/agent-api-key.guard.ts`） | 仅 `/api/v1/agent-api/*` |
+| 凭证                          | 传递方式                       | 校验位置                                                                                                                                                | 可访问范围                                      |
+| ----------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Supabase JWT                  | `Authorization: Bearer <jwt>`  | `AuthGuard`（HTTP）、`WsJwtGuard` 与各 gateway 握手中间件（Socket.IO）、`agentloom-server/src/modules/acp-gateway/acp-authentication.service.ts`（ACP） | 全部非公开路由                                  |
+| 平台 API Token（`al_` 前缀）  | `X-Api-Key: al_…`              | `AuthGuard` 调用 `PlatformApiTokenService.validateToken`                                                                                                | 普通 REST 路由，按 token 的 scopes 与签发者角色 |
+| Agent API Key（`alak_` 前缀） | `Authorization: Bearer alak_…` | `AgentApiKeyGuard`（`agentloom-server/src/modules/agent-api/agent-api-key.guard.ts`）                                                                   | 仅 `/api/v1/agent-api/*`                        |
 
 请求带 `Bearer` 头时，`AuthGuard` 只走 JWT 分支；JWT 无效即返回 401，不会再尝试 `X-Api-Key`。`AuthGuard` 不识别 `alak_`：`/agent-api` 控制器声明 `@Public()` 跳过全局认证，再用自己的 `AgentApiKeyGuard`。
 
@@ -63,6 +63,7 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 - 未声明 `@RequirePermission` 或 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查。
 - 每条路由的有效角色集合由 `agentloom-server/src/common/guards/__tests__/route-access.snapshot.spec.ts` 固定在快照中；放宽或收紧任何路由都要更新快照。
 - 用户在组织中的角色由 `RbacCacheService`（`agentloom-server/src/common/services/rbac-cache.service.ts`）缓存在 Redis；未命中时查询 `organization_members` 关联 `organizations`。角色变更调用 `invalidateUserRole` 删除缓存并通过 Redis pub/sub 通知其他实例。
+- 成员管理在 `RolesGuard` 放行 owner / admin 之后，由 `OrganizationService`（`agentloom-server/src/modules/organization/organization.service.ts`）再按操作者在该组织中的角色校验：授予 owner、修改或移除 owner 成员只允许 owner（否则 403 `admin-cannot-grant-owner` / `admin-cannot-remove-owner`，邀请 owner 为 `admin-cannot-invite-owner`）；降级或移除最后一名 owner 返回 409 `sole-owner-constraint`。
 
 ## 数据库行级安全
 

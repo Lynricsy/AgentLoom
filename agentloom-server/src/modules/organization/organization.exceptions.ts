@@ -111,6 +111,17 @@ export class AdminCannotInviteOwnerException extends DomainException {
   }
 }
 
+export class AdminCannotGrantOwnerException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/admin-cannot-grant-owner',
+      title: '权限不足',
+      status: HttpStatus.FORBIDDEN,
+      detail: '只有所有者可以把成员设为所有者',
+    });
+  }
+}
+
 export class AdminCannotRemoveOwnerException extends DomainException {
   constructor() {
     super({

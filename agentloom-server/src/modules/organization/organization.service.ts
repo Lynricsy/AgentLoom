@@ -19,6 +19,7 @@ import {
   AlreadyOrganizationMemberException,
   SoleOwnerConstraintException,
   AdminCannotInviteOwnerException,
+  AdminCannotGrantOwnerException,
   AdminCannotRemoveOwnerException,
 } from './organization.exceptions';
 import { generateSlug, appendSlugSuffix } from './slug.utils';
@@ -349,7 +350,7 @@ export class OrganizationService {
     orgId: string,
     targetUserId: string,
     dto: UpdateMemberRoleDto,
-    _actorUserId: string,
+    actorUserId: string,
   ) {
     const org = await this.tenantDb.query.organizations.findFirst({
       where: eq(organizations.id, orgId),
@@ -358,15 +359,24 @@ export class OrganizationService {
       throw new OrganizationNotFoundException();
     }
 
-    const target = await this.tenantDb.query.organizationMembers.findFirst({
-      where: and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(organizationMembers.userId, targetUserId),
-      ),
-    });
+    const target = await this.findMember(orgId, targetUserId);
 
     if (!target) {
       throw new OrganizationNotFoundException();
+    }
+
+    // 只有 owner 能授予 owner 或改动其他 owner；admin 只能在 owner 以下的角色之间调整
+    const actor =
+      actorUserId === targetUserId
+        ? target
+        : await this.findMember(orgId, actorUserId);
+    if (actor?.role !== 'owner') {
+      if (target.role === 'owner') {
+        throw new AdminCannotRemoveOwnerException();
+      }
+      if (dto.role === 'owner') {
+        throw new AdminCannotGrantOwnerException();
+      }
     }
 
     if (target.role === 'owner' && dto.role !== 'owner') {
@@ -397,26 +407,15 @@ export class OrganizationService {
       throw new OrganizationNotFoundException();
     }
 
-    const target = await this.tenantDb.query.organizationMembers.findFirst({
-      where: and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(organizationMembers.userId, targetUserId),
-      ),
-    });
+    const target = await this.findMember(orgId, targetUserId);
 
     if (!target) {
       throw new OrganizationNotFoundException();
     }
 
-    if (actorUserId !== targetUserId) {
-      const actor = await this.tenantDb.query.organizationMembers.findFirst({
-        where: and(
-          eq(organizationMembers.organizationId, orgId),
-          eq(organizationMembers.userId, actorUserId),
-        ),
-      });
-
-      if (actor?.role === 'admin' && target.role === 'owner') {
+    if (actorUserId !== targetUserId && target.role === 'owner') {
+      const actor = await this.findMember(orgId, actorUserId);
+      if (actor?.role !== 'owner') {
         throw new AdminCannotRemoveOwnerException();
       }
     }
@@ -447,6 +446,15 @@ export class OrganizationService {
     });
 
     await this.rbacCacheService.invalidateUserRole(org.tenantId, targetUserId);
+  }
+
+  private findMember(orgId: string, userId: string) {
+    return this.tenantDb.query.organizationMembers.findFirst({
+      where: and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(organizationMembers.userId, userId),
+      ),
+    });
   }
 
   private async verifySoleOwnerConstraint(orgId: string) {
