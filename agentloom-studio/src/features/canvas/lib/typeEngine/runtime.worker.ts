@@ -126,8 +126,8 @@ export function createTypeEngineBindings(
  * 使本文件不必跟着 wasm-bindgen 版本逐个改名。
  *
  * 不带该前缀的 import（`__wbindgen_init_externref_table`、
- * `__wbindgen_cast_<id>`）用**原名**注册：其后缀是 wasm-bindgen 的稳定
- * cast 序号而非内容哈希，剥掉会把不同 cast 混为一个。
+ * `__wbindgen_generic_<id>`，wasm-bindgen 0.2.129 前叫 `__wbindgen_cast_<id>`）用**原名**注册：
+ * 其后缀是 wasm-bindgen 的稳定 intrinsic 序号而非内容哈希，剥掉会把不同 intrinsic 混为一个。
  */
 const WASM_IMPORT_HASH_SUFFIX = /_[0-9a-f]{16}$/u
 
@@ -213,7 +213,8 @@ function createWasmImports(wasmRef: { current: TypeEngineWasmExports | null }): 
     stringify(value: unknown) {
       return JSON.stringify(value)
     },
-    __wbindgen_cast_0000000000000001(pointer: number, length: number) {
+    // Cast intrinsic：`Ref(String) -> Externref`
+    __wbindgen_generic_0000000000000001(pointer: number, length: number) {
       const wasm = wasmRef.current
       if (!wasm) {
         return ''

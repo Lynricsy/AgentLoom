@@ -39,7 +39,7 @@ server 在 `agentloom-server/src/modules/execution/execution.exceptions.ts` 中�
 
 | 形状 | 反序列化条件 | 比较方式 |
 | --- | --- | --- |
-| Scalar | 无 `shape`，或 `kind` 不是 `json` | 整个结构体相等才算匹配；`format`、`title`、`description`、`nullable`、`examples` 任一不同即 `scalar_schema_mismatch` |
+| Scalar | 无 `shape`，或 `kind` 不是 `json` | 只比较语义字段：`format` 不同，或源可空（`nullable: true`）而目标不可空，即 `scalar_schema_mismatch`；`title`、`description`、`examples` 是展示元数据（Studio 把端口 label 写进 `title`），不参与判定 |
 | Object | `kind: "json"` 且 `shape: "object"` | 遍历目标 `properties`：同名字段递归比较，缺失字段记入 `missingFields` |
 | Array | `kind: "json"` 且 `shape: "array"`（缺 `items` 反序列化失败） | 先比基数：源 `minItems` 小于目标或源 `maxItems` 大于目标即不兼容；再递归比较 `items` |
 

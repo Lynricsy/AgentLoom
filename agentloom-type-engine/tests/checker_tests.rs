@@ -255,3 +255,97 @@ fn skill_to_json_is_incompatible() {
     assert_eq!(result.level, CompatibilityLevel::Incompatible);
     assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
 }
+
+fn titled_scalar_schema(kind: PortDataType, title: &str) -> TypeSchema {
+    TypeSchema::Scalar(ScalarTypeSchema {
+        kind,
+        format: None,
+        examples: Vec::new(),
+        title: Some(title.to_string()),
+        description: Some(format!("{title} 端口")),
+        nullable: false,
+    })
+}
+
+#[test]
+fn same_kind_scalars_with_different_labels_are_exact() {
+    // Studio 把端口 label 写进 schema.title：Agent「回复」→ Text Output「文本」必须可连
+    let source = build_port(
+        "reply-out",
+        PortDataType::Text,
+        Some(titled_scalar_schema(PortDataType::Text, "回复")),
+    );
+    let target = build_port(
+        "text-in",
+        PortDataType::Text,
+        Some(titled_scalar_schema(PortDataType::Text, "文本")),
+    );
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Exact);
+    assert_eq!(result.reason, None);
+}
+
+#[test]
+fn different_kind_scalars_with_different_labels_stay_incompatible() {
+    let source = build_port(
+        "reply-out",
+        PortDataType::Text,
+        Some(titled_scalar_schema(PortDataType::Text, "回复")),
+    );
+    let target = build_port(
+        "image-in",
+        PortDataType::Image,
+        Some(titled_scalar_schema(PortDataType::Image, "图片")),
+    );
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("type_mismatch_no_transform"));
+}
+
+#[test]
+fn scalar_format_mismatch_stays_incompatible() {
+    let mut source_schema = scalar_schema(PortDataType::Text);
+    let mut target_schema = scalar_schema(PortDataType::Text);
+    if let (TypeSchema::Scalar(source_scalar), TypeSchema::Scalar(target_scalar)) =
+        (&mut source_schema, &mut target_schema)
+    {
+        source_scalar.format = Some("markdown".to_string());
+        target_scalar.format = Some("uri".to_string());
+    }
+    let source = build_port("source", PortDataType::Text, Some(source_schema));
+    let target = build_port("target", PortDataType::Text, Some(target_schema));
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("scalar_schema_mismatch"));
+}
+
+#[test]
+fn nullable_scalar_cannot_flow_into_non_nullable_target() {
+    let mut source_schema = scalar_schema(PortDataType::Text);
+    if let TypeSchema::Scalar(source_scalar) = &mut source_schema {
+        source_scalar.nullable = true;
+    }
+    let source = build_port("source", PortDataType::Text, Some(source_schema.clone()));
+    let target = build_port(
+        "target",
+        PortDataType::Text,
+        Some(scalar_schema(PortDataType::Text)),
+    );
+
+    let rejected = check_compatibility(&source, &target);
+    assert_eq!(rejected.level, CompatibilityLevel::Incompatible);
+    assert_eq!(rejected.reason.as_deref(), Some("scalar_schema_mismatch"));
+
+    // 不可空源连进可空目标是安全的
+    let accepted = check_compatibility(
+        &target,
+        &build_port("nullable", PortDataType::Text, Some(source_schema)),
+    );
+    assert_eq!(accepted.level, CompatibilityLevel::Exact);
+}

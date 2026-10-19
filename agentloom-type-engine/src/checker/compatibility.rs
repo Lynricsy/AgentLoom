@@ -164,13 +164,17 @@ impl CompatibilityChecker {
         }
     }
 
+    /// 标量只比较影响取值的语义字段：`kind` 已在 `compare_schema` 判等，这里比较
+    /// `format`，以及可空性方向（可空的源不能连进不可空的目标）。
+    /// `title` / `description` / `examples` 是展示元数据——Studio 会把端口 label 写进
+    /// `title`——不参与兼容判定，否则同类型、不同标签的端口会被误判为不兼容。
     fn compare_scalar(
         &self,
         source: &ScalarTypeSchema,
         target: &ScalarTypeSchema,
         path: &str,
     ) -> ComparisonState {
-        if source == target {
+        if source.format == target.format && (!source.nullable || target.nullable) {
             return ComparisonState::exact(1);
         }
 

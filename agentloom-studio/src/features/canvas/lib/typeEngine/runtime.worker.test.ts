@@ -267,8 +267,8 @@ describe('runtime.worker', () => {
     expect(typeof glue.__wbg___wbindgen_boolean_get_c9c83ebd41b34df3).toBe('function')
     expect(typeof glue.__wbg___wbindgen_boolean_get_c0f3f60bac5a78d1).toBe('function')
 
-    // 不带 __wbg_ 前缀的 import 必须按原名命中（后缀是稳定 cast 序号，不能剥）。
-    expect(typeof glue.__wbindgen_cast_0000000000000001).toBe('function')
+    // 不带 __wbg_ 前缀的 import 必须按原名命中（后缀是稳定 intrinsic 序号，不能剥）。
+    expect(typeof glue.__wbindgen_generic_0000000000000001).toBe('function')
     expect(typeof glue.__wbindgen_init_externref_table).toBe('function')
 
     expect(() => glue.__wbg_totallyNewBinding_0123456789abcdef).toThrow(

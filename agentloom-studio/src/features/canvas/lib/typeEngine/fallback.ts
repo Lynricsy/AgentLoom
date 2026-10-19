@@ -5,7 +5,7 @@ import type {
   CandidateFieldMapping,
   MissingFieldInfo,
 } from '../../types'
-import { cloneTypeSchema, stableStringify } from './serialize'
+import { cloneTypeSchema } from './serialize'
 import type {
   TypeEngineCompatibilityMetadata,
   TypeEngineCompatibilityResult,
@@ -269,8 +269,16 @@ function createEmptyState(totalUnits: number): ComparisonState {
   }
 }
 
+// 与 Rust `compare_scalar` 一致：kind 已在 compareSchema 判等，这里只比较 format 与可空性方向。
+// title / description / examples 是展示元数据（createPort 会把端口 label 写进 title），
+// 不参与兼容判定，否则同类型、不同标签的端口会被误判为 scalar_schema_mismatch。
 function compareScalar(source: TypeSchema, target: TypeSchema, path: string): ComparisonState {
-  if (stableStringify(source) === stableStringify(target)) {
+  const sourceFormat = 'format' in source ? source.format : undefined
+  const targetFormat = 'format' in target ? target.format : undefined
+  const sourceNullable = source.nullable === true
+  const targetNullable = target.nullable === true
+
+  if (sourceFormat === targetFormat && (!sourceNullable || targetNullable)) {
     return exactState(1)
   }
 
