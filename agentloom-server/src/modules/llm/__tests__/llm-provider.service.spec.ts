@@ -7,6 +7,7 @@ import { llmProviders } from '../../../database/schema/llm-providers.schema';
 import { ApiKeyService } from '../../api-key/api-key.service';
 import { LlmProviderService } from '../llm-provider.service';
 import {
+  LlmBuiltinProviderFieldImmutableException,
   LlmProviderDeletionForbiddenException,
   LlmProviderNotFoundException,
   LlmProviderSlugConflictException,
@@ -579,6 +580,66 @@ describe('LlmProviderService', () => {
       sortOrder: 7,
       isEnabled: false,
     });
+  });
+
+  it.each([
+    [{ slug: 'deepseek2' }, 'slug'],
+    [{ apiProtocol: 'anthropic' }, 'apiProtocol'],
+  ])('update 拒绝修改内置提供商的 %o', async (dto, field) => {
+    const existing = createBuiltinProvider({
+      id: 'builtin-id',
+      orgId: ORG_ID,
+      tenantId: TENANT_ID,
+      slug: 'deepseek',
+      apiProtocol: 'openai_chat',
+      isBuiltin: true,
+    });
+    db.select
+      .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+      .mockReturnValueOnce(createSelectChain([existing]));
+
+    const error = await service
+      .update(existing.id, dto as never, TENANT_ID, 'user-id')
+      .catch((value) => value);
+
+    expect(error).toBeInstanceOf(LlmBuiltinProviderFieldImmutableException);
+    expect(error.detail).toContain(field);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('update 允许内置提供商提交相同 slug/协议并修改其他字段', async () => {
+    const existing = createBuiltinProvider({
+      id: 'builtin-id',
+      orgId: ORG_ID,
+      tenantId: TENANT_ID,
+      slug: 'deepseek',
+      apiProtocol: 'openai_chat',
+      isBuiltin: true,
+    });
+    db.select
+      .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+      .mockReturnValueOnce(createSelectChain([existing]))
+      .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+      .mockReturnValueOnce(createSelectChain([{ id: existing.id }]));
+    const returning = vi.fn().mockResolvedValue([existing]);
+    const where = vi.fn().mockReturnValue({ returning });
+    const set = vi.fn().mockReturnValue({ where });
+    db.update.mockReturnValue({ set });
+
+    await service.update(
+      existing.id,
+      {
+        slug: 'deepseek',
+        apiProtocol: 'openai_chat',
+        isEnabled: false,
+      } as never,
+      TENANT_ID,
+      'user-id',
+    );
+
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ isEnabled: false }),
+    );
   });
 
   it('update 旋转匹配的受管密钥', async () => {

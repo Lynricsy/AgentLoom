@@ -94,3 +94,14 @@ export class LlmProviderDeletionForbiddenException extends DomainException {
     });
   }
 }
+
+export class LlmBuiltinProviderFieldImmutableException extends DomainException {
+  constructor(slug: string, fields: string[]) {
+    super({
+      type: 'https://agentloom.dev/errors/llm/builtin-provider-field-immutable',
+      title: '内置提供商字段不可修改',
+      status: HttpStatus.FORBIDDEN,
+      detail: `内置提供商 "${slug}" 的 ${fields.join('、')} 由平台维护，不可修改`,
+    });
+  }
+}

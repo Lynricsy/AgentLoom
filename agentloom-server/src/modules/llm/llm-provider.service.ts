@@ -12,6 +12,7 @@ import { ApiKeyService } from '../api-key/api-key.service';
 import type { CreateLlmProviderDto } from './dto/create-llm-provider.dto';
 import type { UpdateLlmProviderDto } from './dto/update-llm-provider.dto';
 import {
+  LlmBuiltinProviderFieldImmutableException,
   LlmProviderDeletionForbiddenException,
   LlmProviderNotFoundException,
   LlmProviderSlugConflictException,
@@ -142,8 +143,26 @@ export class LlmProviderService {
   ): Promise<LlmProvider> {
     const existing = await this.findById(id, tenantId);
 
-    const orgId = await this.resolveOrgId(tenantId);
+    // 内置提供商的 slug 与协议由 syncBuiltinProviders 按 slug 对齐维护；改掉后会被补种出第二条
+    // 同 slug 内置行，并影响 LiteLLM 映射与 embedding 门槛，因此只允许提交与现值相同的值。
+    if (existing.isBuiltin) {
+      const changedFields = [
+        dto.slug !== undefined && dto.slug !== existing.slug ? 'slug' : null,
+        dto.apiProtocol !== undefined &&
+        dto.apiProtocol !== existing.apiProtocol
+          ? 'apiProtocol'
+          : null,
+      ].filter((field): field is string => field !== null);
 
+      if (changedFields.length > 0) {
+        throw new LlmBuiltinProviderFieldImmutableException(
+          existing.slug,
+          changedFields,
+        );
+      }
+    }
+
+    const orgId = await this.resolveOrgId(tenantId);
     // 若更新 slug，检查唯一性
     if (dto.slug !== undefined) {
       const conflict = await this.tenantDb
