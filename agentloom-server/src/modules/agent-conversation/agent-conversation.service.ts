@@ -615,7 +615,10 @@ export class AgentConversationService {
   ) {
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (dto.title !== undefined) updates.title = dto.title;
-    if (dto.metadata !== undefined) updates.metadata = dto.metadata;
+    if (dto.metadata !== undefined) {
+      // 调用方可写的键整体替换；运行态 execution 由执行进程维护，在同一条 UPDATE 内原样保留
+      updates.metadata = sql`${JSON.stringify(dto.metadata)}::jsonb || jsonb_strip_nulls(jsonb_build_object('execution', ${agentConversations.metadata} -> 'execution'))`;
+    }
 
     const [conversation] = await this.tenantDb
       .update(agentConversations)

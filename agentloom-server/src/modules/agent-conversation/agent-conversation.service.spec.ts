@@ -22,6 +22,7 @@ import {
   ConversationEndedException,
   ConversationNotFoundException,
 } from './agent-conversation.exceptions';
+import { UpdateConversationSchema } from './dto/update-conversation.dto';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   hasActiveTenantTransaction: vi.fn(() => false),
@@ -1171,16 +1172,30 @@ describe('AgentConversationService', () => {
         },
       );
 
-      expect(updateChain.set).toHaveBeenCalledWith({
-        title: '新标题',
-        metadata: { pinned: true },
-        updatedAt: NOW,
-      });
+      const setArg = updateChain.set.mock.calls[0][0];
+      expect(setArg).toMatchObject({ title: '新标题', updatedAt: NOW });
+      // D-059：metadata 替换调用方键，同时在 SQL 内保留运行态 execution
+      const query = new PgDialect().sqlToQuery(setArg.metadata);
+      expect(query.sql).toContain(
+        `jsonb_build_object('execution', "agent_conversations"."metadata" -> 'execution')`,
+      );
+      expect(query.params).toEqual([JSON.stringify({ pinned: true })]);
       expect(result.data).toMatchObject({
         id: CONVERSATION_ID,
         title: '新标题',
         metadata: { pinned: true },
       });
+    });
+
+    it('metadata 不接受保留键 execution（D-059）', () => {
+      expect(
+        UpdateConversationSchema.safeParse({
+          metadata: { execution: { runningState: 'running' } },
+        }).success,
+      ).toBe(false);
+      expect(
+        UpdateConversationSchema.safeParse({ metadata: { k: 1 } }).success,
+      ).toBe(true);
     });
 
     it('空更新只应刷新 updatedAt，且找不到对话时抛错', async () => {

@@ -60,12 +60,12 @@ import {
 import { isTerminalStreamEvent } from './agent-api-sse.util';
 import type { AgentApiKeyContext } from './agent-api.types';
 import {
-  AGENT_API_RESERVED_CONVERSATION_METADATA_KEYS,
   type AgentApiPageQuery,
   type CreateAgentApiConversationDto,
   type CreateAgentApiRunDto,
   type ListAgentApiConversationsQuery,
 } from './dto/agent-api-request.dto';
+import { RESERVED_CONVERSATION_METADATA_KEYS } from '../agent-conversation/dto/update-conversation.dto';
 import type {
   AgentApiBoundAgent,
   AgentApiConversation,
@@ -964,9 +964,9 @@ function toConversationDto(row: AgentConversation): AgentApiConversation {
   const metadata = Object.fromEntries(
     Object.entries(row.metadata ?? {}).filter(
       ([field]) =>
-        !(
-          AGENT_API_RESERVED_CONVERSATION_METADATA_KEYS as readonly string[]
-        ).includes(field),
+        !(RESERVED_CONVERSATION_METADATA_KEYS as readonly string[]).includes(
+          field,
+        ),
     ),
   );
 
