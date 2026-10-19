@@ -1,4 +1,3 @@
-import type { QdrantClient } from '@qdrant/js-client-rest';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -14,17 +13,17 @@ import {
   eloUpdateRating,
 } from '../strategies/ml/ml-math.utils';
 import { MlpTrainerService } from './mlp-trainer.service';
+import type { RoutingMemoryStore } from './routing-memory.store';
 import {
   DEFAULT_ROUTING_LEARNING_CONFIG,
   ROUTING_LEARNING_JOB_NAME,
   ROUTING_LEARNING_QUEUE,
-  ROUTING_MEMORY_COLLECTION,
   type RoutingLearningConfig,
   type RoutingLearningJob,
 } from './routing-learning.types';
 
 type RoutingLearningDb = Pick<DrizzleDB, 'select' | 'update'>;
-type RoutingMemoryClient = Pick<QdrantClient, 'upsert'>;
+type RoutingMemoryWriter = Pick<RoutingMemoryStore, 'upsert'>;
 type EmbeddingServiceLike = Pick<
   EmbeddingIntegrationService,
   'generateEmbedding'
@@ -86,7 +85,7 @@ export class RoutingLearningWorker extends WorkerHost {
   constructor(
     private readonly db: RoutingLearningDb,
     private readonly embeddingService: EmbeddingServiceLike,
-    private readonly qdrantClient: RoutingMemoryClient,
+    private readonly memoryStore: RoutingMemoryWriter,
     private readonly mlpTrainerService: MlpTrainerService,
     config?: RoutingLearningConfig,
   ) {
@@ -176,23 +175,18 @@ export class RoutingLearningWorker extends WorkerHost {
     performanceScore: number,
   ): Promise<void> {
     try {
-      await this.qdrantClient.upsert(ROUTING_MEMORY_COLLECTION, {
-        wait: false,
-        points: [
-          {
-            id: job.routingDecisionId,
-            vector: queryEmbedding,
-            payload: {
-              tenant_id: job.tenantId,
-              model_id: job.selectedModelId,
-              task_category: job.taskCategory ?? 'general',
-              performance_score: performanceScore,
-              token_count: job.actualPerformance.tokenCount,
-              latency_ms: job.actualPerformance.latencyMs,
-              created_at: new Date().toISOString(),
-            },
-          },
-        ],
+      await this.memoryStore.upsert({
+        id: job.routingDecisionId,
+        vector: queryEmbedding,
+        payload: {
+          tenant_id: job.tenantId,
+          model_id: job.selectedModelId,
+          task_category: job.taskCategory ?? 'general',
+          performance_score: performanceScore,
+          token_count: job.actualPerformance.tokenCount,
+          latency_ms: job.actualPerformance.latencyMs,
+          created_at: new Date().toISOString(),
+        },
       });
     } catch (error: unknown) {
       this.logger.error(

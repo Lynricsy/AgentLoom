@@ -1,4 +1,3 @@
-import type { QdrantClient } from '@qdrant/js-client-rest';
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -6,12 +5,11 @@ import type { DrizzleDB } from '../../../../database/database.module';
 import { routerModels } from '../../../../database/schema/router-models.schema';
 import { routingBenchmarks } from '../../../../database/schema/routing-benchmarks.schema';
 import type { EmbeddingIntegrationService } from '../../embedding/embedding.service';
+import type { RoutingMemoryStore } from '../../learning/routing-memory.store';
 import { BaseRouterStrategy } from '../../core/base-router-strategy';
 import type { RoutingCandidate } from '../../core/routing-candidate';
 import type { RoutingContext } from '../../core/routing-context';
 import type { RoutingDecision, ModelScore } from '../../core/routing-decision';
-
-const ROUTING_MEMORY_COLLECTION = 'routing_memory';
 
 const knnRouterConfigSchema = z.object({
   k: z.number().int().min(1).max(50).default(5),
@@ -20,7 +18,7 @@ const knnRouterConfigSchema = z.object({
 
 type KnnRouterConfig = z.infer<typeof knnRouterConfigSchema>;
 type RoutingDb = Pick<DrizzleDB, 'select'>;
-type RoutingMemoryClient = Pick<QdrantClient, 'search'>;
+type RoutingMemorySearch = Pick<RoutingMemoryStore, 'search'>;
 type EmbeddingServiceLike = Pick<
   EmbeddingIntegrationService,
   'generateEmbedding'
@@ -36,12 +34,6 @@ interface BenchmarkLookupRow {
   performanceScore: string | number;
   latencyMs: number;
   tokenCount: number;
-}
-
-interface QdrantSearchPoint {
-  id: string | number;
-  score: number;
-  payload?: Record<string, unknown> | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -89,7 +81,7 @@ export class KnnRouter extends BaseRouterStrategy {
 
   constructor(
     private readonly db: RoutingDb,
-    private readonly qdrantClient: RoutingMemoryClient,
+    private readonly memoryStore: RoutingMemorySearch,
     private readonly embeddingService: EmbeddingServiceLike,
     config: Partial<KnnRouterConfig> = {},
   ) {
@@ -157,15 +149,12 @@ export class KnnRouter extends BaseRouterStrategy {
     embedding: number[],
     config: KnnRouterConfig,
   ): Promise<RoutingDecision | null> {
-    const results = (await this.qdrantClient.search(ROUTING_MEMORY_COLLECTION, {
+    const results = await this.memoryStore.search({
+      tenantId: context.tenantId,
       vector: embedding,
       limit: config.k,
-      score_threshold: config.minScore,
-      filter: {
-        must: [{ key: 'tenant_id', match: { value: context.tenantId } }],
-      },
-      with_payload: true,
-    })) as QdrantSearchPoint[];
+      scoreThreshold: config.minScore,
+    });
 
     const scoreByCandidateId = new Map(
       candidates.map((candidate) => [candidate.id, 0]),

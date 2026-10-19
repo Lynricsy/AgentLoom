@@ -1,13 +1,8 @@
-import type { QdrantClient } from '@qdrant/js-client-rest';
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import {
-  QDRANT_CLIENT,
-  qdrantClientProvider,
-} from '../knowledge/qdrant.provider';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { LlmService } from '../llm/llm.service';
 import { LlmModule } from '../llm/llm.module';
@@ -30,6 +25,7 @@ import { EmbeddingModule } from './embedding/embedding.module';
 import { EmbeddingIntegrationService } from './embedding/embedding.service';
 import { RoutingLearningModule } from './learning/routing-learning.module';
 import { ROUTING_LEARNING_QUEUE } from './learning/routing-learning.types';
+import { RoutingMemoryStore } from './learning/routing-memory.store';
 import { SmartRoutingController } from './smart-routing.controller';
 import { SmartRoutingService } from './smart-routing.service';
 import { CostOptimizedRouter } from './strategies/cost-optimized.strategy';
@@ -50,7 +46,6 @@ import { WasmPluginRouter } from './strategies/wasm-plugin.strategy';
 
 type RoutingSelectDb = Pick<DrizzleDB, 'select'>;
 type CircuitBreakerDb = Pick<DrizzleDB, 'select' | 'insert'>;
-type RoutingQdrantClient = Pick<QdrantClient, 'search'>;
 
 class MemoryBankAliasRouter extends BaseRouterStrategy {
   readonly name = 'memory_bank';
@@ -112,7 +107,6 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
   ],
   controllers: [SmartRoutingController],
   providers: [
-    qdrantClientProvider,
     {
       provide: CircuitBreakerService,
       useFactory: (db: CircuitBreakerDb) => new CircuitBreakerService(db),
@@ -141,10 +135,10 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
       provide: KnnRouter,
       useFactory: (
         db: RoutingSelectDb,
-        qdrantClient: RoutingQdrantClient,
+        memoryStore: RoutingMemoryStore,
         embeddingService: EmbeddingIntegrationService,
-      ) => new KnnRouter(db, qdrantClient, embeddingService),
-      inject: [DRIZZLE, QDRANT_CLIENT, EmbeddingIntegrationService],
+      ) => new KnnRouter(db, memoryStore, embeddingService),
+      inject: [DRIZZLE, RoutingMemoryStore, EmbeddingIntegrationService],
     },
     {
       provide: MlpRouter,
@@ -163,13 +157,13 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
       provide: MemoryBankAliasRouter,
       useFactory: (
         db: RoutingSelectDb,
-        qdrantClient: RoutingQdrantClient,
+        memoryStore: RoutingMemoryStore,
         embeddingService: EmbeddingIntegrationService,
       ) =>
         new MemoryBankAliasRouter(
-          new MemoryBankRouter(db, qdrantClient, embeddingService),
+          new MemoryBankRouter(db, memoryStore, embeddingService),
         ),
-      inject: [DRIZZLE, QDRANT_CLIENT, EmbeddingIntegrationService],
+      inject: [DRIZZLE, RoutingMemoryStore, EmbeddingIntegrationService],
     },
     {
       provide: FallbackChainRouter,

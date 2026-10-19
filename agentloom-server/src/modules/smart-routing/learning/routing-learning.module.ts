@@ -8,6 +8,7 @@ import { EmbeddingModule } from '../embedding/embedding.module';
 import { EmbeddingIntegrationService } from '../embedding/embedding.service';
 import { MlpTrainerService } from './mlp-trainer.service';
 import { RoutingLearningProducer } from './routing-learning.producer';
+import { RoutingMemoryStore } from './routing-memory.store';
 import {
   DEFAULT_ROUTING_LEARNING_CONFIG,
   ROUTING_LEARNING_CONFIG_TOKEN,
@@ -31,6 +32,7 @@ import { RoutingLearningWorker } from './routing-learning.worker';
       useValue: DEFAULT_ROUTING_LEARNING_CONFIG,
     },
     qdrantClientProvider,
+    RoutingMemoryStore,
     RoutingLearningProducer,
     {
       provide: MlpTrainerService,
@@ -48,26 +50,26 @@ import { RoutingLearningWorker } from './routing-learning.worker';
       useFactory: (
         db: ConstructorParameters<typeof RoutingLearningWorker>[0],
         embeddingService: EmbeddingIntegrationService,
-        qdrantClient: ConstructorParameters<typeof RoutingLearningWorker>[2],
+        memoryStore: RoutingMemoryStore,
         mlpTrainerService: MlpTrainerService,
         config?: ConstructorParameters<typeof RoutingLearningWorker>[4],
       ) =>
         new RoutingLearningWorker(
           db,
           embeddingService,
-          qdrantClient,
+          memoryStore,
           mlpTrainerService,
           config,
         ),
       inject: [
         DRIZZLE,
         EmbeddingIntegrationService,
-        qdrantClientProvider.provide,
+        RoutingMemoryStore,
         MlpTrainerService,
         { token: ROUTING_LEARNING_CONFIG_TOKEN, optional: true },
       ],
     },
   ],
-  exports: [RoutingLearningProducer, MlpTrainerService],
+  exports: [RoutingLearningProducer, MlpTrainerService, RoutingMemoryStore],
 })
 export class RoutingLearningModule {}

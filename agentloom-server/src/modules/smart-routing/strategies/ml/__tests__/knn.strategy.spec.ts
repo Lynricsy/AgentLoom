@@ -80,7 +80,7 @@ function createMockEmbeddingService() {
   };
 }
 
-function createMockQdrantClient() {
+function createMockMemoryStore() {
   return {
     search: vi.fn(),
   };
@@ -95,8 +95,8 @@ describe('KnnRouter', () => {
     ];
     const db = createMockDb([[], []]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValueOnce([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValueOnce([
       {
         id: 'neighbor-1',
         score: 0.95,
@@ -114,21 +114,18 @@ describe('KnnRouter', () => {
       },
     ]);
 
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService, {
+    const router = new KnnRouter(db.db, memoryStore, embeddingService, {
       k: 3,
       minScore: 0.5,
     });
 
     const decision = await router.routeSingle(candidates, createContext());
 
-    expect(qdrantClient.search).toHaveBeenCalledWith('routing_memory', {
+    expect(memoryStore.search).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
       vector: [0.1, 0.2, 0.3],
       limit: 3,
-      score_threshold: 0.5,
-      filter: {
-        must: [{ key: 'tenant_id', match: { value: 'tenant-1' } }],
-      },
-      with_payload: true,
+      scoreThreshold: 0.5,
     });
     expect(decision.selectedModelId).toBe('candidate-a');
 
@@ -182,10 +179,10 @@ describe('KnnRouter', () => {
       ],
     ]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValueOnce([]);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValueOnce([]);
 
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService, {
+    const router = new KnnRouter(db.db, memoryStore, embeddingService, {
       k: 5,
       minScore: 0.5,
     });
@@ -204,8 +201,8 @@ describe('KnnRouter', () => {
     const db = createMockDb([[], []]);
     const embeddingService = createMockEmbeddingService();
     embeddingService.generateEmbedding.mockResolvedValue([0.7, 0.8]);
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([
       {
         id: 1,
         score: 0.8,
@@ -217,7 +214,7 @@ describe('KnnRouter', () => {
         payload: { model_id: 'config-b', performance_score: -2 },
       },
     ]);
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService, {
+    const router = new KnnRouter(db.db, memoryStore, embeddingService, {
       k: 5,
       minScore: 0.5,
     });
@@ -234,14 +231,12 @@ describe('KnnRouter', () => {
       '实现流式推理代理',
       'tenant-1',
     );
-    expect(qdrantClient.search).toHaveBeenCalledWith(
-      'routing_memory',
-      expect.objectContaining({
-        vector: [0.7, 0.8],
-        limit: 2,
-        score_threshold: 0.75,
-      }),
-    );
+    expect(memoryStore.search).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      vector: [0.7, 0.8],
+      limit: 2,
+      scoreThreshold: 0.75,
+    });
     expect(decision.selectedModelId).toBe('candidate-a');
     expect(decision.scores.map(({ score }) => score)).toEqual([100, 0]);
   });
@@ -253,14 +248,14 @@ describe('KnnRouter', () => {
     ];
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([
       { id: 1, score: 1, payload: null },
       { id: 2, score: 1, payload: [] },
       { id: 3, score: 1, payload: { model_id: '' } },
       { id: 4, score: 1, payload: { model_id: 'unknown' } },
     ]);
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService);
+    const router = new KnnRouter(db.db, memoryStore, embeddingService);
 
     const decision = await router.routeSingle(candidates, createContext());
 
@@ -278,8 +273,8 @@ describe('KnnRouter', () => {
     ];
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([
       {
         id: 1,
         score: 0.5,
@@ -296,7 +291,7 @@ describe('KnnRouter', () => {
         payload: { model_id: 'config-c', performance_score: 'not-a-number' },
       },
     ]);
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService);
+    const router = new KnnRouter(db.db, memoryStore, embeddingService);
 
     const decision = await router.routeSingle(candidates, createContext());
 
@@ -344,8 +339,8 @@ describe('KnnRouter', () => {
       ],
     ]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService);
+    const memoryStore = createMockMemoryStore();
+    const router = new KnnRouter(db.db, memoryStore, embeddingService);
 
     const decision = await router.routeSingle(
       candidates,
@@ -353,7 +348,7 @@ describe('KnnRouter', () => {
     );
 
     expect(embeddingService.generateEmbedding).not.toHaveBeenCalled();
-    expect(qdrantClient.search).not.toHaveBeenCalled();
+    expect(memoryStore.search).not.toHaveBeenCalled();
     expect(decision.selectedModelId).toBe('candidate-a');
     expect(decision.scores.map(({ score }) => score)).toEqual([50, 0, 0]);
   });
@@ -391,9 +386,9 @@ describe('KnnRouter', () => {
     ];
     const db = createMockDb(dbResults);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([]);
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([]);
+    const router = new KnnRouter(db.db, memoryStore, embeddingService);
 
     const decision = await router.routeSingle(candidates, createContext());
 
@@ -404,11 +399,9 @@ describe('KnnRouter', () => {
   it('记忆检索失败时应向调用方暴露错误而不是伪造选择', async () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockRejectedValue(
-      new Error('vector store unavailable'),
-    );
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockRejectedValue(new Error('vector store unavailable'));
+    const router = new KnnRouter(db.db, memoryStore, embeddingService);
 
     await expect(
       router.routeSingle(
@@ -422,9 +415,9 @@ describe('KnnRouter', () => {
   it('空候选集应拒绝产生无模型决策', async () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([]);
-    const router = new KnnRouter(db.db, qdrantClient, embeddingService);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([]);
+    const router = new KnnRouter(db.db, memoryStore, embeddingService);
 
     await expect(
       router.routeSingle([], createContext()),

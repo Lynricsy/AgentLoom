@@ -69,7 +69,7 @@ function createMockEmbeddingService() {
   };
 }
 
-function createMockQdrantClient() {
+function createMockMemoryStore() {
   return {
     search: vi.fn(),
   };
@@ -79,8 +79,8 @@ describe('MemoryBankRouter', () => {
   it('应该按 α/β/γ 加权评分选择 combined score 最高的模型', async () => {
     const db = createMockDb([[], []]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValueOnce([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValueOnce([
       {
         id: 'memory-1',
         score: 0.95,
@@ -112,7 +112,7 @@ describe('MemoryBankRouter', () => {
         },
       },
     ]);
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService, {
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService, {
       alpha: 0.5,
       beta: 0.3,
       gamma: 0.2,
@@ -125,14 +125,10 @@ describe('MemoryBankRouter', () => {
 
     const decision = await router.routeSingle(candidates, createContext());
 
-    expect(qdrantClient.search).toHaveBeenCalledWith('routing_memory', {
+    expect(memoryStore.search).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
       vector: [0.3, 0.2, 0.1],
       limit: 3,
-      score_threshold: undefined,
-      filter: {
-        must: [{ key: 'tenant_id', match: { value: 'tenant-1' } }],
-      },
-      with_payload: true,
     });
     expect(decision.selectedModelId).toBe('candidate-b');
 
@@ -146,8 +142,8 @@ describe('MemoryBankRouter', () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
     embeddingService.generateEmbedding.mockResolvedValue([0.9, 0.8]);
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([
       {
         id: 1,
         score: 1,
@@ -172,7 +168,7 @@ describe('MemoryBankRouter', () => {
       createCandidate('candidate-a', 'config-a', { input: 0.1, output: 0 }),
       createCandidate('candidate-b', 'config-b', { input: 0.1, output: 0 }),
     ];
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService, {
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService, {
       alpha: 1,
       beta: 0,
       gamma: 0,
@@ -191,10 +187,11 @@ describe('MemoryBankRouter', () => {
       '选择适合长上下文总结的模型',
       'tenant-1',
     );
-    expect(qdrantClient.search).toHaveBeenCalledWith(
-      'routing_memory',
-      expect.objectContaining({ vector: [0.9, 0.8], limit: 2 }),
-    );
+    expect(memoryStore.search).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      vector: [0.9, 0.8],
+      limit: 2,
+    });
     expect(decision.selectedModelId).toBe('candidate-a');
     expect(decision.scores.map(({ score }) => score)).toEqual([100, 0]);
   });
@@ -202,8 +199,8 @@ describe('MemoryBankRouter', () => {
   it('应忽略畸形与未知记忆并按质量回退', async () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([
       { id: 1, score: 1, payload: null },
       { id: 2, score: 1, payload: [] },
       { id: 3, score: 1, payload: { model_id: '' } },
@@ -215,7 +212,7 @@ describe('MemoryBankRouter', () => {
     ];
     candidates[0].routingMeta.qualityRank = 0;
     candidates[1].routingMeta.qualityRank = 0;
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService);
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService);
 
     const decision = await router.routeSingle(candidates, createContext());
 
@@ -227,8 +224,8 @@ describe('MemoryBankRouter', () => {
   it('归一化分母为零时应保持有限分数，组合分数相同则保持候选顺序', async () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([
       {
         id: 1,
         score: 1,
@@ -265,7 +262,7 @@ describe('MemoryBankRouter', () => {
       createCandidate('candidate-b', 'config-b', { input: 0, output: 0 }),
       createCandidate('candidate-c', 'config-c', { input: 0, output: 0 }),
     ];
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService, {
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService, {
       alpha: 0.5,
       beta: 0.3,
       gamma: 0.2,
@@ -315,13 +312,13 @@ describe('MemoryBankRouter', () => {
       ],
     ]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
+    const memoryStore = createMockMemoryStore();
     const candidates = [
       createCandidate('candidate-a', 'config-a', { input: 0, output: 0 }),
       createCandidate('candidate-b', 'config-b', { input: 0, output: 0 }),
       createCandidate('candidate-c', 'config-c', { input: 0, output: 0 }),
     ];
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService, {
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService, {
       alpha: 1,
       beta: 0,
       gamma: 0,
@@ -333,7 +330,7 @@ describe('MemoryBankRouter', () => {
     );
 
     expect(embeddingService.generateEmbedding).not.toHaveBeenCalled();
-    expect(qdrantClient.search).not.toHaveBeenCalled();
+    expect(memoryStore.search).not.toHaveBeenCalled();
     expect(decision.selectedModelId).toBe('candidate-a');
     expect(decision.reasoning).toContain('冷启动');
     expect(decision.scores.map(({ score }) => score)).toEqual([50, 0, 0]);
@@ -368,15 +365,15 @@ describe('MemoryBankRouter', () => {
   ])('$name 时应按质量分数回退', async ({ dbResults }) => {
     const db = createMockDb(dbResults);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([]);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([]);
     const candidates = [
       createCandidate('candidate-a', 'config-a', { input: 0, output: 0 }),
       createCandidate('candidate-b', 'config-b', { input: 0, output: 0 }),
     ];
     candidates[0].routingMeta.qualityRank = 50;
     candidates[1].routingMeta.qualityRank = 100;
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService);
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService);
 
     const decision = await router.routeSingle(candidates, createContext());
 
@@ -387,9 +384,9 @@ describe('MemoryBankRouter', () => {
   it('记忆检索失败时应暴露存储错误且不访问冷启动数据', async () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockRejectedValue(new Error('memory retrieval failed'));
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockRejectedValue(new Error('memory retrieval failed'));
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService);
 
     await expect(
       router.routeSingle(
@@ -408,9 +405,9 @@ describe('MemoryBankRouter', () => {
   it('空候选集应拒绝产生无模型决策', async () => {
     const db = createMockDb([[]]);
     const embeddingService = createMockEmbeddingService();
-    const qdrantClient = createMockQdrantClient();
-    qdrantClient.search.mockResolvedValue([]);
-    const router = new MemoryBankRouter(db.db, qdrantClient, embeddingService);
+    const memoryStore = createMockMemoryStore();
+    memoryStore.search.mockResolvedValue([]);
+    const router = new MemoryBankRouter(db.db, memoryStore, embeddingService);
 
     await expect(
       router.routeSingle([], createContext()),

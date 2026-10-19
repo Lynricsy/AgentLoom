@@ -21,13 +21,13 @@ vi.mock('../../../../common/interceptors/tenant-transaction.context', () => ({
 
 const {
   createMockEmbeddingService,
-  createMockQdrantClient,
+  createMockMemoryStore,
   createMockMlpTrainer,
 } = vi.hoisted(() => ({
   createMockEmbeddingService: () => ({
     generateEmbedding: vi.fn(),
   }),
-  createMockQdrantClient: () => ({
+  createMockMemoryStore: () => ({
     upsert: vi.fn(),
   }),
   createMockMlpTrainer: () => ({
@@ -43,13 +43,13 @@ type MockDb = {
 function createWorker(
   db: MockDb,
   embeddingService: ReturnType<typeof createMockEmbeddingService>,
-  qdrantClient: ReturnType<typeof createMockQdrantClient>,
+  memoryStore: ReturnType<typeof createMockMemoryStore>,
   mlpTrainer: ReturnType<typeof createMockMlpTrainer>,
 ) {
   return new RoutingLearningWorker(
     db as unknown as ConstructorParameters<typeof RoutingLearningWorker>[0],
     embeddingService,
-    qdrantClient,
+    memoryStore,
     mlpTrainer as unknown as MlpTrainerService,
   );
 }
@@ -124,13 +124,13 @@ function createMockDb(options: {
 
 describe('RoutingLearningWorker', () => {
   let embeddingService: ReturnType<typeof createMockEmbeddingService>;
-  let qdrantClient: ReturnType<typeof createMockQdrantClient>;
+  let memoryStore: ReturnType<typeof createMockMemoryStore>;
   let mlpTrainer: ReturnType<typeof createMockMlpTrainer>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     embeddingService = createMockEmbeddingService();
-    qdrantClient = createMockQdrantClient();
+    memoryStore = createMockMemoryStore();
     mlpTrainer = createMockMlpTrainer();
     embeddingService.generateEmbedding.mockResolvedValue([0.1, 0.2]);
     mlpTrainer.recordSample.mockResolvedValue({ batchProcessed: false });
@@ -164,30 +164,24 @@ describe('RoutingLearningWorker', () => {
       ],
       updateResults: [[{ id: 'router-a' }]],
     });
-    const worker = createWorker(db, embeddingService, qdrantClient, mlpTrainer);
+    const worker = createWorker(db, embeddingService, memoryStore, mlpTrainer);
 
     await worker.process(createJob());
 
-    const upsertPayload = qdrantClient.upsert.mock.calls[0]?.[1];
-    const performanceScore =
-      upsertPayload?.points?.[0]?.payload?.performance_score;
+    const upsertRecord = memoryStore.upsert.mock.calls[0]?.[0];
+    const performanceScore = upsertRecord?.payload?.performance_score;
 
-    expect(qdrantClient.upsert).toHaveBeenCalledWith('routing_memory', {
-      wait: false,
-      points: [
-        expect.objectContaining({
-          id: 'decision-1',
-          vector: [0.1, 0.2],
-          payload: expect.objectContaining({
-            tenant_id: 'tenant-1',
-            model_id: 'model-a',
-            task_category: 'reasoning',
-            performance_score: expect.any(Number),
-            token_count: 1_000,
-            latency_ms: 400,
-          }),
-        }),
-      ],
+    expect(memoryStore.upsert).toHaveBeenCalledWith({
+      id: 'decision-1',
+      vector: [0.1, 0.2],
+      payload: expect.objectContaining({
+        tenant_id: 'tenant-1',
+        model_id: 'model-a',
+        task_category: 'reasoning',
+        performance_score: expect.any(Number),
+        token_count: 1_000,
+        latency_ms: 400,
+      }),
     });
     expect(performanceScore).toBeCloseTo(0.8083333333333333, 10);
     expect(db.update).toHaveBeenCalledTimes(1);
@@ -247,7 +241,7 @@ describe('RoutingLearningWorker', () => {
       ],
       updateResults: [[], [{ id: 'router-a' }]],
     });
-    const worker = createWorker(db, embeddingService, qdrantClient, mlpTrainer);
+    const worker = createWorker(db, embeddingService, memoryStore, mlpTrainer);
 
     await worker.process(createJob());
 
@@ -283,17 +277,17 @@ describe('RoutingLearningWorker', () => {
       ],
       updateResults: [[{ id: 'router-a' }]],
     });
-    const worker = createWorker(db, embeddingService, qdrantClient, mlpTrainer);
+    const worker = createWorker(db, embeddingService, memoryStore, mlpTrainer);
 
     await worker.process(createJob());
 
-    expect(qdrantClient.upsert).not.toHaveBeenCalled();
+    expect(memoryStore.upsert).not.toHaveBeenCalled();
     expect(db.update).toHaveBeenCalledTimes(1);
     expect(mlpTrainer.recordSample).not.toHaveBeenCalled();
   });
 
   it('Qdrant upsert 失败时应记录错误但不中断后续流程', async () => {
-    qdrantClient.upsert.mockRejectedValueOnce(new Error('qdrant down'));
+    memoryStore.upsert.mockRejectedValueOnce(new Error('qdrant down'));
     const db = createMockDb({
       selectResults: [
         [
@@ -321,7 +315,7 @@ describe('RoutingLearningWorker', () => {
       ],
       updateResults: [[{ id: 'router-a' }]],
     });
-    const worker = createWorker(db, embeddingService, qdrantClient, mlpTrainer);
+    const worker = createWorker(db, embeddingService, memoryStore, mlpTrainer);
 
     await expect(worker.process(createJob())).resolves.toBeUndefined();
 
