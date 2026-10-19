@@ -10,6 +10,7 @@ import {
 } from '../knowledge-base-config';
 import {
   KnowledgeBaseNotFoundException,
+  KnowledgeEmbeddingModelInvalidException,
   KnowledgeEmbeddingModelNotConfiguredException,
 } from '../knowledge.exceptions';
 import { KnowledgeBaseService } from '../knowledge-base.service';
@@ -174,22 +175,27 @@ describe('KnowledgeBaseService behavior contracts', () => {
     );
   });
 
-  it('create rejects a configured chat model before writing storage', async () => {
+  it('create rejects a configured chat model with 422 before writing storage', async () => {
     llm.findById.mockResolvedValue({
       id: 'chat',
       modelId: 'chat',
       modelType: 'chat',
     });
-    await expect(
-      service.create(
+    const error = await service
+      .create(
         createKnowledgeBaseDto({
           name: 'Invalid',
           embeddingModelConfigId: 'chat',
         }),
         TENANT_ID,
         USER_ID,
-      ),
-    ).rejects.toThrow('知识库只能绑定 Embedding 模型配置');
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(KnowledgeEmbeddingModelInvalidException);
+    expect((error as KnowledgeEmbeddingModelInvalidException).getStatus()).toBe(
+      422,
+    );
     expect(db.insert).not.toHaveBeenCalled();
   });
 

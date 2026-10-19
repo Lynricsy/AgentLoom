@@ -16,6 +16,7 @@ import { EMBEDDING_MODEL } from './knowledge.constants';
 import { CreateKnowledgeBaseDto, UpdateKnowledgeBaseSettingsDto } from './dto';
 import {
   KnowledgeBaseNotFoundException,
+  KnowledgeEmbeddingModelInvalidException,
   KnowledgeEmbeddingModelNotConfiguredException,
 } from './knowledge.exceptions';
 import {
@@ -370,7 +371,10 @@ export class KnowledgeBaseService {
         tenantId,
       );
       if (config.modelType !== 'embedding') {
-        throw new Error('知识库只能绑定 Embedding 模型配置');
+        throw new KnowledgeEmbeddingModelInvalidException(
+          config.id,
+          config.modelType,
+        );
       }
       return {
         modelName: config.modelId,

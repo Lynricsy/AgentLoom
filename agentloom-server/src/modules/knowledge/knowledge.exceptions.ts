@@ -120,3 +120,14 @@ export class KnowledgeEmbeddingModelNotConfiguredException extends DomainExcepti
     });
   }
 }
+
+export class KnowledgeEmbeddingModelInvalidException extends DomainException {
+  constructor(modelConfigId: string, modelType: string) {
+    super({
+      type: problemType('knowledge-base-embedding-model-invalid'),
+      title: 'Embedding 模型配置无效',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `模型配置 ${modelConfigId} 的类型为 ${modelType}，知识库只能绑定 Embedding 模型配置`,
+    });
+  }
+}
