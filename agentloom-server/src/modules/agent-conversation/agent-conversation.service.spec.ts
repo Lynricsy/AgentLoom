@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { PgDialect } from 'drizzle-orm/pg-core';
@@ -14,6 +14,14 @@ import {
 import { AGENT_RUNTIME } from '../agent/ports/agent-runtime.port';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
+import {
+  AgentArchivedException,
+  AgentNotFoundException,
+} from '../agent-definition/agent-definition.exceptions';
+import {
+  ConversationEndedException,
+  ConversationNotFoundException,
+} from './agent-conversation.exceptions';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   hasActiveTenantTransaction: vi.fn(() => false),
@@ -211,12 +219,24 @@ describe('AgentConversationService', () => {
       });
     });
 
-    it('Agent 不存在时应抛出 NotFoundException', async () => {
+    it('Agent 不存在时应抛出 agent-not-found', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
         service.create(AGENT_ID, TENANT_ID, USER_ID, {}),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(AgentNotFoundException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('Agent 已归档时应抛出 agent-archived（D-057）', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ status: 'archived' }]),
+      );
+
+      await expect(
+        service.create(AGENT_ID, TENANT_ID, USER_ID, {}),
+      ).rejects.toBeInstanceOf(AgentArchivedException);
 
       expect(db.insert).not.toHaveBeenCalled();
     });
@@ -313,6 +333,22 @@ describe('AgentConversationService', () => {
         'agent-conversation.message-sent',
         expect.anything(),
       );
+    });
+
+    it('已归档 Agent 不能开始新对话，也不会写消息或触发执行（D-057）', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ status: 'archived' }]),
+      );
+
+      await expect(
+        service.startConversation(AGENT_ID, TENANT_ID, USER_ID, {
+          content: 'hi',
+          contentType: 'text',
+        }),
+      ).rejects.toBeInstanceOf(AgentArchivedException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
   });
 
@@ -445,11 +481,11 @@ describe('AgentConversationService', () => {
       });
     });
 
-    it('对话不存在时应抛出 NotFoundException', async () => {
+    it('对话不存在时应抛出 conversation-not-found', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.getDetail(CONVERSATION_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        ConversationNotFoundException,
       );
     });
 
@@ -508,19 +544,19 @@ describe('AgentConversationService', () => {
       });
     });
 
-    it('对话不存在时应抛出 NotFoundException', async () => {
+    it('对话不存在时应抛出 conversation-not-found', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
         service.sendMessage(CONVERSATION_ID, TENANT_ID, {
           content: '你好',
         } as any),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(ConversationNotFoundException);
 
       expect(db.insert).not.toHaveBeenCalled();
     });
 
-    it('对话非活跃时应抛出 NotFoundException', async () => {
+    it('对话已结束时应抛出 409 conversation-ended（D-093）', async () => {
       db.select.mockReturnValueOnce(
         createSelectChain([{ id: CONVERSATION_ID, status: 'ended' }]),
       );
@@ -529,7 +565,7 @@ describe('AgentConversationService', () => {
         service.sendMessage(CONVERSATION_ID, TENANT_ID, {
           content: '你好',
         } as any),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(ConversationEndedException);
 
       expect(db.insert).not.toHaveBeenCalled();
     });
@@ -755,11 +791,23 @@ describe('AgentConversationService', () => {
       });
     });
 
-    it('活跃对话不存在时应抛出 NotFoundException', async () => {
+    it('对话不存在时应抛出 conversation-not-found', async () => {
       db.update.mockReturnValueOnce(createUpdateChain([]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.cancel(CONVERSATION_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        ConversationNotFoundException,
+      );
+    });
+
+    it('对话已结束时应抛出 conversation-ended', async () => {
+      db.update.mockReturnValueOnce(createUpdateChain([]));
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ id: CONVERSATION_ID, status: 'ended' }]),
+      );
+
+      await expect(service.cancel(CONVERSATION_ID)).rejects.toBeInstanceOf(
+        ConversationEndedException,
       );
     });
 
@@ -829,11 +877,11 @@ describe('AgentConversationService', () => {
       });
     });
 
-    it('对话不存在时应抛出 NotFoundException', async () => {
+    it('对话不存在时应抛出 conversation-not-found', async () => {
       db.update.mockReturnValueOnce(createUpdateChain([]));
 
       await expect(service.end(CONVERSATION_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        ConversationNotFoundException,
       );
     });
 
@@ -917,9 +965,9 @@ describe('AgentConversationService', () => {
     it('对话不存在时应拒绝读取消息', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.listMessages(CONVERSATION_ID)).rejects.toThrow(
-        `Conversation ${CONVERSATION_ID} not found`,
-      );
+      await expect(
+        service.listMessages(CONVERSATION_ID),
+      ).rejects.toBeInstanceOf(ConversationNotFoundException);
     });
   });
 
@@ -1096,12 +1144,12 @@ describe('AgentConversationService', () => {
       ).resolves.toEqual({ runtimeMode: row.runtimeMode ?? 'sandbox' });
     });
 
-    it('对话不存在时应抛出 NotFoundException', async () => {
+    it('对话不存在时应抛出 conversation-not-found', async () => {
       db.select.mockReturnValueOnce(createPermissionTargetSelectChain([]));
 
       await expect(
         service.getPermissionResolutionTarget(CONVERSATION_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(ConversationNotFoundException);
     });
   });
 
@@ -1141,7 +1189,7 @@ describe('AgentConversationService', () => {
 
       await expect(
         service.updateConversation(CONVERSATION_ID, TENANT_ID, {}),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(ConversationNotFoundException);
 
       expect(updateChain.set).toHaveBeenCalledWith({ updatedAt: NOW });
     });

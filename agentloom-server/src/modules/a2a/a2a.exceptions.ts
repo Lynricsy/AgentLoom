@@ -11,11 +11,11 @@ import {
   AgentNotPublishedException,
   ConcurrencyLimitExceededException,
   ConversationBusyException,
-  ConversationEndedException,
   IdempotencyKeyReusedException,
   RateLimitExceededException,
   RunNotCancellableException,
 } from '../agent-api/agent-api.exceptions';
+import { ConversationEndedException } from '../agent-conversation/agent-conversation.exceptions';
 import {
   A2A_ERRORS,
   JSON_RPC_ERRORS,

@@ -84,17 +84,6 @@ export class AgentApiRunNotFoundException extends DomainException {
   }
 }
 
-export class ConversationEndedException extends DomainException {
-  constructor(conversationId: string) {
-    super({
-      type: problemType('conversation-ended'),
-      title: 'Conflict',
-      status: HttpStatus.CONFLICT,
-      detail: `Conversation ${conversationId} has ended`,
-    });
-  }
-}
-
 export class ConversationBusyException extends DomainException {
   constructor(activeRunId: string) {
     super({

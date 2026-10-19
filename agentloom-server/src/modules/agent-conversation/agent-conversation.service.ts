@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 
@@ -26,6 +26,14 @@ import {
 } from '../agent/ports/agent-runtime.port';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
+import {
+  AgentArchivedException,
+  AgentNotFoundException,
+} from '../agent-definition/agent-definition.exceptions';
+import {
+  ConversationEndedException,
+  ConversationNotFoundException,
+} from './agent-conversation.exceptions';
 import type { CreateConversationDto } from './dto/create-conversation.dto';
 import type { StartConversationDto } from './dto/start-conversation.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
@@ -79,20 +87,22 @@ export class AgentConversationService {
     this.eventEmitter.emit('agent-conversation.ended', payload);
   }
 
-  private async ensureAgentExists(
+  /** 新对话只能建在当前租户内存在且未归档的 Agent 上 */
+  private async assertAgentAcceptsConversations(
     dbClient: ConversationDbClient,
     agentDefinitionId: string,
   ): Promise<void> {
     const [agent] = await dbClient
-      .select({ id: agentDefinitions.id })
+      .select({ status: agentDefinitions.status })
       .from(agentDefinitions)
       .where(eq(agentDefinitions.id, agentDefinitionId))
       .limit(1);
 
     if (!agent) {
-      throw new NotFoundException(
-        `Agent definition ${agentDefinitionId} not found`,
-      );
+      throw new AgentNotFoundException(agentDefinitionId);
+    }
+    if (agent.status === 'archived') {
+      throw new AgentArchivedException(agentDefinitionId);
     }
   }
 
@@ -131,13 +141,11 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
     }
 
     if (conversation.status !== 'active') {
-      throw new NotFoundException(
-        `Conversation ${conversationId} is not active (status: ${conversation.status})`,
-      );
+      throw new ConversationEndedException(conversationId);
     }
   }
 
@@ -211,7 +219,10 @@ export class AgentConversationService {
     userId: string,
     dto: CreateConversationDto,
   ) {
-    await this.ensureAgentExists(this.tenantDb, agentDefinitionId);
+    await this.assertAgentAcceptsConversations(
+      this.tenantDb,
+      agentDefinitionId,
+    );
 
     const conversation = await this.insertConversationRecord(
       this.tenantDb,
@@ -236,7 +247,7 @@ export class AgentConversationService {
   ) {
     const { conversation, message } = await this.tenantDb.transaction(
       async (tx) => {
-        await this.ensureAgentExists(tx, agentDefinitionId);
+        await this.assertAgentAcceptsConversations(tx, agentDefinitionId);
 
         const conversation = await this.insertConversationRecord(
           tx,
@@ -343,7 +354,7 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
     }
 
     const offset = (page - 1) * limit;
@@ -385,7 +396,7 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
     }
 
     const offset = (messagesPage - 1) * messagesLimit;
@@ -519,7 +530,7 @@ export class AgentConversationService {
       .limit(1);
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
     }
 
     const executionRecord = this.readExecutionMetadata(conversation.metadata);
@@ -571,9 +582,9 @@ export class AgentConversationService {
       .returning();
 
     if (!conversation) {
-      throw new NotFoundException(
-        `Active conversation ${conversationId} not found`,
-      );
+      // 没有命中 active 行：不存在返回 404，已结束返回 409
+      await this.assertConversationIsActive(this.tenantDb, conversationId);
+      throw new ConversationEndedException(conversationId);
     }
 
     this.logger.log(`Conversation ${conversationId} cancelled`);
@@ -590,7 +601,7 @@ export class AgentConversationService {
       .returning();
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
     }
 
     this.logger.log(`Conversation ${conversationId} ended`);
@@ -618,7 +629,7 @@ export class AgentConversationService {
       .returning();
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
     }
 
     return { data: serializeConversation(conversation) };

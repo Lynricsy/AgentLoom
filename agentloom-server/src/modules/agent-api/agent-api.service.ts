@@ -42,6 +42,7 @@ import {
   type AgentConversationMessageSentEvent,
 } from '../agent-execution/agent-execution.service';
 import { SandboxMaintenanceException } from '../sandbox/sandbox.exceptions';
+import { ConversationEndedException } from '../agent-conversation/agent-conversation.exceptions';
 import {
   AgentApiAgentArchivedException,
   AgentApiConversationNotFoundException,
@@ -51,7 +52,6 @@ import {
   AgentNotPublishedException,
   ConcurrencyLimitExceededException,
   ConversationBusyException,
-  ConversationEndedException,
   IdempotencyKeyReusedException,
   RunDispatchFailedException,
   RunEventsExpiredException,
@@ -74,7 +74,8 @@ import type {
 } from './dto/agent-api-response.dto';
 
 const ACTIVE_RUN_STATUSES = ['queued', 'running'] as const;
-const TERMINAL_RUN_STATUSES: readonly string[] = AGENT_API_TERMINAL_RUN_STATUSES;
+const TERMINAL_RUN_STATUSES: readonly string[] =
+  AGENT_API_TERMINAL_RUN_STATUSES;
 const ACTIVE_CONVERSATION_RUN_CONSTRAINT =
   'uq_agent_api_runs_active_conversation';
 const IDEMPOTENCY_CONSTRAINT = 'uq_agent_api_runs_idempotency';
@@ -101,7 +102,12 @@ type RunTarget =
   | { newConversation: CreateAgentApiConversationDto };
 
 type InsertRunOutcome =
-  | { kind: 'created'; conversationId: string; runId: string; messageId: string }
+  | {
+      kind: 'created';
+      conversationId: string;
+      runId: string;
+      messageId: string;
+    }
   | { kind: 'replayed'; run: AgentApiRun };
 
 export interface CreateAgentApiRunResult {
@@ -532,9 +538,7 @@ export class AgentApiService {
       signal?.removeEventListener('abort', onExternalAbort);
     }
 
-    return (
-      outcome.run ?? (await this.getRun(key, run.conversationId, run.id))
-    );
+    return outcome.run ?? (await this.getRun(key, run.conversationId, run.id));
   }
 
   async listRuns(
@@ -960,9 +964,9 @@ function toConversationDto(row: AgentConversation): AgentApiConversation {
   const metadata = Object.fromEntries(
     Object.entries(row.metadata ?? {}).filter(
       ([field]) =>
-        !(AGENT_API_RESERVED_CONVERSATION_METADATA_KEYS as readonly string[]).includes(
-          field,
-        ),
+        !(
+          AGENT_API_RESERVED_CONVERSATION_METADATA_KEYS as readonly string[]
+        ).includes(field),
     ),
   );
 
@@ -1014,7 +1018,9 @@ function canonicalJson(value: unknown): string {
     return `{${Object.keys(record)
       .filter((field) => record[field] !== undefined)
       .sort()
-      .map((field) => `${JSON.stringify(field)}:${canonicalJson(record[field])}`)
+      .map(
+        (field) => `${JSON.stringify(field)}:${canonicalJson(record[field])}`,
+      )
       .join(',')}}`;
   }
   return JSON.stringify(value);
