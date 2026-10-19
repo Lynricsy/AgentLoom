@@ -599,6 +599,14 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       const execution = await loadExecution(run.executionId);
       expect(execution?.trigger_type).toBe('system');
       expect(execution?.input_params._meta.launchSource).toBe('evaluation');
+      // 终态事件即时结算，不依赖 60 秒清扫（D-161）
+      const [terminal] = await ctx.adminSql<Array<{ at: Date }>>`
+        SELECT coalesce(completed_at, failed_at, cancelled_at) AS at
+        FROM workflow_executions WHERE id = ${run.executionId}::uuid
+      `;
+      expect(
+        new Date(run.completedAt).getTime() - terminal.at.getTime(),
+      ).toBeLessThan(5_000);
       const teamRun = await loadTeamRun(run.executionId);
       if (run.arm === 'baseline') {
         expect(run.status).toBe('failed');
@@ -729,4 +737,40 @@ describe('Optimization proposal E2E（证据 → 提案 → 评测 → 发布 �
       .set(otherHeaders);
     expect(detail.status).toBe(404);
   });
+
+  it('10. 忽略后同样的证据不再提案；出现新的命中运行后重新提案（D-161）', async () => {
+    const server = app.getHttpServer();
+    const analyze = () =>
+      request(server)
+        .post('/api/v1/optimization-proposals/analyze')
+        .set(headers)
+        .send({ workflowDefinitionId: workflowId });
+
+    // 回滚后提案不再活跃，基线 v1 上的失败证据重新生成提案
+    const first = await analyze();
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body.data).toHaveLength(1);
+    const dismissed = await request(server)
+      .post(`/api/v1/optimization-proposals/${first.body.data[0].id}/dismiss`)
+      .set(headers)
+      .send({});
+    expect(dismissed.status, JSON.stringify(dismissed.body)).toBe(200);
+
+    const again = await analyze();
+    expect(again.status).toBe(201);
+    expect(again.body.data).toEqual([]);
+
+    const newRun = await runWorkflow();
+    expect((await waitExecutionTerminal(newRun)).status).toBe('failed');
+    await waitFor('团队运行终态', async () => {
+      const run = await loadTeamRun(newRun);
+      return run && run.status !== 'running' ? run : null;
+    });
+    const afterNewEvidence = await analyze();
+    expect(afterNewEvidence.status).toBe(201);
+    expect(afterNewEvidence.body.data).toHaveLength(1);
+    expect(afterNewEvidence.body.data[0].evidence.matchedCount).toBe(
+      first.body.data[0].evidence.matchedCount + 1,
+    );
+  }, 120_000);
 });

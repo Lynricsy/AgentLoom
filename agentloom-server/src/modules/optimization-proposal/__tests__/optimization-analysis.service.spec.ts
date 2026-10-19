@@ -72,6 +72,7 @@ describe('OptimizationAnalysisService.analyzeWorkflow', () => {
         teamRun('old-2', 5),
       ],
       [], // 无活跃提案
+      [], // 无已忽略提案
       [{ id: 'proposal-1' }],
     ]);
     const service = new OptimizationAnalysisService(stub.db);
@@ -119,6 +120,45 @@ describe('OptimizationAnalysisService.analyzeWorkflow', () => {
 
     expect(result).toEqual([]);
     expect(stub.argsOf('insert', 'values')).toEqual([]);
+  });
+
+  it('同一基线上已忽略的同类提案覆盖本次全部命中样本时不再重复提案（D-161）', async () => {
+    const stub = createQueryDb([
+      [publishedWorkflow],
+      versionWith([teamNode]),
+      // r0 已滑出窗口，剩余样本都在被忽略提案的证据里
+      [teamRun('r1', 1), teamRun('r2', 1), teamRun('r3', 1)],
+      [],
+      [{ evidence: { sampleIds: ['r0', 'r1', 'r2', 'r3'] } }],
+    ]);
+    const service = new OptimizationAnalysisService(stub.db);
+
+    const { result } = await inTenantContext(stub.db, () =>
+      service.analyzeWorkflow(TENANT_ID, WORKFLOW_ID),
+    );
+
+    expect(result).toEqual([]);
+    expect(stub.argsOf('insert', 'values')).toEqual([]);
+    expect(stub.remaining()).toBe(0);
+  });
+
+  it('忽略之后出现新的命中运行时重新提案', async () => {
+    const stub = createQueryDb([
+      [publishedWorkflow],
+      versionWith([teamNode]),
+      [teamRun('r4', 1), teamRun('r1', 1), teamRun('r2', 1)],
+      [],
+      [{ evidence: { sampleIds: ['r1', 'r2', 'r3'] } }],
+      [{ id: 'proposal-2' }],
+    ]);
+    const service = new OptimizationAnalysisService(stub.db);
+
+    const { result } = await inTenantContext(stub.db, () =>
+      service.analyzeWorkflow(TENANT_ID, WORKFLOW_ID),
+    );
+
+    expect(result).toEqual([{ id: 'proposal-2' }]);
+    expect(stub.remaining()).toBe(0);
   });
 
   it('工作流未发布时抛 WorkflowNotPublishedException，detail 说明无法分析而不是启动执行（D-160）', async () => {

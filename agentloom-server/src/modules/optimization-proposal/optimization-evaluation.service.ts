@@ -4,8 +4,9 @@ import type { ExecutionStatusChangedPayload } from '@agentloom/contracts';
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 
 import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
   runInTenantTransaction,
-  transactionStorage,
 } from '../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -49,7 +50,8 @@ const describeError = (error: unknown): string =>
  * 评测执行：基线与候选版本各回放同一组用例 → 执行终态结算 run 指标 → 全部结算后汇总结论。
  *
  * - 启动幂等：已存在 (evaluation, arm, case) 的 run 行跳过；启动失败写 failed 行（launch_failed）。
- * - 结算：执行终态事件触发；事件可能早于发出方事务提交或丢失，清扫按执行实际状态补偿。
+ * - 结算：执行终态事件触发。事件在发出方事务内同步发出，结算登记为发出方事务的提交后钩子，
+ *   提交后才能读到终态；事务回滚或进程退出导致事件丢失时，清扫按执行实际状态补偿。
  * - 超时：超过 deadline 仍有 running run → 取消其执行、评测失败、提案回到 proposed。
  */
 @Injectable()
@@ -182,11 +184,17 @@ export class OptimizationEvaluationService {
     ) {
       return;
     }
-    await transactionStorage.exit(() =>
+    const settle = () =>
       this.guard(`结算评测执行 ${payload.executionId}`, () =>
         this.settleByExecution(payload.tenantId, payload.executionId),
-      ),
-    );
+      );
+    // 终态事件在发出方事务内同步发出（如团队步骤推进、节点完成），此时另开事务读到的仍是
+    // 未提交前的 running，settleRun 只能返回 false、全部落到 60 秒清扫（D-161）。
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(settle);
+      return;
+    }
+    await settle();
   }
 
   async settleByExecution(

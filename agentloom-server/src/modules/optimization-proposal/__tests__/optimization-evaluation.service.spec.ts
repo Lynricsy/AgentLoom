@@ -4,7 +4,7 @@ import type { OptimizationEvaluationRun } from '../../../database/schema';
 import type { ExecutionService } from '../../execution/execution.service';
 import { OptimizationEvaluationService } from '../optimization-evaluation.service';
 import type { EvaluationRunMetrics } from '../optimization-proposal.types';
-import { createQueryDb } from './drizzle-chain-stub';
+import { createQueryDb, inTenantContext } from './drizzle-chain-stub';
 
 const TENANT_ID = '019577a0-0000-7000-8000-000000000099';
 const EVALUATION_ID = '019577a0-0000-7000-8000-0000000000dd';
@@ -270,5 +270,47 @@ describe('OptimizationEvaluationService.tryFinalize', () => {
       status: 'evaluated',
       verdict: 'improved',
     });
+  });
+});
+
+describe('OptimizationEvaluationService.handleExecutionStatusChanged', () => {
+  const terminalPayload = {
+    tenantId: TENANT_ID,
+    executionId: 'exec-1',
+    status: 'failed',
+  } as Parameters<
+    OptimizationEvaluationService['handleExecutionStatusChanged']
+  >[0];
+
+  it('发出方事务内收到终态事件时登记为提交后结算，提交前不读执行状态（D-161）', async () => {
+    const { service, stub } = createService([]);
+    const settle = vi
+      .spyOn(service, 'settleByExecution')
+      .mockResolvedValue(undefined);
+
+    const { context } = await inTenantContext(stub.db, () =>
+      service.handleExecutionStatusChanged(terminalPayload),
+    );
+
+    expect(settle).not.toHaveBeenCalled();
+    expect(context.afterCommitHooks).toHaveLength(1);
+    await context.afterCommitHooks[0]();
+    expect(settle).toHaveBeenCalledWith(TENANT_ID, 'exec-1');
+  });
+
+  it('事务外收到终态事件时立即结算；非终态事件忽略', async () => {
+    const { service } = createService([]);
+    const settle = vi
+      .spyOn(service, 'settleByExecution')
+      .mockResolvedValue(undefined);
+
+    await service.handleExecutionStatusChanged({
+      ...terminalPayload,
+      status: 'running',
+    });
+    expect(settle).not.toHaveBeenCalled();
+
+    await service.handleExecutionStatusChanged(terminalPayload);
+    expect(settle).toHaveBeenCalledWith(TENANT_ID, 'exec-1');
   });
 });

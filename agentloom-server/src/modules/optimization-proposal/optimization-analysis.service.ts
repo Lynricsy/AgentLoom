@@ -469,6 +469,31 @@ export class OptimizationAnalysisService {
       return null;
     }
 
+    // 用户忽略过同一基线版本上的同类提案、且之后没有新的命中证据（本次命中样本都已出现在
+    // 被忽略提案的证据里）时不再重复提出；发布新版本或出现新的命中运行后才会再次提案（D-161）。
+    const [dismissed] = await tx
+      .select({ evidence: optimizationProposals.evidence })
+      .from(optimizationProposals)
+      .where(
+        and(
+          eq(optimizationProposals.workflowDefinitionId, workflow.id),
+          eq(optimizationProposals.nodeId, nodeId),
+          eq(optimizationProposals.proposalType, candidate.proposalType),
+          eq(optimizationProposals.baseVersionId, workflow.publishedVersionId),
+          eq(optimizationProposals.status, 'dismissed'),
+        ),
+      )
+      .orderBy(desc(optimizationProposals.dismissedAt))
+      .limit(1);
+    if (dismissed) {
+      const dismissedSampleIds = new Set(dismissed.evidence.sampleIds);
+      if (
+        candidate.evidence.sampleIds.every((id) => dismissedSampleIds.has(id))
+      ) {
+        return null;
+      }
+    }
+
     // 并发分析撞上部分唯一索引时静默跳过
     const [inserted] = await tx
       .insert(optimizationProposals)
