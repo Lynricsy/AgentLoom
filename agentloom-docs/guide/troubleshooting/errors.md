@@ -143,6 +143,25 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `knowledge-base-embedding-model-invalid` | 422 | 知识库绑定的模型配置不是 Embedding 类型 | 选择模型类型为 Embedding 的模型配置 |
 | `document-multipart-required` | 415 | 文档上传请求不是 `multipart/form-data` | 以 `multipart/form-data` 上传，文件放在 `file` 字段 |
 
+## 记忆
+
+| type | HTTP 状态 | 含义 | 处理建议 |
+| --- | --- | --- | --- |
+| `memory-instance-not-found` | 404 | 记忆实例不存在或不属于当前组织 | 确认链接与当前组织 |
+| `memory-node-not-found` | 404 | 记忆节点不存在，或不属于路由中的记忆实例 | 确认节点 ID 与实例 ID 对应 |
+| `memory-edge-not-found` | 404 | 记忆边不存在，或不属于路由中的记忆实例 | 刷新图谱后重试 |
+| `memory-path-not-found` | 404 | 记忆路径（URI）不存在 | 确认 URI 拼写，或先创建路径 |
+| `memory-version-not-found` | 404 | 版本不存在、不属于该节点，或节点尚无版本 | 刷新版本历史后重试 |
+| `memory-glossary-keyword-conflict` | 409 | 关键词已绑定到该节点 | 无需重复添加 |
+| `memory-edge-conflict` | 409 | 两个节点之间已有同名记忆边 | 换一个边名称，或复用已有边 |
+| `memory-edge-cycle` | 409 | 创建这条边会在记忆图中形成环 | 调整父子方向 |
+| `memory-path-conflict` | 409 | 记忆路径已存在 | 换一个 URI，或改为更新已有路径指向的节点 |
+| `memory-version-chain-exists` | 409 | 节点已有版本，不能再用 create 模式 | 改用 `patch` 或 `append` 模式 |
+| `memory-patch-target-not-found` | 409 | patch 的 `oldString` 不在当前版本内容中 | 刷新最新内容后重新指定 `oldString` |
+| `memory-version-concurrent-update` | 409 | 最新版本在本次更新期间被并发修改 | 刷新后重试 |
+| `memory-uri-invalid` | 400 | 记忆 URI 格式不合法（需为 `domain://path/segment`，不能有空段，深度与长度有上限） | 按 `detail` 修正 URI |
+| `memory-cross-instance` | 400 | 路径或边引用的节点属于其他记忆实例 | 只在同一实例内的节点之间建路径或边 |
+
 ## Skill
 
 | type | HTTP 状态 | 含义 | 处理建议 |
