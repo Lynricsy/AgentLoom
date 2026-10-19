@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 
 import {
@@ -13,6 +7,13 @@ import {
 } from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../../common/utils/postgres-error.utils';
+import {
+  MemoryCrossInstanceException,
+  MemoryEdgeConflictException,
+  MemoryEdgeCycleException,
+  MemoryEdgeNotFoundException,
+  MemoryNodeNotFoundException,
+} from '../agent-memory.exceptions';
 import { MemoryGateway } from '../memory.gateway';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
@@ -73,9 +74,7 @@ export class MemoryEdgeService {
     );
 
     if (wouldCreateCycle) {
-      throw new ConflictException(
-        'Cycle detected: creating this edge would form a cycle',
-      );
+      throw new MemoryEdgeCycleException();
     }
 
     try {
@@ -106,9 +105,7 @@ export class MemoryEdgeService {
       return edge;
     } catch (error: unknown) {
       if (hasPostgresErrorCode(error, '23505')) {
-        throw new ConflictException(
-          'Memory edge already exists between these nodes',
-        );
+        throw new MemoryEdgeConflictException();
       }
 
       throw error;
@@ -127,7 +124,7 @@ export class MemoryEdgeService {
       .returning({ id: memoryEdges.id });
 
     if (!deletedEdge) {
-      throw new NotFoundException(`Memory edge ${edgeId} not found`);
+      throw new MemoryEdgeNotFoundException(edgeId);
     }
 
     this.broadcastAfterCommit(() =>
@@ -179,7 +176,7 @@ export class MemoryEdgeService {
       .returning();
 
     if (!edge) {
-      throw new NotFoundException(`Memory edge ${edgeId} not found`);
+      throw new MemoryEdgeNotFoundException(edgeId);
     }
 
     return edge;
@@ -200,7 +197,7 @@ export class MemoryEdgeService {
       .returning();
 
     if (!edge) {
-      throw new NotFoundException(`Memory edge ${edgeId} not found`);
+      throw new MemoryEdgeNotFoundException(edgeId);
     }
 
     return edge;
@@ -221,9 +218,7 @@ export class MemoryEdgeService {
       childNode.instanceId !== instanceId ||
       parentNode.instanceId !== childNode.instanceId
     ) {
-      throw new BadRequestException(
-        'Cannot create edge across different memory instances',
-      );
+      throw new MemoryCrossInstanceException('edge');
     }
   }
 
@@ -278,7 +273,7 @@ export class MemoryEdgeService {
       .limit(1);
 
     if (!node) {
-      throw new NotFoundException(`Memory node ${nodeId} not found`);
+      throw new MemoryNodeNotFoundException(nodeId);
     }
 
     return node;
@@ -293,7 +288,7 @@ export class MemoryEdgeService {
       .limit(1);
 
     if (!edge) {
-      throw new NotFoundException(`Memory edge ${edgeId} not found`);
+      throw new MemoryEdgeNotFoundException(edgeId);
     }
 
     return edge;

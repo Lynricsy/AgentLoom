@@ -1,5 +1,7 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { MemoryPathNotFoundException } from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -313,9 +315,7 @@ describe('MemoryFusionService', () => {
       pathResolverService.resolveUri.mockImplementation(
         async (instanceId: string) => {
           if (instanceId === 'instance-missing') {
-            throw new NotFoundException(
-              'Memory path core://agent/name not found',
-            );
+            throw new MemoryPathNotFoundException('core://agent/name');
           }
 
           return createNode({ id: 'node-found', instanceId });
@@ -546,7 +546,7 @@ describe('MemoryFusionService', () => {
 
       tenantDb.select.mockReturnValueOnce(createSelectChain([primarySession]));
       pathResolverService.resolveUri.mockRejectedValue(
-        new NotFoundException('Memory path writer://drafts/ch1 not found'),
+        new MemoryPathNotFoundException('writer://drafts/ch1'),
       );
       memoryNodeService.createNode.mockResolvedValue(createdNode);
       pathResolverService.createPath.mockResolvedValue(
@@ -616,7 +616,7 @@ describe('MemoryFusionService', () => {
       expect(memoryVersionService.appendVersion).not.toHaveBeenCalled();
     });
 
-    it('resolveUri 的非 NotFoundException 错误应直接透传', async () => {
+    it('resolveUri 的非「资源不存在」错误应直接透传', async () => {
       const primarySession = createSession({
         id: 'session-primary',
         role: 'primary',
@@ -641,7 +641,7 @@ describe('MemoryFusionService', () => {
 
       tenantDb.select.mockReturnValueOnce(createSelectChain([primarySession]));
       pathResolverService.resolveUri.mockRejectedValue(
-        new NotFoundException('Memory path invalid-uri not found'),
+        new MemoryPathNotFoundException('invalid-uri'),
       );
 
       await expect(

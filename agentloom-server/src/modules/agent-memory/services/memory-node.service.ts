@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, count, desc, eq } from 'drizzle-orm';
 
 import {
@@ -6,6 +6,10 @@ import {
   registerAfterCommitHook,
 } from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import {
+  MemoryInstanceNotFoundException,
+  MemoryNodeNotFoundException,
+} from '../agent-memory.exceptions';
 import { MemoryGateway } from '../memory.gateway';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
@@ -119,7 +123,7 @@ export class MemoryNodeService {
       .returning();
 
     if (!node) {
-      throw new NotFoundException(`Memory node ${nodeId} not found`);
+      throw new MemoryNodeNotFoundException(nodeId);
     }
 
     this.broadcastAfterCommit(() =>
@@ -146,7 +150,7 @@ export class MemoryNodeService {
       .returning({ id: memoryNodes.id });
 
     if (!deletedNode) {
-      throw new NotFoundException(`Memory node ${nodeId} not found`);
+      throw new MemoryNodeNotFoundException(nodeId);
     }
 
     this.broadcastAfterCommit(() =>
@@ -205,7 +209,7 @@ export class MemoryNodeService {
       .limit(1);
 
     if (!instance) {
-      throw new NotFoundException(`Memory instance ${instanceId} not found`);
+      throw new MemoryInstanceNotFoundException(instanceId);
     }
   }
 
@@ -218,7 +222,7 @@ export class MemoryNodeService {
       .limit(1);
 
     if (!node) {
-      throw new NotFoundException(`Memory node ${nodeId} not found`);
+      throw new MemoryNodeNotFoundException(nodeId);
     }
 
     return node;

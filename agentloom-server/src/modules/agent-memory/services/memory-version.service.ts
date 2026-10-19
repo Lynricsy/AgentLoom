@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 
 import {
@@ -12,6 +7,13 @@ import {
 } from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import {
+  MemoryNodeNotFoundException,
+  MemoryPatchTargetNotFoundException,
+  MemoryVersionChainExistsException,
+  MemoryVersionConcurrentUpdateException,
+  MemoryVersionNotFoundException,
+} from '../agent-memory.exceptions';
 import { MemoryGateway } from '../memory.gateway';
 import {
   getTenantId,
@@ -80,9 +82,7 @@ export class MemoryVersionService {
     const existingVersion = await this.findLatestVersion(tenantDb, nodeId);
 
     if (existingVersion) {
-      throw new ConflictException(
-        `Memory version chain already exists for node ${nodeId}`,
-      );
+      throw new MemoryVersionChainExistsException(nodeId);
     }
 
     const [createdVersion] = await tenantDb
@@ -114,9 +114,7 @@ export class MemoryVersionService {
       const latestVersion = await this.findLatestVersionOrThrow(tx, nodeId);
 
       if (!latestVersion.content.includes(patch.oldString)) {
-        throw new ConflictException(
-          'Patch failed: old_string not found in current content',
-        );
+        throw new MemoryPatchTargetNotFoundException();
       }
 
       const newContent = latestVersion.content.replace(
@@ -225,9 +223,7 @@ export class MemoryVersionService {
         .limit(1);
 
       if (!targetVersion) {
-        throw new NotFoundException(
-          `Memory version ${targetVersionId} not found for node ${nodeId}`,
-        );
+        throw new MemoryVersionNotFoundException(nodeId, targetVersionId);
       }
 
       const latestVersion = await this.findLatestVersionOrThrow(tx, nodeId);
@@ -293,7 +289,7 @@ export class MemoryVersionService {
       .limit(1);
 
     if (!node) {
-      throw new NotFoundException(`Memory node ${nodeId} not found`);
+      throw new MemoryNodeNotFoundException(nodeId);
     }
 
     return node;
@@ -325,9 +321,7 @@ export class MemoryVersionService {
     const latestVersion = await this.findLatestVersion(dbClient, nodeId);
 
     if (!latestVersion) {
-      throw new NotFoundException(
-        `Memory version for node ${nodeId} not found`,
-      );
+      throw new MemoryVersionNotFoundException(nodeId);
     }
 
     return latestVersion;
@@ -355,9 +349,7 @@ export class MemoryVersionService {
       .returning({ id: memoryVersions.id });
 
     if (!updatedVersion) {
-      throw new ConflictException(
-        'Latest memory version changed during update',
-      );
+      throw new MemoryVersionConcurrentUpdateException();
     }
   }
 }

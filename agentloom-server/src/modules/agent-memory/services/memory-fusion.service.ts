@@ -3,7 +3,6 @@ import {
   Inject,
   Injectable,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 
@@ -17,6 +16,7 @@ import {
   type MemorySessionConfig,
   type MemoryVersion,
 } from '../../../database/schema';
+import { MemoryResourceNotFoundException } from '../agent-memory.exceptions';
 import {
   BootProtocolService,
   type MemoryBootSequenceResult,
@@ -107,7 +107,7 @@ export class MemoryFusionService {
             content: latestVersion?.content ?? null,
           } satisfies MemoryFusionReadResult;
         } catch (error) {
-          if (error instanceof NotFoundException) {
+          if (error instanceof MemoryResourceNotFoundException) {
             this.logger.debug(
               `Skip missing memory path ${uri} in session ${session.id}`,
             );
@@ -194,7 +194,7 @@ export class MemoryFusionService {
 
       return this.memoryVersionService.appendVersion(node.id, content);
     } catch (error) {
-      if (!(error instanceof NotFoundException)) {
+      if (!(error instanceof MemoryResourceNotFoundException)) {
         throw error;
       }
 

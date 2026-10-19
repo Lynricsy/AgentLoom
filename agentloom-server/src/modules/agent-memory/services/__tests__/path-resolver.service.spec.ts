@@ -1,5 +1,11 @@
-import { BadRequestException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  MemoryCrossInstanceException,
+  MemoryPathConflictException,
+  MemoryPathNotFoundException,
+  MemoryUriInvalidException,
+} from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -214,39 +220,45 @@ describe('PathResolverService', () => {
       expect(mocks.operators.desc).toHaveBeenCalledWith(memoryEdges.priority);
     });
 
-    it('路径深度超过 10 层时应抛出 BadRequestException', async () => {
+    it('路径深度超过 10 层时应抛出 400 memory-uri-invalid', async () => {
       await expect(
         service.resolveUri(INSTANCE_ID, 'core://a/b/c/d/e/f/g/h/i/j/k'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(MemoryUriInvalidException);
 
       expect(tenantDb.select).not.toHaveBeenCalled();
     });
 
-    it('URI 格式非法时应抛出 BadRequestException', async () => {
+    it('URI 格式非法时应抛出 400 memory-uri-invalid', async () => {
       await expect(
         service.resolveUri(INSTANCE_ID, 'core:/broken'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toMatchObject({
+        status: 400,
+        type: expect.stringContaining('memory-uri-invalid'),
+      });
 
       expect(tenantDb.select).not.toHaveBeenCalled();
     });
 
-    it('路径包含空 segment 时应抛出 BadRequestException', async () => {
+    it('路径包含空 segment 时应抛出 400 memory-uri-invalid', async () => {
       await expect(
         service.resolveUri(INSTANCE_ID, 'core://agent//identity'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(MemoryUriInvalidException);
     });
 
-    it('找不到根路径时应抛出 NotFoundException', async () => {
+    it('找不到根路径时应抛出 404 memory-path-not-found', async () => {
       tenantDb.select
         .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(createSelectChain([]));
 
       await expect(
         service.resolveUri(INSTANCE_ID, 'core://agent/identity'),
-      ).rejects.toThrowError('Memory path core://agent/identity not found');
+      ).rejects.toMatchObject({
+        status: 404,
+        detail: '未找到记忆路径 core://agent/identity',
+      });
     });
 
-    it('遍历到中间段缺失边时应抛出 NotFoundException', async () => {
+    it('遍历到中间段缺失边时应抛出 404 memory-path-not-found', async () => {
       const rootPath = createPath({
         pathString: 'agent',
         nodeId: ROOT_NODE_ID,
@@ -260,7 +272,7 @@ describe('PathResolverService', () => {
 
       await expect(
         service.resolveUri(INSTANCE_ID, 'core://agent/identity'),
-      ).rejects.toThrowError('Memory path core://agent/identity not found');
+      ).rejects.toBeInstanceOf(MemoryPathNotFoundException);
     });
 
     it('缓存写回遇到重复路径时应忽略冲突并继续返回节点', async () => {
@@ -325,7 +337,7 @@ describe('PathResolverService', () => {
       });
     });
 
-    it('节点属于其他实例时应抛出 BadRequestException', async () => {
+    it('节点属于其他实例时应抛出 400 memory-cross-instance', async () => {
       tenantDb.select.mockReturnValueOnce(
         createSelectChain([
           createNode({ id: CHILD_NODE_ID, instanceId: 'other-instance' }),
@@ -340,12 +352,12 @@ describe('PathResolverService', () => {
           CHILD_NODE_ID,
           EDGE_ID,
         ),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(MemoryCrossInstanceException);
 
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
-    it('重复路径冲突时应抛出 ConflictException', async () => {
+    it('重复路径冲突时应抛出 409 memory-path-conflict', async () => {
       const duplicateError = Object.assign(new Error('duplicate key'), {
         code: '23505',
       });
@@ -359,17 +371,21 @@ describe('PathResolverService', () => {
       );
       tenantDb.insert.mockReturnValueOnce(insertQuery.chain);
 
-      await expect(
-        service.createPath(
+      const error = await service
+        .createPath(
           INSTANCE_ID,
           'core',
           'agent/identity',
           CHILD_NODE_ID,
           EDGE_ID,
-        ),
-      ).rejects.toThrowError(
-        'Memory path core://agent/identity already exists',
-      );
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(MemoryPathConflictException);
+      expect(error).toMatchObject({
+        status: 409,
+        detail: '记忆路径 core://agent/identity 已存在',
+      });
     });
 
     it('非唯一约束错误时应原样抛出', async () => {
@@ -453,12 +469,12 @@ describe('PathResolverService', () => {
       expect(tenantDb.delete).toHaveBeenCalledWith(memoryPaths);
     });
 
-    it('删除不存在的路径时应抛出 NotFoundException', async () => {
+    it('删除不存在的路径时应抛出 404 memory-path-not-found', async () => {
       tenantDb.delete.mockReturnValueOnce(createDeleteChain([]).chain);
 
       await expect(
         service.deletePath(INSTANCE_ID, 'core://agent/identity'),
-      ).rejects.toThrowError('Memory path core://agent/identity not found');
+      ).rejects.toBeInstanceOf(MemoryPathNotFoundException);
     });
   });
 

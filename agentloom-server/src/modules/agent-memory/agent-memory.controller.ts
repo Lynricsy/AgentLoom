@@ -6,7 +6,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -64,6 +63,11 @@ import {
   AddGlossaryKeywordDto,
   RemoveGlossaryKeywordDto,
 } from './dto';
+import {
+  MemoryInstanceNotFoundException,
+  MemoryPathNotFoundException,
+  MemoryResourceNotFoundException,
+} from './agent-memory.exceptions';
 import { BootProtocolService } from './services/boot-protocol.service';
 import { GlossaryService } from './services/glossary.service';
 import { MemoryEdgeService } from './services/memory-edge.service';
@@ -239,7 +243,7 @@ export class AgentMemoryController {
       .limit(1);
 
     if (!instance) {
-      throw new NotFoundException(`Memory instance ${id} not found`);
+      throw new MemoryInstanceNotFoundException(id);
     }
 
     const [[nodeCountRow], [edgeCountRow], [latestActivityRow]] =
@@ -309,7 +313,7 @@ export class AgentMemoryController {
       .returning();
 
     if (!updated) {
-      throw new NotFoundException(`Memory instance ${id} not found`);
+      throw new MemoryInstanceNotFoundException(id);
     }
 
     return { data: updated };
@@ -334,7 +338,7 @@ export class AgentMemoryController {
       .returning({ id: agentMemoryInstances.id });
 
     if (!deleted) {
-      throw new NotFoundException(`Memory instance ${id} not found`);
+      throw new MemoryInstanceNotFoundException(id);
     }
   }
 
@@ -484,7 +488,7 @@ export class AgentMemoryController {
         const node = await this.pathResolverService.resolveUri(id, uri);
         enrichedNode = await this.enrichNodeForBrowse(node, domain, pathString);
       } catch (e) {
-        if (!(e instanceof NotFoundException)) throw e;
+        if (!(e instanceof MemoryResourceNotFoundException)) throw e;
       }
     }
 
@@ -678,7 +682,7 @@ export class AgentMemoryController {
       .returning({ id: memoryPaths.id });
 
     if (!deleted) {
-      throw new NotFoundException(`Memory path ${pathId} not found`);
+      throw new MemoryPathNotFoundException(pathId);
     }
   }
 

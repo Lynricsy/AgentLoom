@@ -1,10 +1,10 @@
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  MemoryPathNotFoundException,
+  MemoryUriInvalidException,
+} from '../../agent-memory.exceptions';
 import { MemoryToolsService } from '../../memory-tools.service';
 import { MemoryFusionService } from '../memory-fusion.service';
 import { GlossaryService } from '../glossary.service';
@@ -285,7 +285,7 @@ describe('MemoryToolsService', () => {
 
     memoryFusionService.getWriteTarget.mockResolvedValue(targetSession);
     pathResolverService.resolveUri.mockRejectedValue(
-      new NotFoundException('Memory path core://profile/name not found'),
+      new MemoryPathNotFoundException('core://profile/name'),
     );
     memoryNodeService.createNode.mockResolvedValue(node);
     pathResolverService.createPath.mockResolvedValue(path);
@@ -345,7 +345,7 @@ describe('MemoryToolsService', () => {
 
     memoryFusionService.getWriteTarget.mockResolvedValue(targetSession);
     pathResolverService.resolveUri.mockRejectedValue(
-      new NotFoundException('Memory path notes://context/summary not found'),
+      new MemoryPathNotFoundException('notes://context/summary'),
     );
     memoryNodeService.createNode.mockResolvedValue(node);
     pathResolverService.createPath.mockResolvedValue(path);
@@ -381,7 +381,7 @@ describe('MemoryToolsService', () => {
     expect(result).toEqual({
       success: false,
       data: null,
-      error: 'Memory path core://profile/name already exists',
+      error: '记忆路径 core://profile/name 已存在',
     });
     expect(memoryNodeService.createNode).not.toHaveBeenCalled();
   });
@@ -836,7 +836,7 @@ describe('MemoryToolsService', () => {
 
     memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
     pathResolverService.resolveUri.mockRejectedValue(
-      new BadRequestException('Invalid URI format'),
+      new MemoryUriInvalidException('invalid-uri'),
     );
 
     const result = await definition?.execute({
@@ -847,7 +847,8 @@ describe('MemoryToolsService', () => {
     expect(result).toEqual({
       success: false,
       data: null,
-      error: 'Invalid URI format',
+      error:
+        '记忆 URI「invalid-uri」不合法：URI 格式应为 domain://path/segment',
     });
     expect(memoryNodeService.createNode).not.toHaveBeenCalled();
   });
@@ -859,7 +860,7 @@ describe('MemoryToolsService', () => {
 
     memoryFusionService.getWriteTarget.mockResolvedValue(createTargetSession());
     pathResolverService.resolveUri.mockRejectedValue(
-      new NotFoundException('Memory path invalid-uri not found'),
+      new MemoryPathNotFoundException('invalid-uri'),
     );
 
     const result = await definition?.execute({

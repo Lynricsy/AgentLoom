@@ -1,11 +1,13 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
+
+import {
+  MemoryCrossInstanceException,
+  MemoryNodeNotFoundException,
+  MemoryPathConflictException,
+  MemoryPathNotFoundException,
+  MemoryUriInvalidException,
+} from '../agent-memory.exceptions';
 
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../../common/utils/postgres-error.utils';
@@ -61,9 +63,7 @@ export class PathResolverService {
     const node = await this.findNodeOrThrow(nodeId);
 
     if (node.instanceId !== instanceId) {
-      throw new BadRequestException(
-        'Cannot create path across different memory instances',
-      );
+      throw new MemoryCrossInstanceException('path');
     }
 
     try {
@@ -82,8 +82,8 @@ export class PathResolverService {
       return path;
     } catch (error: unknown) {
       if (hasPostgresErrorCode(error, '23505')) {
-        throw new ConflictException(
-          `Memory path ${parsed.domain}://${parsed.pathString} already exists`,
+        throw new MemoryPathConflictException(
+          `${parsed.domain}://${parsed.pathString}`,
         );
       }
 
@@ -127,7 +127,7 @@ export class PathResolverService {
       .returning({ id: memoryPaths.id });
 
     if (!deletedPath) {
-      throw new NotFoundException(`Memory path ${uri} not found`);
+      throw new MemoryPathNotFoundException(uri);
     }
 
     return {
@@ -198,7 +198,7 @@ export class PathResolverService {
     const traversed = await this.resolveByTraversal(instanceId, parsed);
 
     if (!traversed) {
-      throw new NotFoundException(`Memory path ${uri} not found`);
+      throw new MemoryPathNotFoundException(uri);
     }
 
     await this.cachePath(
@@ -266,7 +266,7 @@ export class PathResolverService {
         edgeId ?? undefined,
       );
     } catch (error: unknown) {
-      if (error instanceof ConflictException) {
+      if (error instanceof MemoryPathConflictException) {
         return;
       }
 
@@ -326,7 +326,7 @@ export class PathResolverService {
       .limit(1);
 
     if (!node) {
-      throw new NotFoundException(`Memory node ${nodeId} not found`);
+      throw new MemoryNodeNotFoundException(nodeId);
     }
 
     return node;
@@ -339,22 +339,25 @@ export class PathResolverService {
     const separatorIndex = uri.indexOf('://');
 
     if (separatorIndex <= 0) {
-      throw new BadRequestException('Invalid URI format');
+      throw new MemoryUriInvalidException(uri);
     }
 
     const domain = uri.slice(0, separatorIndex).trim();
     const pathString = uri.slice(separatorIndex + 3).trim();
 
     if (!domain || domain.length > MAX_DOMAIN_LENGTH) {
-      throw new BadRequestException('Invalid URI format');
+      throw new MemoryUriInvalidException(uri);
     }
 
     if (!pathString && !options.allowEmptyPath) {
-      throw new BadRequestException('Invalid URI format');
+      throw new MemoryUriInvalidException(uri, '路径不能为空');
     }
 
     if (pathString.length > MAX_PATH_LENGTH) {
-      throw new BadRequestException('Invalid URI format');
+      throw new MemoryUriInvalidException(
+        uri,
+        `路径长度不能超过 ${MAX_PATH_LENGTH}`,
+      );
     }
 
     if (!pathString) {
@@ -368,11 +371,14 @@ export class PathResolverService {
     const segments = pathString.split('/');
 
     if (segments.some((segment) => segment.length === 0)) {
-      throw new BadRequestException('Invalid URI format');
+      throw new MemoryUriInvalidException(uri, '路径不能包含空段');
     }
 
     if (segments.length > MAX_URI_DEPTH) {
-      throw new BadRequestException('URI resolution max depth exceeded');
+      throw new MemoryUriInvalidException(
+        uri,
+        `路径深度不能超过 ${MAX_URI_DEPTH} 层`,
+      );
     }
 
     return {

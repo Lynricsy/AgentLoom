@@ -1,6 +1,12 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
+
+import {
+  MemoryEdgeCycleException,
+  MemoryInstanceNotFoundException,
+  MemoryNodeNotFoundException,
+  MemoryPathNotFoundException,
+} from '../../agent-memory.exceptions';
 
 // ─── Mock Factories ────────────────────────────────────────────────────
 
@@ -596,12 +602,15 @@ describe('AgentMemoryController', () => {
       expect(result.data.name).toBe('长期记忆实例');
     });
 
-    it('实例不存在时应抛出 NotFoundException', async () => {
+    it('实例不存在时应抛出 404 memory-instance-not-found', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
         controller.getInstance(TENANT_ID, INSTANCE_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toMatchObject({
+        status: 404,
+        type: expect.stringContaining('memory-instance-not-found'),
+      });
     });
 
     it('无节点时统计应为零值', async () => {
@@ -688,7 +697,7 @@ describe('AgentMemoryController', () => {
       expect(updates).not.toHaveProperty('name');
     });
 
-    it('实例不存在时应抛出 NotFoundException', async () => {
+    it('实例不存在时应抛出 404 memory-instance-not-found', async () => {
       const updateQuery = createUpdateChain([]);
       tenantDb.update.mockReturnValueOnce(updateQuery.chain);
 
@@ -706,7 +715,7 @@ describe('AgentMemoryController', () => {
             status: undefined,
           }),
         ),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryInstanceNotFoundException);
     });
   });
 
@@ -721,13 +730,13 @@ describe('AgentMemoryController', () => {
       expect(tenantDb.delete).toHaveBeenCalledWith(agentMemoryInstances);
     });
 
-    it('实例不存在时应抛出 NotFoundException', async () => {
+    it('实例不存在时应抛出 404 memory-instance-not-found', async () => {
       const deleteQuery = createDeleteChain([]);
       tenantDb.delete.mockReturnValueOnce(deleteQuery.chain);
 
       await expect(
         controller.deleteInstance(TENANT_ID, INSTANCE_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryInstanceNotFoundException);
     });
   });
 
@@ -830,14 +839,14 @@ describe('AgentMemoryController', () => {
       expect(result.data.edges.parents).toEqual(parentEdges);
     });
 
-    it('节点不存在时应传播 NotFoundException', async () => {
+    it('节点不存在时应传播 404 memory-node-not-found', async () => {
       mockNodeService.getNode.mockRejectedValueOnce(
-        new NotFoundException('not found'),
+        new MemoryNodeNotFoundException(NODE_ID),
       );
 
       await expect(
         controller.getNode(TENANT_ID, INSTANCE_ID, NODE_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryNodeNotFoundException);
     });
   });
 
@@ -1035,13 +1044,13 @@ describe('AgentMemoryController', () => {
       expect(tenantDb.delete).toHaveBeenCalledWith(memoryPaths);
     });
 
-    it('路径不存在时应抛出 NotFoundException', async () => {
+    it('路径不存在时应抛出 404 memory-path-not-found', async () => {
       const deleteQuery = createDeleteChain([]);
       tenantDb.delete.mockReturnValueOnce(deleteQuery.chain);
 
       await expect(
         controller.deletePath(TENANT_ID, INSTANCE_ID, PATH_ID),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryPathNotFoundException);
     });
   });
 
@@ -1220,9 +1229,9 @@ describe('AgentMemoryController', () => {
       });
     });
 
-    it('循环检测应传播 ConflictException (409)', async () => {
+    it('循环检测应传播 409 memory-edge-cycle', async () => {
       mockEdgeService.createEdge.mockRejectedValueOnce(
-        new ConflictException('Cycle detected'),
+        new MemoryEdgeCycleException(),
       );
 
       await expect(
@@ -1236,7 +1245,7 @@ describe('AgentMemoryController', () => {
             disclosure: 0,
           }),
         ),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryEdgeCycleException);
     });
   });
 
@@ -1662,7 +1671,7 @@ describe('AgentMemoryController', () => {
 
     it('URI 解析失败时 node 应为 null', async () => {
       mockPathResolver.resolveUri.mockRejectedValue(
-        new NotFoundException('Not found'),
+        new MemoryPathNotFoundException('core://missing'),
       );
       mockPathResolver.listChildren.mockResolvedValue([]);
 

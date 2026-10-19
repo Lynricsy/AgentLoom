@@ -1,8 +1,6 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
-  NotFoundException,
   Optional,
   Inject,
 } from '@nestjs/common';
@@ -14,6 +12,11 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import type { MemoryPath, MemoryVersion } from '../../database/schema';
 import { memorySessions } from '../../database/schema';
 import type { SessionToolProvider } from '../agent/ports/agent-runtime.port';
+import { DomainException } from '../../common/exceptions/domain.exception';
+import {
+  MemoryPathConflictException,
+  MemoryResourceNotFoundException,
+} from './agent-memory.exceptions';
 import { MemoryFusionService } from './services/memory-fusion.service';
 import { GlossaryService } from './services/glossary.service';
 import { MemoryNodeService } from './services/memory-node.service';
@@ -430,9 +433,9 @@ export class MemoryToolsService {
         targetSession.memoryInstanceId,
         input.uri,
       );
-      throw new ConflictException(`Memory path ${input.uri} already exists`);
+      throw new MemoryPathConflictException(input.uri);
     } catch (error) {
-      if (!(error instanceof NotFoundException)) {
+      if (!(error instanceof MemoryResourceNotFoundException)) {
         throw error;
       }
 
@@ -749,6 +752,10 @@ export class MemoryToolsService {
   }
 
   private getErrorMessage(error: unknown): string {
+    // DomainException 的 message 只是标题，具体原因在 detail 中。
+    if (error instanceof DomainException) {
+      return error.detail;
+    }
     return error instanceof Error ? error.message : String(error);
   }
 }

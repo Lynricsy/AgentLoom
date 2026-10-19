@@ -1,6 +1,7 @@
-import { ConflictException } from '@nestjs/common';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { MemoryGlossaryKeywordConflictException } from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -151,7 +152,7 @@ describe('GlossaryService', () => {
       });
     });
 
-    it('唯一索引冲突时应抛出 ConflictException', async () => {
+    it('唯一索引冲突时应抛出 409 memory-glossary-keyword-conflict', async () => {
       const uniqueViolation = Object.assign(new Error('duplicate key'), {
         code: '23505',
       });
@@ -163,10 +164,10 @@ describe('GlossaryService', () => {
 
       await expect(
         service.addKeyword(INSTANCE_ID, 'AI Agent', NODE_ID),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryGlossaryKeywordConflictException);
     });
 
-    it('Drizzle 包装的唯一索引冲突（code 在 cause 上）应抛出 ConflictException', async () => {
+    it('Drizzle 包装的唯一索引冲突（code 在 cause 上）应抛出 409', async () => {
       // D-039：真实 Drizzle 抛 DrizzleQueryError，pg 错误码只在 cause 上。
       const uniqueViolation = new DrizzleQueryError(
         'insert into "memory_glossary_keywords" ...',
@@ -181,7 +182,10 @@ describe('GlossaryService', () => {
 
       await expect(
         service.addKeyword(INSTANCE_ID, 'AI Agent', NODE_ID),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toMatchObject({
+        status: 409,
+        type: expect.stringContaining('memory-glossary-keyword-conflict'),
+      });
     });
   });
 

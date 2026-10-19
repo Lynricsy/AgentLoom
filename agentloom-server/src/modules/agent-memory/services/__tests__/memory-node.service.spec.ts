@@ -1,5 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
+import {
+  MemoryInstanceNotFoundException,
+  MemoryNodeNotFoundException,
+} from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -206,7 +210,7 @@ describe('MemoryNodeService', () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.createNode(INSTANCE_ID, {})).rejects.toBeInstanceOf(
-        NotFoundException,
+        MemoryInstanceNotFoundException,
       );
       expect(tenantDb.insert).not.toHaveBeenCalled();
       expect(gateway.emitNodeCreated).not.toHaveBeenCalled();
@@ -229,7 +233,7 @@ describe('MemoryNodeService', () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.getNode(NODE_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        MemoryNodeNotFoundException,
       );
     });
   });
@@ -351,7 +355,7 @@ describe('MemoryNodeService', () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.deleteNode(NODE_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        MemoryNodeNotFoundException,
       );
       expect(tenantDb.delete).not.toHaveBeenCalled();
     });

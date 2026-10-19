@@ -1,9 +1,12 @@
-import {
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
-} from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
+import {
+  MemoryCrossInstanceException,
+  MemoryEdgeConflictException,
+  MemoryEdgeCycleException,
+  MemoryEdgeNotFoundException,
+  MemoryNodeNotFoundException,
+} from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -208,7 +211,7 @@ describe('MemoryEdgeService', () => {
       );
     });
 
-    it('跨实例创建边时应抛出 BadRequestException', async () => {
+    it('跨实例创建边时应抛出 400 memory-cross-instance', async () => {
       tenantDb.select
         .mockReturnValueOnce(
           createSelectChain([
@@ -226,11 +229,11 @@ describe('MemoryEdgeService', () => {
           parentNodeId: PARENT_NODE_ID,
           childNodeId: CHILD_NODE_ID,
         }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).rejects.toBeInstanceOf(MemoryCrossInstanceException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
-    it('创建会形成 A→B→C→A 环时应抛出 ConflictException', async () => {
+    it('创建会形成 A→B→C→A 环时应抛出 409 memory-edge-cycle', async () => {
       const nodeA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
       const nodeB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
       const nodeC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -263,11 +266,11 @@ describe('MemoryEdgeService', () => {
           childNodeId: nodeA,
           name: 'cycle',
         }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryEdgeCycleException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
-    it('自环创建应抛出 ConflictException', async () => {
+    it('自环创建应抛出 409 memory-edge-cycle', async () => {
       tenantDb.select
         .mockReturnValueOnce(
           createSelectChain([
@@ -285,11 +288,11 @@ describe('MemoryEdgeService', () => {
           parentNodeId: PARENT_NODE_ID,
           childNodeId: PARENT_NODE_ID,
         }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryEdgeCycleException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
-    it('节点不存在时应抛出 NotFoundException', async () => {
+    it('节点不存在时应抛出 404 memory-node-not-found', async () => {
       tenantDb.select
         .mockReturnValueOnce(
           createSelectChain([
@@ -303,7 +306,7 @@ describe('MemoryEdgeService', () => {
           parentNodeId: PARENT_NODE_ID,
           childNodeId: CHILD_NODE_ID,
         }),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryNodeNotFoundException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
@@ -353,7 +356,7 @@ describe('MemoryEdgeService', () => {
       expect(tenantDb.insert).toHaveBeenCalledTimes(1);
     });
 
-    it('重复边冲突时应透传为 ConflictException', async () => {
+    it('重复边冲突时应转换为 409 memory-edge-conflict', async () => {
       const uniqueViolation = Object.assign(new Error('duplicate key'), {
         code: '23505',
       });
@@ -379,7 +382,7 @@ describe('MemoryEdgeService', () => {
           parentNodeId: PARENT_NODE_ID,
           childNodeId: CHILD_NODE_ID,
         }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryEdgeConflictException);
     });
 
     it('非唯一约束错误时应原样抛出', async () => {
@@ -429,12 +432,12 @@ describe('MemoryEdgeService', () => {
       );
     });
 
-    it('删除返回空结果时应抛出 NotFoundException', async () => {
+    it('删除返回空结果时应抛出 404 memory-edge-not-found', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([createEdge()]));
       tenantDb.delete.mockReturnValueOnce(createDeleteChain([]).chain);
 
       await expect(service.deleteEdge(EDGE_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        MemoryEdgeNotFoundException,
       );
       expect(gateway.emitEdgeDeleted).not.toHaveBeenCalled();
     });
@@ -498,13 +501,13 @@ describe('MemoryEdgeService', () => {
       expect(updateQuery.set).toHaveBeenCalledWith({ priority: 11 });
     });
 
-    it('更新后未返回边时应抛出 NotFoundException', async () => {
+    it('更新后未返回边时应抛出 404 memory-edge-not-found', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([createEdge()]));
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
       await expect(
         service.updateEdgePriority(EDGE_ID, 11),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryEdgeNotFoundException);
     });
   });
 
@@ -522,22 +525,22 @@ describe('MemoryEdgeService', () => {
       expect(updateQuery.set).toHaveBeenCalledWith({ disclosure: 4 });
     });
 
-    it('更新后未返回边时应抛出 NotFoundException', async () => {
+    it('更新后未返回边时应抛出 404 memory-edge-not-found', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([createEdge()]));
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
       await expect(
         service.updateEdgeDisclosure(EDGE_ID, 4),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryEdgeNotFoundException);
     });
   });
 
   describe('error cases', () => {
-    it('不存在的边应抛出 NotFoundException', async () => {
+    it('不存在的边应抛出 404 memory-edge-not-found', async () => {
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(service.deleteEdge(EDGE_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
+        MemoryEdgeNotFoundException,
       );
       expect(tenantDb.delete).not.toHaveBeenCalled();
     });

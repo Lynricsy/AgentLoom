@@ -1,5 +1,6 @@
-import { NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { MemoryPathNotFoundException } from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -240,7 +241,7 @@ describe('BootProtocolService', () => {
 
     it('system://boot 缺失时应降级返回 null', async () => {
       pathResolverService.resolveUri.mockRejectedValue(
-        new NotFoundException('Memory path system://boot not found'),
+        new MemoryPathNotFoundException('system://boot'),
       );
 
       await expect(service.boot(INSTANCE_ID)).resolves.toBeNull();
@@ -275,7 +276,7 @@ describe('BootProtocolService', () => {
 
     it('system://index 缺失时应返回空数组而不是抛错', async () => {
       pathResolverService.resolveUri.mockRejectedValue(
-        new NotFoundException('Memory path system://index not found'),
+        new MemoryPathNotFoundException('system://index'),
       );
       tenantDb.select.mockReturnValueOnce(createSelectChain([]));
 

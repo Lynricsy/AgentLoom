@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
@@ -12,6 +12,10 @@ import {
   type MemoryPath,
   type MemoryVersion,
 } from '../../../database/schema';
+import {
+  MemoryInstanceNotFoundException,
+  MemoryResourceNotFoundException,
+} from '../agent-memory.exceptions';
 import { MEMORY_SYSTEM_PROMPT_TEMPLATE } from '../constants/memory-system-prompt.template';
 import { GlossaryService } from './glossary.service';
 import { MemoryNodeService } from './memory-node.service';
@@ -51,7 +55,7 @@ export class BootProtocolService {
 
       return latestVersion.content;
     } catch (error) {
-      if (error instanceof NotFoundException) {
+      if (error instanceof MemoryResourceNotFoundException) {
         return null;
       }
 
@@ -73,7 +77,7 @@ export class BootProtocolService {
     try {
       await this.pathResolverService.resolveUri(instanceId, 'system://index');
     } catch (error) {
-      if (error instanceof NotFoundException) {
+      if (error instanceof MemoryResourceNotFoundException) {
         return [];
       }
 
@@ -130,7 +134,7 @@ export class BootProtocolService {
       .limit(1);
 
     if (!instance) {
-      throw new NotFoundException(`Memory instance ${instanceId} not found`);
+      throw new MemoryInstanceNotFoundException(instanceId);
     }
 
     const template =

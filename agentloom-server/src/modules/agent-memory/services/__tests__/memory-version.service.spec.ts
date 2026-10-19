@@ -1,5 +1,13 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
+import {
+  MemoryNodeNotFoundException,
+  MemoryPatchTargetNotFoundException,
+  MemoryVersionChainExistsException,
+  MemoryVersionConcurrentUpdateException,
+  MemoryVersionNotFoundException,
+} from '../../agent-memory.exceptions';
 
 const mocks = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -184,7 +192,7 @@ describe('MemoryVersionService', () => {
 
       await expect(
         service.createVersion(NODE_ID, '初始记忆内容'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryNodeNotFoundException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
 
@@ -195,7 +203,7 @@ describe('MemoryVersionService', () => {
 
       await expect(
         service.createVersion(NODE_ID, '重复初始内容'),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryVersionChainExistsException);
       expect(tenantDb.insert).not.toHaveBeenCalled();
     });
   });
@@ -257,7 +265,7 @@ describe('MemoryVersionService', () => {
           oldString: 'missing',
           newString: 'new',
         }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryPatchTargetNotFoundException);
 
       expect(txDb.insert).not.toHaveBeenCalled();
       expect(txDb.update).not.toHaveBeenCalled();
@@ -284,7 +292,7 @@ describe('MemoryVersionService', () => {
 
       await expect(
         service.patchVersion(NODE_ID, { oldString: 'old', newString: 'new' }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      ).rejects.toBeInstanceOf(MemoryVersionConcurrentUpdateException);
     });
   });
 
@@ -434,7 +442,7 @@ describe('MemoryVersionService', () => {
 
       await expect(
         service.rollbackToVersion(NODE_ID, 'missing-version'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toBeInstanceOf(MemoryVersionNotFoundException);
       expect(gateway.emitVersionRollback).not.toHaveBeenCalled();
     });
   });

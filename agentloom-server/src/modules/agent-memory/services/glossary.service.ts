@@ -1,11 +1,11 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import AhoCorasick from 'ahocorasick';
 import { and, eq } from 'drizzle-orm';
+
+import {
+  MemoryGlossaryKeywordConflictException,
+  MemoryNodeNotFoundException,
+} from '../agent-memory.exceptions';
 
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../../common/utils/postgres-error.utils';
@@ -72,9 +72,7 @@ export class GlossaryService {
     } catch (error) {
       // Drizzle 把 pg 错误包在 DrizzleQueryError.cause 里，必须沿 cause 链判断。
       if (hasPostgresErrorCode(error, '23505')) {
-        throw new ConflictException(
-          `Glossary keyword "${keyword}" already bound to node ${nodeId}`,
-        );
+        throw new MemoryGlossaryKeywordConflictException(keyword, nodeId);
       }
 
       throw error;
@@ -177,9 +175,7 @@ export class GlossaryService {
       .limit(1);
 
     if (!node) {
-      throw new NotFoundException(
-        `Memory node ${nodeId} not found in instance ${instanceId}`,
-      );
+      throw new MemoryNodeNotFoundException(nodeId, instanceId);
     }
   }
 
