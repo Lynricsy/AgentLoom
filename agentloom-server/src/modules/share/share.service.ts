@@ -102,7 +102,6 @@ interface WorkflowShareTokenRecord extends schema.WorkflowShare {
   publishedVersionId: string | null;
   snapshot: schema.WorkflowVersionSnapshot | null;
   authorDisplayName: string | null;
-  authorEmail: string | null;
   authorAvatarUrl: string | null;
 }
 
@@ -113,7 +112,6 @@ interface AgentShareTokenRecord extends schema.AgentShare {
   publishedVersionId: string | null;
   snapshot: schema.AgentVersionSnapshot | null;
   authorDisplayName: string | null;
-  authorEmail: string | null;
   authorAvatarUrl: string | null;
 }
 
@@ -576,8 +574,7 @@ export class ShareService {
         workflowDescription: schema.workflowDefinitions.description,
         publishedVersionId: schema.workflowDefinitions.publishedVersionId,
         snapshot: schema.workflowVersions.snapshot,
-        authorDisplayName: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
-        authorEmail: schema.users.email,
+        authorDisplayName: schema.users.displayName,
         authorAvatarUrl: schema.users.avatarUrl,
       })
       .from(schema.workflowShares)
@@ -626,8 +623,7 @@ export class ShareService {
         agentRuntimeMode: schema.agentDefinitions.runtimeMode,
         publishedVersionId: schema.agentDefinitions.publishedVersionId,
         snapshot: schema.agentVersions.snapshot,
-        authorDisplayName: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
-        authorEmail: schema.users.email,
+        authorDisplayName: schema.users.displayName,
         authorAvatarUrl: schema.users.avatarUrl,
       })
       .from(schema.agentShares)
@@ -736,14 +732,13 @@ export class ShareService {
     } as ShareResponse;
   }
 
+  /** 匿名可见：不回落到邮箱，未设置显示名时显示「未知作者」 */
   private buildAuthor(
     displayName: string | null,
-    email: string | null,
     avatarUrl: string | null,
   ): ShareAuthorResponse {
     return {
-      displayName: displayName ?? email ?? '未知作者',
-      email: email ?? null,
+      displayName: displayName?.trim() || '未知作者',
       avatarUrl: avatarUrl ?? null,
     };
   }
@@ -761,11 +756,7 @@ export class ShareService {
       title: share.workflowName,
       description: share.workflowDescription,
       shareType: share.shareType,
-      author: this.buildAuthor(
-        share.authorDisplayName,
-        share.authorEmail,
-        share.authorAvatarUrl,
-      ),
+      author: this.buildAuthor(share.authorDisplayName, share.authorAvatarUrl),
       definition: {
         nodes: stripShareNodeBindings(share.snapshot.nodes),
         edges: share.snapshot.edges,
@@ -798,11 +789,7 @@ export class ShareService {
       title: share.agentName,
       description: share.agentDescription,
       shareType: share.shareType,
-      author: this.buildAuthor(
-        share.authorDisplayName,
-        share.authorEmail,
-        share.authorAvatarUrl,
-      ),
+      author: this.buildAuthor(share.authorDisplayName, share.authorAvatarUrl),
       definition: {
         nodes: stripShareNodeBindings(share.snapshot.nodes),
         edges: share.snapshot.edges,

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { DRIZZLE } from '../../database/database.module';
+import * as schema from '../../database/schema';
 import { AgentNotFoundException } from '../agent-definition/agent-definition.exceptions';
 import { WorkflowNotFoundException } from '../workflow-definition/workflow-version.exceptions';
 import {
@@ -122,7 +123,6 @@ function createShareTokenRecord(
       },
     },
     authorDisplayName: 'Wine Fox',
-    authorEmail: 'fox@ling.plus',
     authorAvatarUrl: null,
     ...overrides,
   };
@@ -178,7 +178,6 @@ function createAccessibleAgentShareTokenRecord(
       },
     },
     authorDisplayName: 'Wine Fox',
-    authorEmail: 'fox@ling.plus',
     authorAvatarUrl: null,
     ...overrides,
   };
@@ -517,6 +516,25 @@ describe('ShareService', () => {
         createdAt: share.createdAt,
         expiresAt: share.expiresAt,
       });
+    });
+
+    it('公开响应只给作者显示名，不向匿名访客暴露邮箱（D-133）', async () => {
+      const selectChain = createSelectChainWithJoins([
+        createAccessibleShareTokenRecord(),
+      ]);
+      db.select.mockReturnValueOnce(selectChain);
+      db.update.mockReturnValueOnce(createUpdateWhereChain(undefined));
+
+      const result = await service.getPublicShare(SHARE_TOKEN);
+
+      expect(result.author).toEqual({ displayName: 'Wine Fox', avatarUrl: null });
+      expect(JSON.stringify(result)).not.toContain('fox@ling.plus');
+      const selection = db.select.mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(Object.keys(selection)).not.toContain('authorEmail');
+      expect(selection.authorDisplayName).toBe(schema.users.displayName);
     });
 
     it('snapshot 缺少 viewport 时应回退到默认视口', async () => {
@@ -1010,7 +1028,6 @@ describe('ShareService', () => {
       const base = createAccessibleAgentShareTokenRecord();
       const agent = createAccessibleAgentShareTokenRecord({
         authorDisplayName: null,
-        authorEmail: 'author@example.com',
         authorAvatarUrl: null,
         snapshot: {
           ...base.snapshot,
@@ -1035,8 +1052,7 @@ describe('ShareService', () => {
       expect(result).toMatchObject({
         resourceType: 'agent',
         author: {
-          displayName: 'author@example.com',
-          email: 'author@example.com',
+          displayName: '未知作者',
           avatarUrl: null,
         },
         definition: { viewport: { x: 0, y: 0, zoom: 1 } },
@@ -1054,8 +1070,7 @@ describe('ShareService', () => {
       async (metadata, expectedLifecycle) => {
         const base = createAccessibleAgentShareTokenRecord();
         const agent = createAccessibleAgentShareTokenRecord({
-          authorDisplayName: null,
-          authorEmail: null,
+          authorDisplayName: '  ',
           snapshot: {
             ...base.snapshot,
             metadata: metadata as never,

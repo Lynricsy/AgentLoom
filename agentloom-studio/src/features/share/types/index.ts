@@ -53,9 +53,9 @@ export interface ShareListResponse {
   }
 }
 
+/** 公开分享页对匿名访客只返回作者显示名，不含邮箱 */
 export interface PublicShareAuthor {
   displayName: string
-  email: string | null
   avatarUrl: string | null
 }
 

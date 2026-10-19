@@ -5,9 +5,9 @@ import type {
   WorkflowShare,
 } from '../../../database/schema';
 
+/** 公开分享页面向匿名访客：只给显示名与头像，不暴露作者邮箱 */
 export interface ShareAuthorResponse {
   displayName: string;
-  email: string | null;
   avatarUrl: string | null;
 }
 

@@ -104,7 +104,6 @@ function makePublicShareData(
     shareType: 'read_only',
     author: {
       displayName: '酒狐',
-      email: 'test@example.invalid',
       avatarUrl: null,
     },
     definition: {
@@ -184,6 +183,15 @@ describe('PublicSharePage', () => {
       'data-edge-types',
       'smart',
     )
+  })
+
+  it('页脚只显示一次作者显示名，不出现邮箱（D-133）', () => {
+    publicShareMock.data = makePublicShareData()
+    render(<PublicSharePage />)
+
+    const footer = screen.getByText(/分享作者：/)
+    expect(footer).toHaveTextContent(/^分享作者：酒狐$/)
+    expect(document.body.textContent).not.toContain('@')
   })
 
   it('shows "仅查看" badge for read_only shares', () => {

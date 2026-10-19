@@ -421,7 +421,6 @@ export function PublicSharePage() {
       <footer className="shrink-0 border-t border-border bg-surface px-4 py-2.5 text-center sm:px-6">
         <p className="break-all text-xs text-muted-foreground">
           分享作者：{data.author.displayName}
-          {data.author.email ? ` · ${data.author.email}` : ''}
         </p>
       </footer>
     </PublicShareShell>
