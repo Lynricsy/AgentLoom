@@ -300,5 +300,96 @@ describe('MemorySearchService', () => {
       // sql 被调用时应包含 & 连接的词
       expect(mocks.operators.sql).toHaveBeenCalled();
     });
+
+    describe('中文检索（D-041）', () => {
+      // 每次 sql`` 调用的模板文本与插值，便于断言生成了哪种匹配条件。
+      const sqlCalls = () =>
+        mocks.operators.sql.mock.calls.map(([strings, ...values]) => ({
+          text: Array.from(strings).join('?'),
+          values,
+        }));
+
+      it('中文词应走 ILIKE 子串匹配并高亮，而不是整句 tsquery', async () => {
+        const content = '用户偏好：喜欢详细回答。';
+        const chain = createSelectChain([
+          {
+            nodeId: NODE_ID_1,
+            content,
+            relevanceScore: 0.1,
+            snippet: content,
+            disclosureLevel: 0,
+          },
+        ]);
+        tenantDb.select.mockReturnValue(chain);
+
+        const result = await service.search(INSTANCE_ID, { query: '详细' });
+
+        expect(result).toEqual([
+          expect.objectContaining({
+            nodeId: NODE_ID_1,
+            snippet: '用户偏好：喜欢<b>详细</b>回答。',
+          }),
+        ]);
+        expect(sqlCalls()).toContainEqual({
+          text: '? ILIKE ?',
+          values: [expect.anything(), '%详细%'],
+        });
+        expect(sqlCalls().some(({ text }) => text.includes('to_tsquery'))).toBe(
+          false,
+        );
+      });
+
+      it('多个中文词按 AND 组合，各自生成子串条件', async () => {
+        tenantDb.select.mockReturnValue(createSelectChain([]));
+
+        await service.search(INSTANCE_ID, { query: '偏好 回答' });
+
+        const likeValues = sqlCalls()
+          .filter(({ text }) => text === '? ILIKE ?')
+          .map(({ values }) => values[1]);
+        expect(likeValues).toEqual(['%偏好%', '%回答%']);
+      });
+
+      it('英文词仍走 english tsquery，不做子串匹配', async () => {
+        tenantDb.select.mockReturnValue(createSelectChain([]));
+
+        await service.search(INSTANCE_ID, { query: 'concise answers' });
+
+        expect(sqlCalls()).toContainEqual({
+          text: "to_tsquery('english', ?)",
+          values: ['concise & answers'],
+        });
+        expect(sqlCalls().some(({ text }) => text.includes('ILIKE'))).toBe(
+          false,
+        );
+      });
+
+      it('中英混合查询同时使用 tsquery 与子串条件，并在 ts_headline 摘要上补充中文高亮', async () => {
+        const chain = createSelectChain([
+          {
+            nodeId: NODE_ID_1,
+            content: 'NestJS 的记忆内容',
+            relevanceScore: 0.2,
+            snippet: '<b>NestJS</b> 的记忆内容',
+            disclosureLevel: 0,
+          },
+        ]);
+        tenantDb.select.mockReturnValue(chain);
+
+        const result = await service.search(INSTANCE_ID, {
+          query: 'NestJS 记忆',
+        });
+
+        expect(result[0]?.snippet).toBe('<b>NestJS</b> 的<b>记忆</b>内容');
+        expect(sqlCalls()).toContainEqual({
+          text: "to_tsquery('english', ?)",
+          values: ['NestJS'],
+        });
+        expect(sqlCalls()).toContainEqual({
+          text: '? ILIKE ?',
+          values: [expect.anything(), '%记忆%'],
+        });
+      });
+    });
   });
 });
