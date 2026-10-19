@@ -74,6 +74,7 @@ import {
 } from '../generated-app.integration-runner';
 import type { GeneratedAppResponseDto } from '../dto';
 import { GeneratedAppPublicController } from '../generated-app.controller';
+import { GeneratedAppGate5BrowserAcceptanceRunner } from '../generated-app.browser-acceptance-runner';
 import {
   GeneratedAppGate3WorkspaceRunner,
   type GeneratedAppGate3RepairResult,
@@ -128,6 +129,32 @@ import {
   mockTenantDb,
 } from './generated-app-test-support';
 
+/**
+ * 服务端尚未接入 Playwright 执行器，默认 real 模式的 Gate 5 必然失败（D-148）。
+ * 编排用例要覆盖 Gate 6-7 与运行时绑定，把「contract 全过但未启动浏览器」替换为通过，
+ * 模拟将来接入的浏览器验收执行器已通过；其他失败原样保留。
+ */
+function simulateBrowserAcceptancePassed() {
+  const run = GeneratedAppGate5BrowserAcceptanceRunner.prototype.run;
+  return vi
+    .spyOn(GeneratedAppGate5BrowserAcceptanceRunner.prototype, 'run')
+    .mockImplementation(function (
+      this: GeneratedAppGate5BrowserAcceptanceRunner,
+      params,
+    ) {
+      const result = run.call(this, params);
+      return result.failure?.code === 'gate-5-real-browser-not-executed'
+        ? {
+            ...result,
+            status: 'passed',
+            summary: 'Gate 5 通过（测试替身）：浏览器验收已通过。',
+            failure: null,
+            repairInstructions: null,
+          }
+        : result;
+    });
+}
+
 describe('orchestrator migrated scenarios', () => {
   let service: GeneratedAppService;
   let repository: GeneratedAppRepository;
@@ -140,6 +167,7 @@ describe('orchestrator migrated scenarios', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    simulateBrowserAcceptancePassed();
     const configService = createConfigService();
     const pluginService = createGeneratedPrivatePluginServiceMock();
     const storageService = createStorageServiceMock();

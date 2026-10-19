@@ -160,7 +160,7 @@ function buildGate5Plans(
 }
 
 describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
-  it('real 模式应执行受控本地 browser contract 并保留断言、artifact、console/network 与覆盖引用', () => {
+  it('real 模式执行受控本地 browser contract，但未启动浏览器时 Gate 5 失败而不是通过', () => {
     const runner = new GeneratedAppGate5BrowserAcceptanceRunner(
       createConfigService(),
     );
@@ -170,13 +170,29 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
 
     expect(runner.getExecutorMode()).toBe('real');
     expect(runner.getExecutionLevel()).toBe('real-local-browser-contract');
-    expect(result.status).toBe('passed');
+    expect(result.status).toBe('failed');
+    expect(result.failure).toEqual(
+      expect.objectContaining({
+        code: 'gate-5-real-browser-not-executed',
+        details: expect.objectContaining({
+          executed: false,
+          playwrightExecuted: false,
+          realBrowserExecuted: false,
+        }),
+      }),
+    );
+    expect(result.repairInstructions).toContain('Playwright');
     expect(result.executionLevel).toBe('real-local-browser-contract');
-    expect(result.summary).toContain('real-local browser-contract runner');
-    expect(result.summary).toContain('public build preview submit');
+    expect(result.summary).toContain('Gate 5 失败：浏览器验收未执行');
+    expect(result.summary).toContain('不能成为发布候选');
     expect(result.summary).toContain('未启动 Playwright');
     expect(result.summary).toContain('未打开真实浏览器');
     expect(result.summary).toContain('未捕获真实截图、视频或 Playwright trace');
+    expect(
+      result.assertionResults.every(
+        (assertion) => assertion.status === 'passed',
+      ),
+    ).toBe(true);
     expect(result.assertionResults).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -623,7 +639,8 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
 
     const result = runner.run(plans);
 
-    expect(result.status).toBe('passed');
+    // contract 全过，只因未启动浏览器而失败
+    expect(result.failure?.code).toBe('gate-5-real-browser-not-executed');
     expect(
       result.assertionResults.flatMap((assertion) =>
         assertion.artifactRefs.filter((artifact) =>
@@ -693,7 +710,7 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
     const result = runner.run(plans);
     const serialized = JSON.stringify(result);
 
-    expect(result.status).toBe('passed');
+    expect(result.failure?.code).toBe('gate-5-real-browser-not-executed');
     expect(serialized).toContain('[redacted-token]');
     expect(serialized).toContain('[redacted-host-path]');
     expect(serialized).not.toContain('sk-testtoken');

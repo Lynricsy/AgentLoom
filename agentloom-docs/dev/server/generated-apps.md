@@ -56,6 +56,8 @@ stateDiagram-v2
 
 门禁 3–7 的 runner 有 `real` / `fixture` / `disabled` 三种执行模式，默认 `real`，由各 runner 的 `getExecutorMode()` 经 `ConfigService` 读取 `GENERATED_APP_GATE<N>_EXECUTOR_MODE`。这些变量（以及 `GENERATED_APP_WORKSPACE_ROOT`、`GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS`）在 `agentloom-server/src/config/env.schema.ts` 中声明，清单与默认值见 [配置参考](/deploy/configuration) 的 server 变量表。变量名不带 `APP_` 前缀，是因为 Gate 5 的证据中已持久化字面量 `GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e`。
 
+Gate 5 的 `real` 模式（`real-local-browser-contract`）只在服务端执行确定性的 DOM/无障碍/网络/console 契约，不启动浏览器；契约全部通过时仍返回 `failed`（`gate-5-real-browser-not-executed`），因为门禁定义是浏览器验收。`real-browser-e2e` 模式检查 `playwright` 包后也会 fail-closed（`gate-5-real-browser-e2e-unavailable` / `gate-5-real-browser-e2e-not-implemented`），服务端尚未接入 Playwright 执行适配层，server 镜像也不含 Playwright 与浏览器。只有显式的 `fixture` 模式会让 Gate 5 通过，仅用于测试。
+
 `runGenerationToTerminal` 保证运行无论以何种方式退出都会落一个终态：未显式写入终态时，`finally` 中把运行标记为失败。
 
 ### 3. 修复

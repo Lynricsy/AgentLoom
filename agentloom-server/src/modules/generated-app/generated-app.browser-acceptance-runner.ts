@@ -296,13 +296,29 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
       };
     }
 
+    // real 模式只跑 deterministic contract，没有启动浏览器；Gate 5 的定义是浏览器验收，
+    // contract 全部通过也不能算通过，否则未经浏览器验证的应用会成为发布候选。
     return {
-      status: 'passed',
+      status: 'failed',
       executionLevel,
-      summary: `Gate 5 通过：real-local browser-contract runner 已执行受控 deterministic DOM/accessibility/network/console contract，覆盖公开 runtime open/submit/detail、public build preview submit、创建者 generation/gate/submission review、desktop/mobile viewport、console/network/accessibility/responsive assertions；${REAL_LOCAL_BROWSER_CONTRACT_NOTE}`,
+      summary: `Gate 5 失败：浏览器验收未执行。real-local browser-contract runner 的 deterministic DOM/accessibility/network/console contract 已全部通过，但没有启动 Playwright 或真实浏览器，不能作为浏览器验收通过；已停止 Gate 6-7，应用不能成为发布候选。${REAL_LOCAL_BROWSER_CONTRACT_NOTE}`,
       evidence,
-      failure: null,
-      repairInstructions: null,
+      failure: {
+        code: 'gate-5-real-browser-not-executed',
+        message:
+          'Gate 5 浏览器验收需要在真实浏览器中执行核心验收场景；当前执行模式 real 只完成了 deterministic contract，未启动浏览器。',
+        details: {
+          runnerId,
+          executionMode,
+          executionLevel,
+          contractAssertionsPassed: assertionResults.length,
+          executed: false,
+          playwrightExecuted: false,
+          realBrowserExecuted: false,
+        },
+      },
+      repairInstructions:
+        '服务端尚未接入 Playwright 浏览器验收执行器（GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e 当前也会 fail-closed），生成应用暂时无法通过 Gate 5；contract evidence 可用于排查公开 runtime 与创建者界面问题。',
       assertionResults,
     };
   }
