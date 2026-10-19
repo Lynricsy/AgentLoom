@@ -12,6 +12,17 @@ export class OrganizationNotFoundException extends DomainException {
   }
 }
 
+export class OrganizationMemberNotFoundException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/organization-member-not-found',
+      title: '成员未找到',
+      status: HttpStatus.NOT_FOUND,
+      detail: '该用户不是此组织的成员',
+    });
+  }
+}
+
 export class OrganizationSlugConflictException extends DomainException {
   constructor(slug: string) {
     super({

@@ -18,6 +18,7 @@ import {
   AlreadyOrganizationMemberException,
   InvitationExpiredOrUsedException,
   InvitationNotFoundException,
+  OrganizationMemberNotFoundException,
   OrganizationNotFoundException,
   OrganizationSlugConflictException,
   PendingInvitationExistsException,
@@ -1113,6 +1114,34 @@ describe('OrganizationService', () => {
       expect(db.select).toHaveBeenCalledTimes(1);
       expect(selectChain.from).toHaveBeenCalledWith(organizationMembers);
       expect(db.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('成员不存在', () => {
+    beforeEach(() => {
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.query.organizationMembers.findFirst.mockResolvedValue(undefined);
+    });
+
+    it('updateMemberRole 抛出 OrganizationMemberNotFoundException', async () => {
+      await expect(
+        service.updateMemberRole(
+          ORG_ID,
+          TARGET_USER_ID,
+          { role: 'viewer' },
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(OrganizationMemberNotFoundException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('removeMember 抛出 OrganizationMemberNotFoundException', async () => {
+      await expect(
+        service.removeMember(ORG_ID, TARGET_USER_ID, USER_ID),
+      ).rejects.toBeInstanceOf(OrganizationMemberNotFoundException);
+      expect(db.transaction).not.toHaveBeenCalled();
     });
   });
 

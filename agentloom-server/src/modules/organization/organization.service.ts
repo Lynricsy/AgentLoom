@@ -11,6 +11,7 @@ import {
 } from '../../database/schema';
 import {
   OrganizationNotFoundException,
+  OrganizationMemberNotFoundException,
   OrganizationSlugConflictException,
   InvitationNotFoundException,
   InvitationEmailMismatchException,
@@ -379,7 +380,7 @@ export class OrganizationService {
     const target = await this.findMember(orgId, targetUserId);
 
     if (!target) {
-      throw new OrganizationNotFoundException();
+      throw new OrganizationMemberNotFoundException();
     }
 
     // 只有 owner 能授予 owner 或改动其他 owner；admin 只能在 owner 以下的角色之间调整
@@ -427,7 +428,7 @@ export class OrganizationService {
     const target = await this.findMember(orgId, targetUserId);
 
     if (!target) {
-      throw new OrganizationNotFoundException();
+      throw new OrganizationMemberNotFoundException();
     }
 
     if (actorUserId !== targetUserId && target.role === 'owner') {
