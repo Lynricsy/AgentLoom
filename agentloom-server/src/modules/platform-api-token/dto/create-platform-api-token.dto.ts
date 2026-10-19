@@ -22,11 +22,18 @@ const ScopesSchema = z
     return scopes?.join(' ');
   });
 
-export const CreatePlatformApiTokenSchema = z.object({
-  name: z.string().min(1).max(255),
-  scopes: ScopesSchema,
-  expires_at: z.iso.datetime().optional(),
-});
+// strict：拼错的键（如 camelCase 的 expiresAt）不能被静默丢弃成「永不过期」
+export const CreatePlatformApiTokenSchema = z
+  .object({
+    name: z.string().min(1).max(255),
+    scopes: ScopesSchema,
+    expires_at: z.iso.datetime().optional(),
+  })
+  .strict()
+  .refine((dto) => !dto.expires_at || Date.parse(dto.expires_at) > Date.now(), {
+    message: '过期时间必须晚于当前时间',
+    path: ['expires_at'],
+  });
 
 export type CreatePlatformApiTokenDto = z.input<
   typeof CreatePlatformApiTokenSchema

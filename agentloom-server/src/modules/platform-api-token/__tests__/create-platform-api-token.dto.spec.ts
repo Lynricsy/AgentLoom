@@ -27,3 +27,32 @@ describe('CreatePlatformApiTokenSchema scopes', () => {
     expect(result.error?.issues[0]?.message).toContain('root:everything');
   });
 });
+
+describe('CreatePlatformApiTokenSchema expires_at', () => {
+  it('拒绝未知键（camelCase expiresAt 不再被静默丢弃为永不过期）', () => {
+    const result = CreatePlatformApiTokenSchema.safeParse({
+      name: 't',
+      expiresAt: '2099-01-01T00:00:00Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.code).toBe('unrecognized_keys');
+  });
+
+  it('拒绝已过去的过期时间', () => {
+    const result = CreatePlatformApiTokenSchema.safeParse({
+      name: 't',
+      expires_at: '2020-01-01T00:00:00Z',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(['expires_at']);
+  });
+
+  it('接受未来的过期时间', () => {
+    expect(
+      CreatePlatformApiTokenSchema.parse({
+        name: 't',
+        expires_at: '2099-01-01T00:00:00Z',
+      }).expires_at,
+    ).toBe('2099-01-01T00:00:00Z');
+  });
+});
