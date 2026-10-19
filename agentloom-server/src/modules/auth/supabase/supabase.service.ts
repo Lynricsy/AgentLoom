@@ -248,8 +248,9 @@ export class SupabaseService {
 
   async getAuthenticatorAssuranceLevel(accessToken: string) {
     const userClient = this.createUserClient(accessToken);
+    // user client 不持久化会话，必须显式传入 JWT；无参调用读本地会话，恒得 currentLevel=null
     const { data, error } =
-      await userClient.auth.mfa.getAuthenticatorAssuranceLevel();
+      await userClient.auth.mfa.getAuthenticatorAssuranceLevel(accessToken);
 
     if (error) {
       this.logger.warn(

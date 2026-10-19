@@ -92,4 +92,32 @@ describe('SupabaseService', () => {
 
     expect(createClientMock).toHaveBeenCalledTimes(2);
   });
+
+  it('查询 AAL 时显式传入 JWT（user client 无持久会话）', async () => {
+    createClientMock.mockReturnValue(oauthClient);
+    oauthClient.auth.mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
+      data: {
+        currentLevel: 'aal2',
+        nextLevel: 'aal2',
+        currentAuthenticationMethods: [],
+      },
+      error: null,
+    });
+
+    const service = new SupabaseService(
+      createMockConfigService({
+        APP_DEPLOYMENT_MODE: 'saas',
+        APP_SUPABASE_URL: 'https://example.supabase.co',
+        APP_SUPABASE_ANON_KEY: 'anon-key',
+        APP_SUPABASE_SERVICE_KEY: 'service-key',
+      }),
+    );
+
+    await expect(
+      service.getAuthenticatorAssuranceLevel('aal2-access-token'),
+    ).resolves.toMatchObject({ currentLevel: 'aal2' });
+    expect(
+      oauthClient.auth.mfa.getAuthenticatorAssuranceLevel,
+    ).toHaveBeenCalledWith('aal2-access-token');
+  });
 });
