@@ -912,6 +912,7 @@ describe('MarketplaceService', () => {
         .mockReturnValueOnce(
           createSelectChainWithTripleLeftJoinWhere([pluginRow]),
         )
+        .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(
           createSelectChainWithInnerJoinWhereLimit([pluginSourceRow]),
         );
@@ -960,6 +961,7 @@ describe('MarketplaceService', () => {
         .mockReturnValueOnce(
           createSelectChainWithTripleLeftJoinWhere([pluginRow]),
         )
+        .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(
           createSelectChainWithInnerJoinWhereLimit([inactivePluginSourceRow]),
         );
@@ -970,6 +972,47 @@ describe('MarketplaceService', () => {
 
       expect(pluginService.cloneMarketplacePlugin).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('卸载后重装应重新启用已停用的副本而不是 409', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([
+            createPublicPluginListingRow(),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: 'clone-1',
+              pluginId: PLUGIN_ID,
+              version: '1.0.0',
+              status: 'disabled',
+            },
+          ]),
+        );
+      const updateChain = createUpdateChain([
+        { id: 'clone-1', pluginId: PLUGIN_ID, name: 'Installed Plugin Copy' },
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.installListing(
+        TENANT_ID,
+        USER_ID,
+        PLUGIN_LISTING_ID,
+        {},
+      );
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'active', updatedAt: NOW }),
+      );
+      expect(pluginService.cloneMarketplacePlugin).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        pluginDbId: 'clone-1',
+        pluginId: PLUGIN_ID,
+        name: 'Installed Plugin Copy',
+        message: 'Plugin re-enabled',
+      });
     });
   });
 
@@ -1001,6 +1044,28 @@ describe('MarketplaceService', () => {
 
     it('没有匹配副本时应幂等返回空列表且不写库', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
+
+      const result = await service.uninstallListing(
+        TENANT_ID,
+        USER_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(result.disabledPluginDbIds).toEqual([]);
+    });
+
+    it('副本均已停用时重复卸载应幂等返回空列表且不写库', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: 'clone-1',
+            pluginId: PLUGIN_ID,
+            version: '1.0.0',
+            status: 'disabled',
+          },
+        ]),
+      );
 
       const result = await service.uninstallListing(
         TENANT_ID,
@@ -1628,6 +1693,7 @@ describe('MarketplaceService', () => {
             createPublicPluginListingRow(),
           ]),
         )
+        .mockReturnValueOnce(createSelectChain([]))
         .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([]));
 
       await expect(

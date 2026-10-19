@@ -73,3 +73,14 @@ export class MarketplaceReviewInstallRequiredException extends DomainException {
     });
   }
 }
+
+export class MarketplaceReviewOwnListingException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/marketplace-review-own-listing',
+      title: '不能评价自己发布的 listing',
+      status: HttpStatus.FORBIDDEN,
+      detail: '发布方组织的成员不能评价本组织发布的 listing',
+    });
+  }
+}

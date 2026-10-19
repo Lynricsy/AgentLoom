@@ -11,6 +11,7 @@ import {
   MarketplaceListingNotFoundException,
   MarketplaceReviewConflictException,
   MarketplaceReviewInstallRequiredException,
+  MarketplaceReviewOwnListingException,
 } from './marketplace.exceptions';
 
 interface MarketplaceReviewAuthor {
@@ -44,6 +45,7 @@ export interface MarketplaceSubmittedReviewItem {
 
 interface ListedMarketplaceListing {
   id: string;
+  tenantId: string;
   listingType: 'workflow' | 'plugin';
   pluginDbId: string | null;
 }
@@ -69,6 +71,12 @@ export class MarketplaceReviewUserService {
     const parsedDto = SubmitReviewSchema.parse(dto);
 
     const listing = await this.ensureListedListingExists(listingId);
+
+    // 发布方给自己的 listing 打分会污染评分；workflow listing 没有安装约束，
+    // 这是唯一能拦住自评的地方。
+    if (listing.tenantId === tenantId) {
+      throw new MarketplaceReviewOwnListingException();
+    }
 
     if (listing.listingType === 'plugin') {
       await this.ensurePluginInstalledByTenant(tenantId, listing.id);
@@ -198,6 +206,7 @@ export class MarketplaceReviewUserService {
     const [listing] = await this.db
       .select({
         id: schema.marketplaceListings.id,
+        tenantId: schema.marketplaceListings.tenantId,
         listingType: schema.marketplaceListings.listingType,
         pluginDbId: schema.marketplaceListings.pluginDbId,
       })

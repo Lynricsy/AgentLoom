@@ -131,13 +131,14 @@ export interface InstalledMarketplacePluginResult {
   pluginDbId: string;
   pluginId: string;
   name: string;
-  message: 'Plugin installed successfully';
+  message: 'Plugin installed successfully' | 'Plugin re-enabled';
 }
 
 type MarketplaceClonePluginRow = {
   id: string;
   pluginId: string;
   version: string;
+  status: string;
   contentHash: string | null;
   sourcePluginDbId: string | null;
   sourcePluginId: string | null;
@@ -779,6 +780,50 @@ export class MarketplaceService {
     const listing = await this.findPublicListingOrThrow(listingId);
 
     if (listing.listingType === 'plugin') {
+      // 卸载只把副本置为 disabled（插件 ID 在组织内唯一），重装时直接重新启用，
+      // 否则 cloneMarketplacePlugin 会以 plugin-already-exists 拒绝。
+      const [installedClone] = await this.findMarketplaceClonePlugins(
+        tenantId,
+        listingId,
+      );
+      if (installedClone?.status === 'disabled') {
+        const [reenabled] = await this.tenantDb
+          .update(schema.plugins)
+          .set({
+            status: 'active',
+            occVersion: sql`${schema.plugins.occVersion} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.plugins.tenantId, tenantId),
+              eq(schema.plugins.id, installedClone.id),
+            ),
+          )
+          .returning({
+            id: schema.plugins.id,
+            pluginId: schema.plugins.pluginId,
+            name: schema.plugins.name,
+          });
+
+        this.logger.log(
+          JSON.stringify({
+            action: 'marketplace_listing_reenabled',
+            listingId,
+            tenantId,
+            userId,
+            pluginDbId: reenabled.id,
+          }),
+        );
+
+        return {
+          pluginDbId: reenabled.id,
+          pluginId: reenabled.pluginId,
+          name: reenabled.name,
+          message: 'Plugin re-enabled',
+        };
+      }
+
       const source = await this.findPublicPluginInstallSourceOrThrow(listingId);
       const createdPlugin = await this.pluginService.cloneMarketplacePlugin({
         tenantId,
@@ -841,20 +886,22 @@ export class MarketplaceService {
   /**
    * 卸载来自某个 listing 的插件副本：置为 disabled，不删行、不动对象。
    *
-   * 幂等：没有匹配副本时返回空列表。不回退 listing.useCount——历史安装
-   * 计数是发布方的统计事实，不应被卸载抹掉。
+   * 幂等：没有启用中的副本时返回空列表；重装会重新启用被停用的副本。
+   * 不回退 listing.useCount——历史安装计数是发布方的统计事实，不应被卸载抹掉。
    */
   async uninstallListing(
     tenantId: string,
     userId: string,
     listingId: string,
   ): Promise<UninstalledMarketplacePluginResult> {
-    const clones = await this.findMarketplaceClonePlugins(tenantId, listingId);
+    const clones = (
+      await this.findMarketplaceClonePlugins(tenantId, listingId)
+    ).filter((clone) => clone.status !== 'disabled');
 
     if (clones.length === 0) {
       return {
         disabledPluginDbIds: [],
-        message: '当前租户没有来自该 listing 的已安装插件',
+        message: '当前租户没有来自该 listing 的启用中插件副本',
       };
     }
 
@@ -1083,6 +1130,7 @@ export class MarketplaceService {
         id: schema.plugins.id,
         pluginId: schema.plugins.pluginId,
         version: schema.plugins.version,
+        status: schema.plugins.status,
         contentHash: schema.plugins.contentHash,
         sourcePluginDbId: sql<
           string | null

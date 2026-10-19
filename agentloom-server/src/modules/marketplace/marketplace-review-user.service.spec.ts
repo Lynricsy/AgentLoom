@@ -6,6 +6,7 @@ import {
   MarketplaceListingNotFoundException,
   MarketplaceReviewConflictException,
   MarketplaceReviewInstallRequiredException,
+  MarketplaceReviewOwnListingException,
 } from './marketplace.exceptions';
 import { MarketplaceReviewUserService } from './marketplace-review-user.service';
 
@@ -145,6 +146,24 @@ describe('MarketplaceReviewUserService', () => {
         content: '非常实用',
         createdAt: NOW,
       });
+    });
+
+    it('发布方租户评价自己的 listing 时应抛出 403', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: LISTING_ID,
+            tenantId: TENANT_ID,
+            listingType: 'workflow',
+            pluginDbId: null,
+          },
+        ]),
+      );
+
+      await expect(
+        service.submitReview(TENANT_ID, USER_ID, LISTING_ID, { rating: 5 }),
+      ).rejects.toBeInstanceOf(MarketplaceReviewOwnListingException);
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('plugin listing 未安装时应抛出 403', async () => {

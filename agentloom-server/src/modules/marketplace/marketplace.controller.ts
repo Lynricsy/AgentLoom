@@ -172,6 +172,10 @@ export class MarketplaceController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '提交 Marketplace listing 用户评论' })
   @ApiResponse({ status: 201, description: '评论提交成功' })
+  @ApiResponse({
+    status: 403,
+    description: '插件 listing 未安装，或评价本组织发布的 listing',
+  })
   @ApiResponse({ status: 404, description: 'Listing 不存在' })
   @ApiResponse({ status: 409, description: '用户已评论该 listing' })
   async submitReview(
