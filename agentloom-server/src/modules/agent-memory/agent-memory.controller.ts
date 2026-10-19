@@ -64,7 +64,9 @@ import {
   RemoveGlossaryKeywordDto,
 } from './dto';
 import {
+  MemoryEdgeNotFoundException,
   MemoryInstanceNotFoundException,
+  MemoryNodeNotFoundException,
   MemoryPathNotFoundException,
   MemoryResourceNotFoundException,
 } from './agent-memory.exceptions';
@@ -354,6 +356,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: ListMemoryNodesQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const result = await this.memoryNodeService.listNodes(id, {
       page: query.page,
       limit: query.pageSize,
@@ -386,6 +389,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Param('nodeId') nodeId: string,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     const [node, versions, childEdges, parentEdges] = await Promise.all([
       this.memoryNodeService.getNode(nodeId),
       this.memoryVersionService.getVersionHistory(nodeId),
@@ -415,6 +419,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Body() dto: CreateMemoryNodeDto,
   ) {
+    await this.assertInstanceExists(id);
     const node = await this.memoryNodeService.createNode(id, {
       contentType: dto.contentType,
       metadata: dto.metadata,
@@ -435,6 +440,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Param('nodeId') nodeId: string,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     const edges = await this.memoryEdgeService.getChildEdges(nodeId);
 
     return { data: edges };
@@ -451,6 +457,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: ResolveUriQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const result = await this.pathResolverService.resolveUri(id, query.uri);
 
     return { data: result };
@@ -466,6 +473,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: BrowseQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
     const uri = query.uri;
 
@@ -565,6 +573,7 @@ export class AgentMemoryController {
     @CurrentTenant() tenantId: string,
     @Param('id') id: string,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
 
     const rows = await tenantDb
@@ -594,6 +603,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: MemorySearchQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const results = await this.memorySearchService.search(id, {
       query: query.q,
       limit: query.limit,
@@ -610,6 +620,7 @@ export class AgentMemoryController {
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiResponse({ status: 200, description: '查询成功' })
   async getGraph(@CurrentTenant() tenantId: string, @Param('id') id: string) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
 
     const [nodes, edges] = await Promise.all([
@@ -632,6 +643,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Body() dto: CreateMemoryPathDto,
   ) {
+    await this.assertInstanceExists(id);
     const path = await this.pathResolverService.createPath(
       id,
       dto.domain,
@@ -652,6 +664,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Body() dto: CreateMemoryAliasDto,
   ) {
+    await this.assertInstanceExists(id);
     const alias = await this.pathResolverService.addAlias(
       id,
       dto.sourceUri,
@@ -674,6 +687,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Param('pathId') pathId: string,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
 
     const [deleted] = await tenantDb
@@ -696,6 +710,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: ListMemoryPathsQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -748,6 +763,7 @@ export class AgentMemoryController {
     @Param('nodeId') nodeId: string,
     @Body() dto: AddGlossaryKeywordDto,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     const keyword = await this.glossaryService.addKeyword(
       id,
       dto.keyword,
@@ -764,12 +780,14 @@ export class AgentMemoryController {
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
   @ApiResponse({ status: 204, description: '删除成功' })
+  @ApiResponse({ status: 404, description: '实例或节点不存在' })
   async removeGlossaryKeyword(
     @CurrentTenant() tenantId: string,
     @Param('id') id: string,
     @Param('nodeId') nodeId: string,
     @Body() dto: RemoveGlossaryKeywordDto,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     await this.glossaryService.removeKeyword(id, dto.keyword, nodeId);
   }
 
@@ -785,6 +803,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: ListMemoryEdgesQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -837,6 +856,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Body() dto: CreateMemoryEdgeDto,
   ) {
+    await this.assertInstanceExists(id);
     const edge = await this.memoryEdgeService.createEdge(id, {
       parentNodeId: dto.parentNodeId,
       childNodeId: dto.childNodeId,
@@ -861,6 +881,18 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Param('edgeId') edgeId: string,
   ) {
+    await this.assertInstanceExists(id);
+    // 边必须属于路由中的实例，避免借任意实例路径删除其他实例的边。
+    const tenantDb = getTenantDb(this.db);
+    const [edge] = await tenantDb
+      .select({ id: memoryEdges.id })
+      .from(memoryEdges)
+      .where(and(eq(memoryEdges.id, edgeId), eq(memoryEdges.instanceId, id)))
+      .limit(1);
+    if (!edge) {
+      throw new MemoryEdgeNotFoundException(edgeId);
+    }
+
     await this.memoryEdgeService.deleteEdge(edgeId);
   }
 
@@ -878,6 +910,7 @@ export class AgentMemoryController {
     @Param('nodeId') nodeId: string,
     @Query() query: ListMemoryVersionsQueryDto,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     const versions = await this.memoryVersionService.getVersionHistory(nodeId);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -901,6 +934,7 @@ export class AgentMemoryController {
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
   @ApiResponse({ status: 201, description: '创建成功' })
+  @ApiResponse({ status: 404, description: '实例或节点不存在' })
   async createVersion(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
@@ -908,6 +942,7 @@ export class AgentMemoryController {
     @Param('nodeId') nodeId: string,
     @Body() dto: CreateMemoryVersionDto,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     let version;
 
     switch (dto.mode) {
@@ -944,6 +979,7 @@ export class AgentMemoryController {
   @ApiParam({ name: 'id', description: '记忆实例 ID' })
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
   @ApiResponse({ status: 200, description: '回滚成功' })
+  @ApiResponse({ status: 404, description: '实例、节点或目标版本不存在' })
   async rollbackVersion(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
@@ -951,6 +987,7 @@ export class AgentMemoryController {
     @Param('nodeId') nodeId: string,
     @Body() dto: RollbackVersionDto,
   ) {
+    await this.assertNodeInInstance(id, nodeId);
     const version = await this.memoryVersionService.rollbackToVersion(
       nodeId,
       dto.targetVersionId,
@@ -976,6 +1013,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: ListAuditLogQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -1043,6 +1081,10 @@ export class AgentMemoryController {
   @ApiParam({ name: 'nodeId', description: '节点 ID' })
   @ApiParam({ name: 'versionId', description: '版本 ID' })
   @ApiResponse({ status: 200, description: '审核成功' })
+  @ApiResponse({
+    status: 404,
+    description: '实例、节点不存在，或版本不属于该节点',
+  })
   async reviewVersion(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
@@ -1051,12 +1093,12 @@ export class AgentMemoryController {
     @Param('versionId') versionId: string,
     @Body() dto: ReviewVersionDto,
   ) {
-    const reviewDecision = dto.action === 'approve' ? 'approved' : 'rejected';
-
-    const version = await this.memoryVersionService.updateReviewStatus(
+    await this.assertNodeInInstance(id, nodeId);
+    const version = await this.memoryVersionService.updateReviewStatus({
+      nodeId,
       versionId,
-      reviewDecision,
-    );
+      status: dto.action === 'approve' ? 'approved' : 'rejected',
+    });
 
     await this.auditLogService.record({
       tenantId,
@@ -1086,6 +1128,7 @@ export class AgentMemoryController {
     @Param('id') id: string,
     @Query() query: ListPendingReviewsQueryDto,
   ) {
+    await this.assertInstanceExists(id);
     const tenantDb = getTenantDb(this.db);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -1126,6 +1169,42 @@ export class AgentMemoryController {
   }
 
   // ─── Private Helpers ──────────────────────────────────────────────
+
+  /**
+   * 子路由的前置校验：实例必须在当前租户内存在（他租户实例被 RLS 过滤，同样 404），
+   * 否则子查询会对任意实例 id 返回 200 空集合。
+   */
+  private async assertInstanceExists(instanceId: string): Promise<void> {
+    const [instance] = await getTenantDb(this.db)
+      .select({ id: agentMemoryInstances.id })
+      .from(agentMemoryInstances)
+      .where(eq(agentMemoryInstances.id, instanceId))
+      .limit(1);
+
+    if (!instance) {
+      throw new MemoryInstanceNotFoundException(instanceId);
+    }
+  }
+
+  /** 节点必须属于路由中的实例，避免借 A 实例的路径操作 B 实例的节点。 */
+  private async assertNodeInInstance(
+    instanceId: string,
+    nodeId: string,
+  ): Promise<void> {
+    await this.assertInstanceExists(instanceId);
+
+    const [node] = await getTenantDb(this.db)
+      .select({ id: memoryNodes.id })
+      .from(memoryNodes)
+      .where(
+        and(eq(memoryNodes.id, nodeId), eq(memoryNodes.instanceId, instanceId)),
+      )
+      .limit(1);
+
+    if (!node) {
+      throw new MemoryNodeNotFoundException(nodeId, instanceId);
+    }
+  }
 
   private async enrichNodeForBrowse(
     node: {

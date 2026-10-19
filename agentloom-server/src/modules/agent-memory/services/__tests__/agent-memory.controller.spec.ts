@@ -3,9 +3,11 @@ import type { Mock } from 'vitest';
 
 import {
   MemoryEdgeCycleException,
+  MemoryEdgeNotFoundException,
   MemoryInstanceNotFoundException,
   MemoryNodeNotFoundException,
   MemoryPathNotFoundException,
+  MemoryVersionNotFoundException,
 } from '../../agent-memory.exceptions';
 
 // ─── Mock Factories ────────────────────────────────────────────────────
@@ -81,6 +83,14 @@ import type {
 // ─── Types & Helpers ───────────────────────────────────────────────────
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
+
+/** 子路由的实例/节点归属校验（private），单独在 route scope 用例中覆盖。 */
+interface RouteScopeGuards {
+  assertInstanceExists(instanceId: string): Promise<void>;
+  assertNodeInInstance(instanceId: string, nodeId: string): Promise<void>;
+}
+
+type ScopedRouteCall = (controller: AgentMemoryController) => Promise<unknown>;
 
 type SelectChain<TResult> = Promise<TResult[]> & {
   from: ReturnType<typeof vi.fn>;
@@ -357,6 +367,10 @@ describe('AgentMemoryController', () => {
   let mockResourceSourceService: ReturnType<
     typeof createMockResourceSourceService
   >;
+  let scopeGuards: {
+    assertInstanceExists: Mock;
+    assertNodeInInstance: Mock;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -389,6 +403,17 @@ describe('AgentMemoryController', () => {
       mockAuditService as never,
       mockResourceSourceService as never,
     );
+
+    // 其余用例只关心各自的委托逻辑；归属校验的真实查询在 route scope 中验证。
+    const guards = controller as unknown as RouteScopeGuards;
+    scopeGuards = {
+      assertInstanceExists: vi
+        .spyOn(guards, 'assertInstanceExists')
+        .mockResolvedValue(undefined),
+      assertNodeInInstance: vi
+        .spyOn(guards, 'assertNodeInInstance')
+        .mockResolvedValue(undefined),
+    };
   });
 
   // ─── Memory Instance CRUD ──────────────────────────────────────────
@@ -1250,7 +1275,8 @@ describe('AgentMemoryController', () => {
   });
 
   describe('deleteEdge', () => {
-    it('应委托 MemoryEdgeService 删除边', async () => {
+    it('应校验边属于实例后委托 MemoryEdgeService 删除边', async () => {
+      tenantDb.select.mockReturnValueOnce(createSelectChain([{ id: EDGE_ID }]));
       mockEdgeService.deleteEdge.mockResolvedValueOnce(undefined);
 
       const result = await controller.deleteEdge(
@@ -1260,7 +1286,19 @@ describe('AgentMemoryController', () => {
       );
 
       expect(result).toBeUndefined();
+      expect(scopeGuards.assertInstanceExists).toHaveBeenCalledWith(
+        INSTANCE_ID,
+      );
       expect(mockEdgeService.deleteEdge).toHaveBeenCalledWith(EDGE_ID);
+    });
+
+    it('边不属于路由实例时应返回 404 且不删除', async () => {
+      tenantDb.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        controller.deleteEdge(TENANT_ID, INSTANCE_ID, EDGE_ID),
+      ).rejects.toBeInstanceOf(MemoryEdgeNotFoundException);
+      expect(mockEdgeService.deleteEdge).not.toHaveBeenCalled();
     });
   });
 
@@ -1513,10 +1551,15 @@ describe('AgentMemoryController', () => {
       );
 
       expect(result).toEqual({ data: version });
-      expect(mockVersionService.updateReviewStatus).toHaveBeenCalledWith(
-        VERSION_ID,
-        'approved',
+      expect(scopeGuards.assertNodeInInstance).toHaveBeenCalledWith(
+        INSTANCE_ID,
+        NODE_ID,
       );
+      expect(mockVersionService.updateReviewStatus).toHaveBeenCalledWith({
+        nodeId: NODE_ID,
+        versionId: VERSION_ID,
+        status: 'approved',
+      });
       expect(mockAuditService.record).toHaveBeenCalledWith({
         tenantId: TENANT_ID,
         actorId: USER_ID,
@@ -1547,16 +1590,35 @@ describe('AgentMemoryController', () => {
       );
 
       expect(result).toEqual({ data: version });
-      expect(mockVersionService.updateReviewStatus).toHaveBeenCalledWith(
-        VERSION_ID,
-        'rejected',
-      );
+      expect(mockVersionService.updateReviewStatus).toHaveBeenCalledWith({
+        nodeId: NODE_ID,
+        versionId: VERSION_ID,
+        status: 'rejected',
+      });
       expect(mockAuditService.record).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'memory.version.reject',
           metadata: expect.objectContaining({ action: 'reject' }),
         }),
       );
+    });
+
+    it('版本不属于路由节点时应传播 404 且不写审计', async () => {
+      mockVersionService.updateReviewStatus.mockRejectedValueOnce(
+        new MemoryVersionNotFoundException(NODE_ID, VERSION_ID),
+      );
+
+      await expect(
+        controller.reviewVersion(
+          TENANT_ID,
+          USER_ID,
+          INSTANCE_ID,
+          NODE_ID,
+          VERSION_ID,
+          d<ReviewVersionDto>({ action: 'approve' }),
+        ),
+      ).rejects.toBeInstanceOf(MemoryVersionNotFoundException);
+      expect(mockAuditService.record).not.toHaveBeenCalled();
     });
   });
 
@@ -1779,6 +1841,128 @@ describe('AgentMemoryController', () => {
       );
 
       expect(mocks.getTenantDb).toHaveBeenCalledWith(rawDb);
+    });
+  });
+
+  // ─── Route Scope (D-074) ───────────────────────────────────────────
+
+  describe('route scope', () => {
+    beforeEach(() => {
+      scopeGuards.assertInstanceExists.mockRestore();
+      scopeGuards.assertNodeInInstance.mockRestore();
+    });
+
+    const instanceRoutes: Array<[string, ScopedRouteCall]> = [
+      [
+        'listChildNodes',
+        (c) => c.listChildNodes(TENANT_ID, INSTANCE_ID, NODE_ID),
+      ],
+      ['listDomains', (c) => c.listDomains(TENANT_ID, INSTANCE_ID)],
+      [
+        'search',
+        (c) =>
+          c.search(
+            TENANT_ID,
+            INSTANCE_ID,
+            d<MemorySearchQueryDto>({ q: 'x', limit: 20, offset: 0 }),
+          ),
+      ],
+      ['getGraph', (c) => c.getGraph(TENANT_ID, INSTANCE_ID)],
+      [
+        'listPaths',
+        (c) =>
+          c.listPaths(TENANT_ID, INSTANCE_ID, d<ListMemoryPathsQueryDto>({})),
+      ],
+      [
+        'listEdges',
+        (c) =>
+          c.listEdges(TENANT_ID, INSTANCE_ID, d<ListMemoryEdgesQueryDto>({})),
+      ],
+      [
+        'listVersions',
+        (c) =>
+          c.listVersions(
+            TENANT_ID,
+            INSTANCE_ID,
+            NODE_ID,
+            d<ListMemoryVersionsQueryDto>({}),
+          ),
+      ],
+      [
+        'listAuditLogs',
+        (c) =>
+          c.listAuditLogs(TENANT_ID, INSTANCE_ID, d<ListAuditLogQueryDto>({})),
+      ],
+      [
+        'listPendingReviews',
+        (c) =>
+          c.listPendingReviews(
+            TENANT_ID,
+            INSTANCE_ID,
+            d<ListPendingReviewsQueryDto>({}),
+          ),
+      ],
+      [
+        'removeGlossaryKeyword',
+        (c) =>
+          c.removeGlossaryKeyword(
+            TENANT_ID,
+            INSTANCE_ID,
+            NODE_ID,
+            d<RemoveGlossaryKeywordDto>({ keyword: 'kw' }),
+          ),
+      ],
+      ['deleteEdge', (c) => c.deleteEdge(TENANT_ID, INSTANCE_ID, EDGE_ID)],
+    ];
+
+    it.each(instanceRoutes)(
+      '%s：实例不存在时应返回 404 memory-instance-not-found 而不是空集合',
+      async (_name, call) => {
+        tenantDb.select.mockReturnValueOnce(createSelectChain([]));
+
+        await expect(call(controller)).rejects.toBeInstanceOf(
+          MemoryInstanceNotFoundException,
+        );
+        expect(mockEdgeService.deleteEdge).not.toHaveBeenCalled();
+        expect(mockGlossaryService.removeKeyword).not.toHaveBeenCalled();
+        expect(mockSearchService.search).not.toHaveBeenCalled();
+      },
+    );
+
+    it('节点不属于路由实例时审核应返回 404 且不更新版本', async () => {
+      const nodeQuery = createSelectChain([]);
+      tenantDb.select
+        .mockReturnValueOnce(createSelectChain([{ id: INSTANCE_ID }]))
+        .mockReturnValueOnce(nodeQuery);
+
+      await expect(
+        controller.reviewVersion(
+          TENANT_ID,
+          USER_ID,
+          INSTANCE_ID,
+          NODE_ID,
+          VERSION_ID,
+          d<ReviewVersionDto>({ action: 'approve' }),
+        ),
+      ).rejects.toBeInstanceOf(MemoryNodeNotFoundException);
+      expect(nodeQuery.where).toHaveBeenCalledWith(
+        mocks.operators.and(
+          mocks.operators.eq(memoryNodes.id, NODE_ID),
+          mocks.operators.eq(memoryNodes.instanceId, INSTANCE_ID),
+        ),
+      );
+      expect(mockVersionService.updateReviewStatus).not.toHaveBeenCalled();
+    });
+
+    it('实例与节点归属正确时才继续执行', async () => {
+      tenantDb.select
+        .mockReturnValueOnce(createSelectChain([{ id: INSTANCE_ID }]))
+        .mockReturnValueOnce(createSelectChain([{ id: NODE_ID }]));
+      mockEdgeService.getChildEdges.mockResolvedValueOnce([]);
+
+      await expect(
+        controller.listChildNodes(TENANT_ID, INSTANCE_ID, NODE_ID),
+      ).resolves.toEqual({ data: [] });
     });
   });
 });

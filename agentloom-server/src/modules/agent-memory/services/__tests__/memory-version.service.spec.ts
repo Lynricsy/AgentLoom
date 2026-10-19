@@ -1,4 +1,3 @@
-import { NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import {
@@ -448,27 +447,41 @@ describe('MemoryVersionService', () => {
   });
 
   describe('updateReviewStatus', () => {
-    it('应更新 review status', async () => {
+    it('应只更新属于路由节点的版本', async () => {
       const updated = createVersion({ reviewStatus: 'approved' });
       const updateQuery = createUpdateChain([updated]);
 
       tenantDb.update.mockReturnValueOnce(updateQuery.chain);
 
       await expect(
-        service.updateReviewStatus(VERSION_ID, 'approved'),
+        service.updateReviewStatus({
+          nodeId: NODE_ID,
+          versionId: VERSION_ID,
+          status: 'approved',
+        }),
       ).resolves.toEqual(updated);
 
       expect(updateQuery.set).toHaveBeenCalledWith({
         reviewStatus: 'approved',
       });
+      expect(updateQuery.where).toHaveBeenCalledWith(
+        mocks.operators.and(
+          mocks.operators.eq(memoryVersions.id, VERSION_ID),
+          mocks.operators.eq(memoryVersions.nodeId, NODE_ID),
+        ),
+      );
     });
 
-    it('版本不存在时应抛出异常', async () => {
+    it('版本不存在或不属于该节点时应抛出 404 memory-version-not-found', async () => {
       tenantDb.update.mockReturnValueOnce(createUpdateChain([]).chain);
 
       await expect(
-        service.updateReviewStatus(VERSION_ID, 'rejected'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+        service.updateReviewStatus({
+          nodeId: NODE_ID,
+          versionId: VERSION_ID,
+          status: 'rejected',
+        }),
+      ).rejects.toBeInstanceOf(MemoryVersionNotFoundException);
     });
   });
 });

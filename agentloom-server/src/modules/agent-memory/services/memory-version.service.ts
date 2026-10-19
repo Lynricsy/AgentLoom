@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
 
 import {
@@ -29,6 +29,12 @@ export interface PatchMemoryVersionInput {
 }
 
 export type MemoryVersionReviewDecision = 'approved' | 'rejected';
+
+export interface MemoryVersionReviewInput {
+  nodeId: string;
+  versionId: string;
+  status: MemoryVersionReviewDecision;
+}
 
 type VersionQueryClient = Pick<DrizzleDB, 'select' | 'insert' | 'update'>;
 
@@ -262,19 +268,26 @@ export class MemoryVersionService {
     return created;
   }
 
+  /**
+   * 审核版本：只命中属于 `nodeId` 的版本，避免借一个节点的路由审核另一个节点的版本。
+   */
   async updateReviewStatus(
-    versionId: string,
-    status: MemoryVersionReviewDecision,
+    input: MemoryVersionReviewInput,
   ): Promise<MemoryVersion> {
     const tenantDb = getTenantDb(this.db);
     const [updatedVersion] = await tenantDb
       .update(memoryVersions)
-      .set({ reviewStatus: status })
-      .where(eq(memoryVersions.id, versionId))
+      .set({ reviewStatus: input.status })
+      .where(
+        and(
+          eq(memoryVersions.id, input.versionId),
+          eq(memoryVersions.nodeId, input.nodeId),
+        ),
+      )
       .returning();
 
     if (!updatedVersion) {
-      throw new NotFoundException(`Memory version ${versionId} not found`);
+      throw new MemoryVersionNotFoundException(input.nodeId, input.versionId);
     }
 
     return updatedVersion;
