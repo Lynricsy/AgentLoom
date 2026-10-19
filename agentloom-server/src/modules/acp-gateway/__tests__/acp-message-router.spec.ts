@@ -865,4 +865,45 @@ describe('AcpMessageRouter', () => {
       },
     });
   });
+
+  it('session/cancel 以请求形式发送时回包 result=null，以通知形式发送时不回包（D-020）', async () => {
+    const sessionCancelHandler = {
+      handle: vi.fn().mockResolvedValue(undefined),
+    };
+    const router = createRouter({ sessionCancelHandler });
+    const state: AcpConnectionState = {
+      initialized: true,
+      authContext: {
+        userId: 'user-1',
+        email: 'user@example.com',
+        tenantId: 'tenant-1',
+        tenantRole: 'owner',
+        orgId: 'org-1',
+        authMethod: 'jwt',
+      },
+    };
+
+    await expect(
+      router.routeMessage(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 12,
+          method: 'session/cancel',
+          params: { sessionId: 'session-001' },
+        }),
+        state,
+      ),
+    ).resolves.toEqual({ jsonrpc: '2.0', id: 12, result: null });
+    await expect(
+      router.routeMessage(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session/cancel',
+          params: { sessionId: 'session-001' },
+        }),
+        state,
+      ),
+    ).resolves.toBeNull();
+    expect(sessionCancelHandler.handle).toHaveBeenCalledTimes(2);
+  });
 });

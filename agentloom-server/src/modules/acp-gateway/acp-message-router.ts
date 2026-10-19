@@ -123,7 +123,7 @@ export class AcpMessageRouter {
 
       if (request.method === 'session/cancel') {
         await this.sessionCancelHandler.handle(request.params, state);
-        return null;
+        return isNotification ? null : buildJsonRpcSuccess(requestId, null);
       }
 
       if (request.method === 'terminal/create') {
