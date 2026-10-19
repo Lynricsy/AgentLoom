@@ -36,6 +36,8 @@ env:
     # 允许管理 /api/v1/sandbox-nodes 的租户 ID（逗号分隔）。
     # saas 模式留空即全部拒绝；private 模式无条件放行。
     APP_SANDBOX_NODE_ADMIN_TENANT_IDS: ""
+    # 允许在 server/worker 容器内启动 stdio MCP 进程（等同任意命令执行），多租户部署保持 "false"。
+    APP_MCP_STDIO_ENABLED: "false"
     # TypeSafe Jev 决策影子模式：设置 API Key 后启用（Key 经 server-secret 下发）
     APP_TYPESAFE_API_KEY: ""
     APP_TYPESAFE_BASE_URL: https://api.typesafe.ai

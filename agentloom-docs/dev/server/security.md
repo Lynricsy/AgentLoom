@@ -115,6 +115,10 @@ LLM 提供商 API Key、MCP 服务凭据、私有部署配置中的密钥等**�
 
 更换 `APP_MASTER_ENCRYPTION_KEY` 会使已存密文无法解密。
 
+## 服务端进程执行
+
+stdio MCP 由 `McpService.createTransport`（`agentloom-server/src/modules/mcp/mcp.service.ts`）在 server / worker 进程所在的主机或容器内 spawn 用户填写的命令，测试、发现、导入、重新发现与运行时工具调用（含 sandbox Agent 经远程工具回调触发的调用）都经过这一处。这等同于让 owner / admin 在服务端执行任意命令，而注册开放时任何用户都是自建组织的 owner，因此由 `APP_MCP_STDIO_ENABLED` 守卫、默认 `false`：未开启时直接抛 403 `mcp/stdio-disabled`，不创建进程。多租户部署必须保持关闭，只有单租户自托管且信任全部 owner / admin 时才开启。SSE 与 Streamable HTTP 传输不受影响。
+
 ## Webhook 签名
 
 入站 Webhook 的签名模式使用 HMAC-SHA256，签名串为 `<timestamp>.<rawBody>`，比较使用常数时间比较（`agentloom-server/src/modules/trigger/webhook.service.ts`）。请求头、容忍窗口和示例脚本见 [Webhook](/api/webhooks)。

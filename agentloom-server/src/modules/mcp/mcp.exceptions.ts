@@ -12,6 +12,19 @@ export class McpConnectionFailedException extends DomainException {
   }
 }
 
+/** stdio MCP 会在服务端宿主机上执行任意命令，默认关闭，仅在单租户自托管部署中显式开启。 */
+export class McpStdioDisabledException extends DomainException {
+  constructor() {
+    super({
+      type: 'https://agentloom.dev/errors/mcp/stdio-disabled',
+      title: 'stdio MCP 未启用',
+      status: HttpStatus.FORBIDDEN,
+      detail:
+        '当前部署禁止在服务端启动 stdio MCP 进程，请改用 SSE 或 HTTP 传输；自托管单租户部署可设置 APP_MCP_STDIO_ENABLED=true 开启',
+    });
+  }
+}
+
 export class McpConnectionTimeoutException extends DomainException {
   constructor(detail: string) {
     super({

@@ -10,7 +10,7 @@ docType: howto
 
 - 接入、测试、编辑与删除 MCP 服务需要 owner 或 admin 角色。creator 可以在「资源 → MCP 服务」中只读查看服务器列表、详情与工具（凭据只显示键名），用于在画布上配置 MCP Tool 节点；operator 与 viewer 的侧边栏不显示该入口。
 - 准备好服务器的连接方式：
-  - **stdio**：启动命令与参数。命令在 AgentLoom 服务端所在的主机（或容器）中启动，该环境必须装有对应的运行时（如 `npx`、`uvx`）。
+  - **stdio**：启动命令与参数。命令在 AgentLoom 服务端所在的主机（或容器）中启动，等同于在服务端执行任意命令，因此默认关闭：未设置 `APP_MCP_STDIO_ENABLED=true` 时，stdio 的测试、发现、导入与运行时调用都返回 403 `mcp/stdio-disabled`。只有单租户自托管、且信任全部 owner / admin 的部署才应开启；开启后该环境必须装有对应的运行时（如 `npx`、`uvx`）。
   - **SSE** 或 **HTTP**：服务地址，以及需要的请求头（例如鉴权头）。服务端必须能访问该地址。
 
 ## 导入 MCP 服务器

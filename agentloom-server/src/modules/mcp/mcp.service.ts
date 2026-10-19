@@ -37,6 +37,7 @@ import {
   McpConnectionTimeoutException,
   McpImportConflictException,
   McpServerConfigNotFoundException,
+  McpStdioDisabledException,
   McpToolDeactivationNotAllowedException,
   McpToolNotFoundException,
 } from './mcp.exceptions';
@@ -1137,6 +1138,10 @@ export class McpService {
   private createTransport(connection: McpConnection): Transport {
     switch (connection.transportType) {
       case 'stdio':
+        // stdio 在服务端宿主机上 spawn 任意命令，是所有 stdio 路径（测试、发现、导入、运行时调用）的唯一出口。
+        if (process.env.APP_MCP_STDIO_ENABLED !== 'true') {
+          throw new McpStdioDisabledException();
+        }
         return new StdioClientTransport({
           command: connection.command,
           args: connection.args,

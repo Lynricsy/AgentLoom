@@ -92,6 +92,11 @@ const baseEnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  /** 允许在服务端宿主机上启动 stdio MCP 进程（任意命令执行）；多租户部署必须保持 false。 */
+  APP_MCP_STDIO_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   APP_FIRECRACKER_RUNTIME_URL: z
     .string()
     .url()

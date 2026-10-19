@@ -369,6 +369,8 @@ describe('McpService', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
+    // 现有 stdio 用例覆盖自托管开启后的行为；关闭时的拒绝行为见下方专门用例。
+    process.env.APP_MCP_STDIO_ENABLED = 'true';
 
     encryptionService = {
       encrypt: vi.fn().mockReturnValue(MOCK_ENCRYPTED),
@@ -409,6 +411,38 @@ describe('McpService', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    delete process.env.APP_MCP_STDIO_ENABLED;
+  });
+
+  describe('stdio 开关', () => {
+    it.each([
+      ['未设置', undefined],
+      ['显式 false', 'false'],
+    ])(
+      'APP_MCP_STDIO_ENABLED %s 时拒绝所有 stdio 路径且不 spawn 进程',
+      async (_label, value) => {
+        if (value === undefined) {
+          delete process.env.APP_MCP_STDIO_ENABLED;
+        } else {
+          process.env.APP_MCP_STDIO_ENABLED = value;
+        }
+        const disabled = expect.objectContaining({
+          type: 'https://agentloom.dev/errors/mcp/stdio-disabled',
+          status: 403,
+        });
+
+        await expect(
+          service.testConnection({ connection: createStdioConnection() }),
+        ).rejects.toMatchObject(disabled);
+        await expect(
+          service.discoverTools({ connection: createStdioConnection() }),
+        ).rejects.toMatchObject(disabled);
+        await expect(
+          service.callRuntimeTool(createStdioConnection(), 'tool', {}),
+        ).rejects.toMatchObject(disabled);
+        expect(mcpMocks.StdioClientTransport).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('testConnection', () => {

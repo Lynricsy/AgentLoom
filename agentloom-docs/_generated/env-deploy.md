@@ -56,6 +56,7 @@
 | `APP_SANDBOX_MAINTENANCE_MODE` | `false` |  |
 | `APP_SANDBOX_ROLLBACK_HOURS` | `168` |  |
 | `APP_SANDBOX_NODE_ADMIN_TENANT_IDS` |  | 允许管理 /api/v1/sandbox-nodes 的租户 ID（逗号分隔）。 saas 模式留空即全部拒绝；private 模式无条件放行，可不填。 |
+| `APP_MCP_STDIO_ENABLED` | `false` | 允许在 server/worker 宿主容器内启动 stdio MCP 进程（等同任意命令执行）。 多租户（saas）部署必须保持 false；仅单租户自托管且信任全部 owner/admin 时开启。 |
 | `APP_JWT_SECRET` | `change-me-jwt-secret` | ⚠ 生产环境必须替换！运行 scripts/generate-secrets.sh 自动生成 |
 | `APP_MASTER_ENCRYPTION_KEY` | `REPLACE_WITH_BASE64_32_BYTES` | 必须是 32 字节 Base64；运行: openssl rand -base64 32 |
 | `APP_OAUTH_REDIRECT_URL` | `http://localhost:8080/api/v1/auth/oauth/callback` | 公网部署请改成实际 HTTPS 域名；保留 localhost 会导致 OAuth / 邮件跳转回本机地址。 |

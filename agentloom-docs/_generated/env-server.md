@@ -25,6 +25,7 @@
 | `APP_MINIO_USE_SSL` | 否 | `false` | `true` / `false` |  |
 | `APP_MINIO_BUCKET` | 否 | `agentloom-documents` |  |  |
 | `APP_SANDBOX_MAINTENANCE_MODE` | 否 | `false` | `true` / `false` |  |
+| `APP_MCP_STDIO_ENABLED` | 否 | `false` | `true` / `false` |  |
 | `APP_FIRECRACKER_RUNTIME_URL` | 否 | `https://firecracker-runtime:8443` |  | Firecracker runtime manager（server/worker 仅持有 mTLS client 身份） URL/SERVER_NAME 仅在 sandbox_runtime_nodes 表为空时用于播种 default 节点； 多节点部署经 /api/v1/sandbox-nodes 管理，表非空后这两项不再回写。 CA/CERT/KEY 为全节点共用的 client 身份（manager 只校验签发 CA）。 |
 | `APP_FIRECRACKER_RUNTIME_CA` | 否 | `/run/secrets/firecracker-client/ca.crt` |  |  |
 | `APP_FIRECRACKER_RUNTIME_CERT` | 否 | `/run/secrets/firecracker-client/tls.crt` |  |  |
