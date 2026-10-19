@@ -8,7 +8,13 @@ export const SkillQuerySchema = z
     page_size: z.coerce.number().int().min(1).max(100).optional(),
     search: z.string().trim().min(1).optional(),
     status: z.enum(['active', 'archived']).optional(),
-    isBuiltin: z.coerce.boolean().optional(),
+    // z.coerce.boolean() 会把字符串 'false' 转成 true，查询参数必须按字面值解析。
+    isBuiltin: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) =>
+        value === undefined ? undefined : value === 'true',
+      ),
     sourceKind: z.enum(['manual', 'share_imported']).optional(),
     source_kind: z.enum(['manual', 'share_imported']).optional(),
   })

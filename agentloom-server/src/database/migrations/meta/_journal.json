@@ -610,6 +610,13 @@
       "when": 1792157638000,
       "tag": "0086_optimization_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792415026161,
+      "tag": "0087_skills_builtin_visibility",
+      "breakpoints": true
     }
   ]
 }

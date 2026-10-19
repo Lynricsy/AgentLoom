@@ -4,7 +4,7 @@ docType: reference
 
 # 内置技能
 
-内置技能由平台在初始化数据库时写入，所有组织都能在「技能管理」页面看到它们（带「内置」标记，类型筛选选「内置技能」）。内置技能不能删除；使用方法与自定义技能相同：在 Agent 画布中添加 [Skill 节点](/guide/nodes/skill)，选择技能后连到 Agent Main 的「Skills」端口。
+内置技能由平台在初始化数据库时写入，所有组织都能在「技能管理」页面看到它们（带「内置」标记，类型筛选选「内置技能」），也能在详情中查看其文件。内置技能只读，不能编辑、归档、删除或增删文件；使用方法与自定义技能相同：在 Agent 画布中添加 [Skill 节点](/guide/nodes/skill)，选择技能后连到 Agent Main 的「Skills」端口。
 
 <!--@include: ../../_generated/builtin-skills.md-->
 

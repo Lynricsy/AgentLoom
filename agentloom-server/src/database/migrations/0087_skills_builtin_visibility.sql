@@ -1,0 +1,3 @@
+ALTER POLICY "skills_select_policy" ON "skills" TO authenticated USING (tenant_id = get_tenant_id() OR (is_builtin AND tenant_id = '00000000-0000-0000-0000-000000000000'::uuid));--> statement-breakpoint
+ALTER POLICY "skills_insert_policy" ON "skills" TO authenticated WITH CHECK (tenant_id = get_tenant_id() AND NOT is_builtin);--> statement-breakpoint
+ALTER POLICY "skills_update_policy" ON "skills" TO authenticated USING (tenant_id = get_tenant_id()) WITH CHECK (tenant_id = get_tenant_id() AND NOT is_builtin);

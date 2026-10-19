@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { sql } from 'drizzle-orm';
 import type { DrizzleDB } from '../database.module';
-import { skills } from '../schema';
+import { BUILTIN_SKILL_TENANT_ID, skills } from '../schema';
 
 const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 
@@ -69,7 +69,7 @@ export async function seedSkills(db: DrizzleDB): Promise<number> {
       await db
         .insert(skills)
         .values({
-          tenantId: SYSTEM_UUID,
+          tenantId: BUILTIN_SKILL_TENANT_ID,
           name: frontmatter['name'] ?? name,
           slug: name,
           description: frontmatter['description'] ?? '',

@@ -487,7 +487,12 @@ export {
   type NewMemorySession,
   type MemorySessionConfig,
 } from './memory-sessions.schema';
-export { skills, type SkillRecord, type NewSkill } from './skills.schema';
+export {
+  BUILTIN_SKILL_TENANT_ID,
+  skills,
+  type SkillRecord,
+  type NewSkill,
+} from './skills.schema';
 export {
   userPreferences,
   type UserPreference,
