@@ -17,12 +17,14 @@ import {
   organizationMembers,
   organizations,
   tenantQuotas,
+  workflowDefinitions,
   workflowExecutions,
   type ExecutionGovernanceControl,
   type TenantQuota,
 } from '../../database/schema';
 import { AuditLogService } from '../evidence/audit-log.service';
 import { OrganizationNotFoundException } from '../organization/organization.exceptions';
+import { WorkflowNotFoundException } from '../workflow-definition/workflow-version.exceptions';
 import type {
   GovernancePauseStateDto,
   ExecutionGovernanceControlsResponseDto,
@@ -724,6 +726,25 @@ export class ResourceGovernanceService {
         const requestedTargetIds = new Set(
           validated.workflowControls.map((control) => control.targetId),
         );
+        // targetId 必须是本租户的工作流，否则会为不存在或他租户的工作流落库一条无效控制。
+        if (requestedTargetIds.size > 0) {
+          const ownedWorkflows = await tx
+            .select({ id: workflowDefinitions.id })
+            .from(workflowDefinitions)
+            .where(
+              and(
+                eq(workflowDefinitions.tenantId, organization.tenantId),
+                inArray(workflowDefinitions.id, [...requestedTargetIds]),
+              ),
+            );
+          const ownedIds = new Set(ownedWorkflows.map((row) => row.id));
+          const missingId = [...requestedTargetIds].find(
+            (targetId) => !ownedIds.has(targetId),
+          );
+          if (missingId !== undefined) {
+            throw new WorkflowNotFoundException(missingId);
+          }
+        }
         const staleWorkflowControlIds = existingWorkflowControls
           .filter((control) => !requestedTargetIds.has(control.targetId))
           .map((control) => control.id);

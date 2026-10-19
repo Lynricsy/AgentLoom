@@ -54,6 +54,15 @@ function createSelectCountChain(count: number) {
   return chain;
 }
 
+function createSelectRowsChain(rows: unknown[]) {
+  const chain = {
+    from: vi.fn(),
+    where: vi.fn().mockResolvedValue(rows),
+  };
+  chain.from.mockReturnValue(chain);
+  return chain;
+}
+
 function makeOrganization(
   overrides: Partial<{
     id: string;
@@ -563,6 +572,9 @@ describe('ResourceGovernanceService', () => {
           ]),
         );
       db.delete.mockReturnValue(createDeleteChain());
+      db.select.mockReturnValueOnce(
+        createSelectRowsChain([{ id: '019577a0-0000-7000-8000-000000009999' }]),
+      );
 
       await expect(
         service.upsertExecutionGovernanceControls(
@@ -664,6 +676,40 @@ describe('ResourceGovernanceService', () => {
           }),
         }),
       );
+    });
+
+    it('rejects workflow targets that are missing or belong to another tenant without writing', async () => {
+      const foreignWorkflowId = '019577a0-0000-7000-8000-00000000f0f0';
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership({ userId: ADMIN_ID, role: 'admin' }),
+      );
+      db.query.executionGovernanceControls.findMany.mockResolvedValue([]);
+      // RLS 与显式 tenantId 过滤后查不到该工作流
+      db.select.mockReturnValueOnce(createSelectRowsChain([]));
+
+      await expect(
+        service.upsertExecutionGovernanceControls(
+          ORG_ID,
+          {
+            workflowControls: [
+              {
+                scope: 'workflow',
+                targetId: foreignWorkflowId,
+                status: 'paused',
+                reason: 'not mine',
+              },
+            ],
+          },
+          ADMIN_ID,
+        ),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-not-found',
+        status: 404,
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.delete).not.toHaveBeenCalled();
+      expect(auditLogService.record).not.toHaveBeenCalled();
     });
   });
 
@@ -1242,6 +1288,9 @@ describe('ResourceGovernanceService', () => {
         workflowA,
       ]);
       db.delete.mockReturnValue(createDeleteChain());
+      db.select.mockReturnValueOnce(
+        createSelectRowsChain([{ id: WORKFLOW_A }]),
+      );
       db.update
         .mockReturnValueOnce(
           createUpdateChain([
