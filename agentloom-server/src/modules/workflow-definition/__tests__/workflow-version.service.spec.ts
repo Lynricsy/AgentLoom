@@ -40,8 +40,10 @@ const VERSION_ID = '00000000-0000-0000-0000-000000000004';
 const VERSION_ID_2 = '00000000-0000-0000-0000-000000000005';
 const NOW = new Date('2025-01-01T00:00:00Z');
 
+// 发布会校验连线端点存在，fixture 必须是自洽的图
 const MOCK_NODES = [
   { id: 'node-1', type: 'test', position: { x: 0, y: 0 }, data: {} },
+  { id: 'node-2', type: 'test', position: { x: 200, y: 0 }, data: {} },
 ];
 const MOCK_EDGES = [{ id: 'edge-1', source: 'node-1', target: 'node-2' }];
 const MOCK_VIEWPORT = { x: 0, y: 0, zoom: 1 };
@@ -88,7 +90,7 @@ const MOCK_SNAPSHOT = {
   edges: MOCK_EDGES,
   viewport: MOCK_VIEWPORT,
   inputSchema: null,
-  metadata: { nodeCount: 1, edgeCount: 1, createdFromVersion: 1 },
+  metadata: { nodeCount: 2, edgeCount: 1, createdFromVersion: 1 },
 };
 
 function createDraftWorkflow(overrides: Record<string, unknown> = {}) {
@@ -758,6 +760,13 @@ describe('WorkflowVersionService', () => {
             outputPorts: [],
           },
         }),
+        expect.objectContaining({
+          id: 'node-2',
+          data: {
+            inputPorts: [],
+            outputPorts: [],
+          },
+        }),
       ]);
       expect(result).toHaveProperty('nodes');
       expect(result).toHaveProperty('edges');
@@ -1099,6 +1108,13 @@ describe('WorkflowVersionService', () => {
       expect(result.nodes).toEqual([
         expect.objectContaining({
           id: 'node-1',
+          data: {
+            inputPorts: [],
+            outputPorts: [],
+          },
+        }),
+        expect.objectContaining({
+          id: 'node-2',
           data: {
             inputPorts: [],
             outputPorts: [],
@@ -1905,6 +1921,101 @@ describe('WorkflowVersionService', () => {
       });
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('图中存在环路时应以 422 workflow-publish-validation 阻断发布', async () => {
+      const execNode = (id: string, nodeType: string) => ({
+        id,
+        type: 'workflow-node',
+        position: { x: 0, y: 0 },
+        data: { nodeType, label: id },
+      });
+      const workflow = createDraftWorkflow({
+        nodes: [
+          execNode('trig', 'manual-trigger'),
+          execNode('p1', 'merge'),
+          execNode('p2', 'merge'),
+        ],
+        edges: [
+          ['trig', 'p1'],
+          ['p1', 'p2'],
+          ['p2', 'p1'],
+        ].map(([source, target]) => ({
+          id: `${source}-${target}`,
+          source,
+          target,
+          sourceHandle: 'exec-out',
+          targetHandle: 'exec-in',
+        })),
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+
+      const publishPromise = service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      await expect(publishPromise).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-publish-validation',
+        status: 422,
+        detail: '工作流图存在环路，执行顺序无法确定',
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('连线指向不存在的节点或端口时应以 422 列出全部问题', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'trig',
+            type: 'workflow-node',
+            position: { x: 0, y: 0 },
+            data: { nodeType: 'manual-trigger', label: '触发' },
+          },
+          {
+            id: 'p1',
+            type: 'workflow-node',
+            position: { x: 200, y: 0 },
+            data: { nodeType: 'merge', label: 'p1' },
+          },
+        ],
+        edges: [
+          {
+            id: 'bad-port',
+            source: 'trig',
+            target: 'p1',
+            sourceHandle: 'nope-out',
+            targetHandle: 'exec-in',
+          },
+          {
+            id: 'ghost-target',
+            source: 'p1',
+            target: 'ghost',
+            sourceHandle: 'exec-out',
+            targetHandle: 'exec-in',
+          },
+        ],
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+
+      const publishPromise = service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      await expect(publishPromise).rejects.toBeInstanceOf(
+        WorkflowPublishValidationException,
+      );
+      await expect(publishPromise).rejects.toMatchObject({
+        status: 422,
+        errors: [
+          {
+            field: 'workflow',
+            message:
+              '连线 bad-port 的源端口 nope-out 不存在于节点 「触发」(trig)',
+          },
+          {
+            field: 'workflow',
+            message: '连线 ghost-target 的目标节点 ghost 不存在',
+          },
+        ],
+      });
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
     it('发布时 agent 节点未绑定已发布 Agent Definition 应阻断', async () => {

@@ -80,6 +80,7 @@ import {
   type AccessibleWorkflowShareTokenRecord,
 } from '../share/share.service';
 import { validateImportFile } from './utils/validate-import.utils';
+import { collectWorkflowGraphStructureErrors } from './utils/validate-workflow-graph-structure.utils';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
 import { buildWorkspaceStorageKey } from '../workspace/workspace.constants';
 
@@ -255,6 +256,13 @@ export class WorkflowPublishService {
           ? workflow.edges
           : [];
         const normalizedGraph = normalizeWorkflowNodesAndEdges(nodes, edges);
+        const graphStructureErrors = collectWorkflowGraphStructureErrors(
+          normalizedGraph.nodes,
+          normalizedGraph.edges,
+        );
+        if (graphStructureErrors.length > 0) {
+          throw new WorkflowPublishValidationException(graphStructureErrors);
+        }
         const warnings = this.validateEdgeTypeCompatibility(
           normalizedGraph.nodes,
           normalizedGraph.edges,
