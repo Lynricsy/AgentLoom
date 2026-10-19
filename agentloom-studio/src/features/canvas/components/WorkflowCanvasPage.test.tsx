@@ -211,6 +211,10 @@ vi.mock("./status/WorkflowStatusBar", () => ({
   WorkflowStatusBar: () => <div data-testid="workflow-status-bar" />,
 }));
 
+vi.mock("./status/ActiveExecutionNotice", () => ({
+  ActiveExecutionNotice: () => <div data-testid="active-execution-notice-proxy" />,
+}));
+
 vi.mock("./panels/FieldMappingPanel", () => ({
   FieldMappingPanel: (props: {
     open: boolean;
@@ -590,6 +594,15 @@ describe("WorkflowCanvasPage", () => {
     expect(screen.getByTestId("toggle-execution-history")).toBeInTheDocument();
   });
 
+  it("工具条下方挂载未结束执行提示，提供跳转与取消入口（D-137）", () => {
+    render(<WorkflowCanvasPage />);
+
+    const toolbarShell = screen.getByTestId("workflow-toolbar-shell");
+    expect(toolbarShell.parentElement).toContainElement(
+      screen.getByTestId("active-execution-notice-proxy"),
+    );
+  });
+
   it("导出工作流时应使用持久化 slug", () => {
     const exportData = {
       schemaVersion: "agentloom-workflow-v1",
@@ -818,6 +831,14 @@ describe("WorkflowCanvasPage", () => {
       expect(screen.queryByTestId("btn-publish")).not.toBeInTheDocument();
       expect(screen.queryByTestId("btn-create-version")).not.toBeInTheDocument();
       expect(screen.getByTestId("btn-version-history")).toBeInTheDocument();
+    });
+
+    it("只读浏览不挂载未结束执行提示（没有运行入口可被阻塞）", () => {
+      render(<WorkflowCanvasPage />);
+
+      expect(
+        screen.queryByTestId("active-execution-notice-proxy"),
+      ).not.toBeInTheDocument();
     });
 
     it("选中节点时打开底部只读弹层而不是右侧配置面板", async () => {

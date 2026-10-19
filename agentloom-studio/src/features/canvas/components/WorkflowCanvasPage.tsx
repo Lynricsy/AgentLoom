@@ -34,6 +34,7 @@ import { ReadOnlyCanvasBanner } from "./readonly/ReadOnlyCanvasBanner";
 import { ReadOnlyNodeSheet } from "./readonly/ReadOnlyNodeSheet";
 import { ReadOnlyWorkflowToolbar } from "./readonly/ReadOnlyWorkflowToolbar";
 import { WorkflowCanvas } from "./WorkflowCanvas";
+import { ActiveExecutionNotice } from "./status/ActiveExecutionNotice";
 import { WorkflowStatusBar } from "./status/WorkflowStatusBar";
 import { FieldMappingPanel } from "./panels/FieldMappingPanel";
 import { NodeConfigPanel } from "./panels/NodeConfigPanel";
@@ -422,7 +423,7 @@ export function WorkflowCanvasPage() {
             )}
 
             {/* 工具条宽度受画布列约束(属性面板打开时画布变窄):min-w-0 允许收缩,工具条内部换行而不是溢出盖住属性面板 */}
-            <div className="order-1 flex min-w-0 justify-end xl:order-2">
+            <div className="order-1 flex min-w-0 flex-col items-end gap-2 xl:order-2">
               <div
                 className="pointer-events-auto w-full min-w-0 xl:w-auto"
                 data-testid="workflow-toolbar-shell"
@@ -474,6 +475,8 @@ export function WorkflowCanvasPage() {
                   />
                 )}
               </div>
+              {/* 未结束的执行禁用了「运行」：紧挨工具条标明是哪个执行，可跳转或取消 */}
+              {!isMobileReadOnly && <ActiveExecutionNotice />}
             </div>
 
             {/* 左列只有展开执行记录/设置面板时才占 480px;收起时按按钮宽度,把剩余宽度留给工具条单行展示 */}

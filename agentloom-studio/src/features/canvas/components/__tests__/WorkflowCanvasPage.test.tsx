@@ -203,6 +203,10 @@ vi.mock('../status/WorkflowStatusBar', () => ({
   WorkflowStatusBar: () => null,
 }))
 
+vi.mock('../status/ActiveExecutionNotice', () => ({
+  ActiveExecutionNotice: () => null,
+}))
+
 vi.mock('../panels/FieldMappingPanel', () => ({
   FieldMappingPanel: () => null,
 }))

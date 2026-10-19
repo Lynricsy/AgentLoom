@@ -63,6 +63,13 @@ export interface ListExecutionsFilters {
 }
 
 const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'paused']);
+/** 取消执行时一并置为 cancelled 的步骤状态 */
+const CANCELLABLE_STEP_STATUSES: schema.ExecutionStep['status'][] = [
+  'pending',
+  'queued',
+  'running',
+  'waiting_intervention',
+];
 const REMOVABLE_JOB_STATES: JobType[] = ['waiting', 'delayed', 'prioritized'];
 const TERMINAL_EXECUTION_STATUSES = new Set([
   'cancelled',
@@ -836,23 +843,57 @@ export class ExecutionService {
 
     // 运行中 / 等待干预的步骤一并置为 cancelled：执行器随后无法再把它们推进到 completed
     // （cancelled → completed 不是合法转换），终态快照与执行状态一致。
-    await this.tenantDb
-      .update(schema.executionSteps)
-      .set({
-        status: 'cancelled',
-        updatedAt: new Date(),
+    // 逐步推送状态事件：画布 / 执行页按 socket 驱动，否则仍显示「待干预」「等待中」。
+    const stepsToCancel = await this.tenantDb
+      .select({
+        id: schema.executionSteps.id,
+        nodeId: schema.executionSteps.nodeId,
+        status: schema.executionSteps.status,
       })
+      .from(schema.executionSteps)
       .where(
         and(
           eq(schema.executionSteps.executionId, executionId),
-          inArray(schema.executionSteps.status, [
-            'pending',
-            'queued',
-            'running',
-            'waiting_intervention',
-          ]),
+          inArray(schema.executionSteps.status, CANCELLABLE_STEP_STATUSES),
         ),
       );
+
+    const cancelledSteps =
+      stepsToCancel.length === 0
+        ? []
+        : await this.tenantDb
+            .update(schema.executionSteps)
+            .set({
+              status: 'cancelled',
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                inArray(
+                  schema.executionSteps.id,
+                  stepsToCancel.map((step) => step.id),
+                ),
+                inArray(
+                  schema.executionSteps.status,
+                  CANCELLABLE_STEP_STATUSES,
+                ),
+              ),
+            )
+            .returning({ id: schema.executionSteps.id });
+
+    const previousStepById = new Map(
+      stepsToCancel.map((step) => [step.id, step]),
+    );
+    for (const { id } of cancelledSteps) {
+      const previous = previousStepById.get(id);
+      if (!previous) continue;
+      this.eventBridge.emitStepStatusChanged(tenantId, executionId, {
+        stepId: id,
+        nodeId: previous.nodeId,
+        from: previous.status,
+        to: 'cancelled',
+      });
+    }
 
     const queuedJob = await this.executionQueue.getJob(executionId);
 

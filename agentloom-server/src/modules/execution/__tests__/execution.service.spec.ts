@@ -346,6 +346,7 @@ const mockQueue: Record<string, Mock> = {
 
 const mockEventBridge: Record<string, Mock> = {
   emitExecutionStatusChanged: vi.fn(),
+  emitStepStatusChanged: vi.fn(),
 };
 
 const mockAgentTaskQueue: Record<string, Mock> = {
@@ -413,6 +414,7 @@ describe('ExecutionService', () => {
     mockQueue.getJobs.mockReset();
     mockQueue.getJob.mockReset();
     mockEventBridge.emitExecutionStatusChanged.mockReset();
+    mockEventBridge.emitStepStatusChanged.mockReset();
     mockAgentTaskQueue.getFailed.mockReset();
     mockAgentTaskQueue.getJobCounts.mockReset();
     mockAgentTaskQueue.getJob.mockReset();
@@ -2361,17 +2363,33 @@ describe('ExecutionService', () => {
   });
 
   describe('cancelExecution', () => {
-    it('应取消运行中的执行', async () => {
+    it('应取消运行中的执行，并逐步推送被取消步骤的状态事件', async () => {
       const runningExecution = { ...mockExecution, status: 'running' as const };
       const cancelledExecution = {
         ...mockExecution,
         status: 'cancelled' as const,
         cancelledAt: NOW,
       };
-      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
+      db.select
+        .mockReturnValueOnce(createSelectChain([runningExecution]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: 'step-agent',
+              nodeId: 'node-agent',
+              status: 'waiting_intervention',
+            },
+            { id: 'step-output', nodeId: 'node-output', status: 'pending' },
+          ]),
+        );
       db.update
         .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid());
+        .mockReturnValueOnce(
+          createUpdateChainReturning([
+            { id: 'step-agent' },
+            { id: 'step-output' },
+          ]),
+        );
       mockQueue.getJob.mockResolvedValue(null);
       mockQueue.getJobs.mockResolvedValue([]);
 
@@ -2388,10 +2406,10 @@ describe('ExecutionService', () => {
       );
 
       // 运行中的 agent 步骤必须一并取消，并中止其会话（D-050）
-      const stepWhere =
-        db.update.mock.results[1].value.set.mock.results[0].value.where.mock
+      const stepSelectWhere =
+        db.select.mock.results[1].value.from.mock.results[0].value.where.mock
           .calls[0]?.[0];
-      expect(new PgDialect().sqlToQuery(stepWhere).params).toEqual(
+      expect(new PgDialect().sqlToQuery(stepSelectWhere).params).toEqual(
         expect.arrayContaining([
           EXECUTION_ID,
           'pending',
@@ -2400,9 +2418,59 @@ describe('ExecutionService', () => {
           'waiting_intervention',
         ]),
       );
+      const stepUpdateWhere =
+        db.update.mock.results[1].value.set.mock.results[0].value.where.mock
+          .calls[0]?.[0];
+      expect(new PgDialect().sqlToQuery(stepUpdateWhere).params).toEqual(
+        expect.arrayContaining([
+          'step-agent',
+          'step-output',
+          'waiting_intervention',
+        ]),
+      );
       expect(mockExecutionCancellation.cancelExecution).toHaveBeenCalledWith(
         EXECUTION_ID,
       );
+
+      // 画布 / 执行页由 socket 驱动：被取消的步骤逐个推送 → cancelled（D-137）
+      expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledTimes(2);
+      expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: 'step-agent',
+          nodeId: 'node-agent',
+          from: 'waiting_intervention',
+          to: 'cancelled',
+        },
+      );
+      expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: 'step-output',
+          nodeId: 'node-output',
+          from: 'pending',
+          to: 'cancelled',
+        },
+      );
+    });
+
+    it('没有未结束的步骤时不更新步骤也不推送步骤事件', async () => {
+      const pausedExecution = { ...mockExecution, status: 'paused' as const };
+      db.select
+        .mockReturnValueOnce(createSelectChain([pausedExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ ...mockExecution, status: 'cancelled' }]),
+      );
+      mockQueue.getJob.mockResolvedValue(null);
+      mockQueue.getJobs.mockResolvedValue([]);
+
+      await service.cancelExecution(EXECUTION_ID, TENANT_ID);
+
+      expect(db.update).toHaveBeenCalledTimes(1);
+      expect(mockEventBridge.emitStepStatusChanged).not.toHaveBeenCalled();
     });
 
     it('应取消 pending 状态的执行', async () => {
@@ -2411,10 +2479,12 @@ describe('ExecutionService', () => {
         ...mockExecution,
         status: 'cancelled' as const,
       };
-      db.select.mockReturnValueOnce(createSelectChain([pendingExecution]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid());
+      db.select
+        .mockReturnValueOnce(createSelectChain([pendingExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([cancelledExecution]),
+      );
       mockQueue.getJob.mockResolvedValue(null);
       mockQueue.getJobs.mockResolvedValue([]);
 
@@ -2429,10 +2499,12 @@ describe('ExecutionService', () => {
         ...mockExecution,
         status: 'cancelled' as const,
       };
-      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid());
+      db.select
+        .mockReturnValueOnce(createSelectChain([runningExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([cancelledExecution]),
+      );
 
       const mockRemove = vi.fn().mockResolvedValue(undefined);
       const matchingJob = {
@@ -2453,10 +2525,12 @@ describe('ExecutionService', () => {
         ...mockExecution,
         status: 'cancelled' as const,
       };
-      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid());
+      db.select
+        .mockReturnValueOnce(createSelectChain([runningExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([cancelledExecution]),
+      );
 
       const mockRemove = vi.fn().mockResolvedValue(undefined);
       mockQueue.getJob.mockResolvedValue(null);
@@ -2483,10 +2557,12 @@ describe('ExecutionService', () => {
         ...mockExecution,
         status: 'cancelled' as const,
       };
-      db.select.mockReturnValueOnce(createSelectChain([runningExecution]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainReturning([cancelledExecution]))
-        .mockReturnValueOnce(createUpdateChainVoid());
+      db.select
+        .mockReturnValueOnce(createSelectChain([runningExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([cancelledExecution]),
+      );
 
       const mockRemove = vi.fn().mockResolvedValue(undefined);
       const activeJob = {
