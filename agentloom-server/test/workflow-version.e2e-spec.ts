@@ -1331,7 +1331,20 @@ describe('WorkflowVersion E2E', () => {
     });
 
     it('应从模板克隆工作流', async () => {
-      const { headers } = await seedTenant('create-tmpl');
+      const { headers, tenantId, organizationId } =
+        await seedTenant('create-tmpl');
+      // 模板中的 Agent 节点克隆时会新建 Agent，要求组织里有可用的对话模型。
+      const [provider] = await ctx.adminSql<{ id: string }[]>`
+        INSERT INTO llm_providers (org_id, tenant_id, slug, name, base_url, api_protocol)
+        VALUES (${organizationId}::uuid, ${tenantId}::uuid, 'custom', 'E2E Chat',
+                'http://127.0.0.1:9/v1', 'openai_chat')
+        RETURNING id
+      `;
+      await ctx.adminSql`
+        INSERT INTO llm_model_configs (org_id, tenant_id, provider_id, name, model_id)
+        VALUES (${organizationId}::uuid, ${tenantId}::uuid, ${provider.id}::uuid,
+                'E2E Chat Model', 'e2e-chat-model')
+      `;
 
       const templateNodes = [
         { id: 'tpl-n1', type: 'agent', position: { x: 0, y: 0 }, data: {} },
@@ -1376,7 +1389,7 @@ describe('WorkflowVersion E2E', () => {
           template_slug: 'e2e-clone-template',
         });
 
-      expect(response.status).toBe(201);
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
       const data = response.body.data;
       expect(data.name).toBe('E2E测试模板的副本');
       expect(data.description).toBe('从模板创建');

@@ -413,7 +413,8 @@ describe('Skill E2E', () => {
     expect(filesResponse.json()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'SKILL.md' }),
-        expect.objectContaining({ name: 'input.txt' }),
+        // 附件保留相对目录（D-042），不再被拍平为 input.txt
+        expect.objectContaining({ name: 'examples/input.txt' }),
       ]),
     );
 
@@ -509,8 +510,11 @@ describe('Skill E2E', () => {
       url: `/api/v1/skills/${created.id}/files`,
       headers: otherTenant.headers,
     });
-    // 当前与 detail 的 404 语义不齐，但 200 空数组不泄露资源存在性或文件名。
-    expect(filesResponse.json()).toEqual([]);
+    // 与 detail 一致返回 404（D-043），且不泄露任何文件名。
+    expect(filesResponse.statusCode).toBe(404);
+    expect(filesResponse.json()).toMatchObject({
+      type: 'https://agentloom.dev/errors/skill-not-found',
+    });
     expect(filesResponse.body).not.toContain('SKILL.md');
     expect(filesResponse.body).not.toContain('input.txt');
   });

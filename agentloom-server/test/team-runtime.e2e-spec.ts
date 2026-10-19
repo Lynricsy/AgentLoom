@@ -476,7 +476,7 @@ describe('Team runtime E2E（完整 AppModule + 假模型）', () => {
         .post(`/api/v1/agent-definitions/${agentId}/publish`)
         .set(headers)
         .send({ versionId: version.body.data.id });
-      expect(published.status).toBe(201);
+      expect(published.status).toBe(200);
       agentIds[role] = agentId;
     }
   }

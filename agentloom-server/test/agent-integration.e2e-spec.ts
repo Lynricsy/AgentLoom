@@ -498,7 +498,8 @@ describe('Agent Integration E2E', () => {
         .send({
           name: 'Test Agent',
           description: 'An E2E test agent definition',
-          runtimeMode: 'sandbox',
+          // sandbox 运行态必须连接 Sandbox 节点才能发布（D-004），CRUD 链路用 no_sandbox。
+          runtimeMode: 'no_sandbox',
         });
 
       expect(createRes.status).toBe(201);
@@ -566,7 +567,7 @@ describe('Agent Integration E2E', () => {
         .set(tenant.headers)
         .send({ versionId: versionRes.body.data.id });
 
-      expect(publishRes.status).toBe(201);
+      expect(publishRes.status).toBe(200);
 
       const afterPublishRes = await request(server)
         .get(`/api/v1/agent-definitions/${agentId}`)
