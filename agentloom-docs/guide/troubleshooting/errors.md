@@ -95,8 +95,24 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `reusable-block-expansion-failed` | 422 | 运行前展开可复用块失败：块缺少内嵌定义、块端口没有映射到块内节点，或连线连到块上不存在的端口 | 从「My Blocks」重新拖入该块，或删除失效连线后重新发布，见 [Reusable Block](/guide/nodes/reusable-block) |
 | `execution-not-found` | 404 | 执行记录不存在 | 确认执行 ID |
 | `execution-not-cancellable` | 409 | 执行已结束，不能取消 | 无需处理 |
-| `execution-not-resumable` | 409 | 只有失败的执行可以恢复；已暂停的执行需先处理人工干预 | 见[调试工作流](/guide/workflows/debugging) |
+| `execution-not-resumable` | 409 | 只有失败的执行可以恢复，且所选起点及其下游必须有可重跑的步骤；已暂停的执行需先处理人工干预 | 见[调试工作流](/guide/workflows/debugging) |
 | `intervention-not-allowed` | 409 | 该步骤当前不在等待干预状态 | 刷新执行页查看最新状态 |
+| `workflow-version-not-found` | 404 | 指定的工作流版本不存在 | 刷新版本列表后重新选择 |
+| `workflow-import-model-unavailable` | 422 | 从模板或分享创建工作流时所选模型不可用 | 选择当前组织已启用的模型 |
+| `template-not-found` | 404 | 模板不存在 | 刷新模板列表 |
+| `execution-resume-node-not-found` | 422 | 恢复执行时指定的起点节点不在该执行的图中 | 从执行页选择图中已有的节点恢复 |
+| `execution-step-not-found` | 404 | 执行步骤不存在或不属于该执行 | 刷新执行页查看最新步骤 |
+| `agent-execution-failed` | 500 | Agent 节点执行失败 | 按 `detail` 检查 Agent 配置与模型连接后重试 |
+| `tool-permission-resolution-not-allowed` | 409 | 工具调用当前不在等待审批状态 | 刷新执行页查看最新状态 |
+| `dead-letter-job-not-found` | 404 | 死信任务不存在 | 刷新死信列表 |
+| `evidence-not-found` | 404 | 证据记录不存在 | 刷新执行证据页 |
+| `intervention-policy-not-found` | 404 | 介入策略不存在或不属于路径中的工作流 | 刷新策略列表 |
+| `intervention-policy-conflict` | 409 | 该工作流或节点已存在介入策略 | 编辑已有策略 |
+| `intervention-policy-version-conflict` | 409 | 介入策略已被其他人修改 | 刷新后重新编辑 |
+| `reusable-block-not-found` | 404 | 可复用块不存在 | 刷新可复用块列表 |
+| `reusable-block-conflict` | 409 | 可复用块已被其他人修改 | 刷新后重新编辑 |
+| `optimization-proposal-not-found` | 404 | 优化提案不存在 | 刷新提案列表 |
+| `optimization-workflow-not-analyzable` | 422 | 工作流的发布版本中没有可分析的团队或智能路由节点 | 只对包含这些节点的工作流发起分析 |
 
 ## 触发器
 
