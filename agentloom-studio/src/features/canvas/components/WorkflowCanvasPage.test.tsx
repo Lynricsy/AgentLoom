@@ -41,6 +41,7 @@ const publishSheetMock = vi.fn();
 const versionToolbarMock = vi.fn();
 const versionHistoryPanelMock = vi.fn();
 const useExecutionMonitorMock = vi.fn();
+const useRestoreWorkflowExecutionMock = vi.fn();
 const startExecutionMock = vi.fn();
 const submitInterventionMock = vi.fn();
 const celebrationEffectMock = vi.fn();
@@ -136,6 +137,8 @@ vi.mock("../hooks/useAutoSave", () => ({
 vi.mock("@/features/execution", () => ({
   useAuthToken: () => mockAuthToken,
   useExecutionMonitor: (...args: unknown[]) => useExecutionMonitorMock(...args),
+  useRestoreWorkflowExecution: (...args: unknown[]) =>
+    useRestoreWorkflowExecutionMock(...args),
   useStartExecution: () => ({
     startExecution: startExecutionMock,
     isStarting: mockIsStarting,
@@ -687,6 +690,12 @@ describe("WorkflowCanvasPage", () => {
       tenantId: "tenant-1",
       authToken: "jwt-test-token",
     });
+  });
+
+  it("进入画布即按 workflowId 恢复未结束的执行（D-127）", () => {
+    render(<WorkflowCanvasPage />);
+
+    expect(useRestoreWorkflowExecutionMock).toHaveBeenCalledWith("wf-001");
   });
 
   it("向庆祝效果传递当前 workflow 与执行状态", () => {

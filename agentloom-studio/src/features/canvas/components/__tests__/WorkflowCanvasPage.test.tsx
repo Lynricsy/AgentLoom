@@ -111,6 +111,7 @@ vi.mock('@/features/workflow', () => ({
 vi.mock('@/features/execution', () => ({
   useAuthToken: () => authToken,
   useExecutionMonitor: vi.fn(),
+  useRestoreWorkflowExecution: vi.fn(),
   useStartExecution: () => ({
     startExecution: vi.fn(),
     isStarting: false,

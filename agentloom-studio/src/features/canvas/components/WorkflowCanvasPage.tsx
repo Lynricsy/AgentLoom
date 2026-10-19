@@ -4,7 +4,10 @@ import { AlertCircle } from "lucide-react";
 import { useParams } from "@tanstack/react-router";
 import { useAuthToken } from "@/features/execution";
 import { CelebrationEffect } from "@/features/execution";
-import { useExecutionMonitor } from "@/features/execution";
+import {
+  useExecutionMonitor,
+  useRestoreWorkflowExecution,
+} from "@/features/execution";
 import { useStartExecution } from "@/features/execution";
 import { ExecutionHistoryPanel } from "@/features/execution";
 import {
@@ -123,6 +126,8 @@ export function WorkflowCanvasPage() {
   const isInterventionPolicyReadOnly = !canManageWorkflowSettings;
   const isInputSchemaReadOnly = !canManageWorkflowSettings;
   const { startExecution, isStarting } = useStartExecution();
+  // 刷新或重进画布时恢复该工作流未结束的执行（节点状态、等待干预），随后由下方 socket 订阅驱动
+  useRestoreWorkflowExecution(workflowId);
   useExecutionMonitor({
     executionId: activeExecutionId,
     tenantId: workflow?.tenantId,

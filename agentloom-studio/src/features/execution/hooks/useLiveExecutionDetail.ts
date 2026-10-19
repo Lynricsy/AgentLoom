@@ -8,6 +8,7 @@ import {
   useExecutionActions,
   useExecutionStatus,
   useExecutionProgress,
+  useExecutionStore,
 } from '../stores/executionStore'
 import type {
   ExecutionDetail,
@@ -109,15 +110,41 @@ function mergeStepWithLiveState(
   }
 }
 
+/**
+ * 用 REST 执行详情 hydrate executionStore：每个执行只 hydrate 一次，且只在 store 正跟踪该执行、
+ * 尚未收到 socket 事件时写入，之后由 socket 驱动。执行页与重进画布恢复执行共用。
+ */
+export function useExecutionSnapshotHydration(executionId: string | undefined) {
+  const query = useExecution(executionId ?? '')
+  const { initFromSnapshot } = useExecutionActions()
+  const hydratedExecutionIdRef = useRef<string | null>(null)
+  const execution = query.data
+
+  useEffect(() => {
+    if (
+      !executionId ||
+      !execution ||
+      execution.id !== executionId ||
+      hydratedExecutionIdRef.current === executionId ||
+      useExecutionStore.getState().executionId !== executionId
+    ) {
+      return
+    }
+
+    initFromSnapshot(toSnapshot(execution))
+    hydratedExecutionIdRef.current = executionId
+  }, [execution, executionId, initFromSnapshot])
+
+  return query
+}
+
 export function useLiveExecutionDetail(executionId: string) {
   const authToken = useAuthToken()
   const tenantId = useAuthStore((state) => state.tenantId ?? undefined)
-  const { data: execution, ...query } = useExecution(executionId)
-  const { initExecution, initFromSnapshot, reset } = useExecutionActions()
+  const { initExecution, reset } = useExecutionActions()
   const nodeStates = useAllNodeStates()
   const storeStatus = useExecutionStatus()
   const { completedSteps, totalSteps } = useExecutionProgress()
-  const initializedExecutionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     initExecution(executionId)
@@ -126,14 +153,8 @@ export function useLiveExecutionDetail(executionId: string) {
     }
   }, [executionId, initExecution, reset])
 
-  useEffect(() => {
-    if (!execution || initializedExecutionIdRef.current === executionId) {
-      return
-    }
-
-    initFromSnapshot(toSnapshot(execution))
-    initializedExecutionIdRef.current = executionId
-  }, [execution, executionId, initFromSnapshot])
+  const { data: execution, ...query } =
+    useExecutionSnapshotHydration(executionId)
 
   const monitor = useExecutionMonitor({
     tenantId,
