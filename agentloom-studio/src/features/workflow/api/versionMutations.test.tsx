@@ -15,13 +15,21 @@ import {
 } from "./versionMutations";
 
 const postMock = vi.fn();
-const toSnakeBodyMock = vi.fn((value) => value);
+// 与真实 toSnakeBody 一致地把 camelCase 键转成 snake_case，才能暴露不该经它转换的请求体
+const toSnakeBodyMock = vi.fn((value: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`),
+      item,
+    ]),
+  ),
+);
 
 vi.mock("../../../shared/api/client", () => ({
   apiClient: {
     post: (...args: unknown[]) => postMock(...args),
   },
-  toSnakeBody: (value: unknown) => toSnakeBodyMock(value),
+  toSnakeBody: (value: Record<string, unknown>) => toSnakeBodyMock(value),
 }));
 
 function createWrapper() {
@@ -204,7 +212,7 @@ describe("versionMutations", () => {
     });
   });
 
-  it("publish 会提交 releaseNotes 并等待所有失效完成", async () => {
+  it("publish 按 camelCase 提交 releaseNotes/versionId 并等待所有失效完成", async () => {
     const version = makeVersion({
       id: "ver-003",
       versionNumber: 3,
@@ -269,11 +277,7 @@ describe("versionMutations", () => {
         },
       },
     );
-    expect(toSnakeBodyMock).toHaveBeenCalledWith({
-      label: "发布版",
-      releaseNotes: "补充发布说明",
-      versionId: "ver-003",
-    });
+    expect(toSnakeBodyMock).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenNthCalledWith(1, {

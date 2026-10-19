@@ -149,9 +149,10 @@ export function usePublishWorkflow(workflowId: string) {
   return useMutation({
     mutationKey: ["workflow", "publish", workflowId],
     mutationFn: async (payload: PublishWorkflowPayload) => {
+      // 服务端 PublishWorkflowDto 只认 camelCase（releaseNotes/versionId），不能经 toSnakeBody 转换
       const response = await apiClient
         .post(`workflow-definitions/${workflowId}/publish`, {
-          json: toSnakeBody(payload),
+          json: payload,
         })
         .json<PublishWorkflowResponse>();
       return response;
