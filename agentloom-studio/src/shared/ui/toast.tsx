@@ -175,7 +175,11 @@ export function ToastProvider({ children }: PropsWithChildren) {
           })}
         </AnimatePresence>
 
-        <ToastPrimitives.Viewport className="fixed right-4 top-4 z-60 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 outline-none sm:right-6 sm:top-6" />
+        {/* 右下角：页面与画布的主操作（页头按钮、画布工具条「发布 / 运行」）都在顶部，提示不遮挡它们 */}
+        <ToastPrimitives.Viewport
+          className="fixed bottom-4 right-4 z-60 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 outline-none sm:bottom-6 sm:right-6"
+          data-testid="toast-viewport"
+        />
       </ToastPrimitives.Provider>
     </ToastContext.Provider>
   )

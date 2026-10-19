@@ -60,4 +60,14 @@ describe('ToastProvider', () => {
     expect(screen.queryByText('工作流「订单同步」第 1 次')).not.toBeInTheDocument()
     expect(screen.getByTestId('toast-count')).toHaveTextContent('×4')
   })
+
+  it('提示固定在右下角，不压在页面顶部的页头操作与画布工具条上（D-139）', () => {
+    const notify = renderProvider()
+    notify({ title: '执行已完成', description: '工作流「订单同步」' })
+
+    const viewport = screen.getByTestId('toast-viewport')
+    expect(viewport).toContainElement(screen.getByText('执行已完成'))
+    expect(viewport).toHaveClass('fixed', 'bottom-4', 'right-4')
+    expect(viewport.className).not.toMatch(/(^|\s)(sm:)?top-/)
+  })
 })
