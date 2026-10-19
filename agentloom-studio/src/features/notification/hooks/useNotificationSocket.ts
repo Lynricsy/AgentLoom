@@ -95,6 +95,25 @@ function getToastVariant(type: NotificationTypeEnum) {
   }
 }
 
+/**
+ * 实时通知 toast 文案：执行类通知带工作流名，同一工作流同类通知合并为一条（×N），
+ * 避免同租户批量执行时 toast 堆叠且看不出是哪个工作流
+ */
+export function buildNotificationToast(notification: NotificationType) {
+  const variant = getToastVariant(notification.type)
+  const workflowName = notification.body?.workflowName
+  const workflowId = notification.body?.workflowId
+  if (typeof workflowName !== 'string' || workflowName.length === 0) {
+    return { title: '新通知', description: notification.title, variant }
+  }
+  return {
+    title: notification.title,
+    description: `工作流「${workflowName}」`,
+    variant,
+    groupKey: `${notification.type}:${typeof workflowId === 'string' ? workflowId : workflowName}`,
+  }
+}
+
 export function useNotificationSocket(
   options: UseNotificationSocketOptions,
 ): UseNotificationSocketResult {
@@ -165,11 +184,7 @@ export function useNotificationSocket(
 
     const handleNotification = (notification: NotificationType) => {
       callbacksRef.current.invalidateNotifications()
-      callbacksRef.current.notify({
-        title: '新通知',
-        description: notification.title,
-        variant: getToastVariant(notification.type),
-      })
+      callbacksRef.current.notify(buildNotificationToast(notification))
     }
 
     const handleUnreadCount = (_payload: NotificationUnreadCountEvent) => {

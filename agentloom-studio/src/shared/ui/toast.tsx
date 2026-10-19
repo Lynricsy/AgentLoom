@@ -15,18 +15,28 @@ import { Button } from './button'
 
 type ToastVariant = 'info' | 'success' | 'warning' | 'error'
 
-interface ToastOptions {
+export interface ToastOptions {
   title?: string
   description: string
   variant?: ToastVariant
   duration?: number
+  /**
+   * 同组合并：已有同组且仍可见的 toast 时不新增一条，而是替换其内容并累加次数（标题旁显示 ×N），
+   * 例如同一工作流的连续执行完成通知
+   */
+  groupKey?: string
 }
 
 interface ToastRecord extends ToastOptions {
   id: string
   /** 关闭后先置 false 播放退场，退场结束再从列表移除 */
   open: boolean
+  /** 合并进这条 toast 的通知次数 */
+  count: number
 }
+
+/** 同时可见的 toast 上限：超出时最早的一条先退场，避免堆叠遮住页面操作 */
+const MAX_VISIBLE_TOASTS = 3
 
 interface ToastContextValue {
   notify: (options: ToastOptions) => void
@@ -70,7 +80,26 @@ export function ToastProvider({ children }: PropsWithChildren) {
   }, [])
 
   const notify = useCallback((options: ToastOptions) => {
-    setToasts((current) => [...current, { id: createToastId(), open: true, ...options }])
+    setToasts((current) => {
+      const grouped = options.groupKey
+        ? current.find((toast) => toast.open && toast.groupKey === options.groupKey)
+        : undefined
+      if (grouped) {
+        return current.map((toast) =>
+          toast === grouped ? { ...toast, ...options, count: toast.count + 1 } : toast,
+        )
+      }
+
+      const next = [...current, { id: createToastId(), open: true, count: 1, ...options }]
+      let overflow = next.filter((toast) => toast.open).length - MAX_VISIBLE_TOASTS
+      return next.map((toast) => {
+        if (overflow > 0 && toast.open) {
+          overflow -= 1
+          return { ...toast, open: false }
+        }
+        return toast
+      })
+    })
   }, [])
 
   const value = useMemo<ToastContextValue>(() => ({ notify }), [notify])
@@ -114,6 +143,14 @@ export function ToastProvider({ children }: PropsWithChildren) {
                     {toast.title ? (
                       <ToastPrimitives.Title className="text-sm font-semibold">
                         {toast.title}
+                        {toast.count > 1 ? (
+                          <span
+                            className="ml-1.5 text-xs font-normal text-muted-foreground"
+                            data-testid="toast-count"
+                          >
+                            ×{toast.count}
+                          </span>
+                        ) : null}
                       </ToastPrimitives.Title>
                     ) : null}
 
