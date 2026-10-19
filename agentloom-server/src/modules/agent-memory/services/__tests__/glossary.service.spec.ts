@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -154,6 +155,24 @@ describe('GlossaryService', () => {
       const uniqueViolation = Object.assign(new Error('duplicate key'), {
         code: '23505',
       });
+      const insertQuery = createInsertChain<MemoryGlossaryKeyword>([]);
+      insertQuery.returning.mockRejectedValueOnce(uniqueViolation);
+
+      tenantDb.select.mockReturnValueOnce(createSelectChain([createNode()]));
+      tenantDb.insert.mockReturnValueOnce(insertQuery.chain);
+
+      await expect(
+        service.addKeyword(INSTANCE_ID, 'AI Agent', NODE_ID),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('Drizzle 包装的唯一索引冲突（code 在 cause 上）应抛出 ConflictException', async () => {
+      // D-039：真实 Drizzle 抛 DrizzleQueryError，pg 错误码只在 cause 上。
+      const uniqueViolation = new DrizzleQueryError(
+        'insert into "memory_glossary_keywords" ...',
+        [],
+        Object.assign(new Error('duplicate key value'), { code: '23505' }),
+      );
       const insertQuery = createInsertChain<MemoryGlossaryKeyword>([]);
       insertQuery.returning.mockRejectedValueOnce(uniqueViolation);
 

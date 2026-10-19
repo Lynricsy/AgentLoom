@@ -8,6 +8,7 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
   getTenantId,
@@ -80,7 +81,7 @@ export class PathResolverService {
 
       return path;
     } catch (error: unknown) {
-      if (this.isUniqueViolation(error)) {
+      if (hasPostgresErrorCode(error, '23505')) {
         throw new ConflictException(
           `Memory path ${parsed.domain}://${parsed.pathString} already exists`,
         );
@@ -379,20 +380,5 @@ export class PathResolverService {
       pathString,
       segments,
     };
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    const errorCode =
-      error instanceof Error && 'code' in error
-        ? (error as Record<string, unknown>).code
-        : error instanceof Error &&
-            'cause' in error &&
-            typeof error.cause === 'object' &&
-            error.cause !== null &&
-            'code' in error.cause
-          ? (error.cause as Record<string, unknown>).code
-          : undefined;
-
-    return error instanceof Error && errorCode === '23505';
   }
 }

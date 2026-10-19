@@ -8,6 +8,7 @@ import AhoCorasick from 'ahocorasick';
 import { and, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
   getTenantId,
@@ -69,7 +70,8 @@ export class GlossaryService {
 
       return createdKeyword;
     } catch (error) {
-      if (this.isUniqueViolation(error)) {
+      // Drizzle 把 pg 错误包在 DrizzleQueryError.cause 里，必须沿 cause 链判断。
+      if (hasPostgresErrorCode(error, '23505')) {
         throw new ConflictException(
           `Glossary keyword "${keyword}" already bound to node ${nodeId}`,
         );
@@ -263,14 +265,5 @@ export class GlossaryService {
     }
 
     return matches;
-  }
-
-  private isUniqueViolation(error: unknown): error is { code: string } {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === '23505'
-    );
   }
 }

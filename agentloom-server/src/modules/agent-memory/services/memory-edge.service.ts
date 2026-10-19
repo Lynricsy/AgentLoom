@@ -12,6 +12,7 @@ import {
   registerAfterCommitHook,
 } from '../../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../../common/utils/postgres-error.utils';
 import { MemoryGateway } from '../memory.gateway';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
@@ -104,7 +105,7 @@ export class MemoryEdgeService {
 
       return edge;
     } catch (error: unknown) {
-      if (this.isUniqueViolation(error)) {
+      if (hasPostgresErrorCode(error, '23505')) {
         throw new ConflictException(
           'Memory edge already exists between these nodes',
         );
@@ -296,20 +297,5 @@ export class MemoryEdgeService {
     }
 
     return edge;
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    const errorCode =
-      error instanceof Error && 'code' in error
-        ? (error as Record<string, unknown>).code
-        : error instanceof Error &&
-            'cause' in error &&
-            typeof error.cause === 'object' &&
-            error.cause !== null &&
-            'code' in error.cause
-          ? (error.cause as Record<string, unknown>).code
-          : undefined;
-
-    return error instanceof Error && errorCode === '23505';
   }
 }
