@@ -17,6 +17,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { Public } from '../../common/decorators/public.decorator';
+import { INVALID_JSON_BODY } from '../../common/http/body-parsers';
 import type { EnvConfig } from '../../config/env.schema';
 import { AgentApiEventStreamService } from '../agent-api-runtime/agent-api-event-stream.service';
 import { AgentApiKeyGuard } from '../agent-api/agent-api-key.guard';
@@ -89,6 +90,10 @@ export class A2aController {
     let rpcId: JsonRpcId = rawId.success ? rawId.data : null;
 
     try {
+      // 解析器对本路径放行非法 JSON（见 registerBodyParsers），按 JSON-RPC 回 Parse error
+      if (body === INVALID_JSON_BODY) {
+        throw new A2aRpcError(JSON_RPC_ERRORS.ParseError, 'Parse error');
+      }
       if (key.agentDefinitionId !== agentDefinitionId) {
         throw new A2aRpcError(
           JSON_RPC_ERRORS.InvalidRequest,

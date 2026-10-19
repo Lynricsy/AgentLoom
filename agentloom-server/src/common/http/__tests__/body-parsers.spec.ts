@@ -6,7 +6,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import type { FastifyRequest } from 'fastify';
-import { registerBodyParsers } from '../body-parsers';
+import { INVALID_JSON_BODY, registerBodyParsers } from '../body-parsers';
 
 @Controller('echo')
 class EchoController {
@@ -20,12 +20,21 @@ class EchoController {
   }
 }
 
+@Controller('a2a/agents/:agentId/rpc')
+class A2aRpcProbeController {
+  @Post()
+  @HttpCode(200)
+  rpc(@Req() request: FastifyRequest) {
+    return { invalidJson: request.body === INVALID_JSON_BODY };
+  }
+}
+
 describe('registerBodyParsers', () => {
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      controllers: [EchoController],
+      controllers: [EchoController, A2aRpcProbeController],
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
@@ -41,10 +50,14 @@ describe('registerBodyParsers', () => {
     await app.close();
   });
 
-  async function post(contentType: string, payload: string) {
+  async function post(
+    contentType: string,
+    payload: string,
+    url = '/api/v1/echo',
+  ) {
     const response = await app.inject({
       method: 'POST',
-      url: '/api/v1/echo',
+      url,
       headers: { 'content-type': contentType },
       payload,
     });
@@ -89,5 +102,20 @@ describe('registerBodyParsers', () => {
         body: { jsonrpc: '2.0', id: 1, method: 'message/send' },
       },
     });
+  });
+
+  // JSON-RPC 要求非法 JSON 回 -32700：A2A RPC 路径放行标记，由控制器应答
+  it.each(['application/json', 'application/a2a+json'])(
+    'A2A RPC 路径 %s 非法 JSON 交给控制器处理',
+    async (contentType) => {
+      await expect(
+        post(contentType, '{"jsonrpc":', '/api/v1/a2a/agents/agent-1/rpc'),
+      ).resolves.toEqual({ status: 200, json: { invalidJson: true } });
+    },
+  );
+
+  it('其它路径的非法 JSON 仍返回 400', async () => {
+    const { status } = await post('application/json', '{"jsonrpc":');
+    expect(status).toBe(400);
   });
 });

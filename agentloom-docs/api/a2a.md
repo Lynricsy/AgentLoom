@@ -81,7 +81,7 @@ curl -s -X POST "$AGENTLOOM_API/a2a/agents/$AGENT_ID/rpc" \
 
 - `message.role` 必须是 `ROLE_USER`；`parts` 只接受 `text`，多个文本 part 以换行拼接，拼接后 1–100000 字符。含 `raw`/`url`/`data` part 时返回 `-32005`。
 - 不带 `message.contextId` 时新建对话（对话与任务在同一事务里创建）；带上时继续该对话（必须是同一把 Key 创建的对话，否则 `-32602`）。
-- 重放：`messageId` 是同一把 Key 范围内的幂等键。同一 `messageId`、同样内容与同样的 `contextId`（或同样不带 `contextId`）重发，返回首次创建的 Task（同一 `id` 与 `contextId`），不会新建对话或任务；并发重发同样只产生一个对话与一个任务。同一 `messageId` 换了内容或换了 `contextId`（包括首次不带、重发时带上首次返回的 `contextId`）视为不同请求，返回 `-32602`。`SendStreamingMessage` 重放时从该任务事件流的开头推送。
+- 重放：`messageId` 是同一把 Key 范围内的幂等键。同一 `messageId`、同样内容与同样的 `contextId`（或同样不带 `contextId`）重发，返回首次创建的 Task（同一 `id` 与 `contextId`），不会新建对话或任务；并发重发同样只产生一个对话与一个任务。同一 `messageId` 换了内容或换了 `contextId`（包括首次不带、重发时带上首次返回的 `contextId`）视为不同请求，返回 `-32602`（`message` 为 `messageId was already used with different content or contextId`）。`SendStreamingMessage` 重放时从该任务事件流的开头推送。
 - 不支持 `message.taskId`（续写既有任务），返回 `-32004`；继续对话请带 `contextId` 发新消息。
 - 同一对话已有进行中的任务时返回 `-32004`（`data.activeRunId` 为进行中任务的 id）。
 - 默认阻塞等待任务结束，最长 120 秒；到期仍未结束时返回当前状态（可能是 `TASK_STATE_SUBMITTED` 或 `TASK_STATE_WORKING`），之后用 `GetTask` 轮询或 `SubscribeToTask` 订阅。
@@ -142,6 +142,7 @@ JSON-RPC 错误以 HTTP 200 返回（并发超限除外）：
 
 | `error.code` | 含义 | 典型原因 |
 | --- | --- | --- |
+| `-32700` | Parse error | 请求体不是合法 JSON（`id` 为 `null`） |
 | `-32600` | Invalid Request | 请求体不是 JSON-RPC 2.0 对象；Key 不属于路径中的 Agent |
 | `-32601` | Method not found | 方法名未知 |
 | `-32602` | Invalid params | `params` 校验失败（`data` 为 `google.rpc.BadRequest`，列出 `fieldViolations`）；`contextId` 不存在；消息文本为空或过长；`messageId` 被复用于不同内容 |

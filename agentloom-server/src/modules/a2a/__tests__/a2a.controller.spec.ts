@@ -3,8 +3,10 @@ import { EventEmitter } from 'node:events';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
+import { INVALID_JSON_BODY } from '../../../common/http/body-parsers';
 import {
   ConcurrencyLimitExceededException,
+  IdempotencyKeyReusedException,
   RunNotCancellableException,
 } from '../../agent-api/agent-api.exceptions';
 import type { AgentApiKeyContext } from '../../agent-api/agent-api.types';
@@ -201,6 +203,49 @@ describe('A2aController', () => {
         jsonrpc: '2.0',
         id: 9,
         error: { code: -32600, message: 'Invalid Request' },
+      });
+    });
+
+    it('请求体不是合法 JSON 时返回 -32700 Parse error（id 为 null，HTTP 200）', async () => {
+      const { sent } = await call(INVALID_JSON_BODY);
+
+      expect(sent.status).toBe(200);
+      expect(sent.body).toEqual({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32700, message: 'Parse error' },
+      });
+    });
+
+    it('messageId 复用于不同内容时返回 -32602，文案指向 messageId 而非 Idempotency-Key', async () => {
+      const { controller, service } = createController();
+      service.sendMessage.mockRejectedValueOnce(
+        new IdempotencyKeyReusedException(),
+      );
+      const { reply, sent } = createReply();
+
+      await controller.rpc(
+        KEY,
+        AGENT_ID,
+        undefined,
+        rpcBody('SendMessage', {
+          message: {
+            messageId: 'm-1',
+            role: 'ROLE_USER',
+            parts: [{ text: 'other content' }],
+          },
+        }),
+        reply,
+      );
+
+      expect(sent.body).toEqual({
+        jsonrpc: '2.0',
+        id: 'req-1',
+        error: {
+          code: -32602,
+          message:
+            'messageId was already used with different content or contextId',
+        },
       });
     });
 

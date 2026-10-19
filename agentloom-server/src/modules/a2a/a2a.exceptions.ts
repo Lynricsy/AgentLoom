@@ -111,8 +111,20 @@ export function toRpcError(error: unknown): A2aRpcErrorMapping {
     [ConversationEndedException, A2A_ERRORS.UnsupportedOperation],
     [AgentApiConversationNotFoundException, JSON_RPC_ERRORS.InvalidParams],
     [AgentApiValidationException, JSON_RPC_ERRORS.InvalidParams],
-    [IdempotencyKeyReusedException, JSON_RPC_ERRORS.InvalidParams],
   ];
+
+  // A2A 的幂等键是 message.messageId，不能沿用 Agent API 的 Idempotency-Key 文案
+  if (error instanceof IdempotencyKeyReusedException) {
+    return {
+      error: {
+        code: JSON_RPC_ERRORS.InvalidParams,
+        message:
+          'messageId was already used with different content or contextId',
+      },
+      httpStatus: ok,
+      unexpected: false,
+    };
+  }
 
   if (error instanceof ConversationBusyException) {
     return {
