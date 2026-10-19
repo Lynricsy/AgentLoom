@@ -59,6 +59,8 @@ export interface ExecutionStatusChangedPayload {
   completedSteps?: number
   totalSteps?: number
   errorMessage?: string
+  /** 执行进入 completed 时的完成时间（ISO 8601） */
+  completedAt?: string
 }
 
 export interface StructuredErrorDetail {
@@ -88,6 +90,9 @@ export interface StepStatusChangedPayload {
   errorDetail?: StructuredErrorDetail
   result?: Record<string, unknown> | null
   checkpointData?: Record<string, unknown> | null
+  /** 状态变更后的步骤开始 / 结束时间（ISO 8601）；重置为 pending 时为 null */
+  startedAt?: string | null
+  completedAt?: string | null
 }
 
 export interface StepAgentEventPayload {

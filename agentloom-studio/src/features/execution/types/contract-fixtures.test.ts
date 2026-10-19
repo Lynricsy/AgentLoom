@@ -150,6 +150,8 @@ describe('Studio 执行事件契约 fixture', () => {
     const node = useExecutionStore.getState().nodes['agent-main']
     expect(node?.status).toBe('running')
     expect(node?.stepId).toBe('0195c3a1-9a01-7f10-b2c4-118d5e7a3b22')
+    expect(node?.startedAt).toBe('2026-03-24T09:15:42.301Z')
+    expect(node?.completedAt).toBeNull()
   })
 
   it('输出分片载荷 fixture 能驱动 Studio 的输出追加', () => {

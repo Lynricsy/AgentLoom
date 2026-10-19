@@ -178,10 +178,18 @@ describe('StepStateMachineService', () => {
           updatedAt: NOW,
         }),
       );
+      // 实时事件带上落库的开始时间，执行页时间线不必等刷新（D-138）
       expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        { stepId: STEP_ID, nodeId: NODE_ID, from: 'pending', to: 'running' },
+        {
+          stepId: STEP_ID,
+          nodeId: NODE_ID,
+          from: 'pending',
+          to: 'running',
+          startedAt: NOW.toISOString(),
+          completedAt: null,
+        },
       );
     });
 
@@ -290,10 +298,12 @@ describe('StepStateMachineService', () => {
         partialContent: '最终输出',
         round: 2,
       };
+      const startedAt = new Date('2024-12-31T23:59:30Z');
       const updatedStep = makeStep({
         status: 'completed',
         result: resultPayload,
         checkpointData,
+        startedAt,
         completedAt: NOW,
         updatedAt: NOW,
       });
@@ -323,6 +333,8 @@ describe('StepStateMachineService', () => {
           nodeId: NODE_ID,
           from: 'running',
           to: 'completed',
+          startedAt: startedAt.toISOString(),
+          completedAt: NOW.toISOString(),
           result: resultPayload,
           checkpointData,
         },
@@ -353,15 +365,17 @@ describe('StepStateMachineService', () => {
           completedAt: NOW,
         }),
       );
+      // 终态事件带上完成时间，执行页「耗时」不必等刷新（D-138）
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,
-        expect.objectContaining({
+        {
           executionId: EXECUTION_ID,
           status: 'completed',
           completedSteps: 3,
           totalSteps: 3,
-        }),
+          completedAt: NOW.toISOString(),
+        },
       );
     });
 

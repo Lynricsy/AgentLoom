@@ -100,6 +100,8 @@ export interface ExecutionStoreState {
   status: ExecutionStatus | null
   completedSteps: number
   totalSteps: number
+  /** 执行完成时间：只来自实时终态事件；REST 详情已有时以 REST 为准合并 */
+  executionCompletedAt: string | null
   /** nodeId → 节点运行状态 */
   nodes: Record<string, NodeExecutionState>
   /** 保留最新 50 条用于调试 */
@@ -174,6 +176,7 @@ function createInitialState(): ExecutionStoreState {
     status: null,
     completedSteps: 0,
     totalSteps: 0,
+    executionCompletedAt: null,
     nodes: {},
     recentEvents: [],
     teamRuns: {},
@@ -488,6 +491,9 @@ export const useExecutionStore = create<
               if (event.data.totalSteps != null) {
                 state.totalSteps = event.data.totalSteps
               }
+              if (event.data.completedAt !== undefined) {
+                state.executionCompletedAt = event.data.completedAt
+              }
               pushEvent(state, event)
             })
           },
@@ -502,6 +508,12 @@ export const useExecutionStore = create<
                 event.data.stepId,
               )
               node.status = event.data.to
+              if (event.data.startedAt !== undefined) {
+                node.startedAt = event.data.startedAt
+              }
+              if (event.data.completedAt !== undefined) {
+                node.completedAt = event.data.completedAt
+              }
               node.errorDetail = castDraft(
                 cloneStructuredErrorDetail(event.data.errorDetail),
               )

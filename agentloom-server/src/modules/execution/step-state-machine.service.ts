@@ -121,6 +121,9 @@ export class StepStateMachineService {
       nodeId: step.nodeId,
       from: step.status,
       to: newStatus,
+      // 实时视图（执行页时间线、节点详情）直接用落库时间，不必等 REST 刷新（D-138）
+      startedAt: updated.startedAt?.toISOString() ?? null,
+      completedAt: updated.completedAt?.toISOString() ?? null,
       ...(extra?.result !== undefined
         ? {
             result: extra.result as StepStatusChangedPayload['result'],
@@ -232,6 +235,9 @@ export class StepStateMachineService {
       status: executionStatus,
       completedSteps: completedCount,
       totalSteps: trackedSteps.length,
+      ...(executionStatus === 'completed'
+        ? { completedAt: now.toISOString() }
+        : {}),
     });
 
     this.logger.log(

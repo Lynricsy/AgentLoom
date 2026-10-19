@@ -120,6 +120,31 @@ describe('executionStore', () => {
       expect(state.status).toBe('completed')
       expect(state.completedSteps).toBe(5)
     })
+
+    it('records completedAt carried by the terminal event (D-138)', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateExecutionStatus(
+        makeEvent<ExecutionStatusChangedPayload>({
+          eventId: 1,
+          data: { executionId: 'exec-1', status: 'running' },
+        }),
+      )
+      expect(useExecutionStore.getState().executionCompletedAt).toBeNull()
+
+      actions.updateExecutionStatus(
+        makeEvent<ExecutionStatusChangedPayload>({
+          eventId: 2,
+          data: {
+            executionId: 'exec-1',
+            status: 'completed',
+            completedAt: '2026-10-19T16:48:50.760Z',
+          },
+        }),
+      )
+      expect(useExecutionStore.getState().executionCompletedAt).toBe(
+        '2026-10-19T16:48:50.760Z',
+      )
+    })
   })
 
   describe('updateNodeStatus', () => {
@@ -154,6 +179,51 @@ describe('executionStore', () => {
       const { actions } = useExecutionStore.getState()
       actions.updateNodeStatus(makeStepStatusEvent({ to: 'queued' }))
       expect(getNode('node-1').isStreaming).toBe(false)
+    })
+
+    it('applies startedAt / completedAt carried by status events (D-138)', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(
+        makeStepStatusEvent({
+          to: 'running',
+          startedAt: '2026-10-19T16:48:13.282Z',
+          completedAt: null,
+        }),
+      )
+      expect(getNode('node-1').startedAt).toBe('2026-10-19T16:48:13.282Z')
+      expect(getNode('node-1').completedAt).toBeNull()
+
+      actions.updateNodeStatus(
+        makeStepStatusEvent({
+          from: 'running',
+          to: 'completed',
+          startedAt: '2026-10-19T16:48:13.282Z',
+          completedAt: '2026-10-19T16:48:50.742Z',
+        }),
+      )
+      expect(getNode('node-1').completedAt).toBe('2026-10-19T16:48:50.742Z')
+
+      // 重置为 pending（复合节点新一轮）时清空
+      actions.updateNodeStatus(
+        makeStepStatusEvent({
+          from: 'completed',
+          to: 'pending',
+          startedAt: null,
+          completedAt: null,
+        }),
+      )
+      expect(getNode('node-1').startedAt).toBeNull()
+      expect(getNode('node-1').completedAt).toBeNull()
+    })
+
+    it('keeps hydrated times when an event carries none', () => {
+      const { actions } = useExecutionStore.getState()
+      actions.updateNodeStatus(
+        makeStepStatusEvent({ to: 'running', startedAt: '2026-10-19T16:48:13.282Z' }),
+      )
+      actions.updateNodeStatus(makeStepStatusEvent({ from: 'running', to: 'cancelled' }))
+
+      expect(getNode('node-1').startedAt).toBe('2026-10-19T16:48:13.282Z')
     })
 
     it('stores structured errorDetail from status change event', () => {

@@ -104,8 +104,10 @@ function mergeStepWithLiveState(
       (liveNode.errorDetail as ExecutionStepErrorDetail | null | undefined) ??
         step.errorDetail,
     ),
-    startedAt: liveNode.startedAt ?? step.startedAt,
-    completedAt: liveNode.completedAt ?? step.completedAt,
+    // 实时事件携带落库的开始/结束时间（重置为 pending 时为 null），定义了就以实时为准
+    startedAt: liveNode.startedAt !== undefined ? liveNode.startedAt : step.startedAt,
+    completedAt:
+      liveNode.completedAt !== undefined ? liveNode.completedAt : step.completedAt,
     checkpointData,
   }
 }
@@ -145,6 +147,7 @@ export function useLiveExecutionDetail(executionId: string) {
   const nodeStates = useAllNodeStates()
   const storeStatus = useExecutionStatus()
   const { completedSteps, totalSteps } = useExecutionProgress()
+  const liveCompletedAt = useExecutionStore((state) => state.executionCompletedAt)
 
   useEffect(() => {
     initExecution(executionId)
@@ -174,6 +177,7 @@ export function useLiveExecutionDetail(executionId: string) {
     return {
       ...execution,
       status: storeStatus ?? execution.status,
+      completedAt: execution.completedAt ?? liveCompletedAt,
       completedSteps: completedSteps || execution.completedSteps,
       totalSteps: totalSteps || execution.totalSteps,
       steps,
@@ -181,6 +185,7 @@ export function useLiveExecutionDetail(executionId: string) {
   }, [
     completedSteps,
     execution,
+    liveCompletedAt,
     nodeStates,
     storeStatus,
     totalSteps,

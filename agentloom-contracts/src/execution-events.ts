@@ -100,6 +100,8 @@ export const ExecutionStatusChangedPayloadSchema = z.object({
   failedPhase: PreparationPhaseSchema.optional(),
   error: z.string().optional(),
   sandboxReused: z.boolean().optional(),
+  /** 执行进入 completed 时的完成时间（ISO 8601），与 REST 详情的 completedAt 一致 */
+  completedAt: z.string().optional(),
 });
 
 export const StepStatusChangedPayloadSchema = z.object({
@@ -111,6 +113,9 @@ export const StepStatusChangedPayloadSchema = z.object({
   errorDetail: StructuredErrorDetailSchema.optional(),
   result: JsonRecordSchema.nullable().optional(),
   checkpointData: JsonRecordSchema.nullable().optional(),
+  /** 状态变更后的步骤开始 / 结束时间（ISO 8601），与 REST 详情一致；重置为 pending 时为 null */
+  startedAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
 });
 
 export const StepAgentEventPayloadSchema = z.object({

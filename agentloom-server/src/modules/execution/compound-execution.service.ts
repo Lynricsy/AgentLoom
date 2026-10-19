@@ -630,6 +630,9 @@ export class CompoundExecutionService {
           nodeId: step.nodeId,
           from: step.status,
           to: 'pending',
+          // 与下方落库一致：新一轮的步骤时间清空
+          startedAt: null,
+          completedAt: null,
         });
       }
     }
