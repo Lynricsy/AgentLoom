@@ -117,7 +117,10 @@ describe('TriggerSchedulerProcessor', () => {
     mockTriggerHistoryService.record.mockResolvedValue(undefined);
     mockTriggerService.markTriggered.mockResolvedValue(undefined);
 
-    await expect(processor.process(createMockJob())).resolves.toEqual({
+    const scheduledAt = Date.parse('2025-01-01T08:00:00.000Z');
+    await expect(
+      processor.process(createMockJob({ opts: { prevMillis: scheduledAt } })),
+    ).resolves.toEqual({
       processed: true,
       executionId: EXECUTION_ID,
     });
@@ -127,9 +130,21 @@ describe('TriggerSchedulerProcessor', () => {
       TENANT_ID,
       expect.any(Function),
     );
+    // 调度信息随 _meta.schedule 传入，不进入输入参数契约
     expect(mockExecutionService.runWorkflow).toHaveBeenCalledWith(
       WORKFLOW_ID,
       {
+        inputParams: {
+          _meta: {
+            schedule: {
+              triggerId: TRIGGER_ID,
+              expression: '0 8 * * *',
+              timezone: 'UTC',
+              scheduledAt: '2025-01-01T08:00:00.000Z',
+              triggeredAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+            },
+          },
+        },
         launchSource: 'cron-trigger',
         triggerType: 'system',
       },

@@ -9,7 +9,7 @@ docType: howto
 前提：
 
 - 工作流已发布，你的角色是 owner、admin 或 creator。
-- 定时触发启动工作流时**不传入任何启动参数**：工作流的 [输入参数](/guide/workflows/input-parameters) 全部取默认值。如果有必填且没有默认值的输入参数，每次启动都会校验失败，触发历史记为「失败」。
+- 定时触发启动工作流时**不传入任何启动参数**：工作流的 [输入参数](/guide/workflows/input-parameters) 全部取默认值。如果有必填且没有默认值的输入参数，每次启动都会校验失败，触发历史记为「失败」。本次调度信息（触发器 ID、Cron 表达式、时区、计划与实际触发时间）不占用输入参数，由 [Schedule 节点](/guide/nodes/trigger) 的「触发数据」以 `schedule` 字段输出。
 
 ## 创建定时触发器
 

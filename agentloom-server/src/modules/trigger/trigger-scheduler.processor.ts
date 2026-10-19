@@ -17,6 +17,7 @@ import {
   TRIGGER_QUEUE,
 } from './trigger.constants';
 import { TriggerNotFoundException } from './trigger.exceptions';
+import { StoredCronConfigSchema } from './dto/trigger.dto';
 
 @Processor(TRIGGER_QUEUE)
 export class TriggerSchedulerProcessor extends WorkerHost {
@@ -75,9 +76,28 @@ export class TriggerSchedulerProcessor extends WorkerHost {
     let execution: Awaited<ReturnType<ExecutionService['runWorkflow']>>;
 
     try {
+      const cronConfig = StoredCronConfigSchema.parse(trigger.config);
+      // BullMQ Job Scheduler 生成的任务在 opts.prevMillis 记录本次计划触发时刻
+      const scheduledMillis = job.opts.prevMillis;
       execution = await this.executionService.runWorkflow(
         workflowId,
         {
+          // 调度信息放在 _meta.schedule：不参与输入参数契约（输入参数仍全部取默认值，
+          // 也不会被同名参数覆盖或被契约丢弃），由触发器节点作为触发数据的 schedule 字段输出
+          inputParams: {
+            _meta: {
+              schedule: {
+                triggerId,
+                expression: cronConfig.expression,
+                timezone: cronConfig.timezone,
+                scheduledAt:
+                  typeof scheduledMillis === 'number'
+                    ? new Date(scheduledMillis).toISOString()
+                    : null,
+                triggeredAt: new Date().toISOString(),
+              },
+            },
+          },
           launchSource: 'cron-trigger',
           triggerType: 'system',
         },

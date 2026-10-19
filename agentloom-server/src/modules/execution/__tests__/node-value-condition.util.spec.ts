@@ -164,6 +164,13 @@ describe('node-value.util', () => {
       extractExecutionInputPayload({ value: 1, _meta: { trace: true } }),
     ).toEqual({ value: 1 });
     expect(extractExecutionInputPayload(null)).toEqual({});
+    const schedule = { triggerId: 't-1', expression: '* * * * *' };
+    expect(
+      extractExecutionInputPayload({
+        region: 'cn',
+        _meta: { launchSource: 'cron-trigger', schedule },
+      }),
+    ).toEqual({ region: 'cn', schedule });
     expect(
       extractOutputValue({ 'content-in': undefined, content: 'later' }),
     ).toBeUndefined();

@@ -278,7 +278,11 @@ export function extractExecutionInputPayload(
 
   const payload = { ...inputParams };
   delete payload._meta;
-  return payload;
+  // 定时触发的调度信息由 cron 启动写入 _meta.schedule（不受输入参数契约约束），作为 schedule 字段输出
+  const schedule = isRecord(inputParams._meta)
+    ? inputParams._meta.schedule
+    : undefined;
+  return isRecord(schedule) ? { ...payload, schedule } : payload;
 }
 
 export function extractOutputValue(input: Record<string, unknown>): unknown {
