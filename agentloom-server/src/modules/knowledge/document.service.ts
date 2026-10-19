@@ -35,6 +35,8 @@ import {
   FileTooLargeException,
   DocumentNotFoundException,
   EmptyFileException,
+  DocumentFileRequiredException,
+  DocumentMultipartRequiredException,
   DocumentContentNotFoundException,
   DocumentContentUnavailableException,
 } from './knowledge.exceptions';
@@ -466,11 +468,16 @@ export class DocumentService {
   private async readMultipartFile(
     request: FastifyRequest,
   ): Promise<MultipartFile> {
+    // 非 multipart 请求调用 file() 会抛 FastifyError 406，必须先拦下。
+    if (!request.isMultipart()) {
+      throw new DocumentMultipartRequiredException();
+    }
+
     try {
       const multipartFile = await request.file();
 
       if (!multipartFile) {
-        throw new EmptyFileException();
+        throw new DocumentFileRequiredException();
       }
 
       return multipartFile;

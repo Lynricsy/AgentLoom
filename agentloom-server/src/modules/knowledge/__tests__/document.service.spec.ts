@@ -12,6 +12,8 @@ import {
 } from '../../../infrastructure/storage';
 import {
   EmptyFileException,
+  DocumentFileRequiredException,
+  DocumentMultipartRequiredException,
   UnsupportedFileTypeException,
   FileTooLargeException,
   DocumentNotFoundException,
@@ -71,6 +73,13 @@ function createMultipartFile(filename: string, content: Buffer): MultipartFile {
     fields: {},
     file: fileStream,
     toBuffer: vi.fn().mockResolvedValue(content),
+  };
+}
+
+function createMultipartRequest(file: MultipartFile | null | undefined) {
+  return {
+    isMultipart: vi.fn().mockReturnValue(true),
+    file: vi.fn().mockResolvedValue(file),
   };
 }
 
@@ -166,7 +175,7 @@ describe('DocumentService', () => {
   describe('uploadFromRequest', () => {
     it('应成功上传文件并返回不含 storageKey 的文档', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       const dbDocument = {
         id: DOC_ID,
@@ -220,12 +229,36 @@ describe('DocumentService', () => {
       expect(result.fileName).toBe('report.pdf');
     });
 
-    it('没有文件时应抛出 EmptyFileException', async () => {
-      const request = { file: vi.fn().mockResolvedValue(null) };
+    it('非 multipart 请求应抛出 415 DocumentMultipartRequiredException 且不读取文件', async () => {
+      const request = {
+        isMultipart: vi.fn().mockReturnValue(false),
+        file: vi.fn(),
+      };
 
-      await expect(
-        service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
-      ).rejects.toThrow(EmptyFileException);
+      const error = await service
+        .uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(DocumentMultipartRequiredException);
+      expect((error as DocumentMultipartRequiredException).getStatus()).toBe(
+        415,
+      );
+      expect(request.file).not.toHaveBeenCalled();
+    });
+
+    it('multipart 中没有文件时应抛出 422 validation-error「缺少 file 字段」', async () => {
+      const request = createMultipartRequest(undefined);
+
+      const error = await service
+        .uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(DocumentFileRequiredException);
+      expect(error).toMatchObject({
+        type: 'https://agentloom.dev/errors/validation-error',
+        detail: '缺少 file 字段',
+      });
+      expect((error as DocumentFileRequiredException).getStatus()).toBe(422);
     });
 
     it('不支持的文件类型应抛出 UnsupportedFileTypeException', async () => {
@@ -233,7 +266,7 @@ describe('DocumentService', () => {
         'virus.exe',
         Buffer.from('bad'),
       );
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       await expect(
         service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
@@ -242,7 +275,7 @@ describe('DocumentService', () => {
 
     it('空文件内容应抛出 EmptyFileException', async () => {
       const multipartFile = createMultipartFile('empty.pdf', Buffer.alloc(0));
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       await expect(
         service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
@@ -256,7 +289,7 @@ describe('DocumentService', () => {
         value: 'FST_REQ_FILE_TOO_LARGE',
       });
       multipartFile.toBuffer = vi.fn().mockRejectedValue(tooLargeError);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       await expect(
         service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
@@ -265,7 +298,7 @@ describe('DocumentService', () => {
 
     it('文本文件应基于文本内容通过校验', async () => {
       const multipartFile = createMultipartFile('notes.md', TEXT_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       const dbDocument = {
         id: DOC_ID,
@@ -309,7 +342,7 @@ describe('DocumentService', () => {
 
     it('扩展名与真实内容不匹配时应拒绝上传', async () => {
       const multipartFile = createMultipartFile('notes.txt', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       await expect(
         service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
@@ -318,7 +351,7 @@ describe('DocumentService', () => {
 
     it('数据库写入失败时应清理 MinIO 文件并重新抛出错误', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       const dbError = new Error('数据库连接超时');
       db.insert.mockReturnValue({
@@ -338,7 +371,7 @@ describe('DocumentService', () => {
 
     it('MinIO 清理失败时不应阻止错误抛出', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       const dbError = new Error('数据库错误');
       db.insert.mockReturnValue({
@@ -355,7 +388,7 @@ describe('DocumentService', () => {
 
     it('上传阶段失败时应清理未完成的 MinIO 分片', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
       const uploadError = new Error('上传中断');
 
       storageService.upload.mockRejectedValueOnce(uploadError);
@@ -373,7 +406,7 @@ describe('DocumentService', () => {
 
     it('任务入队失败时应回滚文档记录并清理对象存储', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
       const queueError = new Error('queue unavailable');
 
       const dbDocument = {
@@ -766,7 +799,7 @@ describe('DocumentService', () => {
   describe('uploadFromRequest (job dispatch)', () => {
     it('上传成功后应派发文档处理任务', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       const dbDocument = {
         id: DOC_ID,
@@ -808,7 +841,7 @@ describe('DocumentService', () => {
 
     it('实时广播失败时不应阻止上传成功', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
 
       const dbDocument = {
         id: DOC_ID,
@@ -847,7 +880,7 @@ describe('DocumentService', () => {
 
     it('请求事务内上传时应等事务提交后再派发处理任务与广播', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
       db.insert.mockReturnValue({
         values: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([
@@ -890,7 +923,7 @@ describe('DocumentService', () => {
 
     it('事务提交后入队失败时应删除已提交的文档记录并清理对象存储', async () => {
       const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
-      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const request = createMultipartRequest(multipartFile);
       const queueError = new Error('queue unavailable');
       db.insert.mockReturnValue({
         values: vi.fn().mockReturnValue({

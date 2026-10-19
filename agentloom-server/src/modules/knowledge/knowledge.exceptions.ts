@@ -79,6 +79,29 @@ export class EmptyFileException extends DomainException {
   }
 }
 
+export class DocumentMultipartRequiredException extends DomainException {
+  constructor() {
+    super({
+      type: problemType('document-multipart-required'),
+      title: '请求必须为 multipart/form-data',
+      status: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      detail: '文档上传只接受 multipart/form-data，文件放在 file 字段',
+    });
+  }
+}
+
+export class DocumentFileRequiredException extends DomainException {
+  constructor() {
+    super({
+      type: problemType('validation-error'),
+      title: 'Validation Error',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: '缺少 file 字段',
+      errors: [{ field: 'file', message: '缺少 file 字段' }],
+    });
+  }
+}
+
 export class DocumentParseException extends DomainException {
   constructor(fileName: string, reason: string) {
     super({

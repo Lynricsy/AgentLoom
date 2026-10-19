@@ -126,6 +126,15 @@ export class KnowledgeBaseController {
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
   @ApiResponse({ status: 404, description: '知识库不存在' })
+  @ApiResponse({
+    status: 415,
+    description: '请求不是 multipart/form-data（document-multipart-required）',
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      '缺少 file 字段（validation-error）、空文件、文件过大或类型不支持',
+  })
   async uploadDocument(
     @Param('id') knowledgeBaseId: string,
     @CurrentTenant() tenantId: string,
