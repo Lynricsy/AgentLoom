@@ -596,6 +596,41 @@ describe('ExecutionRecordService', () => {
     });
   });
 
+  it('summary 步骤计数与执行实体同口径：只计顶层步骤，skipped 算已完成（D-156）', async () => {
+    const internalNodeData = {
+      __execution: { isCompoundInternal: true, compoundParentId: 'iter' },
+    };
+    tenantDb.queueSelectResult('where', []);
+    tenantDb.queueSelectResult('where', [
+      createStep({ status: 'completed', nodeId: 'iter' }),
+      createStep({ id: STEP_ID_TWO, status: 'skipped', nodeId: 'branch' }),
+      createStep({ id: STEP_ID_THREE, status: 'failed', nodeId: 'agent' }),
+      createStep({
+        id: '550e8400-e29b-41d4-a716-446655440010',
+        status: 'completed',
+        nodeId: 'val',
+        nodeData: internalNodeData,
+      }),
+      createStep({
+        id: '550e8400-e29b-41d4-a716-446655440011',
+        status: 'failed',
+        nodeId: 'res',
+        nodeData: internalNodeData,
+      }),
+    ]);
+
+    await service.handleExecutionStatusChanged(createExecutionStatusPayload());
+
+    const insertedRecord = tenantDb.insertValues[0] as {
+      summaryData: ExecutionSummaryData;
+    };
+    expect(insertedRecord.summaryData).toMatchObject({
+      totalSteps: 3,
+      completedSteps: 2,
+      failedSteps: 1,
+    });
+  });
+
   it('should carry step costUsd into telemetry and sum totalCostUsd into the summary', async () => {
     tenantDb.queueSelectResult('limit', [
       createStep({

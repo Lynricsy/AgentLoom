@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { inArray } from 'drizzle-orm';
+import type * as DrizzleOrm from 'drizzle-orm';
 import { CheckpointService } from '../checkpoint.service';
 import { DagResolverService } from '../dag-resolver.service';
 import { EventBridgeService } from '../services/event-bridge.service';
@@ -8,12 +10,19 @@ import { DRIZZLE } from '../../../database/database.module';
 import {
   ExecutionNotFoundException,
   ExecutionNotResumableException,
+  ExecutionResumeNodeInsideContainerException,
   ExecutionResumeNodeNotFoundException,
 } from '../execution.exceptions';
 import type {
   ExecutionStep,
   WorkflowExecution,
 } from '../../../database/schema';
+
+// 包一层 spy 以断言被重置的步骤 id，行为仍走 drizzle 原实现
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof DrizzleOrm>();
+  return { ...actual, inArray: vi.fn(actual.inArray) };
+});
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const EXECUTION_ID = 'exec-0001';
@@ -549,6 +558,180 @@ describe('CheckpointService', () => {
       );
       expect(dagResolver.resolveDag).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('fromNodeId 也重置失败级联取消的兄弟分支，避免执行永久 running（D-154）', async () => {
+      // trig → src → gate → outA；src → outB。gate 失败时 outB 被级联取消
+      const node = (id: string) => ({
+        id,
+        type: 'tool',
+        data: {},
+        position: { x: 0, y: 0 },
+      });
+      const edge = (source: string, target: string) => ({
+        id: `${source}-${target}`,
+        source,
+        target,
+        sourceHandle: null,
+        targetHandle: null,
+      });
+      const execution = makeExecution({
+        definitionSnapshot: {
+          nodes: ['trig', 'src', 'gate', 'outA', 'outB'].map(node),
+          edges: [
+            edge('trig', 'src'),
+            edge('src', 'gate'),
+            edge('gate', 'outA'),
+            edge('src', 'outB'),
+          ],
+          viewport: { x: 0, y: 0, zoom: 1 },
+          metadata: {},
+        } as unknown as WorkflowExecution['definitionSnapshot'],
+        totalSteps: 5,
+        completedSteps: 2,
+      });
+      const steps = [
+        makeStep({ id: 's-trig', nodeId: 'trig', status: 'completed' }),
+        makeStep({ id: 's-src', nodeId: 'src', status: 'completed' }),
+        makeStep({ id: 's-gate', nodeId: 'gate', status: 'failed' }),
+        makeStep({ id: 's-outA', nodeId: 'outA', status: 'cancelled' }),
+        makeStep({ id: 's-outB', nodeId: 'outB', status: 'cancelled' }),
+      ];
+      dagResolver.resolveDag.mockReturnValue({
+        layers: [['trig'], ['src'], ['gate', 'outB'], ['outA']],
+        adjacencyMap: new Map([
+          ['trig', ['src']],
+          ['src', ['gate', 'outB']],
+          ['gate', ['outA']],
+          ['outA', []],
+          ['outB', []],
+        ]),
+        inDegreeMap: new Map(),
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(createSelectChain(steps));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainReturning([execution]));
+
+      await service.resumeExecution(TENANT_ID, EXECUTION_ID, 'gate');
+
+      const resetIds = vi.mocked(inArray).mock.calls[0][1] as string[];
+      expect([...resetIds].sort()).toEqual(['s-gate', 's-outA', 's-outB']);
+      expect(eventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          executionId: EXECUTION_ID,
+          status: 'running',
+          completedSteps: 2,
+          totalSteps: 5,
+        },
+      );
+    });
+
+    it('fromNodeId 是容器内部节点时抛 422 并指明所属顶层容器（D-155）', async () => {
+      const execution = makeExecution({
+        definitionSnapshot: {
+          nodes: [
+            {
+              id: 'iter',
+              type: 'control',
+              data: { nodeType: 'iteration' },
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'inner-loop',
+              type: 'control',
+              parentId: 'iter',
+              data: { nodeType: 'loop' },
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'val',
+              type: 'tool',
+              parentId: 'inner-loop',
+              data: { nodeType: 'code-tool' },
+              position: { x: 0, y: 0 },
+            },
+          ],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 },
+          metadata: {},
+        } as unknown as WorkflowExecution['definitionSnapshot'],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            makeStep({ id: STEP_ID_1, nodeId: 'iter', status: 'failed' }),
+          ]),
+        );
+
+      const error = await service
+        .resumeExecution(TENANT_ID, EXECUTION_ID, 'val')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ExecutionResumeNodeInsideContainerException);
+      const exception = error as ExecutionResumeNodeInsideContainerException;
+      expect(exception.getStatus()).toBe(422);
+      expect(exception.type).toBe(
+        'https://agentloom.dev/errors/execution-resume-node-inside-container',
+      );
+      expect(exception.extensions).toEqual({
+        nodeId: 'val',
+        containerNodeId: 'iter',
+      });
+      expect(exception.detail).toContain('请从容器节点 iter 恢复');
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('resume 计数只统计顶层步骤，与执行实体口径一致（D-156）', async () => {
+      const internal = {
+        __execution: { isCompoundInternal: true, compoundParentId: 'node-1' },
+      };
+      const execution = makeExecution();
+      const steps = [
+        makeStep({ id: STEP_ID_1, nodeId: 'node-1', status: 'completed' }),
+        makeStep({ id: STEP_ID_2, nodeId: 'node-2', status: 'failed' }),
+        makeStep({ id: STEP_ID_3, nodeId: 'node-3', status: 'skipped' }),
+        makeStep({
+          id: 'inner-1',
+          nodeId: 'inner-1',
+          status: 'completed',
+          nodeData: internal,
+        }),
+        makeStep({
+          id: 'inner-2',
+          nodeId: 'inner-2',
+          status: 'completed',
+          nodeData: internal,
+        }),
+      ];
+      db.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(createSelectChain(steps));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainReturning([execution]));
+
+      await service.resumeExecution(TENANT_ID, EXECUTION_ID);
+
+      expect(db.update.mock.results[1].value.set.mock.calls[0][0]).toMatchObject(
+        { completedSteps: 2, totalSteps: 3 },
+      );
+      expect(eventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          executionId: EXECUTION_ID,
+          status: 'running',
+          completedSteps: 2,
+          totalSteps: 3,
+        },
+      );
     });
 
     it('应发布执行状态变更事件，包含正确的 completedSteps 计数', async () => {

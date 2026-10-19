@@ -52,6 +52,22 @@ docType: howto
 
 节点何时需要人工干预由组织的 [自治策略](/guide/collaboration/autonomy-policy) 和工具栏「介入策略」面板中的设置决定。
 
+## 从失败处恢复
+
+失败的执行可以在原执行上恢复，不必从头重新运行。Studio 目前没有恢复入口，通过 API 调用 `POST /api/v1/executions/{executionId}/resume`（需要执行控制权限），请求体可带 `fromNodeId` 指定起点节点：
+
+```json
+{ "fromNodeId": "agent" }
+```
+
+- **哪些执行可以恢复**：只有失败的执行。已取消、已完成和运行中的执行返回 409 `execution-not-resumable`；等待干预（暂停）的执行先在「介入」标签处理。
+- **运行的是哪份定义**：恢复按这次执行启动时保存的定义快照运行。执行失败后再修改画布或发布新版本，对恢复不生效；要用修改后的定义，重新运行工作流。
+- **不带 `fromNodeId`**：重跑所有失败和被取消的步骤，已完成步骤保留输出。
+- **带 `fromNodeId`**：该节点及其全部下游重跑（包括已完成的），其余失败和被取消的步骤也一起重跑。节点失败时，同一执行中尚未开始的其他分支会被一并取消，这些分支在恢复时同样会重新运行；不在这两类中的已完成步骤保留输出。节点 ID 不在这次执行的图中时返回 422 `execution-resume-node-not-found`。
+- **只能从顶层节点恢复**：`fromNodeId` 不能是 [Loop](/guide/nodes/loop) 或 [Iteration](/guide/nodes/iteration) 容器内部的节点，否则返回 422 `execution-resume-node-inside-container`，响应的 `containerNodeId` 给出应改用的容器节点。从容器恢复时容器整体重跑：Iteration 从第一项开始，Loop 从第一轮开始，之前已处理的项或轮次不保留。
+
+执行的步骤计数（执行页进度、`totalSteps` / `completedSteps`、恢复接口的响应、「遥测」标签的步骤数）只统计顶层节点：一个 Loop 或 Iteration 容器算一个步骤，容器内部节点不计入；已完成与已跳过的步骤都计为完成。
+
 ## 下一步
 
 - [版本管理](/guide/workflows/versions)：修改前保存快照，必要时回看历史版本。

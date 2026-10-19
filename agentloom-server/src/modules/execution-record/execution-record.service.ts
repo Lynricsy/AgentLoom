@@ -17,6 +17,8 @@ import {
 } from '../../database/schema';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { ExecutionNotFoundException } from '../execution/execution.exceptions';
+import { isTrackedExecutionStep } from '../execution/compound-runtime.util';
+import { COMPLETED_STEP_STATUSES } from '../execution/step-state-machine.service';
 import {
   ExecutionEventName,
   type ExecutionStatusChangedPayload,
@@ -290,10 +292,15 @@ export class ExecutionRecordService {
       }
     }
 
-    const completedSteps = steps.filter(
-      (step) => step.status === 'completed',
+    // 步骤计数与执行实体（totalSteps/completedSteps）同一口径：只统计顶层步骤，容器算一个
+    // 步骤、内部节点不计；completed 与 skipped 都算已完成（D-156）。
+    const trackedSteps = steps.filter((step) => isTrackedExecutionStep(step));
+    const completedSteps = trackedSteps.filter((step) =>
+      COMPLETED_STEP_STATUSES.has(step.status),
     ).length;
-    const failedSteps = steps.filter((step) => step.status === 'failed').length;
+    const failedSteps = trackedSteps.filter(
+      (step) => step.status === 'failed',
+    ).length;
 
     const stepTimes = steps
       .filter((step) => step.startedAt && step.completedAt)
@@ -309,7 +316,7 @@ export class ExecutionRecordService {
         : 0;
 
     return {
-      totalSteps: steps.length,
+      totalSteps: trackedSteps.length,
       completedSteps,
       failedSteps,
       totalToolCalls,

@@ -7,10 +7,16 @@ import { DagResolverService } from './dag-resolver.service';
 import {
   ExecutionNotFoundException,
   ExecutionNotResumableException,
+  ExecutionResumeNodeInsideContainerException,
   ExecutionResumeNodeNotFoundException,
 } from './execution.exceptions';
 import { COMPLETED_STEP_STATUSES } from './step-state-machine.service';
 import { EventBridgeService } from './services/event-bridge.service';
+import {
+  filterTopLevelExecutionGraph,
+  isTrackedExecutionStep,
+  readCompoundParentNodeId,
+} from './compound-runtime.util';
 
 /** 可被恢复的步骤状态 */
 const RESUMABLE_STEP_STATUSES = new Set(['failed', 'cancelled']);
@@ -86,7 +92,15 @@ export class CheckpointService {
    * 恢复失败的执行。
    *
    * - 无 fromNodeId：重置所有 failed/cancelled 步骤为 pending
-   * - 有 fromNodeId：重置目标节点及其所有下游节点为 pending
+   * - 有 fromNodeId：重置目标节点及其所有下游节点（含已完成的）为 pending，并同时重置
+   *   其余 failed/cancelled 步骤。节点失败时调度器会把所有未开始的步骤（包括不在失败节点
+   *   下游的兄弟分支）级联取消；只重置起点与下游会让这些兄弟永远停在 cancelled，执行既
+   *   不能 completed 也不会 failed，永久停在 running（D-154）。
+   * - fromNodeId 只能是顶层节点：恢复调度只调度顶层节点，容器内部节点随容器整体重跑，
+   *   指定内部节点返回 422 并指明应从哪个容器节点恢复（D-155）。
+   *
+   * 步骤计数与执行实体同一口径：只统计顶层步骤（容器算一个步骤，内部节点不计），
+   * completed 与 skipped 都算已完成（D-156）。
    *
    * @returns 更新后的执行记录
    */
@@ -117,15 +131,27 @@ export class CheckpointService {
     const stepsToReset: schema.ExecutionStep[] = [];
 
     if (fromNodeId) {
-      // 目标节点 + 所有下游
       const snapshot = execution.definitionSnapshot as {
         nodes: schema.ReactFlowNode[];
         edges: schema.ReactFlowEdge[];
       };
-      if (!snapshot.nodes.some((node) => node.id === fromNodeId)) {
+      const fromNode = snapshot.nodes.find((node) => node.id === fromNodeId);
+      if (!fromNode) {
         throw new ExecutionResumeNodeNotFoundException(executionId, fromNodeId);
       }
-      const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
+      if (readCompoundParentNodeId(fromNode)) {
+        throw new ExecutionResumeNodeInsideContainerException(
+          executionId,
+          fromNodeId,
+          this.findTopLevelAncestorId(fromNode, snapshot.nodes),
+        );
+      }
+      // 与 resumeScheduling 一致，只在顶层图上计算下游
+      const topLevelGraph = filterTopLevelExecutionGraph(snapshot);
+      const plan = this.dagResolver.resolveDag(
+        topLevelGraph.nodes,
+        topLevelGraph.edges,
+      );
       const downstreamIds = this.getDownstreamNodeIds(
         fromNodeId,
         plan.adjacencyMap,
@@ -133,7 +159,10 @@ export class CheckpointService {
       downstreamIds.add(fromNodeId);
 
       for (const step of steps) {
-        if (downstreamIds.has(step.nodeId)) {
+        if (
+          downstreamIds.has(step.nodeId) ||
+          RESUMABLE_STEP_STATUSES.has(step.status)
+        ) {
           stepsToReset.push(step);
         }
       }
@@ -183,7 +212,8 @@ export class CheckpointService {
     }
 
     const resetStepIds = new Set(stepsToReset.map((step) => step.id));
-    const completedSteps = steps.filter(
+    const trackedSteps = steps.filter((step) => isTrackedExecutionStep(step));
+    const completedSteps = trackedSteps.filter(
       (step) =>
         COMPLETED_STEP_STATUSES.has(step.status) && !resetStepIds.has(step.id),
     ).length;
@@ -194,6 +224,7 @@ export class CheckpointService {
       .set({
         status: 'running',
         completedSteps,
+        totalSteps: trackedSteps.length,
         updatedAt: now,
         failedAt: null,
       })
@@ -205,7 +236,7 @@ export class CheckpointService {
       executionId,
       status: 'running',
       completedSteps,
-      totalSteps: steps.length,
+      totalSteps: trackedSteps.length,
     });
 
     this.logger.log(
@@ -213,6 +244,27 @@ export class CheckpointService {
     );
 
     return updated;
+  }
+
+  /** 沿 parentId 找到内部节点所属的顶层容器节点。 */
+  private findTopLevelAncestorId(
+    node: schema.ReactFlowNode,
+    nodes: schema.ReactFlowNode[],
+  ): string {
+    const nodesById = new Map(nodes.map((item) => [item.id, item]));
+    const visited = new Set<string>();
+    let current = node;
+    let parentId = readCompoundParentNodeId(current);
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = nodesById.get(parentId);
+      if (!parent) {
+        return parentId;
+      }
+      current = parent;
+      parentId = readCompoundParentNodeId(current);
+    }
+    return current.id;
   }
 
   /**

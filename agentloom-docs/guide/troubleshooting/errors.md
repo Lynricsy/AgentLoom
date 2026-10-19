@@ -95,12 +95,13 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `reusable-block-expansion-failed` | 422 | 运行前展开可复用块失败：块缺少内嵌定义、块端口没有映射到块内节点，或连线连到块上不存在的端口 | 从「My Blocks」重新拖入该块，或删除失效连线后重新发布，见 [Reusable Block](/guide/nodes/reusable-block) |
 | `execution-not-found` | 404 | 执行记录不存在 | 确认执行 ID |
 | `execution-not-cancellable` | 409 | 执行已结束，不能取消 | 无需处理 |
-| `execution-not-resumable` | 409 | 只有失败的执行可以恢复，且所选起点及其下游必须有可重跑的步骤；已暂停的执行需先处理人工干预 | 见[调试工作流](/guide/workflows/debugging) |
+| `execution-not-resumable` | 409 | 只有失败的执行可以恢复（已取消、已完成、运行中的执行都不能恢复），且所选起点及其下游必须有可重跑的步骤；已暂停的执行需先处理人工干预 | 见[调试工作流 · 从失败处恢复](/guide/workflows/debugging#从失败处恢复) |
 | `intervention-not-allowed` | 409 | 该步骤当前不在等待干预状态 | 刷新执行页查看最新状态 |
 | `workflow-version-not-found` | 404 | 指定的工作流版本不存在 | 刷新版本列表后重新选择 |
 | `workflow-import-model-unavailable` | 422 | 从模板或分享创建工作流时所选模型不可用 | 选择当前组织已启用的模型 |
 | `template-not-found` | 404 | 模板不存在 | 刷新模板列表 |
 | `execution-resume-node-not-found` | 422 | 恢复执行时指定的起点节点不在该执行的图中 | 从执行页选择图中已有的节点恢复 |
+| `execution-resume-node-inside-container` | 422 | 恢复起点是循环/迭代容器内部的节点，不能单独恢复（扩展字段 `containerNodeId` 给出所属顶层容器） | 改为从 `containerNodeId` 指向的容器节点恢复，见[调试工作流 · 从失败处恢复](/guide/workflows/debugging#从失败处恢复) |
 | `execution-step-not-found` | 404 | 执行步骤不存在或不属于该执行 | 刷新执行页查看最新步骤 |
 | `agent-execution-failed` | 500 | Agent 节点执行失败 | 按 `detail` 检查 Agent 配置与模型连接后重试 |
 | `tool-permission-resolution-not-allowed` | 409 | 工具调用当前不在等待审批状态 | 刷新执行页查看最新状态 |

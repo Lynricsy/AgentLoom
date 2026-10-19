@@ -178,6 +178,22 @@ export class ExecutionResumeNodeNotFoundException extends DomainException {
   }
 }
 
+/**
+ * resume 的 fromNodeId 是循环/迭代容器内部的节点。恢复调度只调度顶层节点，内部节点随容器
+ * 整体重跑，因此必须从所属的顶层容器节点恢复。
+ */
+export class ExecutionResumeNodeInsideContainerException extends DomainException {
+  constructor(executionId: string, nodeId: string, containerNodeId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/execution-resume-node-inside-container',
+      title: '恢复起点位于容器内部',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `执行 ${executionId} 中的节点 ${nodeId} 位于容器 ${containerNodeId} 内部，不能单独恢复；请从容器节点 ${containerNodeId} 恢复，容器会从第一项/第一轮整体重跑`,
+      extensions: { nodeId, containerNodeId },
+    });
+  }
+}
+
 /** 步骤不存在或不属于路径中的执行（不区分两者，避免泄露其他执行的步骤 id）。 */
 export class ExecutionStepNotFoundException extends DomainException {
   constructor(executionId: string, stepId: string) {

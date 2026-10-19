@@ -156,10 +156,18 @@ export class ExecutionController {
   @Post('executions/:executionId/resume')
   @HttpCode(HttpStatus.ACCEPTED)
   @RequirePermission('execution:control')
-  @ApiOperation({ summary: '恢复失败的执行' })
+  @ApiOperation({
+    summary: '恢复失败的执行',
+    description:
+      '按执行快照（definitionSnapshot）重跑，修改或重新发布工作流不影响已有执行。不带 fromNodeId 时重置所有 failed/cancelled 步骤；带 fromNodeId 时额外重跑该顶层节点及其全部下游（含已完成的）。fromNodeId 必须是顶层节点，容器内部节点需从所属容器恢复。',
+  })
   @ApiResponse({ status: 202, description: '执行恢复已启动' })
   @ApiResponse({ status: 404, description: '执行不存在' })
   @ApiResponse({ status: 409, description: '执行不可恢复' })
+  @ApiResponse({
+    status: 422,
+    description: 'fromNodeId 不在执行快照中，或位于容器内部',
+  })
   async resumeExecution(
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Body() dto: ResumeExecutionDto,
