@@ -636,22 +636,11 @@ export class WorkspaceService {
 
   async delete(tenantId: string, workspaceId: string): Promise<void> {
     const tenantDb = getTenantDb(this.db);
-    const [snapshot] = await tenantDb
-      .select()
-      .from(schema.workspaceSnapshots)
-      .where(
-        and(
-          eq(schema.workspaceSnapshots.id, workspaceId),
-          eq(schema.workspaceSnapshots.tenantId, tenantId),
-        ),
-      )
-      .limit(1);
-
-    if (!snapshot) {
-      throw new NotFoundException(
-        `Workspace snapshot ${workspaceId} not found`,
-      );
-    }
+    // 软删除：已是 deleted 的快照视为不存在，重复删除返回 404
+    const snapshot = await this.findWorkspaceSnapshotRecord(
+      tenantId,
+      workspaceId,
+    );
 
     if (
       isLegacyEmptyWorkspaceStorageKey(snapshot.tenantId, snapshot.storageKey)

@@ -807,6 +807,22 @@ describe('WorkspaceService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('已删除的快照重复删除时查询排除 deleted 状态并返回 404', async () => {
+      const chain = createSelectChainWithLimit([]);
+      db.select.mockReturnValueOnce(chain);
+
+      await expect(
+        service.delete(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).rejects.toThrow(NotFoundException);
+
+      const where = chain.from.mock.results[0].value.where.mock.calls[0][0];
+      const query = new PgDialect().sqlToQuery(where);
+      expect(query.sql).toContain('"status" <>');
+      expect(query.params).toContain('deleted');
+      expect(db.update).not.toHaveBeenCalled();
+      expect(mockStorageService.delete).not.toHaveBeenCalled();
+    });
+
     it('MinIO 删除失败时应当记录警告但仍然标记为 deleted', async () => {
       const snapshot = buildSnapshot();
       db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
