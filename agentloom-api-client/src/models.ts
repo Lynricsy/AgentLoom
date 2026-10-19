@@ -2618,6 +2618,101 @@ export interface CreateGeneratedAppSubmissionDto {
 /**
  * 
  * @export
+ * @interface CreateInterventionPolicyDto
+ */
+export interface CreateInterventionPolicyDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateInterventionPolicyDto
+     */
+    nodeId?: string | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof CreateInterventionPolicyDto
+     */
+    allowedRoles?: Array<CreateInterventionPolicyDtoAllowedRolesEnum>;
+    /**
+     * 
+     * @type {number}
+     * @memberof CreateInterventionPolicyDto
+     */
+    timeoutSeconds?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateInterventionPolicyDto
+     */
+    timeoutAction?: CreateInterventionPolicyDtoTimeoutActionEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateInterventionPolicyDto
+     */
+    escalateToRole?: CreateInterventionPolicyDtoEscalateToRoleEnum | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof CreateInterventionPolicyDto
+     */
+    notifyChannels?: Array<CreateInterventionPolicyDtoNotifyChannelsEnum>;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof CreateInterventionPolicyDto
+     */
+    isActive?: boolean;
+}
+
+
+/**
+ * @export
+ */
+export const CreateInterventionPolicyDtoAllowedRolesEnum = {
+    Owner: 'owner',
+    Admin: 'admin',
+    Creator: 'creator',
+    Operator: 'operator',
+    Viewer: 'viewer'
+} as const;
+export type CreateInterventionPolicyDtoAllowedRolesEnum = typeof CreateInterventionPolicyDtoAllowedRolesEnum[keyof typeof CreateInterventionPolicyDtoAllowedRolesEnum];
+
+/**
+ * @export
+ */
+export const CreateInterventionPolicyDtoTimeoutActionEnum = {
+    Approve: 'approve',
+    Reject: 'reject',
+    Escalate: 'escalate'
+} as const;
+export type CreateInterventionPolicyDtoTimeoutActionEnum = typeof CreateInterventionPolicyDtoTimeoutActionEnum[keyof typeof CreateInterventionPolicyDtoTimeoutActionEnum];
+
+/**
+ * @export
+ */
+export const CreateInterventionPolicyDtoEscalateToRoleEnum = {
+    Owner: 'owner',
+    Admin: 'admin',
+    Creator: 'creator',
+    Operator: 'operator',
+    Viewer: 'viewer'
+} as const;
+export type CreateInterventionPolicyDtoEscalateToRoleEnum = typeof CreateInterventionPolicyDtoEscalateToRoleEnum[keyof typeof CreateInterventionPolicyDtoEscalateToRoleEnum];
+
+/**
+ * @export
+ */
+export const CreateInterventionPolicyDtoNotifyChannelsEnum = {
+    InApp: 'in_app',
+    Email: 'email',
+    Push: 'push'
+} as const;
+export type CreateInterventionPolicyDtoNotifyChannelsEnum = typeof CreateInterventionPolicyDtoNotifyChannelsEnum[keyof typeof CreateInterventionPolicyDtoNotifyChannelsEnum];
+
+/**
+ * 
+ * @export
  * @interface CreateKnowledgeBaseDto
  */
 export interface CreateKnowledgeBaseDto {
@@ -3358,21 +3453,21 @@ export interface CreateMemoryVersionDto {
      * @type {string}
      * @memberof CreateMemoryVersionDto
      */
-    content?: string;
+    mode?: CreateMemoryVersionDtoModeEnum;
     /**
-     * 
+     * create / append 必填
      * @type {string}
      * @memberof CreateMemoryVersionDto
      */
-    mode?: CreateMemoryVersionDtoModeEnum;
+    content?: string;
     /**
-     * 
+     * patch 必填
      * @type {string}
      * @memberof CreateMemoryVersionDto
      */
     oldString?: string;
     /**
-     * 
+     * patch 必填，可为空字符串
      * @type {string}
      * @memberof CreateMemoryVersionDto
      */
@@ -7185,6 +7280,56 @@ export type ProviderHealthStatusesResponseDtoDataInnerStatusEnum = typeof Provid
 /**
  * 
  * @export
+ * @interface PtyBufferDumpDto
+ */
+export interface PtyBufferDumpDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof PtyBufferDumpDto
+     */
+    sessionId?: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof PtyBufferDumpDto
+     */
+    offset?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof PtyBufferDumpDto
+     */
+    limit?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof PtyBufferDumpDto
+     */
+    pattern?: string;
+}
+/**
+ * 
+ * @export
+ * @interface PtyWriteDto
+ */
+export interface PtyWriteDto {
+    /**
+     * 
+     * @type {string}
+     * @memberof PtyWriteDto
+     */
+    sessionId?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof PtyWriteDto
+     */
+    data: string;
+}
+/**
+ * 
+ * @export
  * @interface PublishProposalDto
  */
 export interface PublishProposalDto {
@@ -8059,12 +8204,6 @@ export interface SendMessageDto {
      * @type {string}
      * @memberof SendMessageDto
      */
-    role?: SendMessageDtoRoleEnum;
-    /**
-     * 
-     * @type {string}
-     * @memberof SendMessageDto
-     */
     contentType?: SendMessageDtoContentTypeEnum;
     /**
      * 
@@ -8074,17 +8213,6 @@ export interface SendMessageDto {
     metadata?: { [key: string]: any; };
 }
 
-
-/**
- * @export
- */
-export const SendMessageDtoRoleEnum = {
-    User: 'user',
-    Assistant: 'assistant',
-    System: 'system',
-    Tool: 'tool'
-} as const;
-export type SendMessageDtoRoleEnum = typeof SendMessageDtoRoleEnum[keyof typeof SendMessageDtoRoleEnum];
 
 /**
  * @export
@@ -9628,6 +9756,101 @@ export const UpdateGeneratedAppRepairAttemptDtoStatusEnum = {
     Skipped: 'skipped'
 } as const;
 export type UpdateGeneratedAppRepairAttemptDtoStatusEnum = typeof UpdateGeneratedAppRepairAttemptDtoStatusEnum[keyof typeof UpdateGeneratedAppRepairAttemptDtoStatusEnum];
+
+/**
+ * 
+ * @export
+ * @interface UpdateInterventionPolicyDto
+ */
+export interface UpdateInterventionPolicyDto {
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    allowedRoles?: Array<UpdateInterventionPolicyDtoAllowedRolesEnum>;
+    /**
+     * 
+     * @type {number}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    timeoutSeconds?: number;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    timeoutAction?: UpdateInterventionPolicyDtoTimeoutActionEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    escalateToRole?: UpdateInterventionPolicyDtoEscalateToRoleEnum | null;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    notifyChannels?: Array<UpdateInterventionPolicyDtoNotifyChannelsEnum>;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    isActive?: boolean;
+    /**
+     * 
+     * @type {number}
+     * @memberof UpdateInterventionPolicyDto
+     */
+    version: number;
+}
+
+
+/**
+ * @export
+ */
+export const UpdateInterventionPolicyDtoAllowedRolesEnum = {
+    Owner: 'owner',
+    Admin: 'admin',
+    Creator: 'creator',
+    Operator: 'operator',
+    Viewer: 'viewer'
+} as const;
+export type UpdateInterventionPolicyDtoAllowedRolesEnum = typeof UpdateInterventionPolicyDtoAllowedRolesEnum[keyof typeof UpdateInterventionPolicyDtoAllowedRolesEnum];
+
+/**
+ * @export
+ */
+export const UpdateInterventionPolicyDtoTimeoutActionEnum = {
+    Approve: 'approve',
+    Reject: 'reject',
+    Escalate: 'escalate'
+} as const;
+export type UpdateInterventionPolicyDtoTimeoutActionEnum = typeof UpdateInterventionPolicyDtoTimeoutActionEnum[keyof typeof UpdateInterventionPolicyDtoTimeoutActionEnum];
+
+/**
+ * @export
+ */
+export const UpdateInterventionPolicyDtoEscalateToRoleEnum = {
+    Owner: 'owner',
+    Admin: 'admin',
+    Creator: 'creator',
+    Operator: 'operator',
+    Viewer: 'viewer'
+} as const;
+export type UpdateInterventionPolicyDtoEscalateToRoleEnum = typeof UpdateInterventionPolicyDtoEscalateToRoleEnum[keyof typeof UpdateInterventionPolicyDtoEscalateToRoleEnum];
+
+/**
+ * @export
+ */
+export const UpdateInterventionPolicyDtoNotifyChannelsEnum = {
+    InApp: 'in_app',
+    Email: 'email',
+    Push: 'push'
+} as const;
+export type UpdateInterventionPolicyDtoNotifyChannelsEnum = typeof UpdateInterventionPolicyDtoNotifyChannelsEnum[keyof typeof UpdateInterventionPolicyDtoNotifyChannelsEnum];
 
 /**
  * 

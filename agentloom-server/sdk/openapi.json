@@ -1466,7 +1466,7 @@
             "description": "工作流不存在"
           },
           "409": {
-            "description": "工作流未发布"
+            "description": "工作流未发布（workflow-not-published）或已归档（workflow-archived）"
           }
         },
         "summary": "获取工作流输入参数 schema",
@@ -1650,6 +1650,8 @@
             "required": true,
             "in": "query",
             "schema": {
+              "minLength": 1,
+              "maxLength": 128,
               "type": "string"
             }
           },
@@ -1658,6 +1660,8 @@
             "required": true,
             "in": "query",
             "schema": {
+              "minLength": 1,
+              "maxLength": 256,
               "type": "string"
             }
           }
@@ -1665,6 +1669,9 @@
         "responses": {
           "200": {
             "description": "返回模型元数据（可能为 null）"
+          },
+          "422": {
+            "description": "缺少 providerSlug 或 modelId"
           }
         },
         "summary": "查询 LiteLLM 模型元数据",
@@ -2695,6 +2702,12 @@
           },
           "404": {
             "description": "知识库不存在"
+          },
+          "415": {
+            "description": "请求不是 multipart/form-data（document-multipart-required）"
+          },
+          "422": {
+            "description": "缺少 file 字段（validation-error）、空文件、文件过大或类型不支持"
           }
         },
         "security": [
@@ -3556,10 +3569,36 @@
     "/api/v1/dlq": {
       "get": {
         "operationId": "Execution_listDeadLetterJobs",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "返回失败任务列表"
+          },
+          "422": {
+            "description": "page/limit 不合法"
           }
         },
         "summary": "查询死信队列中的失败任务",
@@ -3656,9 +3695,22 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtyBufferDumpDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "PTY buffer 数据"
+          },
+          "422": {
+            "description": "请求体不合法"
           },
           "503": {
             "description": "沙箱不可用"
@@ -3683,9 +3735,22 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtyWriteDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "PTY 写入成功"
+          },
+          "422": {
+            "description": "请求体不合法"
           },
           "503": {
             "description": "沙箱不可用"
@@ -4518,6 +4583,9 @@
         "responses": {
           "201": {
             "description": "证据导出任务创建成功"
+          },
+          "422": {
+            "description": "过滤条件无效（未知字段、from 晚于 to 等）"
           }
         },
         "security": [
@@ -5104,6 +5172,15 @@
         "responses": {
           "201": {
             "description": "触发器创建成功"
+          },
+          "404": {
+            "description": "工作流不存在"
+          },
+          "409": {
+            "description": "工作流未发布或触发器数量超限"
+          },
+          "422": {
+            "description": "请求参数无效（含 cron 值域、IANA 时区、type 与 config 不一致）"
           }
         },
         "summary": "创建工作流触发器",
@@ -5217,6 +5294,9 @@
           },
           "404": {
             "description": "触发器不存在"
+          },
+          "422": {
+            "description": "请求参数无效（含 cron 值域、IANA 时区、config 与触发器类型不一致）"
           }
         },
         "summary": "更新触发器",
@@ -5430,8 +5510,11 @@
             "name": "page",
             "required": false,
             "in": "query",
-            "description": "页码（默认 1）",
+            "description": "页码（默认 1，最小 1）",
             "schema": {
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
               "type": "number"
             }
           },
@@ -5439,8 +5522,11 @@
             "name": "pageSize",
             "required": false,
             "in": "query",
-            "description": "每页数量（默认 20）",
+            "description": "每页数量（默认 20，范围 1-100）",
             "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
               "type": "number"
             }
           }
@@ -5455,8 +5541,8 @@
           "403": {
             "description": "权限不足"
           },
-          "404": {
-            "description": "工作流不存在"
+          "422": {
+            "description": "分页参数无效"
           }
         },
         "security": [
@@ -5485,12 +5571,19 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInterventionPolicyDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "介入策略创建成功"
-          },
-          "400": {
-            "description": "请求参数无效"
           },
           "401": {
             "description": "未授权"
@@ -5500,6 +5593,12 @@
           },
           "404": {
             "description": "工作流不存在"
+          },
+          "409": {
+            "description": "同一工作流（或同一节点）已存在介入策略"
+          },
+          "422": {
+            "description": "请求参数无效"
           }
         },
         "security": [
@@ -5572,19 +5671,19 @@
         "operationId": "InterventionPolicy_findById",
         "parameters": [
           {
-            "name": "policyId",
+            "name": "workflowId",
             "required": true,
             "in": "path",
-            "description": "介入策略 ID",
+            "description": "工作流 ID",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "workflowId",
+            "name": "policyId",
             "required": true,
             "in": "path",
-            "description": "工作流 ID",
+            "description": "介入策略 ID",
             "schema": {
               "type": "string"
             }
@@ -5621,15 +5720,6 @@
         "operationId": "InterventionPolicy_update",
         "parameters": [
           {
-            "name": "policyId",
-            "required": true,
-            "in": "path",
-            "description": "介入策略 ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "workflowId",
             "required": true,
             "in": "path",
@@ -5637,14 +5727,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "policyId",
+            "required": true,
+            "in": "path",
+            "description": "介入策略 ID",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInterventionPolicyDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "介入策略更新成功"
-          },
-          "400": {
-            "description": "请求参数无效"
           },
           "401": {
             "description": "未授权"
@@ -5654,6 +5760,12 @@
           },
           "404": {
             "description": "介入策略不存在"
+          },
+          "409": {
+            "description": "版本冲突"
+          },
+          "422": {
+            "description": "请求参数无效"
           }
         },
         "security": [
@@ -5673,19 +5785,19 @@
         "operationId": "InterventionPolicy_remove",
         "parameters": [
           {
-            "name": "policyId",
+            "name": "workflowId",
             "required": true,
             "in": "path",
-            "description": "介入策略 ID",
+            "description": "工作流 ID",
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "workflowId",
+            "name": "policyId",
             "required": true,
             "in": "path",
-            "description": "工作流 ID",
+            "description": "介入策略 ID",
             "schema": {
               "type": "string"
             }
@@ -6042,6 +6154,9 @@
         "responses": {
           "201": {
             "description": "评论提交成功"
+          },
+          "403": {
+            "description": "插件 listing 未安装，或评价本组织发布的 listing"
           },
           "404": {
             "description": "Listing 不存在"
@@ -7035,7 +7150,10 @@
             }
           },
           "400": {
-            "description": "公钥无效或已注册。"
+            "description": "公钥无效。"
+          },
+          "409": {
+            "description": "相同指纹的密钥已注册或已撤销。"
           }
         },
         "security": [
@@ -7174,11 +7292,11 @@
               }
             }
           },
-          "400": {
-            "description": "密钥已撤销。"
-          },
           "404": {
             "description": "密钥不存在。"
+          },
+          "409": {
+            "description": "密钥已撤销。"
           }
         },
         "security": [
@@ -8832,27 +8950,17 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "page",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
           "200": {
             "description": "Agent 版本列表"
+          },
+          "404": {
+            "description": "Agent 不存在"
+          },
+          "422": {
+            "description": "分页参数非法"
           }
         },
         "summary": "获取 Agent 版本列表",
@@ -9049,6 +9157,12 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Agent 不存在"
+          },
+          "422": {
+            "description": "分页参数非法"
           }
         },
         "summary": "List conversations for an agent",
@@ -9105,18 +9219,24 @@
           },
           {
             "name": "page",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
             }
           },
           {
             "name": "limit",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
             }
           }
         ],
@@ -9130,6 +9250,12 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "对话不存在"
+          },
+          "422": {
+            "description": "分页参数非法"
           }
         },
         "summary": "Get conversation detail with message history",
@@ -9206,18 +9332,24 @@
           },
           {
             "name": "page",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1,
+              "type": "integer"
             }
           },
           {
             "name": "limit",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
             }
           }
         ],
@@ -9231,6 +9363,12 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "对话不存在"
+          },
+          "422": {
+            "description": "分页参数非法"
           }
         },
         "summary": "List messages for a conversation",
@@ -9321,6 +9459,9 @@
         "responses": {
           "200": {
             "description": "返回是否允许工具执行"
+          },
+          "404": {
+            "description": "本进程没有该对话的沙箱会话"
           }
         },
         "summary": "接收沙箱容器的工具权限回调请求",
@@ -9390,6 +9531,12 @@
         "responses": {
           "201": {
             "description": "当前会话已刷新到最新已发布版本"
+          },
+          "404": {
+            "description": "对话不存在"
+          },
+          "409": {
+            "description": "对话已结束，或 Agent 没有已发布版本"
           }
         },
         "summary": "在当前会话内刷新到 Agent 最新已发布版本",
@@ -9414,6 +9561,9 @@
         "responses": {
           "200": {
             "description": "Title generated"
+          },
+          "404": {
+            "description": "对话不存在"
           }
         },
         "summary": "Generate or regenerate conversation title",
@@ -10752,6 +10902,9 @@
         "responses": {
           "204": {
             "description": "删除成功"
+          },
+          "404": {
+            "description": "实例或节点不存在"
           }
         },
         "security": [
@@ -11028,6 +11181,12 @@
         "responses": {
           "201": {
             "description": "创建成功"
+          },
+          "404": {
+            "description": "实例或节点不存在"
+          },
+          "422": {
+            "description": "缺少当前 mode 所需字段（create/append 需 content，patch 需 oldString 与 newString）"
           }
         },
         "security": [
@@ -11080,6 +11239,9 @@
         "responses": {
           "200": {
             "description": "回滚成功"
+          },
+          "404": {
+            "description": "实例、节点或目标版本不存在"
           }
         },
         "security": [
@@ -11202,6 +11364,9 @@
         "responses": {
           "200": {
             "description": "审核成功"
+          },
+          "404": {
+            "description": "实例、节点不存在，或版本不属于该节点"
           }
         },
         "security": [
@@ -11619,16 +11784,19 @@
             "description": "文件上传成功"
           },
           "400": {
-            "description": "缺少文件"
+            "description": "缺少文件或文件名无效"
           },
           "401": {
             "description": "认证失败"
           },
           "403": {
-            "description": "权限不足"
+            "description": "权限不足或内置 Skill 只读"
           },
           "404": {
             "description": "Skill 不存在"
+          },
+          "415": {
+            "description": "请求不是 multipart/form-data"
           }
         },
         "security": [
@@ -11722,7 +11890,7 @@
             "description": "认证失败"
           },
           "403": {
-            "description": "权限不足"
+            "description": "权限不足或内置 Skill 只读"
           },
           "404": {
             "description": "Skill 或文件不存在"
@@ -14191,8 +14359,14 @@
               }
             }
           },
+          "404": {
+            "description": "工作流不存在（workflow-not-found）"
+          },
+          "409": {
+            "description": "工作流未发布（workflow-not-published）"
+          },
           "422": {
-            "description": "工作流未发布或没有可分析节点"
+            "description": "发布版本没有可分析节点（optimization-workflow-not-analyzable）"
           }
         },
         "summary": "按运行证据分析工作流，返回新建的优化提案",
@@ -14660,6 +14834,9 @@
         "responses": {
           "200": {
             "description": "Sandbox log list"
+          },
+          "404": {
+            "description": "Sandbox session not found"
           }
         },
         "summary": "Get sandbox logs",
@@ -15727,7 +15904,8 @@
         },
         "required": [
           "name"
-        ]
+        ],
+        "additionalProperties": false
       },
       "UpdateWorkflowDefinitionDto": {
         "type": "object",
@@ -16446,7 +16624,8 @@
             "minimum": 5000,
             "maximum": 600000
           }
-        }
+        },
+        "default": {}
       },
       "SessionToolExecutionCallbackDto": {
         "type": "object",
@@ -17242,6 +17421,9 @@
             "default": true,
             "type": "boolean"
           }
+        },
+        "default": {
+          "force": true
         }
       },
       "RunWorkflowDto": {
@@ -18232,6 +18414,45 @@
           "action"
         ]
       },
+      "PtyBufferDumpDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pattern": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PtyWriteDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "additionalProperties": false
+      },
       "UpsertPreferenceDto": {
         "type": "object",
         "properties": {
@@ -18359,7 +18580,8 @@
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateReusableBlockDto": {
         "type": "object",
@@ -19172,6 +19394,148 @@
         },
         "additionalProperties": false
       },
+      "CreateInterventionPolicyDto": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "maxLength": 255,
+            "nullable": true
+          },
+          "allowedRoles": {
+            "default": [
+              "owner",
+              "admin"
+            ],
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "admin",
+                "creator",
+                "operator",
+                "viewer"
+              ]
+            }
+          },
+          "timeoutSeconds": {
+            "default": 86400,
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 604800
+          },
+          "timeoutAction": {
+            "default": "reject",
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "escalate"
+            ]
+          },
+          "escalateToRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "creator",
+              "operator",
+              "viewer",
+              null
+            ],
+            "nullable": true
+          },
+          "notifyChannels": {
+            "default": [
+              "in_app"
+            ],
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "in_app",
+                "email",
+                "push"
+              ]
+            }
+          },
+          "isActive": {
+            "default": true,
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateInterventionPolicyDto": {
+        "type": "object",
+        "properties": {
+          "allowedRoles": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "owner",
+                "admin",
+                "creator",
+                "operator",
+                "viewer"
+              ]
+            }
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 604800
+          },
+          "timeoutAction": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "escalate"
+            ]
+          },
+          "escalateToRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "creator",
+              "operator",
+              "viewer",
+              null
+            ],
+            "nullable": true
+          },
+          "notifyChannels": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "in_app",
+                "email",
+                "push"
+              ]
+            }
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
       "SubmitMarketplaceListingDto": {
         "type": "object",
         "properties": {
@@ -19278,7 +19642,8 @@
         },
         "required": [
           "name"
-        ]
+        ],
+        "additionalProperties": false
       },
       "PlatformApiTokenCreateEnvelopeSwaggerDto": {
         "type": "object",
@@ -22166,16 +22531,6 @@
             "type": "string",
             "minLength": 1
           },
-          "role": {
-            "default": "user",
-            "type": "string",
-            "enum": [
-              "user",
-              "assistant",
-              "system",
-              "tool"
-            ]
-          },
           "contentType": {
             "default": "text",
             "type": "string",
@@ -22192,7 +22547,8 @@
         },
         "required": [
           "content"
-        ]
+        ],
+        "additionalProperties": false
       },
       "ToolPermissionCallbackDto": {
         "type": "object",
@@ -22533,10 +22889,6 @@
       "CreateMemoryVersionDto": {
         "type": "object",
         "properties": {
-          "content": {
-            "type": "string",
-            "minLength": 1
-          },
           "mode": {
             "default": "create",
             "type": "string",
@@ -22546,10 +22898,17 @@
               "append"
             ]
           },
+          "content": {
+            "description": "create / append 必填",
+            "type": "string",
+            "minLength": 1
+          },
           "oldString": {
+            "description": "patch 必填",
             "type": "string"
           },
           "newString": {
+            "description": "patch 必填，可为空字符串",
             "type": "string"
           }
         }
@@ -23269,7 +23628,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-16T14:08:40.947Z",
+                  "default": "2026-10-19T14:02:40.906Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
