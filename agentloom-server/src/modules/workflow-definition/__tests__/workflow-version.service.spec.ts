@@ -1822,8 +1822,8 @@ describe('WorkflowVersionService', () => {
       const selectVersion = createSelectChain([createMockVersion()]);
       db.select
         .mockReturnValueOnce(selectWf)
-        .mockReturnValueOnce(selectReleases)
-        .mockReturnValueOnce(selectVersion);
+        .mockReturnValueOnce(selectVersion)
+        .mockReturnValueOnce(selectReleases);
 
       const updatedVersion = createMockVersion({ publishedAt: NOW });
       db.update
@@ -1844,6 +1844,49 @@ describe('WorkflowVersionService', () => {
       expect(result.warnings).toEqual([]);
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalledTimes(3);
+    });
+
+    it('指定 versionId 时校验该版本快照而不是当前画布', async () => {
+      // 当前画布为空（单独发布会被拒），但目标版本快照合法：应按快照校验并发布成功。
+      const selectWf = createSelectChain([
+        createDraftWorkflow({ nodes: [], edges: [] }),
+      ]);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(createSelectChain([createMockVersion()]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(
+          createUpdateChain([createMockVersion({ publishedAt: NOW })]),
+        )
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      const result = await service.publish(
+        WORKFLOW_ID,
+        { versionId: VERSION_ID },
+        USER_ID,
+      );
+
+      expect(result.data.id).toBe(VERSION_ID);
+    });
+
+    it('指定 versionId 且该版本快照为空图时拒绝发布', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createDraftWorkflow()]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            createMockVersion({
+              snapshot: { ...MOCK_SNAPSHOT, nodes: [], edges: [] },
+            }),
+          ]),
+        );
+
+      await expect(
+        service.publish(WORKFLOW_ID, { versionId: VERSION_ID }, USER_ID),
+      ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
+      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('工作流已归档时应当抛出 WorkflowArchivedException', async () => {
@@ -4064,6 +4107,7 @@ describe('WorkflowVersionService', () => {
       });
       db.select
         .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([existingVersion]))
         .mockReturnValueOnce(
           createSelectChain([
             {
@@ -4074,8 +4118,7 @@ describe('WorkflowVersionService', () => {
               publishedAt: NOW,
             },
           ]),
-        )
-        .mockReturnValueOnce(createSelectChain([existingVersion]));
+        );
       const updatedVersion = {
         ...existingVersion,
         publishedAt: NOW,

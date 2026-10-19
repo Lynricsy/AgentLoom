@@ -236,8 +236,13 @@ export class WorkflowPublishService {
           throw new WorkflowArchivedException(workflowId);
         }
 
-        const nodes: schema.ReactFlowNode[] = Array.isArray(workflow.nodes)
-          ? workflow.nodes
+        // 校验对象必须是实际要发布的图：指定 versionId 时是该版本快照，否则是当前画布。
+        const existingVersion = dto.versionId
+          ? await this.findVersionOrThrow(dbClient, dto.versionId, workflowId)
+          : null;
+        const graphSource = existingVersion?.snapshot ?? workflow;
+        const nodes: schema.ReactFlowNode[] = Array.isArray(graphSource.nodes)
+          ? graphSource.nodes
           : [];
         if (nodes.length === 0) {
           throw new WorkflowPublishValidationException([
@@ -252,8 +257,8 @@ export class WorkflowPublishService {
             legacyLlmAgentNodeIds,
           );
         }
-        const edges: schema.ReactFlowEdge[] = Array.isArray(workflow.edges)
-          ? workflow.edges
+        const edges: schema.ReactFlowEdge[] = Array.isArray(graphSource.edges)
+          ? graphSource.edges
           : [];
         const normalizedGraph = normalizeWorkflowNodesAndEdges(nodes, edges);
         const graphStructureErrors = collectWorkflowGraphStructureErrors(
@@ -312,12 +317,7 @@ export class WorkflowPublishService {
 
         let publishedVersion: typeof schema.workflowVersions.$inferSelect;
 
-        if (dto.versionId) {
-          const existingVersion = await this.findVersionOrThrow(
-            dbClient,
-            dto.versionId,
-            workflowId,
-          );
+        if (existingVersion) {
           const releaseNumber =
             this.extractReleaseNumber(
               existingVersion.snapshot,
@@ -341,7 +341,7 @@ export class WorkflowPublishService {
                 },
               },
             })
-            .where(eq(schema.workflowVersions.id, dto.versionId))
+            .where(eq(schema.workflowVersions.id, existingVersion.id))
             .returning();
 
           publishedVersion = updatedVersion;
