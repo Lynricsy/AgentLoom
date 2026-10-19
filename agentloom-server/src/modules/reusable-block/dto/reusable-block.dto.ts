@@ -77,6 +77,22 @@ export const ReusableBlockDefinitionSchema: z.ZodType<BlockDefinition> = z
         });
       }
     });
+
+    // 端口暴露的是块内某个节点的端口，sourceNodeId 必须指向块内已有节点。
+    (['inputPorts', 'outputPorts'] as const).forEach((portListKey) => {
+      definition[portListKey].forEach((port, index) => {
+        if (
+          port.sourceNodeId !== undefined &&
+          !nodeIds.has(port.sourceNodeId)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [portListKey, index, 'sourceNodeId'],
+            message: `端口引用的 sourceNodeId 节点不存在: ${port.sourceNodeId}`,
+          });
+        }
+      });
+    });
   });
 
 export const ReusableBlockMetadataSchema: z.ZodType<BlockMetadata> = z

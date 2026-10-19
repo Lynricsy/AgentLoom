@@ -381,6 +381,33 @@ describe('ReusableBlockService', () => {
       expect(db.select).not.toHaveBeenCalled();
     });
 
+    it.each(['inputPorts', 'outputPorts'] as const)(
+      '%s 的 sourceNodeId 指向块外节点时应抛出 422',
+      async (portListKey) => {
+        await expect(
+          service.create(
+            TENANT_ID,
+            USER_ID,
+            createCreateDto({
+              definition: {
+                ...VALID_DEFINITION,
+                [portListKey]: [
+                  {
+                    id: 'port-ghost',
+                    label: '幽灵端口',
+                    dataType: 'text',
+                    sourceNodeId: 'ghost',
+                    sourcePortId: 'out',
+                  },
+                ],
+              },
+            }),
+          ),
+        ).rejects.toBeInstanceOf(InvalidBlockDefinitionException);
+        expect(db.select).not.toHaveBeenCalled();
+      },
+    );
+
     it('非法端口类型时应抛出 422', async () => {
       await expect(
         service.update(
