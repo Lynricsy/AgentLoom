@@ -62,6 +62,7 @@ const {
     clearActiveRun: vi.fn(),
     waitForNotification: vi.fn(),
     hasWaitingExecutions: vi.fn(),
+    notifyActiveRuns: vi.fn(),
     dispatchExecution: vi.fn(),
   },
   mockEventBridge: {
@@ -2834,6 +2835,77 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.waitForNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('worker 关闭时空闲等待中的 loop 被唤醒后直接退出', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.hasWaitingExecutions.mockResolvedValueOnce(false);
+      mockExecutionService.waitForNotification.mockImplementationOnce(
+        async () => {
+          worker.onClosing();
+          return 'notified';
+        },
+      );
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [{ id: 'msg-1', content: '你好', createdAt: new Date() }],
+          [],
+        ],
+      });
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockExecutionService.notifyActiveRuns).toHaveBeenCalledTimes(1);
+      expect(workerInternals.loadPendingUserMessages).toHaveBeenCalledTimes(2);
+      expect(mockRuntime.prompt).toHaveBeenCalledTimes(1);
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenLastCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({ status: 'completed' }),
+      );
+    });
+
+    it('worker 关闭时进行中的轮次照常跑完落库，之后不再取新消息', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [{ id: 'msg-1', content: '你好', createdAt: new Date() }],
+          [{ id: 'msg-2', content: '留给其他进程', createdAt: new Date() }],
+        ],
+      });
+      mockRuntime.prompt.mockImplementationOnce(() =>
+        (async function* () {
+          worker.onClosing();
+          yield { type: 'message_chunk', content: '收到' };
+          yield { type: 'done', stopReason: 'end_turn' };
+        })(),
+      );
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockRuntime.cancel).not.toHaveBeenCalled();
+      expect(workerInternals.persistConversationTurn).toHaveBeenCalledTimes(1);
+      expect(workerInternals.persistConversationTurn).toHaveBeenCalledWith(
+        'c-1',
+        't-1',
+        [expect.objectContaining({ id: 'msg-1' })],
+        expect.objectContaining({
+          assistantText: '收到',
+          stopReason: 'end_turn',
+        }),
+        expect.anything(),
+      );
+      expect(workerInternals.loadPendingUserMessages).toHaveBeenCalledTimes(1);
+      expect(mockExecutionService.waitForNotification).not.toHaveBeenCalled();
     });
 
     it('启动后按 APP_AGENT_CONVERSATION_CONCURRENCY 设置 worker 并发', () => {

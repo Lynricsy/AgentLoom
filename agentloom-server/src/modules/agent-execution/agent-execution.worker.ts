@@ -915,6 +915,8 @@ export class AgentExecutionWorker
   private readonly runtimeService: AgentExecutionWorkerRuntimeService;
   private readonly inputPreprocessorHandler =
     new InputPreprocessorHandlerImpl();
+  /** worker 开始关闭（进程收到 SIGTERM）后为 true：进行中的 loop 做完当前轮次即退出，不再取新消息 */
+  private draining = false;
 
   constructor(
     private readonly db: DrizzleDB,
@@ -1005,6 +1007,17 @@ export class AgentExecutionWorker
     if (concurrency) {
       this.worker.concurrency = concurrency;
     }
+  }
+
+  /**
+   * worker.close() 不再拉取新 job，并等待进行中的 job 结束。这里让 loop 尽快结束：
+   * 正在执行的轮次照常跑完并落库（不中断，避免重投后整轮重跑、有副作用的工具执行两次），
+   * 空闲等待中的 loop 立即唤醒退出；之后到达的消息由 onCompleted 补发派发，交给其他进程。
+   */
+  @OnWorkerEvent('closing')
+  onClosing(): void {
+    this.draining = true;
+    this.executionService.notifyActiveRuns();
   }
 
   async process(job: Job<AgentConversationExecutionJobData>): Promise<void> {
@@ -1333,7 +1346,7 @@ export class AgentExecutionWorker
         },
       );
 
-      while (!abort.signal.aborted) {
+      while (!abort.signal.aborted && !this.draining) {
         currentPendingMessages =
           seededPendingMessages.length > 0
             ? seededPendingMessages

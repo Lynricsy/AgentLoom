@@ -367,6 +367,13 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** 唤醒本进程全部空闲等待中的 loop（worker 关闭时让它们检查退出条件） */
+  notifyActiveRuns(): void {
+    for (const activeRun of this.activeRuns.values()) {
+      activeRun.notify();
+    }
+  }
+
   /** 队列里是否有排队等待执行的对话；loop 据此决定是否空闲等待，见 AgentExecutionWorker.executeAgentLoop。 */
   async hasWaitingExecutions(): Promise<boolean> {
     return (await this.executionQueue.getWaitingCount()) > 0;

@@ -45,6 +45,12 @@ docType: reference
 3. **requeue_recoverable**：失败被判定为运行时可恢复，且累计次数小于 `MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS`（120）时，延迟 `RECOVERABLE_RUNTIME_FAILURE_REQUEUE_DELAY_MS`（30000ms）重新入队。
 4. **fail**：标记失败；任务留在 BullMQ 的 failed 集合，即下文的 DLQ。
 
+## 进程关闭
+
+`agentloom-server/src/main.ts` 调用 `app.enableShutdownHooks()`，进程收到 SIGTERM / SIGINT 时按 Nest 生命周期钩子关闭。根模块的 `QueueWorkerShutdownService`（`agentloom-server/src/common/services/queue-worker-shutdown.service.ts`）在 `onModuleDestroy` 中对全部 `WorkerHost` 调用 `worker.close()`：停止拉取新任务，等进行中的任务结束后才返回。Nest 按模块距离由近到远调用 `onModuleDestroy`，根模块最先、全局模块（数据库连接池、Redis）最后，任务结束前依赖仍可用；BullModule 自带的关闭在 `onApplicationShutdown`，晚于连接池关闭，不能依赖它。
+
+`agent-conversation-execution` 的 worker 收到 `closing` 事件后进入排空：正在执行的轮次照常跑完并落库，空闲等待的 loop 被唤醒后直接退出，不再取新消息；loop 退出后到达的消息由 `onCompleted` 补发派发，交给其他进程。部署的停止宽限期（Compose `stop_grace_period`、Helm `terminationGracePeriodSeconds`，均为 60 秒）内仍未结束的任务随进程被强杀，由 BullMQ 的 stalled 检查转交其他进程从头重跑。
+
 ## 周期任务
 
 周期任务用 `Queue.upsertJobScheduler` 注册，调度器生成的任务继承队列的 `defaultJobOptions`。

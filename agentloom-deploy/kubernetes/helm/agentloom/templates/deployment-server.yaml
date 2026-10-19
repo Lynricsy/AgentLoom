@@ -19,6 +19,8 @@ spec:
         {{- include "agentloom.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: server
     spec:
+      # SIGTERM 后进程停止拉取队列任务并等进行中的任务结束，与 Compose 的 stop_grace_period 一致
+      terminationGracePeriodSeconds: 60
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

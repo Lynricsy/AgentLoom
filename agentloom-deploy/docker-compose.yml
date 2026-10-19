@@ -6,6 +6,10 @@ x-server-app: &server-app
     context: ..
     dockerfile: agentloom-deploy/docker/server.Dockerfile
   restart: unless-stopped
+  # tini 作 PID 1 转发信号、回收僵尸进程；SIGTERM 后 server/worker 停止拉取队列任务并等进行中的任务结束，
+  # 超过宽限期仍未结束的由 Docker 强杀，任务经 stalled 检查转交其他进程重跑
+  init: true
+  stop_grace_period: 60s
   environment: &server-env
     APP_PORT: ${APP_PORT:-3000}
     APP_NODE_ENV: ${APP_NODE_ENV:-production}

@@ -5,7 +5,7 @@ import {
   type OnModuleDestroy,
   RequestMethod,
 } from '@nestjs/common';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR, DiscoveryModule } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -68,6 +68,7 @@ import { ApiScopeGuard } from './common/guards/api-scope.guard';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { TenantTransactionInterceptor } from './common/interceptors/tenant-transaction.interceptor';
 import { RbacCacheService } from './common/services/rbac-cache.service';
+import { QueueWorkerShutdownService } from './common/services/queue-worker-shutdown.service';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { safeQuitRedis } from './common/redis/redis-shutdown.util';
 
@@ -91,6 +92,7 @@ function createThrottlerOptions(configService: ConfigService) {
     WsAuthModule,
     RedisModule,
     EventEmitterModule.forRoot(),
+    DiscoveryModule,
     ThrottlerModule.forRootAsync({
       useFactory: createThrottlerOptions,
       inject: [ConfigService],
@@ -156,6 +158,7 @@ function createThrottlerOptions(configService: ConfigService) {
   ],
   providers: [
     RbacCacheService,
+    QueueWorkerShutdownService,
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantTransactionInterceptor,

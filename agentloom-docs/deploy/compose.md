@@ -253,6 +253,8 @@ docker compose up -d --build
 
 `db:seed` 按唯一键覆盖平台内置数据：内置 LLM Provider、工作流模板与内置技能只写系统租户下的行；路由基准会为各组织已有的智能路由模型重写同一批种子基准行。迁移只改表结构，不会更新这些内置数据；升级时跳过 `db:seed`，模板页会一直显示旧版本模板的定义与封面。
 
+重建或 `docker compose restart` server、worker 时，容器收到 SIGTERM 后停止从队列取新任务，等进行中的任务（Agent 对话的当前一轮、工作流执行等）结束再退出，日志中依次出现「正在关闭 N 个队列 worker」「队列 worker 已全部关闭」「进程已完成关闭（SIGTERM）」。`stop_grace_period` 为 60 秒，超过仍未结束的任务随容器被强杀，约 30–60 秒后由另一个进程从头重跑；对外 API 的 run 此时会在事件流中收到 `run.restarted`，见 [Agent 对外 API](/api/agent-api#4-断线后续读事件流)。Helm 的 `terminationGracePeriodSeconds` 同为 60 秒。
+
 ### 从 `COMPOSE_PROJECT_NAME` 与无 profile 的旧版本升级
 
 旧版 `.env.template` 用 `COMPOSE_PROJECT_NAME=agentloom-private` 同时命名两个 compose 文件，`firecracker-runtime` 也不在任何 profile 中。按以下顺序迁移已有部署的 `.env`（数据卷与网络名不变）：

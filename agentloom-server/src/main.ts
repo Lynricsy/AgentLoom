@@ -28,6 +28,8 @@ async function bootstrap() {
     createAppFastifyAdapter(),
     { rawBody: true },
   );
+  // SIGTERM/SIGINT 时按生命周期钩子关闭：先停队列 worker 并等进行中任务结束，再关连接池
+  app.enableShutdownHooks();
 
   await app.register(multipart, {
     limits: {
