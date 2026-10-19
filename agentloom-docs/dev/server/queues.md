@@ -22,7 +22,7 @@ docType: reference
 | `audit-log-retention` | 1 | — | `{count:10}` / `{count:50}` | `evidence/audit-log-retention.constants.ts` | — |
 | `evidence-export` | 3 | — | `{count:20}` / `{count:50}` | `evidence/evidence-export.constants.ts` | `jobId` 为 `evidence-export-<id>`，事务提交后入队（`evidence/evidence-export.service.ts`） |
 | `evidence-export-cleanup` | 1 | — | `{count:10}` / `{count:50}` | `evidence/evidence-export.constants.ts` | — |
-| `document-processing` | 队列默认 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | 每次入队都设 attempts `DOCUMENT_PROCESSING_MAX_ATTEMPTS`（3，`knowledge/knowledge.constants.ts`）+ exponential 2000ms（`knowledge/document.service.ts`） |
+| `document-processing` | 队列默认 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | 每次入队都设 attempts `DOCUMENT_PROCESSING_MAX_ATTEMPTS`（3，`knowledge/knowledge.constants.ts`）+ exponential 2000ms，上传与重建都在事务提交后入队（`knowledge/document.service.ts`）；只有最后一次尝试失败（或 `UnrecoverableError`）才把文档置为 `failed`（`knowledge/document-processing.worker.ts`） |
 | `document-indexing` | 1 | — | 100 / 500 | `knowledge/knowledge.module.ts` | — |
 | `notification` | 3 | exponential 1000ms | 100 / 500 | `notification/notification.constants.ts` | `jobId` 为 notification id，事务提交后入队 |
 | `optimization-proposal` | 3 | exponential 2000ms | `{count:500}` / `{count:1000}` | `optimization-proposal/optimization-proposal.constants.ts`（`OPTIMIZATION_QUEUE_DEFAULT_JOB_OPTIONS`） | 评测启动任务 `jobId` 为 `optimization-evaluate-<evaluationId>`，事务提交后入队（`optimization-proposal/optimization-proposal.service.ts`） |

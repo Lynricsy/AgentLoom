@@ -9,6 +9,10 @@ import type { FastifyRequest } from 'fastify';
 import { v7 as uuidv7 } from 'uuid';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import {
   StorageKeyInvalidException,
@@ -90,7 +94,7 @@ export class DocumentService {
       documentId,
       multipartFile.filename,
     );
-    let persistedDocumentId: string | null = null;
+    let document: InternalDocument;
 
     try {
       await this.storageService.upload(
@@ -101,7 +105,7 @@ export class DocumentService {
       );
 
       const db = getTenantDb(this.db);
-      const [document] = await db
+      [document] = await db
         .insert(documents)
         .values({
           id: documentId,
@@ -114,37 +118,40 @@ export class DocumentService {
           uploadedBy: userId,
         })
         .returning();
-
-      persistedDocumentId = document.id;
-
-      const { storageKey: _key, ...safeDocument } = document;
-
-      await this.processingQueue.add(
-        'process',
-        { documentId: document.id },
-        {
-          attempts: DOCUMENT_PROCESSING_MAX_ATTEMPTS,
-          backoff: { type: 'exponential', delay: 2000 },
-          jobId: `process-${document.id}`,
-        },
-      );
-
-      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
-
-      return safeDocument;
     } catch (error) {
-      if (persistedDocumentId) {
-        await this.rollbackPersistedDocument(persistedDocumentId, tenantId);
-      }
-
-      if (await this.storageService.exists(storageKey)) {
-        await this.cleanupUploadedObject(storageKey);
-      } else {
-        await this.cleanupIncompleteUpload(storageKey);
-      }
-
+      await this.discardStoredObject(storageKey);
       throw error;
     }
+
+    const enqueueProcessing = async () => {
+      try {
+        await this.processingQueue.add(
+          'process',
+          { documentId },
+          {
+            attempts: DOCUMENT_PROCESSING_MAX_ATTEMPTS,
+            backoff: { type: 'exponential', delay: 2000 },
+            jobId: `process-${documentId}`,
+          },
+        );
+      } catch (error) {
+        await this.rollbackPersistedDocument(documentId, tenantId);
+        await this.discardStoredObject(storageKey);
+        throw error;
+      }
+
+      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, documentId);
+    };
+
+    // worker 是独立连接：请求事务提交前入队，worker 读不到文档行会报「文档不存在」。
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(enqueueProcessing);
+    } else {
+      await enqueueProcessing();
+    }
+
+    const { storageKey: _key, ...safeDocument } = document;
+    return safeDocument;
   }
 
   async findByKnowledgeBase(
@@ -339,20 +346,30 @@ export class DocumentService {
         ),
       );
 
-    for (const document of targetDocuments) {
-      await this.processingQueue.add(
-        'process',
-        { documentId: document.id },
-        {
-          attempts: DOCUMENT_PROCESSING_MAX_ATTEMPTS,
-          backoff: { type: 'exponential', delay: 2000 },
-          jobId: `rebuild-${document.id}-${Date.now()}`,
-        },
-      );
-      this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
+    const enqueueRebuild = async () => {
+      for (const document of targetDocuments) {
+        await this.processingQueue.add(
+          'process',
+          { documentId: document.id },
+          {
+            attempts: DOCUMENT_PROCESSING_MAX_ATTEMPTS,
+            backoff: { type: 'exponential', delay: 2000 },
+            jobId: `rebuild-${document.id}-${Date.now()}`,
+          },
+        );
+        this.emitUploadedRealtimeEvents(tenantId, knowledgeBaseId, document.id);
+      }
+
+      this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
+    };
+
+    // 节点清理与状态重置提交后再入队，避免 worker 读到旧状态或与未提交的删除争锁。
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(enqueueRebuild);
+    } else {
+      await enqueueRebuild();
     }
 
-    this.knowledgeGateway.emitKnowledgeBaseUpdated(tenantId, knowledgeBaseId);
     return targetDocuments.length;
   }
 
@@ -592,6 +609,14 @@ export class DocumentService {
         error instanceof Error ? (error.stack ?? error.message) : String(error),
       );
       throw error;
+    }
+  }
+
+  private async discardStoredObject(storageKey: string): Promise<void> {
+    if (await this.storageService.exists(storageKey)) {
+      await this.cleanupUploadedObject(storageKey);
+    } else {
+      await this.cleanupIncompleteUpload(storageKey);
     }
   }
 

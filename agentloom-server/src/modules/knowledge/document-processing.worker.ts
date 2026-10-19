@@ -183,6 +183,18 @@ export class DocumentProcessingWorker extends WorkerHost {
     job: Job<DocumentProcessingJobData>,
     error: Error,
   ): Promise<void> {
+    // BullMQ 每次尝试失败都会触发 failed 事件，此时 attemptsMade 已含本次尝试；
+    // 还会重试时只记日志，避免中间态的 failed 推给前端后又被重试覆盖。
+    const maxAttempts = job.opts.attempts ?? 1;
+    const willRetry =
+      job.attemptsMade < maxAttempts && error.name !== 'UnrecoverableError';
+    if (willRetry) {
+      this.logger.warn(
+        `Document ${job.data.documentId} processing attempt ${job.attemptsMade}/${maxAttempts} failed, will retry: ${error.message}`,
+      );
+      return;
+    }
+
     this.logger.error(
       `Document ${job.data.documentId} processing failed after ${job.attemptsMade} attempts: ${error.message}`,
     );

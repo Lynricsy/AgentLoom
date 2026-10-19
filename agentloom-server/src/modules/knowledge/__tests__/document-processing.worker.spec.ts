@@ -310,5 +310,34 @@ describe('DocumentProcessingWorker', () => {
         'kb-1',
       );
     });
+
+    it('should not mark the document as failed while retries remain', async () => {
+      const job = createMockJob({ attemptsMade: 1 });
+
+      await worker.onFailed(job, new Error('文档不存在'));
+
+      expect(documentService.updateStatus).not.toHaveBeenCalled();
+      expect(knowledgeGateway.emitDocumentStatusChanged).not.toHaveBeenCalled();
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
+    });
+
+    it('should mark the document as failed immediately for unrecoverable errors', async () => {
+      const error = new Error('bad file');
+      error.name = 'UnrecoverableError';
+      documentService.updateStatus.mockResolvedValue(undefined);
+      documentService.findById.mockResolvedValue({
+        id: DOC_ID,
+        tenantId: 'tenant-1',
+        knowledgeBaseId: 'kb-1',
+      });
+
+      await worker.onFailed(createMockJob({ attemptsMade: 1 }), error);
+
+      expect(documentService.updateStatus).toHaveBeenCalledWith(
+        DOC_ID,
+        'failed',
+        'bad file',
+      );
+    });
   });
 });

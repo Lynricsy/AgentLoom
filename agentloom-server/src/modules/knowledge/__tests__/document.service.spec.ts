@@ -27,10 +27,17 @@ import { RagService } from '../services/rag.service';
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
   uuidv7: vi.fn(),
+  hasActiveTenantTransaction: vi.fn(),
+  registerAfterCommitHook: vi.fn(),
 }));
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: mocks.getTenantDb,
+}));
+
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  hasActiveTenantTransaction: mocks.hasActiveTenantTransaction,
+  registerAfterCommitHook: mocks.registerAfterCommitHook,
 }));
 
 vi.mock('uuid', () => ({
@@ -102,6 +109,8 @@ describe('DocumentService', () => {
     };
     mocks.getTenantDb.mockReturnValue(db);
     mocks.uuidv7.mockReturnValue(DOC_ID);
+    mocks.hasActiveTenantTransaction.mockReturnValue(false);
+    mocks.registerAfterCommitHook.mockReset();
 
     storageService = {
       upload: vi.fn().mockResolvedValue(undefined),
@@ -834,6 +843,117 @@ describe('DocumentService', () => {
         expect.objectContaining({ jobId: `process-${DOC_ID}` }),
       );
       expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
+    });
+
+    it('请求事务内上传时应等事务提交后再派发处理任务与广播', async () => {
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            {
+              id: DOC_ID,
+              knowledgeBaseId: KB_ID,
+              tenantId: TENANT_ID,
+              fileName: 'report.pdf',
+              storageKey: STORAGE_KEY,
+            },
+          ]),
+        }),
+      });
+      mocks.hasActiveTenantTransaction.mockReturnValue(true);
+
+      await expect(
+        service.uploadFromRequest(request as never, KB_ID, TENANT_ID, USER_ID),
+      ).resolves.toMatchObject({ id: DOC_ID });
+
+      // 事务未提交时 worker 读不到文档行，不能提前入队。
+      expect(processingQueue.add).not.toHaveBeenCalled();
+      expect(knowledgeGateway.emitDocumentStatusChanged).not.toHaveBeenCalled();
+      expect(mocks.registerAfterCommitHook).toHaveBeenCalledTimes(1);
+
+      const hook = mocks.registerAfterCommitHook.mock
+        .calls[0]?.[0] as () => Promise<void>;
+      await hook();
+
+      expect(processingQueue.add).toHaveBeenCalledWith(
+        'process',
+        { documentId: DOC_ID },
+        expect.objectContaining({ jobId: `process-${DOC_ID}` }),
+      );
+      expect(knowledgeGateway.emitDocumentStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        KB_ID,
+        { documentId: DOC_ID, knowledgeBaseId: KB_ID, status: 'uploaded' },
+      );
+    });
+
+    it('事务提交后入队失败时应删除已提交的文档记录并清理对象存储', async () => {
+      const multipartFile = createMultipartFile('report.pdf', PDF_BUFFER);
+      const request = { file: vi.fn().mockResolvedValue(multipartFile) };
+      const queueError = new Error('queue unavailable');
+      db.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockResolvedValue([{ id: DOC_ID, storageKey: STORAGE_KEY }]),
+        }),
+      });
+      const rollbackWhere = vi.fn().mockResolvedValue(undefined);
+      db.delete.mockReturnValue({ where: rollbackWhere });
+      processingQueue.add.mockRejectedValueOnce(queueError);
+      mocks.hasActiveTenantTransaction.mockReturnValue(true);
+
+      await service.uploadFromRequest(
+        request as never,
+        KB_ID,
+        TENANT_ID,
+        USER_ID,
+      );
+      const hook = mocks.registerAfterCommitHook.mock
+        .calls[0]?.[0] as () => Promise<void>;
+
+      await expect(hook()).rejects.toThrow(queueError);
+      expect(rollbackWhere).toHaveBeenCalled();
+      expect(storageService.delete).toHaveBeenCalledWith(STORAGE_KEY);
+      expect(knowledgeGateway.emitDocumentStatusChanged).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rebuildKnowledgeBase', () => {
+    it('请求事务内重建时应等事务提交后再派发处理任务', async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ id: DOC_ID }]),
+        }),
+      });
+      db.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      });
+      mocks.hasActiveTenantTransaction.mockReturnValue(true);
+
+      await expect(
+        service.rebuildKnowledgeBase(KB_ID, TENANT_ID),
+      ).resolves.toBe(1);
+
+      expect(processingQueue.add).not.toHaveBeenCalled();
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).not.toHaveBeenCalled();
+
+      const hook = mocks.registerAfterCommitHook.mock
+        .calls[0]?.[0] as () => Promise<void>;
+      await hook();
+
+      expect(processingQueue.add).toHaveBeenCalledWith(
+        'process',
+        { documentId: DOC_ID },
+        expect.objectContaining({ attempts: 3 }),
+      );
+      expect(knowledgeGateway.emitKnowledgeBaseUpdated).toHaveBeenCalledWith(
+        TENANT_ID,
+        KB_ID,
+      );
     });
   });
 
