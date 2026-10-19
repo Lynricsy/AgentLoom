@@ -35,6 +35,10 @@ export class EvidenceExportController {
   @Post()
   @ApiOperation({ summary: '创建证据导出任务' })
   @ApiResponse({ status: 201, description: '证据导出任务创建成功' })
+  @ApiResponse({
+    status: 422,
+    description: '过滤条件无效（未知字段、from 晚于 to 等）',
+  })
   async create(
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') actorId: string,

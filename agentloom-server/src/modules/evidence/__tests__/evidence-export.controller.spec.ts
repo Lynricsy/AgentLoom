@@ -173,4 +173,36 @@ describe('EvidenceExportController', () => {
       ),
     ).toBe(HttpStatus.OK);
   });
+
+  it('拒绝未知的过滤键，避免拼错的条件退化成导出整个租户', () => {
+    const result = CreateEvidenceExportJobSchema.safeParse({
+      foo: 1,
+      workflowId: WORKFLOW_ID,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.code).toBe('unrecognized_keys');
+  });
+
+  it('from 晚于 to 时拒绝，错误落在 to', () => {
+    const result = CreateEvidenceExportJobSchema.safeParse({
+      from: '2026-10-19T00:00:00Z',
+      to: '2026-01-01T00:00:00Z',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path)).toEqual([['to']]);
+  });
+
+  it('from 等于或早于 to 时接受', () => {
+    expect(
+      CreateEvidenceExportJobSchema.parse({
+        from: '2026-01-01T00:00:00Z',
+        to: '2026-01-01T00:00:00Z',
+      }).filters,
+    ).toMatchObject({
+      from: '2026-01-01T00:00:00Z',
+      to: '2026-01-01T00:00:00Z',
+    });
+  });
 });

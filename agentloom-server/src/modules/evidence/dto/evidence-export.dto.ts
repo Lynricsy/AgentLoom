@@ -24,6 +24,15 @@ const EvidenceExportFilterInputSchema = z
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
   })
+  // 拼错的过滤键若被静默剥离，会退化成「导出整个租户」，因此拒绝未知字段
+  .strict()
+  .refine(
+    (value) =>
+      value.from === undefined ||
+      value.to === undefined ||
+      Date.parse(value.from) <= Date.parse(value.to),
+    { message: 'from 不能晚于 to', path: ['to'] },
+  )
   .transform((value) => {
     const executionIds =
       value.executionIds ??
