@@ -34,6 +34,11 @@ const KILL_GRACE_MS = 3_000;
 const STDERR_TAIL_BYTES = 64 * 1024;
 /** guest 进程环境里的凭据类变量不继承给 dsh 子进程（agent 的 bash 能读到子进程环境） */
 const SECRET_ENV_PATTERN = /KEY|SECRET|TOKEN|PASSWORD/i;
+/**
+ * guest 服务自身的运行环境变量不继承给 dsh 子进程：agent 执行的用户命令会继承子进程环境，
+ * 例如 NODE_ENV=production 会让 npm install 默认跳过 devDependencies。
+ */
+const GUEST_ONLY_ENV_KEYS: Readonly<Record<string, true>> = { NODE_ENV: true };
 
 /** 当前会话 dsh 子进程内 PTYManager 的代理（/v1/pty/* 路由使用） */
 export interface PtyBridge {
@@ -56,13 +61,14 @@ export interface DshSessionFactoryOptions {
   startupTimeoutMs?: number;
 }
 
-/** 当前 guest 进程环境去掉凭据类变量，再叠加 profile 环境 */
+/** 当前 guest 进程环境去掉凭据类与 guest 专用变量，再叠加 profile 环境 */
 function buildChildEnv(profileEnv: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !SECRET_ENV_PATTERN.test(key)) env[key] = value;
+    if (value === undefined || SECRET_ENV_PATTERN.test(key) || Object.hasOwn(GUEST_ONLY_ENV_KEYS, key)) continue;
+    env[key] = value;
   }
-  return { ...env, ...profileEnv, NODE_ENV: 'production' };
+  return { ...env, ...profileEnv };
 }
 
 /**

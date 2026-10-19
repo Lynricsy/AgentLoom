@@ -92,11 +92,14 @@ describe('createDshSessionFactory', () => {
   let sessionRoot: string;
   let servers: Server[];
   const previousRoot = process.env['SANDBOX_SESSION_ROOT'];
+  const previousNodeEnv = process.env['NODE_ENV'];
 
   beforeEach(() => {
     sessionRoot = mkdtempSync(join(tmpdir(), 'dsh-factory-'));
     process.env['SANDBOX_SESSION_ROOT'] = sessionRoot;
     process.env['AGENTLOOM_TEST_SECRET_TOKEN'] = 'must-not-leak';
+    // guestd 以 NODE_ENV=production 启动 guest 服务；该变量不得进入 agent 的命令环境
+    process.env['NODE_ENV'] = 'production';
     servers = [];
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
@@ -105,6 +108,8 @@ describe('createDshSessionFactory', () => {
     for (const server of servers) server.close();
     vi.restoreAllMocks();
     delete process.env['AGENTLOOM_TEST_SECRET_TOKEN'];
+    if (previousNodeEnv === undefined) delete process.env['NODE_ENV'];
+    else process.env['NODE_ENV'] = previousNodeEnv;
     if (previousRoot === undefined) delete process.env['SANDBOX_SESSION_ROOT'];
     else process.env['SANDBOX_SESSION_ROOT'] = previousRoot;
     rmSync(sessionRoot, { recursive: true, force: true });
@@ -135,7 +140,7 @@ describe('createDshSessionFactory', () => {
     const env = (spawn.mock.calls[0] as unknown as [string, string[], { env: NodeJS.ProcessEnv }])[2].env;
     expect(env['DSH_HOME']).toBe(join(sessionRoot, 'sess-1', 'dsh-home'));
     expect(env['AGENTLOOM_PROVIDER_OPENAI_API_KEY']).toBe('sk-test');
-    expect(env['NODE_ENV']).toBe('production');
+    expect(env).not.toHaveProperty('NODE_ENV');
     expect(env).not.toHaveProperty('AGENTLOOM_TEST_SECRET_TOKEN');
     expect(existsSync(join(sessionRoot, 'sess-1', 'dsh-home', 'profiles', 'agentloom', 'cordis.patch.yml'))).toBe(
       true,
