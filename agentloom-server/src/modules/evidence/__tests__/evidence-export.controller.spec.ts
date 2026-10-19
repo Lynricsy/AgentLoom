@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 
+import { HttpStatus } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CreateEvidenceExportJobSchema } from '../dto/evidence-export.dto';
@@ -161,5 +163,14 @@ describe('EvidenceExportController', () => {
       actorId: ACTOR_ID,
       exportId: EXPORT_ID,
     });
+  });
+
+  it('刷新下载链接不创建资源，返回 200 而不是 POST 默认的 201', () => {
+    expect(
+      Reflect.getMetadata(
+        HTTP_CODE_METADATA,
+        EvidenceExportController.prototype.refreshDownloadDetail,
+      ),
+    ).toBe(HttpStatus.OK);
   });
 });

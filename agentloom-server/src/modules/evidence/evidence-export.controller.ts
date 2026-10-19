@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -78,7 +80,9 @@ export class EvidenceExportController {
     };
   }
 
+  // 刷新只是重新签发已有产物的下载链接，不创建资源，返回 200
   @Post(':id/download/refresh')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '刷新证据导出任务下载详情' })
   @ApiParam({ name: 'id', description: '导出任务 ID' })
   @ApiResponse({ status: 200, description: '证据导出下载详情刷新成功' })
