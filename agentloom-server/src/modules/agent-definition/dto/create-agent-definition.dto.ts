@@ -28,6 +28,8 @@ export const CreateAgentDefinitionSchema = z
     globalSandboxConfig: z.record(z.string(), z.unknown()).optional(),
     global_sandbox_config: z.record(z.string(), z.unknown()).optional(),
   })
+  // 未知字段（如 nodes）会被 transform 静默丢弃，严格模式下直接 422，与 PUT /:id 一致
+  .strict()
   .transform((value) => ({
     name: value.name,
     description: value.description,

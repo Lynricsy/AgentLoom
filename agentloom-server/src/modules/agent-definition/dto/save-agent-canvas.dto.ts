@@ -9,7 +9,7 @@ const ReactFlowViewportSchema = z.object({
   zoom: z.number(),
 });
 
-export const SaveAgentCanvasSchema = z.object({
+export const SaveAgentCanvasSchema = z.strictObject({
   canvasNodes: z
     .array(ReactFlowNodeSchema)
     .min(0, { message: 'canvasNodes 必须为数组' }),

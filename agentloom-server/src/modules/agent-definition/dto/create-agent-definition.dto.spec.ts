@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import { CreateAgentDefinitionDto } from './create-agent-definition.dto';
+import { SaveAgentCanvasDto } from './save-agent-canvas.dto';
 
 const pipe = new ZodValidationPipe();
 
@@ -66,5 +67,51 @@ describe('CreateAgentDefinitionDto', () => {
         timeoutSeconds: 600,
       },
     });
+  });
+
+  it('拒绝未知字段而不是静默丢弃', () => {
+    expect(() =>
+      transformWithDto(
+        {
+          name: 'Bogus Agent',
+          runtimeMode: 'no_sandbox',
+          nodes: [1],
+          bogus: 1,
+        },
+        CreateAgentDefinitionDto,
+        'body',
+      ),
+    ).toThrow();
+  });
+});
+
+describe('SaveAgentCanvasDto', () => {
+  it('接受 Studio 发送的全部画布字段', () => {
+    expect(
+      transformWithDto(
+        {
+          canvasNodes: [],
+          canvasEdges: [],
+          canvasViewport: { x: 0, y: 0, zoom: 1 },
+          inputSchema: {},
+          memoryInstanceIds: [],
+          globalSandboxConfig: {},
+          sandboxLifecycle: 'session',
+          workspaceSnapshotId: null,
+        },
+        SaveAgentCanvasDto,
+        'body',
+      ),
+    ).toMatchObject({ canvasNodes: [], canvasEdges: [] });
+  });
+
+  it('拒绝未知字段而不是静默丢弃', () => {
+    expect(() =>
+      transformWithDto(
+        { canvasNodes: [], canvasEdges: [], bogusField: 1 },
+        SaveAgentCanvasDto,
+        'body',
+      ),
+    ).toThrow();
   });
 });
