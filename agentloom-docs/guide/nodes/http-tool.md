@@ -17,7 +17,7 @@ docType: reference
 - 请求体的取值顺序：「请求体」端口收到的对象若含 `body` 字段，用该字段；端口收到的对象不含 `body`、`query`、`headers` 字段时，整个对象作为请求体；端口没有数据时，使用配置中的 Body（可写 JSON，解析失败则按原文发送）。端口对象中的 `headers`、`query` 字段会合并到配置的请求头与 Query 参数之上。
 - 超时时间单位为秒，默认 30。
 - 「非 2xx 视为失败」默认开启：响应状态不是 2xx 时节点失败，错误信息形如 `HTTP POST https://example.com 返回 500 Internal Server Error`。关闭后，非 2xx 响应也会让节点完成，适合探测类请求；此时执行结果中的 `ok` 与 `status` 仍如实记录响应状态。
-- 「响应体」端口输出响应 body。
+- 「响应体」端口输出响应 body：响应的 Content-Type 为 `application/json` 或以 `+json` 结尾（如 `application/problem+json`、`application/vnd.api+json`）时解析为 JSON 值，其他类型输出原始文本。
 
 ## 相关
 

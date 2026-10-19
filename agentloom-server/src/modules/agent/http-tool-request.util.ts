@@ -24,8 +24,12 @@ function extractStringHeaders(input: unknown): Record<string, string> {
 }
 
 async function parseHttpResponseBody(response: Response): Promise<unknown> {
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-  if (contentType.includes('application/json')) {
+  // 按媒体类型判断（去掉 charset 等参数）：application/json 与 RFC 6839 的 +json 结构化后缀
+  // （application/problem+json、application/vnd.api+json 等）都解析为对象
+  const mediaType =
+    response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ??
+    '';
+  if (mediaType === 'application/json' || mediaType.endsWith('+json')) {
     return await response.json();
   }
 
