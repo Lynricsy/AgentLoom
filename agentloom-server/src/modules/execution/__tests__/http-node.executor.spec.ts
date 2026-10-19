@@ -659,5 +659,102 @@ describe('http migrated scenarios', () => {
         TENANT_ID,
       );
     });
+
+    function makeUpstreamSteps(upstreamResult: Record<string, unknown>) {
+      return [
+        makeStep({
+          id: 'step-p',
+          nodeId: 'P',
+          status: 'completed',
+          result: upstreamResult,
+        }),
+        makeStep({
+          id: 'step-h',
+          nodeId: 'H',
+          status: 'pending',
+          nodeType: 'http-tool',
+          nodeData: {
+            config: {
+              url: 'https://hn.test/v0/item/{{id}}.json',
+              method: 'GET',
+            },
+          },
+        }),
+      ];
+    }
+
+    it('URL 的 {{id}} 取「请求体」端口数据，GET 时其余字段转为 query', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('P'), makeNode('H', 'http-tool')],
+        [makeEdge('P', 'H', undefined, 'request-in')],
+      );
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://hn.test/v0/item/50152307.json?print=pretty',
+        headers: {
+          entries: () => [][Symbol.iterator](),
+          get: () => 'application/json',
+        },
+        json: vi.fn().mockResolvedValue({ id: 50152307 }),
+      } as unknown as Response);
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'H',
+        TENANT_ID,
+        snapshot,
+        makeUpstreamSteps({ id: 50152307, print: 'pretty' }),
+      );
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://hn.test/v0/item/50152307.json?print=pretty'),
+        expect.objectContaining({ method: 'GET' }),
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
+    });
+
+    it('URL 占位符没有值时节点失败，不发出字面量请求', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('P'), makeNode('H', 'http-tool')],
+        [makeEdge('P', 'H', undefined, 'request-in')],
+      );
+      globalThis.fetch = vi.fn();
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        'H',
+        TENANT_ID,
+        snapshot,
+        makeUpstreamSteps({ storyId: 1 }),
+      );
+
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-h',
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message:
+              'HTTP 请求 URL 中的占位符 {{id}} 在「请求体」端口数据中没有值',
+          }),
+        }),
+      );
+      expect(onNodeFailed).toHaveBeenCalledTimes(1);
+    });
   });
 });

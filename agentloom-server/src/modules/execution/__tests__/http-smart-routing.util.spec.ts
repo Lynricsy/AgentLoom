@@ -28,6 +28,8 @@ import {
 } from '../smart-routing-input.util';
 
 describe('http-tool-request.util', () => {
+  const POST = { url: 'https://api.test/items', method: 'POST' };
+
   it('动态 headers/query 覆盖静态和 auth，动态 body 优先', () => {
     expect(
       buildHttpToolRequestInput(
@@ -51,7 +53,8 @@ describe('http-tool-request.util', () => {
             body: false,
           },
         },
-      ),
+        POST,
+      ).request,
     ).toEqual({
       headers: { Accept: 'dynamic', 'X-Static': 'yes', 'X-Key': 'secret' },
       query: { page: 2, enabled: true },
@@ -61,13 +64,130 @@ describe('http-tool-request.util', () => {
 
   it('不生成空 headers/query/body，并解析静态 body', () => {
     expect(
-      buildHttpToolRequestInput({ body: ' [1, 2] ' }, { 'exec-in': true }),
+      buildHttpToolRequestInput({ body: ' [1, 2] ' }, { 'exec-in': true }, POST)
+        .request,
     ).toEqual({ body: [1, 2] });
-    expect(buildHttpToolRequestInput({ body: ' plain ' }, {})).toEqual({
+    expect(
+      buildHttpToolRequestInput({ body: ' plain ' }, {}, POST).request,
+    ).toEqual({
       body: 'plain',
     });
-    expect(buildHttpToolRequestInput({ body: '  ' }, {})).toEqual({});
-    expect(buildHttpToolRequestInput({}, {})).toEqual({});
+    expect(buildHttpToolRequestInput({ body: '  ' }, {}, POST).request).toEqual(
+      {},
+    );
+    expect(buildHttpToolRequestInput({}, {}, POST).request).toEqual({});
+  });
+
+  describe('URL 引用「请求体」端口数据（{{字段}}）', () => {
+    it('按点分路径取值并 encodeURIComponent 后拼入路径与 query', () => {
+      expect(
+        buildHttpToolRequestInput(
+          {},
+          { 'request-in': { id: 50152307, item: { tag: 'a b/c' } } },
+          {
+            url: 'https://hn.test/v0/item/{{id}}.json?tag={{ item.tag }}',
+            method: 'GET',
+          },
+        ),
+      ).toEqual({
+        url: 'https://hn.test/v0/item/50152307.json?tag=a%20b%2Fc',
+        request: {},
+      });
+    });
+
+    it('占位符没有值时报错，不按字面量请求', () => {
+      expect(() =>
+        buildHttpToolRequestInput(
+          {},
+          { 'request-in': { other: 1 } },
+          { url: 'https://hn.test/v0/item/{{id}}.json', method: 'GET' },
+        ),
+      ).toThrow('占位符 {{id}} 在「请求体」端口数据中没有值');
+      expect(() =>
+        buildHttpToolRequestInput(
+          {},
+          {},
+          { url: 'https://hn.test/v0/item/{{id}}.json', method: 'GET' },
+        ),
+      ).toThrow('没有值');
+    });
+
+    it('值是对象时报错', () => {
+      expect(() =>
+        buildHttpToolRequestInput(
+          {},
+          { 'request-in': { id: { nested: 1 } } },
+          { url: 'https://hn.test/v0/item/{{id}}.json', method: 'GET' },
+        ),
+      ).toThrow('不是字符串、数字或布尔值');
+    });
+
+    it('单花括号 {id} 报错并提示写法，JSON 字面量不受影响', () => {
+      expect(() =>
+        buildHttpToolRequestInput(
+          {},
+          { 'request-in': { id: 1 } },
+          { url: 'https://hn.test/v0/item/{id}.json', method: 'GET' },
+        ),
+      ).toThrow('{id} 不是占位符写法：引用「请求体」端口数据请写 {{id}}');
+      expect(
+        buildHttpToolRequestInput(
+          {},
+          {},
+          { url: 'https://api.test/q?where={"a":1}', method: 'GET' },
+        ).url,
+      ).toBe('https://api.test/q?where={"a":1}');
+    });
+
+    it('非 GET 时整个对象仍作为请求体（含 URL 已引用的字段）', () => {
+      expect(
+        buildHttpToolRequestInput(
+          {},
+          { 'request-in': { id: 7, name: 'x' } },
+          { url: 'https://api.test/items/{{id}}', method: 'PUT' },
+        ),
+      ).toEqual({
+        url: 'https://api.test/items/7',
+        request: { body: { id: 7, name: 'x' } },
+      });
+    });
+  });
+
+  describe('GET 不静默丢弃上游数据', () => {
+    it('普通对象中 URL 未引用的字段转为 query', () => {
+      expect(
+        buildHttpToolRequestInput(
+          { queryParams: [{ key: 'print', value: 'pretty' }] },
+          { 'request-in': { id: 1, lang: 'zh', page: 2 } },
+          { url: 'https://api.test/item/{{id}}', method: 'GET' },
+        ),
+      ).toEqual({
+        url: 'https://api.test/item/1',
+        request: { query: { print: 'pretty', lang: 'zh', page: 2 } },
+      });
+    });
+
+    it('显式 body 或标量数据报错', () => {
+      for (const requestIn of [{ body: { id: 1 } }, 'plain text']) {
+        expect(() =>
+          buildHttpToolRequestInput(
+            {},
+            { 'request-in': requestIn },
+            { url: 'https://api.test/items', method: 'GET' },
+          ),
+        ).toThrow('GET 请求不能携带请求体');
+      }
+    });
+
+    it('envelope 形态只取 query / headers，配置中的 Body 不随 GET 发送', () => {
+      expect(
+        buildHttpToolRequestInput(
+          { body: '{"static":1}' },
+          { 'request-in': { query: { q: 'ai' } } },
+          { url: 'https://api.test/search', method: 'GET' },
+        ).request,
+      ).toEqual({ query: { q: 'ai' } });
+    });
   });
 
   it('request-in 优先于 request，undefined 才 fallback，并保留原始 false/null', () => {

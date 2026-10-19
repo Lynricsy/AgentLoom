@@ -7,7 +7,7 @@
 | 端口 ID | 名称 | 数据类型 | 必填 | 多连接 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `exec-in` |  | `exec` |  |  | 执行流入口，前序节点完成后触发 HTTP 请求 |
-| `request-in` | 请求体 | `json` |  |  | HTTP 请求发送的 JSON Body 数据 |
+| `request-in` | 请求体 | `json` |  |  | 请求数据：作为 JSON Body 发送（GET 时转为 Query 参数），URL 中的占位符可引用其中的字段 |
 
 **输出端口**
 

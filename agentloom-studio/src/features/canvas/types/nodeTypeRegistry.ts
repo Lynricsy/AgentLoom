@@ -287,7 +287,8 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         description: "执行流入口，前序节点完成后触发 HTTP 请求",
       }),
       createPort("request-in", "请求体", "input", "json", {
-        description: "HTTP 请求发送的 JSON Body 数据",
+        description:
+          "请求数据：作为 JSON Body 发送（GET 时转为 Query 参数），URL 中的占位符可引用其中的字段",
       }),
     ],
     outputPorts: [

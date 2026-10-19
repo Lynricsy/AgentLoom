@@ -1,6 +1,10 @@
 import jmespath from 'jmespath';
 import jsonata from 'jsonata';
 import { createContext, Script } from 'node:vm';
+import {
+  resolveTemplatePath,
+  TEMPLATE_PLACEHOLDER_PATTERN,
+} from '../template-placeholder.util';
 
 export type InputPreprocessorTransformType =
   'jmespath' | 'jsonata' | 'template' | 'script';
@@ -55,9 +59,6 @@ export interface InputPreprocessorNodeHandler {
 
 /** SECURITY: 防止恶意 script 无限循环的硬超时 */
 const SCRIPT_TIMEOUT_MS = 5_000;
-
-/** `{{key}}` / `{{a.b.c}}` Handlebars-style 占位符 */
-const TEMPLATE_PATTERN = /\{\{([^}]+)\}\}/g;
 
 export class InputPreprocessorHandlerImpl implements InputPreprocessorNodeHandler {
   async execute(
@@ -124,11 +125,13 @@ export class InputPreprocessorHandlerImpl implements InputPreprocessorNodeHandle
     const data: Record<string, unknown> =
       typeof input === 'string' ? JSON.parse(input) : input;
 
-    return expression.replace(TEMPLATE_PATTERN, (_match, key: string) => {
-      const trimmedKey = key.trim();
-      const value = this.resolveNestedKey(data, trimmedKey);
-      return value !== undefined && value !== null ? String(value) : '';
-    });
+    return expression.replace(
+      TEMPLATE_PLACEHOLDER_PATTERN,
+      (_match, key: string) => {
+        const value = resolveTemplatePath(data, key.trim());
+        return value !== undefined && value !== null ? String(value) : '';
+      },
+    );
   }
 
   /**
@@ -178,19 +181,5 @@ export class InputPreprocessorHandlerImpl implements InputPreprocessorNodeHandle
       return result as string | Record<string, unknown>;
     }
     return { result };
-  }
-
-  private resolveNestedKey(
-    data: Record<string, unknown>,
-    key: string,
-  ): unknown {
-    const parts = key.split('.');
-    let current: unknown = data;
-    for (const part of parts) {
-      if (current === null || current === undefined) return undefined;
-      if (typeof current !== 'object') return undefined;
-      current = (current as Record<string, unknown>)[part];
-    }
-    return current;
   }
 }

@@ -47,8 +47,8 @@ export class HttpNodeExecutor implements NodeExecutor {
 
     try {
       const nodeData = getRuntimeNodeData(step.nodeData ?? {});
-      const url = readFirstString(nodeData.url);
-      if (!url) {
+      const urlTemplate = readFirstString(nodeData.url);
+      if (!urlTemplate) {
         throw new Error('HTTP Tool 节点缺少 URL 配置');
       }
 
@@ -58,7 +58,10 @@ export class HttpNodeExecutor implements NodeExecutor {
         nodeData.timeoutSeconds,
         nodeData.timeout_seconds,
       );
-      const request = buildHttpToolRequestInput(nodeData, input);
+      const { url, request } = buildHttpToolRequestInput(nodeData, input, {
+        url: urlTemplate,
+        method,
+      });
       const response = await executeHttpToolRequest(
         {
           url,
