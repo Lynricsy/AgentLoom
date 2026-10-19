@@ -384,16 +384,17 @@ describe('extension migrated scenarios', () => {
       {
         name: '缺少 pluginId / pluginNodeType',
         nodeData: {},
-        setup: () => undefined,
+        setup: (): void => undefined,
         message: 'Plugin node missing pluginId or pluginNodeType',
       },
       {
         name: '插件不存在',
         nodeData: { pluginId: 'e2e.nonexistent', pluginNodeType: 'echo' },
-        setup: () =>
+        setup: (): void => {
           mockPluginService.findActiveByPluginId.mockRejectedValueOnce(
             new Error('Plugin e2e.nonexistent not found'),
-          ),
+          );
+        },
         message: 'Plugin e2e.nonexistent not found',
       },
     ])(
