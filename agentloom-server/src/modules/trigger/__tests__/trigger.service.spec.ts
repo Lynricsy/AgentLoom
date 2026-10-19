@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 
 import { DRIZZLE } from '../../../database/database.module';
 import { WorkflowNotFoundException } from '../../workflow-definition/workflow-version.exceptions';
@@ -427,6 +428,36 @@ describe('TriggerService', () => {
 
       expect(result.type).toBe('api_event');
       expect(db.update).toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ eventSource: 'github', eventType: 'push' }],
+      [{ expression: '99 * * * *', timezone: 'UTC' }],
+      [{ expression: '0 9 * * *', timezone: 'Mars/Phobos' }],
+    ])(
+      'cron 触发器的 config %j 不合法或与类型不一致时抛出带 config 路径的 ZodError 且不写库',
+      async (config) => {
+        db.select.mockReturnValue(createSelectWhereResolved([baseTrigger]));
+
+        const error = await service
+          .update(TENANT_ID, TRIGGER_ID, { config })
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ZodError);
+        expect((error as ZodError).issues[0]?.path[0]).toBe('config');
+        expect(db.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('api_event 触发器收到 cron 配置时抛出 ZodError', async () => {
+      db.select.mockReturnValue(createSelectWhereResolved([apiEventTrigger]));
+
+      await expect(
+        service.update(TENANT_ID, TRIGGER_ID, {
+          config: { expression: '0 9 * * *', timezone: 'UTC' },
+        }),
+      ).rejects.toBeInstanceOf(ZodError);
+      expect(db.update).not.toHaveBeenCalled();
     });
   });
 

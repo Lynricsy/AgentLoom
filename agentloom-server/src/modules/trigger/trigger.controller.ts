@@ -11,11 +11,12 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type {
   ApiEventTriggerConfig,
   CronTriggerConfig,
@@ -24,10 +25,12 @@ import type {
 } from '../../database/schema/workflow-triggers.schema';
 import {
   CreateTriggerDto,
+  CreateTriggerSchema,
   QueryTriggerDto,
   QueryTriggerHistoryDto,
   UpdateTriggerDto,
   WebhookConfigSchema,
+  type CreateTriggerInput,
 } from './dto/trigger.dto';
 import { TriggerHistoryService } from './trigger-history.service';
 import { TriggerSchedulerService } from './trigger-scheduler.service';
@@ -56,10 +59,18 @@ export class TriggerController {
   @RequirePermission('trigger:edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '创建工作流触发器' })
+  @ApiBody({ type: CreateTriggerDto })
   @ApiResponse({ status: 201, description: '触发器创建成功' })
+  @ApiResponse({ status: 404, description: '工作流不存在' })
+  @ApiResponse({ status: 409, description: '工作流未发布或触发器数量超限' })
+  @ApiResponse({
+    status: 422,
+    description:
+      '请求参数无效（含 cron 值域、IANA 时区、type 与 config 不一致）',
+  })
   async create(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
-    @Body() dto: CreateTriggerDto,
+    @Body(new ZodValidationPipe(CreateTriggerSchema)) dto: CreateTriggerInput,
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
   ): Promise<{ data: WorkflowTriggerResponse }> {
@@ -115,6 +126,11 @@ export class TriggerController {
   @ApiOperation({ summary: '更新触发器' })
   @ApiResponse({ status: 200, description: '触发器更新成功' })
   @ApiResponse({ status: 404, description: '触发器不存在' })
+  @ApiResponse({
+    status: 422,
+    description:
+      '请求参数无效（含 cron 值域、IANA 时区、config 与触发器类型不一致）',
+  })
   async update(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Param('triggerId', ParseUUIDPipe) triggerId: string,

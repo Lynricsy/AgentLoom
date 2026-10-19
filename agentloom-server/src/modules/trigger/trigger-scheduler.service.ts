@@ -7,7 +7,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type { WorkflowTrigger } from '../../database/schema/workflow-triggers.schema';
-import { CronConfigSchema } from './dto/trigger.dto';
+import { StoredCronConfigSchema } from './dto/trigger.dto';
 import { TRIGGER_CRON_JOB, TRIGGER_QUEUE } from './trigger.constants';
 
 export type TriggerCronJobData = {
@@ -39,7 +39,7 @@ export class TriggerSchedulerService implements OnModuleInit {
       return null;
     }
 
-    const config = CronConfigSchema.parse(trigger.config);
+    const config = StoredCronConfigSchema.parse(trigger.config);
 
     await this.queue.upsertJobScheduler(
       trigger.id,

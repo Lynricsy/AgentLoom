@@ -1,3 +1,4 @@
+import { getNextMillis } from 'bullmq';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
@@ -6,7 +7,11 @@ import { isValidIpAllowlistEntry } from '../ip-allowlist.util';
 export const TriggerTypeSchema = z.enum(['cron', 'webhook', 'api_event']);
 export type TriggerType = z.infer<typeof TriggerTypeSchema>;
 
-export const CronConfigSchema = z
+/**
+ * 已落库 cron 配置的形状。调度器注册时只校验形状：
+ * 更早写入、按当前规则不再接受的配置不应在启动同步时阻断其他触发器。
+ */
+export const StoredCronConfigSchema = z
   .object({
     expression: z
       .string()
@@ -17,6 +22,49 @@ export const CronConfigSchema = z
     timezone: z.string().min(1, { message: '时区不能为空' }).default('UTC'),
   })
   .strict();
+
+/**
+ * 创建/更新时的 cron 配置：时区必须是 IANA 时区（Intl 可识别），
+ * 表达式用 BullMQ Job Scheduler 计算下一次触发的同一函数（getNextMillis → cron-parser）
+ * 在该时区下试算，调度器会拒绝的值在这里就返回 422，而不是先落库再注册失败。
+ */
+export const CronConfigSchema = StoredCronConfigSchema.superRefine(
+  (config, ctx) => {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: config.timezone });
+    } catch {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['timezone'],
+        message: `时区无效，应为 IANA 时区名（如 Asia/Shanghai）：${config.timezone}`,
+      });
+      return;
+    }
+
+    let nextMillis: number | undefined;
+    try {
+      nextMillis = getNextMillis(Date.now(), {
+        pattern: config.expression,
+        tz: config.timezone,
+      });
+    } catch (error) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expression'],
+        message: `cron 表达式无效：${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+
+    if (nextMillis === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expression'],
+        message: 'cron 表达式无效：不会产生任何触发时间',
+      });
+    }
+  },
+);
 
 // github：校验 GitHub 的 X-Hub-Signature-256（HMAC-SHA256(secret, rawBody)），按 X-GitHub-Delivery 去重
 export const WebhookAuthModeSchema = z.enum(['simple', 'signed', 'github']);
@@ -105,6 +153,8 @@ export const CreateTriggerSchema = z.discriminatedUnion('type', [
   CreateApiEventTriggerSchema,
 ]);
 
+// 仅描述 OpenAPI 请求体形状（discriminatedUnion 无法作为 createZodDto 的基类）；
+// 运行时由 controller 上的 ZodValidationPipe(CreateTriggerSchema) 按 type 校验 config。
 export class CreateTriggerDto extends createZodDto(
   z.object({
     name: BaseTriggerFields.name,

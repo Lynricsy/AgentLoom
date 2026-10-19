@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -12,14 +13,11 @@ import type {
 import { WorkflowNotFoundException } from '../workflow-definition/workflow-version.exceptions';
 import {
   ApiEventConfigSchema,
-  CreateTriggerSchema,
   CronConfigSchema,
   QueryTriggerSchema,
-  UpdateTriggerSchema,
-  WebhookConfigCreateSchema,
   WebhookConfigSchema,
   WebhookConfigUpdateSchema,
-  type CreateTriggerDto,
+  type CreateTriggerInput,
   type QueryTriggerDto,
   type UpdateTriggerDto,
 } from './dto/trigger.dto';
@@ -87,10 +85,9 @@ export class TriggerService {
     tenantId: string,
     userId: string,
     workflowId: string,
-    dto: CreateTriggerDto,
+    dto: CreateTriggerInput,
   ): Promise<WorkflowTrigger> {
-    const parsedDto = CreateTriggerSchema.parse(dto);
-    this.assertMutableTriggerType(parsedDto.type);
+    this.assertMutableTriggerType(dto.type);
     const workflow = await this.findWorkflowDefinition(tenantId, workflowId);
 
     // 不存在与他租户工作流同样返回 404，不以 409 暴露其存在性
@@ -121,18 +118,18 @@ export class TriggerService {
       );
     }
 
-    const config = this.buildCreateConfig(parsedDto.type, parsedDto.config);
+    const config = this.buildCreateConfig(dto);
 
     const [created] = await this.tenantDb
       .insert(schema.workflowTriggers)
       .values({
         workflowDefinitionId: workflowId,
         tenantId,
-        name: parsedDto.name,
-        description: this.normalizeOptionalText(parsedDto.description),
-        type: parsedDto.type,
+        name: dto.name,
+        description: this.normalizeOptionalText(dto.description),
+        type: dto.type,
         config,
-        isEnabled: parsedDto.isEnabled,
+        isEnabled: dto.isEnabled,
         createdBy: userId,
       })
       .returning();
@@ -153,9 +150,8 @@ export class TriggerService {
   async update(
     tenantId: string,
     triggerId: string,
-    dto: UpdateTriggerDto,
+    parsedDto: UpdateTriggerDto,
   ): Promise<WorkflowTrigger> {
-    const parsedDto = UpdateTriggerSchema.parse(dto);
     const currentTrigger = await this.findById(tenantId, triggerId);
     this.assertMutableTriggerType(currentTrigger.type);
 
@@ -328,40 +324,38 @@ export class TriggerService {
     return workflow;
   }
 
-  private buildCreateConfig(
-    type: WorkflowTrigger['type'],
-    config: unknown,
-  ): TriggerConfig {
-    switch (type) {
+  // config 已由 CreateTriggerSchema 按 type 校验（含 cron/时区），这里只补齐服务端生成的字段
+  private buildCreateConfig(dto: CreateTriggerInput): TriggerConfig {
+    switch (dto.type) {
       case 'cron':
-        return CronConfigSchema.parse(config);
-      case 'webhook': {
-        const parsedConfig = WebhookConfigCreateSchema.parse(config);
-
+      case 'api_event':
+        return dto.config;
+      case 'webhook':
         return {
-          authMode: parsedConfig.authMode,
+          authMode: dto.config.authMode,
           token: randomBytes(WEBHOOK_TOKEN_LENGTH).toString('hex'),
           secret: randomBytes(WEBHOOK_SECRET_LENGTH).toString('hex'),
-          ipWhitelist: parsedConfig.ipWhitelist,
+          ipWhitelist: dto.config.ipWhitelist,
         };
-      }
-      case 'api_event':
-        return ApiEventConfigSchema.parse(config);
     }
   }
 
+  // PATCH 不带 type：config 必须符合触发器已存的类型，不符时按请求体校验失败（422）处理
   private buildUpdatedConfig(
     currentTrigger: WorkflowTrigger,
     nextConfig: unknown,
   ): TriggerConfig {
     switch (currentTrigger.type) {
       case 'cron':
-        return CronConfigSchema.parse(nextConfig);
+        return this.parseConfigForType(CronConfigSchema, nextConfig);
       case 'webhook': {
         const currentWebhookConfig = WebhookConfigSchema.parse(
           currentTrigger.config,
         );
-        const parsedConfig = WebhookConfigUpdateSchema.parse(nextConfig);
+        const parsedConfig = this.parseConfigForType(
+          WebhookConfigUpdateSchema,
+          nextConfig,
+        );
 
         // 省略即保留：避免编辑触发器时把 signed 静默降级为 simple、或清空 IP 白名单
         return {
@@ -373,8 +367,24 @@ export class TriggerService {
         };
       }
       case 'api_event':
-        return ApiEventConfigSchema.parse(nextConfig);
+        return this.parseConfigForType(ApiEventConfigSchema, nextConfig);
     }
+  }
+
+  private parseConfigForType<T>(schema: z.ZodType<T>, config: unknown): T {
+    const result = schema.safeParse(config);
+
+    if (!result.success) {
+      // 与 DTO 管道同形：字段路径带 config 前缀，由全局过滤器映射为 422 validation-error
+      throw new z.ZodError(
+        result.error.issues.map((issue) => ({
+          ...issue,
+          path: ['config', ...issue.path],
+        })),
+      );
+    }
+
+    return result.data;
   }
 
   private assertMutableTriggerType(_type: WorkflowTrigger['type']): void {}
