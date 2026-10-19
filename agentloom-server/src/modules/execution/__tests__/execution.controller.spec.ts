@@ -557,7 +557,10 @@ describe('ExecutionController', () => {
       };
       mockService.getDeadLetterJobs.mockResolvedValue(dlqResult);
 
-      const result = await controller.listDeadLetterJobs(TENANT_ID, 1, 20);
+      const result = await controller.listDeadLetterJobs(TENANT_ID, {
+        page: 1,
+        limit: 20,
+      });
 
       expect(result).toEqual(dlqResult);
       expect(mockService.getDeadLetterJobs).toHaveBeenCalledWith(

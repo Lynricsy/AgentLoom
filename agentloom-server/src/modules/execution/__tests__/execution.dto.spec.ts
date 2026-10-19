@@ -10,6 +10,8 @@ import { listExecutionsQuerySchema } from '../dto/list-executions-query.dto';
 import { resolveToolPermissionSchema } from '../dto/resolve-tool-permission.dto';
 import { InterveneStepDto } from '../dto/intervene-step.dto';
 import { RunWorkflowDto } from '../dto/run-workflow.dto';
+import { ListDeadLetterJobsQueryDto } from '../dto/list-dead-letter-jobs-query.dto';
+import { PtyBufferDumpDto, PtyWriteDto } from '../dto/pty-proxy.dto';
 
 const executionId = '019391d4-d000-7000-8000-000000000004';
 const workflowId = '019391d4-c000-7000-8000-000000000003';
@@ -117,6 +119,65 @@ describe('execution dto schemas', () => {
         'body',
       ),
     ).toEqual({ action: 'modify', modifiedContent: '改写' });
+  });
+
+  it('dlq 列表 query 应拒绝非法分页（D-081），合法值转为数字并带默认值', () => {
+    for (const query of [
+      { limit: 'abc' },
+      { page: '-1' },
+      { page: '0' },
+      { limit: '0' },
+      { limit: '100000' },
+      { page: '1.5' },
+    ]) {
+      expect(() =>
+        transformWithDto(query, ListDeadLetterJobsQueryDto, 'query'),
+      ).toThrow(ZodValidationException);
+    }
+
+    expect(transformWithDto({}, ListDeadLetterJobsQueryDto, 'query')).toEqual({
+      page: 1,
+      limit: 20,
+    });
+    expect(
+      transformWithDto(
+        { page: '2', limit: '100' },
+        ListDeadLetterJobsQueryDto,
+        'query',
+      ),
+    ).toEqual({ page: 2, limit: 100 });
+  });
+
+  it('pty buffer-dump/write body 缺 sessionId/data 或带未知字段应 422（D-088），并兼容 session_id', () => {
+    for (const body of [
+      {},
+      { sessionId: '' },
+      { sessionId: 's1', offset: -1 },
+      { sessionId: 's1', bogus: 1 },
+    ]) {
+      expect(() => transformWithDto(body, PtyBufferDumpDto, 'body')).toThrow(
+        ZodValidationException,
+      );
+    }
+    for (const body of [{}, { sessionId: 's1' }, { data: 'ls\n' }]) {
+      expect(() => transformWithDto(body, PtyWriteDto, 'body')).toThrow(
+        ZodValidationException,
+      );
+    }
+
+    expect(
+      transformWithDto(
+        { session_id: 's1', offset: 0, limit: 10 },
+        PtyBufferDumpDto,
+        'body',
+      ),
+    ).toEqual({ sessionId: 's1', offset: 0, limit: 10 });
+    expect(
+      transformWithDto({ sessionId: 's1', data: 'ls\n' }, PtyWriteDto, 'body'),
+    ).toEqual({ sessionId: 's1', data: 'ls\n' });
+    expect(
+      transformWithDto({ session_id: 's1', data: '' }, PtyWriteDto, 'body'),
+    ).toEqual({ sessionId: 's1', data: '' });
   });
 
   it('应验证 execution 响应结构', () => {

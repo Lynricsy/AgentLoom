@@ -29,6 +29,8 @@ import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
 import { RunWorkflowDto } from './dto/run-workflow.dto';
 import { ResumeExecutionDto } from './dto/resume-execution.dto';
+import { ListDeadLetterJobsQueryDto } from './dto/list-dead-letter-jobs-query.dto';
+import { PtyBufferDumpDto, PtyWriteDto } from './dto/pty-proxy.dto';
 import {
   ExecutionEnvelopeResponseSwaggerDto,
   ExecutionListResponseSwaggerDto,
@@ -271,15 +273,15 @@ export class ExecutionController {
   @RequirePermission('execution:dlq')
   @ApiOperation({ summary: '查询死信队列中的失败任务' })
   @ApiResponse({ status: 200, description: '返回失败任务列表' })
+  @ApiResponse({ status: 422, description: 'page/limit 不合法' })
   async listDeadLetterJobs(
     @CurrentTenant() tenantId: string,
-    @Query('page') page = 1,
-    @Query('limit') limit = 20,
+    @Query() query: ListDeadLetterJobsQueryDto,
   ) {
     return this.executionService.getDeadLetterJobs(
       tenantId,
-      Number(page),
-      Number(limit),
+      query.page,
+      query.limit,
     );
   }
 
@@ -341,15 +343,10 @@ export class ExecutionController {
   @ApiOperation({ summary: '获取执行关联沙箱的 PTY buffer 数据' })
   @ApiResponse({ status: 200, description: 'PTY buffer 数据' })
   @ApiResponse({ status: 503, description: '沙箱不可用' })
+  @ApiResponse({ status: 422, description: '请求体不合法' })
   async ptyBufferDump(
     @Param('executionId', ParseUUIDPipe) executionId: string,
-    @Body()
-    body: {
-      sessionId: string;
-      offset?: number;
-      limit?: number;
-      pattern?: string;
-    },
+    @Body() body: PtyBufferDumpDto,
     @CurrentTenant() tenantId: string,
   ) {
     try {
@@ -372,9 +369,10 @@ export class ExecutionController {
   @ApiOperation({ summary: '向执行关联沙箱的 PTY 会话写入数据' })
   @ApiResponse({ status: 200, description: 'PTY 写入成功' })
   @ApiResponse({ status: 503, description: '沙箱不可用' })
+  @ApiResponse({ status: 422, description: '请求体不合法' })
   async ptyWrite(
     @Param('executionId', ParseUUIDPipe) executionId: string,
-    @Body() body: { sessionId: string; data: string },
+    @Body() body: PtyWriteDto,
     @CurrentTenant() tenantId: string,
   ) {
     try {

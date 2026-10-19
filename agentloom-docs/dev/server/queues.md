@@ -67,7 +67,7 @@ DLQ 不是独立队列，而是 `agent-task` 队列中 BullMQ 的 failed 集合�
 
 | 方法与路径 | 行为 | 成功响应 |
 | --- | --- | --- |
-| `GET /api/v1/dlq?page=1&limit=20` | 读取 failed 集合，按 `job.data.tenantId` 过滤为当前租户后在内存中分页；每项含 `jobId`、`name`、`data`、`failedReason`、`attemptsMade`、`timestamp`、`finishedOn`、`processedOn` | 200 |
+| `GET /api/v1/dlq?page=1&limit=20` | 读取 failed 集合，按 `job.data.tenantId` 过滤为当前租户后在内存中分页；`page` 为 ≥1 的整数（默认 1），`limit` 为 1–100 的整数（默认 20），不合法返回 422 `validation-error`；每项含 `jobId`、`name`、`data`、`failedReason`、`attemptsMade`、`timestamp`、`finishedOn`、`processedOn` | 200 |
 | `POST /api/v1/dlq/:jobId/retry` | 调用 `job.retry()` 重新执行 | 202，`{ data: { jobId, status: 'retrying' } }` |
 | `POST /api/v1/dlq/:jobId/discard` | 调用 `job.remove()` 删除 | 200，`{ data: { jobId, status: 'discarded' } }` |
 
