@@ -112,6 +112,7 @@ export {
 } from './knowledge-nodes.schema';
 export {
   executionStatusEnum,
+  executionDefinitionSourceEnum,
   workflowExecutions,
   type WorkflowExecution,
   type NewWorkflowExecution,

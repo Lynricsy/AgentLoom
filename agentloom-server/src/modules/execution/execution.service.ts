@@ -56,6 +56,12 @@ export interface ExecutionJobData {
   tenantId: string;
 }
 
+export interface ListExecutionsFilters {
+  status?: schema.WorkflowExecution['status'];
+  workflowVersionId?: string;
+  definitionSource?: schema.WorkflowExecution['definitionSource'];
+}
+
 const CANCELLABLE_STATUSES = new Set(['pending', 'running', 'paused']);
 const REMOVABLE_JOB_STATES: JobType[] = ['waiting', 'delayed', 'prioritized'];
 const TERMINAL_EXECUTION_STATUSES = new Set([
@@ -533,41 +539,19 @@ export class ExecutionService {
         )
       : buildExecutionInputParams(runRequest);
 
-    // 评测执行可显式指定版本（含未发布的候选版本）；缺省走当前发布版本
-    const requestedVersionId = runRequest?.workflowVersionId;
-    const versionId = requestedVersionId ?? workflow.publishedVersionId;
-    const [publishedVersion] = await this.tenantDb
-      .select()
-      .from(schema.workflowVersions)
-      .where(
-        and(
-          eq(schema.workflowVersions.id, versionId),
-          eq(schema.workflowVersions.workflowDefinitionId, workflowId),
-          eq(schema.workflowVersions.tenantId, tenantId),
-        ),
-      );
-
-    if (!publishedVersion) {
-      if (requestedVersionId) {
-        throw new WorkflowVersionNotFoundException(requestedVersionId);
-      }
-      throw new WorkflowNotPublishedException(workflowId);
-    }
-
-    const definitionSnapshot = useDraftDefinition
-      ? this.buildDraftExecutionSnapshot(workflow)
-      : (() => {
-          const normalizedGraph = buildExecutableWorkflowGraph(
-            publishedVersion.snapshot.nodes,
-            publishedVersion.snapshot.edges,
-          );
-
-          return {
-            ...publishedVersion.snapshot,
-            nodes: normalizedGraph.nodes,
-            edges: normalizedGraph.edges,
-          };
-        })();
+    // 草稿运行没有对应版本：workflowVersionId 留空并标记 draft，真实定义只在 definitionSnapshot。
+    const { versionId, definitionSnapshot } = useDraftDefinition
+      ? {
+          versionId: null,
+          definitionSnapshot: this.buildDraftExecutionSnapshot(workflow),
+        }
+      : await this.resolveVersionExecutionDefinition(
+          workflowId,
+          // 评测执行可显式指定版本（含未发布的候选版本）；缺省走当前发布版本
+          runRequest?.workflowVersionId,
+          workflow.publishedVersionId,
+          tenantId,
+        );
 
     const admissionDecision =
       await this.resourceGovernanceService.resolveExecutionAdmissionDecision({
@@ -591,6 +575,7 @@ export class ExecutionService {
       .values({
         workflowDefinitionId: workflowId,
         workflowVersionId: versionId,
+        definitionSource: useDraftDefinition ? 'draft' : 'version',
         tenantId,
         status: 'pending',
         triggerType: runRequest?.triggerType ?? 'manual',
@@ -614,6 +599,49 @@ export class ExecutionService {
     );
 
     return execution;
+  }
+
+  private async resolveVersionExecutionDefinition(
+    workflowId: string,
+    requestedVersionId: string | undefined,
+    publishedVersionId: string,
+    tenantId: string,
+  ): Promise<{
+    versionId: string;
+    definitionSnapshot: schema.WorkflowExecution['definitionSnapshot'];
+  }> {
+    const versionId = requestedVersionId ?? publishedVersionId;
+    const [version] = await this.tenantDb
+      .select()
+      .from(schema.workflowVersions)
+      .where(
+        and(
+          eq(schema.workflowVersions.id, versionId),
+          eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+          eq(schema.workflowVersions.tenantId, tenantId),
+        ),
+      );
+
+    if (!version) {
+      if (requestedVersionId) {
+        throw new WorkflowVersionNotFoundException(requestedVersionId);
+      }
+      throw new WorkflowNotPublishedException(workflowId);
+    }
+
+    const normalizedGraph = buildExecutableWorkflowGraph(
+      version.snapshot.nodes,
+      version.snapshot.edges,
+    );
+
+    return {
+      versionId,
+      definitionSnapshot: {
+        ...version.snapshot,
+        nodes: normalizedGraph.nodes,
+        edges: normalizedGraph.edges,
+      },
+    };
   }
 
   /**
@@ -720,17 +748,31 @@ export class ExecutionService {
     workflowId: string,
     page: number,
     limit: number,
-    status?: string,
+    filters: ListExecutionsFilters = {},
   ) {
     const conditions = [
       eq(schema.workflowExecutions.workflowDefinitionId, workflowId),
     ];
 
-    if (status) {
+    if (filters.status) {
+      conditions.push(eq(schema.workflowExecutions.status, filters.status));
+    }
+
+    // 草稿运行的 workflowVersionId 为 NULL，按版本筛选天然不会命中
+    if (filters.workflowVersionId) {
       conditions.push(
         eq(
-          schema.workflowExecutions.status,
-          status as schema.WorkflowExecution['status'],
+          schema.workflowExecutions.workflowVersionId,
+          filters.workflowVersionId,
+        ),
+      );
+    }
+
+    if (filters.definitionSource) {
+      conditions.push(
+        eq(
+          schema.workflowExecutions.definitionSource,
+          filters.definitionSource,
         ),
       );
     }

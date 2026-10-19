@@ -24,6 +24,7 @@ function createExecution(id: string): ExecutionResponse {
     workflowDefinitionId: 'wf-001',
     workflowId: 'workflow-001',
     workflowVersionId: 'ver-001',
+    definitionSource: 'version',
     status: 'completed',
     triggerType: 'manual',
     inputParams: {},

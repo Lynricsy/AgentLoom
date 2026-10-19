@@ -55,7 +55,7 @@ erDiagram
 erDiagram
     workflow_definitions ||--o{ workflow_versions : "workflow_definition_id"
     workflow_definitions ||--o{ workflow_executions : "workflow_definition_id"
-    workflow_versions ||--o{ workflow_executions : "workflow_version_id"
+    workflow_versions |o--o{ workflow_executions : "workflow_version_id"
     workflow_executions ||--o{ execution_steps : "execution_id"
     workflow_executions ||--o{ agent_execution_records : "execution_id"
     execution_steps |o--o{ agent_execution_records : "step_id"

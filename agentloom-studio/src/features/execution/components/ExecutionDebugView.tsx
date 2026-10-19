@@ -14,6 +14,7 @@ import { TeamRunPanel } from './team/TeamRunPanel'
 import { usePtySessions } from '../hooks/usePtySessions'
 import { sendPtyWrite } from '../api/pty'
 import type { PtySessionState } from '../types/pty'
+import { DraftRunBadge } from './DraftRunBadge'
 import {
   EXECUTION_STATUS_META,
   formatExecutionDateTime,
@@ -286,6 +287,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
             >
               {EXECUTION_STATUS_META[execution.status].label}
             </StatusBadge>
+            <DraftRunBadge execution={execution} />
             <Badge variant="outline" className="hidden sm:inline-flex">
               耗时 {formatExecutionDuration(execution.startedAt, execution.completedAt)}
             </Badge>

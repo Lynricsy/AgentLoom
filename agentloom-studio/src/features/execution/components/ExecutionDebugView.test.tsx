@@ -89,6 +89,7 @@ function createExecutionDetail(): ExecutionDetail {
     workflowDefinitionId: 'wf-001',
     workflowId: 'workflow-001',
     workflowVersionId: 'ver-001',
+    definitionSource: 'version',
     status: 'running',
     triggerType: 'manual',
     inputParams: {},
@@ -213,6 +214,25 @@ describe('ExecutionDebugView', () => {
     renderView()
 
     expect(screen.queryByTestId('execution-debug-tab-team')).not.toBeInTheDocument()
+  })
+
+  it('草稿运行在头部标记「草稿运行」，版本运行不标记（D-135）', () => {
+    const { unmount } = renderView()
+    expect(screen.queryByTestId('execution-draft-run-badge')).not.toBeInTheDocument()
+    unmount()
+
+    mocks.useLiveExecutionDetailMock.mockReturnValue({
+      data: {
+        ...createExecutionDetail(),
+        workflowVersionId: null,
+        definitionSource: 'draft',
+      },
+      isLoading: false,
+      error: null,
+    })
+    renderView()
+
+    expect(screen.getByTestId('execution-draft-run-badge')).toHaveTextContent('草稿运行')
   })
 
   it('等待干预的节点在执行页提供批准 / 修改 / 拒绝（D-127）', async () => {

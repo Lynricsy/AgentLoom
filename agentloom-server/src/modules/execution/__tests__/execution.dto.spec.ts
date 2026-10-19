@@ -49,6 +49,27 @@ describe('execution dto schemas', () => {
     });
   });
 
+  it('应解析按版本与定义来源筛选的 query 参数', () => {
+    expect(
+      listExecutionsQuerySchema.parse({
+        workflow_version_id: workflowVersionId,
+        definitionSource: 'draft',
+      }),
+    ).toEqual({
+      page: 1,
+      limit: 20,
+      status: undefined,
+      workflowVersionId,
+      definitionSource: 'draft',
+    });
+    expect(() =>
+      listExecutionsQuerySchema.parse({ workflowVersionId: 'not-a-uuid' }),
+    ).toThrow();
+    expect(() =>
+      listExecutionsQuerySchema.parse({ definitionSource: 'published' }),
+    ).toThrow();
+  });
+
   it('应兼容 run workflow body 的 snake_case 与 camelCase', () => {
     expect(
       transformWithDto(
@@ -208,6 +229,7 @@ describe('execution dto schemas', () => {
       workflowId,
       workflowDefinitionId: workflowId,
       workflowVersionId,
+      definitionSource: 'version' as const,
       tenantId,
       status: 'pending' as const,
       triggerType: 'manual' as const,
@@ -232,6 +254,14 @@ describe('execution dto schemas', () => {
     };
 
     expect(executionResponseSchema.parse(payload)).toEqual(payload);
+
+    // 草稿运行没有对应版本
+    const draftPayload = {
+      ...payload,
+      workflowVersionId: null,
+      definitionSource: 'draft' as const,
+    };
+    expect(executionResponseSchema.parse(draftPayload)).toEqual(draftPayload);
   });
 
   it('应允许步骤错误消息携带重试 attempts', () => {
@@ -335,6 +365,7 @@ describe('execution dto schemas', () => {
       workflowId,
       workflowDefinitionId: workflowId,
       workflowVersionId,
+      definitionSource: 'version' as const,
       tenantId,
       status: 'failed' as const,
       triggerType: 'manual' as const,

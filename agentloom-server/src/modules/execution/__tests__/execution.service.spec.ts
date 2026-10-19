@@ -216,6 +216,7 @@ const mockExecution = {
   id: EXECUTION_ID,
   workflowDefinitionId: WORKFLOW_ID,
   workflowVersionId: VERSION_ID,
+  definitionSource: 'version' as const,
   tenantId: TENANT_ID,
   status: 'pending' as const,
   triggerType: 'manual' as const,
@@ -487,6 +488,10 @@ describe('ExecutionService', () => {
       expect(result).toEqual(mockExecution);
       expect(db.select).toHaveBeenCalledTimes(2);
       expect(db.insert).toHaveBeenCalledTimes(1);
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.workflowVersionId).toBe(VERSION_ID);
+      expect(insertValues.definitionSource).toBe('version');
       expect(mockQueue.add).toHaveBeenCalledWith(
         'execute',
         {
@@ -499,7 +504,7 @@ describe('ExecutionService', () => {
       );
     });
 
-    it('应在 web-studio 启动时使用当前工作流草稿快照', async () => {
+    it('应在 web-studio 启动时使用当前工作流草稿快照，且不把执行记到发布版本', async () => {
       const draftSnapshotWorkflow = {
         ...mockPublishedWorkflow,
         version: 20,
@@ -521,30 +526,8 @@ describe('ExecutionService', () => {
         viewport: { x: 0, y: 0, zoom: 1 },
         inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
       };
-      const publishedVersion = {
-        ...mockVersion,
-        snapshot: {
-          ...mockSnapshot,
-          nodes: [
-            {
-              id: 'published-http-tool',
-              type: 'tool',
-              position: { x: 0, y: 0 },
-              data: {
-                nodeType: 'http-tool',
-                config: {
-                  url: 'https://agentloom.ling.plus/api/v1/health',
-                  method: 'GET',
-                },
-              },
-            },
-          ],
-        },
-      };
 
-      db.select
-        .mockReturnValueOnce(createSelectChain([draftSnapshotWorkflow]))
-        .mockReturnValueOnce(createSelectChain([publishedVersion]));
+      db.select.mockReturnValueOnce(createSelectChain([draftSnapshotWorkflow]));
       db.insert.mockReturnValueOnce(
         createInsertChainReturning([
           {
@@ -627,7 +610,11 @@ describe('ExecutionService', () => {
           },
         }),
       );
-      expect(insertValues.workflowVersionId).toBe(VERSION_ID);
+      // D-135：草稿运行没有对应版本，不得冒充当前发布版本
+      expect(insertValues.workflowVersionId).toBeNull();
+      expect(insertValues.definitionSource).toBe('draft');
+      // 草稿运行不读取任何版本快照
+      expect(db.select).toHaveBeenCalledTimes(1);
     });
 
     it('应在运行前归一化 legacy published workflow graph', async () => {
@@ -782,6 +769,7 @@ describe('ExecutionService', () => {
       const insertValues =
         db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(insertValues.workflowVersionId).toBe(CANDIDATE_VERSION_ID);
+      expect(insertValues.definitionSource).toBe('version');
       expect(insertValues.triggerType).toBe('system');
       expect(insertValues.definitionSnapshot.nodes).toEqual([
         expect.objectContaining({ id: 'candidate-output' }),
@@ -2325,15 +2313,50 @@ describe('ExecutionService', () => {
         .mockReturnValueOnce(createSelectChainPaginated([]))
         .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
 
-      const result = await service.listExecutions(
-        WORKFLOW_ID,
-        1,
-        20,
-        'running',
-      );
+      const result = await service.listExecutions(WORKFLOW_ID, 1, 20, {
+        status: 'running',
+      });
 
       expect(result.data).toEqual([]);
       expect(db.select).toHaveBeenCalledTimes(2);
+    });
+
+    it('按版本筛选只匹配记录了该版本的执行（草稿运行版本为 NULL，不会命中）', async () => {
+      const pageChain = createSelectChainPaginated([]);
+      db.select
+        .mockReturnValueOnce(pageChain)
+        .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
+
+      await service.listExecutions(WORKFLOW_ID, 1, 20, {
+        workflowVersionId: VERSION_ID,
+      });
+
+      const whereArg =
+        pageChain.from.mock.results[0].value.where.mock.calls[0][0];
+      const query = new PgDialect().sqlToQuery(whereArg);
+      expect(query.sql).toContain(
+        '"workflow_executions"."workflow_version_id" = $2',
+      );
+      expect(query.params).toEqual([WORKFLOW_ID, VERSION_ID]);
+    });
+
+    it('应支持按定义来源筛选草稿运行', async () => {
+      const pageChain = createSelectChainPaginated([]);
+      db.select
+        .mockReturnValueOnce(pageChain)
+        .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
+
+      await service.listExecutions(WORKFLOW_ID, 1, 20, {
+        definitionSource: 'draft',
+      });
+
+      const whereArg =
+        pageChain.from.mock.results[0].value.where.mock.calls[0][0];
+      const query = new PgDialect().sqlToQuery(whereArg);
+      expect(query.sql).toContain(
+        '"workflow_executions"."definition_source" = $2',
+      );
+      expect(query.params).toEqual([WORKFLOW_ID, 'draft']);
     });
   });
 

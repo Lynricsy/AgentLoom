@@ -7,6 +7,7 @@ import {
   timestamp,
   integer,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
 import { workflowDefinitions } from './workflow-definitions.schema';
 import { workflowVersions } from './workflow-versions.schema';
@@ -30,6 +31,17 @@ export const executionTriggerTypeEnum = pgEnum('execution_trigger_type_enum', [
   'system',
 ]);
 
+/**
+ * 执行所运行定义的来源。
+ * - `version`：运行某个工作流版本的快照（发布版本，或评测指定的候选版本），`workflow_version_id` 指向该版本。
+ * - `draft`：Studio 以当前画布草稿运行，没有对应版本，`workflow_version_id` 为 NULL；
+ *   实际运行的定义只在 `definition_snapshot` 中。
+ */
+export const executionDefinitionSourceEnum = pgEnum(
+  'execution_definition_source_enum',
+  ['version', 'draft'],
+);
+
 export const workflowExecutions = pgTable(
   'workflow_executions',
   {
@@ -41,9 +53,16 @@ export const workflowExecutions = pgTable(
       .notNull()
       .references(() => workflowDefinitions.id, { onDelete: 'cascade' }),
 
-    workflowVersionId: uuid('workflow_version_id')
+    // 草稿运行（definitionSource = 'draft'）没有版本，为 NULL；
+    // resume/retry 一律以 definitionSnapshot 为准，不回读版本。
+    workflowVersionId: uuid('workflow_version_id').references(
+      () => workflowVersions.id,
+      { onDelete: 'cascade' },
+    ),
+
+    definitionSource: executionDefinitionSourceEnum('definition_source')
       .notNull()
-      .references(() => workflowVersions.id, { onDelete: 'cascade' }),
+      .default('version'),
 
     tenantId: uuid('tenant_id').notNull(),
 
@@ -100,6 +119,13 @@ export const workflowExecutions = pgTable(
     index('idx_workflow_executions_created_at').on(
       table.tenantId,
       table.createdAt,
+    ),
+    index('idx_workflow_executions_workflow_version').on(
+      table.workflowVersionId,
+    ),
+    check(
+      'chk_workflow_executions_definition_source_version',
+      sql`(${table.definitionSource} = 'draft') = (${table.workflowVersionId} IS NULL)`,
     ),
     ...createDirectTenantPolicies('workflow_executions'),
   ],

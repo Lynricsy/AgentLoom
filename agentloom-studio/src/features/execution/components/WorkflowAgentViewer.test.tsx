@@ -101,6 +101,7 @@ function createExecutionDetail(): ExecutionDetail {
     workflowDefinitionId: "wf-001",
     workflowId: "workflow-001",
     workflowVersionId: "ver-001",
+    definitionSource: "version",
     status: "running",
     triggerType: "manual",
     inputParams: {},

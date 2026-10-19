@@ -893,6 +893,136 @@ describe('WorkflowVersion E2E', () => {
     });
   });
 
+  describe('Studio 草稿运行的执行记录（D-135）', () => {
+    async function seedPublishedWorkflowWithEditedDraft(prefix: string) {
+      const owner = await seedTenant(prefix);
+      const workflow = await seedDraftWorkflow({
+        tenantId: owner.tenantId,
+        createdBy: owner.user.id,
+        slug: `${prefix}-workflow`,
+      });
+
+      const publishResponse = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
+        .set(owner.headers)
+        .send({ label: 'v1' });
+      expect(publishResponse.status).toBe(200);
+      const publishedVersionId = publishResponse.body.data.id as string;
+
+      const published = await drizzleDb.query.workflowDefinitions.findFirst({
+        where: eq(schema.workflowDefinitions.id, workflow.id),
+      });
+      // 发布后继续编辑画布：草稿与发布版本不再一致
+      const patchResponse = await request(app.getHttpServer())
+        .patch(`/api/v1/workflow-definitions/${workflow.id}`)
+        .set(owner.headers)
+        .send({
+          version: published?.version,
+          nodes: [
+            {
+              id: 'node-draft-start',
+              type: 'manual-trigger',
+              position: { x: 0, y: 0 },
+              data: { label: 'Draft Start' },
+            },
+          ],
+          edges: [],
+        });
+      expect(patchResponse.status).toBe(200);
+
+      return { owner, workflow, publishedVersionId };
+    }
+
+    it('web-studio 运行不记到发布版本，按发布版本筛选不包含它', async () => {
+      const { owner, workflow, publishedVersionId } =
+        await seedPublishedWorkflowWithEditedDraft('d135-filter');
+
+      const draftRun = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({ inputParams: {}, launchSource: 'web-studio' });
+      expect(draftRun.status).toBe(202);
+      expect(draftRun.body.data.workflowVersionId).toBeNull();
+      expect(draftRun.body.data.definitionSource).toBe('draft');
+      expect(draftRun.body.data.definitionSnapshot.nodes).toEqual([
+        expect.objectContaining({ id: 'node-draft-start' }),
+      ]);
+
+      const versionRun = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({ inputParams: {}, launchSource: 'mobile' });
+      expect(versionRun.status).toBe(202);
+      expect(versionRun.body.data.workflowVersionId).toBe(publishedVersionId);
+      expect(versionRun.body.data.definitionSource).toBe('version');
+      expect(versionRun.body.data.definitionSnapshot.nodes).toEqual([
+        expect.objectContaining({ id: 'node-start' }),
+      ]);
+
+      const byVersion = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/executions`)
+        .query({ workflowVersionId: publishedVersionId })
+        .set(owner.headers);
+      expect(byVersion.status).toBe(200);
+      expect(
+        byVersion.body.data.map((execution: { id: string }) => execution.id),
+      ).toEqual([versionRun.body.data.id]);
+      expect(byVersion.body.meta.total).toBe(1);
+
+      const drafts = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/executions`)
+        .query({ definitionSource: 'draft' })
+        .set(owner.headers);
+      expect(drafts.status).toBe(200);
+      expect(
+        drafts.body.data.map((execution: { id: string }) => execution.id),
+      ).toEqual([draftRun.body.data.id]);
+
+      const all = await request(app.getHttpServer())
+        .get(`/api/v1/workflow-definitions/${workflow.id}/executions`)
+        .set(owner.headers);
+      expect(all.body.meta.total).toBe(2);
+    });
+
+    it('恢复草稿运行时沿用该次运行的草稿定义，且仍不指向任何版本', async () => {
+      const { owner, workflow } =
+        await seedPublishedWorkflowWithEditedDraft('d135-resume');
+
+      const draftRun = await request(app.getHttpServer())
+        .post(`/api/v1/workflow-definitions/${workflow.id}/run`)
+        .set(owner.headers)
+        .send({ inputParams: {}, launchSource: 'web-studio' });
+      expect(draftRun.status).toBe(202);
+      const executionId = draftRun.body.data.id as string;
+
+      await ctx.adminSql`
+        UPDATE "workflow_executions"
+        SET status = 'failed', failed_at = now()
+        WHERE id = ${executionId}::uuid
+      `;
+      await ctx.adminSql`
+        INSERT INTO "execution_steps" (execution_id, node_id, step_order, status)
+        VALUES (${executionId}::uuid, 'node-draft-start', 0, 'failed')
+      `;
+      executionQueueMock.add.mockClear();
+
+      // node-draft-start 只存在于草稿中；按发布版本解析会找不到该节点
+      const resumeResponse = await request(app.getHttpServer())
+        .post(`/api/v1/executions/${executionId}/resume`)
+        .set(owner.headers)
+        .send({ fromNodeId: 'node-draft-start' });
+
+      expect(resumeResponse.status).toBe(202);
+      expect(resumeResponse.body.data.status).toBe('running');
+      expect(resumeResponse.body.data.workflowVersionId).toBeNull();
+      expect(resumeResponse.body.data.definitionSource).toBe('draft');
+      expect(executionQueueMock.add).toHaveBeenCalledWith('resume-execution', {
+        executionId,
+        tenantId: owner.tenantId,
+      });
+    });
+  });
+
   describe('GET /api/v1/workflow-definitions', () => {
     it('应返回分页工作流定义列表且排除画布大字段', async () => {
       const owner = await seedTenant('definitions-list');

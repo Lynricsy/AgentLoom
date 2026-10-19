@@ -9,6 +9,7 @@ import {
   formatTriggerSource,
   getExecutionStartedAt,
 } from '../lib/presentation'
+import { DraftRunBadge } from './DraftRunBadge'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { Button } from '@/shared/ui/button'
 import { Card } from '@/shared/ui/card'
@@ -44,6 +45,7 @@ export const RunCard = memo(function RunCard({ execution }: RunCardProps) {
               <span className="text-xs uppercase tracking-wider text-muted-foreground">
                 Run #{execution.id.slice(0, 8)}
               </span>
+              <DraftRunBadge execution={execution} />
             </div>
 
             <div className="grid gap-2 text-sm tabular-nums sm:grid-cols-3">

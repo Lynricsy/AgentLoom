@@ -115,7 +115,8 @@ export interface ExecutionDetail
   extends Omit<ExecutionResponse, 'steps' | 'workflowVersion'> {
   steps: ExecutionStep[]
   workflowVersion: {
-    id: string
+    /** 草稿运行（definitionSource = 'draft'）没有对应版本，为 null */
+    id: string | null
     graph: ExecutionWorkflowGraph
   }
 }

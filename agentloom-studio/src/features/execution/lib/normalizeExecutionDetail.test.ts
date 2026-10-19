@@ -9,6 +9,7 @@ describe('normalizeExecutionDetail', () => {
       workflowDefinitionId: 'wf-1',
       workflowId: 'workflow-1',
       workflowVersionId: 'ver-1',
+      definitionSource: 'version',
       status: 'completed',
       triggerType: 'manual',
       inputParams: {},
@@ -59,6 +60,44 @@ describe('normalizeExecutionDetail', () => {
     expect(normalized.steps[0]?.input).not.toEqual({ label: '配置元数据' })
   })
 
+  it('草稿运行没有版本 id，画布图仍取自执行的定义快照', () => {
+    const normalized = normalizeExecutionDetail({
+      id: 'exec-draft',
+      tenantId: 'tenant-1',
+      workflowDefinitionId: 'wf-1',
+      workflowId: 'workflow-1',
+      workflowVersionId: null,
+      definitionSource: 'draft',
+      status: 'completed',
+      triggerType: 'manual',
+      inputParams: {},
+      definitionSnapshot: {
+        nodes: [{ id: 'draft-node', type: 'agent', data: { label: 'Draft' } }],
+        edges: [],
+      },
+      startedAt: null,
+      completedAt: null,
+      failedAt: null,
+      cancelledAt: null,
+      errorMessage: null,
+      totalSteps: 0,
+      completedSteps: 0,
+      createdBy: 'user-1',
+      createdAt: '2026-03-10T10:00:00.000Z',
+      updatedAt: '2026-03-10T10:00:00.000Z',
+      steps: [],
+    })
+
+    expect(normalized.definitionSource).toBe('draft')
+    expect(normalized.workflowVersion).toEqual({
+      id: null,
+      graph: {
+        nodes: [{ id: 'draft-node', type: 'agent', data: { label: 'Draft' } }],
+        edges: [],
+      },
+    })
+  })
+
   it('保留 nodeData 与结构化 errorDetail 以支持时间线展示', () => {
     const normalized = normalizeExecutionDetail({
       id: 'exec-1',
@@ -66,6 +105,7 @@ describe('normalizeExecutionDetail', () => {
       workflowDefinitionId: 'wf-1',
       workflowId: 'workflow-1',
       workflowVersionId: 'ver-1',
+      definitionSource: 'version',
       status: 'failed',
       triggerType: 'manual',
       inputParams: {},

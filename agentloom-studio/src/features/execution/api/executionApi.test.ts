@@ -43,6 +43,7 @@ const mockResponse = {
     workflowDefinitionId: 'wf-001',
     workflowId: 'workflow-001',
     workflowVersionId: 'ver-001',
+    definitionSource: 'version',
     status: 'pending',
     triggerType: 'manual',
     inputParams: {},

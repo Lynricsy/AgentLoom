@@ -18,6 +18,7 @@ function createExecution(overrides: Partial<ExecutionResponse> = {}): ExecutionR
     workflowDefinitionId: 'wf-001',
     workflowId: 'workflow-001',
     workflowVersionId: 'ver-001',
+    definitionSource: 'version',
     status: 'completed',
     triggerType: 'manual',
     inputParams: {},
@@ -46,6 +47,25 @@ describe('RunCard', () => {
     expect(screen.getByText('已完成')).toBeInTheDocument()
     expect(screen.getByText('手动')).toBeInTheDocument()
     expect(screen.getByText('1m 15s')).toBeInTheDocument()
+  })
+
+  it('草稿运行显示「草稿运行」标记', () => {
+    render(
+      <RunCard
+        execution={createExecution({
+          workflowVersionId: null,
+          definitionSource: 'draft',
+        })}
+      />,
+    )
+
+    expect(screen.getByTestId('execution-draft-run-badge')).toHaveTextContent('草稿运行')
+  })
+
+  it('版本运行不显示草稿标记', () => {
+    render(<RunCard execution={createExecution()} />)
+
+    expect(screen.queryByTestId('execution-draft-run-badge')).not.toBeInTheDocument()
   })
 
   it('点击后导航到执行调试视图', () => {

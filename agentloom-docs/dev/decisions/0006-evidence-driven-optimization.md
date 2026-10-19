@@ -16,7 +16,7 @@ docType: explanation
 | # | 事实 | 证据 |
 | --- | --- | --- |
 | F1 | 旧 `optimization-suggestion` 模块的采纳白名单为空，`apply` 恒返回 409；它改写的 agent 节点字段（模型、工具、超时、自治级别）不参与执行 | 已删除的 `optimization-suggestion.service.ts`（`APPLICABLE_SUGGESTION_TYPES`） |
-| F2 | 执行已冻结版本：`workflow_executions.workflow_version_id` 非空 + `definition_snapshot`；步骤 `nodeData` 来自快照；团队启动把配置快照写入 `team_runs.config` | `agentloom-server/src/database/schema/workflow-executions.schema.ts`、`agentloom-server/src/modules/team/team-run.service.ts` |
+| F2 | 执行已冻结版本：`workflow_executions.workflow_version_id` 非空 + `definition_snapshot`；步骤 `nodeData` 来自快照；团队启动把配置快照写入 `team_runs.config`。后续变更（D-135）：Studio 草稿运行不对应版本，`workflow_version_id` 为 NULL 并标 `definition_source = 'draft'`，定义仍冻结在 `definition_snapshot`，见 [核心概念](/dev/concepts) | `agentloom-server/src/database/schema/workflow-executions.schema.ts`、`agentloom-server/src/modules/team/team-run.service.ts` |
 | F3 | `WorkflowPublishService.publish({ versionId })` 可把已有版本置为发布版本，其他版本的 `published_at` 清空；校验链针对草稿 | `agentloom-server/src/modules/workflow-definition/workflow-publish.service.ts` |
 | F4 | 团队运行记录 `failure_reason`（`budget_exhausted` / `deadline_exceeded` …）、预算与用量；路由决策记录 `fallback_reason` 与 `selected_model_id` | `agentloom-server/src/database/schema/team-runs.schema.ts`、`agentloom-server/src/database/schema/routing-decisions.schema.ts` |
 | F5 | 请求在租户事务拦截器内执行，抛异常即回滚 | `agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts` |

@@ -24,6 +24,7 @@ const mockExecution = {
   id: EXECUTION_ID,
   workflowDefinitionId: WORKFLOW_ID,
   workflowVersionId: '019391d4-e000-7000-0000-000000000005',
+  definitionSource: 'version' as const,
   tenantId: TENANT_ID,
   status: 'pending' as const,
   triggerType: 'manual' as const,
@@ -264,6 +265,8 @@ describe('ExecutionController', () => {
         page: 1,
         limit: 20,
         status: undefined,
+        workflowVersionId: undefined,
+        definitionSource: undefined,
       });
 
       expect(result).toEqual({
@@ -274,7 +277,11 @@ describe('ExecutionController', () => {
         WORKFLOW_ID,
         1,
         20,
-        undefined,
+        {
+          status: undefined,
+          workflowVersionId: undefined,
+          definitionSource: undefined,
+        },
       );
     });
 
@@ -289,6 +296,8 @@ describe('ExecutionController', () => {
         page: 1,
         limit: 20,
         status: 'running',
+        workflowVersionId: undefined,
+        definitionSource: undefined,
       });
 
       expect(result).toEqual({
@@ -299,7 +308,37 @@ describe('ExecutionController', () => {
         WORKFLOW_ID,
         1,
         20,
-        'running',
+        {
+          status: 'running',
+          workflowVersionId: undefined,
+          definitionSource: undefined,
+        },
+      );
+    });
+
+    it('应透传版本与定义来源筛选', async () => {
+      mockService.listExecutions.mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 20, pageSize: 20, totalPages: 0 },
+      });
+
+      await controller.listExecutions(WORKFLOW_ID, {
+        page: 1,
+        limit: 20,
+        status: undefined,
+        workflowVersionId: 'f1f1f1f1-0000-4000-8000-000000000001',
+        definitionSource: 'version',
+      });
+
+      expect(mockService.listExecutions).toHaveBeenCalledWith(
+        WORKFLOW_ID,
+        1,
+        20,
+        {
+          status: undefined,
+          workflowVersionId: 'f1f1f1f1-0000-4000-8000-000000000001',
+          definitionSource: 'version',
+        },
       );
     });
   });

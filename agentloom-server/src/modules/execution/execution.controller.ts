@@ -122,7 +122,11 @@ export class ExecutionController {
       workflowId,
       query.page,
       query.limit,
-      query.status,
+      {
+        status: query.status,
+        workflowVersionId: query.workflowVersionId,
+        definitionSource: query.definitionSource,
+      },
     );
 
     return {

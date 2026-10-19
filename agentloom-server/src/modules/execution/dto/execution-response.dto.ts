@@ -74,7 +74,9 @@ export const ExecutionResponseSwaggerSchema = z.object({
   id: z.string().uuid(),
   workflowId: z.string().uuid(),
   workflowDefinitionId: z.string().uuid(),
-  workflowVersionId: z.string().uuid(),
+  // 草稿运行（definitionSource = draft）没有对应版本，为 null；实际定义见 definitionSnapshot
+  workflowVersionId: z.string().uuid().nullable(),
+  definitionSource: z.enum(['version', 'draft']),
   tenantId: z.string().uuid(),
   status: z.enum([
     'pending',
