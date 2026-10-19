@@ -1809,7 +1809,6 @@ describe('WorkflowVersionService', () => {
 
       expect(result.data.versionNumber).toBe(2);
       expect(result.data.publishedAt).toBe(NOW.toISOString());
-      expect(result.warnings).toEqual([]);
       expect(db.insert).toHaveBeenCalledOnce();
       expect(db.update).toHaveBeenCalledTimes(2);
       expect(redis.del).toHaveBeenCalledOnce();
@@ -1841,7 +1840,6 @@ describe('WorkflowVersionService', () => {
 
       expect(result.data.id).toBe(VERSION_ID);
       expect(result.data.publishedAt).toBe(NOW.toISOString());
-      expect(result.warnings).toEqual([]);
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalledTimes(3);
     });
@@ -1925,7 +1923,6 @@ describe('WorkflowVersionService', () => {
 
       expect(result.data.versionNumber).toBe(3);
       expect(result.data.publishedAt).toBe(NOW.toISOString());
-      expect(result.warnings).toEqual([]);
     });
 
     it('工作流无节点时应当抛出 WorkflowPublishValidationException', async () => {
@@ -2309,48 +2306,28 @@ describe('WorkflowVersionService', () => {
       });
     });
 
-    it('端口类型不兼容时应当返回发布 warnings', async () => {
-      const workflow = createPortMappedWorkflow('text', 'image');
-      const selectWf = createSelectChain([workflow]);
-      const selectReleases = createSelectChain([]);
-      const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select
-        .mockReturnValueOnce(selectWf)
-        .mockReturnValueOnce(selectReleases)
-        .mockReturnValueOnce(selectMax);
+    it('端口类型不兼容时应当以 422 阻止发布，errors 指明连线与端口', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createPortMappedWorkflow('text', 'image')]),
+      );
 
-      const publishedVersion = createMockVersion({
-        versionNumber: 2,
-        publishedAt: NOW,
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/workflow-publish-validation',
+        status: 422,
+        errors: [
+          {
+            field: 'edges.edge-typed-1',
+            message:
+              '节点 node-1 的输出端口 "output-text" (text) 与节点 node-2 的输入端口 "input-data" (image) 类型不兼容',
+          },
+        ],
       });
-      db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
-      db.update
-        .mockReturnValueOnce(createUpdateChainVoid())
-        .mockReturnValueOnce(createUpdateChainVoid());
-      redis.del.mockResolvedValueOnce(undefined);
-
-      const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
-
-      expect(result.warnings).toEqual([
-        {
-          code: 'PORT_TYPE_INCOMPATIBLE',
-          sourceNodeId: 'node-1',
-          targetNodeId: 'node-2',
-          sourcePort: {
-            name: 'output-text',
-            dataType: 'text',
-          },
-          targetPort: {
-            name: 'input-data',
-            dataType: 'image',
-          },
-          message:
-            '输出端口 "output-text" (text) 与输入端口 "input-data" (image) 类型不兼容',
-        },
-      ]);
+      expect(db.insert).not.toHaveBeenCalled();
     });
 
-    it('端口类型一致时不应返回发布 warnings', async () => {
+    it('端口类型一致时正常发布', async () => {
       const workflow = createPortMappedWorkflow('text', 'text');
       const selectWf = createSelectChain([workflow]);
       const selectReleases = createSelectChain([]);
@@ -2372,32 +2349,104 @@ describe('WorkflowVersionService', () => {
 
       const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
 
-      expect(result.warnings).toEqual([]);
+      expect(result.data.versionNumber).toBe(2);
     });
 
-    it('目标端口为 json 时不应返回发布 warnings', async () => {
-      const workflow = createPortMappedWorkflow('model', 'json');
-      const selectWf = createSelectChain([workflow]);
-      const selectReleases = createSelectChain([]);
-      const selectMax = createSelectChain([{ maxVersion: 1 }]);
-      db.select
-        .mockReturnValueOnce(selectWf)
-        .mockReturnValueOnce(selectReleases)
-        .mockReturnValueOnce(selectMax);
+    it('目标端口为 json 时不再通配放行（与执行期同一规则）', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createPortMappedWorkflow('model', 'json')]),
+      );
 
-      const publishedVersion = createMockVersion({
-        versionNumber: 2,
-        publishedAt: NOW,
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
+    });
+
+    it('内置节点静态端口（data.inputPorts/outputPorts）同样参与校验：json → exec 拒绝', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createDraftWorkflow({
+            nodes: [
+              {
+                id: 'pp',
+                type: 'input-preprocessor',
+                position: { x: 0, y: 0 },
+                data: { transformType: 'script', expression: '({ a: 1 })' },
+              },
+              {
+                id: 'to',
+                type: 'text-output',
+                position: { x: 200, y: 0 },
+                data: {},
+              },
+            ],
+            edges: [
+              {
+                id: 'pp-json-to-exec',
+                source: 'pp',
+                target: 'to',
+                sourceHandle: 'json-out',
+                targetHandle: 'exec-in',
+              },
+            ],
+          }),
+        ]),
+      );
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).rejects.toMatchObject({
+        errors: [
+          expect.objectContaining({
+            field: 'edges.pp-json-to-exec',
+            message: expect.stringContaining('(json)'),
+          }),
+        ],
       });
-      db.insert.mockReturnValueOnce(createInsertChain([publishedVersion]));
+    });
+
+    it('json → array（code-tool 返回值 → Iteration 数组）经运行期校验变换，可以发布', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'code',
+            type: 'code-tool',
+            position: { x: 0, y: 0 },
+            data: { language: 'javascript', code: 'output = [1, 2]' },
+          },
+          {
+            id: 'it',
+            type: 'iteration',
+            position: { x: 200, y: 0 },
+            data: {},
+          },
+        ],
+        edges: [
+          {
+            id: 'code-result-to-items',
+            source: 'code',
+            target: 'it',
+            sourceHandle: 'result-out',
+            targetHandle: 'items-in',
+          },
+        ],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 1 }]));
+      db.insert.mockReturnValueOnce(
+        createInsertChain([
+          createMockVersion({ versionNumber: 2, publishedAt: NOW }),
+        ]),
+      );
       db.update
         .mockReturnValueOnce(createUpdateChainVoid())
         .mockReturnValueOnce(createUpdateChainVoid());
-      redis.del.mockResolvedValueOnce(undefined);
 
-      const result = await service.publish(WORKFLOW_ID, {}, USER_ID);
-
-      expect(result.warnings).toEqual([]);
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).resolves.toBeDefined();
     });
 
     it('存在 canonical 超限自治节点时应阻止发布并返回节点级错误', async () => {

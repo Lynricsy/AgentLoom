@@ -120,20 +120,6 @@ export type CreateVersionPayload = CreateVersionDto
 /** POST /workflow-definitions/:id/publish 请求体（生成模型） */
 export type PublishWorkflowPayload = PublishWorkflowDto
 
-export interface PublishWarningPort {
-  name: string
-  dataType: string
-}
-
-export interface PublishWarning {
-  code: string
-  sourceNodeId: string
-  targetNodeId: string
-  sourcePort: PublishWarningPort
-  targetPort: PublishWarningPort
-  message: string
-}
-
 /**
  * POST /workflow-definitions 请求体（生成模型）。
  * 相比原手写类型：补回了漏掉的 `marketplaceListingId`，

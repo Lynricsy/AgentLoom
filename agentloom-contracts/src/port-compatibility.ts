@@ -9,8 +9,8 @@ import type { PortDataType } from './port-data-type';
  * 这里把同一张表以 wire 形式导出，让 server 的执行期守卫与 Studio 的同步 guard
  * 都从它派生，消除此前四端各写一份、彼此漂移的问题：
  *
- * - Studio 的同步 guard 曾多出 `json<->array`，但 WASM / fallback 的深层求值会拒绝，
- *   用户在画布上本来就连不上；
+ * - Studio 的同步 guard 曾无条件放行 `json<->array`，而 WASM / fallback 的深层求值会拒绝；
+ *   现在只有 `json -> array` 一条，经 Rust 规则表进入四端，且执行期按实际值校验；
  * - server 的 `targetType === 'json'` 通配曾让任意类型都能连进 json 端口，
  *   而这样的边在画布上根本造不出来。
  *
@@ -44,6 +44,13 @@ export const PORT_DATA_TYPE_TRANSFORM_RULES: readonly PortDataTypeTransformRule[
       targetKind: 'text',
       reasonKey: 'skill_to_text_degrade',
       transformFn: 'extract_skill_text',
+    },
+    {
+      // json 端口的值可能是数组：画布放行，server 执行期按实际值校验，不是数组时目标节点失败
+      sourceKind: 'json',
+      targetKind: 'array',
+      reasonKey: 'json_to_array_runtime_check',
+      transformFn: 'ensure_array',
     },
   ] as const;
 

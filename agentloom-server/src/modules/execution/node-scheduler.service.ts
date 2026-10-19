@@ -44,9 +44,11 @@ import {
 } from './execution.exceptions';
 import {
   PORT_VALUE_TRANSFORMS,
+  STRICT_PORT_VALUE_TRANSFORMS,
   findPortTransformFn,
   type PortTransformWarning,
 } from './port-value-transform.util';
+import { resolveEdgePortTypes } from './edge-port-type.util';
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CheckpointService } from './checkpoint.service';
@@ -543,96 +545,26 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
   }
 
   /**
-   * 读取节点某个方向的端口类型信息。
-   *
-   * 两级查找：normalize 阶段已把内置节点的静态端口写入 data.inputPorts/outputPorts
-   * （字段名 id），这是绝大多数边的唯一来源；portMappingMetadata 只有动态端口
-   * （MCP 工具、可复用块）才会写，字段名是 name。两处都查不到时 dataType 为 undefined，
-   * 调用方保持 no-op —— 动态端口在快照里可能确实没有类型信息，不能误报不兼容。
-   */
-  private resolvePortType(
-    node: schema.ReactFlowNode,
-    handle: string,
-    direction: 'source' | 'target',
-  ): { dataType?: string; acceptsAnyDataType: boolean } {
-    const staticPorts = (
-      direction === 'source' ? node.data?.outputPorts : node.data?.inputPorts
-    ) as
-      | Array<{
-          id?: string;
-          name?: string;
-          dataType?: string;
-          acceptsAnyDataType?: boolean;
-        }>
-      | undefined;
-    const staticPort = Array.isArray(staticPorts)
-      ? staticPorts.find((p) => p?.id === handle || p?.name === handle)
-      : undefined;
-    if (staticPort?.dataType) {
-      return {
-        dataType: staticPort.dataType,
-        acceptsAnyDataType: staticPort.acceptsAnyDataType === true,
-      };
-    }
-
-    const metadata = node.data?.portMappingMetadata as
-      | {
-          outputs?: Array<{ name: string; dataType: string }>;
-          inputs?: Array<{ name: string; dataType: string }>;
-        }
-      | undefined;
-    const dynamicPorts =
-      direction === 'source' ? metadata?.outputs : metadata?.inputs;
-    return {
-      dataType: dynamicPorts?.find((p) => p.name === handle)?.dataType,
-      acceptsAnyDataType: false,
-    };
-  }
-
-  /**
    * 校验边两端端口 dataType 是否兼容；两端类型都可解析时返回该边的端口类型信息，
    * 供 resolveNodeInput 决定是否执行跨类型变换。任一端缺类型时返回 undefined（no-op）。
+   * 取值规则与发布期校验共用 resolveEdgePortTypes。
    */
   private checkEdgePortTypeCompatibility(
     edge: ReactFlowEdge,
     nodes: schema.ReactFlowNode[],
   ): TypeMismatchDetail | undefined {
-    const sourceHandle = readEdgeHandle(edge, 'source');
-    const targetHandle = readEdgeHandle(edge, 'target');
-    if (!sourceHandle || !targetHandle) return undefined;
-
-    const sourceNode = nodes.find((n) => n.id === edge.source);
-    const targetNode = nodes.find((n) => n.id === edge.target);
-    if (!sourceNode || !targetNode) return undefined;
-
-    const sourcePort = this.resolvePortType(sourceNode, sourceHandle, 'source');
-    const targetPort = this.resolvePortType(targetNode, targetHandle, 'target');
-    const sourceType = sourcePort.dataType;
-    const targetType = targetPort.dataType;
-    if (!sourceType || !targetType) return undefined;
-    // 与 Studio 连线校验一致：任一端声明 acceptsAnyDataType 时原样透传，不校验也不做类型变换
-    if (sourcePort.acceptsAnyDataType || targetPort.acceptsAnyDataType) {
-      return undefined;
-    }
-
-    const detail: TypeMismatchDetail = {
-      sourceNodeId: edge.source,
-      targetNodeId: edge.target,
-      sourcePortId: sourceHandle,
-      targetPortId: targetHandle,
-      sourceType,
-      targetType,
-      edgeId: edge.id,
-    };
-    if (!isPortTypeCompatible(sourceType, targetType)) {
+    const detail = resolveEdgePortTypes(edge, nodes);
+    if (detail && !isPortTypeCompatible(detail.sourceType, detail.targetType)) {
       throw new NodeTypeMismatchException(detail);
     }
     return detail;
   }
 
   /**
-   * 按边两端端口类型执行跨类型变换。变换失败（例如文本不是合法 JSON）时透传原值并
+   * 按边两端端口类型执行跨类型变换。宽松变换失败（例如文本不是合法 JSON）时透传原值并
    * 记一条告警：连线在画布上合法，失败只说明这次上游值不满足变换前提，不应让下游节点失败。
+   * 运行期校验型变换（STRICT_PORT_VALUE_TRANSFORMS，如 json → array 的 ensure_array）失败时
+   * 抛 NodeTypeMismatchException，目标节点以 node-type-mismatch 失败，原因写明实际值。
    */
   private applyEdgePortTransform(
     value: unknown,
@@ -652,9 +584,13 @@ export class NodeSchedulerService implements CompoundExecutionRuntime {
       }
       return transform(value);
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (STRICT_PORT_VALUE_TRANSFORMS[transformFn]) {
+        throw new NodeTypeMismatchException(edgePortTypes, reason);
+      }
       const warning: PortTransformWarning = {
         type: 'port-value-transform-failed',
-        message: `${transformFn} 失败，下游收到上游原值：${error instanceof Error ? error.message : String(error)}`,
+        message: `${transformFn} 失败，下游收到上游原值：${reason}`,
         transformFn,
         ...edgePortTypes,
       };

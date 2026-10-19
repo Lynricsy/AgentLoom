@@ -378,6 +378,16 @@ function compareSchema(source: TypeSchema, target: TypeSchema, path: string): Co
   }
 
   if (source.shape !== target.shape) {
+    // 与 Rust compare_schema 一致：端口根部 json 对象 → json 数组按端口级 dataType（json → array）
+    // 查变换规则；执行期变换只作用于整个端口值，嵌套字段不放行。
+    const arrayRule =
+      path === '' && target.shape === 'array'
+        ? TRANSFORM_RULES.find((rule) => rule.sourceKind === 'json' && rule.targetKind === 'array')
+        : undefined
+    if (arrayRule) {
+      return transformState(arrayRule.reason, arrayRule.transformFn, countUnits(target))
+    }
+
     return incompatibleState('shape_mismatch', shapeConflictPath(path), countUnits(target))
   }
 

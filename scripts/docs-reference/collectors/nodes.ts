@@ -119,7 +119,7 @@ export function portDataTypesArtifact(): Artifact {
       ),
       '**dataType 兼容矩阵**（来源 `agentloom-contracts/src/port-compatibility.ts` 的 `isPortDataTypeCompatible`；✓ 同类型直连，「可连」为跨类型变换规则允许的连线，空白为不兼容。exec / volume / memory 的专有连线约束与 schema 深层比对不在此表内）：',
       matrix,
-      '**跨类型变换规则**（`PORT_DATA_TYPE_TRANSFORM_RULES`，与 type-engine 同步）。server 执行期用这张表校验连线，并在组装下游输入时执行对应的变换函数；变换失败（如文本不是合法 JSON）时下游收到上游原值，并在该步骤的 `checkpointData.warnings` 中记录 `port-value-transform-failed` 告警：',
+      '**跨类型变换规则**（`PORT_DATA_TYPE_TRANSFORM_RULES`，与 type-engine 同步）。server 发布期与执行期都用这张表校验连线（发布期不兼容直接拒绝），执行期在组装下游输入时执行对应的变换函数；变换失败（如文本不是合法 JSON）时下游收到上游原值，并在该步骤的 `checkpointData.warnings` 中记录 `port-value-transform-failed` 告警。`ensure_array` 是运行期校验型变换：上游值不是数组（输入预处理器脚本的 `{ "result": [...] }` 信封按其中的数组取值）时目标节点以 `node-type-mismatch` 失败：',
       table(
         ['源类型', '目标类型', '变换函数', '原因键'],
         PORT_DATA_TYPE_TRANSFORM_RULES.map((r) => [code(r.sourceKind), code(r.targetKind), code(r.transformFn), code(r.reasonKey)]),

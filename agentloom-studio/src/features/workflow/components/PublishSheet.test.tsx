@@ -140,44 +140,40 @@ describe('PublishSheet', () => {
     });
   });
 
-  it('发布返回 warnings 时显示内联警告列表', async () => {
-    mutateAsyncMock.mockResolvedValueOnce({
-      warnings: [
+  it('存在不兼容连线时展示 422 返回的逐边错误，面板保持打开', async () => {
+    mutateAsyncMock.mockRejectedValueOnce({
+      response: new Response(
+        JSON.stringify({
+          type: 'https://agentloom.dev/errors/workflow-publish-validation',
+          detail:
+            '节点 pp 的输出端口 "json-out" (json) 与节点 to 的输入端口 "exec-in" (exec) 类型不兼容',
+          errors: [
+            {
+              field: 'edges.e1',
+              message:
+                '节点 pp 的输出端口 "json-out" (json) 与节点 to 的输入端口 "exec-in" (exec) 类型不兼容',
+            },
+          ],
+        }),
         {
-          code: 'TYPE_MISMATCH_WARNING',
-          sourceNodeId: 'node-source',
-          targetNodeId: 'node-target',
-          sourcePort: { name: 'output', dataType: 'text' },
-          targetPort: { name: 'input', dataType: 'json' },
-          message: '检测到潜在类型不兼容',
+          status: 422,
+          headers: { 'Content-Type': 'application/problem+json' },
         },
-      ],
+      ),
     });
 
     render(<PublishSheet {...defaultProps} />);
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     await waitFor(() => {
-      expect(notifyMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: '发布成功',
-          description: '工作流已发布，并返回 1 条兼容性警告',
-          variant: 'success',
-        }),
-      );
+      expect(
+        screen.getByText(
+          '节点 pp 的输出端口 "json-out" (json) 与节点 to 的输入端口 "exec-in" (exec) 类型不兼容',
+        ),
+      ).toBeInTheDocument();
     });
-
-    expect(screen.getByTestId('publish-warnings-list')).toBeInTheDocument();
-    expect(screen.getByText('检测到潜在类型不兼容')).toBeInTheDocument();
-
-    expect(screen.queryByTestId('publish-warning-detail')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('publish-warning-toggle'));
-
-    expect(screen.getByTestId('publish-warning-detail')).toBeInTheDocument();
-    expect(screen.getByText('node-source.output')).toBeInTheDocument();
-    expect(screen.getByText('node-target.input')).toBeInTheDocument();
-    expect(screen.getAllByText(/text|json/)).not.toHaveLength(0);
+    expect(notifyMock).not.toHaveBeenCalled();
+    expect(defaultProps.onOpenChange).not.toHaveBeenCalled();
   });
 
   it('选择已有版本提交发布', async () => {

@@ -28,16 +28,6 @@ export const versionResponseSchema = z.object({
 
 export type VersionResponseDto = z.infer<typeof versionResponseSchema>;
 
-export interface PublishWarning {
-  code: string;
-  sourceNodeId: string;
-  targetNodeId: string;
-  sourcePort: { name: string; dataType: string };
-  targetPort: { name: string; dataType: string };
-  message: string;
-}
-
 export interface PublishResult {
   data: VersionResponseDto;
-  warnings: PublishWarning[];
 }

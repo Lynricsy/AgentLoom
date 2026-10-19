@@ -95,6 +95,15 @@ impl Default for CompatibilityChecker {
                     reason_key: "skill_to_text_degrade",
                     transform_fn: "extract_skill_text",
                 },
+                // json 端口的值在运行期可能是数组（code-tool 返回数组、Merge 合并结果等），
+                // 静态 schema 无法判定：画布放行，server 执行期用 ensure_array 按实际值校验，
+                // 不是数组时目标节点失败。
+                TransformRule {
+                    source_kind: PortDataType::Json,
+                    target_kind: PortDataType::Array,
+                    reason_key: "json_to_array_runtime_check",
+                    transform_fn: "ensure_array",
+                },
             ],
         }
     }
@@ -155,6 +164,25 @@ impl CompatibilityChecker {
             }
             (TypeSchema::Array(source_array), TypeSchema::Array(target_array)) => {
                 self.compare_array(source_array, target_array, path)
+            }
+            // 端口根部的 json 对象/标量 → json 数组：Array 形状的 kind 也是 json，走不到上面的
+            // kind 分支，这里按端口级 dataType（json → array）查变换规则。只在根部放行，
+            // 因为执行期变换只作用于整个端口值，嵌套字段没有运行期校验。
+            (TypeSchema::Object(_) | TypeSchema::Scalar(_), TypeSchema::Array(_))
+                if path.is_empty() =>
+            {
+                match self.find_transform_rule(PortDataType::Json, PortDataType::Array) {
+                    Some(rule) => ComparisonState::transform(
+                        rule.reason_key,
+                        rule.transform_fn,
+                        count_units(target),
+                    ),
+                    None => ComparisonState::incompatible(
+                        "shape_mismatch",
+                        Some(shape_conflict_path(path)),
+                        count_units(target),
+                    ),
+                }
             }
             _ => ComparisonState::incompatible(
                 "shape_mismatch",

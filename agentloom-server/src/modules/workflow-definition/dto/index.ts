@@ -20,7 +20,6 @@ export {
 } from './workflow-export.dto';
 export type {
   PublishResult,
-  PublishWarning,
   VersionResponseDto,
 } from './version-response.dto';
 export { versionResponseSchema } from './version-response.dto';

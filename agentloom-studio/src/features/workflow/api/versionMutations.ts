@@ -7,7 +7,6 @@ import { apiClient, toSnakeBody } from "../../../shared/api/client";
 import type { ApiResponse } from "../../../shared/types/api";
 import type {
   CreateVersionPayload,
-  PublishWarning,
   PublishWorkflowPayload,
   VersionListResponse,
   WorkflowVersion,
@@ -15,9 +14,7 @@ import type {
 import { versionKeys } from "./versionKeys";
 import { workflowKeys } from "./workflowKeys";
 
-export interface PublishWorkflowResponse extends ApiResponse<WorkflowVersion> {
-  warnings?: PublishWarning[];
-}
+export type PublishWorkflowResponse = ApiResponse<WorkflowVersion>;
 
 function compareWorkflowVersionsDesc(
   left: WorkflowVersion,

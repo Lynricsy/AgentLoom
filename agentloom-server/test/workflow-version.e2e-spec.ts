@@ -458,7 +458,7 @@ describe('WorkflowVersion E2E', () => {
     ).toBe(true);
   });
 
-  it('应当在发布存在不兼容端口边的工作流时返回 warnings', async () => {
+  it('应当以 422 拒绝发布存在不兼容端口边的工作流', async () => {
     const owner = await seedTenant('owner-publish-warning');
     const workflow = await seedDraftWorkflow({
       tenantId: owner.tenantId,
@@ -502,27 +502,20 @@ describe('WorkflowVersion E2E', () => {
       .post(`/api/v1/workflow-definitions/${workflow.id}/publish`)
       .set(owner.headers)
       .send({
-        label: 'release-with-warning',
+        label: 'release-with-incompatible-edge',
       });
 
-    expect(publishResponse.status).toBe(200);
-    expect(publishResponse.body.warnings).toEqual([
-      {
-        code: 'PORT_TYPE_INCOMPATIBLE',
-        sourceNodeId: 'node-source',
-        targetNodeId: 'node-target',
-        sourcePort: {
-          name: 'output-text',
-          dataType: 'text',
+    expect(publishResponse.status).toBe(422);
+    expect(publishResponse.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/workflow-publish-validation',
+      errors: [
+        {
+          field: 'edges.edge-typed-1',
+          message:
+            '节点 node-source 的输出端口 "output-text" (text) 与节点 node-target 的输入端口 "input-image" (image) 类型不兼容',
         },
-        targetPort: {
-          name: 'input-image',
-          dataType: 'image',
-        },
-        message:
-          '输出端口 "output-text" (text) 与输入端口 "input-image" (image) 类型不兼容',
-      },
-    ]);
+      ],
+    });
   });
 
   it('应当在归档后拒绝新的写操作并同步归档历史版本', async () => {

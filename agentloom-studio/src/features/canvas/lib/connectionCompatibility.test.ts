@@ -566,14 +566,14 @@ describe('arePortDataTypesCompatible', () => {
     expect(arePortDataTypesCompatible('array', 'array')).toBe(true)
   })
 
-  it('放行 contracts canonical 表的三条变换', () => {
+  it('放行 contracts canonical 表的四条变换', () => {
     expect(arePortDataTypesCompatible('text', 'json')).toBe(true)
     expect(arePortDataTypesCompatible('json', 'text')).toBe(true)
     expect(arePortDataTypesCompatible('skill', 'text')).toBe(true)
+    expect(arePortDataTypesCompatible('json', 'array')).toBe(true)
   })
 
-  it('json 与 array 之间不再互通（同步 guard 曾比深层求值更宽松）', () => {
-    expect(arePortDataTypesCompatible('json', 'array')).toBe(false)
+  it('array -> json 不在变换表内', () => {
     expect(arePortDataTypesCompatible('array', 'json')).toBe(false)
   })
 

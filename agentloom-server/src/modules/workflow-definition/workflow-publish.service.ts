@@ -33,8 +33,13 @@ import {
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
 import { TemplateService } from '../template/template.service';
-import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
+import {
+  WorkflowNotPublishedException,
+  isPortTypeCompatible,
+} from '../execution/execution.exceptions';
 import { getWorkflowAgentDefinitionId } from '../execution/workflow-runtime-input.util';
+import { resolveEdgePortTypes } from '../execution/edge-port-type.util';
+import type { FieldError } from '../../common/types/problem-details.type';
 import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
@@ -54,7 +59,6 @@ import {
 } from './dto/workflow-export.dto';
 import type {
   VersionResponseDto,
-  PublishWarning,
   PublishResult,
 } from './dto/version-response.dto';
 import {
@@ -268,7 +272,7 @@ export class WorkflowPublishService {
         if (graphStructureErrors.length > 0) {
           throw new WorkflowPublishValidationException(graphStructureErrors);
         }
-        const warnings = this.validateEdgeTypeCompatibility(
+        this.assertEdgePortTypesCompatible(
           normalizedGraph.nodes,
           normalizedGraph.edges,
         );
@@ -384,7 +388,6 @@ export class WorkflowPublishService {
         return {
           tenantId: workflow.tenantId,
           version: publishedVersion,
-          warnings,
         };
       },
     );
@@ -403,7 +406,6 @@ export class WorkflowPublishService {
 
     return {
       data: this.toResponseDto(publishResult.version),
-      warnings: publishResult.warnings,
     };
   }
 
@@ -533,52 +535,35 @@ export class WorkflowPublishService {
     };
   }
 
-  private validateEdgeTypeCompatibility(
+  /**
+   * 发布期端口类型校验，与执行期守卫（node-scheduler 的 checkEdgePortTypeCompatibility）
+   * 同一规则：端口类型取自 data.inputPorts/outputPorts 与 portMappingMetadata
+   * （resolveEdgePortTypes），兼容性由 contracts 的 isPortTypeCompatible 判定。
+   * 运行到目标节点必然 node-type-mismatch 的图不允许发布，避免上游节点（含 LLM 调用）白跑。
+   */
+  private assertEdgePortTypesCompatible(
     nodes: schema.ReactFlowNode[],
     edges: schema.ReactFlowEdge[],
-  ): PublishWarning[] {
-    const warnings: PublishWarning[] = [];
-
-    for (const edge of edges) {
-      if (!edge.sourceHandle || !edge.targetHandle) continue;
-
-      const sourceNode = nodes.find((n) => n.id === edge.source);
-      const targetNode = nodes.find((n) => n.id === edge.target);
-      if (!sourceNode || !targetNode) continue;
-
-      const sourcePortMeta = sourceNode.data?.portMappingMetadata as
-        { outputs?: Array<{ name: string; dataType: string }> } | undefined;
-      const targetPortMeta = targetNode.data?.portMappingMetadata as
-        { inputs?: Array<{ name: string; dataType: string }> } | undefined;
-
-      const sourcePort = sourcePortMeta?.outputs?.find(
-        (p) => p.name === edge.sourceHandle,
-      );
-      const targetPort = targetPortMeta?.inputs?.find(
-        (p) => p.name === edge.targetHandle,
-      );
-      if (!sourcePort?.dataType || !targetPort?.dataType) continue;
-
-      if (sourcePort.dataType === targetPort.dataType) continue;
-      if (targetPort.dataType === 'json') continue;
-
-      warnings.push({
-        code: 'PORT_TYPE_INCOMPATIBLE',
-        sourceNodeId: edge.source,
-        targetNodeId: edge.target,
-        sourcePort: {
-          name: sourcePort.name,
-          dataType: sourcePort.dataType,
+  ): void {
+    const errors: FieldError[] = edges.flatMap((edge) => {
+      const detail = resolveEdgePortTypes(edge, nodes);
+      if (
+        !detail ||
+        isPortTypeCompatible(detail.sourceType, detail.targetType)
+      ) {
+        return [];
+      }
+      return [
+        {
+          field: `edges.${edge.id}`,
+          message: `节点 ${detail.sourceNodeId} 的输出端口 "${detail.sourcePortId}" (${detail.sourceType}) 与节点 ${detail.targetNodeId} 的输入端口 "${detail.targetPortId}" (${detail.targetType}) 类型不兼容`,
         },
-        targetPort: {
-          name: targetPort.name,
-          dataType: targetPort.dataType,
-        },
-        message: `输出端口 "${sourcePort.name}" (${sourcePort.dataType}) 与输入端口 "${targetPort.name}" (${targetPort.dataType}) 类型不兼容`,
-      });
+      ];
+    });
+
+    if (errors.length > 0) {
+      throw new WorkflowPublishValidationException(errors);
     }
-
-    return warnings;
   }
 
   /**

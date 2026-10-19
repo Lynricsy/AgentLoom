@@ -45,6 +45,7 @@ import {
   InterventionNotAllowedException,
   NodeInputResolutionException,
   InterventionPermissionDeniedException,
+  NodeTypeMismatchException,
 } from '../execution.exceptions';
 import {
   ToolCallNotFoundException,
@@ -690,6 +691,127 @@ describe('facade migrated scenarios', () => {
             nodes,
           ),
         ).toEqual({ 'text-in': '# Review\n\nR1\n\n# Lint\n\nd2' });
+      });
+
+      describe('json → array：ensure_array 按实际值校验', () => {
+        const nodes = [
+          makeNode('code', 'code-tool', {
+            outputPorts: [{ id: 'result-out', dataType: 'json' }],
+          }),
+          makeNode('it', 'iteration', {
+            inputPorts: [{ id: 'items-in', dataType: 'array' }],
+          }),
+        ];
+        const edges = [makeEdge('code', 'it', 'result-out', 'items-in')];
+        const codeStep = (output: unknown) =>
+          makeStep({
+            nodeId: 'code',
+            nodeType: 'code-tool',
+            status: 'completed',
+            result: { result: output, output },
+          });
+
+        it('上游值是数组时原样交给 Iteration', () => {
+          expect(
+            service.resolveNodeInput('it', edges, [codeStep([1, 2, 3])], nodes),
+          ).toEqual({ 'items-in': [1, 2, 3] });
+        });
+
+        it('输入预处理器脚本的 { result: [...] } 信封按其承载的数组取值', () => {
+          const preprocessorNodes = [
+            makeNode('pre', 'input-preprocessor', {
+              outputPorts: [{ id: 'json-out', dataType: 'json' }],
+            }),
+            nodes[1],
+          ];
+          const steps = [
+            makeStep({
+              nodeId: 'pre',
+              nodeType: 'input-preprocessor',
+              status: 'completed',
+              result: { result: [1, 2], 'json-out': { result: [1, 2] } },
+            }),
+          ];
+
+          expect(
+            service.resolveNodeInput(
+              'it',
+              [makeEdge('pre', 'it', 'json-out', 'items-in')],
+              steps,
+              preprocessorNodes,
+            ),
+          ).toEqual({ 'items-in': [1, 2] });
+        });
+
+        it('上游值不是数组时抛 node-type-mismatch，并写明实际类型', () => {
+          const warnings: PortTransformWarning[] = [];
+          let thrown: unknown;
+          try {
+            service.resolveNodeInput(
+              'it',
+              edges,
+              [codeStep({ items: [1] })],
+              nodes,
+              warnings,
+            );
+          } catch (error) {
+            thrown = error;
+          }
+
+          expect(thrown).toBeInstanceOf(NodeTypeMismatchException);
+          expect((thrown as NodeTypeMismatchException).detail).toContain(
+            '上游实际值不是数组（实际为 object）',
+          );
+          expect(warnings).toEqual([]);
+        });
+
+        it('scheduleNode：值不是数组时目标步骤 failed，errorMessage 带 node-type-mismatch', async () => {
+          const steps = [
+            codeStep('not an array'),
+            makeStep({
+              id: 'step-it',
+              nodeId: 'it',
+              nodeType: 'iteration',
+              status: 'pending',
+            }),
+          ];
+          const updateStepStatus = mockStateMachine.updateStepStatus;
+          const dispatch = vi.spyOn(nodeDispatcher, 'dispatch');
+          const onNodeFailed = vi
+            .spyOn(service, 'onNodeFailed')
+            .mockResolvedValue(undefined);
+
+          await service.scheduleNode(
+            EXECUTION_ID,
+            'it',
+            TENANT_ID,
+            makeSnapshot(nodes, edges),
+            steps,
+            { skipLatestState: true },
+          );
+
+          expect(updateStepStatus).toHaveBeenCalledWith(
+            TENANT_ID,
+            'step-it',
+            'failed',
+            {
+              errorMessage: expect.objectContaining({
+                type: 'https://agentloom.dev/errors/node-type-mismatch',
+                detail: expect.stringContaining('实际为 string'),
+                typeMismatch: expect.objectContaining({
+                  sourceType: 'json',
+                  targetType: 'array',
+                }),
+              }),
+            },
+          );
+          expect(dispatch).not.toHaveBeenCalled();
+          expect(onNodeFailed).toHaveBeenCalledWith(
+            EXECUTION_ID,
+            'step-it',
+            TENANT_ID,
+          );
+        });
       });
     });
   });

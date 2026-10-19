@@ -214,12 +214,19 @@ export interface TypeMismatchDetail {
 export class NodeTypeMismatchException extends DomainException {
   readonly typeMismatch: TypeMismatchDetail;
 
-  constructor(detail: TypeMismatchDetail) {
+  /**
+   * @param valueReason 端口类型可连、但运行期校验型变换（如 json → array 的 ensure_array）
+   *   判定实际值不满足时的原因；缺省表示端口类型本身不兼容。
+   */
+  constructor(detail: TypeMismatchDetail, valueReason?: string) {
+    const edge = `节点 ${detail.sourceNodeId} 的输出端口 "${detail.sourcePortId}" (${detail.sourceType}) 与节点 ${detail.targetNodeId} 的输入端口 "${detail.targetPortId}" (${detail.targetType})`;
     super({
       type: 'https://agentloom.dev/errors/node-type-mismatch',
       title: '端口类型不匹配',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail: `节点 ${detail.sourceNodeId} 的输出端口 "${detail.sourcePortId}" (${detail.sourceType}) 与节点 ${detail.targetNodeId} 的输入端口 "${detail.targetPortId}" (${detail.targetType}) 类型不兼容`,
+      detail: valueReason
+        ? `${edge} 之间的值不满足目标类型：${valueReason}`
+        : `${edge} 类型不兼容`,
     });
     this.typeMismatch = detail;
   }

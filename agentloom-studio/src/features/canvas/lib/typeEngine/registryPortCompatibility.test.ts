@@ -93,4 +93,20 @@ describe('内置节点端口兼容性（WASM 与 fallback 一致）', () => {
 
     expect(result.level).toBe('INCOMPATIBLE')
   })
+
+  it.each([
+    ['code-tool', 'result-out'],
+    ['merge', 'merged-out'],
+    ['manual-trigger', 'payload-out'],
+    ['input-preprocessor', 'json-out'],
+  ] as const)('%s「%s」(json) → Iteration「数组」(array)：运行期校验的 ensure_array 变换', (nodeType, portId) => {
+    const result = evaluateBoth(
+      findPort(nodeType, 'output', portId),
+      findPort('iteration', 'input', 'items-in'),
+    )
+
+    expect(result.level).toBe('TRANSFORM')
+    expect(result.reason).toBe('json_to_array_runtime_check')
+    expect(result.transformFn).toBe('ensure_array')
+  })
 })

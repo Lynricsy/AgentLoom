@@ -95,8 +95,8 @@ describe('isPortDataTypeCompatible 全矩阵', () => {
     }
   });
 
-  it('json 与 array 之间双向不兼容（删除 Studio 侧粗粒度多余规则）', () => {
-    expect(isPortDataTypeCompatible('json', 'array')).toBe(false);
+  it('json -> array 经运行期校验变换可连，array -> json 仍不兼容', () => {
+    expect(isPortDataTypeCompatible('json', 'array')).toBe(true);
     expect(isPortDataTypeCompatible('array', 'json')).toBe(false);
   });
 

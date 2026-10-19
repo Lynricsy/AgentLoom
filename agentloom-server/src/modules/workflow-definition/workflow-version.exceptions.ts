@@ -29,18 +29,24 @@ export class WorkflowArchivedException extends DomainException {
 }
 
 export class WorkflowPublishValidationException extends DomainException {
-  constructor(reasons: string | string[]) {
-    const validationReasons = Array.isArray(reasons) ? reasons : [reasons];
+  /**
+   * @param reasons 字符串原因归到 `workflow` 字段；能定位到具体图元素的原因直接传 FieldError
+   *   （如不兼容连线用 `edges.<edgeId>`）。
+   */
+  constructor(reasons: string | Array<string | FieldError>) {
+    const errors = (Array.isArray(reasons) ? reasons : [reasons]).map(
+      (reason): FieldError =>
+        typeof reason === 'string'
+          ? { field: 'workflow', message: reason }
+          : reason,
+    );
 
     super({
       type: 'https://agentloom.dev/errors/workflow-publish-validation',
       title: '工作流发布验证失败',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail: validationReasons[0] ?? '工作流发布校验失败',
-      errors: validationReasons.map((message) => ({
-        field: 'workflow',
-        message,
-      })),
+      detail: errors[0]?.message ?? '工作流发布校验失败',
+      errors,
     });
   }
 }

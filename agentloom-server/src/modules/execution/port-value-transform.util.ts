@@ -3,8 +3,9 @@
  *
  * 哪些跨类型连线合法由 contracts 的 `PORT_DATA_TYPE_TRANSFORM_RULES` 决定（权威来源是
  * type-engine 的 Rust checker）；这里按规则的 `transformFn` 真正改写上游值，
- * 让下游拿到与目标端口 dataType 一致的数据。变换前提不满足时实现抛错，调度器捕获后
- * 透传原值并记录 `PortTransformWarning`，节点不因此失败。
+ * 让下游拿到与目标端口 dataType 一致的数据。变换前提不满足时实现抛错：宽松变换由调度器
+ * 透传原值并记录 `PortTransformWarning`，节点不因此失败；`STRICT_PORT_VALUE_TRANSFORMS`
+ * 中的变换（运行期校验型，如 `ensure_array`）失败时目标节点以 node-type-mismatch 失败。
  */
 import { PORT_DATA_TYPE_TRANSFORM_RULES } from '@agentloom/contracts';
 import { isRecord } from './node-value.util';
@@ -51,6 +52,29 @@ export const PORT_VALUE_TRANSFORMS: Readonly<
       })
       .join('\n\n');
   },
+  ensure_array: (value) => {
+    if (Array.isArray(value)) return value;
+    // 输入预处理器脚本模式把数组返回值包装为 { result: [...] }（见 input-preprocessor.md），
+    // 这个单键信封就是「数组」的标准载体，按其承载的数组取值。
+    if (
+      isRecord(value) &&
+      Object.keys(value).length === 1 &&
+      Array.isArray(value.result)
+    ) {
+      return value.result;
+    }
+    const actual =
+      value === null ? 'null' : isRecord(value) ? 'object' : typeof value;
+    throw new Error(`上游实际值不是数组（实际为 ${actual}）`);
+  },
+};
+
+/**
+ * 运行期校验型变换：静态 schema 无法判定、由实际值决定能否连通。失败时不能透传原值——
+ * 下游会把非数组当成单项迭代之类地静默误用——调度器让目标节点以 node-type-mismatch 失败。
+ */
+export const STRICT_PORT_VALUE_TRANSFORMS: Readonly<Record<string, true>> = {
+  ensure_array: true,
 };
 
 /** 查找 source → target 的变换函数名；同类型或无规则时返回 undefined。 */

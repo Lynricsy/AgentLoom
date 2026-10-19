@@ -59,11 +59,11 @@ Agent 定义的 `runtime_mode` 列决定一个 Agent 在哪里运行（`agentloo
 
 节点之间通过端口传值。每个端口带一个数据类型，取值全集定义在 `agentloom-contracts/src/port-data-type.ts`，Rust 类型引擎、插件 SDK、Studio、server 四处的镜像由契约测试机械比对。其中 `exec` 与 `volume` 用于画布上的控制流与工作区挂载连线。取值与兼容矩阵见 [类型引擎](/dev/type-engine)。
 
-连线时，类型引擎给出四级兼容结果（`agentloom-type-engine/src/checker/compatibility.rs` 中的 `CompatibilityLevel`）：`Exact`（类型相同）、`Transform`（存在跨类型变换规则，允许连线）、`Partial`（可连接但可能丢信息）、`Incompatible`（画布拒绝连线）。server 执行期按同一张规则表校验连线，并在组装下游输入时执行变换函数（`parse_json`、`stringify_json`、`extract_skill_text`）；变换失败时透传上游原值并记录告警，节点不失败。类型引擎编译为 WASM，在 Studio 的 Web Worker 中运行，所以连线校验不需要请求 server。
+连线时，类型引擎给出四级兼容结果（`agentloom-type-engine/src/checker/compatibility.rs` 中的 `CompatibilityLevel`）：`Exact`（类型相同）、`Transform`（存在跨类型变换规则，允许连线）、`Partial`（可连接但可能丢信息）、`Incompatible`（画布拒绝连线）。server 发布期与执行期按同一张规则表校验连线（发布期不兼容直接 422），并在组装下游输入时执行变换函数（`parse_json`、`stringify_json`、`extract_skill_text`、`ensure_array`）；变换失败时透传上游原值并记录告警，节点不失败，只有运行期校验型的 `ensure_array`（JSON 值连进「数组」端口）在值不是数组时让目标节点失败。类型引擎编译为 WASM，在 Studio 的 Web Worker 中运行，所以连线校验不需要请求 server。
 
 ## DAG 调度
 
-工作流是有向无环图。发布时 `WorkflowPublishService` 先用 `agentloom-server/src/modules/workflow-definition/utils/validate-workflow-graph-structure.utils.ts` 校验规范化后的画布：连线两端的节点与端口必须存在（节点未声明任何端口时跳过该端），顶层节点与每个复合容器的内部节点分组做环检测，环检测直接调用执行期的 `resolveDagPlan`（`DagResolverService` 的纯函数实现），不通过返回 422 `workflow-publish-validation`。一次运行的调度过程：
+工作流是有向无环图。发布时 `WorkflowPublishService` 先用 `agentloom-server/src/modules/workflow-definition/utils/validate-workflow-graph-structure.utils.ts` 校验规范化后的画布：连线两端的节点与端口必须存在（节点未声明任何端口时跳过该端），顶层节点与每个复合容器的内部节点分组做环检测，环检测直接调用执行期的 `resolveDagPlan`（`DagResolverService` 的纯函数实现）；随后用执行期同一套端口类型解析与兼容规则校验每条连线。任一项不通过返回 422 `workflow-publish-validation`。一次运行的调度过程：
 
 1. `POST /api/v1/workflow-definitions/:workflowId/run` 创建执行并入队 `workflow-execution`。执行快照（`workflow_executions.definition_snapshot`）由 `agentloom-server/src/modules/execution/reusable-block-expansion.util.ts` 的 `buildExecutableWorkflowGraph` 生成：规范化画布图，并把 `reusable-block` 节点展平为其内嵌 `blockDefinition` 中的节点，内部节点 ID 为 `<blockNodeId>::<innerId>`（分隔符 `REUSABLE_BLOCK_INNER_NODE_ID_SEPARATOR`，定义在 `agentloom-contracts/src/workflow-graph.ts`），连到块端口的边按端口的 `sourceNodeId`/`sourcePortId` 改写到内部节点。调度器因此不需要块执行器。
 2. `ExecutionWorker` 调用 `NodeSchedulerService.startExecution`，`DagResolverService` 把图分层，第一层节点并行调度。

@@ -1,6 +1,7 @@
 use agentloom_type_engine::checker::{CompatibilityLevel, check_compatibility};
 use agentloom_type_engine::types::{
-    ObjectTypeSchema, PortDataType, PortDefinition, PortDirection, ScalarTypeSchema, TypeSchema,
+    ArrayTypeSchema, ObjectTypeSchema, PortDataType, PortDefinition, PortDirection,
+    ScalarTypeSchema, TypeSchema,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -348,4 +349,101 @@ fn nullable_scalar_cannot_flow_into_non_nullable_target() {
         &build_port("nullable", PortDataType::Text, Some(source_schema)),
     );
     assert_eq!(accepted.level, CompatibilityLevel::Exact);
+}
+
+fn open_json_object_schema() -> TypeSchema {
+    TypeSchema::Object(ObjectTypeSchema {
+        kind: PortDataType::Json,
+        properties: HashMap::new(),
+        required: Vec::new(),
+        additional_properties: true,
+        title: Some("结果".to_string()),
+        description: None,
+        nullable: false,
+    })
+}
+
+fn json_array_schema() -> TypeSchema {
+    TypeSchema::Array(ArrayTypeSchema {
+        kind: PortDataType::Json,
+        items: Box::new(open_json_object_schema()),
+        min_items: None,
+        max_items: None,
+        title: Some("数组".to_string()),
+        description: None,
+        nullable: false,
+    })
+}
+
+#[test]
+fn json_object_port_to_array_port_is_runtime_checked_transform() {
+    // Studio 的 json 端口是开放对象 schema，array 端口是 shape=array 的 json schema
+    let source = build_port(
+        "result-out",
+        PortDataType::Json,
+        Some(open_json_object_schema()),
+    );
+    let target = build_port("items-in", PortDataType::Array, Some(json_array_schema()));
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Transform);
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("json_to_array_runtime_check")
+    );
+    assert_eq!(result.transform_fn.as_deref(), Some("ensure_array"));
+}
+
+#[test]
+fn schemaless_json_port_to_array_port_is_runtime_checked_transform() {
+    let source = build_port("source", PortDataType::Json, None);
+    let target = build_port("target", PortDataType::Array, None);
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Transform);
+    assert_eq!(result.transform_fn.as_deref(), Some("ensure_array"));
+}
+
+#[test]
+fn array_port_to_json_port_stays_incompatible() {
+    let source = build_port("source", PortDataType::Array, Some(json_array_schema()));
+    let target = build_port(
+        "target",
+        PortDataType::Json,
+        Some(open_json_object_schema()),
+    );
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("shape_mismatch"));
+}
+
+#[test]
+fn nested_object_field_to_array_field_is_not_transformed() {
+    // 执行期变换只作用于整个端口值，嵌套字段的 object → array 没有运行期校验
+    let source = build_port(
+        "source",
+        PortDataType::Json,
+        Some(build_required_object_schema(&[(
+            "items",
+            open_json_object_schema(),
+        )])),
+    );
+    let target = build_port(
+        "target",
+        PortDataType::Json,
+        Some(build_required_object_schema(&[(
+            "items",
+            json_array_schema(),
+        )])),
+    );
+
+    let result = check_compatibility(&source, &target);
+
+    assert_eq!(result.level, CompatibilityLevel::Incompatible);
+    assert_eq!(result.reason.as_deref(), Some("shape_mismatch"));
+    assert_eq!(result.conflict_path.as_deref(), Some("root.items.shape"));
 }

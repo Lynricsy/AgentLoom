@@ -84,14 +84,14 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `version-conflict` | 409 | 工作流已被其他用户或其他标签页修改 | 刷新页面后重新编辑 |
 | `workflow-archived` | 409 | 工作流已归档，不能编辑、发布或执行 | 使用其他工作流；归档不可撤销 |
 | `workflow-not-published` | 409 | 工作流未发布，不能启动执行或创建触发器 | 先发布，见[版本管理](/guide/workflows/versions) |
-| `workflow-publish-validation` | 422 | 发布前校验未通过，`detail` 为第一条原因 | 按 `detail` 修正画布后重新发布 |
+| `workflow-publish-validation` | 422 | 发布前校验未通过（画布结构错误，或连线两端端口数据类型不兼容），`detail` 为第一条原因，`errors` 逐条列出；类型不兼容的连线 `field` 为 `edges.<连线 ID>` | 按 `errors` 修正画布后重新发布 |
 | `workflow-publish-agent-binding` | 422 | 工作流中的 Agent 节点未绑定可用的已发布 Agent | 在每个 Agent 节点中重新选择已发布的 Agent |
 | `workflow-publish-legacy-llm-agent` | 422 | 工作流包含已废弃的 llm-agent 节点 | 按 `detail` 改用 Agent 节点 |
 | `workflow-publish-autonomy-cap` | 422 | 节点配置超出组织自治上限 | 调整节点配置，或请管理员修改[自治策略](/guide/collaboration/autonomy-policy) |
 | `workflow-launch-input-invalid` | 422 | 启动参数未通过输入参数校验 | 按 `errors` 修正输入，见[输入参数](/guide/workflows/input-parameters) |
 | `workflow-launch-schema-version-mismatch` | 409 | 启动时使用的输入参数版本与已发布版本不一致 | 刷新页面后重新运行 |
 | `cyclic-graph` | 400 | 工作流图存在环路 | 删除形成环路的连线 |
-| `node-type-mismatch` | 422 | 某条连线两端的端口数据类型不兼容 | 按 `detail` 中的节点与端口修改连线 |
+| `node-type-mismatch` | 422 | 运行时某条连线两端的端口数据类型不兼容；或 JSON 端口连到「数组」端口而上游实际值不是数组（`detail` 写明实际类型） | 按 `detail` 中的节点与端口修改连线，或让上游输出数组 |
 | `reusable-block-expansion-failed` | 422 | 运行前展开可复用块失败：块缺少内嵌定义、块端口没有映射到块内节点，或连线连到块上不存在的端口 | 从「My Blocks」重新拖入该块，或删除失效连线后重新发布，见 [Reusable Block](/guide/nodes/reusable-block) |
 | `execution-not-found` | 404 | 执行记录不存在 | 确认执行 ID |
 | `execution-not-cancellable` | 409 | 执行已结束，不能取消 | 无需处理 |
