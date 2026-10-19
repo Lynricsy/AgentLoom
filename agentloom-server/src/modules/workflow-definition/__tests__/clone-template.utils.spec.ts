@@ -112,16 +112,31 @@ describe('cloneDefinitionWithNewIds', () => {
     expect(result.edges[0].id).toBe(MOCK_UUIDS[2]);
   });
 
-  it('应当替换 sourceHandle 和 targetHandle 中的旧 node ID', () => {
+  it('节点 id 与端口 id 前缀重名时 handle 仍原样保留', () => {
     const definition: CloneableDefinition = {
-      nodes: [createNode({ id: 'node-a' }), createNode({ id: 'node-b' })],
+      nodes: [
+        createNode({
+          id: 'text',
+          data: {
+            label: 'Text',
+            outputPorts: [{ id: 'text-out' }],
+          },
+        }),
+        createNode({
+          id: 'out',
+          data: {
+            label: 'Out',
+            inputPorts: [{ id: 'text-in' }],
+          },
+        }),
+      ],
       edges: [
         createEdge({
           id: 'edge-1',
-          source: 'node-a',
-          target: 'node-b',
-          sourceHandle: 'node-a-output-0',
-          targetHandle: 'node-b-input-0',
+          source: 'text',
+          target: 'out',
+          sourceHandle: 'text-out',
+          targetHandle: 'text-in',
         }),
       ],
       viewport: DEFAULT_VIEWPORT,
@@ -129,8 +144,13 @@ describe('cloneDefinitionWithNewIds', () => {
 
     const result = cloneDefinitionWithNewIds(definition);
 
-    expect(result.edges[0].sourceHandle).toBe(`${MOCK_UUIDS[0]}-output-0`);
-    expect(result.edges[0].targetHandle).toBe(`${MOCK_UUIDS[1]}-input-0`);
+    expect(result.edges[0]).toMatchObject({
+      source: MOCK_UUIDS[0],
+      target: MOCK_UUIDS[1],
+      sourceHandle: 'text-out',
+      targetHandle: 'text-in',
+    });
+    expect(result.nodes[0].data.outputPorts).toEqual([{ id: 'text-out' }]);
   });
 
   it('当 sourceHandle / targetHandle 不包含节点 ID 时应保持不变', () => {
