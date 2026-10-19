@@ -41,6 +41,7 @@ const mockRbacCacheService = {
 const mockAgentExecutionService = {
   injectMessage: vi.fn().mockResolvedValue(undefined),
   cancelExecution: vi.fn().mockResolvedValue(undefined),
+  conversationBelongsToTenant: vi.fn().mockResolvedValue(true),
 };
 
 import {

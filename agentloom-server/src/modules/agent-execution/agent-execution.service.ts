@@ -9,6 +9,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import type { Queue } from 'bullmq';
 import { and, eq } from 'drizzle-orm';
 import type Redis from 'ioredis';
+import { validate as isUuid } from 'uuid';
 import type { ConversationSnapshotMessage } from '@agentloom/contracts';
 
 import {
@@ -44,13 +45,15 @@ export const AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS = {
 export const AGENT_CONVERSATION_IDLE_WAIT_MS = 5_000;
 
 /** 跨实例取消频道：任一实例发起取消，所有实例（含自身）中止本地的活跃 loop */
-export const AGENT_CONVERSATION_CANCEL_CHANNEL = '__agent_conversation_cancel__';
+export const AGENT_CONVERSATION_CANCEL_CHANNEL =
+  '__agent_conversation_cancel__';
 
 /**
  * 跨实例唤醒频道：新消息到达时，若 loop 正在其他实例空闲等待，经此频道唤醒它，
  * 否则要等对方空闲超时退出、job 完成后由 worker 补发派发，多出一个空闲等待周期的延迟。
  */
-export const AGENT_CONVERSATION_NOTIFY_CHANNEL = '__agent_conversation_notify__';
+export const AGENT_CONVERSATION_NOTIFY_CHANNEL =
+  '__agent_conversation_notify__';
 
 export interface AgentConversationExecutionJobData {
   conversationId: string;
@@ -476,6 +479,29 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
     }
 
     return conversation;
+  }
+
+  /** WS 订阅入口用：对话是否存在且属于该租户（RLS 事务 + 显式 tenantId 双重约束）；非 UUID 视为不存在。 */
+  async conversationBelongsToTenant(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<boolean> {
+    if (!isUuid(conversationId)) {
+      return false;
+    }
+    const rows = await runInTenantTransaction(this.db, tenantId, async (tx) =>
+      tx
+        .select({ id: agentConversations.id })
+        .from(agentConversations)
+        .where(
+          and(
+            eq(agentConversations.id, conversationId),
+            eq(agentConversations.tenantId, tenantId),
+          ),
+        )
+        .limit(1),
+    );
+    return rows.length > 0;
   }
 
   /**

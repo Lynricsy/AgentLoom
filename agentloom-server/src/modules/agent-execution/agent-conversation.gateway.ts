@@ -182,6 +182,17 @@ export class AgentConversationGateway
       return { status: 'error', error: 'INVALID_PAYLOAD' };
     }
 
+    // 事件缓冲（EventBridge）只按 conversationId 索引，replay/snapshot 前必须先确认归属，
+    // 否则任意租户可凭 conversationId 读到他人对话内容。不存在与跨租户统一返回 NOT_FOUND。
+    if (
+      !(await this.agentExecutionService.conversationBelongsToTenant(
+        conversationId,
+        tenantId,
+      ))
+    ) {
+      return { status: 'error', error: 'NOT_FOUND' };
+    }
+
     const room = this.buildRoom(tenantId, conversationId);
     await client.join(room);
 

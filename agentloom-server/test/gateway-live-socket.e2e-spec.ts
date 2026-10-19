@@ -219,6 +219,7 @@ describe('Gateway live Socket.IO (E2E)', () => {
             injectMessage: vi.fn(),
             cancelExecution: vi.fn(),
             getConversationSnapshotMessages: conversationSnapshotMessages,
+            conversationBelongsToTenant: vi.fn().mockResolvedValue(true),
           },
         },
       ],

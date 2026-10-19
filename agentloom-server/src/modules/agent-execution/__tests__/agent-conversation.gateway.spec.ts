@@ -27,6 +27,7 @@ const mockAgentExecutionService = {
   injectMessage: vi.fn().mockResolvedValue(undefined),
   cancelExecution: vi.fn().mockResolvedValue(undefined),
   getConversationSnapshotMessages: vi.fn().mockResolvedValue([]),
+  conversationBelongsToTenant: vi.fn().mockResolvedValue(true),
 };
 
 const mockRbacCacheService = {
@@ -188,6 +189,39 @@ describe('AgentConversationGateway', () => {
         status: 'error',
         error: 'INVALID_PAYLOAD',
       });
+    });
+
+    it('对话不属于调用方租户时拒绝订阅，且不 join、不补发', async () => {
+      mockAgentExecutionService.conversationBelongsToTenant.mockResolvedValueOnce(
+        false,
+      );
+      mockEventBridgeService.getLastEventId.mockReturnValue(10);
+      mockEventBridgeService.getEventsSince.mockReturnValue([
+        {
+          eventId: 1,
+          event: ExecutionEventName.OUTPUT_CHUNK,
+          data: { chunk: 'secret' },
+        },
+      ]);
+      const client = makeSocket({ tenantId: 'tenant-b' });
+
+      const ack = await gateway.handleSubscribe(client, {
+        conversationId: 'conv-of-tenant-a',
+        lastEventId: 0,
+      });
+
+      expect(ack).toEqual<ConversationSubscribeAck>({
+        status: 'error',
+        error: 'NOT_FOUND',
+      });
+      expect(
+        mockAgentExecutionService.conversationBelongsToTenant,
+      ).toHaveBeenCalledWith('conv-of-tenant-a', 'tenant-b');
+      expect(client.join).not.toHaveBeenCalled();
+      expect(client.emit).not.toHaveBeenCalled();
+      expect(
+        mockAgentExecutionService.getConversationSnapshotMessages,
+      ).not.toHaveBeenCalled();
     });
 
     it('should replay events when lastEventId provided', async () => {
