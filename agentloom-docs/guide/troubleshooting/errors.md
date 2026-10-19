@@ -83,7 +83,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `workflow-not-found` | 404 | 工作流不存在或不属于当前组织 | 确认链接与当前组织 |
 | `version-conflict` | 409 | 工作流已被其他用户或其他标签页修改 | 刷新页面后重新编辑 |
 | `workflow-archived` | 409 | 工作流已归档，不能编辑、发布或执行 | 使用其他工作流；归档不可撤销 |
-| `workflow-not-published` | 409 | 工作流未发布，不能启动执行或创建触发器 | 先发布，见[版本管理](/guide/workflows/versions) |
+| `workflow-not-published` | 409 | 工作流未发布，不能启动执行、创建触发器或分析优化提案（`detail` 写明被拒绝的操作） | 先发布，见[版本管理](/guide/workflows/versions) |
 | `workflow-publish-validation` | 422 | 发布前校验未通过（画布结构错误，或连线两端端口数据类型不兼容），`detail` 为第一条原因，`errors` 逐条列出；类型不兼容的连线 `field` 为 `edges.<连线 ID>` | 按 `errors` 修正画布后重新发布 |
 | `workflow-publish-agent-binding` | 422 | 工作流中的 Agent 节点未绑定可用的已发布 Agent | 在每个 Agent 节点中重新选择已发布的 Agent |
 | `workflow-publish-legacy-llm-agent` | 422 | 工作流包含已废弃的 llm-agent 节点 | 按 `detail` 改用 Agent 节点 |

@@ -25,13 +25,14 @@ export class DeadLetterJobNotFoundException extends DomainException {
   }
 }
 
+/** action 写明被拒绝的操作，让 detail 与调用场景一致（启动执行、优化分析等）。 */
 export class WorkflowNotPublishedException extends DomainException {
-  constructor(workflowId: string) {
+  constructor(workflowId: string, action = '启动执行') {
     super({
       type: 'https://agentloom.dev/errors/workflow-not-published',
       title: '工作流未发布',
       status: HttpStatus.CONFLICT,
-      detail: `工作流 ${workflowId} 尚未发布，无法启动执行`,
+      detail: `工作流 ${workflowId} 尚未发布，无法${action}`,
     });
   }
 }

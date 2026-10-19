@@ -180,7 +180,10 @@ export class OptimizationAnalysisService {
         throw new WorkflowNotFoundException(workflowId);
       }
       if (workflow.status !== 'published' || !workflow.publishedVersionId) {
-        throw new WorkflowNotPublishedException(workflowId);
+        throw new WorkflowNotPublishedException(
+          workflowId,
+          '分析优化提案：分析只读取已发布版本的运行记录，请先发布并运行工作流',
+        );
       }
       const ref = {
         id: workflow.id,

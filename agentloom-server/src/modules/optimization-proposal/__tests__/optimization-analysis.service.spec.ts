@@ -121,17 +121,20 @@ describe('OptimizationAnalysisService.analyzeWorkflow', () => {
     expect(stub.argsOf('insert', 'values')).toEqual([]);
   });
 
-  it('工作流未发布时抛 WorkflowNotPublishedException', async () => {
+  it('工作流未发布时抛 WorkflowNotPublishedException，detail 说明无法分析而不是启动执行（D-160）', async () => {
     const stub = createQueryDb([
       [{ id: WORKFLOW_ID, status: 'draft', publishedVersionId: null }],
     ]);
     const service = new OptimizationAnalysisService(stub.db);
 
-    await expect(
-      inTenantContext(stub.db, () =>
-        service.analyzeWorkflow(TENANT_ID, WORKFLOW_ID),
-      ),
-    ).rejects.toBeInstanceOf(WorkflowNotPublishedException);
+    const error = await inTenantContext(stub.db, () =>
+      service.analyzeWorkflow(TENANT_ID, WORKFLOW_ID),
+    ).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(WorkflowNotPublishedException);
+    const { detail } = error as WorkflowNotPublishedException;
+    expect(detail).toContain('无法分析优化提案');
+    expect(detail).not.toContain('启动执行');
   });
 
   it('发布版本中没有 team / smart-routing 节点时抛 422', async () => {
