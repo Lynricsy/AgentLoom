@@ -9,6 +9,7 @@ import type {
   TriggerConfig,
   WorkflowTrigger,
 } from '../../database/schema/workflow-triggers.schema';
+import { WorkflowNotFoundException } from '../workflow-definition/workflow-version.exceptions';
 import {
   ApiEventConfigSchema,
   CreateTriggerSchema,
@@ -92,7 +93,12 @@ export class TriggerService {
     this.assertMutableTriggerType(parsedDto.type);
     const workflow = await this.findWorkflowDefinition(tenantId, workflowId);
 
-    if (!workflow || workflow.status !== 'published') {
+    // 不存在与他租户工作流同样返回 404，不以 409 暴露其存在性
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
+
+    if (workflow.status !== 'published') {
       throw new WorkflowNotPublishedException(workflowId);
     }
 

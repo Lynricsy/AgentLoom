@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
+import { WorkflowNotFoundException } from '../../workflow-definition/workflow-version.exceptions';
 import {
   TriggerLimitExceededException,
   TriggerNotFoundException,
@@ -223,16 +224,29 @@ describe('TriggerService', () => {
       );
     });
 
-    it('工作流未发布时应抛出异常', async () => {
+    const webhookInput = {
+      name: 'Webhook 触发器',
+      isEnabled: true,
+      type: 'webhook' as const,
+      config: { authMode: 'simple' as const, ipWhitelist: [] },
+    };
+
+    it('工作流不存在或属于其他租户时返回 404 而不是 409', async () => {
       db.select.mockReturnValue(createSelectWhereResolved([]));
 
       await expect(
-        service.create(TENANT_ID, USER_ID, WORKFLOW_ID, {
-          name: 'Webhook 触发器',
-          isEnabled: true,
-          type: 'webhook',
-          config: { authMode: 'simple' as const, ipWhitelist: [] },
-        }),
+        service.create(TENANT_ID, USER_ID, WORKFLOW_ID, webhookInput),
+      ).rejects.toThrow(WorkflowNotFoundException);
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('工作流存在但未发布时应抛出 WorkflowNotPublishedException', async () => {
+      db.select.mockReturnValue(
+        createSelectWhereResolved([{ ...publishedWorkflow, status: 'draft' }]),
+      );
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, WORKFLOW_ID, webhookInput),
       ).rejects.toThrow(WorkflowNotPublishedException);
     });
 
