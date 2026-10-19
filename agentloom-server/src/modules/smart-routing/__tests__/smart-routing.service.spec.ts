@@ -12,6 +12,8 @@ import { llmModelConfigs } from '../../../database/schema/llm-model-configs.sche
 import { routerModels } from '../../../database/schema/router-models.schema';
 import { EmbeddingIntegrationService } from '../embedding/embedding.service';
 import { SmartRoutingService } from '../smart-routing.service';
+import { RoutingStrategyNotFoundException } from '../smart-routing.exceptions';
+import { z } from 'zod';
 
 const {
   createInsertChain,
@@ -183,9 +185,7 @@ describe('SmartRoutingService', () => {
           eloRating: 1333,
         },
       ]);
-      db.select
-        .mockReturnValueOnce(configChain)
-        .mockReturnValueOnce(metaChain);
+      db.select.mockReturnValueOnce(configChain).mockReturnValueOnce(metaChain);
 
       const candidates = await service.loadCandidates(
         ['model-1', 'model-missing', 'model-2'],
@@ -573,6 +573,47 @@ describe('SmartRoutingService', () => {
           totalPages: 0,
         },
       });
+    });
+  });
+
+  describe('getStrategyConfigSchema', () => {
+    beforeEach(() => {
+      const strategies = ['knn', 'cost_optimized'].map((name) => ({
+        name,
+        category: 'learned',
+        requiresEmbedding: false,
+        configSchema: z.object({ k: z.number().optional() }),
+      }));
+      Object.assign(mockRouterRegistry, {
+        list: vi.fn(() => strategies),
+        has: vi.fn((name: string) => strategies.some((s) => s.name === name)),
+        get: vi.fn((name: string) => strategies.find((s) => s.name === name)),
+      });
+    });
+
+    it('返回公开策略的配置 schema', () => {
+      expect(service.getStrategyConfigSchema('knn').data.name).toBe('knn');
+    });
+
+    it('已注册但未公开的策略按不存在处理，detail 只列公开策略', () => {
+      const error = (() => {
+        try {
+          service.getStrategyConfigSchema('cost_optimized');
+        } catch (caught) {
+          return caught;
+        }
+      })();
+
+      expect(error).toBeInstanceOf(RoutingStrategyNotFoundException);
+      const detail = (error as RoutingStrategyNotFoundException).detail;
+      expect(detail).toContain('knn');
+      expect(detail).not.toMatch(/可用策略：.*cost_optimized/);
+    });
+
+    it('未知策略返回 routing/strategy-not-found', () => {
+      expect(() => service.getStrategyConfigSchema('nope')).toThrow(
+        RoutingStrategyNotFoundException,
+      );
     });
   });
 });

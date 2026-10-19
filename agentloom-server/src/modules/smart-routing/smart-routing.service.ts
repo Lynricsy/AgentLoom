@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, getTableColumns, gte, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -30,6 +30,7 @@ import type {
   SmartRoutingStrategiesResponseDtoType,
   SmartRoutingStrategyDto,
 } from './dto/smart-routing-strategies.dto';
+import { RoutingStrategyNotFoundException } from './smart-routing.exceptions';
 
 const PUBLIC_ROUTER_STRATEGY_NAMES = new Set([
   'random',
@@ -46,8 +47,7 @@ const PUBLIC_ROUTER_STRATEGY_NAMES = new Set([
 
 /** 路由决策的主体：工作流步骤或 Agent 对话（二选一，库表有 check 约束） */
 export type RoutingDecisionSubject =
-  | { executionStepId: string }
-  | { conversationId: string };
+  { executionStepId: string } | { conversationId: string };
 
 export interface PersistedRoutingDecision {
   selectedModelId: string | null;
@@ -371,20 +371,25 @@ export class SmartRoutingService {
   getStrategyConfigSchema(
     name: string,
   ): SmartRoutingStrategyConfigSchemaResponseDtoType {
-    try {
-      const strategy = this.routerRegistry.get(name);
-
-      return {
-        data: {
-          name: strategy.name,
-          configSchema: z.toJSONSchema(strategy.configSchema),
-        },
-      };
-    } catch (error) {
-      throw new NotFoundException(
-        error instanceof Error ? error.message : `Strategy "${name}" not found`,
+    // 与 listStrategies 保持同一可见性：非公开或未注册的策略按不存在处理，detail 只列公开策略。
+    if (
+      !PUBLIC_ROUTER_STRATEGY_NAMES.has(name) ||
+      !this.routerRegistry.has(name)
+    ) {
+      throw new RoutingStrategyNotFoundException(
+        name,
+        this.listStrategies().data.map((strategy) => strategy.name),
       );
     }
+
+    const strategy = this.routerRegistry.get(name);
+
+    return {
+      data: {
+        name: strategy.name,
+        configSchema: z.toJSONSchema(strategy.configSchema),
+      },
+    };
   }
 
   /**
@@ -488,7 +493,10 @@ export class SmartRoutingService {
           ),
           maxInputTokens: readNumber(
             rawRoutingMeta?.maxInputTokens,
-            readNumber(rawRoutingMeta?.contextWindow, fallbackMeta.contextWindow),
+            readNumber(
+              rawRoutingMeta?.contextWindow,
+              fallbackMeta.contextWindow,
+            ),
           ),
           eloRating: readNumber(routingMetadata?.eloRating, 1200),
         },

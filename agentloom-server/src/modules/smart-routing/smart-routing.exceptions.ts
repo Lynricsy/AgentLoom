@@ -16,12 +16,28 @@ export class AllModelsFallbackExhaustedException extends DomainException {
 
 /** 健康过滤与上下文窗口过滤后没有可选模型 */
 export class NoEligibleCandidateException extends DomainException {
-  constructor(counts: { total: number; healthy: number; inputTokenCount: number }) {
+  constructor(counts: {
+    total: number;
+    healthy: number;
+    inputTokenCount: number;
+  }) {
     super({
       type: problemType('routing/no-eligible-candidate'),
       title: '没有满足条件的候选模型',
       status: HttpStatus.SERVICE_UNAVAILABLE,
       detail: `候选模型共 ${counts.total} 个，健康 ${counts.healthy} 个，其中上下文窗口不小于输入 ${counts.inputTokenCount} tokens 的为 0 个`,
+    });
+  }
+}
+
+/** 请求的路由策略不存在或未公开 */
+export class RoutingStrategyNotFoundException extends DomainException {
+  constructor(name: string, availableStrategies: string[]) {
+    super({
+      type: problemType('routing/strategy-not-found'),
+      title: '路由策略不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `路由策略 "${name}" 不存在，可用策略：${availableStrategies.join(', ')}`,
     });
   }
 }
