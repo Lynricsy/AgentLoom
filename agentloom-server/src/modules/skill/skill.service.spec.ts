@@ -1,4 +1,4 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +6,14 @@ import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
 import { SkillService, type SkillUploadFile } from './skill.service';
+import {
+  SkillAlreadyArchivedException,
+  SkillBuiltinReadonlyException,
+  SkillFileNotFoundException,
+  SkillNameConflictException,
+  SkillNotFoundException,
+  SkillVersionConflictException,
+} from './skill.exceptions';
 import { SkillStorageService } from './skill-storage.service';
 
 // ─── vi.hoisted mock factories ─────────────────────────────────────────────��─
@@ -246,6 +254,26 @@ describe('SkillService', () => {
       ).rejects.toThrow('connection failed');
     });
 
+    it('名称冲突（skills_tenant_name_idx）抛 409 且不按 slug 重试', async () => {
+      const nameViolation = Object.assign(new Error('Failed query'), {
+        cause: Object.assign(new Error('duplicate key'), {
+          code: '23505',
+          constraint_name: 'skills_tenant_name_idx',
+        }),
+      });
+      const insertChain = createInsertChain([]);
+      insertChain.returning.mockRejectedValue(nameViolation);
+      db.insert.mockReturnValue(insertChain);
+
+      await expect(
+        service.create(TENANT_ID, USER_ID, {
+          name: 'Test Skill',
+          description: 'A test skill',
+        }),
+      ).rejects.toThrow(SkillNameConflictException);
+      expect(insertChain.returning).toHaveBeenCalledOnce();
+    });
+
     it('上传文件后刷新 fileMeta', async () => {
       const record = makeSkillRecord();
       db.insert.mockReturnValue(createInsertChain([record]));
@@ -405,12 +433,114 @@ describe('SkillService', () => {
       expect(result).toEqual(record);
     });
 
-    it('未找到抛出 NotFoundException', async () => {
+    it('未找到抛出 SkillNotFoundException', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 
       await expect(service.findById(TENANT_ID, SKILL_ID)).rejects.toThrow(
-        NotFoundException,
+        SkillNotFoundException,
       );
+    });
+
+    it('内置 Skill 对租户可读', async () => {
+      const record = makeSkillRecord({
+        tenantId: '00000000-0000-0000-0000-000000000000',
+        isBuiltin: true,
+      });
+      db.select.mockReturnValue(createSelectChain([record]));
+
+      await expect(service.findById(TENANT_ID, SKILL_ID)).resolves.toEqual(
+        record,
+      );
+    });
+  });
+
+  // ─── file operations ─────────────────────────────────────────────────────
+  describe('file operations', () => {
+    const file: SkillUploadFile = {
+      fieldname: 'file',
+      filename: 'scripts/run.sh',
+      buffer: Buffer.from('echo hi'),
+      mimetype: 'text/x-sh',
+    };
+
+    it('Skill 不存在（含他租户）时上传/列出/删除文件均 404 且不触达存储', async () => {
+      db.select.mockReturnValue(createSelectChain([]));
+
+      await expect(
+        service.uploadFile(TENANT_ID, SKILL_ID, file),
+      ).rejects.toThrow(SkillNotFoundException);
+      await expect(service.listFiles(TENANT_ID, SKILL_ID)).rejects.toThrow(
+        SkillNotFoundException,
+      );
+      await expect(
+        service.deleteFile(TENANT_ID, SKILL_ID, 'evil.md'),
+      ).rejects.toThrow(SkillNotFoundException);
+      await expect(
+        service.downloadFile(TENANT_ID, SKILL_ID, 'evil.md'),
+      ).rejects.toThrow(SkillNotFoundException);
+
+      expect(storageService.uploadSkillFile).not.toHaveBeenCalled();
+      expect(storageService.listSkillFiles).not.toHaveBeenCalled();
+    });
+
+    it('内置 Skill 上传/删除文件返回 403', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([makeSkillRecord({ isBuiltin: true })]),
+      );
+
+      await expect(
+        service.uploadFile(TENANT_ID, SKILL_ID, file),
+      ).rejects.toThrow(SkillBuiltinReadonlyException);
+      await expect(
+        service.deleteFile(TENANT_ID, SKILL_ID, 'SKILL.md'),
+      ).rejects.toThrow(SkillBuiltinReadonlyException);
+      expect(storageService.uploadSkillFile).not.toHaveBeenCalled();
+    });
+
+    it('本租户 Skill 按相对路径上传文件并刷新元数据', async () => {
+      db.select.mockReturnValue(createSelectChain([makeSkillRecord()]));
+      const updateChain = createUpdateChain([]);
+      updateChain.where = vi.fn().mockResolvedValue(undefined);
+      db.update.mockReturnValue(updateChain);
+
+      await service.uploadFile(TENANT_ID, SKILL_ID, file);
+
+      expect(storageService.uploadSkillFile).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+        'scripts/run.sh',
+        file.buffer,
+        'text/x-sh',
+      );
+      expect(db.update).toHaveBeenCalledOnce();
+    });
+
+    it('内置 Skill 的文件列表与下载来自内置种子目录', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([
+          makeSkillRecord({ isBuiltin: true, slug: 'self-evolution' }),
+        ]),
+      );
+
+      const files = await service.listFiles(TENANT_ID, SKILL_ID);
+      expect(files.map((entry) => entry.name)).toContain('SKILL.md');
+      expect(files.map((entry) => entry.name)).toContain('sandbox.md');
+      expect(storageService.listSkillFiles).not.toHaveBeenCalled();
+
+      const stream = await service.downloadFile(
+        TENANT_ID,
+        SKILL_ID,
+        'SKILL.md',
+      );
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk as Buffer);
+      }
+      expect(Buffer.concat(chunks).toString('utf-8')).toContain('---');
+
+      await expect(
+        service.downloadFile(TENANT_ID, SKILL_ID, 'missing.md'),
+      ).rejects.toThrow(SkillFileNotFoundException);
     });
   });
 
@@ -476,6 +606,10 @@ describe('SkillService', () => {
 
   // ─── update ──────────────────────────────────────────────────────────────
   describe('update', () => {
+    beforeEach(() => {
+      db.select.mockReturnValue(createSelectChain([makeSkillRecord()]));
+    });
+
     it('正常更新', async () => {
       const updatedRecord = makeSkillRecord({ name: 'Updated', version: 2 });
       db.update.mockReturnValue(createUpdateChain([updatedRecord]));
@@ -488,7 +622,7 @@ describe('SkillService', () => {
       expect(result).toEqual(updatedRecord);
     });
 
-    it('OCC 版本冲突抛出 ConflictException', async () => {
+    it('OCC 版本冲突抛出 SkillVersionConflictException', async () => {
       db.update.mockReturnValue(createUpdateChain([]));
 
       await expect(
@@ -496,7 +630,50 @@ describe('SkillService', () => {
           name: 'Updated',
           occVersion: 1,
         }),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(SkillVersionConflictException);
+    });
+
+    it('不存在或他租户 Skill 抛 404 而不是版本冲突', async () => {
+      db.select.mockReturnValue(createSelectChain([]));
+
+      await expect(
+        service.update(TENANT_ID, USER_ID, SKILL_ID, {
+          name: 'Updated',
+          occVersion: 1,
+        }),
+      ).rejects.toThrow(SkillNotFoundException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('内置 Skill 不可更新', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([makeSkillRecord({ isBuiltin: true })]),
+      );
+
+      await expect(
+        service.update(TENANT_ID, USER_ID, SKILL_ID, {
+          name: 'Updated',
+          occVersion: 1,
+        }),
+      ).rejects.toThrow(SkillBuiltinReadonlyException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('改名撞上同租户已有名称时抛 409', async () => {
+      const updateChain = createUpdateChain([]);
+      updateChain.returning.mockRejectedValue(
+        Object.assign(new Error('Failed query'), {
+          cause: { code: '23505', constraint_name: 'skills_tenant_name_idx' },
+        }),
+      );
+      db.update.mockReturnValue(updateChain);
+
+      await expect(
+        service.update(TENANT_ID, USER_ID, SKILL_ID, {
+          name: 'Taken',
+          occVersion: 1,
+        }),
+      ).rejects.toThrow(SkillNameConflictException);
     });
 
     it('更新时带内容和 frontmatter', async () => {
@@ -594,12 +771,24 @@ describe('SkillService', () => {
       expect(db.delete).toHaveBeenCalledOnce();
     });
 
-    it('未找到抛出 NotFoundException', async () => {
+    it('未找到抛出 SkillNotFoundException', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 
       await expect(service.delete(TENANT_ID, SKILL_ID)).rejects.toThrow(
-        NotFoundException,
+        SkillNotFoundException,
       );
+    });
+
+    it('内置 Skill 删除返回 403 且不删除', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([makeSkillRecord({ isBuiltin: true })]),
+      );
+
+      await expect(service.delete(TENANT_ID, SKILL_ID)).rejects.toThrow(
+        SkillBuiltinReadonlyException,
+      );
+      expect(db.delete).not.toHaveBeenCalled();
+      expect(storageService.deleteSkillFiles).not.toHaveBeenCalled();
     });
   });
 
@@ -616,21 +805,31 @@ describe('SkillService', () => {
       expect(result).toEqual(archivedRecord);
     });
 
-    it('未找到抛出 NotFoundException', async () => {
+    it('未找到抛出 SkillNotFoundException', async () => {
       db.select.mockReturnValue(createSelectChain([]));
 
       await expect(
         service.archive(TENANT_ID, USER_ID, SKILL_ID),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(SkillNotFoundException);
     });
 
-    it('已归档抛出 ConflictException', async () => {
+    it('内置 Skill 归档返回 403', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([makeSkillRecord({ isBuiltin: true })]),
+      );
+
+      await expect(
+        service.archive(TENANT_ID, USER_ID, SKILL_ID),
+      ).rejects.toThrow(SkillBuiltinReadonlyException);
+    });
+
+    it('已归档抛出 SkillAlreadyArchivedException', async () => {
       const record = makeSkillRecord({ status: 'archived' });
       db.select.mockReturnValue(createSelectChain([record]));
 
       await expect(
         service.archive(TENANT_ID, USER_ID, SKILL_ID),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(SkillAlreadyArchivedException);
     });
   });
 

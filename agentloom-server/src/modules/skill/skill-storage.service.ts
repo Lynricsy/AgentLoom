@@ -1,15 +1,11 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Client } from 'minio';
 import { Readable } from 'node:stream';
 import { MINIO_CLIENT } from '../../infrastructure/storage/storage.constants';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SKILL_FILE_MAX_SIZE } from './skill.constants';
+import { SkillFileTooLargeException } from './skill.exceptions';
 import { validateAndCanonicalizeSkillFileName } from './skill-file-name.utils';
 
 @Injectable()
@@ -48,10 +44,7 @@ export class SkillStorageService {
     contentType?: string,
   ): Promise<void> {
     if (buffer.length > SKILL_FILE_MAX_SIZE) {
-      const maxMb = SKILL_FILE_MAX_SIZE / (1024 * 1024);
-      throw new BadRequestException(
-        `文件大小 (${(buffer.length / (1024 * 1024)).toFixed(2)}MB) 超过单文件限制 ${maxMb}MB`,
-      );
+      throw new SkillFileTooLargeException(buffer.length, SKILL_FILE_MAX_SIZE);
     }
 
     const key = this.buildSkillKey(tenantId, skillId, fileName);

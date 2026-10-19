@@ -6,8 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { SkillController } from './skill.controller';
+import {
+  SkillFileNameConflictException,
+  SkillFileNameInvalidException,
+  SkillMultipartRequiredException,
+} from './skill.exceptions';
 import { SkillService } from './skill.service';
-import { SkillStorageService } from './skill-storage.service';
 
 const mocks = vi.hoisted(() => {
   const createMockSkillService = () => ({
@@ -17,22 +21,13 @@ const mocks = vi.hoisted(() => {
     update: vi.fn(),
     delete: vi.fn(),
     archive: vi.fn(),
-    refreshFileMeta: vi.fn().mockResolvedValue(undefined),
+    listFiles: vi.fn().mockResolvedValue([]),
+    downloadFile: vi.fn(),
+    uploadFile: vi.fn().mockResolvedValue(undefined),
+    deleteFile: vi.fn().mockResolvedValue(undefined),
   });
 
-  const createMockSkillStorageService = () => ({
-    uploadSkillFile: vi.fn().mockResolvedValue(undefined),
-    downloadSkillFile: vi.fn(),
-    deleteSkillFiles: vi.fn().mockResolvedValue(undefined),
-    deleteSkillFile: vi.fn().mockResolvedValue(undefined),
-    listSkillFiles: vi.fn().mockResolvedValue([]),
-    getSkillContent: vi.fn(),
-  });
-
-  return {
-    createMockSkillService,
-    createMockSkillStorageService,
-  };
+  return { createMockSkillService };
 });
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
@@ -43,6 +38,7 @@ function makeReq(overrides: Partial<Record<string, any>> = {}): any {
   return {
     tenantId: TENANT_ID,
     user: { sub: USER_ID },
+    isMultipart: vi.fn().mockReturnValue(true),
     parts: vi.fn().mockReturnValue({
       [Symbol.asyncIterator]: () => ({
         next: vi.fn().mockResolvedValue({ done: true }),
@@ -50,6 +46,24 @@ function makeReq(overrides: Partial<Record<string, any>> = {}): any {
     }),
     ...overrides,
   };
+}
+
+function makeFilePart(filename: string, content = 'x') {
+  return {
+    type: 'file',
+    fieldname: 'file',
+    filename,
+    mimetype: 'text/plain',
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from(content)),
+  };
+}
+
+function makeParts(...items: unknown[]) {
+  return vi.fn().mockReturnValue({
+    async *[Symbol.asyncIterator]() {
+      yield* items;
+    },
+  });
 }
 
 function getRoles(controller: any, methodName: string): string[] | undefined {
@@ -63,20 +77,13 @@ function getHttpCode(controller: any, methodName: string): number | undefined {
 describe('SkillController', () => {
   let controller: SkillController;
   let skillService: ReturnType<typeof mocks.createMockSkillService>;
-  let skillStorageService: ReturnType<
-    typeof mocks.createMockSkillStorageService
-  >;
 
   beforeEach(async () => {
     skillService = mocks.createMockSkillService();
-    skillStorageService = mocks.createMockSkillStorageService();
 
     const module = await Test.createTestingModule({
       controllers: [SkillController],
-      providers: [
-        { provide: SkillService, useValue: skillService },
-        { provide: SkillStorageService, useValue: skillStorageService },
-      ],
+      providers: [{ provide: SkillService, useValue: skillService }],
     }).compile();
 
     controller = module.get(SkillController);
@@ -209,23 +216,20 @@ describe('SkillController', () => {
   });
 
   describe('listFiles', () => {
-    it('delegates to skillStorageService.listSkillFiles', async () => {
+    it('delegates to skillService.listFiles (checks skill existence)', async () => {
       const files = [{ name: 'SKILL.md', size: 100 }];
-      skillStorageService.listSkillFiles.mockResolvedValue(files);
+      skillService.listFiles.mockResolvedValue(files);
 
       const result = await controller.listFiles(makeReq(), SKILL_ID);
       expect(result).toEqual(files);
-      expect(skillStorageService.listSkillFiles).toHaveBeenCalledWith(
-        TENANT_ID,
-        SKILL_ID,
-      );
+      expect(skillService.listFiles).toHaveBeenCalledWith(TENANT_ID, SKILL_ID);
     });
   });
 
   describe('downloadFile', () => {
-    it('delegates to skillStorageService.downloadSkillFile', async () => {
+    it('delegates to skillService.downloadFile', async () => {
       const mockStream = { pipe: vi.fn() };
-      skillStorageService.downloadSkillFile.mockResolvedValue(mockStream);
+      skillService.downloadFile.mockResolvedValue(mockStream);
 
       const reply = {
         header: vi.fn(),
@@ -240,7 +244,7 @@ describe('SkillController', () => {
         reply,
       );
       expect(result).toBe('sent');
-      expect(skillStorageService.downloadSkillFile).toHaveBeenCalledWith(
+      expect(skillService.downloadFile).toHaveBeenCalledWith(
         TENANT_ID,
         SKILL_ID,
         'test.md',
@@ -254,71 +258,105 @@ describe('SkillController', () => {
   });
 
   describe('deleteFile', () => {
-    it('delegates to skillStorageService.deleteSkillFile and refreshes meta', async () => {
-      skillService.refreshFileMeta.mockResolvedValue(undefined);
-
+    it('delegates to skillService.deleteFile', async () => {
       await controller.deleteFile(makeReq(), SKILL_ID, 'test.md');
 
-      expect(skillStorageService.deleteSkillFile).toHaveBeenCalledWith(
+      expect(skillService.deleteFile).toHaveBeenCalledWith(
         TENANT_ID,
         SKILL_ID,
         'test.md',
-      );
-      expect(skillService.refreshFileMeta).toHaveBeenCalledWith(
-        TENANT_ID,
-        SKILL_ID,
       );
     });
   });
 
   describe('uploadFile', () => {
     it('requests preserved multipart paths and rejects traversal names', async () => {
-      const parts = vi.fn().mockReturnValue({
-        async *[Symbol.asyncIterator]() {
-          yield {
-            type: 'file',
-            fieldname: 'file',
-            filename: '../secret.txt',
-            mimetype: 'text/plain',
-            toBuffer: vi.fn().mockResolvedValue(Buffer.from('secret')),
-          };
-        },
-      });
+      const parts = makeParts(makeFilePart('../secret.txt', 'secret'));
       const req = makeReq({ parts });
 
       await expect(controller.uploadFile(req, SKILL_ID)).rejects.toThrow(
         '文件名无效',
       );
       expect(parts).toHaveBeenCalledWith({ preservePath: true });
-      expect(skillStorageService.uploadSkillFile).not.toHaveBeenCalled();
+      expect(skillService.uploadFile).not.toHaveBeenCalled();
     });
 
-    it('stores a safe nested multipart name by basename', async () => {
-      const parts = vi.fn().mockReturnValue({
-        async *[Symbol.asyncIterator]() {
-          yield {
-            type: 'file',
-            fieldname: 'file',
-            filename: 'examples/input.txt',
-            mimetype: 'text/plain',
-            toBuffer: vi.fn().mockResolvedValue(Buffer.from('example')),
-          };
-        },
-      });
+    it('keeps a safe nested multipart path instead of flattening it', async () => {
+      const parts = makeParts(makeFilePart('scripts/run.sh', 'example'));
 
       const result = await controller.uploadFile(makeReq({ parts }), SKILL_ID);
 
-      expect(skillStorageService.uploadSkillFile).toHaveBeenCalledWith(
+      expect(skillService.uploadFile).toHaveBeenCalledWith(
         TENANT_ID,
         SKILL_ID,
-        'input.txt',
-        Buffer.from('example'),
-        'text/plain',
+        expect.objectContaining({
+          filename: 'scripts/run.sh',
+          buffer: Buffer.from('example'),
+        }),
       );
       expect(result).toEqual({
         message: '文件上传成功',
-        fileName: 'input.txt',
+        fileName: 'scripts/run.sh',
       });
+    });
+
+    it('rejects absolute paths', async () => {
+      const parts = makeParts(makeFilePart('/etc/passwd'));
+
+      await expect(
+        controller.uploadFile(makeReq({ parts }), SKILL_ID),
+      ).rejects.toThrow(SkillFileNameInvalidException);
+    });
+
+    it('rejects non-multipart requests with 415 before reading parts', async () => {
+      const parts = vi.fn();
+      const req = makeReq({
+        isMultipart: vi.fn().mockReturnValue(false),
+        parts,
+      });
+
+      await expect(controller.uploadFile(req, SKILL_ID)).rejects.toThrow(
+        SkillMultipartRequiredException,
+      );
+      await expect(controller.create(req)).rejects.toThrow(
+        SkillMultipartRequiredException,
+      );
+      expect(parts).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create', () => {
+    it('rejects duplicate file paths in one request instead of overwriting', async () => {
+      const parts = makeParts(
+        { type: 'field', fieldname: 'metadata', value: '{"name":"s"}' },
+        makeFilePart('a/x.md', 'aaa'),
+        makeFilePart('b/x.md', 'bbbbb'),
+        makeFilePart('a/x.md', 'again'),
+      );
+
+      await expect(controller.create(makeReq({ parts }))).rejects.toThrow(
+        SkillFileNameConflictException,
+      );
+      expect(skillService.create).not.toHaveBeenCalled();
+    });
+
+    it('stores same basename under different directories as distinct files', async () => {
+      const parts = makeParts(
+        {
+          type: 'field',
+          fieldname: 'metadata',
+          value: '{"name":"s","description":"d"}',
+        },
+        makeFilePart('a/x.md', 'aaa'),
+        makeFilePart('b/x.md', 'bbbbb'),
+      );
+
+      await controller.create(makeReq({ parts }));
+
+      const files = skillService.create.mock.calls[0][3] as Array<{
+        filename: string;
+      }>;
+      expect(files.map((file) => file.filename)).toEqual(['a/x.md', 'b/x.md']);
     });
   });
 

@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { Readable } from 'node:stream';
@@ -7,7 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MINIO_CLIENT } from '../../infrastructure/storage/storage.constants';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SKILL_FILE_MAX_SIZE } from './skill.constants';
-import { SkillFileNameInvalidException } from './skill.exceptions';
+import {
+  SkillFileNameInvalidException,
+  SkillFileTooLargeException,
+} from './skill.exceptions';
 import { SkillStorageService } from './skill-storage.service';
 
 const mocks = vi.hoisted(() => ({
@@ -89,12 +91,12 @@ describe('SkillStorageService', () => {
       );
     });
 
-    it('throws BadRequestException when file exceeds max size', async () => {
+    it('throws SkillFileTooLargeException when file exceeds max size', async () => {
       const buffer = Buffer.alloc(SKILL_FILE_MAX_SIZE + 1);
 
       await expect(
         service.uploadSkillFile(TENANT_ID, SKILL_ID, 'large.bin', buffer),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(SkillFileTooLargeException);
     });
 
     it('allows files at exactly the max size limit', async () => {
@@ -103,33 +105,38 @@ describe('SkillStorageService', () => {
       expect(storageService.upload).toHaveBeenCalledOnce();
     });
 
-    it.each(['../secret.txt', 'dir/../secret.txt', '.'])(
-      'rejects unsafe file name %s before upload',
-      async (fileName) => {
-        await expect(
-          service.uploadSkillFile(
-            TENANT_ID,
-            SKILL_ID,
-            fileName,
-            Buffer.from('secret'),
-          ),
-        ).rejects.toThrow(SkillFileNameInvalidException);
-        expect(storageService.upload).not.toHaveBeenCalled();
-      },
-    );
+    it.each([
+      '../secret.txt',
+      'dir/../secret.txt',
+      '.',
+      '/etc/passwd',
+      'C:/secret.txt',
+      'a//b.txt',
+      'dir/',
+    ])('rejects unsafe file name %s before upload', async (fileName) => {
+      await expect(
+        service.uploadSkillFile(
+          TENANT_ID,
+          SKILL_ID,
+          fileName,
+          Buffer.from('secret'),
+        ),
+      ).rejects.toThrow(SkillFileNameInvalidException);
+      expect(storageService.upload).not.toHaveBeenCalled();
+    });
 
-    it('normalizes safe nested names to their basename', async () => {
+    it('keeps safe nested relative paths under the skill prefix', async () => {
       const buffer = Buffer.from('example');
 
       await service.uploadSkillFile(
         TENANT_ID,
         SKILL_ID,
-        'examples/input.txt',
+        'examples\\input.txt',
         buffer,
       );
 
       expect(storageService.upload).toHaveBeenCalledWith(
-        `tenants/${TENANT_ID}/skills/${SKILL_ID}/input.txt`,
+        `tenants/${TENANT_ID}/skills/${SKILL_ID}/examples/input.txt`,
         buffer,
         buffer.length,
         undefined,

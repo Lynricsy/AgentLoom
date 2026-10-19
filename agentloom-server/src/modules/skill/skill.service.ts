@@ -1,16 +1,14 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { Readable } from 'node:stream';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
+import {
+  getPostgresConstraintName,
+  hasPostgresErrorCode,
+} from '../../common/utils/postgres-error.utils';
 import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
 import * as schema from '../../database/schema';
@@ -20,6 +18,15 @@ import type { CreateSkillDtoType } from './dto/create-skill.dto';
 import type { SkillQueryDtoType } from './dto/skill-query.dto';
 import type { UpdateSkillDtoType } from './dto/update-skill.dto';
 import { SkillStorageService } from './skill-storage.service';
+import {
+  SkillAlreadyArchivedException,
+  SkillBuiltinReadonlyException,
+  SkillFileNotFoundException,
+  SkillNameConflictException,
+  SkillNotFoundException,
+  SkillVersionConflictException,
+} from './skill.exceptions';
+import { validateAndCanonicalizeSkillFileName } from './skill-file-name.utils';
 
 export interface SkillUploadFile {
   fieldname: string;
@@ -29,6 +36,7 @@ export interface SkillUploadFile {
 }
 
 const MAX_SLUG_RETRIES = 3;
+const SKILL_NAME_UNIQUE_INDEX = 'skills_tenant_name_idx';
 type SkillWithSourceKind = schema.SkillRecord & {
   sourceKind: schema.ResourceSourceKind;
 };
@@ -196,6 +204,12 @@ export class SkillService {
         created = row;
         break;
       } catch (error) {
+        if (
+          getPostgresConstraintName(error, '23505') === SKILL_NAME_UNIQUE_INDEX
+        ) {
+          throw new SkillNameConflictException(dto.name);
+        }
+
         const isUniqueViolation = hasPostgresErrorCode(error, '23505');
 
         if (!isUniqueViolation || attempt === MAX_SLUG_RETRIES) {
@@ -327,14 +341,7 @@ export class SkillService {
     tenantId: string,
     skillId: string,
   ): Promise<SkillWithSourceKind> {
-    const [row] = await this.tenantDb
-      .select()
-      .from(schema.skills)
-      .where(eq(schema.skills.id, skillId));
-
-    if (!row) {
-      throw new NotFoundException(`Skill ${skillId} 不存在`);
-    }
+    const row = await this.findRecordOrThrow(skillId);
 
     const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
       'skill',
@@ -345,6 +352,112 @@ export class SkillService {
       ...row,
       sourceKind: sourceKindMap.get(skillId) ?? 'manual',
     };
+  }
+
+  /**
+   * 读取当前租户可见的 Skill（含所有租户共享的只读内置 Skill），不存在抛 404。
+   * 他租户的 Skill 被 RLS 过滤，与不存在同样返回 404。
+   */
+  private async findRecordOrThrow(
+    skillId: string,
+  ): Promise<schema.SkillRecord> {
+    const [row] = await this.tenantDb
+      .select()
+      .from(schema.skills)
+      .where(eq(schema.skills.id, skillId));
+
+    if (!row) {
+      throw new SkillNotFoundException(skillId);
+    }
+
+    return row;
+  }
+
+  /** 写操作前置校验：Skill 必须存在且不是内置 Skill。 */
+  private async findWritableRecordOrThrow(
+    skillId: string,
+  ): Promise<schema.SkillRecord> {
+    const row = await this.findRecordOrThrow(skillId);
+
+    if (row.isBuiltin) {
+      throw new SkillBuiltinReadonlyException(skillId);
+    }
+
+    return row;
+  }
+
+  async listFiles(
+    tenantId: string,
+    skillId: string,
+  ): Promise<{ name: string; size: number }[]> {
+    const skill = await this.findRecordOrThrow(skillId);
+
+    if (skill.isBuiltin) {
+      return Object.entries(
+        this.loadBuiltinSkillFiles(skill.slug, skill.content),
+      ).map(([name, content]) => ({
+        name,
+        size: Buffer.byteLength(content, 'utf-8'),
+      }));
+    }
+
+    return this.skillStorageService.listSkillFiles(tenantId, skillId);
+  }
+
+  async downloadFile(
+    tenantId: string,
+    skillId: string,
+    fileName: string,
+  ): Promise<Readable> {
+    const skill = await this.findRecordOrThrow(skillId);
+
+    if (skill.isBuiltin) {
+      const canonicalName = validateAndCanonicalizeSkillFileName(fileName);
+      const content = this.loadBuiltinSkillFiles(skill.slug, skill.content)[
+        canonicalName
+      ];
+      if (content === undefined) {
+        throw new SkillFileNotFoundException(canonicalName);
+      }
+      return Readable.from(Buffer.from(content, 'utf-8'));
+    }
+
+    return this.skillStorageService.downloadSkillFile(
+      tenantId,
+      skillId,
+      fileName,
+    );
+  }
+
+  async uploadFile(
+    tenantId: string,
+    skillId: string,
+    file: SkillUploadFile,
+  ): Promise<void> {
+    await this.findWritableRecordOrThrow(skillId);
+
+    await this.skillStorageService.uploadSkillFile(
+      tenantId,
+      skillId,
+      file.filename,
+      file.buffer,
+      file.mimetype,
+    );
+
+    await this.refreshFileMeta(tenantId, skillId);
+  }
+
+  async deleteFile(
+    tenantId: string,
+    skillId: string,
+    fileName: string,
+  ): Promise<void> {
+    await this.findWritableRecordOrThrow(skillId);
+
+    // 单文件删除必须经过 Skill 存储边界，避免自行拼键绕过统一文件名校验。
+    await this.skillStorageService.deleteSkillFile(tenantId, skillId, fileName);
+
+    await this.refreshFileMeta(tenantId, skillId);
   }
 
   async findByIds(
@@ -410,6 +523,8 @@ export class SkillService {
     dto: UpdateSkillDtoType,
     files?: SkillUploadFile[],
   ): Promise<SkillWithSourceKind> {
+    await this.findWritableRecordOrThrow(skillId);
+
     const setClause: Record<string, any> = {
       version: sql`${schema.skills.version} + 1`,
       updatedBy: userId,
@@ -435,19 +550,31 @@ export class SkillService {
       }
     }
 
-    const updateResult = await this.tenantDb
-      .update(schema.skills)
-      .set(setClause)
-      .where(
-        and(
-          eq(schema.skills.id, skillId),
-          eq(schema.skills.version, dto.occVersion),
-        ),
-      )
-      .returning();
+    let updateResult: schema.SkillRecord[];
+    try {
+      updateResult = await this.tenantDb
+        .update(schema.skills)
+        .set(setClause)
+        .where(
+          and(
+            eq(schema.skills.id, skillId),
+            eq(schema.skills.version, dto.occVersion),
+          ),
+        )
+        .returning();
+    } catch (error) {
+      if (
+        dto.name !== undefined &&
+        getPostgresConstraintName(error, '23505') === SKILL_NAME_UNIQUE_INDEX
+      ) {
+        throw new SkillNameConflictException(dto.name);
+      }
+      throw error;
+    }
 
+    // 存在性已在前面校验，命中 0 行只可能是 occVersion 过期。
     if (updateResult.length === 0) {
-      throw new ConflictException(`Skill ${skillId} 版本冲突，请刷新后重试`);
+      throw new SkillVersionConflictException(skillId);
     }
 
     if (files?.length) {
@@ -500,14 +627,7 @@ export class SkillService {
   }
 
   async delete(tenantId: string, skillId: string): Promise<void> {
-    const [skill] = await this.tenantDb
-      .select()
-      .from(schema.skills)
-      .where(eq(schema.skills.id, skillId));
-
-    if (!skill) {
-      throw new NotFoundException(`Skill ${skillId} 不存在`);
-    }
+    await this.findWritableRecordOrThrow(skillId);
 
     await this.skillStorageService.deleteSkillFiles(tenantId, skillId);
 
@@ -523,17 +643,10 @@ export class SkillService {
     userId: string,
     skillId: string,
   ): Promise<SkillWithSourceKind> {
-    const [skill] = await this.tenantDb
-      .select()
-      .from(schema.skills)
-      .where(eq(schema.skills.id, skillId));
-
-    if (!skill) {
-      throw new NotFoundException(`Skill ${skillId} 不存在`);
-    }
+    const skill = await this.findWritableRecordOrThrow(skillId);
 
     if (skill.status === 'archived') {
-      throw new ConflictException(`Skill ${skillId} 已处于归档状态`);
+      throw new SkillAlreadyArchivedException(skillId);
     }
 
     const [updated] = await this.tenantDb

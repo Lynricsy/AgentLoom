@@ -46,6 +46,7 @@ import {
   useDeleteSkillFile,
 } from '../api/skillQueries';
 import { downloadSkillFile, type SkillFileInfo } from '../api/skillApi';
+import { extractSkillZip } from '../lib/skillZip';
 import type { Skill } from '../types';
 import type { OnMount } from '@monaco-editor/react';
 
@@ -548,28 +549,9 @@ export function CreateSkillDialog({
         setImportStatus('success');
         setImportMessage(`已解析: ${fm.name || file.name}`);
       } else if (ext === 'zip') {
-        const jszip = new JSZip();
-        const zip = await jszip.loadAsync(file);
-
-        let skillMdContent: string | null = null;
-        const attachmentFiles: File[] = [];
-
-        for (const [relativePath, entry] of Object.entries(zip.files)) {
-          if (entry.dir) continue;
-          if (relativePath.includes('..')) continue;
-          if (relativePath.startsWith('__MACOSX/')) continue;
-
-          const fileName = relativePath.split('/').pop() || relativePath;
-
-          if (fileName.toUpperCase() === 'SKILL.MD') {
-            skillMdContent = await entry.async('string');
-          } else {
-            const blob = await entry.async('blob');
-            attachmentFiles.push(
-              new File([blob], fileName, { type: 'application/octet-stream' }),
-            );
-          }
-        }
+        const zip = await new JSZip().loadAsync(file);
+        const { skillMdContent, attachments: attachmentFiles } =
+          await extractSkillZip(zip);
 
         if (!skillMdContent) {
           setImportStatus('error');

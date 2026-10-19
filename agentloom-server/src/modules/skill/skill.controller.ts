@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -44,8 +43,12 @@ import {
   type SkillQueryDtoType,
 } from './dto/skill-query.dto';
 import { validateAndCanonicalizeSkillFileName } from './skill-file-name.utils';
+import {
+  SkillFileNameConflictException,
+  SkillFileRequiredException,
+  SkillMultipartRequiredException,
+} from './skill.exceptions';
 import { SkillService } from './skill.service';
-import { SkillStorageService } from './skill-storage.service';
 
 type AuthenticatedRequest = FastifyRequest & {
   tenantId?: string;
@@ -59,10 +62,7 @@ type AuthenticatedRequest = FastifyRequest & {
 export class SkillController {
   private readonly logger = new Logger(SkillController.name);
 
-  constructor(
-    private readonly skillService: SkillService,
-    private readonly skillStorageService: SkillStorageService,
-  ) {}
+  constructor(private readonly skillService: SkillService) {}
 
   @Post()
   @Roles('owner', 'admin', 'creator')
@@ -217,7 +217,7 @@ export class SkillController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const tenantId = this.requireTenantId(req);
-    return this.skillStorageService.listSkillFiles(tenantId, id);
+    return this.skillService.listFiles(tenantId, id);
   }
 
   @Get(':id/files/:fileName')
@@ -234,11 +234,7 @@ export class SkillController {
     @Res({ passthrough: false }) reply: any,
   ) {
     const tenantId = this.requireTenantId(req);
-    const stream = await this.skillStorageService.downloadSkillFile(
-      tenantId,
-      id,
-      fileName,
-    );
+    const stream = await this.skillService.downloadFile(tenantId, id, fileName);
     reply.header(
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(fileName)}"`,
@@ -266,10 +262,11 @@ export class SkillController {
     },
   })
   @ApiResponse({ status: 201, description: '文件上传成功' })
-  @ApiResponse({ status: 400, description: '缺少文件' })
+  @ApiResponse({ status: 400, description: '缺少文件或文件名无效' })
   @ApiResponse({ status: 401, description: '认证失败' })
-  @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 403, description: '权限不足或内置 Skill 只读' })
   @ApiResponse({ status: 404, description: 'Skill 不存在' })
+  @ApiResponse({ status: 415, description: '请求不是 multipart/form-data' })
   @HttpCode(HttpStatus.CREATED)
   async uploadFile(
     @Req() req: AuthenticatedRequest,
@@ -279,19 +276,11 @@ export class SkillController {
 
     const { files } = await this.parseMultipart(req);
     if (!files.length) {
-      throw new BadRequestException('缺少上传文件');
+      throw new SkillFileRequiredException();
     }
     const file = files[0];
 
-    await this.skillStorageService.uploadSkillFile(
-      tenantId,
-      id,
-      file.filename,
-      file.buffer,
-      file.mimetype,
-    );
-
-    await this.refreshFileMeta(tenantId, id);
+    await this.skillService.uploadFile(tenantId, id, file);
 
     return { message: '文件上传成功', fileName: file.filename };
   }
@@ -304,7 +293,7 @@ export class SkillController {
   @ApiParam({ name: 'fileName', description: '文件名' })
   @ApiResponse({ status: 204, description: '文件已删除' })
   @ApiResponse({ status: 401, description: '认证失败' })
-  @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 403, description: '权限不足或内置 Skill 只读' })
   @ApiResponse({ status: 404, description: 'Skill 或文件不存在' })
   async deleteFile(
     @Req() req: AuthenticatedRequest,
@@ -312,11 +301,7 @@ export class SkillController {
     @Param('fileName') fileName: string,
   ) {
     const tenantId = this.requireTenantId(req);
-
-    // 单文件删除必须经过 Skill 存储边界，避免 controller 自行拼键绕过统一文件名校验。
-    await this.skillStorageService.deleteSkillFile(tenantId, id, fileName);
-
-    await this.refreshFileMeta(tenantId, id);
+    await this.skillService.deleteFile(tenantId, id, fileName);
   }
 
   private requireTenantId(req: AuthenticatedRequest): string {
@@ -335,7 +320,13 @@ export class SkillController {
       mimetype: string;
     }>;
   }> {
-    // 必须保留 multipart 原始路径，否则 busboy 会先取 basename，穿越校验将失去依据。
+    // 非 multipart 请求（例如 JSON body）调用 parts() 会抛 FastifyError 406，必须先拦下。
+    if (!req.isMultipart()) {
+      throw new SkillMultipartRequiredException();
+    }
+
+    // 必须保留 multipart 原始路径：Skill 包内的相对目录（如 scripts/run.sh）要原样存储，
+    // 且穿越校验需要看到完整路径。
     const parts = req.parts({ preservePath: true });
     let metadataRaw: string | undefined;
     const files: Array<{
@@ -344,13 +335,18 @@ export class SkillController {
       buffer: Buffer;
       mimetype: string;
     }> = [];
+    const seenFileNames = new Set<string>();
 
     for await (const part of parts) {
       if (part.type === 'field' && part.fieldname === 'metadata') {
         metadataRaw = part.value as string;
       } else if (part.type === 'file') {
-        // 必须先校验原始文件名再取 basename，避免危险路径被静默收口后进入存储层。
         const fileName = validateAndCanonicalizeSkillFileName(part.filename);
+        // 同一请求内的重复路径会在对象存储里互相覆盖，必须显式拒绝而不是静默保留后者。
+        if (seenFileNames.has(fileName)) {
+          throw new SkillFileNameConflictException(fileName);
+        }
+        seenFileNames.add(fileName);
         const buffer = await part.toBuffer();
         files.push({
           fieldname: part.fieldname,
@@ -371,12 +367,5 @@ export class SkillController {
     }
 
     return { metadata, files };
-  }
-
-  private async refreshFileMeta(
-    tenantId: string,
-    skillId: string,
-  ): Promise<void> {
-    await this.skillService.refreshFileMeta(tenantId, skillId);
   }
 }
