@@ -54,7 +54,8 @@ export class WorkflowLaunchSchemaVersionMismatchException extends DomainExceptio
       type: 'https://agentloom.dev/errors/workflow-launch-schema-version-mismatch',
       title: '启动参数 schemaVersion 不匹配',
       status: HttpStatus.CONFLICT,
-      detail: `启动请求使用的 schemaVersion=${providedSchemaVersion ?? 'undefined'} 与当前已发布输入契约版本 ${currentSchemaVersion} 不一致`,
+      // 运行按工作流当前保存的输入参数配置校验（PATCH 保存即生效，不随发布版本走），不是「已发布」契约。
+      detail: `启动请求使用的 schemaVersion=${providedSchemaVersion ?? 'undefined'} 与工作流当前输入契约版本 ${currentSchemaVersion} 不一致，请先 GET /workflow-definitions/:id/input-schema 取最新 version`,
       errors: [
         {
           field: 'schemaVersion',

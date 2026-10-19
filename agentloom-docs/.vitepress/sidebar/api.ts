@@ -7,6 +7,7 @@ const api: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'API 约定', link: '/api/' },
       { text: 'REST 参考', link: '/api/rest' },
+      { text: '启动工作流执行', link: '/api/workflow-runs' },
       { text: 'Agent 对外 API', link: '/api/agent-api' },
       { text: 'A2A 入站接入', link: '/api/a2a' },
       { text: 'Webhook 与 API 事件', link: '/api/webhooks' },

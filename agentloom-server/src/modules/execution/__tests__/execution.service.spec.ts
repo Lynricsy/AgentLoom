@@ -999,6 +999,18 @@ describe('ExecutionService', () => {
       expect(db.insert).not.toHaveBeenCalled();
     });
 
+    it('schemaVersion 不匹配的 409 如实说明以工作流当前输入契约为准，并指明取最新 version 的端点', () => {
+      const error = new WorkflowLaunchSchemaVersionMismatchException(2, 1);
+
+      expect(error.detail).toBe(
+        '启动请求使用的 schemaVersion=1 与工作流当前输入契约版本 2 不一致，请先 GET /workflow-definitions/:id/input-schema 取最新 version',
+      );
+      expect(error.extensions).toEqual({
+        currentSchemaVersion: 2,
+        providedSchemaVersion: 1,
+      });
+    });
+
     it('应在缺少可见必填字段时抛出 422', async () => {
       const workflowWithInputSchema = {
         ...mockPublishedWorkflow,

@@ -18,7 +18,7 @@ docType: howto
 
 在画布中运行的是当前画布草稿，包括发布后尚未再次发布的修改。这类执行称为「草稿运行」：它运行的定义保存在执行记录里，但不属于任何发布版本，按发布版本筛选执行时不会出现。触发器和移动端启动的执行运行当前发布版本，REST API 启动默认也运行当前发布版本，见 [版本管理](/guide/workflows/versions)。
 
-让工作流按定时、Webhook 或 API 事件自动运行需要先发布工作流，再创建触发器，见 [触发器与自动化](/guide/triggers/)。通过 REST API 启动执行见 [REST API](/api/rest)。
+让工作流按定时、Webhook 或 API 事件自动运行需要先发布工作流，再创建触发器，见 [触发器与自动化](/guide/triggers/)。通过 REST API 启动执行（请求体字段、`schemaVersion` 的取法）见 [启动工作流执行](/api/workflow-runs)。
 
 ## 跟踪运行中的执行
 

@@ -34,7 +34,17 @@ export const conversationPlanSchema = z.object({
 
 export const workflowInputSchemaSchema = z
   .object({
-    version: z.number().int().positive().default(1),
+    // 契约修订号由服务端维护：PATCH 更新时忽略提交值，内容有变化就在已存值上加 1
+    // （workflow-version.service normalizeWorkflowInputSchemaForUpdate）；导入与从模板创建沿用来源中的值。
+    // 启动执行时以它校验调用方的 schemaVersion。
+    version: z
+      .number()
+      .int()
+      .positive()
+      .default(1)
+      .describe(
+        '服务端维护的输入契约修订号：更新工作流时忽略提交值，内容有变化就在已存值上加 1；启动执行时作为 schemaVersion 传入',
+      ),
     collectionMode: collectionModeSchema.default('form'),
     fields: z.array(inputFieldDefinitionSchema).default([]),
     conversationPlan: conversationPlanSchema.optional(),

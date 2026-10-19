@@ -89,7 +89,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `workflow-publish-legacy-llm-agent` | 422 | 工作流包含已废弃的 llm-agent 节点 | 按 `detail` 改用 Agent 节点 |
 | `workflow-publish-autonomy-cap` | 422 | 节点配置超出组织自治上限 | 调整节点配置，或请管理员修改[自治策略](/guide/collaboration/autonomy-policy) |
 | `workflow-launch-input-invalid` | 422 | 启动参数未通过输入参数校验 | 按 `errors` 修正输入，见[输入参数](/guide/workflows/input-parameters) |
-| `workflow-launch-schema-version-mismatch` | 409 | 启动时使用的输入参数版本与已发布版本不一致 | 刷新页面后重新运行 |
+| `workflow-launch-schema-version-mismatch` | 409 | 启动时使用的 `schemaVersion` 与工作流当前的输入参数版本不一致（保存输入参数后版本即加 1，不需要重新发布） | Studio 中刷新页面后重新运行；API 调用先 `GET /workflow-definitions/:id/input-schema` 取最新 `version`，见[启动工作流执行](/api/workflow-runs) |
 | `cyclic-graph` | 400 | 工作流图存在环路 | 删除形成环路的连线 |
 | `node-type-mismatch` | 422 | 运行时某条连线两端的端口数据类型不兼容；或 JSON 端口连到「数组」端口而上游实际值不是数组（`detail` 写明实际类型） | 按 `detail` 中的节点与端口修改连线，或让上游输出数组 |
 | `reusable-block-expansion-failed` | 422 | 运行前展开可复用块失败：块缺少内嵌定义、块端口没有映射到块内节点，或连线连到块上不存在的端口 | 从「My Blocks」重新拖入该块，或删除失效连线后重新发布，见 [Reusable Block](/guide/nodes/reusable-block) |
