@@ -85,7 +85,13 @@ guest 证书由 runtime-manager 在每次启动 microVM 时用 `FIRECRACKER_GUES
 
 ## agentloom-guestd 与 guest 侧沙箱服务
 
-agentloom-guestd 启动时从 MMDSv2（`169.254.169.254`）取元数据（令牌、guest IP、证书、回调地址），监听 `:8443`，并以子进程方式运行 `node /opt/agentloom-sandbox/dist/server.js`，退出后指数退避重启（100 ms 起，上限 5 秒）。systemd 单元是 `agentloom-deploy/firecracker/systemd/agentloom-guestd.service`。
+agentloom-guestd 启动时从 MMDSv2（`169.254.169.254`）取元数据（令牌、guest IP、证书、回调地址），监听 `:8443`，并以子进程方式运行 `node /opt/agentloom-sandbox/dist/server.js`，退出后指数退避重启（100 ms 起，上限 5 秒），每次退出计入运行时诊断。systemd 单元是 `agentloom-deploy/firecracker/systemd/agentloom-guestd.service`：
+
+- `OOMPolicy=continue`：VM 内存不足时内核 OOM killer 只杀掉占用最多的进程（通常是 agent 执行的 `npm install` 之类命令），systemd 不再连带停止整个单元；默认的 `stop` 会让 guest 运行时整体重启、所有会话丢失；
+- `Environment=HOME=/root`，不设 `ProtectHome`：agent 执行的 npm、pip、uv、git 需要可写的 HOME 存放缓存与配置，`/root` 位于磁盘 overlay，不占用内存（`/tmp`、`/run` 是 tmpfs）；
+- `ProtectSystem=full`、`PrivateTmp=yes`、`NoNewPrivileges=yes`。
+
+guest 服务自身以 `NODE_ENV=production` 运行，但 `agentloom-deploy/sandbox/src/dsh/session-factory.ts` 拉起 dsh 子进程时剔除该变量与凭据类变量（名称含 KEY/SECRET/TOKEN/PASSWORD），agent 执行的命令看不到它们，`npm install` 按 npm 默认安装 devDependencies。
 
 请求分流（`agentloom-firecracker-runtime/internal/guest/server.go`）：
 
@@ -109,6 +115,9 @@ guestd 自身的运行时 API：
 | POST | `/v1/runtime/exec/{id}/kill` | `killExec` |
 | GET | `/v1/runtime/stats` | `stats` |
 | GET | `/v1/runtime/processes` | `processes` |
+| GET | `/v1/runtime/diagnostics` | `diagnosticsReport` |
+
+`/v1/runtime/diagnostics`（`agentloom-firecracker-runtime/internal/guest/diagnostics.go`）返回 `guestdStartedAt`、`uptimeSeconds`、`runtimeRestarts` 与 `lastRuntimeExit`（guestd 进程内记录的 Node 运行时退出次数与最近一次退出原因）、`oomKillCount`（`/proc/vmstat` 的 `oom_kill`）、`oomKills`（从 `/dev/kmsg` 解析的最近 10 条「Killed process」记录：`pid`、`command`、`secondsSinceBoot`）。server 在 prompt 流中断或 guest 报告会话不存在时读取它，把原因写进错误信息，见 [Agent 运行态](/dev/server/agent-runtime)。
 
 Node 沙箱服务的源码在 `agentloom-deploy/sandbox/`（包名 `@agentloom/sandbox`）：Fastify 服务为每个会话拉起一个 DeepSeek Harness（dsh）子进程，经会话目录内的 unix socket 与子进程里的 bridge 插件通信，机制见 [Agent 运行态](/dev/server/agent-runtime)。`agentloom-deploy/sandbox/src/server.ts` 注册 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/permission`、`/v1/pty/*`、`/health` 等路由，监听 `SANDBOX_LISTEN_SOCKET` 指定的 unix socket；远程工具回调的令牌头常量在 `agentloom-deploy/sandbox/src/remote-tools.ts`。dsh launcher 的路径可用 `AGENTLOOM_DSH_BIN` 覆盖，默认解析安装目录内的 `@deepseek-ai/dsh/lib/bin.js`；dsh 要求 Node 不低于 22.19（`agentloom-deploy/sandbox/package.json` 的 `engines`），rootfs 中的 Node 版本须满足。
 

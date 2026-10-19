@@ -133,7 +133,7 @@ func (server *Server) Handler() http.Handler {
 func (server *Server) Run(ctx context.Context) error {
 	childErrors := make(chan error, 1)
 	go func() {
-		childErrors <- superviseNodeRuntime(ctx, server.config)
+		childErrors <- superviseNodeRuntime(ctx, server.config, server.runtime.diagnostics)
 	}()
 
 	httpServer := &http.Server{
@@ -174,7 +174,9 @@ func (server *Server) Run(ctx context.Context) error {
 	}
 }
 
-func superviseNodeRuntime(ctx context.Context, config Config) error {
+// superviseNodeRuntime 运行 node 沙箱服务并在退出后重启；每次非预期退出都记入 diagnostics，
+// server 据此把「流中断 / 会话不存在」解释为运行时重启（内存中的会话随之丢失）。
+func superviseNodeRuntime(ctx context.Context, config Config, diagnostics *runtimeDiagnostics) error {
 	backoff := 100 * time.Millisecond
 	for {
 		command := exec.CommandContext(ctx, "node", config.NodeEntry)
@@ -189,6 +191,7 @@ func superviseNodeRuntime(ctx context.Context, config Config) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		diagnostics.recordRuntimeExit(err)
 		config.Logger.Error("node runtime exited", "error", err, "restartDelay", backoff)
 		timer := time.NewTimer(backoff)
 		select {

@@ -13,12 +13,16 @@ StandardError=journal+console
 Environment=AGENTLOOM_GUESTD_LISTEN=:8443
 Environment=SANDBOX_LISTEN_SOCKET=/run/agentloom/agent.sock
 Environment=AGENTLOOM_NODE_ENTRY=/opt/agentloom-sandbox/dist/server.js
+# agent 执行的命令（npm/pip/uv/git）需要可写的 HOME 存放缓存与配置；/root 位于磁盘 overlay，不占内存
+Environment=HOME=/root
+# 内核 OOM 只杀掉占内存最多的进程（通常是 agent 跑的 npm install 等命令）；
+# 默认 OOMPolicy=stop 会让 systemd 连带停止整个单元，guest 运行时重启、会话全部丢失
+OOMPolicy=continue
 RuntimeDirectory=agentloom
 RuntimeDirectoryMode=0700
 LimitCORE=0
 NoNewPrivileges=yes
 ProtectSystem=full
-ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/run/agentloom /workspace
 

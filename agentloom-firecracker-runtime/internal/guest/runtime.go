@@ -40,6 +40,7 @@ type RuntimeAPI struct {
 	pending      int
 	now          func() time.Time
 	schedule     func(time.Duration, func())
+	diagnostics  *runtimeDiagnostics
 }
 
 type execRecord struct {
@@ -73,7 +74,8 @@ func newRuntimeAPI(ttl time.Duration, activeMax, completedMax int) *RuntimeAPI {
 	runtimeAPI := &RuntimeAPI{
 		execs: make(map[string]*execRecord), mux: http.NewServeMux(),
 		execTTL: ttl, activeMax: activeMax, completedMax: completedMax, now: time.Now,
-		schedule: func(delay time.Duration, callback func()) { time.AfterFunc(delay, callback) },
+		schedule:    func(delay time.Duration, callback func()) { time.AfterFunc(delay, callback) },
+		diagnostics: newRuntimeDiagnostics(),
 	}
 	runtimeAPI.mux.HandleFunc("GET /v1/runtime/archive", runtimeAPI.getArchive)
 	runtimeAPI.mux.HandleFunc("PUT /v1/runtime/archive", runtimeAPI.putArchive)
@@ -86,6 +88,7 @@ func newRuntimeAPI(ttl time.Duration, activeMax, completedMax int) *RuntimeAPI {
 	runtimeAPI.mux.HandleFunc("POST /v1/runtime/exec/{id}/kill", runtimeAPI.killExec)
 	runtimeAPI.mux.HandleFunc("GET /v1/runtime/stats", runtimeAPI.stats)
 	runtimeAPI.mux.HandleFunc("GET /v1/runtime/processes", runtimeAPI.processes)
+	runtimeAPI.mux.HandleFunc("GET /v1/runtime/diagnostics", runtimeAPI.diagnosticsReport)
 	return runtimeAPI
 }
 
