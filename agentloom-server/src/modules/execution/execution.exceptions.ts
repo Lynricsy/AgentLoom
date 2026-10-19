@@ -154,12 +154,26 @@ export class InterventionPermissionDeniedException extends Error {
 }
 
 export class ExecutionNotResumableException extends DomainException {
-  constructor(executionId: string, currentStatus: string) {
+  constructor(executionId: string, currentStatus: string, reason?: string) {
     super({
       type: 'https://agentloom.dev/errors/execution-not-resumable',
       title: '执行不可恢复',
       status: HttpStatus.CONFLICT,
-      detail: `执行 ${executionId} 当前状态为 ${currentStatus}，无法恢复。仅 failed 状态的执行可以恢复，paused 状态请先进行人工干预`,
+      detail:
+        reason ??
+        `执行 ${executionId} 当前状态为 ${currentStatus}，无法恢复。仅 failed 状态的执行可以恢复，paused 状态请先进行人工干预`,
+    });
+  }
+}
+
+/** resume 的 fromNodeId 不在执行快照的节点中。 */
+export class ExecutionResumeNodeNotFoundException extends DomainException {
+  constructor(executionId: string, nodeId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/execution-resume-node-not-found',
+      title: '恢复起点节点不存在',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `执行 ${executionId} 的工作流快照中不存在节点 ${nodeId}`,
     });
   }
 }

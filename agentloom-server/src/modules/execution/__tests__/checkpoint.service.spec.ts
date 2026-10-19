@@ -8,6 +8,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import {
   ExecutionNotFoundException,
   ExecutionNotResumableException,
+  ExecutionResumeNodeNotFoundException,
 } from '../execution.exceptions';
 import type {
   ExecutionStep,
@@ -506,7 +507,7 @@ describe('CheckpointService', () => {
       ).rejects.toThrow(ExecutionNotResumableException);
     });
 
-    it('当没有需要重置的步骤时，仍应更新执行状态', async () => {
+    it('当没有需要重置的步骤时应抛 409，且不把执行改回 running', async () => {
       const execution = makeExecution();
       const steps = [
         makeStep({
@@ -516,20 +517,38 @@ describe('CheckpointService', () => {
           result: { out: 1 },
         }),
       ];
-      const updatedExecution = makeExecution({
-        status: 'running',
-        failedAt: null,
-      });
 
       db.select
         .mockReturnValueOnce(createSelectChain([execution]))
         .mockReturnValueOnce(createSelectChain(steps));
-      db.update.mockReturnValue(createUpdateChainReturning([updatedExecution]));
 
-      const result = await service.resumeExecution(TENANT_ID, EXECUTION_ID);
+      await expect(
+        service.resumeExecution(TENANT_ID, EXECUTION_ID),
+      ).rejects.toThrow(ExecutionNotResumableException);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(eventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+    });
 
-      expect(result.status).toBe('running');
-      expect(db.update).toHaveBeenCalledTimes(1);
+    it('fromNodeId 不在执行快照中时应抛 422，且不把执行改回 running', async () => {
+      const execution = makeExecution();
+      db.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            makeStep({ id: STEP_ID_2, nodeId: 'node-2', status: 'failed' }),
+          ]),
+        );
+
+      const error = await service
+        .resumeExecution(TENANT_ID, EXECUTION_ID, 'ghost')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ExecutionResumeNodeNotFoundException);
+      expect((error as ExecutionResumeNodeNotFoundException).getStatus()).toBe(
+        422,
+      );
+      expect(dagResolver.resolveDag).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('应发布执行状态变更事件，包含正确的 completedSteps 计数', async () => {

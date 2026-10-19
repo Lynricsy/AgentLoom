@@ -7,6 +7,7 @@ import { DagResolverService } from './dag-resolver.service';
 import {
   ExecutionNotFoundException,
   ExecutionNotResumableException,
+  ExecutionResumeNodeNotFoundException,
 } from './execution.exceptions';
 import { COMPLETED_STEP_STATUSES } from './step-state-machine.service';
 import { EventBridgeService } from './services/event-bridge.service';
@@ -121,6 +122,9 @@ export class CheckpointService {
         nodes: schema.ReactFlowNode[];
         edges: schema.ReactFlowEdge[];
       };
+      if (!snapshot.nodes.some((node) => node.id === fromNodeId)) {
+        throw new ExecutionResumeNodeNotFoundException(executionId, fromNodeId);
+      }
       const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
       const downstreamIds = this.getDownstreamNodeIds(
         fromNodeId,
@@ -142,30 +146,40 @@ export class CheckpointService {
       }
     }
 
-    // 批量重置步骤
-    if (stepsToReset.length > 0) {
-      const now = new Date();
-      const stepIds = stepsToReset.map((s) => s.id);
+    // 没有可重置的步骤时不能把执行改回 running：恢复任务找不到可调度步骤，
+    // 执行会永久停在 running 并占用并发配额。
+    if (stepsToReset.length === 0) {
+      throw new ExecutionNotResumableException(
+        executionId,
+        execution.status,
+        fromNodeId
+          ? `执行 ${executionId} 中节点 ${fromNodeId} 及其下游没有可恢复的步骤`
+          : `执行 ${executionId} 没有 failed/cancelled 状态的步骤可恢复`,
+      );
+    }
 
+    // 批量重置步骤
+    const now = new Date();
+    const stepIds = stepsToReset.map((s) => s.id);
+
+    await this.tenantDb
+      .update(schema.executionSteps)
+      .set({
+        status: 'pending',
+        attemptCount: 0,
+        errorMessage: null,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: now,
+      })
+      .where(inArray(schema.executionSteps.id, stepIds));
+
+    // 对于 fromNodeId 场景，也需要清除已完成步骤的 result
+    if (fromNodeId) {
       await this.tenantDb
         .update(schema.executionSteps)
-        .set({
-          status: 'pending',
-          attemptCount: 0,
-          errorMessage: null,
-          startedAt: null,
-          completedAt: null,
-          updatedAt: now,
-        })
+        .set({ result: null })
         .where(inArray(schema.executionSteps.id, stepIds));
-
-      // 对于 fromNodeId 场景，也需要清除已完成步骤的 result
-      if (fromNodeId) {
-        await this.tenantDb
-          .update(schema.executionSteps)
-          .set({ result: null })
-          .where(inArray(schema.executionSteps.id, stepIds));
-      }
     }
 
     const resetStepIds = new Set(stepsToReset.map((step) => step.id));
@@ -175,7 +189,6 @@ export class CheckpointService {
     ).length;
 
     // 恢复执行状态为 running
-    const now = new Date();
     const [updated] = await this.tenantDb
       .update(schema.workflowExecutions)
       .set({
