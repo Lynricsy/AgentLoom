@@ -3,7 +3,10 @@ import {
   useCompileAgentConfig,
   useSaveAgentCanvas,
 } from "@/features/agent";
-import { useAgentCanvasStore } from "../stores/agent-canvas.store";
+import {
+  useAgentCanvasStore,
+  type AgentCanvasState,
+} from "../stores/agent-canvas.store";
 
 function normalizeWorkspaceSnapshotId(
   workspaceId: string | null,
@@ -14,6 +17,23 @@ function normalizeWorkspaceSnapshotId(
 
   const normalized = workspaceId.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+/** immer 对改动过的字段换新引用：任一持久化字段引用变化即说明保存期间又有编辑 */
+function hasEditsSince(
+  saved: AgentCanvasState,
+  current: AgentCanvasState,
+): boolean {
+  return (
+    saved.nodes !== current.nodes ||
+    saved.edges !== current.edges ||
+    saved.viewport !== current.viewport ||
+    saved.inputSchema !== current.inputSchema ||
+    saved.memoryInstanceIds !== current.memoryInstanceIds ||
+    saved.globalSandboxConfig !== current.globalSandboxConfig ||
+    saved.sandboxLifecycle !== current.sandboxLifecycle ||
+    saved.workspaceId !== current.workspaceId
+  );
 }
 
 export function useAgentCanvasPersistence(agentId: string) {
@@ -59,7 +79,12 @@ export function useAgentCanvasPersistence(agentId: string) {
             }
           : { workspaceSnapshotId: null }),
       });
-      state.actions.acknowledgeSaved(result.version);
+      const current = useAgentCanvasStore.getState();
+      if (hasEditsSince(state, current)) {
+        current.actions.advanceVersion(result.version);
+      } else {
+        current.actions.acknowledgeSaved(result.version);
+      }
 
       void compileConfig().catch((error: unknown) => {
         console.warn(

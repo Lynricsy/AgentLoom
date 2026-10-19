@@ -108,7 +108,7 @@ export { CanvasSearch } from './components/toolbar/CanvasSearch'
 export { WorkflowCanvas } from './components/WorkflowCanvas'
 export { WorkflowCanvasPage } from './components/WorkflowCanvasPage'
 export { WorkflowPreviewCanvas } from './components/WorkflowPreviewCanvas'
-export { useAutoSave } from './hooks/useAutoSave'
+export { AUTOSAVE_DEBOUNCE_MS, useAutoSave } from './hooks/useAutoSave'
 export { useCanvasDrop } from './hooks/useCanvasDrop'
 export {
   useConnectionPreview,

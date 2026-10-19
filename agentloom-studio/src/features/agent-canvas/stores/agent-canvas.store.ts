@@ -132,6 +132,8 @@ interface AgentCanvasActions {
     ) => void;
     beginSaving: () => void;
     acknowledgeSaved: (version: number) => void;
+    /** 保存成功但保存期间又有新编辑：只推进版本，保留未保存标记以便自动保存再存一次 */
+    advanceVersion: (version: number) => void;
     failSaving: () => void;
     beginCompiling: () => void;
     acknowledgeCompiled: () => void;
@@ -906,6 +908,14 @@ export const useAgentCanvasStore = create<
             });
           },
 
+          advanceVersion: (version) => {
+            set((state) => {
+              state.version = version;
+              state.isSaving = false;
+              state.lastSavedAt = Date.now();
+            });
+          },
+
           failSaving: () => {
             set((state) => {
               state.isSaving = false;
@@ -986,4 +996,9 @@ export const useAgentWorkspaceId = () =>
 export const useAgentMemoryInstanceIds = () =>
   useAgentCanvasStore((s) => s.memoryInstanceIds);
 
-export type { AgentCanvasNode, AgentCanvasEdge, AgentCanvasNodeType };
+export type {
+  AgentCanvasState,
+  AgentCanvasNode,
+  AgentCanvasEdge,
+  AgentCanvasNodeType,
+};

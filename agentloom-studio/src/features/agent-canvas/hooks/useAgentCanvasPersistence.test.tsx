@@ -60,4 +60,25 @@ describe("useAgentCanvasPersistence", () => {
     expect(useAgentCanvasStore.getState().isDirty).toBe(true);
     expect(compileMutateAsync).not.toHaveBeenCalled();
   });
+
+  it("保存期间又有编辑时只推进版本，保留未保存标记", async () => {
+    useAgentCanvasStore.setState({ agentId: "agent-1", version: 3, isDirty: true });
+    saveMutateAsync.mockImplementation(async () => {
+      useAgentCanvasStore.getState().actions.setInputSchema({
+        type: "object",
+        properties: { topic: { type: "string" } },
+      });
+      return { version: 4 };
+    });
+    const { result } = renderHook(() => useAgentCanvasPersistence("agent-1"));
+
+    await act(async () => {
+      await result.current.saveCanvas();
+    });
+
+    const state = useAgentCanvasStore.getState();
+    expect(state.version).toBe(4);
+    expect(state.isSaving).toBe(false);
+    expect(state.isDirty).toBe(true);
+  });
 });

@@ -7,6 +7,8 @@ import { useCallback, useRef, useState } from "react";
 
 import {
   AgentCanvas,
+  AgentCanvasLeaveGuard,
+  useAgentCanvasAutoSave,
   useAgentCanvasSaveStatus,
   useAgentCanvasStore,
 } from "@/features/agent-canvas";
@@ -119,6 +121,23 @@ function AgentCanvasPage() {
     void saveCanvas().catch(handleCanvasSaveError);
   }, [handleCanvasSaveError, saveCanvas]);
 
+  const handleAutoSaveError = useCallback(
+    async (error: unknown) => {
+      notify({
+        title: "自动保存失败",
+        description: await resolveSaveErrorMessage(error),
+        variant: "error",
+      });
+    },
+    [notify],
+  );
+
+  useAgentCanvasAutoSave(agentId, {
+    enabled: !isMobileReadOnly,
+    saveCanvas,
+    onError: (error) => void handleAutoSaveError(error),
+  });
+
   const ensureCanvasSaved = useCallback(async (): Promise<boolean> => {
     if (!isDirty) {
       return true;
@@ -163,6 +182,7 @@ function AgentCanvasPage() {
     <ReactFlowProvider>
       <div className="relative h-full w-full">
         <AgentCanvas agentId={agentId} />
+        <AgentCanvasLeaveGuard onSave={ensureCanvasSaved} />
 
         <div
           className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
