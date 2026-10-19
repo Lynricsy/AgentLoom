@@ -370,6 +370,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
 204
 ```
 
+重复吊销同一个 Key 仍返回 204（保留首次吊销时间）；Key ID 不存在、不属于该 Agent 或不属于当前组织时返回 404 `agent-api-key-not-found`。
+
 之后用这个 Key 的任何请求都返回 401：
 
 ```json
@@ -395,6 +397,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
 | --- | --- | --- |
 | 401 | `agent-api-key-invalid` | Key 缺失、无效、已吊销或已过期；换 Key |
 | 404 | `agent-api-conversation-not-found` / `agent-api-run-not-found` | ID 错误或不属于当前 Key |
+| 404 | `agent-api-key-not-found` | 吊销 Key 时（JWT 管理接口）Key ID 不存在、不属于该 Agent 或不属于当前组织 |
 | 409 | `agent-not-published` / `agent-archived` | Agent 未发布或已归档 |
 | 409 | `conversation-busy` | 等 `activeRunId` 结束后再提交 |
 | 409 | `conversation-ended` | 新建对话 |
