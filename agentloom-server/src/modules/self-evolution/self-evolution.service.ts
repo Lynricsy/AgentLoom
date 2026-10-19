@@ -11,6 +11,11 @@ import {
   agentConversations,
   agentMessages,
 } from '../../database/schema/agent-conversations.schema';
+import { AgentNotPublishedException } from '../agent-api/agent-api.exceptions';
+import {
+  ConversationEndedException,
+  ConversationNotFoundException,
+} from '../agent-conversation/agent-conversation.exceptions';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import type { SessionToolProvider } from '../agent/ports/agent-runtime.port';
 import type {
@@ -228,14 +233,18 @@ export class SelfEvolutionService {
       .limit(1);
 
     if (!sourceConversation) {
-      throw new Error(`Conversation ${conversationId} not found`);
+      throw new ConversationNotFoundException(conversationId);
+    }
+    // 已结束/失败的对话不会再运行，刷新版本只会写入无效的执行元数据
+    if (sourceConversation.status !== 'active') {
+      throw new ConversationEndedException(conversationId);
     }
 
     const agentDetail = await this.agentDefinitionService.findDetailById(
       sourceConversation.agentDefinitionId,
     );
     if (!agentDetail.publishedVersionId) {
-      throw new Error('当前 Agent 没有可切换的已发布版本');
+      throw new AgentNotPublishedException(agentDetail.id);
     }
 
     const sourceMessages = await this.tenantDb

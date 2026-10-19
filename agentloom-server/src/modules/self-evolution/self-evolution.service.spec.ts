@@ -1004,6 +1004,7 @@ describe('SelfEvolutionService', () => {
         id: 'conversation-1',
         agentDefinitionId: 'agent-1',
         title: '旧会话',
+        status: 'active',
         metadata: {
           selfEvolution: {
             rememberedPolicies: {
@@ -1087,6 +1088,7 @@ describe('SelfEvolutionService', () => {
         id: 'conversation-1',
         agentDefinitionId: 'agent-1',
         title: '旧会话',
+        status: 'active',
       },
     ]);
     enqueueSelectResult([]);
@@ -1098,6 +1100,73 @@ describe('SelfEvolutionService', () => {
     );
 
     expect(mockSandboxService.endConversationSandbox).not.toHaveBeenCalled();
+  });
+
+  it('restartConversationToLatestVersion 对不存在或他租户的对话返回 404 conversation-not-found', async () => {
+    enqueueSelectResult([]);
+
+    await expect(
+      service.restartConversationToLatestVersion(
+        'missing-conversation',
+        'tenant-1',
+        'user-1',
+      ),
+    ).rejects.toMatchObject({
+      status: 404,
+      type: 'https://agentloom.dev/errors/conversation-not-found',
+    });
+    expect(mockAgentDefinitionService.findDetailById).not.toHaveBeenCalled();
+    expect(updateSetCalls).toHaveLength(0);
+  });
+
+  it('restartConversationToLatestVersion 对已结束的对话返回 409 conversation-ended 且不改元数据', async () => {
+    enqueueSelectResult([
+      {
+        id: 'conversation-1',
+        agentDefinitionId: 'agent-1',
+        status: 'ended',
+        metadata: {},
+      },
+    ]);
+
+    await expect(
+      service.restartConversationToLatestVersion(
+        'conversation-1',
+        'tenant-1',
+        'user-1',
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      type: 'https://agentloom.dev/errors/conversation-ended',
+    });
+    expect(updateSetCalls).toHaveLength(0);
+  });
+
+  it('restartConversationToLatestVersion 在 Agent 没有已发布版本时返回 409 agent-not-published', async () => {
+    mockAgentDefinitionService.findDetailById.mockResolvedValueOnce({
+      id: 'agent-1',
+      publishedVersionId: null,
+    });
+    enqueueSelectResult([
+      {
+        id: 'conversation-1',
+        agentDefinitionId: 'agent-1',
+        status: 'active',
+        metadata: {},
+      },
+    ]);
+
+    await expect(
+      service.restartConversationToLatestVersion(
+        'conversation-1',
+        'tenant-1',
+        'user-1',
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      type: 'https://agentloom.dev/errors/agent-not-published',
+    });
+    expect(updateSetCalls).toHaveLength(0);
   });
 
   describe('query contracts and authorization', () => {
@@ -2388,37 +2457,6 @@ describe('SelfEvolutionService', () => {
       await expect(
         (service as any).buildSessionContext(makeSession()),
       ).rejects.toThrow('未启用自进化能力');
-    });
-
-    it('restartConversationToLatestVersion 应拒绝未知会话和无发布版本', async () => {
-      enqueueSelectResult([]);
-      await expect(
-        service.restartConversationToLatestVersion(
-          'missing',
-          'tenant-1',
-          'user-1',
-        ),
-      ).rejects.toThrow('Conversation missing not found');
-
-      enqueueSelectResult([
-        {
-          id: 'conversation-1',
-          agentDefinitionId: 'agent-1',
-          metadata: {},
-        },
-      ]);
-      mockAgentDefinitionService.findDetailById.mockResolvedValueOnce({
-        id: 'agent-1',
-        name: 'Agent',
-        publishedVersionId: null,
-      });
-      await expect(
-        service.restartConversationToLatestVersion(
-          'conversation-1',
-          'tenant-1',
-          'user-1',
-        ),
-      ).rejects.toThrow('没有可切换的已发布版本');
     });
   });
 });
