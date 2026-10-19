@@ -120,6 +120,18 @@ export const AgentApiToolCallEventSchema = z.object({
   }),
 });
 
+/**
+ * 执行进程丢失后，run 由新进程从头重新执行。客户端丢弃此前收到的本 run 的
+ * `message.delta` 与 `tool_call`，此后的 delta 从 `index` 0 重新拼接；`status` 保持 `running`。
+ */
+export const AgentApiRunRestartedEventSchema = z.object({
+  event: z.literal('run.restarted'),
+  data: z.object({
+    runId: z.uuid(),
+    reason: z.enum(['worker_lost']),
+  }),
+});
+
 export const AgentApiRunTerminalEventSchema = z.object({
   event: z.enum(['run.completed', 'run.failed', 'run.cancelled']),
   data: z.object({ run: AgentApiRunSchema }),
@@ -130,6 +142,7 @@ export const AgentApiStreamEventSchema = z.union([
   AgentApiRunStatusEventSchema,
   AgentApiMessageDeltaEventSchema,
   AgentApiToolCallEventSchema,
+  AgentApiRunRestartedEventSchema,
   AgentApiRunTerminalEventSchema,
 ]);
 export type AgentApiStreamEvent = z.infer<typeof AgentApiStreamEventSchema>;
@@ -139,6 +152,7 @@ export const AGENT_API_STREAM_EVENT_NAMES = [
   'run.status',
   'message.delta',
   'tool_call',
+  'run.restarted',
   'run.completed',
   'run.failed',
   'run.cancelled',

@@ -1,0 +1,7 @@
+{
+  "event": "run.restarted",
+  "data": {
+    "runId": "01a0f6dd-77b4-7025-a464-0787f602ada4",
+    "reason": "worker_lost"
+  }
+}

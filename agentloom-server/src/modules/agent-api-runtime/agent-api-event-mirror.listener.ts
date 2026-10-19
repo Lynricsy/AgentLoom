@@ -88,9 +88,14 @@ export class AgentApiEventMirrorListener {
     }
 
     const conversationId = payload.executionId;
-    const status = payload.status === 'running' ? 'running' : 'queued';
     const appendStatus = (runId: string | null | undefined) => {
       if (runId) {
+        // 已开始执行的 run（含重投后重新准备的）状态不回退到 queued
+        const status =
+          payload.status === 'running' ||
+          this.runService.isLocalRunStarted(conversationId)
+            ? 'running'
+            : 'queued';
         this.append(runId, {
           event: 'run.status',
           data: { runId, status, phase },
@@ -126,17 +131,27 @@ export class AgentApiEventMirrorListener {
     }
 
     const lookup = this.runService
-      .findActiveRunId(tenantId, conversationId)
-      .then((runId) => {
+      .findActiveRun(tenantId, conversationId)
+      .then((run) => {
         // markRunning 可能已在查找期间登记，以它为准
         const registered = this.runService.getLocalRunId(conversationId);
         if (registered) {
           return registered;
         }
-        if (runId) {
-          this.runService.registerLocalRun(conversationId, runId);
+        if (!run) {
+          return null;
         }
-        return runId;
+        // 新 loop 开始准备时 run 已是 running：上一次执行它的进程已丢失（job 被重投），
+        // 本次从头重跑。先写 run.restarted，客户端据此丢弃上一次尝试的 delta 与 tool_call。
+        const started = run.status === 'running';
+        this.runService.registerLocalRun(conversationId, run.id, started);
+        if (started) {
+          this.append(run.id, {
+            event: 'run.restarted',
+            data: { runId: run.id, reason: 'worker_lost' },
+          });
+        }
+        return run.id;
       })
       .finally(() => {
         this.pendingLookups.delete(conversationId);

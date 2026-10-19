@@ -292,10 +292,13 @@ data: {"run":{"id":"01a0f6dd-77b4-7025-a464-0787f602ada4","conversationId":"01a0
 | 事件 | `data` | 说明 |
 | --- | --- | --- |
 | `run.created` | `{ run }` | run 已创建 |
-| `run.status` | `{ runId, status, phase? }` | `status` 为 `queued` 或 `running`；`phase` 依次可能为 `queued`、`preparing`、`sandbox_creating`、`agent_initializing`、`running` |
+| `run.status` | `{ runId, status, phase? }` | `status` 为 `queued` 或 `running`，开始执行后不会再回到 `queued`；`phase` 依次可能为 `queued`、`preparing`、`sandbox_creating`、`agent_initializing`、`running` |
 | `message.delta` | `{ runId, index, delta }` | 回复增量，按 `index` 顺序拼接 |
 | `tool_call` | `{ runId, toolCallId, tool, status, error? }` | 工具调用状态变化；不含参数与结果 |
+| `run.restarted` | `{ runId, reason }` | 执行这个 run 的服务进程意外退出，run 由另一个进程从头重新执行；`reason` 目前只有 `worker_lost`。丢弃此前收到的本 run 的 `message.delta` 与 `tool_call`，之后的 `delta` 从 `index` 0 重新拼接 |
 | `run.completed` / `run.failed` / `run.cancelled` | `{ run }` | 终态，流随即结束 |
+
+服务进程意外退出时，进行中的 run 约 30–60 秒后由其他进程接手并整轮重跑，事件流中先出现 `run.restarted`，随后 `phase` 从 `queued` 重新走一遍、`status` 保持 `running`。重跑会重新调用工具，有副作用的工具可能执行两次。最终回复以终态事件中 `run.output.content` 为准。
 
 ## 5. 取消进行中的 run
 

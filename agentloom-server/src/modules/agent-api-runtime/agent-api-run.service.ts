@@ -35,7 +35,11 @@ type TerminalRunStatus = (typeof AGENT_API_TERMINAL_RUN_STATUSES)[number];
 @Injectable()
 export class AgentApiRunService {
   private readonly logger = new Logger(AgentApiRunService.name);
-  private readonly localRuns = new Map<string, string>();
+  /** conversationId → 进程内登记的 run；`started` 表示 run 已离开 queued（状态事件不得再报 queued） */
+  private readonly localRuns = new Map<
+    string,
+    { runId: string; started: boolean }
+  >();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -43,20 +47,31 @@ export class AgentApiRunService {
   ) {}
 
   getLocalRunId(conversationId: string): string | undefined {
-    return this.localRuns.get(conversationId);
+    return this.localRuns.get(conversationId)?.runId;
   }
 
-  registerLocalRun(conversationId: string, runId: string): void {
-    this.localRuns.set(conversationId, runId);
+  isLocalRunStarted(conversationId: string): boolean {
+    return this.localRuns.get(conversationId)?.started === true;
+  }
+
+  registerLocalRun(
+    conversationId: string,
+    runId: string,
+    started = false,
+  ): void {
+    this.localRuns.set(conversationId, { runId, started });
   }
 
   /** 跨租户查找对话当前的活跃 run（执行进程内的事件 mirror 使用，不在租户事务内） */
-  async findActiveRunId(
+  async findActiveRun(
     tenantId: string,
     conversationId: string,
-  ): Promise<string | null> {
+  ): Promise<{
+    id: string;
+    status: (typeof ACTIVE_RUN_STATUSES)[number];
+  } | null> {
     const [row] = await this.db
-      .select({ id: agentApiRuns.id })
+      .select({ id: agentApiRuns.id, status: agentApiRuns.status })
       .from(agentApiRuns)
       .where(
         and(
@@ -67,7 +82,9 @@ export class AgentApiRunService {
       )
       .limit(1);
 
-    return row?.id ?? null;
+    return row && (row.status === 'queued' || row.status === 'running')
+      ? { id: row.id, status: row.status }
+      : null;
   }
 
   /** 按入参顺序返回契约形状的 run；不存在的 id 被跳过 */
@@ -198,7 +215,7 @@ export class AgentApiRunService {
       return { runId: null, discardedMessageIds };
     }
 
-    this.localRuns.set(params.conversationId, runId);
+    this.localRuns.set(params.conversationId, { runId, started: true });
     await this.appendSafely(runId, {
       event: 'run.status',
       data: { runId, status: 'running' },
@@ -268,7 +285,7 @@ export class AgentApiRunService {
         continue;
       }
 
-      if (this.localRuns.get(run.conversationId) === run.id) {
+      if (this.localRuns.get(run.conversationId)?.runId === run.id) {
         this.localRuns.delete(run.conversationId);
       }
 

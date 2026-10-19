@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { AGENT_API_STREAM_EVENT_NAMES } from '@agentloom/contracts'
 
 import { API_BASE_URL } from '@/shared/api/client'
 import { Button } from '@/shared/ui/button'
@@ -47,16 +48,6 @@ function buildSnippets(baseUrl: string) {
     },
   ]
 }
-
-const SSE_EVENTS = [
-  'run.created',
-  'run.status',
-  'message.delta',
-  'tool_call',
-  'run.completed',
-  'run.failed',
-  'run.cancelled',
-]
 
 interface CodeSnippetProps {
   step: number
@@ -151,11 +142,11 @@ export function AgentApiUsageGuide() {
         <h3 className="text-sm font-medium text-foreground">SSE 事件</h3>
         <p className="text-xs leading-relaxed text-muted-foreground">
           流中依次出现以下事件，收到 run.completed、run.failed 或 run.cancelled
-          后服务端关闭连接。断线后可用 Last-Event-ID 请求
-          /runs/&#123;runId&#125;/events 续传。
+          后服务端关闭连接；收到 run.restarted 时丢弃此前的增量重新拼接。断线后可用
+          Last-Event-ID 请求 /runs/&#123;runId&#125;/events 续传。
         </p>
         <ul className="flex flex-wrap gap-1.5" aria-label="SSE 事件类型">
-          {SSE_EVENTS.map((event) => (
+          {AGENT_API_STREAM_EVENT_NAMES.map((event) => (
             <li key={event}>
               <code className="rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-2xs text-foreground">
                 {event}

@@ -164,7 +164,7 @@ function createService(results: QueryResult[]) {
     failActiveRuns: vi.fn(async () => undefined),
     cancelQueuedRun: vi.fn(async () => true),
     cancelQueuedRuns: vi.fn(async () => undefined),
-    findActiveRunId: vi.fn(async () => null),
+    findActiveRun: vi.fn(async () => null),
   };
   const eventStream = {
     append: vi.fn(async () => '1-0'),

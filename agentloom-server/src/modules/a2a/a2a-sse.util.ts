@@ -46,6 +46,10 @@ function mapRunEvent(
     case 'run.created':
     case 'tool_call':
       return [];
+    case 'run.restarted':
+      // 重跑从头输出：下一个 delta 以 append=false 覆盖流式 artifact，丢弃上一次尝试的文本
+      state.deltaSent = false;
+      return [];
     case 'run.status': {
       // queued 时 Task 已是 SUBMITTED；running 的多个 phase 只报一次 WORKING
       if (event.data.status !== 'running' || state.workingSent) {

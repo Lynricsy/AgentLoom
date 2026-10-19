@@ -419,12 +419,12 @@ export class AgentApiService {
           constraint === ACTIVE_CONVERSATION_RUN_CONSTRAINT &&
           'conversationId' in target
         ) {
-          const activeRunId = await this.runService.findActiveRunId(
+          const activeRun = await this.runService.findActiveRun(
             key.tenantId,
             target.conversationId,
           );
-          if (activeRunId) {
-            throw new ConversationBusyException(activeRunId);
+          if (activeRun) {
+            throw new ConversationBusyException(activeRun.id);
           }
           // 冲突的 run 在两次读取之间已结束：重试一次
           if (attempt === 0) {

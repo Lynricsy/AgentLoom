@@ -96,7 +96,7 @@ curl -s -X POST "$AGENTLOOM_API/a2a/agents/$AGENT_ID/rpc" \
 | --- | --- | --- |
 | 1 | `{ task }` | 当前 Task（通常为 `TASK_STATE_SUBMITTED`） |
 | 2 | `{ statusUpdate }`，`status.state = TASK_STATE_WORKING` | 开始执行，只发一次 |
-| 3… | `{ artifactUpdate }`，`artifact.artifactId = "response"` | 回复的增量文本；第一块 `append: false`，之后 `append: true` |
+| 3… | `{ artifactUpdate }`，`artifact.artifactId = "response"` | 回复的增量文本；第一块 `append: false`，之后 `append: true`。执行进程意外退出、任务被其他进程从头重跑时，重跑的第一块再次为 `append: false`，覆盖此前的增量文本 |
 | 终态前 | `{ artifactUpdate }`，`lastChunk: true` | 仅成功时：完整回复，`artifactId` 为 assistant 消息 id，与 `GetTask` 的 artifact 一致 |
 | 最后 | `{ statusUpdate }`，终态 | `COMPLETED` / `FAILED` / `CANCELED`；失败时 `metadata.error` 带错误；随后服务端关闭连接 |
 

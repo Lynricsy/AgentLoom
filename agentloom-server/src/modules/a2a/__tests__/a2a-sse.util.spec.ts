@@ -258,6 +258,55 @@ describe('A2A SSE', () => {
     expect(raw.writableEnded).toBe(true);
   });
 
+  it('run.restarted 后的首个增量以 append=false 覆盖上一次尝试的文本', async () => {
+    const { reply, raw } = createReply();
+    const { eventStream } = createEventStream([
+      entry({
+        event: 'message.delta',
+        data: { runId: RUN_ID, index: 0, delta: '旧的' },
+      }),
+      entry({
+        event: 'run.restarted',
+        data: { runId: RUN_ID, reason: 'worker_lost' },
+      }),
+      entry({
+        event: 'message.delta',
+        data: { runId: RUN_ID, index: 0, delta: '你好' },
+      }),
+      entry({ event: 'run.completed', data: { run: runDto('completed') } }),
+    ]);
+
+    await pipeTaskEventsToSse(reply, eventStream, {
+      run: runDto('running'),
+      rpcId: 2,
+    });
+
+    const artifactAppends = parseResults(raw.chunks, 2).flatMap((result) => {
+      const update = z
+        .object({
+          artifactUpdate: z.object({
+            artifact: z.object({
+              parts: z.array(z.object({ text: z.string() })),
+            }),
+            append: z.boolean(),
+          }),
+        })
+        .safeParse(result);
+      return update.success
+        ? [
+            [
+              update.data.artifactUpdate.artifact.parts[0]?.text,
+              update.data.artifactUpdate.append,
+            ],
+          ]
+        : [];
+    });
+    expect(artifactAppends).toEqual([
+      ['旧的', false],
+      ['你好', false],
+    ]);
+  });
+
   it('任务已终态时只写 Task 首帧即关闭，不订阅事件流', async () => {
     const { reply, raw } = createReply();
     const { eventStream, subscribe } = createEventStream([]);

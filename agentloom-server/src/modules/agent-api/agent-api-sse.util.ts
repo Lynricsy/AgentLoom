@@ -24,6 +24,7 @@ const TERMINAL_EVENT_NAMES: Record<AgentApiStreamEvent['event'], boolean> = {
   'run.status': false,
   'message.delta': false,
   tool_call: false,
+  'run.restarted': false,
   'run.completed': true,
   'run.failed': true,
   'run.cancelled': true,
