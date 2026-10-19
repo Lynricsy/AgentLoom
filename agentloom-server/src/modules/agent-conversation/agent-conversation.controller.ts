@@ -271,12 +271,12 @@ export class AgentConversationController {
     summary: '在当前会话内刷新到 Agent 最新已发布版本',
   })
   @ApiResponse({ status: 201, description: '当前会话已刷新到最新已发布版本' })
-  async restartLatestVersion(
   @ApiResponse({ status: 404, description: '对话不存在' })
   @ApiResponse({
     status: 409,
     description: '对话已结束，或 Agent 没有已发布版本',
   })
+  async restartLatestVersion(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() tenantId: string,
     @CurrentUser('sub') userId: string,
