@@ -757,11 +757,11 @@ describe('PiAiAdapter', () => {
       });
     });
 
-    it('unknown 能力沿用 reasoning: true、无 thinkingLevelMap 的旧行为', async () => {
+    it('unknown 能力：reasoning: true，thinkingLevelMap 只声明 off 不下发', async () => {
       const result = await adapter.getPiRuntimeModel(createConfig(), 'sk-key');
 
       expect(result.model.reasoning).toBe(true);
-      expect(result.model.thinkingLevelMap).toBeUndefined();
+      expect(result.model.thinkingLevelMap).toEqual({ off: null });
     });
 
     it('unsupported 能力生成 reasoning: false 的模型', async () => {
@@ -784,7 +784,7 @@ describe('PiAiAdapter', () => {
         supports_max_reasoning_effort: true,
       };
 
-      async function captureOpenAIResponsesPayload(
+      async function capturePayload(
         model: PiRuntimeResolvedModel['model'],
       ): Promise<Record<string, unknown>> {
         const { streamSimple } = await import('@earendil-works/pi-ai/compat');
@@ -841,18 +841,37 @@ describe('PiAiAdapter', () => {
           xhigh: 'xhigh',
           max: 'max',
         });
-        const payload = await captureOpenAIResponsesPayload(model);
+        const payload = await capturePayload(model);
         expect(payload).not.toHaveProperty('reasoning');
       });
 
-      it('对照：能力未知时 pi 仍会发送 effort: none（旧 400 根因）', async () => {
+      it('能力未知时关闭思考也不发送推理参数（沿用模型默认）', async () => {
         const { model } = await adapter.getPiRuntimeModel(
           solConfig(),
           'sk-key',
         );
 
-        const payload = await captureOpenAIResponsesPayload(model);
-        expect(payload.reasoning).toEqual({ effort: 'none' });
+        const payload = await capturePayload(model);
+        expect(payload).not.toHaveProperty('reasoning');
+      });
+
+      it('能力未知的 OpenRouter 强制推理模型未设思考强度时不发送 reasoning（旧 400 根因）', async () => {
+        const { model } = await adapter.getPiRuntimeModel(
+          createConfig({
+            modelId: 'minimax/minimax-m3.1-flash:free',
+            providerOverrides: {
+              slug: 'openrouter',
+              apiProtocol: 'openai_chat' as const,
+              baseUrl: 'https://openrouter.ai/api',
+            },
+          }),
+          'sk-key',
+        );
+
+        expect(model.api).toBe('openai-completions');
+        const payload = await capturePayload(model);
+        expect(payload).not.toHaveProperty('reasoning');
+        expect(payload).not.toHaveProperty('reasoning_effort');
       });
     });
   });

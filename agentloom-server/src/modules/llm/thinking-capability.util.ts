@@ -29,7 +29,7 @@ export type PiThinkingLevelMap = Partial<
 export type DshReasoningEfforts =
   false | Partial<Record<AgentThinkingLevel, string | null>>;
 
-/** pi Model 上与思考相关的字段；unknown 时沿用 server 合成模型的旧行为（reasoning: true、无 map）。 */
+/** pi Model 上与思考相关的字段；unknown 时 reasoning: true、只声明 off 不下发推理参数。 */
 export type PiModelThinkingFields = {
   reasoning: boolean;
   thinkingLevelMap?: PiThinkingLevelMap;
@@ -43,9 +43,13 @@ export interface ThinkingCapabilityResolution {
   reasoningEfforts?: DshReasoningEfforts;
 }
 
+/**
+ * 能力未知：不知道模型是否接受关闭推理（有的端点强制推理，收到 effort: none 即 400），
+ * 所以 off 不下发任何推理参数、沿用模型默认；显式配置的其他强度照常下发。
+ */
 export const UNKNOWN_THINKING_CAPABILITY: ThinkingCapabilityResolution = {
   capability: { status: 'unknown' },
-  piModel: { reasoning: true },
+  piModel: { reasoning: true, thinkingLevelMap: { off: null } },
 };
 
 type SupportedThinkingInput = {
