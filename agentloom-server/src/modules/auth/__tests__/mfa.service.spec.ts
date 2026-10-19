@@ -45,7 +45,7 @@ describe('MfaService', () => {
 
   beforeEach(async () => {
     supabaseService = createMockSupabaseService();
-    supabaseService.listFactors.mockResolvedValue({ totp: [] });
+    supabaseService.listFactors.mockResolvedValue({ all: [], totp: [] });
     supabaseService.getAuthenticatorAssuranceLevel.mockResolvedValue({
       currentLevel: 'aal2',
       nextLevel: 'aal2',
@@ -98,6 +98,38 @@ describe('MfaService', () => {
     await expect(
       mfaService.enrollTotp(TEST_SUPABASE_TOKEN),
     ).rejects.toBeInstanceOf(MfaAlreadyEnrolledException);
+  });
+
+  it('enrollTotp 先解除上次未完成验证的 TOTP 因子再重新注册', async () => {
+    const unverified = {
+      id: 'unverified-factor',
+      factor_type: 'totp',
+      status: 'unverified',
+    };
+    supabaseService.listFactors.mockResolvedValue({
+      all: [unverified],
+      totp: [],
+    });
+    supabaseService.unenrollFactor.mockResolvedValue(undefined);
+    supabaseService.enrollTotp.mockResolvedValue({
+      id: TEST_FACTOR_ID,
+      totp: {
+        qr_code: 'mock-qr-code',
+        secret: 'mock-secret',
+        uri: 'otpauth://totp/mock',
+      },
+    });
+
+    await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).resolves.toEqual(
+      expect.objectContaining({ id: TEST_FACTOR_ID }),
+    );
+    expect(supabaseService.unenrollFactor).toHaveBeenCalledWith(
+      TEST_SUPABASE_TOKEN,
+      'unverified-factor',
+    );
+    expect(
+      supabaseService.unenrollFactor.mock.invocationCallOrder[0],
+    ).toBeLessThan(supabaseService.enrollTotp.mock.invocationCallOrder[0]);
   });
 
   it('enrollTotp 在 Supabase 出错时抛出 MfaEnrollmentException', async () => {

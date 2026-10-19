@@ -35,6 +35,17 @@ export class MfaService {
         throw new MfaAlreadyEnrolledException();
       }
 
+      // 上次注册后未完成验证（关闭了对话框）会留下 unverified 因子，GoTrue 以同名
+      // friendly name 冲突拒绝再次注册；先清理，用户才能重新拿到二维码
+      for (const factor of factors.all) {
+        if (factor.factor_type === 'totp' && factor.status === 'unverified') {
+          await this.supabaseService.unenrollFactor(
+            supabaseAccessToken,
+            factor.id,
+          );
+        }
+      }
+
       const data = await this.supabaseService.enrollTotp(supabaseAccessToken);
 
       return {
