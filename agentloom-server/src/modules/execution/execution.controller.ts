@@ -36,14 +36,8 @@ import {
   type ExecutionListResponseDto,
   type ExecutionResponseDto,
 } from './dto/execution-response.dto';
-import {
-  InterveneStepDto,
-  interveneStepSchema,
-} from './dto/intervene-step.dto';
-import {
-  ResolveToolPermissionDto,
-  resolveToolPermissionSchema,
-} from './dto/resolve-tool-permission.dto';
+import { InterveneStepDto } from './dto/intervene-step.dto';
+import { ResolveToolPermissionDto } from './dto/resolve-tool-permission.dto';
 import { InterventionPermissionDeniedException } from './execution.exceptions';
 import { NodeSchedulerService } from './node-scheduler.service';
 
@@ -187,14 +181,13 @@ export class ExecutionController {
     @CurrentUser('sub') userId: string,
     @Res({ passthrough: true }) reply?: FastifyReply,
   ) {
-    const resolution = interveneStepSchema.parse(dto);
     try {
       await this.nodeScheduler.resolveIntervention(
         executionId,
         stepId,
         tenantId,
         userId,
-        resolution,
+        dto,
       );
     } catch (error) {
       if (error instanceof InterventionPermissionDeniedException) {
@@ -222,13 +215,12 @@ export class ExecutionController {
     @Body() dto: ResolveToolPermissionDto,
     @CurrentTenant() tenantId: string,
   ) {
-    const resolution = resolveToolPermissionSchema.parse(dto);
     await this.nodeScheduler.resolveToolPermission(
       executionId,
       stepId,
       toolCallId,
       tenantId,
-      { toolCallId, ...resolution },
+      { toolCallId, ...dto },
     );
     return {
       data: {

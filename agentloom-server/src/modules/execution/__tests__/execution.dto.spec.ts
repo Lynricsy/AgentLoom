@@ -1,5 +1,6 @@
 import type { ArgumentMetadata } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
+import { ZodValidationException } from 'nestjs-zod';
 import { ZodValidationPipe } from '../../../common/pipes/zod-validation.pipe';
 import {
   executionResponseSchema,
@@ -7,6 +8,7 @@ import {
 } from '../dto/execution-response.dto';
 import { listExecutionsQuerySchema } from '../dto/list-executions-query.dto';
 import { resolveToolPermissionSchema } from '../dto/resolve-tool-permission.dto';
+import { InterveneStepDto } from '../dto/intervene-step.dto';
 import { RunWorkflowDto } from '../dto/run-workflow.dto';
 
 const executionId = '019391d4-d000-7000-8000-000000000004';
@@ -95,6 +97,26 @@ describe('execution dto schemas', () => {
       action: 'deny',
       rememberScope: 'none',
     });
+  });
+
+  it('intervene body 的跨字段约束应由全局管道拦截（AllExceptionsFilter 映射为 422），而不是 controller 内裸 parse 抛 500', () => {
+    const invalidBodies = [
+      { action: 'modify' },
+      { action: 'approve', modifiedContent: 'x' },
+    ];
+    for (const body of invalidBodies) {
+      expect(() => transformWithDto(body, InterveneStepDto, 'body')).toThrow(
+        ZodValidationException,
+      );
+    }
+
+    expect(
+      transformWithDto(
+        { action: 'modify', modifiedContent: '改写' },
+        InterveneStepDto,
+        'body',
+      ),
+    ).toEqual({ action: 'modify', modifiedContent: '改写' });
   });
 
   it('应验证 execution 响应结构', () => {

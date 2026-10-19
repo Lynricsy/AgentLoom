@@ -1,13 +1,14 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-const interveneStepDtoSchema = z.object({
+const interveneStepBaseSchema = z.object({
   action: z.enum(['approve', 'modify', 'reject']),
   feedback: z.string().trim().min(1, '反馈内容不能为空').optional(),
   modifiedContent: z.string().trim().min(1, '修改内容不能为空').optional(),
 });
 
-export const interveneStepSchema = interveneStepDtoSchema.superRefine(
+/** 管道直接使用带跨字段约束的 schema：controller 不再二次 parse（裸 ZodError 会变成 500）。 */
+export const interveneStepSchema = interveneStepBaseSchema.superRefine(
   (value, ctx) => {
     if (value.action === 'modify' && !value.modifiedContent) {
       ctx.addIssue({
@@ -27,4 +28,4 @@ export const interveneStepSchema = interveneStepDtoSchema.superRefine(
   },
 );
 
-export class InterveneStepDto extends createZodDto(interveneStepDtoSchema) {}
+export class InterveneStepDto extends createZodDto(interveneStepSchema) {}
