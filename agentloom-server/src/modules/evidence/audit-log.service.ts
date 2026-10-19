@@ -48,32 +48,41 @@ export class AuditLogService {
   }
 
   async record(input: AuditLogRecordInput): Promise<AuditLog> {
-    return runInTenantTransaction(this.db, input.tenantId, async (tenantDb) => {
-      const values: NewAuditLog = {
-        tenantId: input.tenantId,
-        actorId: input.actorId,
-        actorType: input.actorType,
-        eventType: input.eventType,
-        resourceType: input.resourceType,
-        resourceId: input.resourceId,
-        executionId: input.executionId ?? null,
-        summary: input.summary,
-        before: input.before ?? null,
-        after: input.after ?? null,
-        metadata: input.metadata ?? null,
-      };
+    return runInTenantTransaction(this.db, input.tenantId, (tenantDb) =>
+      this.recordWithin(tenantDb, input),
+    );
+  }
 
-      const [record] = await tenantDb
-        .insert(auditLogs)
-        .values(values)
-        .returning();
+  /**
+   * 在调用方已开启的事务里写入审计记录。用于记录所属租户与请求租户上下文不一致的场景
+   * （如已有组织的用户新建组织）：`record` 会复用请求事务，在旧租户上下文里插入新租户的行，
+   * 被 RLS 拒绝并中止整个请求事务。
+   */
+  async recordWithin(
+    db: DrizzleDB,
+    input: AuditLogRecordInput,
+  ): Promise<AuditLog> {
+    const values: NewAuditLog = {
+      tenantId: input.tenantId,
+      actorId: input.actorId,
+      actorType: input.actorType,
+      eventType: input.eventType,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
+      executionId: input.executionId ?? null,
+      summary: input.summary,
+      before: input.before ?? null,
+      after: input.after ?? null,
+      metadata: input.metadata ?? null,
+    };
 
-      if (!record) {
-        throw new Error('Failed to record audit log');
-      }
+    const [record] = await db.insert(auditLogs).values(values).returning();
 
-      return record;
-    });
+    if (!record) {
+      throw new Error('Failed to record audit log');
+    }
+
+    return record;
   }
 
   async list(

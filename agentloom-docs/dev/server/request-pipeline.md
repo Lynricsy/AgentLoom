@@ -14,13 +14,13 @@ Nest 对每个 HTTP 请求按固定阶段执行：Middleware → Guards → Inte
 
 AgentLoom 在各阶段注册的全局组件：
 
-| 阶段 | 组件 | 注册位置 |
-| --- | --- | --- |
-| Middleware | `TenantMiddleware` | `agentloom-server/src/app.module.ts:177` 的 `configure()`，`forRoutes('*')` 并排除公开路由 |
-| Guards | `CustomThrottlerGuard` → `AuthGuard` → `TenantGuard` → `RolesGuard` → `ApiScopeGuard` | `agentloom-server/src/app.module.ts:153-174`，`APP_GUARD` 按声明顺序 |
-| Interceptors | `TenantTransactionInterceptor`（外层）→ `AuditLogInterceptor`（内层） | `agentloom-server/src/app.module.ts:150`、`agentloom-server/src/modules/evidence/evidence.module.ts:70` |
-| Pipes | `ZodValidationPipe` | `agentloom-server/src/main.ts:51`，`app.useGlobalPipes` |
-| Exception Filters | `AllExceptionsFilter` | `agentloom-server/src/main.ts:50`，`app.useGlobalFilters` |
+| 阶段              | 组件                                                                                  | 注册位置                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Middleware        | `TenantMiddleware`                                                                    | `agentloom-server/src/app.module.ts:177` 的 `configure()`，`forRoutes('*')` 并排除公开路由              |
+| Guards            | `CustomThrottlerGuard` → `AuthGuard` → `TenantGuard` → `RolesGuard` → `ApiScopeGuard` | `agentloom-server/src/app.module.ts:153-174`，`APP_GUARD` 按声明顺序                                    |
+| Interceptors      | `TenantTransactionInterceptor`（外层）→ `AuditLogInterceptor`（内层）                 | `agentloom-server/src/app.module.ts:150`、`agentloom-server/src/modules/evidence/evidence.module.ts:70` |
+| Pipes             | `ZodValidationPipe`                                                                   | `agentloom-server/src/main.ts:51`，`app.useGlobalPipes`                                                 |
+| Exception Filters | `AllExceptionsFilter`                                                                 | `agentloom-server/src/main.ts:50`，`app.useGlobalFilters`                                               |
 
 两个 interceptor 分属不同模块。Nest 扫描模块时根模块 `AppModule` 先于它导入的 `EvidenceModule` 登记，跨模块的 `APP_INTERCEPTOR` 按登记顺序加入全局列表，列表靠前者包在外层。因此 `TenantTransactionInterceptor` 包住 `AuditLogInterceptor`，审计记录的写入发生在租户事务的上下文之内。这一顺序是用与上述两模块同构的最小 Nest 应用（`@nestjs/core` 11.2.3）运行确认的，不是由显式配置保证的：调整 `AppModule` 的 provider 或改为在其他模块注册，顺序都可能变化。
 
@@ -152,7 +152,9 @@ RLS 策略本身见 [/dev/server/security](/dev/server/security#数据库行级�
 
 源文件：`agentloom-server/src/modules/evidence/audit-log.interceptor.ts`
 
-只处理 HTTP 请求，且只对带 `@CaptureAuditLog()`（`agentloom-server/src/modules/evidence/audit-log.capture.ts`）的路由生效：handler 成功返回后用配置的 `buildRecord` 生成审计记录并写入。写入失败只记 warn 日志，不影响响应。
+只处理 HTTP 请求，且只对带 `@CaptureAuditLog()`（`agentloom-server/src/modules/evidence/audit-log.capture.ts`）的路由生效：handler 成功返回后用配置的 `buildRecord` 生成审计记录并写入。写入失败只记 warn 日志；但请求已在租户事务中时，审计插入复用该事务，数据库层失败（例如 RLS 拒绝）会中止整个事务，提交时仍返回 500。
+
+因此审计记录所属租户与请求租户不同的操作不能用 `@CaptureAuditLog()`：创建组织的 `organization.created` 由 `OrganizationService.createOrganization` 在建组织的事务内调用 `AuditLogService.recordWithin` 写入。
 
 ### ZodValidationPipe
 
@@ -180,13 +182,13 @@ Socket.IO 连接不经过上面的 HTTP 管线：中间件、全局守卫、inte
 1. **握手阶段**：`afterInit()` 调用 `WsAuthService.attachHandshake(server)` 给本 namespace 注册 Socket.IO 中间件。令牌取自 `handshake.auth.token`，或 `Authorization: Bearer` 头；依次检查吊销、会话存活与 MFA 等级（同 HTTP）、HS256 验签（`aud` 为 `authenticated`）、拒绝 `mfa_pending` 令牌、要求 `sub`/`aud`/`exp`/`iat` 齐全、把 Supabase `sub` 解析为应用用户 ID，然后把身份写入 `socket.data.user`。任一步失败，连接在握手阶段被拒绝。
 2. **消息阶段**：class 上的 `@UseGuards(WsJwtGuard)` 作用于每个 `@SubscribeMessage` 处理器。`WsJwtGuard`（`agentloom-server/src/common/guards/ws-jwt.guard.ts`）发现 `socket.data.user` 已存在就直接放行；否则委托同一个 `WsAuthService` 完成校验。
 
-| Namespace | Gateway 源文件 | 握手中间件 | `WsJwtGuard` |
-| --- | --- | --- | --- |
-| `/execution` | `agentloom-server/src/modules/execution/execution.gateway.ts` | `afterInit`（`:165`） | class 级（`:79`） |
+| Namespace             | Gateway 源文件                                                               | 握手中间件            | `WsJwtGuard`       |
+| --------------------- | ---------------------------------------------------------------------------- | --------------------- | ------------------ |
+| `/execution`          | `agentloom-server/src/modules/execution/execution.gateway.ts`                | `afterInit`（`:165`） | class 级（`:79`）  |
 | `/agent-conversation` | `agentloom-server/src/modules/agent-execution/agent-conversation.gateway.ts` | `afterInit`（`:142`） | class 级（`:104`） |
-| `/memory` | `agentloom-server/src/modules/agent-memory/memory.gateway.ts` | `afterInit`（`:127`） | class 级（`:88`） |
-| `/knowledge` | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts` | `afterInit`（`:80`） | class 级（`:65`） |
-| `/notification` | `agentloom-server/src/modules/notification/notification.gateway.ts` | `afterInit`（`:32`） | class 级（`:20`） |
+| `/memory`             | `agentloom-server/src/modules/agent-memory/memory.gateway.ts`                | `afterInit`（`:127`） | class 级（`:88`）  |
+| `/knowledge`          | `agentloom-server/src/modules/knowledge/knowledge.gateway.ts`                | `afterInit`（`:80`）  | class 级（`:65`）  |
+| `/notification`       | `agentloom-server/src/modules/notification/notification.gateway.ts`          | `afterInit`（`:32`）  | class 级（`:20`）  |
 
 所有 namespace 的 `socket.data.user.sub` 都是应用用户 ID，原始 Supabase 用户 ID 存为 `supabaseUserId`，与 HTTP 侧 `req.user` 一致。
 

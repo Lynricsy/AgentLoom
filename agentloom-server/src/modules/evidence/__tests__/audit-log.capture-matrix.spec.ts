@@ -29,12 +29,13 @@ function getCaptureMetadata(
 
 describe('Audit log capture matrix', () => {
   it('should decorate the exact HTTP endpoints in story S2', () => {
+    // 创建组织的审计由 OrganizationService 在建组织事务内写入（记录属于新租户）
     expect(
       getCaptureMetadata(
         OrganizationController.prototype,
         'createOrganization',
       ),
-    ).toEqual(expect.objectContaining({ eventType: 'organization.created' }));
+    ).toBeUndefined();
     expect(
       getCaptureMetadata(OrganizationController.prototype, 'inviteMember'),
     ).toEqual(
@@ -100,20 +101,6 @@ describe('Audit log record builders', () => {
   };
 
   it('captures response state and request metadata for every successful operation', () => {
-    expect(
-      auditLogCaptureConfigs.createOrganization.buildRecord({
-        request: { user: { sub: 'actor-1' } },
-        response: {
-          data: { id: 'org-created', tenantId: 'tenant-created', name: 'Acme' },
-        },
-      }),
-    ).toMatchObject({
-      tenantId: 'tenant-created',
-      actorId: 'actor-1',
-      resourceId: 'org-created',
-      after: { id: 'org-created', tenantId: 'tenant-created', name: 'Acme' },
-    });
-
     expect(
       auditLogCaptureConfigs.inviteMember.buildRecord({
         request: authenticatedRequest,
@@ -193,7 +180,6 @@ describe('Audit log record builders', () => {
   });
 
   it.each([
-    ['createOrganization', { request: {}, response: { data: {} } }],
     ['inviteMember', { request: {}, response: null }],
     ['acceptInvitation', { request: {}, response: { data: [] } }],
     ['updateMemberRole', { request: {}, response: undefined }],

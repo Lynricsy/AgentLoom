@@ -41,7 +41,6 @@ export class OrganizationController {
 
   @Post('organizations')
   @HttpCode(HttpStatus.CREATED)
-  @CaptureAuditLog(auditLogCaptureConfigs.createOrganization)
   @ApiOperation({ summary: '创建组织' })
   @ApiResponse({ status: 201, description: '组织创建成功' })
   @ApiResponse({ status: 409, description: '组织 slug 冲突' })

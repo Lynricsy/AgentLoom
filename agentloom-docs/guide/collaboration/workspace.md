@@ -6,7 +6,7 @@ docType: howto
 
 组织是成员与资源的共同边界：组织内的工作流、Agent、知识库等资源对组织成员可见，对其他组织不可见。本页说明如何查看组织信息、邀请成员、修改角色与移除成员。各角色能做什么见 [角色与权限](/guide/collaboration/roles)。
 
-组织在注册后的初始化向导「创建组织」一步中建立，创建者成为 owner，见 [快速开始](/guide/getting-started/quickstart)。组织名称创建后不能在 Studio 中修改；Studio 也没有在多个组织之间切换的入口。
+组织在注册后的初始化向导「创建组织」一步中建立，创建者成为 owner，见 [快速开始](/guide/getting-started/quickstart)。组织名称创建后不能在 Studio 中修改；Studio 也没有在多个组织之间切换的入口。已属于某个组织的账号通过 API（`POST /api/v1/organizations`）再创建组织时同样成功，账号的当前组织随即切换为新组织，刷新令牌或重新登录后生效。
 
 前提：查看成员名册与以下所有操作都需要 owner 或 admin 角色。其他角色在成员名册位置看到「无权查看成员名册」。
 

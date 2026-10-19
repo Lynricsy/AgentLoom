@@ -81,46 +81,6 @@ describe('AuditLogInterceptor', () => {
     expect(auditLogService.record).not.toHaveBeenCalled();
   });
 
-  it('should use organization data from the createOrganization response instead of request tenant context', async () => {
-    const handler = {};
-    Reflect.defineMetadata(
-      AUDIT_LOG_CAPTURE_KEY,
-      auditLogCaptureConfigs.createOrganization,
-      handler,
-    );
-
-    await lastValueFrom(
-      interceptor.intercept(
-        createContext(
-          {
-            user: { sub: USER_ID, tenantId: REQUEST_TENANT_ID },
-            params: {},
-          },
-          handler,
-        ),
-        createNext({
-          data: {
-            id: ORG_ID,
-            tenantId: CREATED_TENANT_ID,
-            name: 'New Org',
-            slug: 'new-org',
-          },
-        }),
-      ),
-    );
-
-    expect(auditLogService.record).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: CREATED_TENANT_ID,
-        actorId: USER_ID,
-        actorType: 'user',
-        eventType: 'organization.created',
-        resourceType: 'organization',
-        resourceId: ORG_ID,
-      }),
-    );
-  });
-
   it('should derive acceptInvitation tenant and organization id from the response payload', async () => {
     const handler = {};
     Reflect.defineMetadata(
@@ -219,17 +179,19 @@ describe('AuditLogInterceptor', () => {
     const handler = {};
     Reflect.defineMetadata(
       AUDIT_LOG_CAPTURE_KEY,
-      auditLogCaptureConfigs.createOrganization,
+      auditLogCaptureConfigs.acceptInvitation,
       handler,
     );
     auditLogService.record.mockRejectedValueOnce(new Error('db unavailable'));
 
     const response = {
       data: {
-        id: ORG_ID,
-        tenantId: CREATED_TENANT_ID,
-        name: 'New Org',
-        slug: 'new-org',
+        organization: {
+          id: ORG_ID,
+          tenantId: CREATED_TENANT_ID,
+          name: 'Joined Org',
+        },
+        member: { userId: USER_ID, role: 'viewer' },
       },
     };
 
@@ -238,7 +200,7 @@ describe('AuditLogInterceptor', () => {
         createContext(
           {
             user: { sub: USER_ID, tenantId: REQUEST_TENANT_ID },
-            params: {},
+            params: { token: 'invite-token' },
           },
           handler,
         ),
@@ -250,7 +212,7 @@ describe('AuditLogInterceptor', () => {
     expect(auditLogService.record).toHaveBeenCalledTimes(1);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        'Failed to persist audit log for organization.created',
+        'Failed to persist audit log for organization.invitation.accepted',
       ),
       expect.objectContaining({
         tenantId: CREATED_TENANT_ID,

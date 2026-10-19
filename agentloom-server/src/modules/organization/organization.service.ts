@@ -27,6 +27,7 @@ import type { CreateOrganizationDto } from './dto/create-organization.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
+import { AuditLogService } from '../evidence/audit-log.service';
 
 const INVITATION_EXPIRY_DAYS = 7;
 
@@ -41,6 +42,7 @@ export class OrganizationService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly rbacCacheService: RbacCacheService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async createOrganization(userId: string, dto: CreateOrganizationDto) {
@@ -83,10 +85,25 @@ export class OrganizationService {
         invitedBy: null,
       });
 
+      // 已属于其他组织的用户同样允许新建，并切换到新组织（与接受邀请一致）：
+      // custom_access_token_hook 按 current_organization_id 签发下一次刷新的 tenant claim
       await tx
         .update(users)
         .set({ currentOrganizationId: org.id })
         .where(eq(users.id, localUser.id));
+
+      // 审计记录属于新组织租户，而请求事务处在创建者原组织的租户上下文（或没有租户），
+      // 必须随组织在同一事务内写入，不能交给 HTTP 审计拦截器
+      await this.auditLogService.recordWithin(tx as unknown as DrizzleDB, {
+        tenantId: org.tenantId,
+        actorId: localUser.id,
+        actorType: 'user',
+        eventType: 'organization.created',
+        resourceType: 'organization',
+        resourceId: org.id,
+        summary: 'Organization created',
+        after: { ...org },
+      });
 
       return org;
     });

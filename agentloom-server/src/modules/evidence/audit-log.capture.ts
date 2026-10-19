@@ -87,23 +87,6 @@ function createUserActorRecord(
 }
 
 export const auditLogCaptureConfigs = {
-  createOrganization: {
-    eventType: 'organization.created',
-    buildRecord: ({ request, response }) => {
-      const actorId = getActorId(request);
-      const organization = getResponseData(response);
-      const tenantId = readString(organization, 'tenantId');
-      const organizationId = readString(organization, 'id');
-
-      return createUserActorRecord(tenantId, actorId, {
-        eventType: 'organization.created',
-        resourceType: 'organization',
-        resourceId: organizationId ?? '',
-        summary: 'Organization created',
-        after: toAuditLogJson(organization),
-      });
-    },
-  },
   inviteMember: {
     eventType: 'organization.member.invited',
     buildRecord: ({ request, response }) => {

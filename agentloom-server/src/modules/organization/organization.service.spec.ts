@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DRIZZLE } from '../../database/database.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
+import { AuditLogService } from '../evidence/audit-log.service';
 import {
   organizationInvitations,
   organizationMembers,
@@ -358,6 +359,10 @@ describe('OrganizationService', () => {
     getUserRole: MockFunction;
     invalidateUserRole: MockFunction;
   };
+  let auditLogService: {
+    record: MockFunction;
+    recordWithin: MockFunction;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -376,11 +381,19 @@ describe('OrganizationService', () => {
             invalidateUserRole: vi.fn().mockResolvedValue(undefined),
           },
         },
+        {
+          provide: AuditLogService,
+          useValue: {
+            record: vi.fn(),
+            recordWithin: vi.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
     service = module.get(OrganizationService);
     rbacCacheService = module.get(RbacCacheService);
+    auditLogService = module.get(AuditLogService);
 
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -498,6 +511,30 @@ describe('OrganizationService', () => {
         currentOrganizationId: org.id,
       });
       expect(userUpdateChain.where).toHaveBeenCalledTimes(1);
+    });
+
+    it('审计记录随组织在同一事务内按新组织租户写入', async () => {
+      const org = createOrganizationRecord({ tenantId: 'tenant-new' });
+      setupResolveUser(db);
+      const { tx } = setupCreateOrganizationTransaction(db, org);
+      db.query.organizations.findFirst.mockResolvedValue(undefined);
+
+      await service.createOrganization(SUPABASE_USER_ID, {
+        name: 'Acme Team',
+        description: '审计',
+      });
+
+      expect(auditLogService.recordWithin).toHaveBeenCalledWith(tx, {
+        tenantId: 'tenant-new',
+        actorId: USER_ID,
+        actorType: 'user',
+        eventType: 'organization.created',
+        resourceType: 'organization',
+        resourceId: org.id,
+        summary: 'Organization created',
+        after: org,
+      });
+      expect(auditLogService.record).not.toHaveBeenCalled();
     });
   });
 
