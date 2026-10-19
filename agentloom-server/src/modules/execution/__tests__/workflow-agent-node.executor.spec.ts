@@ -793,4 +793,99 @@ describe('workflow migrated scenarios', () => {
     );
   });
 
+  describe('必填「文本」端口已连线但没有值', () => {
+    const textEdge = {
+      id: 'e-text',
+      source: 'pre',
+      target: 'text-agent',
+      sourceHandle: 'text-out',
+      targetHandle: 'text-in',
+    } as ReactFlowEdge;
+
+    async function runAgentNode(params: {
+      input: Record<string, unknown>;
+      edges: ReactFlowEdge[];
+      inputPorts?: Array<Record<string, unknown>>;
+    }) {
+      const step = makeStep({
+        id: 'step-text-agent',
+        nodeId: 'text-agent',
+        status: 'queued',
+        nodeType: 'agent',
+        nodeData: {
+          agentDefinitionId: 'agent-def-text',
+          autonomyMode: 'FULL_AUTO',
+          ...(params.inputPorts ? { inputPorts: params.inputPorts } : {}),
+        },
+      });
+      const execute = vi.fn().mockResolvedValue({ content: 'ok' });
+      mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue(
+        {
+          execute,
+        },
+      );
+      const runtime = {
+        failUnschedulableNode: vi.fn().mockResolvedValue(undefined),
+        pauseForIntervention: vi.fn(),
+        onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+        onNodeFailed: vi.fn().mockResolvedValue(undefined),
+      };
+      await workflowAgentNodeExecutor.execute({
+        step,
+        input: params.input,
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        snapshot: { nodes: [], edges: params.edges },
+        steps: [step],
+        runtime,
+      } as never);
+      return { execute, runtime, step };
+    }
+
+    it.each([
+      ['上游没有产出', {}],
+      ['空白文本', { 'text-in': '  \n' }],
+      ['空对象', { 'text-in': {} }],
+    ])('%s 时节点失败并说明原因，不调用模型', async (_label, input) => {
+      const { execute, runtime, step } = await runAgentNode({
+        input,
+        edges: [textEdge],
+        inputPorts: [{ id: 'text-in', required: true }],
+      });
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(runtime.failUnschedulableNode).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        step,
+        expect.stringContaining('必填输入「文本」(text-in) 没有值'),
+      );
+    });
+
+    it('nodeData 未带端口定义时按注册表默认（必填）处理', async () => {
+      const { execute, runtime } = await runAgentNode({
+        input: {},
+        edges: [textEdge],
+      });
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(runtime.failUnschedulableNode).toHaveBeenCalled();
+    });
+
+    it('有文本、未连线（只用上下文端口）或端口改为非必填时照常调用模型', async () => {
+      for (const params of [
+        { input: { 'text-in': '总结' }, edges: [textEdge] },
+        { input: { 'context-in': { topic: 'AI' } }, edges: [] },
+        {
+          input: {},
+          edges: [textEdge],
+          inputPorts: [{ id: 'text-in', required: false }],
+        },
+      ]) {
+        const { execute, runtime } = await runAgentNode(params);
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(runtime.failUnschedulableNode).not.toHaveBeenCalled();
+      }
+    });
+  });
 });

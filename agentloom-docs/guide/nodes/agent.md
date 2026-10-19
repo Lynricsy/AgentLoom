@@ -16,6 +16,7 @@ docType: reference
 - 节点必须绑定已发布的 Agent。没有绑定时运行会失败，错误信息为 `agent 节点必须绑定已发布的 Agent Definition；画布上的内联 Agent 配置已不再支持`。旧工作流中残留的内联配置会在面板中以「旧版内联 Agent 配置（已废除，不再参与执行）」只读显示：把其中的系统提示词复制到一个 [Text](/guide/nodes/text) 节点，再连到本节点的「系统提示词」端口。
 - Agent 列表中每一项带有「有沙箱」或「无沙箱」标记，对应 Agent 的运行模式 `sandbox` / `no_sandbox`。选择「无沙箱」的 Agent 后，面板提示「输入端口将移除 `sandbox-in`」，节点不再显示「沙箱」端口。运行模式的选择见 [创建 Agent](/guide/agents/creating)。
 - 无沙箱 Agent 不能调用有沙箱的子 Agent，运行时报错 `无 sandbox Agent 不支持调用有 sandbox 的子 Agent`；有沙箱的 Agent 可以调用无沙箱子 Agent。
+- 「文本」端口是必填端口：连了「文本」端口、但上游这次没有产出文本（没有值、空白文本或空对象）时，节点直接失败，不调用模型，错误信息为 `Agent 节点的必填输入「文本」(text-in) 没有值：上游节点没有产出文本，未调用模型。请检查连到「文本」端口的上游输出`。不连「文本」端口、只通过「上下文」等端口传入数据的接法（见 [输入参数](/guide/workflows/input-parameters)）不受影响。
 - 「模型」端口接 [LLM 模型](/guide/nodes/llm-model) 的「模型」或 [智能路由](/guide/nodes/smart-routing) 的「选定模型」，本次调用改用该模型：Agent 自己画布上的模型与智能路由都不再生效，也不记录 Agent 侧的路由决策；思考强度按「默认」处理（Agent 画布上 LLM 模型节点设置的强度不随之生效）。不连时使用 Agent 自己的模型配置。
 - 「知识库」端口接一个或多个 [Knowledge Base](/guide/nodes/knowledge-base) 节点的「知识库」端口，与 Agent 自己画布上的知识库合并（同一知识库只算一次），Agent 运行时通过 `search_knowledge` 工具检索。
 - 「扩展工具」端口只接 [MCP Tool](/guide/nodes/mcp-tool) 节点的「工具」端口。工作流里的 [HTTP Request](/guide/nodes/http-tool)、[Code Executor](/guide/nodes/code-tool) 是按顺序执行的步骤，输出的是数据而不是工具，不能连到这里；要让 Agent 把它们当工具调用，在 Agent 画布上把它们连到 Agent Main 的「工具」端口。

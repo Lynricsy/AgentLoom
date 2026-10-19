@@ -11,6 +11,7 @@ import type { NodeSchedulerService } from '../node-scheduler.service';
 import { InvalidStepTransitionException } from '../execution.exceptions';
 import { StepStateMachineService } from '../step-state-machine.service';
 import { WorkflowAgentStepFailedError } from '../workflow-agent-adapter';
+import { isRecord, readEdgeHandle } from '../node-value.util';
 import {
   buildWorkflowAgentCheckpointData,
   getExecutionSandboxBinding,
@@ -44,6 +45,15 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
       );
       return;
     }
+    if (this.isRequiredTextInputEmpty(context)) {
+      await context.runtime.failUnschedulableNode(
+        context.tenantId,
+        context.executionId,
+        context.step,
+        'Agent 节点的必填输入「文本」(text-in) 没有值：上游节点没有产出文本，未调用模型。请检查连到「文本」端口的上游输出',
+      );
+      return;
+    }
     await this.executeWorkflowAgentNode(
       context.step,
       context.input,
@@ -52,6 +62,45 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
       context.snapshot.edges,
       context.steps,
       context.runtime,
+    );
+  }
+
+  /**
+   * 「文本」端口在节点注册表中是必填端口（normalize-workflow-graph 的 agent 模板 required: true，
+   * 端口定义随节点存入 nodeData.inputPorts）。与调度器 getSchedulingDecision 的必填语义一致，
+   * 只约束已连线的必填端口：未连线时 Agent 可以只用「上下文」等端口取得输入（输入参数文档的接法）；
+   * 已连线但上游没有产出文本时，调用模型只会得到无意义的回复，节点直接失败。
+   */
+  private isRequiredTextInputEmpty(context: NodeExecutionContext): boolean {
+    const nodeData = context.step.nodeData ?? {};
+    const inputPorts = Array.isArray(nodeData.inputPorts)
+      ? nodeData.inputPorts
+      : Array.isArray(nodeData.input_ports)
+        ? nodeData.input_ports
+        : [];
+    const textPort: unknown = inputPorts.find(
+      (port) => isRecord(port) && port.id === 'text-in',
+    );
+    if (isRecord(textPort) && textPort.required === false) {
+      return false;
+    }
+    const textInConnected = context.snapshot.edges.some(
+      (edge) =>
+        edge.target === context.step.nodeId &&
+        readEdgeHandle(edge, 'target') === 'text-in',
+    );
+    if (!textInConnected) {
+      return false;
+    }
+    const value = context.input['text-in'];
+    if (typeof value === 'string') {
+      return value.trim().length === 0;
+    }
+    if (Array.isArray(value)) {
+      return value.length === 0;
+    }
+    return (
+      value == null || (isRecord(value) && Object.keys(value).length === 0)
     );
   }
 
