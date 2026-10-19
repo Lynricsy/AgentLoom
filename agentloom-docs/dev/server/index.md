@@ -129,14 +129,14 @@ agentloom-server/src/
 
 候选由 `SmartRoutingService.loadCandidates` 按传入顺序加载（模型配置 + `router_models` 路由元数据，缺省回落到提供商目录），经 `HealthMonitorService.filterHealthyCandidates` 过滤后交给策略；`BaseRouterStrategy.route` 再按上下文窗口过滤，过滤后为空抛 `NoEligibleCandidateException`（503，`routing/no-eligible-candidate`）。
 
-`llm_as_router` 调用路由模型失败时不随机选择，而是确定性回退（`agentloom-server/src/modules/smart-routing/strategies/llm-as-router.strategy.ts`）：`strategyConfig.fallbackModelId` 在候选内则选它，否则交给 `RulesRouter` 按 `strategyConfig.fallbackRules` 匹配，无匹配取候选首位。回退决策带 `fallback: { reason, source }`：
+`llm_as_router` 的路由模型（`strategyConfig.routerModelId`，租户内模型配置 id）经 `PiAiAdapter.getModel` 调用，请求格式按提供商 `apiProtocol`（`openai_chat` / `openai_responses` / `anthropic` / `google`）选择，base URL 按 `llm/llm-base-url.util.ts` 的幂等规则拼接，与 Agent 推理同一套适配层；SDK 层不重试。调用失败时不随机选择，而是确定性回退（`agentloom-server/src/modules/smart-routing/strategies/llm-as-router.strategy.ts`）：`strategyConfig.fallbackModelId` 在候选内则选它，否则交给 `RulesRouter` 按 `strategyConfig.fallbackRules` 匹配，无匹配取候选首位。回退决策带 `fallback: { reason, source }`：
 
 | `reason` | 触发条件 |
 | --- | --- |
-| `llm_timeout` | 路由模型请求超过 3 秒被中止 |
+| `llm_timeout` | 路由模型请求超过 `strategyConfig.timeoutMs`（默认 10000，范围 1000–60000）被中止 |
 | `llm_invalid_response` | 响应不是 JSON、没有 `selectedModelId`，或 ID 不在候选内 |
-| `llm_http_error` | 非 2xx 响应或网络层失败 |
-| `llm_config_error` | 发请求前失败：路由模型配置不存在、没有 base URL、凭据解密失败 |
+| `llm_http_error` | 非 2xx 响应、网络层失败或响应报文无法解析 |
+| `llm_config_error` | 发请求前失败：路由模型配置不存在、提供商协议不受支持、凭据解密失败、`strategyConfig` 不合法 |
 | `router_error` | 对话启动路由时策略本身抛错（见下文） |
 
 `source` 取 `configured_model`、`rules` 或 `first_candidate`。

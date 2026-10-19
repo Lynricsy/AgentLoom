@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { LlmAsRouterStrategy } from '../llm-as-router.strategy';
+import { PiAiAdapter } from '../../../llm/pi-ai-adapter';
 import type { RoutingCandidate } from '../../core/routing-candidate';
 import type { RoutingContext } from '../../core/routing-context';
+import type { RoutingDecision } from '../../core/routing-decision';
 
 function makeCandidates(): RoutingCandidate[] {
   return [
@@ -64,7 +66,108 @@ function makeContext(overrides?: Partial<RoutingContext>): RoutingContext {
   };
 }
 
-const mockFetch = vi.fn();
+/** 路由模型配置：端点、协议与凭据都来自租户内的模型配置 */
+function makeRouterModel(provider: {
+  slug: string;
+  apiProtocol: string | null;
+  baseUrl: string;
+}) {
+  return {
+    id: 'config-router',
+    name: 'router',
+    modelId: 'router-model',
+    orgId: 'org-1',
+    tenantId: 'tenant-1',
+    timeoutMs: null,
+    parameters: null,
+    provider: {
+      ...provider,
+      orgId: 'org-1',
+      apiKeyId: 'key-1',
+      defaultBaseUrl: null,
+    },
+  };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+/** OpenAI Chat Completions 报文 */
+function chatCompletion(content: string) {
+  return {
+    id: 'chatcmpl-1',
+    object: 'chat.completion',
+    created: 1,
+    model: 'router-model',
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant', content },
+        finish_reason: 'stop',
+      },
+    ],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  };
+}
+
+/** OpenAI Responses 报文 */
+function responsesOutput(text: string) {
+  return {
+    id: 'resp_1',
+    object: 'response',
+    created_at: 1,
+    model: 'router-model',
+    status: 'completed',
+    output: [
+      {
+        type: 'message',
+        id: 'msg_1',
+        status: 'completed',
+        role: 'assistant',
+        content: [{ type: 'output_text', text, annotations: [] }],
+      },
+    ],
+    incomplete_details: null,
+    usage: {
+      input_tokens: 10,
+      output_tokens: 5,
+      total_tokens: 15,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens_details: { reasoning_tokens: 0 },
+    },
+  };
+}
+
+/** Anthropic Messages 报文 */
+function anthropicMessage(text: string) {
+  return {
+    id: 'msg_1',
+    type: 'message',
+    role: 'assistant',
+    model: 'router-model',
+    content: [{ type: 'text', text }],
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: { input_tokens: 10, output_tokens: 5 },
+  };
+}
+
+const selection = (selectedModelId: string, reasoning = '理由') =>
+  JSON.stringify({ selectedModelId, reasoning });
+
+const mockFetch = vi.fn<typeof fetch>();
+
+function lastRequest(): { url: string; body: Record<string, unknown> } {
+  const [input, init] = mockFetch.mock.calls.at(-1)!;
+  return {
+    url: String(input),
+    body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+  };
+}
 
 describe('LlmAsRouterStrategy', () => {
   let strategy: LlmAsRouterStrategy;
@@ -72,28 +175,24 @@ describe('LlmAsRouterStrategy', () => {
   let decryptConfiguredApiKey: Mock;
 
   beforeEach(() => {
+    mockFetch.mockReset();
     vi.stubGlobal('fetch', mockFetch);
-    // routerModelId 现在会被解析成租户内的模型配置：端点与凭据都来自该配置。
-    findById = vi.fn().mockResolvedValue({
-      id: 'config-router',
-      modelId: 'gpt-4o-mini',
-      provider: {
-        slug: 'openai',
-        orgId: 'org-1',
-        apiKeyId: 'key-1',
-        baseUrl: 'https://router.example.test',
-        defaultBaseUrl: null,
-      },
-    });
+    findById = vi.fn().mockResolvedValue(
+      makeRouterModel({
+        slug: 'axonhub',
+        apiProtocol: 'openai_chat',
+        baseUrl: 'https://router.example.test/v1',
+      }),
+    );
     decryptConfiguredApiKey = vi.fn().mockResolvedValue('router-secret');
     strategy = new LlmAsRouterStrategy(
       { findById } as never,
-      { decryptConfiguredApiKey } as never,
+      new PiAiAdapter({ decryptConfiguredApiKey } as never, {} as never),
     );
-    mockFetch.mockReset();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -133,44 +232,105 @@ describe('LlmAsRouterStrategy', () => {
     expect(result.success).toBe(true);
   });
 
+  describe('按提供商 apiProtocol 与规范化 base URL 调用路由模型', () => {
+    it('openai_chat：base URL 已含 /v1 时不重复拼接', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(chatCompletion(selection('candidate-2'))),
+      );
+
+      const decision = await strategy.route(
+        makeCandidates(),
+        makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
+      );
+
+      expect(decision.selectedModelId).toBe('candidate-2');
+      expect(decision.fallback).toBeUndefined();
+      const request = lastRequest();
+      expect(request.url).toBe(
+        'https://router.example.test/v1/chat/completions',
+      );
+      expect(request.body.model).toBe('router-model');
+      expect(request.body.messages).toEqual(
+        expect.arrayContaining([expect.objectContaining({ role: 'system' })]),
+      );
+      const headers = new Headers(mockFetch.mock.calls[0][1]?.headers);
+      expect(headers.get('authorization')).toBe('Bearer router-secret');
+    });
+
+    it('openai_responses：走 Responses API', async () => {
+      findById.mockResolvedValueOnce(
+        makeRouterModel({
+          slug: 'codehub',
+          apiProtocol: 'openai_responses',
+          baseUrl: 'https://codehub.example.test/v1/',
+        }),
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(responsesOutput(selection('candidate-3'))),
+      );
+
+      const decision = await strategy.route(
+        makeCandidates(),
+        makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
+      );
+
+      expect(decision.selectedModelId).toBe('candidate-3');
+      expect(decision.fallback).toBeUndefined();
+      const request = lastRequest();
+      expect(request.url).toBe('https://codehub.example.test/v1/responses');
+      expect(request.body).toHaveProperty('input');
+    });
+
+    it('anthropic：走 Messages API 并带 x-api-key', async () => {
+      findById.mockResolvedValueOnce(
+        makeRouterModel({
+          slug: 'vm2api-anthropic',
+          apiProtocol: 'anthropic',
+          baseUrl: 'https://anthropic.example.test',
+        }),
+      );
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(anthropicMessage(selection('candidate-1'))),
+      );
+
+      const decision = await strategy.route(
+        makeCandidates(),
+        makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
+      );
+
+      expect(decision.selectedModelId).toBe('candidate-1');
+      expect(decision.fallback).toBeUndefined();
+      const request = lastRequest();
+      expect(request.url).toBe('https://anthropic.example.test/v1/messages');
+      expect(request.body.system).toEqual(expect.anything());
+      const headers = new Headers(mockFetch.mock.calls[0][1]?.headers);
+      expect(headers.get('x-api-key')).toBe('router-secret');
+    });
+  });
+
   it('LLM 返回有效选择时应该选择对应模型', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                selectedModelId: 'candidate-2',
-                reasoning: 'claude-sonnet 最适合代码生成',
-              }),
-            },
-          },
-        ],
-      }),
-    });
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        chatCompletion(
+          selection('candidate-2', 'claude-sonnet 最适合代码生成'),
+        ),
+      ),
+    );
 
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    const decision = await strategy.route(candidates, context);
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
+    );
 
     expect(decision.selectedModelId).toBe('candidate-2');
     expect(decision.reasoning).toContain('claude-sonnet');
     expect(decision.scores).toHaveLength(3);
-
-    const selectedScore = decision.scores.find(
-      (s) => s.modelId === 'candidate-2',
-    );
-    expect(selectedScore!.score).toBe(100);
+    expect(
+      decision.scores.find((s) => s.modelId === 'candidate-2')!.score,
+    ).toBe(100);
   });
 
-  function expectRulesFallback(
-    decision: Awaited<ReturnType<LlmAsRouterStrategy['route']>>,
-    reason: string,
-  ) {
+  function expectRulesFallback(decision: RoutingDecision, reason: string) {
     // 未配置回退模型与规则：规则路由无匹配，确定性地取候选首位
     expect(decision.selectedModelId).toBe('candidate-1');
     expect(decision.fallback).toEqual({ reason, source: 'rules' });
@@ -179,107 +339,100 @@ describe('LlmAsRouterStrategy', () => {
     expect(decision.scores).toHaveLength(3);
   }
 
-  it('LLM 超时时应该确定性回退并标记 llm_timeout', async () => {
-    const abortError = new DOMException(
-      'The operation was aborted',
-      'AbortError',
+  function hangUntilAborted() {
+    mockFetch.mockImplementationOnce(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted', 'AbortError'));
+          });
+        }),
     );
-    mockFetch.mockRejectedValueOnce(abortError);
+  }
 
-    const decision = await strategy.route(
+  it('LLM 超过默认 10 秒未响应时中止请求并标记 llm_timeout', async () => {
+    vi.useFakeTimers();
+    hangUntilAborted();
+    let settled = false;
+
+    const pending = strategy
+      .route(
+        makeCandidates(),
+        makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
+      )
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expectRulesFallback(await pending, 'llm_timeout');
+  });
+
+  it('strategyConfig.timeoutMs 覆盖默认超时', async () => {
+    vi.useFakeTimers();
+    hangUntilAborted();
+
+    const pending = strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({
+        strategyConfig: { routerModelId: 'config-router', timeoutMs: 2_000 },
+      }),
     );
+    await vi.advanceTimersByTimeAsync(2_000);
 
-    expectRulesFallback(decision, 'llm_timeout');
+    expectRulesFallback(await pending, 'llm_timeout');
   });
 
   it('LLM 返回无效 JSON 时应该确定性回退并标记 llm_invalid_response', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: '这不是 JSON',
-            },
-          },
-        ],
-      }),
-    });
-
-    const decision = await strategy.route(
-      makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(chatCompletion('这不是 JSON')),
     );
 
-    expectRulesFallback(decision, 'llm_invalid_response');
-  });
-
-  it('响应体不是 JSON 时应该标记 llm_invalid_response', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => {
-        throw new SyntaxError('Unexpected token');
-      },
-    });
-
     const decision = await strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
     );
 
     expectRulesFallback(decision, 'llm_invalid_response');
   });
 
   it('LLM 返回不存在的模型 ID 时应该确定性回退并标记 llm_invalid_response', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                selectedModelId: 'non-existent-model',
-                reasoning: '选择了不存在的模型',
-              }),
-            },
-          },
-        ],
-      }),
-    });
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(chatCompletion(selection('non-existent-model'))),
+    );
 
     const decision = await strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
     );
 
     expectRulesFallback(decision, 'llm_invalid_response');
   });
 
-  it('fetch 网络错误时应该确定性回退并标记 llm_http_error', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('网络连接失败'));
+  it('网络错误时应该确定性回退并标记 llm_http_error', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('网络连接失败'));
 
     const decision = await strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
     );
 
     expectRulesFallback(decision, 'llm_http_error');
   });
 
-  it('HTTP 非 200 响应时应该确定性回退并标记 llm_http_error', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 429,
-      statusText: 'Too Many Requests',
-    });
+  it('HTTP 非 2xx 响应时只请求一次并标记 llm_http_error', async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({ error: { message: 'Too Many Requests' } }, 429),
+    );
 
     const decision = await strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
     );
 
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expectRulesFallback(decision, 'llm_http_error');
   });
 
@@ -288,7 +441,7 @@ describe('LlmAsRouterStrategy', () => {
 
     const decision = await strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
     );
 
     expect(mockFetch).not.toHaveBeenCalled();
@@ -300,7 +453,25 @@ describe('LlmAsRouterStrategy', () => {
 
     const decision = await strategy.route(
       makeCandidates(),
-      makeContext({ strategyConfig: { routerModelId: 'gpt-4o-mini' } }),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
+    );
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expectRulesFallback(decision, 'llm_config_error');
+  });
+
+  it('不支持的 apiProtocol 标记 llm_config_error', async () => {
+    findById.mockResolvedValueOnce(
+      makeRouterModel({
+        slug: 'mystery',
+        apiProtocol: null,
+        baseUrl: 'https://mystery.example.test',
+      }),
+    );
+
+    const decision = await strategy.route(
+      makeCandidates(),
+      makeContext({ strategyConfig: { routerModelId: 'config-router' } }),
     );
 
     expect(mockFetch).not.toHaveBeenCalled();
@@ -308,15 +479,13 @@ describe('LlmAsRouterStrategy', () => {
   });
 
   it('配置了候选内的 fallbackModelId 时优先使用该模型', async () => {
-    mockFetch.mockRejectedValueOnce(
-      new DOMException('The operation was aborted', 'AbortError'),
-    );
+    mockFetch.mockRejectedValueOnce(new TypeError('网络连接失败'));
 
     const decision = await strategy.route(
       makeCandidates(),
       makeContext({
         strategyConfig: {
-          routerModelId: 'gpt-4o-mini',
+          routerModelId: 'config-router',
           fallbackModelId: 'candidate-2',
           fallbackRules: [
             {
@@ -335,24 +504,22 @@ describe('LlmAsRouterStrategy', () => {
 
     expect(decision.selectedModelId).toBe('candidate-2');
     expect(decision.fallback).toEqual({
-      reason: 'llm_timeout',
+      reason: 'llm_http_error',
       source: 'configured_model',
     });
     expect(decision.reasoning).toBe(
-      'LLM 路由回退（llm_timeout）：使用已配置回退模型 claude-sonnet',
+      'LLM 路由回退（llm_http_error）：使用已配置回退模型 claude-sonnet',
     );
   });
 
   it('fallbackModelId 不在候选内时改用 fallbackRules，规则命中目标', async () => {
-    mockFetch.mockRejectedValueOnce(
-      new DOMException('The operation was aborted', 'AbortError'),
-    );
+    mockFetch.mockRejectedValueOnce(new TypeError('网络连接失败'));
 
     const decision = await strategy.route(
       makeCandidates(),
       makeContext({
         strategyConfig: {
-          routerModelId: 'gpt-4o-mini',
+          routerModelId: 'config-router',
           fallbackModelId: 'not-a-candidate',
           fallbackRules: [
             {
@@ -370,119 +537,52 @@ describe('LlmAsRouterStrategy', () => {
     );
 
     expect(decision.selectedModelId).toBe('candidate-3');
-    expect(decision.fallback).toEqual({ reason: 'llm_timeout', source: 'rules' });
-    expect(decision.reasoning).toContain('LLM 路由回退（llm_timeout）：规则匹配');
+    expect(decision.fallback).toEqual({
+      reason: 'llm_http_error',
+      source: 'rules',
+    });
+    expect(decision.reasoning).toContain(
+      'LLM 路由回退（llm_http_error）：规则匹配',
+    );
   });
 
   it('同样的失败多次路由结果一致（不含随机）', async () => {
     const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
+      strategyConfig: { routerModelId: 'config-router' },
     });
     const selected = new Set<string | null>();
     for (let i = 0; i < 5; i += 1) {
-      mockFetch.mockRejectedValueOnce(new Error('网络连接失败'));
+      mockFetch.mockRejectedValueOnce(new TypeError('网络连接失败'));
       const decision = await strategy.route(makeCandidates(), context);
       selected.add(decision.selectedModelId);
     }
     expect([...selected]).toEqual(['candidate-1']);
   });
 
-  it('应该在 fetch 调用中使用 AbortSignal', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                selectedModelId: 'candidate-1',
-                reasoning: '选择 gpt-4o',
-              }),
-            },
-          },
-        ],
-      }),
-    });
-
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    await strategy.route(candidates, context);
-
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const fetchOptions = mockFetch.mock.calls[0][1];
-    expect(fetchOptions).toHaveProperty('signal');
-    expect(fetchOptions.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it('应该在提示词中包含候选模型信息', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                selectedModelId: 'candidate-1',
-                reasoning: '选择 gpt-4o',
-              }),
-            },
-          },
-        ],
-      }),
-    });
-
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: { routerModelId: 'gpt-4o-mini' },
-    });
-
-    await strategy.route(candidates, context);
-
-    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    const userMessage = fetchBody.messages.find(
-      (m: { role: string }) => m.role === 'user',
+  it('提示词包含候选模型信息与自定义 promptTemplate', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(chatCompletion(selection('candidate-1'))),
     );
 
-    expect(userMessage.content).toContain('gpt-4o');
-    expect(userMessage.content).toContain('claude-sonnet');
-    expect(userMessage.content).toContain('deepseek-chat');
-  });
-
-  it('自定义 promptTemplate 应该被使用', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                selectedModelId: 'candidate-1',
-                reasoning: '自定义选择',
-              }),
-            },
-          },
-        ],
+    await strategy.route(
+      makeCandidates(),
+      makeContext({
+        strategyConfig: {
+          routerModelId: 'config-router',
+          promptTemplate: '自定义模板: 请选择最佳模型',
+        },
       }),
-    });
-
-    const candidates = makeCandidates();
-    const context = makeContext({
-      strategyConfig: {
-        routerModelId: 'gpt-4o-mini',
-        promptTemplate: '自定义模板: 请选择最佳模型',
-      },
-    });
-
-    await strategy.route(candidates, context);
-
-    const fetchBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    const systemMessage = fetchBody.messages.find(
-      (m: { role: string }) => m.role === 'system',
     );
 
-    expect(systemMessage.content).toContain('自定义模板');
+    const messages = lastRequest().body.messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    const systemMessage = messages.find((m) => m.role === 'system');
+    const userMessage = messages.find((m) => m.role === 'user');
+    expect(systemMessage?.content).toContain('自定义模板');
+    expect(JSON.stringify(userMessage?.content)).toContain('gpt-4o');
+    expect(JSON.stringify(userMessage?.content)).toContain('claude-sonnet');
+    expect(JSON.stringify(userMessage?.content)).toContain('deepseek-chat');
   });
 });

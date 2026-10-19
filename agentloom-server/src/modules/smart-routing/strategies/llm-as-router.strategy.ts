@@ -1,3 +1,4 @@
+import { generateText, type LanguageModel } from 'ai';
 import { z } from 'zod';
 
 import { BaseRouterStrategy } from '../core/base-router-strategy';
@@ -8,21 +9,32 @@ import type {
   ModelScore,
   RoutingFallbackReason,
 } from '../core/routing-decision';
-import { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
+import { LlmTimeoutException } from '../../llm/llm.exceptions';
 import { LlmService } from '../../llm/llm.service';
+import { PiAiAdapter } from '../../llm/pi-ai-adapter';
 import { RulesRouter, routingRuleSchema } from './rules.strategy';
 
-const LLM_TIMEOUT_MS = 3000;
+/** 路由模型请求超时默认值：常见对话模型一次短回复实测 4~6 秒 */
+const DEFAULT_ROUTER_TIMEOUT_MS = 10_000;
+const ROUTER_MAX_OUTPUT_TOKENS = 256;
 
 const DEFAULT_SYSTEM_PROMPT = `你是一个模型路由器。根据用户的任务描述和候选模型信息，选择最适合的模型。
 你必须返回严格的 JSON 格式: { "selectedModelId": "<候选模型的 id>", "reasoning": "<选择理由>" }
 只返回 JSON，不要包含其他内容。`;
 
-/** 发起 HTTP 请求之前的配置阶段失败（模型配置缺失、base URL 缺失、凭据解密失败等） */
+/** 发起请求之前的配置阶段失败（模型配置缺失、协议不支持、凭据解密失败等） */
 class LlmRouterConfigError extends Error {
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause), { cause });
     this.name = 'LlmRouterConfigError';
+  }
+}
+
+/** 路由模型请求超过 timeoutMs 被中止 */
+class LlmRouterTimeoutError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'LlmRouterTimeoutError';
   }
 }
 
@@ -35,11 +47,17 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
     promptTemplate: z.string().optional(),
     fallbackModelId: z.string().optional(),
     fallbackRules: z.array(routingRuleSchema).optional(),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(1000)
+      .max(60_000)
+      .default(DEFAULT_ROUTER_TIMEOUT_MS),
   });
 
   constructor(
     private readonly llmService: LlmService,
-    private readonly decryptionBoundaryService: DecryptionBoundaryService,
+    private readonly piAiAdapter: PiAiAdapter,
   ) {
     super();
   }
@@ -71,7 +89,10 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
   }
 
   private classifyFailure(error: unknown): RoutingFallbackReason {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (
+      error instanceof LlmRouterTimeoutError ||
+      error instanceof LlmTimeoutException
+    ) {
       return 'llm_timeout';
     }
     if (error instanceof LlmRouterConfigError) {
@@ -120,92 +141,72 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
     };
   }
 
+  /**
+   * 经 PiAiAdapter 调用路由模型：请求格式按提供商 apiProtocol（openai_chat / openai_responses /
+   * anthropic …）选择，base URL 按 llm-base-url 规则规范化，与 Agent 推理走同一套适配层。
+   */
   private async callRouterLlm(
     candidates: RoutingCandidate[],
     context: RoutingContext,
   ): Promise<string | null> {
-    const { config, routerModel, baseUrl, apiKey } =
-      await this.resolveRouterEndpoint(context).catch((error: unknown) => {
+    const { config, model } = await this.resolveRouterModel(context).catch(
+      (error: unknown) => {
         throw new LlmRouterConfigError(error);
-      });
+      },
+    );
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
 
     try {
-      const prompt = this.buildPrompt(
+      const { system, prompt } = this.buildPrompt(
         candidates,
         context,
         config.promptTemplate,
       );
+      const result = await generateText({
+        model,
+        system,
+        prompt,
+        temperature: 0,
+        maxOutputTokens: ROUTER_MAX_OUTPUT_TOKENS,
+        // 超时预算内失败直接走确定性回退，不在 SDK 层重试
+        maxRetries: 0,
+        abortSignal: controller.signal,
+      });
 
-      const response = await fetch(
-        `${baseUrl.replace(/\/+$/, '')}/v1/chat/completions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: routerModel.modelId,
-            messages: prompt,
-            temperature: 0,
-            max_tokens: 256,
-          }),
-          signal: controller.signal,
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      return this.parseResponse(result.text);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new LlmRouterTimeoutError(error);
       }
-
-      // 响应体不是 JSON 时按无效响应处理（parseResponse 返回 null）
-      const data = await response.json().catch(() => null);
-      const content = data?.choices?.[0]?.message?.content ?? '';
-
-      return this.parseResponse(content);
+      throw error;
     } finally {
       clearTimeout(timeout);
     }
   }
 
-  /** 配置阶段：解析路由器模型配置、端点与凭据；任何失败都归为 llm_config_error */
-  private async resolveRouterEndpoint(context: RoutingContext) {
+  /** 配置阶段：解析路由器模型配置并构造语言模型；任何失败都归为 llm_config_error */
+  private async resolveRouterModel(context: RoutingContext) {
     const config = this.configSchema.parse(context.strategyConfig ?? {});
-    // routerModelId 是租户里的模型配置 id：端点与凭据都必须从该配置解析。
+    // routerModelId 是租户里的模型配置 id：端点、协议与凭据都必须从该配置解析。
     const routerModel = await this.llmService.findById(
       config.routerModelId,
       context.tenantId,
     );
-    const baseUrl =
-      routerModel.provider.baseUrl ?? routerModel.provider.defaultBaseUrl;
-    if (!baseUrl) {
-      throw new Error(
-        `路由器模型 ${config.routerModelId} 的提供商没有可用的 base URL`,
-      );
-    }
+    const model = (await this.piAiAdapter.getModel(
+      routerModel,
+    )) as LanguageModel;
 
-    const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
-      {
-        apiKeyId: routerModel.provider.apiKeyId,
-        organizationId: routerModel.provider.orgId,
-        tenantId: context.tenantId,
-        provider: routerModel.provider.slug,
-      },
-      'LlmAsRouterStrategy.callRouterLlm',
-    );
-
-    return { config, routerModel, baseUrl, apiKey };
+    return { config, model };
   }
 
   private buildPrompt(
     candidates: RoutingCandidate[],
     context: RoutingContext,
     promptTemplate?: string,
-  ): Array<{ role: string; content: string }> {
-    const systemContent = promptTemplate
+  ): { system: string; prompt: string } {
+    const system = promptTemplate
       ? `${promptTemplate}\n\n${DEFAULT_SYSTEM_PROMPT}`
       : DEFAULT_SYSTEM_PROMPT;
 
@@ -226,13 +227,10 @@ export class LlmAsRouterStrategy extends BaseRouterStrategy {
       .filter(Boolean)
       .join('\n');
 
-    return [
-      { role: 'system', content: systemContent },
-      {
-        role: 'user',
-        content: `候选模型:\n${candidateDescriptions}\n\n任务信息:\n${taskInfo}`,
-      },
-    ];
+    return {
+      system,
+      prompt: `候选模型:\n${candidateDescriptions}\n\n任务信息:\n${taskInfo}`,
+    };
   }
 
   private parseResponse(content: string): string | null {

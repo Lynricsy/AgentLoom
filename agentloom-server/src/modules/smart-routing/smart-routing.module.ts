@@ -9,9 +9,9 @@ import {
   qdrantClientProvider,
 } from '../knowledge/qdrant.provider';
 import { ApiKeyModule } from '../api-key/api-key.module';
-import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import { LlmService } from '../llm/llm.service';
 import { LlmModule } from '../llm/llm.module';
+import { PiAiAdapter } from '../llm/pi-ai-adapter';
 import { PluginModule } from '../plugin/plugin.module';
 import { PluginSandboxService } from '../plugin/plugin-sandbox.service';
 import { PluginService } from '../plugin/plugin.service';
@@ -133,11 +133,9 @@ class WasmPluginAliasRouter extends BaseRouterStrategy {
     },
     {
       provide: LlmAsRouterStrategy,
-      useFactory: (
-        llmService: LlmService,
-        decryptionBoundaryService: DecryptionBoundaryService,
-      ) => new LlmAsRouterStrategy(llmService, decryptionBoundaryService),
-      inject: [LlmService, DecryptionBoundaryService],
+      useFactory: (llmService: LlmService, piAiAdapter: PiAiAdapter) =>
+        new LlmAsRouterStrategy(llmService, piAiAdapter),
+      inject: [LlmService, PiAiAdapter],
     },
     {
       provide: KnnRouter,
