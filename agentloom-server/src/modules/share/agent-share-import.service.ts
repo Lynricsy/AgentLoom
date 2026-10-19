@@ -36,6 +36,7 @@ import {
   ShareNotFoundException,
   ShareRevokedException,
 } from './share.exceptions';
+import { stripShareNodeBindings } from './share-node-bindings.util';
 
 const DEFAULT_VIEWPORT: schema.ReactFlowViewport = { x: 0, y: 0, zoom: 1 };
 const MAX_SLUG_RETRIES = 3;
@@ -668,10 +669,7 @@ export class AgentShareImportService {
                 nodeData.model_id,
             );
             if (sourceModelBindingId) {
-              clearNodeConfigField(node, 'llmConfigId');
-              clearNodeConfigField(node, 'llm_config_id');
-              clearNodeConfigField(node, 'modelConfigId');
-              clearNodeConfigField(node, 'model_config_id');
+              // 模型配置/凭据/端点绑定统一在写入前由 stripShareNodeBindings 剥离
               clearNodeConfigField(node, 'modelId');
               clearNodeConfigField(node, 'model_id');
               modelRebindMessages.push('LLM 模型绑定已清空，需要重新绑定');
@@ -773,7 +771,7 @@ export class AgentShareImportService {
             description: source.description,
             icon: source.icon,
             runtimeMode: source.runtimeMode,
-            nodes,
+            nodes: stripShareNodeBindings(nodes),
             edges,
             viewport: source.snapshot.viewport ?? DEFAULT_VIEWPORT,
             systemPrompt: source.snapshot.systemPrompt ?? null,

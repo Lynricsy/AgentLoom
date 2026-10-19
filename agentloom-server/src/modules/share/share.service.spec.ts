@@ -561,6 +561,53 @@ describe('ShareService', () => {
       });
     });
 
+    it('公开分享剥离节点中的模型凭据与绑定字段，且不修改快照（D-060）', async () => {
+      const base = createAccessibleAgentShareTokenRecord();
+      const llmNode = {
+        id: 'llm-1',
+        type: 'agent',
+        position: { x: 0, y: 0 },
+        data: {
+          nodeType: 'llm-model',
+          provider: 'axonhub',
+          modelName: 'grok-4.6',
+          apiKeyId: 'key-1',
+          endpointUrl: 'https://internal.example',
+          llmConfigId: 'cfg-1',
+          modelConfigId: 'cfg-1',
+          config: {
+            provider: 'axonhub',
+            api_key_id: 'key-1',
+            endpoint_url: 'https://internal.example',
+            model_config_id: 'cfg-1',
+            llm_config_id: 'cfg-1',
+          },
+        },
+      };
+      const share = createAccessibleAgentShareTokenRecord({
+        snapshot: { ...base.snapshot, nodes: [llmNode] },
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithJoins([]));
+      db.select.mockReturnValueOnce(createSelectChainWithJoins([share]));
+      db.update.mockReturnValueOnce(createUpdateWhereChain(undefined));
+
+      const result = await service.getPublicShare(SHARE_TOKEN);
+
+      expect(result.definition.nodes).toEqual([
+        {
+          ...llmNode,
+          data: {
+            nodeType: 'llm-model',
+            provider: 'axonhub',
+            modelName: 'grok-4.6',
+            config: { provider: 'axonhub' },
+          },
+        },
+      ]);
+      expect(llmNode.data.apiKeyId).toBe('key-1');
+    });
+
     it('分享链接不存在时应抛出 ShareNotFoundException', async () => {
       db.select.mockReturnValue(createSelectChainWithJoins([]));
 

@@ -393,7 +393,17 @@ describe('AgentShareImportService snapshot remapping', () => {
       {
         id: 'model',
         type: 'llm-model',
-        data: { model_config_id: 'old-model' },
+        data: {
+          model_config_id: 'old-model',
+          provider: 'axonhub',
+          modelName: 'grok-4.6',
+          apiKeyId: 'source-tenant-key',
+          endpointUrl: 'https://internal.example',
+          config: {
+            api_key_id: 'source-tenant-key',
+            endpoint_url: 'https://internal.example',
+          },
+        },
       },
       { id: 'skill', type: 'skill', data: { skill_id: 'old-skill' } },
       { id: 'noop', type: 'text', data: null },
@@ -433,7 +443,12 @@ describe('AgentShareImportService snapshot remapping', () => {
     });
     expect(inserted.nodes[4].data).not.toHaveProperty('workspace_id');
     expect(inserted.nodes[5].data).not.toHaveProperty('restore_workspace_id');
-    expect(inserted.nodes[6].data).not.toHaveProperty('model_config_id');
+    // D-060：副本不得保留分享方租户的 Key ID / 私有端点
+    expect(inserted.nodes[6].data).toEqual({
+      provider: 'axonhub',
+      modelName: 'grok-4.6',
+      config: {},
+    });
     expect(inserted.nodes[7].data).toMatchObject({ skillId: 'new-skill' });
     expect(inserted.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
     expect(ctx.reports).toEqual(

@@ -33,6 +33,7 @@ import {
   ShareRevokedException,
   ShareWorkflowNotPublishedException,
 } from './share.exceptions';
+import { stripShareNodeBindings } from './share-node-bindings.util';
 
 const DEFAULT_VIEWPORT: schema.ReactFlowViewport = {
   x: 0,
@@ -766,7 +767,7 @@ export class ShareService {
         share.authorAvatarUrl,
       ),
       definition: {
-        nodes: share.snapshot.nodes,
+        nodes: stripShareNodeBindings(share.snapshot.nodes),
         edges: share.snapshot.edges,
         viewport: share.snapshot.viewport ?? DEFAULT_VIEWPORT,
       },
@@ -803,7 +804,7 @@ export class ShareService {
         share.authorAvatarUrl,
       ),
       definition: {
-        nodes: share.snapshot.nodes,
+        nodes: stripShareNodeBindings(share.snapshot.nodes),
         edges: share.snapshot.edges,
         viewport: share.snapshot.viewport ?? DEFAULT_VIEWPORT,
       },
