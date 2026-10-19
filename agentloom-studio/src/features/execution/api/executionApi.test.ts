@@ -127,7 +127,7 @@ describe('executionApi', () => {
   })
 
   describe('resolveIntervention', () => {
-    it('发送 POST 请求到正确路径并转换请求体为 snake_case', async () => {
+    it('发送 POST 请求到正确路径，请求体按服务端 DTO 的 camelCase 原样发送', async () => {
       await resolveIntervention('exec-001', 'step-001', {
         action: 'modify',
         modifiedContent: '修改内容',
@@ -139,7 +139,7 @@ describe('executionApi', () => {
         {
           json: {
             action: 'modify',
-            modified_content: '修改内容',
+            modifiedContent: '修改内容',
             feedback: '修改原因',
           },
         },

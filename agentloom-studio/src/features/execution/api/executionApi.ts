@@ -104,9 +104,10 @@ export async function resolveIntervention(
   stepId: string,
   body: InterventionResolveRequest,
 ) {
+  // 服务端 InterveneStepDto 只认 camelCase（modifiedContent），不能经 toSnakeBody 转换
   return apiClient
     .post(`executions/${executionId}/steps/${stepId}/intervene`, {
-      json: toSnakeBody(body),
+      json: body,
     })
     .json<ApiResponse<InterventionResolveResponse>>()
 }
