@@ -14,6 +14,7 @@ import {
   NOTIFICATION_QUEUE,
   type NotificationDispatchJobData,
 } from './notification.constants';
+import { NotificationNotFoundException } from './notification.exceptions';
 
 export interface CreateNotificationInput {
   userId: string;
@@ -139,7 +140,7 @@ export class NotificationService {
     tenantId: string,
     userId: string,
     notificationId: string,
-  ): Promise<schema.Notification | null> {
+  ): Promise<schema.Notification> {
     const [notification] = await this.tenantDb
       .update(schema.notifications)
       .set({
@@ -154,7 +155,12 @@ export class NotificationService {
       )
       .returning();
 
-    return notification ?? null;
+    // 只能标记自己在当前租户的通知；他人或跨租户的通知与不存在同样返回 404
+    if (!notification) {
+      throw new NotificationNotFoundException(notificationId);
+    }
+
+    return notification;
   }
 
   async markAllAsRead(

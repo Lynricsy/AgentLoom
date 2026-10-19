@@ -8,6 +8,7 @@ import {
 } from '../notification.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import { transactionStorage } from '../../../common/interceptors/tenant-transaction.context';
+import { NotificationNotFoundException } from '../notification.exceptions';
 
 const mocks = vi.hoisted(() => ({
   getTenantDb: vi.fn(),
@@ -211,12 +212,12 @@ describe('NotificationService', () => {
       expect(result).toEqual({ ...mockNotification, isRead: true });
     });
 
-    it('通知不存在时返回 null', async () => {
+    it('通知不存在、属于他人或他租户时抛出 404 notification-not-found', async () => {
       db.update.mockReturnValue(createUpdateReturning([]));
 
       await expect(
         service.markAsRead(TENANT_ID, USER_ID, NOTIFICATION_ID),
-      ).resolves.toBeNull();
+      ).rejects.toBeInstanceOf(NotificationNotFoundException);
     });
   });
 
