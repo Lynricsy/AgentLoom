@@ -2,22 +2,23 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Position } from '@xyflow/react'
 import { SmartEdge } from './SmartEdge'
+import {
+  SmartEdgeActionsContext,
+  type SmartEdgeActions,
+} from './SmartEdgeActionsContext'
 import { createDefaultEdgeData, type CanvasEdgeData } from '../../types'
 
-const mockOnEdgesChange = vi.fn()
+const mockRemoveEdge = vi.fn()
 const mockOpenFieldMapping = vi.fn()
+const workflowEdgeActions: SmartEdgeActions = {
+  removeEdge: mockRemoveEdge,
+  openFieldMapping: mockOpenFieldMapping,
+}
 
 /** ReactFlow store 里的节点端口定义（渐变配色的唯一数据来源） */
 const { nodeLookup, executionState } = vi.hoisted(() => ({
   nodeLookup: new Map<string, { data: unknown }>(),
   executionState: { nodes: {} as Record<string, { status: string }> },
-}))
-
-vi.mock('../../stores/canvasStore', () => ({
-  useCanvasActions: () => ({
-    onEdgesChange: mockOnEdgesChange,
-    openFieldMapping: mockOpenFieldMapping,
-  }),
 }))
 
 vi.mock('@/features/execution', () => ({
@@ -90,12 +91,17 @@ function seedTypedPorts(sourceType: string, targetType: string) {
   })
 }
 
-function renderSmartEdge(props?: Partial<typeof baseProps>) {
+function renderSmartEdge(
+  props?: Partial<typeof baseProps>,
+  edgeActions: SmartEdgeActions | null = workflowEdgeActions,
+) {
   return render(
-    <svg aria-label="SmartEdge test canvas">
-      <title>SmartEdge test canvas</title>
-      <SmartEdge {...baseProps} {...props} />
-    </svg>
+    <SmartEdgeActionsContext.Provider value={edgeActions}>
+      <svg aria-label="SmartEdge test canvas">
+        <title>SmartEdge test canvas</title>
+        <SmartEdge {...baseProps} {...props} />
+      </svg>
+    </SmartEdgeActionsContext.Provider>,
   )
 }
 
@@ -308,23 +314,46 @@ describe('SmartEdge', () => {
     expect(screen.queryByTestId('edge-delete-edge-1')).toBeNull()
 
     rerender(
-      <svg aria-label="SmartEdge test canvas">
-        <title>SmartEdge test canvas</title>
-        <SmartEdge {...baseProps} selected />
-      </svg>
+      <SmartEdgeActionsContext.Provider value={workflowEdgeActions}>
+        <svg aria-label="SmartEdge test canvas">
+          <title>SmartEdge test canvas</title>
+          <SmartEdge {...baseProps} selected />
+        </svg>
+      </SmartEdgeActionsContext.Provider>,
     )
     expect(screen.getByTestId('edge-delete-edge-1')).toBeInTheDocument()
   })
 
-  it('delete button dispatches remove edge change', () => {
+  it('delete button removes the edge through the injected canvas actions', () => {
     renderSmartEdge({ selected: true })
 
     const deleteBtn = screen.getByTestId('edge-delete-edge-1')
     fireEvent.click(deleteBtn)
 
-    expect(mockOnEdgesChange).toHaveBeenCalledWith([
-      { type: 'remove', id: 'edge-1' },
-    ])
+    expect(mockRemoveEdge).toHaveBeenCalledWith('edge-1')
+  })
+
+  it('Agent 画布注入的动作：删除作用于注入方，标签不提供字段映射按钮', () => {
+    const agentRemoveEdge = vi.fn()
+    renderSmartEdge({ selected: true }, { removeEdge: agentRemoveEdge })
+
+    fireEvent.click(screen.getByTestId('edge-delete-edge-1'))
+    expect(agentRemoveEdge).toHaveBeenCalledWith('edge-1')
+    expect(mockRemoveEdge).not.toHaveBeenCalled()
+
+    expect(screen.queryByTestId('edge-badge-action-edge-1')).toBeNull()
+    expect(screen.queryByRole('button', { name: '打开字段映射' })).toBeNull()
+    expect(screen.getByTestId('edge-badge-summary-edge-1').textContent).toContain(
+      '精确匹配',
+    )
+  })
+
+  it('未注入编辑动作（只读）时不渲染删除与字段映射入口', () => {
+    renderSmartEdge({ selected: true }, null)
+
+    expect(screen.queryByTestId('edge-delete-edge-1')).toBeNull()
+    expect(screen.queryByTestId('edge-badge-action-edge-1')).toBeNull()
+    expect(screen.getByTestId('edge-badge-summary-edge-1')).toBeInTheDocument()
   })
 
   it('click badge action opens field mapping', () => {

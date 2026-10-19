@@ -78,6 +78,10 @@ export { DRAG_TRANSFER_TYPE } from './components/NodePalette'
 export { TypedPort, type TypedPortProps } from './components/TypedPort'
 export { CanvasNodeShell } from './components/CanvasNode'
 export { SmartEdge } from './components/edges/SmartEdge'
+export {
+  SmartEdgeActionsContext,
+  type SmartEdgeActions,
+} from './components/edges/SmartEdgeActionsContext'
 export { CUSTOM_PANEL_REGISTRY } from './components/panels/customPanelRegistry'
 export { ReadOnlyCanvasBanner } from './components/readonly/ReadOnlyCanvasBanner'
 export { ReadOnlyNodeSheet } from './components/readonly/ReadOnlyNodeSheet'

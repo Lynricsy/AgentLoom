@@ -1,11 +1,16 @@
-import { render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  createContext,
+  useContext,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGENT_CANVAS_NODE_REGISTRY,
   getAgentNodeTypeConfig,
 } from '@/features/canvas/registry/agent-canvas-registry';
-import type { CanvasNodeData } from '@/features/canvas';
+import type { CanvasNodeData, SmartEdgeActions } from '@/features/canvas';
 import {
   DESKTOP_WIDTH,
   MOBILE_WIDTH,
@@ -17,6 +22,8 @@ import { AgentCanvas } from './AgentCanvas';
 interface ReactFlowStubProps {
   children?: ReactNode;
   nodeTypes?: Record<string, unknown>;
+  edges?: Array<{ id: string }>;
+  edgeTypes?: Record<string, ComponentType<{ id: string }>>;
   isValidConnection?: (connection: {
     source?: string | null;
     sourceHandle?: string | null;
@@ -54,29 +61,57 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@xyflow/react', () => ({
   ReactFlow: (props: ReactFlowStubProps) => {
     mocks.lastReactFlowProps = props;
-    return <div data-testid="react-flow">{props.children}</div>;
+    const EdgeRenderer = props.edgeTypes?.smart;
+    return (
+      <div data-testid="react-flow">
+        {EdgeRenderer
+          ? props.edges?.map((edge) => <EdgeRenderer key={edge.id} id={edge.id} />)
+          : null}
+        {props.children}
+      </div>
+    );
   },
   Background: () => <div data-testid="background" />,
   Controls: () => <div data-testid="controls" />,
 }));
 
-vi.mock('@/features/canvas', () => ({
-  CanvasNodeShell: () => <div data-testid="canvas-node-shell" />,
-  SmartEdge: () => <div data-testid="smart-edge" />,
-  AgentNodePalette: () => <div data-testid="agent-node-palette" />,
-  CANVAS_FLOATING_CLASS: 'canvas-floating',
-  CanvasBackdrop: () => <div data-testid="canvas-backdrop" />,
-  arePortDataTypesCompatible: () => true,
-  useConnectionPreview: () => ({
-    onConnectStart: vi.fn(),
-    onConnectEnd: vi.fn(),
-  }),
-  ReadOnlyNodeSheet: () => (
-    <div data-testid="readonly-node-sheet">
-      <div data-testid="readonly-node-config" />
-    </div>
-  ),
-}))
+vi.mock('@/features/canvas', () => {
+  const SmartEdgeActionsContext = createContext<SmartEdgeActions | null>(null);
+  /** 只验证注入：SmartEdge 桩消费上下文并暴露删除 / 字段映射入口 */
+  function SmartEdgeStub({ id }: { id: string }) {
+    const edgeActions = useContext(SmartEdgeActionsContext);
+    return (
+      <div data-testid="smart-edge">
+        {edgeActions ? (
+          <button type="button" onClick={() => edgeActions.removeEdge(id)}>
+            删除连接
+          </button>
+        ) : null}
+        {edgeActions?.openFieldMapping ? (
+          <button type="button">打开字段映射</button>
+        ) : null}
+      </div>
+    );
+  }
+  return {
+    SmartEdgeActionsContext,
+    CanvasNodeShell: () => <div data-testid="canvas-node-shell" />,
+    SmartEdge: SmartEdgeStub,
+    AgentNodePalette: () => <div data-testid="agent-node-palette" />,
+    CANVAS_FLOATING_CLASS: 'canvas-floating',
+    CanvasBackdrop: () => <div data-testid="canvas-backdrop" />,
+    arePortDataTypesCompatible: () => true,
+    useConnectionPreview: () => ({
+      onConnectStart: vi.fn(),
+      onConnectEnd: vi.fn(),
+    }),
+    ReadOnlyNodeSheet: () => (
+      <div data-testid="readonly-node-sheet">
+        <div data-testid="readonly-node-config" />
+      </div>
+    ),
+  };
+});
 
 vi.mock('./panels/AgentNodeConfigPanel', () => ({
   AgentNodeConfigPanel: () => <div data-testid="agent-node-config-panel" />,
@@ -185,6 +220,20 @@ describe('AgentCanvas', () => {
     expect(Object.keys(mocks.lastReactFlowProps?.nodeTypes ?? {})).toEqual(
       expect.arrayContaining(categories),
     );
+  });
+
+  it('边上的「删除连接」作用于 Agent 画布 store，且不提供字段映射入口', () => {
+    mocks.edges = [{ id: 'edge-1', source: 'memory-node', target: 'agent-main' }];
+
+    render(<AgentCanvas agentId="agent-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '删除连接' }));
+    expect(mocks.onEdgesChange).toHaveBeenCalledWith([
+      { type: 'remove', id: 'edge-1' },
+    ]);
+    expect(
+      screen.queryByRole('button', { name: '打开字段映射' }),
+    ).not.toBeInTheDocument();
   });
 
   describe('小屏只读浏览（<lg）', () => {

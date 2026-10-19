@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useContext, useState } from 'react'
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -9,7 +9,7 @@ import {
 import { Shuffle, X } from 'lucide-react'
 import { useExecutionStore } from '@/features/execution'
 import { Button } from '@/shared/ui/button'
-import { useCanvasActions } from '../../stores/canvasStore'
+import { SmartEdgeActionsContext } from './SmartEdgeActionsContext'
 import { PORT_DATA_TYPE_META } from '../../types/nodeTypeRegistry'
 import type { PortDataType } from '../../types/typeSchema'
 import {
@@ -117,7 +117,8 @@ export const SmartEdge = memo(function SmartEdge({
   selected,
   markerEnd,
 }: EdgeProps<CanvasEdge>) {
-  const { onEdgesChange, openFieldMapping } = useCanvasActions()
+  const edgeActions = useContext(SmartEdgeActionsContext)
+  const openFieldMapping = edgeActions?.openFieldMapping
   const edgeData = data ?? createDefaultEdgeData()
   const visualLevel: VisualCompatibilityLevel = data?.visualLevel ?? 'L0'
   const readonlyPreview = data?.readonlyPreview === true
@@ -170,19 +171,29 @@ export const SmartEdge = memo(function SmartEdge({
   const badgeVisible =
     !readonlyPreview && (isHovered || !!selected || persistentBadge)
   const badgeTabIndex = badgeVisible ? 0 : -1
+  const badgeContent = (
+    <>
+      {visualLevel === 'L1' ? (
+        <Shuffle className="edge-badge__icon" size={10} />
+      ) : (
+        <span className={`edge-badge__dot edge-badge__dot--${cssLevel}`} />
+      )}
+      <span className="min-w-0 max-w-[16rem] truncate">{badgeText}</span>
+    </>
+  )
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      onEdgesChange([{ type: 'remove', id }])
+      edgeActions?.removeEdge(id)
     },
-    [id, onEdgesChange],
+    [id, edgeActions],
   )
 
   const handleBadgeClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      openFieldMapping(id)
+      openFieldMapping?.(id)
     },
     [id, openFieldMapping],
   )
@@ -273,29 +284,32 @@ export const SmartEdge = memo(function SmartEdge({
             data-testid={`edge-badge-${id}`}
             aria-hidden={!badgeVisible}
           >
-            <Button
-              variant="ghost"
-              size="xs"
-              className="edge-badge__summary h-auto [&_svg]:size-2.5"
-              data-testid={`edge-badge-action-${id}`}
-              onClick={handleBadgeClick}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-              onFocus={handleMouseEnter}
-              onBlur={handleMouseLeave}
-              aria-label="打开字段映射"
-              title={badgeText}
-              tabIndex={badgeTabIndex}
-            >
-              {visualLevel === 'L1' ? (
-                <Shuffle className="edge-badge__icon" size={10} />
-              ) : (
-                <span
-                  className={`edge-badge__dot edge-badge__dot--${cssLevel}`}
-                />
-              )}
-              <span className="min-w-0 max-w-[16rem] truncate">{badgeText}</span>
-            </Button>
+            {openFieldMapping ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="edge-badge__summary h-auto [&_svg]:size-2.5"
+                data-testid={`edge-badge-action-${id}`}
+                onClick={handleBadgeClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                onFocus={handleMouseEnter}
+                onBlur={handleMouseLeave}
+                aria-label="打开字段映射"
+                title={badgeText}
+                tabIndex={badgeTabIndex}
+              >
+                {badgeContent}
+              </Button>
+            ) : (
+              <span
+                className="edge-badge__summary inline-flex items-center gap-1 px-2 text-xs [&_svg]:size-2.5"
+                data-testid={`edge-badge-summary-${id}`}
+                title={badgeText}
+              >
+                {badgeContent}
+              </span>
+            )}
             {hasWarning && (
               <span
                 className="edge-badge__warning"
@@ -305,7 +319,7 @@ export const SmartEdge = memo(function SmartEdge({
                 ⚠
               </span>
             )}
-            {selected && (
+            {selected && edgeActions && (
               <Button
                 variant="ghost"
                 size="icon-xs"

@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   type Edge,
@@ -9,7 +9,7 @@ import { cn } from '@/shared/lib/utils';
 import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { CanvasNodeShell } from '@/features/canvas';
-import { SmartEdge } from '@/features/canvas';
+import { SmartEdge, SmartEdgeActionsContext } from '@/features/canvas';
 import { AgentNodePalette } from '@/features/canvas';
 import { CANVAS_FLOATING_CLASS } from '@/features/canvas';
 import { CanvasBackdrop } from '@/features/canvas';
@@ -19,6 +19,7 @@ import { ReadOnlyNodeSheet } from '@/features/canvas';
 import type {
   CanvasEdgeData,
   CanvasNode,
+  SmartEdgeActions,
 } from '@/features/canvas';
 import {
   useAgentCanvasNodes,
@@ -155,45 +156,59 @@ export const AgentCanvas = memo(function AgentCanvas({
     [isMobileReadOnly, nodes],
   );
 
+  /** Agent 画布没有字段映射，边上只提供删除；小屏只读时不注入 */
+  const edgeActions = useMemo<SmartEdgeActions | null>(
+    () =>
+      isMobileReadOnly
+        ? null
+        : {
+            removeEdge: (edgeId) =>
+              onEdgesChange([{ type: 'remove', id: edgeId }]),
+          },
+    [isMobileReadOnly, onEdgesChange],
+  );
+
   const defaultViewport = { x: 0, y: 0, zoom: 1 };
 
   return (
     <div ref={containerRef} className={cn('relative h-full w-full', className)}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        edgeTypes={EDGE_TYPES}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={isMobileReadOnly ? undefined : createConnection}
-        onConnectStart={isMobileReadOnly ? undefined : onConnectStart}
-        onConnectEnd={isMobileReadOnly ? undefined : onConnectEnd}
-        isValidConnection={isValidConnection}
-        onInit={onInit}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onMoveEnd={onMoveEnd}
-        onDragOver={isMobileReadOnly ? undefined : onDragOver}
-        onDrop={isMobileReadOnly ? undefined : onDrop}
-        defaultViewport={defaultViewport}
-        nodesDraggable={!isMobileReadOnly}
-        nodesConnectable={!isMobileReadOnly}
-        elementsSelectable={!isMobileReadOnly}
-        fitView
-        deleteKeyCode={['Backspace', 'Delete']}
-        minZoom={0.1}
-        maxZoom={2}
-        proOptions={{ hideAttribution: true }}
-        colorMode={resolvedTheme}
-      >
-        {/* 节点面板占满左侧整列，缩放控件放右下角避免被遮挡 */}
-        <CanvasBackdrop
-          position="bottom-right"
-          onAutoLayout={isMobileReadOnly ? undefined : autoLayout}
-        />
-      </ReactFlow>
+      <SmartEdgeActionsContext.Provider value={edgeActions}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={isMobileReadOnly ? undefined : createConnection}
+          onConnectStart={isMobileReadOnly ? undefined : onConnectStart}
+          onConnectEnd={isMobileReadOnly ? undefined : onConnectEnd}
+          isValidConnection={isValidConnection}
+          onInit={onInit}
+          onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          onMoveEnd={onMoveEnd}
+          onDragOver={isMobileReadOnly ? undefined : onDragOver}
+          onDrop={isMobileReadOnly ? undefined : onDrop}
+          defaultViewport={defaultViewport}
+          nodesDraggable={!isMobileReadOnly}
+          nodesConnectable={!isMobileReadOnly}
+          elementsSelectable={!isMobileReadOnly}
+          fitView
+          deleteKeyCode={['Backspace', 'Delete']}
+          minZoom={0.1}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+          colorMode={resolvedTheme}
+        >
+          {/* 节点面板占满左侧整列，缩放控件放右下角避免被遮挡 */}
+          <CanvasBackdrop
+            position="bottom-right"
+            onAutoLayout={isMobileReadOnly ? undefined : autoLayout}
+          />
+        </ReactFlow>
+      </SmartEdgeActionsContext.Provider>
 
       {!isMobileReadOnly && (
         <>

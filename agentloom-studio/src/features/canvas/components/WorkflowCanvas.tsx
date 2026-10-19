@@ -7,6 +7,10 @@ import type { WorkflowStatus } from '@/features/workflow'
 import { BlockCreateDialog } from './BlockCreateDialog'
 import { CanvasOverlayLayer } from './CanvasOverlayLayer'
 import { CanvasSurface } from './CanvasSurface'
+import {
+  SmartEdgeActionsContext,
+  type SmartEdgeActions,
+} from './edges/SmartEdgeActionsContext'
 import type { CompatibilityPreviewHandle } from './overlays/CompatibilityPreview'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import { useCanvasContextMenu } from '../hooks/useCanvasContextMenu'
@@ -226,32 +230,47 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     [isEditingDisabled, onDrop],
   )
 
+  /** 只读（归档 / 小屏）时不注入，边上不出现删除与字段映射入口 */
+  const edgeActions = useMemo<SmartEdgeActions | null>(
+    () =>
+      isEditingDisabled
+        ? null
+        : {
+            removeEdge: (edgeId) =>
+              onEdgesChange([{ type: 'remove', id: edgeId }]),
+            openFieldMapping,
+          },
+    [isEditingDisabled, onEdgesChange, openFieldMapping],
+  )
+
   return (
     <div ref={containerRef} className={cn(className, 'focus:outline-none')}>
-      <CanvasSurface
-        nodes={renderedNodes}
-        edges={renderedEdges}
-        viewport={viewport}
-        colorMode={resolvedTheme}
-        isEditingDisabled={isEditingDisabled}
-        isMobileReadOnly={isMobileReadOnly}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        isValidConnection={isValidConnection}
-        onConnectStart={onConnectStart}
-        onConnectEnd={onConnectEnd}
-        onNodeClick={onNodeClick}
-        onNodeContextMenu={onNodeContextMenu}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onPaneContextMenu={onPaneContextMenu}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onViewportChange={onViewportChange}
-        onMoveEnd={onMoveEnd}
-        onAutoLayout={isEditingDisabled ? undefined : autoLayout}
-      />
+      <SmartEdgeActionsContext.Provider value={edgeActions}>
+        <CanvasSurface
+          nodes={renderedNodes}
+          edges={renderedEdges}
+          viewport={viewport}
+          colorMode={resolvedTheme}
+          isEditingDisabled={isEditingDisabled}
+          isMobileReadOnly={isMobileReadOnly}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          isValidConnection={isValidConnection}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
+          onNodeClick={onNodeClick}
+          onNodeContextMenu={onNodeContextMenu}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          onPaneContextMenu={onPaneContextMenu}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          onViewportChange={onViewportChange}
+          onMoveEnd={onMoveEnd}
+          onAutoLayout={isEditingDisabled ? undefined : autoLayout}
+        />
+      </SmartEdgeActionsContext.Provider>
       <CanvasOverlayLayer
         previewRef={previewRef}
         previewState={previewState}
