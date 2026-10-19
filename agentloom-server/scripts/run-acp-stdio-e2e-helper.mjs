@@ -37,6 +37,12 @@ const TEST_EXECUTION_ID =
 const TEST_SANDBOX_SESSION_ID =
   process.env.ACP_TEST_SANDBOX_SESSION_ID ??
   '77777777-7777-4777-8777-777777777777';
+// session/new 只接受当前租户内已发布、未归档、no_sandbox 运行态的 Agent（D-019）
+const TEST_AGENT_ID =
+  process.env.ACP_TEST_AGENT_ID ?? '88888888-8888-4888-8888-888888888888';
+const TEST_AGENT_VERSION_ID =
+  process.env.ACP_TEST_AGENT_VERSION_ID ??
+  '99999999-9999-4999-8999-999999999999';
 const SANDBOX_SESSION_CWD = '/workspace/demo';
 const MCP_STDIO_FIXTURE_PATH = path.join(
   SERVER_DIR,
@@ -107,6 +113,8 @@ function createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot) {
     ACP_TEST_FAKE_RUNTIME: '1',
     ACP_TEST_TERMINAL_TIMEOUT_MS: '500',
     ACP_TEST_SANDBOX_WORKSPACE_ROOT: sandboxWorkspaceRoot,
+    // mcpServers 场景用 stdio fixture；stdio MCP 默认关闭，需显式开启
+    APP_MCP_STDIO_ENABLED: 'true',
     APP_DEPLOYMENT_MODE: 'private',
     APP_DATABASE_URL: databaseUrl,
     APP_JWT_SECRET: TEST_JWT_SECRET,
@@ -241,11 +249,17 @@ class StdoutLineReader {
 
 function spawnAcpProcess(databaseUrl, sandboxWorkspaceRoot) {
   const distEntry = path.join(SERVER_DIR, 'dist', 'src', 'acp-stdio.js');
-  const child = spawn(process.execPath, [distEntry], {
-    cwd: SERVER_DIR,
-    env: createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot),
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  // @extism/extism 加载时 require('node:wasi')，Node 会向 stderr 打 WASI ExperimentalWarning；
+  // 这是运行时告警而非 ACP 进程的日志输出，屏蔽后 stderr 卫生断言仍能捕获真正的应用输出
+  const child = spawn(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', distEntry],
+    {
+      cwd: SERVER_DIR,
+      env: createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  );
 
   child.stdin.setDefaultEncoding('utf8');
   child.stdout.setEncoding('utf8');
@@ -606,6 +620,26 @@ async function runScenario() {
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    // SessionNewHandler.resolvePublishedAgent 读取的最小列集合
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS agent_definitions (
+        id uuid PRIMARY KEY,
+        tenant_id uuid NOT NULL,
+        runtime_mode text NOT NULL,
+        status text NOT NULL,
+        published_version_id uuid
+      )
+    `);
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS agent_versions (
+        id uuid PRIMARY KEY,
+        agent_definition_id uuid NOT NULL,
+        tenant_id uuid NOT NULL,
+        snapshot jsonb NOT NULL
+      )
+    `);
+    await sql.unsafe(`GRANT SELECT ON agent_definitions TO authenticated`);
+    await sql.unsafe(`GRANT SELECT ON agent_versions TO authenticated`);
     await sql.unsafe(
       `GRANT SELECT, INSERT, UPDATE, DELETE ON revoked_tokens TO authenticated`,
     );
@@ -625,6 +659,8 @@ async function runScenario() {
     await sql`DELETE FROM workflow_executions WHERE id = ${TEST_EXECUTION_ID}`;
     await sql`DELETE FROM workflow_versions WHERE id = ${TEST_WORKFLOW_VERSION_ID}`;
     await sql`DELETE FROM workflow_definitions WHERE id = ${TEST_WORKFLOW_DEFINITION_ID}`;
+    await sql`DELETE FROM agent_versions WHERE id = ${TEST_AGENT_VERSION_ID}`;
+    await sql`DELETE FROM agent_definitions WHERE id = ${TEST_AGENT_ID}`;
 
     await sql`
       INSERT INTO auth.users (id)
@@ -640,6 +676,38 @@ async function runScenario() {
         ${'Sandbox Owner'}
       )
       ON CONFLICT (id) DO NOTHING
+    `;
+    await sql`
+      INSERT INTO agent_definitions (
+        id,
+        tenant_id,
+        runtime_mode,
+        status,
+        published_version_id
+      )
+      VALUES (
+        ${TEST_AGENT_ID},
+        ${TEST_TENANT_ID},
+        ${'no_sandbox'},
+        ${'published'},
+        ${TEST_AGENT_VERSION_ID}
+      )
+    `;
+    await sql`
+      INSERT INTO agent_versions (id, agent_definition_id, tenant_id, snapshot)
+      VALUES (
+        ${TEST_AGENT_VERSION_ID},
+        ${TEST_AGENT_ID},
+        ${TEST_TENANT_ID},
+        ${{
+          runtimeMode: 'no_sandbox',
+          nodes: [],
+          edges: [],
+          viewport: null,
+          systemPrompt: null,
+          metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
+        }}
+      )
     `;
 
     const workflowSnapshot = {
@@ -781,7 +849,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(6, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
           serverSandbox: {
             executionId: TEST_EXECUTION_ID,
@@ -806,7 +874,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(74, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
           serverSandbox: {
             executionId: TEST_EXECUTION_ID,
@@ -985,7 +1053,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(89, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
           serverSandbox: {
             executionId: TEST_EXECUTION_ID,
@@ -1040,7 +1108,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(92, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
           serverSandbox: {
             executionId: TEST_EXECUTION_ID,
@@ -1273,7 +1341,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(63, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
         }),
       );
@@ -1343,7 +1411,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(16, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
           mcpServers: createMcpServersConfig(),
         }),
@@ -1382,7 +1450,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(18, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
           mcpServers: createMcpServersConfig(),
         }),
@@ -1426,7 +1494,7 @@ async function runScenario() {
       await writeJsonRpc(
         child,
         createJsonRpcRequest(8, 'session/new', {
-          agentId: 'agent-stdio-e2e',
+          agentId: TEST_AGENT_ID,
           cwd: SANDBOX_SESSION_CWD,
         }),
       );
