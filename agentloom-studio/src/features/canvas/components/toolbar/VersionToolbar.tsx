@@ -136,7 +136,8 @@ export const VersionToolbar = memo(function VersionToolbar({
 
   const isArchived = workflowStatus === "archived";
   const isPublished = workflowStatus === "published";
-  const canPublish = workflowStatus === "draft";
+  // 已发布的工作流仍可把当前草稿发布为新版本；只有归档后不可发布
+  const canPublish = !isArchived;
   const canArchive = !isArchived;
 
   const handleOpenCreate = useCallback(() => setCreateOpen(true), []);

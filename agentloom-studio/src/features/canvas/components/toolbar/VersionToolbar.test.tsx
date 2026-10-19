@@ -60,13 +60,14 @@ describe('VersionToolbar', () => {
       expect(await screen.findByTestId('btn-archive')).toBeInTheDocument();
     });
 
-    it('已发布状态隐藏发布按钮', async () => {
+    it('已发布状态仍显示发布按钮（发布当前草稿为新版本）', async () => {
       const user = userEvent.setup();
       render(<VersionToolbar {...defaultProps} workflowStatus="published" />);
 
       expect(screen.getByTestId('btn-create-version')).toBeInTheDocument();
       expect(screen.getByTestId('btn-version-history')).toBeInTheDocument();
-      expect(screen.queryByTestId('btn-publish')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('btn-publish'));
+      expect(defaultProps.onOpenPublish).toHaveBeenCalledWith();
 
       await user.click(screen.getByRole('button', { name: '更多操作' }));
       expect(await screen.findByTestId('btn-archive')).toBeInTheDocument();
