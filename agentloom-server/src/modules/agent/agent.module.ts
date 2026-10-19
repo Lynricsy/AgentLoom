@@ -64,6 +64,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
     SessionPersistenceService,
     InProcessAgentAdapter,
     SandboxAgentAdapter,
+    SandboxSessionRuntimeService,
     AGENT_RUNTIME,
     AGENT_RUNTIME_FACTORY,
   ],

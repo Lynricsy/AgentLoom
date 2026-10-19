@@ -341,6 +341,32 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
+    it('DomainException 创建失败时日志记录 detail 中的具体原因而非标题', async () => {
+      mockRuntimeDriver.createRuntime.mockRejectedValueOnce(
+        new SandboxCreationException('firecracker binary not found'),
+      );
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'create',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+            config: DEFAULT_CONFIG,
+          }),
+        ),
+      ).rejects.toBeInstanceOf(SandboxCreationException);
+
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: 'system',
+          message:
+            'Sandbox creation failed: Failed to create sandbox container: firecracker binary not found',
+        }),
+      );
+    });
+
     it('persistent 模式容器创建失败时应标记为 failed 并记录日志', async () => {
       mockRuntimeDriver.createRuntime.mockRejectedValueOnce(
         new Error('image not found'),

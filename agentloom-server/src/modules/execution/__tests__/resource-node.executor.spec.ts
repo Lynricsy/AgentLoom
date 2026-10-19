@@ -82,6 +82,7 @@ import {
   makeSnapshot,
   createSelectChain,
   createUpdateChainVoid,
+  mockSandboxSessionRuntime,
 } from './node-scheduler-test-support';
 
 describe('resource migrated scenarios', () => {
@@ -336,7 +337,7 @@ describe('resource migrated scenarios', () => {
   });
 
   describe('scheduleNode migrated', () => {
-    it('sandbox 节点会创建沙箱会话并自动完成', async () => {
+    it('sandbox 节点会创建沙箱会话并等到会话就绪才完成', async () => {
       const snapshot = makeSnapshot(
         [
           makeNode('S', 'sandbox', {
@@ -388,6 +389,12 @@ describe('resource migrated scenarios', () => {
         },
         tenantId: TENANT_ID,
       });
+      expect(
+        mockSandboxSessionRuntime.waitForSandboxReady,
+      ).toHaveBeenCalledWith(
+        { executionId: EXECUTION_ID, sandboxNodeId: 'S' },
+        TENANT_ID,
+      );
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         'step-s',
@@ -400,10 +407,10 @@ describe('resource migrated scenarios', () => {
         expect.objectContaining({
           result: expect.objectContaining({
             sessionId: '019577a0-0000-7000-8000-sandbox00001',
-            status: 'creating',
+            status: 'ready',
             'sandbox-out': expect.objectContaining({
               sessionId: '019577a0-0000-7000-8000-sandbox00001',
-              status: 'creating',
+              status: 'ready',
             }),
           }),
         }),
@@ -414,6 +421,58 @@ describe('resource migrated scenarios', () => {
         TENANT_ID,
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('sandbox 会话创建失败时节点失败并带上失败原因，不得 completed', async () => {
+      const snapshot = makeSnapshot([makeNode('S', 'sandbox', { cpu: 1 })], []);
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'pending',
+          nodeType: 'sandbox',
+          nodeData: { cpu: 1 },
+        }),
+      ];
+      mockSandboxSessionRuntime.waitForSandboxReady.mockRejectedValueOnce(
+        new Error(
+          'Sandbox creation failed: Failed to create sandbox container: firecracker unavailable',
+        ),
+      );
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+      const onNodeFailed = vi
+        .spyOn(service, 'onNodeFailed')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'S', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-s',
+        'completed',
+        expect.anything(),
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-s',
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message:
+              'Sandbox creation failed: Failed to create sandbox container: firecracker unavailable',
+            nodeId: 'S',
+          }),
+        }),
+      );
+      expect(onNodeFailed).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-s',
+        TENANT_ID,
+      );
+      expect(onNodeCompleted).not.toHaveBeenCalled();
     });
   });
 

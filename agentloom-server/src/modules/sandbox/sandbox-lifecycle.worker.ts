@@ -5,6 +5,7 @@ import { Job } from 'bullmq';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import { DomainException } from '../../common/exceptions/domain.exception';
 import * as schema from '../../database/schema';
 import { and, asc, eq, inArray, notInArray } from 'drizzle-orm';
 
@@ -226,10 +227,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
           .where(eq(schema.sandboxSessions.id, sessionId));
       });
 
+      // DomainException 的 message 只是标题（「沙箱容器创建失败」），具体原因在 detail；
+      // 该日志是 sandbox 节点 / Agent 等待就绪失败时返回给用户的原因，必须带上 detail。
       await this.insertLog(
         sessionId,
         'system',
-        `Sandbox creation failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Sandbox creation failed: ${error instanceof DomainException ? error.detail : error instanceof Error ? error.message : String(error)}`,
         tenantId,
       );
 

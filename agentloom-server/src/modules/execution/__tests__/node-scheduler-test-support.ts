@@ -53,6 +53,7 @@ import {
   ToolPermissionResolutionNotAllowedException,
 } from '../../../common/exceptions/tool-call.exceptions';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { SandboxSessionRuntimeService } from '../../agent/sandbox-session-runtime.service';
 import { CheckpointService } from '../checkpoint.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
@@ -84,6 +85,14 @@ export const mockDecisionService = {
     recordId: 'decision-record-1',
   }),
 };
+// sandbox 节点等待会话就绪；默认立即就绪，用例可覆盖为失败/超时
+export const mockSandboxSessionRuntime = {
+  waitForSandboxReady: vi.fn().mockResolvedValue({
+    id: '019577a0-0000-7000-8000-sandbox00001',
+    status: 'ready',
+    runtimeHandle: 'runtime-001',
+  }),
+};
 
 export const NODE_EXECUTION_PROVIDERS = [
   NodeDispatcherService,
@@ -108,6 +117,10 @@ export const NODE_EXECUTION_PROVIDERS = [
     useValue: mockOrganizationAutonomyPolicyService,
   },
   { provide: DecisionService, useValue: mockDecisionService },
+  {
+    provide: SandboxSessionRuntimeService,
+    useValue: mockSandboxSessionRuntime,
+  },
   // TeamNodeExecutor 经事件请求启动团队运行
   { provide: EventEmitter2, useValue: new EventEmitter2() },
 ] as const;

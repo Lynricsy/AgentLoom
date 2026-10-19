@@ -4,6 +4,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ExecutionStep, ReactFlowEdge } from '../../../database/schema';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { SandboxSessionRuntimeService } from '../../agent/sandbox-session-runtime.service';
 import type {
   MemoryResourceConfig,
   MemoryResourceInstance,
@@ -51,6 +52,7 @@ export class ResourceNodeExecutor implements NodeExecutor {
 
   constructor(
     private readonly sandboxService: SandboxService,
+    private readonly sandboxSessionRuntime: SandboxSessionRuntimeService,
     private readonly sharedResourceRegistry: SharedResourceRegistry,
     private readonly stepStateMachine: StepStateMachineService,
     private readonly failurePolicy: NodeExecutionFailurePolicy,
@@ -145,12 +147,18 @@ export class ResourceNodeExecutor implements NodeExecutor {
     try {
       const config = resolveSandboxConfigForStep(step, edges, steps);
 
-      const session = await this.sandboxService.createSandboxSession({
+      await this.sandboxService.createSandboxSession({
         executionId,
         sandboxNodeId: step.nodeId,
         config,
         tenantId,
       });
+      // 会话由 lifecycle 队列异步创建：等到 ready（guest 健康检查通过）或 failed/超时才决定节点终态，
+      // 创建失败时抛出的错误带 lifecycle 记录的失败原因。
+      const session = await this.sandboxSessionRuntime.waitForSandboxReady(
+        { executionId, sandboxNodeId: step.nodeId },
+        tenantId,
+      );
       const sandboxOutput = {
         sessionId: session.id,
         status: session.status,
