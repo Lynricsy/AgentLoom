@@ -190,6 +190,92 @@ describe('AgentExecutionWorker metadata persistence', () => {
     );
   });
 
+  it('被取消的回合已消耗 token 时仍落 assistant 消息（incomplete + usage），用量可被团队汇总', async () => {
+    selectChain.limit.mockResolvedValueOnce([
+      { metadata: { execution: { sessionId: 'session-1' } } },
+    ]);
+    insertChain.returning.mockResolvedValueOnce([{ id: 'assistant-1' }]);
+
+    const result = await workerInternals.persistConversationTurn(
+      'conversation-1',
+      'tenant-1',
+      [
+        {
+          id: 'message-1',
+          content: '克隆仓库并修复',
+          createdAt: new Date('2026-10-19T17:50:42.000Z'),
+        },
+      ],
+      {
+        assistantText: '',
+        decision: undefined,
+        stopReason: 'cancelled',
+        toolCalls: [
+          {
+            id: 'tool-1',
+            tool: 'bash',
+            args: {
+              command: 'git clone https://github.com/sindresorhus/p-limit',
+            },
+            status: 'completed',
+          },
+        ],
+        toolResults: [],
+        segments: [],
+        usageCalls: [{ inputTokens: 8_000, outputTokens: 300 }],
+      },
+      'session-1',
+    );
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'assistant',
+        metadata: expect.objectContaining({
+          stopReason: 'cancelled',
+          incomplete: true,
+          usage: expect.objectContaining({
+            inputTokens: 8_000,
+            outputTokens: 300,
+          }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      lastAssistantMessageId: 'assistant-1',
+      lastStopReason: 'cancelled',
+    });
+  });
+
+  it('被取消且没有任何输出与用量的回合不落 assistant 消息', async () => {
+    selectChain.limit.mockResolvedValueOnce([
+      { metadata: { execution: { sessionId: 'session-1' } } },
+    ]);
+
+    const result = await workerInternals.persistConversationTurn(
+      'conversation-1',
+      'tenant-1',
+      [
+        {
+          id: 'message-1',
+          content: 'hi',
+          createdAt: new Date('2026-10-19T17:50:42.000Z'),
+        },
+      ],
+      {
+        assistantText: '',
+        decision: undefined,
+        stopReason: 'cancelled',
+        toolCalls: [],
+        toolResults: [],
+        segments: [],
+      },
+      'session-1',
+    );
+
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty('lastAssistantMessageId');
+  });
+
   it('updateExecutionMetadata 应支持写入并清空失败态元数据', async () => {
     selectChain.limit
       .mockResolvedValueOnce([

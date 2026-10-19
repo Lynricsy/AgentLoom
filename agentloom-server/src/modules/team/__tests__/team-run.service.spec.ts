@@ -650,6 +650,59 @@ describe('TeamRunService', () => {
       );
     });
 
+    it('团队结束后才落库的被取消成员回合仍计入成员与团队用量，但不再结算状态', async () => {
+      const ended = makeRun({
+        status: 'failed',
+        failureReason: 'budget_exhausted',
+        usedInputTokens: 18_000,
+        usedOutputTokens: 2_000,
+      });
+      const implementer = makeMember('implementer', {
+        status: 'ended',
+        usedInputTokens: 9_000,
+        usedOutputTokens: 500,
+        turnCount: 1,
+      });
+      const recomputed = makeRun({
+        status: 'failed',
+        failureReason: 'budget_exhausted',
+        usedInputTokens: 27_000,
+        usedOutputTokens: 2_500,
+      });
+      const ctx = setup([
+        [{ teamRunId: RUN_ID }],
+        [ended],
+        [totals('member-implementer', 9_000, 500, 0, 1)],
+        [implementer],
+        [recomputed],
+      ]);
+
+      await ctx.service.recordMemberTurn({
+        ...turn,
+        stopReason: 'cancelled' as never,
+      });
+
+      expect(ctx.argsOf(ctx.calls[3], 'set')?.[0]).toMatchObject({
+        usedInputTokens: 9_000,
+        usedOutputTokens: 500,
+        turnCount: 1,
+      });
+      expect(ctx.argsOf(ctx.calls[4], 'set')?.[0]).toMatchObject({
+        usedInputTokens: 9_000,
+        usedOutputTokens: 500,
+      });
+      expect(ctx.argsOf(ctx.calls[4], 'set')?.[0]).not.toHaveProperty('status');
+      expect(ctx.stepStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(ctx.eventBridge.emitTeamStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        expect.objectContaining({
+          status: 'failed',
+          budget: expect.objectContaining({ usedTokens: 29_500 }),
+        }),
+      );
+    });
+
     it('lead 提交回合落库后用结算后的用量完成，步骤结果用结算快照', async () => {
       const submittedAt = new Date('2026-01-01T00:10:00Z');
       const lead = makeMember('implementer', {

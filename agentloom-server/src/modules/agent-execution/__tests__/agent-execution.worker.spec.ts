@@ -3956,12 +3956,12 @@ describe('AgentExecutionWorker', () => {
         );
       });
 
-      it('cancelled 轮次不写 assistant 消息，但 run 仍按 cancelled 终结', async () => {
+      it('无输出无用量的 cancelled 轮次不写 assistant 消息，但 run 仍按 cancelled 终结', async () => {
         await persistence.persistConversationTurn(
           'c-1',
           't-1',
           pending,
-          turnResult({ stopReason: 'cancelled' }) as never,
+          turnResult({ stopReason: 'cancelled', assistantText: '' }) as never,
           'session-1',
         );
 

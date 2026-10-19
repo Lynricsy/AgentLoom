@@ -491,7 +491,13 @@ export class TeamRunService {
           return null;
         }
         if (locked.status !== 'running') {
-          return { status: locked.status };
+          // 运行结束时被取消的进行中成员回合在结束之后才落库：只补算用量，不再结算状态
+          return options.idleConversationId
+            ? {
+                status: locked.status,
+                snapshot: await this.recomputeUsageInTx(tx, locked),
+              }
+            : { status: locked.status };
         }
 
         if (options.idleConversationId) {

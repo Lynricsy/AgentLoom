@@ -261,8 +261,16 @@ export class AgentExecutionWorkerPersistenceService {
         turnResult.assistantText.length === 0 &&
         turnResult.toolCalls.length === 0 &&
         !turnResult.decision;
+      // 被取消的回合（如团队结束时中止成员的进行中回合）有部分输出或已消耗 token 时也落库并标为不完整：
+      // 成员 / 团队用量按 assistant 消息汇总，不落库这部分 token 就不计入用量
+      const isCancelledTurn = turnResult.stopReason === 'cancelled';
+      const persistAssistantMessage =
+        pendingMessages.length > 0 &&
+        (!isCancelledTurn ||
+          usageCalls.length > 0 ||
+          turnResultHasPersistableOutput(turnResult));
 
-      if (pendingMessages.length > 0 && turnResult.stopReason !== 'cancelled') {
+      if (persistAssistantMessage) {
         const [assistantMessage] = await dbClient
           .insert(agentMessages)
           .values({
@@ -302,7 +310,9 @@ export class AgentExecutionWorkerPersistenceService {
                 ? { subAgentStreams: turnResult.subAgentStreams }
                 : {}),
               ...(isEmptyTurn ? { emptyTurn: true } : {}),
-              ...(options?.incomplete ? { incomplete: true } : {}),
+              ...(options?.incomplete || isCancelledTurn
+                ? { incomplete: true }
+                : {}),
               ...(options?.errorMessage
                 ? { errorMessage: options.errorMessage }
                 : {}),
