@@ -60,6 +60,7 @@ import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
 import { ToolCallStateMachineService } from './services/tool-call-state-machine.service';
 import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
+import { ModelRoutingService } from '../smart-routing/model-routing.service';
 import {
   EXECUTION_QUEUE,
   AGENT_TASK_QUEUE,
@@ -141,6 +142,7 @@ import {
         skillResolverService,
         llmCostService,
         executionCancellation,
+        modelRoutingService,
       ) =>
         new AgentAdapterFactory(
           db,
@@ -153,6 +155,7 @@ import {
           skillResolverService,
           llmCostService,
           executionCancellation,
+          modelRoutingService,
         ),
       inject: [
         DRIZZLE,
@@ -164,6 +167,7 @@ import {
         SkillResolverService,
         LlmCostService,
         ExecutionCancellationService,
+        ModelRoutingService,
       ],
     },
     RbacCacheService,

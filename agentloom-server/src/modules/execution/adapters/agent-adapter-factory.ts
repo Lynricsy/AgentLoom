@@ -10,6 +10,7 @@ import { LlmCostService } from '../../llm/llm-cost.service';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 import { EventBridgeService } from '../services/event-bridge.service';
 import type { ExecutionCancellationService } from '../services/execution-cancellation.service';
+import type { ModelRoutingService } from '../../smart-routing/model-routing.service';
 
 export class AgentAdapterFactory {
   constructor(
@@ -23,6 +24,7 @@ export class AgentAdapterFactory {
     private readonly skillResolverService?: SkillResolverService,
     private readonly llmCostService?: LlmCostService,
     private readonly executionCancellation?: ExecutionCancellationService,
+    private readonly modelRoutingService?: ModelRoutingService,
   ) {}
 
   createFromAgentDefinition(
@@ -41,6 +43,7 @@ export class AgentAdapterFactory {
         skillResolverService: this.skillResolverService,
         llmCostService: this.llmCostService,
         executionCancellation: this.executionCancellation,
+        modelRoutingService: this.modelRoutingService,
       },
       {
         agentDefinitionId,

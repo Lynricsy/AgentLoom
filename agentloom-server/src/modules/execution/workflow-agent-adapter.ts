@@ -81,6 +81,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import type { LlmCostService } from '../llm/llm-cost.service';
+import type { ModelRoutingService } from '../smart-routing/model-routing.service';
 import {
   appendTextConversationMessageSegment,
   appendThinkingConversationMessageSegment,
@@ -102,6 +103,7 @@ interface WorkflowAgentAdapterDependencies {
   readonly skillResolverService?: SkillResolverService;
   readonly llmCostService?: LlmCostService;
   readonly executionCancellation?: ExecutionCancellationService;
+  readonly modelRoutingService?: ModelRoutingService;
 }
 
 interface WorkflowAgentAdapterConfig {
@@ -217,13 +219,29 @@ export class WorkflowAgentAdapter {
       compiledDefinition.runtimeMode === 'sandbox' ||
       (compiledDefinition.runtimeMode === 'no_sandbox' &&
         params.parentUsesSandboxRuntime === true);
-    const effectiveRuntimeConfig =
+    const promptBlocks = this.buildContentBlocks(sanitizedInput);
+    const policyRuntimeConfig =
       compiledDefinition.runtimeMode === 'no_sandbox' && usesSandboxRuntime
         ? {
             ...runtimeConfigWithExtensions,
             nativeToolPolicy: this.buildReadOnlyNativeToolPolicy(),
           }
         : runtimeConfigWithExtensions;
+    // 绑定 Agent 画布上的智能路由与对话路径一致：按 routingConfig 选出运行模型并记录决策（主体为本步骤）
+    const effectiveRuntimeConfig = this.dependencies.modelRoutingService
+      ? await this.dependencies.modelRoutingService.routeAgentRuntimeConfig(
+          policyRuntimeConfig,
+          {
+            tenantId: params.tenantId,
+            subject: { executionStepId: params.step.id },
+            routingNodeId: params.step.nodeId,
+            taskCategory: 'agent_workflow',
+            queryText: promptBlocks
+              .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+              .join('\n'),
+          },
+        )
+      : policyRuntimeConfig;
     const sandboxBinding =
       compiledDefinition.runtimeMode === 'sandbox'
         ? await this.ensureSandboxBinding({
@@ -241,7 +259,6 @@ export class WorkflowAgentAdapter {
       throw new Error('当前子 Agent 缺少可复用的 sandbox 绑定');
     }
 
-    const promptBlocks = this.buildContentBlocks(sanitizedInput);
     const runtime =
       this.dependencies.runtimeAdapterFactory.selectAdapter(usesSandboxRuntime);
     const autoApproveToolPermissions =

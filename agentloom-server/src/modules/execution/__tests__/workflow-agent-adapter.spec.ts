@@ -109,6 +109,9 @@ function createAdapter(
   if (deps.llmCostService) {
     adapterDeps.llmCostService = deps.llmCostService;
   }
+  if (deps.modelRoutingService) {
+    adapterDeps.modelRoutingService = deps.modelRoutingService;
+  }
 
   return new WorkflowAgentAdapter(adapterDeps as never, config as never);
 }
@@ -1159,6 +1162,89 @@ describe('WorkflowAgentAdapter', () => {
       }),
     );
     expect(result.content).toBe('今日新闻简报');
+  });
+
+  it('绑定 Agent 画布带智能路由时按 routingConfig 选模型，决策主体为当前步骤', async () => {
+    mockRuntimeAdapterFactory.selectAdapter.mockImplementation(
+      (hasSandbox: boolean) =>
+        hasSandbox ? mockSandboxRuntime : mockAgentRuntime,
+    );
+    selectWhereMock.mockResolvedValueOnce([{ triggerType: 'manual' }]);
+    mockAgentDefinitionService.findDetailById.mockResolvedValue({
+      id: 'routed-agent',
+      publishedVersionId: 'routed-agent-version',
+      systemPrompt: '你是助手',
+      sandboxConfig: null,
+      runtimeMode: 'no_sandbox',
+    });
+    const routingConfig = {
+      strategy: 'rules',
+      candidateModelIds: ['model-a', 'model-b'],
+    };
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      routingConfig,
+      runtimeMode: 'no_sandbox',
+      subAgents: [],
+    });
+    const modelRoutingService = {
+      routeAgentRuntimeConfig: vi.fn(
+        async (runtimeConfig: Record<string, unknown>) => ({
+          ...runtimeConfig,
+          modelConfig: { modelId: 'model-b' },
+        }),
+      ),
+    };
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-routed' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: '好的' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter(
+      {
+        db,
+        agentRuntime: mockAgentRuntime,
+        runtimeAdapterFactory: mockRuntimeAdapterFactory,
+        agentDefinitionService: mockAgentDefinitionService,
+        sandboxService: mockSandboxService,
+        eventBridge: mockEventBridge,
+        modelRoutingService,
+      },
+      { agentDefinitionId: 'routed-agent' },
+    );
+    const step = makeStep();
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step,
+      input: { 'text-in': '介绍一下你自己' },
+      tenantId: TENANT_ID,
+      versionSnapshot: {
+        ...makeSnapshot('routed-agent-main'),
+        runtimeMode: 'no_sandbox',
+      } as AgentVersionSnapshot,
+    });
+
+    expect(modelRoutingService.routeAgentRuntimeConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ routingConfig }),
+      {
+        tenantId: TENANT_ID,
+        subject: { executionStepId: step.id },
+        routingNodeId: step.nodeId,
+        taskCategory: 'agent_workflow',
+        queryText: expect.stringContaining('介绍一下你自己'),
+      },
+    );
+    expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        llmModelConfigId: 'model-b',
+        runtimeConfig: expect.objectContaining({
+          modelConfig: { modelId: 'model-b' },
+        }),
+      }),
+    );
   });
 
   it('execution 记录不是 system 时不应被 exec-in 的旧 triggerType 误放行', async () => {
