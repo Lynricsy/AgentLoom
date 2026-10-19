@@ -145,7 +145,11 @@ export class WorkflowVersionController {
   @ApiOperation({ summary: '获取工作流输入参数 schema' })
   @ApiResponse({ status: 200, description: '输入参数 schema 获取成功' })
   @ApiResponse({ status: 404, description: '工作流不存在' })
-  @ApiResponse({ status: 409, description: '工作流未发布' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '工作流未发布（workflow-not-published）或已归档（workflow-archived）',
+  })
   async getInputSchema(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @CurrentTenant() tenantId: string,

@@ -420,6 +420,10 @@ export class WorkflowVersionService {
 
     const workflow = await this.findWorkflowOrThrow(this.tenantDb, workflowId);
 
+    if (workflow.status === 'archived') {
+      throw new WorkflowArchivedException(workflowId);
+    }
+
     if (workflow.status !== 'published') {
       throw new WorkflowNotPublishedException(workflowId);
     }

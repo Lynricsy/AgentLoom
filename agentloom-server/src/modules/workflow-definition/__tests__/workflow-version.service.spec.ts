@@ -914,6 +914,21 @@ describe('WorkflowVersionService', () => {
         service.getInputSchema(WORKFLOW_ID, TENANT_ID),
       ).rejects.toThrow(WorkflowNotPublishedException);
     });
+
+    it('工作流已归档时应抛出 WorkflowArchivedException（D-087a）', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createDraftWorkflow({
+            status: 'archived',
+            publishedVersionId: VERSION_ID,
+          }),
+        ]),
+      );
+
+      await expect(
+        service.getInputSchema(WORKFLOW_ID, TENANT_ID),
+      ).rejects.toBeInstanceOf(WorkflowArchivedException);
+    });
   });
 
   describe('exportWorkflow', () => {

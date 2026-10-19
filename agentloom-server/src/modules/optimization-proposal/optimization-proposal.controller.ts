@@ -50,7 +50,19 @@ export class OptimizationProposalController {
   @RequirePermission('workflow:manage')
   @ApiOperation({ summary: '按运行证据分析工作流，返回新建的优化提案' })
   @ApiResponse({ status: 201, type: AnalyzeResponseDto })
-  @ApiResponse({ status: 422, description: '工作流未发布或没有可分析节点' })
+  @ApiResponse({
+    status: 404,
+    description: '工作流不存在（workflow-not-found）',
+  })
+  @ApiResponse({
+    status: 409,
+    description: '工作流未发布（workflow-not-published）',
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      '发布版本没有可分析节点（optimization-workflow-not-analyzable）',
+  })
   async analyze(
     @CurrentTenant() tenantId: string,
     @Body() dto: AnalyzeWorkflowDto,
