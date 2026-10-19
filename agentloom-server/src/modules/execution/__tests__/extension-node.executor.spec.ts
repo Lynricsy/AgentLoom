@@ -377,5 +377,63 @@ describe('extension migrated scenarios', () => {
       });
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
+
+    // 执行器抛出的异常若冒泡出 scheduleNode，会进入上游节点 onNodeCompleted 所在的 try，
+    // 把已完成的上游（如 trigger）改判 failed 并触发「步骤状态转换非法」。
+    it.each([
+      {
+        name: '缺少 pluginId / pluginNodeType',
+        nodeData: {},
+        setup: () => undefined,
+        message: 'Plugin node missing pluginId or pluginNodeType',
+      },
+      {
+        name: '插件不存在',
+        nodeData: { pluginId: 'e2e.nonexistent', pluginNodeType: 'echo' },
+        setup: () =>
+          mockPluginService.findActiveByPluginId.mockRejectedValueOnce(
+            new Error('Plugin e2e.nonexistent not found'),
+          ),
+        message: 'Plugin e2e.nonexistent not found',
+      },
+    ])(
+      'plugin 节点$name时本节点失败并带错误，异常不外抛',
+      async ({ nodeData, setup, message }) => {
+        setup();
+        const snapshot = makeSnapshot([makeNode('P', 'plugin', nodeData)], []);
+        const steps = [
+          makeStep({
+            id: 'step-p',
+            nodeId: 'P',
+            status: 'pending',
+            nodeType: 'plugin',
+            nodeData,
+          }),
+        ];
+        db.update.mockReturnValueOnce(createUpdateChainVoid());
+        const onNodeFailed = vi
+          .spyOn(service, 'onNodeFailed')
+          .mockResolvedValue(undefined);
+
+        await expect(
+          service.scheduleNode(EXECUTION_ID, 'P', TENANT_ID, snapshot, steps),
+        ).resolves.toBeUndefined();
+
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          'step-p',
+          'failed',
+          expect.objectContaining({
+            errorMessage: expect.objectContaining({ message, nodeId: 'P' }),
+          }),
+        );
+        expect(onNodeFailed).toHaveBeenCalledWith(
+          EXECUTION_ID,
+          'step-p',
+          TENANT_ID,
+        );
+        expect(mockPluginQueue.add).not.toHaveBeenCalled();
+      },
+    );
   });
 });

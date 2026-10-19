@@ -1,7 +1,9 @@
 /**
- * 节点分派器：维护 nodeType 到执行器的唯一注册表，只负责查表和调用。
+ * 节点分派器：维护 nodeType 到执行器的唯一注册表，负责查表、调用，
+ * 并把执行器未自行收口的异常按失败策略落到本节点。
  */
 import { Injectable } from '@nestjs/common';
+import { NodeExecutionFailurePolicy } from './node-execution-failure-policy';
 import { CodeNodeExecutor } from './node-executors/code-node.executor';
 import { CompoundNodeExecutor } from './node-executors/compound-node.executor';
 import { ConditionalNodeExecutor } from './node-executors/conditional-node.executor';
@@ -40,6 +42,7 @@ export class NodeDispatcherService {
     subAgent: SubAgentNodeExecutor,
     deprecated: DeprecatedNodeExecutor,
     team: TeamNodeExecutor,
+    private readonly failurePolicy: NodeExecutionFailurePolicy,
   ) {
     this.executors = {
       agent: workflowAgent,
@@ -97,7 +100,19 @@ export class NodeDispatcherService {
   ): Promise<boolean> {
     const executor = this.find(nodeType);
     if (!executor) return false;
-    await executor.execute(context);
+    try {
+      await executor.execute(context);
+    } catch (error) {
+      // 异常不能继续上抛：下游节点由上游执行器的 onNodeCompleted 同步调度，上抛会落进
+      // 上游 try/catch，把已完成的上游步骤改判 failed（completed→failed 非法转换），
+      // 而真正出错的本节点停在 pending、没有错误信息。状态机非法转换仍由失败策略上抛。
+      await this.failurePolicy.handle(error, {
+        tenantId: context.tenantId,
+        executionId: context.executionId,
+        step: context.step,
+        onNodeFailed: context.runtime.onNodeFailed.bind(context.runtime),
+      });
+    }
     return true;
   }
 }

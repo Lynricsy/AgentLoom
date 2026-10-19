@@ -19,6 +19,7 @@ import { TriggerNodeExecutor } from '../node-executors/trigger-node.executor';
 import { ValueNodeExecutor } from '../node-executors/value-node.executor';
 import { WorkflowAgentNodeExecutor } from '../node-executors/workflow-agent-node.executor';
 import type { NodeSchedulerService } from '../node-scheduler.service';
+import type { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
 
 function stubExecutor<T>(): T {
   return { execute: vi.fn() } as unknown as T;
@@ -26,6 +27,7 @@ function stubExecutor<T>(): T {
 
 function createDispatcher(
   http: HttpNodeExecutor = stubExecutor<HttpNodeExecutor>(),
+  failurePolicy = { handle: vi.fn() } as unknown as NodeExecutionFailurePolicy,
 ): NodeDispatcherService {
   return new NodeDispatcherService(
     stubExecutor<WorkflowAgentNodeExecutor>(),
@@ -42,6 +44,7 @@ function createDispatcher(
     stubExecutor<SubAgentNodeExecutor>(),
     stubExecutor<DeprecatedNodeExecutor>(),
     stubExecutor<TeamNodeExecutor>(),
+    failurePolicy,
   );
 }
 
@@ -160,5 +163,40 @@ describe('NodeDispatcherService', () => {
         runtime: {} as NodeSchedulerService,
       }),
     ).resolves.toBe(false);
+  });
+
+  it('执行器抛出的异常按失败策略落到本节点，不再上抛给调度方', async () => {
+    const error = new Error('Plugin node missing pluginId or pluginNodeType');
+    const http = {
+      execute: vi.fn().mockRejectedValue(error),
+    } as unknown as HttpNodeExecutor;
+    const failurePolicy = { handle: vi.fn().mockResolvedValue(undefined) };
+    const dispatcher = createDispatcher(
+      http,
+      failurePolicy as unknown as NodeExecutionFailurePolicy,
+    );
+    const onNodeFailed = vi.fn();
+    const runtime = { onNodeFailed } as unknown as NodeSchedulerService;
+    const step = makeStep('http-tool');
+
+    await expect(
+      dispatcher.dispatch({
+        executionId: 'execution-1',
+        tenantId: 'tenant-1',
+        step,
+        input: {},
+        snapshot: { nodes: [], edges: [] },
+        steps: [step],
+        memorySessionIds: [],
+        runtime,
+      }),
+    ).resolves.toBe(true);
+
+    expect(failurePolicy.handle).toHaveBeenCalledWith(error, {
+      tenantId: 'tenant-1',
+      executionId: 'execution-1',
+      step,
+      onNodeFailed: expect.any(Function),
+    });
   });
 });

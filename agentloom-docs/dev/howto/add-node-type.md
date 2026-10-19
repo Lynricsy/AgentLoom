@@ -61,7 +61,7 @@ pnpm test src/features/canvas/types/nodeTypeRegistry.test.ts
 1. 执行器实现 `agentloom-server/src/modules/execution/node-executors/node-executor.interface.ts` 中的 `NodeExecutor`：一个 `execute(context: NodeExecutionContext)` 方法。`context` 提供执行 id、租户、当前步骤、已解析的输入、图快照与调度器 `runtime`。行为与现有执行器相近时直接复用（例如产出资源引用的类型用 `ResourceNodeExecutor`，同步计算的类型参照 `HttpNodeExecutor`），新建执行器放在 `agentloom-server/src/modules/execution/node-executors/`。
 2. 在 `NodeDispatcherService` 构造函数的 `executors` 表中加 `'my-node': <执行器>`。
 3. 新执行器类加入 `agentloom-server/src/modules/execution/execution.module.ts` 的 `providers`，并注入 `NodeDispatcherService` 的构造函数。
-4. 执行器完成后调用 `context.runtime.onNodeCompleted(...)` 或 `onNodeFailed(...)`，调度才会推进到后继节点（参照现有执行器的写法）。
+4. 执行器完成后调用 `context.runtime.onNodeCompleted(...)` 或 `onNodeFailed(...)`，调度才会推进到后继节点（参照现有执行器的写法）。执行器内未处理的异常由 `NodeDispatcherService` 按 `NodeExecutionFailurePolicy` 记为本节点失败（不会上抛到调度它的上游节点）；需要在失败时附带诊断 `result` 的执行器仍应自己调用失败策略。
 
 验证：在 `agentloom-server/src/modules/execution/__tests__/` 中为执行器加单测并运行：
 
