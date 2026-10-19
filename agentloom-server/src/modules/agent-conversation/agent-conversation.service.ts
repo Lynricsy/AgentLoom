@@ -297,6 +297,17 @@ export class AgentConversationService {
     },
   ) {
     const { page, limit, status, source } = query;
+
+    // RLS 会把他租户的 Agent 过滤成空集合；先断言存在，与同资源其它端点一样返回 404
+    const [agent] = await this.tenantDb
+      .select({ id: agentDefinitions.id })
+      .from(agentDefinitions)
+      .where(eq(agentDefinitions.id, agentDefinitionId))
+      .limit(1);
+    if (!agent) {
+      throw new AgentNotFoundException(agentDefinitionId);
+    }
+
     const offset = (page - 1) * limit;
 
     const conditions = [

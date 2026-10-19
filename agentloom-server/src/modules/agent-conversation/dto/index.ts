@@ -12,6 +12,10 @@ export {
   ListConversationsQueryDto,
 } from './list-conversations-query.dto';
 export {
+  listMessagesQuerySchema,
+  ListMessagesQueryDto,
+} from './list-messages-query.dto';
+export {
   toolPermissionCallbackSchema,
   ToolPermissionCallbackDto,
 } from './tool-permission-callback.dto';

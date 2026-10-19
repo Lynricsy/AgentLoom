@@ -354,6 +354,17 @@ describe('AgentConversationService', () => {
   });
 
   describe('listByAgent', () => {
+    const agentExists = () => createSelectChain([{ id: AGENT_ID }]);
+
+    it('Agent 不存在或属于他租户时返回 404 agent-not-found，而不是空列表（D-061）', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.listByAgent(AGENT_ID, { page: 1, limit: 20 }),
+      ).rejects.toBeInstanceOf(AgentNotFoundException);
+      expect(db.select).toHaveBeenCalledTimes(1);
+    });
+
     it('应返回分页对话列表', async () => {
       const conversations = [
         createConversationRecord(),
@@ -365,7 +376,10 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain(conversations);
       const countChain = createCountSelectChain([{ total: 5 }]);
 
-      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+      db.select
+        .mockReturnValueOnce(agentExists())
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(countChain);
 
       const result = await service.listByAgent(AGENT_ID, {
         page: 1,
@@ -385,7 +399,10 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain([]);
       const countChain = createCountSelectChain([{ total: 0 }]);
 
-      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+      db.select
+        .mockReturnValueOnce(agentExists())
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(countChain);
 
       const result = await service.listByAgent(AGENT_ID, {
         page: 1,
@@ -401,7 +418,10 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain([]);
       const countChain = createCountSelectChain([{ total: 0 }]);
 
-      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+      db.select
+        .mockReturnValueOnce(agentExists())
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(countChain);
 
       await service.listByAgent(AGENT_ID, {
         page: 3,
@@ -416,7 +436,10 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain([]);
       const countChain = createCountSelectChain([{ total: 0 }]);
 
-      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+      db.select
+        .mockReturnValueOnce(agentExists())
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(countChain);
 
       await service.listByAgent(AGENT_ID, { page: 1, limit: 20 });
 
@@ -434,7 +457,10 @@ describe('AgentConversationService', () => {
       const listChain = createPaginatedSelectChain([]);
       const countChain = createCountSelectChain([{ total: 0 }]);
 
-      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+      db.select
+        .mockReturnValueOnce(agentExists())
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(countChain);
 
       await service.listByAgent(AGENT_ID, {
         page: 1,

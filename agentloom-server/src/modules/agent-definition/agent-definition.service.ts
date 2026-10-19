@@ -1266,6 +1266,16 @@ export class AgentDefinitionService {
     data: AgentVersionResponseDto[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
+    // RLS 会把他租户的 Agent 过滤成空集合；先断言存在，与同资源其它端点一样返回 404
+    const [agent] = await this.tenantDb
+      .select({ id: schema.agentDefinitions.id })
+      .from(schema.agentDefinitions)
+      .where(eq(schema.agentDefinitions.id, agentId))
+      .limit(1);
+    if (!agent) {
+      throw new AgentNotFoundException(agentId);
+    }
+
     const offset = (page - 1) * pageSize;
 
     const [rows, countResult] = await Promise.all([

@@ -1,7 +1,14 @@
-import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  type ArgumentMetadata,
+} from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { AgentConversationController } from './agent-conversation.controller';
 import { AGENT_RUNTIME } from '../agent/ports/agent-runtime.port';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
@@ -180,11 +187,14 @@ describe('AgentConversationController', () => {
   });
 
   describe('getDetail', () => {
-    it('应调用 service.getDetail 并透传分页参数', async () => {
+    it('应调用 service.getDetail 并透传已校验的分页参数', async () => {
       const expected = { data: { id: CONVERSATION_ID, messages: {} } };
       mockService.getDetail.mockResolvedValueOnce(expected);
 
-      const result = await controller.getDetail(CONVERSATION_ID, '2', '10');
+      const result = await controller.getDetail(CONVERSATION_ID, {
+        page: 2,
+        limit: 10,
+      });
 
       expect(mockService.getDetail).toHaveBeenCalledWith(
         CONVERSATION_ID,
@@ -193,18 +203,27 @@ describe('AgentConversationController', () => {
       );
       expect(result).toEqual(expected);
     });
+  });
 
-    it('分页参数为空时应传 undefined', async () => {
-      const expected = { data: { id: CONVERSATION_ID } };
-      mockService.getDetail.mockResolvedValueOnce(expected);
+  describe('消息分页参数（D-061）', () => {
+    const pipe = new ZodValidationPipe();
+    const metadata: ArgumentMetadata = {
+      type: 'query',
+      metatype: ListMessagesQueryDto,
+      data: undefined,
+    };
 
-      await controller.getDetail(CONVERSATION_ID);
+    it('缺省时使用 page=1、limit=50', () => {
+      expect(pipe.transform({}, metadata)).toEqual({ page: 1, limit: 50 });
+    });
 
-      expect(mockService.getDetail).toHaveBeenCalledWith(
-        CONVERSATION_ID,
-        undefined,
-        undefined,
-      );
+    it.each([
+      [{ page: '0' }],
+      [{ page: 'abc' }],
+      [{ limit: '-5' }],
+      [{ limit: '100000' }],
+    ])('非法分页 %o 返回 422 而不是 500 或原样回显', (query) => {
+      expect(() => pipe.transform(query, metadata)).toThrow();
     });
   });
 

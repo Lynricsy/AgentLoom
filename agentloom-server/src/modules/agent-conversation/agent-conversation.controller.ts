@@ -37,6 +37,7 @@ import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution
 import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
+import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { ResolveConversationToolPermissionDto } from './dto/resolve-tool-permission.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartConversationDto } from './dto/start-conversation.dto';
@@ -111,6 +112,8 @@ export class AgentConversationController {
     description: 'Paginated conversation list',
     type: ConversationListResponseSwaggerDto,
   })
+  @ApiResponse({ status: 404, description: 'Agent 不存在' })
+  @ApiResponse({ status: 422, description: '分页参数非法' })
   async list(
     @Param('agentId', ParseUUIDPipe) agentId: string,
     @Query() query: ListConversationsQueryDto,
@@ -126,16 +129,13 @@ export class AgentConversationController {
     description: 'Conversation detail with messages',
     type: ConversationDetailResponseSwaggerDto,
   })
+  @ApiResponse({ status: 404, description: '对话不存在' })
+  @ApiResponse({ status: 422, description: '分页参数非法' })
   async getDetail(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query() query: ListMessagesQueryDto,
   ): Promise<ConversationDetailResponseDto> {
-    return this.conversationService.getDetail(
-      id,
-      page ? parseInt(page, 10) : undefined,
-      limit ? parseInt(limit, 10) : undefined,
-    );
+    return this.conversationService.getDetail(id, query.page, query.limit);
   }
 
   @Get('agent-conversations/:id/messages')
@@ -146,16 +146,13 @@ export class AgentConversationController {
     description: 'Paginated message list',
     type: MessageListResponseSwaggerDto,
   })
+  @ApiResponse({ status: 404, description: '对话不存在' })
+  @ApiResponse({ status: 422, description: '分页参数非法' })
   async listMessages(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query() query: ListMessagesQueryDto,
   ): Promise<MessageListResponseDto> {
-    return this.conversationService.listMessages(
-      id,
-      page ? parseInt(page, 10) : undefined,
-      limit ? parseInt(limit, 10) : undefined,
-    );
+    return this.conversationService.listMessages(id, query.page, query.limit);
   }
 
   @Post('agent-conversations/:id/messages')

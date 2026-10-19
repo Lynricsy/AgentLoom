@@ -382,6 +382,15 @@ function makePublishAgentDto(
   };
 }
 
+/** listVersions 先在租户内断言 Agent 存在：select({ id }).from().where().limit() */
+function makeAgentExistsChain(rows: Array<{ id: string }>) {
+  const chain: Record<string, any> = {};
+  chain.from = vi.fn().mockReturnValue(chain);
+  chain.where = vi.fn().mockReturnValue(chain);
+  chain.limit = vi.fn().mockResolvedValue(rows);
+  return chain;
+}
+
 /**
  * 为了精确控制 Drizzle chain 结果，我们需要直接操作底层 mock 返回值
  * 这个 service 只有一个依赖: @Inject(DRIZZLE) db
@@ -3403,6 +3412,7 @@ describe('AgentDefinitionService', () => {
       countChain.where = vi.fn().mockResolvedValue([{ total: 2 }]);
 
       mockTenantDb.select
+        .mockReturnValueOnce(makeAgentExistsChain([{ id: 'agent-1' }]))
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 
@@ -3425,6 +3435,7 @@ describe('AgentDefinitionService', () => {
       countChain.where = vi.fn().mockResolvedValue([{ total: 0 }]);
 
       mockTenantDb.select
+        .mockReturnValueOnce(makeAgentExistsChain([{ id: 'agent-1' }]))
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 
@@ -3432,6 +3443,15 @@ describe('AgentDefinitionService', () => {
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.totalPages).toBe(0);
+    });
+
+    it('Agent 不存在或属于他租户时应抛 AgentNotFoundException，而不是返回空列表', async () => {
+      mockTenantDb.select.mockReturnValueOnce(makeAgentExistsChain([]));
+
+      await expect(service.listVersions('foreign-agent')).rejects.toThrow(
+        AgentNotFoundException,
+      );
+      expect(mockTenantDb.select).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -4222,6 +4242,7 @@ describe('AgentDefinitionService', () => {
       countChain.from = vi.fn().mockReturnValue(countChain);
       countChain.where = vi.fn().mockResolvedValue([{ total: 21 }]);
       mockTenantDb.select
+        .mockReturnValueOnce(makeAgentExistsChain([{ id: 'agent-1' }]))
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 
@@ -4688,6 +4709,7 @@ describe('AgentDefinitionService', () => {
       countChain.from = vi.fn().mockReturnValue(countChain);
       countChain.where = vi.fn().mockResolvedValue([{ total: 1 }]);
       mockTenantDb.select
+        .mockReturnValueOnce(makeAgentExistsChain([{ id: 'agent-1' }]))
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 

@@ -31,6 +31,8 @@ import {
   type PublishAgentDto,
   ListAgentDefinitionsQuerySchema,
   type ListAgentDefinitionsQueryDto,
+  ListAgentVersionsQuerySchema,
+  type ListAgentVersionsQueryDto,
 } from './dto';
 import {
   AgentDefinitionDetailResponseSwaggerDto,
@@ -179,14 +181,16 @@ export class AgentDefinitionController {
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: 'Agent 版本列表' })
   async listVersions(
+  @ApiResponse({ status: 404, description: 'Agent 不存在' })
+  @ApiResponse({ status: 422, description: '分页参数非法' })
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
+    @Query(new ZodValidationPipe(ListAgentVersionsQuerySchema))
+    query: ListAgentVersionsQueryDto,
   ) {
     return this.agentDefinitionService.listVersions(
       id,
-      page ? parseInt(page, 10) : undefined,
-      pageSize ? parseInt(pageSize, 10) : undefined,
+      query.page,
+      query.pageSize,
     );
   }
 

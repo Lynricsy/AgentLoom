@@ -40,3 +40,8 @@ export {
   ListAgentDefinitionsQuerySchema,
   ListAgentDefinitionsQueryDto,
 } from './list-agent-definitions-query.dto';
+
+export {
+  ListAgentVersionsQuerySchema,
+  ListAgentVersionsQueryDto,
+} from './list-agent-versions-query.dto';
