@@ -144,6 +144,7 @@ export class AgentDefinitionController {
 
   @Post(':id/compile')
   @RequirePermission('agent:edit')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '编译 Agent 画布为 AgentRuntimeConfig' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: '编译结果' })
@@ -180,9 +181,9 @@ export class AgentDefinitionController {
   @ApiOperation({ summary: '获取 Agent 版本列表' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: 'Agent 版本列表' })
-  async listVersions(
   @ApiResponse({ status: 404, description: 'Agent 不存在' })
   @ApiResponse({ status: 422, description: '分页参数非法' })
+  async listVersions(
     @Param('id', ParseUUIDPipe) id: string,
     @Query(new ZodValidationPipe(ListAgentVersionsQuerySchema))
     query: ListAgentVersionsQueryDto,
@@ -219,6 +220,7 @@ export class AgentDefinitionController {
 
   @Post(':id/publish')
   @RequirePermission('agent:manage')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '发布 Agent 定义' })
   @ApiParam({ name: 'id', description: 'Agent 定义 ID' })
   @ApiResponse({ status: 200, description: '发布成功' })

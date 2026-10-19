@@ -1,4 +1,6 @@
 import type { ArgumentMetadata } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -41,6 +43,19 @@ describe('AgentDefinitionController rollback', () => {
       'user-1',
     );
     expect(result).toEqual({ data: VERSION_DTO });
+  });
+});
+
+describe('AgentDefinitionController 状态码', () => {
+  it('compile 与 publish 不创建资源，返回 200 而非 201', () => {
+    const prototype = AgentDefinitionController.prototype;
+
+    expect(
+      Reflect.getMetadata(HTTP_CODE_METADATA, prototype.compileCanvas),
+    ).toBe(HttpStatus.OK);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, prototype.publish)).toBe(
+      HttpStatus.OK,
+    );
   });
 });
 
