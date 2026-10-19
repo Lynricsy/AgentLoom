@@ -161,7 +161,6 @@ export class AgentConversationService {
     return {
       contentType,
       metadata,
-      role: dto.role ?? 'user',
     };
   }
 
@@ -171,14 +170,14 @@ export class AgentConversationService {
     tenantId: string,
     dto: SendMessageDto,
   ) {
-    const { contentType, metadata, role } = this.normalizeMessagePayload(dto);
+    const { contentType, metadata } = this.normalizeMessagePayload(dto);
 
     const [message] = await dbClient
       .insert(agentMessages)
       .values({
         conversationId,
         tenantId,
-        role,
+        role: 'user',
         contentType,
         content: dto.content,
         metadata,
@@ -201,12 +200,9 @@ export class AgentConversationService {
     dbClient: ConversationDbClient,
     conversationId: string,
     tenantId: string,
-    dto: Omit<SendMessageDto, 'role'>,
+    dto: SendMessageDto,
   ) {
-    return this.insertMessageRecord(dbClient, conversationId, tenantId, {
-      ...dto,
-      role: 'user',
-    });
+    return this.insertMessageRecord(dbClient, conversationId, tenantId, dto);
   }
 
   async create(
@@ -258,7 +254,6 @@ export class AgentConversationService {
           tenantId,
           {
             content: dto.content,
-            role: 'user',
             contentType: dto.contentType ?? 'text',
             ...(dto.metadata ? { metadata: dto.metadata } : {}),
           },

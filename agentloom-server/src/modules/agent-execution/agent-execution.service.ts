@@ -443,19 +443,14 @@ export class AgentExecutionService implements OnModuleInit, OnModuleDestroy {
 
   private normalizeMessage(message: string | SendMessageDto): SendMessageDto {
     if (typeof message === 'string') {
-      return {
-        content: message,
-        role: 'user',
-        contentType: 'text',
-      } as SendMessageDto;
+      return { content: message, contentType: 'text' };
     }
 
     return {
       content: message.content,
-      role: message.role ?? 'user',
       contentType: message.contentType ?? 'text',
       metadata: message.metadata,
-    } as SendMessageDto;
+    };
   }
 
   private async getConversationIdentityOrThrow(

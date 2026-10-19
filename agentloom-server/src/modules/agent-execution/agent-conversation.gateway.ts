@@ -277,7 +277,6 @@ export class AgentConversationGateway
         payload.conversationId,
         {
           content: payload.content,
-          role: 'user',
           contentType: payload.contentType ?? 'text',
           metadata: payload.metadata,
         },

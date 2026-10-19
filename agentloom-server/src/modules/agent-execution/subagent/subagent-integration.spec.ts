@@ -443,7 +443,6 @@ describe('Sub-Agent Integration Tests', () => {
       expect(mockExecutionService.injectMessage).toHaveBeenCalledWith(
         'conversation-int-1',
         expect.objectContaining({
-          role: 'user',
           contentType: 'text',
           content: expect.stringContaining(
             '[Sub-Agent: Researcher Agent] Completed:',

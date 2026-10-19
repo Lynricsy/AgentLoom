@@ -1237,7 +1237,6 @@ export class AgentExecutionWorkerPersistenceService {
 
     try {
       await this.executionService.injectMessage(conversationId, {
-        role: 'user',
         contentType: 'text',
         content: `[Sub-Agent: ${agentName}] Completed: ${summary}`,
         metadata: {

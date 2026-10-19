@@ -283,7 +283,6 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
     expect(mockExecutionService.injectMessage).toHaveBeenCalledWith(
       'conversation-1',
       expect.objectContaining({
-        role: 'user',
         contentType: 'text',
         content: '[Sub-Agent: Child Agent] Completed: sub-agent summary',
         metadata: expect.objectContaining({

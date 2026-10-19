@@ -331,7 +331,6 @@ describe('AgentConversationGateway', () => {
         'conv-1',
         {
           content: 'Hello agent',
-          role: 'user',
           contentType: 'text',
           metadata: undefined,
         },
@@ -427,7 +426,6 @@ describe('AgentConversationGateway', () => {
         'conv-1',
         {
           content: 'file content',
-          role: 'user',
           contentType: 'file',
           metadata: { filename: 'test.txt' },
         },

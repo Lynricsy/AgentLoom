@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 
 import {
   AgentExecutionService,
@@ -61,7 +69,10 @@ class FakeRedisBus {
   }
 
   private subscriberClient() {
-    const state = { channels: new Set<string>(), handlers: [] as MessageHandler[] };
+    const state = {
+      channels: new Set<string>(),
+      handlers: [] as MessageHandler[],
+    };
     this.subscribers.add(state);
     return {
       status: 'ready',
@@ -142,7 +153,6 @@ describe('AgentExecutionService', () => {
       'tenant-1',
       expect.objectContaining({
         content: '你好，开始吧',
-        role: 'user',
         contentType: 'text',
       }),
     );
@@ -183,7 +193,6 @@ describe('AgentExecutionService', () => {
 
     await service.injectMessage('conversation-1', {
       content: '继续处理这条消息',
-      role: 'user',
       contentType: 'text',
     } as never);
 
