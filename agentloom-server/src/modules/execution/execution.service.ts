@@ -39,7 +39,10 @@ import {
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
 import { resolveWorkflowInputParams } from '../workflow/utils/workflow-input-validation.util';
-import { WorkflowVersionNotFoundException } from '../workflow-definition/workflow-version.exceptions';
+import {
+  WorkflowNotFoundException,
+  WorkflowVersionNotFoundException,
+} from '../workflow-definition/workflow-version.exceptions';
 import {
   attachExecutionRuntimeMeta,
   isTrackedExecutionStep,
@@ -501,15 +504,15 @@ export class ExecutionService {
         ),
       );
 
-    if (workflow?.status === 'archived') {
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
+
+    if (workflow.status === 'archived') {
       throw new WorkflowArchivedException(workflowId);
     }
 
-    if (
-      !workflow ||
-      workflow.status !== 'published' ||
-      !workflow.publishedVersionId
-    ) {
+    if (workflow.status !== 'published' || !workflow.publishedVersionId) {
       throw new WorkflowNotPublishedException(workflowId);
     }
 

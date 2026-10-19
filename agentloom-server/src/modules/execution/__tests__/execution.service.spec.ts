@@ -24,7 +24,10 @@ import {
   ResourceGovernanceDecisionBlockedException,
   type ResourceGovernanceDecisionBlockDetail,
 } from '../../resource-governance/resource-governance.exceptions';
-import { WorkflowVersionNotFoundException } from '../../workflow-definition/workflow-version.exceptions';
+import {
+  WorkflowNotFoundException,
+  WorkflowVersionNotFoundException,
+} from '../../workflow-definition/workflow-version.exceptions';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -1826,12 +1829,14 @@ describe('ExecutionService', () => {
       ).rejects.toThrow(WorkflowArchivedException);
     });
 
-    it('应在工作流不存在时抛出异常', async () => {
+    it('应在工作流不存在（含他租户）时抛 WorkflowNotFoundException（404）', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(
-        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
-      ).rejects.toThrow(WorkflowNotPublishedException);
+      const error = await service
+        .runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(WorkflowNotFoundException);
+      expect((error as WorkflowNotFoundException).getStatus()).toBe(404);
     });
 
     it('应在 raw context 下按 tenantId 查询 workflow 和 published version', async () => {
