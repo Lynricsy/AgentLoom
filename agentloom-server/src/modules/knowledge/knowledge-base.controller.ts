@@ -230,6 +230,7 @@ export class KnowledgeBaseController {
   }
 
   @Post(':id/test-search')
+  @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '测试知识库检索效果' })
   @ApiParam({ name: 'id', description: '知识库 ID', type: String })
@@ -256,6 +257,7 @@ export class KnowledgeBaseController {
   }
 
   @Post(':id/rebuild')
+  @HttpCode(HttpStatus.OK)
   @Roles('owner', 'admin', 'creator', 'operator')
   @ApiOperation({ summary: '按当前策略重建知识库索引与分块' })
   @ApiParam({ name: 'id', description: '知识库 ID', type: String })

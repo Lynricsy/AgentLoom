@@ -1,3 +1,5 @@
+import { HttpStatus } from '@nestjs/common';
+import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -222,6 +224,17 @@ describe('KnowledgeBaseController', () => {
         documentCount: 3,
       },
     });
+  });
+
+  it('test-search 与 rebuild 不创建资源，应返回 200 而非 201', () => {
+    const prototype = KnowledgeBaseController.prototype;
+
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, prototype.testSearch)).toBe(
+      HttpStatus.OK,
+    );
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, prototype.rebuild)).toBe(
+      HttpStatus.OK,
+    );
   });
 
   it('uploadDocument 应验证知识库存在后上传文档', async () => {
