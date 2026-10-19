@@ -551,7 +551,9 @@ export class AuthService {
           user_agent,
           ip::text AS ip,
           created_at,
-          refreshed_at AS last_active_at
+          -- refreshed_at 是 timestamp without time zone（GoTrue 写入 UTC），
+          -- 不转换会被 node-postgres 按进程本地时区解析
+          (refreshed_at AT TIME ZONE 'UTC') AS last_active_at
         FROM auth.sessions
         WHERE user_id = ${userId}::uuid
           AND (not_after IS NULL OR not_after > NOW())

@@ -7,6 +7,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import { DRIZZLE } from '../../../database/database.module';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 const mocks = vi.hoisted(() => ({
   MOCK_USER_ID: 'sup-user-id-0001',
@@ -128,6 +129,18 @@ describe('AuthService — session management', () => {
       const result = await authService.listSessions(token);
 
       expect(result.data.sessions).toEqual([]);
+    });
+
+    it('refreshed_at（timestamp without time zone）按 UTC 解释为 last_active_at', async () => {
+      const token = buildFakeToken(mocks.MOCK_USER_ID, mocks.MOCK_SESSION_ID);
+      mockExecute.mockResolvedValue({ rows: [] });
+
+      await authService.listSessions(token);
+
+      const query = new PgDialect().sqlToQuery(mockExecute.mock.calls[0][0]);
+      expect(query.sql).toMatch(
+        /\(refreshed_at AT TIME ZONE 'UTC'\) AS last_active_at/,
+      );
     });
   });
 
