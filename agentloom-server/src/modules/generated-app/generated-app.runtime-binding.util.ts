@@ -118,6 +118,7 @@ export function buildAgentWrapperInputSchema(
 /**
  * 包装图对应的 AppSpec 指纹：记在 Agent 节点上并随版本快照固化，运行时据此找到与当前
  * AppSpec 一致的已发布版本；绑定的 Agent 版本或表单字段变化都会得到新指纹。
+ * AppSpec 存在 jsonb 里，读回时键顺序会被重排，所以按排序后的键序列化，只看内容。
  */
 export function computeAgentWrapperFingerprint(
   appSpec: GeneratedAppSpecV2,
@@ -125,12 +126,26 @@ export function computeAgentWrapperFingerprint(
   return crypto
     .createHash('sha256')
     .update(
-      JSON.stringify({
+      canonicalJson({
         binding: appSpec.binding,
         fields: appSpec.inputForm.fields,
       }),
     )
     .digest('hex');
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 /** Agent 包装工作流的画布与输入契约（节点端口已按模板补齐） */

@@ -362,6 +362,26 @@ describe('buildAgentWrapperWorkflowGraph', () => {
     expect(isAgentWrapperSnapshotCurrent(spec, [])).toBe(false);
   });
 
+  it('AppSpec 从 jsonb 读回后键顺序变化，指纹不变', () => {
+    const spec = createAgentAppSpecV2Fixture();
+    const { nodes } = buildAgentWrapperWorkflowGraph(spec, { appId: APP_ID });
+    // jsonb 按键长度与字节序重排对象键；这里把每层键逆序模拟读回后的对象
+    const reorder = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(reorder)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value)
+                .reverse()
+                .map(([key, item]) => [key, reorder(item)]),
+            )
+          : value;
+
+    expect(
+      isAgentWrapperSnapshotCurrent(reorder(spec) as GeneratedAppSpecV2, nodes),
+    ).toBe(true);
+  });
+
   it('工作流绑定不构建包装工作流', () => {
     expect(() =>
       buildAgentWrapperWorkflowGraph(createAppSpecV2Fixture(), {
