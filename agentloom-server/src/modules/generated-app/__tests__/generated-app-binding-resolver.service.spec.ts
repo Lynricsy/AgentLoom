@@ -335,7 +335,7 @@ describe('GeneratedAppBindingResolverService', () => {
     );
   });
 
-  it('候选带知识范围：工作流快照的知识库节点、所调用 Agent 已发布版本的知识库节点，只列已就绪文档', async () => {
+  it('候选带知识范围：按执行器读法（data 覆盖 data.config）取工作流知识库节点与所调用 Agent 已发布版本的知识库节点，只列已就绪文档', async () => {
     const KB_DOCS = '01a15872-5b68-7f9e-b4bd-e5bdbb22a598';
     const KB_AGENT = '01a15872-5b68-7f9e-b4bd-e5bdbb22a599';
     rowsByTable.set(schema.workflowDefinitions, [
@@ -358,9 +358,11 @@ describe('GeneratedAppBindingResolverService', () => {
             {
               id: 'kb',
               position: { x: 0, y: 0 },
+              // 执行器读 data.knowledgeBaseId，config 里的旧值不生效
               data: {
                 nodeType: 'knowledge-base',
-                config: { knowledgeBaseId: KB_DOCS },
+                knowledgeBaseId: KB_DOCS,
+                config: { knowledgeBaseId: KB_AGENT },
               },
             },
             {

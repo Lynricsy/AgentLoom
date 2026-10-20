@@ -6,6 +6,11 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import {
+  getRuntimeNodeData,
+  readFirstString,
+} from '../execution/node-value.util';
+import { getWorkflowAgentDefinitionId } from '../execution/workflow-runtime-input.util';
+import {
   workflowInputSchemaSchema,
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
@@ -514,8 +519,9 @@ function failure(
 }
 
 /**
- * 快照中的知识来源：knowledge-base 节点的 knowledgeBaseId（配置在 data.config 或 data 上），
- * 与工作流 agent 节点调用的 agentDefinitionId。
+ * 快照中的知识来源：knowledge-base 节点的 knowledgeBaseId，与工作流 agent 节点调用的
+ * agentDefinitionId。按执行器的读法取值（`getRuntimeNodeData`：data 上的键覆盖 data.config），
+ * 保证交给模型的知识范围就是运行时真正检索的知识库。
  */
 function collectKnowledgeRefs(
   nodes: readonly schema.ReactFlowNode[],
@@ -524,19 +530,15 @@ function collectKnowledgeRefs(
   const agentDefinitionIds = new Set<string>();
   for (const node of nodes) {
     const nodeType = node.data?.nodeType ?? node.data?.node_type;
-    const config =
-      node.data?.config && typeof node.data.config === 'object'
-        ? (node.data.config as Record<string, unknown>)
-        : {};
-    const read = (key: string) => {
-      const value = config[key] ?? node.data?.[key];
-      return typeof value === 'string' && value ? value : null;
-    };
     if (nodeType === 'knowledge-base') {
-      const id = read('knowledgeBaseId') ?? read('knowledge_base_id');
+      const runtimeData = getRuntimeNodeData(node.data ?? {});
+      const id = readFirstString(
+        runtimeData.knowledgeBaseId,
+        runtimeData.knowledge_base_id,
+      );
       if (id) knowledgeBaseIds.add(id);
     } else if (nodeType === 'agent') {
-      const id = read('agentDefinitionId') ?? read('selectedAgentId');
+      const id = getWorkflowAgentDefinitionId(node.data ?? {});
       if (id) agentDefinitionIds.add(id);
     }
   }
