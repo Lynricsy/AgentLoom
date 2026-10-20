@@ -1,9 +1,14 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HttpStatus } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import { AuthApiError } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { AuthService } from '../auth.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
+import type { DrizzleDB } from '../../../database/database.module';
+import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 
 /**
  * 不 mock supabase-js：真实 auth-js client 打到一个 fetch 桩实现的 GoTrue，
@@ -45,7 +50,7 @@ const CAROL: Account = {
 };
 const ACCOUNTS = [ALICE, BOB, CAROL];
 
-function createMockConfigService(values: Record<string, string | undefined>) {
+function createMockConfigService(values: Record<string, unknown>) {
   return {
     get: vi.fn((key: string) => values[key]),
   } as unknown as ConfigService;
@@ -57,6 +62,13 @@ const TokenRequestSchema = z.object({
   password: z.string().optional(),
 });
 const JwtClaimsSchema = z.object({ sub: z.string().optional() });
+
+/** 测试用 JWT 不验签，只取 sub 判断会话归属 */
+function jwtSub(token: string) {
+  return JwtClaimsSchema.parse(
+    JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()),
+  ).sub;
+}
 
 function fakeJwt(claims: Record<string, unknown>) {
   const header = Buffer.from(
@@ -132,23 +144,29 @@ function stubGoTrue(latencyMs: { password?: number; refresh?: number } = {}) {
             ? latencyMs.refresh
             : latencyMs.password) ?? 0,
         );
-        return account
-          ? Response.json(sessionBody(account))
-          : Response.json(
-              { error: 'invalid_grant', error_description: 'Invalid grant' },
-              { status: 400 },
-            );
+        if (account) {
+          return Response.json(sessionBody(account));
+        }
+        // GoTrue v2 的真实错误体：凭据错误 / refresh token 失效都是 400
+        return Response.json(
+          grantType === 'refresh_token'
+            ? {
+                code: 400,
+                error_code: 'refresh_token_not_found',
+                msg: 'Invalid Refresh Token: Refresh Token Not Found',
+              }
+            : {
+                code: 400,
+                error_code: 'invalid_credentials',
+                msg: 'Invalid login credentials',
+              },
+          { status: 400 },
+        );
       }
 
       if (method === 'GET' && url.pathname === '/auth/v1/user') {
         const token = headers.get('authorization')?.replace(/^Bearer /, '');
-        const { sub } = JwtClaimsSchema.parse(
-          token
-            ? JSON.parse(
-                Buffer.from(token.split('.')[1] ?? '', 'base64url').toString(),
-              )
-            : {},
-        );
+        const sub = token ? jwtSub(token) : undefined;
         const account = ACCOUNTS.find((a) => a.id === sub);
         return account
           ? Response.json(userBody(account))
@@ -196,10 +214,10 @@ describe('SupabaseService', () => {
         service.refreshToken(BOB.refreshToken),
       ]);
 
-      expect(aliceResult.user?.id).toBe(ALICE.id);
-      expect(aliceResult.session?.refresh_token).toBe('rt-alice-rotated');
-      expect(bobResult.user?.id).toBe(BOB.id);
-      expect(bobResult.session?.refresh_token).toBe('rt-bob-rotated');
+      expect(jwtSub(aliceResult.access_token)).toBe(ALICE.id);
+      expect(aliceResult.refresh_token).toBe('rt-alice-rotated');
+      expect(jwtSub(bobResult.access_token)).toBe(BOB.id);
+      expect(bobResult.refresh_token).toBe('rt-bob-rotated');
       expect(
         requests.filter((r) => r.grantType === 'refresh_token'),
       ).toHaveLength(2);
@@ -217,7 +235,7 @@ describe('SupabaseService', () => {
       expect(invalid.status).toBe('rejected');
       expect(bobResult).toMatchObject({
         status: 'fulfilled',
-        value: { user: { id: BOB.id } },
+        value: { refresh_token: 'rt-bob-rotated' },
       });
     });
 
@@ -231,8 +249,8 @@ describe('SupabaseService', () => {
         service.signIn(ALICE.email, ALICE.password),
       ]);
 
-      expect(bobResult.user?.id).toBe(BOB.id);
-      expect(bobResult.session?.refresh_token).toBe('rt-bob-rotated');
+      expect(jwtSub(bobResult.access_token)).toBe(BOB.id);
+      expect(bobResult.refresh_token).toBe('rt-bob-rotated');
       expect(aliceLogin.user?.id).toBe(ALICE.id);
     });
 
@@ -281,6 +299,162 @@ describe('SupabaseService', () => {
     });
   });
 
+  describe('上游故障 → 503 auth-unavailable；凭据错误保持 4xx', () => {
+    const TIMEOUT_CONFIG = { ...CONFIG, APP_SUPABASE_AUTH_TIMEOUT_MS: 50 };
+
+    /** 只在 AbortSignal 触发时结束的请求：不传超时信号就会一直挂起 */
+    const hangingFetch = (_input: RequestInfo | URL, init: RequestInit = {}) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(init.signal?.reason),
+        );
+      });
+
+    const failureModes = {
+      不可达: () => Promise.reject(new TypeError('fetch failed')),
+      超时: hangingFetch,
+      'kong 502（HTML）': () =>
+        Promise.resolve(
+          new Response('<html>Bad Gateway</html>', { status: 502 }),
+        ),
+      'GoTrue 503': () =>
+        Promise.resolve(
+          Response.json({ msg: 'service unavailable' }, { status: 503 }),
+        ),
+    };
+
+    const operations = {
+      signIn: (service: SupabaseService) =>
+        service.signIn(ALICE.email, ALICE.password),
+      refreshToken: (service: SupabaseService) =>
+        service.refreshToken(ALICE.refreshToken),
+      listFactors: (service: SupabaseService) =>
+        service.listFactors(fakeJwt({ sub: ALICE.id, aal: 'aal1' })),
+    };
+
+    async function expectUpstreamUnavailable(promise: Promise<unknown>) {
+      const error = await promise.then(
+        () => expect.unreachable('should have thrown'),
+        (thrown: unknown) => thrown,
+      );
+      expect(error).toBeInstanceOf(AuthUnavailableException);
+      expect(error).toMatchObject({
+        type: 'https://agentloom.dev/errors/auth-unavailable',
+        headers: { 'Retry-After': '5' },
+      });
+      expect(
+        error instanceof AuthUnavailableException && error.getStatus(),
+      ).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    describe.each(Object.entries(failureModes))('%s', (_mode, fetchImpl) => {
+      it.each(Object.entries(operations))(
+        '%s 抛 503 且只发一次请求',
+        async (_name, operation) => {
+          const fetchMock = vi.fn(fetchImpl);
+          vi.stubGlobal('fetch', fetchMock);
+          const service = new SupabaseService(
+            createMockConfigService(TIMEOUT_CONFIG),
+          );
+          const startedAt = Date.now();
+
+          await expectUpstreamUnavailable(operation(service));
+
+          // auth-js refreshSession 会对网络错误/5xx 退避重试到 30 s；直连 REST 不重试
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+          expect(Date.now() - startedAt).toBeLessThan(1_000);
+        },
+      );
+    });
+
+    it('错误密码仍是 AuthApiError 400，不判为上游故障', async () => {
+      stubGoTrue();
+      const service = new SupabaseService(createMockConfigService(CONFIG));
+
+      const error = await service
+        .signIn(ALICE.email, 'wrong-password')
+        .catch((thrown: unknown) => thrown);
+
+      expect(error).toBeInstanceOf(AuthApiError);
+      expect(error).toMatchObject({ status: 400, code: 'invalid_credentials' });
+    });
+
+    it('失效 refresh token 仍是 AuthApiError 400，不判为上游故障', async () => {
+      stubGoTrue();
+      const service = new SupabaseService(createMockConfigService(CONFIG));
+
+      const error = await service
+        .refreshToken('rt-revoked')
+        .catch((thrown: unknown) => thrown);
+
+      expect(error).toBeInstanceOf(AuthApiError);
+      expect(error).toMatchObject({
+        status: 400,
+        code: 'refresh_token_not_found',
+      });
+    });
+
+    describe('经 AuthService 映射到 HTTP 状态', () => {
+      function createAuthService(config: Record<string, unknown>) {
+        return new AuthService(
+          new SupabaseService(createMockConfigService(config)),
+          {} as DrizzleDB,
+          {} as TokenBlacklistService,
+        );
+      }
+
+      it('login：错误密码 401 invalid-credentials，GoTrue 不可达 503', async () => {
+        stubGoTrue();
+        await expect(
+          createAuthService(CONFIG).login({
+            email: ALICE.email,
+            password: 'wrong-password',
+          }),
+        ).rejects.toMatchObject({
+          type: 'https://agentloom.dev/errors/invalid-credentials',
+        });
+
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockRejectedValue(new TypeError('fetch failed')),
+        );
+        await expectUpstreamUnavailable(
+          createAuthService(CONFIG).login({
+            email: ALICE.email,
+            password: ALICE.password,
+          }),
+        );
+      });
+
+      it('refresh：失效 token 401 refresh-invalid，GoTrue 超时 503', async () => {
+        stubGoTrue();
+        await expect(
+          createAuthService(CONFIG).refreshToken({
+            refresh_token: 'rt-revoked',
+          }),
+        ).rejects.toMatchObject({
+          type: 'https://agentloom.dev/errors/refresh-invalid',
+        });
+
+        vi.stubGlobal('fetch', vi.fn(hangingFetch));
+        await expectUpstreamUnavailable(
+          createAuthService(TIMEOUT_CONFIG).refreshToken({
+            refresh_token: ALICE.refreshToken,
+          }),
+        );
+      });
+
+      it('/auth/security：GoTrue 超时 503', async () => {
+        vi.stubGlobal('fetch', vi.fn(hangingFetch));
+        await expectUpstreamUnavailable(
+          createAuthService(TIMEOUT_CONFIG).getSecurityInfo(
+            fakeJwt({ sub: ALICE.id, aal: 'aal1' }),
+          ),
+        );
+      });
+    });
+  });
+
   describe('updatePasswordForSession', () => {
     it('以当前会话的 JWT 调用 GoTrue PUT /user（不走 admin API，保留当前会话）', async () => {
       const fetchMock = vi
@@ -301,6 +475,7 @@ describe('SupabaseService', () => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ password: 'NewPass123' }),
+          signal: expect.any(AbortSignal),
         },
       );
     });

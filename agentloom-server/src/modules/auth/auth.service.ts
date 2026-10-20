@@ -217,25 +217,16 @@ export class AuthService {
 
   async refreshToken(dto: RefreshTokenDto) {
     try {
-      const authData = await this.supabaseService.refreshToken(
+      const session = await this.supabaseService.refreshToken(
         dto.refresh_token,
       );
-
-      if (!authData.session) {
-        throw new DomainException({
-          type: 'https://agentloom.dev/errors/refresh-failed',
-          title: 'Token Refresh Failed',
-          status: HttpStatus.INTERNAL_SERVER_ERROR,
-          detail: 'Failed to refresh token',
-        });
-      }
 
       return {
         data: {
           tokens: {
-            access_token: authData.session.access_token,
-            refresh_token: authData.session.refresh_token,
-            expires_in: authData.session.expires_in,
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            expires_in: session.expires_in,
           },
         },
       };

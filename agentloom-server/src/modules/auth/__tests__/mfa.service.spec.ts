@@ -9,7 +9,6 @@ import {
   Aal2RequiredException,
   AuthUnavailableException,
   MfaAlreadyEnrolledException,
-  MfaDisableException,
   MfaEnrollmentException,
   MfaFactorNotFoundException,
   MfaTokenExpiredException,
@@ -52,11 +51,9 @@ describe('MfaService', () => {
       currentAuthenticationMethods: [],
     });
     supabaseService.refreshToken.mockResolvedValue({
-      session: {
-        access_token: 'downgraded-access-token',
-        refresh_token: 'downgraded-refresh-token',
-        expires_in: 3600,
-      },
+      access_token: 'downgraded-access-token',
+      refresh_token: 'downgraded-refresh-token',
+      expires_in: 3600,
     });
 
     const module = await Test.createTestingModule({
@@ -141,7 +138,7 @@ describe('MfaService', () => {
   });
 
   it('private 模式认证不可用时 enrollTotp 透传领域异常', async () => {
-    const unavailableError = new AuthUnavailableException('private');
+    const unavailableError = AuthUnavailableException.notConfigured('private');
     supabaseService.listFactors.mockRejectedValue(unavailableError);
 
     await expect(mfaService.enrollTotp(TEST_SUPABASE_TOKEN)).rejects.toBe(
@@ -253,7 +250,7 @@ describe('MfaService', () => {
   });
 
   it('private 模式认证不可用时 verifyTotp 透传领域异常', async () => {
-    const unavailableError = new AuthUnavailableException('private');
+    const unavailableError = AuthUnavailableException.notConfigured('private');
     supabaseService.challengeAndVerifyTotp.mockRejectedValue(unavailableError);
 
     await expect(
@@ -327,25 +324,8 @@ describe('MfaService', () => {
     ).rejects.toBeInstanceOf(MfaFactorNotFoundException);
   });
 
-  it('disableMfa 在 refresh 失败时抛出 MfaDisableException', async () => {
-    supabaseService.listFactors.mockResolvedValue({
-      totp: [{ id: TEST_FACTOR_ID, status: 'verified' }],
-    });
-    supabaseService.challengeAndVerifyTotp.mockResolvedValue({
-      access_token: 'aal2-access-token',
-      refresh_token: 'aal2-refresh-token',
-      expires_in: 3600,
-    });
-    supabaseService.unenrollFactor.mockResolvedValue(undefined);
-    supabaseService.refreshToken.mockResolvedValue({ session: null });
-
-    await expect(
-      mfaService.disableMfa(TEST_SUPABASE_TOKEN, '123456'),
-    ).rejects.toBeInstanceOf(MfaDisableException);
-  });
-
   it('private 模式认证不可用时 disableMfa 透传领域异常', async () => {
-    const unavailableError = new AuthUnavailableException('private');
+    const unavailableError = AuthUnavailableException.notConfigured('private');
     supabaseService.getAuthenticatorAssuranceLevel.mockRejectedValue(
       unavailableError,
     );

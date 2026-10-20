@@ -126,13 +126,31 @@ export class OAuthInitiationException extends DomainException {
   }
 }
 
+/** 上游故障时建议客户端的重试间隔；GoTrue/kong 重启后实测 1–3 s 恢复 */
+const AUTH_UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
+
 export class AuthUnavailableException extends DomainException {
-  constructor(deploymentMode: string) {
+  /** 部署未配置完整的 Supabase：重试无意义，不带 Retry-After */
+  static notConfigured(deploymentMode: string) {
+    return new AuthUnavailableException(
+      `当前部署模式 ${deploymentMode} 未配置完整的 Supabase 认证服务，认证相关功能暂不可用`,
+    );
+  }
+
+  /** GoTrue 不可达、超时、返回 5xx 或无法解析的响应 */
+  static upstreamUnavailable() {
+    return new AuthUnavailableException('认证服务暂不可用，请稍后重试', {
+      'Retry-After': String(AUTH_UNAVAILABLE_RETRY_AFTER_SECONDS),
+    });
+  }
+
+  private constructor(detail: string, headers?: Record<string, string>) {
     super({
       type: 'https://agentloom.dev/errors/auth-unavailable',
       title: '认证能力不可用',
       status: HttpStatus.SERVICE_UNAVAILABLE,
-      detail: `当前部署模式 ${deploymentMode} 未配置完整的 Supabase 认证服务，认证相关功能暂不可用`,
+      detail,
+      headers,
     });
   }
 }

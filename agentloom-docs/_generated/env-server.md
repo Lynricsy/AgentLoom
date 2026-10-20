@@ -12,6 +12,7 @@
 | `APP_SUPABASE_URL` | 否 |  |  | Supabase 配置 |
 | `APP_SUPABASE_ANON_KEY` | 否 |  |  |  |
 | `APP_SUPABASE_SERVICE_KEY` | 否 |  |  |  |
+| `APP_SUPABASE_AUTH_TIMEOUT_MS` | 否 | `10000` |  | 单个 GoTrue 请求超时（毫秒）；超时、不可达或 5xx 时认证接口返回 503 auth-unavailable |
 | `APP_JWT_SECRET` | 是 |  |  | JWT 密钥（Supabase JWT Secret） |
 | `APP_REDIS_URL` | 是 |  |  | Redis 连接 |
 | `APP_MASTER_ENCRYPTION_KEY` | 是 |  |  | 加密配置（256 位 Base64 编码密钥，可用 `openssl rand -base64 32` 生成） |

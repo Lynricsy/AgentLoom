@@ -52,6 +52,11 @@ const baseEnvSchema = z.object({
   APP_SUPABASE_SERVICE_KEY: optionalNonEmptyStringFromEnv(
     'Supabase Service Key 不能为空',
   ),
+  /** 单个 GoTrue 请求超时（毫秒，含读取响应体）；超时、不可达或 5xx 时认证接口返回 503 auth-unavailable */
+  APP_SUPABASE_AUTH_TIMEOUT_MS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(10_000),
+  ),
 
   APP_JWT_SECRET: z.string().min(1, 'JWT Secret 不能为空'),
 

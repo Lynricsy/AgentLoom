@@ -33,6 +33,7 @@ import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import * as schema from '../src/database/schema';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
+import { AuthUnavailableException } from '../src/common/exceptions/auth.exceptions';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
 const MOCK_SUPABASE_UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
@@ -361,6 +362,25 @@ describe('Auth E2E (testcontainers)', () => {
       );
       expect(body.detail).toContain('Invalid email or password');
     });
+
+    it('认证服务不可达 → 503 auth-unavailable + Retry-After', async () => {
+      supabaseService.signIn.mockRejectedValue(
+        AuthUnavailableException.upstreamUnavailable(),
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email: MOCK_EMAIL, password: 'ValidPass1' },
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.headers['retry-after']).toBe('5');
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      expect(res.json().type).toBe(
+        'https://agentloom.dev/errors/auth-unavailable',
+      );
+    });
   });
 
   describe('POST /api/v1/auth/refresh', () => {
@@ -369,11 +389,9 @@ describe('Auth E2E (testcontainers)', () => {
       const newRefreshToken = 'rotated-refresh-token';
 
       supabaseService.refreshToken.mockResolvedValue({
-        session: {
-          access_token: newAccessToken,
-          refresh_token: newRefreshToken,
-          expires_in: 3600,
-        },
+        access_token: newAccessToken,
+        refresh_token: newRefreshToken,
+        expires_in: 3600,
       });
 
       const res = await app.inject({
@@ -387,6 +405,24 @@ describe('Auth E2E (testcontainers)', () => {
       expect(body.data.tokens.access_token).toBe(newAccessToken);
       expect(body.data.tokens.refresh_token).toBe(newRefreshToken);
       expect(body.data.tokens.refresh_token).not.toBe('old-refresh-token');
+    });
+
+    it('认证服务不可达 → 503 auth-unavailable + Retry-After', async () => {
+      supabaseService.refreshToken.mockRejectedValue(
+        AuthUnavailableException.upstreamUnavailable(),
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/refresh',
+        payload: { refresh_token: 'old-refresh-token' },
+      });
+
+      expect(res.statusCode).toBe(503);
+      expect(res.headers['retry-after']).toBe('5');
+      expect(res.json().type).toBe(
+        'https://agentloom.dev/errors/auth-unavailable',
+      );
     });
   });
 

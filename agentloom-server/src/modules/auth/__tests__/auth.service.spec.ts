@@ -283,7 +283,8 @@ describe('AuthService', () => {
     });
 
     it('private 模式认证不可用时透传领域异常', async () => {
-      const unavailableError = new AuthUnavailableException('private');
+      const unavailableError =
+        AuthUnavailableException.notConfigured('private');
       supabaseService.signUp.mockRejectedValue(unavailableError);
 
       await expect(
@@ -509,7 +510,8 @@ describe('AuthService', () => {
     });
 
     it('private 模式认证不可用时 login 透传领域异常', async () => {
-      const unavailableError = new AuthUnavailableException('private');
+      const unavailableError =
+        AuthUnavailableException.notConfigured('private');
       supabaseService.signIn.mockRejectedValue(unavailableError);
 
       await expect(
@@ -572,7 +574,8 @@ describe('AuthService', () => {
     });
 
     it('private 模式认证不可用时 getSecurityInfo 透传领域异常', async () => {
-      const unavailableError = new AuthUnavailableException('private');
+      const unavailableError =
+        AuthUnavailableException.notConfigured('private');
       supabaseService.listFactors.mockRejectedValue(unavailableError);
 
       await expect(
@@ -586,11 +589,9 @@ describe('AuthService', () => {
 
     it('正常リフレッシュ: 新トークンを返す', async () => {
       supabaseService.refreshToken.mockResolvedValue({
-        session: {
-          access_token: 'new-access-token',
-          refresh_token: 'new-refresh-token',
-          expires_in: 3600,
-        },
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
       });
 
       const result = await authService.refreshToken(refreshDto);
@@ -618,24 +619,15 @@ describe('AuthService', () => {
       }
     });
 
-    it('Supabase refresh API 返回 5xx 时: refresh-failed で 500', async () => {
-      supabaseService.refreshToken.mockRejectedValue(
-        new AuthApiError(
-          'Refresh service unavailable',
-          500,
-          'unexpected_failure',
-        ),
-      );
+    it('GoTrue 不可达时透传 503 auth-unavailable（带 Retry-After）', async () => {
+      const unavailableError = AuthUnavailableException.upstreamUnavailable();
+      supabaseService.refreshToken.mockRejectedValue(unavailableError);
 
-      try {
-        await authService.refreshToken(refreshDto);
-        expect.unreachable('should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(DomainException);
-        const de = error as DomainException;
-        expect(de.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
-        expect(de.type).toBe('https://agentloom.dev/errors/refresh-failed');
-      }
+      await expect(authService.refreshToken(refreshDto)).rejects.toBe(
+        unavailableError,
+      );
+      expect(unavailableError.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      expect(unavailableError.headers).toEqual({ 'Retry-After': '5' });
     });
 
     it.each([HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED])(
@@ -661,22 +653,9 @@ describe('AuthService', () => {
       },
     );
 
-    it('セッションが null: refresh-failed で 500', async () => {
-      supabaseService.refreshToken.mockResolvedValue({ session: null });
-
-      try {
-        await authService.refreshToken(refreshDto);
-        expect.unreachable('should have thrown');
-      } catch (error) {
-        expect(error).toBeInstanceOf(DomainException);
-        const de = error as DomainException;
-        expect(de.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
-        expect(de.type).toBe('https://agentloom.dev/errors/refresh-failed');
-      }
-    });
-
     it('private 模式认证不可用时 refreshToken 透传领域异常', async () => {
-      const unavailableError = new AuthUnavailableException('private');
+      const unavailableError =
+        AuthUnavailableException.notConfigured('private');
       supabaseService.refreshToken.mockRejectedValue(unavailableError);
 
       await expect(
@@ -789,7 +768,8 @@ describe('AuthService', () => {
     });
 
     it('private 模式认证不可用时 logout 透传领域异常而不是包装为通用错误', async () => {
-      const unavailableError = new AuthUnavailableException('private');
+      const unavailableError =
+        AuthUnavailableException.notConfigured('private');
       supabaseService.signOut.mockRejectedValue(unavailableError);
       const token = createAccessToken();
 

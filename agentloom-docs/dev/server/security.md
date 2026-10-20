@@ -43,11 +43,20 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 
 ### 服务端 GoTrue 调用不持有用户会话
 
-server 代用户调用 GoTrue（注册、登录、refresh、OAuth code 换会话、MFA、登出、按 JWT 查用户）时，**不得让任何跨请求共享的 Supabase/GoTrue client 持有用户会话**。`agentloom-server/src/modules/auth/supabase/supabase.service.ts` 的每次调用都新建一个 `persistSession: false`、`autoRefreshToken: false` 的 `GoTrueClient`，用完即弃；修改密码直接调 GoTrue REST（`PUT /auth/v1/user`）。
+server 代用户调用 GoTrue（注册、登录、refresh、OAuth code 换会话、MFA、登出、按 JWT 查用户）时，**不得让任何跨请求共享的 Supabase/GoTrue client 持有用户会话**。`agentloom-server/src/modules/auth/supabase/supabase.service.ts` 的每次调用都新建一个 `persistSession: false`、`autoRefreshToken: false` 的 `GoTrueClient`，用完即弃；refresh 与修改密码直接调 GoTrue REST（`POST /auth/v1/token?grant_type=refresh_token`、`PUT /auth/v1/user`）。
 
 原因是 auth-js client 带实例级可变状态：内存会话存储、refresh 单飞（并发 `refreshSession` 共享同一个在途 Promise，不比对传入的 refresh token）、refresh 落盘前的存储 commit guard、PKCE verifier。服务端单例 client 被多个用户并发使用时，B 的 refresh 会拿到 A 的会话（因此能以 A 的身份访问 A 的组织），A 的登录也会让 B 进行中的 refresh 以 `AuthRefreshDiscardedError` 失败。
 
 新增 GoTrue 调用时沿用 `SupabaseService` 内的工厂；本身无状态的 admin 端点（`auth.admin.*`）也走工厂，不另建单例。回归测试在 `agentloom-server/src/modules/auth/__tests__/supabase.service.spec.ts`，用真实 auth-js 与 fetch 桩模拟多账号并发。
+
+### GoTrue 故障
+
+已登录请求的 JWT 在本地校验（见上文），不依赖 GoTrue；只有注册、登录、refresh、`/auth/security`、MFA、OAuth、登出、修改密码这些代用户调用 GoTrue 的接口受影响。
+
+- 每个 GoTrue 请求的超时为 `APP_SUPABASE_AUTH_TIMEOUT_MS`（默认 10000 ms，含读取响应体）。一次登录最多串行两个请求（登录 + 查 MFA 因子）。
+- GoTrue 或 kong 不可达、超时、返回 5xx 或无法解析的响应时，`SupabaseService` 抛 503 `auth-unavailable`，带 `Retry-After: 5`；凭据错误、refresh token 失效等 4xx 原样交给调用方，仍映射为 401 `invalid-credentials` / `refresh-invalid`。
+- refresh 不走 auth-js `refreshSession`：它对网络错误和 5xx 以指数退避重试到 30 s 窗口用尽，单请求超时约束不了总耗时。
+- 部署未配置 Supabase（private 模式三个 `APP_SUPABASE_*` 全空）时同样返回 `auth-unavailable`，但不带 `Retry-After`。
 
 ## 平台 API Token
 

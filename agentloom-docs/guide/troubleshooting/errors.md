@@ -41,7 +41,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `mfa-token-expired` | 401 | 双因素验证流程已过期 | 重新登录 |
 | `aal2-required` | 403 | 该操作要求本次登录已完成双因素验证 | 退出后重新登录并完成两步验证 |
 | `session-revoke-current` | 400 | 不能在会话列表中注销当前会话 | 使用「退出登录」 |
-| `auth-unavailable` | 503 | 认证服务当前不可用 | 稍后重试；持续出现时联系部署管理员 |
+| `auth-unavailable` | 503 | 认证服务暂不可用：Supabase 认证服务（GoTrue 或 kong）不可达、超时或返回 5xx，此时响应带 `Retry-After`；或部署未配置 Supabase 认证（`detail` 会说明，不带 `Retry-After`）。登录、刷新凭证、安全设置、双因素认证等接口都可能返回；已登录的普通请求不受影响 | 按 `Retry-After` 等待后重试；持续出现或 `detail` 提示未配置时联系部署管理员 |
 | `session-verification-unavailable` | 503 | 服务端暂时无法确认登录会话是否仍有效 | 稍后重试；持续出现时联系部署管理员 |
 | `refresh-invalid` | 401 | 刷新凭证无效或已失效 | 重新登录 |
 | `session-not-found` | 404 | 要注销的登录会话不存在 | 刷新会话列表 |

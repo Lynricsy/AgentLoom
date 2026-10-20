@@ -1,9 +1,38 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuthApiError, GoTrueClient } from '@supabase/supabase-js';
+import {
+  AuthApiError,
+  AuthError,
+  AuthUnknownError,
+  GoTrueClient,
+  isAuthApiError,
+  isAuthRetryableFetchError,
+} from '@supabase/supabase-js';
+import { z } from 'zod';
 
 import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
 import type { OAuthProvider } from '../dto/oauth.dto';
+
+/** 与 env schema 中 `APP_SUPABASE_AUTH_TIMEOUT_MS` 的默认值一致 */
+const DEFAULT_AUTH_TIMEOUT_MS = 10_000;
+
+/** GoTrue 错误体：新版 `{ code, error_code, msg }`，`/token` 旧版 `{ error, error_description }` */
+const GoTrueErrorBodySchema = z.object({
+  msg: z.string().optional(),
+  message: z.string().optional(),
+  error_description: z.string().optional(),
+  error: z.string().optional(),
+  error_code: z.string().optional(),
+  code: z.union([z.string(), z.number()]).optional(),
+});
+
+const RefreshedSessionSchema = z.object({
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1),
+  expires_in: z.number(),
+});
+
+export type RefreshedSession = z.infer<typeof RefreshedSessionSchema>;
 
 @Injectable()
 export class SupabaseService {
@@ -13,6 +42,8 @@ export class SupabaseService {
   private readonly supabaseServiceKey?: string;
   private readonly supabaseAnonKey?: string;
   private readonly isSupabaseConfigured: boolean;
+  /** 单个 GoTrue 请求的超时（含读取响应体） */
+  private readonly requestTimeoutMs: number;
   private readonly logger = new Logger(SupabaseService.name);
 
   constructor(private readonly configService: ConfigService) {
@@ -34,6 +65,9 @@ export class SupabaseService {
     if (this.isSupabaseConfigured) {
       this.authUrl = `${supabaseUrl!.replace(/\/+$/, '')}/auth/v1`;
     }
+    this.requestTimeoutMs =
+      this.configService.get<number>('APP_SUPABASE_AUTH_TIMEOUT_MS') ??
+      DEFAULT_AUTH_TIMEOUT_MS;
   }
 
   // ─── 邮箱密码认证 ───────────────────────────────────────────
@@ -46,7 +80,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`SignUp failed for ${email}: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -62,25 +96,42 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`SignIn failed for ${email}: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
   }
 
-  async refreshToken(refreshToken: string) {
-    const { data, error } = await this.createAuthClient(
-      'service',
-    ).refreshSession({
-      refresh_token: refreshToken,
-    });
+  /**
+   * 直接调用 GoTrue `POST /token?grant_type=refresh_token`，不经 auth-js `refreshSession`：
+   * 后者对网络错误和 5xx 以指数退避重试，直到 30 s 窗口用尽，单请求超时无法约束总耗时。
+   */
+  async refreshToken(refreshToken: string): Promise<RefreshedSession> {
+    this.ensureAvailable();
 
-    if (error) {
-      this.logger.warn(`Token refresh failed: ${error.message}`);
-      throw error;
+    const response = await this.requestGoTrue(
+      'Token refresh',
+      '/token?grant_type=refresh_token',
+      {
+        method: 'POST',
+        headers: {
+          apikey: this.supabaseServiceKey!,
+          Authorization: `Bearer ${this.supabaseServiceKey!}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      },
+    );
+    const session = RefreshedSessionSchema.safeParse(
+      await response.json().catch(() => null),
+    );
+
+    if (!session.success) {
+      this.logger.warn('Token refresh failed: unexpected GoTrue response');
+      throw AuthUnavailableException.upstreamUnavailable();
     }
 
-    return data;
+    return session.data;
   }
 
   async signOut(accessToken: string) {
@@ -89,7 +140,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`SignOut failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
   }
 
@@ -99,7 +150,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`GetUser failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data.user;
@@ -113,7 +164,7 @@ export class SupabaseService {
   async updatePasswordForSession(accessToken: string, newPassword: string) {
     this.ensureAvailable();
 
-    const response = await fetch(`${this.authUrl!}/user`, {
+    await this.requestGoTrue('UpdatePassword', '/user', {
       method: 'PUT',
       headers: {
         apikey: this.supabaseAnonKey!,
@@ -122,22 +173,6 @@ export class SupabaseService {
       },
       body: JSON.stringify({ password: newPassword }),
     });
-
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as {
-        msg?: string;
-        message?: string;
-        error_code?: string;
-        code?: string;
-      } | null;
-      const message = body?.msg ?? body?.message ?? `HTTP ${response.status}`;
-      this.logger.warn(`UpdatePassword failed: ${message}`);
-      throw new AuthApiError(
-        message,
-        response.status,
-        body?.error_code ?? body?.code,
-      );
-    }
   }
 
   // ─── OAuth 社交登录 ─────────────────────────────────────────
@@ -167,7 +202,7 @@ export class SupabaseService {
       this.logger.warn(
         `OAuth initiate failed for ${provider}: ${error.message}`,
       );
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -179,7 +214,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`OAuth code exchange failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -195,7 +230,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`MFA TOTP enroll failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -213,7 +248,7 @@ export class SupabaseService {
 
     if (challengeError) {
       this.logger.warn(`MFA challenge failed: ${challengeError.message}`);
-      throw challengeError;
+      throw this.toServiceError(challengeError);
     }
 
     const { data, error } = await userClient.mfa.verify({
@@ -224,7 +259,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`MFA verify failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -236,7 +271,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`MFA unenroll failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -248,7 +283,7 @@ export class SupabaseService {
 
     if (error) {
       this.logger.warn(`MFA list factors failed: ${error.message}`);
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -264,7 +299,7 @@ export class SupabaseService {
       this.logger.warn(
         `MFA authenticator assurance level lookup failed: ${error.message}`,
       );
-      throw error;
+      throw this.toServiceError(error);
     }
 
     return data;
@@ -278,7 +313,76 @@ export class SupabaseService {
     this.logger.warn(
       `Supabase auth requested without complete configuration in ${this.deploymentMode} deployment mode`,
     );
-    throw new AuthUnavailableException(this.deploymentMode);
+    throw AuthUnavailableException.notConfigured(this.deploymentMode);
+  }
+
+  /**
+   * 上游故障改抛 503 `auth-unavailable`，其余错误（凭据错误、token 失效、参数非法）原样抛出，
+   * 由调用方映射为 401/4xx。上游故障指：GoTrue 不可达或超时（auth-js 把 fetch 异常包成
+   * status 0 的 `AuthRetryableFetchError`）、返回 5xx，或返回无法解析的响应（`AuthUnknownError`）。
+   */
+  private toServiceError(error: AuthError): Error {
+    if (
+      isAuthRetryableFetchError(error) ||
+      error instanceof AuthUnknownError ||
+      (isAuthApiError(error) && error.status >= 500)
+    ) {
+      return AuthUnavailableException.upstreamUnavailable();
+    }
+
+    return error;
+  }
+
+  /** 给每个 GoTrue 请求加超时；auth-js client 与直连 REST 共用 */
+  private readonly fetchWithTimeout: typeof fetch = (input, init) =>
+    fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    });
+
+  /** 直连 GoTrue REST；与 `toServiceError` 同一套分类：不可达/超时/5xx → 503，其余 4xx → AuthApiError */
+  private async requestGoTrue(
+    operation: string,
+    path: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    let response: Response;
+
+    try {
+      response = await this.fetchWithTimeout(`${this.authUrl!}${path}`, init);
+    } catch (error) {
+      this.logger.warn(
+        `${operation} failed: GoTrue unreachable (${error instanceof Error ? error.message : String(error)})`,
+      );
+      throw AuthUnavailableException.upstreamUnavailable();
+    }
+
+    if (response.status >= 500) {
+      this.logger.warn(`${operation} failed: GoTrue HTTP ${response.status}`);
+      throw AuthUnavailableException.upstreamUnavailable();
+    }
+
+    if (!response.ok) {
+      const parsed = GoTrueErrorBodySchema.safeParse(
+        await response.json().catch(() => null),
+      );
+      const body = parsed.success ? parsed.data : {};
+      const message =
+        body.msg ??
+        body.message ??
+        body.error_description ??
+        body.error ??
+        `HTTP ${response.status}`;
+      this.logger.warn(`${operation} failed: ${message}`);
+      throw new AuthApiError(
+        message,
+        response.status,
+        body.error_code ??
+          (typeof body.code === 'string' ? body.code : undefined),
+      );
+    }
+
+    return response;
   }
 
   /**
@@ -310,6 +414,7 @@ export class SupabaseService {
       autoRefreshToken: false,
       persistSession: false,
       detectSessionInUrl: false,
+      fetch: this.fetchWithTimeout,
     });
   }
 }

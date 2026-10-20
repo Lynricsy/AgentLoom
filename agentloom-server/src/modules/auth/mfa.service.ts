@@ -146,14 +146,10 @@ export class MfaService {
         verifiedSession.refresh_token,
       );
 
-      if (!refreshedSession.session) {
-        throw new MfaDisableException('禁用 MFA 后刷新会话失败');
-      }
-
       return {
         message: 'MFA 已禁用',
         data: {
-          tokens: this.buildTokenPayload(refreshedSession.session),
+          tokens: this.buildTokenPayload(refreshedSession),
         },
       };
     } catch (error) {

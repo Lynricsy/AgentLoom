@@ -170,7 +170,7 @@ describe('OAuthService', () => {
   });
 
   it('private 模式认证不可用时发起 OAuth 透传领域异常', async () => {
-    const unavailableError = new AuthUnavailableException('private');
+    const unavailableError = AuthUnavailableException.notConfigured('private');
     supabaseService.signInWithOAuth.mockRejectedValue(unavailableError);
 
     await expect(oauthService.initiateOAuth('google')).rejects.toBe(
@@ -258,7 +258,7 @@ describe('OAuthService', () => {
   });
 
   it('private 模式认证不可用时 OAuth 回调透传领域异常', async () => {
-    const unavailableError = new AuthUnavailableException('private');
+    const unavailableError = AuthUnavailableException.notConfigured('private');
     supabaseService.exchangeCodeForSession.mockRejectedValue(unavailableError);
 
     await expect(oauthService.handleCallback(MOCK_CODE)).rejects.toBe(
