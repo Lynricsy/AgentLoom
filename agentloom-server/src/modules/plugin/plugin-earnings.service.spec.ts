@@ -297,9 +297,7 @@ describe('PluginEarningsService', () => {
     it('不存在时应抛出领域异常 plugin-earning-not-found（404）', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(
-        service.findEarningById(EARNING_ID),
-      ).rejects.toMatchObject({
+      await expect(service.findEarningById(EARNING_ID)).rejects.toMatchObject({
         constructor: PluginEarningNotFoundException,
         type: 'https://agentloom.dev/errors/plugin-earning-not-found',
       });

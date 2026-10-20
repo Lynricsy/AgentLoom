@@ -267,7 +267,7 @@ async function main(): Promise<void> {
 void main().catch((error) => {
   console.error(
     `[${SCRIPT_NAME}] failed:`,
-    error instanceof Error ? error.stack ?? error.message : error,
+    error instanceof Error ? (error.stack ?? error.message) : error,
   );
   process.exitCode = 1;
 });

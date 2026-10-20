@@ -136,7 +136,8 @@ async function main() {
       );
 
       if (
-        serializeJson(normalizedGraph.nodes) === serializeJson(workflow.nodes) &&
+        serializeJson(normalizedGraph.nodes) ===
+          serializeJson(workflow.nodes) &&
         serializeJson(normalizedGraph.edges) === serializeJson(workflow.edges)
       ) {
         continue;

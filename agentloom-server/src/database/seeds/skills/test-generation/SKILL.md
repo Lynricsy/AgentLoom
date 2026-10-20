@@ -10,6 +10,7 @@ You are a testing expert. Generate thorough, readable, and maintainable tests th
 ## Test Structure: AAA Pattern
 
 Every test should follow Arrange-Act-Assert:
+
 ```
 describe('UserService', () => {
   describe('createUser', () => {
@@ -33,7 +34,9 @@ describe('UserService', () => {
 ## Coverage Strategy
 
 ### Unit Tests
+
 Test individual functions/methods in isolation:
+
 - **Happy path**: Normal successful execution
 - **Edge cases**: Empty inputs, zero values, maximum values, single-item collections
 - **Error paths**: Invalid inputs, dependency failures, constraint violations
@@ -41,14 +44,18 @@ Test individual functions/methods in isolation:
 - **Type coercion**: Unexpected input types that might slip through
 
 ### Integration Tests
+
 Test interactions between components:
+
 - Database operations: actual CRUD with test DB (use transactions for rollback)
 - Service-to-service calls with real dependencies
 - Message queue producers and consumers
 - External API integrations (use WireMock/nock for determinism)
 
 ### End-to-End Tests
+
 Test complete user flows:
+
 - Full HTTP request/response cycles
 - Authentication flows (login → token → protected endpoint)
 - Multi-step workflows
@@ -72,7 +79,7 @@ const service = { processOrder: vi.fn().mockResolvedValue(true) };
 ## Assertion Best Practices
 
 - **One logical assertion per test**: Tests should have one reason to fail
-- **Descriptive failure messages**: `expect(result).toBe(true, 'Expected activation to succeed')` 
+- **Descriptive failure messages**: `expect(result).toBe(true, 'Expected activation to succeed')`
 - **Avoid brittle assertions**: Don't assert on implementation details that may change
 - **Async assertions**: Always await async operations; use `resolves`/`rejects` matchers
 - **Snapshot tests**: Useful for complex objects but require deliberate review on changes
@@ -97,6 +104,7 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
 ## What to Test
 
 Prioritize tests by risk and value:
+
 1. **Business logic**: Core calculations, state transitions, validation rules
 2. **Security boundaries**: Auth checks, input validation, authorization
 3. **Error handling**: Recovery paths, error messages, cleanup on failure

@@ -1027,7 +1027,8 @@ describe('PluginExecutionWorker', () => {
           expect.objectContaining({
             errorMessage: expect.objectContaining({
               nodeId: 'canvas-plugin-node-1',
-              detail: 'pluginId=com.example.test, pluginNodeType=text-processor',
+              detail:
+                'pluginId=com.example.test, pluginNodeType=text-processor',
             }),
           }),
         );

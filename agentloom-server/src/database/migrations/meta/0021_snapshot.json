@@ -227,12 +227,8 @@
           "name": "api_keys_organization_id_organizations_id_fk",
           "tableFrom": "api_keys",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -240,12 +236,8 @@
           "name": "api_keys_user_id_users_id_fk",
           "tableFrom": "api_keys",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -257,27 +249,21 @@
           "name": "api_keys_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "api_keys_insert_policy": {
           "name": "api_keys_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "api_keys_update_policy": {
           "name": "api_keys_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -285,9 +271,7 @@
           "name": "api_keys_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -428,12 +412,8 @@
           "name": "document_chunks_document_id_documents_id_fk",
           "tableFrom": "document_chunks",
           "tableTo": "documents",
-          "columnsFrom": [
-            "document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["document_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -445,27 +425,21 @@
           "name": "document_chunks_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "document_chunks_insert_policy": {
           "name": "document_chunks_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "document_chunks_update_policy": {
           "name": "document_chunks_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -473,9 +447,7 @@
           "name": "document_chunks_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -631,12 +603,8 @@
           "name": "documents_knowledge_base_id_knowledge_bases_id_fk",
           "tableFrom": "documents",
           "tableTo": "knowledge_bases",
-          "columnsFrom": [
-            "knowledge_base_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["knowledge_base_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -648,27 +616,21 @@
           "name": "documents_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "documents_insert_policy": {
           "name": "documents_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "documents_update_policy": {
           "name": "documents_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -676,9 +638,7 @@
           "name": "documents_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -835,12 +795,8 @@
           "name": "execution_steps_execution_id_workflow_executions_id_fk",
           "tableFrom": "execution_steps",
           "tableTo": "workflow_executions",
-          "columnsFrom": [
-            "execution_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["execution_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -852,27 +808,21 @@
           "name": "execution_steps_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"execution_steps\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         },
         "execution_steps_insert_policy": {
           "name": "execution_steps_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"execution_steps\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         },
         "execution_steps_update_policy": {
           "name": "execution_steps_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"execution_steps\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )",
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"execution_steps\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         },
@@ -880,9 +830,7 @@
           "name": "execution_steps_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"workflow_executions\"\n    WHERE \"workflow_executions\".\"id\" = \"execution_steps\".\"execution_id\"\n    AND \"workflow_executions\".tenant_id = get_tenant_id()\n  )"
         }
       },
@@ -1023,27 +971,21 @@
           "name": "knowledge_bases_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "knowledge_bases_insert_policy": {
           "name": "knowledge_bases_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "knowledge_bases_update_policy": {
           "name": "knowledge_bases_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -1051,9 +993,7 @@
           "name": "knowledge_bases_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -1173,12 +1113,8 @@
           "name": "llm_model_configs_org_id_organizations_id_fk",
           "tableFrom": "llm_model_configs",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1186,12 +1122,8 @@
           "name": "llm_model_configs_api_key_id_api_keys_id_fk",
           "tableFrom": "llm_model_configs",
           "tableTo": "api_keys",
-          "columnsFrom": [
-            "api_key_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["api_key_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1201,10 +1133,7 @@
         "uq_llm_model_configs_org_name": {
           "name": "uq_llm_model_configs_org_name",
           "nullsNotDistinct": false,
-          "columns": [
-            "org_id",
-            "name"
-          ]
+          "columns": ["org_id", "name"]
         }
       },
       "policies": {
@@ -1212,27 +1141,21 @@
           "name": "llm_model_configs_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "llm_model_configs_insert_policy": {
           "name": "llm_model_configs_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "llm_model_configs_update_policy": {
           "name": "llm_model_configs_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -1240,9 +1163,7 @@
           "name": "llm_model_configs_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -1420,12 +1341,8 @@
           "name": "mcp_server_configs_organization_id_organizations_id_fk",
           "tableFrom": "mcp_server_configs",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1433,12 +1350,8 @@
           "name": "mcp_server_configs_created_by_users_id_fk",
           "tableFrom": "mcp_server_configs",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1450,27 +1363,21 @@
           "name": "mcp_server_configs_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "mcp_server_configs_insert_policy": {
           "name": "mcp_server_configs_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "mcp_server_configs_update_policy": {
           "name": "mcp_server_configs_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -1478,9 +1385,7 @@
           "name": "mcp_server_configs_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -1630,12 +1535,8 @@
           "name": "organization_invitations_organization_id_organizations_id_fk",
           "tableFrom": "organization_invitations",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1643,12 +1544,8 @@
           "name": "organization_invitations_invited_by_users_id_fk",
           "tableFrom": "organization_invitations",
           "tableTo": "users",
-          "columnsFrom": [
-            "invited_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["invited_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1656,12 +1553,8 @@
           "name": "organization_invitations_accepted_by_users_id_fk",
           "tableFrom": "organization_invitations",
           "tableTo": "users",
-          "columnsFrom": [
-            "accepted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["accepted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1671,9 +1564,7 @@
         "organization_invitations_token_unique": {
           "name": "organization_invitations_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {
@@ -1681,27 +1572,21 @@
           "name": "organization_invitations_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_invitations\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         },
         "organization_invitations_insert_policy": {
           "name": "organization_invitations_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_invitations\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         },
         "organization_invitations_update_policy": {
           "name": "organization_invitations_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_invitations\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )",
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_invitations\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         },
@@ -1709,9 +1594,7 @@
           "name": "organization_invitations_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_invitations\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         }
       },
@@ -1806,12 +1689,8 @@
           "name": "organization_members_organization_id_organizations_id_fk",
           "tableFrom": "organization_members",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1819,12 +1698,8 @@
           "name": "organization_members_user_id_users_id_fk",
           "tableFrom": "organization_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1832,12 +1707,8 @@
           "name": "organization_members_invited_by_users_id_fk",
           "tableFrom": "organization_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "invited_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["invited_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1849,27 +1720,21 @@
           "name": "organization_members_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_members\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         },
         "organization_members_insert_policy": {
           "name": "organization_members_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_members\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         },
         "organization_members_update_policy": {
           "name": "organization_members_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_members\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )",
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_members\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         },
@@ -1877,9 +1742,7 @@
           "name": "organization_members_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"organizations\"\n    WHERE \"organizations\".\"id\" = \"organization_members\".\"organization_id\"\n    AND \"organizations\".tenant_id = get_tenant_id()\n  )"
         }
       },
@@ -1993,12 +1856,8 @@
           "name": "organizations_owner_id_users_id_fk",
           "tableFrom": "organizations",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2008,16 +1867,12 @@
         "organizations_slug_unique": {
           "name": "organizations_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         },
         "organizations_tenant_id_unique": {
           "name": "organizations_tenant_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id"
-          ]
+          "columns": ["tenant_id"]
         }
       },
       "policies": {
@@ -2025,27 +1880,21 @@
           "name": "organizations_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "organizations_insert_policy": {
           "name": "organizations_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "organizations_update_policy": {
           "name": "organizations_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -2053,9 +1902,7 @@
           "name": "organizations_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -2159,12 +2006,8 @@
           "name": "sandbox_logs_session_id_sandbox_sessions_id_fk",
           "tableFrom": "sandbox_logs",
           "tableTo": "sandbox_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2176,27 +2019,21 @@
           "name": "sandbox_logs_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"sandbox_sessions\"\n    WHERE \"sandbox_sessions\".\"id\" = \"sandbox_logs\".\"session_id\"\n    AND \"sandbox_sessions\".tenant_id = get_tenant_id()\n  )"
         },
         "sandbox_logs_insert_policy": {
           "name": "sandbox_logs_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"sandbox_sessions\"\n    WHERE \"sandbox_sessions\".\"id\" = \"sandbox_logs\".\"session_id\"\n    AND \"sandbox_sessions\".tenant_id = get_tenant_id()\n  )"
         },
         "sandbox_logs_update_policy": {
           "name": "sandbox_logs_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"sandbox_sessions\"\n    WHERE \"sandbox_sessions\".\"id\" = \"sandbox_logs\".\"session_id\"\n    AND \"sandbox_sessions\".tenant_id = get_tenant_id()\n  )",
           "withCheck": "EXISTS (\n    SELECT 1 FROM \"sandbox_sessions\"\n    WHERE \"sandbox_sessions\".\"id\" = \"sandbox_logs\".\"session_id\"\n    AND \"sandbox_sessions\".tenant_id = get_tenant_id()\n  )"
         },
@@ -2204,9 +2041,7 @@
           "name": "sandbox_logs_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "EXISTS (\n    SELECT 1 FROM \"sandbox_sessions\"\n    WHERE \"sandbox_sessions\".\"id\" = \"sandbox_logs\".\"session_id\"\n    AND \"sandbox_sessions\".tenant_id = get_tenant_id()\n  )"
         }
       },
@@ -2331,12 +2166,8 @@
           "name": "sandbox_sessions_execution_id_workflow_executions_id_fk",
           "tableFrom": "sandbox_sessions",
           "tableTo": "workflow_executions",
-          "columnsFrom": [
-            "execution_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["execution_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2348,27 +2179,21 @@
           "name": "sandbox_sessions_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "sandbox_sessions_insert_policy": {
           "name": "sandbox_sessions_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "sandbox_sessions_update_policy": {
           "name": "sandbox_sessions_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -2376,9 +2201,7 @@
           "name": "sandbox_sessions_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -2559,12 +2382,8 @@
           "name": "tool_definitions_organization_id_organizations_id_fk",
           "tableFrom": "tool_definitions",
           "tableTo": "organizations",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2572,12 +2391,8 @@
           "name": "tool_definitions_mcp_server_config_id_mcp_server_configs_id_fk",
           "tableFrom": "tool_definitions",
           "tableTo": "mcp_server_configs",
-          "columnsFrom": [
-            "mcp_server_config_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["mcp_server_config_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2589,27 +2404,21 @@
           "name": "tool_definitions_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "tool_definitions_insert_policy": {
           "name": "tool_definitions_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "tool_definitions_update_policy": {
           "name": "tool_definitions_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -2617,9 +2426,7 @@
           "name": "tool_definitions_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -2727,12 +2534,8 @@
           "tableFrom": "users",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": [
-            "supabase_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["supabase_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2742,16 +2545,12 @@
         "users_supabase_user_id_unique": {
           "name": "users_supabase_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "supabase_user_id"
-          ]
+          "columns": ["supabase_user_id"]
         },
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -2946,12 +2745,8 @@
           "name": "workflow_definitions_created_by_users_id_fk",
           "tableFrom": "workflow_definitions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2959,12 +2754,8 @@
           "name": "workflow_definitions_updated_by_users_id_fk",
           "tableFrom": "workflow_definitions",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2976,27 +2767,21 @@
           "name": "workflow_definitions_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "workflow_definitions_insert_policy": {
           "name": "workflow_definitions_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "workflow_definitions_update_policy": {
           "name": "workflow_definitions_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -3004,9 +2789,7 @@
           "name": "workflow_definitions_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -3215,12 +2998,8 @@
           "name": "workflow_executions_workflow_definition_id_workflow_definitions_id_fk",
           "tableFrom": "workflow_executions",
           "tableTo": "workflow_definitions",
-          "columnsFrom": [
-            "workflow_definition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workflow_definition_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3228,12 +3007,8 @@
           "name": "workflow_executions_workflow_version_id_workflow_versions_id_fk",
           "tableFrom": "workflow_executions",
           "tableTo": "workflow_versions",
-          "columnsFrom": [
-            "workflow_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workflow_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3241,12 +3016,8 @@
           "name": "workflow_executions_created_by_users_id_fk",
           "tableFrom": "workflow_executions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3258,27 +3029,21 @@
           "name": "workflow_executions_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "workflow_executions_insert_policy": {
           "name": "workflow_executions_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "workflow_executions_update_policy": {
           "name": "workflow_executions_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -3286,9 +3051,7 @@
           "name": "workflow_executions_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -3426,12 +3189,8 @@
           "name": "workflow_versions_workflow_definition_id_workflow_definitions_id_fk",
           "tableFrom": "workflow_versions",
           "tableTo": "workflow_definitions",
-          "columnsFrom": [
-            "workflow_definition_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workflow_definition_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3439,12 +3198,8 @@
           "name": "workflow_versions_created_by_users_id_fk",
           "tableFrom": "workflow_versions",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3456,27 +3211,21 @@
           "name": "workflow_versions_select_policy",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         },
         "workflow_versions_insert_policy": {
           "name": "workflow_versions_insert_policy",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "withCheck": "tenant_id = get_tenant_id()"
         },
         "workflow_versions_update_policy": {
           "name": "workflow_versions_update_policy",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()",
           "withCheck": "tenant_id = get_tenant_id()"
         },
@@ -3484,9 +3233,7 @@
           "name": "workflow_versions_delete_policy",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "authenticated"
-          ],
+          "to": ["authenticated"],
           "using": "tenant_id = get_tenant_id()"
         }
       },
@@ -3498,21 +3245,12 @@
     "public.api_key_status": {
       "name": "api_key_status",
       "schema": "public",
-      "values": [
-        "active",
-        "revoked",
-        "expired"
-      ]
+      "values": ["active", "revoked", "expired"]
     },
     "public.document_status": {
       "name": "document_status",
       "schema": "public",
-      "values": [
-        "uploaded",
-        "processing",
-        "ready",
-        "failed"
-      ]
+      "values": ["uploaded", "processing", "ready", "failed"]
     },
     "public.execution_status_enum": {
       "name": "execution_status_enum",
@@ -3529,20 +3267,12 @@
     "public.invitation_status": {
       "name": "invitation_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "accepted",
-        "expired",
-        "cancelled"
-      ]
+      "values": ["pending", "accepted", "expired", "cancelled"]
     },
     "public.knowledge_base_visibility": {
       "name": "knowledge_base_visibility",
       "schema": "public",
-      "values": [
-        "private",
-        "organization"
-      ]
+      "values": ["private", "organization"]
     },
     "public.llm_provider": {
       "name": "llm_provider",
@@ -3561,43 +3291,22 @@
     "public.mcp_server_status": {
       "name": "mcp_server_status",
       "schema": "public",
-      "values": [
-        "active",
-        "inactive",
-        "error"
-      ]
+      "values": ["active", "inactive", "error"]
     },
     "public.mcp_transport_type": {
       "name": "mcp_transport_type",
       "schema": "public",
-      "values": [
-        "stdio",
-        "sse",
-        "streamable_http"
-      ]
+      "values": ["stdio", "sse", "streamable_http"]
     },
     "public.org_role": {
       "name": "org_role",
       "schema": "public",
-      "values": [
-        "owner",
-        "admin",
-        "creator",
-        "operator",
-        "viewer"
-      ]
+      "values": ["owner", "admin", "creator", "operator", "viewer"]
     },
     "public.sandbox_session_status_enum": {
       "name": "sandbox_session_status_enum",
       "schema": "public",
-      "values": [
-        "creating",
-        "ready",
-        "busy",
-        "stopping",
-        "stopped",
-        "failed"
-      ]
+      "values": ["creating", "ready", "busy", "stopping", "stopped", "failed"]
     },
     "public.step_status_enum": {
       "name": "step_status_enum",
@@ -3616,20 +3325,12 @@
     "public.tool_source": {
       "name": "tool_source",
       "schema": "public",
-      "values": [
-        "mcp",
-        "builtin",
-        "custom"
-      ]
+      "values": ["mcp", "builtin", "custom"]
     },
     "public.workflow_status_enum": {
       "name": "workflow_status_enum",
       "schema": "public",
-      "values": [
-        "draft",
-        "published",
-        "archived"
-      ]
+      "values": ["draft", "published", "archived"]
     }
   },
   "schemas": {},

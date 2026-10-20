@@ -21,11 +21,15 @@ async function writeStderr(message) {
 }
 
 async function runSilentBuild() {
-  const build = spawn(PNPM_BIN, ['exec', 'nest', 'build', '--path', 'tsconfig.build.json'], {
-    cwd: projectRoot,
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const build = spawn(
+    PNPM_BIN,
+    ['exec', 'nest', 'build', '--path', 'tsconfig.build.json'],
+    {
+      cwd: projectRoot,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
 
   let stdout = '';
   let stderr = '';
@@ -43,7 +47,9 @@ async function runSilentBuild() {
   }
 
   const buildOutput = [stdout.trim(), stderr.trim()].filter(Boolean).join('\n');
-  throw new Error(buildOutput || `ACP stdio build failed with exit code ${String(exitCode)}`);
+  throw new Error(
+    buildOutput || `ACP stdio build failed with exit code ${String(exitCode)}`,
+  );
 }
 
 async function runCompiledEntry() {
@@ -80,7 +86,10 @@ try {
   await runSilentBuild();
   await runCompiledEntry();
 } catch (error) {
-  const message = error instanceof Error ? `${error.message}\n` : 'ACP stdio startup failed\n';
+  const message =
+    error instanceof Error
+      ? `${error.message}\n`
+      : 'ACP stdio startup failed\n';
   await writeStderr(message);
   process.exitCode = 1;
 }

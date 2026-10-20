@@ -62,7 +62,8 @@ import {
 /** 未结束 run 的建议轮询间隔（秒） */
 export const AGENT_API_RUN_POLL_INTERVAL_SECONDS = 2;
 
-const TERMINAL_RUN_STATUSES: readonly string[] = AGENT_API_TERMINAL_RUN_STATUSES;
+const TERMINAL_RUN_STATUSES: readonly string[] =
+  AGENT_API_TERMINAL_RUN_STATUSES;
 const PREFER_WAIT_VALUE_PATTERN = /^([1-9]|[1-5][0-9]|60)$/;
 const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
 
@@ -81,7 +82,10 @@ export function parsePreferWait(header: string | undefined): number | null {
       continue;
     }
 
-    const value = rest.join('=').trim().replace(/^"(.*)"$/, '$1');
+    const value = rest
+      .join('=')
+      .trim()
+      .replace(/^"(.*)"$/, '$1');
     if (!PREFER_WAIT_VALUE_PATTERN.test(value)) {
       throw new AgentApiValidationException(
         'Prefer',
@@ -205,7 +209,9 @@ export class AgentApiController {
   }
 
   @Get('conversations/:conversationId/messages')
-  @ApiOperation({ summary: '列出对话消息（仅 user/assistant，createdAt 正序）' })
+  @ApiOperation({
+    summary: '列出对话消息（仅 user/assistant，createdAt 正序）',
+  })
   @ApiResponse({
     status: 200,
     description: '分页消息',

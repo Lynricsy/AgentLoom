@@ -238,8 +238,7 @@ export class ResourceGovernanceService {
       });
     }
 
-    const { maxConcurrentExecutions, dailyExecutionLimit } =
-      runtimeState.quota;
+    const { maxConcurrentExecutions, dailyExecutionLimit } = runtimeState.quota;
 
     if (maxConcurrentExecutions === null && dailyExecutionLimit === null) {
       return null;

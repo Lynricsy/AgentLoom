@@ -151,12 +151,16 @@ function toRecord(value: unknown): JsonRecord {
 
 function readString(record: JsonRecord, key: string): string | undefined {
   const value = record[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+  return typeof value === 'string' && value.trim().length > 0
+    ? value
+    : undefined;
 }
 
 function readNumber(record: JsonRecord, key: string): number | undefined {
   const value = record[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function dedupeStrings(values: string[]): string[] {
@@ -187,7 +191,11 @@ function getLegacyNodeLabel(node: ReactFlowNode): string {
 
 function getLegacySystemPrompt(node: ReactFlowNode): string | null {
   const data = getLegacyNodeData(node);
-  return readString(data, 'systemPrompt') ?? readString(data, 'system_prompt') ?? null;
+  return (
+    readString(data, 'systemPrompt') ??
+    readString(data, 'system_prompt') ??
+    null
+  );
 }
 
 function hasMigrationMetadata(metadata: JsonRecord): boolean {
@@ -225,7 +233,9 @@ function resolveSandboxConfig(nodeData: JsonRecord): SandboxConfig {
   };
 }
 
-function buildSyntheticModelNode(llmAgentNode: ReactFlowNode): ReactFlowNode | null {
+function buildSyntheticModelNode(
+  llmAgentNode: ReactFlowNode,
+): ReactFlowNode | null {
   const data = getLegacyNodeData(llmAgentNode);
   const modelId =
     readString(data, 'modelId') ??
@@ -348,7 +358,9 @@ function analyzeWorkflowCandidates(
     const sandboxSourceNodeIds = dedupeStrings(
       sandboxEdges
         .map((edge) => edge.source)
-        .filter((sourceId) => nodesById.get(sourceId)?.type === SANDBOX_NODE_TYPE),
+        .filter(
+          (sourceId) => nodesById.get(sourceId)?.type === SANDBOX_NODE_TYPE,
+        ),
     );
 
     const primarySandboxNode = nodesById.get(sandboxSourceNodeIds[0] ?? '');
@@ -364,7 +376,9 @@ function analyzeWorkflowCandidates(
       sandboxSourceNodeIds,
       sandboxEdgeIds: sandboxEdges.map((edge) => edge.id),
       dependencyNodes,
-      dependencyNodeIds: dependencyNodes.map((dependencyNode) => dependencyNode.id),
+      dependencyNodeIds: dependencyNodes.map(
+        (dependencyNode) => dependencyNode.id,
+      ),
     });
   }
 
@@ -518,7 +532,10 @@ function applyWorkflowMigration(
   createdAgents: CreatedAgentMigration[],
 ): WorkflowTransformResult {
   const migratedAgentByNodeId = new Map(
-    createdAgents.map((createdAgent) => [createdAgent.workflowNodeId, createdAgent]),
+    createdAgents.map((createdAgent) => [
+      createdAgent.workflowNodeId,
+      createdAgent,
+    ]),
   );
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
@@ -586,7 +603,8 @@ function applyWorkflowMigration(
 
   return {
     nodes: nextNodes.filter(
-      (node) => !removableNodeIds.has(node.id) || referencedNodeIds.has(node.id),
+      (node) =>
+        !removableNodeIds.has(node.id) || referencedNodeIds.has(node.id),
     ),
     edges: nextEdges,
   };
@@ -626,7 +644,11 @@ async function createMigratedAgent(
     sanitizeSlugPart(`${workflow.slug}-${candidate.llmAgentNode.id}-agent`),
     255,
   );
-  const agentSlug = await ensureUniqueAgentSlug(tx, workflow.tenantId, baseSlug);
+  const agentSlug = await ensureUniqueAgentSlug(
+    tx,
+    workflow.tenantId,
+    baseSlug,
+  );
   const actorId = workflow.updatedBy;
   const systemPrompt = getLegacySystemPrompt(candidate.llmAgentNode);
   const sandboxConfig = resolveSandboxConfig(
@@ -750,7 +772,10 @@ async function run(): Promise<void> {
 
         const workflowNodes = cloneJson(workflow.nodes);
         const workflowEdges = cloneJson(workflow.edges);
-        const candidates = analyzeWorkflowCandidates(workflowNodes, workflowEdges);
+        const candidates = analyzeWorkflowCandidates(
+          workflowNodes,
+          workflowEdges,
+        );
 
         if (candidates.length === 0) {
           continue;
@@ -760,7 +785,11 @@ async function run(): Promise<void> {
 
         const createdAgents: CreatedAgentMigration[] = [];
         for (const candidate of candidates) {
-          const createdAgent = await createMigratedAgent(tx, workflow, candidate);
+          const createdAgent = await createMigratedAgent(
+            tx,
+            workflow,
+            candidate,
+          );
           createdAgents.push(createdAgent);
         }
 
@@ -783,7 +812,8 @@ async function run(): Promise<void> {
           ...(workflow.publishedVersionId
             ? {
                 originalPublishedVersionSnapshot: cloneJson(
-                  publishedVersionById.get(workflow.publishedVersionId)?.snapshot,
+                  publishedVersionById.get(workflow.publishedVersionId)
+                    ?.snapshot,
                 ),
               }
             : {}),
@@ -836,7 +866,9 @@ async function run(): Promise<void> {
       return stats;
     });
 
-    console.log(`Migrated ${stats.migratedAgents} agents from ${stats.workflowsMigrated} workflows`);
+    console.log(
+      `Migrated ${stats.migratedAgents} agents from ${stats.workflowsMigrated} workflows`,
+    );
     console.log(`Scanned ${stats.workflowsScanned} workflows`);
 
     if (stats.alreadyMigratedWorkflows > 0) {

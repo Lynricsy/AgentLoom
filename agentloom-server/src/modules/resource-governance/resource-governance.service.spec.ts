@@ -1145,9 +1145,9 @@ describe('ResourceGovernanceService', () => {
       expect(db.select).toHaveBeenCalledTimes(1);
       // 计数前先拿租户 advisory 锁，与调用方随后的插入串行化（D-212）
       expect(db.execute).toHaveBeenCalledTimes(1);
-      expect(
-        db.execute!.mock.invocationCallOrder[0],
-      ).toBeLessThan(db.select.mock.invocationCallOrder[0]);
+      expect(db.execute!.mock.invocationCallOrder[0]).toBeLessThan(
+        db.select.mock.invocationCallOrder[0],
+      );
     });
 
     it('blocks the UTC daily quota after concurrency passes', async () => {

@@ -588,7 +588,9 @@ describe('PluginMarketplaceController', () => {
       expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(
         TENANT_ID,
       );
-      expect(pluginEarningsService.getDashboardSummary).toHaveBeenCalledTimes(1);
+      expect(pluginEarningsService.getDashboardSummary).toHaveBeenCalledTimes(
+        1,
+      );
       expect(pluginEarningsService.getDashboardSummary).toHaveBeenCalledWith(
         expect.objectContaining({
           orgId: ORG_ID,

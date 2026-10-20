@@ -1056,7 +1056,10 @@ describe('PluginController', () => {
         valid: true,
         contentHash: CONTENT_HASH,
       });
-      const existing = createPluginResponse({ status: 'active', occVersion: 3 });
+      const existing = createPluginResponse({
+        status: 'active',
+        occVersion: 3,
+      });
       const published = createPluginResponse({
         status: 'active',
         version: '1.0.1',

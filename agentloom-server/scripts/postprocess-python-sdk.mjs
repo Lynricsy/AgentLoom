@@ -6,14 +6,20 @@ const markerStart = '<!-- AgentLoom Custom Usage Start -->';
 const markerEnd = '<!-- AgentLoom Custom Usage End -->';
 
 function upsertMarkedSection(content, nextSectionHeading, sectionContent) {
-  const markerPattern = new RegExp(`${markerStart}[\\s\\S]*?${markerEnd}\\n?`, 'g');
+  const markerPattern = new RegExp(
+    `${markerStart}[\\s\\S]*?${markerEnd}\\n?`,
+    'g',
+  );
 
   if (markerPattern.test(content)) {
     return content.replace(markerPattern, `${sectionContent}\n`);
   }
 
   if (content.includes(nextSectionHeading)) {
-    return content.replace(nextSectionHeading, `${sectionContent}\n${nextSectionHeading}`);
+    return content.replace(
+      nextSectionHeading,
+      `${sectionContent}\n${nextSectionHeading}`,
+    );
   }
 
   return `${content.trimEnd()}\n\n${sectionContent}`;
@@ -62,7 +68,11 @@ with agentloom_sdk.ApiClient(configuration) as api_client:
 The same \`Configuration\` object also exposes retry, proxy, SSL, and debug settings for production integrations.
 ${markerEnd}`;
 
-  const nextReadme = upsertMarkedSection(readme, '## Getting Started', customSection);
+  const nextReadme = upsertMarkedSection(
+    readme,
+    '## Getting Started',
+    customSection,
+  );
   if (nextReadme !== readme) {
     await fs.writeFile(sdkReadmePath, nextReadme, 'utf8');
   }

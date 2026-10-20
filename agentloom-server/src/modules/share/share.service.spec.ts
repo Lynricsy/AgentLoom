@@ -527,7 +527,10 @@ describe('ShareService', () => {
 
       const result = await service.getPublicShare(SHARE_TOKEN);
 
-      expect(result.author).toEqual({ displayName: 'Wine Fox', avatarUrl: null });
+      expect(result.author).toEqual({
+        displayName: 'Wine Fox',
+        avatarUrl: null,
+      });
       expect(JSON.stringify(result)).not.toContain('fox@ling.plus');
       const selection = db.select.mock.calls.at(-1)?.[0] as Record<
         string,

@@ -1442,7 +1442,10 @@ function deriveCompoundOutputPorts(nodes: ReactFlowNode[]): ReactFlowNode[] {
       ? node
       : {
           ...node,
-          data: { ...node.data, outputPorts: [...outputPorts, ...missingPorts] },
+          data: {
+            ...node.data,
+            outputPorts: [...outputPorts, ...missingPorts],
+          },
         };
   });
 }

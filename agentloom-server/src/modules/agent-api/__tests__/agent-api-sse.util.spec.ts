@@ -43,7 +43,10 @@ const COMPLETED: AgentApiStreamEntry = {
 };
 const LATE_DELTA: AgentApiStreamEntry = {
   id: '1727773281000-0',
-  event: { event: 'message.delta', data: { runId: RUN_ID, index: 1, delta: 'x' } },
+  event: {
+    event: 'message.delta',
+    data: { runId: RUN_ID, index: 1, delta: 'x' },
+  },
 };
 
 class FakeRawResponse extends EventEmitter {

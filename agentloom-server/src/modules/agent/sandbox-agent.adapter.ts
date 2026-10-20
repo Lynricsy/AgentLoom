@@ -159,7 +159,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     );
     const tenantId = params.tenantId ?? null;
     const hasSandbox =
-      tenantId !== null && this.sessionRuntime.hasSandboxBinding(sandboxBinding);
+      tenantId !== null &&
+      this.sessionRuntime.hasSandboxBinding(sandboxBinding);
     // 有 microVM 时，stdio MCP 绑定随会话下发给 guest 启动，不在服务端代调
     const guestMcp = hasSandbox
       ? await this.toolRegistry.resolveGuestMcpServers(

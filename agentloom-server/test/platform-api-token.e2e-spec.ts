@@ -786,9 +786,7 @@ describe('PlatformApiToken E2E', () => {
       expect(String(secondaryRes.headers['retry-after'] ?? '')).toMatch(
         /^\d+$/,
       );
-      expect(String(secondaryRes.headers['x-ratelimit-limit'] ?? '')).toBe(
-        '5',
-      );
+      expect(String(secondaryRes.headers['x-ratelimit-limit'] ?? '')).toBe('5');
     });
   });
 

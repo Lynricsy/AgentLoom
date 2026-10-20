@@ -105,7 +105,9 @@ function toRecord(value: unknown): JsonRecord {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
 }
 
 function parseCreatedAgents(value: unknown): CreatedAgentMigration[] {
@@ -196,7 +198,7 @@ function parseBackup(value: unknown): WorkflowMigrationBackup | null {
     originalUpdatedBy,
     ...(isRecord(value.originalPublishedVersionSnapshot) ||
     Array.isArray(value.originalPublishedVersionSnapshot)
-        ? {
+      ? {
           originalPublishedVersionSnapshot: cloneJson(
             value.originalPublishedVersionSnapshot as unknown as WorkflowVersionSnapshot,
           ),
@@ -252,7 +254,10 @@ async function run(): Promise<void> {
           })
           .where(eq(workflowDefinitions.id, workflow.id));
 
-        if (workflow.publishedVersionId && backup.originalPublishedVersionSnapshot) {
+        if (
+          workflow.publishedVersionId &&
+          backup.originalPublishedVersionSnapshot
+        ) {
           await tx
             .update(workflowVersions)
             .set({
@@ -279,7 +284,9 @@ async function run(): Promise<void> {
       return stats;
     });
 
-    console.log(`Rolled back ${stats.restoredAgents} agents from ${stats.workflowsRolledBack} workflows`);
+    console.log(
+      `Rolled back ${stats.restoredAgents} agents from ${stats.workflowsRolledBack} workflows`,
+    );
     console.log(`Scanned ${stats.workflowsScanned} workflows`);
 
     if (stats.workflowsRolledBack === 0) {

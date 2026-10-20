@@ -3777,10 +3777,31 @@ describe('AgentDefinitionService', () => {
           {
             engine: 'dsh',
             plugins: [
-              { nodeId: 'a', source: 'package', ref: RUNTIME_PLUGIN_RECORD_ID, enabled: true },
-              { nodeId: 'b', source: 'package', ref: RUNTIME_PLUGIN_RECORD_ID, enabled: true },
-              { nodeId: 'c', source: 'package', ref: 'skipped-disabled-node', enabled: false },
-              { nodeId: 'd', source: 'npm', ref: 'some-npm-plugin', version: '1.0.0', enabled: true },
+              {
+                nodeId: 'a',
+                source: 'package',
+                ref: RUNTIME_PLUGIN_RECORD_ID,
+                enabled: true,
+              },
+              {
+                nodeId: 'b',
+                source: 'package',
+                ref: RUNTIME_PLUGIN_RECORD_ID,
+                enabled: true,
+              },
+              {
+                nodeId: 'c',
+                source: 'package',
+                ref: 'skipped-disabled-node',
+                enabled: false,
+              },
+              {
+                nodeId: 'd',
+                source: 'npm',
+                ref: 'some-npm-plugin',
+                version: '1.0.0',
+                enabled: true,
+              },
             ],
           } as never,
           'tenant-1',

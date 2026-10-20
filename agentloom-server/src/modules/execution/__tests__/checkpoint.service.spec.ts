@@ -719,9 +719,9 @@ describe('CheckpointService', () => {
 
       await service.resumeExecution(TENANT_ID, EXECUTION_ID);
 
-      expect(db.update.mock.results[1].value.set.mock.calls[0][0]).toMatchObject(
-        { completedSteps: 2, totalSteps: 3 },
-      );
+      expect(
+        db.update.mock.results[1].value.set.mock.calls[0][0],
+      ).toMatchObject({ completedSteps: 2, totalSteps: 3 });
       expect(eventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
         EXECUTION_ID,

@@ -135,7 +135,9 @@ function runDto(overrides: Partial<AgentApiRun> = {}): AgentApiRun {
   };
 }
 
-const PUBLISHED_AGENT = [{ status: 'published', publishedVersionId: VERSION_ID }];
+const PUBLISHED_AGENT = [
+  { status: 'published', publishedVersionId: VERSION_ID },
+];
 const RUN_BODY = { input: { content: '我的订单还没发货' } };
 
 /**
@@ -303,7 +305,11 @@ describe('AgentApiService', () => {
         { status: 'archived', publishedVersionId: VERSION_ID },
         'agent-archived',
       ],
-      ['draft', { status: 'draft', publishedVersionId: null }, 'agent-not-published'],
+      [
+        'draft',
+        { status: 'draft', publishedVersionId: null },
+        'agent-not-published',
+      ],
       [
         'published 但没有发布版本',
         { status: 'published', publishedVersionId: null },
@@ -345,14 +351,14 @@ describe('AgentApiService', () => {
         metadata: { orderId: '1024' },
       });
 
-      expect(operations.find((op) => op.kind === 'insert')?.values).toMatchObject(
-        {
-          source: 'api',
-          createdBy: null,
-          apiKeyId: KEY_ID,
-          externalUserId: 'crm-user-77',
-        },
-      );
+      expect(
+        operations.find((op) => op.kind === 'insert')?.values,
+      ).toMatchObject({
+        source: 'api',
+        createdBy: null,
+        apiKeyId: KEY_ID,
+        externalUserId: 'crm-user-77',
+      });
       expect(conversation).toMatchObject({
         title: '订单 #1024 售后',
         status: 'active',
@@ -419,8 +425,13 @@ describe('AgentApiService', () => {
     });
 
     it('提交后先写 run.created 再派发；派发失败时把 run 标记 failed 并返回 503', async () => {
-      const { service, eventStream, executionService, runService, eventEmitter } =
-        createService(freshRunQueries());
+      const {
+        service,
+        eventStream,
+        executionService,
+        runService,
+        eventEmitter,
+      } = createService(freshRunQueries());
       executionService.dispatchExecution.mockRejectedValueOnce(
         new Error('queue down'),
       );
@@ -447,9 +458,7 @@ describe('AgentApiService', () => {
     });
 
     it('附件不符合对话附件规则时返回 422 validation-error', async () => {
-      const { service, conversationService } = createService(
-        freshRunQueries(),
-      );
+      const { service, conversationService } = createService(freshRunQueries());
       conversationService.insertUserMessage.mockRejectedValueOnce(
         new BadRequestException('图片附件必须提供 dataBase64'),
       );
@@ -644,7 +653,10 @@ describe('AgentApiService', () => {
   describe('waitForRun', () => {
     it('等待期内收到终态事件时返回终态 run', async () => {
       const { service, eventStream } = createService([]);
-      const completed = runDto({ status: 'completed', completedAt: NOW.toISOString() });
+      const completed = runDto({
+        status: 'completed',
+        completedAt: NOW.toISOString(),
+      });
       eventStream.subscribe.mockImplementationOnce(
         async (_runId, _afterId, onEntry, signal) => {
           onEntry({
@@ -794,9 +806,9 @@ describe('AgentApiService', () => {
 
   describe('endConversation', () => {
     it('已结束的对话重复调用直接返回，不再触发结束流程', async () => {
-      const { service, conversationService, executionService } = createService(
-        [[conversationRow({ status: 'ended' })]],
-      );
+      const { service, conversationService, executionService } = createService([
+        [conversationRow({ status: 'ended' })],
+      ]);
 
       await expect(
         service.endConversation(KEY, CONVERSATION_ID),

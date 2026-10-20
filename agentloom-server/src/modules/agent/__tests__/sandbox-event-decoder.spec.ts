@@ -115,7 +115,11 @@ describe('decodeSandboxServerSentEvent', () => {
       'Error: Remote tool callback failed with status 403 (https://agentloom.dev/errors/mcp/stdio-disabled): 当前部署禁止在服务端启动 stdio MCP 进程';
     const result = decode({
       type: 'tool_call_end',
-      data: { toolName: 'get-env', isError: true, result: `${callbackError}\n` },
+      data: {
+        toolName: 'get-env',
+        isError: true,
+        result: `${callbackError}\n`,
+      },
     });
     expect(result.events[0]).toHaveProperty('call.error', callbackError);
     expect(result.events[0]).toHaveProperty('call.status', 'failed');

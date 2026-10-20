@@ -444,7 +444,11 @@ describe('SandboxModelConfigService', () => {
       'runtime 插件未能加载:\n- com.acme.demo（条目 demo，模块 /run/x/dist/index.js）: 插件激活失败: boom';
     runtimeDriver.requestGuest.mockResolvedValue(
       new Response(
-        JSON.stringify({ statusCode: 422, error: 'Unprocessable Entity', message }),
+        JSON.stringify({
+          statusCode: 422,
+          error: 'Unprocessable Entity',
+          message,
+        }),
         { status: 422, headers: { 'Content-Type': 'application/json' } },
       ),
     );

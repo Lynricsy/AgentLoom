@@ -396,9 +396,9 @@ describe('CustomThrottlerGuard', () => {
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ResourceGovernanceDecisionBlockedException);
-    expect((error as ResourceGovernanceDecisionBlockedException).getStatus()).toBe(
-      429,
-    );
+    expect(
+      (error as ResourceGovernanceDecisionBlockedException).getStatus(),
+    ).toBe(429);
     expect(
       (error as ResourceGovernanceDecisionBlockedException).block.metadata,
     ).toMatchObject({

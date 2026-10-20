@@ -342,7 +342,9 @@ function createDeferred<T>() {
 
 /** 模拟 SDK Client.connect：initialize 成功后把协商出的协议版本写回 transport */
 function negotiateProtocolVersion(version: string) {
-  return async (transport: { setProtocolVersion?: (value: string) => void }) => {
+  return async (transport: {
+    setProtocolVersion?: (value: string) => void;
+  }) => {
     transport.setProtocolVersion?.(version);
   };
 }

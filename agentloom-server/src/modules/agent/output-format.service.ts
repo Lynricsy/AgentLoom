@@ -306,9 +306,9 @@ export class OutputFormatService {
   }
 
   /** 只在调用方传入 abortSignal 时才带上，未取消的调用参数保持不变 */
-  private buildCallSettings(
-    request: FormatRequest,
-  ): { abortSignal?: AbortSignal } {
+  private buildCallSettings(request: FormatRequest): {
+    abortSignal?: AbortSignal;
+  } {
     return request.abortSignal ? { abortSignal: request.abortSignal } : {};
   }
 

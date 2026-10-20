@@ -30,7 +30,11 @@ export class PluginAlreadyExistsException extends DomainException {
  * 新版本必须严格大于当前版本才会就地替换。
  */
 export class PluginVersionNotNewerException extends DomainException {
-  constructor(pluginId: string, currentVersion: string, uploadedVersion: string) {
+  constructor(
+    pluginId: string,
+    currentVersion: string,
+    uploadedVersion: string,
+  ) {
     super({
       type: problemType('plugin-already-exists'),
       title: '插件已存在',

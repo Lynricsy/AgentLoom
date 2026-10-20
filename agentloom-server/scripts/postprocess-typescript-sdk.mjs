@@ -64,7 +64,10 @@ function upsertMarkedSection(content, nextSectionHeading, sectionContent) {
   }
 
   if (content.includes(nextSectionHeading)) {
-    return content.replace(nextSectionHeading, `${sectionContent}\n${nextSectionHeading}`);
+    return content.replace(
+      nextSectionHeading,
+      `${sectionContent}\n${nextSectionHeading}`,
+    );
   }
 
   return `${content.trimEnd()}\n\n${sectionContent}`;
@@ -137,7 +140,9 @@ async function main() {
 
   await patchTypeScriptReadme();
 
-  console.log(`Post-processed TypeScript SDK union serializers: ${patchedFiles} file(s)`);
+  console.log(
+    `Post-processed TypeScript SDK union serializers: ${patchedFiles} file(s)`,
+  );
 }
 
 main().catch((error) => {

@@ -481,8 +481,8 @@ export class PluginEarningsService {
 
     return {
       totalRevenue: totalRevenue.toString(),
-      developerShare: this.calculateSettlementShares(totalRevenue)
-        .developerShare,
+      developerShare:
+        this.calculateSettlementShares(totalRevenue).developerShare,
       totalExecutions: Number(row?.totalExecutions ?? 0),
     };
   }

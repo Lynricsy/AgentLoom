@@ -18,10 +18,7 @@ export {
   WORKFLOW_EXPORT_VERSION,
   WorkflowExportSchema,
 } from './workflow-export.dto';
-export type {
-  PublishResult,
-  VersionResponseDto,
-} from './version-response.dto';
+export type { PublishResult, VersionResponseDto } from './version-response.dto';
 export { versionResponseSchema } from './version-response.dto';
 export type {
   WorkflowDefinitionResponseDto,

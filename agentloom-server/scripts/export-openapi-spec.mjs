@@ -21,7 +21,8 @@ function resolveCompiledModulePath(candidates, label) {
 function applyExportEnvDefaults() {
   process.env.APP_PORT ??= '3000';
   process.env.APP_NODE_ENV ??= 'development';
-  process.env.APP_DATABASE_URL ??= 'postgresql://postgres:postgres@127.0.0.1:5432/agentloom';
+  process.env.APP_DATABASE_URL ??=
+    'postgresql://postgres:postgres@127.0.0.1:5432/agentloom';
   process.env.APP_SUPABASE_URL ??= 'http://127.0.0.1:54321';
   process.env.APP_SUPABASE_ANON_KEY ??= 'agentloom-openapi-export-anon-key';
   process.env.APP_SUPABASE_SERVICE_KEY ??=
@@ -30,8 +31,7 @@ function applyExportEnvDefaults() {
   process.env.APP_REDIS_URL ??= 'redis://127.0.0.1:6379/0';
   process.env.APP_MASTER_ENCRYPTION_KEY ??=
     'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=';
-  process.env.APP_OAUTH_REDIRECT_URL ??=
-    'http://127.0.0.1:5173/auth/callback';
+  process.env.APP_OAUTH_REDIRECT_URL ??= 'http://127.0.0.1:5173/auth/callback';
   process.env.APP_FRONTEND_URL ??= 'http://127.0.0.1:5173';
 }
 

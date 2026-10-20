@@ -50,9 +50,7 @@ describe('WorkflowVersionController', () => {
         },
       }),
       rollback: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
-      publish: vi
-        .fn()
-        .mockResolvedValue({ data: MOCK_VERSION_DTO }),
+      publish: vi.fn().mockResolvedValue({ data: MOCK_VERSION_DTO }),
       archive: vi.fn().mockResolvedValue(undefined),
       getPublishedVersion: vi.fn().mockResolvedValue(MOCK_VERSION_DTO),
       getInputSchema: vi.fn().mockResolvedValue(MOCK_INPUT_SCHEMA),
