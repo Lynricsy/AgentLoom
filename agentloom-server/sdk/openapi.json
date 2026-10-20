@@ -3,14 +3,37 @@
   "paths": {
     "/api/v1/health": {
       "get": {
+        "description": "不检查 PostgreSQL 与 Redis，依赖中断时仍返回 200；只有 Redis 可用但队列 worker 持续 2 分钟以上无法取任务时返回 503，提示需要重启进程。",
         "operationId": "Health_check",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "服务健康状态"
+            "description": "进程存活"
+          },
+          "503": {
+            "description": "队列 worker 卡死，需要重启"
           }
         },
-        "summary": "健康检查",
+        "summary": "存活检查（liveness）",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "description": "PostgreSQL、Redis 与全部队列 worker 都可用时返回 200；任一不可用返回 503 problem+json，checks 字段给出各项状态。",
+        "operationId": "Health_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "可以接收请求与任务"
+          },
+          "503": {
+            "description": "依赖不可用"
+          }
+        },
+        "summary": "就绪检查（readiness）",
         "tags": [
           "Health"
         ]
@@ -3274,6 +3297,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "工作流不存在"
           }
         },
         "summary": "获取工作流执行历史",
@@ -3374,6 +3400,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "工作流不存在"
           }
         },
         "summary": "获取工作流执行历史",
@@ -3731,6 +3760,9 @@
         "responses": {
           "200": {
             "description": "PTY 会话列表"
+          },
+          "404": {
+            "description": "执行不存在"
           },
           "503": {
             "description": "沙箱不可用"
@@ -5276,6 +5308,9 @@
         "responses": {
           "200": {
             "description": "触发器列表"
+          },
+          "404": {
+            "description": "工作流不存在"
           }
         },
         "summary": "查询工作流触发器列表",
@@ -5603,6 +5638,9 @@
           },
           "403": {
             "description": "权限不足"
+          },
+          "404": {
+            "description": "工作流不存在"
           },
           "422": {
             "description": "分页参数无效"
@@ -9681,6 +9719,12 @@
         "responses": {
           "200": {
             "description": "Conversation sandbox stats"
+          },
+          "404": {
+            "description": "对话不存在"
+          },
+          "409": {
+            "description": "对话没有运行中的沙箱"
           }
         },
         "summary": "Get resource stats for a conversation sandbox",
@@ -9705,6 +9749,12 @@
         "responses": {
           "200": {
             "description": "Conversation sandbox processes"
+          },
+          "404": {
+            "description": "对话不存在"
+          },
+          "409": {
+            "description": "对话没有运行中的沙箱"
           }
         },
         "summary": "Get process list for a conversation sandbox",
@@ -12173,6 +12223,9 @@
         "responses": {
           "200": {
             "description": "生成应用运行台账列表"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
           }
         },
         "summary": "分页查询生成应用自动开发运行台账",
@@ -12413,6 +12466,9 @@
         "responses": {
           "200": {
             "description": "生成应用修复尝试列表"
+          },
+          "404": {
+            "description": "生成应用任务或运行台账不存在"
           }
         },
         "summary": "分页查询生成应用修复尝试台账",
@@ -12690,6 +12746,9 @@
         "responses": {
           "200": {
             "description": "生成应用门禁运行记录列表"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
           }
         },
         "summary": "分页查询生成应用门禁运行证据记录",
@@ -12798,6 +12857,9 @@
         "responses": {
           "200": {
             "description": "生成应用提交记录列表"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
           }
         },
         "summary": "分页查询生成应用公开提交记录",
@@ -12900,6 +12962,9 @@
         "responses": {
           "200": {
             "description": "提交记录批量删除结果"
+          },
+          "404": {
+            "description": "生成应用任务不存在"
           }
         },
         "summary": "批量软删除生成应用公开提交记录",
@@ -23786,7 +23851,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-20T15:09:20.252Z",
+                  "default": "2026-10-20T16:33:23.300Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

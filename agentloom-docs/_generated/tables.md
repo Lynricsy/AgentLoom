@@ -1585,7 +1585,7 @@
 | `id`（主键） | `uuid` | 是 | `uuid_generate_v7()` |
 | `organization_id` | `uuid` | 是 |  |
 | `tenant_id` | `uuid` | 是 |  |
-| `api_rate_limit_per_minute` | `integer` | 是 | `100` |
+| `api_rate_limit_per_minute` | `integer` | 是 | `600` |
 | `max_concurrent_executions` | `integer` |  |  |
 | `daily_execution_limit` | `integer` |  |  |
 | `daily_api_call_limit` | `integer` |  |  |
