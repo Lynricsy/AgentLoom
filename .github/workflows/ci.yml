@@ -25,3 +25,5 @@ jobs:
       - run: pnpm typecheck:all
       # 不含 server E2E（需要 Docker 与 Redis），E2E 仍在本地运行
       - run: pnpm test:all
+      # 文档站构建：Markdown 中未转义的 <占位符> 会被 Vue 当作标签，docs:check 发现不了，只有构建会失败
+      - run: pnpm --filter @agentloom/docs build

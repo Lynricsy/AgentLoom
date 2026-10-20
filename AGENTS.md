@@ -52,6 +52,7 @@ AgentLoom — 多智能体工作流编排平台：用户在可视化画布上把
 
 - `pnpm typecheck:all && pnpm test:all`（`test:all` 含 `pnpm docs:check`）。
 - 触碰 `agentloom-docs/dev/docs-maintenance.md`「变更 → 文档矩阵」中的来源文件：运行 `pnpm docs:gen` 并提交 `agentloom-docs/_generated/`，同时更新矩阵指向的页面。
+- 触碰 `agentloom-docs` 下的 Markdown：运行 `pnpm --filter @agentloom/docs build`（CI 同步执行；正文里的 `<占位符>` 必须放进代码格式，否则 Vue 编译失败）。
 - 新增用户可见功能必须补 `agentloom-docs/guide/` 页面。
 - `agentloom-server` 的 `pnpm lint` 带 `--fix`，会改写文件。
 - 不能遗留任何未通过的测试——未通过的测试视为本轮回归，必须查根因修复。
