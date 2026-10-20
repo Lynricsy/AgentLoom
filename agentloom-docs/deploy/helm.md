@@ -150,6 +150,22 @@ Ingress 有三条 `Prefix` 路径：`/api` 与 `/socket.io` 到 server Service�
 | `studio.autoscaling.*` | 同 server | |
 | `*.resources` / `nodeSelector` / `tolerations` / `affinity` | 空 | 原样写入 Pod |
 
+### Gate 5 browser-runner
+
+`templates/deployment-browser-runner.yaml` 渲染生成应用 Gate 5 的浏览器验收 runner，镜像是 server Dockerfile 的 `browser-runner` 构建目标。Pod 不挂 server-secret 全量，只按键引用 `APP_REDIS_URL`、`APP_MINIO_ACCESS_KEY`、`APP_MINIO_SECRET_KEY`，以及 server-config 里的对象存储地址。Pod 以 uid 1000 运行，根文件系统只读，去掉全部 capability；`/tmp` 与 `/dev/shm` 用 emptyDir 挂载，后者为内存型。
+
+| 键 | 默认 | 说明 |
+| --- | --- | --- |
+| `browserRunner.enabled` | `true` | 关闭后生成应用的 Gate 5 立即以 `gate-5-browser-runner-unavailable` 失败 |
+| `browserRunner.replicaCount` | `1` | |
+| `browserRunner.image.repository` / `tag` / `pullPolicy` | `agentloom/server` / `private-local-browser-runner` / `IfNotPresent` | 用 `docker build --target browser-runner` 构建 |
+| `browserRunner.baseUrl` | 空 | runner 打开的 Studio 公开页基址。留空时取 `http(s)://<ingress.host>`，Pod 内必须能解析该主机；`ingress.enabled: false` 时必填，否则渲染失败并报 `browserRunner.baseUrl must be set when ingress.enabled=false` |
+| `browserRunner.concurrency` | `"1"` | 写入 `APP_GENERATED_APP_BROWSER_CONCURRENCY`；每个任务一个 Chromium，约 1GB 内存 |
+| `browserRunner.shmSizeLimit` / `tmpSizeLimit` | `1Gi` / `1Gi` | `/dev/shm` 与 `/tmp` 的容量上限 |
+| `browserRunner.resources` | limits `cpu: "2"`、`memory: 2Gi` | |
+
+worker 投递验收任务时使用的时限取自 `env.shared.APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS`（默认 `"180000"`）和 `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS`（默认 `"900000"`），两者都经 server-config 下发。
+
 ### Firecracker runtime
 
 | 键 | 默认 | 说明 |

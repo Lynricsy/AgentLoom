@@ -266,12 +266,15 @@ export type GeneratedAppGateRunnerV2<TPlan = unknown> = (
 
 // ─── 6. Gate 5 浏览器执行器 ─────────────────────────────────────
 
+/**
+ * browser-runner 进程中的执行器（`PlaywrightBrowserAcceptanceExecutor`）：Playwright 执行 job 并返回结果，
+ * 浏览器启动失败、总超时、证据上传失败写进 runnerError，不抛异常。
+ *
+ * worker 侧不实现本接口：任务里的验收令牌要由 worker 签发，`GeneratedAppBrowserAcceptanceDispatcher`
+ * 负责「确认有在线 runner → 签发令牌 → 投递（jobId `gate5-<runId>`）→ 等待返回值（总超时 + 30s）
+ * → 撤销令牌」，并把 runner 不可用 / 超时 / 处理失败区分为不同结局交给 Gate 5。
+ */
 export interface GeneratedAppBrowserAcceptanceExecutor {
-  /**
-   * worker 侧实现：签发验收令牌 → 投递队列任务 → 等待返回值（总超时 + 30s）→ 撤销令牌。
-   * 队列没有在线 runner 时立即返回 runnerError=null 的 unavailable 失败（见 ADR 失败码表）。
-   * runner 侧实现：Playwright 执行 job 并返回结果。
-   */
   execute(
     job: GeneratedAppBrowserAcceptanceJob,
   ): Promise<GeneratedAppBrowserAcceptanceResult>;

@@ -85,6 +85,19 @@ server 用 `APP_TRUST_PROXY_HOPS` 判断请求的来源 IP：它是 server 前�
 
 提高之前按两点估算：每个进行中的对话在进程内持有一个 Agent 会话，进程内存限额（Compose 默认 2G）要容纳得下；所有对话共用模型供应商的并发与速率配额。
 
+### Gate 5 浏览器验收
+
+生成应用的 Gate 5 由独立服务 `generated-app-browser-runner` 执行。四个变量的读取方不同：
+
+| 变量 | 读取方 | 默认 | 作用 |
+| --- | --- | --- | --- |
+| `APP_GENERATED_APP_BROWSER_BASE_URL` | browser-runner（必填） | Compose `http://reverse-proxy`；Helm 取 `http(s)://<ingress.host>` | runner 打开 `<基址>/generated-apps/public/<验收令牌>`，也就是终端用户使用的 Studio 公开页。该地址必须让 Studio 与 `/api/v1` 同源 |
+| `APP_GENERATED_APP_BROWSER_CONCURRENCY` | browser-runner | `1` | 每个 runner 进程同时执行的验收任务数。每个任务启动一个 Chromium，约占 1GB 内存，调大前要同步调大容器内存限额（Compose 默认 2G） |
+| `APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS` | worker | `180000` | 单个场景 × 视口的时限，包含被绑定工作流或 Agent 的执行时间 |
+| `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS` | worker | `900000` | 一次验收任务的总时限。worker 最多等待该值再加 30 秒，验收令牌在该值再加 60 秒后过期 |
+
+runner 只读取 Redis、对象存储和上面两个 runner 变量，不需要也不应配置数据库连接串、`APP_JWT_SECRET` 或 `APP_MASTER_ENCRYPTION_KEY`。runner 未运行或连的不是同一个 Redis 时，生成应用的 Gate 5 会立即失败，失败码为 `gate-5-browser-runner-unavailable`。
+
 ### Studio 运行时变量
 
 Studio 镜像（`agentloom-deploy/docker/studio.Dockerfile`）构建时把四个 Vite 变量设为占位符，容器启动时由 `/docker-entrypoint.d/40-runtime-env.sh` 在 `/usr/share/nginx/html` 下所有 `.html`、`.js`、`.css` 文件中替换：

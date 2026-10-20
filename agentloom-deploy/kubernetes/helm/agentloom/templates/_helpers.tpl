@@ -39,6 +39,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-studio" (include "agentloom.fullname" .) -}}
 {{- end -}}
 
+{{- define "agentloom.browserRunnerFullname" -}}
+{{- printf "%s-browser-runner" (include "agentloom.fullname" .) -}}
+{{- end -}}
+
 {{- define "agentloom.firecrackerRuntimeFullname" -}}
 {{- printf "%s-firecracker-runtime" (include "agentloom.fullname" .) -}}
 {{- end -}}
@@ -69,6 +73,21 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "agentloom.studioImage" -}}
 {{- printf "%s:%s" .Values.studio.image.repository .Values.studio.image.tag -}}
+{{- end -}}
+
+{{- define "agentloom.browserRunnerImage" -}}
+{{- printf "%s:%s" .Values.browserRunner.image.repository .Values.browserRunner.image.tag -}}
+{{- end -}}
+
+{{/* browser-runner 打开的 Studio 公开页基址：显式值优先；否则取 Ingress 主机（Studio 与 /api 同源） */}}
+{{- define "agentloom.browserRunnerBaseUrl" -}}
+{{- if .Values.browserRunner.baseUrl -}}
+{{- .Values.browserRunner.baseUrl -}}
+{{- else if .Values.ingress.enabled -}}
+{{- printf "%s://%s" (ternary "https" "http" .Values.ingress.tls.enabled) .Values.ingress.host -}}
+{{- else -}}
+{{- fail "browserRunner.baseUrl must be set when ingress.enabled=false" -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "agentloom.runtimeCommand" -}}

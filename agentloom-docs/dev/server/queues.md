@@ -19,6 +19,7 @@ docType: reference
 | `workflow-execution` | 1 | — | 1000 / 5000 | `execution/execution.constants.ts`（`EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS`） | `jobId` 为 executionId |
 | `agent-task` | 4 | exponential 2000ms | 1000 / 5000 | `execution/execution.constants.ts`（`AGENT_TASK_QUEUE_DEFAULT_JOB_OPTIONS`） | 介入超时任务 attempts 1 + delay（`execution/node-scheduler.service.ts`）；FALLBACK_CHAIN 子 Agent 与回退重排 attempts 1（`execution/node-executors/sub-agent-node.executor.ts`、`execution/agent-task.worker.ts`） |
 | `agent-conversation-execution` | 1 | — | 1000 / 5000 | `agent-execution/agent-execution.service.ts`（`AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS`） | `jobId` 为 conversationId |
+| `generated-app-browser-acceptance` | 1 | — | `{age:3600,count:200}` / `{age:86400,count:200}` | `generated-app/generated-app-browser-acceptance.dispatcher.ts`（入队时内联） | `jobId` 为 `gate5-<generationRunId>`；同一运行重跑 Gate 5 前先删除已结束的旧任务，旧任务未结束时不重复投递。只有独立的 browser-runner 进程消费，见下文「Gate 5 browser-runner」 |
 | `audit-log-retention` | 1 | — | `{count:10}` / `{count:50}` | `evidence/audit-log-retention.constants.ts` | — |
 | `evidence-export` | 3 | — | `{count:20}` / `{count:50}` | `evidence/evidence-export.constants.ts` | `jobId` 为 `evidence-export-<id>`，事务提交后入队（`evidence/evidence-export.service.ts`） |
 | `evidence-export-cleanup` | 1 | — | `{count:10}` / `{count:50}` | `evidence/evidence-export.constants.ts` | — |
@@ -50,6 +51,19 @@ docType: reference
 `agentloom-server/src/main.ts` 调用 `app.enableShutdownHooks()`，进程收到 SIGTERM / SIGINT 时按 Nest 生命周期钩子关闭。根模块的 `QueueWorkerShutdownService`（`agentloom-server/src/common/services/queue-worker-shutdown.service.ts`）在 `onModuleDestroy` 中对全部 `WorkerHost` 调用 `worker.close()`：停止拉取新任务，等进行中的任务结束后才返回。Nest 按模块距离由近到远调用 `onModuleDestroy`，根模块最先、全局模块（数据库连接池、Redis）最后，任务结束前依赖仍可用；BullModule 自带的关闭在 `onApplicationShutdown`，晚于连接池关闭，不能依赖它。
 
 `agent-conversation-execution` 的 worker 收到 `closing` 事件后进入排空：正在执行的轮次照常跑完并落库，空闲等待的 loop 被唤醒后直接退出，不再取新消息；loop 退出后到达的消息由 `onCompleted` 补发派发，交给其他进程。部署的停止宽限期（Compose `stop_grace_period`、Helm `terminationGracePeriodSeconds`，均为 60 秒）内仍未结束的任务随进程被强杀，由 BullMQ 的 stalled 检查转交其他进程从头重跑。
+
+## Gate 5 browser-runner
+
+`generated-app-browser-acceptance` 队列的消费者不在 server/worker 中，而是独立进程 `agentloom-server/src/generated-app-browser-runner.main.ts`（镜像为 server Dockerfile 的 `browser-runner` 构建目标，Compose 服务 `generated-app-browser-runner`，Helm `browserRunner`）。它用 `NestFactory.createApplicationContext` 只装配配置（`browserRunnerEnvSchema`：Redis、MinIO、`APP_GENERATED_APP_BROWSER_*`）、BullMQ、对象存储与 `GeneratedAppBrowserAcceptanceProcessor`，不连数据库，进程关闭同样经 `QueueWorkerShutdownService`。
+
+worker 侧由 `GeneratedAppBrowserAcceptanceDispatcher` 投递：
+
+1. `queue.getWorkers()` 为空时不投递，Gate 5 立即以 `gate-5-browser-runner-unavailable` 失败。
+2. 签发验收令牌（TTL = `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS` + 60 秒，库中只存 sha256）。
+3. 投递任务后用 `job.waitUntilFinished` 等待返回值，最长为总时限 + 30 秒；超时，或生成运行到达截止时间（`maxRuntimeSeconds`），Gate 5 以 `gate-5-browser-runner-timeout` 失败，等待中的任务会被删除。
+4. 无论结果如何都撤销令牌。
+
+任务与返回值在两端都按 `generated-app/types/browser-acceptance-job.schema.ts` 解析。runner 按 `APP_GENERATED_APP_BROWSER_CONCURRENCY`（默认 1）设置 worker 并发。每个场景 × 视口新建一个 BrowserContext，只放行入口同源的请求，打开 `${APP_GENERATED_APP_BROWSER_BASE_URL}/generated-apps/public/<令牌>` 后按 AppSpec 步骤操作。每个组合各留一张整页截图（`screenshot.png`）和一个 trace（`trace.zip`），上传到 `tenants/<tenantId>/generated-apps/<appId>/runs/<runId>/gate-5/<scenarioId>/<desktop|mobile>/`。console error 与失败请求路径在 runner 内脱敏：令牌替换为 `<acceptance-token>`，宿主路径替换为 `<path>`。
 
 ## 周期任务
 

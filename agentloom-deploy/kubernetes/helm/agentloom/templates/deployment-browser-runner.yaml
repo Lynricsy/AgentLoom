@@ -1,0 +1,116 @@
+{{- if .Values.browserRunner.enabled }}
+# Gate 5 浏览器验收 runner（ADR-0007 §6）：只消费 generated-app-browser-acceptance 队列，用 Chromium
+# 打开 Studio 公开页执行验收场景，截图与 trace 写入对象存储。不连数据库，只从 server-secret 取
+# Redis 与对象存储凭据；Chromium 不开沙箱，隔离靠非 root、只读根文件系统与去掉全部 capability。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentloom.browserRunnerFullname" . }}
+  labels:
+    {{- include "agentloom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-runner
+spec:
+  replicas: {{ .Values.browserRunner.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "agentloom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: browser-runner
+  template:
+    metadata:
+      labels:
+        {{- include "agentloom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: browser-runner
+    spec:
+      # SIGTERM 后停止拉取任务并等进行中的验收结束；超时被强杀的任务经 stalled 检查重投
+      terminationGracePeriodSeconds: 60
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: browser-runner
+          image: {{ include "agentloom.browserRunnerImage" . | quote }}
+          imagePullPolicy: {{ .Values.browserRunner.image.pullPolicy }}
+          command:
+            - node
+            - dist/src/generated-app-browser-runner.main.js
+          env:
+            - name: APP_NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-config
+                  key: APP_NODE_ENV
+            - name: APP_MINIO_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-config
+                  key: APP_MINIO_ENDPOINT
+            - name: APP_MINIO_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-config
+                  key: APP_MINIO_PORT
+            - name: APP_MINIO_USE_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-config
+                  key: APP_MINIO_USE_SSL
+            - name: APP_MINIO_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-config
+                  key: APP_MINIO_BUCKET
+            - name: APP_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-secret
+                  key: APP_REDIS_URL
+            - name: APP_MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-secret
+                  key: APP_MINIO_ACCESS_KEY
+            - name: APP_MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentloom.fullname" . }}-server-secret
+                  key: APP_MINIO_SECRET_KEY
+            - name: APP_GENERATED_APP_BROWSER_BASE_URL
+              value: {{ include "agentloom.browserRunnerBaseUrl" . | quote }}
+            - name: APP_GENERATED_APP_BROWSER_CONCURRENCY
+              value: {{ .Values.browserRunner.concurrency | quote }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: dshm
+              mountPath: /dev/shm
+          resources:
+            {{- toYaml .Values.browserRunner.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.browserRunner.tmpSizeLimit }}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.browserRunner.shmSizeLimit }}
+      nodeSelector:
+        {{- toYaml .Values.browserRunner.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.browserRunner.tolerations | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.browserRunner.affinity | nindent 8 }}
+{{- end }}

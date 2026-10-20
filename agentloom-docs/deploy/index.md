@@ -19,6 +19,7 @@ docType: explanation
 | `docs` | `agentloom/docs:private-local` | 本文档站，容器内 nginx 监听 8081，路径前缀 `/documentation/` | 常驻 |
 | `server` | `agentloom/server:private-local` | NestJS API 与 Socket.IO，监听 3000 | 常驻 |
 | `worker` | 同 server 镜像 | 与 server 同一入口 `node dist/src/main.js`，不接入 `agentloom-frontend`，入口不会把请求转给它 | 常驻 |
+| `generated-app-browser-runner` | server 镜像的 `browser-runner` 构建目标（`BROWSER_RUNNER_IMAGE`，默认 `agentloom/server:private-local-browser-runner`） | 生成应用 Gate 5 浏览器验收：消费 `generated-app-browser-acceptance` 队列，用 Chromium 打开 `http://reverse-proxy` 上的 Studio 公开页执行验收场景，截图与 trace 写入 MinIO；不连数据库，只读根文件系统、去掉全部 capability、`shm_size: 1gb`，限额 2 CPU / 2GiB。停掉它时生成应用的 Gate 5 立即失败（`gate-5-browser-runner-unavailable`） | 常驻 |
 | `firecracker-runtime` | `agentloom/firecracker-runtime:1.16.1` | 沙箱 microVM 的 runtime manager，特权容器，mTLS 监听 8443，见 [Firecracker 沙箱](/deploy/firecracker) | profile `sandbox`（`.env.template` 默认启用） |
 | `postgres` | `postgres:16-alpine` | 业务数据库；自托管 Supabase 也用这个库 | 常驻 |
 | `redis` | `redis:7-alpine` | BullMQ 队列与缓存，开启 AOF | 常驻 |
@@ -57,6 +58,9 @@ flowchart LR
   S --> RP[reverse-proxy]
   ST[studio] --> RP
   DC[docs] --> RP
+  RD --> BR[generated-app-browser-runner]
+  MN --> BR
+  RP --> BR
   MN --> CB[createbuckets]
 ```
 
@@ -68,8 +72,8 @@ Compose 声明了 5 个网络。主栈 4 个网络名带前缀 `AGENTLOOM_NETWOR
 
 | 网络键 | Docker 网络名 | internal | 成员 |
 | --- | --- | --- | --- |
-| `frontend_net` | `<前缀>-frontend`（默认 `agentloom-frontend`） | 否 | reverse-proxy、studio、docs、server、minio（reverse-proxy 经 `/agentloom-documents/` 转发预签名下载） |
-| `app_net` | `<前缀>-app`（默认 `agentloom-app`） | 是 | server、worker、firecracker-runtime、postgres、redis、minio、qdrant、createbuckets、server-migrator、sandbox-cutover |
+| `frontend_net` | `<前缀>-frontend`（默认 `agentloom-frontend`） | 否 | reverse-proxy、studio、docs、server、minio（reverse-proxy 经 `/agentloom-documents/` 转发预签名下载）、generated-app-browser-runner（经 reverse-proxy 访问 Studio 公开页与公开 API） |
+| `app_net` | `<前缀>-app`（默认 `agentloom-app`） | 是 | server、worker、generated-app-browser-runner、firecracker-runtime、postgres、redis、minio、qdrant、createbuckets、server-migrator、sandbox-cutover |
 | `data_net` | `<前缀>-data`（默认 `agentloom-data`） | 是 | postgres、server-migrator |
 | `sandbox_egress_net` | `<前缀>-sandbox-egress`（默认 `agentloom-sandbox-egress`） | 否 | firecracker-runtime（guest 出站） |
 | `supabase_net` | `${SUPABASE_NETWORK:-supabase-shared}`，external | 由 `docker network create` 决定 | reverse-proxy、server、worker、postgres、server-migrator、sandbox-cutover，以及 Supabase 栈的三个服务 |
@@ -89,6 +93,7 @@ flowchart TB
     RD[redis]
     MN[minio]
     QD[qdrant]
+    BR[generated-app-browser-runner]
   end
   subgraph shared["supabase-shared（external）"]
     KG[supabase-kong]
@@ -109,6 +114,9 @@ flowchart TB
   S --> FC
   W --> PG
   W --> FC
+  BR --> RD
+  BR --> MN
+  BR --> RP
   FC --> EG[agentloom-sandbox-egress → 外网]
 ```
 
@@ -137,7 +145,8 @@ server 同时在 `agentloom-frontend`、`agentloom-app` 与 `supabase-shared` �
 | 文档站 | `docs` 服务 | 不部署 |
 | Supabase | `docker-compose.supabase.yml` | 不部署，`env.server.APP_SUPABASE_*` 指向外部实例 |
 | 沙箱运行时节点 | 每台宿主一个 `firecracker-runtime` 容器 | StatefulSet，`firecrackerRuntime.replicas` 可大于 1 |
-| 横向扩容 | 不支持 | server / worker / studio 可开 HPA |
+| 横向扩容 | 不支持 | server / worker / studio 可开 HPA；`browserRunner.replicaCount` 可调 |
+| Gate 5 browser-runner | `generated-app-browser-runner` 服务，入口基址 `http://reverse-proxy` | `browserRunner` Deployment，入口基址默认 `http(s)://<ingress.host>`（Pod 内须能解析），关闭 Ingress 时必须设 `browserRunner.baseUrl` |
 | 备份 | `agentloom-deploy/scripts/` 与 `agentloom-deploy/systemd/` | Chart 不包含 |
 
 单台服务器、需要文档站与内置认证时用 Compose；已有 Kubernetes 集群、需要多副本 server 或多个沙箱节点时用 Helm，见 [Helm 部署](/deploy/helm)。

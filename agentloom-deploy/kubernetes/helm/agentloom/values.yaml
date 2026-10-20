@@ -42,6 +42,9 @@ env:
     APP_MCP_STDIO_ENABLED: "false"
     # 每个 server/worker Pod 同时执行的 Agent 对话数，总并发按副本数累加；同一对话始终串行。
     APP_AGENT_CONVERSATION_CONCURRENCY: "10"
+    # Gate 5 浏览器验收：worker 写进验收任务的单场景时限与总时限（毫秒）
+    APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS: "180000"
+    APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS: "900000"
     # TypeSafe Jev 决策影子模式：设置 API Key 后启用（Key 经 server-secret 下发）
     APP_TYPESAFE_API_KEY: ""
     APP_TYPESAFE_BASE_URL: https://api.typesafe.ai
@@ -96,6 +99,31 @@ worker:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Gate 5 浏览器验收 runner（ADR-0007 §6）：server 镜像的 browser-runner 构建目标，只消费
+# generated-app-browser-acceptance 队列。Pod 只拿 Redis 与对象存储凭据，不挂 server-secret 全量。
+# 关闭后生成应用的 Gate 5 立即以 gate-5-browser-runner-unavailable 失败。
+browserRunner:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: agentloom/server
+    tag: private-local-browser-runner
+    pullPolicy: IfNotPresent
+  # runner 打开的 Studio 公开页基址；留空时取 http(s)://<ingress.host>（Pod 内须能解析该主机）
+  baseUrl: ""
+  # 每个 Pod 同时执行的验收任务数；每个任务一个 Chromium，约 1GB 内存
+  concurrency: "1"
+  # Chromium 共享内存（/dev/shm，内存型 emptyDir）
+  shmSizeLimit: 1Gi
+  tmpSizeLimit: 1Gi
+  resources:
+    limits:
+      cpu: "2"
+      memory: 2Gi
   nodeSelector: {}
   tolerations: []
   affinity: {}

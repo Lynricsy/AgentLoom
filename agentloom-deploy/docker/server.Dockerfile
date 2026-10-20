@@ -84,3 +84,27 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["node", "-e", "require('http').get('http://127.0.0.1:3000/api/v1/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
 
 CMD ["node", "dist/src/main.js"]
+
+# ── Stage 4: browser-runner（Gate 5 浏览器验收，ADR-0007 §6） ─────
+# 与 production 同一套依赖与构建产物，只多一层 Chromium（headless shell）及其系统库，
+# 入口换成只消费 generated-app-browser-acceptance 队列的 runner。production 目标不含 /ms-playwright。
+FROM production AS browser-runner
+
+USER root
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# 只读根文件系统下 Chromium 的配置与缓存目录落到 tmpfs /tmp
+ENV XDG_CONFIG_HOME=/tmp/.chromium-config
+ENV XDG_CACHE_HOME=/tmp/.chromium-cache
+
+# 版本由 lockfile 中的 playwright 决定，浏览器修订号与之匹配；--with-deps 安装 Chromium 所需系统库
+RUN node /app/node_modules/playwright/cli.js install --with-deps --only-shell chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+rX /ms-playwright
+
+USER node
+
+# runner 不监听 HTTP 端口，不继承 production 的健康检查
+HEALTHCHECK NONE
+
+CMD ["node", "dist/src/generated-app-browser-runner.main.js"]

@@ -168,6 +168,12 @@ docker compose up -d --build
 
 主栈与 Supabase 栈是两个 project，输出中没有 orphan 警告。
 
+`docker compose up -d --build` 还会构建 server Dockerfile 的 `browser-runner` 目标（镜像 `BROWSER_RUNNER_IMAGE`，默认 `agentloom/server:private-local-browser-runner`），并启动生成应用 Gate 5 的 `generated-app-browser-runner` 服务。该目标比 server 镜像多出约 600MB，是 Chromium headless shell 及其系统库。这个服务没有 HTTP 端口，也没有健康检查，`docker compose ps` 中显示为 `Up`。日志出现 `browser-runner 已启动，消费队列 generated-app-browser-acceptance` 即为就绪：
+
+```bash
+docker compose logs generated-app-browser-runner | grep 'browser-runner 已启动'
+```
+
 ## 7. 验证
 
 ```bash
@@ -254,6 +260,8 @@ docker compose up -d --build
 `db:seed` 按唯一键覆盖平台内置数据：内置 LLM Provider、工作流模板与内置技能只写系统租户下的行；路由基准会为各组织已有的智能路由模型重写同一批种子基准行。迁移只改表结构，不会更新这些内置数据；升级时跳过 `db:seed`，模板页会一直显示旧版本模板的定义与封面。
 
 重建或 `docker compose restart` server、worker 时，容器收到 SIGTERM 后停止从队列取新任务，等进行中的任务（Agent 对话的当前一轮、工作流执行等）结束再退出，日志中依次出现「正在关闭 N 个队列 worker」「队列 worker 已全部关闭」「进程已完成关闭（SIGTERM）」。`stop_grace_period` 为 60 秒，超过仍未结束的任务随容器被强杀，约 30–60 秒后由另一个进程从头重跑；对外 API 的 run 此时会在事件流中收到 `run.restarted`，见 [Agent 对外 API](/api/agent-api#4-断线后续读事件流)。Helm 的 `terminationGracePeriodSeconds` 同为 60 秒。
+
+`generated-app-browser-runner` 同样在 SIGTERM 后先跑完进行中的验收再退出。从没有这个服务的版本升级时，`.env` 不需要新增变量：`BROWSER_RUNNER_IMAGE` 与 `APP_GENERATED_APP_BROWSER_*` 都有 Compose 默认值，`up -d --build` 会构建并启动它。
 
 ### 从 `COMPOSE_PROJECT_NAME` 与无 profile 的旧版本升级
 

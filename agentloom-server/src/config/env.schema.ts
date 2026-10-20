@@ -190,6 +190,27 @@ const baseEnvSchema = z.object({
     optionalNonEmptyStringFromEnv('Firebase 服务账号不能为空'),
 
   /**
+   * Gate 5 浏览器验收（ADR-0007 §6）。BASE_URL 只由 browser-runner 读取：runner 打开
+   * `${BASE_URL}/generated-apps/public/<验收令牌>`，即终端用户使用的 Studio 公开页（Compose
+   * 默认 `http://reverse-proxy`）。CONCURRENCY 是每个 runner 进程同时执行的验收任务数；
+   * 两个超时由 worker 写进任务，runner 按任务里的值执行。
+   */
+  APP_GENERATED_APP_BROWSER_BASE_URL:
+    optionalUrlFromEnv('无效的浏览器验收入口基址 URL'),
+  APP_GENERATED_APP_BROWSER_CONCURRENCY: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(1),
+  ),
+  APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(180_000),
+  ),
+  APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(900_000),
+  ),
+
+  /**
    * 生成应用门禁。名称不带 `APP_` 前缀：Gate 5 的 `requiredEnvironment` 证据
    * 字面量 `GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e` 已是持久化契约。
    */
@@ -242,5 +263,30 @@ export const envSchema = baseEnvSchema.superRefine((env, ctx) => {
     }
   }
 });
+
+/**
+ * browser-runner 进程的配置：只含 Redis、对象存储与浏览器验收变量，不要求数据库、JWT、
+ * 加密密钥等凭据——runner 渲染生成内容，不应持有它们。入口基址在 runner 中必填。
+ */
+export const browserRunnerEnvSchema = baseEnvSchema
+  .pick({
+    APP_NODE_ENV: true,
+    APP_REDIS_URL: true,
+    APP_MINIO_ENDPOINT: true,
+    APP_MINIO_PORT: true,
+    APP_MINIO_ACCESS_KEY: true,
+    APP_MINIO_SECRET_KEY: true,
+    APP_MINIO_USE_SSL: true,
+    APP_MINIO_BUCKET: true,
+    APP_MINIO_PUBLIC_URL: true,
+    APP_GENERATED_APP_BROWSER_CONCURRENCY: true,
+  })
+  .extend({
+    APP_GENERATED_APP_BROWSER_BASE_URL: z
+      .string({ error: 'APP_GENERATED_APP_BROWSER_BASE_URL 不能为空' })
+      .url('无效的浏览器验收入口基址 URL'),
+  });
+
+export type BrowserRunnerEnvConfig = z.infer<typeof browserRunnerEnvSchema>;
 
 export type EnvConfig = z.infer<typeof envSchema>;

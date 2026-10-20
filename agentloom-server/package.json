@@ -84,6 +84,7 @@
     "minio": "^8.0.7",
     "nestjs-zod": "^5.1.1",
     "pdf-parse": "^2.4.5",
+    "playwright": "1.64.1",
     "postgres": "^3.4.8",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

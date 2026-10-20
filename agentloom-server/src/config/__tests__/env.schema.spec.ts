@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { envSchema } from '../env.schema';
+import { browserRunnerEnvSchema, envSchema } from '../env.schema';
 
 const SERVER_SRC = resolve(__dirname, '../..');
 
@@ -243,6 +243,60 @@ describe('envSchema', () => {
         ).success,
       ).toBe(false);
     }
+  });
+
+  it('Gate 5 浏览器验收变量有默认值，超时与并发只接受正整数', () => {
+    expect(envSchema.parse(createBaseEnv())).toMatchObject({
+      APP_GENERATED_APP_BROWSER_CONCURRENCY: 1,
+      APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS: 180_000,
+      APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS: 900_000,
+    });
+    expect(
+      envSchema.parse(createBaseEnv()).APP_GENERATED_APP_BROWSER_BASE_URL,
+    ).toBeUndefined();
+    for (const key of [
+      'APP_GENERATED_APP_BROWSER_CONCURRENCY',
+      'APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS',
+      'APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS',
+    ]) {
+      expect(envSchema.safeParse(createBaseEnv({ [key]: '0' })).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('browser-runner 只需要 Redis、对象存储与入口基址，不要求数据库与密钥', () => {
+    const runnerEnv = {
+      APP_REDIS_URL: 'redis://localhost:6379',
+      APP_GENERATED_APP_BROWSER_BASE_URL: 'http://reverse-proxy',
+    };
+
+    expect(browserRunnerEnvSchema.parse(runnerEnv)).toMatchObject({
+      APP_REDIS_URL: 'redis://localhost:6379',
+      APP_GENERATED_APP_BROWSER_BASE_URL: 'http://reverse-proxy',
+      APP_GENERATED_APP_BROWSER_CONCURRENCY: 1,
+      APP_MINIO_BUCKET: 'agentloom-documents',
+      APP_MINIO_USE_SSL: false,
+    });
+    // 数据库、JWT、主密钥即便存在也不进入 runner 配置
+    const parsed = browserRunnerEnvSchema.parse({
+      ...runnerEnv,
+      APP_DATABASE_URL: 'postgresql://x',
+      APP_JWT_SECRET: 's',
+    });
+    expect(parsed).not.toHaveProperty('APP_DATABASE_URL');
+    expect(parsed).not.toHaveProperty('APP_JWT_SECRET');
+
+    const missingBaseUrl = browserRunnerEnvSchema.safeParse({
+      APP_REDIS_URL: 'redis://localhost:6379',
+    });
+    expect(missingBaseUrl.success).toBe(false);
+    expect(
+      browserRunnerEnvSchema.safeParse({
+        ...runnerEnv,
+        APP_GENERATED_APP_BROWSER_BASE_URL: 'reverse-proxy',
+      }).success,
+    ).toBe(false);
   });
 
   /**

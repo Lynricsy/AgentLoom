@@ -45,6 +45,9 @@ x-server-app: &server-app
     APP_SANDBOX_NODE_ADMIN_TENANT_IDS: ${APP_SANDBOX_NODE_ADMIN_TENANT_IDS:-}
     APP_MCP_STDIO_ENABLED: ${APP_MCP_STDIO_ENABLED:-false}
     APP_AGENT_CONVERSATION_CONCURRENCY: ${APP_AGENT_CONVERSATION_CONCURRENCY:-10}
+    # Gate 5：worker 写进验收任务的时限；BASE_URL 与 CONCURRENCY 只给 generated-app-browser-runner
+    APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS: ${APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS:-180000}
+    APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS: ${APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS:-900000}
     APP_TYPESAFE_API_KEY: ${APP_TYPESAFE_API_KEY:-}
     APP_TYPESAFE_BASE_URL: ${APP_TYPESAFE_BASE_URL:-https://api.typesafe.ai}
     APP_TYPESAFE_MODEL: ${APP_TYPESAFE_MODEL:-jev-1.13.0}
@@ -230,6 +233,57 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # Gate 5 浏览器验收（ADR-0007 §6）：消费 generated-app-browser-acceptance 队列，用 Chromium 打开
+  # reverse-proxy 上的 Studio 公开页执行验收场景，截图与 trace 写入 MinIO。只拿 Redis 与对象存储凭据，
+  # 不连数据库；Chromium 不开沙箱，隔离靠容器：非 root、只读根文件系统、去掉全部 capability。
+  # 停掉它时 Gate 5 立即以 gate-5-browser-runner-unavailable 失败。
+  generated-app-browser-runner:
+    image: ${BROWSER_RUNNER_IMAGE:-agentloom/server:private-local-browser-runner}
+    build:
+      context: ..
+      dockerfile: agentloom-deploy/docker/server.Dockerfile
+      target: browser-runner
+    restart: unless-stopped
+    init: true
+    # 进行中的验收在宽限期内跑完；超时被强杀的任务经 stalled 检查重投
+    stop_grace_period: 60s
+    command: ['node', 'dist/src/generated-app-browser-runner.main.js']
+    environment:
+      APP_NODE_ENV: ${APP_NODE_ENV:-production}
+      APP_REDIS_URL: ${APP_REDIS_URL:-redis://:change-me-redis-password@redis:6379/0}
+      APP_MINIO_ENDPOINT: ${APP_MINIO_ENDPOINT:-minio}
+      APP_MINIO_PORT: ${APP_MINIO_PORT:-9000}
+      APP_MINIO_ACCESS_KEY: ${APP_MINIO_ACCESS_KEY:-agentloom}
+      APP_MINIO_SECRET_KEY: ${APP_MINIO_SECRET_KEY:-change-me-minio-password}
+      APP_MINIO_USE_SSL: ${APP_MINIO_USE_SSL:-false}
+      APP_MINIO_BUCKET: ${APP_MINIO_BUCKET:-agentloom-documents}
+      APP_GENERATED_APP_BROWSER_BASE_URL: ${APP_GENERATED_APP_BROWSER_BASE_URL:-http://reverse-proxy}
+      APP_GENERATED_APP_BROWSER_CONCURRENCY: ${APP_GENERATED_APP_BROWSER_CONCURRENCY:-1}
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    shm_size: 1gb
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      # app_net：Redis、MinIO；frontend_net：reverse-proxy（Studio 公开页与公开 API 同源）
+      - app_net
+      - frontend_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      reverse-proxy:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
 
   firecracker-runtime:
     profiles: ['sandbox']
