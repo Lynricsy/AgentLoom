@@ -82,6 +82,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: '0005 A2A 入站适配', link: '/dev/decisions/0005-a2a-inbound' },
       { text: '0006 证据驱动配置优化', link: '/dev/decisions/0006-evidence-driven-optimization' },
       { text: '0007 生成应用 v2', link: '/dev/decisions/0007-generated-app-spec-generation' },
+      { text: '0008 沙箱 stdio MCP 在 guest 内启动', link: '/dev/decisions/0008-sandbox-stdio-mcp-in-guest' },
     ],
   },
 ]
