@@ -49,7 +49,10 @@ const RAW_OUTPUT_HOST_PATH_PATTERN =
 type AttemptOutcome =
   | {
       ok: true;
-      appSpec: Extract<AppSpecGenerationResult, { status: 'generated' }>['appSpec'];
+      appSpec: Extract<
+        AppSpecGenerationResult,
+        { status: 'generated' }
+      >['appSpec'];
       resolvedBinding: Extract<
         AppSpecGenerationResult,
         { status: 'generated' }
@@ -67,9 +70,7 @@ type AttemptOutcome =
  * 同一次调用最多 GENERATED_APP_SPEC_MAX_ATTEMPTS 次。模型调用期间不持有数据库事务。
  */
 @Injectable()
-export class GeneratedAppSpecGeneratorService
-  implements GeneratedAppSpecGenerator
-{
+export class GeneratedAppSpecGeneratorService implements GeneratedAppSpecGenerator {
   private readonly logger = new Logger(GeneratedAppSpecGeneratorService.name);
 
   constructor(
@@ -268,8 +269,7 @@ export class GeneratedAppSpecGeneratorService
     tenantId: string,
     modelConfigId: string | null,
   ): Promise<
-    | { ok: true; config: ResolvedModelConfig }
-    | { ok: false; message: string }
+    { ok: true; config: ResolvedModelConfig } | { ok: false; message: string }
   > {
     let config: ResolvedModelConfig | null;
     if (modelConfigId) {
@@ -386,7 +386,10 @@ function pinBinding(
     }
     return {
       ok: true,
-      binding: { ...draftBinding, workflowVersionId: candidate.workflowVersionId },
+      binding: {
+        ...draftBinding,
+        workflowVersionId: candidate.workflowVersionId,
+      },
     };
   }
 

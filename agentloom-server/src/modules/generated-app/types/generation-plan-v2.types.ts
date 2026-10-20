@@ -89,7 +89,11 @@ export interface GeneratedAppStaticContractsV2 {
   publicInput: GeneratedAppPublicInputContract;
   result: GeneratedAppResultContract;
   /** 与固定版本快照的兼容性检查结论（逐条） */
-  bindingCompatibility: Array<{ check: string; passed: boolean; detail: string }>;
+  bindingCompatibility: Array<{
+    check: string;
+    passed: boolean;
+    detail: string;
+  }>;
   /** Agent 绑定的包装工作流图结构校验；工作流绑定为 null */
   wrapperWorkflow: {
     nodeIds: string[];
@@ -110,7 +114,8 @@ export interface GeneratedAppWorkspaceFile {
 export interface GeneratedAppContractCaseResult {
   caseId: string;
   scenarioId: string | null;
-  kind: 'scenario-submission' | 'reject-unknown-field' | 'reject-missing-required';
+  kind:
+    'scenario-submission' | 'reject-unknown-field' | 'reject-missing-required';
   passed: boolean;
   detail: string;
 }

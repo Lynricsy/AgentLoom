@@ -4,7 +4,6 @@ import { z } from 'zod';
 import type {
   GeneratedApp,
   GeneratedAppGenerationRun,
-  GeneratedAppGenerationPlan,
   GeneratedAppRepairPlan,
   GeneratedAppGateRun,
   GeneratedAppGateRunFailure,
@@ -13,7 +12,6 @@ import type {
   GeneratedAppReadiness,
   GeneratedAppRepairAttempt,
   GeneratedAppReverificationPlan,
-  GeneratedAppSpec,
   GeneratedAppSubmission,
 } from '../../../database/schema';
 import type { GeneratedAppSpecV2 } from '../types/app-spec-v2.schema';
@@ -281,14 +279,9 @@ export class RecordGeneratedAppGateResultsDto extends createZodDto(
   RecordGeneratedAppGateResultsSchema,
 ) {}
 
-export type RecordGeneratedAppGateResultsDtoType = Omit<
-  z.infer<typeof RecordGeneratedAppGateResultsSchema>,
-  'generationPlan'
-> & {
-  generationPlan?:
-    | z.infer<typeof RecordGeneratedAppGateResultsSchema>['generationPlan']
-    | GeneratedAppGenerationPlan;
-};
+export type RecordGeneratedAppGateResultsDtoType = z.infer<
+  typeof RecordGeneratedAppGateResultsSchema
+>;
 
 export const GeneratedAppGateRunFailureSchema = z.object({
   code: z.string().trim().min(1).max(128).optional(),
@@ -466,8 +459,8 @@ export interface GeneratedAppResponseDto {
   appName: string;
   description: string;
   status: GeneratedApp['status'];
-  /** v2 应用在生成运行产出 AppSpec 前为 null */
-  appSpec: GeneratedAppSpec | null;
+  /** Gate 0 生成的 AppSpec v2；生成运行产出规格前为 null */
+  appSpec: GeneratedAppSpecV2 | null;
   generationModelConfigId: string | null;
   bindingTarget: GeneratedApp['bindingTarget'];
   generationPlan: GeneratedApp['generationPlan'];

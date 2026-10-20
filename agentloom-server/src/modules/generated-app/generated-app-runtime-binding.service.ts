@@ -29,7 +29,6 @@ import {
 } from './generated-app.runtime-binding.util';
 import type { GeneratedAppSpecV2 } from './types/app-spec-v2.schema';
 import type { GeneratedAppRuntimeBindingAdapter } from './types/generation-v2.ports';
-import { isAppSpecV2 } from './types/generated-app.types';
 
 /** Agent 包装工作流 metadata.bindingKind；工作流绑定不创建任何工作流 */
 export const GENERATED_APP_AGENT_WRAPPER_BINDING_KIND = 'agent-wrapper';
@@ -72,7 +71,7 @@ export class GeneratedAppRuntimeBindingService implements GeneratedAppRuntimeBin
   ): Promise<GeneratedAppRuntimeBindingReadinessResponseDto> {
     const app = await this.repository.findGeneratedAppRecord(tenantId, appId);
 
-    if (!app.appSpec || !isAppSpecV2(app.appSpec)) {
+    if (!app.appSpec) {
       return {
         state: 'runtime_not_bound',
         workflowDefinitionId: null,

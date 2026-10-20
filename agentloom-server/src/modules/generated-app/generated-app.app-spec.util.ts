@@ -6,8 +6,6 @@ import type {
   GeneratedAppGateEvidence,
   GeneratedAppGateRunFailure,
   GeneratedAppReadiness,
-  GeneratedAppSpec,
-  GeneratedAppSpecV1,
   GeneratedAppStatus,
 } from '../../database/schema';
 import { getGeneratedAppStatusForReadiness } from './generated-app.gates';
@@ -39,7 +37,6 @@ export type Gate0FailureCode =
   | 'app-spec-model-output-invalid'
   | 'app-spec-binding-invalid'
   | 'app-spec-generation-timeout'
-  | 'app-spec-legacy-template'
   | 'app-spec-missing';
 
 /** 绑定复核结果：null 表示尚未复核（Gate 0 不放行未复核的绑定） */
@@ -65,8 +62,6 @@ const GATE_0_REPAIR_INSTRUCTIONS: Record<Gate0FailureCode, string> = {
     '检查绑定工作流的输入契约与输出节点是否能承接需求（必填输入、类型、选项、text-output/json-output 节点），修正后重新运行生成。',
   'app-spec-generation-timeout':
     '生成 AppSpec 超时：稍后重试，或换用响应更快的 chat 模型。',
-  'app-spec-legacy-template':
-    '该应用的 AppSpec 是 v1 固定模板，没有从需求推导表单、绑定与验收场景；重新运行生成会按需求重新生成 AppSpec。',
   'app-spec-missing': '该应用还没有 AppSpec，运行生成会按需求生成。',
 };
 
@@ -75,39 +70,6 @@ export function buildAppName(prompt: string): string {
   const firstSentence = compact.split(/[。！？!?]/)[0]?.trim() ?? compact;
   const baseName = firstSentence.length > 0 ? firstSentence : '定制化应用';
   return baseName.length > 48 ? `${baseName.slice(0, 48)}...` : baseName;
-}
-
-export function buildPlanRoute(pageId: string): string {
-  return `/${buildPlanSegment(pageId)}`;
-}
-
-export function buildPlanSegment(value: string): string {
-  const segment = value
-    .trim()
-    .toLowerCase()
-    .replace(/^page-/, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  return segment.length > 0 ? segment : 'generated-app';
-}
-
-export function getPublicRuntimePages(
-  appSpec: GeneratedAppSpecV1,
-): GeneratedAppSpecV1['pages'] {
-  return appSpec.pages.filter((page) => {
-    const id = page.id.toLowerCase();
-    const name = page.name.toLowerCase();
-    const purpose = page.purpose.toLowerCase();
-
-    return (
-      id.includes('public') ||
-      id.includes('runtime') ||
-      name.includes('公开') ||
-      name.includes('终端') ||
-      purpose.includes('终端用户')
-    );
-  });
 }
 
 export function resolveStatusForShareDisabled(
@@ -250,23 +212,15 @@ export function buildAppSpecV2FromDraft(
 }
 
 /**
- * Gate 0 对已有 AppSpec 的判定：v1 模板 → legacy；v2 契约（含跨字段引用）→ 绑定复核结果。
+ * Gate 0 对已有 AppSpec 的判定：v2 契约（含跨字段引用）→ 绑定复核结果。
  * 纯函数；生成与绑定解析由 `GeneratedAppGate0Service` 完成后再交给这里判定。
  */
 export function evaluateGate0AppSpec(
-  appSpec: GeneratedAppSpec | null | undefined,
+  appSpec: GeneratedAppSpecV2 | null | undefined,
   bindingCheck: Gate0BindingCheck,
 ): Gate0Evaluation {
   if (!appSpec) {
     return buildGate0Failure('app-spec-missing', 'AppSpec 尚未生成。', []);
-  }
-
-  if (appSpec.version !== 2) {
-    return buildGate0Failure(
-      'app-spec-legacy-template',
-      'AppSpec 是 v1 固定模板（需求原样复制、只有平台流程场景），不能证明生成的应用实现了需求。',
-      [],
-    );
   }
 
   const parsed = GeneratedAppSpecV2Schema.safeParse(appSpec);
@@ -345,7 +299,9 @@ export function buildGate0Failure(
   };
 }
 
-function buildSchemaEvidence(spec: GeneratedAppSpecV2): GeneratedAppGateEvidence {
+function buildSchemaEvidence(
+  spec: GeneratedAppSpecV2,
+): GeneratedAppGateEvidence {
   const requirementScenarios = spec.acceptanceScenarios.filter(
     (scenario) => scenario.scope === 'requirement',
   );

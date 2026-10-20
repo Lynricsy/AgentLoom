@@ -211,15 +211,13 @@ const baseEnvSchema = z.object({
   ),
 
   /**
-   * 生成应用门禁。名称不带 `APP_` 前缀：Gate 5 的 `requiredEnvironment` 证据
-   * 字面量 `GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e` 已是持久化契约。
+   * 生成应用门禁。Gate 3–7 执行模式取 real（缺省）/ fixture / disabled，其他值按 disabled 处理；
+   * fixture 只用于单测，Gate 7 不会放行 fixture 结果。
    */
   GENERATED_APP_WORKSPACE_ROOT: optionalStringFromEnv(),
   GENERATED_APP_GATE3_EXECUTOR_MODE: optionalStringFromEnv(),
-  GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS: positiveNumberFromEnv(30_000),
   GENERATED_APP_GATE4_EXECUTOR_MODE: optionalStringFromEnv(),
   GENERATED_APP_GATE5_EXECUTOR_MODE: optionalStringFromEnv(),
-  GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON: optionalStringFromEnv(),
   GENERATED_APP_GATE6_EXECUTOR_MODE: optionalStringFromEnv(),
   GENERATED_APP_GATE7_EXECUTOR_MODE: optionalStringFromEnv(),
   /** Gate 0 生成 AppSpec 的总超时（含自我修复重试），到时经 AbortSignal 取消模型调用（ADR-0007 §1） */

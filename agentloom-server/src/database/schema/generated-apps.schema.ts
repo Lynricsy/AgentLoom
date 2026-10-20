@@ -21,8 +21,8 @@ import { users } from './users.schema';
 import { workflowDefinitions } from './workflow-definitions.schema';
 import type { GeneratedAppBindingTargetRef } from '../../modules/generated-app/types/generation-v2.ports';
 import type { GeneratedAppGenerationPlanV2 } from '../../modules/generated-app/types/generation-plan-v2.types';
+import type { GeneratedAppSpecV2 } from '../../modules/generated-app/types/app-spec-v2.schema';
 import type {
-  GeneratedAppGenerationPlan,
   GeneratedAppGateEvidence,
   GeneratedAppGateResult,
   GeneratedAppGateRunFailure,
@@ -30,7 +30,6 @@ import type {
   GeneratedAppReadiness,
   GeneratedAppRepairPlan,
   GeneratedAppReverificationPlan,
-  GeneratedAppSpec,
 } from '../../modules/generated-app/types/generated-app.types';
 
 export const generatedAppStatusEnum = pgEnum('generated_app_status', [
@@ -115,8 +114,8 @@ export const generatedApps = pgTable(
       .notNull()
       .default('app_spec_ready'),
 
-    /** v1 模板或 v2 生成结果；v2 应用在生成运行产出 AppSpec 前为 null */
-    appSpec: jsonb('app_spec').$type<GeneratedAppSpec | null>(),
+    /** Gate 0 生成的 AppSpec v2；生成运行产出规格前为 null */
+    appSpec: jsonb('app_spec').$type<GeneratedAppSpecV2 | null>(),
 
     /** 生成 AppSpec 所用的 chat 模型；创建时指定或 Gate 0 解析出的默认模型，repair 复用 */
     generationModelConfigId: uuid('generation_model_config_id').references(
@@ -142,13 +141,9 @@ export const generatedApps = pgTable(
       { onDelete: 'set null' },
     ),
 
+    /** 各 Gate 写入的 v2 生成计划；手工记录门禁结果时可写入任意 JSON 对象，读取方按 planVersion 判别 */
     generationPlan: jsonb('generation_plan')
-      .$type<
-        | GeneratedAppGenerationPlan
-        | GeneratedAppGenerationPlanV2
-        | Record<string, unknown>
-        | null
-      >()
+      .$type<GeneratedAppGenerationPlanV2 | Record<string, unknown> | null>()
       .default(null),
 
     gateResults: jsonb('gate_results')

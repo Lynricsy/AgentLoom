@@ -631,6 +631,13 @@
       "when": 1792468503504,
       "tag": "0089_generated_app_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1792473841688,
+      "tag": "0090_generated_app_v1_spec_cleanup",
+      "breakpoints": true
     }
   ]
 }

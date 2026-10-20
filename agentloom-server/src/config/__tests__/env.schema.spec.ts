@@ -200,19 +200,19 @@ describe('envSchema', () => {
     const result = envSchema.parse(createBaseEnv());
 
     expect(result.APP_AGENT_API_CONVERSATION_IDLE_HOURS).toBe(24);
-    expect(result.GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS).toBe(30_000);
+    expect(result.APP_GENERATED_APP_GENERATION_CONCURRENCY).toBe(2);
     expect(result.APP_FIRECRACKER_RUNTIME_SERVER_NAME).toBe(
       'firecracker-runtime',
     );
     expect(result.APP_SANDBOX_CALLBACK_BASE_URL).toBeUndefined();
   });
 
-  it('启动时拒绝非法的空闲时长、回调 URL 与 Gate 3 超时', () => {
+  it('启动时拒绝非法的空闲时长、回调 URL 与生成运行并发', () => {
     const result = envSchema.safeParse(
       createBaseEnv({
         APP_AGENT_API_CONVERSATION_IDLE_HOURS: 'abc',
         APP_SANDBOX_CALLBACK_BASE_URL: 'not a url',
-        GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS: '0',
+        APP_GENERATED_APP_GENERATION_CONCURRENCY: '0',
       }),
     );
 
@@ -222,7 +222,7 @@ describe('envSchema', () => {
       expect.arrayContaining([
         'APP_AGENT_API_CONVERSATION_IDLE_HOURS',
         'APP_SANDBOX_CALLBACK_BASE_URL',
-        'GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS',
+        'APP_GENERATED_APP_GENERATION_CONCURRENCY',
       ]),
     );
   });

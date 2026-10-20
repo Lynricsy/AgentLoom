@@ -51,9 +51,7 @@ const COMPATIBLE_WORKFLOW_INPUT_TYPE: Record<
  * 每次读库都在自己的短租户事务里完成（已在事务内时复用），不跨模型调用持有事务。
  */
 @Injectable()
-export class GeneratedAppBindingResolverService
-  implements GeneratedAppBindingResolver
-{
+export class GeneratedAppBindingResolverService implements GeneratedAppBindingResolver {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
 
   async listCandidates(
@@ -153,7 +151,9 @@ export class GeneratedAppBindingResolverService
           inArray(schema.workflowVersions.id, versionIds),
         ),
       );
-    const versionById = new Map(versions.map((version) => [version.id, version]));
+    const versionById = new Map(
+      versions.map((version) => [version.id, version]),
+    );
 
     return definitions.flatMap((definition) => {
       const version = definition.publishedVersionId

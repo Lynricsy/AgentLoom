@@ -17,7 +17,6 @@ import {
   type GeneratedAppSpecV2,
 } from './types/app-spec-v2.schema';
 import type { ResolvedGeneratedAppBinding } from './types/generation-v2.ports';
-import { isAppSpecV2 } from './types/generated-app.types';
 
 export interface GeneratedAppGate0Input {
   tenantId: string;
@@ -56,10 +55,12 @@ export class GeneratedAppGate0Service {
     private readonly bindingResolver: GeneratedAppBindingResolverService,
   ) {}
 
-  async evaluate(input: GeneratedAppGate0Input): Promise<GeneratedAppGate0Result> {
+  async evaluate(
+    input: GeneratedAppGate0Input,
+  ): Promise<GeneratedAppGate0Result> {
     const { app, tenantId } = input;
 
-    if (!input.regenerate && isAppSpecV2(app.appSpec)) {
+    if (!input.regenerate && app.appSpec) {
       const parsed = GeneratedAppSpecV2Schema.safeParse(app.appSpec);
       const bindingCheck = parsed.success
         ? await this.bindingResolver.resolve(tenantId, parsed.data)

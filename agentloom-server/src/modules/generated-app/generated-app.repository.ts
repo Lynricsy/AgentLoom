@@ -73,7 +73,6 @@ import {
 } from '../llm/llm.exceptions';
 
 import { applyPublishCandidateGuard } from './generated-app.gate7-publish-candidate';
-import { isAppSpecV2 } from './types/generated-app.types';
 import { isRecord } from './generated-app.plan-validation.util';
 
 import { buildAppName } from './generated-app.app-spec.util';
@@ -1070,7 +1069,7 @@ export class GeneratedAppRepository {
       options.generationPlan !== undefined
         ? options.generationPlan
         : app.generationPlan,
-      isAppSpecV2(app.appSpec) ? app.appSpec : null,
+      app.appSpec,
     );
     const readiness = evaluateGeneratedAppReadiness(guardedGateResults);
     const status = getGeneratedAppStatusForReadiness(readiness);

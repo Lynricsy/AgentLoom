@@ -439,7 +439,9 @@ function formatResultSectionValue(
 }
 
 /** 引用统一为 `{ title?, quote?, source? }` 数组；常见的 doc/content/url 等键名一并识别 */
-function normalizeCitations(raw: unknown): Array<Record<string, string>> | null {
+function normalizeCitations(
+  raw: unknown,
+): Array<Record<string, string>> | null {
   const parsed = typeof raw === 'string' ? parseJsonOrSelf(raw) : raw;
   const items = Array.isArray(parsed)
     ? parsed

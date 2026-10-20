@@ -50,7 +50,6 @@ import {
 import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
 import type { GeneratedAppSpecV2 } from './types/app-spec-v2.schema';
 import type { GeneratedAppRuntimeResult } from './types/generation-v2.ports';
-import { isAppSpecV2 } from './types/generated-app.types';
 
 /** submission.report 中的执行引用（只对创建者可见） */
 export const GENERATED_APP_RUNTIME_EXECUTION_REPORT_KIND =
@@ -391,8 +390,7 @@ export class GeneratedAppPublicRuntimeService {
     )
       ? await this.repository.findGeneratedAppRecord(tenantId, appId)
       : null;
-    const appSpec =
-      app?.appSpec && isAppSpecV2(app.appSpec) ? app.appSpec : null;
+    const appSpec = app?.appSpec ?? null;
     const refreshed =
       app && appSpec
         ? await Promise.all(
@@ -426,10 +424,9 @@ export class GeneratedAppPublicRuntimeService {
       appId,
       submissionId,
     );
-    const refreshed =
-      app.appSpec && isAppSpecV2(app.appSpec)
-        ? await this.refreshSubmissionResult(app, app.appSpec, submission)
-        : submission;
+    const refreshed = app.appSpec
+      ? await this.refreshSubmissionResult(app, app.appSpec, submission)
+      : submission;
 
     return this.repository.toSubmissionResponseDto(refreshed);
   }
@@ -511,7 +508,7 @@ export class GeneratedAppPublicRuntimeService {
     const found = await this.repository.findByPublicOrAcceptanceToken(token);
     const appSpec = found?.app.appSpec;
 
-    if (!found || !appSpec || !isAppSpecV2(appSpec)) {
+    if (!found || !appSpec) {
       throw new GeneratedAppNotFoundException('公开链接');
     }
 
