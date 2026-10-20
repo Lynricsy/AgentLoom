@@ -6,12 +6,14 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { HTTPError } from 'ky'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   GeneratedApp,
   GeneratedAppArtifactContent,
   GeneratedAppArtifactManifest,
+  GeneratedAppGenerationRun,
   GeneratedAppReadinessState,
 } from '../../types'
 import { makeGeneratedAppSpecV2 } from '../../__tests__/fixtures'
@@ -153,7 +155,50 @@ const {
   useGeneratedAppMock: vi.fn(),
 }))
 
-vi.mock('../../api', () => ({
+const { detailNotifyMock, generationRunQuery, useGeneratedAppGenerationRunMock } =
+  vi.hoisted(() => ({
+    detailNotifyMock: vi.fn(),
+    generationRunQuery: {
+      data: undefined as unknown,
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    },
+    useGeneratedAppGenerationRunMock: vi.fn(),
+  }))
+
+function makeRun(
+  overrides: Partial<GeneratedAppGenerationRun> = {},
+): GeneratedAppGenerationRun {
+  return {
+    id: 'run-detail',
+    tenantId: 'tenant-1',
+    appId: 'app-detail',
+    runNumber: 2,
+    status: 'queued',
+    triggerSource: 'manual',
+    maxRepairAttempts: 3,
+    maxRuntimeSeconds: 1800,
+    summary: '生成运行已排队。',
+    failureReason: null,
+    startedAt: '2026-04-25T03:00:00.000Z',
+    completedAt: null,
+    createdBy: 'user-1',
+    createdAt: '2026-04-25T03:00:00.000Z',
+    updatedAt: '2026-04-25T03:00:00.000Z',
+    ...overrides,
+  }
+}
+
+vi.mock('../../api', async () => ({
+  // vi.mock 工厂会被提升到所有静态 import 之前，只能在工厂里动态取真实实现
+  isGeneratedAppGenerationRunInFlight: (
+    await import('../../api/generatedAppQueries')
+  ).isGeneratedAppGenerationRunInFlight,
+  useGeneratedAppGenerationRun: (...args: unknown[]) => {
+    useGeneratedAppGenerationRunMock(...args)
+    return generationRunQuery
+  },
   useDeleteGeneratedAppSubmission: () => deleteSubmissionMutation,
   useDeleteGeneratedAppSubmissions: () => deleteSubmissionsMutation,
   useDisableGeneratedAppPublicShare: () => disableShareMutation,
@@ -190,7 +235,7 @@ vi.mock('../../api', () => ({
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
-  useToast: () => ({ notify: vi.fn() }),
+  useToast: () => ({ notify: detailNotifyMock }),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -373,6 +418,9 @@ describe('GeneratedAppDetailPage', () => {
     generationRunsQuery.isError = false
     generationRunsQuery.isFetching = false
     generationRunsQuery.isLoading = false
+    generationRunQuery.data = undefined
+    generationRunQuery.isError = false
+    generationRunQuery.isLoading = false
     repairAttemptsQuery.data = {
       data: [],
       meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
@@ -485,26 +533,10 @@ describe('GeneratedAppDetailPage', () => {
     })
   })
 
-  it('starts an automatic generation and verification run from the detail page', async () => {
+  it('queues a manual run (HTTP 202) without regenerating the AppSpec', async () => {
     const user = userEvent.setup()
     startGenerationRunMutation.mutateAsync.mockResolvedValue({
-      generationRun: {
-        id: 'run-detail',
-        tenantId: 'tenant-1',
-        appId: 'app-detail',
-        runNumber: 2,
-        status: 'passed',
-        triggerSource: 'retry',
-        maxRepairAttempts: 3,
-        maxRuntimeSeconds: 1800,
-        summary: '自动生成完成。',
-        failureReason: null,
-        startedAt: '2026-04-25T03:00:00.000Z',
-        completedAt: '2026-04-25T03:10:00.000Z',
-        createdBy: 'user-1',
-        createdAt: '2026-04-25T03:00:00.000Z',
-        updatedAt: '2026-04-25T03:10:00.000Z',
-      },
+      generationRun: makeRun({ status: 'queued', triggerSource: 'manual' }),
       gateRuns: [],
       app: makeGeneratedApp(),
     })
@@ -512,15 +544,101 @@ describe('GeneratedAppDetailPage', () => {
     render(<GeneratedAppDetailPage appId="app-detail" />)
 
     await user.click(
-      screen.getByRole('button', { name: '重新运行自动生成与验证' }),
+      screen.getByRole('button', { name: '运行自动生成与验证' }),
     )
 
     await waitFor(() => {
       expect(startGenerationRunMutation.mutateAsync).toHaveBeenCalledWith({
-        triggerSource: 'retry',
+        triggerSource: 'manual',
+        regenerateAppSpec: false,
       })
-      expect(generatedAppQuery.refetch).toHaveBeenCalled()
     })
+    expect(detailNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '生成运行已排队', variant: 'success' }),
+    )
+  })
+
+  it('asks the server to regenerate the AppSpec from the secondary action', async () => {
+    const user = userEvent.setup()
+    startGenerationRunMutation.mutateAsync.mockResolvedValue({
+      generationRun: makeRun({ status: 'queued', triggerSource: 'manual' }),
+      gateRuns: [],
+      app: makeGeneratedApp(),
+    })
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    await user.click(
+      screen.getByRole('button', { name: '重新生成 AppSpec 并运行' }),
+    )
+
+    await waitFor(() => {
+      expect(startGenerationRunMutation.mutateAsync).toHaveBeenCalledWith({
+        triggerSource: 'manual',
+        regenerateAppSpec: true,
+      })
+    })
+  })
+
+  it('warns instead of failing when the server answers 409 for a run already in progress', async () => {
+    const user = userEvent.setup()
+    const conflict = new HTTPError(
+      new Response(null, { status: 409, statusText: 'Conflict' }),
+      new Request(
+        'http://localhost/api/v1/generated-apps/app-detail/generation-runs/start',
+        { method: 'POST' },
+      ),
+      {} as never,
+    )
+    Object.assign(conflict, {
+      data: {
+        detail: '生成应用 app-detail 已有进行中的生成运行 run-busy，请等待其结束后再启动',
+      },
+    })
+    startGenerationRunMutation.mutateAsync.mockRejectedValue(conflict)
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    await user.click(
+      screen.getByRole('button', { name: '运行自动生成与验证' }),
+    )
+
+    await waitFor(() => {
+      expect(detailNotifyMock).toHaveBeenCalledWith({
+        title: '已有生成运行进行中',
+        description:
+          '生成应用 app-detail 已有进行中的生成运行 run-busy，请等待其结束后再启动',
+        variant: 'warning',
+      })
+    })
+  })
+
+  it('shows live gate progress for the latest in-flight run and blocks starting another', () => {
+    generationRunsQuery.data = {
+      data: [makeRun({ id: 'run-latest', status: 'running' })],
+      meta: { page: 1, pageSize: 1, total: 1, totalPages: 1 },
+    }
+    generationRunQuery.data = makeRun({
+      id: 'run-latest',
+      status: 'running',
+      summary: 'gate-0 通过：AppSpec 已生成。',
+    })
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    expect(screen.getByRole('button', { name: /生成运行中/ })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: '重新生成 AppSpec 并运行' }),
+    ).toBeDisabled()
+    expect(useGeneratedAppGenerationRunMock).toHaveBeenCalledWith(
+      'app-detail',
+      'run-latest',
+    )
+    const progress = screen.getByTestId('generated-app-generation-progress')
+    expect(progress).toHaveAttribute('data-run-status', 'running')
+    expect(
+      within(progress).getByText('gate-0 通过：AppSpec 已生成。'),
+    ).toBeInTheDocument()
   })
 
   it('treats stale enabled share as unavailable when readiness is blocked', () => {
@@ -596,19 +714,6 @@ describe('GeneratedAppDetailPage', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('尚未生成验收场景。')).toBeInTheDocument()
     expect(screen.getByText('尚未生成追踪矩阵。')).toBeInTheDocument()
-  })
-
-  it('旧版模板规格提示会在下一次生成运行时重新生成', () => {
-    generatedAppQuery.data = makeGeneratedApp({ appSpec: { version: 1 } })
-
-    render(<GeneratedAppDetailPage appId="app-detail" />)
-
-    expect(
-      screen.getByText(
-        '这是旧版模板规格，已不能运行。下一次生成运行会按需求重新生成 AppSpec。',
-      ),
-    ).toBeInTheDocument()
-    expect(screen.queryByTestId('generated-app-traceability')).not.toBeInTheDocument()
   })
 
   it('renders professional editor links for bound Agent and Workflow resources', () => {

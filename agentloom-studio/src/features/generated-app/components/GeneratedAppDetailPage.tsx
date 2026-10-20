@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { HTTPError } from 'ky'
 import { useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
@@ -12,6 +13,7 @@ import {
   WandSparkles,
 } from 'lucide-react'
 
+import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageContainer } from '@/shared/components/page-container'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
@@ -39,13 +41,16 @@ import {
 } from '@/shared/ui/table'
 import { useToast } from '@/shared/ui/toast'
 import {
+  isGeneratedAppGenerationRunInFlight,
   useGeneratedApp,
   useGeneratedAppArtifactContent,
   useGeneratedAppArtifactManifest,
+  useGeneratedAppGenerationRuns,
   useGeneratedAppRuntimeBindingReadiness,
   useStartGeneratedAppGenerationRun,
 } from '../api'
 import { GeneratedAppGenerationEvidencePanel } from './GeneratedAppGenerationEvidencePanel'
+import { GeneratedAppGenerationProgress } from './GeneratedAppGenerationProgress'
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import { GeneratedAppSubmissionsPanel } from './GeneratedAppSubmissionsPanel'
 import {
@@ -780,9 +785,7 @@ function AppSpecSection({ app }: { app: GeneratedApp }) {
         <p className="text-sm text-muted-foreground">
           {app.status === 'app_spec_generating'
             ? 'AppSpec 正在生成，完成后显示在这里。'
-            : app.appSpec
-              ? '这是旧版模板规格，已不能运行。下一次生成运行会按需求重新生成 AppSpec。'
-              : '尚未生成 AppSpec，失败原因见 Gate 0 结果。'}
+            : '尚未生成 AppSpec，失败原因见 Gate 0 结果。'}
         </p>
       </DetailSection>
     )
@@ -909,6 +912,13 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
   const runtimeBindingReadinessQuery =
     useGeneratedAppRuntimeBindingReadiness(appId)
   const startGenerationRunMutation = useStartGeneratedAppGenerationRun(appId)
+  // 服务端按创建时间倒序返回，第一条就是最近一次运行；进行中时由进度组件轮询它
+  const latestRunQuery = useGeneratedAppGenerationRuns(appId, {
+    page: 1,
+    pageSize: 1,
+  })
+  const latestRun = latestRunQuery.data?.data[0]
+  const isRunInFlight = isGeneratedAppGenerationRunInFlight(latestRun)
 
   if (isLoading) {
     return (
@@ -958,29 +968,39 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
     : app.publicShareEnabled
       ? '门禁不可用'
       : '未启用'
-  const runActionLabel =
-    app.gateResults.length > 0 ? '重新运行自动生成与验证' : '运行自动生成与验证'
+  const hasAppSpecV2 = app.appSpec?.version === 2
+  const isStartBlocked = startGenerationRunMutation.isPending || isRunInFlight
 
-  const handleStartGenerationRun = async () => {
+  /** 202 只代表已排队：Gate 0–7 在 worker 中执行，进度由下方进度组件轮询 */
+  const handleStartGenerationRun = async (regenerateAppSpec: boolean) => {
     try {
-      const result = await startGenerationRunMutation.mutateAsync({
-        triggerSource: app.gateResults.length > 0 ? 'retry' : 'manual',
+      await startGenerationRunMutation.mutateAsync({
+        triggerSource: 'manual',
+        regenerateAppSpec,
       })
       notify({
-        title: '自动生成与验证已完成',
-        description:
-          result.generationRun.status === 'passed'
-            ? '应用已进入当前自动生成结果，可继续查看证据或启用公开分享。'
-            : result.generationRun.failureReason ||
-              result.generationRun.summary,
-        variant:
-          result.generationRun.status === 'passed' ? 'success' : 'warning',
+        title: '生成运行已排队',
+        description: regenerateAppSpec
+          ? '将重新生成 AppSpec 并依次执行 Gate 0–7，通常需要几分钟，进度会自动刷新。'
+          : 'Gate 0–7 将在后台依次执行，通常需要几分钟，进度会自动刷新。',
+        variant: 'success',
       })
-      void refetch()
     } catch (error) {
+      if (error instanceof HTTPError && error.response.status === 409) {
+        notify({
+          title: '已有生成运行进行中',
+          description: resolveProblemDetail(
+            error,
+            '请等待当前运行结束后再启动。',
+          ),
+          variant: 'warning',
+        })
+        return
+      }
+
       notify({
-        title: '自动生成启动失败',
-        description: error instanceof Error ? error.message : '请稍后重试。',
+        title: '生成运行启动失败',
+        description: resolveProblemDetail(error, '请稍后重试。'),
         variant: 'error',
       })
     }
@@ -1025,30 +1045,47 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
 
       <DetailSection
         title="自动生成与验证"
-        description="从当前 AppSpec 启动受控生成、测试和发布候选检查；公开分享仍需在 readiness 允许后显式启用。"
+        description="按需求生成 AppSpec 并依次执行 Gate 0–7；运行在后台排队执行，公开分享仍需在 readiness 允许后显式启用。"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
-            <p className="break-words">{app.readiness.summary}</p>
-            <p>
-              当前阻断项 {app.readiness.blockingIssueCount} 个，Warning{' '}
-              {app.readiness.warningCount} 个。
-            </p>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
+              <p className="break-words">{app.readiness.summary}</p>
+              <p>
+                当前阻断项 {app.readiness.blockingIssueCount} 个，Warning{' '}
+                {app.readiness.warningCount} 个。
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button
+                onClick={() => void handleStartGenerationRun(false)}
+                disabled={isStartBlocked}
+              >
+                {isStartBlocked ? <Spinner /> : <WandSparkles />}
+                {isRunInFlight
+                  ? '生成运行中'
+                  : startGenerationRunMutation.isPending
+                    ? '正在排队'
+                    : '运行自动生成与验证'}
+              </Button>
+              {hasAppSpecV2 ? (
+                <Button
+                  variant="outline"
+                  onClick={() => void handleStartGenerationRun(true)}
+                  disabled={isStartBlocked}
+                >
+                  重新生成 AppSpec 并运行
+                </Button>
+              ) : null}
+            </div>
           </div>
-          <Button
-            onClick={() => void handleStartGenerationRun()}
-            disabled={startGenerationRunMutation.isPending}
-            className="shrink-0"
-          >
-            {startGenerationRunMutation.isPending ? (
-              <Spinner />
-            ) : (
-              <WandSparkles />
-            )}
-            {startGenerationRunMutation.isPending
-              ? '正在运行'
-              : runActionLabel}
-          </Button>
+          {latestRun ? (
+            <GeneratedAppGenerationProgress
+              appId={app.id}
+              generationRunId={latestRun.id}
+              gates={app.gateResults}
+            />
+          ) : null}
         </div>
       </DetailSection>
 

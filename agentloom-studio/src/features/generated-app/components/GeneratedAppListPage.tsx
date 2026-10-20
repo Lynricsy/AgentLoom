@@ -9,24 +9,26 @@ import {
   WandSparkles,
 } from 'lucide-react'
 
+import { ChatModelSelect, useUsableChatModels } from '@/features/llm'
+import { resolveProblemDetail } from '@/shared/api/problemDetail'
 import { Pagination } from '@/shared/components/Pagination'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { FormField } from '@/shared/components/form-field/FormField'
 import { PageContainer } from '@/shared/components/page-container/PageContainer'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
 import { formatNumber } from '@/shared/lib/format'
 import { fadeInUp, staggerList } from '@/shared/lib/motion'
+import { Alert } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { useToast } from '@/shared/ui/toast'
-import {
-  useCreateGeneratedApp,
-  useGeneratedApps,
-  useStartGeneratedAppGenerationRun,
-} from '../api'
+import { useCreateGeneratedApp, useGeneratedApps } from '../api'
+import { GeneratedAppBindingTargetSelect } from './GeneratedAppBindingTargetSelect'
+import { GeneratedAppGenerationProgress } from './GeneratedAppGenerationProgress'
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import {
   GENERATED_APP_READINESS_LABELS,
@@ -34,16 +36,13 @@ import {
   formatGeneratedAppDateTime,
   getGeneratedAppReadinessStatusTone,
 } from '../lib/generatedAppDisplay'
-import type { GeneratedApp } from '../types'
+import type {
+  CreatedGeneratedApp,
+  GeneratedApp,
+  GeneratedAppBindingTarget,
+} from '../types'
 
 const PAGE_SIZE = 12
-
-interface GenerationLaunchState {
-  appId: string
-  appName: string
-  summary: string
-  status: 'started' | 'failed'
-}
 
 function GeneratedAppCard({ app }: { app: GeneratedApp }) {
   return (
@@ -117,12 +116,16 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
 export function GeneratedAppListPage() {
   const { notify } = useToast()
   const [prompt, setPrompt] = useState('')
+  const [modelConfigId, setModelConfigId] = useState<string | undefined>()
+  const [bindingTarget, setBindingTarget] = useState<
+    GeneratedAppBindingTarget | undefined
+  >()
   const [page, setPage] = useState(1)
-  const [lastLaunch, setLastLaunch] = useState<GenerationLaunchState | null>(
+  const [lastCreated, setLastCreated] = useState<CreatedGeneratedApp | null>(
     null,
   )
   const createGeneratedAppMutation = useCreateGeneratedApp()
-  const startGenerationRunMutation = useStartGeneratedAppGenerationRun()
+  const usableChatModels = useUsableChatModels()
   const { data, isError, isFetching, isLoading, refetch } = useGeneratedApps({
     page,
     pageSize: PAGE_SIZE,
@@ -130,6 +133,11 @@ export function GeneratedAppListPage() {
 
   const apps = data?.data ?? []
   const meta = data?.meta
+  const chatModels = usableChatModels.data ?? []
+  // 没有可用 chat 模型时 Gate 0 必然失败（app-spec-model-unavailable），创建前就拦下
+  const hasNoUsableChatModel =
+    usableChatModels.isSuccess && chatModels.length === 0
+  const isCreating = createGeneratedAppMutation.isPending
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -145,76 +153,32 @@ export function GeneratedAppListPage() {
         return
       }
 
-      let createdApp: GeneratedApp | null = null
-
       try {
-        createdApp = await createGeneratedAppMutation.mutateAsync({
+        // 创建即由服务端排队 initial 生成运行，这里只拿 generationRunId 轮询进度
+        const createdApp = await createGeneratedAppMutation.mutateAsync({
           prompt: trimmedPrompt,
+          modelConfigId,
+          bindingTarget,
         })
-        const startResult = await startGenerationRunMutation.mutateAsync({
-          appId: createdApp.id,
-          triggerSource: 'initial',
-        })
-        const runPassed = startResult.generationRun.status === 'passed'
         setPrompt('')
         setPage(1)
-        setLastLaunch({
-          appId: startResult.app.id,
-          appName: startResult.app.appName,
-          summary: `${
-            runPassed
-              ? startResult.generationRun.summary
-              : startResult.generationRun.failureReason ||
-                startResult.generationRun.summary
-          }（${startResult.gateRuns.length} 个 Gate 已写入证据）`,
-          status: runPassed ? 'started' : 'failed',
-        })
+        setLastCreated(createdApp)
         notify({
-          title: runPassed
-            ? '自动生成与验证已完成'
-            : '自动生成与验证未通过',
-          description: runPassed
-            ? '应用已完成当前自动生成与门禁验证，可进入详情查看结果。'
-            : startResult.generationRun.failureReason ||
-              startResult.generationRun.summary,
-          variant: runPassed ? 'success' : 'warning',
+          title: '应用已创建，正在生成',
+          description:
+            'AppSpec 生成与 Gate 0–7 验证在后台执行，通常需要几分钟，进度会自动刷新。',
+          variant: 'success',
         })
       } catch (error) {
-        if (createdApp) {
-          setPrompt('')
-          setPage(1)
-          setLastLaunch({
-            appId: createdApp.id,
-            appName: createdApp.appName,
-            summary:
-              error instanceof Error
-                ? error.message
-                : '自动生成与验证启动失败，请进入详情页重试。',
-            status: 'failed',
-          })
-          notify({
-            title: '应用已创建，但自动生成启动失败',
-            description:
-              error instanceof Error
-                ? error.message
-                : '请进入详情页重新运行自动生成与验证。',
-            variant: 'warning',
-          })
-          return
-        }
-
         notify({
           title: '创建失败',
-          description: error instanceof Error ? error.message : '请稍后重试。',
+          description: resolveProblemDetail(error, '请稍后重试。'),
           variant: 'error',
         })
       }
     },
-    [createGeneratedAppMutation, notify, prompt, startGenerationRunMutation],
+    [bindingTarget, createGeneratedAppMutation, modelConfigId, notify, prompt],
   )
-
-  const isCreatingOrRunning =
-    createGeneratedAppMutation.isPending || startGenerationRunMutation.isPending
 
   return (
     <PageContainer data-testid="generated-app-list-page">
@@ -226,60 +190,114 @@ export function GeneratedAppListPage() {
 
         <Card>
           <CardContent className="p-4">
-            <form className="space-y-2" onSubmit={handleSubmit}>
-              <label
-                htmlFor="generated-app-prompt"
-                className="block text-xs font-medium text-muted-foreground"
-              >
-                一句话描述你要的应用
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  id="generated-app-prompt"
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  placeholder="例如：自动化中医问诊系统，能逐步提问并生成分析报告"
-                  maxLength={4000}
-                  disabled={isCreatingOrRunning}
-                />
-                <Button type="submit" disabled={isCreatingOrRunning} className="shrink-0">
-                  {isCreatingOrRunning ? (
-                    <Spinner size="sm" />
-                  ) : (
-                    <WandSparkles />
-                  )}
-                  {isCreatingOrRunning ? '正在生成' : '创建并生成应用'}
-                </Button>
+            <form className="space-y-3" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <label
+                  htmlFor="generated-app-prompt"
+                  className="block text-xs font-medium text-muted-foreground"
+                >
+                  一句话描述你要的应用
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="generated-app-prompt"
+                    value={prompt}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    placeholder="例如：一个问答页面：输入问题，调用知识库问答工作流返回答案与引用"
+                    maxLength={4000}
+                    disabled={isCreating}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isCreating || hasNoUsableChatModel}
+                    className="shrink-0"
+                  >
+                    {isCreating ? <Spinner size="sm" /> : <WandSparkles />}
+                    {isCreating ? '正在创建' : '创建并生成应用'}
+                  </Button>
+                </div>
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormField
+                  label="生成 AppSpec 的模型"
+                  htmlFor="generated-app-model"
+                  hint="只列可用的对话模型；自动时使用账号默认对话模型。"
+                >
+                  <ChatModelSelect
+                    id="generated-app-model"
+                    data-testid="generated-app-model-select"
+                    value={modelConfigId}
+                    onValueChange={setModelConfigId}
+                    models={chatModels}
+                    disabled={isCreating || hasNoUsableChatModel}
+                  />
+                </FormField>
+                <FormField
+                  label="绑定目标"
+                  htmlFor="generated-app-binding-target"
+                  hint="公开提交会执行它的已发布版本；自动时由模型按需求从候选中选择。"
+                >
+                  <GeneratedAppBindingTargetSelect
+                    id="generated-app-binding-target"
+                    value={bindingTarget}
+                    onValueChange={setBindingTarget}
+                    disabled={isCreating}
+                  />
+                </FormField>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {hasNoUsableChatModel ? (
+                  <motion.div key="no-chat-model" {...fadeInUp}>
+                    <Alert
+                      variant="warning"
+                      data-testid="generated-app-no-chat-model-warning"
+                    >
+                      你的账号中还没有可用的对话模型，无法生成 AppSpec。请先到{' '}
+                      <Link
+                        to="/resources/llm-models"
+                        className="font-medium text-foreground underline underline-offset-2"
+                      >
+                        模型管理
+                      </Link>{' '}
+                      添加并启用一个对话模型。
+                    </Alert>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </form>
           </CardContent>
         </Card>
 
         <AnimatePresence initial={false}>
-          {lastLaunch ? (
-            <motion.div key="last-launch" {...fadeInUp}>
-              <Card
-                className={
-                  lastLaunch.status === 'started' ? 'border-success/30' : 'border-warning/30'
-                }
-              >
-                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-1">
-                    <h2 className="break-words text-xs font-semibold text-foreground">
-                      {lastLaunch.appName}
-                    </h2>
-                    <p className="break-words text-xs leading-relaxed text-muted-foreground">
-                      {lastLaunch.summary}
-                    </p>
+          {lastCreated ? (
+            <motion.div key={`last-created-${lastCreated.id}`} {...fadeInUp}>
+              <Card data-testid="generated-app-last-created">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <h2 className="break-words text-xs font-semibold text-foreground">
+                        {lastCreated.appName}
+                      </h2>
+                      <p className="break-words text-xs leading-relaxed text-muted-foreground">
+                        {lastCreated.prompt}
+                      </p>
+                    </div>
+                    <Link
+                      to="/generated-apps/$appId"
+                      params={{ appId: lastCreated.id }}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors duration-150 hover:text-primary-hover"
+                    >
+                      进入详情
+                      <ArrowRight className="size-3.5" />
+                    </Link>
                   </div>
-                  <Link
-                    to="/generated-apps/$appId"
-                    params={{ appId: lastLaunch.appId }}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors duration-150 hover:text-primary-hover"
-                  >
-                    进入详情
-                    <ArrowRight className="size-3.5" />
-                  </Link>
+                  <GeneratedAppGenerationProgress
+                    appId={lastCreated.id}
+                    generationRunId={lastCreated.generationRunId}
+                    gates={lastCreated.gateResults}
+                  />
                 </CardContent>
               </Card>
             </motion.div>
