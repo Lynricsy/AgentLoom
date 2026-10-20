@@ -154,6 +154,23 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
   async createSession(params: CreateSessionParams): Promise<AgentSession> {
     const sessionId = params.sessionId ?? randomUUID();
+    const sandboxBinding = this.sessionRuntime.readSandboxBinding(
+      params.context ?? {},
+    );
+    const tenantId = params.tenantId ?? null;
+    const hasSandbox =
+      tenantId !== null && this.sessionRuntime.hasSandboxBinding(sandboxBinding);
+    // 有 microVM 时，stdio MCP 绑定随会话下发给 guest 启动，不在服务端代调
+    const guestMcp = hasSandbox
+      ? await this.toolRegistry.resolveGuestMcpServers(
+          tenantId,
+          params.runtimeConfig,
+        )
+      : undefined;
+    const mcpServers =
+      guestMcp && guestMcp.configIds.size > 0
+        ? { ...guestMcp.servers, ...params.mcpServers }
+        : params.mcpServers;
     const session: AgentSession = {
       id: sessionId,
       agentId: params.agentId,
@@ -161,7 +178,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       context: {
         history: [],
         cwd: CONTAINER_WORKSPACE,
-        mcpServers: params.mcpServers,
+        mcpServers,
         workflowState: params.context,
       },
       status: 'active',
@@ -182,15 +199,12 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       this.toolRegistry.createRuntimeConfigToolProvider(
         session,
         params.runtimeConfig,
+        guestMcp?.configIds,
       );
     if (runtimeConfigProvider) {
       this.registerSessionToolProvider(session.id, runtimeConfigProvider);
     }
 
-    const sandboxBinding = this.sessionRuntime.readSandboxBinding(
-      params.context ?? {},
-    );
-    const tenantId = params.tenantId ?? null;
     if (sandboxBinding.agentConversationId) {
       this.conversationSessionIds.set(
         sandboxBinding.agentConversationId,
@@ -198,7 +212,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       );
     }
 
-    if (tenantId && this.sessionRuntime.hasSandboxBinding(sandboxBinding)) {
+    if (hasSandbox) {
       try {
         const sandbox = await this.sessionRuntime.waitForSandboxReady(
           sandboxBinding,
@@ -207,7 +221,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         const payload = await this.modelConfig.buildContainerSessionPayload({
           session,
           runtimeConfig: params.runtimeConfig,
-          mcpServers: params.mcpServers,
+          mcpServers,
           skills: params.skills,
         });
         const remoteToolPayload =

@@ -49,6 +49,11 @@ const CALL_TOOL_TIMEOUT_MS = 60_000;
 export type McpRuntimeConnection = TestMcpConnectionDto['connection'];
 export type McpRuntimeDiscoveredTool =
   DiscoverMcpToolsResponse['tools'][number];
+/** 已保存 MCP 配置的名称与运行时连接（含解密凭证） */
+export type McpRuntimeServer = {
+  name: string;
+  connection: McpRuntimeConnection;
+};
 
 type McpConnection = McpRuntimeConnection;
 type DiscoveredMcpTool = Awaited<
@@ -109,6 +114,24 @@ export class McpService {
       tenantId,
     );
     return this.buildConnectionFromSavedConfig(config);
+  }
+
+  /**
+   * 同 resolveRuntimeConnection，另带配置名称：sandbox 会话把 stdio 配置下发给
+   * guest 时，用名称作为 dsh-mcp-client 的 serverName（工具名 mcp__<名称>__<工具>）。
+   */
+  async resolveRuntimeServer(
+    mcpServerConfigId: string,
+    tenantId: string,
+  ): Promise<McpRuntimeServer> {
+    const config = await this.getSavedConfigOrThrow(
+      mcpServerConfigId,
+      tenantId,
+    );
+    return {
+      name: config.name,
+      connection: this.buildConnectionFromSavedConfig(config),
+    };
   }
 
   async testConnection(

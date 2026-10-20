@@ -118,7 +118,9 @@ LLM 提供商 API Key、MCP 服务凭据、私有部署配置中的密钥等**�
 
 ## 服务端进程执行
 
-stdio MCP 由 `McpService.createTransport`（`agentloom-server/src/modules/mcp/mcp.service.ts`）在 server / worker 进程所在的主机或容器内 spawn 用户填写的命令，测试、发现、导入、重新发现与运行时工具调用（含 sandbox Agent 经远程工具回调触发的调用）都经过这一处。这等同于让 owner / admin 在服务端执行任意命令，而注册开放时任何用户都是自建组织的 owner，因此由 `APP_MCP_STDIO_ENABLED` 守卫、默认 `false`：未开启时直接抛 403 `mcp/stdio-disabled`，不创建进程。多租户部署必须保持关闭，只有单租户自托管且信任全部 owner / admin 时才开启。SSE 与 Streamable HTTP 传输不受影响。
+stdio MCP 由 `McpService.createTransport`（`agentloom-server/src/modules/mcp/mcp.service.ts`）在 server / worker 进程所在的主机或容器内 spawn 用户填写的命令，测试、发现、导入、重新发现、把已保存配置改为 stdio（`updateConfig`）以及服务端代调的运行时工具调用都经过这一守卫。这等同于让 owner / admin 在服务端执行任意命令，而注册开放时任何用户都是自建组织的 owner，因此由 `APP_MCP_STDIO_ENABLED` 守卫、默认 `false`：未开启时直接抛 403 `mcp/stdio-disabled`，不创建进程。多租户部署必须保持关闭，只有单租户自托管且信任全部 owner / admin 时才开启。SSE 与 Streamable HTTP 传输不受影响。
+
+有沙箱 Agent 的 stdio MCP 绑定不经过服务端：`SandboxAgentAdapter.createSession` 把它们作为 `mcpServers` 下发给 guest，由 dsh-mcp-client 在该会话的 microVM 内启动（见 [Agent 运行时](/dev/server/agent-runtime)），命令只能触及用户自己的沙箱，因此不受 `APP_MCP_STDIO_ENABLED` 约束；连接参数中的 env（含解密后的凭据）随会话进入 VM，与 workflow Agent 节点下发 MCP 的方式相同。无 sandbox Agent 在执行 stdio 绑定时被拒绝（`SandboxToolRegistryService.assertMcpTransportAllowed`）。
 
 ## Webhook 签名
 

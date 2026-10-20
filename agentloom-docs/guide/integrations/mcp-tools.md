@@ -10,7 +10,7 @@ docType: howto
 
 - 接入、测试、编辑与删除 MCP 服务需要 owner 或 admin 角色。creator 可以在「资源 → MCP 服务」中只读查看服务器列表、详情与工具（凭据只显示键名），用于在画布上配置 MCP Tool 节点；operator 与 viewer 的侧边栏不显示该入口。
 - 准备好服务器的连接方式：
-  - **stdio**：启动命令与参数。命令在 AgentLoom 服务端所在的主机（或容器）中启动，等同于在服务端执行任意命令，因此默认关闭：未设置 `APP_MCP_STDIO_ENABLED=true` 时，stdio 的测试、发现、导入、把已保存配置的连接改为 stdio，以及运行时调用都返回 403 `mcp/stdio-disabled`。只有单租户自托管、且信任全部 owner / admin 的部署才应开启；开启后该环境必须装有对应的运行时（如 `npx`、`uvx`）。
+  - **stdio**：启动命令与参数。接入时（测试、发现、导入、把已保存配置的连接改为 stdio）命令在 AgentLoom 服务端所在的主机（或容器）中启动，等同于在服务端执行任意命令，因此默认关闭：未设置 `APP_MCP_STDIO_ENABLED=true` 时这些操作都返回 403 `mcp/stdio-disabled`。只有单租户自托管、且信任全部 owner / admin 的部署才应开启；开启后该环境必须装有对应的运行时（如 `npx`、`uvx`）。对话中调用时服务器在哪里启动，见下文 [stdio 服务器在哪里运行](#stdio-服务器在哪里运行)。
   - **SSE** 或 **HTTP**：服务地址，以及需要的请求头（例如鉴权头）。服务端必须能访问该地址。
 
 ## 导入 MCP 服务器
@@ -37,12 +37,25 @@ docType: howto
 
    同一步显示「导入回执」，列出总计处理、已导入、已覆盖等数量。点击「完成」后，服务器出现在「MCP Servers」列表中，显示「传输」「状态」「工具数」「最后测试」。
 
-## 在工作流中使用
+## 在工作流与 Agent 中使用
 
 1. 在工作流画布中添加 [MCP Tool 节点](/guide/nodes/mcp-tool)，在配置面板中选择刚导入的服务器并勾选工具。
 2. 把节点的「工具」端口连接到 [Agent 节点](/guide/nodes/agent) 的「扩展工具」端口。
 
    运行时 Agent 收到这些工具的描述，自行决定是否调用；工具调用记录在执行详情中查看。
+
+在 Agent 画布上，把 MCP Tool 节点的「工具」端口连到 Agent Main 的「工具」端口，用法见 [创建 Agent](/guide/agents/creating#添加能力)。
+
+## stdio 服务器在哪里运行
+
+Agent 画布上连到 Agent Main 的 MCP 服务器中，SSE / HTTP 服务器由 AgentLoom 服务端调用；stdio 服务器在对话中的运行位置取决于 Agent 的运行形态：
+
+| Agent | stdio 服务器 | 模型看到的工具 |
+| --- | --- | --- |
+| 有沙箱 | 在该对话的沙箱里启动，与 Agent 的终端在同一台虚拟机内：命令参数中的路径是沙箱里的路径（如 `/workspace` 就是沙箱工作区），`npx`、`uvx` 等运行时与网络访问也由沙箱提供。不受 `APP_MCP_STDIO_ENABLED` 限制 | 该服务器提供的全部工具，名称为 `mcp__<服务器名>__<工具名>`。服务器名取「服务器名称」中的字母、数字、`_`、`-`（其余字符替换为 `_`，最长 32 个字符；重名或没有可用字符时追加配置 ID 末 8 位）。节点上的工具勾选与参数覆盖对 stdio 服务器不生效 |
+| 无沙箱 | 不支持，调用时失败 | — |
+
+部署未开启 `APP_MCP_STDIO_ENABLED` 时无法导入 stdio 服务器；有沙箱 Agent 仍可以用 Harness 节点的 profile patch 在沙箱里接入 stdio 服务器，见 [Harness 与 Runtime 插件](/guide/agents/harness#在沙箱里接入-stdio-mcp-服务器)。
 
 ## 维护已导入的服务器
 

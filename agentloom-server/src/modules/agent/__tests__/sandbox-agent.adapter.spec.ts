@@ -55,6 +55,7 @@ describe('SandboxAgentAdapter', () => {
   };
   let mockMcpService: {
     resolveRuntimeConnection: ReturnType<typeof vi.fn>;
+    resolveRuntimeServer: ReturnType<typeof vi.fn>;
     callRuntimeTool: ReturnType<typeof vi.fn>;
   };
   let mockRagService: {
@@ -184,6 +185,7 @@ describe('SandboxAgentAdapter', () => {
     };
     mockMcpService = {
       resolveRuntimeConnection: vi.fn(),
+      resolveRuntimeServer: vi.fn(),
       callRuntimeTool: vi.fn(),
     };
     mockRagService = {
@@ -2994,50 +2996,205 @@ describe('SandboxAgentAdapter', () => {
       ).rejects.toThrow('is missing tenantId');
     });
 
-    it('no_sandbox 应拒绝 stdio MCP，而 sandbox runtime 应允许并返回工具结果', async () => {
-      const createMcpSession = async (
-        sessionId: string,
-        runtimeMode: 'no_sandbox' | 'sandbox',
-      ) => {
-        await adapter.createSession({
-          ...defaultParams,
-          sessionId,
-          runtimeConfig: {
-            runtimeMode,
-            tools: [
-              {
-                toolId: 'mcp-search',
-                toolType: 'mcp',
-                name: 'search_docs',
-                description: '搜索文档',
-                enabled: true,
-                mcpServerConfigId: 'mcp-config-1',
-                toolName: 'search',
-                inputSchema: {
-                  type: 'object',
-                  properties: { query: { type: 'string' } },
-                },
-              },
-            ],
-          },
-        });
-        const initCall = vi.mocked(globalThis.fetch).mock.calls.at(-1);
-        const initPayload = JSON.parse(String(initCall?.[1]?.body)) as {
-          remoteToolExecution: { callbackToken: string };
-        };
-        return initPayload.remoteToolExecution.callbackToken;
-      };
-      mockMcpService.resolveRuntimeConnection.mockResolvedValue({
+    const mcpBinding = (
+      toolId: string,
+      mcpServerConfigId: string,
+      toolName: string,
+    ) => ({
+      toolId,
+      toolType: 'mcp' as const,
+      name: toolName,
+      description: `MCP ${toolName}`,
+      enabled: true,
+      mcpServerConfigId,
+      toolName,
+      inputSchema: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+      },
+    });
+    const stdioServer = {
+      name: 'Docs MCP',
+      connection: {
         transportType: 'stdio',
-      });
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace'],
+        env: { DOCS_TOKEN: 'secret' },
+      },
+    };
+    const httpServer = {
+      name: 'everything',
+      connection: {
+        transportType: 'streamable_http',
+        url: 'http://mcp.internal:3001/mcp',
+      },
+    };
+    const readInitPayload = () =>
+      JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+      ) as {
+        mcpServers?: Record<string, unknown>;
+        remoteToolExecution?: {
+          callbackToken: string;
+          tools: Array<{ name: string }>;
+        };
+      };
+
+    it('sandbox 会话把 stdio MCP 绑定作为 mcpServers 下发给 guest，HTTP MCP 仍由服务端代调', async () => {
+      mockMcpService.resolveRuntimeServer.mockImplementation(
+        async (configId: string) =>
+          configId === 'cfg-stdio' ? stdioServer : httpServer,
+      );
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(
+        httpServer.connection,
+      );
       mockMcpService.callRuntimeTool.mockResolvedValue({
-        content: [{ type: 'text', text: 'found' }],
+        content: [{ type: 'text', text: 'echoed' }],
       });
 
-      const noSandboxToken = await createMcpSession(
-        'session-no-sandbox-mcp',
-        'no_sandbox',
+      const session = await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-guest-mcp',
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-guest-mcp' },
+        runtimeConfig: {
+          runtimeMode: 'sandbox',
+          tools: [
+            mcpBinding('tool-read', 'cfg-stdio', 'read_file'),
+            mcpBinding('tool-list', 'cfg-stdio', 'list_directory'),
+            mcpBinding('tool-echo', 'cfg-http', 'echo'),
+          ],
+        },
+      });
+
+      const initPayload = readInitPayload();
+      // 同一 stdio 配置只下发一次，serverName 按 dsh 规则规范化
+      expect(initPayload.mcpServers).toEqual({
+        Docs_MCP: stdioServer.connection,
+      });
+      expect(session.context.mcpServers).toEqual({
+        Docs_MCP: stdioServer.connection,
+      });
+      expect(
+        initPayload.remoteToolExecution?.tools.map((tool) => tool.name),
+      ).toEqual(['echo']);
+      expect(mockMcpService.resolveRuntimeServer).toHaveBeenCalledTimes(2);
+
+      const callbackToken = initPayload.remoteToolExecution!.callbackToken;
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-guest-mcp',
+          {
+            sessionId: 'session-guest-mcp',
+            toolCallId: 'call-read',
+            toolName: 'read_file',
+            input: { query: 'a' },
+          },
+          callbackToken,
+        ),
+      ).rejects.toBeInstanceOf(SandboxNotFoundException);
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-guest-mcp',
+          {
+            sessionId: 'session-guest-mcp',
+            toolCallId: 'call-echo',
+            toolName: 'echo',
+            input: { query: 'hi' },
+          },
+          callbackToken,
+        ),
+      ).resolves.toEqual({
+        result: { content: [{ type: 'text', text: 'echoed' }] },
+      });
+      expect(mockMcpService.callRuntimeTool).toHaveBeenCalledTimes(1);
+      expect(mockMcpService.callRuntimeTool).toHaveBeenCalledWith(
+        httpServer.connection,
+        'echo',
+        { query: 'hi' },
       );
+    });
+
+    it('guest serverName 冲突或无有效字符时追加配置 ID 后缀，并与 workflow 下发的 mcpServers 合并', async () => {
+      const configNames: Record<string, string> = {
+        'cfg-a-0000-0000-0000-00000000aaaa': 'docs',
+        'cfg-b-0000-0000-0000-00000000bbbb': 'docs',
+        'cfg-c-0000-0000-0000-00000000cccc': '文档服务',
+      };
+      mockMcpService.resolveRuntimeServer.mockImplementation(
+        async (configId: string) => ({
+          name: configNames[configId],
+          connection: { transportType: 'stdio', command: configId },
+        }),
+      );
+
+      await adapter.createSession({
+        ...defaultParams,
+        mcpServers: {
+          'workflow-cfg': { transportType: 'streamable_http', url: 'http://w' },
+        },
+        runtimeConfig: {
+          runtimeMode: 'sandbox',
+          tools: Object.keys(configNames).map((configId, index) =>
+            mcpBinding(`t${index}`, configId, `tool${index}`),
+          ),
+        },
+      });
+
+      expect(readInitPayload().mcpServers).toEqual({
+        docs: {
+          transportType: 'stdio',
+          command: 'cfg-a-0000-0000-0000-00000000aaaa',
+        },
+        'docs-0000bbbb': {
+          transportType: 'stdio',
+          command: 'cfg-b-0000-0000-0000-00000000bbbb',
+        },
+        'mcp-0000cccc': {
+          transportType: 'stdio',
+          command: 'cfg-c-0000-0000-0000-00000000cccc',
+        },
+        'workflow-cfg': { transportType: 'streamable_http', url: 'http://w' },
+      });
+    });
+
+    it('MCP 配置解析失败时保留服务端代调，不阻断会话创建', async () => {
+      mockMcpService.resolveRuntimeServer.mockRejectedValue(
+        new Error('MCP 服务器配置不存在: cfg-gone'),
+      );
+
+      await adapter.createSession({
+        ...defaultParams,
+        runtimeConfig: {
+          runtimeMode: 'sandbox',
+          tools: [mcpBinding('t-gone', 'cfg-gone', 'search')],
+        },
+      });
+
+      const initPayload = readInitPayload();
+      expect(initPayload).not.toHaveProperty('mcpServers');
+      expect(
+        initPayload.remoteToolExecution?.tools.map((tool) => tool.name),
+      ).toEqual(['search']);
+    });
+
+    it('no_sandbox 不下发 guest MCP，服务端执行 stdio 时拒绝', async () => {
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue(
+        stdioServer.connection,
+      );
+
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-no-sandbox-mcp',
+        runtimeConfig: {
+          runtimeMode: 'no_sandbox',
+          tools: [mcpBinding('mcp-search', 'cfg-stdio', 'search_docs')],
+        },
+      });
+      const initPayload = readInitPayload();
+      expect(initPayload).not.toHaveProperty('mcpServers');
+      expect(mockMcpService.resolveRuntimeServer).not.toHaveBeenCalled();
+
       await expect(
         adapter.executeSessionToolCallback(
           'session-no-sandbox-mcp',
@@ -3047,34 +3204,10 @@ describe('SandboxAgentAdapter', () => {
             toolName: 'search_docs',
             input: { query: 'policy' },
           },
-          noSandboxToken,
+          initPayload.remoteToolExecution!.callbackToken,
         ),
       ).rejects.toThrow('无 sandbox Agent 只能使用 HTTP MCP');
       expect(mockMcpService.callRuntimeTool).not.toHaveBeenCalled();
-
-      const sandboxToken = await createMcpSession(
-        'session-sandbox-mcp',
-        'sandbox',
-      );
-      await expect(
-        adapter.executeSessionToolCallback(
-          'session-sandbox-mcp',
-          {
-            sessionId: 'session-sandbox-mcp',
-            toolCallId: 'call-sandbox',
-            toolName: 'search_docs',
-            input: { query: 'policy' },
-          },
-          sandboxToken,
-        ),
-      ).resolves.toEqual({
-        result: { content: [{ type: 'text', text: 'found' }] },
-      });
-      expect(mockMcpService.callRuntimeTool).toHaveBeenCalledWith(
-        expect.objectContaining({ transportType: 'stdio' }),
-        'search',
-        { query: 'policy' },
-      );
     });
 
     it('code remote tool 应合并参数覆盖并转发 timeout，缺少执行服务时返回可观察失败', async () => {

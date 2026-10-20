@@ -50,6 +50,30 @@ docType: howto
 
 内容必须是 YAML 列表；输入框失焦时校验，不合法时显示「必须是 YAML 列表」或解析错误。草稿仍会保存，但 Studio 保存后的编译与发布会返回 422 `agent-canvas-invalid-harness`。
 
+### 在沙箱里接入 stdio MCP 服务器
+
+部署未开启 `APP_MCP_STDIO_ENABLED` 时无法在「MCP 服务」中导入 stdio 服务器（见 [MCP 工具](/guide/integrations/mcp-tools#stdio-服务器在哪里运行)）。这时可以在 profile patch 里直接插入 `@deepseek-ai/dsh-mcp-client` 条目，服务器在该对话的沙箱里启动，不经过服务端：
+
+```yaml
+- insert:
+    - id: mcp-memory
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: memory
+        transport: stdio
+        command: npx
+        args: ['-y', '@modelcontextprotocol/server-memory']
+    - id: mcp-filesystem
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: filesystem
+        transport: stdio
+        command: npx
+        args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace']
+```
+
+每个服务器一条，`id` 与 `serverName`（字母、数字、`_`、`-`，最长 32 个字符）各自不能重复，也不要与画布上 MCP Tool 节点连接的服务器同名。工具以 `mcp__<serverName>__<工具名>` 出现在对话中。`npx` 每次会话启动时在线下载包，首轮对话会慢一些，沙箱需要能访问 npm registry。连接远端服务时把 `transport` 改为 `streamable-http` 并填写 `url`（可选 `headers`）。
+
 ## 5. 发布并对话
 
 点击「发布」。发布时平台确认每个启用的已上传插件仍处于「已启用」状态；不满足时发布失败，提示 `runtime 插件 <id> 不存在或未启用`。

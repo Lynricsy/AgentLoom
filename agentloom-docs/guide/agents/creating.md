@@ -11,7 +11,7 @@ docType: howto
 1. 在侧边栏「构建」组点击「Agent」，点击页面右上角的「新建」。
 2. 在「新建 Agent」对话框中填写「名称」（留空则为「未命名智能体」）与可选的「描述」，选择「运行形态」：
    - 「有沙箱」（默认）：支持工作区、终端和内置文件工具，可调用有沙箱或无沙箱子 Agent。需要部署启用沙箱运行时。
-   - 「无沙箱」：不提供内置文件/终端工具，仅支持 HTTP MCP，适合纯推理与资源编排。
+   - 「无沙箱」：不提供内置文件/终端工具，MCP 只支持 SSE / HTTP 服务器，适合纯推理与资源编排。
 3. 点击「创建」。
 
 页面跳转到 `/agents/:agentId` 的 Agent 画布。画布上已有 Agent Main 节点；选择「有沙箱」时还会自动放置一个 Sandbox 节点。运行形态创建后固定，Agent Main 配置面板的「运行形态」区域只显示当前值。
@@ -22,6 +22,7 @@ docType: howto
 | --- | --- | --- |
 | 内置文件读写、编辑、终端工具 | 有，可在 Agent Main 的「原生工具」中逐项开关 | 无 |
 | 画布上的 Sandbox、Workspace 节点 | 可用 | 不可用，Agent Main 没有「沙箱」端口 |
+| stdio MCP 服务器 | 在该对话的沙箱里启动，命令中的 `/workspace` 即沙箱工作区，见 [stdio 服务器在哪里运行](/guide/integrations/mcp-tools#stdio-服务器在哪里运行) | 不支持 |
 | 调用子 Agent | 可调用有沙箱或无沙箱子 Agent | 只能调用无沙箱子 Agent；调用有沙箱子 Agent 时运行失败，错误为 `无 sandbox Agent 不支持调用有 sandbox 的子 Agent` |
 | 技能的加载方式 | 技能文件写入沙箱会话目录，Agent 用内置的 `skill` 工具按需加载 | 技能内容写入系统提示词；技能正文合计超过 50 KiB 时只写摘要，Agent 通过 `load_skill` 工具按需加载 |
 | 定制运行时 | 可用 Harness 节点挂载 runtime 插件、写 profile patch | 不可用 |
@@ -38,7 +39,7 @@ docType: howto
 
 | 能力 | 面板分组与节点 | Agent Main 端口 |
 | --- | --- | --- |
-| 外部工具 | 工具：[MCP Tool](/guide/nodes/mcp-tool)（无沙箱 Agent 仅支持 HTTP MCP） | 工具 |
+| 外部工具 | 工具：[MCP Tool](/guide/nodes/mcp-tool)（无沙箱 Agent 只支持 SSE / HTTP 服务器；有沙箱 Agent 的 stdio 服务器在沙箱里启动） | 工具 |
 | 文档检索 | 知识：[Knowledge Base](/guide/nodes/knowledge-base) | 知识库 |
 | 长期记忆 | 记忆：[Memory](/guide/nodes/memory) | 记忆 |
 | 技能 | 高级：[Skill](/guide/nodes/skill) | Skills |

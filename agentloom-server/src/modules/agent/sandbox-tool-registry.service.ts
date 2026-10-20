@@ -5,6 +5,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   Optional,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -31,13 +32,13 @@ import type {
   AgentToolBinding,
 } from '../agent-definition/agent-runtime-config.interface';
 import { RagService } from '../knowledge/services/rag.service';
-import { McpService } from '../mcp/mcp.service';
+import { McpService, type McpRuntimeServer } from '../mcp/mcp.service';
 import { SandboxNotFoundException } from '../sandbox/sandbox.exceptions';
 import { CodeExecutionService } from './code-execution.service';
 import { executeHttpToolRequest } from './http-tool-request.util';
 import { normalizeFlexibleSchemaJson } from './tool-schema-converter';
 import type { SessionToolProvider } from './ports/agent-runtime.port';
-import type { AgentSession } from './types';
+import type { AgentSession, McpServerConfig } from './types';
 
 const DEFAULT_REMOTE_TOOL_SCHEMA = {
   type: 'object',
@@ -97,8 +98,19 @@ const KNOWLEDGE_TOOL_INPUT_SCHEMA = {
   additionalProperties: false,
 } satisfies AiJsonSchemaInput;
 
+/** sandbox 会话中改由 guest 启动的 MCP 服务器 */
+export type GuestMcpServers = {
+  /** 下发给 guest 的 mcpServers，键为 dsh-mcp-client 的 serverName（`[A-Za-z0-9_-]{1,32}`） */
+  servers: Record<string, McpServerConfig>;
+  /** 已交给 guest 的 MCP 配置 ID：服务端远程工具集不再注册它们的工具 */
+  configIds: ReadonlySet<string>;
+};
+
+const NO_GUEST_MCP_CONFIG_IDS: ReadonlySet<string> = new Set();
+
 @Injectable()
 export class SandboxToolRegistryService {
+  private readonly logger = new Logger(SandboxToolRegistryService.name);
   private readonly sessionToolProviders = new Map<
     string,
     SessionToolProvider[]
@@ -140,6 +152,7 @@ export class SandboxToolRegistryService {
   createRuntimeConfigToolProvider(
     session: AgentSession,
     runtimeConfig?: AgentRuntimeConfig,
+    guestMcpConfigIds: ReadonlySet<string> = NO_GUEST_MCP_CONFIG_IDS,
   ): SessionToolProvider | null {
     if (!runtimeConfig) {
       return null;
@@ -157,14 +170,81 @@ export class SandboxToolRegistryService {
       cachedToolSetPromise ??= this.buildRuntimeConfigToolSet(
         session,
         runtimeConfig,
+        guestMcpConfigIds,
       );
       return cachedToolSetPromise;
     };
   }
 
+  /**
+   * sandbox 会话的 stdio MCP 绑定改由 guest 内的 dsh-mcp-client 在 microVM 里启动：
+   * 命令跑在用户自己的沙箱中（`/workspace` 即沙箱工作区），不在服务端 spawn，
+   * 也就不受 APP_MCP_STDIO_ENABLED 约束。HTTP/SSE MCP 仍由服务端代调（guest 不一定
+   * 能访问这些地址）。无 sandbox Agent 不走这里，其 stdio 调用在执行时被拒绝。
+   * 配置解析失败的绑定保留在服务端工具集，调用时按原路径报错。
+   */
+  async resolveGuestMcpServers(
+    tenantId: string,
+    runtimeConfig?: AgentRuntimeConfig,
+  ): Promise<GuestMcpServers> {
+    const servers: Record<string, McpServerConfig> = {};
+    const configIds = new Set<string>();
+    const mcpService = this.mcpService;
+    if (!mcpService || runtimeConfig?.runtimeMode === 'no_sandbox') {
+      return { servers, configIds };
+    }
+
+    const candidateConfigIds = new Set<string>();
+    for (const binding of runtimeConfig?.tools ?? []) {
+      if (binding.enabled === false) continue;
+      const normalizedBinding = this.normalizeToolBinding(binding);
+      if (normalizedBinding?.toolType !== 'mcp') continue;
+      const configId =
+        normalizedBinding.mcpServerConfigId ??
+        (await this.resolveMcpToolDescriptor(tenantId, normalizedBinding))
+          ?.mcpServerConfigId;
+      if (configId) candidateConfigIds.add(configId);
+    }
+
+    for (const configId of candidateConfigIds) {
+      let server: McpRuntimeServer;
+      try {
+        server = await runInTenantTransaction(this.db, tenantId, () =>
+          mcpService.resolveRuntimeServer(configId, tenantId),
+        );
+      } catch (error) {
+        this.logger.warn(
+          `解析 MCP 配置 ${configId} 失败，保留服务端代调: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        continue;
+      }
+      if (server.connection.transportType !== 'stdio') continue;
+
+      servers[this.buildGuestMcpServerName(server.name, configId, servers)] =
+        server.connection;
+      configIds.add(configId);
+    }
+
+    return { servers, configIds };
+  }
+
+  /** dsh-mcp-client 的 serverName 只允许 `[A-Za-z0-9_-]{1,32}` 且会话内唯一 */
+  private buildGuestMcpServerName(
+    configName: string,
+    configId: string,
+    taken: Readonly<Record<string, unknown>>,
+  ): string {
+    const base = configName.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
+    const meaningful = /[A-Za-z0-9]/.test(base);
+    if (meaningful && !(base in taken)) return base;
+    const suffix = configId.replace(/-/g, '').slice(-8);
+    return meaningful ? `${base.slice(0, 23)}-${suffix}` : `mcp-${suffix}`;
+  }
+
   private async buildRuntimeConfigToolSet(
     session: AgentSession,
     runtimeConfig: AgentRuntimeConfig,
+    guestMcpConfigIds: ReadonlySet<string>,
   ): Promise<ToolSet> {
     const toolSet: ToolSet = {};
 
@@ -182,6 +262,7 @@ export class SandboxToolRegistryService {
         const mcpEntry = await this.buildMcpToolEntry(
           session,
           normalizedBinding,
+          guestMcpConfigIds,
         );
         if (mcpEntry) {
           toolSet[mcpEntry.name] = mcpEntry.tool;
@@ -279,9 +360,24 @@ export class SandboxToolRegistryService {
   private async buildMcpToolEntry(
     session: AgentSession,
     binding: AgentMcpToolBinding,
+    guestMcpConfigIds: ReadonlySet<string>,
   ): Promise<{ name: string; tool: ToolSet[string] } | null> {
-    const descriptor = await this.resolveMcpToolDescriptor(session, binding);
-    if (!descriptor) {
+    // 交给 guest 的配置不再注册服务端代调工具；判定键与 resolveGuestMcpServers 一致
+    if (
+      binding.mcpServerConfigId &&
+      guestMcpConfigIds.has(binding.mcpServerConfigId)
+    ) {
+      return null;
+    }
+    const descriptor = await this.resolveMcpToolDescriptor(
+      session.tenantId,
+      binding,
+    );
+    if (
+      !descriptor ||
+      (!binding.mcpServerConfigId &&
+        guestMcpConfigIds.has(descriptor.mcpServerConfigId))
+    ) {
       return null;
     }
 
@@ -321,10 +417,9 @@ export class SandboxToolRegistryService {
   }
 
   private async resolveMcpToolDescriptor(
-    session: AgentSession,
+    tenantId: string | undefined,
     binding: AgentMcpToolBinding,
   ): Promise<McpRuntimeToolDescriptor | null> {
-    const tenantId = session.tenantId;
     if (!tenantId || !this.mcpService) {
       return null;
     }
