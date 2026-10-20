@@ -90,7 +90,6 @@
   "GET /generated-apps/:appId/submissions": "admin,creator,operator,owner,viewer",
   "GET /generated-apps/:appId/submissions/:submissionId": "admin,creator,operator,owner,viewer",
   "GET /generated-apps/public/:token": "public",
-  "GET /generated-apps/public/:token/preview": "public",
   "GET /generated-apps/public/:token/submissions/:submissionId": "public",
   "GET /health": "public",
   "GET /knowledge-bases": "admin,creator,operator,owner,viewer",

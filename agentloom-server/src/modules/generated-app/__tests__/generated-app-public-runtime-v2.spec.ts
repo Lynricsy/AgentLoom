@@ -17,7 +17,6 @@ import {
   GeneratedAppPublicSubmissionValidationException,
 } from '../generated-app.exceptions';
 import { GeneratedAppRepository } from '../generated-app.repository';
-import type { GeneratedAppArtifactService } from '../generated-app-artifact.service';
 import { GeneratedAppPublicRuntimeService } from '../generated-app-public-runtime.service';
 import type {
   GeneratedAppRuntimeBindingService,
@@ -36,7 +35,6 @@ import {
   createConfigService,
   createGeneratedApp,
   createGeneratedAppSubmission,
-  createGeneratedAppV2,
   createPublishCandidateReadiness,
   createReadiness,
 } from './generated-app-test-support';
@@ -118,7 +116,7 @@ const AVAILABLE_TARGET: GeneratedAppRuntimeTarget = {
 };
 
 function publishedV2App(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
-  return createGeneratedAppV2({
+  return createGeneratedApp({
     status: 'published',
     readiness: createPublishCandidateReadiness(),
     publicShareEnabled: true,
@@ -151,9 +149,6 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
     };
     service = new GeneratedAppPublicRuntimeService(
       repository,
-      {
-        resolvePublicRuntimePreviewUrl: vi.fn().mockResolvedValue(null),
-      } as unknown as GeneratedAppArtifactService,
       runtimeBinding as unknown as GeneratedAppRuntimeBindingService,
       execution as unknown as ExecutionService,
     );
@@ -185,7 +180,9 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
         runtimeForm: {
           title: '提问',
           submitLabel: '提问',
-          fields: [expect.objectContaining({ id: 'question', type: 'textarea' })],
+          fields: [
+            expect.objectContaining({ id: 'question', type: 'textarea' }),
+          ],
           resultView: {
             sections: [
               { id: 'answer', label: '答案', format: 'markdown' },
@@ -200,7 +197,10 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
     it('验收令牌打开同一页面但不计浏览量、不要求发布门槛', async () => {
       const app = publishedV2App({
         status: 'app_spec_ready',
-        readiness: createReadiness({ state: 'blocked', canCreatePublicShare: false }),
+        readiness: createReadiness({
+          state: 'blocked',
+          canCreatePublicShare: false,
+        }),
         publicShareEnabled: false,
         publicShareToken: null,
       });
@@ -212,27 +212,29 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
         app,
       });
 
-      await expect(service.getPublicApp(ACCEPTANCE_TOKEN)).resolves.toMatchObject({
+      await expect(
+        service.getPublicApp(ACCEPTANCE_TOKEN),
+      ).resolves.toMatchObject({
         runtimeForm: { fields: [expect.objectContaining({ id: 'question' })] },
       });
       expect(db.update).not.toHaveBeenCalled();
     });
 
-    it('令牌不存在（含验收令牌过期或已撤销）、v1 规格或尚未生成规格时 404', async () => {
+    it('令牌不存在（含验收令牌过期或已撤销）或尚未生成规格时 404', async () => {
       mockAccess(null);
-      await expect(service.getPublicApp(ACCEPTANCE_TOKEN)).rejects.toBeInstanceOf(
+      await expect(
+        service.getPublicApp(ACCEPTANCE_TOKEN),
+      ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+
+      mockAccess({
+        access: 'public',
+        appId: APP_ID,
+        tenantId: TENANT_ID,
+        app: publishedV2App({ appSpec: null }),
+      });
+      await expect(service.getPublicApp(PUBLIC_TOKEN)).rejects.toBeInstanceOf(
         GeneratedAppNotFoundException,
       );
-
-      for (const app of [
-        createGeneratedApp({ status: 'published', publicShareEnabled: true }),
-        publishedV2App({ appSpec: null }),
-      ]) {
-        mockAccess({ access: 'public', appId: APP_ID, tenantId: TENANT_ID, app });
-        await expect(service.getPublicApp(PUBLIC_TOKEN)).rejects.toBeInstanceOf(
-          GeneratedAppNotFoundException,
-        );
-      }
     });
 
     it('公开分享的应用不再满足发布门槛时 409', async () => {
@@ -241,7 +243,10 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
         appId: APP_ID,
         tenantId: TENANT_ID,
         app: publishedV2App({
-          readiness: createReadiness({ state: 'blocked', canCreatePublicShare: false }),
+          readiness: createReadiness({
+            state: 'blocked',
+            canCreatePublicShare: false,
+          }),
         }),
       });
 
@@ -266,10 +271,15 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
         })
         .catch((caught: unknown) => caught);
 
-      expect(error).toBeInstanceOf(GeneratedAppPublicSubmissionValidationException);
+      expect(error).toBeInstanceOf(
+        GeneratedAppPublicSubmissionValidationException,
+      );
       expect(error).toMatchObject({
         errors: expect.arrayContaining([
-          { field: 'input.chiefComplaint', message: '不是该应用表单声明的字段' },
+          {
+            field: 'input.chiefComplaint',
+            message: '不是该应用表单声明的字段',
+          },
           { field: 'input.question', message: '该字段为必填项' },
         ]),
       });
@@ -345,7 +355,10 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
         appId: APP_ID,
         tenantId: TENANT_ID,
         generationRunId: GENERATION_RUN_ID,
-        app: publishedV2App({ status: 'app_spec_ready', publicShareToken: null }),
+        app: publishedV2App({
+          status: 'app_spec_ready',
+          publicShareToken: null,
+        }),
       });
       const insert = insertSubmissionChain();
       db.insert.mockReturnValueOnce(insert);
@@ -445,9 +458,13 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
         }),
       );
 
-      execution.runWorkflow.mockRejectedValueOnce(new Error('connection reset'));
+      execution.runWorkflow.mockRejectedValueOnce(
+        new Error('connection reset'),
+      );
       await expect(
-        service.createPublicSubmission(PUBLIC_TOKEN, { input: { question: 'q' } }),
+        service.createPublicSubmission(PUBLIC_TOKEN, {
+          input: { question: 'q' },
+        }),
       ).rejects.toThrow('connection reset');
     });
   });
@@ -494,7 +511,9 @@ describe('GeneratedAppPublicRuntimeService（AppSpec v2）', () => {
           nodeId: 'out-structured',
           status: 'completed',
           result: {
-            json: { citations: [{ doc: '宣传册', quote: '同时运行 10 个子 Agent' }] },
+            json: {
+              citations: [{ doc: '宣传册', quote: '同时运行 10 个子 Agent' }],
+            },
           },
         },
       ]);
@@ -645,7 +664,10 @@ describe('GeneratedAppRepository 验收令牌', () => {
     expect(expiresAt.getTime() - before).toBeGreaterThanOrEqual(60_000);
     expect(expiresAt.getTime() - before).toBeLessThan(65_000);
     expect(update.set).toHaveBeenCalledWith({
-      acceptanceTokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+      acceptanceTokenHash: crypto
+        .createHash('sha256')
+        .update(token)
+        .digest('hex'),
       acceptanceTokenExpiresAt: expiresAt,
       acceptanceGenerationRunId: GENERATION_RUN_ID,
     });
@@ -681,7 +703,7 @@ describe('GeneratedAppRepository 验收令牌', () => {
 
   it('先按公开分享令牌查已发布应用，再按未过期验收令牌的 sha256 查', async () => {
     const publicSelect = selectLimitChain([]);
-    const app = createGeneratedAppV2({
+    const app = createGeneratedApp({
       acceptanceTokenHash: 'x',
       acceptanceGenerationRunId: GENERATION_RUN_ID,
     });
@@ -690,9 +712,8 @@ describe('GeneratedAppRepository 验收令牌', () => {
       .mockReturnValueOnce(publicSelect)
       .mockReturnValueOnce(acceptanceSelect);
 
-    const found = await repository.findByPublicOrAcceptanceToken(
-      ACCEPTANCE_TOKEN,
-    );
+    const found =
+      await repository.findByPublicOrAcceptanceToken(ACCEPTANCE_TOKEN);
 
     expect(found).toMatchObject({
       access: 'acceptance',

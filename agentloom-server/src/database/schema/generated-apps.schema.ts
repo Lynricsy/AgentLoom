@@ -20,6 +20,7 @@ import { createDirectTenantPolicies } from './rls-policies';
 import { users } from './users.schema';
 import { workflowDefinitions } from './workflow-definitions.schema';
 import type { GeneratedAppBindingTargetRef } from '../../modules/generated-app/types/generation-v2.ports';
+import type { GeneratedAppGenerationPlanV2 } from '../../modules/generated-app/types/generation-plan-v2.types';
 import type {
   GeneratedAppGenerationPlan,
   GeneratedAppGateEvidence,
@@ -142,7 +143,12 @@ export const generatedApps = pgTable(
     ),
 
     generationPlan: jsonb('generation_plan')
-      .$type<GeneratedAppGenerationPlan | Record<string, unknown> | null>()
+      .$type<
+        | GeneratedAppGenerationPlan
+        | GeneratedAppGenerationPlanV2
+        | Record<string, unknown>
+        | null
+      >()
       .default(null),
 
     gateResults: jsonb('gate_results')

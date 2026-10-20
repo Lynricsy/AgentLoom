@@ -1,291 +1,74 @@
 // 本文件保留 GeneratedAppService 的稳定 DI token 与公开 import 路径，并显式委托领域服务。
 
-import * as crypto from 'crypto';
+import { Injectable } from '@nestjs/common';
 
-import { readFile, stat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
-import { tmpdir } from 'node:os';
-
-import { Inject, Injectable, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import {
-  computeContentHash as computePluginArchiveContentHash,
-  readArchiveManifest,
-  validateManifest as validatePluginManifest,
-  verifyArchiveSignature as verifyPluginArchiveSignature,
-} from '@agentloom/plugin-sdk';
-import JSZip from 'jszip';
-
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
-import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import * as schema from '../../database/schema';
+import type { GeneratedApp } from '../../database/schema';
 import type {
-  GeneratedApp,
-  GeneratedAppBrowserAcceptancePlan,
-  GeneratedAppBuildUnitPlan,
-  GeneratedAppGateEvidence,
-  GeneratedAppGenerationPlan,
-  GeneratedAppGenerationRepairContext,
-  GeneratedAppGenerationRun,
-  GeneratedAppIndependentVerificationPlan,
-  GeneratedAppIntegrationPlan,
-  GeneratedAppRepairPlan,
-  GeneratedAppReverificationPlan,
-  GeneratedAppGateRunFailure,
-  GeneratedAppGateRun,
-  GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpecV1,
-  GeneratedAppStaticContracts,
-  GeneratedAppGateResult,
-  GeneratedAppPreview,
-  GeneratedAppReadiness,
-  GeneratedAppRepairAttempt,
-  GeneratedAppStatus,
-  GeneratedAppSubmission,
-} from '../../database/schema';
-import {
-  CreateGeneratedAppGenerationRunSchema,
-  type CreateGeneratedAppGenerationRunDtoType,
-  CreateGeneratedAppGateRunSchema,
-  type CreateGeneratedAppGateRunDtoType,
-  CreateGeneratedAppRepairAttemptSchema,
-  type CreateGeneratedAppRepairAttemptDtoType,
-  type CreateGeneratedAppSubmissionDtoType,
-  type CreateGeneratedAppDtoType,
-  type UpdateGeneratedAppDtoType,
-  type DeleteGeneratedAppSubmissionsResponseDto,
-  type DeleteGeneratedAppSubmissionsDtoType,
-  type GeneratedAppArtifactContentResponseDto,
-  type GeneratedAppArtifactKind,
-  type GeneratedAppArtifactManifestResponseDto,
-  type GeneratedAppArtifactSummaryDto,
-  type GeneratedAppGenerationRunResponseDto,
-  type GeneratedAppGateRunResponseDto,
-  type GeneratedAppRepairAttemptResponseDto,
-  type GeneratedAppRuntimeBindingReadinessResponseDto,
-  type GeneratedAppResponseDto,
-  type GeneratedAppSubmissionResponseDto,
-  type PublicGeneratedAppSubmissionResponseDto,
-  type PublicGeneratedAppResponseDto,
-  type QueryGeneratedAppGenerationRunsDtoType,
-  type QueryGeneratedAppGateRunsDtoType,
-  type QueryGeneratedAppRepairAttemptsDtoType,
-  type QueryGeneratedAppSubmissionsDtoType,
-  type QueryGeneratedAppsDtoType,
-  RecordGeneratedAppGateResultsSchema,
-  type RecordGeneratedAppGateRunResponseDto,
-  type RecordGeneratedAppGateResultsDtoType,
-  StartGeneratedAppGenerationRunSchema,
-  type StartGeneratedAppGenerationRunDtoType,
-  type StartGeneratedAppGenerationRunResponseDto,
-  UpdateGeneratedAppGenerationRunSchema,
-  type UpdateGeneratedAppGenerationRunDtoType,
-  UpdateGeneratedAppRepairAttemptSchema,
-  type UpdateGeneratedAppRepairAttemptDtoType,
+  CreateGeneratedAppDtoType,
+  CreateGeneratedAppGateRunDtoType,
+  CreateGeneratedAppGenerationRunDtoType,
+  CreateGeneratedAppRepairAttemptDtoType,
+  CreateGeneratedAppResponseDto,
+  CreateGeneratedAppSubmissionDtoType,
+  DeleteGeneratedAppSubmissionsDtoType,
+  DeleteGeneratedAppSubmissionsResponseDto,
+  GeneratedAppArtifactContentResponseDto,
+  GeneratedAppArtifactManifestResponseDto,
+  GeneratedAppGateRunResponseDto,
+  GeneratedAppGenerationRunResponseDto,
+  GeneratedAppRepairAttemptResponseDto,
+  GeneratedAppResponseDto,
+  GeneratedAppRuntimeBindingReadinessResponseDto,
+  GeneratedAppSubmissionResponseDto,
+  PublicGeneratedAppResponseDto,
+  PublicGeneratedAppSubmissionResponseDto,
+  QueryGeneratedAppGateRunsDtoType,
+  QueryGeneratedAppGenerationRunsDtoType,
+  QueryGeneratedAppRepairAttemptsDtoType,
+  QueryGeneratedAppSubmissionsDtoType,
+  QueryGeneratedAppsDtoType,
+  RecordGeneratedAppGateResultsDtoType,
+  RecordGeneratedAppGateRunResponseDto,
+  StartGeneratedAppGenerationRunDtoType,
+  StartGeneratedAppGenerationRunResponseDto,
+  UpdateGeneratedAppDtoType,
+  UpdateGeneratedAppGenerationRunDtoType,
+  UpdateGeneratedAppRepairAttemptDtoType,
 } from './dto';
-import {
-  createInitialGeneratedAppGateResults,
-  evaluateGeneratedAppReadiness,
-  getGeneratedAppGateDefinition,
-  getGeneratedAppStatusForReadiness,
-  normalizeGeneratedAppGateResults,
-} from './generated-app.gates';
-import {
-  GeneratedAppGateDefinitionNotFoundException,
-  GeneratedAppGenerationRunNotFoundException,
-  GeneratedAppNotFoundException,
-  GeneratedAppPublicShareNotReadyException,
-  GeneratedAppRepairAttemptNotFoundException,
-  GeneratedAppArtifactNotFoundException,
-  GeneratedAppArtifactTooLargeException,
-  GeneratedAppSubmissionNotFoundException,
-} from './generated-app.exceptions';
-import {
-  GeneratedAppGate3WorkspaceRunner,
-  type GeneratedAppGate3CommandPlan,
-  type GeneratedAppGate3RepairResult,
-  type GeneratedAppGenerationWorkspaceContract,
-} from './generated-app.workspace';
-import {
-  GeneratedAppGate4IntegrationRunner,
-  type GeneratedAppIntegrationExecutionLevel,
-} from './generated-app.integration-runner';
-import {
-  GeneratedAppGate5BrowserAcceptanceRunner,
-  type GeneratedAppBrowserAcceptanceExecutionLevel,
-} from './generated-app.browser-acceptance-runner';
-import {
-  GeneratedAppGate6IndependentVerifierRunner,
-  type GeneratedAppIndependentVerifierExecutionLevel,
-} from './generated-app.independent-verifier-runner';
-import {
-  GeneratedAppGate7PublishCandidateRunner,
-  type GeneratedAppPublishCandidateExecutionLevel,
-} from './generated-app.publish-candidate-runner';
-
-import {
-  buildGenerationPlan,
-  buildStaticContracts,
-  evaluateGate2StaticContracts,
-  buildBuildUnitPlan,
-  evaluateGate3BuildUnitPlan,
-  evaluateGate1GenerationPlan,
-  GATE_3_REQUIRED_COMMAND_IDS,
-  GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS,
-} from './plan-builders/generation-plan.builder';
-import {
-  buildIntegrationPlan,
-  evaluateGate4IntegrationPlan,
-} from './plan-builders/integration-plan.builder';
-import {
-  buildBrowserAcceptancePlan,
-  evaluateGate5BrowserAcceptancePlan,
-  GATE_5_REAL_BROWSER_E2E_COMMAND,
-} from './plan-builders/browser-acceptance-plan.builder';
-import {
-  buildIndependentVerificationPlan,
-  evaluateGate6IndependentVerificationPlan,
-} from './plan-builders/independent-verification-plan.builder';
-import {
-  buildPublishCandidatePlan,
-  applyPublishCandidateEvidenceGuard,
-  evaluateGate7PublishCandidatePlan,
-  buildGate7CompletedRunSummary,
-  GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON,
-  GATE_7_REQUIRED_GATE_IDS,
-} from './plan-builders/publish-candidate-plan.builder';
-import {
-  isRecord,
-  getRecord,
-  getRecordArray,
-  getStringArray,
-  getNonEmptyString,
-  isNonEmptyString,
-} from './generated-app.plan-validation.util';
-import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
-
-import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
-import {
-  getPublicRuntimePages,
-  resolveStatusForShareDisabled,
-  evaluateGate0AppSpec,
-} from './generated-app.app-spec.util';
-import type { Gate0Evaluation } from './generated-app.app-spec.util';
-import type {
-  Gate1Evaluation,
-  Gate2Evaluation,
-  Gate3Evaluation,
-} from './plan-builders/generation-plan.builder';
-import type { Gate4Evaluation } from './plan-builders/integration-plan.builder';
-import type { Gate5Evaluation } from './plan-builders/browser-acceptance-plan.builder';
-import type { Gate6Evaluation } from './plan-builders/independent-verification-plan.builder';
-import type { Gate7Evaluation } from './plan-builders/publish-candidate-plan.builder';
-import type {
-  InternalRunWorkflowRequest,
-  ExecutionTriggerType,
-} from '../execution/dto/run-workflow.dto';
-import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
-import { ExecutionService } from '../execution/execution.service';
-import { StorageService } from '../../infrastructure/storage/storage.service';
-import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
-import { PluginAlreadyExistsException } from '../plugin/plugin.exceptions';
-import { PluginService } from '../plugin/plugin.service';
-import {
-  workflowInputSchemaSchema,
-  type WorkflowInputSchema,
-} from '../workflow/dto/workflow-input-schema.dto';
+import { StartGeneratedAppGenerationRunSchema } from './dto';
 import { WorkflowArchivedException } from '../workflow-definition/workflow-version.exceptions';
 import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
-
 import { GeneratedAppRepository } from './generated-app.repository';
 import { GeneratedAppArtifactService } from './generated-app-artifact.service';
 import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
-import { GeneratedAppGenerationRepairService } from './generated-app-generation-repair.service';
-import { GeneratedAppGenerationOrchestratorService } from './generated-app-generation-orchestrator.service';
+import { GeneratedAppGenerationPipelineService } from './generated-app-generation-pipeline.service';
 import { GeneratedAppPublicRuntimeService } from './generated-app-public-runtime.service';
-import type {
-  GeneratedAppArtifactDefinition,
-} from './generated-app.internal';
 
 @Injectable()
 export class GeneratedAppService {
-  private readonly repository: GeneratedAppRepository;
-  private readonly artifactService: GeneratedAppArtifactService;
-  private readonly runtimeBindingService: GeneratedAppRuntimeBindingService;
-  private readonly repairService: GeneratedAppGenerationRepairService;
-  private readonly orchestrator: GeneratedAppGenerationOrchestratorService;
-  private readonly publicRuntimeService: GeneratedAppPublicRuntimeService;
   constructor(
-    @Inject(DRIZZLE) db: DrizzleDB,
-    configService: ConfigService,
-    @Optional() gate3WorkspaceRunner?: GeneratedAppGate3WorkspaceRunner,
-    @Optional() gate4IntegrationRunner?: GeneratedAppGate4IntegrationRunner,
-    @Optional()
-    gate5BrowserAcceptanceRunner?: GeneratedAppGate5BrowserAcceptanceRunner,
-    @Optional()
-    gate6IndependentVerifierRunner?: GeneratedAppGate6IndependentVerifierRunner,
-    @Optional()
-    gate7PublishCandidateRunner?: GeneratedAppGate7PublishCandidateRunner,
-    @Optional() pluginService?: PluginService,
-    @Optional() executionService?: ExecutionService,
-    @Optional() storageService?: StorageService,
-    @Optional() repository?: GeneratedAppRepository,
-    @Optional() artifactService?: GeneratedAppArtifactService,
-    @Optional() runtimeBindingService?: GeneratedAppRuntimeBindingService,
-    @Optional() repairService?: GeneratedAppGenerationRepairService,
-    @Optional() orchestrator?: GeneratedAppGenerationOrchestratorService,
-    @Optional() publicRuntimeService?: GeneratedAppPublicRuntimeService,
-    @Optional()
-    private readonly workflowVersionService?: WorkflowVersionService,
-  ) {
-    this.repository =
-      repository ?? new GeneratedAppRepository(db, configService);
-    this.artifactService =
-      artifactService ??
-      new GeneratedAppArtifactService(
-        this.repository,
-        configService,
-        storageService,
-      );
-    this.runtimeBindingService =
-      runtimeBindingService ??
-      new GeneratedAppRuntimeBindingService(
-        this.repository,
-        workflowVersionService,
-      );
-    this.repairService =
-      repairService ?? new GeneratedAppGenerationRepairService(this.repository);
-    this.orchestrator =
-      orchestrator ??
-      new GeneratedAppGenerationOrchestratorService(
-        this.repository,
-        this.repairService,
-        this.runtimeBindingService,
-        configService,
-        gate3WorkspaceRunner,
-        gate4IntegrationRunner,
-        gate5BrowserAcceptanceRunner,
-        gate6IndependentVerifierRunner,
-        gate7PublishCandidateRunner,
-      );
-    this.publicRuntimeService =
-      publicRuntimeService ??
-      new GeneratedAppPublicRuntimeService(
-        this.repository,
-        this.artifactService,
-        this.runtimeBindingService,
-        executionService,
-      );
-  }
+    private readonly repository: GeneratedAppRepository,
+    private readonly artifactService: GeneratedAppArtifactService,
+    private readonly runtimeBindingService: GeneratedAppRuntimeBindingService,
+    private readonly pipeline: GeneratedAppGenerationPipelineService,
+    private readonly publicRuntimeService: GeneratedAppPublicRuntimeService,
+    private readonly workflowVersionService: WorkflowVersionService,
+  ) {}
 
+  /** 创建即排队 initial 生成运行（ADR-0007 §5）；AppSpec 由 worker 中的 Gate 0 生成 */
   async create(
     tenantId: string,
     userId: string,
     dto: CreateGeneratedAppDtoType,
-  ): Promise<GeneratedAppResponseDto> {
-    return this.repository.create(tenantId, userId, dto);
+  ): Promise<CreateGeneratedAppResponseDto> {
+    const created = await this.repository.create(tenantId, userId, dto);
+    const generationRun = await this.pipeline.enqueueRun(
+      tenantId,
+      userId,
+      created.id,
+      StartGeneratedAppGenerationRunSchema.parse({ triggerSource: 'initial' }),
+    );
+    return { ...created, generationRunId: generationRun.id };
   }
 
   async list(
@@ -325,19 +108,17 @@ export class GeneratedAppService {
    */
   async delete(tenantId: string, userId: string, appId: string): Promise<void> {
     await this.repository.findOne(tenantId, appId);
-    if (this.workflowVersionService) {
-      const workflowIds =
-        await this.runtimeBindingService.listActiveGeneratedWorkflowRuntimeIds(
-          tenantId,
-          appId,
-        );
-      for (const workflowId of workflowIds) {
-        try {
-          await this.workflowVersionService.archive(workflowId, userId);
-        } catch (error) {
-          // 并发删除时可能已被归档，目标状态已达成
-          if (!(error instanceof WorkflowArchivedException)) throw error;
-        }
+    const workflowIds =
+      await this.runtimeBindingService.listActiveGeneratedWorkflowRuntimeIds(
+        tenantId,
+        appId,
+      );
+    for (const workflowId of workflowIds) {
+      try {
+        await this.workflowVersionService.archive(workflowId, userId);
+      } catch (error) {
+        // 并发删除时可能已被归档，目标状态已达成
+        if (!(error instanceof WorkflowArchivedException)) throw error;
       }
     }
     return this.repository.delete(tenantId, appId);
@@ -402,13 +183,24 @@ export class GeneratedAppService {
     return this.repository.createGenerationRun(tenantId, userId, appId, dto);
   }
 
+  /** 只写 queued 运行并入队，立即返回（HTTP 202）；运行结果通过运行/门禁列表查询 */
   async startGenerationRun(
     tenantId: string,
     userId: string,
     appId: string,
     dto: StartGeneratedAppGenerationRunDtoType,
   ): Promise<StartGeneratedAppGenerationRunResponseDto> {
-    return this.orchestrator.startGenerationRun(tenantId, userId, appId, dto);
+    const generationRun = await this.pipeline.enqueueRun(
+      tenantId,
+      userId,
+      appId,
+      dto,
+    );
+    return {
+      generationRun,
+      gateRuns: [],
+      app: await this.repository.findOne(tenantId, appId),
+    };
   }
 
   async updateGenerationRun(
@@ -564,10 +356,6 @@ export class GeneratedAppService {
 
   async getPublicApp(token: string): Promise<PublicGeneratedAppResponseDto> {
     return this.publicRuntimeService.getPublicApp(token);
-  }
-
-  async getPublicBuildPreviewHtml(token: string): Promise<string> {
-    return this.publicRuntimeService.getPublicBuildPreviewHtml(token);
   }
 
   async createPublicSubmission(

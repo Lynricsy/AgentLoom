@@ -30,8 +30,10 @@ import {
   GeneratedAppPublicSubmissionValidationException,
   GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
-import { GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID } from './generated-app.internal';
-import { getNonEmptyString, getRecord } from './generated-app.plan-validation.util';
+import {
+  getNonEmptyString,
+  getRecord,
+} from './generated-app.plan-validation.util';
 import {
   PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN,
   PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN,
@@ -45,7 +47,6 @@ import {
   extractGeneratedAppRuntimeResult,
   mapGeneratedAppSubmission,
 } from './generated-app.runtime-binding.util';
-import { GeneratedAppArtifactService } from './generated-app-artifact.service';
 import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
 import type { GeneratedAppSpecV2 } from './types/app-spec-v2.schema';
 import type { GeneratedAppRuntimeResult } from './types/generation-v2.ports';
@@ -86,7 +87,6 @@ export class GeneratedAppPublicRuntimeService {
 
   constructor(
     private readonly repository: GeneratedAppRepository,
-    private readonly artifactService: GeneratedAppArtifactService,
     private readonly runtimeBindingService: GeneratedAppRuntimeBindingService,
     @Optional() private readonly executionService?: ExecutionService,
   ) {}
@@ -149,8 +149,7 @@ export class GeneratedAppPublicRuntimeService {
   async getPublicApp(token: string): Promise<PublicGeneratedAppResponseDto> {
     const { access, app } = await this.resolvePublicRuntimeAccess(token);
     const appSpec = app.appSpec;
-    const previewUrl =
-      await this.artifactService.resolvePublicRuntimePreviewUrl(app, token);
+    const previewUrl = app.preview.previewUrl;
 
     // Gate 5 验收访问不计浏览量
     if (access === 'public') {
@@ -180,16 +179,6 @@ export class GeneratedAppPublicRuntimeService {
       runtimeForm: buildPublicGeneratedAppRuntimeForm(appSpec),
       createdAt: app.createdAt,
     };
-  }
-
-  async getPublicBuildPreviewHtml(token: string): Promise<string> {
-    const { app } = await this.resolvePublicRuntimeAccess(token);
-    const artifact = await this.artifactService.resolveArtifactContentForApp(
-      app,
-      GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
-    );
-
-    return artifact.content;
   }
 
   /**
@@ -569,7 +558,8 @@ export class GeneratedAppPublicRuntimeService {
         const [execution] = await db
           .select({
             status: schema.workflowExecutions.status,
-            workflowDefinitionId: schema.workflowExecutions.workflowDefinitionId,
+            workflowDefinitionId:
+              schema.workflowExecutions.workflowDefinitionId,
           })
           .from(schema.workflowExecutions)
           .where(

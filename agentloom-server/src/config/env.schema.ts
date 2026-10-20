@@ -227,6 +227,11 @@ const baseEnvSchema = z.object({
     emptyStringToUndefined,
     z.coerce.number().int().positive().default(120_000),
   ),
+  /** 每个 server/worker 进程同时执行的生成运行数（generated-app-generation 队列并发，ADR-0007 §5） */
+  APP_GENERATED_APP_GENERATION_CONCURRENCY: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(2),
+  ),
 });
 
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {

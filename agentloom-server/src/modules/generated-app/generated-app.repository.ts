@@ -2,56 +2,23 @@
 
 import * as crypto from 'crypto';
 
-import { readFile, stat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
-import { tmpdir } from 'node:os';
-
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  and,
-  desc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  sql,
-} from 'drizzle-orm';
-import {
-  computeContentHash as computePluginArchiveContentHash,
-  readArchiveManifest,
-  validateManifest as validatePluginManifest,
-  verifyArchiveSignature as verifyPluginArchiveSignature,
-} from '@agentloom/plugin-sdk';
-import JSZip from 'jszip';
+import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
-  GeneratedAppBrowserAcceptancePlan,
-  GeneratedAppBuildUnitPlan,
-  GeneratedAppGateEvidence,
-  GeneratedAppGenerationPlan,
-  GeneratedAppGenerationRepairContext,
   GeneratedAppGenerationRun,
-  GeneratedAppIndependentVerificationPlan,
-  GeneratedAppIntegrationPlan,
   GeneratedAppRepairPlan,
   GeneratedAppReverificationPlan,
-  GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
-  GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpecV1,
   GeneratedAppSpecV2,
-  GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
-  GeneratedAppReadiness,
   GeneratedAppRepairAttempt,
   GeneratedAppStatus,
   GeneratedAppSubmission,
@@ -63,35 +30,22 @@ import {
   type CreateGeneratedAppGateRunDtoType,
   CreateGeneratedAppRepairAttemptSchema,
   type CreateGeneratedAppRepairAttemptDtoType,
-  type CreateGeneratedAppSubmissionDtoType,
   type CreateGeneratedAppDtoType,
   UpdateGeneratedAppSchema,
   type UpdateGeneratedAppDtoType,
-  type DeleteGeneratedAppSubmissionsResponseDto,
-  type DeleteGeneratedAppSubmissionsDtoType,
-  type GeneratedAppArtifactContentResponseDto,
-  type GeneratedAppArtifactKind,
-  type GeneratedAppArtifactManifestResponseDto,
-  type GeneratedAppArtifactSummaryDto,
   type GeneratedAppGenerationRunResponseDto,
   type GeneratedAppGateRunResponseDto,
   type GeneratedAppRepairAttemptResponseDto,
-  type GeneratedAppRuntimeBindingReadinessResponseDto,
   type GeneratedAppResponseDto,
   type GeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppSubmissionResponseDto,
-  type PublicGeneratedAppResponseDto,
   type QueryGeneratedAppGenerationRunsDtoType,
   type QueryGeneratedAppGateRunsDtoType,
   type QueryGeneratedAppRepairAttemptsDtoType,
-  type QueryGeneratedAppSubmissionsDtoType,
   type QueryGeneratedAppsDtoType,
   RecordGeneratedAppGateResultsSchema,
   type RecordGeneratedAppGateRunResponseDto,
   type RecordGeneratedAppGateResultsDtoType,
-  StartGeneratedAppGenerationRunSchema,
-  type StartGeneratedAppGenerationRunDtoType,
-  type StartGeneratedAppGenerationRunResponseDto,
   UpdateGeneratedAppGenerationRunSchema,
   type UpdateGeneratedAppGenerationRunDtoType,
   UpdateGeneratedAppRepairAttemptSchema,
@@ -111,113 +65,20 @@ import {
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
   GeneratedAppRepairAttemptNotFoundException,
-  GeneratedAppArtifactNotFoundException,
-  GeneratedAppArtifactTooLargeException,
   GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
 import {
   LlmModelConfigNotFoundException,
   LlmModelConfigValidationException,
 } from '../llm/llm.exceptions';
-import {
-  GeneratedAppGate3WorkspaceRunner,
-  type GeneratedAppGate3CommandPlan,
-  type GeneratedAppGate3RepairResult,
-  type GeneratedAppGenerationWorkspaceContract,
-} from './generated-app.workspace';
-import {
-  GeneratedAppGate4IntegrationRunner,
-  type GeneratedAppIntegrationExecutionLevel,
-} from './generated-app.integration-runner';
-import {
-  GeneratedAppGate5BrowserAcceptanceRunner,
-  type GeneratedAppBrowserAcceptanceExecutionLevel,
-} from './generated-app.browser-acceptance-runner';
-import {
-  GeneratedAppGate6IndependentVerifierRunner,
-  type GeneratedAppIndependentVerifierExecutionLevel,
-} from './generated-app.independent-verifier-runner';
-import {
-  GeneratedAppGate7PublishCandidateRunner,
-  type GeneratedAppPublishCandidateExecutionLevel,
-} from './generated-app.publish-candidate-runner';
 
-import {
-  buildGenerationPlan,
-  buildStaticContracts,
-  evaluateGate2StaticContracts,
-  buildBuildUnitPlan,
-  evaluateGate3BuildUnitPlan,
-  evaluateGate1GenerationPlan,
-  GATE_3_REQUIRED_COMMAND_IDS,
-  GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS,
-} from './plan-builders/generation-plan.builder';
-import {
-  buildIntegrationPlan,
-  evaluateGate4IntegrationPlan,
-} from './plan-builders/integration-plan.builder';
-import {
-  buildBrowserAcceptancePlan,
-  evaluateGate5BrowserAcceptancePlan,
-  GATE_5_REAL_BROWSER_E2E_COMMAND,
-} from './plan-builders/browser-acceptance-plan.builder';
-import {
-  buildIndependentVerificationPlan,
-  evaluateGate6IndependentVerificationPlan,
-} from './plan-builders/independent-verification-plan.builder';
-import {
-  buildPublishCandidatePlan,
-  applyPublishCandidateEvidenceGuard,
-  evaluateGate7PublishCandidatePlan,
-  buildGate7CompletedRunSummary,
-  GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON,
-  GATE_7_REQUIRED_GATE_IDS,
-} from './plan-builders/publish-candidate-plan.builder';
-import {
-  isRecord,
-  getRecord,
-  getRecordArray,
-  getStringArray,
-  getNonEmptyString,
-  isNonEmptyString,
-} from './generated-app.plan-validation.util';
-import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
+import { applyPublishCandidateGuard } from './generated-app.gate7-publish-candidate';
+import { isAppSpecV2 } from './types/generated-app.types';
+import { isRecord } from './generated-app.plan-validation.util';
 
-import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
-import {
-  buildAppName,
-  getPublicRuntimePages,
-  resolveStatusForShareDisabled,
-  evaluateGate0AppSpec,
-} from './generated-app.app-spec.util';
-import type { Gate0Evaluation } from './generated-app.app-spec.util';
-import type {
-  Gate1Evaluation,
-  Gate2Evaluation,
-  Gate3Evaluation,
-} from './plan-builders/generation-plan.builder';
-import type { Gate4Evaluation } from './plan-builders/integration-plan.builder';
-import type { Gate5Evaluation } from './plan-builders/browser-acceptance-plan.builder';
-import type { Gate6Evaluation } from './plan-builders/independent-verification-plan.builder';
-import type { Gate7Evaluation } from './plan-builders/publish-candidate-plan.builder';
-import type {
-  InternalRunWorkflowRequest,
-  ExecutionTriggerType,
-} from '../execution/dto/run-workflow.dto';
-import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
-import { ExecutionService } from '../execution/execution.service';
-import { StorageService } from '../../infrastructure/storage/storage.service';
-import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
-import { PluginAlreadyExistsException } from '../plugin/plugin.exceptions';
-import { PluginService } from '../plugin/plugin.service';
-import {
-  workflowInputSchemaSchema,
-  type WorkflowInputSchema,
-} from '../workflow/dto/workflow-input-schema.dto';
+import { buildAppName } from './generated-app.app-spec.util';
 
 import { DEFAULT_PREVIEW } from './generated-app.internal';
-import type { GeneratedAppRecordV1 } from './generated-app.internal';
-import { isAppSpecV2 } from './types/generated-app.types';
 import type { GeneratedAppRuntimeResult } from './types/generation-v2.ports';
 
 /** 公开分享令牌与验收令牌都是 URL 段；先挡掉明显不合法的输入，不进数据库查询 */
@@ -528,12 +389,9 @@ export class GeneratedAppRepository {
     );
     const updatePayload = this.buildGateResultsUpdatePayload(
       userId,
+      app,
       gateResults,
-      {
-        generationPlan: parsed.generationPlan,
-        currentGenerationPlan: parsed.generationPlan ?? app.generationPlan,
-        preview: parsed.preview,
-      },
+      { generationPlan: parsed.generationPlan, preview: parsed.preview },
     );
 
     const [updated] = await this.tenantDb
@@ -1126,11 +984,9 @@ export class GeneratedAppRepository {
       ]);
     const updatePayload = this.buildGateResultsUpdatePayload(
       userId,
+      app,
       gateResults,
-      {
-        generationPlan: options.generationPlan,
-        currentGenerationPlan: options.generationPlan ?? app.generationPlan,
-      },
+      { generationPlan: options.generationPlan },
     );
 
     const [updated] = await this.tenantDb
@@ -1202,16 +1058,19 @@ export class GeneratedAppRepository {
 
   public buildGateResultsUpdatePayload(
     userId: string,
+    app: Pick<GeneratedApp, 'appSpec' | 'generationPlan'>,
     gateResults: GeneratedAppGateResult[],
     options: {
       generationPlan?: GeneratedApp['generationPlan'];
-      currentGenerationPlan?: GeneratedApp['generationPlan'];
       preview?: GeneratedAppPreview;
     } = {},
   ): Partial<schema.NewGeneratedApp> {
-    const guardedGateResults = applyPublishCandidateEvidenceGuard(
+    const guardedGateResults = applyPublishCandidateGuard(
       gateResults,
-      options.currentGenerationPlan ?? options.generationPlan,
+      options.generationPlan !== undefined
+        ? options.generationPlan
+        : app.generationPlan,
+      isAppSpecV2(app.appSpec) ? app.appSpec : null,
     );
     const readiness = evaluateGeneratedAppReadiness(guardedGateResults);
     const status = getGeneratedAppStatusForReadiness(readiness);
@@ -1706,7 +1565,8 @@ export class GeneratedAppRepository {
     return {
       status: value.status,
       sections: value.sections as GeneratedAppRuntimeResult['sections'],
-      publicError: typeof value.publicError === 'string' ? value.publicError : null,
+      publicError:
+        typeof value.publicError === 'string' ? value.publicError : null,
     };
   }
 

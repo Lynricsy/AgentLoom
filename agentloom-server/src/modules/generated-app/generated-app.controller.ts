@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -63,8 +62,15 @@ export class GeneratedAppController {
   @Post()
   @Roles('owner', 'admin', 'creator')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: '从一句自然语言需求创建生成应用任务' })
-  @ApiResponse({ status: 201, description: '生成应用任务已创建' })
+  @ApiOperation({
+    summary:
+      '从一句自然语言需求创建生成应用，并排队首次生成运行（AppSpec 由 Gate 0 异步生成）',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      '应用已创建（status=app_spec_generating），响应带 generationRunId',
+  })
   async create(
     @Body(new ZodValidationPipe(CreateGeneratedAppSchema))
     dto: CreateGeneratedAppDto,
@@ -148,10 +154,17 @@ export class GeneratedAppController {
 
   @Post(':appId/generation-runs/start')
   @Roles('owner', 'admin', 'creator')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: '启动同步轻量生成门禁运行器' })
-  @ApiResponse({ status: 201, description: '生成门禁运行器已完成同步切片' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: '排队一次生成运行（Gate 0–7 在 worker 中异步执行）',
+  })
+  @ApiResponse({ status: 202, description: '生成运行已排队（status=queued）' })
   @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'generated-app-generation-run-in-progress：已有进行中的生成运行',
+  })
   async startGenerationRun(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Body(new ZodValidationPipe(StartGeneratedAppGenerationRunSchema))
@@ -654,24 +667,6 @@ export class GeneratedAppPublicController {
     );
 
     return { data };
-  }
-
-  @Get(':token/preview')
-  @Header('Content-Type', 'text/html; charset=utf-8')
-  @Header('Cache-Control', 'no-store')
-  @Header(
-    'Content-Security-Policy',
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
-  )
-  @Header('Referrer-Policy', 'no-referrer')
-  @Header('X-Content-Type-Options', 'nosniff')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '公开访问生成应用 Gate 3 构建预览 HTML' })
-  @ApiResponse({ status: 200, description: '公开构建预览 HTML' })
-  @ApiResponse({ status: 404, description: '公开链接或构建预览不存在' })
-  @ApiResponse({ status: 409, description: '生成应用不再满足发布门槛' })
-  async getPublicBuildPreview(@Param('token') token: string) {
-    return this.generatedAppService.getPublicBuildPreviewHtml(token);
   }
 
   @Get(':token')

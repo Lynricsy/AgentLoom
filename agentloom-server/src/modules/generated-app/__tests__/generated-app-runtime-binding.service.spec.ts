@@ -27,7 +27,6 @@ import {
   createAppSpecV2Fixture,
   createConfigService,
   createGeneratedApp,
-  createGeneratedAppV2,
 } from './generated-app-test-support';
 
 vi.mock(
@@ -121,7 +120,7 @@ describe('GeneratedAppRuntimeBindingService', () => {
 
   describe('运行时绑定就绪度', () => {
     it('还没有 v2 AppSpec 时 runtime_not_bound，不查询工作流', async () => {
-      mockApp(createGeneratedApp());
+      mockApp(createGeneratedApp({ appSpec: null }));
 
       const readiness = await service.getRuntimeBindingReadiness(
         TENANT_ID,
@@ -137,7 +136,7 @@ describe('GeneratedAppRuntimeBindingService', () => {
     });
 
     it('固定版本仍是当前发布版本时 workflow_published，按租户与固定版本查询', async () => {
-      mockApp(createGeneratedAppV2());
+      mockApp(createGeneratedApp());
       const workflowSelect = limitChain([
         {
           id: WORKFLOW_DEFINITION_ID,
@@ -182,7 +181,7 @@ describe('GeneratedAppRuntimeBindingService', () => {
     });
 
     it('源工作流重新发布后 workflow_version_drift：仍可执行固定版本', async () => {
-      mockApp(createGeneratedAppV2());
+      mockApp(createGeneratedApp());
       fakeDb.select
         .mockReturnValueOnce(
           limitChain([
@@ -217,21 +216,46 @@ describe('GeneratedAppRuntimeBindingService', () => {
     });
 
     it('工作流不存在、已归档、未发布或固定版本被删时不可执行', async () => {
-      const app = createGeneratedAppV2();
+      const app = createGeneratedApp();
       const spec = createAppSpecV2Fixture();
       const cases: Array<{ rows: unknown[][]; state: string }> = [
         { rows: [[]], state: 'workflow_not_found' },
         {
-          rows: [[{ id: WORKFLOW_DEFINITION_ID, status: 'archived', publishedVersionId: null, metadata: {} }]],
+          rows: [
+            [
+              {
+                id: WORKFLOW_DEFINITION_ID,
+                status: 'archived',
+                publishedVersionId: null,
+                metadata: {},
+              },
+            ],
+          ],
           state: 'workflow_not_found',
         },
         {
-          rows: [[{ id: WORKFLOW_DEFINITION_ID, status: 'draft', publishedVersionId: null, metadata: {} }]],
+          rows: [
+            [
+              {
+                id: WORKFLOW_DEFINITION_ID,
+                status: 'draft',
+                publishedVersionId: null,
+                metadata: {},
+              },
+            ],
+          ],
           state: 'workflow_not_published',
         },
         {
           rows: [
-            [{ id: WORKFLOW_DEFINITION_ID, status: 'published', publishedVersionId: NEWER_VERSION_ID, metadata: {} }],
+            [
+              {
+                id: WORKFLOW_DEFINITION_ID,
+                status: 'published',
+                publishedVersionId: NEWER_VERSION_ID,
+                metadata: {},
+              },
+            ],
             [],
           ],
           state: 'workflow_not_found',
@@ -243,29 +267,42 @@ describe('GeneratedAppRuntimeBindingService', () => {
           fakeDb.select.mockReturnValueOnce(limitChain(result));
         }
         await expect(
-          service.resolveRuntimeTarget(fakeDb as unknown as DrizzleDB, app, spec),
+          service.resolveRuntimeTarget(
+            fakeDb as unknown as DrizzleDB,
+            app,
+            spec,
+          ),
         ).resolves.toMatchObject({ available: false, state });
       }
     });
 
     it('Agent 绑定取与当前 AppSpec 指纹一致的包装工作流版本，而不是最新发布版本', async () => {
       const spec = createAgentAppSpecV2Fixture();
-      const app = createGeneratedAppV2({
+      const app = createGeneratedApp({
         appSpec: spec,
         workflowDefinitionId: WRAPPER_ID,
       });
       const graph = buildAgentWrapperWorkflowGraph(spec, { appId: APP_ID });
       fakeDb.select
         .mockReturnValueOnce(
-          limitChain([wrapperWorkflowRow({ publishedVersionId: NEWER_VERSION_ID })]),
+          limitChain([
+            wrapperWorkflowRow({ publishedVersionId: NEWER_VERSION_ID }),
+          ]),
         )
         .mockReturnValueOnce(
           limitChain([
             // 创建者手动改过并重新发布的版本：指纹对不上
-            { id: NEWER_VERSION_ID, snapshot: { nodes: [], edges: [], inputSchema: null } },
+            {
+              id: NEWER_VERSION_ID,
+              snapshot: { nodes: [], edges: [], inputSchema: null },
+            },
             {
               id: WRAPPER_VERSION_ID,
-              snapshot: { nodes: graph.nodes, edges: graph.edges, inputSchema: graph.inputSchema },
+              snapshot: {
+                nodes: graph.nodes,
+                edges: graph.edges,
+                inputSchema: graph.inputSchema,
+              },
             },
           ]),
         );
@@ -289,10 +326,13 @@ describe('GeneratedAppRuntimeBindingService', () => {
       await expect(
         service.resolveRuntimeTarget(
           fakeDb as unknown as DrizzleDB,
-          createGeneratedAppV2({ appSpec: spec, workflowDefinitionId: null }),
+          createGeneratedApp({ appSpec: spec, workflowDefinitionId: null }),
           spec,
         ),
-      ).resolves.toMatchObject({ available: false, state: 'runtime_not_bound' });
+      ).resolves.toMatchObject({
+        available: false,
+        state: 'runtime_not_bound',
+      });
 
       fakeDb.select.mockReturnValueOnce(
         limitChain([wrapperWorkflowRow({ metadata: { source: 'user' } })]),
@@ -300,16 +340,24 @@ describe('GeneratedAppRuntimeBindingService', () => {
       await expect(
         service.resolveRuntimeTarget(
           fakeDb as unknown as DrizzleDB,
-          createGeneratedAppV2({ appSpec: spec, workflowDefinitionId: WRAPPER_ID }),
+          createGeneratedApp({
+            appSpec: spec,
+            workflowDefinitionId: WRAPPER_ID,
+          }),
           spec,
         ),
-      ).resolves.toMatchObject({ available: false, state: 'runtime_not_bound' });
+      ).resolves.toMatchObject({
+        available: false,
+        state: 'runtime_not_bound',
+      });
     });
   });
 
   describe('ensureRuntimeWorkflow', () => {
     it('工作流绑定直接使用被绑定工作流与固定版本，不创建、不发布任何工作流', async () => {
-      fakeDb.select.mockReturnValueOnce(limitChain([{ id: WORKFLOW_VERSION_ID }]));
+      fakeDb.select.mockReturnValueOnce(
+        limitChain([{ id: WORKFLOW_VERSION_ID }]),
+      );
       const appUpdate = updateChain([{ id: APP_ID }]);
       fakeDb.update.mockReturnValueOnce(appUpdate);
 
@@ -406,7 +454,9 @@ describe('GeneratedAppRuntimeBindingService', () => {
       const graph = buildAgentWrapperWorkflowGraph(spec, { appId: APP_ID });
       fakeDb.select
         .mockReturnValueOnce(limitChain([wrapperWorkflowRow()]))
-        .mockReturnValueOnce(limitChain([{ snapshot: { nodes: graph.nodes } }]));
+        .mockReturnValueOnce(
+          limitChain([{ snapshot: { nodes: graph.nodes } }]),
+        );
       fakeDb.update.mockReturnValueOnce(updateChain([{ id: APP_ID }]));
 
       await expect(
@@ -434,7 +484,9 @@ describe('GeneratedAppRuntimeBindingService', () => {
               inputSchema: {
                 version: 3,
                 collectionMode: 'form',
-                fields: [{ id: 'topic', type: 'text', label: '主题', required: true }],
+                fields: [
+                  { id: 'topic', type: 'text', label: '主题', required: true },
+                ],
               },
             }),
           ]),
@@ -469,7 +521,9 @@ describe('GeneratedAppRuntimeBindingService', () => {
     });
 
     it('应用已删除时整体失败', async () => {
-      fakeDb.select.mockReturnValueOnce(limitChain([{ id: WORKFLOW_VERSION_ID }]));
+      fakeDb.select.mockReturnValueOnce(
+        limitChain([{ id: WORKFLOW_VERSION_ID }]),
+      );
       fakeDb.update.mockReturnValueOnce(updateChain([]));
 
       await expect(

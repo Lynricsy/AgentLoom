@@ -209,13 +209,12 @@ export interface GeneratedAppRepairPlan {
   repairInstructions: string | null;
   evidenceIds: string[];
   evidenceSummaries: string[];
+  /** v2 生成运行只能通过调整 AppSpec、绑定目标或重新运行来修复；不生成前端、插件或编排代码 */
   allowedChangeScopes: Array<
     | 'app-spec'
     | 'generation-plan'
     | 'static-contracts'
-    | 'frontend-workspace'
-    | 'workflow-orchestration'
-    | 'plugin-tools'
+    | 'binding-target'
     | 'test-contracts'
     | 'publish-contract'
   >;
@@ -229,20 +228,6 @@ export interface GeneratedAppRepairPlan {
   >;
   patchTargets: string[];
   requiredTraceability: string[];
-  browserRepairTargets?: Array<{
-    targetId: string;
-    path: string;
-    reason: string;
-  }>;
-  e2eRunnerContract?: {
-    mode: 'real-browser-e2e';
-    command: string;
-    journey: string;
-    allowedEndpointPrefixes: string[];
-    forbiddenEndpointPatterns: string[];
-    requiredFailureEvidence: string[];
-    forbiddenEvidenceFields: string[];
-  };
   generatedAt: string;
 }
 

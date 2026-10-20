@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import type {
   GeneratedApp,
-  GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationRun,
   GeneratedAppGenerationPlan,
   GeneratedAppRepairPlan,
@@ -22,6 +21,8 @@ import type {
   GeneratedAppRuntimeResult,
   PublicGeneratedAppRuntimeFormV2,
 } from '../types/generation-v2.ports';
+import type { GeneratedAppBrowserViewportId } from '../types/browser-acceptance-job.schema';
+import type { GeneratedAppGateExecutionLevel } from '../types/generation-plan-v2.types';
 
 export const GeneratedAppStatusSchema = z.enum([
   'app_spec_generating',
@@ -486,6 +487,11 @@ export interface GeneratedAppResponseDto {
   updatedAt: Date;
 }
 
+/** 创建响应：应用本体 + 自动排队的 initial 生成运行 id（ADR-0007 §5） */
+export interface CreateGeneratedAppResponseDto extends GeneratedAppResponseDto {
+  generationRunId: string;
+}
+
 export interface GeneratedAppRuntimeBindingReadinessResponseDto {
   state: GeneratedAppRuntimeBindingReadinessState;
   workflowDefinitionId: string | null;
@@ -499,45 +505,46 @@ export interface GeneratedAppRuntimeBindingReadinessResponseDto {
   updatedAt: Date;
 }
 
+/**
+ * 交付物种类：Gate 3 受控工作区内的文件（按 `buildUnitPlan.workspace.files[].kind`）与
+ * Gate 5 每个场景 × 视口的截图、trace（对象存储，创建者经预签名链接查看，D-146）。
+ */
 export type GeneratedAppArtifactKind =
   | 'workspace_source_file'
   | 'workspace_test_file'
-  | 'source_manifest'
-  | 'source_artifact_manifest'
-  | 'build_output'
-  | 'build_manifest'
-  | 'unit_test_report'
-  | 'typecheck_report'
-  | 'component_golden_report'
-  | 'coverage_summary'
-  | 'plugin_manifest'
-  | 'plugin_node_definitions'
-  | 'plugin_source_file'
-  | 'plugin_smoke_fixture'
-  | 'plugin_build_report'
-  | 'plugin_bundle';
+  | 'workspace_report'
+  | 'workspace_manifest'
+  | 'browser_screenshot'
+  | 'browser_trace';
 
 export interface GeneratedAppArtifactSummaryDto {
   artifactId: string;
   label: string;
   kind: GeneratedAppArtifactKind;
+  /** 工作区文件为相对工作区根的路径；浏览器产物为对象存储 key */
   path: string;
   materialized: boolean;
   sizeBytes: number | null;
   contentType: string;
+  /** 可经 `GET /generated-apps/:appId/artifacts/:artifactId` 内联读取（仅限不超过上限的工作区文本文件） */
   readable: boolean;
+  /** 浏览器产物的预签名下载链接（短时有效）；工作区文件与对象存储不可用时为 null */
+  downloadUrl: string | null;
+  /** 浏览器产物对应的验收场景与视口；工作区文件为 null */
+  scenarioId: string | null;
+  viewportId: GeneratedAppBrowserViewportId | null;
   updatedAt: Date | null;
 }
 
 export interface GeneratedAppArtifactManifestResponseDto {
+  /** 最近一次 Gate 3 物化的工作区；尚未物化时为 null */
   workspace: {
-    workspaceId: string;
-    rootLabel: string;
     relativePath: string;
-    scaffold: string;
-    executionLevel: GeneratedAppBuildUnitPlan['executionLevel'] | null;
+    executionLevel: GeneratedAppGateExecutionLevel;
     materialized: boolean;
   } | null;
+  /** 产出这些交付物的生成运行；还没有 v2 生成计划时为 null */
+  generationRunId: string | null;
   artifacts: GeneratedAppArtifactSummaryDto[];
   updatedAt: Date;
 }

@@ -1,428 +1,122 @@
-// 本文件负责 workspace artifact 与 plugin artifact 的受控读取、校验和持久化。
-
-import * as crypto from 'crypto';
+// 生成应用交付物（ADR-0007）：Gate 3 受控工作区内的文件按 `buildUnitPlan.workspace` 只读列出与读取；
+// Gate 5 每个场景 × 视口的截图与 trace 存在对象存储，创建者经短时预签名链接查看（D-146）。
 
 import { readFile, stat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
-import { tmpdir } from 'node:os';
+import { resolve, sep } from 'node:path';
 
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import {
-  computeContentHash as computePluginArchiveContentHash,
-  readArchiveManifest,
-  validateManifest as validatePluginManifest,
-  verifyArchiveSignature as verifyPluginArchiveSignature,
-} from '@agentloom/plugin-sdk';
-import JSZip from 'jszip';
 
-import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
-import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
-import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
-import * as schema from '../../database/schema';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import type {
-  GeneratedApp,
-  GeneratedAppBrowserAcceptancePlan,
-  GeneratedAppBuildUnitPlan,
-  GeneratedAppGateEvidence,
-  GeneratedAppGenerationPlan,
-  GeneratedAppGenerationRepairContext,
-  GeneratedAppGenerationRun,
-  GeneratedAppIndependentVerificationPlan,
-  GeneratedAppIntegrationPlan,
-  GeneratedAppRepairPlan,
-  GeneratedAppReverificationPlan,
-  GeneratedAppGateRunFailure,
-  GeneratedAppGateRun,
-  GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpecV1,
-  GeneratedAppStaticContracts,
-  GeneratedAppGateResult,
-  GeneratedAppPreview,
-  GeneratedAppReadiness,
-  GeneratedAppRepairAttempt,
-  GeneratedAppStatus,
-  GeneratedAppSubmission,
-} from '../../database/schema';
-import {
-  CreateGeneratedAppGenerationRunSchema,
-  type CreateGeneratedAppGenerationRunDtoType,
-  CreateGeneratedAppGateRunSchema,
-  type CreateGeneratedAppGateRunDtoType,
-  CreateGeneratedAppRepairAttemptSchema,
-  type CreateGeneratedAppRepairAttemptDtoType,
-  type CreateGeneratedAppSubmissionDtoType,
-  type CreateGeneratedAppDtoType,
-  type DeleteGeneratedAppSubmissionsResponseDto,
-  type DeleteGeneratedAppSubmissionsDtoType,
-  type GeneratedAppArtifactContentResponseDto,
-  type GeneratedAppArtifactKind,
-  type GeneratedAppArtifactManifestResponseDto,
-  type GeneratedAppArtifactSummaryDto,
-  type GeneratedAppGenerationRunResponseDto,
-  type GeneratedAppGateRunResponseDto,
-  type GeneratedAppRepairAttemptResponseDto,
-  type GeneratedAppRuntimeBindingReadinessResponseDto,
-  type GeneratedAppResponseDto,
-  type GeneratedAppSubmissionResponseDto,
-  type PublicGeneratedAppSubmissionResponseDto,
-  type PublicGeneratedAppResponseDto,
-  type QueryGeneratedAppGenerationRunsDtoType,
-  type QueryGeneratedAppGateRunsDtoType,
-  type QueryGeneratedAppRepairAttemptsDtoType,
-  type QueryGeneratedAppSubmissionsDtoType,
-  type QueryGeneratedAppsDtoType,
-  RecordGeneratedAppGateResultsSchema,
-  type RecordGeneratedAppGateRunResponseDto,
-  type RecordGeneratedAppGateResultsDtoType,
-  StartGeneratedAppGenerationRunSchema,
-  type StartGeneratedAppGenerationRunDtoType,
-  type StartGeneratedAppGenerationRunResponseDto,
-  UpdateGeneratedAppGenerationRunSchema,
-  type UpdateGeneratedAppGenerationRunDtoType,
-  UpdateGeneratedAppRepairAttemptSchema,
-  type UpdateGeneratedAppRepairAttemptDtoType,
+  GeneratedAppArtifactContentResponseDto,
+  GeneratedAppArtifactKind,
+  GeneratedAppArtifactManifestResponseDto,
+  GeneratedAppArtifactSummaryDto,
 } from './dto';
 import {
-  createInitialGeneratedAppGateResults,
-  evaluateGeneratedAppReadiness,
-  getGeneratedAppGateDefinition,
-  getGeneratedAppStatusForReadiness,
-  normalizeGeneratedAppGateResults,
-} from './generated-app.gates';
-import {
-  GeneratedAppGateDefinitionNotFoundException,
-  GeneratedAppGenerationRunNotFoundException,
-  GeneratedAppNotFoundException,
-  GeneratedAppPublicShareNotReadyException,
-  GeneratedAppRepairAttemptNotFoundException,
   GeneratedAppArtifactNotFoundException,
   GeneratedAppArtifactTooLargeException,
-  GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
-import {
-  GeneratedAppGate3WorkspaceRunner,
-  type GeneratedAppGate3CommandPlan,
-  type GeneratedAppGate3RepairResult,
-  type GeneratedAppGenerationWorkspaceContract,
-} from './generated-app.workspace';
-import {
-  GeneratedAppGate4IntegrationRunner,
-  type GeneratedAppIntegrationExecutionLevel,
-} from './generated-app.integration-runner';
-import {
-  GeneratedAppGate5BrowserAcceptanceRunner,
-  type GeneratedAppBrowserAcceptanceExecutionLevel,
-} from './generated-app.browser-acceptance-runner';
-import {
-  GeneratedAppGate6IndependentVerifierRunner,
-  type GeneratedAppIndependentVerifierExecutionLevel,
-} from './generated-app.independent-verifier-runner';
-import {
-  GeneratedAppGate7PublishCandidateRunner,
-  type GeneratedAppPublishCandidateExecutionLevel,
-} from './generated-app.publish-candidate-runner';
-
-import {
-  buildGenerationPlan,
-  buildStaticContracts,
-  evaluateGate2StaticContracts,
-  buildBuildUnitPlan,
-  evaluateGate3BuildUnitPlan,
-  evaluateGate1GenerationPlan,
-  GATE_3_REQUIRED_COMMAND_IDS,
-  GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS,
-} from './plan-builders/generation-plan.builder';
-import {
-  buildIntegrationPlan,
-  evaluateGate4IntegrationPlan,
-} from './plan-builders/integration-plan.builder';
-import {
-  buildBrowserAcceptancePlan,
-  evaluateGate5BrowserAcceptancePlan,
-  GATE_5_REAL_BROWSER_E2E_COMMAND,
-} from './plan-builders/browser-acceptance-plan.builder';
-import {
-  buildIndependentVerificationPlan,
-  evaluateGate6IndependentVerificationPlan,
-} from './plan-builders/independent-verification-plan.builder';
-import {
-  buildPublishCandidatePlan,
-  applyPublishCandidateEvidenceGuard,
-  evaluateGate7PublishCandidatePlan,
-  buildGate7CompletedRunSummary,
-  GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON,
-  GATE_7_REQUIRED_GATE_IDS,
-} from './plan-builders/publish-candidate-plan.builder';
-import {
-  isRecord,
-  getRecord,
-  getRecordArray,
-  getStringArray,
-  getNonEmptyString,
-  isNonEmptyString,
-} from './generated-app.plan-validation.util';
-import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
-
-import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
-import {
-  getPublicRuntimePages,
-  resolveStatusForShareDisabled,
-  evaluateGate0AppSpec,
-} from './generated-app.app-spec.util';
-import type { Gate0Evaluation } from './generated-app.app-spec.util';
-import type {
-  Gate1Evaluation,
-  Gate2Evaluation,
-  Gate3Evaluation,
-} from './plan-builders/generation-plan.builder';
-import type { Gate4Evaluation } from './plan-builders/integration-plan.builder';
-import type { Gate5Evaluation } from './plan-builders/browser-acceptance-plan.builder';
-import type { Gate6Evaluation } from './plan-builders/independent-verification-plan.builder';
-import type { Gate7Evaluation } from './plan-builders/publish-candidate-plan.builder';
-import type {
-  InternalRunWorkflowRequest,
-  ExecutionTriggerType,
-} from '../execution/dto/run-workflow.dto';
-import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
-import { ExecutionService } from '../execution/execution.service';
-import { StorageService } from '../../infrastructure/storage/storage.service';
-import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
-import { PluginAlreadyExistsException } from '../plugin/plugin.exceptions';
-import { PluginService } from '../plugin/plugin.service';
-import {
-  workflowInputSchemaSchema,
-  type WorkflowInputSchema,
-} from '../workflow/dto/workflow-input-schema.dto';
-
-import {
-  GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
-  GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
-  GENERATED_APP_PUBLIC_PREVIEW_PATH_PREFIX,
-  GeneratedAppArtifactDefinition,
-  GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS,
-  GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS,
-  GENERATED_APP_DERIVED_GATE_3_ARTIFACTS,
-  GENERATED_APP_PLUGIN_ARTIFACT_DEFINITIONS,
-} from './generated-app.internal';
-
+import { getGenerationPlanV2 } from './generated-app.gate-v2.util';
+import { resolveGeneratedAppWorkspaceRoot } from './generated-app.gate3-workspace';
+import { GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES } from './generated-app.internal';
 import { GeneratedAppRepository } from './generated-app.repository';
+import type {
+  GeneratedAppGenerationPlanV2,
+  GeneratedAppWorkspaceFile,
+} from './types/generation-plan-v2.types';
+
+/** 预签名链接有效期：够创建者打开截图/下载 trace，不长期暴露对象 */
+export const GENERATED_APP_ARTIFACT_PRESIGN_EXPIRY_SECONDS = 15 * 60;
+
+const WORKSPACE_FILE_KINDS = {
+  source: 'workspace_source_file',
+  test: 'workspace_test_file',
+  report: 'workspace_report',
+  manifest: 'workspace_manifest',
+} as const satisfies Record<
+  GeneratedAppWorkspaceFile['kind'],
+  GeneratedAppArtifactKind
+>;
+
+const WORKSPACE_CONTENT_TYPES: Record<string, string> = {
+  '.ts': 'text/typescript',
+  '.tsx': 'text/typescript',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+  '.html': 'text/html',
+};
+
+/** artifactId 是 URL 段：路径中的分隔符与点号统一换成 `-` */
+function toArtifactIdSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]+/g, '-');
+}
 
 @Injectable()
 export class GeneratedAppArtifactService {
+  private readonly logger = new Logger(GeneratedAppArtifactService.name);
+
   constructor(
     private readonly repository: GeneratedAppRepository,
     private readonly configService: ConfigService,
     @Optional() private readonly storageService?: StorageService,
   ) {}
 
-  public resolveWorkspaceRoot(): string {
-    const configuredRoot = this.configService.get<string>(
-      'GENERATED_APP_WORKSPACE_ROOT',
-    );
-
-    return resolve(
-      configuredRoot && configuredRoot.trim().length > 0
-        ? configuredRoot
-        : join(tmpdir(), 'agentloom-generated-app-workspaces'),
-    );
-  }
-
-  public resolveArtifactWorkspaceContext(app: GeneratedApp): {
-    workspace: GeneratedAppGenerationWorkspaceContract;
-    workspacePath: string;
-    executionLevel: GeneratedAppBuildUnitPlan['executionLevel'];
-  } | null {
-    const buildUnitPlan = this.resolveArtifactBuildUnitPlan(app);
-    const workspace = buildUnitPlan?.generationWorkspace;
-
-    if (!workspace) {
-      return null;
-    }
-
-    try {
-      const workspacePath = this.resolveSafeRelativePathInside(
-        this.resolveWorkspaceRoot(),
-        workspace.relativePath,
-      );
-
-      return {
-        workspace,
-        workspacePath,
-        executionLevel: buildUnitPlan.executionLevel,
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  public resolveArtifactBuildUnitPlan(
-    app: GeneratedApp,
-  ): GeneratedAppBuildUnitPlan | null {
-    const generationPlan = app.generationPlan;
-
-    if (!isRecord(generationPlan)) {
-      return null;
-    }
-
-    const buildUnitPlan = generationPlan.buildUnitPlan;
-
-    if (!isRecord(buildUnitPlan)) {
-      return null;
-    }
-
-    if (
-      !GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS.includes(
-        buildUnitPlan.executionLevel as GeneratedAppBuildUnitPlan['executionLevel'],
-      )
-    ) {
-      return null;
-    }
-
-    const workspace = buildUnitPlan.generationWorkspace;
-
-    if (!isRecord(workspace) || !isRecord(workspace.artifactPaths)) {
-      return null;
-    }
-
-    const artifactPaths = workspace.artifactPaths;
-
-    if (
-      !isNonEmptyString(workspace.workspaceId) ||
-      !isNonEmptyString(workspace.rootLabel) ||
-      !isNonEmptyString(workspace.relativePath) ||
-      !isNonEmptyString(workspace.scaffold) ||
-      !GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS.every((definition) =>
-        isNonEmptyString(artifactPaths[definition.field]),
-      )
-    ) {
-      return null;
-    }
-
-    return buildUnitPlan as unknown as GeneratedAppBuildUnitPlan;
-  }
-
-  public buildArtifactDefinitions(
-    workspace: GeneratedAppGenerationWorkspaceContract,
-  ): GeneratedAppArtifactDefinition[] {
-    return [
-      ...GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS,
-      ...GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS.map((definition) => ({
-        artifactId: definition.artifactId,
-        label: definition.label,
-        kind: definition.kind,
-        path: workspace.artifactPaths[definition.field],
-        contentType: definition.contentType,
-      })),
-      ...GENERATED_APP_DERIVED_GATE_3_ARTIFACTS,
-      ...this.extractPluginToolIdsFromWorkspace(workspace).flatMap((toolId) =>
-        GENERATED_APP_PLUGIN_ARTIFACT_DEFINITIONS.map((definition) => ({
-          artifactId: `plugin-${toolId}-${definition.suffix}`,
-          label: `Plugin ${toolId} ${definition.labelSuffix}`,
-          kind: definition.kind,
-          path: definition.path(toolId),
-          contentType: definition.contentType,
-        })),
-      ),
-    ];
-  }
-
-  public extractPluginToolIdsFromWorkspace(
-    workspace: GeneratedAppGenerationWorkspaceContract,
-  ): string[] {
-    return [
-      ...new Set(
-        workspace.files
-          .map((file) => {
-            const match = file.path.match(
-              /^plugins\/(tool-[a-z0-9-]+)\/agentloom\.plugin\.json$/,
-            );
-
-            return match?.[1] ?? null;
-          })
-          .filter((toolId): toolId is string => toolId !== null),
-      ),
-    ];
-  }
-
-  public async toArtifactSummaryDto(
-    workspacePath: string,
-    definition: GeneratedAppArtifactDefinition,
-  ): Promise<GeneratedAppArtifactSummaryDto> {
-    let materialized = false;
-    let sizeBytes: number | null = null;
-    let updatedAt: Date | null = null;
-
-    try {
-      const filePath = this.resolveArtifactFilePath(
-        workspacePath,
-        definition.path,
-      );
-      const fileStat = await stat(filePath);
-
-      if (fileStat.isFile()) {
-        materialized = true;
-        sizeBytes = fileStat.size;
-        updatedAt = fileStat.mtime;
-      }
-    } catch {
-      materialized = false;
-      sizeBytes = null;
-      updatedAt = null;
-    }
+  async getArtifactManifest(
+    tenantId: string,
+    appId: string,
+  ): Promise<GeneratedAppArtifactManifestResponseDto> {
+    const app = await this.repository.findGeneratedAppRecord(tenantId, appId);
+    const plan = getGenerationPlanV2(app.generationPlan);
+    const workspace = plan?.buildUnitPlan?.workspace ?? null;
+    const workspaceArtifacts = workspace
+      ? await this.listWorkspaceArtifacts(workspace)
+      : [];
+    const browserArtifacts = plan
+      ? await this.listBrowserArtifacts(tenantId, appId, plan)
+      : [];
 
     return {
-      artifactId: definition.artifactId,
-      label: definition.label,
-      kind: definition.kind,
-      path: definition.path,
-      materialized,
-      sizeBytes,
-      contentType: definition.contentType,
-      readable:
-        materialized &&
-        sizeBytes !== null &&
-        sizeBytes <= GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES &&
-        definition.contentType !== 'application/zip',
-      updatedAt,
+      workspace:
+        workspace && plan?.buildUnitPlan
+          ? {
+              relativePath: workspace.relativePath,
+              executionLevel: plan.buildUnitPlan.executionLevel,
+              materialized: workspaceArtifacts.some(
+                (artifact) => artifact.materialized,
+              ),
+            }
+          : null,
+      generationRunId: plan?.generationRunId ?? null,
+      artifacts: [...workspaceArtifacts, ...browserArtifacts],
+      updatedAt: app.updatedAt,
     };
   }
 
-  public resolveArtifactFilePath(
-    workspacePath: string,
-    relativePath: string,
-  ): string {
-    return this.resolveSafeRelativePathInside(workspacePath, relativePath);
-  }
-
-  public async resolveArtifactContentForApp(
-    app: GeneratedApp,
+  /** 只读取工作区文本文件；浏览器产物没有内联内容，用清单里的 downloadUrl 查看 */
+  async getArtifactContent(
+    tenantId: string,
+    appId: string,
     artifactId: string,
   ): Promise<GeneratedAppArtifactContentResponseDto> {
-    const workspaceContext = this.resolveArtifactWorkspaceContext(app);
-
-    if (!workspaceContext) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    const definition = this.buildArtifactDefinitions(
-      workspaceContext.workspace,
-    ).find((artifact) => artifact.artifactId === artifactId);
-
-    if (!definition) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    const summary = await this.toArtifactSummaryDto(
-      workspaceContext.workspacePath,
-      definition,
+    const app = await this.repository.findGeneratedAppRecord(tenantId, appId);
+    const workspace =
+      getGenerationPlanV2(app.generationPlan)?.buildUnitPlan?.workspace ?? null;
+    const file = workspace?.files.find(
+      (item) => `gate-3-${toArtifactIdSegment(item.path)}` === artifactId,
     );
+    if (!workspace || !file) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
 
+    const summary = await this.toWorkspaceArtifactSummary(
+      workspace.relativePath,
+      file,
+    );
     if (!summary.materialized) {
       throw new GeneratedAppArtifactNotFoundException(artifactId);
     }
-
     if (
       summary.sizeBytes !== null &&
       summary.sizeBytes > GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES
@@ -433,74 +127,25 @@ export class GeneratedAppArtifactService {
       );
     }
 
-    if (!summary.readable) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    const filePath = this.resolveArtifactFilePath(
-      workspaceContext.workspacePath,
-      definition.path,
+    const content = await readFile(
+      this.resolveWorkspaceFilePath(workspace.relativePath, file.path),
+      'utf8',
     );
-    const content = await readFile(filePath, 'utf8');
-
-    return {
-      artifact: summary,
-      content,
-      truncated: false,
-    };
+    return { artifact: summary, content, truncated: false };
   }
 
-  public async hasReadableArtifactForApp(
-    app: GeneratedApp,
-    artifactId: string,
-  ): Promise<boolean> {
-    try {
-      const artifact = await this.resolveArtifactContentForApp(app, artifactId);
-
-      return artifact.artifact.readable;
-    } catch {
-      return false;
-    }
-  }
-
-  public buildPublicBuildPreviewUrl(token: string): string {
-    return `${GENERATED_APP_PUBLIC_PREVIEW_PATH_PREFIX}/${encodeURIComponent(
-      token,
-    )}/preview`;
-  }
-
-  public async resolvePublicRuntimePreviewUrl(
-    app: GeneratedApp,
-    token: string,
-  ): Promise<string | null> {
-    const hasBuildPreview = await this.hasReadableArtifactForApp(
-      app,
-      GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
-    );
-
-    if (hasBuildPreview) {
-      return this.buildPublicBuildPreviewUrl(token);
-    }
-
-    return app.preview.previewUrl;
-  }
-
-  public resolveSafeRelativePathInside(root: string, relativePath: string) {
+  /**
+   * 把计划里的相对路径解析到受控根目录内；绝对路径、`..`、反斜杠、空段一律按不存在处理，
+   * 计划被篡改也读不到根目录之外的文件。
+   */
+  resolveSafeRelativePathInside(root: string, relativePath: string): string {
     const trimmedPath = relativePath.trim();
-
+    const segments = trimmedPath.split('/');
     if (
       trimmedPath.length === 0 ||
       trimmedPath.startsWith('/') ||
-      trimmedPath.startsWith('\\') ||
       trimmedPath.includes('\0') ||
-      trimmedPath.includes('\\')
-    ) {
-      throw new GeneratedAppArtifactNotFoundException(relativePath);
-    }
-
-    const segments = trimmedPath.split('/');
-
-    if (
+      trimmedPath.includes('\\') ||
       segments.some(
         (segment) =>
           segment.length === 0 || segment === '.' || segment === '..',
@@ -511,335 +156,136 @@ export class GeneratedAppArtifactService {
 
     const resolvedRoot = resolve(root);
     const resolvedPath = resolve(resolvedRoot, trimmedPath);
-
     if (
       resolvedPath !== resolvedRoot &&
       !resolvedPath.startsWith(`${resolvedRoot}${sep}`)
     ) {
       throw new GeneratedAppArtifactNotFoundException(relativePath);
     }
-
     return resolvedPath;
   }
 
-  async getArtifactManifest(
-    tenantId: string,
-    appId: string,
-  ): Promise<GeneratedAppArtifactManifestResponseDto> {
-    const app = await this.repository.findGeneratedAppRecord(tenantId, appId);
-    const workspaceContext = this.resolveArtifactWorkspaceContext(app);
-
-    if (!workspaceContext) {
-      return {
-        workspace: null,
-        artifacts: [],
-        updatedAt: app.updatedAt,
-      };
-    }
-
-    const artifacts = await Promise.all(
-      this.buildArtifactDefinitions(workspaceContext.workspace).map(
-        (definition) =>
-          this.toArtifactSummaryDto(workspaceContext.workspacePath, definition),
-      ),
-    );
-
-    return {
-      workspace: {
-        workspaceId: workspaceContext.workspace.workspaceId,
-        rootLabel: workspaceContext.workspace.rootLabel,
-        relativePath: workspaceContext.workspace.relativePath,
-        scaffold: workspaceContext.workspace.scaffold,
-        executionLevel: workspaceContext.executionLevel,
-        materialized: artifacts.some((artifact) => artifact.materialized),
-      },
-      artifacts,
-      updatedAt: app.updatedAt,
-    };
-  }
-
-  async getArtifactContent(
-    tenantId: string,
-    appId: string,
-    artifactId: string,
-  ): Promise<GeneratedAppArtifactContentResponseDto> {
-    const app = await this.repository.findGeneratedAppRecord(tenantId, appId);
-
-    return this.resolveArtifactContentForApp(app, artifactId);
-  }
-
-  public async loadAndVerifyGeneratedPrivatePlugin(params: {
-    app: GeneratedAppResponseDto;
-    toolId: string;
-    workspaceRelativePath: string;
-  }): Promise<{
-    pluginId: string;
-    manifest: Record<string, unknown>;
-    nodeDefinitions: Array<Record<string, unknown>>;
-    artifactPath: string;
-    buildReportPath: string;
-    storageKey: string;
-    archiveBuffer: Buffer;
-    wasmEntry: string | null;
-    wasmBuffer: Buffer | null;
-    signature: string;
-    contentHash: string;
-    buildReport: GeneratedAppPrivatePluginBuildReport;
-  }> {
-    const workspaceRoot = this.resolveWorkspaceRoot();
+  private resolveWorkspaceFilePath(
+    workspaceRelativePath: string,
+    filePath: string,
+  ): string {
     const workspacePath = this.resolveSafeRelativePathInside(
-      workspaceRoot,
-      params.workspaceRelativePath,
+      resolveGeneratedAppWorkspaceRoot(this.configService),
+      workspaceRelativePath,
     );
-    const artifactPath = `artifacts/gate-3/plugins/${params.toolId}.alp`;
-    const buildReportPath = `artifacts/gate-3/plugins/${params.toolId}-build-report.json`;
-    const artifactAbsolutePath = this.resolveSafeRelativePathInside(
-      workspacePath,
-      artifactPath,
-    );
-    const buildReportAbsolutePath = this.resolveSafeRelativePathInside(
-      workspacePath,
-      buildReportPath,
-    );
-    const [archiveBuffer, buildReport] = await Promise.all([
-      readFile(artifactAbsolutePath),
-      this.readJsonFile<GeneratedAppPrivatePluginBuildReport>(
-        buildReportAbsolutePath,
-      ),
-    ]);
-    const manifest =
-      await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
-    const validation = validatePluginManifest(manifest);
+    return this.resolveSafeRelativePathInside(workspacePath, filePath);
+  }
 
-    if (!validation.valid) {
-      throw new Error(
-        `Generated App 私有插件 manifest 校验失败：${validation.errors.join('；')}`,
-      );
-    }
-
-    const pluginId = getNonEmptyString(manifest.id);
-    const signature = getNonEmptyString(manifest.signature);
-    const contentHash = getNonEmptyString(manifest.contentHash);
-    const publicKeyPem = getNonEmptyString(
-      buildReport.generatedSigningPublicKeyPem,
-    );
-
-    if (!pluginId || !signature || !contentHash || !publicKeyPem) {
-      throw new Error(
-        `Generated App 私有插件 ${params.toolId} 缺少签名、内容哈希或生成公钥。`,
-      );
-    }
-
-    if (
-      !Array.isArray(manifest.permissions) ||
-      manifest.permissions.length > 0
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} 不允许声明隐式权限。`,
-      );
-    }
-
-    const computedContentHash =
-      await computePluginArchiveContentHash(archiveBuffer);
-    const signatureValid = await verifyPluginArchiveSignature(
-      archiveBuffer,
-      signature,
-      publicKeyPem,
-    );
-
-    if (
-      computedContentHash !== contentHash ||
-      contentHash !== buildReport.contentHash ||
-      buildReport.signature !== signature ||
-      buildReport.signingVerification.verified !== true ||
-      !signatureValid
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} 签名或内容哈希验证失败。`,
-      );
-    }
-
-    this.assertGeneratedPrivatePluginHardGates(params.toolId, buildReport);
-
-    const wasmEntry = getNonEmptyString(manifest.wasmEntry);
-    const wasmBuffer = wasmEntry
-      ? await this.extractGeneratedPrivatePluginWasm(
-          archiveBuffer,
-          wasmEntry,
-          pluginId,
-        )
-      : null;
-
-    if (
-      wasmEntry &&
-      buildReport.wasmEntry &&
-      buildReport.wasmEntry !== wasmEntry
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} build report wasmEntry 与 manifest 不一致。`,
-      );
-    }
-
-    if (
-      wasmBuffer &&
-      typeof buildReport.wasmSizeBytes === 'number' &&
-      buildReport.wasmSizeBytes !== wasmBuffer.length
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} WASM bundle 大小与 build report 不一致。`,
-      );
-    }
-
-    if (
-      wasmBuffer &&
-      buildReport.wasmSha256 &&
-      crypto.createHash('sha256').update(wasmBuffer).digest('hex') !==
-        buildReport.wasmSha256
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} WASM bundle 哈希与 build report 不一致。`,
-      );
-    }
-
-    const nodeDefinitions = await this.readJsonFile<
-      Array<Record<string, unknown>>
-    >(
-      this.resolveSafeRelativePathInside(
-        workspacePath,
-        `plugins/${params.toolId}/node-definitions.json`,
+  private listWorkspaceArtifacts(
+    workspace: NonNullable<
+      NonNullable<GeneratedAppGenerationPlanV2['buildUnitPlan']>['workspace']
+    >,
+  ): Promise<GeneratedAppArtifactSummaryDto[]> {
+    return Promise.all(
+      workspace.files.map((file) =>
+        this.toWorkspaceArtifactSummary(workspace.relativePath, file),
       ),
     );
+  }
 
-    if (
-      !Array.isArray(nodeDefinitions) ||
-      !nodeDefinitions.some(
-        (definition) => getNonEmptyString(definition.type) === params.toolId,
-      )
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} 节点定义未覆盖 ${params.toolId}。`,
+  private async toWorkspaceArtifactSummary(
+    workspaceRelativePath: string,
+    file: GeneratedAppWorkspaceFile,
+  ): Promise<GeneratedAppArtifactSummaryDto> {
+    let sizeBytes: number | null = null;
+    let updatedAt: Date | null = null;
+    try {
+      const fileStat = await stat(
+        this.resolveWorkspaceFilePath(workspaceRelativePath, file.path),
       );
+      if (fileStat.isFile()) {
+        sizeBytes = fileStat.size;
+        updatedAt = fileStat.mtime;
+      }
+    } catch {
+      // 工作区被清理或路径非法：清单里标为未物化
     }
+    const extension = file.path.slice(file.path.lastIndexOf('.'));
+    const materialized = sizeBytes !== null;
 
     return {
-      pluginId,
-      manifest,
-      nodeDefinitions,
-      artifactPath,
-      buildReportPath,
-      storageKey: `generated-apps/${params.app.id}/plugins/${params.toolId}.alp`,
-      archiveBuffer,
-      wasmEntry: wasmEntry ?? null,
-      wasmBuffer,
-      signature,
-      contentHash,
-      buildReport,
+      artifactId: `gate-3-${toArtifactIdSegment(file.path)}`,
+      label: file.path,
+      kind: WORKSPACE_FILE_KINDS[file.kind],
+      path: file.path,
+      materialized,
+      sizeBytes,
+      contentType: WORKSPACE_CONTENT_TYPES[extension] ?? 'text/plain',
+      readable:
+        materialized &&
+        sizeBytes !== null &&
+        sizeBytes <= GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
+      downloadUrl: null,
+      scenarioId: null,
+      viewportId: null,
+      updatedAt,
     };
   }
 
-  public async persistGeneratedPrivatePluginArtifacts(params: {
-    archiveStorageKey: string;
-    archiveBuffer: Buffer;
-    wasmBundleUrl: string | undefined;
-    wasmBuffer: Buffer | null;
-  }): Promise<void> {
-    if (!this.storageService) {
-      throw new Error(
-        'Generated App 私有插件自动激活需要 StorageService 才能持久化插件 artifact。',
-      );
-    }
-
-    await this.storageService.upload(
-      params.archiveStorageKey,
-      params.archiveBuffer,
-      params.archiveBuffer.length,
-      'application/zip',
+  /**
+   * Gate 5 的截图与 trace：只签发本应用、本次运行 gate-5 前缀下的 key，
+   * 计划里出现其他 key 时不签名（按未物化列出）。
+   */
+  private async listBrowserArtifacts(
+    tenantId: string,
+    appId: string,
+    plan: GeneratedAppGenerationPlanV2,
+  ): Promise<GeneratedAppArtifactSummaryDto[]> {
+    const scenarios = plan.browserAcceptancePlan?.result?.scenarios ?? [];
+    const expectedPrefix = `tenants/${tenantId}/generated-apps/${appId}/runs/${plan.generationRunId}/gate-5/`;
+    const entries = scenarios.flatMap((scenario) =>
+      (
+        [
+          ['screenshot', scenario.artifacts.screenshotKey],
+          ['trace', scenario.artifacts.traceKey],
+        ] as const
+      )
+        .filter((entry): entry is readonly ['screenshot' | 'trace', string] =>
+          Boolean(entry[1]),
+        )
+        .map(([type, key]) => ({ scenario, type, key })),
     );
 
-    if (params.wasmBundleUrl && params.wasmBuffer) {
-      await this.storageService.upload(
-        params.wasmBundleUrl,
-        params.wasmBuffer,
-        params.wasmBuffer.length,
-        'application/wasm',
-      );
-    }
+    return Promise.all(
+      entries.map(async ({ scenario, type, key }) => {
+        const trusted = key.startsWith(expectedPrefix) && !key.includes('..');
+        const downloadUrl = trusted ? await this.presign(key) : null;
+        return {
+          artifactId: `gate-5-${toArtifactIdSegment(scenario.scenarioId)}-${scenario.viewportId}-${type}`,
+          label: `${scenario.scenarioId} · ${scenario.viewportId === 'desktop' ? '桌面' : '移动'} · ${type === 'screenshot' ? '截图' : 'trace'}`,
+          kind: type === 'screenshot' ? 'browser_screenshot' : 'browser_trace',
+          path: key,
+          materialized: trusted,
+          sizeBytes: null,
+          contentType: type === 'screenshot' ? 'image/png' : 'application/zip',
+          readable: false,
+          downloadUrl,
+          scenarioId: scenario.scenarioId,
+          viewportId: scenario.viewportId,
+          updatedAt: null,
+        } satisfies GeneratedAppArtifactSummaryDto;
+      }),
+    );
   }
 
-  public async extractGeneratedPrivatePluginWasm(
-    archiveBuffer: Buffer,
-    wasmEntry: string,
-    pluginId: string,
-  ): Promise<Buffer> {
-    this.assertSafeGeneratedPrivatePluginWasmEntry(wasmEntry, pluginId);
-
-    const archive = await JSZip.loadAsync(archiveBuffer);
-    const wasmFile = archive.file(wasmEntry);
-
-    if (!wasmFile) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} manifest 声明的 WASM 入口 ${wasmEntry} 不存在。`,
+  /** 对象存储不可用时清单照常返回，只是没有下载链接 */
+  private async presign(key: string): Promise<string | null> {
+    if (!this.storageService) return null;
+    try {
+      return await this.storageService.getPresignedUrl(
+        key,
+        GENERATED_APP_ARTIFACT_PRESIGN_EXPIRY_SECONDS,
       );
-    }
-
-    const wasmBuffer = Buffer.from(await wasmFile.async('uint8array'));
-    if (
-      wasmBuffer.length < 8 ||
-      wasmBuffer.subarray(0, 4).toString('hex') !== '0061736d'
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} WASM bundle 不是有效 WebAssembly 模块。`,
+    } catch (error) {
+      this.logger.warn(
+        `生成应用浏览器产物预签名失败：${(error as Error).message}`,
       );
+      return null;
     }
-
-    return wasmBuffer;
-  }
-
-  public assertSafeGeneratedPrivatePluginWasmEntry(
-    wasmEntry: string,
-    pluginId: string,
-  ): void {
-    const parts = wasmEntry.split('/');
-    if (
-      wasmEntry.trim() !== wasmEntry ||
-      !wasmEntry.endsWith('.wasm') ||
-      wasmEntry.startsWith('/') ||
-      /^[A-Za-z]:/.test(wasmEntry) ||
-      wasmEntry.includes('\\') ||
-      parts.some((part) => part.length === 0 || part === '.' || part === '..')
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${pluginId} WASM 入口路径不安全。`,
-      );
-    }
-  }
-
-  public assertGeneratedPrivatePluginHardGates(
-    toolId: string,
-    buildReport: GeneratedAppPrivatePluginBuildReport,
-  ): void {
-    if (
-      buildReport.toolId !== toolId ||
-      buildReport.passed !== true ||
-      buildReport.manifestValid !== true ||
-      buildReport.nodeDefinitionsValid !== true ||
-      buildReport.signingVerification.requiredBeforePrivateActivation !==
-        true ||
-      buildReport.signingVerification.status !==
-        'self-verified-generated-signature' ||
-      buildReport.signingVerification.contentHashMatches !== true ||
-      buildReport.signingVerification.verified !== true ||
-      buildReport.declaredPermissions.length > 0
-    ) {
-      throw new Error(
-        `Generated App 私有插件 ${toolId} 未通过自动激活硬门槛。`,
-      );
-    }
-  }
-
-  public async readJsonFile<T>(path: string): Promise<T> {
-    const content = await readFile(path, 'utf8');
-
-    return JSON.parse(content) as T;
   }
 }

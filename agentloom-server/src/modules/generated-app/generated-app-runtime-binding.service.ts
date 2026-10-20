@@ -59,9 +59,7 @@ export interface GeneratedAppRuntimeUnavailable {
 }
 
 @Injectable()
-export class GeneratedAppRuntimeBindingService
-  implements GeneratedAppRuntimeBindingAdapter
-{
+export class GeneratedAppRuntimeBindingService implements GeneratedAppRuntimeBindingAdapter {
   constructor(
     private readonly repository: GeneratedAppRepository,
     @Optional()
@@ -230,7 +228,10 @@ export class GeneratedAppRuntimeBindingService
     if (!pinnedVersion) {
       return {
         available: false,
-        state: binding.kind === 'workflow' ? 'workflow_not_found' : 'runtime_not_bound',
+        state:
+          binding.kind === 'workflow'
+            ? 'workflow_not_found'
+            : 'runtime_not_bound',
         workflowDefinitionId,
         workflowStatus: workflow.status,
         publishedVersionId: workflow.publishedVersionId,
@@ -492,7 +493,9 @@ export class GeneratedAppRuntimeBindingService
     }
 
     if (!this.workflowVersionService) {
-      throw new Error('发布 Agent 包装工作流需要 WorkflowVersionService，当前模块未提供');
+      throw new Error(
+        '发布 Agent 包装工作流需要 WorkflowVersionService，当前模块未提供',
+      );
     }
     const published = await this.workflowVersionService.publish(
       workflowDefinitionId,
