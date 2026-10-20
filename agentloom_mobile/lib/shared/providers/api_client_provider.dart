@@ -10,7 +10,12 @@ import 'env_provider.dart';
 
 /// ApiClient Provider — 提供已配置的 Dio 实例（含 AuthInterceptor）
 ///
-/// 从 [envProvider] 读取 API 基础地址，配置超时、默认请求头和认证拦截器。
+/// 从 [envProvider] 读取 API 基础地址，配置超时和认证拦截器。
+///
+/// 不设置默认 `Content-Type`：由 Dio 内置的 ImplyContentTypeInterceptor 按 body 推断
+/// （Map/List/String → JSON，FormData → multipart），没有 body 的请求不带该头。
+/// 若默认声明 JSON，无 body 的 DELETE/PATCH/POST 会被 Fastify 以 400
+/// 「Body cannot be empty when content-type is set to 'application/json'」拒绝。
 final apiClientProvider = Provider<Dio>((ref) {
   final env = ref.watch(envProvider);
 
@@ -19,7 +24,6 @@ final apiClientProvider = Provider<Dio>((ref) {
       baseUrl: env.apiBaseUrl,
       connectTimeout: AppConstants.connectTimeout,
       receiveTimeout: AppConstants.receiveTimeout,
-      headers: {'Content-Type': 'application/json'},
     ),
   );
 

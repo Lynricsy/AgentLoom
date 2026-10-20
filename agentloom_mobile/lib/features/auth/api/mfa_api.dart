@@ -1,9 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../config/constants.dart';
-import '../../../shared/providers/env_provider.dart';
 import '../models/auth_tokens.dart';
+import 'auth_api.dart';
 
 /// MFA TOTP 注册响应
 class MfaEnrollResponse {
@@ -93,14 +92,5 @@ class MfaApi {
 
 /// MfaApi 使用 authDio（不注入 AuthInterceptor，与 AuthApi 一致）
 final mfaApiProvider = Provider<MfaApi>((ref) {
-  final env = ref.watch(envProvider);
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: env.apiBaseUrl,
-      connectTimeout: AppConstants.connectTimeout,
-      receiveTimeout: AppConstants.receiveTimeout,
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
-  return MfaApi(dio);
+  return MfaApi(ref.watch(authDioProvider));
 });

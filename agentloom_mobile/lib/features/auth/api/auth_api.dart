@@ -136,7 +136,10 @@ class AuthApi {
   }
 }
 
-/// AuthApi 使用的独立 Dio 实例（不注入 AuthInterceptor）
+/// AuthApi 与 MfaApi 共用的独立 Dio 实例（不注入 AuthInterceptor）
+///
+/// 与 `apiClientProvider` 一致不设置默认 `Content-Type`，交给 Dio 按 body 推断，
+/// 避免无 body 的请求（如 logout、TOTP enroll）被服务端拒绝。
 final authDioProvider = Provider<Dio>((ref) {
   final env = ref.watch(envProvider);
   return Dio(
@@ -144,7 +147,6 @@ final authDioProvider = Provider<Dio>((ref) {
       baseUrl: env.apiBaseUrl,
       connectTimeout: AppConstants.connectTimeout,
       receiveTimeout: AppConstants.receiveTimeout,
-      headers: {'Content-Type': 'application/json'},
     ),
   );
 });
