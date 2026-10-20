@@ -4,6 +4,8 @@ import { getSharedConfigToken } from '@nestjs/bullmq';
 import type { QueueOptions } from 'bullmq';
 import Redis from 'ioredis';
 
+import { toBullMqConnectionOptions } from '../../src/common/redis/redis-connection.util';
+
 /**
  * 依赖真实队列 worker 的 AppModule e2e 用独立的 BullMQ key 前缀。
  *
@@ -25,13 +27,7 @@ export function createBullMqIsolation(): BullMqIsolation {
   if (!redisUrl) {
     throw new Error('APP_REDIS_URL 未设置（应由 test/setup-e2e.ts 提供）');
   }
-  const url = new URL(redisUrl);
-  const connection = {
-    host: url.hostname,
-    port: parseInt(url.port, 10) || 6379,
-    password: url.password || undefined,
-    db: url.pathname ? parseInt(url.pathname.slice(1), 10) || 0 : 0,
-  };
+  const connection = toBullMqConnectionOptions(redisUrl);
   const prefix = `e2e-${randomUUID()}`;
 
   return {

@@ -205,6 +205,8 @@ socket.on("execution.node.status-changed", (event) => {
 
 `agentloom-server/src/main.ts` 用 `RedisIoAdapter`（`agentloom-server/src/common/adapters/redis-io.adapter.ts`）作为 WebSocket 适配器。它用 `APP_REDIS_URL` 创建独立的 pub/sub 两个 ioredis 客户端，连接成功后为每个命名空间服务器挂上 `@socket.io/redis-adapter`，使 `server.to(room).emit()` 跨进程生效。连接失败时只记 warn，服务以单实例模式继续运行。
 
+`@socket.io/redis-adapter` 广播时以 fire-and-forget 方式调用 `pubClient.publish`，不处理失败。pub 客户端设了 `maxRetriesPerRequest: 3`，Redis 中断约 1 秒后 publish 被拒绝；不处理就会成为未处理的 Promise rejection，Node 直接退出进程。`RedisIoAdapter` 因此包装了 pub 客户端的 `publish`：失败时返回 0 并记一条 WARN，Redis 恢复后的第一次成功发布记下中断期间丢弃的条数。本地投递不经过 Redis，本实例的客户端照常收到事件，只有发往其他实例的广播在中断期间丢失。
+
 适配器还把 `maxHttpBufferSize` 提高到至少 `MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES`（`agentloom-server/src/modules/agent-conversation/conversation-attachment.ts`），以容纳带 base64 附件的对话消息。
 
 ### 事件清单

@@ -1,4 +1,5 @@
 import {
+  Logger,
   type MiddlewareConsumer,
   Module,
   type NestModule,
@@ -71,11 +72,22 @@ import { RbacCacheService } from './common/services/rbac-cache.service';
 import { QueueWorkerShutdownService } from './common/services/queue-worker-shutdown.service';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { safeQuitRedis } from './common/redis/redis-shutdown.util';
+import {
+  observeRedisConnection,
+  redisReconnectDelay,
+  toBullMqConnectionOptions,
+} from './common/redis/redis-connection.util';
 
 let throttlerRedisClient: Redis | null = null;
 
 function createThrottlerOptions(configService: ConfigService) {
-  throttlerRedisClient = new Redis(configService.get<string>('APP_REDIS_URL')!);
+  throttlerRedisClient = observeRedisConnection(
+    new Redis(configService.get<string>('APP_REDIS_URL')!, {
+      retryStrategy: redisReconnectDelay,
+    }),
+    'throttler',
+    new Logger('ThrottlerRedis'),
+  );
 
   return {
     throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
@@ -98,18 +110,11 @@ function createThrottlerOptions(configService: ConfigService) {
       inject: [ConfigService],
     }),
     BullModule.forRootAsync({
-      useFactory: (configService: ConfigService) => {
-        const redisUrl = configService.get<string>('APP_REDIS_URL')!;
-        const url = new URL(redisUrl);
-        return {
-          connection: {
-            host: url.hostname,
-            port: parseInt(url.port, 10) || 6379,
-            password: url.password || undefined,
-            db: url.pathname ? parseInt(url.pathname.slice(1), 10) || 0 : 0,
-          },
-        };
-      },
+      useFactory: (configService: ConfigService) => ({
+        connection: toBullMqConnectionOptions(
+          configService.get<string>('APP_REDIS_URL')!,
+        ),
+      }),
       inject: [ConfigService],
     }),
     HealthModule,

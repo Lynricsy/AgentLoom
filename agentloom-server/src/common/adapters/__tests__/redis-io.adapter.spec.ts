@@ -6,6 +6,7 @@ const {
   mockConnect,
   mockDisconnect,
   mockOn,
+  mockPublish,
   mockCreateAdapter,
   mockSuperCreateIOServer,
   mockSuperClose,
@@ -13,6 +14,7 @@ const {
   mockConnect: vi.fn().mockResolvedValue(undefined),
   mockDisconnect: vi.fn(),
   mockOn: vi.fn(),
+  mockPublish: vi.fn().mockResolvedValue(1),
   mockCreateAdapter: vi.fn().mockReturnValue('redis-adapter-instance'),
   mockSuperCreateIOServer: vi.fn(),
   mockSuperClose: vi.fn().mockResolvedValue(undefined),
@@ -20,9 +22,11 @@ const {
 
 vi.mock('ioredis', () => ({
   default: class MockRedis {
+    status = 'ready';
     connect = mockConnect;
     disconnect = mockDisconnect;
     on = mockOn;
+    publish = mockPublish;
   },
 }));
 
@@ -74,13 +78,48 @@ describe('RedisIoAdapter', () => {
       await adapter.connectToRedis();
 
       expect(mockConnect).toHaveBeenCalledTimes(2);
-      expect(mockOn).toHaveBeenCalledTimes(2);
     });
 
-    it('应注册 error 事件处理器', async () => {
+    it('应为 pub/sub 客户端注册 error 与 ready 事件处理器', async () => {
       await adapter.connectToRedis();
-      expect(mockOn).toHaveBeenCalledWith('error', expect.any(Function));
-      expect(mockOn).toHaveBeenCalledTimes(2);
+      const events = mockOn.mock.calls.map(([event]) => event as string);
+      expect(events.filter((event) => event === 'error')).toHaveLength(2);
+      expect(events.filter((event) => event === 'ready')).toHaveLength(2);
+    });
+
+    it('Redis 中断时 adapter 的 fire-and-forget publish 失败不应成为未处理的 rejection', async () => {
+      const warn = vi.mocked(Logger.prototype.warn);
+      mockPublish.mockRejectedValue(
+        new Error('Reached the max retries per request limit (which is 3).'),
+      );
+      mockSuperCreateIOServer.mockReturnValue({ adapter: vi.fn() });
+      await adapter.connectToRedis();
+      adapter.createIOServer(3000);
+      const pubClient = mockCreateAdapter.mock.calls[0]?.[0] as {
+        publish: (channel: string, message: Buffer) => Promise<number>;
+      };
+
+      await expect(
+        pubClient.publish('socket.io#/#', Buffer.from('a')),
+      ).resolves.toBe(0);
+      await expect(
+        pubClient.publish('socket.io#/#', Buffer.from('b')),
+      ).resolves.toBe(0);
+      // 同一次中断只记一条 WARN
+      expect(
+        warn.mock.calls.filter(([message]) =>
+          String(message).includes('跨实例广播发布失败'),
+        ),
+      ).toHaveLength(1);
+
+      const log = vi.mocked(Logger.prototype.log);
+      mockPublish.mockResolvedValue(1);
+      await expect(
+        pubClient.publish('socket.io#/#', Buffer.from('c')),
+      ).resolves.toBe(1);
+      expect(log).toHaveBeenCalledWith(
+        'Redis 已恢复，中断期间丢弃了 2 条跨实例广播',
+      );
     });
 
     it('连接失败时应抛出错误', async () => {

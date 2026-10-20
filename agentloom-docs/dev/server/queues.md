@@ -4,7 +4,7 @@ docType: reference
 
 # 异步任务队列
 
-服务端的异步任务全部跑在 BullMQ 上，Redis 连接在 `agentloom-server/src/app.module.ts` 的 `BullModule.forRootAsync` 中由 `APP_REDIS_URL` 解析。每个队列由所属模块用 `BullModule.registerQueue` 注册，Worker 类用 `@Processor(<队列常量>)` 绑定。
+服务端的异步任务全部跑在 BullMQ 上，Redis 连接参数由 `toBullMqConnectionOptions`（`agentloom-server/src/common/redis/redis-connection.util.ts`）从 `APP_REDIS_URL` 解析，`app.module.ts`、ACP stdio 入口与 browser-runner 的 `BullModule.forRootAsync` 共用它。每个队列由所属模块用 `BullModule.registerQueue` 注册，Worker 类用 `@Processor(<队列常量>)` 绑定。
 
 ## 队列清单
 
@@ -51,6 +51,14 @@ docType: reference
 `agentloom-server/src/main.ts` 调用 `app.enableShutdownHooks()`，进程收到 SIGTERM / SIGINT 时按 Nest 生命周期钩子关闭。根模块的 `QueueWorkerShutdownService`（`agentloom-server/src/common/services/queue-worker-shutdown.service.ts`）在 `onModuleDestroy` 中对全部 `WorkerHost` 调用 `worker.close()`：停止拉取新任务，等进行中的任务结束后才返回。Nest 按模块距离由近到远调用 `onModuleDestroy`，根模块最先、全局模块（数据库连接池、Redis）最后，任务结束前依赖仍可用；BullModule 自带的关闭在 `onApplicationShutdown`，晚于连接池关闭，不能依赖它。
 
 `agent-conversation-execution` 的 worker 收到 `closing` 事件后进入排空：正在执行的轮次照常跑完并落库，空闲等待的 loop 被唤醒后直接退出，不再取新消息；loop 退出后到达的消息由 `onCompleted` 补发派发，交给其他进程。部署的停止宽限期（Compose `stop_grace_period`、Helm `terminationGracePeriodSeconds`，均为 60 秒）内仍未结束的任务随进程被强杀，由 BullMQ 的 stalled 检查转交其他进程从头重跑。
+
+## Redis 中断与恢复
+
+全部 ioredis 连接（业务客户端、缓存失效订阅、限流、Socket.IO pub/sub、BullMQ）共用 `redisReconnectDelay`：断线后每次重连多等 200ms，封顶 2 秒，永不放弃，Redis 恢复后约 2 秒内全部重连。BullMQ 默认按 e^n 退避到 20 秒，因此显式覆盖。每个连接在一次中断中只记一条 WARN（`Redis 连接 <名称> 出错，将自动重连`），恢复时记 `Redis 连接 <名称> 已恢复`。
+
+BullMQ 必须不低于 6.3.19。6.3.2 的 `waitForJob` 看门狗在阻塞连接处于 `reconnecting`（没有 socket、正在等重连定时器）时调用 `disconnect()`，ioredis 因此清掉自己的重连定时器且不再发出 `close`，阻塞连接永远停在 `reconnecting`（上游 [taskforcesh/bullmq#4585](https://github.com/taskforcesh/bullmq/issues/4585)）。表现为 Redis 空闲中断超过约 6 秒（`drainDelay` 5 秒加 1 秒余量）后，全部 worker 不再执行 `BZPOPMIN`、任务永久停在 waiting，日志没有任何错误。回归测试 `agentloom-server/test/redis-outage.e2e-spec.ts` 经可中断的 TCP 代理（`test/support/tcp-fault-proxy.ts`）断开 Redis 8 秒后验证 worker 继续取任务。
+
+worker 是否在取任务由健康检查观察：正在运行（`worker.isRunning()`）且专用阻塞连接为 `ready` 才算可用，任一 worker 不可用时 readiness 失败；Redis 主连接可用、但某个 worker 持续 2 分钟以上不可用时 liveness 失败，交给编排层重启进程，见[部署运维](/deploy/#健康检查)。
 
 ## Gate 5 browser-runner
 

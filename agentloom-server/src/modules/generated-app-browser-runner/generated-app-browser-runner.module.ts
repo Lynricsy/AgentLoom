@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DiscoveryModule } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 
+import { toBullMqConnectionOptions } from '../../common/redis/redis-connection.util';
 import { QueueWorkerShutdownService } from '../../common/services/queue-worker-shutdown.service';
 import {
   browserRunnerEnvSchema,
@@ -37,17 +38,11 @@ import { PlaywrightBrowserAcceptanceExecutor } from './playwright-browser-accept
     }),
     DiscoveryModule,
     BullModule.forRootAsync({
-      useFactory: (configService: ConfigService) => {
-        const url = new URL(configService.getOrThrow<string>('APP_REDIS_URL'));
-        return {
-          connection: {
-            host: url.hostname,
-            port: parseInt(url.port, 10) || 6379,
-            password: url.password || undefined,
-            db: url.pathname ? parseInt(url.pathname.slice(1), 10) || 0 : 0,
-          },
-        };
-      },
+      useFactory: (configService: ConfigService) => ({
+        connection: toBullMqConnectionOptions(
+          configService.getOrThrow<string>('APP_REDIS_URL'),
+        ),
+      }),
       inject: [ConfigService],
     }),
     BullModule.registerQueue({ name: GENERATED_APP_BROWSER_ACCEPTANCE_QUEUE }),

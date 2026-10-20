@@ -9,6 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CACHE_INVALIDATION_CHANNEL, REDIS_CLIENT } from './redis.constants';
 import { RedisCacheService } from './redis-cache.service';
+import {
+  observeRedisConnection,
+  redisReconnectDelay,
+} from './redis-connection.util';
 import { safeQuitRedis, safeUnsubscribeRedis } from './redis-shutdown.util';
 
 @Injectable()
@@ -21,12 +25,13 @@ export class RedisPubSubService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly cacheService: RedisCacheService,
   ) {
-    this.subscriber = new Redis(
-      this.configService.get<string>('APP_REDIS_URL')!,
-      {
+    this.subscriber = observeRedisConnection(
+      new Redis(this.configService.get<string>('APP_REDIS_URL')!, {
         maxRetriesPerRequest: 3,
-        retryStrategy: (times: number) => Math.min(times * 200, 2000),
-      },
+        retryStrategy: redisReconnectDelay,
+      }),
+      'cache-invalidation-sub',
+      this.logger,
     );
   }
 

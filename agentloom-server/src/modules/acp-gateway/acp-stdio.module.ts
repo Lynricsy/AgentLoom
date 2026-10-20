@@ -3,6 +3,7 @@ import { BullModule, BullRegistrar } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { AppConfigModule } from '../../config/config.module';
 import { RedisModule } from '../../common/redis/redis.module';
+import { toBullMqConnectionOptions } from '../../common/redis/redis-connection.util';
 import { TokenBlacklistModule } from '../../common/services/token-blacklist.module';
 import { UserIdentityResolverModule } from '../../common/services/user-identity-resolver.module';
 import { WsAuthModule } from '../../common/services/ws-auth.module';
@@ -24,18 +25,11 @@ import { ACP_TEST_RUNTIME_PROVIDER } from './testing/acp-test-runtime';
     UserIdentityResolverModule,
     WsAuthModule,
     BullModule.forRootAsync({
-      useFactory: (configService: ConfigService) => {
-        const redisUrl = configService.get<string>('APP_REDIS_URL')!;
-        const url = new URL(redisUrl);
-        return {
-          connection: {
-            host: url.hostname,
-            port: parseInt(url.port, 10) || 6379,
-            password: url.password || undefined,
-            db: url.pathname ? parseInt(url.pathname.slice(1), 10) || 0 : 0,
-          },
-        };
-      },
+      useFactory: (configService: ConfigService) => ({
+        connection: toBullMqConnectionOptions(
+          configService.get<string>('APP_REDIS_URL')!,
+        ),
+      }),
       inject: [ConfigService],
     }),
     LlmModule,

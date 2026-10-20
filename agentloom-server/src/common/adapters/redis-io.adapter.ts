@@ -5,6 +5,10 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { Server, type ServerOptions } from 'socket.io';
 import Redis from 'ioredis';
 import { MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES } from '../../modules/agent-conversation/conversation-attachment';
+import {
+  observeRedisConnection,
+  redisReconnectDelay,
+} from '../redis/redis-connection.util';
 
 /**
  * 基于 Redis 的 Socket.IO 适配器
@@ -39,31 +43,74 @@ export class RedisIoAdapter extends IoAdapter {
   async connectToRedis(): Promise<void> {
     const redisOptions = {
       maxRetriesPerRequest: 3,
-      retryStrategy: (times: number) => Math.min(times * 200, 2000),
+      retryStrategy: redisReconnectDelay,
       lazyConnect: true,
     };
 
-    this.pubClient = new Redis(this.redisUrl, {
-      ...redisOptions,
-      connectionName: 'socketio-pub',
-    });
-
-    this.subClient = new Redis(this.redisUrl, {
-      ...redisOptions,
-      connectionName: 'socketio-sub',
-    });
-
-    this.pubClient.on('error', (err) => {
-      this.logger.error(`Redis pub client error: ${err.message}`);
-    });
-
-    this.subClient.on('error', (err) => {
-      this.logger.error(`Redis sub client error: ${err.message}`);
-    });
+    this.pubClient = observeRedisConnection(
+      new Redis(this.redisUrl, {
+        ...redisOptions,
+        connectionName: 'socketio-pub',
+      }),
+      'socketio-pub',
+      this.logger,
+    );
+    this.subClient = observeRedisConnection(
+      new Redis(this.redisUrl, {
+        ...redisOptions,
+        connectionName: 'socketio-sub',
+      }),
+      'socketio-sub',
+      this.logger,
+    );
+    this.guardFireAndForgetPublish();
 
     await Promise.all([this.pubClient.connect(), this.subClient.connect()]);
     this.isConnected = true;
     this.logger.log('Redis IO adapter connected');
+  }
+
+  /**
+   * `@socket.io/redis-adapter` 广播时以 fire-and-forget 方式调用 `pubClient.publish`，既不 await 也不 catch。
+   * Redis 中断超过 `maxRetriesPerRequest` 的重试窗口（约 1s）后 publish 被拒绝，成为未处理的
+   * Promise rejection，Node 默认据此退出进程。这里让 publish 失败时只记日志：
+   * 本地投递不经过 Redis，本实例的客户端照常收到事件；中断期间发往其他实例的广播被丢弃，
+   * 与 Socket.IO 至多一次的投递语义一致；断线期间短暂缓冲的命令在恢复后照常发出。
+   */
+  private guardFireAndForgetPublish(): void {
+    const publish = this.pubClient.publish.bind(this.pubClient) as (
+      channel: string | Buffer,
+      message: string | Buffer,
+    ) => Promise<number>;
+    let dropped = 0;
+
+    const guardedPublish = (
+      channel: string | Buffer,
+      message: string | Buffer,
+    ): Promise<number> =>
+      publish(channel, message).then(
+        (receivers) => {
+          if (dropped > 0) {
+            this.logger.log(
+              `Redis 已恢复，中断期间丢弃了 ${dropped} 条跨实例广播`,
+            );
+            dropped = 0;
+          }
+          return receivers;
+        },
+        (error: unknown) => {
+          if (dropped === 0) {
+            this.logger.warn(
+              `跨实例广播发布失败，Redis 恢复前的跨实例广播将被丢弃（本实例客户端不受影响）: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+          dropped += 1;
+          return 0;
+        },
+      );
+    this.pubClient.publish = guardedPublish as Redis['publish'];
   }
 
   createIOServer(port: number, options?: Partial<ServerOptions>): Server {
