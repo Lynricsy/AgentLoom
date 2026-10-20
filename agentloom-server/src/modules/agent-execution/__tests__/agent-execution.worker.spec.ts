@@ -2951,6 +2951,38 @@ describe('AgentExecutionWorker', () => {
       );
       expect(bullWorker.concurrency).toBe(12);
     });
+
+    it('未注册 BullMQ worker 的进程启动时跳过并发设置，不抛错', () => {
+      const configuredWorker = new AgentExecutionWorker(
+        mockDb as never,
+        mockRuntime as never,
+        mockAdapterFactory as never,
+        mockExecutionService as never,
+        mockEventBridge as never,
+        mockSandboxService as never,
+        mockWorkspaceIntegrationService as never,
+        mockAgentDefinitionService as never,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { get: vi.fn().mockReturnValue(12) } as never,
+      );
+
+      // 未 spy 的 worker getter 走 WorkerHost 原实现：worker 未创建时抛错
+      expect(() => configuredWorker.onApplicationBootstrap()).not.toThrow();
+    });
   });
 
   it('执行多轮 loop，并在 tool_use 后自动续轮直到完成', async () => {

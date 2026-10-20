@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import type { Job } from 'bullmq';
+import type { Job, Worker } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 
@@ -998,15 +998,23 @@ export class AgentExecutionWorker
   /**
    * worker 由 BullModule 在 onModuleInit 创建，这里再按配置调整并发；
    * 同一对话由 jobId=conversationId 与 registerActiveRun 保证同一时刻只有一个 loop。
+   * 未注册 worker 的进程（ACP stdio 入口、e2e 替换了 BullRegistrar）读 `this.worker` 会抛错，跳过即可。
    */
   onApplicationBootstrap(): void {
     const concurrency = this.configService?.get(
       'APP_AGENT_CONVERSATION_CONCURRENCY',
       { infer: true },
     );
-    if (concurrency) {
-      this.worker.concurrency = concurrency;
+    if (!concurrency) {
+      return;
     }
+    let worker: Worker;
+    try {
+      worker = this.worker;
+    } catch {
+      return;
+    }
+    worker.concurrency = concurrency;
   }
 
   /**
