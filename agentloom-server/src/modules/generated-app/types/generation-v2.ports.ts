@@ -14,6 +14,7 @@ import type {
   GeneratedAppResultView,
   GeneratedAppSpecV2,
 } from './app-spec-v2.schema';
+import type { GeneratedAppGenerationPlanV2 } from './generation-plan-v2.types';
 import type {
   GeneratedAppBrowserAcceptanceJob,
   GeneratedAppBrowserAcceptanceResult,
@@ -247,6 +248,10 @@ export interface GeneratedAppGateContextV2 {
     status: 'passed' | 'failed' | 'warning' | 'skipped';
     evidence: GeneratedAppGateEvidence[];
   }>;
+  /** 前序 Gate 已写入的计划（Gate 1 起逐步补全）；Gate 6/7 据此复核证据 */
+  generationPlan: GeneratedAppGenerationPlanV2;
+  /** 运行级截止（maxRuntimeSeconds）：超时后取消等待中的执行 */
+  signal: AbortSignal;
 }
 
 export interface GeneratedAppGateEvaluationV2<TPlan = unknown> {
