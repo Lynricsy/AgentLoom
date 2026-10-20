@@ -167,7 +167,42 @@ describe('publishPlugin', () => {
     const { keyPath } = createBuildableProject(root);
 
     await expect(publishPlugin({ key: keyPath, cwd: root })).rejects.toThrow(
-      '未找到已构建的 .alp 归档',
+      `未找到已构建的 .alp 归档：${join(root, 'build', 'com.agentloom.publish-test-1.0.0.alp')}`,
+    );
+  });
+
+  it('私钥文件不存在时给出路径与生成方式', async () => {
+    const root = createTempDir();
+    createBuildableProject(root);
+    await buildPluginArchive({ cwd: root });
+    const missingKey = join(root, 'nonexistent.pem');
+
+    await expect(publishPlugin({ key: missingKey, cwd: root })).rejects.toThrow(
+      `未找到私钥文件：${missingKey}。签名需要 \`agentloom-plugin keys generate\` 生成的 PKCS#8 RSA 私钥（默认 keys/private.pem）。`,
+    );
+  });
+
+  it('误传公钥时明确提示这是公钥', async () => {
+    const root = createTempDir();
+    const { publicKeyPem } = createBuildableProject(root);
+    await buildPluginArchive({ cwd: root });
+    const publicKeyPath = join(root, 'public.pem');
+    writeFileSync(publicKeyPath, publicKeyPem, 'utf8');
+
+    await expect(
+      publishPlugin({ key: publicKeyPath, cwd: root }),
+    ).rejects.toThrow(`${publicKeyPath} 是公钥。`);
+  });
+
+  it('私钥无法解析时提示需要 PKCS#8 私钥', async () => {
+    const root = createTempDir();
+    createBuildableProject(root);
+    await buildPluginArchive({ cwd: root });
+    const garbageKey = join(root, 'garbage.pem');
+    writeFileSync(garbageKey, 'not a key\n', 'utf8');
+
+    await expect(publishPlugin({ key: garbageKey, cwd: root })).rejects.toThrow(
+      `无法解析私钥 ${garbageKey}。签名需要`,
     );
   });
 

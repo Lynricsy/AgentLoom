@@ -7,7 +7,7 @@ import { Command } from 'commander';
 import express, { type Express } from 'express';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
 
-import { loadManifest } from '../utils/manifest';
+import { isWasmPluginProject, loadManifest } from '../utils/manifest';
 import {
   loadPlugin,
   serializeNodes,
@@ -83,6 +83,17 @@ export async function startDevServer(
   const cwd = resolve(options.cwd ?? process.cwd());
   const logger = options.logger ?? console;
   const manifest = loadManifest(cwd);
+  // dev 在本进程内加载 dist/index.js 执行节点，只适用于 TypeScript 节点插件。
+  if (manifest.kind === 'runtime') {
+    throw new Error(
+      'dev 只支持 TypeScript 节点插件的本地预览；runtime 插件请执行 `agentloom-plugin build` 与 `publish`，上传后在 sandbox Agent 中调试。',
+    );
+  }
+  if (isWasmPluginProject(cwd, manifest)) {
+    throw new Error(
+      'dev 只支持 TypeScript 节点插件的本地预览；当前是 WASM 插件项目（存在 Cargo.toml 或 manifest.json 声明了 wasmEntry），请执行 `agentloom-plugin build --wasm` 与 `publish`，上传后在平台调试。',
+    );
+  }
   const app = express();
   app.use(express.json({ limit: '100kb' }));
 

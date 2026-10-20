@@ -270,13 +270,12 @@ function createWasmReadme(options: CreatePluginOptions): string {
 ## 构建与发布
 
 1. 安装 Rust 的 WASM 目标：\`rustup target add wasm32-unknown-unknown\`。
-2. 生成可签名归档：\`agentloom-plugin build --wasm\`。该命令会执行
-   \`cargo build --target wasm32-unknown-unknown --release\`，并把
-   \`target/wasm32-unknown-unknown/release/${crateName}.wasm\` 复制到清单的
-   \`wasmEntry\` 路径 \`dist/plugin.wasm\`。若 \`dist/plugin.wasm\` 已存在则跳过构建。
-3. 手工构建时可自行执行上述 cargo 命令并复制产物，效果等价。
-4. 显式指定私钥签名：\`agentloom-plugin publish -k <key>\`。
-5. 在 AgentLoom Studio 的插件管理页上传签名后的 \`.alp\` 完成注册。
+2. 生成可签名归档：\`agentloom-plugin build --wasm\`。该命令每次都会执行
+   \`cargo build --target wasm32-unknown-unknown --release\`（源码未变时增量编译只需数秒），
+   并把 \`target/wasm32-unknown-unknown/release/${crateName}.wasm\` 复制到清单的
+   \`wasmEntry\` 路径 \`dist/plugin.wasm\`。修改源码或版本号后直接重新执行即可。
+3. 显式指定私钥签名：\`agentloom-plugin publish -k <key>\`。
+4. 在 AgentLoom Studio 的插件管理页上传签名后的 \`.alp\` 完成注册。
 
 \`.alp\` 包含 \`manifest.json\`、\`node-definitions.json\` 和 \`manifest.wasmEntry\` 指向的 WASM 产物。
 `;
@@ -410,9 +409,10 @@ export function apply(ctx: RuntimePluginContext): void {
   );
 }
 
-export function createPluginProject(
-  options: CreatePluginOptions,
-): CreatedPluginProject {
+/** 参数冲突与目标目录检查；runCreateCommand 在交互提示之前调用，避免答完提示才报错。 */
+function resolveProjectRoot(
+  options: Pick<CreatePluginOptions, 'name' | 'targetDir' | 'wasm' | 'runtime'>,
+): string {
   const normalizedName = normalizePluginName(options.name);
   if (options.wasm && options.runtime) {
     throw new Error('--wasm 与 --runtime 不能同时使用。');
@@ -426,6 +426,14 @@ export function createPluginProject(
     throw new Error(`目标目录已存在：${projectRoot}`);
   }
 
+  return projectRoot;
+}
+
+export function createPluginProject(
+  options: CreatePluginOptions,
+): CreatedPluginProject {
+  const projectRoot = resolveProjectRoot(options);
+  const normalizedName = normalizePluginName(options.name);
   const pluginId = `com.agentloom.${normalizedName}`;
   const srcDir = join(projectRoot, 'src');
   const testDir = join(projectRoot, 'tests');
@@ -478,50 +486,107 @@ export function createPluginProject(
   };
 }
 
+export interface RunCreateCommandOptions
+  extends Partial<CreatePluginAnswers> {
+  name: string;
+  cwd?: string;
+  wasm?: boolean;
+  runtime?: boolean;
+  /** 是否允许交互提示；默认取 stdin 与 stdout 是否均为 TTY。 */
+  interactive?: boolean;
+  promptRunner?: CreatePromptRunner;
+}
+
+const ANSWER_LABELS: Record<keyof CreatePluginAnswers, string> = {
+  author: '作者',
+  description: '描述',
+  license: '许可证',
+};
+
 export async function runCreateCommand(
-  name: string,
-  cwd = process.cwd(),
-  promptRunner: CreatePromptRunner = prompts as unknown as CreatePromptRunner,
-  wasm = false,
-  runtime = false,
+  options: RunCreateCommandOptions,
 ): Promise<CreatedPluginProject> {
-  const answers = await promptRunner(
-    [
-      {
-        type: 'text',
-        name: 'author',
-        message: '作者名称',
-        validate: (value: string) =>
-          value.trim().length > 0 ? true : '作者不能为空',
-      },
-      {
-        type: 'text',
-        name: 'description',
-        message: '插件描述',
-        validate: (value: string) =>
-          value.trim().length > 0 ? true : '描述不能为空',
-      },
-      {
-        type: 'text',
-        name: 'license',
-        message: '许可证',
-        initial: 'MIT',
-        validate: (value: string) =>
-          value.trim().length > 0 ? true : '许可证不能为空',
-      },
-    ],
+  const {
+    name,
+    cwd = process.cwd(),
+    wasm = false,
+    runtime = false,
+    interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    promptRunner = prompts as unknown as CreatePromptRunner,
+  } = options;
+  resolveProjectRoot({ name, targetDir: cwd, wasm, runtime });
+
+  const provided: Partial<CreatePluginAnswers> = {};
+  for (const key of Object.keys(ANSWER_LABELS) as Array<keyof CreatePluginAnswers>) {
+    const value = options[key];
+    if (value === undefined) {
+      continue;
+    }
+    if (value.trim().length === 0) {
+      throw new Error(`--${key} 不能为空。`);
+    }
+    provided[key] = value.trim();
+  }
+
+  // 非交互环境（CI、管道）读不到提示输入：缺什么直接报错，许可证默认 MIT。
+  if (!interactive) {
+    const missing = (['author', 'description'] as const).filter(
+      (key) => provided[key] === undefined,
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `当前不是交互终端，无法提示输入${missing.map((key) => ANSWER_LABELS[key]).join('、')}。请通过 ${missing.map((key) => `--${key} <${key}>`).join(' ')} 提供（--license 默认 MIT）。`,
+      );
+    }
+  }
+
+  const questions = [
     {
+      type: 'text',
+      name: 'author',
+      message: '作者名称',
+      validate: (value: string) =>
+        value.trim().length > 0 ? true : '作者不能为空',
+    },
+    {
+      type: 'text',
+      name: 'description',
+      message: '插件描述',
+      validate: (value: string) =>
+        value.trim().length > 0 ? true : '描述不能为空',
+    },
+    {
+      type: 'text',
+      name: 'license',
+      message: '许可证',
+      initial: 'MIT',
+      validate: (value: string) =>
+        value.trim().length > 0 ? true : '许可证不能为空',
+    },
+  ].filter((question) => provided[question.name as keyof CreatePluginAnswers] === undefined);
+
+  let prompted: Partial<CreatePluginAnswers> = {};
+  if (interactive && questions.length > 0) {
+    prompted = await promptRunner(questions, {
       onCancel: () => {
         throw new Error('已取消插件创建。');
       },
-    },
-  );
+    });
+  }
+
+  const author = provided.author ?? prompted.author;
+  const description = provided.description ?? prompted.description;
+  const license = provided.license ?? prompted.license ?? 'MIT';
+  // prompts 在输入流提前结束时可能不触发 onCancel 而返回缺字段的答案。
+  if (!author?.trim() || !description?.trim() || !license.trim()) {
+    throw new Error('已取消插件创建：未收到作者与描述。');
+  }
 
   const result = createPluginProject({
     name,
-    author: answers.author,
-    description: answers.description,
-    license: answers.license,
+    author: author.trim(),
+    description: description.trim(),
+    license: license.trim(),
     targetDir: cwd,
     wasm,
     runtime,
@@ -543,14 +608,14 @@ export const createCommand = new Command('create')
   .argument('<name>', 'Plugin name')
   .option('--wasm', '创建 Rust/Extism WASM 插件脚手架')
   .option('--runtime', '创建 sandbox 运行态 dsh runtime 插件（Cordis 插件包）脚手架')
+  .option('--author <author>', '作者名称（提供后跳过该提示；非交互终端必填）')
+  .option('--description <description>', '插件描述（提供后跳过该提示；非交互终端必填）')
+  .option('--license <license>', '许可证（提供后跳过该提示；非交互终端默认 MIT）')
   .action(
-    async (name: string, options: { wasm?: boolean; runtime?: boolean }) => {
-      await runCreateCommand(
-        name,
-        process.cwd(),
-        prompts as unknown as CreatePromptRunner,
-        options.wasm,
-        options.runtime,
-      );
+    async (
+      name: string,
+      options: Partial<CreatePluginAnswers> & { wasm?: boolean; runtime?: boolean },
+    ) => {
+      await runCreateCommand({ name, ...options });
     },
   );

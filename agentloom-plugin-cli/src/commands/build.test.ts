@@ -432,21 +432,78 @@ describe('buildPluginArchive', () => {
     expect(mocks.execSync).not.toHaveBeenCalled();
   });
 
-  it('build --wasm 可打包预先放入 wasmEntry 路径的 cargo 产物', async () => {
+  it('build --wasm 在 dist/plugin.wasm 已存在时仍重新编译并覆盖旧产物', async () => {
     const root = createTempRoot();
     createBuildFixture(root, { withCargo: true });
     mkdirSync(join(root, 'dist'), { recursive: true });
+    // 上一版本留下的旧产物：魔术字之后带 0xff 标记，与 cargo mock 的新产物区分。
     writeFileSync(
       join(root, 'dist', 'plugin.wasm'),
-      Buffer.from([0, 97, 115, 109]),
+      Buffer.from([0, 97, 115, 109, 0xff]),
     );
 
     const result = await buildPluginArchive({ cwd: root, wasm: true });
 
+    expect(mocks.execSync).toHaveBeenCalledWith(
+      'cargo build --target wasm32-unknown-unknown --release',
+      expect.objectContaining({ cwd: root }),
+    );
+    expect(readFileSync(join(root, 'dist', 'plugin.wasm'))).not.toEqual(
+      Buffer.from([0, 97, 115, 109, 0xff]),
+    );
     expect(listArchiveEntries(result.archivePath)).toContain(
       'dist/plugin.wasm',
     );
+  });
+
+  it('不带 --wasm 构建 WASM 项目时提示改用 --wasm 且不执行 tsc', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root, { withCargo: true });
+
+    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow(
+      '检测到 WASM 插件项目（存在 Cargo.toml 或 manifest.json 声明了 wasmEntry）。请使用 `agentloom-plugin build --wasm` 构建。',
+    );
     expect(mocks.execSync).not.toHaveBeenCalled();
+  });
+
+  it('tsc 失败时把 stdout 中的诊断转成文本放进错误信息', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root);
+    mocks.execSync.mockImplementationOnce(() => {
+      throw Object.assign(new Error('Command failed: npx tsc'), {
+        stdout: Buffer.from("src/index.ts(1,7): error TS2322: Type 'number' is not assignable to type 'string'."),
+        stderr: Buffer.alloc(0),
+      });
+    });
+
+    await expect(buildPluginArchive({ cwd: root })).rejects.toThrow(
+      new Error(
+        "TypeScript 编译失败（npx tsc）：\nsrc/index.ts(1,7): error TS2322: Type 'number' is not assignable to type 'string'.",
+      ),
+    );
+  });
+
+  it('cargo 失败时把 stderr 转成文本放进错误信息', async () => {
+    const root = createTempRoot();
+    createBuildFixture(root, { withCargo: true });
+    mocks.execSync.mockImplementationOnce(() => {
+      throw Object.assign(new Error('Command failed'), {
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.from("error[E0463]: can't find crate for `core`"),
+      });
+    });
+
+    await expect(buildPluginArchive({ cwd: root, wasm: true })).rejects.toThrow(
+      "WASM 编译失败（cargo build --target wasm32-unknown-unknown --release）：\nerror[E0463]: can't find crate for `core`",
+    );
+  });
+
+  it('空目录构建时提示缺少 manifest.json 与创建方式', async () => {
+    const root = createTempRoot();
+
+    await expect(buildPluginArchive({ cwd: root, wasm: true })).rejects.toThrow(
+      `未找到 ${join(root, 'manifest.json')}。请在插件项目根目录执行，或先用 \`agentloom-plugin create <name>\` 创建项目。`,
+    );
   });
 
   it('build --wasm 在缺少 Cargo.toml 时应抛出清晰错误', async () => {

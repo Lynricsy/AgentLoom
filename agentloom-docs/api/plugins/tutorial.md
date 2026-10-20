@@ -94,6 +94,8 @@ agentloom-plugin create text-prefix --wasm
 下一步：cd text-prefix && agentloom-plugin build --wasm
 ```
 
+在 CI 或管道等非交互环境中，用参数代替提示：`agentloom-plugin create text-prefix --wasm --author "Docs Team" --description "给文本加前缀的示例插件"`（`--license` 默认 `MIT`）。
+
 ```bash
 find text-prefix -type f | sort
 cd text-prefix
@@ -163,7 +165,7 @@ match envelope.node_type.as_str() {
 agentloom-plugin build --wasm
 ```
 
-CLI 执行 `cargo build --target wasm32-unknown-unknown --release`，把产物复制为 `dist/plugin.wasm` 并打包：
+CLI 每次都执行 `cargo build --target wasm32-unknown-unknown --release`（源码未变时增量编译只需数秒），把产物复制为 `dist/plugin.wasm` 并打包：
 
 ```text
 📦 插件构建完成
@@ -238,7 +240,7 @@ curl -s "$AGENTLOOM_API/plugins" \
 
 ## 接下来
 
-- 修改 `src/lib.rs` 与 `node-definitions.json` 后发布新版本：先改 `manifest.json` 的 `version`，删除 `dist/plugin.wasm`（它存在时 `build --wasm` 跳过编译），再执行第 5、7 步。同一组织里同一插件 ID 与版本只能注册一次，重复上传返回 409 `plugin-already-exists`。
+- 修改 `src/lib.rs` 与 `node-definitions.json` 后发布新版本：先改 `manifest.json` 的 `version`，再执行第 5、7 步（`build --wasm` 每次都重新编译，不会复用旧的 `dist/plugin.wasm`）。同一组织里同一插件 ID 与版本只能注册一次，重复上传返回 409 `plugin-already-exists`。
 - 清单字段、节点定义与签名函数：[Plugin SDK](/api/plugins/sdk)。
 - 各命令的参数与本地预览服务器：[Plugin CLI](/api/plugins/cli)。
 - 上架到插件市场：[市场与收益](/api/plugins/marketplace)。
@@ -247,7 +249,9 @@ curl -s "$AGENTLOOM_API/plugins" \
 
 | 现象 | 原因 |
 | --- | --- |
-| `build --wasm` 失败，cargo 报告缺少 `wasm32-unknown-unknown` 目标 | 没有执行 `rustup target add wasm32-unknown-unknown` |
+| `build --wasm` 失败，`✖ WASM 编译失败` 后的 cargo 输出报告缺少 `wasm32-unknown-unknown` 目标 | 没有执行 `rustup target add wasm32-unknown-unknown` |
+| `build` 报错 `检测到 WASM 插件项目` | WASM 项目漏了 `--wasm` |
+| `publish` 报错 `<path> 是公钥` | `-k` 传了 `public.pem`；签名要用 `private.pem` |
 | 上传返回 401 `plugin-signature-invalid` | 签名后归档被改动过，或签名用的私钥对应的公钥未在本组织注册 / 已撤销；重新执行 `publish` 后上传 |
 | 上传返回 403 `plugin-signer-mismatch` | 签名用的公钥由组织内其他成员登记；用你自己在「开发者密钥」中登记的密钥签名 |
 | 上传返回 400 `plugin-signature-missing` | 没有执行 `publish` |

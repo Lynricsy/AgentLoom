@@ -5,6 +5,7 @@ export {
   type CreatePluginAnswers,
   type CreatePluginOptions,
   type CreatedPluginProject,
+  type RunCreateCommandOptions,
 } from './commands/create';
 export {
   devCommand,

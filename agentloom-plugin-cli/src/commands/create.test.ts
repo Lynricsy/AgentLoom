@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -281,16 +281,129 @@ describe('runCreateCommand', () => {
       .spyOn(console, 'info')
       .mockImplementation(() => undefined);
 
-    const result = await runCreateCommand(
-      'Prompt Plugin',
-      targetDir,
+    const result = await runCreateCommand({
+      name: 'Prompt Plugin',
+      cwd: targetDir,
+      interactive: true,
       promptRunner,
-    );
+    });
 
     expect(promptRunner).toHaveBeenCalledTimes(1);
     expect(result.pluginId).toBe('com.agentloom.prompt-plugin');
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('cd prompt-plugin && pnpm install && pnpm dev'),
     );
+  });
+
+  it('--wasm 与 --runtime 冲突时在提示之前报错', async () => {
+    const promptRunner: CreatePromptRunner = vi.fn();
+
+    await expect(
+      runCreateCommand({
+        name: 'both',
+        cwd: createTempRoot(),
+        wasm: true,
+        runtime: true,
+        interactive: true,
+        promptRunner,
+      }),
+    ).rejects.toThrow('--wasm 与 --runtime 不能同时使用。');
+    expect(promptRunner).not.toHaveBeenCalled();
+  });
+
+  it('目标目录已存在时在提示之前报错', async () => {
+    const targetDir = createTempRoot();
+    mkdirSync(join(targetDir, 'taken'));
+    const promptRunner: CreatePromptRunner = vi.fn();
+
+    await expect(
+      runCreateCommand({
+        name: 'taken',
+        cwd: targetDir,
+        interactive: true,
+        promptRunner,
+      }),
+    ).rejects.toThrow(`目标目录已存在：${join(targetDir, 'taken')}`);
+    expect(promptRunner).not.toHaveBeenCalled();
+  });
+
+  it('非交互终端缺少 --author/--description 时报错且不创建目录', async () => {
+    const targetDir = createTempRoot();
+    const promptRunner: CreatePromptRunner = vi.fn();
+
+    await expect(
+      runCreateCommand({
+        name: 'ci-plugin',
+        cwd: targetDir,
+        interactive: false,
+        promptRunner,
+      }),
+    ).rejects.toThrow(
+      '当前不是交互终端，无法提示输入作者、描述。请通过 --author <author> --description <description> 提供',
+    );
+    expect(promptRunner).not.toHaveBeenCalled();
+    expect(existsSync(join(targetDir, 'ci-plugin'))).toBe(false);
+  });
+
+  it('非交互参数齐全时跳过提示并默认 MIT 许可证', async () => {
+    const targetDir = createTempRoot();
+    const promptRunner: CreatePromptRunner = vi.fn();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const result = await runCreateCommand({
+      name: 'ci-plugin',
+      cwd: targetDir,
+      wasm: true,
+      author: ' CI Bot ',
+      description: 'Built in CI',
+      interactive: false,
+      promptRunner,
+    });
+    const manifest = readJson<Record<string, unknown>>(result.manifestPath);
+
+    expect(promptRunner).not.toHaveBeenCalled();
+    expect(manifest.author).toBe('CI Bot');
+    expect(manifest.description).toBe('Built in CI');
+    expect(manifest.license).toBe('MIT');
+  });
+
+  it('交互终端只提示未通过参数提供的字段', async () => {
+    const targetDir = createTempRoot();
+    const promptRunner = vi.fn(async () => ({ description: 'Prompted' }));
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    const result = await runCreateCommand({
+      name: 'partial',
+      cwd: targetDir,
+      author: 'Flag Author',
+      license: 'Apache-2.0',
+      interactive: true,
+      promptRunner: promptRunner as unknown as CreatePromptRunner,
+    });
+    const questions = (promptRunner.mock.calls[0] as unknown[] | undefined)?.[0] as
+      | Array<{ name: string }>
+      | undefined;
+
+    expect(questions?.map((question) => question.name)).toEqual(['description']);
+    expect(readJson<Record<string, unknown>>(result.manifestPath)).toMatchObject({
+      author: 'Flag Author',
+      description: 'Prompted',
+      license: 'Apache-2.0',
+    });
+  });
+
+  it('提示提前结束（未拿到答案）时报错而不是静默成功', async () => {
+    const targetDir = createTempRoot();
+    const promptRunner = vi.fn(async () => ({}));
+
+    await expect(
+      runCreateCommand({
+        name: 'eof-plugin',
+        cwd: targetDir,
+        interactive: true,
+        promptRunner: promptRunner as unknown as CreatePromptRunner,
+      }),
+    ).rejects.toThrow('已取消插件创建');
+    expect(existsSync(join(targetDir, 'eof-plugin'))).toBe(false);
   });
 });

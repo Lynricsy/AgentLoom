@@ -138,6 +138,45 @@ afterEach(async () => {
 });
 
 describe('startDevServer', () => {
+  it('WASM 插件项目在启动前提示 dev 只支持 TypeScript 节点插件', async () => {
+    const root = createTempRoot();
+    createDevFixture(root);
+    writeFileSync(join(root, 'Cargo.toml'), '[package]\nname = "wasm-fixture"\n', 'utf8');
+
+    await expect(startDevServer({ cwd: root, port: 0 })).rejects.toThrow(
+      'dev 只支持 TypeScript 节点插件的本地预览；当前是 WASM 插件项目',
+    );
+  });
+
+  it('runtime 插件项目在启动前提示改用 build 与 publish', async () => {
+    const root = createTempRoot();
+    createDevFixture(root);
+    writeFileSync(
+      join(root, 'manifest.json'),
+      JSON.stringify({
+        id: 'com.agentloom.rt-fixture',
+        name: 'RT Fixture',
+        version: '1.0.0',
+        author: 'AgentLoom Team',
+        description: 'Runtime fixture',
+        license: 'MIT',
+        minPlatformVersion: '1.0.0',
+        permissions: [],
+        kind: 'runtime',
+        runtime: {
+          dshVersion: '0.2.0-rc.2',
+          patch: './cordis.patch.yml',
+          entry: './dist/index.js',
+        },
+      }),
+      'utf8',
+    );
+
+    await expect(startDevServer({ cwd: root, port: 0 })).rejects.toThrow(
+      'dev 只支持 TypeScript 节点插件的本地预览；runtime 插件',
+    );
+  });
+
   it('loads the manifest from the working directory', async () => {
     const { server } = await startFixtureServer();
 

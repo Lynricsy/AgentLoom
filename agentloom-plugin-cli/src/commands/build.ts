@@ -20,7 +20,7 @@ import chalk from 'chalk';
 import { Command } from 'commander';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
 
-import { loadManifest } from '../utils/manifest';
+import { isWasmPluginProject, loadManifest } from '../utils/manifest';
 import {
   loadPlugin,
   serializeNodes,
@@ -150,7 +150,7 @@ async function buildRuntimePluginArchive(
     throw new Error('runtime 插件 manifest 缺少 runtime 字段。');
   }
 
-  buildTypeScriptBundle(cwd);
+  runBuildStep('npx tsc', cwd, 'TypeScript 编译失败');
 
   // 去掉开头的 `./`，与 zip 条目名对齐。
   const patchEntry = runtime.patch.replace(/^(\.\/)+/, '');
@@ -306,13 +306,18 @@ export async function buildPluginArchive(
       '未找到 Cargo.toml。使用 --wasm 构建前，请确保当前插件项目是 Rust WASM 项目。',
     );
   }
+  if (!options.wasm && isWasmPluginProject(cwd, manifest)) {
+    throw new Error(
+      '检测到 WASM 插件项目（存在 Cargo.toml 或 manifest.json 声明了 wasmEntry）。请使用 `agentloom-plugin build --wasm` 构建。',
+    );
+  }
   const wasmNodeDefinitions = options.wasm
     ? loadWasmNodeDefinitions(cwd)
     : undefined;
   if (options.wasm) {
     buildWasmBundle(cwd);
   } else {
-    buildTypeScriptBundle(cwd);
+    runBuildStep('npx tsc', cwd, 'TypeScript 编译失败');
   }
 
   const distDir = resolve(cwd, 'dist');
@@ -345,12 +350,40 @@ export async function buildPluginArchive(
   };
 }
 
-function buildTypeScriptBundle(cwd: string): void {
-  childProcess.execSync('npx tsc', {
-    cwd,
-    env: buildCommandEnv(),
-    stdio: 'pipe',
-  });
+/**
+ * 执行外部构建命令。execSync 失败时的 Error 只在 message 里带 stderr，
+ * tsc 的诊断却写在 stdout；这里把两路输出转成文本拼进错误信息，供 CLI 直接打印。
+ */
+function runBuildStep(command: string, cwd: string, failureLabel: string): void {
+  try {
+    childProcess.execSync(command, {
+      cwd,
+      env: buildCommandEnv(),
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    const output = readExecOutput(error);
+    throw new Error(
+      `${failureLabel}（${command}）${output ? `：\n${output}` : '。'}`,
+      { cause: error },
+    );
+  }
+}
+
+function readExecOutput(error: unknown): string {
+  if (typeof error !== 'object' || error === null) {
+    return String(error);
+  }
+  const { stdout, stderr, message } = error as {
+    stdout?: Buffer | string;
+    stderr?: Buffer | string;
+    message?: string;
+  };
+  const text = [stdout, stderr]
+    .map((chunk) => (chunk === undefined ? '' : chunk.toString().trim()))
+    .filter(Boolean)
+    .join('\n');
+  return text || (message ?? '');
 }
 
 const WASM_TARGET = 'wasm32-unknown-unknown';
@@ -361,20 +394,18 @@ const WASM_TARGET = 'wasm32-unknown-unknown';
  * 两者本质不兼容——这才是 `build --wasm` 一直失败的根因，不是模板代码有误。
  * 因此直接用 cargo 交叉编译到 wasm32，产物布局仍保持 dist/plugin.wasm 不变
  * （publish 的归档签名依赖该布局）。
+ *
+ * 每次都执行 cargo build：dist/plugin.wasm 已存在时跳过编译，会把改过版本号与源码后的
+ * 新归档打成旧代码；cargo 的增量编译在源码未变时只需秒级。
  */
 function buildWasmBundle(cwd: string): void {
-  const prebuiltWasmPath = resolve(cwd, 'dist', 'plugin.wasm');
-  if (existsSync(prebuiltWasmPath)) {
-    return;
-  }
-
   const crateName = readCrateName(cwd);
 
-  childProcess.execSync(`cargo build --target ${WASM_TARGET} --release`, {
+  runBuildStep(
+    `cargo build --target ${WASM_TARGET} --release`,
     cwd,
-    env: buildCommandEnv(),
-    stdio: 'pipe',
-  });
+    'WASM 编译失败',
+  );
 
   // cargo 把 crate 名里的连字符换成下划线作为产物文件名。
   const artifactPath = resolve(

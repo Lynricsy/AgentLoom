@@ -1,20 +1,4 @@
-import { Command } from 'commander';
+import { runCli } from './program';
 
-import { buildCommand } from './commands/build';
-import { createCommand } from './commands/create';
-import { devCommand } from './commands/dev';
-import { keysCommand } from './commands/keys';
-import { publishCommand } from './commands/publish';
-
-const program = new Command()
-  .name('agentloom-plugin')
-  .description('AgentLoom Plugin Development CLI')
-  .version('0.1.0');
-
-program.addCommand(createCommand);
-program.addCommand(devCommand);
-program.addCommand(buildCommand);
-program.addCommand(keysCommand);
-program.addCommand(publishCommand);
-
-program.parse();
+// 只设置 exitCode：dev 命令的 HTTP server 与 watcher 需要保持进程存活。
+process.exitCode = await runCli(process.argv);

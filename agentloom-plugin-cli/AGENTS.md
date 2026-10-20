@@ -9,7 +9,8 @@ CLI 参考：`agentloom-docs/api/plugins/cli.md`。
 
 - ESM + 严格 TypeScript + 同步 Node 文件 API；公共能力导出「纯函数 + options/result interface」，Commander action 只做参数适配与输出。
 - 新命令放 `src/commands/<name>.ts`，导出 `<name>Command`，需要复用的函数与类型同时从 `src/index.ts` 暴露。
-- 错误信息包含可行动的路径、节点 index/type 或缺失前置条件；不得以空节点或未校验数据继续归档。
+- 错误信息包含可行动的路径、节点 index/type 或缺失前置条件；不得以空节点或未校验数据继续归档。命令直接 `throw new Error(...)`，由 `src/program.ts` 的 `runCli()` 统一打印 message 并返回退出码 1；action 内不自行 `console.error` + `process.exitCode`。外部命令（tsc、cargo）失败时把 stdout/stderr 转成文本放进 message。
+- 参数冲突、目标目录等前置校验必须在交互提示之前完成；非 TTY 环境不得弹提示，缺少必填参数直接报错。
 - `loadPlugin()` 用 SDK 的 `CustomNodeDefinitionSchema` 逐节点校验，拒绝缺失 execute 与重复 node type。
 - `dev` 的 execute 请求只采纳 `inputs`、`config`（logger 与 execution metadata 由服务端生成），JSON body 上限 `100kb`。
 - reload 串行：旧插件 deactivate → 加载并 activate 候选，失败恢复旧插件；停止时关闭 watcher、HTTP server 并 deactivate。
