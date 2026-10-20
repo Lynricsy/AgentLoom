@@ -130,6 +130,34 @@ describe('invokeRemoteTool', () => {
       invokeRemoteTool({ config, toolName: 't', toolCallId: 'c', input: {}, onUpdate: vi.fn() }),
     ).rejects.toThrow('session token invalid');
   });
+
+  it('回调返回 problem+json 时错误文本应带状态、type 与 detail', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          type: 'https://agentloom.dev/errors/mcp/stdio-disabled',
+          title: 'stdio MCP 未启用',
+          status: 403,
+          detail: '当前部署禁止在服务端启动 stdio MCP 进程',
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    );
+
+    await expect(
+      invokeRemoteTool({ config, toolName: 't', toolCallId: 'c', input: {}, onUpdate: vi.fn() }),
+    ).rejects.toThrow(
+      'Remote tool callback failed with status 403 (https://agentloom.dev/errors/mcp/stdio-disabled): 当前部署禁止在服务端启动 stdio MCP 进程',
+    );
+  });
+
+  it('回调错误体不可解析时退回 HTTP 状态', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad gateway', { status: 502 }));
+
+    await expect(
+      invokeRemoteTool({ config, toolName: 't', toolCallId: 'c', input: {}, onUpdate: vi.fn() }),
+    ).rejects.toThrow('Remote tool callback failed with status 502');
+  });
 });
 
 describe('normalizeRemoteToolParameters', () => {

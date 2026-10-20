@@ -180,16 +180,31 @@ function normalizeDeniedPayload(
   };
 }
 
+/**
+ * server 的错误响应是 RFC 7807 problem（type/title/status/detail）；旧形状
+ * `{message}` / `{error}` 仍兼容。返回文本会原样进入工具结果与 tool_call.error，
+ * 因此带上 HTTP 状态与 problem type，便于定位（例如 mcp/stdio-disabled）。
+ */
 async function readRemoteToolError(response: Response): Promise<string> {
+  const prefix = `Remote tool callback failed with status ${response.status}`;
+  let body: unknown;
   try {
-    const data = (await response.json()) as { message?: unknown; error?: unknown };
-    if (typeof data.message === 'string' && data.message.length > 0) {
-      return data.message;
-    }
-    if (typeof data.error === 'string' && data.error.length > 0) {
-      return data.error;
-    }
-  } catch {}
+    body = await response.json();
+  } catch {
+    return prefix;
+  }
+  if (!isRecord(body)) return prefix;
 
-  return `Remote tool callback failed with status ${response.status}`;
+  const detail =
+    readNonEmptyString(body.detail) ??
+    readNonEmptyString(body.message) ??
+    readNonEmptyString(body.error) ??
+    readNonEmptyString(body.title);
+  const type = readNonEmptyString(body.type);
+  const head = type ? `${prefix} (${type})` : prefix;
+  return detail ? `${head}: ${detail}` : head;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

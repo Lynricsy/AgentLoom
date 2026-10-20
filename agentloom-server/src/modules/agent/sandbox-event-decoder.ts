@@ -35,6 +35,9 @@ type ContainerEventEnvelope = {
 /** guest 侧会话丢失（运行时重启 / OOM / 会话不存在）：本轮失败，下一轮重建会话 */
 export const SANDBOX_SESSION_LOST_CODE = 'SANDBOX_SESSION_LOST';
 
+/** tool_call.error 取自失败工具的结果文本（可能是整段命令输出），只保留开头这么多字符 */
+const TOOL_ERROR_MAX_CHARS = 1000;
+
 export class SandboxPromptError extends Error {
   constructor(
     readonly rawMessage: string,
@@ -444,6 +447,11 @@ function readTextDelta(value: unknown): string | null {
   );
 }
 
+/**
+ * guest 的 tool_call_end 只带 isError 与工具结果文本（如远程工具回调的
+ * 「… status 403 (…/mcp/stdio-disabled): detail」），没有单独的 error 字段；
+ * 失败时用结果文本作为 tool_call.error，过长时截断。
+ */
 function readToolError(
   data: Record<string, unknown> | null,
 ): string | undefined {
@@ -451,9 +459,14 @@ function readToolError(
   if (typeof error === 'string' && error.length > 0) return error;
   if (isRecord(error))
     return readString(error.message) ?? JSON.stringify(error);
-  return readBoolean(data?.isError)
-    ? (readString(data?.message) ?? 'Sandbox tool execution failed')
-    : undefined;
+  if (!readBoolean(data?.isError)) return undefined;
+  const message =
+    readString(data?.message) ??
+    readString(typeof data?.result === 'string' ? data.result.trim() : undefined);
+  if (!message) return 'Sandbox tool execution failed';
+  return message.length > TOOL_ERROR_MAX_CHARS
+    ? `${message.slice(0, TOOL_ERROR_MAX_CHARS)}…`
+    : message;
 }
 
 function isAgentEvent(value: unknown): value is AgentEvent {

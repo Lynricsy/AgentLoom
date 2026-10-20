@@ -294,7 +294,7 @@ data: {"run":{"id":"01a0f6dd-77b4-7025-a464-0787f602ada4","conversationId":"01a0
 | `run.created` | `{ run }` | run 已创建 |
 | `run.status` | `{ runId, status, phase? }` | `status` 为 `queued` 或 `running`，开始执行后不会再回到 `queued`；`phase` 依次可能为 `queued`、`preparing`、`sandbox_creating`、`agent_initializing`、`running` |
 | `message.delta` | `{ runId, index, delta }` | 回复增量，按 `index` 顺序拼接 |
-| `tool_call` | `{ runId, toolCallId, tool, status, error? }` | 工具调用状态变化；不含参数与结果 |
+| `tool_call` | `{ runId, toolCallId, tool, status, error? }` | 工具调用状态变化；不含参数与结果。`status` 为 `failed` 时 `error` 是失败原因；sandbox Agent 取失败工具的输出文本，最多 1000 字符，平台工具回调失败时包含 `Remote tool callback failed with status 403 (https://agentloom.dev/errors/mcp/stdio-disabled): <detail>`，括号里是错误类型 |
 | `run.restarted` | `{ runId, reason }` | 执行这个 run 的服务进程意外退出，run 由另一个进程从头重新执行；`reason` 目前只有 `worker_lost`。丢弃此前收到的本 run 的 `message.delta` 与 `tool_call`，之后的 `delta` 从 `index` 0 重新拼接 |
 | `run.completed` / `run.failed` / `run.cancelled` | `{ run }` | 终态，流随即结束 |
 

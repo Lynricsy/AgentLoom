@@ -110,6 +110,23 @@ describe('decodeSandboxServerSentEvent', () => {
     expect(result.events[0]).toHaveProperty('call.status', 'failed');
   });
 
+  it('guest 失败工具只带结果文本时，用该文本作为 call.error 并截断过长内容', () => {
+    const callbackError =
+      'Error: Remote tool callback failed with status 403 (https://agentloom.dev/errors/mcp/stdio-disabled): 当前部署禁止在服务端启动 stdio MCP 进程';
+    const result = decode({
+      type: 'tool_call_end',
+      data: { toolName: 'get-env', isError: true, result: `${callbackError}\n` },
+    });
+    expect(result.events[0]).toHaveProperty('call.error', callbackError);
+    expect(result.events[0]).toHaveProperty('call.status', 'failed');
+
+    const long = decode({
+      type: 'tool_call_end',
+      data: { toolName: 'bash', isError: true, result: 'x'.repeat(1500) },
+    });
+    expect(long.events[0]).toHaveProperty('call.error', `${'x'.repeat(1000)}…`);
+  });
+
   it('done stopReason alias 被规范化', () => {
     expect(decode({ type: 'done', data: { stopReason: 'toolUse' } })).toEqual({
       events: [{ type: 'done', stopReason: 'tool_use' }],
