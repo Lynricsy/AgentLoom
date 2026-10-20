@@ -5,8 +5,7 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { DiscoveryService } from '@nestjs/core';
-import { WorkerHost } from '@nestjs/bullmq';
-import type { Worker } from 'bullmq';
+import { collectQueueWorkers } from './queue-workers.util';
 
 /**
  * 进程收到 SIGTERM 等关闭信号时，先停掉全部 BullMQ worker：不再拉取新任务，等进行中的任务跑完。
@@ -26,20 +25,7 @@ export class QueueWorkerShutdownService
   constructor(private readonly discoveryService: DiscoveryService) {}
 
   async onModuleDestroy(): Promise<void> {
-    const workers = this.discoveryService
-      .getProviders()
-      .flatMap((wrapper): Worker[] => {
-        const instance: unknown = wrapper.instance;
-        if (!(instance instanceof WorkerHost)) {
-          return [];
-        }
-        try {
-          return [instance.worker];
-        } catch {
-          // worker 尚未创建（启动失败或 manualRegistration）
-          return [];
-        }
-      });
+    const workers = collectQueueWorkers(this.discoveryService);
     if (workers.length === 0) {
       return;
     }

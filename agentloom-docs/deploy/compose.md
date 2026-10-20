@@ -206,19 +206,21 @@ supabase-kong   Up 2 minutes (healthy)   8001/tcp, 8443-8444/tcp, 0.0.0.0:44800-
 
 ```bash
 curl -s http://localhost:8080/healthz; echo
-curl -s -w '\nHTTP %{http_code}\n' http://localhost:8080/api/v1/health
+curl -s -w '\nHTTP %{http_code}\n' http://localhost:8080/api/v1/health/ready
 curl -s -o /dev/null -w 'documentation HTTP %{http_code}\n' http://localhost:8080/documentation/
 curl -s -w '\nHTTP %{http_code}\n' http://localhost:8080/auth/v1/health
 ```
 
 ```text
 ok
-{"status":"ok","timestamp":"2026-10-01T13:46:51.783Z"}
+{"status":"ok","timestamp":"2026-10-20T16:05:03.067Z","checks":{"database":{"status":"up","latencyMs":2},"redis":{"status":"up","latencyMs":1},"workers":{"status":"up","total":18,"unavailable":0}}}
 HTTP 200
 documentation HTTP 200
 {"version":"v2.175.0","name":"GoTrue","description":"GoTrue is a user registration and authentication API"}
 HTTP 200
 ```
+
+`/api/v1/health/ready` 检查 PostgreSQL、Redis 与全部队列 worker，任一不可用时返回 503；server/worker 容器的健康检查用的就是它。两个健康端点的区别见[健康检查](/deploy/#健康检查)。
 
 浏览器打开 `http://<服务器>:8080/` 进入 Studio，`http://<服务器>:8080/documentation/` 进入本文档站。
 

@@ -29,7 +29,7 @@ docker network create supabase-shared
 ./scripts/init-db.sh
 docker compose up -d --build
 curl http://localhost:8080/healthz
-curl http://localhost:8080/api/v1/health
+curl http://localhost:8080/api/v1/health/ready
 ```
 
 `init-db.sh` 依次执行：构建 server 镜像 → 启动 PostgreSQL 并创建 Supabase 兼容角色与 `auth` schema → 启动 Supabase 认证栈并等待 GoTrue 建好 `auth.users` → 执行迁移。

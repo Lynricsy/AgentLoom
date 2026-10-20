@@ -110,4 +110,4 @@ PDF、TXT、Markdown 与 DOCX（扩展名 `.pdf`、`.txt`、`.md`、`.docx`）�
 curl -s https://agentloom.example.com/api/v1/health
 ```
 
-服务正常时返回 HTTP 200，响应中 `status` 为 `ok`。部署与反向代理的排查见[部署运维](/deploy/)。
+服务进程在线时返回 HTTP 200，响应中 `status` 为 `ok`。要确认数据库、Redis 与后台任务也都可用，改请求 `/api/v1/health/ready`：返回 503 时 `checks` 字段指出哪一项不可用（`database`、`redis` 或 `workers`），说明见[健康检查](/deploy/#健康检查)。部署与反向代理的排查见[部署运维](/deploy/)。

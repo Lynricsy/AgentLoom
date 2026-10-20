@@ -174,7 +174,7 @@ compose up -d --wait server worker studio reverse-proxy
 
 printf '执行恢复后烟雾检查...\n'
 compose exec -T postgres sh -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1"' >/dev/null
-compose exec -T server node -e "require('http').get('http://127.0.0.1:3000/api/v1/health', (res) => { if (res.statusCode !== 200) process.exit(1); res.resume(); res.on('end', () => process.exit(0)); }).on('error', () => process.exit(1))"
+compose exec -T server node -e "require('http').get('http://127.0.0.1:3000/api/v1/health/ready', (res) => { if (res.statusCode !== 200) process.exit(1); res.resume(); res.on('end', () => process.exit(0)); }).on('error', () => process.exit(1))"
 compose exec -T reverse-proxy sh -lc 'if command -v curl >/dev/null 2>&1; then curl -fsS http://127.0.0.1/healthz >/dev/null; else wget -q -O /dev/null http://127.0.0.1/healthz; fi'
 
 printf '恢复完成：数据库、对象存储与基础健康检查均已通过。\n'

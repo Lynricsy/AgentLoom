@@ -92,6 +92,7 @@
   "GET /generated-apps/public/:token": "public",
   "GET /generated-apps/public/:token/submissions/:submissionId": "public",
   "GET /health": "public",
+  "GET /health/ready": "public",
   "GET /knowledge-bases": "admin,creator,operator,owner,viewer",
   "GET /knowledge-bases/:id": "admin,creator,operator,owner,viewer",
   "GET /knowledge-bases/:id/documents": "admin,creator,operator,owner,viewer",

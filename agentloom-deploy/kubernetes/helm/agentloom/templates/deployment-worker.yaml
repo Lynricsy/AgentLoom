@@ -49,18 +49,24 @@ spec:
             - name: http
               containerPort: {{ .Values.server.service.port }}
               protocol: TCP
+          # liveness 不检查 PostgreSQL/Redis，依赖中断不会触发重启；只在 Redis 可用但队列 worker 卡死超过 2 分钟时失败
           livenessProbe:
             httpGet:
               path: /api/v1/health
               port: http
             initialDelaySeconds: 30
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          # readiness 检查 PostgreSQL、Redis 与队列 worker（单项超时 2s），任一不可用即摘流
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /api/v1/health/ready
               port: http
             initialDelaySeconds: 15
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
       volumes:

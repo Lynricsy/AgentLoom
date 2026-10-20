@@ -140,7 +140,7 @@ Ingress 有三条 `Prefix` 路径：`/api` 与 `/socket.io` 到 server Service�
 | `server.replicaCount` | `1` | `server.autoscaling.enabled: true` 时不渲染 replicas |
 | `server.image.repository` / `tag` / `pullPolicy` | `agentloom/server` / `private-local` / `IfNotPresent` | worker 共用该镜像 |
 | `server.command` | `["node", "dist/src/main.js"]` | server 与 worker 共用 |
-| `server.service.port` | `3000` | server 与 worker Service 端口；探针路径 `/api/v1/health` |
+| `server.service.port` | `3000` | server 与 worker Service 端口；`livenessProbe` 用 `/api/v1/health`，`readinessProbe` 用 `/api/v1/health/ready`，语义与阈值见[健康检查](/deploy/#健康检查) |
 | `server.autoscaling.{enabled,minReplicas,maxReplicas,targetCPUUtilizationPercentage}` | `false` / `1` / `3` / `80` | 渲染 `autoscaling/v2` HPA |
 | `worker.enabled` / `worker.replicaCount` | `true` / `1` | |
 | `worker.autoscaling.*` | 同 server | |

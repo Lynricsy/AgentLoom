@@ -209,7 +209,7 @@ Agent 画布上的智能路由（编译后的 `routingConfig`）由 `ModelRoutin
 
 - `sandbox`：沙箱会话生命周期（`/sandboxes`）与分布式沙箱运行时节点管理（`/sandbox-nodes`，`agentloom-server/src/modules/sandbox/sandbox-node.controller.ts`）。运行时节点是平台级全局数据，不带租户隔离，管理接口除角色校验外还要求节点管理员身份。Firecracker 运行时见 [Firecracker 运行时](/dev/firecracker-runtime)。
 - `acp-gateway`：Agent Client Protocol 网关，通过 stdio 上的 JSON-RPC 与 ACP 客户端通信，入口 `agentloom-server/src/acp-stdio.ts`。本模块没有 controller，协议细节见 [ACP 网关](/dev/server/acp)。
-- `health`：健康检查，`GET /health`。
+- `health`：`GET /health`（liveness）与 `GET /health/ready`（readiness：PostgreSQL、Redis、队列 worker），实现在 `agentloom-server/src/modules/health/health.service.ts`，语义见[健康检查](/deploy/#健康检查)。
 
 ## 模块依赖
 

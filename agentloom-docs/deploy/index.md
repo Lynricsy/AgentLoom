@@ -66,6 +66,23 @@ flowchart LR
 
 `reverse-proxy` 要等 `server` 健康。`firecracker-runtime` 属于 profile `sandbox`：profile 未启用时不创建它；启用后 server/worker 先等它健康，健康检查（带 mTLS 客户端证书的 `GET https://firecracker-runtime:8443/readyz`）失败时 Compose 打印 `optional dependency "firecracker-runtime" failed to start` 警告后照常启动 server/worker，Web 入口可用，只有 sandbox 运行态的 Agent 不可用。没有可用 KVM 的宿主按 [不启用沙箱](/deploy/firecracker#不启用沙箱) 关闭该 profile。
 
+## 健康检查
+
+server 与 worker 提供两个端点，均无需凭证、不计入限流：
+
+| 端点 | 语义 | 返回 |
+| --- | --- | --- |
+| `GET /api/v1/health` | liveness：进程是否需要重启 | 默认 200。PostgreSQL、Redis 中断不影响它；只有 Redis 可用、但某个队列 worker 持续 2 分钟以上无法取任务时返回 503（`type` 为 `service-unhealthy`） |
+| `GET /api/v1/health/ready` | readiness：能否处理请求与任务 | PostgreSQL `select 1`、Redis `PING`（各 2 秒超时）与全部队列 worker 都正常时 200；任一不可用返回 503（`type` 为 `service-not-ready`），`checks` 字段给出 `database`、`redis`、`workers` 各自的 `status` |
+
+```json
+{"type":"https://agentloom.dev/errors/service-not-ready","title":"服务暂不可用","status":503,"detail":"依赖检查未通过: redis, workers","instance":"/api/v1/health/ready","checks":{"database":{"status":"up","latencyMs":1},"redis":{"status":"down"},"workers":{"status":"down","total":18,"unavailable":18}}}
+```
+
+Compose 的 server/worker 健康检查用 readiness：依赖中断期间容器显示 `unhealthy`，依赖恢复后自动回到 `healthy`。Compose 不会因为 `unhealthy` 重启容器，liveness 返回 503 时需要手动 `docker compose restart server worker`。Helm 的 `readinessProbe` 用 `/api/v1/health/ready`（每 10 秒、超时 5 秒、连续 3 次失败摘流），`livenessProbe` 用 `/api/v1/health`（每 15 秒、超时 5 秒、连续 4 次失败重启），Redis 或 PostgreSQL 的抖动只会摘流，不会触发重启。
+
+Redis 中断期间进程保持运行：已认证请求会等到 Redis 恢复或失败，跨实例的 Socket.IO 广播被丢弃（本实例客户端照常收到），队列任务在 Redis 恢复后约 2 秒内继续执行，见[异步任务队列](/dev/server/queues#redis-中断与恢复)。
+
 ## 网络
 
 Compose 声明了 5 个网络。主栈 4 个网络名带前缀 `AGENTLOOM_NETWORK_PREFIX`（默认 `agentloom`），不随 Compose project 名变化；备份与恢复脚本按 `<前缀>-app` 找到 MinIO：

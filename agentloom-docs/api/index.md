@@ -15,7 +15,7 @@ AgentLoom 的 HTTP API 共用的地址、凭证、字段命名、响应信封、
 | 生产环境 | `https://agentloom.ling.plus/api/v1` |
 | 自托管 | `https://<你的域名>/api/v1`（反向代理把 `/api/` 转发到 server，见 [反向代理](/deploy/reverse-proxy)） |
 | 本地开发 | `http://localhost:3000/api/v1` |
-| 健康检查 | `GET /api/v1/health`，无需凭证，不计入限流 |
+| 健康检查 | `GET /api/v1/health`（存活）与 `GET /api/v1/health/ready`（PostgreSQL、Redis、队列 worker 是否可用，不可用时 503），均无需凭证，不计入限流；语义见[健康检查](/deploy/#健康检查) |
 
 ```bash
 curl -s http://localhost:3000/api/v1/health
