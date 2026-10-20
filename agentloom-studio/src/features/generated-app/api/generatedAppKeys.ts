@@ -27,6 +27,13 @@ export const generatedAppKeys = {
     appId: string,
     filters?: ListGeneratedAppGenerationRunsParams,
   ) => [...generatedAppKeys.generationRunLists(appId), filters] as const,
+  generationRunDetail: (appId: string, generationRunId: string) =>
+    [
+      ...generatedAppKeys.detail(appId),
+      'generation-runs',
+      'detail',
+      generationRunId,
+    ] as const,
   repairAttemptLists: (appId: string, generationRunId: string) =>
     [
       ...generatedAppKeys.detail(appId),

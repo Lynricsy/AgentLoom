@@ -1,4 +1,9 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   getGeneratedApp,
   getGeneratedAppArtifactContent,
@@ -7,6 +12,7 @@ import {
   getGeneratedAppSubmission,
   getGeneratedAppPublicSubmission,
   getGeneratedAppPublicRuntime,
+  getGeneratedAppGenerationRun,
   listGeneratedAppGateRuns,
   listGeneratedAppGenerationRuns,
   listGeneratedAppRepairAttempts,
@@ -15,38 +21,34 @@ import {
 } from './generatedAppApi'
 import { generatedAppKeys } from './generatedAppKeys'
 import type {
-  GeneratedAppSubmission,
+  GeneratedAppGenerationRunStatus,
+  GeneratedAppSubmissionStatus,
   ListGeneratedAppGateRunsParams,
   ListGeneratedAppGenerationRunsParams,
   ListGeneratedAppRepairAttemptsParams,
   ListGeneratedAppSubmissionsParams,
   ListGeneratedAppsParams,
-  GeneratedAppPublicSubmission,
 } from '../types'
 
 const GENERATED_APP_STALE_TIME = 30_000
-const GENERATED_APP_WORKFLOW_EXECUTION_POLL_INTERVAL_MS = 2_000
+const GENERATED_APP_SUBMISSION_POLL_INTERVAL_MS = 2_000
+const GENERATED_APP_GENERATION_POLL_INTERVAL_MS = 3_000
 
-type WorkflowExecutionPollingSubmission = Pick<
-  GeneratedAppPublicSubmission | GeneratedAppSubmission,
-  'report' | 'result'
->
-
-function isWorkflowExecutionPollingSubmission(
-  submission: WorkflowExecutionPollingSubmission | undefined,
+/** 提交在执行结束前保持 received/running；服务端在读取时按执行状态刷新结果 */
+function isSubmissionInFlight(
+  submission: { status: GeneratedAppSubmissionStatus } | undefined,
 ): boolean {
-  const handoff =
-    submission?.report?.workflowExecution === true
-      ? submission.report
-      : submission?.result?.workflowExecution === true
-        ? submission.result
-        : null
+  return submission?.status === 'received' || submission?.status === 'running'
+}
 
+/** 排队、执行或修复中的运行还会推进 Gate；进入终态后不再变化 */
+export function isGeneratedAppGenerationRunInFlight(
+  run: { status: GeneratedAppGenerationRunStatus } | undefined,
+): boolean {
   return (
-    handoff !== null &&
-    (handoff.executionStatus === 'pending' ||
-      handoff.executionStatus === 'running' ||
-      handoff.executionStatus === 'paused')
+    run?.status === 'queued' ||
+    run?.status === 'running' ||
+    run?.status === 'repairing'
   )
 }
 
@@ -114,6 +116,63 @@ export function useGeneratedAppGenerationRuns(
   })
 }
 
+/**
+ * 轮询单次生成运行直到终态。Gate 0–7 在 worker 中异步执行，每完成一个 Gate 服务端都会改写运行
+ * summary（updatedAt 前进）并更新应用的 gateResults/状态：运行有推进时刷新应用详情与列表，
+ * 进入终态时刷新该应用的全部子资源（readiness、artifact、运行与 Gate 列表）。
+ */
+export function useGeneratedAppGenerationRun(
+  appId: string | undefined,
+  generationRunId: string | undefined,
+) {
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: generatedAppKeys.generationRunDetail(
+      appId ?? '',
+      generationRunId ?? '',
+    ),
+    queryFn: () =>
+      getGeneratedAppGenerationRun(appId ?? '', generationRunId ?? ''),
+    enabled: !!appId && !!generationRunId,
+    refetchInterval: (current) =>
+      isGeneratedAppGenerationRunInFlight(current.state.data)
+        ? GENERATED_APP_GENERATION_POLL_INTERVAL_MS
+        : false,
+  })
+  const run = query.data
+  const lastSeenRef = useRef<{
+    id: string
+    updatedAt: string
+    inFlight: boolean
+  } | null>(null)
+
+  useEffect(() => {
+    if (!appId || !run) {
+      return
+    }
+
+    const previous = lastSeenRef.current
+    const inFlight = isGeneratedAppGenerationRunInFlight(run)
+    lastSeenRef.current = { id: run.id, updatedAt: run.updatedAt, inFlight }
+
+    if (
+      !previous ||
+      previous.id !== run.id ||
+      previous.updatedAt === run.updatedAt
+    ) {
+      return
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: generatedAppKeys.detail(appId),
+      exact: !(previous.inFlight && !inFlight),
+    })
+    void queryClient.invalidateQueries({ queryKey: generatedAppKeys.lists() })
+  }, [appId, queryClient, run])
+
+  return query
+}
+
 export function useGeneratedAppRepairAttempts(
   appId: string | undefined,
   generationRunId: string | undefined,
@@ -140,6 +199,7 @@ export function useGeneratedAppRepairAttempts(
 export function useGeneratedAppGateRuns(
   appId: string | undefined,
   params: ListGeneratedAppGateRunsParams = {},
+  options: { poll?: boolean } = {},
 ) {
   return useQuery({
     queryKey: generatedAppKeys.gateRunList(appId ?? '', params),
@@ -147,6 +207,9 @@ export function useGeneratedAppGateRuns(
     enabled: !!appId,
     placeholderData: keepPreviousData,
     staleTime: GENERATED_APP_STALE_TIME,
+    refetchInterval: options.poll
+      ? GENERATED_APP_GENERATION_POLL_INTERVAL_MS
+      : false,
   })
 }
 
@@ -176,8 +239,8 @@ export function useGeneratedAppSubmission(
     enabled: !!appId && !!submissionId,
     staleTime: 0,
     refetchInterval: (query) =>
-      isWorkflowExecutionPollingSubmission(query.state.data)
-        ? GENERATED_APP_WORKFLOW_EXECUTION_POLL_INTERVAL_MS
+      isSubmissionInFlight(query.state.data)
+        ? GENERATED_APP_SUBMISSION_POLL_INTERVAL_MS
         : false,
   })
 }
@@ -207,8 +270,8 @@ export function useGeneratedAppPublicSubmission(
     retry: false,
     staleTime: 0,
     refetchInterval: (query) =>
-      isWorkflowExecutionPollingSubmission(query.state.data)
-        ? GENERATED_APP_WORKFLOW_EXECUTION_POLL_INTERVAL_MS
+      isSubmissionInFlight(query.state.data)
+        ? GENERATED_APP_SUBMISSION_POLL_INTERVAL_MS
         : false,
   })
 }

@@ -11,6 +11,7 @@ import { generatedAppKeys } from './generatedAppKeys'
 import {
   useGeneratedAppArtifactContent,
   useGeneratedAppArtifactManifest,
+  useGeneratedAppGenerationRun,
   useGeneratedAppRuntimeBindingReadiness,
   useGeneratedAppPublicSubmission,
   useGeneratedAppSubmission,
@@ -18,6 +19,7 @@ import {
 import type {
   GeneratedAppArtifactContent,
   GeneratedAppArtifactManifest,
+  GeneratedAppGenerationRun,
   GeneratedAppRuntimeBindingReadiness,
   GeneratedAppPublicSubmission,
   GeneratedAppSubmission,
@@ -27,12 +29,14 @@ const {
   getGeneratedAppArtifactContentMock,
   getGeneratedAppArtifactManifestMock,
   getGeneratedAppRuntimeBindingReadinessMock,
+  getGeneratedAppGenerationRunMock,
   getGeneratedAppPublicSubmissionMock,
   getGeneratedAppSubmissionMock,
 } = vi.hoisted(() => ({
   getGeneratedAppArtifactContentMock: vi.fn(),
   getGeneratedAppArtifactManifestMock: vi.fn(),
   getGeneratedAppRuntimeBindingReadinessMock: vi.fn(),
+  getGeneratedAppGenerationRunMock: vi.fn(),
   getGeneratedAppPublicSubmissionMock: vi.fn(),
   getGeneratedAppSubmissionMock: vi.fn(),
 }))
@@ -44,6 +48,7 @@ vi.mock('./generatedAppApi', () => ({
   getGeneratedAppRuntimeBindingReadiness:
     getGeneratedAppRuntimeBindingReadinessMock,
   getGeneratedAppSubmission: getGeneratedAppSubmissionMock,
+  getGeneratedAppGenerationRun: getGeneratedAppGenerationRunMock,
   getGeneratedAppPublicSubmission: getGeneratedAppPublicSubmissionMock,
   getGeneratedAppPublicRuntime: vi.fn(),
   listGeneratedAppGateRuns: vi.fn(),
@@ -115,8 +120,10 @@ function makeCreatorSubmission(
     id: 'submission-creator',
     tenantId: 'tenant-creator',
     appId: 'app-creator',
-    appSpecVersion: 1,
+    appSpecVersion: 2,
     publicShareToken: 'token-snapshot',
+    origin: 'public',
+    generationRunId: null,
     status: 'running',
     anonymousSessionId: 'anon-creator',
     input: {},
@@ -136,12 +143,11 @@ function makePublicSubmission(
   return {
     id: 'submission-public',
     appId: 'app-public',
-    appSpecVersion: 1,
+    appSpecVersion: 2,
     status: 'running',
     anonymousSessionId: 'anon-public',
     input: {},
     result: null,
-    report: null,
     errorMessage: null,
     createdAt: '2026-04-25T02:00:00.000Z',
     updatedAt: '2026-04-25T02:00:00.000Z',
@@ -157,6 +163,7 @@ function makeRuntimeBindingReadiness(
     workflowDefinitionId: 'workflow-1',
     workflowStatus: 'published',
     publishedVersionId: 'version-1',
+    pinnedVersionId: 'version-1',
     canStartWorkflowExecution: true,
     summary: '绑定 Workflow 已发布。',
     notice: '公开提交可创建异步 Workflow execution。',
@@ -330,85 +337,18 @@ describe('generatedAppQueries artifact delivery', () => {
   })
 })
 
+const RUNNING_RESULT = {
+  status: 'running' as const,
+  sections: [],
+  publicError: null,
+}
+
 describe('generatedAppQueries public submission polling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it.each(['pending', 'running', 'paused'] as const)(
-    'public submission query enables 2s refetch when workflow execution is %s',
-    async (executionStatus) => {
-      const submission = makePublicSubmission({
-        status: executionStatus === 'pending' ? 'received' : 'running',
-        report: {
-          workflowExecution: true,
-          executionStatus,
-          executionId: '77777777-7777-7777-8777-777777777777',
-        },
-      })
-      getGeneratedAppPublicSubmissionMock.mockResolvedValue(submission)
-
-      const { Wrapper, queryClient } = createWrapper()
-      const { result } = renderHook(
-        () => useGeneratedAppPublicSubmission('public-token', submission.id),
-        { wrapper: Wrapper },
-      )
-
-      await waitFor(() => {
-        expect(result.current.data).toEqual(submission)
-      })
-
-      const query = queryClient.getQueryCache().find({
-        queryKey: generatedAppKeys.publicSubmission(
-          'public-token',
-          submission.id,
-        ),
-      }) as PublicSubmissionQueryWithRefetchInterval | undefined
-
-      expectQueryRefetchInterval(query, 2_000)
-    },
-  )
-
-  it.each(['completed', 'failed', 'cancelled'] as const)(
-    'public submission query stops refetch when workflow execution is %s',
-    async (executionStatus) => {
-      const submission = makePublicSubmission({
-        status: executionStatus === 'completed' ? 'completed' : 'failed',
-        result: {
-          workflowExecution: true,
-          executionStatus,
-          executionId: '55555555-5555-4555-8555-555555555557',
-        },
-      })
-      getGeneratedAppPublicSubmissionMock.mockResolvedValue(submission)
-
-      const { Wrapper, queryClient } = createWrapper()
-      const { result } = renderHook(
-        () => useGeneratedAppPublicSubmission('public-token', submission.id),
-        { wrapper: Wrapper },
-      )
-
-      await waitFor(() => {
-        expect(result.current.data).toEqual(submission)
-      })
-
-      const query = queryClient.getQueryCache().find({
-        queryKey: generatedAppKeys.publicSubmission(
-          'public-token',
-          submission.id,
-        ),
-      }) as PublicSubmissionQueryWithRefetchInterval | undefined
-
-      expectQueryRefetchInterval(query, false)
-    },
-  )
-
-  it('public submission query stops refetch when no workflow handoff exists', async () => {
-    const submission = makePublicSubmission({
-      status: 'completed',
-      result: { summary: 'deterministic report only' },
-      report: { title: '业务报告' },
-    })
+  async function renderPublicSubmission(submission: GeneratedAppPublicSubmission) {
     getGeneratedAppPublicSubmissionMock.mockResolvedValue(submission)
 
     const { Wrapper, queryClient } = createWrapper()
@@ -421,15 +361,38 @@ describe('generatedAppQueries public submission polling', () => {
       expect(result.current.data).toEqual(submission)
     })
 
-    const query = queryClient.getQueryCache().find({
-      queryKey: generatedAppKeys.publicSubmission(
-        'public-token',
-        submission.id,
-      ),
+    return queryClient.getQueryCache().find({
+      queryKey: generatedAppKeys.publicSubmission('public-token', submission.id),
     }) as PublicSubmissionQueryWithRefetchInterval | undefined
+  }
 
-    expectQueryRefetchInterval(query, false)
-  })
+  it.each([
+    ['received', null],
+    ['running', RUNNING_RESULT],
+  ] as const)(
+    '提交为 %s 时每 2 秒轮询，由服务端读取时刷新执行结果',
+    async (status, result) => {
+      const query = await renderPublicSubmission(
+        makePublicSubmission({ status, result }),
+      )
+
+      expectQueryRefetchInterval(query, 2_000)
+    },
+  )
+
+  it.each(['completed', 'failed'] as const)(
+    '提交为 %s 时停止轮询',
+    async (status) => {
+      const query = await renderPublicSubmission(
+        makePublicSubmission({
+          status,
+          result: { status, sections: [], publicError: null },
+        }),
+      )
+
+      expectQueryRefetchInterval(query, false)
+    },
+  )
 })
 
 describe('generatedAppQueries creator submission polling', () => {
@@ -437,140 +400,177 @@ describe('generatedAppQueries creator submission polling', () => {
     vi.clearAllMocks()
   })
 
-  it.each(['pending', 'running', 'paused'] as const)(
-    'creator submission query enables 2s refetch when workflow execution is %s',
-    async (executionStatus) => {
-      const submission = makeCreatorSubmission({
-        status: executionStatus === 'pending' ? 'received' : 'running',
-        report: {
-          workflowExecution: true,
-          executionStatus,
-          executionId: '77777777-7777-7777-8777-777777777777',
-        },
-      })
-      getGeneratedAppSubmissionMock.mockResolvedValue(submission)
+  async function renderCreatorSubmission(submission: GeneratedAppSubmission) {
+    getGeneratedAppSubmissionMock.mockResolvedValue(submission)
 
-      const { Wrapper, queryClient } = createWrapper()
-      const { result } = renderHook(
-        () => useGeneratedAppSubmission(submission.appId, submission.id),
-        { wrapper: Wrapper },
+    const { Wrapper, queryClient } = createWrapper()
+    const { result } = renderHook(
+      () => useGeneratedAppSubmission(submission.appId, submission.id),
+      { wrapper: Wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(submission)
+    })
+
+    return queryClient.getQueryCache().find({
+      queryKey: generatedAppKeys.submissionDetail(
+        submission.appId,
+        submission.id,
+      ),
+    }) as CreatorSubmissionQueryWithRefetchInterval | undefined
+  }
+
+  it.each(['received', 'running'] as const)(
+    '提交为 %s 时每 2 秒轮询',
+    async (status) => {
+      const query = await renderCreatorSubmission(
+        makeCreatorSubmission({
+          status,
+          result: { ...RUNNING_RESULT },
+          report: {
+            kind: 'generated-app-runtime-execution',
+            executionId: '77777777-7777-7777-8777-777777777777',
+          },
+        }),
       )
 
-      await waitFor(() => {
-        expect(result.current.data).toEqual(submission)
-      })
-
-      const query = queryClient.getQueryCache().find({
-        queryKey: generatedAppKeys.submissionDetail(
-          submission.appId,
-          submission.id,
-        ),
-      }) as CreatorSubmissionQueryWithRefetchInterval | undefined
-
-      expect(result.current.dataUpdatedAt).toBeGreaterThan(0)
       expectQueryRefetchInterval(query, 2_000)
     },
   )
 
-  it.each(['completed', 'failed', 'cancelled'] as const)(
-    'creator submission query stops refetch when workflow execution is %s',
-    async (executionStatus) => {
-      const submission = makeCreatorSubmission({
-        status: executionStatus === 'completed' ? 'completed' : 'failed',
-        result: {
-          workflowExecution: true,
-          executionStatus,
-          executionId: '77777777-7777-7777-8777-777777777777',
-        },
-      })
-      getGeneratedAppSubmissionMock.mockResolvedValue(submission)
-
-      const { Wrapper, queryClient } = createWrapper()
-      const { result } = renderHook(
-        () => useGeneratedAppSubmission(submission.appId, submission.id),
-        { wrapper: Wrapper },
+  it.each(['completed', 'failed'] as const)(
+    '提交为 %s 时停止轮询',
+    async (status) => {
+      const query = await renderCreatorSubmission(
+        makeCreatorSubmission({ status }),
       )
-
-      await waitFor(() => {
-        expect(result.current.data).toEqual(submission)
-      })
-
-      const query = queryClient.getQueryCache().find({
-        queryKey: generatedAppKeys.submissionDetail(
-          submission.appId,
-          submission.id,
-        ),
-      }) as CreatorSubmissionQueryWithRefetchInterval | undefined
 
       expectQueryRefetchInterval(query, false)
     },
   )
+})
 
-  it('creator submission query stops refetch when workflow execution is unavailable', async () => {
-    const submission = makeCreatorSubmission({
-      status: 'failed',
-      report: {
-        workflowExecution: true,
-        executionStatus: null,
-        executionId: null,
-        workflowExecutionNotStartedReason: 'workflow-execution-unavailable',
-      },
-    })
-    getGeneratedAppSubmissionMock.mockResolvedValue(submission)
-
-    const { Wrapper, queryClient } = createWrapper()
-    const { result } = renderHook(
-      () => useGeneratedAppSubmission(submission.appId, submission.id),
-      { wrapper: Wrapper },
-    )
-
-    await waitFor(() => {
-      expect(result.current.data).toEqual(submission)
-    })
-
-    const query = queryClient.getQueryCache().find({
-      queryKey: generatedAppKeys.submissionDetail(
-        submission.appId,
-        submission.id,
-      ),
-    }) as CreatorSubmissionQueryWithRefetchInterval | undefined
-
-    expectQueryRefetchInterval(query, false)
+describe('generatedAppQueries generation run polling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('creator submission query treats report handoff as authoritative over result handoff', async () => {
-    const submission = makeCreatorSubmission({
-      status: 'completed',
-      result: {
-        workflowExecution: true,
-        executionStatus: 'running',
-        executionId: '77777777-7777-7777-8777-777777777777',
-      },
-      report: {
-        workflowExecution: true,
-        executionStatus: 'completed',
-        executionId: '77777777-7777-7777-8777-777777777777',
-      },
-    })
-    getGeneratedAppSubmissionMock.mockResolvedValue(submission)
+  function makeRun(
+    overrides: Partial<GeneratedAppGenerationRun> = {},
+  ): GeneratedAppGenerationRun {
+    return {
+      id: 'run-1',
+      tenantId: 'tenant-1',
+      appId: 'app-1',
+      runNumber: 1,
+      status: 'running',
+      triggerSource: 'initial',
+      maxRepairAttempts: 3,
+      maxRuntimeSeconds: 1800,
+      summary: '生成运行执行中：Gate 0 需求规格。',
+      failureReason: null,
+      startedAt: '2026-04-25T03:00:00.000Z',
+      completedAt: null,
+      createdBy: 'user-1',
+      createdAt: '2026-04-25T03:00:00.000Z',
+      updatedAt: '2026-04-25T03:00:00.000Z',
+      ...overrides,
+    }
+  }
 
+  function findRunQuery(queryClient: QueryClient) {
+    return queryClient.getQueryCache().find({
+      queryKey: generatedAppKeys.generationRunDetail('app-1', 'run-1'),
+    }) as CreatorSubmissionQueryWithRefetchInterval | undefined
+  }
+
+  it.each(['queued', 'running', 'repairing'] as const)(
+    '运行为 %s 时每 3 秒轮询',
+    async (status) => {
+      getGeneratedAppGenerationRunMock.mockResolvedValue(makeRun({ status }))
+      const { Wrapper, queryClient } = createWrapper()
+      const { result } = renderHook(
+        () => useGeneratedAppGenerationRun('app-1', 'run-1'),
+        { wrapper: Wrapper },
+      )
+
+      await waitFor(() => {
+        expect(result.current.data?.status).toBe(status)
+      })
+      expect(getGeneratedAppGenerationRunMock).toHaveBeenCalledWith(
+        'app-1',
+        'run-1',
+      )
+      expectQueryRefetchInterval(findRunQuery(queryClient), 3_000)
+    },
+  )
+
+  it.each(['passed', 'failed', 'cancelled'] as const)(
+    '运行为 %s 时停止轮询',
+    async (status) => {
+      getGeneratedAppGenerationRunMock.mockResolvedValue(makeRun({ status }))
+      const { Wrapper, queryClient } = createWrapper()
+      const { result } = renderHook(
+        () => useGeneratedAppGenerationRun('app-1', 'run-1'),
+        { wrapper: Wrapper },
+      )
+
+      await waitFor(() => {
+        expect(result.current.data?.status).toBe(status)
+      })
+      expectQueryRefetchInterval(findRunQuery(queryClient), false)
+    },
+  )
+
+  it('Gate 推进时只刷新应用详情，进入终态时刷新整个应用子树', async () => {
+    getGeneratedAppGenerationRunMock.mockResolvedValue(makeRun())
     const { Wrapper, queryClient } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     const { result } = renderHook(
-      () => useGeneratedAppSubmission(submission.appId, submission.id),
+      () => useGeneratedAppGenerationRun('app-1', 'run-1'),
       { wrapper: Wrapper },
     )
 
     await waitFor(() => {
-      expect(result.current.data).toEqual(submission)
+      expect(result.current.data?.status).toBe('running')
+    })
+    expect(invalidateSpy).not.toHaveBeenCalled()
+
+    getGeneratedAppGenerationRunMock.mockResolvedValue(
+      makeRun({
+        summary: 'gate-0 通过：AppSpec 已生成。',
+        updatedAt: '2026-04-25T03:01:00.000Z',
+      }),
+    )
+    await result.current.refetch()
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: generatedAppKeys.detail('app-1'),
+        exact: true,
+      })
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.lists(),
     })
 
-    const query = queryClient.getQueryCache().find({
-      queryKey: generatedAppKeys.submissionDetail(
-        submission.appId,
-        submission.id,
-      ),
-    }) as CreatorSubmissionQueryWithRefetchInterval | undefined
+    invalidateSpy.mockClear()
+    getGeneratedAppGenerationRunMock.mockResolvedValue(
+      makeRun({
+        status: 'passed',
+        summary: '生成运行通过。',
+        completedAt: '2026-04-25T03:05:00.000Z',
+        updatedAt: '2026-04-25T03:05:00.000Z',
+      }),
+    )
+    await result.current.refetch()
 
-    expectQueryRefetchInterval(query, false)
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: generatedAppKeys.detail('app-1'),
+        exact: false,
+      })
+    })
   })
 })

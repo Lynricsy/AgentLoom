@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { HTTPError } from 'ky'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -19,6 +20,7 @@ import type {
   GeneratedAppPublicSubmission,
   StartGeneratedAppGenerationRunResponse,
 } from '../types'
+import { makeGeneratedAppSpecV2 } from '../__tests__/fixtures'
 
 const {
   createGeneratedAppPublicSubmissionMock,
@@ -77,12 +79,11 @@ function makePublicSubmission(
   return {
     id: 'submission-public',
     appId: 'app-1',
-    appSpecVersion: 1,
+    appSpecVersion: 2,
     status: 'received',
     anonymousSessionId: 'anon-public',
-    input: { text: '头痛' },
+    input: { question: '工作流有哪几种状态？' },
     result: null,
-    report: null,
     errorMessage: null,
     createdAt: '2026-04-25T02:00:00.000Z',
     updatedAt: '2026-04-25T02:00:00.000Z',
@@ -98,29 +99,9 @@ function makeGeneratedApp(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
     appName: '自动化中医问诊系统',
     description: '围绕需求生成的 AppSpec 初稿。',
     status: 'published',
-    appSpec: {
-      version: 1,
-      appName: '自动化中医问诊系统',
-      summary: '围绕需求生成的 AppSpec 初稿。',
-      userGoal: '自动化中医问诊系统',
-      actors: ['创建者', '终端用户'],
-      coreRequirements: [{ id: 'req-1', text: '自动化中医问诊系统' }],
-      pages: [
-        {
-          id: 'page-public-runtime',
-          name: '公开运行页',
-          purpose: '让终端用户使用业务应用。',
-        },
-      ],
-      dataPolicy: {
-        publicSubmissionsPersisted: true,
-        creatorCanDeleteSubmissions: true,
-        endUserLoginRequired: false,
-      },
-      nonGoals: [],
-      acceptanceScenarios: [],
-      traceability: [],
-    },
+    appSpec: makeGeneratedAppSpecV2(),
+    generationModelConfigId: null,
+    bindingTarget: null,
     generationPlan: null,
     gateResults: [],
     readiness: {
@@ -308,25 +289,25 @@ describe('generatedAppMutations', () => {
     })
   })
 
-  it('allows dynamic app ids when starting generation from a create flow', async () => {
-    const app = makeGeneratedApp({ id: 'app-created' })
+  it('passes regenerateAppSpec through to the start request', async () => {
+    const app = makeGeneratedApp({ id: 'app-regenerate' })
     startGeneratedAppGenerationRunMock.mockResolvedValue({
       generationRun: {
-        id: 'run-created',
+        id: 'run-regenerate',
         tenantId: 'tenant-1',
-        appId: 'app-created',
-        runNumber: 1,
-        status: 'failed',
-        triggerSource: 'initial',
+        appId: 'app-regenerate',
+        runNumber: 2,
+        status: 'queued',
+        triggerSource: 'manual',
         maxRepairAttempts: 3,
         maxRuntimeSeconds: 1800,
-        summary: '自动生成失败。',
-        failureReason: 'Gate 5 未通过。',
+        summary: '生成运行已排队。',
+        failureReason: null,
         startedAt: '2026-04-25T03:00:00.000Z',
-        completedAt: '2026-04-25T03:10:00.000Z',
+        completedAt: null,
         createdBy: 'user-1',
         createdAt: '2026-04-25T03:00:00.000Z',
-        updatedAt: '2026-04-25T03:10:00.000Z',
+        updatedAt: '2026-04-25T03:00:00.000Z',
       },
       gateRuns: [],
       app,
@@ -334,25 +315,61 @@ describe('generatedAppMutations', () => {
 
     const { Wrapper } = createWrapper()
 
-    const { result } = renderHook(() => useStartGeneratedAppGenerationRun(), {
-      wrapper: Wrapper,
-    })
+    const { result } = renderHook(
+      () => useStartGeneratedAppGenerationRun('app-regenerate'),
+      { wrapper: Wrapper },
+    )
 
     await act(async () => {
       await result.current.mutateAsync({
-        appId: 'app-created',
-        triggerSource: 'initial',
+        triggerSource: 'manual',
+        regenerateAppSpec: true,
       })
     })
 
     expect(startGeneratedAppGenerationRunMock).toHaveBeenCalledWith(
-      'app-created',
+      'app-regenerate',
       {
-        triggerSource: 'initial',
+        triggerSource: 'manual',
         maxRepairAttempts: undefined,
         maxRuntimeSeconds: undefined,
+        regenerateAppSpec: true,
       },
     )
+  })
+
+  it('refreshes run lists on 409 so the page picks up the in-flight run', async () => {
+    startGeneratedAppGenerationRunMock.mockRejectedValue(
+      new HTTPError(
+        new Response(null, { status: 409, statusText: 'Conflict' }),
+        new Request(
+          'http://localhost/api/v1/generated-apps/app-busy/generation-runs/start',
+          { method: 'POST' },
+        ),
+        {} as never,
+      ),
+    )
+
+    const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(
+      () => useStartGeneratedAppGenerationRun('app-busy'),
+      { wrapper: Wrapper },
+    )
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({ triggerSource: 'manual' }),
+      ).rejects.toBeInstanceOf(HTTPError)
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.generationRunLists('app-busy'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.gateRunLists('app-busy'),
+    })
   })
 
   it('syncs regenerated and disabled public share responses into generated app caches', async () => {

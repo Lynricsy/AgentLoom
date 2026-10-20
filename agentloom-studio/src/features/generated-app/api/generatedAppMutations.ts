@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { HTTPError } from 'ky'
 import {
   createGeneratedAppPublicSubmission,
   createGeneratedApp,
@@ -14,6 +15,7 @@ import { generatedAppKeys } from './generatedAppKeys'
 import type {
   CreateGeneratedAppPublicSubmissionPayload,
   CreateGeneratedAppPayload,
+  CreatedGeneratedApp,
   DeleteGeneratedAppSubmissionsResponse,
   GeneratedApp,
   GeneratedAppPublicSubmission,
@@ -71,10 +73,11 @@ function invalidateGeneratedAppRunQueries(
   }
 }
 
+/** 创建即排队 initial 生成运行；调用方用响应里的 generationRunId 轮询，不再调用 start（会得到 409） */
 export function useCreateGeneratedApp() {
   const queryClient = useQueryClient()
 
-  return useMutation<GeneratedApp, Error, CreateGeneratedAppPayload>({
+  return useMutation<CreatedGeneratedApp, Error, CreateGeneratedAppPayload>({
     mutationKey: [...generatedAppKeys.all, 'create'],
     mutationFn: createGeneratedApp,
     gcTime: 0,
@@ -84,6 +87,10 @@ export function useCreateGeneratedApp() {
   })
 }
 
+/**
+ * 排队一次生成运行：成功是 HTTP 202 + queued 运行，Gate 结果靠轮询运行详情；
+ * 409 表示已有进行中的运行，同样刷新运行列表，让页面接上那次运行的进度。
+ */
 export function useStartGeneratedAppGenerationRun(defaultAppId?: string) {
   const queryClient = useQueryClient()
 
@@ -109,6 +116,7 @@ export function useStartGeneratedAppGenerationRun(defaultAppId?: string) {
         triggerSource: payload?.triggerSource,
         maxRepairAttempts: payload?.maxRepairAttempts,
         maxRuntimeSeconds: payload?.maxRuntimeSeconds,
+        regenerateAppSpec: payload?.regenerateAppSpec,
       }
 
       return startGeneratedAppGenerationRun(appId, body)
@@ -121,6 +129,13 @@ export function useStartGeneratedAppGenerationRun(defaultAppId?: string) {
         response.app.id,
         response.generationRun.id,
       )
+    },
+    onError: (error, payload) => {
+      const appId = payload?.appId ?? defaultAppId
+
+      if (appId && error instanceof HTTPError && error.response.status === 409) {
+        invalidateGeneratedAppRunQueries(queryClient, appId)
+      }
     },
   })
 }

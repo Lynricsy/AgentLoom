@@ -3,17 +3,22 @@ import type { ApiResponse } from '@/shared/types/api'
 import type {
   CreateGeneratedAppPublicSubmissionPayload,
   CreateGeneratedAppPayload,
+  CreatedGeneratedApp,
   DeleteGeneratedAppSubmissionsResponse,
   GeneratedApp,
   GeneratedAppArtifactContent,
   GeneratedAppArtifactManifest,
   GeneratedAppGateRunListResponse,
+  GeneratedAppGenerationRun,
   GeneratedAppGenerationRunListResponse,
   GeneratedAppListResponse,
+  GeneratedAppField,
   GeneratedAppPublicSubmission,
   GeneratedAppPublicRuntime,
   GeneratedAppRuntimeForm,
   GeneratedAppRuntimeBindingReadiness,
+  GeneratedAppRuntimeResult,
+  GeneratedAppRuntimeResultSection,
   GeneratedAppRepairAttemptListResponse,
   GeneratedAppSubmission,
   GeneratedAppSubmissionListResponse,
@@ -31,66 +36,6 @@ const GENERATED_APPS_PATH = 'generated-apps'
 const GENERATED_APP_API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 const GENERATED_APP_API_PREFIX = '/api/v1'
-const PUBLIC_SUBMISSION_REDACTED_VALUE = '[已移除内部内容]'
-const PUBLIC_SUBMISSION_UNSAFE_VALUE_PATTERN =
-  /\b(?:Bearer\s+[A-Za-z0-9._~+/=-]+|(?:sk|pk)-[A-Za-z0-9_-]{12,}|[a-f0-9]{64}|(?:secret|token|credential|password|api[-_]?key)[-_:][A-Za-z0-9._~+/=-]{4,})\b|(?:^|\s)\/(?:Users|home|root|tmp|var|etc|workspace)\b|[A-Za-z]:[\\/][^\s"']*|\b(?:publicShareToken|public_share_token|definitionSnapshot|definition_snapshot|nodeData|node_data|checkpointData|checkpoint_data|toolCalls|tool_calls|sourceArtifactUrl|source_artifact_url|testReportUrl|test_report_url|inputParams|input_params|gateResults|gate_results)\b/i
-const PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS = new Set([
-  '_meta',
-  'api_key',
-  'api_keys',
-  'apikey',
-  'apikeys',
-  'authorization',
-  'bearer',
-  'checkpoint_data',
-  'checkpointdata',
-  'cookie',
-  'cookies',
-  'credential',
-  'credentials',
-  'creator_only',
-  'creatoronly',
-  'definition_snapshot',
-  'definitionsnapshot',
-  'execution_snapshot',
-  'executionsnapshot',
-  'execution_steps',
-  'executionsteps',
-  'gate_results',
-  'gateresults',
-  'host_path',
-  'hostpath',
-  'host_paths',
-  'hostpaths',
-  'input_params',
-  'inputparams',
-  'node_data',
-  'nodedata',
-  'password',
-  'private_key',
-  'privatekey',
-  'plugin_ids',
-  'pluginids',
-  'public_share_token',
-  'publicsharetoken',
-  'readiness',
-  'secret',
-  'secrets',
-  'source_artifact_url',
-  'sourceartifacturl',
-  'stack',
-  'stack_trace',
-  'stacktrace',
-  'steps',
-  'tenant_id',
-  'tenantid',
-  'test_report_url',
-  'testreporturl',
-  'token',
-  'tokens',
-  'tool_calls',
-  'toolcalls',
-])
 
 type GeneratedAppSearchParamValue = number | string | null | undefined
 
@@ -123,6 +68,7 @@ function buildGeneratedAppSubmissionSearchParams(
     page: params.page,
     pageSize: params.pageSize,
     status: params.status,
+    origin: params.origin,
   })
 }
 
@@ -222,6 +168,7 @@ function toPublicRuntime(
   }
 }
 
+/** 只保留公开页渲染需要的表单键，服务端多给的字段不进入组件 */
 function toPublicRuntimeForm(
   value: GeneratedAppRuntimeForm,
 ): GeneratedAppRuntimeForm {
@@ -230,34 +177,44 @@ function toPublicRuntimeForm(
     title: value.title,
     description: value.description,
     submitLabel: value.submitLabel,
-    sections: value.sections.map((section) => ({
-      id: section.id,
-      title: section.title,
-      description: section.description,
-      fieldIds: section.fieldIds,
-    })),
-    fields: value.fields.map((field) => ({
-      id: field.id,
-      label: field.label,
-      type: field.type,
-      required: field.required,
-      placeholder: field.placeholder,
-      helpText: field.helpText,
-      options: field.options.map((option) => ({
-        value: option.value,
-        label: option.label,
-      })),
-      min: field.min,
-      max: field.max,
-      step: field.step,
-    })),
+    fields: value.fields.map(toPublicRuntimeField),
     resultView: {
       title: value.resultView.title,
-      description: value.resultView.description,
       emptyState: value.resultView.emptyState,
-      successTitle: value.resultView.successTitle,
-      nextStepHint: value.resultView.nextStepHint,
+      sections: value.resultView.sections.map((section) => ({
+        id: section.id,
+        label: section.label,
+        format: section.format,
+      })),
     },
+  }
+}
+
+function toPublicRuntimeField(field: GeneratedAppField): GeneratedAppField {
+  const base = {
+    id: field.id,
+    label: field.label,
+    required: field.required,
+    helpText: field.helpText,
+    placeholder: field.placeholder,
+  }
+
+  switch (field.type) {
+    case 'text':
+    case 'textarea':
+      return { ...base, type: field.type, maxLength: field.maxLength }
+    case 'number':
+      return { ...base, type: field.type, min: field.min, max: field.max }
+    case 'single_select':
+    case 'multi_select':
+      return {
+        ...base,
+        type: field.type,
+        options: field.options.map((option) => ({
+          value: option.value,
+          label: option.label,
+        })),
+      }
   }
 }
 
@@ -271,88 +228,45 @@ function toPublicSubmission(
     status: value.status,
     anonymousSessionId: value.anonymousSessionId,
     input: value.input,
-    result: sanitizePublicSubmissionPayload(value.result),
-    report: sanitizePublicSubmissionPayload(value.report),
+    result: value.result ? toPublicRuntimeResult(value.result) : null,
     errorMessage: value.errorMessage,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   }
 }
 
-function sanitizePublicSubmissionPayload(
-  value: GeneratedAppPublicSubmission['result'],
-): GeneratedAppPublicSubmission['result'] {
-  if (!value) {
-    return value
+/** 分区值已由服务端公开脱敏；这里只按结构挑出公开页渲染的键 */
+function toPublicRuntimeResult(
+  value: GeneratedAppRuntimeResult,
+): GeneratedAppRuntimeResult {
+  return {
+    status: value.status,
+    sections: value.sections.map(
+      (section) =>
+        ({
+          sectionId: section.sectionId,
+          label: section.label,
+          format: section.format,
+          value: section.value,
+        }) as GeneratedAppRuntimeResultSection,
+    ),
+    publicError: value.publicError,
   }
-
-  return sanitizePublicSubmissionValue(
-    value,
-  ) as GeneratedAppPublicSubmission['result']
 }
 
-function sanitizePublicSubmissionValue(value: unknown): unknown {
-  if (typeof value === 'string') {
-    return PUBLIC_SUBMISSION_UNSAFE_VALUE_PATTERN.test(value)
-      ? PUBLIC_SUBMISSION_REDACTED_VALUE
-      : value
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => sanitizePublicSubmissionValue(item))
-      .filter((item) => item !== undefined)
-  }
-
-  if (!isPlainRecord(value)) {
-    return value
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => !isForbiddenPublicSubmissionPayloadKey(key))
-      .map(([key, nestedValue]) => [
-        key,
-        sanitizePublicSubmissionValue(nestedValue),
-      ])
-      .filter(([, nestedValue]) => nestedValue !== undefined),
-  )
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function normalizePublicSubmissionPayloadKey(key: string): string {
-  return key.toLowerCase().replace(/[^a-z0-9_]/g, '')
-}
-
-function isForbiddenPublicSubmissionPayloadKey(key: string): boolean {
-  const normalizedKey = normalizePublicSubmissionPayloadKey(key)
-
-  return (
-    PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS.has(normalizedKey) ||
-    normalizedKey.includes('apikey') ||
-    normalizedKey.includes('authorization') ||
-    normalizedKey.includes('bearer') ||
-    normalizedKey.includes('credential') ||
-    normalizedKey.includes('password') ||
-    normalizedKey.includes('privatekey') ||
-    normalizedKey.includes('secret') ||
-    normalizedKey.includes('stacktrace') ||
-    normalizedKey.endsWith('token') ||
-    normalizedKey.endsWith('_token') ||
-    normalizedKey.endsWith('tokens') ||
-    normalizedKey.endsWith('_tokens')
-  )
-}
-
+/** 创建即排队 initial 生成运行（HTTP 201），响应带 generationRunId，不需要再调用 start */
 export async function createGeneratedApp(
   payload: CreateGeneratedAppPayload,
-): Promise<GeneratedApp> {
+): Promise<CreatedGeneratedApp> {
   const response = await apiClient
-    .post(GENERATED_APPS_PATH, { json: { prompt: payload.prompt } })
-    .json<ApiResponse<GeneratedApp>>()
+    .post(GENERATED_APPS_PATH, {
+      json: {
+        prompt: payload.prompt,
+        modelConfigId: payload.modelConfigId,
+        bindingTarget: payload.bindingTarget,
+      },
+    })
+    .json<ApiResponse<CreatedGeneratedApp>>()
 
   return response.data
 }
@@ -432,6 +346,17 @@ export async function listGeneratedAppGenerationRuns(
       searchParams: buildGeneratedAppGenerationRunSearchParams(params),
     })
     .json<GeneratedAppGenerationRunListResponse>()
+}
+
+export async function getGeneratedAppGenerationRun(
+  appId: string,
+  generationRunId: string,
+): Promise<GeneratedAppGenerationRun> {
+  const response = await apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/generation-runs/${generationRunId}`)
+    .json<ApiResponse<GeneratedAppGenerationRun>>()
+
+  return response.data
 }
 
 export async function listGeneratedAppRepairAttempts(

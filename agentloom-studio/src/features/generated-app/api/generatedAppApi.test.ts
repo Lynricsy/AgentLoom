@@ -10,6 +10,7 @@ import {
   getGeneratedApp,
   getGeneratedAppArtifactContent,
   getGeneratedAppArtifactManifest,
+  getGeneratedAppGenerationRun,
   getGeneratedAppRuntimeBindingReadiness,
   getGeneratedAppPublicSubmission,
   getGeneratedAppSubmission,
@@ -34,6 +35,7 @@ import type {
   GeneratedAppSubmission,
   StartGeneratedAppGenerationRunResponse,
 } from '../types'
+import { makeGeneratedAppSpecV2 } from '../__tests__/fixtures'
 
 const { deleteMock, getMock, patchMock, postMock } = vi.hoisted(() => ({
   deleteMock: vi.fn(),
@@ -63,29 +65,9 @@ function makeGeneratedApp(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
     appName: '自动化中医问诊系统',
     description: '围绕需求生成的 AppSpec 初稿。',
     status: 'preview_ready',
-    appSpec: {
-      version: 1,
-      appName: '自动化中医问诊系统',
-      summary: '围绕需求生成的 AppSpec 初稿。',
-      userGoal: '自动化中医问诊系统',
-      actors: ['创建者', '终端用户'],
-      coreRequirements: [{ id: 'req-1', text: '自动化中医问诊系统' }],
-      pages: [
-        {
-          id: 'page-public-runtime',
-          name: '公开运行页',
-          purpose: '让终端用户使用业务应用。',
-        },
-      ],
-      dataPolicy: {
-        publicSubmissionsPersisted: true,
-        creatorCanDeleteSubmissions: true,
-        endUserLoginRequired: false,
-      },
-      nonGoals: [],
-      acceptanceScenarios: [],
-      traceability: [],
-    },
+    appSpec: makeGeneratedAppSpecV2(),
+    generationModelConfigId: null,
+    bindingTarget: null,
     generationPlan: null,
     gateResults: [],
     readiness: {
@@ -178,11 +160,13 @@ function makeSubmission(
     id: 'submission-1',
     tenantId: 'tenant-1',
     appId: 'app-1',
-    appSpecVersion: 1,
+    appSpecVersion: 2,
     publicShareToken: 'token-snapshot',
+    origin: 'public',
+    generationRunId: null,
     anonymousSessionId: 'anon-1',
     status: 'received',
-    input: { name: '张三' },
+    input: { question: '工作流有哪几种状态？' },
     result: null,
     report: null,
     errorMessage: null,
@@ -282,46 +266,49 @@ function makeRuntimeForm(
 ): GeneratedAppRuntimeForm {
   return {
     formId: 'runtime-form',
-    title: '问诊采集表',
-    description: '采集终端用户问诊信息。',
-    submitLabel: '提交问诊信息',
-    sections: [
-      {
-        id: 'basic',
-        title: '问诊信息',
-        description: '采集主诉和症状。',
-        fieldIds: ['chiefComplaint', 'symptoms'],
-      },
-    ],
+    title: '文档问答',
+    description: '基于产品文档回答问题。',
+    submitLabel: '提问',
     fields: [
       {
-        id: 'chiefComplaint',
-        label: '主诉',
-        type: 'text',
+        id: 'question',
+        label: '问题',
+        type: 'textarea',
         required: true,
-        placeholder: '例如：头痛',
-        helpText: '请描述主要不适。',
-        options: [],
+        placeholder: '例如：工作流有哪几种状态？',
+        helpText: '',
+        maxLength: 500,
       },
       {
-        id: 'symptoms',
-        label: '症状',
+        id: 'topK',
+        label: '引用条数',
+        type: 'number',
+        required: false,
+        placeholder: '',
+        helpText: '',
+        min: 1,
+        max: 5,
+      },
+      {
+        id: 'topics',
+        label: '主题',
         type: 'multi_select',
-        required: true,
+        required: false,
         placeholder: '',
         helpText: '可多选。',
         options: [
-          { value: 'pain', label: '疼痛' },
-          { value: 'fever', label: '发热' },
+          { value: 'workflow', label: '工作流' },
+          { value: 'agent', label: 'Agent' },
         ],
       },
     ],
     resultView: {
-      title: '问诊信息报告',
-      description: '展示结构化摘要。',
-      emptyState: '提交后显示报告。',
-      successTitle: '已生成问诊摘要',
-      nextStepHint: '如有急重症请及时线下就医。',
+      title: '回答',
+      emptyState: '提交后显示答案。',
+      sections: [
+        { id: 'answer', label: '答案', format: 'markdown' },
+        { id: 'citations', label: '引用', format: 'citations' },
+      ],
     },
     ...overrides,
   }
@@ -332,16 +319,35 @@ describe('generatedAppApi', () => {
     vi.clearAllMocks()
   })
 
-  it('creates a generated app through POST /generated-apps with a camelCase body', async () => {
-    const app = makeGeneratedApp()
+  it('creates a generated app through POST /generated-apps with model and binding target in a camelCase body', async () => {
+    const app = { ...makeGeneratedApp(), generationRunId: 'run-initial' }
     postMock.mockReturnValue(mockKyJson({ data: app }))
 
-    const result = await createGeneratedApp({ prompt: ' 自动化中医问诊系统 ' })
+    const result = await createGeneratedApp({
+      prompt: ' 自动化中医问诊系统 ',
+      modelConfigId: 'model-chat',
+      bindingTarget: { kind: 'workflow', workflowDefinitionId: 'workflow-1' },
+    })
 
     expect(postMock).toHaveBeenCalledWith('generated-apps', {
-      json: { prompt: ' 自动化中医问诊系统 ' },
+      json: {
+        prompt: ' 自动化中医问诊系统 ',
+        modelConfigId: 'model-chat',
+        bindingTarget: { kind: 'workflow', workflowDefinitionId: 'workflow-1' },
+      },
     })
+    expect(result.generationRunId).toBe('run-initial')
     expect(result).toEqual(app)
+  })
+
+  it('reads one generation run through its full app/run path for polling', async () => {
+    const run = { id: 'run-1', appId: 'app-1', status: 'running' }
+    getMock.mockReturnValue(mockKyJson({ data: run }))
+
+    const result = await getGeneratedAppGenerationRun('app-1', 'run-1')
+
+    expect(getMock).toHaveBeenCalledWith('generated-apps/app-1/generation-runs/run-1')
+    expect(result).toEqual(run)
   })
 
   it('lists generated apps with camelCase query params expected by the backend DTO', async () => {
@@ -379,13 +385,14 @@ describe('generatedAppApi', () => {
 
   it('fetches runtime binding readiness from the creator-only app subroute', async () => {
     const readiness = {
-      state: 'workflow_published',
+      state: 'workflow_version_drift',
       workflowDefinitionId: 'workflow-1',
       workflowStatus: 'published',
-      publishedVersionId: 'version-1',
+      publishedVersionId: 'version-2',
+      pinnedVersionId: 'version-1',
       canStartWorkflowExecution: true,
-      summary: '绑定 Workflow 已发布。',
-      notice: '公开提交可创建异步 Workflow execution。',
+      summary: '绑定的工作流已重新发布。',
+      notice: '公开提交仍执行固定版本。',
       updatedAt: '2026-04-25T02:00:00.000Z',
     }
     getMock.mockReturnValue(mockKyJson({ data: readiness }))
@@ -439,6 +446,7 @@ describe('generatedAppApi', () => {
       page: 2,
       pageSize: 5,
       status: 'failed',
+      origin: 'gate-acceptance',
     })
 
     expect(getMock).toHaveBeenCalledWith('generated-apps/app-1/submissions', {
@@ -446,6 +454,7 @@ describe('generatedAppApi', () => {
         page: '2',
         pageSize: '5',
         status: 'failed',
+        origin: 'gate-acceptance',
       },
     })
     expect(result).toEqual(response)
@@ -616,34 +625,34 @@ describe('generatedAppApi', () => {
 
   it('fetches public runtime surface without returning creator-only fields', async () => {
     const runtimeForm = makeRuntimeForm()
-    const chiefComplaintField = runtimeForm.fields[0]
-    const symptomsField = runtimeForm.fields[1]
+    const [questionField, topKField, topicsField] = runtimeForm.fields
 
-    if (!chiefComplaintField || !symptomsField) {
+    if (!questionField || !topKField || !topicsField) {
       throw new Error('runtime form test fixture is invalid')
     }
 
     const publicResponse = {
       token: 'public-token',
       appId: 'app-public',
-      title: '自动化中医问诊系统',
-      description: '逐步问诊并生成分析报告。',
+      title: '文档问答助手',
+      description: '基于产品文档回答问题。',
       dataUseNotice: '提交内容会被保存并提供给应用创建者查看。',
       appSpec: {
-        version: 1,
-        appName: '自动化中医问诊系统',
-        summary: '按患者回答动态提问。',
-        userGoal: '完成问诊并查看分析报告。',
+        version: 2,
+        appName: '文档问答助手',
+        summary: '输入问题，返回答案与引用。',
+        userGoal: '快速找到答案。',
         actors: ['终端用户'],
         pages: [
           {
-            id: 'page-public-runtime',
-            name: '问诊运行页',
-            purpose: '让终端用户回答问诊问题。',
+            id: 'public-runtime',
+            name: '问答页',
+            purpose: '终端用户提问。',
             sourceArtifactUrl: 'https://internal.example.test/source.zip',
           },
         ],
         coreRequirements: [{ id: 'req-private', text: '内部需求' }],
+        binding: { kind: 'workflow', workflowDefinitionId: 'workflow-private' },
       },
       runtimeSurface: {
         kind: 'generated-app',
@@ -654,26 +663,22 @@ describe('generatedAppApi', () => {
         ...runtimeForm,
         publicShareToken: 'public-token',
         gateResults: [],
-        sections: [
-          {
-            id: 'basic',
-            title: '问诊信息',
-            description: '采集主诉和症状。',
-            fieldIds: ['chiefComplaint', 'symptoms'],
-            sourceArtifactUrl: 'https://internal.example.test/source.zip',
-          },
-        ],
         fields: [
           {
-            ...chiefComplaintField,
+            ...questionField,
             publicShareToken: 'public-token',
             pluginIds: ['plugin-private'],
           },
-          symptomsField,
+          { ...topKField, workflowInputFieldId: 'top_k' },
+          topicsField,
         ],
         resultView: {
           ...runtimeForm.resultView,
           readiness: { state: 'publish_candidate' },
+          sections: [
+            { ...runtimeForm.resultView.sections[0], nodeId: 'out' },
+            runtimeForm.resultView.sections[1],
+          ],
         },
       },
       createdAt: '2026-04-25T00:00:00.000Z',
@@ -693,20 +698,20 @@ describe('generatedAppApi', () => {
     expect(result).toEqual({
       token: 'public-token',
       appId: 'app-public',
-      title: '自动化中医问诊系统',
-      description: '逐步问诊并生成分析报告。',
+      title: '文档问答助手',
+      description: '基于产品文档回答问题。',
       dataUseNotice: '提交内容会被保存并提供给应用创建者查看。',
       appSpec: {
-        version: 1,
-        appName: '自动化中医问诊系统',
-        summary: '按患者回答动态提问。',
-        userGoal: '完成问诊并查看分析报告。',
+        version: 2,
+        appName: '文档问答助手',
+        summary: '输入问题，返回答案与引用。',
+        userGoal: '快速找到答案。',
         actors: ['终端用户'],
         pages: [
           {
-            id: 'page-public-runtime',
-            name: '问诊运行页',
-            purpose: '让终端用户回答问诊问题。',
+            id: 'public-runtime',
+            name: '问答页',
+            purpose: '终端用户提问。',
           },
         ],
       },
@@ -717,23 +722,13 @@ describe('generatedAppApi', () => {
       runtimeForm,
       createdAt: '2026-04-25T00:00:00.000Z',
     })
-    expect(result).not.toHaveProperty('gateResults')
-    expect(result).not.toHaveProperty('readiness')
-    expect(result).not.toHaveProperty('generationPlan')
-    expect(result).not.toHaveProperty('sourceArtifactUrl')
-    expect(result).not.toHaveProperty('testReportUrl')
-    expect(result).not.toHaveProperty('pluginIds')
-    expect(result).not.toHaveProperty('publicShareToken')
-    expect(result.appSpec).not.toHaveProperty('coreRequirements')
-    expect(result.runtimeSurface).not.toHaveProperty('sourceArtifactUrl')
-    expect(result.runtimeForm).not.toHaveProperty('publicShareToken')
-    expect(result.runtimeForm).not.toHaveProperty('gateResults')
-    expect(result.runtimeForm.sections[0]).not.toHaveProperty(
-      'sourceArtifactUrl',
-    )
-    expect(result.runtimeForm.fields[0]).not.toHaveProperty('publicShareToken')
-    expect(result.runtimeForm.fields[0]).not.toHaveProperty('pluginIds')
-    expect(result.runtimeForm.resultView).not.toHaveProperty('readiness')
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('plugin-private')
+    expect(serialized).not.toContain('workflow-private')
+    expect(serialized).not.toContain('top_k')
+    expect(serialized).not.toContain('nodeId')
+    expect(serialized).not.toContain('sourceArtifactUrl')
+    expect(serialized).not.toContain('readiness')
   })
 
   it('resolves public build preview URLs against an absolute API base', async () => {
@@ -781,64 +776,51 @@ describe('generatedAppApi', () => {
   })
 
   it('creates and reads public submissions without using Studio creator paths', async () => {
+    const result = {
+      status: 'completed',
+      sections: [
+        {
+          sectionId: 'answer',
+          label: '答案',
+          format: 'markdown',
+          value: '工作流有草稿与已发布两种状态。',
+          nodeId: 'out',
+        },
+        {
+          sectionId: 'citations',
+          label: '引用',
+          format: 'citations',
+          value: [{ title: 'core-concepts.md', quote: '草稿与已发布' }],
+        },
+      ],
+      publicError: null,
+      executionId: '55555555-5555-4555-8555-555555555557',
+    }
     const publicSubmission = {
       id: 'submission-public',
       appId: 'app-public',
-      appSpecVersion: 1,
+      appSpecVersion: 2,
       anonymousSessionId: 'anon-public',
-      status: 'received',
-      input: { answer: '头痛' },
-      result: {
-        summary: '保留业务摘要。',
-        workflowExecution: true,
-        executionId: '55555555-5555-4555-8555-555555555557',
-        executionStatus: 'running',
-        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
-        workflowExecutionNotice: 'Workflow execution 仍在执行中。',
-        definitionSnapshot: { nodes: [{ id: 'private-node' }] },
-        inputParams: { _meta: { publicShareToken: 'public-token' } },
-        nodeData: { path: '/root/AgentLoom/.env' },
-        checkpointData: { stack: 'internal stack' },
-        toolCalls: [{ authorization: 'Bearer private-token' }],
-        sourceArtifactUrl: 'https://internal.example.test/source.zip',
-        testReportUrl: 'https://internal.example.test/report.json',
-      },
+      status: 'completed',
+      input: { question: '工作流有哪几种状态？' },
+      result,
       report: {
-        title: '公开报告',
-        sections: [
-          {
-            id: 'safe-section',
-            title: '提交内容摘要',
-            body: '保留业务段落。',
-            items: [
-              '业务字段：可以展示',
-              '内部路径 /root/AgentLoom/.env 需要移除',
-            ],
-            nodeData: { token: 'secret-token-value' },
-          },
-        ],
-        workflowExecution: true,
+        kind: 'generated-app-runtime-execution',
         executionId: '55555555-5555-4555-8555-555555555557',
-        executionStatus: 'running',
-        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
       },
       errorMessage: null,
       createdAt: '2026-04-25T02:00:00.000Z',
       updatedAt: '2026-04-25T02:00:00.000Z',
       publicShareToken: 'public-token',
       tenantId: 'tenant-private',
-      readiness: makeGeneratedApp().readiness,
-      gateResults: [makeGateResult()],
-      sourceArtifactUrl: 'https://internal.example.test/source.zip',
-      testReportUrl: 'https://internal.example.test/report.json',
-      pluginIds: ['plugin-private'],
+      origin: 'public',
     }
     postMock.mockReturnValue(mockKyJson({ data: publicSubmission }))
     getMock.mockReturnValue(mockKyJson({ data: publicSubmission }))
 
     const created = await createGeneratedAppPublicSubmission('token/value', {
       anonymousSessionId: 'anon-public',
-      input: { answer: '头痛' },
+      input: { question: '工作流有哪几种状态？' },
       clientContext: { viewport: 'desktop' },
     })
     const detail = await getGeneratedAppPublicSubmission(
@@ -851,7 +833,7 @@ describe('generatedAppApi', () => {
       {
         json: {
           anonymousSessionId: 'anon-public',
-          input: { answer: '头痛' },
+          input: { question: '工作流有哪几种状态？' },
           clientContext: { viewport: 'desktop' },
         },
       },
@@ -862,59 +844,37 @@ describe('generatedAppApi', () => {
     expect(created).toEqual({
       id: 'submission-public',
       appId: 'app-public',
-      appSpecVersion: 1,
+      appSpecVersion: 2,
       anonymousSessionId: 'anon-public',
-      status: 'received',
-      input: { answer: '头痛' },
+      status: 'completed',
+      input: { question: '工作流有哪几种状态？' },
       result: {
-        summary: '保留业务摘要。',
-        workflowExecution: true,
-        executionId: '55555555-5555-4555-8555-555555555557',
-        executionStatus: 'running',
-        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
-        workflowExecutionNotice: 'Workflow execution 仍在执行中。',
-      },
-      report: {
-        title: '公开报告',
+        status: 'completed',
         sections: [
           {
-            id: 'safe-section',
-            title: '提交内容摘要',
-            body: '保留业务段落。',
-            items: ['业务字段：可以展示', '[已移除内部内容]'],
+            sectionId: 'answer',
+            label: '答案',
+            format: 'markdown',
+            value: '工作流有草稿与已发布两种状态。',
+          },
+          {
+            sectionId: 'citations',
+            label: '引用',
+            format: 'citations',
+            value: [{ title: 'core-concepts.md', quote: '草稿与已发布' }],
           },
         ],
-        workflowExecution: true,
-        executionId: '55555555-5555-4555-8555-555555555557',
-        executionStatus: 'running',
-        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+        publicError: null,
       },
       errorMessage: null,
       createdAt: '2026-04-25T02:00:00.000Z',
       updatedAt: '2026-04-25T02:00:00.000Z',
     })
     expect(detail).toEqual(created)
-    const serialized = JSON.stringify(created)
-    expect(serialized).toContain('保留业务摘要')
-    expect(serialized).toContain('保留业务段落')
-    expect(serialized).not.toContain('definitionSnapshot')
-    expect(serialized).not.toContain('inputParams')
-    expect(serialized).not.toContain('nodeData')
-    expect(serialized).not.toContain('checkpointData')
-    expect(serialized).not.toContain('toolCalls')
-    expect(serialized).not.toContain('secret-token-value')
-    expect(serialized).not.toContain('internal stack')
-    expect(serialized).not.toContain('/root/AgentLoom')
-    expect(serialized).not.toContain('sourceArtifactUrl')
-    expect(serialized).not.toContain('testReportUrl')
-    expect(serialized).not.toContain('public-token')
+    expect(created).not.toHaveProperty('report')
     expect(created).not.toHaveProperty('publicShareToken')
     expect(created).not.toHaveProperty('tenantId')
-    expect(created).not.toHaveProperty('readiness')
-    expect(created).not.toHaveProperty('gateResults')
-    expect(created).not.toHaveProperty('sourceArtifactUrl')
-    expect(created).not.toHaveProperty('testReportUrl')
-    expect(created).not.toHaveProperty('pluginIds')
+    expect(created).not.toHaveProperty('origin')
   })
 
   it('records gate results without snake-casing the backend camelCase contract', async () => {

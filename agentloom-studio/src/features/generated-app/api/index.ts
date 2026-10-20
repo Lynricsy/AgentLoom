@@ -8,6 +8,7 @@ export {
   getGeneratedApp,
   getGeneratedAppArtifactContent,
   getGeneratedAppArtifactManifest,
+  getGeneratedAppGenerationRun,
   getGeneratedAppRuntimeBindingReadiness,
   listGeneratedAppGateRuns,
   listGeneratedAppGenerationRuns,
@@ -23,9 +24,11 @@ export {
 } from './generatedAppApi'
 export { generatedAppKeys } from './generatedAppKeys'
 export {
+  isGeneratedAppGenerationRunInFlight,
   useGeneratedApp,
   useGeneratedAppArtifactContent,
   useGeneratedAppArtifactManifest,
+  useGeneratedAppGenerationRun,
   useGeneratedAppGateRuns,
   useGeneratedAppGenerationRuns,
   useGeneratedAppRuntimeBindingReadiness,
