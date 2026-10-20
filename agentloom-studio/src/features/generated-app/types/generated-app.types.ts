@@ -226,11 +226,6 @@ export interface GeneratedAppSpec {
   }
 }
 
-/** v2 之前存下的模板规格：不再有运行路径，下一次生成运行会重新生成 */
-export interface GeneratedAppLegacySpec {
-  version: 1
-}
-
 export interface GeneratedAppGateEvidence {
   id: string
   label: string
@@ -316,8 +311,8 @@ export interface GeneratedApp {
   appName: string
   description: string
   status: GeneratedAppStatus
-  /** 生成中为 null；v1 存量应用为旧版规格 */
-  appSpec: GeneratedAppSpec | GeneratedAppLegacySpec | null
+  /** 生成中或 Gate 0 失败时为 null */
+  appSpec: GeneratedAppSpec | null
   generationModelConfigId: string | null
   bindingTarget: GeneratedAppBindingTarget | null
   generationPlan: Record<string, unknown> | null

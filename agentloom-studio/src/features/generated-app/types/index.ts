@@ -27,7 +27,6 @@ export type {
   GeneratedAppGenerationRunStatus,
   GeneratedAppGenerationRunTrigger,
   GeneratedAppInputForm,
-  GeneratedAppLegacySpec,
   GeneratedAppListResponse,
   GeneratedAppPreview,
   GeneratedAppPublicSubmission,
