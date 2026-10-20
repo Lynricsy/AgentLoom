@@ -65,7 +65,7 @@ docType: explanation
 | 3 构建与单元 | 工作区由 v2 物化（`app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`），contract 测试对每个 requirement 场景：步骤值通过提交校验，投影后的 `inputParams` 通过 `validateSubmissionAgainstWorkflowInputSchema`；另有未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
 | 4 集成 | 不执行：重新解析绑定（仍发布、固定版本仍是当前版本、创建者仍有权限、Agent 模型配置可用）；Agent 绑定在此创建并发布包装工作流，走发布校验链 | `binding-drifted` / `binding-unavailable` |
 | 5 浏览器验收 | Playwright 真实执行每个 requirement 场景 × 桌面/移动视口：打开公开页 → 按步骤填写/选择 → 提交 → 等待执行结束 → 断言结果分区；收集 console error、同源失败请求、截图与 trace | `gate-5-browser-runner-unavailable` / `gate-5-browser-runner-timeout` / `gate-5-browser-launch-failed` / `gate-5-scenario-failed` |
-| 6 独立审查 | 确定性复核证据：每条 prompt 需求至少一个场景在两个视口都通过、无 console error、无公开 API 失败请求、结果分区非空、artifact 在对象存储中存在 | `verifier-blocking-finding` |
+| 6 独立审查 | 确定性复核证据：每条 prompt 需求至少一个场景在两个视口都通过、无 console error、无公开 API（`/api/`）失败请求、结果分区非空、artifact 在对象存储中存在；静态资源失败及 Chromium 对应的 `Failed to load resource:` console 记录不阻断 | `verifier-blocking-finding` |
 | 7 发布候选 | manifest（AppSpec sha256、固定绑定版本、各 Gate 证据 id、artifact key）；`ensureRuntimeWorkflow` 写 `workflow_definition_id`（工作流绑定为被绑定工作流，Agent 绑定复用 Gate 4 的包装工作流）；fixture 结果不放行 | `gate-7-fixture-not-publish-candidate` / `gate-7-publish-candidate-contract-blocked` |
 
 Gate 6 不调用模型做主观评审：主观评分不可复现，且真实执行与断言已在 Gate 5 完成。各 runner 的执行模式收敛为 `real` / `fixture` / `disabled`，删除 `real-local-*` 执行级别与 `real-browser-e2e` 别名。

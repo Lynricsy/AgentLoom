@@ -413,6 +413,63 @@ describe('Gate 6 独立审查', () => {
     expect(storage.exists).toHaveBeenCalledTimes(4);
   });
 
+  it('静态资源（如 dev server 拒绝的字体）失败与 Chromium 对应的 console 记录不阻断；公开 API 失败仍阻断', async () => {
+    const fontFailure = {
+      consoleErrors: [
+        'Failed to load resource: the server responded with a status of 403 (Forbidden)',
+      ],
+      failedRequests: [
+        {
+          method: 'GET',
+          path: '/@fs/<path>/inter-latin-wght-normal.woff2',
+          status: 403,
+        },
+        { method: 'GET', path: '/assets/noto-sans-sc.woff2', status: null },
+      ],
+    };
+    const { runner: gate6 } = runner();
+
+    const passed = await gate6.run(
+      context(undefined, {
+        ...realPlans,
+        browserAcceptancePlan: browserPlan([
+          scenarioRow(fontFailure),
+          scenarioRow({ ...fontFailure, viewportId: 'mobile' }),
+        ]),
+      }),
+    );
+    expect(passed.status).toBe('passed');
+
+    const blocked = await gate6.run(
+      context(undefined, {
+        ...realPlans,
+        browserAcceptancePlan: browserPlan([
+          scenarioRow({
+            consoleErrors: fontFailure.consoleErrors,
+            failedRequests: [
+              ...fontFailure.failedRequests,
+              {
+                method: 'GET',
+                path: '/api/v1/generated-apps/public/<acceptance-token>',
+                status: 500,
+              },
+            ],
+          }),
+          scenarioRow({ viewportId: 'mobile' }),
+        ]),
+      }),
+    );
+    expect(blocked.plan?.findings).toEqual([
+      expect.objectContaining({
+        findingId: 'failed-request',
+        viewportId: 'desktop',
+        message: expect.stringContaining(
+          'GET /api/v1/generated-apps/public/<acceptance-token> 500',
+        ),
+      }),
+    ]);
+  });
+
   it.each([
     [
       '只有桌面视口通过',

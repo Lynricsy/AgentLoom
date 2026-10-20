@@ -1,6 +1,6 @@
 // Gate 6 独立审查（ADR-0007 §4）：不调用模型做主观评审，只对前序证据做确定性复核——
 // Gate 3/4/5 必须是真实执行；每条 prompt 需求至少一个场景在桌面与移动视口都通过；
-// 无 console error、无同源失败请求；断言的结果分区非空；截图与 trace 确实在对象存储中。
+// 无 console error、无公开 API 失败请求；断言的结果分区非空；截图与 trace 确实在对象存储中。
 
 import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -29,6 +29,15 @@ import type {
 const REQUIRED_VIEWPORTS = Object.keys(
   GENERATED_APP_BROWSER_VIEWPORTS,
 ) as GeneratedAppBrowserViewportId[];
+
+/** 公开页调用的 API 前缀：只有这些请求失败才说明应用功能出错 */
+const PUBLIC_API_PATH_PREFIX = '/api/';
+
+/**
+ * Chromium 为每个失败的资源请求写一条以此开头的 console error。它与 failedRequests 重复，
+ * 由请求规则判定，不再按 console error 阻断——否则字体、图标等静态资源失败也会判应用不可用。
+ */
+const RESOURCE_LOAD_CONSOLE_PREFIX = 'Failed to load resource:';
 
 @Injectable()
 export class GeneratedAppGate6IndependentVerifierRunner {
@@ -151,19 +160,26 @@ export class GeneratedAppGate6IndependentVerifierRunner {
 
       for (const row of result.scenarios) {
         const where = `${row.scenarioId}@${row.viewportId}`;
-        if (row.consoleErrors.length > 0) {
+        const consoleErrors = row.consoleErrors.filter(
+          (message) => !message.startsWith(RESOURCE_LOAD_CONSOLE_PREFIX),
+        );
+        if (consoleErrors.length > 0) {
           finding(
             'console-error',
-            `${where} 有 ${row.consoleErrors.length} 条 console error：${row.consoleErrors[0]}`,
+            `${where} 有 ${consoleErrors.length} 条 console error：${consoleErrors[0]}`,
             row.scenarioId,
             row.viewportId,
           );
         }
-        if (row.failedRequests.length > 0) {
-          const first = row.failedRequests[0];
+        // 静态资源（字体、图片等）失败只影响外观；页面能否完成提交与展示结果已由 Gate 5 的步骤验证
+        const failedApiRequests = row.failedRequests.filter((request) =>
+          request.path.startsWith(PUBLIC_API_PATH_PREFIX),
+        );
+        if (failedApiRequests.length > 0) {
+          const first = failedApiRequests[0];
           finding(
             'failed-request',
-            `${where} 有 ${row.failedRequests.length} 个失败请求：${first.method} ${first.path} ${first.status ?? 'network-error'}`,
+            `${where} 有 ${failedApiRequests.length} 个失败的公开 API 请求：${first.method} ${first.path} ${first.status ?? 'network-error'}`,
             row.scenarioId,
             row.viewportId,
           );

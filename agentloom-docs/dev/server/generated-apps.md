@@ -93,7 +93,7 @@ Gate 0 失败码写在 gate run 的 `failure.code`，`failure.details` 带问题
 | `gate-3` | 构建与单元门禁 | `generated-app.gate3-workspace.ts`：在 `GENERATED_APP_WORKSPACE_ROOT` 下物化 `app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`；对每个 requirement 场景执行真实的提交校验与 `inputSchema` 校验，另跑未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
 | `gate-4` | 集成门禁 | `generated-app.gate4-integration.ts`：复核目标仍发布、固定版本仍是当前版本、创建者角色可运行、Agent 的模型配置可用；Agent 绑定在这里创建并发布包装工作流（Gate 5 的提交经它执行），绑定已不可用时不创建 | `binding-drifted` / `binding-unavailable` |
 | `gate-5` | 浏览器验收门禁 | `generated-app.gate5-browser-acceptance.ts` + `generated-app-browser-acceptance.dispatcher.ts`：签发验收令牌，把 requirement 场景投递给 browser-runner 在桌面与移动视口真实执行（见 ADR-0007 §6） | `gate-5-browser-runner-unavailable` / `gate-5-browser-runner-timeout` / `gate-5-browser-launch-failed` / `gate-5-scenario-failed` |
-| `gate-6` | 独立审查门禁 | `generated-app.gate6-independent-verifier.ts`：确定性复核 Gate 5 证据——两个视口都通过、无 console error、无失败请求、结果分区非空、截图与 trace 在对象存储中存在 | `verifier-blocking-finding` |
+| `gate-6` | 独立审查门禁 | `generated-app.gate6-independent-verifier.ts`：确定性复核 Gate 5 证据——两个视口都通过、无 console error、无失败的公开 API（`/api/`）请求、结果分区非空、截图与 trace 在对象存储中存在。静态资源（字体、图片等）请求失败与 Chromium 为它们写的 `Failed to load resource:` console 记录不阻断，仍保留在 Gate 5 证据中 | `verifier-blocking-finding` |
 | `gate-7` | 发布候选门禁 | `generated-app.gate7-publish-candidate.ts`：写 manifest（AppSpec sha256、固定绑定版本、各 Gate 证据 id、artifact key），调用 `ensureRuntimeWorkflow` 把运行时工作流写到应用上 | `gate-7-fixture-not-publish-candidate` / `gate-7-publish-candidate-contract-blocked` |
 
 门禁定义（名称、是否阻断）的唯一来源是 `GENERATED_APP_GATE_DEFINITIONS`（`generated-app.gates.ts`），全部为阻断门禁。Gate 依赖经 `generated-app.v2-tokens.ts` 的 DI token 注入流水线。
