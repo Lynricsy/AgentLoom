@@ -170,7 +170,9 @@ describe('Generated App capability routes', () => {
         TENANT_ID,
       ),
     ).resolves.toEqual({ data });
-    await expect(controller.delete(APP_ID, TENANT_ID)).resolves.toBeUndefined();
+    await expect(
+      controller.delete(APP_ID, TENANT_ID, OTHER_ID),
+    ).resolves.toBeUndefined();
     await expect(
       controller.deleteRepairAttempt(
         APP_ID,
