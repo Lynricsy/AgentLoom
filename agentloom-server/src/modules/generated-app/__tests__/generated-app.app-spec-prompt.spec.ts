@@ -48,6 +48,9 @@ describe('AppSpec 提示词', () => {
   it('系统提示要求验收输入落在知识范围内，结果断言只用 nonEmpty', () => {
     expect(GENERATED_APP_SPEC_SYSTEM_PROMPT).toContain('knowledge');
     expect(GENERATED_APP_SPEC_SYSTEM_PROMPT).toContain(
+      '不要把工作流、Agent、知识库或文档的名称写进问题',
+    );
+    expect(GENERATED_APP_SPEC_SYSTEM_PROMPT).toContain(
       'expectResult 只有 assertion=nonEmpty 一种',
     );
     expect(GENERATED_APP_SPEC_SYSTEM_PROMPT).not.toMatch(/contains/);

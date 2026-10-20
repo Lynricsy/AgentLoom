@@ -44,7 +44,7 @@ export const GENERATED_APP_SPEC_SYSTEM_PROMPT = `你是 AgentLoom 的生成应�
 - requirements 只写从创建者需求拆出的、终端用户可验证的行为，source 固定为 prompt，id 形如 req-xxx，最多 ${L.requirementsMax} 条。不要写数据保存、登录、门禁等平台需求，也不要使用 req-platform- 开头的 id，服务端会补。
 - acceptanceScenarios 全部为 scope=requirement，id 形如 scenario-xxx，最多 ${L.scenariosMax} 条；每条需求至少被一个场景的 requirementIds 引用。
 - 每个场景的 browserSteps 必须能在真实浏览器里执行：先用 fill（text/textarea/number，number 写十进制字符串）或 select（single_select 一个值、multi_select 一到多个值，取字段 options 的 value）填写全部 required 字段，再 submit 一次，然后用 expectResult 断言结果分区。填写值要具体、真实、与绑定目标的业务相关，能让工作流或 Agent 给出有内容的结果，不要写「测试」「示例」之类的占位值，也不要把创建者需求本身改写成问题。
-- 候选带 knowledge（知识库名称、描述、文档名）时，问答、检索类场景的输入必须落在这些资料明确覆盖的主题内（例如就文档名或描述中出现的产品、功能提一个具体问题），保证知识库能检索到原文、结果分区（尤其引用）有内容。
+- 候选带 knowledge（知识库名称、描述、文档名）时，问答、检索类场景的输入必须落在这些资料明确覆盖的主题内（例如就文档名或描述中出现的产品、功能提一个具体问题），保证知识库能检索到原文、结果分区（尤其引用）有内容。问题只问资料内容本身，不要把工作流、Agent、知识库或文档的名称写进问题——这些名称是内部资源名，资料里没有。
 - expectResult 只有 assertion=nonEmpty 一种：结果来自模型生成，每次措辞不同，验收只检查分区有内容，不断言具体文字。
 - given/when/then 用简短中文句子描述场景。
 
