@@ -7,9 +7,12 @@
 const TOKEN_PLACEHOLDER = '<acceptance-token>';
 const PATH_PLACEHOLDER = '<path>';
 
-/** 只匹配位于开头或分隔符之后的宿主绝对路径，避免误伤 URL 中的 `/api/v1/...` 等路径段 */
+/**
+ * 只匹配位于开头或分隔符之后的宿主绝对路径，避免误伤 URL 中的 `/api/v1/...` 等路径段；
+ * Vite dev server 以 `/@fs/<绝对路径>` 暴露宿主文件，前缀一并计入。
+ */
 const HOST_PATH_PATTERN =
-  /(^|[\s'"(=:,[])(?:file:\/\/)?\/(?:root|home|app|build|tmp|var|usr|opt|etc|proc|ms-playwright)(?:\/[^\s'"),\]]*)?/g;
+  /(^|[\s'"(=:,[])(?:file:\/\/|\/@fs)?\/(?:root|home|app|build|tmp|var|usr|opt|etc|proc|ms-playwright)(?:\/[^\s'"),\]]*)?/g;
 
 export function redactBrowserText(
   value: string,
